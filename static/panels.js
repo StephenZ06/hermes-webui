@@ -20,6 +20,11 @@ let _kanbanSuppressCardClickUntil = 0;
 let _kanbanEventSource = null;
 let _kanbanEventSourceFailures = 0;
 let _skillsData = null; // cached skills list
+let _agentDefsData = null; // cached persona (agent definition) list
+let _currentAgentDefDetail = null; // full persona object
+let _agentDefMode = 'empty'; // 'empty' | 'read' | 'create' | 'edit'
+let _agentDefPreFormDetail = null; // snapshot of prior selection when entering a form
+let _editingAgentDefId = null;
 let _cronList = null; // cached cron jobs (array)
 let _currentCronDetail = null; // full cron job object
 let _currentCronDetailKey = '';
@@ -40,11 +45,11 @@ let _logsSeverityFilter = 'all';
 
 // Map of panel names → i18n keys for the app titlebar label.
 const APP_TITLEBAR_KEYS = {
-  chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills',
+  chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills', agents: 'tab_agents',
   memory: 'tab_memory', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -415,6 +420,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'tasks') await loadCrons();
   if (nextPanel === 'kanban') await loadKanban();
   if (nextPanel === 'skills') await loadSkills();
+  if (nextPanel === 'agents') await loadAgentDefinitions();
   if (nextPanel === 'memory') await loadMemory();
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
   if (nextPanel === 'profiles') await loadProfilesPanel();
@@ -5216,6 +5222,277 @@ async function deleteCurrentSkill() {
     _setSkillHeaderButtons('empty');
     await loadSkills();
     showToast(t('skill_deleted') || 'Skill deleted');
+  } catch(e) { setStatus(t('error_prefix') + e.message); }
+}
+
+// ── Personas panel (internal name: agent definitions / Agent Library) ──
+// Mirrors the Skills panel above: sidebar list (#agentsList) + detail/form
+// pane rendered into #mainAgents. See docs/HERMES_STUDIO_PARITY_PLAN.md,
+// "Priority 1 -- Personas".
+
+async function loadAgentDefinitions() {
+  if (_agentDefsData) { renderAgentDefinitions(_agentDefsData); return; }
+  const box = $('agentsList');
+  try {
+    const data = await api('/api/agent-definitions');
+    _agentDefsData = data.definitions || [];
+    renderAgentDefinitions(_agentDefsData);
+  } catch(e) { if (box) box.innerHTML = `<div style="padding:12px;color:var(--accent);font-size:12px">${esc(t('error_prefix'))}${esc(e.message)}</div>`; }
+}
+
+function renderAgentDefinitions(definitions) {
+  const searchEl = $('agentsSearch');
+  const query = ((searchEl && searchEl.value) || '').toLowerCase();
+  const filtered = query ? definitions.filter(d =>
+    (d.name||'').toLowerCase().includes(query) ||
+    (d.role||'').toLowerCase().includes(query) ||
+    (d.tags||[]).some(tag => (tag||'').toLowerCase().includes(query))
+  ) : definitions;
+  const box = $('agentsList');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!filtered.length) { box.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(t('agent_def_no_match'))}</div>`; return; }
+  for (const def of filtered) {
+    const el = document.createElement('div');
+    el.className = 'skill-item';
+    el.dataset.agentDefId = def.id;
+    const dot = `<span style="width:8px;height:8px;border-radius:50%;background:${esc(def.color || 'var(--muted)')};display:inline-block;flex-shrink:0;margin-top:5px" aria-hidden="true"></span>`;
+    const emoji = def.emoji ? `${esc(def.emoji)} ` : '';
+    el.innerHTML = `${dot}<span class="skill-name">${emoji}${esc(def.name)}</span><span class="skill-desc">${esc(def.role || '')}</span>`;
+    if (def.builtin) el.title = t('agent_def_builtin_hint');
+    if (_currentAgentDefDetail && _currentAgentDefDetail.id === def.id) el.classList.add('active');
+    el.onclick = () => openAgentDefDetail(def.id, el);
+    box.appendChild(el);
+  }
+}
+
+function filterAgentDefinitions() {
+  if (_agentDefsData) renderAgentDefinitions(_agentDefsData);
+}
+
+function _setAgentDefHeaderButtons(mode, def) {
+  const header = $('mainAgents') && $('mainAgents').querySelector('.main-view-header');
+  const editBtn = $('btnEditAgentDefDetail');
+  const dupBtn = $('btnDuplicateAgentDefDetail');
+  const delBtn = $('btnDeleteAgentDefDetail');
+  const cancelBtn = $('btnCancelAgentDefDetail');
+  const saveBtn = $('btnSaveAgentDefDetail');
+  const show = b => b && (b.style.display = '');
+  const hide = b => b && (b.style.display = 'none');
+  if (mode === 'read') {
+    if (header) header.style.display = 'flex';
+    show(dupBtn);
+    if (def && def.builtin) { hide(editBtn); hide(delBtn); }
+    else { show(editBtn); show(delBtn); }
+    hide(cancelBtn); hide(saveBtn);
+  } else if (mode === 'create' || mode === 'edit') {
+    if (header) header.style.display = 'flex';
+    hide(editBtn); hide(dupBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
+  } else {
+    if (header) header.style.display = 'none';
+    hide(editBtn); hide(dupBtn); hide(delBtn); hide(cancelBtn); hide(saveBtn);
+  }
+}
+
+function _renderAgentDefDetail(def) {
+  _currentAgentDefDetail = def;
+  const title = $('agentDefDetailTitle');
+  const body = $('agentDefDetailBody');
+  const empty = $('agentDefDetailEmpty');
+  if (!title || !body) return;
+  title.textContent = (def.emoji ? def.emoji + ' ' : '') + def.name;
+  const rows = [];
+  if (def.builtin) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_type'))}</div><div class="detail-row-value"><span class="detail-badge">${esc(t('agent_def_builtin_badge'))}</span></div></div>`);
+  if (def.role) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_role'))}</div><div class="detail-row-value">${esc(def.role)}</div></div>`);
+  if (def.tags && def.tags.length) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_tags'))}</div><div class="detail-row-value">${def.tags.map(tag => esc(tag)).join(', ')}</div></div>`);
+  const promptValue = def.system_prompt
+    ? `<pre class="skill-file-code" style="white-space:pre-wrap">${esc(def.system_prompt)}</pre>`
+    : `<span style="color:var(--muted)">${esc(t('agent_def_no_system_prompt'))}</span>`;
+  rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_system_prompt'))}</div><div class="detail-row-value">${promptValue}</div></div>`);
+  body.innerHTML = `
+    <div class="main-view-content">
+      <div class="detail-card">
+        <div class="detail-card-title">${esc(t('tab_agents'))}</div>
+        ${rows.join('')}
+      </div>
+    </div>`;
+  body.style.display = '';
+  if (empty) empty.style.display = 'none';
+  _agentDefMode = 'read';
+  _setAgentDefHeaderButtons('read', def);
+}
+
+async function openAgentDefDetail(id, el) {
+  document.querySelectorAll('#agentsList .skill-item').forEach(e => e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  _agentDefPreFormDetail = null;
+  _editingAgentDefId = null;
+  const def = (_agentDefsData || []).find(d => d.id === id);
+  if (!def) return;
+  _renderAgentDefDetail(def);
+  if (typeof _closeMobileSidebarAfterPanelSelection === 'function') _closeMobileSidebarAfterPanelSelection();
+}
+
+function editCurrentAgentDef() {
+  if (!_currentAgentDefDetail || _currentAgentDefDetail.builtin) return;
+  _agentDefPreFormDetail = _currentAgentDefDetail;
+  _editingAgentDefId = _currentAgentDefDetail.id;
+  _agentDefMode = 'edit';
+  _renderAgentDefForm(_currentAgentDefDetail);
+}
+
+function openAgentDefCreate() {
+  if (typeof switchPanel === 'function' && _currentPanel !== 'agents') switchPanel('agents');
+  _agentDefPreFormDetail = _currentAgentDefDetail;
+  _editingAgentDefId = null;
+  _agentDefMode = 'create';
+  _renderAgentDefForm({ name: '', emoji: '', color: '', role: '', tags: [], system_prompt: '' });
+}
+
+function _renderAgentDefForm(def) {
+  const title = $('agentDefDetailTitle');
+  const body = $('agentDefDetailBody');
+  const empty = $('agentDefDetailEmpty');
+  if (!body || !title) return;
+  const isEdit = !!_editingAgentDefId;
+  title.textContent = isEdit ? t('edit') + ' · ' + def.name : t('new_agent_def');
+  body.innerHTML = `
+    <div class="main-view-content">
+      <form class="detail-form" onsubmit="event.preventDefault(); saveAgentDefForm();">
+        <div class="detail-form-row">
+          <label for="agentDefFormName">${esc(t('agent_def_name'))}</label>
+          <input type="text" id="agentDefFormName" value="${esc(def.name || '')}" placeholder="${esc(t('agent_def_name_placeholder'))}" autocomplete="off" maxlength="128" required>
+        </div>
+        <div class="detail-form-row">
+          <label for="agentDefFormEmoji">${esc(t('agent_def_emoji'))}</label>
+          <input type="text" id="agentDefFormEmoji" value="${esc(def.emoji || '')}" placeholder="🤖" autocomplete="off" maxlength="8">
+        </div>
+        <div class="detail-form-row">
+          <label for="agentDefFormColor">${esc(t('agent_def_color'))}</label>
+          <input type="text" id="agentDefFormColor" value="${esc(def.color || '')}" placeholder="#7cb9ff" autocomplete="off">
+          <div class="detail-form-hint">${esc(t('agent_def_color_hint'))}</div>
+        </div>
+        <div class="detail-form-row">
+          <label for="agentDefFormRole">${esc(t('agent_def_role'))}</label>
+          <input type="text" id="agentDefFormRole" value="${esc(def.role || '')}" placeholder="${esc(t('agent_def_role_placeholder'))}" autocomplete="off" maxlength="256">
+        </div>
+        <div class="detail-form-row">
+          <label for="agentDefFormTags">${esc(t('agent_def_tags'))}</label>
+          <input type="text" id="agentDefFormTags" value="${esc((def.tags || []).join(', '))}" placeholder="${esc(t('agent_def_tags_placeholder'))}" autocomplete="off">
+        </div>
+        <div class="detail-form-row">
+          <label for="agentDefFormPrompt">${esc(t('agent_def_system_prompt'))}</label>
+          <textarea id="agentDefFormPrompt" rows="14" placeholder="${esc(t('agent_def_system_prompt_placeholder'))}" maxlength="8000">${esc(def.system_prompt || '')}</textarea>
+        </div>
+        <div id="agentDefFormError" class="detail-form-error" style="display:none"></div>
+      </form>
+    </div>`;
+  body.style.display = '';
+  if (empty) empty.style.display = 'none';
+  _setAgentDefHeaderButtons(isEdit ? 'edit' : 'create');
+  const focusEl = $('agentDefFormName');
+  if (focusEl) focusEl.focus();
+}
+
+function cancelAgentDefForm() {
+  _editingAgentDefId = null;
+  if (_agentDefPreFormDetail) {
+    const snap = _agentDefPreFormDetail;
+    _agentDefPreFormDetail = null;
+    _renderAgentDefDetail(snap);
+    return;
+  }
+  _agentDefPreFormDetail = null;
+  _currentAgentDefDetail = null;
+  _agentDefMode = 'empty';
+  const body = $('agentDefDetailBody');
+  const empty = $('agentDefDetailEmpty');
+  const title = $('agentDefDetailTitle');
+  if (body) { body.innerHTML = ''; body.style.display = 'none'; }
+  if (empty) empty.style.display = '';
+  if (title) title.textContent = '';
+  _setAgentDefHeaderButtons('empty');
+}
+
+async function saveAgentDefForm() {
+  const nameInput = $('agentDefFormName');
+  const emojiInput = $('agentDefFormEmoji');
+  const colorInput = $('agentDefFormColor');
+  const roleInput = $('agentDefFormRole');
+  const tagsInput = $('agentDefFormTags');
+  const promptInput = $('agentDefFormPrompt');
+  const errEl = $('agentDefFormError');
+  if (!nameInput || !errEl) return;
+  const name = (nameInput.value || '').trim();
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = t('agent_def_name_required'); errEl.style.display = ''; return; }
+  const tags = (tagsInput.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  const payload = {
+    name,
+    emoji: (emojiInput.value || '').trim(),
+    color: (colorInput.value || '').trim() || undefined,
+    role: (roleInput.value || '').trim(),
+    tags,
+    system_prompt: promptInput.value || '',
+  };
+  try {
+    let result;
+    if (_editingAgentDefId) {
+      result = await api('/api/agent-definitions/update', { method:'POST', body: JSON.stringify({ id: _editingAgentDefId, ...payload }) });
+    } else {
+      result = await api('/api/agent-definitions/create', { method:'POST', body: JSON.stringify(payload) });
+    }
+    showToast(_editingAgentDefId ? t('agent_def_updated') : t('agent_def_created'));
+    _agentDefsData = null;
+    _editingAgentDefId = null;
+    _agentDefPreFormDetail = null;
+    await loadAgentDefinitions();
+    const saved = result.definition;
+    const targetEl = document.querySelector(`#agentsList [data-agent-def-id="${saved.id}"]`);
+    await openAgentDefDetail(saved.id, targetEl);
+  } catch(e) { errEl.textContent = t('error_prefix') + e.message; errEl.style.display = ''; }
+}
+
+async function duplicateAgentDef() {
+  if (!_currentAgentDefDetail) return;
+  try {
+    const result = await api('/api/agent-definitions/duplicate', { method:'POST', body: JSON.stringify({ id: _currentAgentDefDetail.id }) });
+    showToast(t('agent_def_duplicated'));
+    _agentDefsData = null;
+    await loadAgentDefinitions();
+    const saved = result.definition;
+    const targetEl = document.querySelector(`#agentsList [data-agent-def-id="${saved.id}"]`);
+    await openAgentDefDetail(saved.id, targetEl);
+  } catch(e) { setStatus(t('error_prefix') + e.message); }
+}
+
+async function deleteAgentDef() {
+  if (!_currentAgentDefDetail || _currentAgentDefDetail.builtin) return;
+  const name = _currentAgentDefDetail.name;
+  const message = t('agent_def_delete_confirm') ? t('agent_def_delete_confirm').replace('{0}', name) : `Delete persona "${name}"?`;
+  const ok = await showConfirmDialog({
+    title: t('delete_title') || 'Delete',
+    message,
+    confirmLabel: t('delete_title') || 'Delete',
+    danger: true,
+    focusCancel: true,
+  });
+  if (!ok) return;
+  try {
+    await api('/api/agent-definitions/delete', { method:'POST', body: JSON.stringify({ id: _currentAgentDefDetail.id }) });
+    _currentAgentDefDetail = null;
+    _agentDefPreFormDetail = null;
+    _agentDefsData = null;
+    _agentDefMode = 'empty';
+    const body = $('agentDefDetailBody');
+    const empty = $('agentDefDetailEmpty');
+    const title = $('agentDefDetailTitle');
+    if (body) { body.innerHTML = ''; body.style.display = 'none'; }
+    if (empty) empty.style.display = '';
+    if (title) title.textContent = '';
+    _setAgentDefHeaderButtons('empty');
+    await loadAgentDefinitions();
+    showToast(t('agent_def_deleted'));
   } catch(e) { setStatus(t('error_prefix') + e.message); }
 }
 

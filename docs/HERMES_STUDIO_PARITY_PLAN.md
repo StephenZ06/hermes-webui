@@ -16,7 +16,7 @@
 
 ## Priority 1 — already planned, confirmed as real gaps
 
-### Personas (internal name: Agent Library / `agent_definitions`) — STATUS: planned, ready to implement (not started)
+### Personas (internal name: Agent Library / `agent_definitions`) — STATUS: DONE (shipped 2026-08-08)
 
 **Decided 2026-08-08:** user-facing name is **"Personas"** (resolves open
 question #1 below — avoids collision with this codebase's existing use of
@@ -26,6 +26,21 @@ UI-visible strings (nav label, panel title, slash command, i18n keys) say
 "Personas". **v1 ships with no apply-to-session** (resolves open question
 #2 below) — pure browsable/editable library, no `streaming.py` chokepoint
 changes.
+
+**Shipped 2026-08-08:** full CRUD implementation landed exactly per the plan
+below — `api/agent_definitions.py`, four `/api/agent-definitions/*`
+endpoints in `api/routes.py`, a Personas nav tab + sidebar list + detail/form
+pane in `static/index.html`/`panels.js`/`style.css`, a `/personas` slash
+command in `static/commands.js`, and 29 new i18n keys across all 15 locale
+blocks in `static/i18n.js`. Tests: `tests/test_agent_definitions_api.py` (18
+cases — CRUD, builtin protection, duplicate, caps, profile isolation) and
+`tests/test_agent_definitions_ui.py` (7 structural wiring guards). Full
+verification run: 339 tests across the i18n/locale suite, panel-navigation
+suite, saved-prompts/projects suite, and the new test files — all passing,
+zero regressions. `ruff check` clean on the new/touched Python.
+Not done in v1 (by design, see open question #2): no way to apply a Persona's
+system prompt to a live session — that's future scope if requested, and must
+extend `_webui_ephemeral_system_prompt()` rather than add a parallel path.
 
 Hermes-Studio (`src/screens/agents/agent-library-screen.tsx`,
 `src/lib/agents-api.ts`, `src/server/agent-definitions-store.ts`) has a full
@@ -300,13 +315,9 @@ actual target, bigger in scope than the three Priority 1 items.
 
 ## Suggested starting point
 
-Personas (internal: Agent Library) first — it's self-contained (no
-dependency on the orchestration work), was already on the plan before this
-comparison, and is a clean vertical slice. **Full implementation plan is
-written up under "Priority 1 — Personas" above and is ready to build from —
-all open questions resolved 2026-08-08 (name: Personas; no
-apply-to-session in v1).**
+~~Personas (internal: Agent Library) first~~ — **shipped 2026-08-08**, see
+"Priority 1 — Personas" above.
 
-Implement in this order: `api/agent_definitions.py` → `api/routes.py`
-endpoints → tests → `static/panels.js` + `index.html` + `i18n.js` (all 15
-locales, label text "Personas") → manual verification per `TESTING.md`.
+Next up per the stated priority order: **Security scanner**, then
+**Patterns / memory vault cleaner**, then the Priority 2 multi-agent
+orchestration gap.

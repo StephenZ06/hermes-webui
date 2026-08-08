@@ -17,6 +17,7 @@ const COMMANDS=[
   {name:'theme',     desc:t('cmd_theme'), fn:cmdTheme, arg:'name',  noEcho:true},
   {name:'personality', desc:t('cmd_personality'), fn:cmdPersonality, arg:'name', subArgs:'personalities'},
   {name:'skills',    desc:t('cmd_skills'),   fn:cmdSkills,   arg:'query'},
+  {name:'personas',  desc:t('cmd_personas'), fn:cmdPersonas, arg:'query'},
   {name:'use',       desc:t('cmd_use'),      fn:cmdUse,      arg:'skill-name', subArgs:'skills', noEcho:true},
   {name:'stop',      desc:t('cmd_stop'),     fn:cmdStop,      noEcho:true},
   {name:'goal',      desc:t('cmd_goal'),     fn:cmdGoal,      arg:'[status|pause|resume|clear|text]', subArgs:['status','pause','resume','clear']},
@@ -1134,6 +1135,39 @@ async function cmdSkills(args){
     showToast(t('type_slash'));
   }catch(e){
     showToast('Failed to load skills: '+e.message);
+  }
+}
+
+async function cmdPersonas(args){
+  try{
+    const data = await api('/api/agent-definitions');
+    let defs = data.definitions || [];
+    if(args){
+      const q = args.toLowerCase();
+      defs = defs.filter(d =>
+        (d.name||'').toLowerCase().includes(q) ||
+        (d.role||'').toLowerCase().includes(q) ||
+        (d.tags||[]).some(tag => (tag||'').toLowerCase().includes(q))
+      );
+    }
+    if(!defs.length){
+      const msg = {role:'assistant', content: args ? `No personas matching "${args}".` : 'No personas found.'};
+      S.messages.push(msg); renderMessages(); return;
+    }
+    const lines = defs.map(d => {
+      const emoji = d.emoji ? `${d.emoji} ` : '';
+      const role = d.role ? ` — ${d.role}` : '';
+      const badge = d.builtin ? ' _(built-in)_' : '';
+      return `  ${emoji}**${d.name}**${badge}${role}`;
+    });
+    const header = args
+      ? `Personas matching "${args}" (${defs.length}):\n\n`
+      : `Available personas (${defs.length}):\n\n`;
+    S.messages.push({role:'assistant', content: header + lines.join('\n')});
+    renderMessages();
+    showToast(t('type_slash'));
+  }catch(e){
+    showToast('Failed to load personas: '+e.message);
   }
 }
 

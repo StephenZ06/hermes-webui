@@ -13251,6 +13251,10 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/prompts":
         return j(handler, {"prompts": _load_saved_prompts()})
 
+    if parsed.path == "/api/agent-definitions":
+        from api import agent_definitions
+        return j(handler, agent_definitions.list_definitions())
+
     if parsed.path == "/api/session/export":
         return _handle_session_export(handler, parsed)
 
@@ -14186,6 +14190,48 @@ def handle_post(handler, parsed) -> bool:
         prompts.append(new_prompt)
         _save_saved_prompts(prompts)
         return j(handler, {"ok": True, "prompt": new_prompt})
+
+    if parsed.path == "/api/agent-definitions/create":
+        from api import agent_definitions
+        try:
+            definition = agent_definitions.create_definition(body)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "definition": definition})
+
+    if parsed.path == "/api/agent-definitions/update":
+        from api import agent_definitions
+        try:
+            definition = agent_definitions.update_definition(body)
+        except PermissionError as e:
+            return bad(handler, str(e), status=400)
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "definition": definition})
+
+    if parsed.path == "/api/agent-definitions/delete":
+        from api import agent_definitions
+        try:
+            agent_definitions.delete_definition(body.get("id"))
+        except PermissionError as e:
+            return bad(handler, str(e), status=400)
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True})
+
+    if parsed.path == "/api/agent-definitions/duplicate":
+        from api import agent_definitions
+        try:
+            definition = agent_definitions.duplicate_definition(body.get("id"))
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "definition": definition})
 
     if parsed.path == "/api/share/create":
         sid = str(body.get("session_id") or "").strip()
