@@ -196,6 +196,12 @@ def _board_payload(parsed):
     kb = _kb()
     tenant = _str_query(parsed, "tenant")
     assignee = _str_query(parsed, "assignee")
+    # Crews (docs/HERMES_STUDIO_PARITY_PLAN.md, Phase 1): narrow the board to
+    # one crew's dispatched tasks, mirroring the tenant/assignee filters
+    # immediately above. list_tasks already accepts this kwarg upstream
+    # (hermes_cli/kanban_db.py) -- no feature-detect needed here, unlike the
+    # create_task() write path in _create_task_payload.
+    workflow_template_id = _str_query(parsed, "workflow_template_id")
     include_archived = _bool_query(parsed, "include_archived", False)
     only_mine = _bool_query(parsed, "only_mine", False)
     since = _int_query(parsed, "since", None, minimum=0)
@@ -219,6 +225,7 @@ def _board_payload(parsed):
             tenant=tenant,
             assignee=assignee,
             include_archived=include_archived,
+            workflow_template_id=workflow_template_id,
         )
         link_counts = _task_link_counts(conn, tasks)
         comment_counts = _comment_counts(conn)
@@ -251,6 +258,7 @@ def _board_payload(parsed):
                 "include_archived": include_archived,
                 "only_mine": only_mine,
                 "profile": profile,
+                "workflow_template_id": workflow_template_id,
             },
         }
 
@@ -342,9 +350,18 @@ def _create_task_payload(body: dict, *, board=None):
         raise ValueError("priority must be an integer")
     kb = _kb()
     requested_status = body.get("status")
+    # Optional Crews tagging (docs/HERMES_STUDIO_PARITY_PLAN.md, "Multi-agent
+    # orchestration" -> Phase 1). These are pre-existing, currently-unused
+    # kanban_db.Task schema columns (hermes_cli/kanban_db.py:1051-1052) reused
+    # here purely as a tagging mechanism -- NOT evidence of a workflow-graph
+    # engine. Forwarded as create_task() kwargs when the installed hermes_cli
+    # version supports them; otherwise written via a raw UPDATE immediately
+    # after creation, mirroring _patch_task's existing precedent for writing
+    # fields the structured API doesn't expose.
+    workflow_template_id = body.get("workflow_template_id") or None
+    current_step_key = body.get("current_step_key") or None
     with _conn(board=board) as conn:
-        task_id = kb.create_task(
-            conn,
+        create_kwargs = dict(
             title=title,
             body=body.get("body") or None,
             assignee=body.get("assignee") or None,
@@ -359,8 +376,25 @@ def _create_task_payload(body: dict, *, board=None):
             max_runtime_seconds=body.get("max_runtime_seconds") or None,
             skills=body.get("skills") or None,
         )
+        supports_workflow_kwargs = False
+        if workflow_template_id is not None or current_step_key is not None:
+            try:
+                import inspect
+                params = inspect.signature(kb.create_task).parameters
+                supports_workflow_kwargs = "workflow_template_id" in params and "current_step_key" in params
+            except (TypeError, ValueError):
+                supports_workflow_kwargs = False
+            if supports_workflow_kwargs:
+                create_kwargs["workflow_template_id"] = workflow_template_id
+                create_kwargs["current_step_key"] = current_step_key
+        task_id = kb.create_task(conn, **create_kwargs)
         if requested_status:
             _patch_task(conn, task_id, {"status": requested_status})
+        if (workflow_template_id is not None or current_step_key is not None) and not supports_workflow_kwargs:
+            conn.execute(
+                "UPDATE tasks SET workflow_template_id = ?, current_step_key = ? WHERE id = ?",
+                (workflow_template_id, current_step_key, task_id),
+            )
         return {"task": _task_dict(kb.get_task(conn, task_id)), "read_only": False}
 
 

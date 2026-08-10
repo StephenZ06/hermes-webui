@@ -9443,12 +9443,27 @@ def _run_agent_streaming(
                         _personality_prompt = '\n'.join(p for p in _parts if p)
                     else:
                         _personality_prompt = str(_pval)
+            # Resolve an applied Persona (docs/HERMES_STUDIO_PARITY_PLAN.md,
+            # "Personas" apply-to-session) into the same ephemeral chokepoint
+            # rather than a parallel prompt-injection path. A Persona and a
+            # config.yaml personality can be applied at the same time; both
+            # contribute text, Persona first.
+            _persona_prompt = None
+            _persona_id = getattr(s, 'agent_definition_id', None)
+            if _persona_id:
+                from api import agent_definitions as _agent_definitions
+                _persona_def = _agent_definitions.get_definition(_persona_id)
+                if _persona_def and _persona_def.get('system_prompt'):
+                    _persona_prompt = str(_persona_def['system_prompt'])
+            _combined_personality_prompt = '\n\n'.join(
+                p for p in (_persona_prompt, _personality_prompt) if p
+            ) or None
             # Pass WebUI-only runtime guidance via ephemeral_system_prompt
             # (agent's own mechanism). This preserves any selected personality
             # while making long tool runs emit real user-visible interim text
             # through interim_assistant_callback instead of frontend guesses.
             agent.ephemeral_system_prompt = _webui_ephemeral_system_prompt(
-                _personality_prompt,
+                _combined_personality_prompt,
                 surface_context={
                     'source': 'webui',
                     'session_id': session_id,

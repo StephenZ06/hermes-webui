@@ -2517,12 +2517,66 @@ def _write_model_defaults_to_config(
     _atomic_write_text(config_path, _yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding='utf-8')
 
 
+def _validate_profile_reasoning_effort(reasoning_effort: Optional[str]) -> Optional[str]:
+    """Normalize and validate a reasoning-effort value for profile creation.
+
+    Mirrors ``api.config.set_reasoning_effort``'s accepted values so a
+    profile-creation default and the composer's own reasoning picker never
+    drift apart. Returns ``None`` for a blank value (no override — the
+    provider default applies), the lowercased value otherwise.
+    """
+    from api.config import VALID_REASONING_EFFORTS
+
+    raw = str(reasoning_effort or "").strip().lower()
+    if not raw:
+        return None
+    if raw != "none" and raw not in VALID_REASONING_EFFORTS:
+        raise ValueError(
+            f"Unknown reasoning effort '{reasoning_effort}'. "
+            f"Valid: none, {', '.join(VALID_REASONING_EFFORTS)}."
+        )
+    return raw
+
+
+def _write_reasoning_effort_to_config(profile_dir: Path, reasoning_effort: Optional[str] = None) -> None:
+    """Write ``agent.reasoning_effort`` into config.yaml for a profile.
+
+    Same key ``api.config.set_reasoning_effort`` writes for the active
+    profile, so a default chosen at profile-creation time is picked up by
+    the composer's reasoning chip the moment this profile becomes active
+    (``get_reasoning_status()`` reads it straight from the active profile's
+    config.yaml — no separate wiring needed).
+    """
+    if not reasoning_effort:
+        return
+    config_path = profile_dir / 'config.yaml'
+    try:
+        import yaml as _yaml
+    except ImportError:
+        return
+    cfg = {}
+    if config_path.exists():
+        try:
+            loaded = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except Exception:
+            logger.debug("Failed to load config from %s", config_path)
+    agent_section = cfg.get('agent', {})
+    if not isinstance(agent_section, dict):
+        agent_section = {}
+    agent_section['reasoning_effort'] = reasoning_effort
+    cfg['agent'] = agent_section
+    _atomic_write_text(config_path, _yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding='utf-8')
+
+
 def create_profile_api(name: str, clone_from: str = None,
                        clone_config: bool = False,
                        base_url: str = None,
                        api_key: str = None,
                        default_model: str = None,
-                       model_provider: str = None) -> dict:
+                       model_provider: str = None,
+                       reasoning_effort: str = None) -> dict:
     """Create a new profile. Returns the new profile info dict.
 
     In isolated profile mode, profile creation is rejected (403).
@@ -2536,6 +2590,7 @@ def create_profile_api(name: str, clone_from: str = None,
         _validate_profile_name(clone_from)
     default_model, model_provider = _split_webui_provider_model_value(default_model, model_provider)
     _validate_profile_model_selection(default_model, model_provider)
+    reasoning_effort = _validate_profile_reasoning_effort(reasoning_effort)
 
     try:
         from hermes_cli.profiles import create_profile
@@ -2597,6 +2652,7 @@ def create_profile_api(name: str, clone_from: str = None,
         default_model=default_model,
         model_provider=model_provider,
     )
+    _write_reasoning_effort_to_config(profile_path, reasoning_effort=reasoning_effort)
 
     # Invalidate cached root-profile-name lookup; create_profile may have added
     # a new profile that flips is_default semantics on the agent side (#1612).

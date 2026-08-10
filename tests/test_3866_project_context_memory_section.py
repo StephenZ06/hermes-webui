@@ -193,6 +193,7 @@ function _memorySectionLabel(meta) { return meta.label; }
 function _memorySectionEmpty(meta) { return meta.emptyKey; }
 function _setMemoryHeaderButtons() {}
 function renderMd(content) { return 'rendered:' + content; }
+function t(key) { return key; }
 function esc(value) {
   return String(value)
     .replace(/&/g, '&amp;')

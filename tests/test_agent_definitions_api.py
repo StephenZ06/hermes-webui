@@ -259,3 +259,90 @@ def test_profile_isolation(tmp_path, monkeypatch):
     a_list2 = agent_definitions.list_definitions()["definitions"]
     a_names2 = [d["name"] for d in a_list2 if not d["id"].startswith("builtin:")]
     assert a_names2 == ["Profile A Persona"]
+
+
+# ── Apply to session ─────────────────────────────────────────────────────
+# See docs/HERMES_STUDIO_PARITY_PLAN.md, "Personas" open question #2:
+# apply-to-session extends the existing _webui_ephemeral_system_prompt()
+# chokepoint via a persisted Session.agent_definition_id field, mirroring
+# /api/personality/set.
+
+def _make_session():
+    d, status = post("/api/session/new", {})
+    assert status == 200, f"Failed to create session: {d}"
+    return d["session"]["session_id"]
+
+
+def _cleanup_session(sid):
+    try:
+        post("/api/session/delete", {"session_id": sid})
+    except Exception:
+        pass
+
+
+def test_apply_builtin_persona_to_session():
+    d, _ = get("/api/agent-definitions")
+    builtin = next(x for x in d["definitions"] if x["id"].startswith("builtin:"))
+    sid = _make_session()
+    try:
+        d2, status = post("/api/agent-definitions/apply", {"session_id": sid, "id": builtin["id"]})
+        assert status == 200
+        assert d2["ok"] is True
+        assert d2["agent_definition_id"] == builtin["id"]
+        assert d2["definition"]["id"] == builtin["id"]
+    finally:
+        _cleanup_session(sid)
+
+
+def test_apply_custom_persona_persists_across_reads():
+    pids = []
+    sid = _make_session()
+    try:
+        pid, _ = make_persona(pids, name="Applyable")
+        d, status = post("/api/agent-definitions/apply", {"session_id": sid, "id": pid})
+        assert status == 200
+        assert d["agent_definition_id"] == pid
+
+        sess, status2 = get(f"/api/session?session_id={sid}")
+        assert status2 == 200
+        assert sess["session"]["agent_definition_id"] == pid
+    finally:
+        _cleanup_session(sid)
+        cleanup_personas(pids)
+
+
+def test_apply_empty_id_clears_persona():
+    pids = []
+    sid = _make_session()
+    try:
+        pid, _ = make_persona(pids, name="ToClear")
+        post("/api/agent-definitions/apply", {"session_id": sid, "id": pid})
+
+        d, status = post("/api/agent-definitions/apply", {"session_id": sid, "id": ""})
+        assert status == 200
+        assert d["agent_definition_id"] is None
+
+        sess, _ = get(f"/api/session?session_id={sid}")
+        assert sess["session"]["agent_definition_id"] is None
+    finally:
+        _cleanup_session(sid)
+        cleanup_personas(pids)
+
+
+def test_apply_nonexistent_persona_returns_404():
+    sid = _make_session()
+    try:
+        d, status = post("/api/agent-definitions/apply", {"session_id": sid, "id": "does-not-exist"})
+        assert status == 404
+    finally:
+        _cleanup_session(sid)
+
+
+def test_apply_missing_session_returns_404():
+    d, status = post("/api/agent-definitions/apply", {"session_id": "does-not-exist", "id": ""})
+    assert status == 404
+
+
+def test_apply_requires_session_id():
+    d, status = post("/api/agent-definitions/apply", {"id": ""})
+    assert status == 400

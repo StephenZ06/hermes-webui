@@ -1489,6 +1489,7 @@ async function newSession(flash, options={}){
     S._pendingSessionToolsets=null;
     if(_sessionSourceFilter==='cli') _sessionSourceFilter='webui';
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+    if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     S.lastUsage={...(data.session.last_usage||{})};
     if(!(options&&options.worktree)) _rememberNewChatDraftSession(S.session);
     if(flash)S.session._flash=true;
@@ -1976,6 +1977,7 @@ async function loadSession(sid){
     }
   }
   if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+  if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
   S.session._modelResolutionDeferred=true;
   S.lastUsage={...(data.session.last_usage||{})};
   // Reset scroll-direction tracker only on real session switches so the new
@@ -2124,6 +2126,7 @@ async function loadSession(sid){
     }
     // Refresh todos from cold-load or persisted INFLIGHT before painting.
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+    if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     S.busy=!!activeStreamId;  // #4354: Only assert busy if server confirms active stream.
     // appendLiveToolCard() is guarded by S.activeStreamId; restore it before
     // replaying persisted live tools so the compact Activity count survives
@@ -3199,6 +3202,7 @@ async function _ensureMessagesLoaded(sid, opts) {
     if(typeof _hydrateTodosFromSession === 'function'){
       _hydrateTodosFromSession(S.session);
     }
+    if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     if(typeof scheduleTodosRefresh === 'function'){
       scheduleTodosRefresh();
     }
@@ -4301,6 +4305,7 @@ function _renderBatchActionBar(){
       if(S.session&&ids.includes(S.session.session_id)){
         S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('hermes-webui-session');
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
+        if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
         const remaining=await api('/api/sessions'+_sessionListQueryString());
         if(remaining.sessions&&remaining.sessions.length){await loadSession(remaining.sessions[0].session_id);}
         else{$('msgInner').innerHTML='';$('emptyState').style.display='';}
@@ -9044,6 +9049,7 @@ async function deleteSession(sid, beforeDelete=null){
   if(S.session&&S.session.session_id===sid){
     S.session=null;S.messages=[];S.entries=[];
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
+    if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     localStorage.removeItem('hermes-webui-session');
     // load the most recent remaining session, or show blank if none left
     const remaining=await api('/api/sessions'+_sessionListQueryString());

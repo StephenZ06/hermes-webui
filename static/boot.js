@@ -3006,6 +3006,7 @@ const _COMPOSER_CONTROL_TOGGLE_DEFS=[
   {key:'hide_composer_attach',label:'Attach',labelKey:'composer_control_attach',selectors:['#btnAttach'],orderSelector:'#btnAttach',orderGroup:'left'},
   {key:'hide_composer_saved_prompts',label:'Saved prompts',labelKey:'composer_control_saved_prompts',selectors:['#btnSavedPrompts'],orderSelector:'#btnSavedPrompts',orderGroup:'left'},
   {key:'hide_composer_mic',label:'Mic',labelKey:'composer_control_mic',selectors:['#btnMic'],orderSelector:'#btnMic',orderGroup:'left'},
+  {key:'hide_composer_persona',label:'Personas',labelKey:'composer_control_personas',selectors:['#btnPersonaPicker'],orderSelector:'#btnPersonaPicker',orderGroup:'left'},
   {key:'hide_composer_profile',label:'Profile',labelKey:'composer_control_profile',selectors:['#profileChipWrap'],orderSelector:'#profileChipWrap',orderGroup:'left'},
   {key:'hide_composer_workspace',label:'Workspace',labelKey:'composer_control_workspace',selectors:['.composer-ws-wrap','#composerMobileWorkspaceAction'],orderSelector:'.composer-ws-wrap',orderGroup:'left'},
   {key:'hide_composer_model',label:'Model',labelKey:'composer_control_model',selectors:['.composer-model-wrap','#composerMobileModelAction'],orderSelector:'.composer-model-wrap',orderGroup:'left'},
@@ -3118,6 +3119,14 @@ function _applyComposerFooterVisibilitySettings(){
     if(savedBtn) savedBtn.setAttribute('aria-expanded','false');
   }
 
+  const hidePersonaPicker=!!hidden.hide_composer_persona;
+  const personaBtn=$('btnPersonaPicker');
+  const personaPopup=$('personaPickerPopup');
+  if(hidePersonaPicker&&personaPopup){
+    personaPopup.style.display='none';
+    if(personaBtn) personaBtn.setAttribute('aria-expanded','false');
+  }
+
   if(hidden.hide_composer_workspace&&typeof closeWsDropdown==='function') closeWsDropdown();
   if(hidden.hide_composer_profile&&typeof closeProfileDropdown==='function') closeProfileDropdown();
   if(hidden.hide_composer_model&&typeof closeModelDropdown==='function') closeModelDropdown();
@@ -3129,7 +3138,7 @@ function _applyComposerFooterVisibilitySettings(){
   // Stops a lone vertical separator from appearing when attach/saved-prompts/mic/voice are all hidden.
   const _divider=document.querySelector('.composer-divider');
   if(_divider){
-    const _leftBtnSelectors=['#btnAttach','#btnSavedPrompts','#btnMic','#btnVoiceMode'];
+    const _leftBtnSelectors=['#btnAttach','#btnSavedPrompts','#btnMic','#btnPersonaPicker','#btnVoiceMode'];
     const _allLeftHidden=_leftBtnSelectors.every(sel=>{
       const el=document.querySelector(sel);
       return !el||el.classList.contains('composer-control-hidden')||el.style.display==='none';

@@ -35,6 +35,7 @@ _METADATA_FIELDS = frozenset(
         "cache_read_tokens",
         "cache_write_tokens",
         "personality",
+        "agent_definition_id",
         "active_stream_id",
         "pending_user_message",
         "pending_attachments",

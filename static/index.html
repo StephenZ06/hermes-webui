@@ -164,6 +164,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights" aria-label="Insights"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
     <button class="rail-btn nav-tab dashboard-link has-tooltip" id="dashboardRailBtn" data-dashboard-link style="display:none" onclick="openHermesDashboard(event)" data-tooltip="Hermes Dashboard" data-i18n-title="tab_dashboard" aria-label="Hermes Dashboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg><span class="dashboard-external-badge" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs" aria-label="Logs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="audit" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit" aria-label="Activity"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
     <div class="rail-spacer"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeDesktop" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
   </nav>
@@ -184,6 +185,7 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="insights" data-label="Insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
       <button class="nav-tab dashboard-link has-tooltip has-tooltip--bottom" id="dashboardMobileBtn" data-dashboard-link data-label="Dashboard" style="display:none" onclick="openHermesDashboard(event)" data-tooltip="Hermes Dashboard" data-i18n-title="tab_dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg><span class="dashboard-external-badge" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="logs" data-label="Logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="audit" data-label="Activity" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
       <!-- Settings button mirrored here for mobile (rail is desktop-only via @media >=768px). Keep in sync with rail entry. -->
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="settings" onclick="switchPanel('settings',{fromRailClick:true})" data-tooltip="Settings" data-i18n-title="tab_settings" style="position:relative"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="auth-warning-badge" id="authWarningBadgeMobile" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e05"></span></button>
     </div>
@@ -230,15 +232,26 @@
         <div class="sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="kanbanSearch" type="search" placeholder="Search tasks" data-i18n-placeholder="kanban_search_tasks" oninput="filterKanban()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
         <select id="kanbanAssigneeFilter" onchange="loadKanban(true)" aria-label="Assignee filter"></select>
         <select id="kanbanTenantFilter" onchange="loadKanban(true)" aria-label="Tenant filter"></select>
-        <label class="kanban-check"><input id="kanbanIncludeArchived" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_include_archived">Include archived</span></label>
-        <label class="kanban-check"><input id="kanbanOnlyMine" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_only_mine">Only mine</span></label>
-        <div id="kanbanStats" class="kanban-stats" aria-live="polite"></div>
-        <div id="kanbanBulkBar" class="kanban-bulk-bar">
-          <select id="kanbanBulkStatus" aria-label="Bulk status"><option value="">Status</option><option value="ready">Ready</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="archived">Archived</option></select>
-          <button class="btn secondary" onclick="bulkUpdateKanban()" data-i18n="kanban_bulk_action">Bulk action</button>
-          <button class="btn secondary kanban-nudge-dispatch-btn" onclick="nudgeKanbanDispatcher()" data-i18n="kanban_nudge_dispatcher" title="Dry-run: shows what would be claimed without spawning workers">Preview</button>
-          <button class="btn primary kanban-run-dispatch-btn" onclick="runKanbanDispatcher()" data-i18n="kanban_run_dispatcher" title="Claims Ready tasks and spawns worker subprocesses">Run dispatcher</button>
+        <select id="kanbanCrewFilter" onchange="kanbanWorkflowTemplateFilter = this.value; loadKanban(true)" aria-label="Crew filter" data-i18n-aria-label="kanban_crew_filter_label"></select>
+        <div class="kanban-filter-divider"></div>
+        <div class="kanban-check-row">
+          <label class="kanban-check"><input id="kanbanIncludeArchived" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_include_archived">Include archived</span></label>
+          <label class="kanban-check"><input id="kanbanOnlyMine" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_only_mine">Only mine</span></label>
         </div>
+        <div class="kanban-filter-divider"></div>
+        <div id="kanbanStats" class="kanban-stats" aria-live="polite"></div>
+        <div class="kanban-filter-divider"></div>
+        <div id="kanbanBulkBar" class="kanban-bulk-bar">
+          <div class="kanban-bulk-bar-row">
+            <select id="kanbanBulkStatus" aria-label="Bulk status"><option value="">Status</option><option value="ready">Ready</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="archived">Archived</option></select>
+            <button class="btn secondary" onclick="bulkUpdateKanban()" data-i18n="kanban_bulk_action">Bulk action</button>
+          </div>
+          <div class="kanban-bulk-bar-row kanban-dispatch-row">
+            <button class="btn secondary kanban-nudge-dispatch-btn" onclick="nudgeKanbanDispatcher()" data-i18n="kanban_nudge_dispatcher" title="Dry-run: shows what would be claimed without spawning workers">Preview</button>
+            <button class="btn primary kanban-run-dispatch-btn" onclick="runKanbanDispatcher()" data-i18n="kanban_run_dispatcher" title="Claims Ready tasks and spawns worker subprocesses">Run dispatcher</button>
+          </div>
+        </div>
+        <div class="kanban-filter-divider"></div>
         <div class="kanban-new-task-row">
           <input id="kanbanNewTaskTitle" placeholder="New task" data-i18n-placeholder="kanban_new_task" onkeydown="if(event.key==='Enter')createKanbanTask()">
           <button class="btn secondary" onclick="createKanbanTask()" data-i18n="kanban_new_task">New task</button>
@@ -353,6 +366,23 @@
         <label class="logs-check-row"><input id="logsWrap" type="checkbox" onchange="_syncLogsWrap()"><span data-i18n="logs_wrap">Wrap lines</span></label>
         <button type="button" class="logs-copy" id="logsCopyAll" onclick="copyLogsAll()" data-i18n="logs_copy_all">Copy all</button>
       </div>
+    </div>
+    <!-- Activity panel (internal: audit trail -- turn-submission history over
+         the existing turn/run journals, see docs/HERMES_STUDIO_PARITY_PLAN.md,
+         "Priority 3 -- Audit Trail UI") -->
+    <div class="panel-view" id="panelAudit">
+      <div class="panel-head">
+        <span data-i18n="tab_audit">Activity</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="auditRefreshBtn" onclick="loadAuditTrail()" data-tooltip="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+        </div>
+      </div>
+      <div class="panel-head-sub" style="padding:0 12px 8px">
+        <select id="auditSessionFilter" onchange="loadAuditTrail()" style="width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="" data-i18n="audit_all_sessions">All sessions</option>
+        </select>
+      </div>
+      <div id="auditList" style="flex:1;overflow-y:auto;padding:8px 12px"><div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
     </div>
     <!-- Settings panel (menu list; actual panes render in .main) -->
     <div class="panel-view" id="panelSettings">
@@ -624,6 +654,13 @@
                 <line x1="8" y1="23" x2="16" y2="23"/>
               </svg>
             </button>
+            <button type="button" class="icon-btn persona-picker-btn has-tooltip" id="btnPersonaPicker" data-tooltip="Personas" data-i18n-title="composer_control_personas" data-i18n-aria-label="composer_control_personas" onclick="togglePersonaPickerPopup()" aria-haspopup="menu" aria-expanded="false" aria-controls="personaPickerPopup" aria-label="Personas">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="3" width="16" height="18" rx="2"/>
+                <circle cx="12" cy="10" r="3"/>
+                <path d="M7 18c0-2.5 2-4 5-4s5 1.5 5 4"/>
+              </svg>
+            </button>
             <button class="icon-btn voice-mode-btn has-tooltip" id="btnVoiceMode" data-tooltip="Voice mode" data-i18n-title="voice_mode_toggle" style="display:none">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <!-- Lucide audio-lines: signals two-way voice conversation, matches ChatGPT/Gemini convention. -->
@@ -709,6 +746,7 @@
             </div>
           </div>
           <div id="savedPromptsPopup" class="saved-prompts-popup" style="display:none" role="menu" aria-label="Saved prompts" data-i18n-aria-label="composer_control_saved_prompts"></div>
+          <div id="personaPickerPopup" class="persona-picker-popup" style="display:none" role="menu" aria-label="Personas" data-i18n-aria-label="composer_control_personas"></div>
           <div class="composer-right">
             <span class="composer-status" id="composerStatus" style="display:none"></span>
             <div class="ctx-indicator-wrap" id="ctxIndicatorWrap" style="display:none">
@@ -814,6 +852,8 @@
       <div class="main-view-header">
         <div class="main-view-title" id="agentDefDetailTitle"></div>
         <div class="main-view-actions">
+          <button id="btnApplyAgentDefDetail" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Apply to session" data-i18n-title="agent_def_apply" onclick="applyAgentDefToSession()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+          <button id="btnClearAgentDefDetail" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Clear from session" data-i18n-title="agent_def_clear" onclick="clearAppliedAgentDef()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           <button id="btnEditAgentDefDetail" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Edit" data-i18n-title="edit" onclick="editCurrentAgentDef()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
           <button id="btnDuplicateAgentDefDetail" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Duplicate" data-i18n-title="agent_def_duplicate" onclick="duplicateAgentDef()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           <button id="btnDeleteAgentDefDetail" class="panel-head-btn has-tooltip has-tooltip--bottom" data-tooltip="Delete" data-i18n-title="delete_title" onclick="deleteAgentDef()" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
@@ -884,6 +924,8 @@
         <div class="main-view-actions">
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanCreateBoard" onclick="openKanbanCreateBoard()" data-tooltip="New board" data-i18n-title="kanban_new_board" aria-label="New board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="17.5" y1="14" x2="17.5" y2="21"/><line x1="14" y1="17.5" x2="21" y2="17.5"/></svg></button>
           <button class="panel-head-btn kanban-view-toggle has-tooltip has-tooltip--bottom" id="btnKanbanViewToggle" type="button" onclick="toggleKanbanViewMode()" aria-pressed="false" data-tooltip="Consolidated view" data-i18n-title="kanban_view_consolidated" data-i18n-aria-label="kanban_view_consolidated" aria-label="Consolidated view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanOfficeView" type="button" onclick="toggleKanbanOfficeView()" aria-pressed="false" data-tooltip="Office view — live workers" data-i18n-title="kanban_office_view" data-i18n-aria-label="kanban_office_view" aria-label="Office view — live workers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanCrews" type="button" onclick="openKanbanCrews()" data-tooltip="Crews" data-i18n-title="kanban_crews" data-i18n-aria-label="kanban_crews" aria-label="Crews"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom kanban-nudge-dispatch-btn" id="btnKanbanPreviewDispatcher" onclick="nudgeKanbanDispatcher()" data-tooltip="Preview dispatcher (dry-run)" data-i18n-title="kanban_nudge_dispatcher" aria-label="Preview dispatcher (dry-run)">▶</button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom kanban-run-dispatch-btn" id="btnKanbanRunDispatcher" onclick="runKanbanDispatcher()" data-tooltip="Run dispatcher — claim Ready tasks" data-i18n-title="kanban_run_dispatcher" aria-label="Run dispatcher"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></button>
         </div>
@@ -891,6 +933,7 @@
       <div class="kanban-task-preview" id="kanbanTaskPreview" style="display:none"></div>
       <div class="kanban-board-wrap">
         <div class="kanban-board" id="kanbanBoard"><div style="padding:16px;color:var(--muted);font-size:13px" data-i18n="loading">Loading...</div></div>
+        <div class="kanban-office-view" id="kanbanOfficeView" style="display:none"></div>
       </div>
     </div>
     <div id="mainWorkspaces" class="main-view">
@@ -1797,6 +1840,7 @@
 <script src="static/icons.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/assistant_turn_anchors.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/ui.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/select-theme.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/workspace.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/terminal.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/sessions.js?v=__WEBUI_VERSION__" defer></script>
@@ -1914,6 +1958,72 @@
     <div class="kanban-modal-actions">
       <button type="button" class="btn secondary" onclick="closeKanbanTaskModal()" data-i18n="cancel">Cancel</button>
       <button type="button" class="btn primary" id="kanbanTaskModalSubmit" onclick="submitKanbanTaskModal()" data-i18n="create">Create</button>
+    </div>
+  </div>
+</div>
+<!-- Crews (docs/HERMES_STUDIO_PARITY_PLAN.md, Multi-agent orchestration Phase 1).
+     Same .kanban-modal-overlay shell as kanbanTaskModal/kanbanBoardModal above,
+     opened by #btnKanbanCrews next to #btnKanbanOfficeView. Not a new nav tab. -->
+<div class="kanban-modal-overlay" id="kanbanCrewsModal" hidden onclick="if(event.target===this)closeKanbanCrewsModal()">
+  <div class="kanban-modal kanban-modal-wide" role="dialog" aria-modal="true" aria-labelledby="kanbanCrewsModalTitle">
+    <h3 id="kanbanCrewsModalTitle" data-i18n="kanban_crews">Crews</h3>
+    <div class="kanban-modal-hint" data-i18n="kanban_crews_hint">Bulk-dispatch templates: a named set of Kanban tasks you can create together in one click.</div>
+    <div class="kanban-crew-list" id="kanbanCrewList"></div>
+    <div class="kanban-modal-error" id="kanbanCrewsModalError" aria-live="polite"></div>
+    <div class="kanban-modal-actions">
+      <button type="button" class="btn secondary" onclick="closeKanbanCrewsModal()" data-i18n="kanban_crew_close">Close</button>
+      <button type="button" class="btn primary" onclick="openKanbanCrewForm()" data-i18n="kanban_new_crew">New crew</button>
+    </div>
+  </div>
+</div>
+<div class="kanban-modal-overlay" id="kanbanCrewFormModal" hidden onclick="if(event.target===this)closeKanbanCrewFormModal()">
+  <div class="kanban-modal kanban-modal-wide" role="dialog" aria-modal="true" aria-labelledby="kanbanCrewFormModalTitle">
+    <h3 id="kanbanCrewFormModalTitle" data-i18n="kanban_new_crew">New crew</h3>
+    <input type="hidden" id="kanbanCrewFormId" value="">
+    <div class="kanban-modal-row">
+      <label for="kanbanCrewFormName" data-i18n="kanban_crew_name">Name</label>
+      <input type="text" id="kanbanCrewFormName" maxlength="128" autocomplete="off" data-i18n-placeholder="kanban_crew_name_placeholder" placeholder="e.g. Research crew">
+    </div>
+    <div class="kanban-modal-row-inline">
+      <div class="kanban-modal-row">
+        <label for="kanbanCrewFormIcon" data-i18n="kanban_crew_icon">Icon (emoji, optional)</label>
+        <input type="text" id="kanbanCrewFormIcon" maxlength="8" placeholder="🔬" autocomplete="off">
+      </div>
+      <div class="kanban-modal-row">
+        <label for="kanbanCrewFormColor" data-i18n="kanban_crew_color">Color (optional)</label>
+        <input type="color" id="kanbanCrewFormColor" value="#7cb9ff">
+      </div>
+    </div>
+    <div class="kanban-modal-row">
+      <label for="kanbanCrewFormDescription" data-i18n="kanban_crew_description">Description (optional)</label>
+      <textarea id="kanbanCrewFormDescription" maxlength="512" data-i18n-placeholder="kanban_crew_description_placeholder" placeholder="What does this crew do?"></textarea>
+    </div>
+    <div class="kanban-modal-row">
+      <label data-i18n="kanban_crew_tasks">Task specs</label>
+      <div id="kanbanCrewFormTasks" class="kanban-crew-task-rows"></div>
+      <button type="button" class="btn secondary" onclick="_kanbanAddCrewTaskRow({})" data-i18n="kanban_crew_add_task">+ Add task</button>
+    </div>
+    <div class="kanban-modal-error" id="kanbanCrewFormError" aria-live="polite"></div>
+    <div class="kanban-modal-actions">
+      <button type="button" class="btn secondary" onclick="closeKanbanCrewFormModal()" data-i18n="cancel">Cancel</button>
+      <button type="button" class="btn primary" id="kanbanCrewFormSubmit" onclick="submitKanbanCrewForm()" data-i18n="save">Save</button>
+    </div>
+  </div>
+</div>
+<!-- Crews dispatch-time variable collection (docs/HERMES_STUDIO_PARITY_PLAN.md,
+     Phase 1 follow-up: {variable}-style placeholders in a crew's task specs
+     need a value before dispatch). Same .kanban-modal-overlay shell as the
+     other Kanban modals above; only shown when dispatchKanbanCrew() detects
+     at least one distinct placeholder in the crew's task specs. -->
+<div class="kanban-modal-overlay" id="kanbanCrewDispatchVarsModal" hidden onclick="if(event.target===this)closeKanbanCrewDispatchVarsModal()">
+  <div class="kanban-modal" role="dialog" aria-modal="true" aria-labelledby="kanbanCrewDispatchVarsModalTitle">
+    <h3 id="kanbanCrewDispatchVarsModalTitle" data-i18n="kanban_crew_dispatch_vars_title">Fill in variables</h3>
+    <div class="kanban-modal-hint" data-i18n="kanban_crew_dispatch_vars_hint">This crew's tasks use the placeholders below. Fill in a value for each before dispatching.</div>
+    <div id="kanbanCrewDispatchVarsFields" class="kanban-crew-dispatch-vars-fields"></div>
+    <div class="kanban-modal-error" id="kanbanCrewDispatchVarsError" aria-live="polite"></div>
+    <div class="kanban-modal-actions">
+      <button type="button" class="btn secondary" onclick="closeKanbanCrewDispatchVarsModal()" data-i18n="cancel">Cancel</button>
+      <button type="button" class="btn primary" id="kanbanCrewDispatchVarsSubmit" onclick="_kanbanSubmitCrewDispatchVars()" data-i18n="kanban_crew_dispatch">Dispatch</button>
     </div>
   </div>
 </div>

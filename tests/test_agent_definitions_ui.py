@@ -28,6 +28,14 @@ def test_nav_tab_and_panel_containers_present():
     assert 'id="agentDefDetailEmpty"' in html
 
 
+def test_apply_to_session_buttons_present():
+    html = read("static/index.html")
+    assert 'id="btnApplyAgentDefDetail"' in html
+    assert 'onclick="applyAgentDefToSession()"' in html
+    assert 'id="btnClearAgentDefDetail"' in html
+    assert 'onclick="clearAppliedAgentDef()"' in html
+
+
 def test_main_view_css_wiring_present():
     css = read("static/style.css")
     assert "main.main > #mainAgents" in css
@@ -42,7 +50,7 @@ def test_panels_js_core_wiring_present():
         "openAgentDefDetail", "_renderAgentDefDetail", "openAgentDefCreate",
         "editCurrentAgentDef", "_renderAgentDefForm", "saveAgentDefForm",
         "duplicateAgentDef", "deleteAgentDef", "_setAgentDefHeaderButtons",
-        "cancelAgentDefForm",
+        "cancelAgentDefForm", "applyAgentDefToSession", "clearAppliedAgentDef",
     ):
         assert f"function {fn}(" in js, f"{fn} not defined in panels.js"
     assert "'agents'" in js.split("MAIN_VIEW_PANELS")[1][:200]
@@ -50,6 +58,14 @@ def test_panels_js_core_wiring_present():
     assert re.search(r"api\('/api/agent-definitions/update',\s*\{\s*method:'POST'", js)
     assert re.search(r"api\('/api/agent-definitions/delete',\s*\{\s*method:'POST'", js)
     assert re.search(r"api\('/api/agent-definitions/duplicate',\s*\{\s*method:'POST'", js)
+    assert re.search(r"api\('/api/agent-definitions/apply',\s*\{\s*method:'POST'", js)
+
+
+def test_apply_button_visibility_keyed_on_session_state():
+    js = read("static/panels.js")
+    assert "S.session.agent_definition_id === def.id" in js
+    assert "btnApplyAgentDefDetail" in js
+    assert "btnClearAgentDefDetail" in js
 
 
 def test_builtin_personas_cannot_be_edited_or_deleted_in_ui():
@@ -72,6 +88,25 @@ def test_backend_caps_present():
     assert "Built-in agent definitions cannot" in module
 
 
+def test_apply_endpoint_and_chokepoint_wired():
+    module = read("api/agent_definitions.py")
+    assert "def get_definition(" in module
+
+    routes = read("api/routes.py")
+    assert '"/api/agent-definitions/apply"' in routes
+    assert "s.agent_definition_id = def_id if def_id else None" in routes
+
+    models = read("api/models.py")
+    assert "agent_definition_id" in models
+
+    streaming = read("api/streaming.py")
+    assert "_persona_prompt" in streaming
+    assert "agent_definitions.get_definition(_persona_id)" in streaming
+    # Must extend the existing chokepoint, not add a parallel prompt-injection
+    # path — docs/HERMES_STUDIO_PARITY_PLAN.md's explicit design constraint.
+    assert "_webui_ephemeral_system_prompt(\n                _combined_personality_prompt," in streaming
+
+
 def test_i18n_keys_present_in_all_15_locales():
     src = read("static/i18n.js")
     required_keys = [
@@ -85,6 +120,9 @@ def test_i18n_keys_present_in_all_15_locales():
         "agent_def_system_prompt_placeholder", "agent_def_name_required",
         "agent_def_updated", "agent_def_created", "agent_def_duplicated",
         "agent_def_deleted", "agent_def_delete_confirm", "cmd_personas",
+        "agent_def_apply", "agent_def_clear", "agent_def_status",
+        "agent_def_applied_badge", "agent_def_applied", "agent_def_cleared",
+        "agent_def_apply_hint",
     ]
     locale_keys = re.findall(r"^  (?:'([a-zA-Z-]+)'|([a-zA-Z-]+)): \{$", src, re.MULTILINE)
     locales = [a or b for a, b in locale_keys]
