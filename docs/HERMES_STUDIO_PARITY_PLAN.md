@@ -16,8 +16,10 @@
 
 ## Current status (as of 2026-08-10) — read this first if picking up cold
 
-**Done, all on `feature/plan-canvas`, all uncommitted as of this writing —
-check `git status` before assuming any of this is merged:**
+**Done and COMMITTED on `feature/plan-canvas` (commits `2e22b6f00`..
+`10e8fa0e3`, 6 commits on top of `33a08de77`) — NOT pushed to any remote,
+no PR opened yet. `git log --oneline 33a08de77..HEAD` to see the exact
+commit list; `git status` should be clean on this branch.**
 - Priority 1, all four items: Personas (+ apply-to-session v1.1), Security
   scanner, Patterns/memory vault cleaner, and Audit Trail UI (technically
   Priority 3, shipped alongside these — see its own section below).
@@ -37,6 +39,53 @@ check `git status` before assuming any of this is merged:**
   **Voice input** was investigated and found **already fully covered** by
   existing dictation code — nothing was built for it; see its own "already
   covered, don't rebuild" note below. **All of Priority 3 is now done.**
+
+Verified 2026-08-10: full suite green — 14,162 passed, 94 skipped, 0
+failures (the only 2 deselected tests are a pre-existing, unrelated TLS
+health-probe flake in the sandbox, `tests/test_tls_aware_probe.py`, not
+touched by any of this work).
+
+**Immediate next steps (housekeeping, not yet done):**
+1. Push `feature/plan-canvas` and open a PR — currently local-only.
+2. Clean up 5 leftover agent worktrees under `.claude/worktrees/`
+   (`agent-a4a717bf7ccd9a8dc`, `agent-aeae197db12d71563`,
+   `agent-a77e78b142872ce8b`, `agent-ade7eb7fdf6e354ed`,
+   `agent-a495f4b400fa37119`) — their useful commits are already
+   cherry-picked onto `feature/plan-canvas`; the worktrees themselves are
+   now dead weight (`git worktree remove <path>` each, then `git worktree
+   prune`).
+
+**How this landed (context if continuing the parallel-agent approach
+again):** shipped via 5 parallel subagents in isolated git worktrees, then
+manually reconciled one at a time back onto this branch. Two real snags
+worth knowing about before repeating this pattern:
+- Worktree agents branch from committed history only — they do **not** see
+  a repo's uncommitted working-tree changes. One agent was given a task
+  ("build the Crews dispatch-variables UI") that had *already been done* in
+  the uncommitted tree at the time — the coordinating session mis-read a
+  truncated `git diff | head -N` and thought the gap was still open. That
+  agent's entire run was wasted (it silently re-derived already-existing
+  code). **Lesson: read a diff to completion, or grep for a "Shipped"/
+  "Resolved" follow-up paragraph, before trusting that a truncated diff
+  shows an open gap.**
+- One agent hung after kicking off its own background test run and never
+  receiving that run's completion notification — it sat idle for over an
+  hour with no progress. Caught by noticing `ListAgents` had gone from
+  "running" to unreachable; its work was ~95% done and solid in its
+  worktree, so it was finished and merged manually rather than re-run.
+  **Lesson: if a background agent goes quiet for a long time, check
+  `ListAgents` and inspect its worktree directly rather than assuming it's
+  still making progress.**
+- Merging worktree branches back is not a plain `git merge` — commit a
+  checkpoint of the real uncommitted baseline first, then cherry-pick each
+  agent's isolated new-work commit onto it one at a time, running tests
+  after each. Conflicts were almost entirely in `docs/
+  HERMES_STUDIO_PARITY_PLAN.md` (multiple agents editing the same "Current
+  status" preamble and appending sections near the same insertion point)
+  and `static/i18n.js` (multiple agents adding new locale keys to the same
+  15 per-locale blocks) — both resolved as pure keep-both-sides additions,
+  no real semantic conflicts, but git couldn't auto-merge them without
+  guidance.
 
 **Explicitly deferred, not forgotten:** Priority 2 Phase 3 (cost panel) —
 decided 2026-08-10 to cut it for now rather than ship fabricated/approximate
