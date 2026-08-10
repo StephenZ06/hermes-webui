@@ -1807,6 +1807,19 @@
                   </a>
                 </div>
               </div>
+              <div class="help-card">
+                <div class="help-card-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div class="help-card-body">
+                  <div class="help-card-title" data-i18n="settings_help_tour_label">Take a tour</div>
+                  <div class="help-card-desc" data-i18n="settings_help_tour_desc">A quick guided walkthrough of the main areas of the app.</div>
+                  <a href="#" class="help-card-link" onclick="event.preventDefault();startAppTour();">
+                    <span data-i18n="settings_help_tour_link">Start the tour</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
       </div>
@@ -1886,6 +1899,19 @@
     </div>
   </div>
 </div>
+<div class="app-tour-overlay" id="appTourOverlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="appTourTitle">
+  <div class="app-tour-spotlight" id="appTourSpotlight"></div>
+  <div class="app-tour-card" id="appTourCard">
+    <div class="app-tour-counter" id="appTourCounter"></div>
+    <h3 class="app-tour-title" id="appTourTitle"></h3>
+    <p class="app-tour-body" id="appTourBody"></p>
+    <div class="app-tour-actions">
+      <button class="sm-btn" id="appTourBackBtn" onclick="prevAppTourStep()" style="display:none" data-i18n="tour_back">Back</button>
+      <button class="sm-btn" id="appTourSkipBtn" onclick="skipAppTour()" style="margin-right:auto;opacity:.7" data-i18n="tour_skip">Skip</button>
+      <button class="sm-btn" id="appTourNextBtn" onclick="nextAppTourStep()" style="font-weight:700;color:var(--blue);border-color:rgba(124,185,255,.32)" data-i18n="tour_next">Next</button>
+    </div>
+  </div>
+</div>
 <div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 <div class="pwa-sidebar-edge-guard" id="pwaSidebarEdgeGuard" aria-hidden="true"></div>
 <div class="app-dialog-overlay" id="appDialogOverlay" style="display:none" aria-hidden="true">
@@ -1941,6 +1967,7 @@
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/onboarding.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/tour.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/outline.js?v=__WEBUI_VERSION__" defer></script>
 

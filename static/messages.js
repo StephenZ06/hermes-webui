@@ -5828,6 +5828,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(!_ownsActiveStreamOrBackground()) return;
       const d=JSON.parse(e.data);
       const text=d.text||'';
+      if(text&&typeof playThinkingTickSound==='function') playThinkingTickSound(streamId);
       reasoningText += text;
       liveReasoningText += text;
       if(d.text&&S.session&&S.session.session_id===activeSid) _completeAutomaticCompressionOnLiveProgress(activeSid);
@@ -6578,6 +6579,12 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       let d={};
       try{ d=JSON.parse(e.data||'{}')||{}; }catch(_){ d={}; }
       const _extensionErrorType=(d.type==='cancelled'||d.type==='interrupted')?'turn:cancel':'turn:error';
+      // Sound notification system (Priority 3) — a genuine turn failure
+      // gets a distinct chime, whether or not this session is the one currently on
+      // screen (an apperror on a backgrounded session is exactly the case an
+      // audio cue is for). An explicit user Stop-click ('cancelled') is not
+      // a failure and must stay silent.
+      if(d.type!=='cancelled'&&typeof playFailureSound==='function') playFailureSound();
       const currentSid=S.session&&S.session.session_id;
       const eventSid=d.old_session_id||d.session_id||'';
       const continuationSid=(d.session&&d.session.session_id)||d.new_session_id||d.continuation_session_id||'';
@@ -8269,6 +8276,8 @@ function startSessionStream(sid) {
         // expecting token 0 (which would render a truncated turn). A fresh
         // (non-recovered) frame still attaches from the first token.
         const recovered = !!d.recovered;
+        // "Agent spawned" chime — skip on a recovered replay (not a new spawn).
+        if (!recovered && typeof playAgentSpawnedSound === 'function') playAgentSpawnedSound();
         // Only drive the renderer when this session is the one on screen.
         const isCurrent = (typeof _isSessionCurrentPane === 'function')
           ? _isSessionCurrentPane(sid)
@@ -9145,6 +9154,86 @@ function playAttentionSound(key){
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.24);
     osc.onended=()=>ctx.close();
   }catch(e){console.warn('Attention sound failed:',e);}
+}
+
+// Sound notification system (Priority 3) — three additional synthesized chime
+// kinds layered onto the existing playNotificationSound/playAttentionSound
+// pair, reusing the same single window._soundEnabled toggle (no new
+// setting). See docs/HERMES_STUDIO_PARITY_PLAN.md, "Sound notification
+// system" for the full gap analysis (agent-complete/chat-notification were
+// already covered before this change).
+
+function playFailureSound(){
+  if(!window._soundEnabled) return;
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    // Descending two-tone — audibly distinct from playNotificationSound's
+    // ascending 660->880 and playAttentionSound's 880->660 pair via a lower
+    // base register (440->330) and a longer, softer decay.
+    osc.type='sine';osc.frequency.setValueAtTime(440,ctx.currentTime);
+    osc.frequency.setValueAtTime(330,ctx.currentTime+0.14);
+    gain.gain.setValueAtTime(0.26,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.36);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.36);
+    osc.onended=()=>ctx.close();
+  }catch(e){console.warn('Failure sound failed:',e);}
+}
+
+function playAgentSpawnedSound(){
+  if(!window._soundEnabled) return;
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    // Single short ascending blip — a lighter, one-shot cue (no second
+    // frequency step) so it reads as "something started," not "something
+    // finished."
+    osc.type='sine';osc.frequency.setValueAtTime(520,ctx.currentTime);
+    gain.gain.setValueAtTime(0.2,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.16);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.16);
+    osc.onended=()=>ctx.close();
+  }catch(e){console.warn('Agent-spawned sound failed:',e);}
+}
+
+// Per-stream dedupe set for the thinking tick — a long multi-chunk
+// reasoning stream must tick exactly once, not once per chunk. Entries are
+// never explicitly deleted; streamIds are unique per turn and the set stays
+// small (cleared implicitly by page reload) — same lifetime tradeoff the
+// existing window._attentionSoundSeenKeys dedupe map already makes.
+window._thinkingTickStreams = window._thinkingTickStreams || new Set();
+
+function playThinkingTickSound(streamId){
+  if(!window._soundEnabled) return;
+  // Only tick when the tab is backgrounded — if the turn is being watched
+  // live there is already a visible thinking indicator, and a repeating or
+  // even one-shot audible tick while staring at the screen would be an
+  // annoyance, not a notification. Mirrors the exact gate
+  // sendBrowserNotification() already uses for the same reasoning: you only
+  // need an audio cue for something you can't currently see.
+  if(!_isBackgroundedForBrowserNotification()) return;
+  const key=String(streamId||'');
+  if(key){
+    if(window._thinkingTickStreams.has(key)) return;
+    window._thinkingTickStreams.add(key);
+  }
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    // A single soft tick, not a repeating metronome — deliberately quiet
+    // (low gain, very short) so it reads as ambient, not alarming.
+    osc.type='sine';osc.frequency.setValueAtTime(740,ctx.currentTime);
+    gain.gain.setValueAtTime(0.1,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.09);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.09);
+    osc.onended=()=>ctx.close();
+  }catch(e){console.warn('Thinking-tick sound failed:',e);}
 }
 
 function _notificationOptions(body,options={}){

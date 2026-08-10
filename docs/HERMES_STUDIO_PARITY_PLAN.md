@@ -29,6 +29,14 @@ check `git status` before assuming any of this is merged:**
   filter over the crew list plus a "last dispatched" recency signal driving
   default sort order. See that section for why a categories/tags gallery was
   investigated and rejected as unnecessary polish rather than built.
+- Priority 3, all remaining items except Audit Trail (already listed above):
+  **Knowledge Browser**, **Analytics/cost dashboard**, **Command palette**,
+  **Chat export**, **Sound notification system** (three new chime kinds
+  layered onto the pre-existing chime mechanism), and **Onboarding tour**
+  (new guided walkthrough — the wizard alone was confirmed not to be one).
+  **Voice input** was investigated and found **already fully covered** by
+  existing dictation code — nothing was built for it; see its own "already
+  covered, don't rebuild" note below. **All of Priority 3 is now done.**
 
 **Explicitly deferred, not forgotten:** Priority 2 Phase 3 (cost panel) —
 decided 2026-08-10 to cut it for now rather than ship fabricated/approximate
@@ -39,11 +47,8 @@ open and needs a human call, not an implementing agent's guess.
 **Not started, no written plan yet:** the workflow-builder/step-graph-editor
 part of Priority 2 remains explicitly out of scope (see "Investigated and
 rejected" below — unchanged); Phase 3's cost panel stays deferred; all of
-Priority 3 except Audit Trail (Knowledge Browser, Analytics/cost dashboard,
-Command palette, Chat export, Sound notifications, Voice input, Onboarding
-tour), and all of Priority 4 (Skills marketplace discovery is flagged as
-the natural next pick — it's the gate the Security scanner was explicitly
-built for).
+Priority 4 (Skills marketplace discovery is flagged as the natural next
+pick — it's the gate the Security scanner was explicitly built for).
 
 **Suggested next pick:** Priority 4's Skills marketplace discovery — with
 Phase 1/1.2/2 of Crews shipped and the workflow-builder/step-graph part of
@@ -1375,6 +1380,340 @@ clean on `api/audit_trail.py`; no new findings introduced in the touched
 - `static/index.html`
 - `static/i18n.js`
 - `static/style.css`
+
+### Sound notification system — STATUS: DONE (shipped 2026-08-10)
+
+Hermes-Studio synthesizes Web Audio API chimes for agent spawned/complete/
+failed, a chat notification, and a "thinking tick," gated by a user toggle.
+No audio files, no new dependency — same approach fits hermes-webui exactly.
+
+**Investigated first, not a clean-slate build:** hermes-webui already has a
+mature synthesized-chime mechanism, not a gap to fill from zero.
+`static/messages.js`'s `playNotificationSound()` (turn complete, called from
+the `done` SSE handler at `static/messages.js:6112`) and
+`playAttentionSound(key)` (approval/clarify needed, `static/messages.js:5707`/
+`:5715`, plus a cross-session sidebar variant at `static/sessions.js:5323`)
+already do exactly what's being asked — a short `AudioContext`
+oscillator+gain envelope, no file assets — gated by a single existing
+profile-scoped toggle: `sound_enabled` (`api/config.py:9292`, already in
+`_SETTINGS_BOOL_KEYS` at `api/config.py:9566`), surfaced as
+`#settingsSoundEnabled` in Settings → Preferences and mirrored at boot into
+`window._soundEnabled` (`static/boot.js:3263`). This **is** "the existing
+settings/preferences storage pattern" the task brief points at — reuse it,
+do not add a second toggle or a parallel storage key.
+
+**Actual gap, exhaustively checked:** grepped every call site of
+`playNotificationSound`/`playAttentionSound` (4 total, listed above) against
+hermes-webui's full SSE event surface in `static/messages.js`. Three of
+Hermes-Studio's five named chime kinds are genuinely missing:
+- **Agent failed** — the `apperror` SSE handler (`static/messages.js:6274`,
+  handles rate-limit/quota/auth-mismatch/gateway-auth/model-not-found/
+  interrupted/compression-exhausted/tool-limit/no-response) never plays a
+  sound today; a turn can fail silently in a background tab.
+- **Agent spawned** — the `server_turn_started` SSE handler
+  (`static/messages.js:7807`, fires when the server-side cron/goal-drain
+  thread starts a turn the browser did not itself POST) never plays a
+  sound; this is the closest hermes-webui concept to Hermes-Studio's
+  "agent spawned" (a run beginning without the user's direct click).
+- **Thinking tick** — no equivalent exists at all.
+
+"Chat notification" and "agent complete" are **already covered** by the
+existing `playNotificationSound`/`playAttentionSound` pair — not rebuilt.
+
+#### Data shape
+None — purely client-side, reusing the existing `sound_enabled` boolean
+(already persisted server-side via `/api/settings`/`settings.json`, already
+mirrored to `window._soundEnabled`). No new storage.
+
+#### API endpoints
+None — no new endpoint. The existing `POST /api/settings`
+(`sound_enabled` field) already covers persistence.
+
+#### Frontend hook-in (`static/messages.js` only)
+- `playFailureSound()` — new function next to `playNotificationSound`/
+  `playAttentionSound` (~line 8660), same oscillator+gain envelope shape but
+  a descending two-tone (mirrors `playAttentionSound`'s existing
+  high-to-low interval, distinct frequencies so it's audibly different from
+  both existing chimes), gated on `window._soundEnabled`. Called from the
+  `apperror` handler for every `d.type` **except** `'cancelled'` (an
+  explicit user Stop-click is not a failure and must stay silent — the
+  existing card-rendering `isCancelled` branch at `static/messages.js:6326`
+  is the exact discriminator to reuse, not a second status parse).
+- `playAgentSpawnedSound()` — new function, short single ascending blip,
+  gated on `window._soundEnabled`. Called once from the
+  `server_turn_started` handler (`static/messages.js:7807`) right after the
+  existing `evSid !== sid` / stream-identity guards, so it never fires for
+  the tab's own user-initiated sends (those already get
+  `playNotificationSound()` on completion, not a spawn chime).
+- `playThinkingTickSound()` — new function, a single soft tick (not a
+  repeating metronome — a repeating tick while streaming would be an
+  obnoxious regression, not a feature). Played **once per stream**, only
+  when the tab is backgrounded (reuses the existing
+  `_isBackgroundedForBrowserNotification()` helper,
+  `static/messages.js:72`, the same check `sendBrowserNotification` already
+  gates on) — if you're watching the turn live you can see it thinking and
+  don't need an audio cue. Hooked into the `reasoning` handler
+  (`static/messages.js:5565`), deduped via a new `window._thinkingTickStreams`
+  `Set` keyed by `streamId` (mirrors `playAttentionSound`'s existing
+  `_attentionSoundSeenKeys` dedupe pattern) so a long multi-chunk reasoning
+  stream ticks exactly once, not per chunk.
+- No new i18n keys, no new Settings UI — the existing
+  `#settingsSoundEnabled` checkbox and `settings_label_sound`/
+  `settings_desc_sound` copy already describe "notification sound" broadly
+  enough to cover the three new kinds without misleading copy.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+`tests/test_sound_notifications_ui.py` (shape from `test_audit_trail_ui.py`
+— read `static/messages.js` as text, slice named functions/handlers with
+`str.index`, assert on their bodies):
+1. `playFailureSound`/`playAgentSpawnedSound`/`playThinkingTickSound` exist
+   and each starts with an `if(!window._soundEnabled) return;` guard (no
+   second toggle invented).
+2. The `apperror` handler's body calls `playFailureSound()`, and the call
+   site is positioned so the existing `isCancelled` branch does not reach
+   it (asserted by slicing the handler and checking the call appears
+   guarded, not unconditionally at the top).
+3. The `server_turn_started` handler's body calls `playAgentSpawnedSound()`.
+4. The `reasoning` handler's body calls `playThinkingTickSound()` and that
+   function's own body checks `_isBackgroundedForBrowserNotification()`
+   before playing (regression guard against it becoming an always-on
+   metronome).
+5. Regression: no second `sound_enabled`-like key was added to
+   `api/config.py`'s `_SETTINGS_BOOL_KEYS` or a new `#settings...Sound...`
+   checkbox added to `static/index.html` (proves the existing toggle was
+   extended, not duplicated).
+
+#### Open questions — resolved before implementation
+1. **Does this need a `Data shape`/`API endpoints` section?** No — noted
+   explicitly per the task brief's allowance: purely client-side, riding
+   the pre-existing `sound_enabled` toggle end-to-end.
+2. **Per-kind toggles (e.g. mute just the thinking tick)?** Rejected —
+   Hermes-Studio's own model and hermes-webui's existing settings surface
+   both use one master sound toggle; adding four more checkboxes for four
+   chime kinds is scope creep past what was asked ("a user-toggleable
+   on/off setting", singular).
+
+**Shipped 2026-08-10:** landed per the plan above — three new functions in
+`static/messages.js`, all gated on the pre-existing `window._soundEnabled`,
+hooked into the three genuinely-silent SSE handlers (`apperror`,
+`server_turn_started`, `reasoning`). No backend change, no new settings key,
+no new i18n keys. Two implementation-level refinements found while coding,
+not deviations from intent: (1) `playFailureSound()`'s `d.type!=='cancelled'`
+check is computed directly off the freshly-parsed event body at the top of
+the `apperror` handler (covers both the current-session and
+backgrounded-session branches with one call site) rather than reusing the
+`isCancelled` local, which is declared deeper inside a branch that only
+runs for the current session — same discriminator logic, just evaluated
+once at the point both branches can see it. (2) `playAgentSpawnedSound()`
+additionally skips a `recovered` `server_turn_started` frame (a tab
+reconnecting to a turn that already started earlier) — a replay is not a
+new spawn, and playing the chime on every reconnect would be a false
+positive. Tests: `tests/test_sound_notifications_ui.py` — all passing;
+confirmed failing against the pre-change file (the three functions/call
+sites did not exist).
+
+#### Critical files
+- `static/messages.js`
+
+### Voice input — STATUS: already covered, don't rebuild
+
+**Investigated first, per the task brief.** hermes-webui already has a full,
+feature-detected Web Speech API dictation implementation — this is not a gap.
+`static/boot.js`'s composer-mic IIFE (~line 673 onward):
+- Feature-detects `window.SpeechRecognition||window.webkitSpeechRecognition`
+  and a `MediaRecorder`/`getUserMedia` fallback; if **neither** exists it
+  returns immediately and the mic button — `#btnMic`
+  (`static/index.html:649`), which starts `style="display:none"` in markup
+  — is simply never shown. No error, no broken input, exactly the graceful
+  degradation the task brief asks for.
+- Dictates directly into the real chat composer, `#msg`
+  (`static/index.html:638`) — `_commitTranscript()`
+  (`static/boot.js:794`) appends (or replaces, per an append/replace user
+  preference) recognized text into that exact textarea.
+- Goes further than Hermes-Studio's inventory: server-side STT
+  (`/api/transcribe`) is tried first when available, with browser
+  `SpeechRecognition` and a raw-audio-attach mode as fallbacks; continuous
+  vs. single-utterance dictation (auto by touch/coarse-pointer detection, or
+  an explicit `hermes-mic-continuous` override); a wake lock while
+  recording; hold-to-record; and dedicated i18n error copy for denied/
+  no-speech/network/insecure-origin failures (`mic_denied`, `mic_no_speech`,
+  `mic_network`, `mic_insecure_origin`).
+
+Building a second, parallel voice-input mechanism here would violate this
+repo's own contract (GUIDELINES rule 8, "extend the mechanism, don't copy
+it") and would just be a strictly worse duplicate of what already ships.
+
+**No code changed for this item.** No new files, no new test file — a test
+asserting pre-existing, unchanged behavior cannot satisfy GUIDELINES rule 6
+("must fail before, pass after"; nothing here changed for it to fail
+against). No CHANGELOG entry, per this doc's own "skip if nothing was
+actually built" convention (see the Kanban mission-event-log precedent
+above under "Priority 2 — Multi-agent orchestration").
+
+### Onboarding tour — STATUS: DONE (shipped 2026-08-10)
+
+**Investigated first, exactly as this doc originally flagged.** Read
+`api/onboarding.py` (1137 lines) and `static/onboarding.js` (839 lines) in
+full before writing any plan. Finding: hermes-webui's onboarding is **only**
+the first-run setup wizard — `ONBOARDING.steps =
+['system','setup','workspace','password','finish']`
+(`static/onboarding.js:1`), a linear form flow (provider/API-key/workspace/
+password) rendered in `#onboardingOverlay`. Grepped the whole `static/`
+tree for `data-tour|guided-tour|walkthrough|spotlight|react-joyride|joyride`
+— zero hits anywhere. There is no react-joyride-style guided walkthrough
+that highlights live UI elements (nav tabs, composer, panels) after setup
+finishes. This confirms the doc's original open question: it's genuinely
+just the wizard, not a tour — so, per this doc's own stated rule, a new
+tour gets built (not an "already covered" note).
+
+#### Data shape
+One new profile-scoped boolean setting, `tour_completed`, added the exact
+same way `sound_enabled`/`onboarding_completed` already are:
+`api/config.py`'s settings-defaults dict (`"tour_completed": False,`) and
+`_SETTINGS_BOOL_KEYS` (`api/config.py:9539`). No new file, no new storage
+shape — rides the existing `settings.json`/`/api/settings` mechanism.
+
+#### API endpoints
+None new. Persisted via the existing `POST /api/settings`
+(`{"tour_completed": true}`), same call already used for every other
+boolean preference.
+
+#### Frontend hook-in
+- New file `static/tour.js` (small, dependency-free, matches this repo's
+  "no build step, vanilla JS" constraint — `AGENTS.md` explicitly rules out
+  adding a framework/dependency for something like this): a minimal
+  spotlight-and-tooltip walkthrough engine.
+  - `APP_TOUR_STEPS`: an ordered array of `{selectors, titleKey, bodyKey,
+    placement}` — `selectors` is an array (not a single selector) because
+    this repo renders two parallel nav markups for desktop (`.rail
+    .rail-btn.nav-tab`) vs. mobile (`.sidebar-nav .nav-tab`)
+    (`static/index.html:155-169` vs. `:176-190`); the engine picks
+    whichever candidate is actually visible via `el.offsetParent!==null`
+    (the same visibility check already used elsewhere in this codebase,
+    e.g. `static/ui.js:5433`), and **skips a step entirely** (moves to the
+    next one) if no candidate is visible, rather than erroring or spotlighting
+    a hidden element. Six steps: welcome (no target, centered card),
+    `#btnNewChat`, `#msg` (composer), the `kanban` nav tab, the `skills`
+    nav tab, the `settings` nav tab (copy mentions "Take a tour" lives
+    under Settings → Help for replay).
+  - Spotlight technique: a `pointer-events:none` ghost `div` positioned via
+    `getBoundingClientRect()` over the target, visually cutting it out of
+    the dimmed viewport via a large-spread `box-shadow` — no `clip-path`
+    polygon math, no DOM reparenting of real app elements. The full-viewport
+    overlay container itself (not the spotlight ghost) is the element that
+    actually receives clicks, so the highlighted element is **visually**
+    cut out but not **interactively** clickable during the tour — a
+    deliberate choice, not an oversight: letting a click reach e.g. the
+    real Kanban nav tab mid-tour would navigate away and strand the tour
+    overlay. Escape / Skip / Next are the only ways to advance or exit.
+    (Overlay dim reuses the existing hardcoded-rgba convention, matching
+    `.onboarding-overlay`/`.app-dialog-overlay`'s own precedent; border/
+    text/accent colors on the tooltip card itself are theme tokens.)
+  - Tooltip card: Next/Back/Skip/Done buttons + a "Step N of 6" counter,
+    positioned near the target (below if room, else above, horizontally
+    clamped to viewport), recomputed on `resize`/`scroll`.
+  - `startAppTour()` (manual entry), `_maybeAutoStartAppTour()` (auto entry,
+    below), `_endAppTour(completed)` (persists `tour_completed:true` via
+    `POST /api/settings` whichever way the tour ends — Done or Skip; only a
+    stray click that fails to reach either button, e.g. a page navigation
+    mid-tour, does not persist, so the tour is offered again next boot in
+    that edge case — acceptable, matches how the onboarding wizard itself
+    behaves on an interrupted session).
+- `static/boot.js`: auto-trigger hook right after
+  `await _onboardingReady;` (`static/boot.js:3676` — the point where the
+  setup wizard has either finished, been skipped, or never needed to run),
+  calling `_maybeAutoStartAppTour()` if `!window._tourCompleted`. Runs
+  regardless of whether the wizard itself ran this boot or was already
+  complete from a prior session — this is a distinct, later "orient me in
+  the UI" step, not a continuation of setup. `window._tourCompleted` is
+  mirrored from `_bootSettings.tour_completed` alongside
+  `window._soundEnabled` (`static/boot.js:3263`).
+- `static/index.html`: new `#appTourOverlay`/`#appTourSpotlight`/
+  `#appTourCard` markup (mirrors `#onboardingOverlay`'s existing
+  structure); a third `help-card` in the Settings → Help section
+  (`static/index.html:1707-1742`, alongside the existing Documentation/
+  Issues cards) — "Take a tour" — `onclick="startAppTour()"` for replay at
+  any time, matching this doc's rule 10 ("place a control where it's
+  used" — Help is exactly where a user goes looking for orientation, not a
+  new top-level nav item for a six-step tour).
+- `static/style.css`: new `.app-tour-*` classes, theme-token based for the
+  card (`var(--text)`/`var(--muted)`/`var(--accent-bg-strong)`/etc.,
+  matching `.onboarding-card`'s existing token usage), hardcoded-rgba dim
+  for the backdrop/spotlight cutout only (matching the existing overlay
+  convention, not a deviation from it).
+- `static/i18n.js`: new keys across all 15 locale blocks — `tour_step_N_title`/
+  `tour_step_N_body` (welcome + 5 more), `tour_next`, `tour_back`,
+  `tour_skip`, `tour_done`, `tour_step_counter` (`"Step {n} of {total}"`
+  shape, matching how other counter strings in this file are templated),
+  `settings_help_tour_label`, `settings_help_tour_desc`.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+New `tests/test_onboarding_tour_ui.py` (shape from `test_audit_trail_ui.py`):
+1. `static/tour.js` exists and defines `APP_TOUR_STEPS`/`startAppTour`/
+   `_maybeAutoStartAppTour`/`_endAppTour`; every step's `selectors` entries
+   (except the no-target welcome step) reference ids/attributes that are
+   actually present in `static/index.html` (proves the step list isn't
+   pointing at a typo'd or removed element).
+2. `static/boot.js`'s post-`_onboardingReady` region calls
+   `_maybeAutoStartAppTour()`, and `window._tourCompleted` is mirrored from
+   settings the same way `window._soundEnabled` is (regression guard
+   pinning the "no second, parallel settings-loading path" rule).
+3. `api/config.py`: `"tour_completed"` present in both the settings-defaults
+   dict (default `False`) and `_SETTINGS_BOOL_KEYS`.
+4. `static/index.html`: the third Help-section card exists, calls
+   `startAppTour()`, and the new overlay/spotlight/card markup exists.
+5. Locale-parity: the new keys present in all 15 locale blocks (reuses
+   `test_audit_trail_ui.py`'s regex-based per-locale-block slicer).
+6. CSS theme-token guard on `.app-tour-card` (border/text/accent must be
+   `var(--…)`, no hardcoded hex — the backdrop/spotlight rgba dim is
+   explicitly exempted in the test, same as the existing `.onboarding-overlay`/
+   `.app-dialog-overlay` precedent, not a gap in the guard).
+
+#### Open questions — resolved before implementation
+1. **Auto-show on every boot until dismissed, or once ever?** Resolved:
+   once ever, gated by the persisted `tour_completed` flag — matches how
+   `onboarding_completed` already behaves for the wizard, and avoids the
+   tour becoming a recurring nag.
+2. **Should `skipOnboarding()` (the wizard's own Skip button) also suppress
+   the tour?** Resolved: no — they're independent flags. A user who skips
+   *setup* (still wants to configure a provider later) is not the same
+   signal as not wanting a one-time UI orientation; auto-starting the tour
+   after either wizard outcome (finish or skip) keeps the behavior simple
+   and predictable rather than adding a second conditional path.
+3. **Step count / which elements?** Resolved at six (welcome + New Chat +
+   composer + Kanban + Skills + Settings) — enough to orient a first-time
+   user to the major surfaces without turning into an exhaustive, tedious
+   13-tab march through every nav item.
+
+**Shipped 2026-08-10:** landed per the plan above. New `static/tour.js`
+(dependency-free spotlight/tooltip engine, six steps), a new
+`tour_completed` boolean setting (`api/config.py`, same
+defaults-dict/`_SETTINGS_BOOL_KEYS` pattern as every other toggle here), a
+`static/boot.js` auto-trigger hooked right after the onboarding-wizard
+resolution point, a "Take a tour" Help card for manual replay, new
+`.app-tour-*` CSS (theme tokens for the card, matching the existing
+hardcoded-rgba dim convention for the backdrop/spotlight only), and 20 new
+i18n keys across all 15 locale blocks. **Known gap in the i18n work:** the
+new copy ships as identical English text in all 15 locale blocks (satisfies
+the enforced key-parity test, matches the precedent already set by the
+Kanban office-view keys above) rather than real per-language translation —
+translating 20 new strings into 14 languages accurately is out of scope for
+what an implementing agent can verify quality of; flagging rather than
+shipping a plausible-looking but unverified translation. Tests:
+`tests/test_onboarding_tour_ui.py` — all passing, confirmed failing against
+the pre-change tree (file/functions/wiring did not exist).
+**Known gap, not silently shipped:** step targets are fixed CSS
+selectors — a future rename/removal of `#btnNewChat` or a nav tab's
+`data-panel` value needs to update `APP_TOUR_STEPS` in lockstep; test #1
+above is the regression guard for that, not a runtime auto-heal.
+
+#### Critical files
+- `static/tour.js` (new)
+- `static/boot.js`
+- `static/index.html`
+- `static/style.css`
+- `static/i18n.js`
+- `api/config.py`
 
 ---
 
