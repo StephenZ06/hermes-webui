@@ -2118,6 +2118,12 @@ $('btnExportJSON').onclick=()=>{
   const a=document.createElement('a');a.href=url;
   a.download=`hermes-${S.session.session_id}.json`;a.click();
 };
+$('btnExportText').onclick=()=>{
+  if(!S.session)return;
+  const url=`/api/session/export?session_id=${encodeURIComponent(S.session.session_id)}&format=text`;
+  const a=document.createElement('a');a.href=url;
+  a.download=`hermes-${S.session.session_id}.txt`;a.click();
+};
 $('btnShareSession').onclick=async()=>{
   if(!S.session) return;
   try{
