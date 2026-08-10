@@ -54,6 +54,15 @@ re-run clean). Prior full-suite baseline (before Phase 3): 14,162 passed,
 unrelated TLS health-probe flake in the sandbox,
 `tests/test_tls_aware_probe.py`, not touched by any of this work).
 
+**Session closed out 2026-08-10 — marked done, not picking this back up
+automatically.** Explicitly declined, not forgotten: opening a PR against
+`nesquena/hermes-webui` (branch is pushed and ready — `gh pr create
+--repo nesquena/hermes-webui --head StephenZ06:feature/plan-canvas` —
+whenever a human decides to) and starting Priority 4 (Skills marketplace
+discovery). Both were offered and both were turned down for *this*
+session; treat this doc's roadmap as accurate but not something to
+auto-continue without being asked again.
+
 **Immediate next steps (housekeeping):**
 1. ~~Push `feature/plan-canvas`~~ — **done 2026-08-10**, to the fork (see
    above). Opening the actual PR against `nesquena/hermes-webui` is still
