@@ -2764,10 +2764,39 @@ function _kanbanCrewName(templateId){
 
 let _kanbanCrewsListFetchInFlight = false;
 
+// Phase 3 (docs/HERMES_STUDIO_PARITY_PLAN.md, "Cost panel", option 2 --
+// labeled approximation): {crewId: {approx_cost_usd, task_count,
+// priced_task_count}} from GET /api/crews/cost, cached client-side the same
+// way _kanbanCrewsList is. null until first fetched.
+let _kanbanCrewCostsCache = null;
+let _kanbanCrewCostsFetchInFlight = false;
+
+async function loadKanbanCrewCosts(){
+  try {
+    const data = await api('/api/crews/cost' + _kanbanBoardQuery());
+    _kanbanCrewCostsCache = (data && data.costs) || {};
+  } catch(e) {
+    _kanbanCrewCostsCache = {};
+  }
+}
+
+// Formats a crew's approximate cost line, or '' if there's nothing priced
+// yet for it. ALWAYS includes the "approx" disclosure -- this is a
+// best-effort assignee+time-window heuristic (see api.crews.estimate_crew_costs),
+// never a precise figure, and must never be presented as one.
+function _kanbanCrewCostLine(crewId){
+  const cost = _kanbanCrewCostsCache && _kanbanCrewCostsCache[crewId];
+  if (!cost || !cost.priced_task_count) return '';
+  const amount = '$' + Number(cost.approx_cost_usd || 0).toFixed(2);
+  return (t('kanban_crew_approx_cost') || '~{0} (approx, {1} of {2} tasks priced)')
+    .replace('{0}', amount).replace('{1}', String(cost.priced_task_count)).replace('{2}', String(cost.task_count));
+}
+
 function _kanbanOfficeGroupHtml(group){
   const label = group.templateId ? _kanbanCrewName(group.templateId) : (t('kanban_office_ungrouped') || 'Ungrouped');
+  const costLine = group.templateId ? _kanbanCrewCostLine(group.templateId) : '';
   return `<section class="kanban-office-group" data-office-group-id="${esc(group.templateId || '')}">
-    <h3 class="kanban-office-group-title">${esc(label)}</h3>
+    <h3 class="kanban-office-group-title">${esc(label)}${costLine ? ` <span class="kanban-office-group-cost">${esc(costLine)}</span>` : ''}</h3>
     <div class="kanban-office-grid">${group.workers.map(_kanbanOfficeCard).join('')}</div>
   </section>`;
 }
@@ -2789,6 +2818,11 @@ function _kanbanRenderOfficeView(){
   if (_kanbanCrewsList === null && !_kanbanCrewsListFetchInFlight) {
     _kanbanCrewsListFetchInFlight = true;
     loadKanbanCrews().then(() => { _kanbanCrewsListFetchInFlight = false; _kanbanRenderOfficeView(); });
+  }
+  // Same lazy-fetch-once pattern as crew names above, for approximate cost.
+  if (_kanbanCrewCostsCache === null && !_kanbanCrewCostsFetchInFlight) {
+    _kanbanCrewCostsFetchInFlight = true;
+    loadKanbanCrewCosts().then(() => { _kanbanCrewCostsFetchInFlight = false; _kanbanRenderOfficeView(); });
   }
   container.innerHTML = groups.map(_kanbanOfficeGroupHtml).join('');
 }
@@ -3229,6 +3263,14 @@ async function loadKanbanCrews(){
     if (errEl) errEl.textContent = (e && (e.message || e.error)) || String(e);
     const listEl = document.getElementById('kanbanCrewList');
     if (listEl) listEl.innerHTML = '';
+    return;
+  }
+  // Cost is a separate, independently-cached fetch (never blocks the crew
+  // list itself from rendering) -- re-render once it resolves to add cost
+  // lines to the already-visible cards.
+  if (_kanbanCrewCostsCache === null && !_kanbanCrewCostsFetchInFlight) {
+    _kanbanCrewCostsFetchInFlight = true;
+    loadKanbanCrewCosts().then(() => { _kanbanCrewCostsFetchInFlight = false; _renderKanbanCrewList(); });
   }
 }
 
@@ -3298,6 +3340,7 @@ function _kanbanCrewCard(crew){
   const lastDispatchedText = crew.last_dispatched_at
     ? (t('kanban_crew_last_dispatched') || 'Last dispatched: {0}').replace('{0}', _formatRelativeSessionTime(crew.last_dispatched_at * 1000))
     : (t('kanban_crew_never_dispatched') || 'Never dispatched');
+  const costLine = _kanbanCrewCostLine(crew.id);
   return `<article class="kanban-crew-card" style="--kanban-crew-color:${color}" data-crew-id="${esc(crew.id)}">
     <div class="kanban-crew-card-head">
       <span class="kanban-crew-card-icon" aria-hidden="true">${icon}</span>
@@ -3306,6 +3349,7 @@ function _kanbanCrewCard(crew){
     ${crew.description ? `<div class="kanban-crew-card-desc">${esc(crew.description)}</div>` : ''}
     <div class="kanban-crew-card-meta">${esc(String(taskCount))} ${esc(taskWord)}</div>
     <div class="kanban-crew-card-last-dispatched">${esc(lastDispatchedText)}</div>
+    ${costLine ? `<div class="kanban-crew-card-cost">${esc(costLine)}</div>` : ''}
     <div class="kanban-crew-card-actions">
       <button type="button" class="btn primary" onclick="dispatchKanbanCrew('${esc(crew.id)}')" data-i18n="kanban_crew_dispatch">Dispatch</button>
       <button type="button" class="btn secondary" onclick="openKanbanCrewForm('${esc(crew.id)}')" data-i18n="edit">Edit</button>

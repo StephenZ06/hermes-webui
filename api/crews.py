@@ -364,3 +364,98 @@ def dispatch_crew(crew_id: str, body: dict) -> dict:
     _touch_crew_dispatched(crew_id, time.time())
 
     return {"ok": True, "run_id": run_id, "results": results}
+
+
+def _profile_session_rows(profile: str, since_ts: float) -> list[dict]:
+    """Best-effort read of *profile*'s CLI session rows started at/after
+    since_ts, for the cost-estimate heuristic below. Never raises -- an
+    unreadable/missing state.db just means that profile contributes no
+    priced sessions, not an error for the caller.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    from api.models import _agent_state_db_path
+
+    db_path = _agent_state_db_path(profile=profile)
+    if db_path is None:
+        return []
+    try:
+        with closing(sqlite3.connect(str(db_path))) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute(
+                "SELECT started_at, ended_at, estimated_cost_usd FROM sessions "
+                "WHERE started_at >= ? AND COALESCE(source, '') != 'webui'",
+                (since_ts,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def estimate_crew_costs(tasks: list[dict]) -> dict:
+    """Best-effort, EXPLICITLY APPROXIMATE per-crew cost estimate for Kanban
+    tasks tagged with a ``workflow_template_id`` (i.e. Crews-dispatched).
+
+    See docs/HERMES_STUDIO_PARITY_PLAN.md, Phase 3 ("Cost panel"), option 2
+    -- there is no real data path connecting a kanban task to the CLI
+    session its dispatched worker actually ran (``HERMES_KANBAN_TASK`` is set
+    in the worker's env but never written onto the resulting ``sessions``
+    row upstream). This instead matches each task's ``assignee`` + its
+    ``started_at``/``completed_at`` window against that assignee profile's
+    CLI sessions started inside the window and sums ``estimated_cost_usd``.
+
+    FRAGILE BY DESIGN under concurrent same-profile dispatches -- two tasks
+    with the same assignee running at once can both match (and therefore
+    both get credited with) the same session. Callers MUST surface this as
+    an approximation, never as a precise cost; this function does not try
+    to resolve the ambiguity, per the deliberate decision in the plan doc.
+
+    ``tasks`` is a flat list of Kanban task dicts (as returned by
+    ``api.kanban_bridge._task_dict``); tasks without a ``workflow_template_id``
+    are ignored. Returns ``{crew_id: {"approx_cost_usd", "task_count",
+    "priced_task_count"}}``.
+    """
+    import time as _time
+
+    by_crew: dict[str, dict] = {}
+    by_assignee: dict[str, list[dict]] = {}
+    for t in tasks:
+        crew_id = t.get("workflow_template_id")
+        if not crew_id:
+            continue
+        entry = by_crew.setdefault(
+            crew_id, {"approx_cost_usd": 0.0, "task_count": 0, "priced_task_count": 0}
+        )
+        entry["task_count"] += 1
+        assignee = t.get("assignee")
+        started = t.get("started_at")
+        if assignee and started:
+            by_assignee.setdefault(assignee, []).append(t)
+
+    now = _time.time()
+    for assignee, assignee_tasks in by_assignee.items():
+        since_ts = min(t["started_at"] for t in assignee_tasks) - 1
+        sessions = _profile_session_rows(assignee, since_ts)
+        for t in assignee_tasks:
+            window_start = t["started_at"]
+            window_end = t.get("completed_at") or now
+            matched_cost = 0.0
+            matched = False
+            for s in sessions:
+                s_start = s.get("started_at")
+                if s_start is None or not (window_start <= s_start <= window_end):
+                    continue
+                cost = s.get("estimated_cost_usd")
+                if cost is not None:
+                    matched_cost += float(cost)
+                    matched = True
+            entry = by_crew[t["workflow_template_id"]]
+            entry["approx_cost_usd"] += matched_cost
+            if matched:
+                entry["priced_task_count"] += 1
+
+    for entry in by_crew.values():
+        entry["approx_cost_usd"] = round(entry["approx_cost_usd"], 6)
+
+    return by_crew

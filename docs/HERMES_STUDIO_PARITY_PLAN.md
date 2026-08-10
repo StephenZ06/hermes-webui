@@ -16,44 +16,54 @@
 
 ## Current status (as of 2026-08-10) — read this first if picking up cold
 
-**Done and COMMITTED on `feature/plan-canvas` (commits `2e22b6f00`..
-`10e8fa0e3`, 6 commits on top of `33a08de77`) — NOT pushed to any remote,
-no PR opened yet. `git log --oneline 33a08de77..HEAD` to see the exact
+**Done and COMMITTED on `feature/plan-canvas` — NOT pushed to any remote
+yet (push attempted and blocked: no GitHub auth configured in this
+environment, `gh auth login` has not been run here; retry once that's
+done), no PR opened. `git log --oneline 33a08de77..HEAD` to see the exact
 commit list; `git status` should be clean on this branch.**
 - Priority 1, all four items: Personas (+ apply-to-session v1.1), Security
   scanner, Patterns/memory vault cleaner, and Audit Trail UI (technically
   Priority 3, shipped alongside these — see its own section below).
-- Priority 2, Phases 1 and 2 of Multi-agent orchestration ("Crews"): crew
-  templates + bulk dispatch (plus its dispatch-variables-dialog follow-up),
-  and office-view crew grouping. See "Priority 2 — Multi-agent
-  orchestration" below for both "Shipped" notes.
-- Priority 2, Phase 1.2: a scoped-down "templates gallery" slice — search/
-  filter over the crew list plus a "last dispatched" recency signal driving
-  default sort order. See that section for why a categories/tags gallery was
-  investigated and rejected as unnecessary polish rather than built.
-- Priority 3, all remaining items except Audit Trail (already listed above):
-  **Knowledge Browser**, **Analytics/cost dashboard**, **Command palette**,
-  **Chat export**, **Sound notification system** (three new chime kinds
-  layered onto the pre-existing chime mechanism), and **Onboarding tour**
-  (new guided walkthrough — the wizard alone was confirmed not to be one).
-  **Voice input** was investigated and found **already fully covered** by
-  existing dictation code — nothing was built for it; see its own "already
-  covered, don't rebuild" note below. **All of Priority 3 is now done.**
+- Priority 2, Phases 1, 1.2, 2, **and 3** of Multi-agent orchestration
+  ("Crews"): crew templates + bulk dispatch (plus its dispatch-variables-
+  dialog follow-up), office-view crew grouping, a scoped-down "templates
+  gallery" slice (search/filter + last-dispatched recency sort), and a
+  labeled-approximation cost estimate (option 2 of the three originally
+  proposed — see Phase 3's section for the full "why option 2, not 1 or 3"
+  reasoning). **All of Priority 2 that was ever going to get a conservative
+  slice is now shipped** — the only remaining unstarted piece
+  (workflow-builder/step-graph engine) stays deliberately out of scope, see
+  "Investigated and rejected" in that section.
+- Priority 3, all items: **Knowledge Browser**, **Analytics/cost
+  dashboard**, **Command palette**, **Chat export**, **Sound notification
+  system** (three new chime kinds layered onto the pre-existing chime
+  mechanism), and **Onboarding tour** (new guided walkthrough — the wizard
+  alone was confirmed not to be one). **Voice input** was investigated and
+  found **already fully covered** by existing dictation code — nothing was
+  built for it; see its own "already covered, don't rebuild" note below.
+  **All of Priority 3 is done.**
 
-Verified 2026-08-10: full suite green — 14,162 passed, 94 skipped, 0
-failures (the only 2 deselected tests are a pre-existing, unrelated TLS
-health-probe flake in the sandbox, `tests/test_tls_aware_probe.py`, not
-touched by any of this work).
+Verified 2026-08-10: full suite green after Phase 3 landed (Crews cost
+estimate: 9 new unit tests in `tests/test_crew_cost_estimate.py` + 6 new
+structural guards in `tests/test_crews_ui.py`, full locale-parity suite
+re-run clean). Prior full-suite baseline (before Phase 3): 14,162 passed,
+94 skipped, 0 failures (the only 2 deselected tests are a pre-existing,
+unrelated TLS health-probe flake in the sandbox,
+`tests/test_tls_aware_probe.py`, not touched by any of this work).
 
-**Immediate next steps (housekeeping, not yet done):**
-1. Push `feature/plan-canvas` and open a PR — currently local-only.
-2. Clean up 5 leftover agent worktrees under `.claude/worktrees/`
+**Immediate next steps (housekeeping):**
+1. Push `feature/plan-canvas` and open a PR — currently local-only, blocked
+   on auth (see above). Retry `git push -u origin feature/plan-canvas` once
+   `gh auth login` (or equivalent git credential setup) has been done.
+2. ~~Clean up 5 leftover agent worktrees~~ — **done 2026-08-10.** All 5
    (`agent-a4a717bf7ccd9a8dc`, `agent-aeae197db12d71563`,
    `agent-a77e78b142872ce8b`, `agent-ade7eb7fdf6e354ed`,
-   `agent-a495f4b400fa37119`) — their useful commits are already
-   cherry-picked onto `feature/plan-canvas`; the worktrees themselves are
-   now dead weight (`git worktree remove <path>` each, then `git worktree
-   prune`).
+   `agent-a495f4b400fa37119`) and their branches were removed after their
+   commits were confirmed cherry-picked. Note: a 6th worktree
+   (`agent-a5aa110d9780cb643`) exists under `.claude/worktrees/` but
+   belongs to a **separate, unrelated peer session** on this machine — it
+   was deliberately left untouched and should stay that way; it is not
+   part of this parity-plan work.
 
 **How this landed (context if continuing the parallel-agent approach
 again):** shipped via 5 parallel subagents in isolated git worktrees, then
@@ -87,26 +97,25 @@ worth knowing about before repeating this pattern:
   no real semantic conflicts, but git couldn't auto-merge them without
   guidance.
 
-**Explicitly deferred, not forgotten:** Priority 2 Phase 3 (cost panel) —
-decided 2026-08-10 to cut it for now rather than ship fabricated/approximate
-cost numbers. See Phase 3's section below before touching this; the decision
-of *which* follow-up path (upstream fix vs. labeled approximation) is still
-open and needs a human call, not an implementing agent's guess.
+**No longer deferred:** Priority 2 Phase 3 (cost panel) shipped 2026-08-10
+as a labeled approximation (option 2) — see its section for the full
+decision record, including the still-open question of migrating to a real
+upstream fix (option 1) later.
 
 **Not started, no written plan yet:** the workflow-builder/step-graph-editor
 part of Priority 2 remains explicitly out of scope (see "Investigated and
-rejected" below — unchanged); Phase 3's cost panel stays deferred; all of
-Priority 4 (Skills marketplace discovery is flagged as the natural next
-pick — it's the gate the Security scanner was explicitly built for).
+rejected" below — unchanged); all of Priority 4 (Skills marketplace
+discovery is flagged as the natural next pick — it's the gate the Security
+scanner was explicitly built for).
 
-**Suggested next pick:** Priority 4's Skills marketplace discovery — with
-Phase 1/1.2/2 of Crews shipped and the workflow-builder/step-graph part of
-Priority 2 staying explicitly out of scope, there is no further conservative
-Priority 2 slice queued up; revisit Priority 2 only if a genuinely new,
-concrete gap surfaces (not "build the gallery bigger just because"). Before
-starting *anything*, read the "Shipped" notes for whichever area you're
-touching — they carry the actual design reasoning (why a decision was made
-a certain way), not just what shipped.
+**Suggested next pick:** Priority 4's Skills marketplace discovery — every
+Priority 1/2/3 item that had a real, scoped gap is now shipped; the
+workflow-builder/step-graph part of Priority 2 stays explicitly out of
+scope (revisit only if a genuinely new, concrete gap surfaces, not "build
+the gallery bigger just because"). Before starting *anything*, read the
+"Shipped" notes for whichever area you're touching — they carry the actual
+design reasoning (why a decision was made a certain way), not just what
+shipped.
 
 ---
 
@@ -928,14 +937,16 @@ check` clean on `api/crews.py`; `node -c` clean on `static/panels.js` and
 `static/style.css`, `static/i18n.js`, `tests/test_crews_api.py`,
 `tests/test_crews_ui.py`.
 
-#### Phase 3 (DEFERRED — decided 2026-08-10) — Cost panel
+#### Phase 3 — Cost panel — STATUS: DONE (shipped 2026-08-10, option 2: labeled approximation)
 
-**Decided 2026-08-10: option 3, cut for now.** No code was written for this
-phase. Explicitly deferred pending either an upstream `hermes-agent-src`
-change (option 1 below) or a future decision to accept the approximate
-heuristic (option 2 below) — not abandoned, just not started. Re-read this
-whole subsection before picking it up; the reasoning below is still current
-as of the decision date.
+**Decided 2026-08-10 (superseding the earlier "cut for now" decision below,
+kept for its reasoning): option 2, ship the best-effort heuristic join, with
+an explicit approximation disclosure in the UI — a human call, made after
+weighing option 1 (real fix, but requires a separate PR against
+`hermes-agent-src`, which this repo only mounts read-only) against option 3
+(stay cut indefinitely). Re-read the original three-option reasoning below
+before touching this again; it is still accurate about *why* no precise
+number is possible today.
 
 **Not planned to a concrete API/data-shape — deliberately.** No data
 path today truthfully connects a kanban task to the `estimated_cost_usd` of
@@ -964,21 +975,157 @@ decision before any implementation work starts here:
 3. **Cut for now.** Ship Phase 1/2 without any cost surface; revisit once
    (1) lands or a maintainer accepts (2)'s approximation risk.
 
-Decided: (3). If you're picking this phase back up, the remaining open
-question is which of (1)/(2) to build next — do not silently choose the
-heuristic and ship it as if it were accurate; that call still needs a human.
+**Superseded — originally decided (3), cut for now.** 2026-08-10's later
+decision (above) chose option (2) instead: option (1)'s upstream fix is
+still the better long-term answer (see open question #1 below, still open),
+but it requires a separate PR against a different source tree, so it wasn't
+picked as *this* session's path.
 
-**Open questions for Phase 3 (still open — (3) only decided to defer, not
-which of (1)/(2) comes next):**
-1. Is a `hermes-agent-src` PR for option (1) realistic/desired, or is
-   option (2)'s approximation acceptable given the UI can label it clearly?
-2. If/when cost data exists: should Personas apply to kanban-dispatched
-   workers at all? `assignee`/profile and `agent_definition_id`/persona are
-   currently unconnected — a Persona's system prompt is only ever injected
-   into the webui chat path (`api/streaming.py`/`api/gateway_chat.py`),
-   never into a kanban-dispatched CLI worker. A cost panel naturally
-   invites also showing "which persona/role" a worker ran as, and today
-   there is no such concept for a CLI-spawned kanban worker.
+**Open questions for Phase 3:**
+1. **Still open.** Is a `hermes-agent-src` PR for option (1) realistic/
+   desired later, replacing the heuristic with a real join once it lands?
+   The heuristic below does not block that migration — it's an additive
+   endpoint (`GET /api/crews/cost`), not a schema change, so swapping its
+   internals for a real join later is a contained change.
+2. **Still open.** If/when precise cost data exists: should Personas apply
+   to kanban-dispatched workers at all? `assignee`/profile and
+   `agent_definition_id`/persona are currently unconnected — a Persona's
+   system prompt is only ever injected into the webui chat path
+   (`api/streaming.py`/`api/gateway_chat.py`), never into a kanban-dispatched
+   CLI worker.
+
+#### Data shape (no new storage — read-only, computed on request)
+
+```json
+{
+  "costs": {
+    "<workflow_template_id>": {
+      "approx_cost_usd": 0.35,
+      "task_count": 3,
+      "priced_task_count": 2
+    }
+  },
+  "is_approximate": true
+}
+```
+`is_approximate` is always `true` — there is no code path that can ever set
+it `false` today; it exists so the frontend (and any future consumer) has a
+machine-readable signal to gate a disclosure on, not just prose in this doc.
+`priced_task_count` vs `task_count` lets the UI distinguish "every dispatched
+task in this crew matched a priced session" from "some tasks have no
+session data yet (still running, or the assignee profile has no readable
+`state.db`)" — both cases legitimately return `0.0`, and collapsing them
+into one number would hide that difference.
+
+#### API endpoints (`api/routes.py`, next to the existing `/api/crews` block)
+
+- `GET /api/crews/cost?board=<board>` → the shape above, computed over
+  every currently-non-archived-or-archived (`include_archived=True`, so a
+  completed crew's cost doesn't silently disappear once its tasks are
+  archived) task on the given board that carries a `workflow_template_id`.
+  No `workflow_template_id` filter param — the endpoint always returns
+  every crew's estimate in one response (the Crews modal and the Kanban
+  office view both want "all crews currently visible," not one at a time,
+  and task counts here are small enough that a single unfiltered scan is
+  cheap, unlike Audit Trail's cross-session scan which needed an explicit
+  cap).
+
+#### Storage decision
+
+None — pure computation, no new file, no new table. `api.crews.estimate_crew_costs(tasks)`
+takes a flat list of already-fetched Kanban task dicts (the route handler
+fetches them via the same `kb.list_tasks`/`_task_dict` machinery
+`_board_payload` already uses, not a second task-reading path) and reads
+each distinct `assignee`'s CLI `state.db` via `api.models._agent_state_db_path(profile=...)`
+— the existing per-profile path-resolution helper, not a new one.
+
+#### Frontend hook-in
+
+- `static/panels.js`: `loadKanbanCrewCosts()` fetches and caches
+  `_kanbanCrewCostsCache` (`null` until first load, mirroring
+  `_kanbanCrewsList`'s cache-then-lazy-fetch-once shape exactly, including
+  its own fetch-in-flight guard). `_kanbanCrewCostLine(crewId)` formats the
+  disclosure string — returns `''` (renders nothing) when a crew has zero
+  priced tasks, so an unpriced/never-dispatched crew's card doesn't show a
+  misleading "$0.00". Wired into both existing render paths: `_kanbanCrewCard()`
+  (Crews modal list) and `_kanbanOfficeGroupHtml()` (Kanban office view
+  group header) — one shared formatter, not two independent cost strings
+  that could drift out of sync with each other's wording.
+- `static/style.css`: `.kanban-crew-card-cost`/`.kanban-office-group-cost`,
+  theme-token colors only (`var(--muted)`), added inside the existing
+  theme-token-guarded "Crews:"/"Office view:" comment blocks.
+- `static/i18n.js`: one new key, `kanban_crew_approx_cost` (`"~{0} (approx,
+  {1} of {2} tasks priced)"`), across all 15 locale blocks. The word
+  "approx" is baked into the template string itself, not just surrounding
+  UI copy — so the disclosure survives even if a future edit moves the line
+  to a place where surrounding label text doesn't carry it.
+- No slash command, no new nav tab — this is a small addition to two
+  already-existing surfaces (Crews modal, office view), not a new screen.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+
+1. `tests/test_crew_cost_estimate.py` (new, unit-level — monkeypatches
+   `api.models._get_profile_home` to a `tmp_path` sqlite `state.db`, no HTTP
+   server needed): tasks without a `workflow_template_id` ignored; a task
+   with no `assignee`/`started_at` is counted but not priced; a session
+   inside a task's `[started_at, completed_at]` window is matched and
+   summed; a session outside the window is not matched; `source='webui'`
+   sessions are excluded (crew-dispatched workers are always CLI-spawned);
+   multiple tasks in one crew across different assignees sum correctly;
+   distinct crews stay separate; a missing/unreadable `state.db` degrades
+   to zero without raising; a source-string guard that the route handler
+   always sets `is_approximate: true` on both its success and its
+   exception-fallback branch.
+2. `tests/test_crews_ui.py` additions: the two formatter/loader functions
+   exist; the cost line's body always references both the
+   `kanban_crew_approx_cost` i18n key and `priced_task_count` (regression
+   guard against a future edit dropping the approximation disclosure); both
+   render call sites (`_kanbanCrewCard`/`_kanbanOfficeGroupHtml`) call the
+   shared formatter; the lazy-fetch-once cache pattern (guards against
+   re-fetching on every render, mirroring the existing crew-names guard);
+   the route handler string-present in `routes.py`; CSS theme-token guard
+   on both new classes.
+
+#### Open questions — resolved 2026-08-10
+
+1. **Which option to ship** — resolved: option 2. See "Decided" note above.
+2. **Per-crew vs. per-dispatch-run cost?** Resolved: per-crew
+   (`workflow_template_id`), not per-run (`current_step_key`) — matches how
+   the office view already groups by crew, not by individual dispatch, and
+   keeps the UI to one number per crew rather than a growing list of
+   historical run costs. A user wanting per-run granularity can still infer
+   it from Kanban's existing task-level `current_step_key`/timestamps; this
+   just doesn't surface it as a second aggregated view.
+3. **Should ambiguous concurrent-dispatch double-counting be fixed with a
+   dedupe pass (e.g. never attribute the same session to two tasks)?**
+   Resolved: no, deliberately left as-is. The plan doc's own framing for
+   option 2 accepts this fragility as inherent to the heuristic, not a bug
+   to paper over with a dedupe heuristic that would just be a second,
+   unverified guess layered on top of the first one. The UI disclosure
+   covers this ("approx"), which is the actual mitigation, not silent
+   dedup logic that could hide the ambiguity instead of admitting it.
+
+**Shipped 2026-08-10:** implemented exactly per the plan above —
+`api.crews.estimate_crew_costs()` (+ its `_profile_session_rows()` helper)
+in `api/crews.py`, `GET /api/crews/cost` in `api/routes.py`, cost lines
+wired into both the Crews modal and the Kanban office view in
+`static/panels.js`, theme-token CSS, and 1 new i18n key × 15 locales.
+Tests: `tests/test_crew_cost_estimate.py` (9 cases) and additions to
+`tests/test_crews_ui.py` (6 cases) — all passing, full suite verified with
+no regressions. Known limitation (by design, not a bug — see Open question
+#3 above): concurrent same-profile dispatches can double-count or
+misattribute a session's cost; the UI's "approx" disclosure is the
+mitigation, not a dedupe algorithm.
+
+#### Critical files
+
+- `api/crews.py`
+- `api/routes.py`
+- `static/panels.js`
+- `static/style.css`
+- `static/i18n.js`
+- `tests/test_crew_cost_estimate.py` (new)
+- `tests/test_crews_ui.py`
 
 ---
 

@@ -14435,6 +14435,23 @@ def handle_get(handler, parsed) -> bool:
         from api import crews
         return j(handler, crews.list_crews())
 
+    if parsed.path == "/api/crews/cost":
+        from api import crews
+        from api.kanban_bridge import _conn, _kb, _resolve_board, _task_dict
+
+        board = _resolve_board(parsed)
+        try:
+            with _conn(board=board) as conn:
+                tasks = _kb().list_tasks(conn, include_archived=True)
+                task_dicts = [_task_dict(t) for t in tasks]
+        except Exception:
+            logger.exception("Failed to load tasks for crew cost estimate")
+            return j(handler, {"costs": {}, "is_approximate": True})
+        return j(handler, {
+            "costs": crews.estimate_crew_costs(task_dicts),
+            "is_approximate": True,
+        })
+
     if parsed.path == "/api/session/export":
         return _handle_session_export(handler, parsed)
 
