@@ -211,6 +211,8 @@ def test_i18n_keys_present_in_all_15_locales():
         # Phase 1.2: templates gallery search + last-dispatched recency.
         "kanban_crews_search_placeholder", "kanban_crews_no_match",
         "kanban_crew_last_dispatched", "kanban_crew_never_dispatched",
+        # Phase 3: labeled-approximation cost estimate.
+        "kanban_crew_approx_cost",
     ]
     locale_keys = re.findall(r"^  (?:'([a-zA-Z-]+)'|([a-zA-Z-]+)): \{$", I18N_JS, re.MULTILINE)
     locales = [a or b for a, b in locale_keys]
@@ -461,6 +463,70 @@ def test_card_reuses_shared_relative_time_formatter_not_a_copy():
 def test_backend_last_dispatched_field_present():
     assert "last_dispatched_at" in CREWS_PY
     assert "def _touch_crew_dispatched(" in CREWS_PY
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Phase 3: cost panel, option 2 (labeled approximation) -- see
+# docs/HERMES_STUDIO_PARITY_PLAN.md, "Phase 3 -- Cost panel". Real cost
+# math is tested in tests/test_crew_cost_estimate.py against
+# api.crews.estimate_crew_costs(); these are structural/UI wiring guards.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_cost_helpers_defined_in_panels_js():
+    assert "function loadKanbanCrewCosts()" in PANELS_JS
+    assert "function _kanbanCrewCostLine(" in PANELS_JS
+
+
+def test_cost_line_always_includes_approx_disclosure():
+    """The cost line function must never present the figure as exact --
+    per the plan doc, this is a fragile heuristic and must always read as
+    an approximation, not a precise number."""
+    idx = PANELS_JS.index("function _kanbanCrewCostLine(")
+    end = PANELS_JS.index("\n}", idx)
+    body = PANELS_JS[idx:end]
+    assert "kanban_crew_approx_cost" in body
+    assert "priced_task_count" in body
+
+
+def test_crew_card_and_office_group_both_render_cost_line():
+    card_idx = PANELS_JS.index("function _kanbanCrewCard(crew)")
+    card_end = PANELS_JS.index("\n}", card_idx)
+    assert "_kanbanCrewCostLine(" in PANELS_JS[card_idx:card_end]
+
+    group_idx = PANELS_JS.index("function _kanbanOfficeGroupHtml(group)")
+    group_end = PANELS_JS.index("\n}", group_idx)
+    assert "_kanbanCrewCostLine(" in PANELS_JS[group_idx:group_end]
+
+
+def test_cost_fetch_is_lazy_and_cached_not_refetched_every_render():
+    """Regression guard mirroring the existing crew-names lazy-fetch-once
+    pattern: costs must be fetched once (cache starts null, a fetch-in-flight
+    flag guards re-entrancy) rather than on every render call."""
+    assert "let _kanbanCrewCostsCache = null;" in PANELS_JS
+    assert "let _kanbanCrewCostsFetchInFlight = false;" in PANELS_JS
+    office_idx = PANELS_JS.index("function _kanbanRenderOfficeView(")
+    office_end = PANELS_JS.index("\n}", office_idx)
+    office_body = PANELS_JS[office_idx:office_end]
+    assert "_kanbanCrewCostsCache === null && !_kanbanCrewCostsFetchInFlight" in office_body
+
+
+def test_route_handler_present_in_routes_py():
+    routes_py = read("api/routes.py")
+    assert '"/api/crews/cost"' in routes_py
+    assert "estimate_crew_costs" in routes_py
+
+
+def test_css_cost_lines_use_theme_tokens():
+    idx = STYLE_CSS.index("/* Crews:")
+    block = STYLE_CSS[idx: idx + 3000]
+    assert ".kanban-crew-card-cost" in block
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block)
+
+    office_idx = STYLE_CSS.index("/* Office view:")
+    office_block = STYLE_CSS[office_idx: office_idx + 2200]
+    assert ".kanban-office-group-cost" in office_block
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", office_block)
 
 
 def _run_node_script(js_body: str) -> None:
