@@ -16,11 +16,14 @@
 
 ## Current status (as of 2026-08-10) — read this first if picking up cold
 
-**Done and COMMITTED on `feature/plan-canvas` — NOT pushed to any remote
-yet (push attempted and blocked: no GitHub auth configured in this
-environment, `gh auth login` has not been run here; retry once that's
-done), no PR opened. `git log --oneline 33a08de77..HEAD` to see the exact
-commit list; `git status` should be clean on this branch.**
+**Done, COMMITTED, and PUSHED — but to a fork, not upstream.** `origin`
+(`nesquena/hermes-webui`) does not grant this GitHub account push access;
+forked to `StephenZ06/hermes-webui` (remote name `fork`) and pushed
+`feature/plan-canvas` there. **No PR opened yet** against
+`nesquena/hermes-webui` — that's the next action if/when wanted:
+`gh pr create --repo nesquena/hermes-webui --head StephenZ06:feature/plan-canvas`.
+`git log --oneline 33a08de77..HEAD` to see the exact commit list;
+`git status` should be clean on this branch.
 - Priority 1, all four items: Personas (+ apply-to-session v1.1), Security
   scanner, Patterns/memory vault cleaner, and Audit Trail UI (technically
   Priority 3, shipped alongside these — see its own section below).
@@ -52,9 +55,10 @@ unrelated TLS health-probe flake in the sandbox,
 `tests/test_tls_aware_probe.py`, not touched by any of this work).
 
 **Immediate next steps (housekeeping):**
-1. Push `feature/plan-canvas` and open a PR — currently local-only, blocked
-   on auth (see above). Retry `git push -u origin feature/plan-canvas` once
-   `gh auth login` (or equivalent git credential setup) has been done.
+1. ~~Push `feature/plan-canvas`~~ — **done 2026-08-10**, to the fork (see
+   above). Opening the actual PR against `nesquena/hermes-webui` is still
+   pending — a deliberate choice not to do it silently, since that's a
+   visible action against someone else's repo.
 2. ~~Clean up 5 leftover agent worktrees~~ — **done 2026-08-10.** All 5
    (`agent-a4a717bf7ccd9a8dc`, `agent-aeae197db12d71563`,
    `agent-a77e78b142872ce8b`, `agent-ade7eb7fdf6e354ed`,
