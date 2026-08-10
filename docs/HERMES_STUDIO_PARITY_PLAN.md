@@ -930,14 +930,9 @@ which of (1)/(2) comes next):**
 
 ## Priority 3 — other confirmed gaps
 
-- **Knowledge Browser** (`memory/knowledge-browser-screen.tsx`,
-  `/api/knowledge/{list,read,search,graph}`) — separate RAG/knowledge-base
-  browser with a graph view, distinct from chat memory. No equivalent today.
-- **Audit Trail UI** — planned, see full write-up below.
-- **Analytics/cost dashboard** (`analytics-screen.tsx`, `cost-store.ts`,
-  `/api/state-analytics`, `/api/provider-usage`) — cost/usage tracked over
-  time, per provider. hermes-webui's `usage.py` only does live per-turn
-  display metrics, not a historical screen.
+- **Knowledge Browser** — STATUS: DONE, see full write-up below.
+- **Audit Trail UI** — STATUS: DONE, see full write-up below.
+- **Analytics/cost dashboard** — STATUS: DONE, see full write-up below.
 - **Command palette** (⌘K, `cmdk`-style) + global keyboard-shortcuts modal —
   no discoverable global command palette found in hermes-webui.
 - **Chat export** (`export-menu.tsx`) — Markdown/JSON/Text export, no
@@ -1133,6 +1128,342 @@ clean on `api/audit_trail.py`; no new findings introduced in the touched
 - `static/index.html`
 - `static/i18n.js`
 - `static/style.css`
+
+---
+
+### Knowledge Browser — STATUS: DONE (shipped 2026-08-10)
+
+Hermes-Studio (`memory/knowledge-browser-screen.tsx`,
+`/api/knowledge/{list,read,search,graph}`) has a separate RAG/knowledge-base
+browser with list/read/search/graph views, distinct from chat memory.
+
+**Investigation before scoping (per instructions — don't assume
+greenfield):** audited every profile-scoped, browsable text source that
+already exists on disk or via an existing endpoint:
+
+| Source | Exists today? | Already has a browse UI? |
+|---|---|---|
+| `MEMORY.md` (`§`-delimited facts) | Yes, real file, `home/memories/MEMORY.md` | Only as one editable blob via the existing **Memory** tab (`/api/memory`, whole-file read/write) — not split into individually browsable/searchable facts |
+| `USER.md` / `SOUL.md` | Yes | Same — whole-file editable blob via **Memory** tab |
+| Saved prompts (`webui/saved_prompts.json`) | Yes, `{id,label,text}` rows, `/api/prompts` CRUD already exists | No dedicated browse/search screen — only a small quick-insert popup on the chat composer (`#savedPromptsPopup`) |
+| Prompt files (`HERMES_HOME/prompts/*.md`) | Yes, real standalone `.md` files, e.g. a user's `glm47-heretic-cybersecurity.md` | **No.** Zero references anywhere in `api/` — completely unexposed today |
+| Personas (`agent_definitions.json`) | Yes | Already has full CRUD gallery (Priority 1, shipped) — out of scope here, would be pure duplication |
+| Project context (workspace `HERMES.md`/`.hermes.md`/cursor rules) | Yes, but resolved per-*workspace* at request time, no stable list of "all workspaces' docs" exists | Surfaced read-only inside the Memory tab for the *current* workspace only |
+| A RAG/vector index, entity graph, or any relationship data | **No.** No embedding store, no fact-extraction, no citation/entity graph exists anywhere in the codebase | — |
+
+**Conclusion:** there is real, substantial knowledge-shaped data to browse —
+just not a RAG pipeline or graph. Building a `/api/knowledge/graph` endpoint
+would mean fabricating a graph view with no real backing data, which the
+task explicitly rules out. **v1 ships list/read/search only, no graph.**
+
+**Scope decision — why MEMORY.md/USER.md/SOUL.md are included even though
+a separate Priority 1 effort ("Patterns / memory vault cleaner") also reads
+MEMORY.md:** that item is an *edit/curate* UI (split into Patterns vs.
+`CORRECTION:` tabs, expand/delete, append via `/api/memory/write`) — a
+different concern from a *read-only, cross-type search* index. Knowledge
+Browser here adds **no** write path to memory files at all; it only reads
+them (through the same redaction the existing `/api/memory` GET already
+applies). The two features will likely both parse `§`-delimited entries
+independently until whichever lands second refactors the split into a
+shared helper — flagged here so that isn't a surprise at merge time, not
+blocking either feature.
+
+#### Data shape
+Read-only. No new storage — everything is read from files/JSON that already
+exist. List item (lightweight, no full content):
+```json
+{
+  "id": "memory:2",
+  "type": "memory",
+  "title": "Zola's 90-day goals are to finish the honeypot project...",
+  "snippet": "Zola's 90-day goals are to finish the honeypot project, polish resume/LinkedIn/GitHub...",
+  "source_path": "/home/user/.hermes/memories/MEMORY.md",
+  "updated_at": 1754841600.0
+}
+```
+`type` is one of `memory | user | soul | saved_prompt | prompt_file`. Read
+response (`GET /api/knowledge/read`) is the same shape plus a full `content`
+field (redacted via the existing `_redact_text()` chokepoint, same as
+`/api/memory`'s GET). Id scheme:
+- `memory:<index>` — one id per `§`-delimited entry in `MEMORY.md` (not the
+  whole file as one blob — this is what makes it individually browsable/
+  searchable, unlike the Memory tab's whole-file editor)
+- `user:0`, `soul:0` — the whole `USER.md`/`SOUL.md` file as one item
+- `saved_prompt:<uuid>` — one id per row in `saved_prompts.json`, same `id`
+  field the existing `/api/prompts` CRUD already uses
+- `prompt_file:<filename>` — one id per `*.md` file directly under
+  `HERMES_HOME/prompts/` (non-recursive glob)
+
+Caps: `SEARCH_QUERY_MAX = 200` chars, `SEARCH_RESULTS_MAX = 50` rows,
+`PROMPT_FILE_MAX_BYTES = 20_000` (read cap per prompt file, mirrors the
+existing `_PROJECT_CONTEXT_MAX_BYTES` pattern in `routes.py`),
+`PROMPT_FILE_GLOB_MAX = 200` files scanned, `MEMORY_ENTRY_MAX = 300` `§`
+entries indexed (guards against a pathological MEMORY.md). `memory`/`user`
+items respect the existing `memory_enabled`/`user_profile_enabled` config
+flags (same flags `/api/memory` already honors) — a disabled section is
+simply omitted from the list, matching that endpoint's behavior exactly
+rather than inventing a second convention.
+
+#### API endpoints (`api/routes.py`, GET block, next to the existing
+`/api/memory` route)
+- `GET /api/knowledge/list` → `{"items": [...]}` (lightweight rows, no
+  `content`)
+- `GET /api/knowledge/read?id=<id>` → `{"item": {...with content}}`; 404 if
+  the id doesn't resolve against a freshly-recomputed listing (ids are never
+  used to build a filesystem path directly from client input — read always
+  re-derives the item from the same enumeration `list_items()` uses, closing
+  any path-traversal surface by construction, per GUIDELINES rule 5)
+- `GET /api/knowledge/search?q=<query>` → `{"query": q, "results": [...]}`;
+  400 if `q` is empty; case-insensitive substring match across `title` +
+  full `content` (not just the snippet), so a search can find a term buried
+  inside a long prompt file even though the list view only shows a short
+  snippet
+
+No `/api/knowledge/graph` in v1 — see "Conclusion" above.
+
+#### Storage decision
+New file `api/knowledge_browser.py`. Pure read functions
+(`list_items()`/`read_item()`/`search_items()`), profile-scoped via the same
+`api.profiles.get_active_hermes_home()` mechanism every other profile-scoped
+module uses (`agent_definitions.py`, saved prompts). No write functions, no
+new files created, no new locking needed — it only ever reads
+`memories/MEMORY.md`, `memories/USER.md`, `SOUL.md`, `webui/saved_prompts.json`,
+and `prompts/*.md`, all of which already exist independently of this feature.
+
+#### Frontend hook-in
+- `static/index.html`: new nav tab (`data-panel="knowledge"`, label
+  **"Knowledge"**, rail + mobile sidebar-nav, inline `<svg>` icon) next to
+  Memory/Insights; `<div class="panel-view" id="panelKnowledge">` with
+  search box `#knowledgeSearch` + list `#knowledgeList` (same skeleton as
+  `#agentsList`); `<div id="mainKnowledge" class="main-view">` detail pane
+  with `#knowledgeDetailTitle`, `#knowledgeDetailBody`,
+  `#knowledgeDetailEmpty` (same skeleton as `#mainAgents`). Read-only: no
+  create/edit/delete buttons in the panel head.
+- `static/panels.js`: add `'knowledge'` to `MAIN_VIEW_PANELS` and
+  `APP_TITLEBAR_KEYS`; add `loadKnowledgeItems`, `renderKnowledgeItems`,
+  `searchKnowledgeItems` (debounced, calls `/api/knowledge/search` server-side
+  rather than filtering the already-loaded snippet-only list, since a real
+  search must see full content), `openKnowledgeItem`/`_renderKnowledgeDetail`.
+  Hook into `switchPanel`'s lazy-load dispatch (`if (nextPanel ===
+  'knowledge') await loadKnowledgeItems();`), mirroring every other panel.
+- `static/i18n.js`: new keys in all 15 locale blocks — key-parity is a
+  test-enforced contract (see Tests below).
+- No slash command in v1 (unlike Personas) — kept out to hold scope modest;
+  can be added later mirroring `/personas` if wanted.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+1. HTTP round-trip (`tests/test_knowledge_browser_api.py`): seed real data
+   through *existing* endpoints — `/api/memory/write` for memory/user/soul
+   sections, `/api/prompts` create/delete for saved prompts — then confirm
+   `/api/knowledge/list`/`read`/`search` see it, with cleanup restoring prior
+   content.
+2. Unit-level (direct module calls, `get_active_hermes_home` monkeypatched
+   to a `tmp_path`, mirroring `test_agent_definitions_api.py`'s profile
+   isolation test): `prompt_file` items (no HTTP endpoint creates these, so
+   this is the only way to test them), `MEMORY.md` splitting into individual
+   `§` entries, snippet truncation, search query cap/empty-query rejection,
+   `memory_enabled`/`user_profile_enabled` gating, profile isolation (two
+   profiles never see each other's items), path-traversal-safe `read_item`
+   (an id that doesn't match the current enumeration returns `None`, never
+   reads an arbitrary path).
+3. Static UI-wiring guards (`tests/test_knowledge_browser_ui.py`, shape from
+   `test_agent_definitions_ui.py`): nav tab + panel/main containers present,
+   JS functions wired, CSS `showing-knowledge` rule present, locale-parity
+   across all 15 blocks.
+
+#### Open questions — resolved 2026-08-10
+1. **Include MEMORY.md/USER.md/SOUL.md despite the concurrent Patterns
+   effort?** Resolved yes — read-only, additive, no write path added; see
+   "Scope decision" above.
+2. **Graph view?** Resolved: not in v1, no real data to back it honestly.
+   Revisit only if a genuine entity/fact-extraction or embedding-based
+   relationship model is ever added elsewhere in the codebase — the graph
+   should represent something real, not force-fit MEMORY.md's flat entries
+   into an artificial node/edge shape.
+3. **Project context (workspace docs)?** Left out of v1 — there is no
+   existing "list every workspace's context doc" primitive (resolution is
+   always for one workspace, on demand); adding one is a bigger change than
+   this modest v1 warrants. Noted as a natural v2 extension.
+
+#### Critical files
+- `api/knowledge_browser.py` (new)
+- `api/routes.py`
+- `static/panels.js`
+- `static/index.html`
+- `static/i18n.js`
+
+**Shipped 2026-08-10:** implemented exactly per the plan above —
+`api/knowledge_browser.py` (list/read/search over memory §-entries, USER.md,
+SOUL.md, saved prompts, and standalone prompt files), three
+`/api/knowledge/*` GET endpoints in `api/routes.py`, a Knowledge nav tab +
+sidebar list + read-only detail pane in `static/index.html`/`panels.js`/
+`style.css`, and 10 new i18n keys across all 15 locale blocks. Tests:
+`tests/test_knowledge_browser_api.py` and `tests/test_knowledge_browser_ui.py`.
+Known gaps (by design, see Open questions): no graph view, no project-context
+indexing, no slash command.
+
+### Analytics/cost dashboard — STATUS: DONE (shipped 2026-08-10)
+
+Hermes-Studio (`analytics-screen.tsx`, `cost-store.ts`,
+`/api/state-analytics`, `/api/provider-usage`) tracks cost/usage over time,
+per provider.
+
+**Investigation before scoping (per instructions — read `usage.py` and
+`skill_usage.py` first):** `api/usage.py` is a tiny (26-line) pure helper —
+just `prompt_cache_hit_percent()`, no endpoint of its own.
+`api/skill_usage.py` is a read-only `.usage.json` reader for the Skills
+panel, unrelated to cost/tokens. **Neither is where the historical
+dashboard lives.** That dashboard already exists: `_handle_insights()` in
+`api/routes.py` (route `GET /api/insights`, ~260 lines) backs the existing
+**Insights** nav tab (`static/panels.js` `loadInsights`/`_renderInsights`,
+title literally "Usage Analytics"). It already provides, over a selectable
+1–365 day window: total cost/tokens/sessions, a daily cost+token trend
+chart, a **per-model** cost/token/cache-hit breakdown table with cost/token/
+session share percentages, activity-by-day-of-week and activity-by-hour
+heatmaps, and merges both WebUI (`_index.json`) and CLI (`state.db`)
+sessions. **This directly contradicts this doc's original one-line claim**
+("only does live per-turn display metrics, not a historical screen") — that
+claim was wrong, and is corrected here rather than repeated.
+
+**The real, narrower gap versus Hermes-Studio's `cost-store.ts`:** Insights
+groups exclusively by **model**, never by **provider** — even though the
+raw data already carries a provider: WebUI session rows in `_index.json`
+already have a `model_provider` field (`api/webui_session_db.py`
+`_METADATA_FIELDS`), and CLI rows in `state.db` carry `billing_provider`
+(confirmed via `PRAGMA table_info(sessions)` — there is no `model_provider`
+column in `state.db`, unlike the WebUI JSON side; the two sources use
+different real column names for the same concept). Insights also has no
+week/month rollup (only daily) and no "which sessions cost the most"
+breakdown, both of which Studio's cost-store-style view implies. This is a
+"read-only aggregation over data that already exists on disk" gap exactly
+like Audit Trail's — the provider field is already being written, just
+never read for this purpose.
+
+**Decision: ship a focused, separate "Analytics" nav tab (as directed) that
+is provider-centric and complements Insights rather than duplicating it —
+not a second copy of the whole Insights screen.** Insights keeps owning
+day-of-week/hour heatmaps and per-model breakdown; Analytics owns
+per-provider breakdown, week/month granularity, and a top-spending-sessions
+list. Both read the same two underlying sources independently (see Open
+question #2 below for why the session-walk isn't shared code).
+
+#### Data shape
+Read-only aggregation, no new storage — reads the same `_index.json` +
+`state.db` sources `_handle_insights` already reads.
+```json
+{
+  "period_days": 30,
+  "granularity": "week",
+  "total_sessions": 42,
+  "total_tokens": 1250000,
+  "total_cost": 12.34,
+  "providers": [
+    {
+      "provider": "anthropic",
+      "sessions": 30,
+      "input_tokens": 900000,
+      "output_tokens": 200000,
+      "cache_read_tokens": 50000,
+      "cost": 9.87,
+      "cost_share": 80,
+      "token_share": 88,
+      "session_share": 71
+    }
+  ],
+  "trend": [
+    {"bucket": "2026-W32", "cost": 3.21, "input_tokens": 300000, "output_tokens": 60000, "sessions": 10}
+  ],
+  "top_sessions": [
+    {"session_id": "abc123", "title": "Refactor auth flow", "model": "claude-opus-4", "provider": "anthropic", "cost": 1.02, "tokens": 45000, "ts": 1754841600.0}
+  ]
+}
+```
+Provider derivation: `model_provider` (WebUI rows) or `billing_provider`
+(CLI rows) if present; else derived from `model`'s `provider/model` prefix
+if it contains `/`; else `"unknown"`. `trend` bucket keys use Python's
+`datetime` module (not `time.strftime("%G-W%V")`, which is not reliably
+portable to Windows' C runtime — this codebase ships a `start.ps1`, so
+portability matters): `%Y-%m-%d` for day, ISO `<year>-W<week>` via
+`isocalendar()` for week, `%Y-%m` for month. `top_sessions` is capped at 10,
+sorted by cost descending, with `title` passed through the same
+`_redact_text()` chokepoint `/api/sessions` already uses for titles.
+
+#### API endpoints (`api/routes.py`, GET block, next to `/api/insights`)
+- `GET /api/analytics?days=<1-365>&granularity=<day|week|month>` →
+  the shape above. `days` clamps exactly like `/api/insights` (invalid →
+  30). `granularity` defaults to `week`; an unrecognized value falls back to
+  `week` rather than erroring, matching the codebase's "degrade gracefully
+  on bad query params" convention used throughout `routes.py`.
+
+#### Frontend hook-in
+- `static/index.html`: new nav tab (`data-panel="analytics"`, label
+  **"Analytics"**, rail + mobile sidebar-nav, inline `<svg>` icon — visually
+  distinct from the Insights icon) next to Insights; `panelAnalytics` with a
+  period `<select id="analyticsPeriod">` (7/30/90/365, mirrors
+  `#insightsPeriod`) and a granularity `<select id="analyticsGranularity">`
+  (day/week/month); `<div id="mainAnalytics" class="main-view">` rendering
+  into `#analyticsContent` (mirrors `#mainInsights`/`#insightsContent`).
+- `static/panels.js`: add `'analytics'` to `MAIN_VIEW_PANELS` and
+  `APP_TITLEBAR_KEYS`; add `loadAnalytics(animate)`/`_renderAnalytics(d,
+  box)`, hooked into `switchPanel`'s lazy-load dispatch. Reuses the existing
+  theme-var-only `.insights-card`/`.insights-table`/`.insights-stat` CSS
+  classes for the overview/provider-table cards (GUIDELINES rule 8 — extend
+  the existing card/table mechanism rather than re-styling from scratch);
+  adds a small number of new `.analytics-*` classes (provider bars,
+  top-session rows) only where no existing class fits, still theme-var only.
+- `static/i18n.js`: new keys in all 15 locale blocks.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+1. Unit-level (`tests/test_analytics_dashboard_api.py`, mirroring
+   `test_insights.py`'s `_FakeHandler`/monkeypatched-`SESSION_DIR` pattern —
+   deliberately not a live-HTTP test, matching how Insights itself is
+   tested): provider grouping across multiple sessions with the same/
+   different `model_provider`; day/week/month bucket keys for known
+   timestamps; top-sessions sorted+capped+redacted; CLI/`state.db` rows
+   merged via monkeypatched `_active_state_db_path`, exercising both
+   `billing_provider` present and `NULL` (falls back to model-prefix
+   derivation); `days`/`granularity` param clamping and defaults; empty
+   state (no sessions) returns zeros/empty lists without raising.
+2. Static UI-wiring guards (`tests/test_analytics_dashboard_ui.py`): nav tab
+   + panel/main containers present, JS functions wired, `'analytics'` in
+   `MAIN_VIEW_PANELS`, CSS `showing-analytics` rule present, locale-parity
+   across all 15 blocks.
+
+#### Open questions — resolved 2026-08-10
+1. **Duplicate Insights entirely, or build something narrower?** Resolved:
+   narrower and complementary — see "Decision" above. Revisit only if user
+   feedback wants Insights and Analytics merged into one screen.
+2. **Share the session-walk code between `_handle_insights` and the new
+   handler?** Considered and **declined** for this change: `_handle_insights`
+   already has ~500 lines of passing tests (`tests/test_insights.py`,
+   `tests/test_issue691_model_health_table.py`) and refactoring it to share
+   a generator is a real behavior-preserving-refactor risk that is out of
+   scope for "add a new read-only endpoint" (GUIDELINES rule 9 — the diff is
+   the task and nothing else). The new handler independently re-walks the
+   same two sources with its own compact aggregation. Flagged as a
+   worthwhile follow-up cleanup once both are stable, not done here.
+3. **`billing_provider` vs `model_provider` naming split** — resolved as
+   documented above: the two data sources genuinely use different column
+   names for the same concept (confirmed via `PRAGMA table_info`), so the
+   handler reads whichever field its source actually has rather than
+   assuming one name everywhere.
+
+#### Critical files
+- `api/routes.py`
+- `static/panels.js`
+- `static/index.html`
+- `static/i18n.js`
+
+**Shipped 2026-08-10:** implemented exactly per the plan above — a new
+`_handle_analytics()` in `api/routes.py` behind `GET /api/analytics`, an
+Analytics nav tab + period/granularity controls + provider breakdown/trend/
+top-sessions view in `static/index.html`/`panels.js`/`style.css`, and 19 new
+i18n keys across all 15 locale blocks. Tests:
+`tests/test_analytics_dashboard_api.py` and
+`tests/test_analytics_dashboard_ui.py`. Known gap (by design, see Open
+question #2): the session-walk logic is intentionally not shared with
+`_handle_insights` to avoid touching its tested code; a future cleanup could
+extract a common helper once both handlers are stable.
 
 ---
 
