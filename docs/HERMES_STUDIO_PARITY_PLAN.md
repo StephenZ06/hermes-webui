@@ -25,6 +25,10 @@ check `git status` before assuming any of this is merged:**
   templates + bulk dispatch (plus its dispatch-variables-dialog follow-up),
   and office-view crew grouping. See "Priority 2 — Multi-agent
   orchestration" below for both "Shipped" notes.
+- Priority 2, Phase 1.2: a scoped-down "templates gallery" slice — search/
+  filter over the crew list plus a "last dispatched" recency signal driving
+  default sort order. See that section for why a categories/tags gallery was
+  investigated and rejected as unnecessary polish rather than built.
 
 **Explicitly deferred, not forgotten:** Priority 2 Phase 3 (cost panel) —
 decided 2026-08-10 to cut it for now rather than ship fabricated/approximate
@@ -32,21 +36,23 @@ cost numbers. See Phase 3's section below before touching this; the decision
 of *which* follow-up path (upstream fix vs. labeled approximation) is still
 open and needs a human call, not an implementing agent's guess.
 
-**Not started, no written plan yet:** the rest of Priority 2 (a real
-workflow-builder/templates-gallery/dispatch-dialog beyond what Crews v1
-does — see the "What dispatching multiple agents in parallel means"
-reasoning in that section before assuming more scope is needed), all of
+**Not started, no written plan yet:** the workflow-builder/step-graph-editor
+part of Priority 2 remains explicitly out of scope (see "Investigated and
+rejected" below — unchanged); Phase 3's cost panel stays deferred; all of
 Priority 3 except Audit Trail (Knowledge Browser, Analytics/cost dashboard,
 Command palette, Chat export, Sound notifications, Voice input, Onboarding
 tour), and all of Priority 4 (Skills marketplace discovery is flagged as
 the natural next pick — it's the gate the Security scanner was explicitly
 built for).
 
-**Suggested next pick:** Priority 4's Skills marketplace discovery, or
-scope out a real plan for the rest of Priority 2 if "agentic OS" stays the
-actual target. Before starting *anything*, read the "Shipped" notes for
-whichever area you're touching — they carry the actual design reasoning
-(why a decision was made a certain way), not just what shipped.
+**Suggested next pick:** Priority 4's Skills marketplace discovery — with
+Phase 1/1.2/2 of Crews shipped and the workflow-builder/step-graph part of
+Priority 2 staying explicitly out of scope, there is no further conservative
+Priority 2 slice queued up; revisit Priority 2 only if a genuinely new,
+concrete gap surfaces (not "build the gallery bigger just because"). Before
+starting *anything*, read the "Shipped" notes for whichever area you're
+touching — they carry the actual design reasoning (why a decision was made
+a certain way), not just what shipped.
 
 ---
 
@@ -736,6 +742,137 @@ cases (multiple crews' workers interleaved, ungrouped fallback, filter
 narrows both board and office view) rather than a new test file.
 
 **Critical files:** `static/panels.js`, `tests/test_kanban_office_view.py`.
+
+#### Phase 1.2 (v1.2) — Crew templates gallery: search + last-dispatched recency — STATUS: DONE (shipped 2026-08-10)
+
+**Scoping this first, per the "Current status" pointer above.** The doc's
+"Not started" line named "a real workflow-builder/templates-gallery/
+dispatch-dialog beyond what Crews v1 does" as the open part of Priority 2.
+The workflow-builder and dispatch-variables-dialog pieces are already
+resolved: a step-graph builder is explicitly out of scope (see
+"Investigated and rejected" above — nothing upstream to build it against),
+and the dispatch-time `{variable}` collection dialog shipped as Phase 1's
+follow-up (see above). What was actually still open is the "templates
+gallery" half: today's Crews modal (`#kanbanCrewsModal`) is a flat
+`.kanban-crew-list` grid with no search, no sort, no metadata beyond name/
+description/task-count.
+
+**Investigated and scoped down, not the full Hermes-Studio "gallery."**
+Hermes-Studio's templates gallery has categories, tags, and a curated/
+featured split across what's implied to be a large, possibly shared,
+catalog. hermes-webui's crews are a plain per-profile, user-owned,
+uncategorized collection capped at `MAX_CREWS = 50` (`api/crews.py`) — a
+single user's own templates, not a browsable marketplace. At that scale, a
+categories/tags/featured taxonomy is speculative UI for a problem that
+doesn't exist yet (most profiles will have a handful of crews, not dozens
+needing organization by category) — building it now would be exactly the
+kind of unnecessary-polish gallery the task brief warned against, not a
+real gap. What *is* a real, already-felt gap even at small-N: (a) no way to
+jump straight to a crew by typing part of its name once you have more than
+a screenful, and (b) the list has no signal for "which of these do I
+actually use" — cards render in raw creation order forever, so an
+old-but-frequently-redispatched crew sits wherever it was first created
+instead of surfacing near the top. Both are small, additive, conservative
+slices; neither touches the create/edit form or the dispatch-confirm/
+variables-collection code path (left untouched, per the constraint that
+another agent owns that code path concurrently).
+
+**Shipped 2026-08-10:**
+- **Search/filter**: a `#kanbanCrewsSearch` input (reuses the existing
+  `.sidebar-search` component verbatim — same one `#kanbanSearch`/
+  `#agentsSearch` already use, not a new search-box implementation) sits
+  above `#kanbanCrewList` inside `kanbanCrewsModal`. Purely client-side over
+  the already-loaded `_kanbanCrewsList` cache (capped at 50 rows — no
+  pagination or server-side search needed at this scale, mirrors how
+  `renderAgentDefinitions`'s Personas search works). New pure function
+  `_kanbanFilterCrews(crews, query)` (name + description, case-insensitive
+  substring) called from `_renderKanbanCrewList()`; `filterKanbanCrews()` is
+  the `oninput` handler, mirroring `filterAgentDefinitions()`'s
+  call-render-again pattern exactly.
+- **Last-dispatched recency**: `api/crews.py` gains a `last_dispatched_at`
+  field (`None` until first dispatch) on every crew row, stamped by a new
+  `_touch_crew_dispatched(crew_id, ts)` at the end of `dispatch_crew()`
+  under the existing `_WRITE_LOCK`, using the same read-modify-write shape
+  as `update_crew()`. Stamped on *every* dispatch attempt that finds a real
+  crew, regardless of per-task success/failure — "last dispatched" means
+  "a dispatch of this template was last attempted at this time," not "last
+  fully succeeded"; a template that always fails to dispatch cleanly is
+  still surfaced as recently-touched rather than silently invisible.
+  `duplicate_crew()` does **not** copy the source's `last_dispatched_at` —
+  a duplicate is a new template with no dispatch history of its own.
+  Best-effort: if the crew_id isn't found in real storage (e.g. a test
+  double, or a race with a concurrent delete), the touch is a silent no-op
+  rather than raising — dispatch itself still succeeds/fails on its own
+  merits, this is pure metadata.
+  `_kanbanCrewCard()` shows a "Last dispatched: {relative time}" /
+  "Never dispatched" meta line, reusing `_formatRelativeSessionTime()`
+  from `static/sessions.js` (already generic despite the name — see its own
+  session_time_* i18n keys, already present in all 15 locales) rather than
+  writing a second relative-time formatter. `_renderKanbanCrewList()` sorts
+  the (filtered) list via a new pure `_kanbanSortCrews(crews)`:
+  `last_dispatched_at` descending (never-dispatched crews sort last), tied
+  by `created_at` descending — most-recently-used-or-created first, instead
+  of raw insertion order.
+- 4 new i18n keys (`kanban_crews_search_placeholder`, `kanban_crews_no_match`,
+  `kanban_crew_last_dispatched`, `kanban_crew_never_dispatched`) across all
+  15 locale blocks, English text in every locale — same established
+  convention this feature area already uses (see Phase 2's note on
+  `kanban_office_ungrouped` and siblings).
+- New CSS (`.kanban-crews-search`, `.kanban-crew-card-last-dispatched`)
+  added inside the existing theme-token-guarded "Crews:" comment block in
+  `static/style.css`, all `var(...)` tokens, no hardcoded colors.
+
+**Deliberately not touched:** `dispatchKanbanCrew()`'s body, the
+`{variable}` collection modal, and the create/edit form — all outside this
+slice's scope and, per the task constraint, another agent's concurrent
+work touches that exact code path. The Crews list modal closes immediately
+after a successful dispatch today (unchanged), so the just-dispatched
+crew's new `last_dispatched_at` simply shows correctly the *next* time the
+modal is reopened (`loadKanbanCrews()` already re-fetches from `/api/crews`
+on every `openKanbanCrews()` call) — no extra refresh call was needed
+inside the dispatch function itself.
+
+**Known gap, not caught until implementation — flagging rather than
+silently shipping:** `_touch_crew_dispatched` stamps the timestamp once per
+`dispatch_crew()` call, not once per successfully-created task. A crew
+dispatched twice in quick succession (e.g. a user double-clicks through two
+separate confirms) correctly reflects the *later* attempt, but there is no
+per-task-spec dispatch history, only a single template-level "last
+attempted" signal. That matches the recency-signal's stated purpose
+("which templates do I actually use") and was not scoped to be a full
+dispatch-history log — Activity/Audit Trail already covers per-turn history
+elsewhere in the app; a second, crew-specific history log was judged out of
+scope for this slice.
+
+Tests: extended `tests/test_crews_api.py` (27 → 32, 5 new cases —
+`last_dispatched_at` present as `None` on create, duplicate does not carry
+it over, a real dispatch against real profile-scoped storage stamps it, a
+fully-failed dispatch still stamps it, dispatching a crew absent from
+storage doesn't raise) and `tests/test_crews_ui.py` (19 → 25, 6 new cases —
+search input markup/wiring, the new pure `_kanbanFilterCrews`/
+`_kanbanSortCrews` functions executed for real via node — not a
+source-string proxy — against case-insensitive/substring/nulls-last/
+tie-break cases, the card's last-dispatched line reusing
+`_formatRelativeSessionTime` rather than a second formatter, the shared
+filter/sort/render wiring, CSS theme-token guard, and the backend field
+check) plus the existing locale-parity test extended in place with the 4
+new keys — all passing. Verified the new tests fail against the
+pre-Phase-1.2 code (reverting `api/crews.py` alone drops the new API-side
+cases; reverting `static/panels.js`/`index.html`/`style.css`/`i18n.js`
+drops the new UI-side cases) and pass after. Full verification run: all 57
+Crews tests (`test_crews_api.py` + `test_crews_ui.py`),
+`test_kanban_office_view.py`/`test_kanban_bridge.py`/`test_kanban_ui_static.py`/
+`test_kanban_view_toggle.py` (crew-grouping/filter logic reads
+`workflow_template_id` only, untouched by this slice, confirmed still
+green), the full 100-case locale-parity suite, and
+`test_agent_definitions_api.py`/`_ui.py`/`test_audit_trail_api.py`/`_ui.py`
+as unrelated-regression checks — all passing, zero regressions. `ruff
+check` clean on `api/crews.py`; `node -c` clean on `static/panels.js` and
+`static/i18n.js`.
+
+**Critical files:** `api/crews.py`, `static/panels.js`, `static/index.html`,
+`static/style.css`, `static/i18n.js`, `tests/test_crews_api.py`,
+`tests/test_crews_ui.py`.
 
 #### Phase 3 (DEFERRED — decided 2026-08-10) — Cost panel
 

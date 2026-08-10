@@ -182,6 +182,10 @@ def create_crew(body: dict) -> dict:
             "tasks": tasks,
             "created_at": now,
             "updated_at": now,
+            # Phase 1.2 (docs/HERMES_STUDIO_PARITY_PLAN.md): recency signal
+            # for the templates-gallery sort, stamped by _touch_crew_dispatched
+            # on every dispatch attempt. None until first dispatch.
+            "last_dispatched_at": None,
         }
         crews.append(crew)
         _save_crews(crews)
@@ -260,10 +264,34 @@ def duplicate_crew(crew_id: str) -> dict:
             "tasks": copy.deepcopy(source.get("tasks") or []),
             "created_at": now,
             "updated_at": now,
+            # A duplicate is a new template with no dispatch history of its
+            # own -- deliberately NOT copied from the source (Phase 1.2).
+            "last_dispatched_at": None,
         }
         crews.append(new_crew)
         _save_crews(crews)
         return new_crew
+
+
+def _touch_crew_dispatched(crew_id: str, ts: float) -> None:
+    """Best-effort: stamp ``last_dispatched_at`` on a crew that was just
+    dispatched (Phase 1.2 -- see docs/HERMES_STUDIO_PARITY_PLAN.md).
+
+    Called once per dispatch_crew() call, regardless of whether the run's
+    individual task specs succeeded or failed -- "last dispatched" means
+    "a dispatch of this template was last attempted at this time," not
+    "last fully succeeded." A silent no-op if the crew isn't actually in
+    on-disk storage (e.g. a test double, or a race with a concurrent
+    delete) -- this is pure metadata, never load-bearing for dispatch_crew's
+    own success/failure.
+    """
+    with _WRITE_LOCK:
+        crews = _load_crews()
+        crew = next((c for c in crews if c.get("id") == crew_id), None)
+        if crew is None:
+            return
+        crew["last_dispatched_at"] = ts
+        _save_crews(crews)
 
 
 def _substitute_variables(text: str, variables: dict) -> str:
@@ -330,5 +358,9 @@ def dispatch_crew(crew_id: str, body: dict) -> dict:
             results.append({"ok": True, "task_id": task.get("id")})
         except Exception as exc:
             results.append({"ok": False, "error": str(exc)})
+
+    # Phase 1.2: stamp the recency signal for every dispatch attempt that
+    # reached a real crew, regardless of per-task success/failure above.
+    _touch_crew_dispatched(crew_id, time.time())
 
     return {"ok": True, "run_id": run_id, "results": results}

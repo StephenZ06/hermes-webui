@@ -208,6 +208,9 @@ def test_i18n_keys_present_in_all_15_locales():
         "kanban_crew_dispatch_vars_title", "kanban_crew_dispatch_vars_hint",
         "kanban_crew_dispatch_vars_label", "kanban_crew_dispatch_vars_placeholder",
         "kanban_crew_dispatch_vars_required",
+        # Phase 1.2: templates gallery search + last-dispatched recency.
+        "kanban_crews_search_placeholder", "kanban_crews_no_match",
+        "kanban_crew_last_dispatched", "kanban_crew_never_dispatched",
     ]
     locale_keys = re.findall(r"^  (?:'([a-zA-Z-]+)'|([a-zA-Z-]+)): \{$", I18N_JS, re.MULTILINE)
     locales = [a or b for a, b in locale_keys]
@@ -396,3 +399,141 @@ def test_dispatch_vars_panels_js_functions_present():
         "_kanbanHideCrewDispatchVarsModal",
     ):
         assert f"function {fn}(" in PANELS_JS, f"{fn} not defined in panels.js"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Phase 1.2: crew templates gallery -- search/filter + last-dispatched
+# recency sort. Deliberately does NOT touch dispatchKanbanCrew()'s body, the
+# {variable} collection dialog, or the create/edit form (see the plan's
+# "Deliberately not touched" note -- another agent owns that code path
+# concurrently).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_crews_search_input_present_and_wired():
+    assert 'id="kanbanCrewsSearch"' in INDEX_HTML
+    match = re.search(r'<input[^>]+id="kanbanCrewsSearch"[^>]*>', INDEX_HTML, re.S)
+    assert match, "Crews modal must expose a search input"
+    tag = match.group(0)
+    assert 'oninput="filterKanbanCrews()"' in tag
+    assert 'data-i18n-placeholder="kanban_crews_search_placeholder"' in tag
+    # Sits above the list inside the Crews modal, reusing the shared
+    # .sidebar-search component (same one #kanbanSearch/#agentsSearch use)
+    # rather than a new search-box implementation.
+    modal_idx = INDEX_HTML.index('id="kanbanCrewsModal"')
+    search_idx = INDEX_HTML.index('id="kanbanCrewsSearch"')
+    list_idx = INDEX_HTML.index('id="kanbanCrewList"')
+    assert modal_idx < search_idx < list_idx
+    assert "sidebar-search" in INDEX_HTML[search_idx - 400:search_idx]
+
+
+def test_filter_and_sort_panels_js_functions_present():
+    for fn in ("filterKanbanCrews", "_kanbanFilterCrews", "_kanbanSortCrews"):
+        assert f"function {fn}(" in PANELS_JS, f"{fn} not defined in panels.js"
+    # filterKanbanCrews mirrors filterAgentDefinitions()'s call-render-again
+    # pattern rather than re-implementing filtering inline at the call site.
+    idx = PANELS_JS.index("function filterKanbanCrews(")
+    end = PANELS_JS.index("\n}", idx)
+    assert "_renderKanbanCrewList()" in PANELS_JS[idx:end]
+    # _renderKanbanCrewList must actually read the search box and use both
+    # new pure helpers, not duplicate their logic inline.
+    render_idx = PANELS_JS.index("function _renderKanbanCrewList(")
+    render_end = PANELS_JS.index("\n}", render_idx)
+    render_body = PANELS_JS[render_idx:render_end]
+    assert "kanbanCrewsSearch" in render_body
+    assert "_kanbanFilterCrews(" in render_body
+    assert "_kanbanSortCrews(" in render_body
+
+
+def test_card_reuses_shared_relative_time_formatter_not_a_copy():
+    """The last-dispatched meta line must reuse
+    _formatRelativeSessionTime() (static/sessions.js) rather than a second
+    relative-time formatter (GUIDELINES rule 8)."""
+    idx = PANELS_JS.index("function _kanbanCrewCard(crew)")
+    end = PANELS_JS.index("\n}", idx)
+    body = PANELS_JS[idx:end]
+    assert "crew.last_dispatched_at" in body
+    assert "_formatRelativeSessionTime(" in body
+    assert "kanban_crew_last_dispatched" in body
+    assert "kanban_crew_never_dispatched" in body
+
+
+def test_backend_last_dispatched_field_present():
+    assert "last_dispatched_at" in CREWS_PY
+    assert "def _touch_crew_dispatched(" in CREWS_PY
+
+
+def _run_node_script(js_body: str) -> None:
+    proc = subprocess.run(["node", "-e", js_body], cwd=REPO, capture_output=True, text=True)
+    assert proc.returncode == 0, f"node script failed:\nstdout={proc.stdout}\nstderr={proc.stderr}"
+
+
+def test_filter_and_sort_behavior_real_execution():
+    """Executes the real _kanbanFilterCrews()/_kanbanSortCrews() extracted
+    from static/panels.js (pure functions, no DOM) against synthetic crew
+    lists -- not a source-string proxy."""
+    script = textwrap.dedent(
+        f"""
+        const fs = require('fs');
+        const assert = require('assert');
+        const src = fs.readFileSync({json.dumps(str(REPO / "static" / "panels.js"))}, 'utf8');
+
+        function extractFunction(name) {{
+          const marker = 'function ' + name;
+          const start = src.indexOf(marker);
+          if (start < 0) throw new Error('missing function ' + name);
+          const brace = src.indexOf('{{', start);
+          let depth = 1;
+          let i = brace + 1;
+          while (depth && i < src.length) {{
+            if (src[i] === '{{') depth += 1;
+            else if (src[i] === '}}') depth -= 1;
+            i += 1;
+          }}
+          return src.slice(start, i);
+        }}
+
+        eval(extractFunction('_kanbanFilterCrews'));
+        eval(extractFunction('_kanbanSortCrews'));
+
+        const crews = [
+          {{id: 'a', name: 'Research crew', description: 'Market angles', created_at: 10, last_dispatched_at: null}},
+          {{id: 'b', name: 'Deploy crew', description: 'Ship it', created_at: 20, last_dispatched_at: 500}},
+          {{id: 'c', name: 'Review crew', description: 'Research follow-up', created_at: 30, last_dispatched_at: null}},
+          {{id: 'd', name: 'Ops crew', description: '', created_at: 5, last_dispatched_at: 900}},
+        ];
+
+        // Case-insensitive substring match against name OR description.
+        assert.deepStrictEqual(
+          _kanbanFilterCrews(crews, 'research').map(c => c.id).sort(),
+          ['a', 'c']
+        );
+        assert.deepStrictEqual(
+          _kanbanFilterCrews(crews, 'DEPLOY').map(c => c.id),
+          ['b']
+        );
+        // Empty/whitespace query returns everything, unfiltered, same order.
+        assert.deepStrictEqual(_kanbanFilterCrews(crews, '').map(c => c.id), ['a', 'b', 'c', 'd']);
+        assert.deepStrictEqual(_kanbanFilterCrews(crews, '   ').map(c => c.id), ['a', 'b', 'c', 'd']);
+        // No match.
+        assert.deepStrictEqual(_kanbanFilterCrews(crews, 'nonexistent'), []);
+
+        // Sort: last_dispatched_at descending, never-dispatched (null) last,
+        // tied by created_at descending.
+        assert.deepStrictEqual(
+          _kanbanSortCrews(crews).map(c => c.id),
+          ['d', 'b', 'c', 'a']
+        );
+
+        console.log('OK');
+        """
+    )
+    _run_node_script(script)
+
+
+def test_css_search_and_last_dispatched_use_theme_tokens():
+    idx = STYLE_CSS.index("/* Crews:")
+    block = STYLE_CSS[idx: idx + 3000]
+    assert ".kanban-crews-search" in block
+    assert ".kanban-crew-card-last-dispatched" in block
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block)
