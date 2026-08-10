@@ -3301,6 +3301,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     window._showPreviousMessagingSessions=!!s.show_previous_messaging_sessions;
     window._soundEnabled=!!s.sound_enabled;
     window._notificationsEnabled=!!s.notifications_enabled;
+    window._tourCompleted=!!s.tour_completed;
     window._whatsNewSummaryEnabled=!!s.whats_new_summary_enabled;
     window._showThinking=s.show_thinking!==false;
     window._simplifiedToolCalling=true;
@@ -3713,6 +3714,13 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   await renderSessionList();
   await _workspaceListReady;
   await _onboardingReady;
+  // Guided UI tour (Priority 3, distinct from the setup wizard above) --
+  // offered once ever, gated by window._tourCompleted (mirrored from
+  // settings just below). Deliberately runs regardless of whether the
+  // wizard itself ran this boot, was already complete, or was skipped --
+  // "orient me in the UI" is a separate signal from "I don't want to
+  // configure a provider right now."
+  if(typeof _maybeAutoStartAppTour==='function') _maybeAutoStartAppTour();
   _initResizePanels();
   // Workspace panel restore happens AFTER loadSession so we know if
   // the session has a workspace — prevents the snap-open-then-closed flash (#576).

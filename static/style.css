@@ -1936,6 +1936,19 @@
   .onboarding-oauth-pending .onboarding-oauth-icon{color:#c9a84c;}
   .onboarding-actions{display:flex;justify-content:space-between;gap:10px;margin-top:auto;}
   .onboarding-actions .sm-btn{padding:10px 16px;}
+  /* App tour (Priority 3) — spotlight-and-tooltip guided walkthrough, distinct
+     from the onboarding wizard above. Backdrop/spotlight dim intentionally
+     matches the existing hardcoded-rgba overlay convention used by
+     .onboarding-overlay/.app-dialog-overlay (not a deviation); the tooltip
+     card itself is theme-token only. */
+  .app-tour-overlay{position:fixed;inset:0;z-index:1150;display:none;background:rgba(7,12,19,.6);}
+  .app-tour-spotlight{position:fixed;display:none;border-radius:12px;pointer-events:none;box-shadow:0 0 0 3px var(--accent-bg-strong),0 0 24px 2px var(--accent-bg-strong);transition:top .18s ease,left .18s ease,width .18s ease,height .18s ease;}
+  .app-tour-card{position:fixed;z-index:1;width:min(320px,calc(100vw - 32px));border:1px solid var(--accent-bg-strong);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,rgba(20,30,44,.98),rgba(11,17,27,.98));box-shadow:0 24px 60px rgba(0,0,0,.4);color:var(--text);}
+  .app-tour-counter{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+  .app-tour-title{font-size:15px;font-weight:700;color:var(--text);margin:0 0 8px;}
+  .app-tour-body{font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 16px;}
+  .app-tour-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .app-tour-actions .sm-btn{padding:8px 14px;}
   .reconnect-banner{display:none;background:var(--surface);border:1px solid var(--accent-bg-strong);border-radius:10px;padding:10px 16px;margin:10px auto;max-width:780px;font-size:13px;color:var(--accent-text);display:none;align-items:center;justify-content:space-between;gap:12px;}
   .reconnect-banner.visible{display:flex;}
   .reconnect-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--accent-bg-strong);border:1px solid var(--accent-bg-strong);color:var(--accent-text);cursor:pointer;}
@@ -3293,6 +3306,9 @@
     .onboarding-main{padding:20px 18px 18px;}
     .onboarding-actions{flex-direction:column-reverse;}
     .onboarding-actions .sm-btn{width:100%;min-height:44px;}
+    .app-tour-card{width:calc(100vw - 24px);left:12px!important;padding:16px;}
+    .app-tour-actions{flex-direction:column-reverse;gap:8px;}
+    .app-tour-actions .sm-btn{width:100%;min-height:44px;}
     /* Login page responsive */
     .card{width:90vw;max-width:320px;padding:28px 24px;}
   }
