@@ -24,6 +24,7 @@ RUN apt-get update -y --fix-missing --no-install-recommends \
     curl \
     rsync \
     openssh-client \
+    sshfs \
     git \
     xz-utils \
     && apt-get upgrade -y \

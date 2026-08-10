@@ -1202,6 +1202,7 @@ class Session:
                  input_tokens: int=0, output_tokens: int=0, estimated_cost=None,
                  cache_read_tokens: int=0, cache_write_tokens: int=0,
                  personality=None,
+                 agent_definition_id: str=None,
                  active_stream_id: str=None,
                  pending_user_message: str=None,
                  pending_attachments=None,
@@ -1287,6 +1288,7 @@ class Session:
         self.cache_read_tokens = cache_read_tokens or 0
         self.cache_write_tokens = cache_write_tokens or 0
         self.personality = personality
+        self.agent_definition_id = agent_definition_id
         self.active_stream_id = active_stream_id
         self.pending_user_message = pending_user_message
         self.pending_attachments = pending_attachments or []
@@ -1397,7 +1399,7 @@ class Session:
             'pinned', 'archived', 'project_id', 'profile',
             'input_tokens', 'output_tokens', 'estimated_cost',
             'cache_read_tokens', 'cache_write_tokens',
-            'personality', 'active_stream_id',
+            'personality', 'agent_definition_id', 'active_stream_id',
             'pending_user_message', 'pending_attachments', 'pending_started_at', 'pending_user_source',
             'compression_anchor_visible_idx', 'compression_anchor_message_key',
             'compression_anchor_summary', 'pre_compression_snapshot',
@@ -1755,6 +1757,7 @@ class Session:
             'cache_write_tokens': self.cache_write_tokens,
             'cache_hit_percent': prompt_cache_hit_percent(self.cache_read_tokens, self.input_tokens),
             'personality': self.personality,
+            'agent_definition_id': self.agent_definition_id,
             'compression_anchor_visible_idx': self.compression_anchor_visible_idx,
             'compression_anchor_message_key': self.compression_anchor_message_key,
             'compression_anchor_summary': self.compression_anchor_summary,

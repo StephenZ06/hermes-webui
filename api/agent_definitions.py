@@ -156,6 +156,20 @@ def list_definitions() -> dict:
     }
 
 
+def get_definition(def_id: str) -> dict | None:
+    """Look up a single persona (built-in or custom) by id, or None."""
+    def_id = str(def_id or "").strip()
+    if not def_id:
+        return None
+    for d in BUILTIN_DEFINITIONS:
+        if d.get("id") == def_id:
+            return d
+    for d in _load_custom_definitions():
+        if d.get("id") == def_id:
+            return d
+    return None
+
+
 def create_definition(body: dict) -> dict:
     name = str(body.get("name") or "").strip()[:NAME_MAX]
     if not name:

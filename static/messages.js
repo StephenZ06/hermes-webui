@@ -6190,6 +6190,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           if(typeof _oldestIdx!=='undefined')_oldestIdx=d.session._messages_offset||0;
           S.messages=_filterRecoveryControlMessages(S.messages || []);
           if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+          if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
           if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
           if(S.session&&S.session.session_id){
             try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
@@ -6869,6 +6870,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         _attachProjectedAnchorSceneToLastAssistant(_nextMsgs3018);
         S.messages=_carryForwardEphemeralTurnFields(S.messages||[], _nextMsgs3018);
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+        if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
         clearLiveToolCards();if(!assistantText)removeThinking();
         _markSessionViewed(activeSid, sessionPayload.message_count ?? S.messages.length);
         renderMessages({preserveScroll:true});
@@ -7034,6 +7036,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         S.messages=_filterRecoveryControlMessages(_resolvedMessages || []);
         _attachProjectedAnchorSceneToLastAssistant(S.messages);
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+        if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
         if(S.session&&S.session.session_id){
           try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
           if(typeof _setActiveSessionUrl==='function') _setActiveSessionUrl(S.session.session_id);

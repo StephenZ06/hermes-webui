@@ -14177,6 +14177,10 @@ def handle_get(handler, parsed) -> bool:
         from api import agent_definitions
         return j(handler, agent_definitions.list_definitions())
 
+    if parsed.path == "/api/crews":
+        from api import crews
+        return j(handler, crews.list_crews())
+
     if parsed.path == "/api/session/export":
         return _handle_session_export(handler, parsed)
 
@@ -14608,9 +14612,39 @@ def handle_get(handler, parsed) -> bool:
             data["linked_files"] = {}
         return j(handler, data)
 
+    if parsed.path == "/api/skills/scan":
+        # Static-analysis security scan for an already-installed skill (v1
+        # scope: scan-only, no marketplace/install path — see
+        # docs/HERMES_STUDIO_PARITY_PLAN.md, Security scanner section).
+        qs = parse_qs(parsed.query)
+        name = qs.get("name", [""])[0]
+        if not name:
+            return bad(handler, "name is required", 400)
+        skills_dir = _active_skills_dir()
+        skill_dir, _skill_md = _find_skill_in_dirs(name, _active_skill_search_dirs(skills_dir))
+        if not skill_dir:
+            return bad(handler, "Skill not found", 404)
+        try:
+            from api.skills_hub_bridge import scan_installed_skill
+
+            return j(handler, scan_installed_skill(skill_dir))
+        except ImportError:
+            return bad(
+                handler,
+                "Security scanner unavailable (hermes-agent source not mounted)",
+                501,
+            )
+        except Exception as exc:
+            logger.exception("Skill scan failed for %s", name)
+            return bad(handler, _sanitize_error(exc), 500)
+
     # ── Memory API (GET) ──
     if parsed.path == "/api/memory":
         return _handle_memory_read(handler, parsed)
+
+    # ── Audit trail (GET) ──
+    if parsed.path == "/api/audit":
+        return _handle_audit_trail_read(handler, parsed)
 
     # ── Profile API (GET) ──
     if parsed.path == "/api/profiles":
@@ -15177,6 +15211,95 @@ def handle_post(handler, parsed) -> bool:
         except ValueError as e:
             return bad(handler, str(e))
         return j(handler, {"ok": True, "definition": definition})
+
+    if parsed.path == "/api/crews/create":
+        from api import crews
+        try:
+            crew = crews.create_crew(body)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "crew": crew})
+
+    if parsed.path == "/api/crews/update":
+        from api import crews
+        try:
+            crew = crews.update_crew(body)
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "crew": crew})
+
+    if parsed.path == "/api/crews/delete":
+        from api import crews
+        try:
+            crews.delete_crew(body.get("id"))
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True})
+
+    if parsed.path == "/api/crews/duplicate":
+        from api import crews
+        try:
+            crew = crews.duplicate_crew(body.get("id"))
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        return j(handler, {"ok": True, "crew": crew})
+
+    _CREWS_DISPATCH_PREFIX = "/api/crews/"
+    if parsed.path.startswith(_CREWS_DISPATCH_PREFIX) and parsed.path.endswith("/dispatch"):
+        # Deliberately does NOT call kanban_bridge's dispatcher/dispatch_once
+        # -- this only bulk-CREATES the crew's tasks (staged `ready`), same
+        # explicit-confirm-then-separate-Run-Dispatcher-click pattern as
+        # runKanbanDispatcher (docs/HERMES_STUDIO_PARITY_PLAN.md, Phase 1).
+        from api import crews
+        crew_id = unquote(parsed.path[len(_CREWS_DISPATCH_PREFIX):-len("/dispatch")]).strip("/")
+        try:
+            result = crews.dispatch_crew(crew_id, body)
+        except KeyError as e:
+            return bad(handler, str(e), status=404)
+        except ValueError as e:
+            return bad(handler, str(e))
+        except ImportError as e:
+            return bad(handler, f"kanban unavailable: {e}", status=503)
+        return j(handler, result)
+
+    if parsed.path == "/api/agent-definitions/apply":
+        # Apply (or clear) a Persona's system_prompt onto a live session.
+        # Mirrors /api/personality/set: resolve, persist on the session under
+        # the session lock, and let streaming.py's _webui_ephemeral_system_prompt()
+        # chokepoint pick it up on the next turn (docs/HERMES_STUDIO_PARITY_PLAN.md).
+        try:
+            require(body, "session_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        sid = body["session_id"]
+        if _session_is_subagent_view_only(sid):
+            return bad(handler, "Subagent sessions are view-only and cannot be modified from WebUI", 400)
+        def_id = str(body.get("id") or "").strip()
+        try:
+            s = get_session(sid)
+            s = _ensure_full_session_before_mutation(sid, s)
+        except KeyError:
+            return bad(handler, "Session not found", 404)
+        definition = None
+        if def_id:
+            from api import agent_definitions
+            definition = agent_definitions.get_definition(def_id)
+            if definition is None:
+                return bad(handler, "Persona not found", 404)
+        with _get_session_agent_lock(sid):
+            s.agent_definition_id = def_id if def_id else None
+            s.save()
+        return j(handler, {
+            "ok": True,
+            "agent_definition_id": s.agent_definition_id,
+            "definition": definition,
+        })
 
     if parsed.path == "/api/share/create":
         sid = str(body.get("session_id") or "").strip()
@@ -16638,6 +16761,12 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/memory/write":
         return _handle_memory_write(handler, body)
 
+    if parsed.path == "/api/memory/entry/delete":
+        return _handle_memory_entry_delete(handler, body)
+
+    if parsed.path == "/api/memory/entry/append":
+        return _handle_memory_entry_append(handler, body)
+
     if parsed.path in {"/api/gateway/start", "/api/gateway/stop", "/api/gateway/restart"}:
         return _handle_gateway_lifecycle(handler, parsed.path.rsplit("/", 1)[-1], body)
 
@@ -16708,6 +16837,7 @@ def handle_post(handler, parsed) -> bool:
         api_key = body.get("api_key", "").strip() if body.get("api_key") else None
         default_model = body.get("default_model", "").strip() if body.get("default_model") else None
         model_provider = body.get("model_provider", "").strip() if body.get("model_provider") else None
+        reasoning_effort = body.get("reasoning_effort", "").strip() if body.get("reasoning_effort") else None
         if base_url and not base_url.startswith(("http://", "https://")):
             return bad(handler, "base_url must start with http:// or https://")
         try:
@@ -16721,6 +16851,7 @@ def handle_post(handler, parsed) -> bool:
                 api_key=api_key,
                 default_model=default_model,
                 model_provider=model_provider,
+                reasoning_effort=reasoning_effort,
             )
             return j(handler, {"ok": True, "profile": result})
         except PermissionError as e:
@@ -28167,6 +28298,167 @@ def _handle_memory_write(handler, body):
             403,
         )
     return j(handler, {"ok": True, "section": section, "path": str(target)})
+
+
+_MEMORY_ENTRY_DELIM_RE = re.compile(r"\n§\n")
+
+
+def _split_memory_entries(content: str) -> list[str]:
+    """Split MEMORY.md's flat `§`-delimited entry format into a list of entries.
+
+    Trims each entry and drops empty ones (e.g. a stray leading/trailing
+    delimiter). Order is preserved — callers address entries by index into
+    this list.
+    """
+    if not content or not content.strip():
+        return []
+    return [e.strip() for e in _MEMORY_ENTRY_DELIM_RE.split(content) if e.strip()]
+
+
+def _join_memory_entries(entries: list[str]) -> str:
+    return "\n§\n".join(entries)
+
+
+def _resolve_memory_entry_target(handler, section: str):
+    """Resolve section -> (target Path, error-response-or-None).
+
+    Entry-level delete/append are scope-limited to "memory" (MEMORY.md) —
+    the only section confirmed to actually use the `§`-delimited format.
+    Mirrors _handle_memory_write's path resolution and memory_enabled gate,
+    kept as a separate small helper rather than refactoring the existing
+    write handler to share it, to avoid touching a working code path.
+    """
+    if section != "memory":
+        return None, bad(handler, 'section must be "memory"')
+    cfg = get_config_snapshot()
+    mem = cfg.get("memory") if isinstance(cfg, dict) else None
+    mem_cfg = mem if isinstance(mem, dict) else {}
+    if not _webui_truthy(mem_cfg.get("memory_enabled", True)):
+        return None, bad(handler, "Memory is disabled by configuration (memory_enabled: false)", 403)
+    try:
+        from api.profiles import get_active_hermes_home
+
+        home = get_active_hermes_home()
+    except ImportError:
+        home = Path.home() / ".hermes"
+    mem_dir = home / "memories"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    target = mem_dir / "MEMORY.md"
+    if target.is_symlink():
+        return None, bad(handler, "Cannot write to a symlinked memory file")
+    return target, None
+
+
+def _write_memory_entries(handler, target: Path, entries: list[str]):
+    try:
+        target.write_text(_join_memory_entries(entries), encoding="utf-8")
+    except OSError as exc:
+        if not isinstance(exc, PermissionError) and getattr(exc, "errno", None) != errno.EROFS:
+            raise
+        mode_hint = ""
+        try:
+            mode_hint = f" (mode {target.stat().st_mode & 0o777:o})"
+        except OSError:
+            pass
+        return bad(
+            handler,
+            (
+                f"{target.name} is not writable{mode_hint}: {target}. "
+                "Run chmod 644 on the file or fix ownership on the shared volume."
+            ),
+            403,
+        )
+    return None
+
+
+def _handle_memory_entry_delete(handler, body):
+    """Delete one `§`-delimited entry from MEMORY.md by index.
+
+    Operates entirely server-side on the RAW file — never on the redacted
+    text GET /api/memory sends the client for display. Round-tripping that
+    redacted text back through a write would permanently replace a real
+    credential/secret in the entry with a "[REDACTED]" placeholder (see
+    _redact_text in api/helpers.py). Redaction never changes entry count or
+    order (it only substrings-replace within an entry's text), so an index
+    computed from the client's redacted display still addresses the correct
+    raw entry here.
+    """
+    try:
+        require(body, "section", "index")
+    except ValueError as e:
+        return bad(handler, str(e))
+    section = body["section"]
+    try:
+        index = int(body["index"])
+    except (TypeError, ValueError):
+        return bad(handler, "index must be an integer")
+    target, err = _resolve_memory_entry_target(handler, section)
+    if err is not None:
+        return err
+    content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+    entries = _split_memory_entries(content)
+    if index < 0 or index >= len(entries):
+        return bad(handler, f"No entry at index {index} ({len(entries)} entries)", 404)
+    del entries[index]
+    write_err = _write_memory_entries(handler, target, entries)
+    if write_err is not None:
+        return write_err
+    return j(handler, {"ok": True, "section": section, "entry_count": len(entries)})
+
+
+def _handle_memory_entry_append(handler, body):
+    """Append one new `§`-delimited entry to MEMORY.md.
+
+    Takes fresh content from the request body (never reconstructed from a
+    prior GET /api/memory response), so this has no redaction round-trip
+    risk by construction.
+    """
+    try:
+        require(body, "section", "content")
+    except ValueError as e:
+        return bad(handler, str(e))
+    section = body["section"]
+    text = str(body["content"] or "").strip()
+    if not text:
+        return bad(handler, "content is required")
+    if bool(body.get("is_correction")) and not text.upper().startswith("CORRECTION:"):
+        text = f"CORRECTION: {text}"
+    target, err = _resolve_memory_entry_target(handler, section)
+    if err is not None:
+        return err
+    content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+    entries = _split_memory_entries(content)
+    entries.append(text)
+    write_err = _write_memory_entries(handler, target, entries)
+    if write_err is not None:
+        return write_err
+    return j(handler, {"ok": True, "section": section, "entry_count": len(entries)})
+
+
+def _handle_audit_trail_read(handler, parsed):
+    """GET /api/audit -- browsable turn-submission history.
+
+    ``?session_id=<sid>`` returns every turn for that session (enriched with
+    a best-effort run_summary per turn). No ``session_id`` returns capped,
+    cross-session recent activity (turn-level status only, no run_summary --
+    see api.audit_trail.read_recent_audit_trail's docstring for why). See
+    docs/HERMES_STUDIO_PARITY_PLAN.md, "Priority 3 -- Audit Trail UI".
+    """
+    from api.audit_trail import read_recent_audit_trail, read_session_audit_trail
+
+    qs = parse_qs(parsed.query)
+    session_id = (qs.get("session_id", [""])[0] or "").strip()
+    if session_id:
+        if not (SESSION_DIR / f"{session_id}.json").exists():
+            return bad(handler, "Session not found", 404)
+        try:
+            entries = read_session_audit_trail(session_id, session_dir=SESSION_DIR)
+        except ValueError:
+            return bad(handler, "Invalid session_id")
+        return j(handler, {"entries": entries, "session_id": session_id})
+    limit = qs.get("limit", [None])[0]
+    entries = read_recent_audit_trail(session_dir=SESSION_DIR, limit=limit)
+    return j(handler, {"entries": entries})
 
 
 def _normalize_message_for_import_refresh(message: object) -> object:

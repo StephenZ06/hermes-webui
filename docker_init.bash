@@ -253,6 +253,28 @@ if [ "A${whoami}" == "Aroot" ]; then
 
   chown_home_hermeswebui || error_exit "Failed to set owner of /home/hermeswebui"
 
+  # Optional: mount one additional remote workspace via sshfs before dropping
+  # privileges, for deployments where the WebUI container needs a host outside
+  # its own filesystem (e.g. a second machine's project folder). Opt-in only —
+  # no-op unless HERMES_WEBUI_SSHFS_REMOTE/_TARGET are both set. Requires the
+  # container to run with --cap-add SYS_ADMIN --device /dev/fuse.
+  if [ -n "${HERMES_WEBUI_SSHFS_REMOTE+x}" ] && [ -n "${HERMES_WEBUI_SSHFS_TARGET+x}" ]; then
+    echo ""; echo "-- Mounting remote workspace: ${HERMES_WEBUI_SSHFS_REMOTE} -> ${HERMES_WEBUI_SSHFS_TARGET}"
+    if ! command -v sshfs >/dev/null 2>&1; then
+      echo "!! WARNING: HERMES_WEBUI_SSHFS_REMOTE is set but sshfs is not installed in this image — skipping"
+    else
+      mkdir -p "${HERMES_WEBUI_SSHFS_TARGET}"
+      if mountpoint -q "${HERMES_WEBUI_SSHFS_TARGET}" 2>/dev/null; then
+        echo "-- ${HERMES_WEBUI_SSHFS_TARGET} already mounted, skipping"
+      else
+        sshfs -o allow_other,IdentitiesOnly=yes,StrictHostKeyChecking=accept-new,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3${HERMES_WEBUI_SSHFS_KEY:+,IdentityFile=${HERMES_WEBUI_SSHFS_KEY}} \
+          "${HERMES_WEBUI_SSHFS_REMOTE}" "${HERMES_WEBUI_SSHFS_TARGET}" \
+          && echo "-- Mounted ${HERMES_WEBUI_SSHFS_REMOTE} at ${HERMES_WEBUI_SSHFS_TARGET}" \
+          || echo "!! WARNING: Failed to mount ${HERMES_WEBUI_SSHFS_REMOTE} at ${HERMES_WEBUI_SSHFS_TARGET} (continuing without it)"
+      fi
+    fi
+  fi
+
   echo ""; echo "-- Preparing /app for the hermeswebui runtime user"
   mkdir -p /app || error_exit "Failed to create /app directory"
   chown hermeswebui:hermeswebui /app || error_exit "Failed to set owner of /app to hermeswebui user"

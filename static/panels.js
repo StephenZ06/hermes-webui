@@ -12,6 +12,12 @@ let _kanbanLanesByProfile = true;
 let _kanbanCurrentBoard = null;
 let _kanbanBoardsList = null;
 let _kanbanBoardMenuOpen = false;
+// Crews (docs/HERMES_STUDIO_PARITY_PLAN.md, Phase 1): scopes the board/office
+// view to one just-dispatched crew's tasks. Same UX slot as the tenant/
+// assignee filters above, but with no dedicated <select> yet in Phase 1 --
+// set programmatically by dispatchKanbanCrew(); Phase 2 adds the filter
+// dropdown that lets a user pick it manually.
+let kanbanWorkflowTemplateFilter = '';
 let _kanbanIsDispatching = false;
 let _kanbanSuppressCardClickUntil = 0;
 // SSE event stream — replaces the 30s polling cadence with a long-lived
@@ -38,6 +44,9 @@ let _workspacePreFormDetail = null;
 let _currentProfileDetail = null; // full profile object
 let _profileMode = 'empty'; // 'empty' | 'read' | 'create'
 let _profilePreFormDetail = null;
+// Mirrors api.config.VALID_REASONING_EFFORTS plus 'none' (explicit off),
+// in the same order as the composer's own #composerReasoningDropdown options.
+const REASONING_EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 let _pendingSettingsTargetPanel = null; // destination selected while settings had unsaved changes
 let _logsAutoRefreshTimer = null;
 let _lastLogsLines = [];
@@ -47,9 +56,9 @@ let _logsSeverityFilter = 'all';
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills', agents: 'tab_agents',
   memory: 'tab_memory', workspaces: 'tab_workspaces',
-  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', settings: 'tab_settings',
+  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','tasks','kanban','workspaces','profiles','insights','logs','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -465,6 +474,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') await loadInsights();
   if (nextPanel === 'logs') await loadLogs();
+  if (nextPanel === 'audit') await loadAuditTrail();
   _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {
@@ -2140,7 +2150,7 @@ function _kanbanCurrentFilters(){
   const tenant = tenantEl ? (tenantEl.value || tenantEl.dataset.defaultValue || '') : '';
   const includeArchived = !!($('kanbanIncludeArchived') && $('kanbanIncludeArchived').checked);
   const onlyMine = !!($('kanbanOnlyMine') && $('kanbanOnlyMine').checked);
-  return {q, assignee, tenant, includeArchived, onlyMine};
+  return {q, assignee, tenant, includeArchived, onlyMine, workflowTemplateId: kanbanWorkflowTemplateFilter || ''};
 }
 
 function _kanbanApplyConfigDefaults(config){
@@ -2191,6 +2201,37 @@ function _kanbanSetSelectOptions(el, values, allLabelKey){
     .concat((values || []).map(v => `<option value="${esc(v)}">${esc(v)}</option>`));
   el.innerHTML = opts.join('');
   if ([...el.options].some(o => o.value === current)) el.value = current;
+}
+
+// Distinct workflow_template_id values actually present in the currently
+// loaded board's tasks -- NOT the full /api/crews list, so a crew with zero
+// currently-visible tasks doesn't show up as a filter option.
+function _kanbanCrewFilterIds(){
+  const columns = (_kanbanBoard && _kanbanBoard.columns) || [];
+  const ids = [];
+  const seen = new Set();
+  for (const col of columns) {
+    for (const task of (col.tasks || [])) {
+      const id = task.workflow_template_id;
+      if (id && !seen.has(id)) { seen.add(id); ids.push(id); }
+    }
+  }
+  return ids;
+}
+
+// Unlike _kanbanSetSelectOptions (value === label), each option's label here
+// is the crew's name (falling back to its raw id), so it isn't reused as-is.
+// kanbanWorkflowTemplateFilter -- not the <select> element -- stays the one
+// authoritative value (also set directly by dispatchKanbanCrew() and reset by
+// clearKanbanFilters()); this only re-syncs the visible option to match it.
+function _kanbanPopulateCrewFilter(){
+  const el = $('kanbanCrewFilter');
+  if (!el) return;
+  const ids = _kanbanCrewFilterIds();
+  const opts = [`<option value="">${esc(t('kanban_all_crews') || 'All crews')}</option>`]
+    .concat(ids.map(id => `<option value="${esc(id)}">${esc(_kanbanCrewName(id))}</option>`));
+  el.innerHTML = opts.join('');
+  el.value = ids.includes(kanbanWorkflowTemplateFilter) ? kanbanWorkflowTemplateFilter : '';
 }
 
 function _kanbanVisibleTasks(){
@@ -2555,14 +2596,26 @@ function clearKanbanFilters(){
   const s = $('kanbanSearch'); if (s) s.value = '';
   const a = $('kanbanAssigneeFilter'); if (a) { a.value = ''; a.dataset.defaultValue = ''; }
   const te = $('kanbanTenantFilter'); if (te) { te.value = ''; te.dataset.defaultValue = ''; }
+  const cf = $('kanbanCrewFilter'); if (cf) { cf.value = ''; cf.dataset.defaultValue = ''; }
   const ai = $('kanbanIncludeArchived'); if (ai) ai.checked = false;
   const om = $('kanbanOnlyMine'); if (om) om.checked = false;
+  kanbanWorkflowTemplateFilter = '';
   loadKanban(true);
 }
 
 function _kanbanRenderBoard(){
   const board = $('kanbanBoard');
   if (!board) return;
+  // Office view is a separate container toggled alongside the normal board;
+  // kept as an additive branch here (rather than touching each of this
+  // function's early-return paths) so it stays in sync for free with every
+  // existing call site — loadKanban's poll/SSE refresh, filterKanban, the
+  // lane-view toggle — without needing its own wiring at each one. The crew
+  // filter's option list is repopulated here for the same reason: it must
+  // track whatever board data is currently loaded, not a separately-triggered
+  // refresh.
+  if (typeof _kanbanRenderOfficeView === 'function') _kanbanRenderOfficeView();
+  _kanbanPopulateCrewFilter();
   if (!_kanbanBoard || !_kanbanBoard.columns) {
     board.innerHTML = _kanbanEmptyBoardHtml();
     return;
@@ -2596,6 +2649,141 @@ function _kanbanCard(task, status){
     <div class="kanban-card-meta">${assignee}${comments ? `<span class="kanban-card-metric">💬 ${comments}</span>` : ''}${linkTotal ? `<span class="kanban-card-metric">↔ ${linkTotal}</span>` : ''}${age ? `<span class="kanban-card-age">${esc(age)}</span>` : ''}</div>
     ${_kanbanCardQuickActions(task)}
   </article>`;
+}
+
+// ── Office view: a "mission control" grid of live Kanban-dispatched workers ──
+// Priority 2 (docs/HERMES_STUDIO_PARITY_PLAN.md, multi-agent orchestration).
+// Scope note: this visualizes Kanban-dispatched workers ONLY (task.worker_pid
+// set by hermes_cli.kanban_db.dispatch_once, which runs in-process inside
+// this same webui container). It deliberately does NOT show delegate_task
+// subagents — that live registry (tools/delegate_tool.py's _active_subagents)
+// lives inside the separate `hermes` container's process memory, which runs
+// from a pre-built nousresearch/hermes-agent image rather than the locally
+// mounted hermes-agent-src, so there is no reachable endpoint for it today.
+let _kanbanOfficeViewActive = false;
+const _kanbanOfficeExpanded = new Set(); // task ids with their log panel open
+const _kanbanOfficeLogCache = new Map(); // task id -> last-fetched log text, so a
+                                          // routine poll/SSE re-render doesn't
+                                          // blank an open log while refetching
+
+function toggleKanbanOfficeView(){
+  _kanbanOfficeViewActive = !_kanbanOfficeViewActive;
+  const btn = $('btnKanbanOfficeView');
+  if (btn) btn.setAttribute('aria-pressed', _kanbanOfficeViewActive ? 'true' : 'false');
+  const board = $('kanbanBoard');
+  const office = $('kanbanOfficeView');
+  if (board) board.style.display = _kanbanOfficeViewActive ? 'none' : '';
+  if (office) office.style.display = _kanbanOfficeViewActive ? '' : 'none';
+  _kanbanRenderOfficeView();
+}
+
+function _kanbanOfficeViewWorkers(){
+  // Returns crew-grouped worker sections rather than a flat list: an array of
+  // {templateId, workers} in first-seen order, with an untagged group
+  // (templateId: null, "Ungrouped" -- CLI-created or pre-Crews tasks) always
+  // last regardless of when its first worker appeared, so grouping stays
+  // stable across renders.
+  const columns = (_kanbanBoard && _kanbanBoard.columns) || [];
+  const workers = [];
+  for (const col of columns) {
+    for (const task of (col.tasks || [])) {
+      if (task.status === 'running' && task.worker_pid) workers.push(task);
+    }
+  }
+  const groups = new Map();
+  for (const task of workers) {
+    const key = task.workflow_template_id || null;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(task);
+  }
+  const ordered = [];
+  for (const [key, tasks] of groups) {
+    if (key !== null) ordered.push({templateId: key, workers: tasks});
+  }
+  if (groups.has(null)) ordered.push({templateId: null, workers: groups.get(null)});
+  return ordered;
+}
+
+function _kanbanOfficeCard(task){
+  const age = _kanbanTaskAge(task);
+  const assignee = task.assignee ? `@${esc(task.assignee)}` : esc(t('kanban_unassigned'));
+  const expanded = _kanbanOfficeExpanded.has(task.id);
+  const cachedLog = _kanbanOfficeLogCache.get(task.id);
+  const logInner = cachedLog !== undefined
+    ? (cachedLog ? `<pre class="kanban-office-log-pre">${esc(cachedLog)}</pre>` : `<div class="kanban-empty">${esc(t('kanban_empty') || 'Nothing here yet.')}</div>`)
+    : '';
+  return `<article class="kanban-office-card" data-office-task-id="${esc(task.id)}">
+    <div class="kanban-office-card-head">
+      <span class="kanban-office-pulse" aria-hidden="true"></span>
+      <span class="kanban-office-assignee">${assignee}</span>
+      ${age ? `<span class="kanban-office-age">${esc(age)}</span>` : ''}
+    </div>
+    <div class="kanban-office-title">${esc(_kanbanTaskTitle(task))}</div>
+    <button type="button" class="kanban-office-log-toggle" onclick="toggleKanbanOfficeLog('${esc(task.id)}')">${expanded ? esc(t('kanban_office_hide_log') || 'Hide log') : esc(t('kanban_office_view_log') || 'View log')}</button>
+    <div class="kanban-office-log" id="kanban-office-log-${esc(task.id)}" style="display:${expanded ? '' : 'none'}">${logInner}</div>
+  </article>`;
+}
+
+async function toggleKanbanOfficeLog(taskId){
+  if (_kanbanOfficeExpanded.has(taskId)) {
+    _kanbanOfficeExpanded.delete(taskId);
+    _kanbanRenderOfficeView();
+    return;
+  }
+  _kanbanOfficeExpanded.add(taskId);
+  _kanbanRenderOfficeView();
+  const logEl = document.getElementById('kanban-office-log-' + taskId);
+  if (logEl && _kanbanOfficeLogCache.get(taskId) === undefined) {
+    logEl.innerHTML = `<div class="kanban-office-log-loading">${esc(t('loading') || 'Loading…')}</div>`;
+  }
+  try {
+    const data = await api('/api/kanban/tasks/' + encodeURIComponent(taskId) + '/log' + _kanbanBoardQuery({tail: 8192}));
+    _kanbanOfficeLogCache.set(taskId, data.content || '');
+    if (_kanbanOfficeExpanded.has(taskId)) _kanbanRenderOfficeView();
+  } catch(e) {
+    const el = document.getElementById('kanban-office-log-' + taskId);
+    if (el) el.textContent = (t('error_prefix') || 'Error: ') + e.message;
+  }
+}
+
+// Crew name for a group header: looked up from the already-loaded /api/crews
+// list (loadKanbanCrews(), cached in _kanbanCrewsList) rather than a second
+// fetch mechanism. Falls back to the raw template id when the list hasn't
+// been loaded yet or the crew was since deleted.
+function _kanbanCrewName(templateId){
+  const crew = (_kanbanCrewsList || []).find(c => c.id === templateId);
+  return (crew && crew.name) ? crew.name : templateId;
+}
+
+let _kanbanCrewsListFetchInFlight = false;
+
+function _kanbanOfficeGroupHtml(group){
+  const label = group.templateId ? _kanbanCrewName(group.templateId) : (t('kanban_office_ungrouped') || 'Ungrouped');
+  return `<section class="kanban-office-group" data-office-group-id="${esc(group.templateId || '')}">
+    <h3 class="kanban-office-group-title">${esc(label)}</h3>
+    <div class="kanban-office-grid">${group.workers.map(_kanbanOfficeCard).join('')}</div>
+  </section>`;
+}
+
+function _kanbanRenderOfficeView(){
+  const container = $('kanbanOfficeView');
+  if (!container || !_kanbanOfficeViewActive) return;
+  const groups = _kanbanOfficeViewWorkers();
+  const workers = groups.flatMap(g => g.workers);
+  const liveIds = new Set(workers.map(w => w.id));
+  for (const id of Array.from(_kanbanOfficeExpanded)) if (!liveIds.has(id)) _kanbanOfficeExpanded.delete(id);
+  if (!workers.length) {
+    container.innerHTML = `<div class="kanban-office-empty">${esc(t('kanban_office_empty') || 'No workers currently running. Dispatch Ready tasks to see them here.')}</div>`;
+    return;
+  }
+  // Lazily fetch crew names once (not on every render) so group headers can
+  // show a crew's name instead of its raw id; reuses loadKanbanCrews() --
+  // the same function the Crews modal uses -- rather than a parallel fetch.
+  if (_kanbanCrewsList === null && !_kanbanCrewsListFetchInFlight) {
+    _kanbanCrewsListFetchInFlight = true;
+    loadKanbanCrews().then(() => { _kanbanCrewsListFetchInFlight = false; _kanbanRenderOfficeView(); });
+  }
+  container.innerHTML = groups.map(_kanbanOfficeGroupHtml).join('');
 }
 
 async function hardRefreshWebUIClient(){
@@ -2725,6 +2913,7 @@ async function loadKanban(animate){
     if (filters.tenant) params.set('tenant', filters.tenant);
     if (filters.includeArchived) params.set('include_archived', '1');
     if (filters.onlyMine) params.set('only_mine', '1');
+    if (filters.workflowTemplateId) params.set('workflow_template_id', filters.workflowTemplateId);
     if (_kanbanCurrentBoard) params.set('board', _kanbanCurrentBoard);
     const path = '/api/kanban/board' + (params.toString() ? '?' + params.toString() : '');
     const data = await api(path);
@@ -2976,6 +3165,400 @@ function _kanbanFormatDispatchResult(result, dryRun){
   if (timedOut) parts.push(timedOut + ' ' + (t('kanban_dispatch_timed_out') || 'timed out'));
   if (crashed) parts.push(crashed + ' ' + (t('kanban_dispatch_crashed') || 'crashed'));
   return verb + ' ' + parts.join(', ');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Crews (multi-agent dispatch templates) -- docs/HERMES_STUDIO_PARITY_PLAN.md,
+// "Multi-agent orchestration (Crews + Conductor)" -> Phase 1.
+//
+// Additive UI *inside* the existing Kanban panel (no new nav tab, no new
+// MAIN_VIEW_PANELS entry) -- the same `.kanban-modal-overlay` shell as
+// openKanbanCreateBoard()/openKanbanCreate() so it looks and behaves like the
+// rest of Kanban's modals. A crew is a named, ordered list of Kanban task
+// specs; dispatching one bulk-CREATEs those tasks (tagged with a shared
+// workflow_template_id/current_step_key) -- it deliberately does NOT call the
+// dispatcher/dispatch_once, matching runKanbanDispatcher's separate
+// explicit-confirm-then-click pattern for anything that spawns/queues actual
+// worker subprocesses.
+// ────────────────────────────────────────────────────────────────────────────
+
+let _kanbanCrewsList = null;          // cached list from GET /api/crews
+let _kanbanCrewDispatchVarsModalFocusCleanup = null;
+let _kanbanCrewDispatchVarsResolve = null; // pending Promise resolver for the open vars dialog
+let _kanbanCrewFormMode = 'create';   // 'create' | 'edit'
+let _kanbanCrewFormEditingId = null;
+let _kanbanCrewFormTaskSeq = 0;       // monotonic id source for dynamic task rows
+let _kanbanCrewsModalFocusCleanup = null;
+let _kanbanCrewFormModalFocusCleanup = null;
+
+async function openKanbanCrews(){
+  if (typeof switchPanel === 'function' && _currentPanel !== 'kanban') switchPanel('kanban');
+  const modal = document.getElementById('kanbanCrewsModal');
+  if (!modal) return;
+  modal.hidden = false;
+  if (_kanbanCrewsModalFocusCleanup) { _kanbanCrewsModalFocusCleanup(); _kanbanCrewsModalFocusCleanup = null; }
+  _kanbanCrewsModalFocusCleanup = _trapModalFocus(modal);
+  document.addEventListener('keydown', _kanbanCrewsModalEsc);
+  await loadKanbanCrews();
+}
+
+function _kanbanCrewsModalEsc(ev){ if (ev.key === 'Escape') closeKanbanCrewsModal(); }
+
+function closeKanbanCrewsModal(){
+  const modal = document.getElementById('kanbanCrewsModal');
+  if (modal) modal.hidden = true;
+  if (_kanbanCrewsModalFocusCleanup) { _kanbanCrewsModalFocusCleanup(); _kanbanCrewsModalFocusCleanup = null; }
+  document.removeEventListener('keydown', _kanbanCrewsModalEsc);
+}
+
+async function loadKanbanCrews(){
+  const errEl = document.getElementById('kanbanCrewsModalError');
+  if (errEl) errEl.textContent = '';
+  try {
+    const data = await api('/api/crews');
+    _kanbanCrewsList = (data && Array.isArray(data.crews)) ? data.crews : [];
+    _renderKanbanCrewList();
+  } catch(e) {
+    if (errEl) errEl.textContent = (e && (e.message || e.error)) || String(e);
+    const listEl = document.getElementById('kanbanCrewList');
+    if (listEl) listEl.innerHTML = '';
+  }
+}
+
+function _renderKanbanCrewList(){
+  const listEl = document.getElementById('kanbanCrewList');
+  if (!listEl) return;
+  const crews = _kanbanCrewsList || [];
+  if (!crews.length) {
+    listEl.innerHTML = `<div class="kanban-empty">${esc(t('kanban_crews_empty') || 'No crews yet. Create one to bulk-dispatch a set of tasks together.')}</div>`;
+    return;
+  }
+  listEl.innerHTML = crews.map(_kanbanCrewCard).join('');
+}
+
+function _kanbanCrewCard(crew){
+  const icon = crew.icon ? esc(crew.icon) : '👥';
+  const taskCount = Array.isArray(crew.tasks) ? crew.tasks.length : 0;
+  const color = crew.color ? esc(crew.color) : 'var(--accent)';
+  const taskWord = taskCount === 1 ? (t('kanban_crew_task_singular') || 'task') : (t('kanban_crew_task_plural') || 'tasks');
+  return `<article class="kanban-crew-card" style="--kanban-crew-color:${color}" data-crew-id="${esc(crew.id)}">
+    <div class="kanban-crew-card-head">
+      <span class="kanban-crew-card-icon" aria-hidden="true">${icon}</span>
+      <span class="kanban-crew-card-name">${esc(crew.name || '')}</span>
+    </div>
+    ${crew.description ? `<div class="kanban-crew-card-desc">${esc(crew.description)}</div>` : ''}
+    <div class="kanban-crew-card-meta">${esc(String(taskCount))} ${esc(taskWord)}</div>
+    <div class="kanban-crew-card-actions">
+      <button type="button" class="btn primary" onclick="dispatchKanbanCrew('${esc(crew.id)}')" data-i18n="kanban_crew_dispatch">Dispatch</button>
+      <button type="button" class="btn secondary" onclick="openKanbanCrewForm('${esc(crew.id)}')" data-i18n="edit">Edit</button>
+      <button type="button" class="btn secondary" onclick="duplicateKanbanCrew('${esc(crew.id)}')" data-i18n="kanban_crew_duplicate">Duplicate</button>
+      <button type="button" class="btn danger" onclick="deleteKanbanCrew('${esc(crew.id)}')" data-i18n="delete_title">Delete</button>
+    </div>
+  </article>`;
+}
+
+async function openKanbanCrewForm(crewId){
+  const modal = document.getElementById('kanbanCrewFormModal');
+  if (!modal) return;
+  const errEl = document.getElementById('kanbanCrewFormError');
+  if (errEl) errEl.textContent = '';
+  const tasksContainer = document.getElementById('kanbanCrewFormTasks');
+  if (tasksContainer) tasksContainer.innerHTML = '';
+  _kanbanCrewFormTaskSeq = 0;
+  if (crewId) {
+    const crew = (_kanbanCrewsList || []).find(c => c.id === crewId) || null;
+    _kanbanCrewFormMode = 'edit';
+    _kanbanCrewFormEditingId = crewId;
+    document.getElementById('kanbanCrewFormModalTitle').textContent = (t('edit') || 'Edit') + (crew && crew.name ? ': ' + crew.name : '');
+    document.getElementById('kanbanCrewFormId').value = crewId;
+    document.getElementById('kanbanCrewFormName').value = (crew && crew.name) || '';
+    document.getElementById('kanbanCrewFormIcon').value = (crew && crew.icon) || '';
+    document.getElementById('kanbanCrewFormColor').value = (crew && crew.color) || '#7cb9ff';
+    document.getElementById('kanbanCrewFormDescription').value = (crew && crew.description) || '';
+    const tasks = (crew && Array.isArray(crew.tasks) && crew.tasks.length) ? crew.tasks : [{}];
+    for (const taskSpec of tasks) await _kanbanAddCrewTaskRow(taskSpec);
+  } else {
+    _kanbanCrewFormMode = 'create';
+    _kanbanCrewFormEditingId = null;
+    document.getElementById('kanbanCrewFormModalTitle').textContent = t('kanban_new_crew') || 'New crew';
+    document.getElementById('kanbanCrewFormId').value = '';
+    document.getElementById('kanbanCrewFormName').value = '';
+    document.getElementById('kanbanCrewFormIcon').value = '';
+    document.getElementById('kanbanCrewFormColor').value = '#7cb9ff';
+    document.getElementById('kanbanCrewFormDescription').value = '';
+    await _kanbanAddCrewTaskRow({});
+  }
+  modal.hidden = false;
+  if (_kanbanCrewFormModalFocusCleanup) { _kanbanCrewFormModalFocusCleanup(); _kanbanCrewFormModalFocusCleanup = null; }
+  _kanbanCrewFormModalFocusCleanup = _trapModalFocus(modal);
+  document.addEventListener('keydown', _kanbanCrewFormModalEsc);
+  setTimeout(() => { const el = document.getElementById('kanbanCrewFormName'); if (el) el.focus(); }, 50);
+}
+
+function _kanbanCrewFormModalEsc(ev){ if (ev.key === 'Escape') closeKanbanCrewFormModal(); }
+
+function closeKanbanCrewFormModal(){
+  const modal = document.getElementById('kanbanCrewFormModal');
+  if (modal) modal.hidden = true;
+  if (_kanbanCrewFormModalFocusCleanup) { _kanbanCrewFormModalFocusCleanup(); _kanbanCrewFormModalFocusCleanup = null; }
+  document.removeEventListener('keydown', _kanbanCrewFormModalEsc);
+}
+
+async function _kanbanAddCrewTaskRow(taskSpec){
+  const container = document.getElementById('kanbanCrewFormTasks');
+  if (!container) return;
+  const rowId = 'kanbanCrewTaskRow' + (_kanbanCrewFormTaskSeq++);
+  const spec = taskSpec || {};
+  const row = document.createElement('div');
+  row.className = 'kanban-crew-task-row';
+  row.id = rowId;
+  row.innerHTML = `
+    <div class="kanban-modal-row">
+      <label data-i18n="kanban_crew_task_title">Title</label>
+      <input type="text" class="kanban-crew-task-title" maxlength="200" value="${esc(spec.title || '')}" data-i18n-placeholder="kanban_crew_task_title_placeholder" placeholder="Task title — supports {variable} placeholders">
+    </div>
+    <div class="kanban-modal-row">
+      <label data-i18n="kanban_crew_task_body">Description</label>
+      <textarea class="kanban-crew-task-body" maxlength="4000">${esc(spec.body || '')}</textarea>
+    </div>
+    <div class="kanban-modal-row-inline">
+      <div class="kanban-modal-row">
+        <label data-i18n="kanban_crew_task_assignee">Assignee</label>
+        <select class="kanban-crew-task-assignee" id="${rowId}-assignee"></select>
+      </div>
+      <div class="kanban-modal-row">
+        <label data-i18n="kanban_crew_task_priority">Priority</label>
+        <input type="number" class="kanban-crew-task-priority" value="${Number(spec.priority || 0)}" min="-100" max="100" step="1">
+      </div>
+    </div>
+    <div class="kanban-modal-row">
+      <label data-i18n="kanban_crew_task_skills">Skills</label>
+      <input type="text" class="kanban-crew-task-skills" maxlength="255" value="${esc(Array.isArray(spec.skills) ? spec.skills.join(', ') : '')}" data-i18n-placeholder="kanban_crew_task_skills_placeholder" placeholder="Comma-separated skill names">
+    </div>
+    <button type="button" class="btn secondary kanban-crew-task-remove" onclick="_kanbanRemoveCrewTaskRow('${rowId}')" data-i18n="kanban_crew_remove_task">Remove</button>
+  `;
+  container.appendChild(row);
+  // Reuses _kanbanPopulateAssigneeSelect() verbatim (via its optional target
+  // param) rather than a parallel profile-lookup implementation -- each task
+  // row gets its own <select> since a crew form can have several rows open
+  // at once, unlike the single-task modal.
+  await _kanbanPopulateAssigneeSelect(spec.assignee || '', document.getElementById(rowId + '-assignee'));
+}
+
+function _kanbanRemoveCrewTaskRow(rowId){
+  const row = document.getElementById(rowId);
+  const container = document.getElementById('kanbanCrewFormTasks');
+  if (row && container && container.children.length > 1) row.remove();
+}
+
+function _kanbanCollectCrewFormTasks(){
+  const rows = document.querySelectorAll('#kanbanCrewFormTasks .kanban-crew-task-row');
+  const tasks = [];
+  rows.forEach(row => {
+    const title = (row.querySelector('.kanban-crew-task-title').value || '').trim();
+    if (!title) return;
+    const body = (row.querySelector('.kanban-crew-task-body').value || '').trim();
+    const assignee = (row.querySelector('.kanban-crew-task-assignee').value || '').trim();
+    const priority = Number(row.querySelector('.kanban-crew-task-priority').value || 0);
+    const skillsRaw = (row.querySelector('.kanban-crew-task-skills').value || '').trim();
+    const skills = skillsRaw ? skillsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    tasks.push({title, body, assignee: assignee || null, priority, skills});
+  });
+  return tasks;
+}
+
+async function submitKanbanCrewForm(){
+  const errEl = document.getElementById('kanbanCrewFormError');
+  if (errEl) errEl.textContent = '';
+  const name = (document.getElementById('kanbanCrewFormName').value || '').trim();
+  const icon = (document.getElementById('kanbanCrewFormIcon').value || '').trim();
+  const color = (document.getElementById('kanbanCrewFormColor').value || '').trim();
+  const description = (document.getElementById('kanbanCrewFormDescription').value || '').trim();
+  const tasks = _kanbanCollectCrewFormTasks();
+  if (!name) { if (errEl) errEl.textContent = t('kanban_crew_name_required') || 'Name is required'; return; }
+  if (!tasks.length) { if (errEl) errEl.textContent = t('kanban_crew_tasks_required') || 'At least one task spec (with a title) is required'; return; }
+  const submitBtn = document.getElementById('kanbanCrewFormSubmit');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const body = {name, icon, color, description, tasks};
+    if (_kanbanCrewFormMode === 'edit' && _kanbanCrewFormEditingId) {
+      body.id = _kanbanCrewFormEditingId;
+      await api('/api/crews/update', {method: 'POST', body: JSON.stringify(body)});
+      showToast(t('kanban_crew_updated') || 'Crew updated', 'success');
+    } else {
+      await api('/api/crews/create', {method: 'POST', body: JSON.stringify(body)});
+      showToast(t('kanban_crew_created') || 'Crew created', 'success');
+    }
+    closeKanbanCrewFormModal();
+    await loadKanbanCrews();
+  } catch(e) {
+    if (errEl) errEl.textContent = (e && (e.message || e.error)) || String(e);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function duplicateKanbanCrew(id){
+  try {
+    await api('/api/crews/duplicate', {method: 'POST', body: JSON.stringify({id})});
+    showToast(t('kanban_crew_duplicated') || 'Crew duplicated', 'success');
+    await loadKanbanCrews();
+  } catch(e) {
+    showToast((e && (e.message || e.error)) || String(e), 'error');
+  }
+}
+
+async function deleteKanbanCrew(id){
+  const crew = (_kanbanCrewsList || []).find(c => c.id === id);
+  const label = (crew && crew.name) || id;
+  const ok = await showConfirmDialog({
+    title: t('delete_title') || 'Delete',
+    message: (t('kanban_crew_delete_confirm') || 'Delete crew "{0}"?').replace('{0}', label),
+    confirmLabel: t('delete_title') || 'Delete',
+    danger: true,
+    focusCancel: true,
+  });
+  if (!ok) return;
+  try {
+    await api('/api/crews/delete', {method: 'POST', body: JSON.stringify({id})});
+    showToast(t('kanban_crew_deleted') || 'Crew deleted', 'success');
+    await loadKanbanCrews();
+  } catch(e) {
+    showToast((e && (e.message || e.error)) || String(e), 'error');
+  }
+}
+
+function _kanbanCrewTemplateVariables(crew){
+  const names = [];
+  const seen = new Set();
+  const specs = (crew && Array.isArray(crew.tasks)) ? crew.tasks : [];
+  const re = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+  for (const spec of specs) {
+    for (const text of [String((spec && spec.title) || ''), String((spec && spec.body) || '')]) {
+      let m;
+      re.lastIndex = 0;
+      while ((m = re.exec(text))) {
+        const name = m[1];
+        if (!seen.has(name)) { seen.add(name); names.push(name); }
+      }
+    }
+  }
+  return names;
+}
+
+function _kanbanHideCrewDispatchVarsModal(){
+  const modal = document.getElementById('kanbanCrewDispatchVarsModal');
+  if (modal) modal.hidden = true;
+  if (_kanbanCrewDispatchVarsModalFocusCleanup) { _kanbanCrewDispatchVarsModalFocusCleanup(); _kanbanCrewDispatchVarsModalFocusCleanup = null; }
+  document.removeEventListener('keydown', _kanbanCrewDispatchVarsModalEsc);
+}
+
+function _kanbanCrewDispatchVarsModalEsc(ev){ if (ev.key === 'Escape') closeKanbanCrewDispatchVarsModal(); }
+
+// Cancel path (Cancel button, overlay click, or Esc) -- resolves the pending
+// Promise with null so the caller (dispatchKanbanCrew) knows to abort without
+// ever reaching the dispatch POST.
+function closeKanbanCrewDispatchVarsModal(){
+  _kanbanHideCrewDispatchVarsModal();
+  const resolve = _kanbanCrewDispatchVarsResolve;
+  _kanbanCrewDispatchVarsResolve = null;
+  if (resolve) resolve(null);
+}
+
+// Opens the one-input-per-variable form and returns a Promise that resolves
+// to {name: value, ...} on submit, or null if the dialog is cancelled.
+function openKanbanCrewDispatchVarsModal(variableNames){
+  const modal = document.getElementById('kanbanCrewDispatchVarsModal');
+  const fields = document.getElementById('kanbanCrewDispatchVarsFields');
+  const errEl = document.getElementById('kanbanCrewDispatchVarsError');
+  if (errEl) errEl.textContent = '';
+  if (!modal || !fields) return Promise.resolve(null);
+  fields.innerHTML = variableNames.map(name => `
+    <div class="kanban-modal-row">
+      <label for="kanbanCrewDispatchVar-${esc(name)}">${esc((t('kanban_crew_dispatch_vars_label') || 'Value for {0}').replace('{0}', name))}</label>
+      <input type="text" class="kanban-crew-dispatch-var-input" id="kanbanCrewDispatchVar-${esc(name)}" data-var-name="${esc(name)}" data-i18n-placeholder="kanban_crew_dispatch_vars_placeholder" placeholder="${esc(t('kanban_crew_dispatch_vars_placeholder') || 'Enter a value…')}" autocomplete="off">
+    </div>`).join('');
+  modal.hidden = false;
+  if (_kanbanCrewDispatchVarsModalFocusCleanup) { _kanbanCrewDispatchVarsModalFocusCleanup(); _kanbanCrewDispatchVarsModalFocusCleanup = null; }
+  _kanbanCrewDispatchVarsModalFocusCleanup = _trapModalFocus(modal);
+  document.addEventListener('keydown', _kanbanCrewDispatchVarsModalEsc);
+  return new Promise(resolve => {
+    _kanbanCrewDispatchVarsResolve = resolve;
+    setTimeout(() => { const el = fields.querySelector('input'); if (el) el.focus(); }, 50);
+  });
+}
+
+// Submit path -- validates every field is non-empty (an unfilled variable
+// would otherwise hit api/crews.py's _substitute_variables KeyError and turn
+// into a silent per-task-spec dispatch failure), then resolves the pending
+// Promise with the collected {name: value} map.
+function _kanbanSubmitCrewDispatchVars(){
+  const errEl = document.getElementById('kanbanCrewDispatchVarsError');
+  if (errEl) errEl.textContent = '';
+  const inputs = document.querySelectorAll('#kanbanCrewDispatchVarsFields .kanban-crew-dispatch-var-input');
+  const variables = {};
+  for (const el of inputs) {
+    const name = el.getAttribute('data-var-name');
+    const value = (el.value || '').trim();
+    if (!value) {
+      if (errEl) errEl.textContent = t('kanban_crew_dispatch_vars_required') || 'All variables must have a value';
+      return;
+    }
+    variables[name] = value;
+  }
+  _kanbanHideCrewDispatchVarsModal();
+  const resolve = _kanbanCrewDispatchVarsResolve;
+  _kanbanCrewDispatchVarsResolve = null;
+  if (resolve) resolve(variables);
+}
+
+async function dispatchKanbanCrew(id){
+  const crew = (_kanbanCrewsList || []).find(c => c.id === id);
+  const taskCount = (crew && Array.isArray(crew.tasks)) ? crew.tasks.length : 0;
+  // Cost-consuming-action confirm — same wording pattern as
+  // runKanbanDispatcher(). This only bulk-CREATEs the crew's tasks (staged
+  // Ready); it deliberately does NOT call the dispatcher/dispatch_once, so it
+  // does not by itself spawn any worker subprocess. A human still clicks Run
+  // Dispatcher separately to actually run the newly created tasks.
+  const ok = await showConfirmDialog({
+    title: t('kanban_crew_dispatch_confirm_title') || 'Dispatch crew',
+    message: (t('kanban_crew_dispatch_confirm_message') || 'This will create {0} task(s) on the board (staged as Ready). Continue?').replace('{0}', String(taskCount)),
+    confirmLabel: t('kanban_crew_dispatch') || 'Dispatch',
+  });
+  if (!ok) return;
+  // If the crew's task specs reference any {variable} placeholders, collect
+  // real values before dispatching -- otherwise api/crews.py's
+  // _substitute_variables either leaves the literal "{name}" in the created
+  // task or raises KeyError (surfaced as a per-task-spec dispatch failure).
+  // Zero-placeholder crews skip this step entirely and dispatch exactly as
+  // before, with an empty variables map.
+  let variables = {};
+  const variableNames = _kanbanCrewTemplateVariables(crew);
+  if (variableNames.length) {
+    const collected = await openKanbanCrewDispatchVarsModal(variableNames);
+    if (!collected) return; // cancelled -- never reach the dispatch call
+    variables = collected;
+  }
+  try {
+    const dispatchBody = {variables};
+    if (_kanbanCurrentBoard) dispatchBody.board = _kanbanCurrentBoard;
+    const result = await api('/api/crews/' + encodeURIComponent(id) + '/dispatch', {
+      method: 'POST',
+      body: JSON.stringify(dispatchBody),
+    });
+    const results = (result && result.results) || [];
+    const okCount = results.filter(r => r && r.ok).length;
+    showToast(
+      (t('kanban_crew_dispatch_result') || 'Dispatched {0} of {1} tasks')
+        .replace('{0}', String(okCount)).replace('{1}', String(results.length)),
+      'info', 8000,
+    );
+    kanbanWorkflowTemplateFilter = id;
+    closeKanbanCrewsModal();
+    await loadKanban(true);
+  } catch(e) {
+    showToast((e && (e.message || e.error)) || String(e), 'error');
+  }
 }
 
 function _kanbanSelectedTaskIds(){
@@ -3246,8 +3829,12 @@ async function _kanbanLoadProfileNames(){
   }
 }
 
-async function _kanbanPopulateAssigneeSelect(currentValue){
-  const sel = document.getElementById('kanbanTaskModalAssignee');
+async function _kanbanPopulateAssigneeSelect(currentValue, selEl){
+  // Optional selEl lets callers with more than one assignee <select> on
+  // screen at once (e.g. one per Crew task-spec row) reuse this exact
+  // profile-name-loading/option-building logic instead of a parallel copy.
+  // Defaults to the single-task modal's select for existing call sites.
+  const sel = selEl || document.getElementById('kanbanTaskModalAssignee');
   if (!sel) return;
   // Profile names: the canonical set the dispatcher can claim.
   const profileNames = await _kanbanLoadProfileNames();
@@ -4414,6 +5001,95 @@ async function copyLogsAll() {
   }
 }
 
+// ── Activity panel (internal: audit trail) ──
+// Read-only browse over the existing turn/run journals -- no new storage,
+// no slash command (browse/inspect surface, not something you'd script).
+// See docs/HERMES_STUDIO_PARITY_PLAN.md, "Priority 3 -- Audit Trail UI".
+let _auditKnownSessionIds = [];
+
+function _auditStatusLabel(status) {
+  const key = {
+    running: 'audit_status_running',
+    completed: 'audit_status_completed',
+    interrupted: 'audit_status_interrupted',
+  }[status];
+  return key ? (t(key) || status) : status;
+}
+
+function _auditSyncSessionFilterOptions(entries) {
+  const select = $('auditSessionFilter');
+  if (!select) return;
+  const seen = new Set();
+  const ids = [];
+  entries.forEach(e => {
+    if (e.session_id && !seen.has(e.session_id)) { seen.add(e.session_id); ids.push(e.session_id); }
+  });
+  // Keep the currently-selected filter's id in the list even if it fell out
+  // of the latest cross-session page, so switching back to "All sessions"
+  // and back again doesn't silently drop the option out from under the user.
+  const current = select.value;
+  if (current && !seen.has(current)) ids.push(current);
+  if (JSON.stringify(ids) === JSON.stringify(_auditKnownSessionIds)) return;
+  _auditKnownSessionIds = ids;
+  const allLabel = t('audit_all_sessions') || 'All sessions';
+  select.innerHTML = `<option value="">${esc(allLabel)}</option>` +
+    ids.map(sid => `<option value="${esc(sid)}">${esc(sid)}</option>`).join('');
+  select.value = current;
+}
+
+async function loadAuditTrail() {
+  const box = $('auditList');
+  const refreshBtn = $('auditRefreshBtn');
+  if (!box) return;
+  if (refreshBtn) { refreshBtn.style.opacity = '0.5'; refreshBtn.disabled = true; }
+  const sessionFilter = $('auditSessionFilter');
+  const sessionId = sessionFilter ? sessionFilter.value : '';
+  try {
+    const query = sessionId ? '?session_id=' + encodeURIComponent(sessionId) : '?limit=50';
+    const data = await api('/api/audit' + query);
+    const entries = Array.isArray(data && data.entries) ? data.entries : [];
+    if (!sessionId) _auditSyncSessionFilterOptions(entries);
+    _renderAuditEntries(entries);
+  } catch(e) {
+    box.innerHTML = `<div style="color:var(--muted);font-size:12px">${esc(t('error_prefix') + e.message)}</div>`;
+  } finally {
+    if (refreshBtn) { refreshBtn.style.opacity = ''; refreshBtn.disabled = false; }
+  }
+}
+
+function _auditEntryRow(entry) {
+  const submittedMs = entry.submitted_at ? entry.submitted_at * 1000 : null;
+  const when = submittedMs ? esc(_formatRelativeSessionTime(submittedMs)) : '';
+  const statusLabel = esc(_auditStatusLabel(entry.status));
+  const model = entry.model ? `<span class="audit-entry-model">${esc(entry.model)}</span>` : '';
+  const preview = entry.content_preview
+    ? `<div class="audit-entry-preview">${esc(entry.content_preview)}</div>`
+    : `<div class="audit-entry-preview audit-entry-preview-empty">${esc(t('audit_no_content') || 'No content')}</div>`;
+  const runSummary = entry.run_summary
+    ? `<div class="audit-entry-run-summary">${esc((entry.run_summary.event_count || 0) + ' events · ' + (entry.run_summary.last_event || entry.run_summary.terminal_state || ''))}</div>`
+    : '';
+  return `<article class="audit-entry" data-audit-status="${esc(entry.status)}">
+    <div class="audit-entry-head">
+      <span class="audit-entry-status-badge audit-entry-status-${esc(entry.status)}">${statusLabel}</span>
+      <span class="audit-entry-session">${esc(entry.session_id)}</span>
+      ${model}
+      <span class="audit-entry-time">${when}</span>
+    </div>
+    ${preview}
+    ${runSummary}
+  </article>`;
+}
+
+function _renderAuditEntries(entries) {
+  const box = $('auditList');
+  if (!box) return;
+  if (!entries.length) {
+    box.innerHTML = `<div style="color:var(--muted);font-size:12px">${esc(t('audit_empty') || 'No activity yet.')}</div>`;
+    return;
+  }
+  box.innerHTML = entries.map(_auditEntryRow).join('');
+}
+
 // ── Insights panel ──
 const STATIC_MODEL_HEALTH_ROWS = [
   {id:'openai/gpt-5.4-mini', provider:'OpenAI', inputCostPerM:0.25, outputCostPerM:2.00, replacement:'Default economical general-purpose model'},
@@ -5009,7 +5685,7 @@ function _renderSkillDetail(name, content, linkedFiles) {
   const delBtn = $('btnDeleteSkillDetail');
   if (title) title.textContent = name;
   const { frontmatter, body: markdownBody } = _stripYamlFrontmatter(content);
-  let html = '';
+  let html = `<div id="skillSecuritySection" class="skill-security-section skill-security-loading">${esc(t('skill_security_scanning') || 'Scanning for risks…')}</div>`;
   if (frontmatter) {
     html += `<details class="skill-frontmatter"><summary>${esc(t('skill_metadata'))}</summary><pre><code>${esc(frontmatter)}</code></pre></details>`;
   }
@@ -5036,6 +5712,61 @@ function _renderSkillDetail(name, content, linkedFiles) {
   if (empty) empty.style.display = 'none';
   _skillMode = 'read';
   _setSkillHeaderButtons('read');
+}
+
+const _SKILL_SCAN_VERDICT_LABELS = {
+  safe: () => t('skill_security_verdict_safe') || 'Safe',
+  caution: () => t('skill_security_verdict_caution') || 'Caution',
+  dangerous: () => t('skill_security_verdict_dangerous') || 'Dangerous',
+};
+const _SKILL_SCAN_TRUST_LABELS = {
+  builtin: () => t('skill_security_trust_builtin') || 'Builtin',
+  trusted: () => t('skill_security_trust_trusted') || 'Trusted source',
+  community: () => t('skill_security_trust_community') || 'Community source',
+  'agent-created': () => t('skill_security_trust_agent_created') || 'Agent-created',
+};
+
+async function _loadSkillScan(name) {
+  const section = $('skillSecuritySection');
+  if (!section) return;
+  try {
+    const scan = await api(`/api/skills/scan?name=${encodeURIComponent(name)}`);
+    // Stale response guard: the user may have clicked a different skill
+    // while this fetch was in flight (same idiom as _renderPersonaPickerPopup
+    // checking display state before painting).
+    if ($('skillSecuritySection') !== section || $('skillDetailTitle').textContent !== name) return;
+    _renderSkillScan(scan);
+  } catch (e) {
+    if ($('skillSecuritySection') !== section) return;
+    section.className = 'skill-security-section skill-security-unavailable';
+    section.textContent = t('skill_security_unavailable') || 'Security scan unavailable.';
+  }
+}
+
+function _renderSkillScan(scan) {
+  const section = $('skillSecuritySection');
+  if (!section || !scan) return;
+  const verdict = scan.verdict || 'safe';
+  const verdictLabel = (_SKILL_SCAN_VERDICT_LABELS[verdict] || _SKILL_SCAN_VERDICT_LABELS.safe)();
+  const trustLabel = (_SKILL_SCAN_TRUST_LABELS[scan.trust_level] || _SKILL_SCAN_TRUST_LABELS.community)();
+  const findings = Array.isArray(scan.findings) ? scan.findings : [];
+  section.className = `skill-security-section skill-security-${esc(verdict)}`;
+  let html = `<div class="skill-security-header">
+    <span class="skill-security-badge skill-security-badge-${esc(verdict)}">${esc(verdictLabel)}</span>
+    <span class="skill-security-trust">${esc(trustLabel)}</span>
+  </div>`;
+  if (findings.length) {
+    html += '<div class="skill-security-findings">';
+    for (const f of findings) {
+      html += `<div class="skill-security-finding skill-security-finding-${esc(f.severity || 'low')}">
+        <span class="skill-security-finding-severity">${esc(f.severity || '')}</span>
+        <span class="skill-security-finding-desc">${esc(f.description || '')}</span>
+        <span class="skill-security-finding-loc">${esc(f.file || '')}:${esc(f.line || '')}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  section.innerHTML = html;
 }
 
 function _renderSkillError(name, message) {
@@ -5082,6 +5813,7 @@ async function openSkill(name, el) {
     }
     _currentSkillDetail = { name, content: data.content || '', linked_files: data.linked_files || {} };
     _renderSkillDetail(name, data.content || '', data.linked_files || {});
+    _loadSkillScan(name);
     _closeMobileSidebarAfterPanelSelection();
   } catch(e) { setStatus(t('skill_load_failed') + e.message); }
 }
@@ -5116,6 +5848,7 @@ async function openSkillFile(skillName, filePath) {
         e.preventDefault();
         if (_currentSkillDetail && _currentSkillDetail.name === a.dataset.skillName) {
           _renderSkillDetail(_currentSkillDetail.name, _currentSkillDetail.content, _currentSkillDetail.linked_files);
+          _loadSkillScan(_currentSkillDetail.name);
         } else {
           openSkill(a.dataset.skillName, null);
         }
@@ -5193,6 +5926,7 @@ function cancelSkillForm() {
     _skillPreFormDetail = null;
     _currentSkillDetail = snap;
     _renderSkillDetail(snap.name, snap.content || '', snap.linked_files || {});
+    _loadSkillScan(snap.name);
     return;
   }
   // Revert to empty state
@@ -5326,6 +6060,8 @@ function filterAgentDefinitions() {
 
 function _setAgentDefHeaderButtons(mode, def) {
   const header = $('mainAgents') && $('mainAgents').querySelector('.main-view-header');
+  const applyBtn = $('btnApplyAgentDefDetail');
+  const clearBtn = $('btnClearAgentDefDetail');
   const editBtn = $('btnEditAgentDefDetail');
   const dupBtn = $('btnDuplicateAgentDefDetail');
   const delBtn = $('btnDeleteAgentDefDetail');
@@ -5335,16 +6071,18 @@ function _setAgentDefHeaderButtons(mode, def) {
   const hide = b => b && (b.style.display = 'none');
   if (mode === 'read') {
     if (header) header.style.display = 'flex';
+    const isApplied = !!(def && S.session && S.session.agent_definition_id === def.id);
+    if (isApplied) { hide(applyBtn); show(clearBtn); } else { show(applyBtn); hide(clearBtn); }
     show(dupBtn);
     if (def && def.builtin) { hide(editBtn); hide(delBtn); }
     else { show(editBtn); show(delBtn); }
     hide(cancelBtn); hide(saveBtn);
   } else if (mode === 'create' || mode === 'edit') {
     if (header) header.style.display = 'flex';
-    hide(editBtn); hide(dupBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
+    hide(applyBtn); hide(clearBtn); hide(editBtn); hide(dupBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
   } else {
     if (header) header.style.display = 'none';
-    hide(editBtn); hide(dupBtn); hide(delBtn); hide(cancelBtn); hide(saveBtn);
+    hide(applyBtn); hide(clearBtn); hide(editBtn); hide(dupBtn); hide(delBtn); hide(cancelBtn); hide(saveBtn);
   }
 }
 
@@ -5356,6 +6094,7 @@ function _renderAgentDefDetail(def) {
   if (!title || !body) return;
   title.textContent = (def.emoji ? def.emoji + ' ' : '') + def.name;
   const rows = [];
+  if (S.session && S.session.agent_definition_id === def.id) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_status'))}</div><div class="detail-row-value"><span class="detail-badge">${esc(t('agent_def_applied_badge'))}</span></div></div>`);
   if (def.builtin) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_type'))}</div><div class="detail-row-value"><span class="detail-badge">${esc(t('agent_def_builtin_badge'))}</span></div></div>`);
   if (def.role) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_role'))}</div><div class="detail-row-value">${esc(def.role)}</div></div>`);
   if (def.tags && def.tags.length) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('agent_def_tags'))}</div><div class="detail-row-value">${def.tags.map(tag => esc(tag)).join(', ')}</div></div>`);
@@ -5519,6 +6258,162 @@ async function duplicateAgentDef() {
     await openAgentDefDetail(saved.id, targetEl);
   } catch(e) { setStatus(t('error_prefix') + e.message); }
 }
+
+async function applyAgentDefToSession() {
+  if (!_currentAgentDefDetail) return;
+  if (!S.session) { showToast(t('no_active_session')); return; }
+  try {
+    await api('/api/agent-definitions/apply', { method:'POST', body: JSON.stringify({ session_id: S.session.session_id, id: _currentAgentDefDetail.id }) });
+    S.session.agent_definition_id = _currentAgentDefDetail.id;
+    _renderAgentDefDetail(_currentAgentDefDetail);
+    _refreshAppliedPersonaUI();
+    const msg = t('agent_def_applied') ? t('agent_def_applied').replace('{0}', _currentAgentDefDetail.name) : `Applied "${_currentAgentDefDetail.name}" to session`;
+    showToast(msg);
+  } catch(e) { setStatus(t('error_prefix') + e.message); }
+}
+
+async function clearAppliedAgentDef() {
+  if (!S.session) { showToast(t('no_active_session')); return; }
+  try {
+    await api('/api/agent-definitions/apply', { method:'POST', body: JSON.stringify({ session_id: S.session.session_id, id: '' }) });
+    S.session.agent_definition_id = null;
+    if (_currentAgentDefDetail) _renderAgentDefDetail(_currentAgentDefDetail);
+    _refreshAppliedPersonaUI();
+    showToast(t('agent_def_cleared') || 'Persona cleared from session');
+  } catch(e) { setStatus(t('error_prefix') + e.message); }
+}
+
+// Keep every persona-applied affordance (the Personas panel's Apply/Clear
+// header buttons + badge, and the composer picker button/popup below) in
+// sync with whichever session is now active. Neither re-renders on its own
+// when the active chat changes, so this is called at every `S.session = ...`
+// settle point alongside _hydrateTodosFromSession (see ui.js's note on that
+// function) rather than only from the Personas panel's own apply/clear flow.
+function _refreshAppliedPersonaUI() {
+  if (_currentAgentDefDetail && _agentDefMode === 'read') _renderAgentDefDetail(_currentAgentDefDetail);
+  const btn = $('btnPersonaPicker');
+  if (btn) btn.classList.toggle('active', !!(S.session && S.session.agent_definition_id));
+  const popup = $('personaPickerPopup');
+  if (popup && popup.style.display !== 'none' && _agentDefsData) _renderPersonaPickerPopup(_agentDefsData);
+}
+
+// ── Composer persona picker popup (quick apply/clear without leaving the chat) ──
+
+// position:fixed + viewport-clamped placement — same idiom as
+// _positionProfileDropdown(), needed because the popup can otherwise render
+// off-screen or get clipped by the composer-left's overflow-x:auto on narrow
+// viewports (the bug behind the mobile "doesn't open" report). Always opens
+// above its trigger — the persona button only ever lives in the composer
+// footer, unlike the profile chip which also has a titlebar trigger.
+function _positionPersonaPickerPopup() {
+  const popup = $('personaPickerPopup');
+  const trigger = $('btnPersonaPicker');
+  if (!popup || !trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  const gap = 8;
+  const popupW = popup.offsetWidth || 240;
+  let left = rect.left + (rect.width / 2) - (popupW / 2);
+  left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+  popup.style.left = left + 'px';
+  popup.style.top = '';
+  popup.style.bottom = (window.innerHeight - rect.top + gap) + 'px';
+}
+
+window.addEventListener('resize', () => {
+  const popup = $('personaPickerPopup');
+  if (popup && popup.style.display !== 'none') _positionPersonaPickerPopup();
+});
+
+async function togglePersonaPickerPopup() {
+  const popup = $('personaPickerPopup');
+  const btn = $('btnPersonaPicker');
+  if (!popup) return;
+  if (popup.style.display !== 'none') {
+    popup.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  popup.innerHTML = `<div class="persona-picker-loading">${esc(t('loading') || 'Loading…')}</div>`;
+  popup.style.display = 'flex';
+  _positionPersonaPickerPopup();
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  if (!_agentDefsData) {
+    try {
+      const data = await api('/api/agent-definitions');
+      _agentDefsData = data.definitions || [];
+    } catch(e) { _agentDefsData = []; }
+  }
+  _renderPersonaPickerPopup(_agentDefsData);
+}
+
+function _renderPersonaPickerPopup(definitions) {
+  const popup = $('personaPickerPopup');
+  if (!popup || popup.style.display === 'none') return;
+  popup.innerHTML = '';
+  const activeId = S.session && S.session.agent_definition_id;
+  if (!definitions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'persona-picker-empty';
+    empty.textContent = t('agent_def_no_match') || 'No personas yet.';
+    popup.appendChild(empty);
+    return;
+  }
+  for (const def of definitions) {
+    const isActive = activeId === def.id;
+    const row = document.createElement('div');
+    row.className = 'persona-picker-row' + (isActive ? ' active' : '');
+    row.dataset.personaId = def.id;
+    row.setAttribute('role', 'menuitemradio');
+    row.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    const dot = document.createElement('span');
+    dot.className = 'persona-picker-dot';
+    dot.style.background = def.color || 'var(--muted)';
+    dot.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'persona-picker-label';
+    label.textContent = (def.emoji ? def.emoji + ' ' : '') + def.name;
+    if (def.role) label.title = def.role;
+    row.appendChild(dot);
+    row.appendChild(label);
+    if (isActive) {
+      const check = document.createElement('span');
+      check.className = 'persona-picker-check';
+      check.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      check.setAttribute('aria-hidden', 'true');
+      row.appendChild(check);
+    }
+    row.onclick = () => _applyPersonaFromPicker(def, isActive);
+    popup.appendChild(row);
+  }
+}
+
+async function _applyPersonaFromPicker(def, alreadyApplied) {
+  const popup = $('personaPickerPopup');
+  const btn = $('btnPersonaPicker');
+  if (!S.session) { showToast(t('no_active_session')); return; }
+  try {
+    const nextId = alreadyApplied ? '' : def.id;
+    await api('/api/agent-definitions/apply', { method:'POST', body: JSON.stringify({ session_id: S.session.session_id, id: nextId }) });
+    S.session.agent_definition_id = nextId || null;
+    _refreshAppliedPersonaUI();
+    const msg = alreadyApplied
+      ? (t('agent_def_cleared') || 'Persona cleared from session')
+      : ((t('agent_def_applied') && t('agent_def_applied').replace('{0}', def.name)) || `Applied "${def.name}" to session`);
+    showToast(msg);
+  } catch(e) { showToast(t('error_prefix') + e.message, 2000, 'error'); }
+  if (popup) popup.style.display = 'none';
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', (e) => {
+  const popup = $('personaPickerPopup');
+  const btn = $('btnPersonaPicker');
+  if (!popup || popup.style.display === 'none') return;
+  if (!popup.contains(e.target) && e.target !== btn && !(btn && btn.contains(e.target))) {
+    popup.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}, {capture:false});
 
 async function deleteAgentDef() {
   if (!_currentAgentDefDetail || _currentAgentDefDetail.builtin) return;
@@ -5700,6 +6595,10 @@ function _renderMemoryDetail(section) {
     _renderExternalNotesSources();
     return;
   }
+  if (section === 'memory') {
+    _renderMemoryEntriesView();
+    return;
+  }
 
   const meta = _memorySectionMeta(section);
   const title = $('memoryDetailTitle');
@@ -5730,6 +6629,135 @@ function _renderMemoryDetail(section) {
   if (empty) empty.style.display = 'none';
   _memoryMode = 'read';
   _setMemoryHeaderButtons('read');
+}
+
+// ── My Notes as structured entries (Patterns/Corrections) ──────────────────
+// MEMORY.md is a flat `§`-delimited list of freeform entries (confirmed
+// against real profile data, not assumed). This view parses it into cards
+// with per-entry delete and an append form, instead of the single raw
+// textarea every other section still uses. Deliberately scoped to the
+// 'memory' section only — 'user'/'soul'/'project_context' are not confirmed
+// to use this format.
+//
+// IMPORTANT: this view is built from `_memoryData.memory`, which is the
+// REDACTED text GET /api/memory returns for display (see _redact_text in
+// api/helpers.py — real profiles routinely have plaintext secrets in
+// MEMORY.md, e.g. dashboard passwords). Never reconstruct full file content
+// from this display text and send it back for a write — that would
+// permanently replace a real secret with "[REDACTED]" on disk. Delete uses
+// an index against the server's own raw-file parse; append sends only fresh
+// user-typed text. Neither path round-trips this redacted string.
+let _currentMemoryEntryTab = 'patterns'; // 'patterns' | 'corrections'
+
+function _parseMemoryEntriesForDisplay(content) {
+  const raw = String(content || '');
+  if (!raw.trim()) return [];
+  return raw.split(/\n§\n/).map(s => s.trim()).filter(Boolean).map((text, index) => ({
+    index,
+    text,
+    isCorrection: /^CORRECTION:/i.test(text),
+  }));
+}
+
+function _renderMemoryEntriesView() {
+  const meta = _memorySectionMeta('memory');
+  const title = $('memoryDetailTitle');
+  const body = $('memoryDetailBody');
+  const empty = $('memoryDetailEmpty');
+  if (!title || !body) return;
+  title.textContent = _memorySectionLabel(meta);
+  const content = _memorySectionContent('memory');
+  const mtime = _memorySectionMtime('memory');
+  const mtimeStr = mtime ? new Date(mtime * 1000).toLocaleString() : '';
+  const mtimeHtml = mtimeStr ? `<div class="memory-detail-mtime">${esc(mtimeStr)}</div>` : '';
+  const path = _memorySectionPath('memory');
+  const pathHtml = path ? `<div class="memory-detail-mtime">${esc(path.split(/[\\/]/).pop() || '')} · ${esc(path)}</div>` : '';
+
+  const entries = _parseMemoryEntriesForDisplay(content);
+  const patterns = entries.filter(e => !e.isCorrection);
+  const corrections = entries.filter(e => e.isCorrection);
+  // No auto-revert-to-patterns when corrections is empty: the empty state
+  // below ("No corrections yet.") already handles that gracefully, and an
+  // auto-revert here would fire on every render — including the one caused
+  // by the user's own explicit tab click — silently undoing the switch and
+  // making the Corrections tab unreachable whenever it's empty (which is
+  // the common case; real data has zero CORRECTION-prefixed entries today).
+  const activeEntries = _currentMemoryEntryTab === 'corrections' ? corrections : patterns;
+
+  const tabsHtml = `<div class="memory-entry-tabs" role="tablist">
+    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='patterns'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='patterns'}" onclick="switchMemoryEntryTab('patterns')">${esc(t('memory_entries_patterns')||'Patterns')} <span class="memory-entry-tab-count">${patterns.length}</span></button>
+    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='corrections'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='corrections'}" onclick="switchMemoryEntryTab('corrections')">${esc(t('memory_entries_corrections')||'Corrections')} <span class="memory-entry-tab-count">${corrections.length}</span></button>
+  </div>`;
+
+  const cardsHtml = activeEntries.length
+    ? `<div class="memory-entry-list">${activeEntries.map(e => `
+        <div class="memory-entry-card" data-entry-index="${e.index}">
+          <div class="memory-entry-card-body preview-md">${renderMd(e.text)}</div>
+          <button type="button" class="memory-entry-delete has-tooltip" data-tooltip="${esc(t('delete_title')||'Delete')}" onclick="deleteMemoryEntry(${e.index})" aria-label="${esc(t('delete_title')||'Delete')}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>`).join('')}</div>`
+    : `<div class="memory-empty">${esc(_currentMemoryEntryTab==='corrections' ? (t('memory_entries_no_corrections')||'No corrections yet.') : (t('memory_entries_no_patterns')||'No patterns yet.'))}</div>`;
+
+  const addFormHtml = `<form class="memory-entry-add-form" onsubmit="event.preventDefault(); submitMemoryEntryForm();">
+    <textarea id="memEntryAddText" rows="2" placeholder="${esc(t('memory_entries_add_placeholder')||'Add a new memory entry…')}"></textarea>
+    <div class="memory-entry-add-row">
+      <label class="detail-form-check"><input type="checkbox" id="memEntryAddCorrection"> <span>${esc(t('memory_entries_mark_correction')||'Mark as correction')}</span></label>
+      <button type="submit" class="btn-secondary">${esc(t('memory_entries_add')||'Add entry')}</button>
+    </div>
+    <div id="memEntryAddError" class="detail-form-error" style="display:none"></div>
+  </form>`;
+
+  const rawEditLink = !meta.readOnly
+    ? `<button type="button" class="memory-entry-raw-edit-link" onclick="editCurrentMemory()">${esc(t('memory_entries_edit_raw')||'Edit raw file instead')}</button>`
+    : '';
+
+  body.innerHTML = `<div class="main-view-content">${pathHtml}${mtimeHtml}${tabsHtml}${cardsHtml}${addFormHtml}${rawEditLink}</div>`;
+  body.style.display = '';
+  if (empty) empty.style.display = 'none';
+  _memoryMode = 'read';
+  _setMemoryHeaderButtons('read');
+}
+
+function switchMemoryEntryTab(tab) {
+  _currentMemoryEntryTab = tab === 'corrections' ? 'corrections' : 'patterns';
+  _renderMemoryEntriesView();
+}
+
+async function deleteMemoryEntry(index) {
+  const ok = await showConfirmDialog({
+    title: t('delete_title') || 'Delete',
+    message: t('memory_entries_delete_confirm') || 'Delete this memory entry?',
+    confirmLabel: t('delete_title') || 'Delete',
+    danger: true,
+    focusCancel: true,
+  });
+  if (!ok) return;
+  try {
+    await api('/api/memory/entry/delete', { method: 'POST', body: JSON.stringify({ section: 'memory', index }) });
+    await loadMemory();
+    showToast(t('memory_entries_deleted') || 'Entry deleted');
+  } catch (e) {
+    showToast((t('error_prefix')||'Error: ') + e.message, 2000, 'error');
+  }
+}
+
+async function submitMemoryEntryForm() {
+  const ta = $('memEntryAddText');
+  const cb = $('memEntryAddCorrection');
+  const errEl = $('memEntryAddError');
+  if (!ta || !errEl) return;
+  const text = (ta.value || '').trim();
+  errEl.style.display = 'none';
+  if (!text) { errEl.textContent = t('content_required') || 'Content is required'; errEl.style.display = ''; return; }
+  try {
+    await api('/api/memory/entry/append', { method: 'POST', body: JSON.stringify({ section: 'memory', content: text, is_correction: !!(cb && cb.checked) }) });
+    await loadMemory();
+    showToast(t('memory_entries_added') || 'Entry added');
+  } catch (e) {
+    errEl.textContent = (t('error_prefix')||'Error: ') + e.message;
+    errEl.style.display = '';
+  }
 }
 
 function _renderMemoryEdit(section) {
@@ -7607,6 +8635,14 @@ function _renderProfileForm(){
           <div class="detail-form-hint">${esc(t('profile_model_hint') || 'Choose from configured providers and models for this new profile.')}</div>
         </div>
         <div class="detail-form-row">
+          <label for="profileFormReasoning">${esc(t('profile_reasoning_label') || 'Reasoning effort')}</label>
+          <select id="profileFormReasoning">
+            <option value="">${esc(t('profile_reasoning_use_default') || 'Use provider default')}</option>
+            ${REASONING_EFFORT_LEVELS.map(level => `<option value="${esc(level)}">${esc(_formatReasoningEffortLabel(level))}</option>`).join('')}
+          </select>
+          <div class="detail-form-hint">${esc(t('profile_reasoning_hint') || 'Applied automatically to the composer whenever this profile is active.')}</div>
+        </div>
+        <div class="detail-form-row">
           <label for="profileFormBaseUrl">${esc(t('profile_base_url_label') || 'Base URL')}</label>
           <input type="text" id="profileFormBaseUrl" placeholder="${esc(t('profile_base_url_placeholder') || 'Optional, e.g. http://localhost:11434')}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
@@ -7668,6 +8704,7 @@ async function saveProfileForm(){
   const nameEl = $('profileFormName');
   const cloneEl = $('profileFormClone');
   const modelEl = $('profileFormModel');
+  const reasoningEl = $('profileFormReasoning');
   const baseEl = $('profileFormBaseUrl');
   const apiKeyEl = $('profileFormApiKey');
   const errEl = $('profileFormError');
@@ -7690,6 +8727,8 @@ async function saveProfileForm(){
       if (modelState.model) payload.default_model = modelState.model;
       if (modelState.model_provider) payload.model_provider = modelState.model_provider;
     }
+    const reasoningEffort = reasoningEl ? (reasoningEl.value || '').trim() : '';
+    if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
     if (baseUrl) payload.base_url = baseUrl;
     if (apiKey) payload.api_key = apiKey;
     await api('/api/profile/create', { method: 'POST', body: JSON.stringify(payload) });

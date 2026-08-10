@@ -18,6 +18,7 @@ const COMMANDS=[
   {name:'personality', desc:t('cmd_personality'), fn:cmdPersonality, arg:'name', subArgs:'personalities'},
   {name:'skills',    desc:t('cmd_skills'),   fn:cmdSkills,   arg:'query'},
   {name:'personas',  desc:t('cmd_personas'), fn:cmdPersonas, arg:'query'},
+  {name:'crews',     desc:t('cmd_crews'),    fn:cmdCrews,    arg:'query'},
   {name:'use',       desc:t('cmd_use'),      fn:cmdUse,      arg:'skill-name', subArgs:'skills', noEcho:true},
   {name:'stop',      desc:t('cmd_stop'),     fn:cmdStop,      noEcho:true},
   {name:'goal',      desc:t('cmd_goal'),     fn:cmdGoal,      arg:'[status|pause|resume|clear|text]', subArgs:['status','pause','resume','clear']},
@@ -1146,6 +1147,37 @@ async function cmdSkills(args){
 }
 
 async function cmdPersonas(args){
+  const trimmed = (args||'').trim();
+  const lower = trimmed.toLowerCase();
+  if(lower==='clear'){
+    if(!S.session){showToast(t('no_active_session'));return;}
+    try{
+      await api('/api/agent-definitions/apply',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,id:''})});
+      S.session.agent_definition_id = null;
+      showToast(t('agent_def_cleared')||'Persona cleared from session');
+    }catch(e){showToast(t('failed_colon')+e.message);}
+    return;
+  }
+  if(lower.startsWith('apply ')){
+    if(!S.session){showToast(t('no_active_session'));return;}
+    const query = trimmed.slice(6).trim();
+    try{
+      const data = await api('/api/agent-definitions');
+      const defs = data.definitions || [];
+      const match = defs.find(d => d.id===query) || defs.find(d => (d.name||'').toLowerCase()===query.toLowerCase());
+      if(!match){
+        S.messages.push({role:'assistant',content:`No persona named \`${query}\`. Use \`/personas\` to see available personas.`});
+        renderMessages();
+        return;
+      }
+      await api('/api/agent-definitions/apply',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,id:match.id})});
+      S.session.agent_definition_id = match.id;
+      S.messages.push({role:'assistant',content:`Persona **${match.name}** applied to this session.`});
+      renderMessages();
+      showToast(`Persona "${match.name}" applied.`);
+    }catch(e){showToast(t('failed_colon')+e.message);}
+    return;
+  }
   try{
     const data = await api('/api/agent-definitions');
     let defs = data.definitions || [];
@@ -1170,11 +1202,49 @@ async function cmdPersonas(args){
     const header = args
       ? `Personas matching "${args}" (${defs.length}):\n\n`
       : `Available personas (${defs.length}):\n\n`;
-    S.messages.push({role:'assistant', content: header + lines.join('\n')});
+    const hint = t('agent_def_apply_hint') || '\n\nUse `/personas apply <name>` to apply one to this session, or `/personas clear` to clear.';
+    S.messages.push({role:'assistant', content: header + lines.join('\n') + hint});
     renderMessages();
     showToast(t('type_slash'));
   }catch(e){
     showToast('Failed to load personas: '+e.message);
+  }
+}
+
+// List-only for v1 (docs/HERMES_STUDIO_PARITY_PLAN.md, Multi-agent
+// orchestration Phase 1) -- `/crews dispatch <name>` is explicitly
+// optional/deferrable there; dispatching a crew is a cost-consuming action
+// that already has an explicit-confirm flow in the Crews modal
+// (dispatchKanbanCrew()), which this command intentionally does not bypass.
+async function cmdCrews(args){
+  try{
+    const data = await api('/api/crews');
+    let crews = data.crews || [];
+    if(args){
+      const q = args.toLowerCase();
+      crews = crews.filter(c =>
+        (c.name||'').toLowerCase().includes(q) ||
+        (c.description||'').toLowerCase().includes(q)
+      );
+    }
+    if(!crews.length){
+      const msg = {role:'assistant', content: args ? `No crews matching "${args}".` : 'No crews found. Use the Crews button on the Kanban board to create one.'};
+      S.messages.push(msg); renderMessages(); return;
+    }
+    const lines = crews.map(c => {
+      const icon = c.icon ? `${c.icon} ` : '';
+      const desc = c.description ? ` — ${c.description}` : '';
+      const taskCount = Array.isArray(c.tasks) ? c.tasks.length : 0;
+      return `  ${icon}**${c.name}** _(${taskCount} task${taskCount===1?'':'s'})_${desc}`;
+    });
+    const header = args
+      ? `Crews matching "${args}" (${crews.length}):\n\n`
+      : `Available crews (${crews.length}):\n\n`;
+    S.messages.push({role:'assistant', content: header + lines.join('\n')});
+    renderMessages();
+    showToast(t('type_slash'));
+  }catch(e){
+    showToast('Failed to load crews: '+e.message);
   }
 }
 

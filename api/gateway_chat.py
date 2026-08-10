@@ -1022,13 +1022,25 @@ def _run_gateway_chat_streaming(
             )
 
             prefill_context = _load_webui_prefill_context(cfg)
+            # Resolve an applied Persona (docs/HERMES_STUDIO_PARITY_PLAN.md,
+            # "Personas" apply-to-session) the same way the direct streaming
+            # path does, so it also takes effect on gateway-routed chats.
+            # (config.yaml `agent.personalities` is NOT resolved on this path
+            # today — pre-existing gap, out of scope here.)
+            _gateway_persona_prompt = None
+            _gateway_persona_id = getattr(s, "agent_definition_id", None) if s is not None else None
+            if _gateway_persona_id:
+                from api import agent_definitions as _agent_definitions
+                _gateway_persona_def = _agent_definitions.get_definition(_gateway_persona_id)
+                if _gateway_persona_def and _gateway_persona_def.get("system_prompt"):
+                    _gateway_persona_prompt = str(_gateway_persona_def["system_prompt"])
             # #3324: the WebUI session/delivery context (connected platforms,
             # home channels, delivery hints, session framing) is now carried in
             # the ephemeral system prompt rather than a prefill `user` message.
             # The gateway-backed path must build the SAME system prompt so that
             # context is not silently dropped on Gateway-routed WebUI chats.
             _gateway_system_prompt = _webui_ephemeral_system_prompt(
-                None,
+                _gateway_persona_prompt,
                 surface_context={
                     "source": "webui",
                     "session_id": session_id,
