@@ -4760,14 +4760,42 @@ function _appendSessionDuplicateAction(menu, session){
   ));
 }
 
-function _appendSessionExportHtmlAction(menu, session){
-  // Per-conversation "Export as HTML" — the sidebar ⋮ menu is the app's uniform
-  // home for per-conversation actions (matches ChatGPT / Open WebUI). Operates
-  // on THIS row's session, not just the active one; the export endpoint accepts
-  // any session_id in the active profile and is non-mutating, so it's offered
-  // for read-only/imported sessions too. exportSessionHTML(session) is a global
-  // defined in boot.js (loaded after sessions.js under defer, so it's bound by
-  // the time this click can fire).
+function _sessionExportDownload(session, format, ext){
+  const sid=session&&session.session_id;
+  if(!sid)return;
+  const url=`/api/session/export?session_id=${encodeURIComponent(sid)}${format?`&format=${format}`:''}`;
+  const a=document.createElement('a');a.href=url;
+  a.download=`hermes-${sid}.${ext}`;a.click();
+}
+
+function _appendSessionExportActions(menu, session){
+  // Per-conversation export — the sidebar ⋮ menu is the app's uniform home for
+  // per-conversation actions (matches ChatGPT / Open WebUI). Operates on THIS
+  // row's session, not just the active one: /api/session/export accepts any
+  // session_id in the active profile and is non-mutating, so all four formats
+  // are offered for read-only/imported sessions too (#chat-export, see
+  // docs/HERMES_STUDIO_PARITY_PLAN.md "Chat export"). Markdown/JSON/Text hit
+  // the export endpoint directly; HTML keeps using exportSessionHTML(session)
+  // (a global defined in boot.js, loaded after sessions.js under defer) since
+  // it also captures the live WebUI theme palette.
+  menu.appendChild(_buildSessionAction(
+    t('session_export_md'),
+    t('session_export_md_desc'),
+    ICONS.download,
+    ()=>{ closeSessionActionMenu(); _sessionExportDownload(session,'md','md'); }
+  ));
+  menu.appendChild(_buildSessionAction(
+    t('session_export_json_sidebar'),
+    t('session_export_json_sidebar_desc'),
+    ICONS.download,
+    ()=>{ closeSessionActionMenu(); _sessionExportDownload(session,'','json'); }
+  ));
+  menu.appendChild(_buildSessionAction(
+    t('session_export_text_sidebar'),
+    t('session_export_text_sidebar_desc'),
+    ICONS.download,
+    ()=>{ closeSessionActionMenu(); _sessionExportDownload(session,'text','txt'); }
+  ));
   menu.appendChild(_buildSessionAction(
     t('session_export_html'),
     t('session_export_html_desc'),
@@ -4837,7 +4865,7 @@ function _openSessionActionMenu(session, anchorEl){
   menu.setAttribute('aria-label', 'Conversation actions');
   _appendSessionCopyLinkAction(menu, session);
   if(isReadOnly){
-    _appendSessionExportHtmlAction(menu, session);
+    _appendSessionExportActions(menu, session);
     _mountSessionActionMenu(menu, session, anchorEl);
     return;
   }
@@ -4930,7 +4958,7 @@ function _openSessionActionMenu(session, anchorEl){
   if(!isExternalSession){
     _appendSessionDuplicateAction(menu, session);
   }
-  _appendSessionExportHtmlAction(menu, session);
+  _appendSessionExportActions(menu, session);
   if(session.active_stream_id){
     menu.appendChild(_buildSessionAction(
       t('session_stop_response'),

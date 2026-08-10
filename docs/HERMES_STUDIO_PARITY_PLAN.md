@@ -935,8 +935,121 @@ which of (1)/(2) comes next):**
 - **Analytics/cost dashboard** — STATUS: DONE, see full write-up below.
 - **Command palette** (⌘K, `cmdk`-style) + global keyboard-shortcuts modal —
   no discoverable global command palette found in hermes-webui.
-- **Chat export** (`export-menu.tsx`) — Markdown/JSON/Text export, no
-  equivalent found.
+
+### Chat export — STATUS: DONE (shipped 2026-08-10)
+
+Hermes-Studio's `export-menu.tsx` offers Markdown/JSON/Text export of a
+session's chat messages.
+
+**Investigation finding (this changes the scope of the gap):** hermes-webui
+already ships most of this — `static/messages.js`'s `transcript()` (client-
+side Markdown from `S.messages`, wired to Settings → Session actions'
+"Transcript" button `#btnDownload`), `#btnExportJSON` and `#btnExportHTML`
+(both hit the existing `GET /api/session/export?session_id=...&format=...`
+endpoint, `api/routes.py:_handle_session_export` ~line 16849), plus a
+per-conversation "Export as HTML" item in the sidebar ⋮ menu
+(`_appendSessionExportHtmlAction` in `static/sessions.js`, works on *any*
+session in the active profile, not just the currently-open one — the
+endpoint is non-mutating and session_id-addressed). So this is **not** "no
+equivalent found" — it's two narrower, real gaps:
+1. **No plain-Text format anywhere** — only Markdown/JSON/HTML exist.
+2. **The one entry point that works on a session that isn't currently
+   open** (the sidebar ⋮ menu) **only offers HTML**, not Markdown/JSON/Text.
+   Getting a non-active session's transcript as Markdown or JSON today
+   requires first opening it.
+
+Per the task brief's own example of when a new backend endpoint is
+warranted ("exporting a session not currently open") — that's exactly gap
+#2, so this closes it by extending the *existing* endpoint rather than
+building a parallel client-side-only implementation that couldn't reach a
+session that isn't loaded.
+
+#### Data shape
+No new persisted data. Export reads the existing `Session.__dict__` (via
+`api/helpers.py`'s `redact_session_data()`), the same source the current
+`format=json`/`format=html` branches already use.
+
+#### API endpoints
+No new endpoint — extends the existing `GET /api/session/export` handler
+(`api/routes.py:_handle_session_export`) with two new `format` values,
+alongside the existing `json` (default) and `html`:
+- `format=md` → `text/markdown; charset=utf-8`,
+  `Content-Disposition: attachment; filename="hermes-{sid}.md"`
+- `format=text` → `text/plain; charset=utf-8`,
+  `Content-Disposition: attachment; filename="hermes-{sid}.txt"`
+
+Both are built by a new small module `api/session_export_text.py`
+(`render_session_markdown(session)`, `render_session_text(session)`),
+importing (not duplicating) `_content_to_text()`, `_fmt_ts()`, and
+`_ROLE_LABELS` already defined in `api/session_export_html.py`, so all four
+export formats flatten multimodal content and format timestamps identically.
+System messages are skipped, matching the existing HTML branch's behavior.
+
+#### Frontend hook-in
+- `static/index.html`: new `#btnExportText` button next to the existing
+  `#btnDownload`/`#btnExportJSON`/`#btnExportHTML` trio in Settings → Session
+  actions.
+- `static/boot.js`: `$('btnExportText').onclick` — same `<a href=...
+  download>` pattern as `#btnExportJSON`, hitting `format=text`.
+- `static/sessions.js`: `_appendSessionExportHtmlAction` is replaced by
+  `_appendSessionExportActions(menu, session)`, called from both branches of
+  `_openSessionActionMenu` (read-only and normal). It appends four menu
+  items — Markdown / JSON / Text / HTML — each hitting
+  `/api/session/export?session_id=<THIS row's session>&format=...`, so all
+  four formats now work identically for any session in the active profile,
+  not only the one currently open (closes gap #2 above). Non-mutating, so
+  offered for read-only/imported sessions too, matching the prior HTML-only
+  behavior.
+- Command palette (previous section): when a session is open, three palette
+  Action entries fire the same export URLs for the active session — the
+  palette does not build a second export mechanism.
+- `static/style.css`: no new CSS. Reuses the existing `.ws-opt`/
+  `.session-action-opt` menu-item styling and `.settings-action-btn` button
+  styling already used by the sibling export buttons/menu items.
+- `static/i18n.js`: new keys (`export_session_text_tooltip`,
+  `export_session_text`, `session_export_md`, `session_export_md_desc`,
+  `session_export_json_sidebar`, `session_export_json_sidebar_desc`,
+  `session_export_text_sidebar`, `session_export_text_sidebar_desc`) across
+  all 15 locale blocks. (`session_export_html`/`_desc` already exist and are
+  reused as-is for the fourth menu item.)
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+`tests/test_chat_export.py`:
+1. API: `format=md` and `format=text` on `/api/session/export` return 200
+   with the correct `Content-Type`/`Content-Disposition`/filename extension
+   and body content derived from the session's messages; the existing
+   `format` omitted/`json`/`html`/400 (`session_id` required)/404 (unknown
+   session) behaviors are unchanged (regression guard, mirrors
+   `tests/test_sprint6.py`'s existing export tests).
+2. UI wiring: `btnExportText` present in `index.html` and wired in
+   `boot.js`; `_appendSessionExportActions` defined in `sessions.js` and
+   called from both `_openSessionActionMenu` branches (grep-level, matching
+   `test_agent_definitions_ui.py`'s wiring-guard style); i18n keys present
+   in all 15 locale blocks.
+
+#### Open questions — RESOLVED 2026-08-10
+1. **New backend endpoint vs. extend the existing one** — resolved: extend
+   `_handle_session_export`'s `format` switch. A wholly new endpoint would
+   duplicate the session-lookup/profile-scoping/redaction logic that's
+   already correct there.
+2. **Client-side-only vs. server-rendered for Markdown/Text** — resolved:
+   server-rendered for the *new* Text format and for any export that isn't
+   the currently-open session; the existing client-side `transcript()` (used
+   by the pre-existing "Transcript" button) is left untouched since it
+   already works and duplicating it into two divergent Markdown renderers
+   isn't necessary — the two just happen to produce near-identical output.
+3. **Plain-Text formatting** — resolved: same message order/structure as
+   Markdown but with `##`/`_..._` markup stripped (`ROLE (timestamp):` plain
+   line, no emphasis), so it's readable in a bare text viewer.
+
+**Shipped 2026-08-10:** implemented exactly per the plan above —
+`api/session_export_text.py` (new), two new `format=` branches on the
+existing `/api/session/export` endpoint, `#btnExportText` in Settings,
+`_appendSessionExportActions` replacing the HTML-only sidebar menu helper,
+8 new i18n keys × 15 locales, `tests/test_chat_export.py`. No known gaps —
+this closes both identified gaps (Text format; non-active-session
+Markdown/JSON export) without touching the pre-existing, working
+`transcript()`/`btnExportJSON`/`btnExportHTML` code paths.
 - **Sound notification system** — synthesized Web Audio API chimes (agent
   spawned/complete/failed, chat notification, thinking tick), no audio
   files needed.

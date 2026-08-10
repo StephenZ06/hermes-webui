@@ -17287,6 +17287,18 @@ def _handle_session_export(handler, parsed):
         payload = render_session_html(safe, theme=theme, palette=palette)
         content_type = "text/html; charset=utf-8"
         ext = "html"
+    elif fmt == "md":
+        from api.session_export_text import render_session_markdown
+
+        payload = render_session_markdown(safe)
+        content_type = "text/markdown; charset=utf-8"
+        ext = "md"
+    elif fmt == "text":
+        from api.session_export_text import render_session_text
+
+        payload = render_session_text(safe)
+        content_type = "text/plain; charset=utf-8"
+        ext = "txt"
     else:
         payload = json.dumps(safe, ensure_ascii=False, indent=2)
         content_type = "application/json; charset=utf-8"
