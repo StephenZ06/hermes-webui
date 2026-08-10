@@ -16,6 +16,7 @@ Conductor)" -> "Phase 1 (v1) -- Crew templates + bulk dispatch".
 import importlib
 import json
 import sys
+import time
 import types
 import urllib.error
 import urllib.request
@@ -473,6 +474,93 @@ def test_dispatch_requires_id():
         raise AssertionError("empty id must raise ValueError")
     except ValueError:
         pass
+
+
+# ── Phase 1.2: last-dispatched recency signal ──────────────────────────────
+# See docs/HERMES_STUDIO_PARITY_PLAN.md, "Multi-agent orchestration (Crews +
+# Conductor)" -> "Phase 1.2 (v1.2) -- Crew templates gallery: search +
+# last-dispatched recency".
+
+def test_create_crew_has_last_dispatched_at_none():
+    cids = []
+    try:
+        cid, crew = make_crew(cids, name="Fresh crew")
+        assert "last_dispatched_at" in crew
+        assert crew["last_dispatched_at"] is None
+    finally:
+        cleanup_crews(cids)
+
+
+def test_duplicate_crew_does_not_carry_over_last_dispatched_at(monkeypatch, tmp_path):
+    """A duplicate is a new template with no dispatch history of its own,
+    even if the source crew has already been dispatched."""
+    from api import crews as crews_mod
+    import api.profiles as profiles_mod
+
+    monkeypatch.setattr(profiles_mod, "get_active_hermes_home", lambda: str(tmp_path))
+    crew = crews_mod.create_crew({"name": "Original", "tasks": [{"title": "t"}]})
+    # Directly touch the source's last_dispatched_at (unit-level -- avoids
+    # needing a real hermes_cli.kanban_db for this particular assertion).
+    crews_mod._touch_crew_dispatched(crew["id"], 1700000000.0)
+    source = crews_mod.get_crew(crew["id"])
+    assert source["last_dispatched_at"] == 1700000000.0
+
+    dup = crews_mod.duplicate_crew(crew["id"])
+    assert dup["last_dispatched_at"] is None
+
+
+def test_dispatch_stamps_last_dispatched_at_on_real_storage(monkeypatch, tmp_path):
+    """End-to-end: dispatching a template that's actually on disk (not just a
+    monkeypatched get_crew stub) must persist last_dispatched_at."""
+    crews_mod, fake_kanban = _load_crews_with_fake_kanban(monkeypatch)
+    import api.profiles as profiles_mod
+    monkeypatch.setattr(profiles_mod, "get_active_hermes_home", lambda: str(tmp_path))
+
+    crew = crews_mod.create_crew({
+        "name": "Real crew",
+        "tasks": [{"title": "Do the thing", "assignee": "webui-test"}],
+    })
+    assert crews_mod.get_crew(crew["id"])["last_dispatched_at"] is None
+
+    before = time.time()
+    crews_mod.dispatch_crew(crew["id"], {})
+    after = time.time()
+
+    updated = crews_mod.get_crew(crew["id"])
+    assert updated["last_dispatched_at"] is not None
+    assert before <= updated["last_dispatched_at"] <= after
+
+
+def test_dispatch_stamps_last_dispatched_at_even_on_total_failure(monkeypatch, tmp_path):
+    """A dispatch attempt still counts as 'last dispatched' even when every
+    task spec fails (e.g. every assignee is bad) -- it's a
+    last-attempted signal, not a last-succeeded one."""
+    crews_mod, fake_kanban = _load_crews_with_fake_kanban(monkeypatch)
+    import api.profiles as profiles_mod
+    monkeypatch.setattr(profiles_mod, "get_active_hermes_home", lambda: str(tmp_path))
+
+    crew = crews_mod.create_crew({
+        "name": "Doomed crew",
+        "tasks": [{"title": "Bad task", "assignee": "totally-bad-assignee"}],
+    })
+
+    result = crews_mod.dispatch_crew(crew["id"], {})
+    assert all(r["ok"] is False for r in result["results"])
+
+    updated = crews_mod.get_crew(crew["id"])
+    assert updated["last_dispatched_at"] is not None
+
+
+def test_dispatch_of_crew_absent_from_storage_does_not_raise(monkeypatch):
+    """A crew that get_crew() resolves (e.g. via monkeypatch in other tests,
+    or a race with a concurrent delete) but that isn't actually in the
+    on-disk list must not blow up the touch step -- it's best-effort
+    metadata, not load-bearing for dispatch to succeed."""
+    crews_mod, fake_kanban = _load_crews_with_fake_kanban(monkeypatch)
+    monkeypatch.setattr(crews_mod, "get_crew", lambda cid: _crew_dict())
+
+    result = crews_mod.dispatch_crew("crewXYZ", {"variables": {"topic": "x"}})
+    assert result["ok"] is True
 
 
 def test_dispatch_never_calls_dispatch_once(monkeypatch):

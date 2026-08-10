@@ -3190,12 +3190,56 @@ async function loadKanbanCrews(){
   }
 }
 
+// Phase 1.2 (docs/HERMES_STUDIO_PARITY_PLAN.md, "templates gallery: search +
+// last-dispatched recency"): pure functions, no DOM access, so they can be
+// executed directly by tests/test_crews_ui.py's node-extraction harness
+// rather than only checked as source strings.
+
+// Case-insensitive substring match against name OR description. An
+// empty/whitespace-only query returns the input list unfiltered, in order.
+function _kanbanFilterCrews(crews, query){
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return crews;
+  return crews.filter(c =>
+    (c.name || '').toLowerCase().includes(q) ||
+    (c.description || '').toLowerCase().includes(q)
+  );
+}
+
+// Most-recently-dispatched first; never-dispatched (null) crews sort last;
+// ties (including "never dispatched" vs "never dispatched") broken by
+// created_at descending, so a fresh list still reads newest-first.
+function _kanbanSortCrews(crews){
+  return [...crews].sort((a, b) => {
+    const ad = a.last_dispatched_at, bd = b.last_dispatched_at;
+    if (ad != null && bd != null) {
+      if (ad !== bd) return bd - ad;
+    } else if (ad != null) {
+      return -1;
+    } else if (bd != null) {
+      return 1;
+    }
+    return (b.created_at || 0) - (a.created_at || 0);
+  });
+}
+
+function filterKanbanCrews(){
+  _renderKanbanCrewList();
+}
+
 function _renderKanbanCrewList(){
   const listEl = document.getElementById('kanbanCrewList');
   if (!listEl) return;
-  const crews = _kanbanCrewsList || [];
-  if (!crews.length) {
+  const all = _kanbanCrewsList || [];
+  if (!all.length) {
     listEl.innerHTML = `<div class="kanban-empty">${esc(t('kanban_crews_empty') || 'No crews yet. Create one to bulk-dispatch a set of tasks together.')}</div>`;
+    return;
+  }
+  const searchEl = document.getElementById('kanbanCrewsSearch');
+  const query = (searchEl && searchEl.value) || '';
+  const crews = _kanbanSortCrews(_kanbanFilterCrews(all, query));
+  if (!crews.length) {
+    listEl.innerHTML = `<div class="kanban-empty">${esc(t('kanban_crews_no_match') || 'No crews match your search.')}</div>`;
     return;
   }
   listEl.innerHTML = crews.map(_kanbanCrewCard).join('');
@@ -3206,6 +3250,12 @@ function _kanbanCrewCard(crew){
   const taskCount = Array.isArray(crew.tasks) ? crew.tasks.length : 0;
   const color = crew.color ? esc(crew.color) : 'var(--accent)';
   const taskWord = taskCount === 1 ? (t('kanban_crew_task_singular') || 'task') : (t('kanban_crew_task_plural') || 'tasks');
+  // Reuses _formatRelativeSessionTime (static/sessions.js) rather than a
+  // second relative-time formatter -- already generic despite the name, and
+  // its session_time_* i18n keys are already present in all 15 locales.
+  const lastDispatchedText = crew.last_dispatched_at
+    ? (t('kanban_crew_last_dispatched') || 'Last dispatched: {0}').replace('{0}', _formatRelativeSessionTime(crew.last_dispatched_at * 1000))
+    : (t('kanban_crew_never_dispatched') || 'Never dispatched');
   return `<article class="kanban-crew-card" style="--kanban-crew-color:${color}" data-crew-id="${esc(crew.id)}">
     <div class="kanban-crew-card-head">
       <span class="kanban-crew-card-icon" aria-hidden="true">${icon}</span>
@@ -3213,6 +3263,7 @@ function _kanbanCrewCard(crew){
     </div>
     ${crew.description ? `<div class="kanban-crew-card-desc">${esc(crew.description)}</div>` : ''}
     <div class="kanban-crew-card-meta">${esc(String(taskCount))} ${esc(taskWord)}</div>
+    <div class="kanban-crew-card-last-dispatched">${esc(lastDispatchedText)}</div>
     <div class="kanban-crew-card-actions">
       <button type="button" class="btn primary" onclick="dispatchKanbanCrew('${esc(crew.id)}')" data-i18n="kanban_crew_dispatch">Dispatch</button>
       <button type="button" class="btn secondary" onclick="openKanbanCrewForm('${esc(crew.id)}')" data-i18n="edit">Edit</button>
