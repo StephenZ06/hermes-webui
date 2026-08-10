@@ -2201,6 +2201,10 @@
   .skill-desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:11px;opacity:.7;}
   .skill-item.disabled{opacity:.5;}
   .skill-item.disabled .skill-name{opacity:.45;}
+  /* Knowledge Browser panel (read-only) */
+  .knowledge-item{cursor:pointer;}
+  .knowledge-type-badge{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted);opacity:.85;margin-top:1px;}
+  .knowledge-item.active .knowledge-type-badge{color:var(--accent-text);opacity:1;}
   .skill-toggle{flex-shrink:0;width:28px;height:14px;border-radius:7px;border:1px solid var(--border2);background:var(--border);cursor:pointer;position:relative;transition:all .15s;margin-top:3px;}
   .skill-toggle.enabled{background:var(--accent-bg-strong);border-color:var(--accent);}
   .skill-toggle::after{content:'';position:absolute;top:1px;left:1px;width:10px;height:10px;border-radius:50%;background:var(--muted);transition:transform .15s;}
@@ -4970,21 +4974,25 @@ main.main > #mainSettings,
 main.main > #mainSkills,
 main.main > #mainAgents,
 main.main > #mainMemory,
+main.main > #mainKnowledge,
 main.main > #mainTasks,
 main.main > #mainKanban,
 main.main > #mainWorkspaces,
 main.main > #mainProfiles,
 main.main > #mainInsights,
+main.main > #mainAnalytics,
 main.main > #mainLogs{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin) > #mainChat{display:flex;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-analytics):not(.showing-logs):not(.showing-plugin) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-agents > #mainAgents{display:flex;}
 main.main.showing-memory > #mainMemory{display:flex;}
+main.main.showing-knowledge > #mainKnowledge{display:flex;}
 main.main.showing-tasks > #mainTasks{display:flex;}
 main.main.showing-kanban > #mainKanban{display:flex;overflow-y:auto;}
 main.main.showing-workspaces > #mainWorkspaces{display:flex;}
 main.main.showing-profiles > #mainProfiles{display:flex;}
+main.main.showing-analytics > #mainAnalytics{display:flex;}
 main.main.showing-logs > #mainLogs{display:flex;}
 main.main.showing-plugin > #mainPlugin{display:flex;}
 main.main > #mainPlugin{display:none;}
@@ -6493,6 +6501,12 @@ body code[class*="language-"],body pre[class*="language-"],body pre code[class*=
 .main-view-empty-icon{color:var(--muted);opacity:.35;}
 .main-view-empty-title{font-size:18px;font-weight:600;color:var(--text);margin-top:4px;}
 .main-view-empty-sub{font-size:13px;color:var(--muted);line-height:1.55;max-width:420px;}
+
+/* Knowledge Browser detail pane */
+.knowledge-detail-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.knowledge-detail-meta .knowledge-type-badge{background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--muted);gap:6px;}
+.knowledge-source-path{font-size:11px;color:var(--muted);opacity:.7;font-family:'SF Mono',ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.knowledge-detail-content{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;margin:0;}
 
 /* Hide header title/actions entirely when empty state is active */
 main.main > .main-view:not([id="mainChat"]):not([id="mainSettings"]) .main-view-header:has(.main-view-title:empty){display:none;}
