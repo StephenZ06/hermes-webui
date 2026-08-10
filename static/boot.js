@@ -2451,7 +2451,40 @@ document.addEventListener('keydown',async e=>{
     if(typeof toggleSettings==='function') toggleSettings();
     return;
   }
+  // Ctrl/Cmd+Shift+P opens the command palette (VS Code / cmdk-alternate
+  // convention). Plain Ctrl/Cmd+K is already "new chat" above, so cmdk's
+  // usual ⌘K would collide — Shift+P is confirmed unused elsewhere in this
+  // codebase. Fires globally (not skipped for text-input focus), matching
+  // the Cmd/Ctrl+, → Settings precedent, since Shift+P is not a text-editing
+  // chord. See docs/HERMES_STUDIO_PARITY_PLAN.md "Command palette".
+  if((e.metaKey||e.ctrlKey)&&e.shiftKey&&!e.altKey&&(e.key==='p'||e.key==='P')){
+    e.preventDefault();
+    if(typeof openCommandPalette==='function') openCommandPalette();
+    return;
+  }
+  // Bare '?' opens the keyboard-shortcuts help modal — skipped while typing
+  // (same input/textarea/contenteditable check already used by the
+  // Cmd/Ctrl+B handler above), since '?' is a literal character in normal
+  // text entry.
+  if(e.key==='?'&&!e.metaKey&&!e.ctrlKey&&!e.altKey){
+    const t2=e.target;
+    const isText=t2&&(t2.tagName==='INPUT'||t2.tagName==='TEXTAREA'||t2.isContentEditable);
+    if(!isText){
+      e.preventDefault();
+      if(typeof openShortcutsHelp==='function') openShortcutsHelp();
+      return;
+    }
+  }
   if(e.key==='Escape'){
+    // Close the command palette / shortcuts help modal first — they float
+    // above everything else, so Escape should dismiss them before touching
+    // any panel/session state underneath.
+    if(typeof isCommandPaletteOpen==='function'&&isCommandPaletteOpen()){
+      closeCommandPalette();return;
+    }
+    if(typeof isShortcutsHelpOpen==='function'&&isShortcutsHelpOpen()){
+      closeShortcutsHelp();return;
+    }
     // Close onboarding overlay if open (skip/dismiss the wizard)
     const onboardingOverlay=$('onboardingOverlay');
     if(onboardingOverlay&&onboardingOverlay.style.display!=='none'){

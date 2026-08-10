@@ -933,8 +933,151 @@ which of (1)/(2) comes next):**
 - **Knowledge Browser** — STATUS: DONE, see full write-up below.
 - **Audit Trail UI** — STATUS: DONE, see full write-up below.
 - **Analytics/cost dashboard** — STATUS: DONE, see full write-up below.
-- **Command palette** (⌘K, `cmdk`-style) + global keyboard-shortcuts modal —
-  no discoverable global command palette found in hermes-webui.
+- **Command palette** — STATUS: DONE, see full write-up below.
+- **Chat export** — STATUS: DONE, see full write-up below.
+- **Sound notification system** — synthesized Web Audio API chimes (agent
+  spawned/complete/failed, chat notification, thinking tick), no audio
+  files needed.
+- **Voice input** (Web Speech API, `use-voice-input.ts`/
+  `use-voice-recorder.ts`) — not present.
+- **Onboarding tour** — hermes-webui has `onboarding.py`/`onboarding.js`;
+  worth checking whether it's a guided step-by-step *tour*
+  (`react-joyride`-style, like Hermes-Studio has in addition to a setup
+  wizard) or just the wizard.
+
+### Command palette + keyboard-shortcuts modal — STATUS: DONE (shipped 2026-08-10)
+
+Hermes-Studio has a ⌘K-style global command palette (`cmdk`-style) plus a
+global keyboard-shortcuts help modal. hermes-webui had no discoverable global
+command palette.
+
+**Read `static/commands.js` first — resolved deliberately, not silently
+duplicated.** hermes-webui already has a slash-command registry (`COMMANDS`
+array, ~29 builtin entries) plus a runtime-merged autocomplete surface
+(`getMatchingCommands()`) that additionally pulls in async agent/plugin/
+skill/bundle commands loaded from `/api/commands` and friends. A command
+palette conceptually overlaps with that, so the decision below is load-bearing
+for anyone extending this later.
+
+**Decision:** the palette's command data source IS the existing `COMMANDS`
+array from `commands.js` directly — not a second, independently-authored list
+of command names/descriptions. It deliberately does **not** call
+`getMatchingCommands()` (which additionally merges in the async-loaded agent/
+plugin/skill/bundle commands): that call is async (network round-trip on
+first use) and would make the palette's open feel laggy the first time, and
+those commands remain fully discoverable today by typing `/` in the composer.
+The palette surfaces the same static 29-entry table the composer autocomplete
+already dispatches through — one source of truth for name/description/arg
+metadata, zero duplicated strings. This does mean the palette's command list
+is a strict subset of the composer's `/`-autocomplete list (missing agent/
+plugin/skill/bundle commands) — an accepted, documented gap, not an oversight.
+
+This feature is purely client-side: **no Data shape section, no API
+endpoints section** — no new persisted data, no new backend endpoint.
+
+#### Frontend hook-in
+- `static/index.html`: new `#btnCommandPalette` icon button in
+  `.app-titlebar-inner` (next to `#btnTitlebarNewChat`, so it's visible from
+  every panel, not just chat — the rail's `.nav-tab` icons are user-
+  reorderable/hideable via `localStorage['hermes-webui-hidden-tabs']`, which
+  is the wrong shape for a global action). New overlay markup:
+  `#commandPaletteOverlay` › `#commandPaletteModal` (`#commandPaletteInput`,
+  `#commandPaletteList`, a footer keyboard hint), and a second, independent
+  `#shortcutsHelpOverlay` › `#shortcutsHelpModal` (static list of shortcut
+  groups: General / Sessions / Composer).
+- `static/panels.js`: `openCommandPalette`, `closeCommandPalette`,
+  `_renderCommandPaletteResults`, `_filterCommandPaletteEntries`,
+  `_commandPaletteNavEntries()` (reads live `.rail .nav-tab[data-panel]`
+  buttons from the DOM, skipping `.nav-tab-hidden` ones, so the palette's
+  Navigate section always matches whatever panels the user currently has
+  visible/ordered — not a second hardcoded panel list that could drift),
+  `_commandPaletteCommandEntries()` (reads `COMMANDS` from `commands.js`),
+  `_commandPaletteActionEntries()` (Keyboard Shortcuts +, when a session is
+  open, the three Chat Export actions below — ties the two Priority-3
+  features together instead of building a second export entry point),
+  `_selectCommandPaletteEntry`, `_navigateCommandPalette`,
+  `openShortcutsHelp`, `closeShortcutsHelp`. Palette keyboard-nav state
+  (`_paletteSelectedIdx`) is separate from the composer dropdown's
+  `_cmdSelectedIdx` so the two never collide if both happen to be open.
+- `static/boot.js`: global keydown handler registers Ctrl/Cmd+**Shift**+P →
+  `openCommandPalette()`. Plain Ctrl/Cmd+K is already bound to "new chat"
+  (`static/boot.js` ~line 2422) — cmdk's usual ⌘K would silently steal that
+  binding, so this uses the VS Code / cmdk-alternate convention
+  (Ctrl/Cmd+Shift+P) instead, confirmed unused anywhere else in the
+  codebase. Fires globally (not skipped for text-input focus), matching the
+  existing Cmd/Ctrl+, → Settings handler's precedent, since Shift+P is not a
+  text-editing chord. Bare `?` → `openShortcutsHelp()`, guarded to skip
+  input/textarea/contenteditable targets (same `isText` guard already used
+  by the Cmd/Ctrl+B handler). Escape closes whichever of the two is open,
+  extending the existing Escape handler.
+- `static/style.css`: new `.cmdk-overlay`/`.cmdk-modal`/`.cmdk-input`/
+  `.cmdk-section-label`/`.cmdk-empty`/`.shortcuts-help-*` rules for the
+  modal shells only. List rows reuse the **existing**
+  `.cmd-item`/`.cmd-item-name`/`.cmd-item-desc`/`.cmd-item-arg`/
+  `.cmd-item-badge` classes already styled for the composer's slash-
+  autocomplete dropdown — same visual language, zero new item CSS. All
+  colors go through existing `var(--...)` tokens; the overlay backdrop
+  reuses the established `rgba(7,12,19,.62)` + `backdrop-filter:blur(6px)`
+  convention already shared by `.app-dialog-overlay` and
+  `.kanban-modal-overlay` (not a new pattern).
+- `static/i18n.js`: new keys (`command_palette`, `command_palette_placeholder`,
+  `command_palette_no_results`, `command_palette_section_navigate`,
+  `command_palette_section_commands`, `command_palette_section_actions`,
+  `command_palette_hint`, `keyboard_shortcuts`, `keyboard_shortcuts_close`,
+  `shortcuts_group_general`, `shortcuts_group_sessions`,
+  `shortcuts_group_composer`, `shortcut_open_palette`,
+  `shortcut_open_shortcuts`, `shortcut_new_chat`, `shortcut_toggle_sidebar`,
+  `shortcut_focus_composer`, `shortcut_open_settings`,
+  `shortcut_navigate_sessions`, `shortcut_send`, `shortcut_send_newline`)
+  across all 15 locale blocks.
+
+**Selection behavior (a second deliberate safety decision):** picking a
+Navigate or Action entry executes immediately (switch panel / open shortcuts
+modal / trigger export download) and closes the palette. Picking a **command**
+entry does **not** auto-execute — it switches to the Chat panel if not
+already active, inserts `/name` (+ trailing space if the command declares an
+`arg`) into the composer, and focuses it, exactly mirroring what clicking a
+suggestion in the existing composer autocomplete dropdown already does. This
+is deliberate: several builtin commands are destructive or session-mutating
+(`/clear`, `/stop`, `/new`), and the palette is reachable from any panel —
+auto-firing one of those on selection, possibly against a session the user
+isn't even looking at, would be a bad surprise. Non-destructive/unambiguous
+Navigate and Action entries don't have that risk, so they execute directly.
+
+#### Tests to write (must fail before, pass after — GUIDELINES rule 6)
+`tests/test_command_palette_ui.py` (structural wiring guards, no browser):
+1. Trigger button + overlay markup present in `index.html`
+   (`btnCommandPalette`, `commandPaletteOverlay`, `commandPaletteInput`,
+   `commandPaletteList`, `shortcutsHelpOverlay`, `shortcutsHelpModal`).
+2. `panels.js` defines the open/close/render/filter/select functions listed
+   above.
+3. `boot.js` registers the Ctrl/Cmd+Shift+P and bare `?` keydown bindings,
+   and the existing Ctrl/Cmd+K "new chat" binding is untouched (regression
+   guard against reintroducing the collision).
+4. The palette's command source is literally `COMMANDS` (grep for a `COMMANDS`
+   reference inside the palette's entry-building function) — guards against
+   a future edit silently duplicating command definitions instead of reusing
+   the registry, per the decision above.
+5. i18n keys present in all 15 locale blocks (same key-diff pattern as
+   `tests/test_agent_definitions_ui.py`).
+
+#### Open questions — RESOLVED 2026-08-10
+1. **Shortcut collision with existing Cmd/Ctrl+K** — resolved: use
+   Ctrl/Cmd+Shift+P instead (confirmed unused).
+2. **Reuse vs. duplicate the slash-command registry** — resolved: reuse
+   `COMMANDS` directly; skip the async agent/plugin/skill/bundle layer for
+   palette purposes (documented gap, not an oversight).
+3. **Auto-execute vs. insert-into-composer on select** — resolved:
+   insert-into-composer for commands (safety), immediate-execute for
+   Navigate/Action entries.
+
+**Shipped 2026-08-10:** implemented exactly per the plan above — trigger
+button + Ctrl/Cmd+Shift+P + `?` shortcuts modal, `COMMANDS`-reuse data
+source, DOM-driven Navigate section, insert-not-execute command selection,
+21 new i18n keys × 15 locales, `tests/test_command_palette_ui.py`. Known
+gap (by design, see decision above): agent/plugin/skill/bundle commands
+are not in the palette's Commands section, only the static builtin
+`COMMANDS` table — they're still reachable via `/` in the composer.
 
 ### Chat export — STATUS: DONE (shipped 2026-08-10)
 
@@ -1050,15 +1193,6 @@ existing `/api/session/export` endpoint, `#btnExportText` in Settings,
 this closes both identified gaps (Text format; non-active-session
 Markdown/JSON export) without touching the pre-existing, working
 `transcript()`/`btnExportJSON`/`btnExportHTML` code paths.
-- **Sound notification system** — synthesized Web Audio API chimes (agent
-  spawned/complete/failed, chat notification, thinking tick), no audio
-  files needed.
-- **Voice input** (Web Speech API, `use-voice-input.ts`/
-  `use-voice-recorder.ts`) — not present.
-- **Onboarding tour** — hermes-webui has `onboarding.py`/`onboarding.js`;
-  worth checking whether it's a guided step-by-step *tour*
-  (`react-joyride`-style, like Hermes-Studio has in addition to a setup
-  wizard) or just the wizard.
 
 ### Audit Trail UI — STATUS: DONE (shipped 2026-08-10)
 

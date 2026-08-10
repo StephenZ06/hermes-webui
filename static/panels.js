@@ -14784,3 +14784,249 @@ function updateNotificationPermissionStatus(){
   }
   if(btnWrap) btnWrap.title=label;
 }
+
+// ── Command palette (Ctrl/Cmd+Shift+P) + keyboard-shortcuts help (?) ───────
+// See docs/HERMES_STUDIO_PARITY_PLAN.md, "Priority 3 -- Command palette",
+// for the full design rationale (especially the deliberate decision to reuse
+// commands.js's COMMANDS registry rather than building a second command
+// list, and to insert-not-execute on command selection).
+let _paletteEntries = [];
+let _paletteSelectedIdx = -1;
+
+// Navigate section is DOM-driven (reads the live rail), not a second
+// hardcoded panel list -- it automatically follows whatever panels the user
+// currently has visible/ordered via the existing tab-hide/reorder feature.
+function _commandPaletteNavEntries(){
+  const seen = new Set();
+  const out = [];
+  document.querySelectorAll('.rail .nav-tab[data-panel]').forEach(btn=>{
+    if(btn.classList.contains('nav-tab-hidden')) return;
+    const panel = btn.dataset.panel;
+    if(!panel || seen.has(panel)) return;
+    seen.add(panel);
+    const key = APP_TITLEBAR_KEYS[panel];
+    const label = (key && typeof t==='function') ? t(key) : (btn.getAttribute('aria-label')||panel);
+    out.push({type:'nav', id:'nav:'+panel, label, desc:'', panel});
+  });
+  return out;
+}
+
+// Commands section reads directly from commands.js's COMMANDS array -- the
+// same static table the composer's slash autocomplete dispatches through.
+// Deliberately NOT getMatchingCommands() (that also merges in async agent/
+// plugin/skill/bundle commands loaded from the network, which would make the
+// palette wait on a fetch before it can render on first use).
+function _commandPaletteCommandEntries(){
+  if(typeof COMMANDS==='undefined'||!Array.isArray(COMMANDS)) return [];
+  return COMMANDS.map(c=>({
+    type:'command', id:'cmd:'+c.name, label:'/'+c.name, desc:c.desc||'',
+    name:c.name, arg:c.arg||'',
+  }));
+}
+
+// Actions section: Keyboard Shortcuts always; the three Chat Export formats
+// only when a session is open -- reuses the same export mechanism as the
+// sidebar ⋮ menu (_sessionExportDownload in sessions.js) rather than
+// building a second export entry point.
+function _commandPaletteActionEntries(){
+  const out=[{type:'action', id:'action:shortcuts', label:t('keyboard_shortcuts'), desc:'', action:'shortcuts'}];
+  if(typeof S!=='undefined' && S && S.session && S.session.session_id){
+    out.push({type:'action', id:'action:export-md', label:t('session_export_md'), desc:t('session_export_md_desc'), action:'export-md'});
+    out.push({type:'action', id:'action:export-json', label:t('session_export_json_sidebar'), desc:t('session_export_json_sidebar_desc'), action:'export-json'});
+    out.push({type:'action', id:'action:export-text', label:t('session_export_text_sidebar'), desc:t('session_export_text_sidebar_desc'), action:'export-text'});
+  }
+  return out;
+}
+
+function _filterCommandPaletteEntries(query){
+  const q=String(query||'').trim().toLowerCase();
+  const match=e=>!q||e.label.toLowerCase().includes(q)||(e.desc||'').toLowerCase().includes(q);
+  return {
+    nav:_commandPaletteNavEntries().filter(match),
+    commands:_commandPaletteCommandEntries().filter(match),
+    actions:_commandPaletteActionEntries().filter(match),
+  };
+}
+
+function _syncPaletteSelection(){
+  const list=$('commandPaletteList');
+  if(!list) return;
+  list.querySelectorAll('.cmd-item').forEach(el=>{
+    const isSel=Number(el.dataset.idx)===_paletteSelectedIdx;
+    el.classList.toggle('selected',isSel);
+    if(isSel) el.scrollIntoView({block:'nearest'});
+  });
+}
+
+function _renderCommandPaletteResults(query){
+  const list=$('commandPaletteList');
+  if(!list) return;
+  const groups=_filterCommandPaletteEntries(query);
+  _paletteEntries=[...groups.nav,...groups.commands,...groups.actions];
+  list.innerHTML='';
+  if(!_paletteEntries.length){
+    list.innerHTML=`<div class="cmdk-empty">${esc(t('command_palette_no_results'))}</div>`;
+    _paletteSelectedIdx=-1;
+    return;
+  }
+  const addSection=(labelKey,entries)=>{
+    if(!entries.length) return;
+    const label=document.createElement('div');
+    label.className='cmdk-section-label';
+    label.textContent=t(labelKey);
+    list.appendChild(label);
+    entries.forEach(e=>{
+      const idx=_paletteEntries.indexOf(e);
+      const el=document.createElement('div');
+      el.className='cmd-item';
+      el.dataset.idx=idx;
+      el.setAttribute('role','option');
+      const argHtml=e.arg?` <span class="cmd-item-arg">${esc(e.arg)}</span>`:'';
+      const descHtml=e.desc?`<div class="cmd-item-desc">${esc(e.desc)}</div>`:'';
+      el.innerHTML=`<div class="cmd-item-name">${esc(e.label)}${argHtml}</div>${descHtml}`;
+      el.onmousedown=(ev)=>{ev.preventDefault();_selectCommandPaletteEntry(idx);};
+      list.appendChild(el);
+    });
+  };
+  addSection('command_palette_section_navigate',groups.nav);
+  addSection('command_palette_section_commands',groups.commands);
+  addSection('command_palette_section_actions',groups.actions);
+  _paletteSelectedIdx=_paletteEntries.length?0:-1;
+  _syncPaletteSelection();
+}
+
+function _navigateCommandPalette(dir){
+  if(!_paletteEntries.length) return;
+  _paletteSelectedIdx=(_paletteSelectedIdx+dir+_paletteEntries.length)%_paletteEntries.length;
+  _syncPaletteSelection();
+}
+
+// Selection behavior is deliberately asymmetric (see the plan doc): Navigate
+// and Action entries execute immediately (non-destructive, unambiguous).
+// Command entries insert `/name ` into the composer and focus it instead of
+// auto-running -- several builtin commands are destructive/session-mutating
+// (/clear, /stop, /new) and the palette is reachable from any panel, so
+// auto-firing one on selection could hit a session the user isn't looking
+// at. This exactly mirrors what clicking a suggestion in the existing
+// composer autocomplete dropdown already does (see commands.js
+// showCmdDropdown's onmousedown handler).
+function _selectCommandPaletteEntry(idx){
+  const entry=_paletteEntries[idx];
+  if(!entry) return;
+  if(entry.type==='nav'){
+    closeCommandPalette();
+    if(typeof switchPanel==='function') switchPanel(entry.panel);
+    return;
+  }
+  if(entry.type==='command'){
+    closeCommandPalette();
+    if(typeof switchPanel==='function' && _currentPanel!=='chat') switchPanel('chat');
+    const ta=$('msg');
+    if(ta){
+      ta.value='/'+entry.name+(entry.arg?' ':'');
+      ta.focus();
+      ta.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    return;
+  }
+  if(entry.type==='action'){
+    closeCommandPalette();
+    if(entry.action==='shortcuts'){ openShortcutsHelp(); return; }
+    if(typeof S==='undefined'||!S||!S.session||typeof _sessionExportDownload!=='function') return;
+    if(entry.action==='export-md') _sessionExportDownload(S.session,'md','md');
+    else if(entry.action==='export-json') _sessionExportDownload(S.session,'','json');
+    else if(entry.action==='export-text') _sessionExportDownload(S.session,'text','txt');
+  }
+}
+
+function openCommandPalette(){
+  const overlay=$('commandPaletteOverlay');
+  if(!overlay) return;
+  overlay.style.display='flex';
+  overlay.setAttribute('aria-hidden','false');
+  const input=$('commandPaletteInput');
+  if(input) input.value='';
+  _renderCommandPaletteResults('');
+  setTimeout(()=>{ if(input) input.focus(); },0);
+}
+
+function closeCommandPalette(){
+  const overlay=$('commandPaletteOverlay');
+  if(!overlay||overlay.style.display==='none') return;
+  overlay.style.display='none';
+  overlay.setAttribute('aria-hidden','true');
+  _paletteEntries=[];
+  _paletteSelectedIdx=-1;
+}
+
+function isCommandPaletteOpen(){
+  const overlay=$('commandPaletteOverlay');
+  return !!(overlay && overlay.style.display!=='none' && overlay.style.display!=='');
+}
+
+(function(){
+  const input=document.getElementById('commandPaletteInput');
+  if(!input) return;
+  input.addEventListener('input',()=>_renderCommandPaletteResults(input.value));
+  input.addEventListener('keydown',(e)=>{
+    if(e.key==='ArrowDown'){e.preventDefault();_navigateCommandPalette(1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();_navigateCommandPalette(-1);}
+    else if(e.key==='Enter'){e.preventDefault();if(_paletteSelectedIdx>=0)_selectCommandPaletteEntry(_paletteSelectedIdx);}
+    else if(e.key==='Escape'){e.preventDefault();closeCommandPalette();}
+  });
+})();
+
+// ── Keyboard shortcuts help modal (?) ───────────────────────────────────────
+function _shortcutsHelpGroups(){
+  return [
+    {titleKey:'shortcuts_group_general', rows:[
+      {labelKey:'shortcut_open_palette', keys:['Ctrl','Shift','P']},
+      {labelKey:'shortcut_open_shortcuts', keys:['?']},
+      {labelKey:'shortcut_new_chat', keys:['Ctrl','K']},
+      {labelKey:'shortcut_toggle_sidebar', keys:['Ctrl','B']},
+      {labelKey:'shortcut_focus_composer', keys:['Ctrl','/']},
+      {labelKey:'shortcut_open_settings', keys:['Ctrl',',']},
+    ]},
+    {titleKey:'shortcuts_group_sessions', rows:[
+      {labelKey:'shortcut_navigate_sessions', keys:['J','K']},
+    ]},
+    {titleKey:'shortcuts_group_composer', rows:[
+      {labelKey:'shortcut_send', keys:['Enter']},
+      {labelKey:'shortcut_send_newline', keys:['Shift','Enter']},
+    ]},
+  ];
+}
+
+function _renderShortcutsHelp(){
+  const body=$('shortcutsHelpBody');
+  if(!body) return;
+  const isMac=typeof navigator!=='undefined' && /Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent||'');
+  const mapKey=k=>k==='Ctrl'?(isMac?'⌘':'Ctrl'):k;
+  body.innerHTML=_shortcutsHelpGroups().map(group=>{
+    const rows=group.rows.map(r=>{
+      const keys=r.keys.map(k=>`<span class="shortcuts-help-key">${esc(mapKey(k))}</span>`).join('');
+      return `<div class="shortcuts-help-row"><span>${esc(t(r.labelKey))}</span><span class="shortcuts-help-keys">${keys}</span></div>`;
+    }).join('');
+    return `<div class="shortcuts-help-group-title">${esc(t(group.titleKey))}</div>${rows}`;
+  }).join('');
+}
+
+function openShortcutsHelp(){
+  const overlay=$('shortcutsHelpOverlay');
+  if(!overlay) return;
+  _renderShortcutsHelp();
+  overlay.style.display='flex';
+  overlay.setAttribute('aria-hidden','false');
+}
+
+function closeShortcutsHelp(){
+  const overlay=$('shortcutsHelpOverlay');
+  if(!overlay||overlay.style.display==='none') return;
+  overlay.style.display='none';
+  overlay.setAttribute('aria-hidden','true');
+}
+
+function isShortcutsHelpOpen(){
+  const overlay=$('shortcutsHelpOverlay');
+  return !!(overlay && overlay.style.display!=='none' && overlay.style.display!=='');
+}

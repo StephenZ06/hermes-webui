@@ -137,6 +137,12 @@
     <span class="app-titlebar-sub" id="appTitlebarSub" hidden></span>
   </div>
   <div class="app-titlebar-spacer" aria-hidden="true"></div>
+  <button class="app-titlebar-cmdk-btn" id="btnCommandPalette" onclick="openCommandPalette()" type="button" aria-label="Command palette" data-i18n-title="command_palette" data-i18n-aria-label="command_palette" title="Command palette">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16">
+      <circle cx="11" cy="11" r="7"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  </button>
   <button class="app-titlebar-new-chat" id="btnTitlebarNewChat" onclick="$('btnNewChat') && $('btnNewChat').click()" type="button" aria-label="New conversation" data-i18n-title="new_conversation" data-i18n-aria-label="new_conversation" title="New conversation">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16">
       <line x1="12" y1="5" x2="12" y2="19"/>
@@ -1889,6 +1895,29 @@
       <button class="app-dialog-btn" id="appDialogCancel" type="button" data-i18n="cancel">Cancel</button>
       <button class="app-dialog-btn confirm" id="appDialogConfirm" type="button">Confirm</button>
     </div>
+  </div>
+</div>
+<!-- Command palette (⌘⇧P) — see docs/HERMES_STUDIO_PARITY_PLAN.md "Command palette". -->
+<div class="cmdk-overlay" id="commandPaletteOverlay" style="display:none" aria-hidden="true" onclick="if(event.target===this)closeCommandPalette()">
+  <div class="cmdk-modal" id="commandPaletteModal" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-input-row">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="cmdk-input" id="commandPaletteInput" autocomplete="off" spellcheck="false" data-i18n-placeholder="command_palette_placeholder" placeholder="Type a command or search...">
+    </div>
+    <div class="cmdk-list" id="commandPaletteList" role="listbox"></div>
+    <div class="cmdk-hint" id="commandPaletteHint" data-i18n="command_palette_hint">↑↓ navigate · Enter select · Esc close</div>
+  </div>
+</div>
+<!-- Keyboard shortcuts help modal (?) -->
+<div class="cmdk-overlay" id="shortcutsHelpOverlay" style="display:none" aria-hidden="true" onclick="if(event.target===this)closeShortcutsHelp()">
+  <div class="cmdk-modal shortcuts-help-modal" id="shortcutsHelpModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsHelpTitle">
+    <div class="shortcuts-help-header">
+      <div class="shortcuts-help-title" id="shortcutsHelpTitle" data-i18n="keyboard_shortcuts">Keyboard shortcuts</div>
+      <button class="app-dialog-close" id="shortcutsHelpClose" type="button" onclick="closeShortcutsHelp()" data-i18n-aria-label="keyboard_shortcuts_close" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="shortcuts-help-body" id="shortcutsHelpBody"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
