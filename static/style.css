@@ -5810,7 +5810,40 @@ main.main > #mainPlugin{display:none;}
 .session-list-error-retry:hover:not(:disabled):not([aria-busy="true"]):not([aria-disabled="true"]){background:var(--hover-bg);border-color:var(--accent-bg-strong);color:var(--text);}
 .session-list-error-retry:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
 .session-list-error-retry:disabled,.session-list-error-retry[aria-busy="true"],.session-list-error-retry[aria-disabled="true"]{background:var(--surface);border-color:var(--border2);color:var(--muted);cursor:wait;opacity:1;}
-.project-bar{display:flex;gap:4px;padding:4px 10px 8px;flex-wrap:wrap;align-items:center;flex-shrink:0;}
+/* Sidebar section divider — even spacing above/below, matching the
+   border-top + padding-top convention used by .cron-paused-section and
+   .plugin-card-footer elsewhere in this file. Sits right below the
+   conversation search box, above the Projects folder list / session list. */
+.sidebar-divider{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-shrink:0;}
+/* Projects folder list — ChatGPT-style vertical, collapsible list replacing
+   the old horizontal .project-bar chip row. Each project is a full-width
+   row (chevron + color dot + name + session count + actions) that expands
+   to reveal that project's sessions nested underneath it. The "All" and
+   "Unassigned" rows reuse the plain .project-chip look, just stretched to
+   full width by the container selector below, so their existing markup/
+   behavior (filter-by-project, active state) is unchanged. */
+.project-folder-list{display:flex;flex-direction:column;gap:2px;padding:6px 8px 8px;flex-shrink:0;}
+.project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:500;justify-content:flex-start;}
+.project-folder-chevron{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;color:var(--muted);font-size:9px;transition:transform .15s ease;}
+.project-folder-chevron.expanded{transform:rotate(90deg);}
+.project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
+.project-folder-count{font-size:10px;color:var(--muted);flex-shrink:0;padding:0 2px;}
+.project-folder-kebab{width:20px;height:20px;flex-shrink:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;padding:0;line-height:1;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s,color .15s;}
+.project-folder-kebab svg{width:14px;height:14px;}
+.project-chip:hover .project-folder-kebab,
+.project-chip:focus-within .project-folder-kebab{opacity:1;}
+.project-folder-kebab:hover{background:var(--hover-bg);color:var(--text);}
+.project-folder-sessions{display:flex;flex-direction:column;gap:2px;margin:2px 0 4px;padding-left:18px;border-left:1px solid var(--border);margin-left:13px;}
+.project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
+.project-folder-empty{font-size:11px;color:var(--muted);padding:4px 8px;opacity:.75;}
+@media (hover:none) and (pointer:coarse){
+  .project-folder-kebab{opacity:.72;width:24px;height:24px;}
+}
+@media (max-width:640px){
+  .project-folder-list .project-chip{padding:9px 8px;min-height:40px;}
+  .project-folder-chevron{width:18px;height:18px;}
+  .project-folder-kebab{width:26px;height:26px;}
+}
 .project-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border2);background:var(--input-bg);color:var(--muted);transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
 .project-chip:hover{background:rgba(255,255,255,.08);color:var(--text);}
 .project-chip.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg);}

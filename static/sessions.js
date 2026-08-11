@@ -7690,9 +7690,19 @@ function renderSessionListFromCache(){
   // Project filter bar — show when there are real projects OR there are
   // unassigned sessions (so the Unassigned chip has something to filter to).
   const hasUnprojected=profileFiltered.some(s=>!s.project_id);
+  // Collapsed/expanded state per project, persisted the same way the
+  // date-group sections do it (JSON blob in localStorage, re-read/re-saved
+  // on every render) so re-rendering the sidebar doesn't collapse whatever
+  // the user had open. Declared here (not inside the folder-list block below)
+  // because the main date-grouped list further down also needs it, to avoid
+  // showing a session both nested under an expanded folder AND in the flat
+  // list beneath the folders.
+  let _projectFoldersExpanded={};
+  try{_projectFoldersExpanded=JSON.parse(localStorage.getItem('hermes-project-folders-expanded')||'{}');}catch(e){}
+  const _saveProjectFoldersExpanded=()=>{try{localStorage.setItem('hermes-project-folders-expanded',JSON.stringify(_projectFoldersExpanded));}catch(e){}};
   if(_allProjects.length>0||hasUnprojected){
     const bar=document.createElement('div');
-    bar.className='project-bar';
+    bar.className='project-folder-list';
     // "All" chip
     const allChip=document.createElement('span');
     allChip.className='project-chip'+(!_activeProject?' active':'');
@@ -7710,10 +7720,31 @@ function renderSessionListFromCache(){
       noneChip.onclick=()=>{_setActiveProjectFilter(NO_PROJECT_FILTER);};
       bar.appendChild(noneChip);
     }
-    // Project chips
+    // Project folders — vertical, collapsible rows (ChatGPT-style). Clicking
+    // a folder row filters the session list below to that project (same
+    // _setActiveProjectFilter contract the old chip bar used) and reveals the
+    // nested session preview; the chevron alone toggles the nested preview
+    // without changing the active filter.
     for(const p of _allProjects){
       const chip=document.createElement('span');
-      chip.className='project-chip'+(p.project_id===_activeProject?' active':'');
+      chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');
+      const isExpanded=Boolean(_projectFoldersExpanded[p.project_id]);
+      const chevron=document.createElement('span');
+      chevron.className='project-folder-chevron'+(isExpanded?' expanded':'');
+      chevron.textContent='▸';
+      chevron.setAttribute('role','button');
+      chevron.setAttribute('tabindex','0');
+      chevron.setAttribute('aria-label','Toggle project sessions');
+      chevron.setAttribute('aria-expanded',isExpanded?'true':'false');
+      const toggleFolder=(e)=>{
+        e.stopPropagation();
+        _projectFoldersExpanded[p.project_id]=!_projectFoldersExpanded[p.project_id];
+        _saveProjectFoldersExpanded();
+        renderSessionListFromCache();
+      };
+      chevron.onclick=toggleFolder;
+      chevron.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleFolder(e);}};
+      chip.appendChild(chevron);
       if(p.color){
         const dot=document.createElement('span');
         dot.className='color-dot';
@@ -7721,12 +7752,33 @@ function renderSessionListFromCache(){
         chip.appendChild(dot);
       }
       const nameSpan=document.createElement('span');
+      nameSpan.className='project-folder-name';
       nameSpan.textContent=p.name;
       chip.appendChild(nameSpan);
+      const projectSessionCount=profileFiltered.filter(s=>s.project_id===p.project_id&&(_showArchived||!s.archived)).length;
+      const countSpan=document.createElement('span');
+      countSpan.className='project-folder-count';
+      countSpan.textContent=String(projectSessionCount);
+      chip.appendChild(countSpan);
+      const kebab=document.createElement('button');
+      kebab.type='button';
+      kebab.className='project-folder-kebab';
+      kebab.title='Project options';
+      kebab.setAttribute('aria-label','Project options');
+      kebab.innerHTML=ICONS.more;
+      kebab.onclick=(e)=>{e.preventDefault();e.stopPropagation();_showProjectContextMenu(e,p,chip);};
+      chip.appendChild(kebab);
       let _pClickTimer=null;
       chip.onclick=(e)=>{
         clearTimeout(_pClickTimer);
-        _pClickTimer=setTimeout(()=>{_pClickTimer=null;_setActiveProjectFilter(p.project_id);},220);
+        _pClickTimer=setTimeout(()=>{
+          _pClickTimer=null;
+          _setActiveProjectFilter(p.project_id);
+          if(!_projectFoldersExpanded[p.project_id]){
+            _projectFoldersExpanded[p.project_id]=true;
+            _saveProjectFoldersExpanded();
+          }
+        },220);
       };
       chip.ondblclick=(e)=>{e.stopPropagation();clearTimeout(_pClickTimer);_pClickTimer=null;_startProjectRename(p,chip);};
       chip.oncontextmenu=(e)=>{e.preventDefault();_showProjectContextMenu(e,p,chip);};
@@ -7776,6 +7828,25 @@ function renderSessionListFromCache(){
       },{passive:true});
       if(window._projectQuickCreate) _attachProjectQuickCreateButton(chip,p);
       bar.appendChild(chip);
+      // Nested session preview — reuses the same per-session row renderer as
+      // the main list below (_renderOneSession), so click/context-menu/swipe
+      // behavior stays identical; only the DOM location differs.
+      if(isExpanded){
+        const nested=document.createElement('div');
+        nested.className='project-folder-sessions';
+        const nestedSessions=profileFiltered
+          .filter(s=>s.project_id===p.project_id&&(_showArchived||!s.archived))
+          .sort(_sessionSidebarSortCompare);
+        if(nestedSessions.length){
+          for(const s of nestedSessions){ nested.appendChild(_renderOneSession(s,false)); }
+        }else{
+          const empty=document.createElement('div');
+          empty.className='project-folder-empty';
+          empty.textContent='No sessions in this project yet.';
+          nested.appendChild(empty);
+        }
+        bar.appendChild(nested);
+      }
     }
     // Create button
     const addBtn=document.createElement('button');
@@ -7830,7 +7901,18 @@ function renderSessionListFromCache(){
     empty.textContent=_activeProject===NO_PROJECT_FILTER?'No unassigned sessions.':'No sessions in this project yet.';
     list.appendChild(empty);
   }
-  const orderedSessions=[...sessions].sort(_sessionSidebarSortCompare);
+  // Sessions already shown nested under an expanded project folder above are
+  // excluded from the flat date-grouped list below, so they don't render
+  // twice. The active session always stays visible in the flat list too
+  // (keeps keyboard nav / "where am I" orientation working even when its
+  // project folder happens to be expanded).
+  const _expandedFolderProjectIds=new Set(
+    _allProjects.filter(p=>Boolean(_projectFoldersExpanded[p.project_id])).map(p=>p.project_id)
+  );
+  const mainListSessions=_expandedFolderProjectIds.size
+    ? sessions.filter(s=>!(s.project_id&&_expandedFolderProjectIds.has(s.project_id)&&s.session_id!==activeSidForSidebar))
+    : sessions;
+  const orderedSessions=[...mainListSessions].sort(_sessionSidebarSortCompare);
   // Separate pinned from unpinned
   const pinned=orderedSessions.filter(s=>s.pinned);
   const unpinned=orderedSessions.filter(s=>!s.pinned);
