@@ -5067,7 +5067,8 @@ main.main > #mainPlugin{display:none;}
 .app-titlebar-new-chat:disabled,.app-titlebar-new-chat[aria-busy="true"]{opacity:.5;cursor:wait;}
 .app-titlebar-new-chat:disabled:hover,.app-titlebar-new-chat[aria-busy="true"]:hover{background:transparent;color:var(--muted);}
 .panel-head-btn svg{width:14px;height:14px;display:block;}
-.panel-head-sub{padding:6px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
+.panel-head-sub{display:flex;gap:8px;padding:6px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
+.panel-head-sub select{flex:1;min-width:0;width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;}
 .side-menu{display:flex;flex-direction:column;gap:2px;padding:8px;overflow-y:auto;}
 .side-menu-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:var(--text);cursor:pointer;text-align:left;font-size:13px;font-weight:500;transition:background .15s,color .15s;width:100%;}
 .side-menu-item:hover{background:var(--surface);}
@@ -5850,7 +5851,7 @@ main.main > #mainPlugin{display:none;}
    reuses the plain .project-chip look, just stretched to full width by the
    container selector below, so its existing markup/behavior (filter-by-
    project, active state) is unchanged. */
-.project-folder-list{display:flex;flex-direction:column;gap:2px;padding:6px 8px 8px;flex-shrink:0;}
+.project-folder-list{display:flex;flex-direction:column;gap:4px;padding:6px 8px 10px;flex-shrink:0;}
 .project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:500;justify-content:flex-start;}
 /* "All" sits above the folder rows and reads as a section header, not
    another list row -- give it extra breathing room below so it doesn't
@@ -5928,8 +5929,13 @@ main.main > #mainPlugin{display:none;}
 .project-chip.no-project{border-style:dashed;}
 .project-chip .color-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .project-create-btn{font-size:10px;padding:3px 6px;border-radius:12px;cursor:pointer;border:1px dashed var(--border2);background:none;color:var(--muted);opacity:.6;transition:all .15s;}
+.project-folder-list .project-create-btn{align-self:flex-start;margin-top:4px;}
 .project-create-btn:hover{opacity:1;border-color:var(--blue);color:var(--blue);}
 .project-create-input{font-size:10px;padding:3px 8px;border-radius:12px;border:1px solid var(--accent-bg);background:var(--surface);color:var(--text);outline:none;min-width:40px;max-width:180px;width:auto;font-family:inherit;box-shadow:0 0 0 2px var(--accent-bg);}
+/* Renaming a folder row: keep the full-width folder-row shape (matches
+   .project-folder-list .project-chip) instead of shrinking to the small
+   pill used by the "+ new project" input. */
+.project-folder-rename-input{width:100%;box-sizing:border-box;max-width:none;min-width:0;border-radius:8px;padding:6px 8px;font-size:12px;}
 .project-picker{position:absolute;right:0;top:100%;background:var(--sidebar);border:1px solid var(--border2);border-radius:8px;padding:4px;z-index:30;min-width:160px;max-width:220px;width:max-content;box-shadow:0 4px 16px rgba(0,0,0,.3);}
 .batch-action-bar .batch-project-picker{position:static;right:auto;top:auto;min-width:100%;max-width:none;width:100%;box-shadow:none;margin-top:2px;background:var(--input-bg);}
 .project-picker-item{padding:5px 10px;font-size:11px;border-radius:6px;cursor:pointer;color:var(--muted);transition:all .1s;display:flex;align-items:center;gap:6px;}
@@ -6963,16 +6969,12 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
   position:absolute;top:calc(100% + 4px);right:0;left:auto;
   min-width:220px;max-width:280px;
   display:flex;flex-direction:column;gap:8px;
-  background:linear-gradient(180deg,rgba(21,31,45,.98),rgba(13,20,31,.98));
-  border:1px solid var(--accent-bg-strong, var(--border));
+  background:var(--surface);
+  border:1px solid var(--border2);
   border-radius:10px;
   box-shadow:0 8px 24px rgba(0,0,0,.45);
   padding:10px;
   z-index:150;
-}
-:root:not(.dark) .kanban-filter-popover{
-  background:linear-gradient(180deg,#fff,#f5f0e8);
-  border-color:rgba(0,0,0,.18);
 }
 .kanban-filter-popover[hidden]{display:none;}
 .kanban-filter-popover select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;}
@@ -7063,18 +7065,14 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-board-switcher-menu{
   position:absolute;top:calc(100% + 4px);left:0;
   min-width:240px;max-width:320px;
-  background:linear-gradient(180deg,rgba(21,31,45,.98),rgba(13,20,31,.98));
-  border:1px solid var(--accent-bg-strong, var(--border));
+  background:var(--surface);
+  border:1px solid var(--border2);
   border-radius:10px;
   box-shadow:0 8px 24px rgba(0,0,0,.45);
   padding:6px;
   z-index:150;
   max-height:60vh;
   overflow-y:auto;
-}
-:root:not(.dark) .kanban-board-switcher-menu{
-  background:linear-gradient(180deg,#fff,#f5f0e8);
-  border-color:rgba(0,0,0,.18);
 }
 .kanban-board-switcher-menu[hidden]{display:none;}
 .kanban-board-switcher-item{
@@ -7222,7 +7220,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-crew-task-remove{font-size:11px;padding:4px 8px;}
 
 .kanban-new-task-row{display:flex;gap:6px;align-items:center;}
-.kanban-new-task-row input{flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;box-sizing:border-box;}
+.kanban-new-task-row input{flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;box-sizing:border-box;}
 .kanban-task-preview{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel);}
 .kanban-task-preview-header{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
 .kanban-back-btn{flex-shrink:0;font-size:11px;padding:4px 8px;}
@@ -7349,7 +7347,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
    controls competing for the same row's space. */
 .kanban-bulk-bar{display:flex;flex-direction:column;gap:6px;}
 .kanban-bulk-bar-row{display:flex;gap:6px;align-items:center;}
-.kanban-bulk-bar select{flex:1;min-width:96px;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;box-sizing:border-box;}
+.kanban-bulk-bar select{flex:1;min-width:96px;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;box-sizing:border-box;}
 .kanban-dispatch-row .kanban-nudge-dispatch-btn,
 .kanban-dispatch-row .kanban-run-dispatch-btn{flex:1 1 0;text-align:center;}
 

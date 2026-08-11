@@ -9497,7 +9497,12 @@ function _startProjectCreate(bar, addBtn){
 
 function _startProjectRename(proj, chip){
   const inp=document.createElement('input');
-  inp.className='project-create-input';
+  // Separate class from the "+" add-project input: that one replaces the
+  // small pill create-button so the small pill shape is correct there, but
+  // renaming replaces a full-width folder row -- reusing the same pill class
+  // shrank the row into a stray pill mid-list. This class keeps the folder
+  // row's shape instead (see .project-folder-rename-input in style.css).
+  inp.className='project-create-input project-folder-rename-input';
   inp.value=proj.name;
   let _finishDone=false;
   const finish=async(save)=>{
@@ -9526,9 +9531,7 @@ function _startProjectRename(proj, chip){
   };
   inp.onblur=()=>finish(true);
   inp.onclick=(e)=>e.stopPropagation();
-  inp.addEventListener('input',()=>_resizeProjectInput(inp));
   chip.replaceWith(inp);
-  _resizeProjectInput(inp);
   setTimeout(()=>{inp.focus();inp.select();},10);
 }
 
