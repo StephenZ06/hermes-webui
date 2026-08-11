@@ -5818,12 +5818,16 @@ main.main > #mainPlugin{display:none;}
 /* Projects folder list — ChatGPT-style vertical, collapsible list replacing
    the old horizontal .project-bar chip row. Each project is a full-width
    row (chevron + color dot + name + session count + actions) that expands
-   to reveal that project's sessions nested underneath it. The "All" and
-   "Unassigned" rows reuse the plain .project-chip look, just stretched to
-   full width by the container selector below, so their existing markup/
-   behavior (filter-by-project, active state) is unchanged. */
+   to reveal that project's sessions nested underneath it. The "All" row
+   reuses the plain .project-chip look, just stretched to full width by the
+   container selector below, so its existing markup/behavior (filter-by-
+   project, active state) is unchanged. */
 .project-folder-list{display:flex;flex-direction:column;gap:2px;padding:6px 8px 8px;flex-shrink:0;}
 .project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:500;justify-content:flex-start;}
+/* "All" sits above the folder rows and reads as a section header, not
+   another list row -- give it extra breathing room below so it doesn't
+   look glued to the first folder. */
+.project-folder-list > .project-chip:first-child{margin-bottom:6px;}
 .project-folder-chevron{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;color:var(--muted);font-size:9px;transition:transform .15s ease;}
 .project-folder-chevron.expanded{transform:rotate(90deg);}
 .project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
