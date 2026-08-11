@@ -1520,6 +1520,10 @@
   }
   html{background:var(--sidebar);}
   .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important;}
+  /* First-load placeholder for panel lists that used to just say "Loading...". */
+  .loading-spinner-wrap{display:flex;align-items:center;justify-content:center;padding:24px 12px;}
+  .loading-spinner{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--border);border-top-color:var(--accent);animation:loading-spinner-spin .7s linear infinite;}
+  @keyframes loading-spinner-spin{to{transform:rotate(360deg);}}
   body{background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
   .layout{display:flex;width:100%;flex:1 1 auto;min-height:0;}
   .app-titlebar{display:flex;align-items:center;justify-content:center;height:38px;flex-shrink:0;background:var(--sidebar);border-bottom:1px solid var(--border);padding:0 12px;padding-top:var(--app-titlebar-safe-top);padding-left:max(12px,env(safe-area-inset-left,0));padding-right:max(12px,env(safe-area-inset-right,0));box-sizing:content-box;font-size:12px;color:var(--muted);user-select:none;-webkit-app-region:drag;position:relative;z-index:20;}
@@ -5865,6 +5869,13 @@ main.main > #mainPlugin{display:none;}
 .project-folder-kebab:hover{background:var(--hover-bg);color:var(--text);}
 .project-folder-sessions{display:flex;flex-direction:column;gap:2px;margin:2px 0 4px;padding-left:18px;border-left:1px solid var(--border);margin-left:13px;}
 .project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
+/* The currently-open chat still reads as active via its text color (set by
+   the skin-specific .session-item.active rules above), just without a
+   filled background -- nested rows should stay visually flat like the
+   folder row itself. !important beats the skin-scoped .active overrides,
+   which all set background with !important themselves. */
+.project-folder-sessions .session-item.active{background:transparent!important;border:none!important;box-shadow:none!important;}
+.project-folder-sessions .session-item.active::before{display:none!important;}
 .project-folder-empty{font-size:11px;color:var(--muted);padding:4px 8px;opacity:.75;}
 @media (hover:none) and (pointer:coarse){
   .project-folder-kebab{opacity:.72;width:24px;height:24px;}
@@ -5925,10 +5936,11 @@ main.main > #mainPlugin{display:none;}
    state so it's still obviously selected. */
 .project-chip.no-project{border-style:dashed;}
 .project-chip .color-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;}
-.project-create-btn{font-size:10px;padding:3px 6px;border-radius:12px;cursor:pointer;border:1.5px dashed var(--muted);background:none;color:var(--muted);opacity:.85;transition:all .15s;}
-.project-folder-list .project-create-btn{align-self:center;margin-top:6px;width:30px;height:30px;padding:0;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;}
-.project-create-btn:hover{opacity:1;border-color:var(--blue);color:var(--blue);}
 .project-create-input{font-size:10px;padding:3px 8px;border-radius:12px;border:1px solid var(--accent-bg);background:var(--surface);color:var(--text);outline:none;min-width:40px;max-width:180px;width:auto;font-family:inherit;box-shadow:0 0 0 2px var(--accent-bg);}
+/* "+" menu in the Chat panel head: New conversation / New project folder. */
+.new-chat-menu{position:fixed;min-width:190px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35);padding:6px;z-index:9999;display:flex;flex-direction:column;gap:2px;}
+.new-chat-menu-item{width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer;}
+.new-chat-menu-item:hover{background:var(--hover-bg);}
 /* Renaming a folder row: keep the full-width folder-row shape (matches
    .project-folder-list .project-chip) instead of shrinking to the small
    pill used by the "+ new project" input. */

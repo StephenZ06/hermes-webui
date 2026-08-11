@@ -5441,7 +5441,7 @@ async function _openWikiBrowser() {
   }
 
   window._wikiBrowserOpenPage = async function(path) {
-    contentEl.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:13px;">Loading...</div>';
+    contentEl.innerHTML = '<div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">'+esc(t('loading'))+'</span></div>';
     contentEl.style.display = 'block';
     listEl.style.display = 'none';
     try {

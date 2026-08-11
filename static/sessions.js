@@ -7978,13 +7978,6 @@ function renderSessionListFromCache(){
         bar.appendChild(nested);
       }
     }
-    // Create button
-    const addBtn=document.createElement('button');
-    addBtn.className='project-create-btn';
-    addBtn.textContent='+';
-    addBtn.title='New project';
-    addBtn.onclick=(e)=>{e.stopPropagation();_startProjectCreate(bar,addBtn);};
-    bar.appendChild(addBtn);
     list.appendChild(bar);
   }
   // Profile filter toggle (show sessions from other profiles).
@@ -9436,7 +9429,22 @@ function _showProjectPicker(session, anchorEl){
   setTimeout(()=>document.addEventListener('click',close),0);
 }
 
-function _startProjectCreate(bar, addBtn){
+function _startProjectCreate(){
+  // Reached from the "+" menu in the Chat panel head (there's no more
+  // per-folder create button to anchor on) -- find or make a
+  // .project-folder-list to spawn the inline input into. With zero
+  // existing projects there's nothing to find, so create an empty one at
+  // the top of the sidebar; it's discarded on cancel if still empty, or
+  // replaced by the real render (with the new project inside it) on save.
+  const list=$('sessionList');
+  let bar=document.querySelector('.project-folder-list');
+  let createdBar=false;
+  if(!bar){
+    bar=document.createElement('div');
+    bar.className='project-folder-list';
+    createdBar=true;
+    if(list) list.insertBefore(bar,list.firstChild);
+  }
   const inp=document.createElement('input');
   // Full-width folder-row shape (matches _startProjectRename), not the old
   // small pill -- the new folder spawns in place looking like a real row.
@@ -9460,7 +9468,8 @@ function _startProjectCreate(bar, addBtn){
       await renderSessionList();
       showToast('Project created');
     }else{
-      inp.replaceWith(addBtn);
+      inp.remove();
+      if(createdBar&&bar&&!bar.children.length) bar.remove();
     }
   };
   inp.onkeydown=(e)=>{
@@ -9472,7 +9481,7 @@ function _startProjectCreate(bar, addBtn){
     if(e.key==='Escape'){e.preventDefault();finish(false);}
   };
   inp.onblur=()=>finish(false);
-  addBtn.replaceWith(inp);
+  bar.appendChild(inp);
   setTimeout(()=>inp.focus(),10);
 }
 
