@@ -46,10 +46,12 @@ def test_quick_create_button_attaches_filter_align_and_request_path():
     src = _read(SESSIONS_JS)
     helper = _extract_function(src, "_attachProjectQuickCreateButton")
     assert "project-chip-quick-create" in helper
-    assert "_setActiveProjectFilter(project.project_id)" in helper
     assert "newSession(false,{project_id:project.project_id})" in helper
     assert "if(_newSessionInFlight)" in helper
-    assert "_setActiveProjectFilter(previousProject)" in helper
+    # _setActiveProjectFilter was removed along with the "All" project chip
+    # (its only reset path) -- the quick-create button must not reintroduce
+    # a filter change that could leave _activeProject stuck.
+    assert "_setActiveProjectFilter" not in helper
     assert "btn.ondblclick" in helper
     assert "btn.oncontextmenu" in helper
     assert "btn.ontouchstart" in helper
@@ -362,15 +364,19 @@ def _run_quick_create_case(
 
 
 @pytest.mark.skipif(NODE is None, reason="node not on PATH")
-def test_project_chip_quick_create_keeps_active_filter_and_uses_project_override():
+def test_project_chip_quick_create_does_not_touch_active_filter():
+    """The button used to set _activeProject to the clicked project (and roll
+    it back on failure) -- removed along with the "All" chip, since that chip
+    was the only way to reset a filter left stuck on one project. The new
+    session's own folder auto-expands to stay reachable instead."""
     out = _run_quick_create_case("project-123")
     assert out["buttonClass"] == "project-chip-quick-create"
     assert out["buttonTag"] == "BUTTON"
     assert out["buttonText"] == "+"
     assert out["buttonAriaLabel"] == "New conversation in this project"
-    assert out["filterProjectId"] == "project-123"
+    assert out["filterProjectId"] == "active-project"
     assert out["newSession"] == {"flash": False, "options": {"project_id": "project-123"}}
-    assert {"type": "set-filter", "projectId": "project-123"} in out["calls"]
+    assert {"type": "set-filter", "projectId": "project-123"} not in out["calls"]
     assert {"type": "new-session", "flash": False, "options": {"project_id": "project-123"}} in out["calls"]
     assert out["stopCount"] >= 3
     assert out["preventCount"] >= 3
@@ -381,7 +387,7 @@ def test_project_chip_quick_create_keeps_active_filter_and_uses_project_override
 
 
 @pytest.mark.skipif(NODE is None, reason="node not on PATH")
-def test_project_chip_quick_create_restores_filter_when_new_session_fails():
+def test_project_chip_quick_create_leaves_filter_unchanged_when_new_session_fails():
     out = _run_quick_create_case(
         "project-123",
         active_project="keep-me",
@@ -389,8 +395,8 @@ def test_project_chip_quick_create_restores_filter_when_new_session_fails():
     )
 
     assert out["filterProjectId"] == "keep-me"
-    assert {"type": "set-filter", "projectId": "project-123"} in out["calls"]
-    assert {"type": "set-filter", "projectId": "keep-me"} in out["calls"]
+    assert {"type": "set-filter", "projectId": "project-123"} not in out["calls"]
+    assert {"type": "set-filter", "projectId": "keep-me"} not in out["calls"]
     assert any(msg.startswith("New conversation failed:") for msg in out["toasts"])
 
 

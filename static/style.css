@@ -5955,6 +5955,53 @@ main.main > #mainPlugin{display:none;}
 /* Lives as a flex sibling in .session-title-row (between title and time);
    the row's gap:6px handles spacing, no margin/vertical-align needed. */
 .session-project-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;}
+/* Redundant with the kebab "..." that the same hover/focus reveals right
+   next to it -- hide the dot while it's showing. */
+.project-folder-sessions .session-item:hover .session-project-dot,
+.project-folder-sessions .session-item:focus-within .session-project-dot,
+.project-folder-sessions .session-item.menu-open .session-project-dot{display:none;}
+
+/* ── Drag a chat onto a project folder ── */
+.session-drag-handle{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:100%;flex-shrink:0;align-self:stretch;
+  color:var(--muted);opacity:0;cursor:grab;
+  touch-action:none;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;
+  transition:opacity .12s ease,color .12s ease;
+}
+.session-drag-handle svg{width:14px;height:14px;pointer-events:none;}
+.session-item:hover .session-drag-handle,
+.session-item:focus-within .session-drag-handle{opacity:.55;}
+.session-drag-handle:hover{opacity:1!important;color:var(--text);}
+@media (hover:none) and (pointer:coarse){
+  .session-drag-handle{opacity:.4;width:22px;}
+}
+.session-item.session-drag-source{opacity:.35;transition:opacity .12s ease;}
+/* Prevent incidental text selection / pull-to-refresh while a drag is live. */
+body.session-dragging-active{cursor:grabbing;user-select:none;-webkit-user-select:none;}
+.session-drag-ghost{
+  position:fixed;top:0;left:0;z-index:10000;
+  pointer-events:none;box-sizing:border-box;
+  box-shadow:0 12px 32px rgba(0,0,0,.35);
+  border-radius:8px;background:var(--surface);
+  opacity:.96;transform:scale(1.02) rotate(-1deg);
+  transition:transform .12s ease;
+}
+.session-drag-ghost .session-drag-handle,
+.session-drag-ghost .session-actions{display:none;}
+.session-drag-ghost-active{transform:scale(1.04) rotate(-2deg);}
+.project-folder-row.project-drop-hover{
+  border-color:var(--accent)!important;
+  background:var(--accent-bg)!important;
+  color:var(--accent-text)!important;
+  transform:scale(1.02);
+  transition:transform .12s ease,background .12s ease,border-color .12s ease,color .12s ease;
+}
+@keyframes project-drop-flash{
+  0%{box-shadow:0 0 0 0 var(--accent-bg-strong,var(--accent-bg));}
+  100%{box-shadow:0 0 0 8px transparent;}
+}
+.project-folder-row.project-drop-flash{animation:project-drop-flash .5s ease-out;}
 
 /* ── Saved prompts popup ── */
 .saved-prompts-popup{position:absolute;bottom:calc(100% + 8px);left:0;min-width:280px;max-width:380px;max-height:320px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:200;flex-direction:column;gap:2px;padding:6px;}

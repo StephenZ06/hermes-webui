@@ -102,7 +102,9 @@ def test_session_search_has_accessible_clear_button():
 
 def test_session_search_clear_button_styles_do_not_shift_input_width():
     css = STYLE_CSS.read_text(encoding="utf-8")
-    assert ".sidebar-search{position:relative;padding:8px 12px;flex-shrink:0;}" in css
+    # Top padding matches the left padding (12px each) so the gap above the
+    # search box equals the gap to its left; only the bottom stays smaller.
+    assert ".sidebar-search{position:relative;padding:12px 12px 8px;flex-shrink:0;}" in css
     assert ".session-search-field{position:relative;display:flex;align-items:center;width:100%;}" in css
     assert ".session-search input{padding-right:34px;}" in css
     assert ".sidebar-search-icon{position:absolute;left:22px;top:50%;transform:translateY(-50%);" in css

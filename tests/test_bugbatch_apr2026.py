@@ -20,9 +20,28 @@ COMPOSE   = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 # ── #594: light theme dialog overrides ───────────────────────────────────────
 
 def test_594_app_dialog_has_light_mode_override():
-    """style.css must have a light mode rule targeting .app-dialog background."""
-    assert ':root:not(.dark) .app-dialog{' in STYLE_CSS, (
-        "Missing light mode override for .app-dialog — dialogs appear dark on light theme"
+    """.app-dialog must use a theme-adaptive background so it matches both
+    light mode and any custom skin, not just dark mode.
+
+    Superseded fix: originally a separate `:root:not(.dark) .app-dialog{}`
+    override supplied a second hardcoded (cream) background for light mode,
+    on top of the hardcoded dark-navy gradient in the base rule. That still
+    only covered light/dark, not e.g. the terracotta/graphite/codex/github
+    skins, which have their own --surface value. Switching the base rule to
+    background:var(--surface) (the same convention every other dropdown/
+    menu/modal in the app uses) makes it correct for every theme with one
+    rule, so the separate override was removed rather than kept as dead code.
+    """
+    # Distinguish the base rule from the zeus-skin override
+    # (`[data-skin="zeus"] .app-dialog{...}`), which also contains the
+    # substring ".app-dialog{" but starts with a hardcoded gold-skin color,
+    # not the theme-adaptive base rule this test checks.
+    idx = STYLE_CSS.find('.app-dialog{width:')
+    assert idx != -1, ".app-dialog base rule not found in style.css"
+    rule = STYLE_CSS[idx: idx + 300]
+    assert 'background:var(--surface)' in rule, (
+        ".app-dialog must use background:var(--surface) so it adapts to the "
+        "active theme/skin instead of a hardcoded color"
     )
 
 

@@ -110,61 +110,35 @@ class TestProjectCreateInputWidth:
         )
 
 
-class TestResizeProjectInputHelper:
-    """The `_resizeProjectInput` helper must exist and be wired into both
-    rename and create call sites."""
+class TestProjectFolderRenameInputShape:
+    """Superseded fix: rename/create no longer use a JS-measured pill sized by
+    `_resizeProjectInput` (removed). Both now render at the full-width
+    folder-row shape via the `.project-folder-rename-input` CSS class, so the
+    input never changes shape mid-edit."""
 
-    def test_resize_helper_defined(self):
-        assert "function _resizeProjectInput(" in SESSIONS_JS, (
-            "_resizeProjectInput helper not found in sessions.js"
-        )
-
-    def test_resize_helper_uses_hidden_span(self):
-        """The standard pattern is to measure with a hidden absolute span
-        sharing the same font/padding as the input. Font and family are read
-        via getComputedStyle so the sizer stays calibrated if CSS changes."""
-        idx = SESSIONS_JS.find("function _resizeProjectInput(")
-        assert idx >= 0
-        body = SESSIONS_JS[idx: idx + 900]
-        assert "position:absolute" in body and "visibility:hidden" in body, (
-            "_resizeProjectInput should use a hidden absolute span to "
-            "measure the value's rendered width."
-        )
-        assert "getComputedStyle(inp)" in body, (
-            "_resizeProjectInput should use getComputedStyle to read font "            "properties so the sizer stays calibrated if CSS changes."
-        )
-        assert "Math.min(180" in body, (
-            "max bound (180) not applied in _resizeProjectInput"
-        )
-        assert "Math.max(40" in body, (
-            "min bound (40) not applied in _resizeProjectInput"
+    def test_resize_helper_removed(self):
+        assert "function _resizeProjectInput(" not in SESSIONS_JS, (
+            "_resizeProjectInput was intentionally removed when rename/create "
+            "switched to the full-width folder-row input shape — if it's back, "
+            "make sure that wasn't an accidental revert."
         )
 
-    def test_rename_calls_resize_helper(self):
-        """`_startProjectRename` must call `_resizeProjectInput` once on
-        creation and again on every input event."""
+    def test_rename_uses_folder_row_shape_class(self):
         idx = SESSIONS_JS.find("function _startProjectRename(")
         assert idx >= 0
         body = SESSIONS_JS[idx: idx + 1200]
-        assert "_resizeProjectInput(inp)" in body, (
-            "_startProjectRename must call _resizeProjectInput so the "
-            "input width matches the existing project name."
-        )
-        # Wired into the input event so it grows as the user types
-        assert "addEventListener('input'" in body and "_resizeProjectInput" in body, (
-            "_startProjectRename must wire input events to _resizeProjectInput"
+        assert "project-folder-rename-input" in body, (
+            "_startProjectRename must use the project-folder-rename-input "
+            "class so the input keeps the folder row's shape."
         )
 
-    def test_create_calls_resize_helper(self):
-        """Same for `_startProjectCreate` (new-project entry field)."""
+    def test_create_uses_folder_row_shape_class(self):
         idx = SESSIONS_JS.find("function _startProjectCreate(")
         assert idx >= 0
         body = SESSIONS_JS[idx: idx + 1200]
-        assert "_resizeProjectInput(inp)" in body, (
-            "_startProjectCreate must call _resizeProjectInput on focus"
-        )
-        assert "addEventListener('input'" in body, (
-            "_startProjectCreate must wire input events to _resizeProjectInput"
+        assert "project-folder-rename-input" in body, (
+            "_startProjectCreate must use the project-folder-rename-input "
+            "class so the input keeps the folder row's shape."
         )
 
 

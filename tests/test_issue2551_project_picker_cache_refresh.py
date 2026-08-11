@@ -24,8 +24,8 @@ def _show_project_picker_body() -> str:
     start = SESSIONS_SRC.find("function _showProjectPicker(")
     assert start != -1, "_showProjectPicker not found in sessions.js"
     # Pick a stable downstream sentinel that lives after the function ends.
-    end = SESSIONS_SRC.find("function _resizeProjectInput(", start)
-    assert end != -1, "_resizeProjectInput sentinel not found after picker"
+    end = SESSIONS_SRC.find("function _startProjectCreate(", start)
+    assert end != -1, "_startProjectCreate sentinel not found after picker"
     return SESSIONS_SRC[start:end]
 
 
