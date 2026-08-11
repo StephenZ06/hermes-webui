@@ -3964,6 +3964,10 @@ let _allProjects = [];  // cached project list
 // double-underscore prefixes provide.
 const NO_PROJECT_FILTER = '__none__';
 let _activeProject = null;  // project_id filter (null = show all, NO_PROJECT_FILTER = unassigned only)
+// Tracks which active session the folder-auto-expand logic last ran for, so
+// it only fires once per session switch -- not on every re-render -- and
+// therefore doesn't fight a manual collapse of that session's own folder.
+let _lastAutoExpandedActiveSid = undefined;
 const SHOW_ALL_PROFILES_STORAGE_KEY = 'hermes-show-all-profiles';
 let _showAllProfiles = false;  // false = filter to active profile only
 let _profileSwitchOpeningExistingSession = false;  // true while cross-profile sidebar click switches profile before loadSession()
@@ -7815,9 +7819,6 @@ function renderSessionListFromCache(){
     }
     list.appendChild(sourceTabs);
   }
-  // Project filter bar — show when there are real projects OR there are
-  // unassigned sessions (so the Unassigned chip has something to filter to).
-  const hasUnprojected=profileFiltered.some(s=>!s.project_id);
   // Collapsed/expanded state per project, persisted the same way the
   // date-group sections do it (JSON blob in localStorage, re-read/re-saved
   // on every render) so re-rendering the sidebar doesn't collapse whatever
@@ -7828,7 +7829,24 @@ function renderSessionListFromCache(){
   let _projectFoldersExpanded={};
   try{_projectFoldersExpanded=JSON.parse(localStorage.getItem('hermes-project-folders-expanded')||'{}');}catch(e){}
   const _saveProjectFoldersExpanded=()=>{try{localStorage.setItem('hermes-project-folders-expanded',JSON.stringify(_projectFoldersExpanded));}catch(e){}};
-  if(_allProjects.length>0||hasUnprojected){
+  // The active session never renders in the flat/date-grouped list below when
+  // it belongs to a project (that list is unfoldered-only, see below) -- so
+  // when the user switches TO a session inside a collapsed folder, auto-expand
+  // that one folder once so the open conversation stays reachable instead of
+  // disappearing. Gated on the active session actually having changed (not
+  // just re-rendered) so this doesn't fight a manual collapse of the same
+  // folder while its session is still the active one.
+  if(activeSidForSidebar!==_lastAutoExpandedActiveSid){
+    _lastAutoExpandedActiveSid=activeSidForSidebar;
+    if(activeSidForSidebar){
+      const activeRow=profileFiltered.find(s=>s.session_id===activeSidForSidebar);
+      if(activeRow&&activeRow.project_id&&!_projectFoldersExpanded[activeRow.project_id]){
+        _projectFoldersExpanded[activeRow.project_id]=true;
+        _saveProjectFoldersExpanded();
+      }
+    }
+  }
+  if(_allProjects.length>0){
     const bar=document.createElement('div');
     bar.className='project-folder-list';
     // "All" chip
@@ -7837,17 +7855,6 @@ function renderSessionListFromCache(){
     allChip.textContent='All';
     allChip.onclick=()=>{_setActiveProjectFilter(null);};
     bar.appendChild(allChip);
-    // "Unassigned" chip — only when there are sessions with no project to
-    // filter to. Hidden in the common case where every session is already
-    // organized, to keep the chip bar uncluttered.
-    if(hasUnprojected){
-      const noneChip=document.createElement('span');
-      noneChip.className='project-chip no-project'+(_activeProject===NO_PROJECT_FILTER?' active':'');
-      noneChip.textContent='Unassigned';
-      noneChip.title='Show conversations not yet assigned to a project';
-      noneChip.onclick=()=>{_setActiveProjectFilter(NO_PROJECT_FILTER);};
-      bar.appendChild(noneChip);
-    }
     // Project folders — vertical, collapsible rows (ChatGPT-style). Clicking
     // a folder row filters the session list below to that project (same
     // _setActiveProjectFilter contract the old chip bar used) and reveals the
@@ -7901,11 +7908,7 @@ function renderSessionListFromCache(){
         clearTimeout(_pClickTimer);
         _pClickTimer=setTimeout(()=>{
           _pClickTimer=null;
-          _setActiveProjectFilter(p.project_id);
-          if(!_projectFoldersExpanded[p.project_id]){
-            _projectFoldersExpanded[p.project_id]=true;
-            _saveProjectFoldersExpanded();
-          }
+          toggleFolder(e);
         },220);
       };
       chip.ondblclick=(e)=>{e.stopPropagation();clearTimeout(_pClickTimer);_pClickTimer=null;_startProjectRename(p,chip);};
@@ -8029,17 +8032,11 @@ function renderSessionListFromCache(){
     empty.textContent=_activeProject===NO_PROJECT_FILTER?'No unassigned sessions.':'No sessions in this project yet.';
     list.appendChild(empty);
   }
-  // Sessions already shown nested under an expanded project folder above are
-  // excluded from the flat date-grouped list below, so they don't render
-  // twice. The active session always stays visible in the flat list too
-  // (keeps keyboard nav / "where am I" orientation working even when its
-  // project folder happens to be expanded).
-  const _expandedFolderProjectIds=new Set(
-    _allProjects.filter(p=>Boolean(_projectFoldersExpanded[p.project_id])).map(p=>p.project_id)
-  );
-  const mainListSessions=_expandedFolderProjectIds.size
-    ? sessions.filter(s=>!(s.project_id&&_expandedFolderProjectIds.has(s.project_id)&&s.session_id!==activeSidForSidebar))
-    : sessions;
+  // Sessions assigned to a project render nested under their folder (visible
+  // when expanded, see the auto-expand-for-active-session logic above) --
+  // the flat/date-grouped list below is unfoldered sessions only, so "Today"
+  // etc. reflect general conversations rather than duplicating project chats.
+  const mainListSessions=sessions.filter(s=>!s.project_id);
   const orderedSessions=[...mainListSessions].sort(_sessionSidebarSortCompare);
   // Separate pinned from unpinned
   const pinned=orderedSessions.filter(s=>s.pinned);
