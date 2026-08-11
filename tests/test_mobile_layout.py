@@ -833,15 +833,15 @@ def test_toggle_mobile_files_js_defined():
 def test_new_conversation_closes_mobile_sidebar():
     """New conversation must close the mobile drawer so the chat pane is visible immediately."""
     boot_js = (REPO / "static" / "boot.js").read_text(encoding="utf-8")
-    # Handler is now multi-line — search for the full block rather than a single line.
     assert "$('btnNewChat').onclick" in boot_js, "btnNewChat onclick handler missing from static/boot.js"
-    # Find the handler block and verify closeMobileSidebar appears in it.
-    # The handler grew comments after #1432 (in-flight guard refactor), so use a
-    # generous window to cover the full handler body.
-    idx = boot_js.find("$('btnNewChat').onclick")
+    # The "+" button's own onclick just opens a menu (New conversation / New
+    # project folder); the actual session-creation logic, including
+    # closeMobileSidebar(), lives in _createNewConversation().
+    idx = boot_js.find("async function _createNewConversation(){")
+    assert idx != -1, "_createNewConversation not found in static/boot.js"
     handler_block = boot_js[idx:idx+1500]
     assert "closeMobileSidebar" in handler_block, \
-        "btnNewChat handler must closeMobileSidebar() after creating the new session"
+        "_createNewConversation must closeMobileSidebar() after creating the new session"
 
     shortcut_line = next((ln for ln in boot_js.splitlines() if "e.key==='k'" in ln or "e.key === 'k'" in ln), "")
     assert shortcut_line, "Cmd/Ctrl+K new chat shortcut missing from static/boot.js"

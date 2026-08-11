@@ -12,9 +12,12 @@ BOOT_JS = ROOT.joinpath("static", "boot.js").read_text(encoding="utf-8")
 
 
 def _btn_new_chat_handler() -> str:
-    start = BOOT_JS.find("$('btnNewChat').onclick=async()=>{")
+    # The "New conversation" logic lives in _createNewConversation() now --
+    # the "+" in the Chat panel head opens a 2-option menu (New conversation /
+    # New project folder) instead of running this directly on click.
+    start = BOOT_JS.find("async function _createNewConversation(){")
     end = BOOT_JS.find("$('btnDownload').onclick", start)
-    assert start != -1 and end != -1, "btnNewChat handler block not found"
+    assert start != -1 and end != -1, "_createNewConversation handler block not found"
     return BOOT_JS[start:end]
 
 

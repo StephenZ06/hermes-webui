@@ -4330,6 +4330,7 @@ function _showBatchProjectPicker(){
     const name=document.createElement('span');name.textContent=p.name;item.appendChild(name);
     item.onclick=async()=>{picker.remove();
       try{await Promise.all(ids.map(sid=>api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:sid,project_id:p.project_id})})));
+        _expandProjectFolder(p.project_id);
         showToast('Moved to '+p.name);exitSessionSelectMode();await renderSessionList();
       }catch(e){showToast('Move failed: '+(e.message||e));}
     };picker.appendChild(item);
@@ -7734,6 +7735,8 @@ function renderSessionListFromCache(){
     for(const p of _allProjects){
       const chip=document.createElement('span');
       chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');
+      chip.dataset.projectId=p.project_id;
+      chip.dataset.projectName=p.name;
       const isExpanded=Boolean(_projectFoldersExpanded[p.project_id]);
       const chevron=document.createElement('span');
       chevron.className='project-folder-chevron'+(isExpanded?' expanded':'');
@@ -8631,6 +8634,20 @@ function renderSessionListFromCache(){
     el._startRename = startRename;
     el.dataset.sid = s.session_id;
 
+    // Drag handle: mouse+touch drag onto a project folder to assign it.
+    // A dedicated handle (rather than repurposing the row's existing tap /
+    // long-press-for-menu / horizontal-swipe-to-archive gestures) so it
+    // can't misfire against any of those.
+    if(!readOnly&&!_sessionSelectMode){
+      const dragHandle=document.createElement('span');
+      dragHandle.className='session-drag-handle';
+      dragHandle.innerHTML=li('grip-vertical',14);
+      dragHandle.setAttribute('aria-hidden','true');
+      dragHandle.title=t('session_drag_handle_title');
+      _wireSessionDragHandle(dragHandle,el,s);
+      el.appendChild(dragHandle);
+    }
+
     // (Project dot is appended above, between title and timestamp, so it
     // sits outside the truncating title span and stays visible.)
     el.appendChild(sessionText);
@@ -9175,6 +9192,157 @@ async function deleteSession(sid, beforeDelete=null){
 
 const PROJECT_COLORS=['#7cb9ff','#f5c542','#e94560','#50c878','#c084fc','#fb923c','#67e8f9','#f472b6'];
 
+// _projectFoldersExpanded (the expand/collapse state) lives in localStorage
+// under this key and is read fresh on every renderSessionListFromCache()
+// call rather than cached in a module-level var, so writing it directly
+// here is enough to make a just-moved chat's target folder open on the very
+// next render instead of silently landing in a still-collapsed folder.
+function _expandProjectFolder(projectId){
+  if(!projectId) return;
+  try{
+    const raw=JSON.parse(localStorage.getItem('hermes-project-folders-expanded')||'{}');
+    raw[projectId]=true;
+    localStorage.setItem('hermes-project-folders-expanded',JSON.stringify(raw));
+  }catch(e){/* best-effort */}
+}
+
+// ── Drag a chat onto a project folder ───────────────────────────────────
+// Pointer Events (not native HTML5 drag-and-drop, which has no touch
+// support) driven from a dedicated handle on each row rather than the
+// row itself, so it can never misfire against the row's existing tap /
+// long-press-for-menu / horizontal-swipe-to-archive gestures on the same
+// surface. Works identically for mouse and touch.
+function _wireSessionDragHandle(handle,rowEl,session){
+  handle.addEventListener('pointerdown',(e)=>{
+    if(e.pointerType==='mouse'&&e.button!==0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _startSessionDrag(e,handle,rowEl,session);
+  });
+  // A drag never opens the chat or the row's menu -- keep it from bubbling
+  // into the row's own pointerup/click handling.
+  ['pointerup','click'].forEach(ev=>handle.addEventListener(ev,e=>e.stopPropagation()));
+}
+
+function _startSessionDrag(e,handle,rowEl,session){
+  const pointerId=e.pointerId;
+  try{handle.setPointerCapture(pointerId);}catch(_){/* unsupported in this browser */}
+  const rect=rowEl.getBoundingClientRect();
+  const offsetX=e.clientX-rect.left;
+  const offsetY=e.clientY-rect.top;
+
+  const ghost=rowEl.cloneNode(true);
+  ghost.classList.add('session-drag-ghost');
+  ghost.removeAttribute('data-sid');
+  ghost.style.width=rect.width+'px';
+  ghost.style.left=rect.left+'px';
+  ghost.style.top=rect.top+'px';
+  document.body.appendChild(ghost);
+
+  rowEl.classList.add('session-drag-source');
+  document.body.classList.add('session-dragging-active');
+
+  let currentTargetChip=null;
+  let moved=false;
+
+  const findDropTarget=(x,y)=>{
+    const chips=document.querySelectorAll('.project-folder-row');
+    for(const chip of chips){
+      const r=chip.getBoundingClientRect();
+      if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return chip;
+    }
+    return null;
+  };
+
+  const setTarget=(chip)=>{
+    if(chip===currentTargetChip) return;
+    if(currentTargetChip) currentTargetChip.classList.remove('project-drop-hover');
+    currentTargetChip=chip;
+    if(currentTargetChip) currentTargetChip.classList.add('project-drop-hover');
+  };
+
+  const positionGhost=(clientX,clientY)=>{
+    ghost.style.left=(clientX-offsetX)+'px';
+    ghost.style.top=(clientY-offsetY)+'px';
+  };
+
+  const onMove=(ev)=>{
+    if(ev.pointerId!==pointerId) return;
+    moved=true;
+    ghost.classList.add('session-drag-ghost-active');
+    positionGhost(ev.clientX,ev.clientY);
+    setTarget(findDropTarget(ev.clientX,ev.clientY));
+  };
+
+  const cleanupListeners=()=>{
+    document.removeEventListener('pointermove',onMove);
+    document.removeEventListener('pointerup',onUp);
+    document.removeEventListener('pointercancel',onCancel);
+    rowEl.classList.remove('session-drag-source');
+    document.body.classList.remove('session-dragging-active');
+    setTarget(null);
+  };
+
+  const removeGhost=()=>{
+    if(ghost.isConnected) ghost.remove();
+  };
+
+  const snapBack=()=>{
+    ghost.style.transition='left .22s cubic-bezier(.2,.8,.2,1),top .22s cubic-bezier(.2,.8,.2,1),opacity .18s ease .1s';
+    ghost.style.left=rect.left+'px';
+    ghost.style.top=rect.top+'px';
+    ghost.style.opacity='0';
+    ghost.addEventListener('transitionend',removeGhost,{once:true});
+    setTimeout(removeGhost,320);
+  };
+
+  const dropInto=async(projectId,projectName)=>{
+    ghost.style.transition='transform .16s ease,opacity .16s ease';
+    ghost.style.transform='scale(.35)';
+    ghost.style.opacity='0';
+    ghost.addEventListener('transitionend',removeGhost,{once:true});
+    setTimeout(removeGhost,220);
+    const droppedChip=currentTargetChip;
+    if(droppedChip){
+      droppedChip.classList.add('project-drop-flash');
+      setTimeout(()=>droppedChip.classList.remove('project-drop-flash'),500);
+    }
+    try{
+      await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:projectId})});
+      const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
+      if(idx>=0) _allSessions[idx].project_id=projectId;
+      _expandProjectFolder(projectId);
+      renderSessionListFromCache();
+      showToast('Moved to '+projectName);
+    }catch(err){
+      showToast('Move failed: '+(err.message||err));
+      renderSessionListFromCache();
+    }
+  };
+
+  const onUp=(ev)=>{
+    if(ev.pointerId!==pointerId) return;
+    cleanupListeners();
+    if(!moved){removeGhost();return;}
+    const target=findDropTarget(ev.clientX,ev.clientY);
+    const projectId=target&&target.dataset.projectId;
+    if(target&&projectId&&projectId!==(session.project_id||'')){
+      dropInto(projectId,target.dataset.projectName||'');
+      return;
+    }
+    snapBack();
+  };
+
+  const onCancel=()=>{
+    cleanupListeners();
+    snapBack();
+  };
+
+  document.addEventListener('pointermove',onMove);
+  document.addEventListener('pointerup',onUp);
+  document.addEventListener('pointercancel',onCancel);
+}
+
 function _showProjectPicker(session, anchorEl){
   // Close any existing picker
   document.querySelectorAll('.project-picker').forEach(p=>p.remove());
@@ -9238,6 +9406,7 @@ function _showProjectPicker(session, anchorEl){
         // See #2551 — write to _allSessions, not the shallow sidebar copy.
         const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
         if(idx>=0) _allSessions[idx].project_id=p.project_id;
+        _expandProjectFolder(p.project_id);
         renderSessionListFromCache();
         showToast('Moved to '+p.name);
       }catch(e){showToast('Move failed: '+(e.message||e));}
@@ -9267,6 +9436,7 @@ function _showProjectPicker(session, anchorEl){
       try{
         await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:res.project.project_id})});
         session.project_id=res.project.project_id;
+        _expandProjectFolder(res.project.project_id);
         await renderSessionList();
         showToast('Created "'+res.project.name+'" and moved session');
       }catch(e){

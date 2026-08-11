@@ -380,6 +380,11 @@ global.$ = (id) => id === 'sessionSearch' ? {{ value: searchValue }} : null;
 global.syncSessionSearchClear = () => {{}};
 global.renderSessionList = () => {{ calls.push(_sessionListQueryString()); return Promise.resolve(); }};
 global.renderSessionListFromCache = () => {{}};
+// filterSessions() now calls _scheduleSessionListRenderFromCache() (rAF-
+// coalesced) instead of renderSessionListFromCache() directly -- stub it to
+// call straight through so this synchronous test harness still observes the
+// render trigger without needing a requestAnimationFrame polyfill.
+global._scheduleSessionListRenderFromCache = () => {{ global.renderSessionListFromCache(); }};
 global.clearTimeout = () => {{}};
 global.setTimeout = () => 1;
 global.api = () => Promise.resolve({{ sessions: [] }});
