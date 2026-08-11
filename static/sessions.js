@@ -6328,6 +6328,19 @@ function stopGatewaySSE(){
 }
 
 let _searchDebounceTimer = null;
+// Coalesces the local (non-network) filter render to one per animation frame.
+// filterSessions() fires on every keystroke and renderSessionListFromCache()
+// rebuilds the full sidebar row set + DOM -- on a large session list, typing
+// fast without this produces one full rebuild per keystroke and the search
+// box visibly lags behind input.
+let _sessionListRenderRAF = null;
+function _scheduleSessionListRenderFromCache(){
+  if(_sessionListRenderRAF) return;
+  _sessionListRenderRAF = requestAnimationFrame(()=>{
+    _sessionListRenderRAF = null;
+    renderSessionListFromCache();
+  });
+}
 let _contentSearchResults = [];  // results from /api/sessions/search content scan
 let _lastSessionSearchQuery = '';
 let _hideSearchPreviewsAfterSelect = false;
@@ -6517,7 +6530,7 @@ function filterSessions(){
     _lastSessionSearchQuery=q;
     _hideSearchPreviewsAfterSelect=false;
   }
-  renderSessionListFromCache();
+  _scheduleSessionListRenderFromCache();
   clearTimeout(_searchDebounceTimer);
   if (!q) { _contentSearchResults = []; return; }
   _searchDebounceTimer = setTimeout(async () => {
