@@ -62,9 +62,9 @@ let _logsSeverityFilter = 'all';
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills', agents: 'tab_agents',
   memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
-  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', analytics: 'tab_analytics', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
+  profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','analytics','logs','audit','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -442,7 +442,6 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'profiles') await loadProfilesPanel();
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') await loadInsights();
-  if (nextPanel === 'analytics') await loadAnalytics();
   if (nextPanel === 'logs') await loadLogs();
   if (nextPanel === 'audit') await loadAuditTrail();
   _syncLogsAutoRefresh();
@@ -5636,91 +5635,6 @@ function _renderInsights(d, box, wikiStatus, skillUsage) {
     </div>
     ${dowHtml}
     ${hodHtml}
-    <div style="text-align:center;color:var(--muted);font-size:10px;margin-top:12px;opacity:.6">${esc(t('insights_footer').replace('{days}', d.period_days))}</div>
-  `;
-}
-
-// ── Analytics panel (provider-level cost/usage trends; complements Insights) ──
-// See docs/HERMES_STUDIO_PARITY_PLAN.md, "Analytics/cost dashboard".
-
-async function loadAnalytics(animate) {
-  const box = $('analyticsContent');
-  const refreshBtn = $('analyticsRefreshBtn');
-  if (!box) return;
-  if (animate && refreshBtn) {
-    refreshBtn.style.opacity = '0.5';
-    refreshBtn.disabled = true;
-  }
-  const period = ($('analyticsPeriod') || {}).value || '30';
-  const granularity = ($('analyticsGranularity') || {}).value || 'week';
-  try {
-    const data = await api(`/api/analytics?days=${period}&granularity=${granularity}`);
-    _renderAnalytics(data, box);
-  } catch(e) {
-    box.innerHTML = `<div style="color:var(--accent);font-size:12px">${esc(t('error_prefix') + e.message)}</div>`;
-  } finally {
-    if (animate && refreshBtn) {
-      refreshBtn.style.opacity = '';
-      refreshBtn.disabled = false;
-    }
-  }
-}
-
-function _renderAnalytics(d, box) {
-  const fmtNum = n => (n || 0).toLocaleString();
-  const fmtCost = v => (v || 0) > 0 ? '$' + v.toFixed(v < 1 ? 4 : 2) : t('insights_no_cost');
-  const fmtTokens = n => {
-    n = n || 0;
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-    return String(n);
-  };
-
-  const overviewCards = [
-    { label: t('analytics_total_sessions'), value: fmtNum(d.total_sessions), icon: li('message-square', 18) },
-    { label: t('analytics_total_tokens'), value: fmtTokens(d.total_tokens), icon: li('cpu', 18) },
-    { label: t('analytics_total_cost'), value: fmtCost(d.total_cost), icon: li('dollar-sign', 18) },
-  ];
-
-  let providersHtml;
-  if (d.providers && d.providers.length) {
-    const rows = d.providers.map(p => {
-      const label = p.provider === 'unknown' ? t('analytics_unknown_provider') : p.provider;
-      return `<div class="insights-table-row"><span class="insights-model-name" title="${esc(label)}">${esc(label)}</span><span>${fmtNum(p.sessions)}</span><span class="insights-model-tokens">${fmtTokens((p.input_tokens||0) + (p.output_tokens||0))}</span><span class="insights-model-cost">${fmtCost(p.cost)}</span><span>${p.cost_share}%</span></div>`;
-    }).join('');
-    providersHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_providers'))}</div><div class="insights-table insights-model-table"><div class="insights-table-head"><span>${esc(t('analytics_provider_col_provider'))}</span><span>${esc(t('analytics_provider_col_sessions'))}</span><span>${esc(t('analytics_provider_col_tokens'))}</span><span>${esc(t('analytics_provider_col_cost'))}</span><span>${esc(t('analytics_provider_col_share'))}</span></div>${rows}</div></div>`;
-  } else {
-    providersHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_providers'))}</div><div class="insights-empty">${esc(t('analytics_no_data'))}</div></div>`;
-  }
-
-  let trendHtml;
-  if (d.trend && d.trend.length) {
-    const maxCost = Math.max(...d.trend.map(r => r.cost || 0), 0.0001);
-    const bars = d.trend.map(r => {
-      const pct = Math.max(2, Math.round(((r.cost || 0) / maxCost) * 100));
-      const title = `${r.bucket} · ${fmtCost(r.cost)} · ${fmtTokens((r.input_tokens||0)+(r.output_tokens||0))} · ${fmtNum(r.sessions)} ${t('analytics_total_sessions')}`;
-      return `<div class="insights-daily-bar" title="${esc(title)}"><div class="insights-daily-stack" aria-label="${esc(title)}"><div class="insights-daily-bar-input" style="height:${pct}%"></div></div><span>${esc(r.bucket)}</span></div>`;
-    }).join('');
-    trendHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_trend_title'))}</div><div class="insights-daily-token-chart">${bars}</div></div>`;
-  } else {
-    trendHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_trend_title'))}</div><div class="insights-empty">${esc(t('analytics_no_data'))}</div></div>`;
-  }
-
-  let topSessionsHtml;
-  if (d.top_sessions && d.top_sessions.length) {
-    const rows = d.top_sessions.map(s => `<div class="insights-table-row"><span class="insights-model-name" title="${esc(s.title || '')}">${esc(s.title || s.session_id || '')}</span><span>${esc(s.provider || '')}</span><span class="insights-model-cost">${fmtCost(s.cost)}</span></div>`).join('');
-    topSessionsHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_top_sessions_title'))}</div><div class="insights-table"><div class="insights-table-head"><span>${esc(t('analytics_provider_col_provider'))} / ${esc(t('insights_sessions'))}</span><span>${esc(t('analytics_provider_col_provider'))}</span><span>${esc(t('analytics_provider_col_cost'))}</span></div>${rows}</div></div>`;
-  } else {
-    topSessionsHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('analytics_top_sessions_title'))}</div><div class="insights-empty">${esc(t('analytics_top_sessions_empty'))}</div></div>`;
-  }
-
-  box.innerHTML = `
-    <div class="insights-grid">
-      ${overviewCards.map(c => `<div class="insights-stat"><div class="insights-stat-icon">${c.icon}</div><div class="insights-stat-info"><div class="insights-stat-value">${c.value}</div><div class="insights-stat-label">${esc(c.label)}</div></div></div>`).join('')}
-    </div>
-    ${trendHtml}
-    ${providersHtml}
-    ${topSessionsHtml}
     <div style="text-align:center;color:var(--muted);font-size:10px;margin-top:12px;opacity:.6">${esc(t('insights_footer').replace('{days}', d.period_days))}</div>
   `;
 }
