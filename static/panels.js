@@ -8869,11 +8869,6 @@ function openProfileCreate(){
   _closeMobileSidebarAfterPanelSelection();
 }
 
-// Reasoning-effort ladder shown in the edit form's select. Matches the
-// EFFORTS list in static/commands.js (cmdReasoning) plus a leading 'default'
-// entry meaning "no override configured -- inherit the provider's default".
-const _PROFILE_REASONING_EFFORT_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-
 function openProfileEdit(){
   if (!_currentProfileDetail) return;
   if (typeof switchPanel === 'function' && _currentPanel !== 'profiles') switchPanel('profiles');
@@ -8904,13 +8899,6 @@ function _renderProfileForm(editProfile){
             <input type="checkbox" id="profileFormClone"> <span>${esc(t('profile_clone_label') || 'Clone config from active profile')}</span>
           </label>
         </div>`;
-  const reasoningSection = isEdit ? `
-        <div class="detail-form-row">
-          <label for="profileFormReasoningEffort">${esc(t('profile_reasoning_effort_label') || 'Reasoning effort')}</label>
-          <select id="profileFormReasoningEffort">
-            ${_PROFILE_REASONING_EFFORT_OPTIONS.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
-          </select>
-        </div>` : '';
   const apiKeyPlaceholder = isEdit
     ? (t('profile_api_key_edit_hint') || 'Leave blank to keep the current key')
     : (t('profile_api_key_placeholder') || 'Optional');
@@ -8935,7 +8923,6 @@ function _renderProfileForm(editProfile){
           <label for="profileFormBaseUrl">${esc(t('profile_base_url_label') || 'Base URL')}</label>
           <input type="text" id="profileFormBaseUrl" placeholder="${esc(t('profile_base_url_placeholder') || 'Optional, e.g. http://localhost:11434')}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
-        ${reasoningSection}
         <div class="detail-form-row">
           <label for="profileFormApiKey">${esc(t('profile_api_key_label') || 'API key')}</label>
           <input type="password" id="profileFormApiKey" placeholder="${esc(apiKeyPlaceholder)}" autocomplete="off">
@@ -8949,8 +8936,8 @@ function _renderProfileForm(editProfile){
   if (isEdit) {
     const baseEl = $('profileFormBaseUrl');
     if (baseEl) baseEl.value = editProfile.base_url || '';
-    const effEl = $('profileFormReasoningEffort');
-    if (effEl) effEl.value = _PROFILE_REASONING_EFFORT_OPTIONS.includes(editProfile.reasoning_effort) ? editProfile.reasoning_effort : 'default';
+    const reasoningEl = $('profileFormReasoning');
+    if (reasoningEl) reasoningEl.value = REASONING_EFFORT_LEVELS.includes(editProfile.reasoning_effort) ? editProfile.reasoning_effort : '';
   } else {
     const n = $('profileFormName');
     if (n) n.focus();
@@ -9051,7 +9038,7 @@ async function saveProfileEdit(){
   const modelEl = $('profileFormModel');
   const baseEl = $('profileFormBaseUrl');
   const apiKeyEl = $('profileFormApiKey');
-  const effEl = $('profileFormReasoningEffort');
+  const reasoningEl = $('profileFormReasoning');
   const errEl = $('profileFormError');
   if (!errEl) return;
   errEl.style.display = 'none';
@@ -9070,9 +9057,9 @@ async function saveProfileEdit(){
     }
     if (baseUrl) payload.base_url = baseUrl;
     if (apiKey) payload.api_key = apiKey;
-    // Always submitted (even 'default', which clears the override) -- unlike
-    // the other fields, "reset to default" is a meaningful edit-form action.
-    payload.reasoning_effort = effEl ? (effEl.value || 'default') : 'default';
+    // Always submitted (even '', which clears the override) -- unlike the
+    // other fields, "reset to default" is a meaningful edit-form action.
+    payload.reasoning_effort = reasoningEl ? reasoningEl.value : '';
     await api('/api/profile/update', { method: 'POST', body: JSON.stringify(payload) });
     _invalidateKanbanProfileCache();
     _profilePreFormDetail = null;
