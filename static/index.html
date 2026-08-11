@@ -207,7 +207,7 @@
       <div class="panel-head">
         <span data-i18n="tab_chat">Chat</span>
         <div class="panel-head-actions">
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="New conversation (Cmd+K)" data-i18n-title="new_conversation" aria-label="New conversation">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="New conversation or project (Cmd+K: new chat)" aria-label="New conversation or project">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
@@ -234,7 +234,7 @@
         </div>
       </div>
       <div id="cronGatewayNotice" class="detail-alert cron-gateway-notice" style="display:none"></div>
-      <div class="cron-list" id="cronList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="cron-list" id="cronList"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Kanban panel -->
     <div class="panel-view" id="panelKanban">
@@ -283,7 +283,7 @@
         </div>
       </div>
       <div class="kanban-summary" id="kanbanSummary"></div>
-      <div class="kanban-list" id="kanbanList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="kanban-list" id="kanbanList"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Skills panel -->
     <div class="panel-view" id="panelSkills">
@@ -294,7 +294,7 @@
         </div>
       </div>
       <div class="skills-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="skillsSearch" type="search" placeholder="Search skills..." data-i18n-placeholder="search_skills" oninput="filterSkills()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
-      <div class="skills-list" id="skillsList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="skills-list" id="skillsList"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Personas panel (internal: agent definitions / Agent Library) -->
     <div class="panel-view" id="panelAgents">
@@ -305,14 +305,14 @@
         </div>
       </div>
       <div class="skills-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="agentsSearch" type="search" placeholder="Search personas..." data-i18n-placeholder="search_agent_defs" oninput="filterAgentDefinitions()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
-      <div class="skills-list" id="agentsList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="skills-list" id="agentsList"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Memory panel -->
     <div class="panel-view" id="panelMemory">
       <div class="panel-head">
         <span data-i18n="personal_memory">Personal memory</span>
       </div>
-      <div class="side-menu" id="memoryPanel"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="side-menu" id="memoryPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Knowledge Browser panel (read-only browse/search over memory facts,
          USER.md, SOUL.md, saved prompts, and prompt files) -->
@@ -324,7 +324,7 @@
         </div>
       </div>
       <div class="skills-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="knowledgeSearch" type="search" placeholder="Search knowledge..." data-i18n-placeholder="search_knowledge" oninput="searchKnowledgeItems()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
-      <div class="skills-list" id="knowledgeList"><div style="padding:12px;color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div class="skills-list" id="knowledgeList"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Todo panel -->
     <div class="panel-view" id="panelTodos">
@@ -359,7 +359,7 @@
         </div>
       </div>
       <div class="panel-head-sub" data-i18n="workspace_desc">Add and switch workspaces for your sessions.</div>
-      <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Profiles panel -->
     <div class="panel-view" id="panelProfiles">
@@ -369,7 +369,7 @@
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openProfileCreate()" data-tooltip="New profile" data-i18n-title="new_profile" aria-label="New profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:8px" id="profilesPanel"><div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div style="flex:1;overflow-y:auto;padding:8px" id="profilesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Logs panel -->
     <div class="panel-view" id="panelLogs">
@@ -419,7 +419,7 @@
           <option value="" data-i18n="audit_all_sessions">All sessions</option>
         </select>
       </div>
-      <div id="auditList" style="flex:1;overflow-y:auto;padding:8px 12px"><div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div></div>
+      <div id="auditList" style="flex:1;overflow-y:auto;padding:8px 12px"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
     <!-- Settings panel (menu list; actual panes render in .main) -->
     <div class="panel-view" id="panelSettings">
@@ -980,7 +980,7 @@
       </div>
       <div class="kanban-task-preview" id="kanbanTaskPreview" style="display:none"></div>
       <div class="kanban-board-wrap">
-        <div class="kanban-board" id="kanbanBoard"><div style="padding:16px;color:var(--muted);font-size:13px" data-i18n="loading">Loading...</div></div>
+        <div class="kanban-board" id="kanbanBoard"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
         <div class="kanban-office-view" id="kanbanOfficeView" style="display:none"></div>
       </div>
     </div>
@@ -1026,7 +1026,7 @@
       </div>
       <div class="main-view-content" id="insightsContent" style="padding:16px;overflow-y:auto">
         <div class="insights-card wiki-status-card" id="llmWikiStatusCard">
-          <div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div>
+          <div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div>
         </div>
       </div>
     </div>

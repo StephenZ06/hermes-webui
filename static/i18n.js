@@ -1206,6 +1206,7 @@ const LOCALES = {
     tab_settings: 'Settings',
     close_menu: 'Close menu',
     new_conversation: 'New conversation',
+    new_project_folder: 'New project folder',
     filter_conversations: 'Filter conversations...',
     chat_usage_weekly: 'Weekly usage',
     chat_usage_remaining: 'remaining',

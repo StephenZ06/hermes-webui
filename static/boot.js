@@ -2030,7 +2030,7 @@ function _currentSessionIsReusableEmptyChat(){
 }
 
 $('fileInput').onchange=e=>{addFiles(Array.from(e.target.files));e.target.value='';};
-$('btnNewChat').onclick=async()=>{
+async function _createNewConversation(){
   // If the current session has no messages AND nothing is in flight, just focus
   // the composer rather than creating another empty session that will clutter the
   // sidebar list (#1171).
@@ -2050,7 +2050,36 @@ $('btnNewChat').onclick=async()=>{
     await renderSessionList();closeMobileSidebar();$('msg').focus();return;
   }
   await newSession();await renderSessionList();closeMobileSidebar();$('msg').focus();
-};
+}
+// "+" in the Chat panel head now offers a choice instead of always creating a
+// conversation directly -- Cmd+K (see the keydown handler below) still creates
+// one immediately, unaffected by this menu.
+function _toggleNewChatMenu(anchorBtn){
+  const existing=document.querySelector('.new-chat-menu');
+  if(existing){existing.remove();return;}
+  const menu=document.createElement('div');
+  menu.className='new-chat-menu';
+  document.body.appendChild(menu);
+  const rect=anchorBtn.getBoundingClientRect();
+  const menuRect=menu.getBoundingClientRect();
+  menu.style.top=(rect.bottom+4)+'px';
+  menu.style.left=Math.max(8,rect.right-menuRect.width)+'px';
+  const mkItem=(label,onClick)=>{
+    const item=document.createElement('button');
+    item.type='button';
+    item.className='new-chat-menu-item';
+    item.textContent=label;
+    item.onclick=(e)=>{e.stopPropagation();menu.remove();onClick();};
+    return item;
+  };
+  menu.appendChild(mkItem(t('new_conversation'),()=>{_createNewConversation();}));
+  menu.appendChild(mkItem(t('new_project_folder'),()=>{
+    if(typeof _startProjectCreate==='function') _startProjectCreate();
+  }));
+  const close=(e)=>{if(!menu.contains(e.target)&&e.target!==anchorBtn){menu.remove();document.removeEventListener('click',close);}};
+  setTimeout(()=>document.addEventListener('click',close),0);
+}
+$('btnNewChat').onclick=(e)=>{e.stopPropagation();_toggleNewChatMenu(e.currentTarget);};
 $('btnDownload').onclick=()=>{
   if(!S.session)return;
   const blob=new Blob([transcript()],{type:'text/markdown'});
