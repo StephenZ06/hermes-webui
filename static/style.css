@@ -5034,6 +5034,15 @@ main.main > #mainPlugin{display:none;}
 .app-titlebar-new-chat:disabled:hover,.app-titlebar-new-chat[aria-busy="true"]:hover{background:transparent;color:var(--muted);}
 .panel-head-btn svg{width:14px;height:14px;display:block;}
 .panel-head-sub{display:flex;gap:8px;padding:12px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
+/* Chat sidebar weekly-usage widget (Codex-style: % remaining + reset). */
+.chat-usage-widget{padding:10px 12px 4px;flex-shrink:0;}
+.chat-usage-widget-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:5px;}
+.chat-usage-widget-percent{font-weight:600;color:var(--text);}
+.chat-usage-widget-bar{height:5px;border-radius:999px;background:var(--input-bg);border:1px solid var(--border);overflow:hidden;}
+.chat-usage-widget-bar-fill{height:100%;border-radius:999px;background:var(--accent);transition:width .3s ease;}
+.chat-usage-widget-bar-fill--warn{background:var(--warning,#f5c542);}
+.chat-usage-widget-bar-fill--danger{background:var(--error,#e94560);}
+.chat-usage-widget-reset{font-size:10px;color:var(--muted);margin-top:4px;opacity:.8;}
 .panel-head-sub select{flex:1;min-width:0;width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;}
 .side-menu{display:flex;flex-direction:column;gap:2px;padding:8px;overflow-y:auto;}
 .side-menu-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:var(--text);cursor:pointer;text-align:left;font-size:13px;font-weight:500;transition:background .15s,color .15s;width:100%;}

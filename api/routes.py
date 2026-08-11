@@ -10821,6 +10821,77 @@ def _handle_llm_wiki_status(handler, parsed) -> bool:
     return True
 
 
+def _handle_account_usage(handler, parsed) -> bool:
+    """Return the active profile's subscription usage window(s) (e.g. Codex
+    weekly rate-limit percent + reset time) for the Chat sidebar usage widget.
+
+    Reads credentials for the *requested profile* only -- never mutates
+    process-global HERMES_HOME directly. Delegates to
+    cron_profile_context_for_home, the same lock-guarded context manager the
+    cron subsystem already uses to run profile-scoped work safely under the
+    threaded HTTP server (each use holds a process-wide lock for the
+    duration, so concurrent requests for different profiles can't cross-read
+    each other's tokens).
+    """
+    import yaml
+
+    from api.profiles import (
+        cron_profile_context_for_home,
+        get_active_profile_name,
+        get_hermes_home_for_profile,
+    )
+
+    query = parse_qs(parsed.query)
+    profile_name = str(query.get("profile", [""])[0] or "").strip() or get_active_profile_name()
+    profile_home = get_hermes_home_for_profile(profile_name)
+
+    cfg_path = profile_home / "config.yaml"
+    if not cfg_path.is_file():
+        j(handler, {"available": False})
+        return True
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception:
+        j(handler, {"available": False})
+        return True
+
+    model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
+    provider = str((model_cfg or {}).get("provider") or "").strip()
+    base_url = str((model_cfg or {}).get("base_url") or "").strip() or None
+    if not provider:
+        j(handler, {"available": False})
+        return True
+
+    snapshot = None
+    try:
+        from agent.account_usage import fetch_account_usage
+        with cron_profile_context_for_home(profile_home):
+            snapshot = fetch_account_usage(provider, base_url=base_url, api_key=None)
+    except Exception:
+        logger.debug("account usage fetch failed for profile %r", profile_name, exc_info=True)
+
+    if snapshot is None or not snapshot.available:
+        j(handler, {"available": False, "provider": provider})
+        return True
+
+    windows = [
+        {
+            "label": w.label,
+            "used_percent": w.used_percent,
+            "reset_at": w.reset_at.isoformat() if w.reset_at else None,
+        }
+        for w in snapshot.windows
+    ]
+    j(handler, {
+        "available": True,
+        "provider": snapshot.provider,
+        "plan": snapshot.plan,
+        "windows": windows,
+    })
+    return True
+
+
 def _handle_insights(handler, parsed) -> bool:
     """Return usage analytics from local WebUI session data."""
     import collections
@@ -12266,6 +12337,8 @@ def handle_get(handler, parsed) -> bool:
     # ── Insights / knowledge status ──
     if parsed.path == "/api/insights":
         return _handle_insights(handler, parsed)
+    if parsed.path == "/api/account_usage":
+        return _handle_account_usage(handler, parsed)
     if parsed.path == "/api/project-os/dashboard":
         return _handle_project_os_dashboard(handler, parsed)
 
