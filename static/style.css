@@ -5067,7 +5067,7 @@ main.main > #mainPlugin{display:none;}
 .app-titlebar-new-chat:disabled,.app-titlebar-new-chat[aria-busy="true"]{opacity:.5;cursor:wait;}
 .app-titlebar-new-chat:disabled:hover,.app-titlebar-new-chat[aria-busy="true"]:hover{background:transparent;color:var(--muted);}
 .panel-head-btn svg{width:14px;height:14px;display:block;}
-.panel-head-sub{display:flex;gap:8px;padding:6px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
+.panel-head-sub{display:flex;gap:8px;padding:12px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
 .panel-head-sub select{flex:1;min-width:0;width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;}
 .side-menu{display:flex;flex-direction:column;gap:2px;padding:8px;overflow-y:auto;}
 .side-menu-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:var(--text);cursor:pointer;text-align:left;font-size:13px;font-weight:500;transition:background .15s,color .15s;width:100%;}
@@ -5843,7 +5843,7 @@ main.main > #mainPlugin{display:none;}
    border-top + padding-top convention used by .cron-paused-section and
    .plugin-card-footer elsewhere in this file. Sits right below the
    conversation search box, above the Projects folder list / session list. */
-.sidebar-divider{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-shrink:0;}
+.sidebar-divider{margin-top:0;padding-top:10px;border-top:1px solid var(--border);flex-shrink:0;}
 /* Projects folder list — ChatGPT-style vertical, collapsible list replacing
    the old horizontal .project-bar chip row. Each project is a full-width
    row (chevron + color dot + name + session count + actions) that expands
@@ -5929,7 +5929,7 @@ main.main > #mainPlugin{display:none;}
 .project-chip.no-project{border-style:dashed;}
 .project-chip .color-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .project-create-btn{font-size:10px;padding:3px 6px;border-radius:12px;cursor:pointer;border:1px dashed var(--border2);background:none;color:var(--muted);opacity:.6;transition:all .15s;}
-.project-folder-list .project-create-btn{align-self:flex-start;margin-top:4px;}
+.project-folder-list .project-create-btn{align-self:center;margin-top:6px;width:30px;height:30px;padding:0;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;}
 .project-create-btn:hover{opacity:1;border-color:var(--blue);color:var(--blue);}
 .project-create-input{font-size:10px;padding:3px 8px;border-radius:12px;border:1px solid var(--accent-bg);background:var(--surface);color:var(--text);outline:none;min-width:40px;max-width:180px;width:auto;font-family:inherit;box-shadow:0 0 0 2px var(--accent-bg);}
 /* Renaming a folder row: keep the full-width folder-row shape (matches

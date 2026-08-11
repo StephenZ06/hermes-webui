@@ -9437,29 +9437,13 @@ function _showProjectPicker(session, anchorEl){
   setTimeout(()=>document.addEventListener('click',close),0);
 }
 
-// Resize a .project-create-input to fit its current value (or placeholder).
-// Bounded by the CSS min-width:40px / max-width:180px on the same class so
-// the input is never comically tiny nor wider than the project bar.
-// Uses a hidden span sized with the same font/padding to measure text width.
-function _resizeProjectInput(inp){
-  const sizer=document.createElement('span');
-  const cs=getComputedStyle(inp);
-  // Read font from the live element so the sizer stays calibrated if CSS changes.
-  // Horizontal padding only (0 vertical) — we're measuring width, not height.
-  sizer.style.cssText='position:absolute;visibility:hidden;white-space:pre;';
-  sizer.style.fontSize=cs.fontSize;
-  sizer.style.fontFamily=cs.fontFamily;
-  sizer.style.padding='0 '+cs.paddingRight;
-  sizer.textContent=inp.value||inp.placeholder||' ';
-  document.body.appendChild(sizer);
-  const w=Math.min(180,Math.max(40,sizer.offsetWidth+2));
-  document.body.removeChild(sizer);
-  inp.style.width=w+'px';
-}
-
 function _startProjectCreate(bar, addBtn){
   const inp=document.createElement('input');
-  inp.className='project-create-input';
+  // Full-width folder-row shape (matches _startProjectRename), not the old
+  // small pill -- the new folder spawns in place looking like a real row.
+  // Blur always discards: clicking away means "I don't want to add this",
+  // it never silently saves whatever was typed. Only Enter confirms.
+  inp.className='project-create-input project-folder-rename-input';
   inp.placeholder='Project name';
   let _finishDone=false;
   const finish=async(save)=>{
@@ -9488,20 +9472,16 @@ function _startProjectCreate(bar, addBtn){
     }
     if(e.key==='Escape'){e.preventDefault();finish(false);}
   };
-  inp.onblur=()=>finish(true);
-  inp.addEventListener('input',()=>_resizeProjectInput(inp));
+  inp.onblur=()=>finish(false);
   addBtn.replaceWith(inp);
-  _resizeProjectInput(inp);
   setTimeout(()=>inp.focus(),10);
 }
 
 function _startProjectRename(proj, chip){
   const inp=document.createElement('input');
-  // Separate class from the "+" add-project input: that one replaces the
-  // small pill create-button so the small pill shape is correct there, but
-  // renaming replaces a full-width folder row -- reusing the same pill class
-  // shrank the row into a stray pill mid-list. This class keeps the folder
-  // row's shape instead (see .project-folder-rename-input in style.css).
+  // Adds .project-folder-rename-input on top of the base pill class so the
+  // input keeps the accent border/box-shadow focus ring but renders at the
+  // full-width folder-row shape instead of the small pill (see style.css).
   inp.className='project-create-input project-folder-rename-input';
   inp.value=proj.name;
   let _finishDone=false;
