@@ -8175,7 +8175,7 @@ async function loadProfilesPanel() {
       emptyMsg.style.cssText = 'padding:16px;color:var(--muted);font-size:12px';
       emptyMsg.textContent = t('profiles_no_profiles');
       panel.appendChild(emptyMsg);
-      if (_profileMode !== 'create') _clearProfileDetail();
+      if (_profileMode !== 'create' && _profileMode !== 'edit') _clearProfileDetail();
       return;
     }
     const activeName = (S.activeProfile && data.profiles.some(p => p.name === S.activeProfile))
@@ -8208,7 +8208,7 @@ async function loadProfilesPanel() {
       panel.appendChild(card);
     }
     // Re-render detail with fresh data if we have one and we're not in a form
-    if (_currentProfileDetail && _profileMode !== 'create') {
+    if (_currentProfileDetail && _profileMode !== 'create' && _profileMode !== 'edit') {
       const refreshed = data.profiles.find(p => p.name === _currentProfileDetail.name);
       if (refreshed) _renderProfileDetail(refreshed, data.active);
       else _clearProfileDetail();
@@ -8260,9 +8260,10 @@ function _renderProfileDetail(p, activeName){
   const rows = [];
   rows.push(`<div class="detail-row"><div class="detail-row-label">Status</div><div class="detail-row-value">${statusBadge}${defaultBadge}</div></div>`);
   rows.push(`<div class="detail-row"><div class="detail-row-label">Gateway</div><div class="detail-row-value">${gwBadge}</div></div>`);
-  if (p.model) rows.push(`<div class="detail-row"><div class="detail-row-label">Model</div><div class="detail-row-value"><code>${esc(p.model)}</code></div></div>`);
+  if (p.model) rows.push(`<div class="detail-row"><div class="detail-row-label">Model</div><div class="detail-row-value">${esc(p.model)}</div></div>`);
   if (p.provider) rows.push(`<div class="detail-row"><div class="detail-row-label">Provider</div><div class="detail-row-value">${esc(p.provider)}</div></div>`);
   if (p.base_url) rows.push(`<div class="detail-row"><div class="detail-row-label">Base URL</div><div class="detail-row-value"><code>${esc(p.base_url)}</code></div></div>`);
+  if (p.reasoning_effort) rows.push(`<div class="detail-row"><div class="detail-row-label">${esc(t('profile_reasoning_effort_label') || 'Reasoning effort')}</div><div class="detail-row-value">${esc(p.reasoning_effort)}</div></div>`);
   rows.push(`<div class="detail-row"><div class="detail-row-label">API key</div><div class="detail-row-value">${p.has_env ? esc(t('profile_api_keys_configured')) : '<span style="color:var(--muted)">Not configured</span>'}</div></div>`);
   if (p.total_skills && p.total_skills > 0) rows.push(`<div class="detail-row"><div class="detail-row-label">Skills</div><div class="detail-row-value">${esc(t('profile_skill_count', p.total_skills).replace(String(p.total_skills), `${p.enabled_skills} / ${p.total_skills}`))}</div></div>`);
   if (p.default_workspace) rows.push(`<div class="detail-row"><div class="detail-row-label">Default space</div><div class="detail-row-value"><code>${esc(p.default_workspace)}</code></div></div>`);
@@ -8282,6 +8283,7 @@ function _renderProfileDetail(p, activeName){
 function _setProfileHeaderButtons(mode, p, activeName){
   const header = $('mainProfiles') && $('mainProfiles').querySelector('.main-view-header');
   const actBtn = $('btnActivateProfileDetail');
+  const editBtn = $('btnEditProfileDetail');
   const delBtn = $('btnDeleteProfileDetail');
   const cancelBtn = $('btnCancelProfileDetail');
   const saveBtn = $('btnSaveProfileDetail');
@@ -8293,19 +8295,23 @@ function _setProfileHeaderButtons(mode, p, activeName){
     const isDefault = !!(p && p.is_default);
     const singleProfileMode = !!(_profilesCache && _profilesCache.single_profile_mode);
     if (isActive || singleProfileMode) hide(actBtn); else show(actBtn);
+    // Editing model/provider/base_url/reasoning_effort is independent of
+    // active/default status -- it's only blocked in isolated (single-profile)
+    // mode, which also rejects the update on the backend.
+    if (singleProfileMode) hide(editBtn); else show(editBtn);
     if (isDefault || singleProfileMode) hide(delBtn); else show(delBtn);
     hide(cancelBtn); hide(saveBtn);
-  } else if (mode === 'create') {
+  } else if (mode === 'create' || mode === 'edit') {
     if (header) header.style.display = 'flex';
-    hide(actBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
+    hide(actBtn); hide(editBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
   } else if (mode === 'help') {
     // Read-only help/concept view: title is populated, so show the header but
     // hide every action button (no profile to act on).
     if (header) header.style.display = 'flex';
-    [actBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
+    [actBtn, editBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
   } else {
     if (header) header.style.display = 'none';
-    [actBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
+    [actBtn, editBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
   }
 }
 
@@ -8801,15 +8807,31 @@ function openProfileCreate(){
   _renderProfileForm();
 }
 
-function _renderProfileForm(){
+// Reasoning-effort ladder shown in the edit form's select. Matches the
+// EFFORTS list in static/commands.js (cmdReasoning) plus a leading 'default'
+// entry meaning "no override configured -- inherit the provider's default".
+const _PROFILE_REASONING_EFFORT_OPTIONS = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function openProfileEdit(){
+  if (!_currentProfileDetail) return;
+  if (typeof switchPanel === 'function' && _currentPanel !== 'profiles') switchPanel('profiles');
+  _profilePreFormDetail = { ..._currentProfileDetail };
+  _profileMode = 'edit';
+  _renderProfileForm(_currentProfileDetail);
+}
+
+// Renders the profile create/edit form. Pass an existing profile dict to
+// switch into edit mode: the name/clone fields (immutable once created) are
+// dropped, a reasoning-effort selector is added, and every field is
+// pre-filled from the profile's current values.
+function _renderProfileForm(editProfile){
   const title = $('profileDetailTitle');
   const body = $('profileDetailBody');
   const empty = $('profileDetailEmpty');
   if (!title || !body) return;
-  title.textContent = t('new_profile');
-  body.innerHTML = `
-    <div class="main-view-content">
-      <form class="detail-form" onsubmit="event.preventDefault(); saveProfileForm();">
+  const isEdit = !!editProfile;
+  title.textContent = isEdit ? editProfile.name : t('new_profile');
+  const nameSection = isEdit ? '' : `
         <div class="detail-form-row">
           <label for="profileFormName">${esc(t('profile_name_label') || 'Name')}</label>
           <input type="text" id="profileFormName" placeholder="${esc(t('profile_name_placeholder') || 'lowercase, a-z 0-9 hyphens')}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required>
@@ -8819,7 +8841,21 @@ function _renderProfileForm(){
           <label class="detail-form-check" for="profileFormClone">
             <input type="checkbox" id="profileFormClone"> <span>${esc(t('profile_clone_label') || 'Clone config from active profile')}</span>
           </label>
-        </div>
+        </div>`;
+  const reasoningSection = isEdit ? `
+        <div class="detail-form-row">
+          <label for="profileFormReasoningEffort">${esc(t('profile_reasoning_effort_label') || 'Reasoning effort')}</label>
+          <select id="profileFormReasoningEffort">
+            ${_PROFILE_REASONING_EFFORT_OPTIONS.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+          </select>
+        </div>` : '';
+  const apiKeyPlaceholder = isEdit
+    ? (t('profile_api_key_edit_hint') || 'Leave blank to keep the current key')
+    : (t('profile_api_key_placeholder') || 'Optional');
+  body.innerHTML = `
+    <div class="main-view-content">
+      <form class="detail-form" onsubmit="event.preventDefault(); saveProfileForm();">
+        ${nameSection}
         <div class="detail-form-row">
           <label for="profileFormModel">${esc(t('profile_model_label') || 'Model / provider')}</label>
           <select id="profileFormModel"></select>
@@ -8837,22 +8873,30 @@ function _renderProfileForm(){
           <label for="profileFormBaseUrl">${esc(t('profile_base_url_label') || 'Base URL')}</label>
           <input type="text" id="profileFormBaseUrl" placeholder="${esc(t('profile_base_url_placeholder') || 'Optional, e.g. http://localhost:11434')}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
         </div>
+        ${reasoningSection}
         <div class="detail-form-row">
           <label for="profileFormApiKey">${esc(t('profile_api_key_label') || 'API key')}</label>
-          <input type="password" id="profileFormApiKey" placeholder="${esc(t('profile_api_key_placeholder') || 'Optional')}" autocomplete="off">
+          <input type="password" id="profileFormApiKey" placeholder="${esc(apiKeyPlaceholder)}" autocomplete="off">
         </div>
         <div id="profileFormError" class="detail-form-error" style="display:none"></div>
       </form>
     </div>`;
   body.style.display = '';
   if (empty) empty.style.display = 'none';
-  _setProfileHeaderButtons('create');
-  const n = $('profileFormName');
-  if (n) n.focus();
-  _populateProfileFormModelSelect();
+  _setProfileHeaderButtons(isEdit ? 'edit' : 'create');
+  if (isEdit) {
+    const baseEl = $('profileFormBaseUrl');
+    if (baseEl) baseEl.value = editProfile.base_url || '';
+    const effEl = $('profileFormReasoningEffort');
+    if (effEl) effEl.value = _PROFILE_REASONING_EFFORT_OPTIONS.includes(editProfile.reasoning_effort) ? editProfile.reasoning_effort : 'default';
+  } else {
+    const n = $('profileFormName');
+    if (n) n.focus();
+  }
+  _populateProfileFormModelSelect(editProfile);
 }
 
-async function _populateProfileFormModelSelect(){
+async function _populateProfileFormModelSelect(editProfile){
   const sel = $('profileFormModel');
   if (!sel) return;
   sel.innerHTML = `<option value="">${esc(t('profile_model_use_default') || 'Use active profile default')}</option>`;
@@ -8872,7 +8916,11 @@ async function _populateProfileFormModelSelect(){
       }
       if (og.children.length) sel.appendChild(og);
     }
-    if (data && data.default_model && typeof _applyModelToDropdown === 'function') {
+    if (editProfile && editProfile.model && typeof _applyModelToDropdown === 'function') {
+      // Editing an existing (possibly inactive) profile: preselect ITS
+      // model/provider, not the active profile's default_model.
+      _applyModelToDropdown(editProfile.model, sel, editProfile.provider || null);
+    } else if (!editProfile && data && data.default_model && typeof _applyModelToDropdown === 'function') {
       _applyModelToDropdown(data.default_model, sel, data.active_provider || window._activeProvider || null);
     }
   } catch (e) {
@@ -8892,6 +8940,7 @@ function cancelProfileForm(){
 }
 
 async function saveProfileForm(){
+  if (_profileMode === 'edit') return saveProfileEdit();
   const nameEl = $('profileFormName');
   const cloneEl = $('profileFormClone');
   const modelEl = $('profileFormModel');
@@ -8930,6 +8979,46 @@ async function saveProfileForm(){
     openProfileDetail(name);
   } catch (e) {
     errEl.textContent = e.message || t('create_failed');
+    errEl.style.display = '';
+  }
+}
+
+async function saveProfileEdit(){
+  if (!_profilePreFormDetail) return;
+  const name = _profilePreFormDetail.name;
+  const modelEl = $('profileFormModel');
+  const baseEl = $('profileFormBaseUrl');
+  const apiKeyEl = $('profileFormApiKey');
+  const effEl = $('profileFormReasoningEffort');
+  const errEl = $('profileFormError');
+  if (!errEl) return;
+  errEl.style.display = 'none';
+  const baseUrl = (baseEl ? (baseEl.value || '') : '').trim();
+  const apiKey = (apiKeyEl ? (apiKeyEl.value || '') : '').trim();
+  if (baseUrl && !/^https?:\/\//.test(baseUrl)) { errEl.textContent = t('profile_base_url_rule'); errEl.style.display = ''; return; }
+  try {
+    const payload = { name };
+    const selectedModel = modelEl ? (modelEl.value || '').trim() : '';
+    if (selectedModel) {
+      const modelState = (typeof _modelStateForSelect === 'function')
+        ? _modelStateForSelect(modelEl, selectedModel)
+        : { model: selectedModel, model_provider: null };
+      if (modelState.model) payload.default_model = modelState.model;
+      if (modelState.model_provider) payload.model_provider = modelState.model_provider;
+    }
+    if (baseUrl) payload.base_url = baseUrl;
+    if (apiKey) payload.api_key = apiKey;
+    // Always submitted (even 'default', which clears the override) -- unlike
+    // the other fields, "reset to default" is a meaningful edit-form action.
+    payload.reasoning_effort = effEl ? (effEl.value || 'default') : 'default';
+    await api('/api/profile/update', { method: 'POST', body: JSON.stringify(payload) });
+    _invalidateKanbanProfileCache();
+    _profilePreFormDetail = null;
+    await loadProfilesPanel();
+    showToast(t('profile_updated', name));
+    openProfileDetail(name);
+  } catch (e) {
+    errEl.textContent = e.message || t('profile_update_failed');
     errEl.style.display = '';
   }
 }
