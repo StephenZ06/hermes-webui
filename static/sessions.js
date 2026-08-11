@@ -2607,14 +2607,6 @@ function _sessionSourceTabCount(filter, renderedWebuiSessionCount, renderedCliSe
   return filter === 'cli' ? renderedCliSessionCount : renderedWebuiSessionCount;
 }
 
-function _setActiveProjectFilter(projectId) {
-  const next = projectId === NO_PROJECT_FILTER ? NO_PROJECT_FILTER : (projectId || null);
-  if (_activeProject === next) return;
-  _activeProject = next;
-  renderSessionListFromCache();
-  void renderSessionList({deferWhileInteracting:false});
-}
-
 function _setSessionSourceFilter(filter) {
   const next = filter === 'cli' ? 'cli' : 'webui';
   if (_sessionSourceFilter === next) return;
@@ -7680,13 +7672,15 @@ function _attachProjectQuickCreateButton(chip, project){
       }
       return;
     }
-    const previousProject=(typeof _activeProject!=='undefined')?_activeProject:NO_PROJECT_FILTER;
-    _setActiveProjectFilter(project.project_id);
     try{
       await newSession(false,{project_id:project.project_id});
       // newSession() does not repaint the sidebar (callers own that — see the
       // newSession contract). Repaint from the post-create state so the new
-      // project-assigned session appears deterministically.
+      // project-assigned session appears deterministically. No _activeProject
+      // filter change needed: the auto-expand-on-active-session logic above
+      // already opens this project's folder so the new session is visible --
+      // and without the removed "All" chip there'd be no way back out of a
+      // stuck project filter.
       try{ if(typeof renderSessionListFromCache==='function') renderSessionListFromCache(); }catch(_){}
       try{ if(typeof renderSessionList==='function') void renderSessionList({deferWhileInteracting:false}); }catch(_){}
       // Mobile: the sidebar is a full-screen drawer over the main view — close
@@ -7696,7 +7690,6 @@ function _attachProjectQuickCreateButton(chip, project){
       // so the toast stays visible for retry.
       if(typeof closeMobileSidebar==='function') closeMobileSidebar();
     }catch(err){
-      _setActiveProjectFilter(previousProject);
       if(typeof showToast==='function') showToast('New conversation failed: '+(err&&err.message||err));
     }
   };
@@ -7849,17 +7842,10 @@ function renderSessionListFromCache(){
   if(_allProjects.length>0){
     const bar=document.createElement('div');
     bar.className='project-folder-list';
-    // "All" chip
-    const allChip=document.createElement('span');
-    allChip.className='project-chip'+(!_activeProject?' active':'');
-    allChip.textContent='All';
-    allChip.onclick=()=>{_setActiveProjectFilter(null);};
-    bar.appendChild(allChip);
     // Project folders — vertical, collapsible rows (ChatGPT-style). Clicking
-    // a folder row filters the session list below to that project (same
-    // _setActiveProjectFilter contract the old chip bar used) and reveals the
-    // nested session preview; the chevron alone toggles the nested preview
-    // without changing the active filter.
+    // a folder row (or its chevron) toggles the nested session preview; the
+    // flat/date-grouped list below always shows unfoldered sessions only, so
+    // there's no separate "active project filter" state to reset here.
     for(const p of _allProjects){
       const chip=document.createElement('span');
       chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');

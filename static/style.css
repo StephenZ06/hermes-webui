@@ -5853,10 +5853,6 @@ main.main > #mainPlugin{display:none;}
    project, active state) is unchanged. */
 .project-folder-list{display:flex;flex-direction:column;gap:4px;padding:6px 8px 10px;flex-shrink:0;}
 .project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:500;justify-content:flex-start;}
-/* "All" sits above the folder rows and reads as a section header, not
-   another list row -- give it extra breathing room below so it doesn't
-   look glued to the first folder. */
-.project-folder-list > .project-chip:first-child{margin-bottom:6px;}
 .project-folder-chevron{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;color:var(--muted);font-size:9px;transition:transform .15s ease;}
 .project-folder-chevron.expanded{transform:rotate(90deg);}
 .project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
