@@ -1876,7 +1876,7 @@
   .toast-copy:hover,.toast-copy:focus-visible,.toast-dismiss:hover,.toast-dismiss:focus-visible{opacity:1;background:color-mix(in srgb,currentColor 10%,transparent);outline:none;}
   .toast.warning{background:color-mix(in srgb,var(--warning) 14%,var(--surface));border-color:color-mix(in srgb,var(--warning) 45%,var(--surface));color:var(--warning);}
   .onboarding-overlay{position:fixed;inset:0;z-index:1050;background:rgba(7,12,19,.78);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:24px;}
-  .onboarding-card{width:min(980px,100%);max-height:min(760px,94vh);overflow:auto;border:1px solid var(--accent-bg-strong);border-radius:24px;background:linear-gradient(180deg,rgba(20,30,44,.98),rgba(11,17,27,.98));box-shadow:0 24px 80px rgba(0,0,0,.45);}
+  .onboarding-card{width:min(980px,100%);max-height:min(760px,94vh);overflow:auto;border:1px solid var(--accent-bg-strong);border-radius:24px;background:var(--surface);box-shadow:0 24px 80px rgba(0,0,0,.45);}
   .onboarding-shell{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);}
   .onboarding-sidebar{padding:28px 24px;border-right:1px solid var(--border);background:linear-gradient(180deg,var(--accent-bg),transparent);}
   .onboarding-sidebar h2{font-size:26px;line-height:1.15;margin-top:10px;margin-bottom:12px;letter-spacing:-.03em;}
@@ -1941,7 +1941,7 @@
      card itself is theme-token only. */
   .app-tour-overlay{position:fixed;inset:0;z-index:1150;display:none;background:rgba(7,12,19,.6);}
   .app-tour-spotlight{position:fixed;display:none;border-radius:12px;pointer-events:none;box-shadow:0 0 0 3px var(--accent-bg-strong),0 0 24px 2px var(--accent-bg-strong);transition:top .18s ease,left .18s ease,width .18s ease,height .18s ease;}
-  .app-tour-card{position:fixed;z-index:1;width:min(320px,calc(100vw - 32px));border:1px solid var(--accent-bg-strong);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,rgba(20,30,44,.98),rgba(11,17,27,.98));box-shadow:0 24px 60px rgba(0,0,0,.4);color:var(--text);}
+  .app-tour-card{position:fixed;z-index:1;width:min(320px,calc(100vw - 32px));border:1px solid var(--accent-bg-strong);border-radius:16px;padding:18px 20px;background:var(--surface);box-shadow:0 24px 60px rgba(0,0,0,.4);color:var(--text);}
   .app-tour-counter{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
   .app-tour-title{font-size:15px;font-weight:700;color:var(--text);margin:0 0 8px;}
   .app-tour-body{font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 16px;}
