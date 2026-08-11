@@ -1982,6 +1982,71 @@ if(document.readyState==='complete'){
   document.addEventListener('DOMContentLoaded',_initDashboardLinkProbe,{once:true});
 }
 
+/* ── Chat sidebar weekly-usage widget (Codex-style: % remaining + reset) ─── */
+// Polled infrequently: /api/account_usage can make a live call to the
+// provider's own usage endpoint (subscription rate limits, e.g. Codex),
+// which is unnecessary to refresh more often than every few minutes.
+const ACCOUNT_USAGE_TTL_MS=10*60*1000;
+let _accountUsageTimer=null;
+async function loadAccountUsage(){
+  const widget=$('chatUsageWidget');
+  if(!widget) return;
+  let data;
+  try{
+    data=await api('/api/account_usage');
+  }catch(e){
+    widget.hidden=true;
+    return;
+  }
+  const weekly=(data&&data.available&&Array.isArray(data.windows))
+    ? data.windows.find(w=>/week/i.test(w.label||''))||data.windows[0]
+    : null;
+  if(!weekly||weekly.used_percent==null){
+    widget.hidden=true;
+    return;
+  }
+  widget.hidden=false;
+  const used=Math.max(0,Math.min(100,Number(weekly.used_percent)||0));
+  const remaining=Math.round(100-used);
+  const label=$('chatUsageWidgetLabel');
+  if(label) label.textContent=weekly.label?`${weekly.label} usage`:t('chat_usage_weekly');
+  const pctEl=$('chatUsageWidgetPercent');
+  if(pctEl) pctEl.textContent=remaining+'% ' + t('chat_usage_remaining');
+  const fill=$('chatUsageWidgetBarFill');
+  if(fill){
+    fill.style.width=used+'%';
+    fill.classList.toggle('chat-usage-widget-bar-fill--warn',used>=80&&used<95);
+    fill.classList.toggle('chat-usage-widget-bar-fill--danger',used>=95);
+  }
+  const resetEl=$('chatUsageWidgetReset');
+  if(resetEl) resetEl.textContent=_formatAccountUsageReset(weekly.reset_at);
+}
+function _formatAccountUsageReset(resetAtIso){
+  if(!resetAtIso) return '';
+  const resetMs=Date.parse(resetAtIso);
+  if(!Number.isFinite(resetMs)) return '';
+  const deltaSec=Math.round((resetMs-Date.now())/1000);
+  if(deltaSec<=0) return t('chat_usage_resets_now');
+  const days=Math.floor(deltaSec/86400);
+  const hours=Math.floor((deltaSec%86400)/3600);
+  const minutes=Math.floor((deltaSec%3600)/60);
+  let span;
+  if(days>0) span=`${days}d ${hours}h`;
+  else if(hours>0) span=`${hours}h ${minutes}m`;
+  else span=`${minutes}m`;
+  return t('chat_usage_resets_in').replace('{time}',span);
+}
+function _initAccountUsageWidget(){
+  loadAccountUsage();
+  if(_accountUsageTimer) clearInterval(_accountUsageTimer);
+  _accountUsageTimer=setInterval(loadAccountUsage,ACCOUNT_USAGE_TTL_MS);
+}
+if(document.readyState==='complete'){
+  _initAccountUsageWidget();
+}else{
+  document.addEventListener('DOMContentLoaded',_initAccountUsageWidget,{once:true});
+}
+
 /* ── Image lightbox — click any .msg-media-img to enlarge ─────────────────── */
 function _openImgLightbox(imgEl) {
   if(!imgEl || !imgEl.src) return;
