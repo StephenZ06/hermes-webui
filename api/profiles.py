@@ -2013,6 +2013,8 @@ def _build_profile_rows_fast() -> list | None:
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
+            'reasoning_effort': _read_profile_reasoning_effort(home),
+            'base_url': _read_profile_base_url(home),
         }
 
     rows: list = []
@@ -2081,6 +2083,8 @@ def list_profiles_api() -> list:
                         'skill_count': enabled_count,
                         'enabled_skills': enabled_count,
                         'total_skills': total_count,
+                        'reasoning_effort': _read_profile_reasoning_effort(p.path),
+                        'base_url': _read_profile_base_url(p.path),
                     }]
         except (ImportError, OSError, PermissionError):
             pass
@@ -2099,6 +2103,8 @@ def list_profiles_api() -> list:
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
+            'reasoning_effort': _read_profile_reasoning_effort(hermes_home),
+            'base_url': _read_profile_base_url(hermes_home),
         }]
 
     # Single-flight the build (#5364): hold the cache lock across the row build
@@ -2146,6 +2152,8 @@ def list_profiles_api() -> list:
                 'skill_count': enabled_count,
                 'enabled_skills': enabled_count,
                 'total_skills': total_count,
+                'reasoning_effort': _read_profile_reasoning_effort(p.path),
+                'base_url': _read_profile_base_url(p.path),
             })
         return result
 
@@ -2184,6 +2192,8 @@ def _default_profile_dict() -> dict:
         'skill_count': enabled_count,
         'enabled_skills': enabled_count,
         'total_skills': compatible_count,
+        'reasoning_effort': _read_profile_reasoning_effort(_DEFAULT_HERMES_HOME),
+        'base_url': _read_profile_base_url(_DEFAULT_HERMES_HOME),
     }
 
 
@@ -2538,38 +2548,91 @@ def _write_model_defaults_to_config(
     _atomic_write_text(config_path, _yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding='utf-8')
 
 
-def _validate_profile_reasoning_effort(reasoning_effort: Optional[str]) -> Optional[str]:
-    """Normalize and validate a reasoning-effort value for profile creation.
+def _read_profile_base_url(profile_dir) -> Optional[str]:
+    """Read ``model.base_url`` from a profile's config.yaml, or ``None``.
 
-    Mirrors ``api.config.set_reasoning_effort``'s accepted values so a
-    profile-creation default and the composer's own reasoning picker never
-    drift apart. Returns ``None`` for a blank value (no override — the
-    provider default applies), the lowercased value otherwise.
+    ``list_profiles_api()`` rows previously omitted ``base_url`` entirely even
+    though the WebUI detail view and (now) the edit form both read
+    ``p.base_url`` -- meaning a configured custom endpoint could never be
+    displayed or pre-filled. This closes that gap using the same read
+    pattern as ``_read_profile_reasoning_effort``.
     """
-    from api.config import VALID_REASONING_EFFORTS
-
-    raw = str(reasoning_effort or "").strip().lower()
-    if not raw:
+    try:
+        config_path = Path(profile_dir) / 'config.yaml'
+        if not config_path.exists():
+            return None
+        data = yaml.safe_load(config_path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            return None
+        model_cfg = data.get('model')
+        if not isinstance(model_cfg, dict):
+            return None
+        value = str(model_cfg.get('base_url') or '').strip()
+        return value or None
+    except Exception:
         return None
-    if raw != "none" and raw not in VALID_REASONING_EFFORTS:
+
+
+def _read_profile_reasoning_effort(profile_dir) -> str:
+    """Read ``agent.reasoning_effort`` from a profile's config.yaml.
+
+    Returns the lowercased configured value, or the literal string
+    ``'default'`` when unset/blank/corrupt -- matching the WebUI convention
+    in static/commands.js (``const eff=(st && st.reasoning_effort)||'default';``)
+    so a caller can render it unconditionally without a separate fallback.
+    """
+    try:
+        config_path = Path(profile_dir) / 'config.yaml'
+        if not config_path.exists():
+            return 'default'
+        data = yaml.safe_load(config_path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            return 'default'
+        agent_cfg = data.get('agent')
+        if not isinstance(agent_cfg, dict):
+            return 'default'
+        value = str(agent_cfg.get('reasoning_effort') or '').strip().lower()
+        return value or 'default'
+    except Exception:
+        return 'default'
+
+
+def _validate_profile_reasoning_effort(reasoning_effort: Optional[str]) -> Optional[str]:
+    """Validate/normalize a reasoning-effort value for profile create/update.
+
+    Mirrors ``api.config.set_reasoning_effort``'s accepted values (``none`` +
+    ``VALID_REASONING_EFFORTS``). ``None``, ``''``, and the literal
+    ``'default'`` all mean "clear the override" and normalize to ``None``.
+    Raises ``ValueError`` on any other unrecognised level so the route can 400.
+    """
+    if reasoning_effort is None:
+        return None
+    raw = str(reasoning_effort).strip().lower()
+    if not raw or raw == 'default':
+        return None
+    try:
+        from api.config import VALID_REASONING_EFFORTS
+    except ImportError:
+        VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
+    if raw != 'none' and raw not in VALID_REASONING_EFFORTS:
         raise ValueError(
             f"Unknown reasoning effort '{reasoning_effort}'. "
-            f"Valid: none, {', '.join(VALID_REASONING_EFFORTS)}."
+            f"Valid: default, none, {', '.join(VALID_REASONING_EFFORTS)}."
         )
     return raw
 
 
 def _write_reasoning_effort_to_config(profile_dir: Path, reasoning_effort: Optional[str] = None) -> None:
-    """Write ``agent.reasoning_effort`` into config.yaml for a profile.
+    """Write ``agent.reasoning_effort`` into a profile's config.yaml.
 
-    Same key ``api.config.set_reasoning_effort`` writes for the active
-    profile, so a default chosen at profile-creation time is picked up by
-    the composer's reasoning chip the moment this profile becomes active
-    (``get_reasoning_status()`` reads it straight from the active profile's
-    config.yaml — no separate wiring needed).
+    Writes directly to *profile_dir* (not necessarily the active profile), so
+    this also works for profiles that are not currently active -- unlike
+    ``api.config.set_reasoning_effort``, which only ever touches the active
+    profile's config. A falsy *reasoning_effort* (``None``/``''``) clears the
+    override by removing the key, mirroring ``set_reasoning_effort``'s clear
+    semantics. Callers should pass the already-validated/normalized value from
+    ``_validate_profile_reasoning_effort``.
     """
-    if not reasoning_effort:
-        return
     config_path = profile_dir / 'config.yaml'
     try:
         import yaml as _yaml
@@ -2586,7 +2649,10 @@ def _write_reasoning_effort_to_config(profile_dir: Path, reasoning_effort: Optio
     agent_section = cfg.get('agent', {})
     if not isinstance(agent_section, dict):
         agent_section = {}
-    agent_section['reasoning_effort'] = reasoning_effort
+    if reasoning_effort:
+        agent_section['reasoning_effort'] = reasoning_effort
+    else:
+        agent_section.pop('reasoning_effort', None)
     cfg['agent'] = agent_section
     _atomic_write_text(config_path, _yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding='utf-8')
 
@@ -2700,7 +2766,78 @@ def create_profile_api(name: str, clone_from: str = None,
         'skill_count': 0,
         'enabled_skills': 0,
         'total_skills': 0,
+        'reasoning_effort': _read_profile_reasoning_effort(profile_path),
+        'base_url': _read_profile_base_url(profile_path),
     }
+
+
+def update_profile_api(name: str,
+                        base_url: str = None,
+                        api_key: str = None,
+                        default_model: str = None,
+                        model_provider: str = None,
+                        reasoning_effort: str = None) -> dict:
+    """Update an existing profile's model/provider/base_url/reasoning_effort.
+
+    A profile's *name* is immutable (profiles are keyed by name/directory) --
+    this only ever mutates the fields listed above, reusing the same
+    config.yaml/.env writers ``create_profile_api`` uses so both entry points
+    stay in sync. Returns the updated profile dict (same shape as
+    ``list_profiles_api()``/``create_profile_api()`` rows).
+
+    In isolated profile mode, profile updates are rejected (403), mirroring
+    create/delete.
+    """
+    if _is_isolated_profile_mode():
+        raise PermissionError("Profile updates are not allowed in isolated profile mode.")
+    if not _is_root_profile(name):
+        _validate_profile_name(name)
+
+    default_model, model_provider = _split_webui_provider_model_value(default_model, model_provider)
+    _validate_profile_model_selection(default_model, model_provider)
+    # Raises ValueError on an unrecognised level -- let it propagate so the
+    # route can 400 before anything is written to disk.
+    normalized_effort = _validate_profile_reasoning_effort(reasoning_effort)
+
+    profile_path = None
+    for p in list_profiles_api():
+        if p['name'] == name:
+            try:
+                profile_path = Path(p.get('path'))
+            except Exception:
+                profile_path = None
+            break
+    if profile_path is None or not profile_path.is_dir():
+        raise ValueError(f"Profile '{name}' does not exist.")
+
+    if base_url:
+        _write_endpoint_to_config(profile_path, base_url=base_url)
+    if api_key:
+        _write_api_key_to_dotenv(
+            profile_path,
+            api_key=api_key,
+            model_provider=model_provider,
+        )
+    if default_model or model_provider:
+        _write_model_defaults_to_config(
+            profile_path,
+            default_model=default_model,
+            model_provider=model_provider,
+        )
+    # reasoning_effort is written whenever the field was submitted at all
+    # (including a blank/'default' selection, which clears the override) --
+    # unlike model/base_url/api_key above, "explicitly reset to default" is a
+    # meaningful edit-form action, not a "leave unchanged" no-op.
+    if reasoning_effort is not None:
+        _write_reasoning_effort_to_config(profile_path, normalized_effort)
+
+    _SKILLS_STATS_CACHE.clear()
+    _invalidate_list_profiles_cache()
+
+    for p in list_profiles_api():
+        if p['name'] == name:
+            return p
+    raise ValueError(f"Profile '{name}' does not exist.")
 
 
 def delete_profile_api(name: str) -> dict:

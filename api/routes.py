@@ -17153,6 +17153,41 @@ def handle_post(handler, parsed) -> bool:
         except (ValueError, FileExistsError, RuntimeError) as e:
             return bad(handler, str(e))
 
+    if parsed.path == "/api/profile/update":
+        name = body.get("name", "").strip()
+        if not name:
+            return bad(handler, "name is required")
+        import re as _re
+
+        if name != "default" and not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", name):
+            return bad(handler, "Invalid profile name")
+        base_url = body.get("base_url", "").strip() if body.get("base_url") else None
+        api_key = body.get("api_key", "").strip() if body.get("api_key") else None
+        default_model = body.get("default_model", "").strip() if body.get("default_model") else None
+        model_provider = body.get("model_provider", "").strip() if body.get("model_provider") else None
+        # Distinguish "field omitted" (leave reasoning effort untouched) from
+        # "field submitted, possibly blank" (apply/clear the override) --
+        # the edit form always submits this key, so `in body` is the signal.
+        reasoning_effort = body.get("reasoning_effort") if "reasoning_effort" in body else None
+        if base_url and not base_url.startswith(("http://", "https://")):
+            return bad(handler, "base_url must start with http:// or https://")
+        try:
+            from api.profiles import update_profile_api
+
+            result = update_profile_api(
+                name,
+                base_url=base_url,
+                api_key=api_key,
+                default_model=default_model,
+                model_provider=model_provider,
+                reasoning_effort=reasoning_effort,
+            )
+            return j(handler, {"ok": True, "profile": result})
+        except PermissionError as e:
+            return bad(handler, _sanitize_error(e), 403)
+        except (ValueError, FileNotFoundError, RuntimeError) as e:
+            return bad(handler, str(e))
+
     if parsed.path == "/api/profile/delete":
         name = body.get("name", "").strip()
         if not name:
