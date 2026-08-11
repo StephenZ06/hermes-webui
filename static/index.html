@@ -239,14 +239,22 @@
         </div>
       </div>
       <div class="kanban-filter-stack">
-        <div class="sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="kanbanSearch" type="search" placeholder="Search tasks" data-i18n-placeholder="kanban_search_tasks" oninput="filterKanban()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
-        <select id="kanbanAssigneeFilter" onchange="loadKanban(true)" aria-label="Assignee filter"></select>
-        <select id="kanbanTenantFilter" onchange="loadKanban(true)" aria-label="Tenant filter"></select>
-        <select id="kanbanCrewFilter" onchange="kanbanWorkflowTemplateFilter = this.value; loadKanban(true)" aria-label="Crew filter" data-i18n-aria-label="kanban_crew_filter_label"></select>
-        <div class="kanban-filter-divider"></div>
-        <div class="kanban-check-row">
-          <label class="kanban-check"><input id="kanbanIncludeArchived" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_include_archived">Include archived</span></label>
-          <label class="kanban-check"><input id="kanbanOnlyMine" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_only_mine">Only mine</span></label>
+        <div class="kanban-filter-row">
+          <div class="sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="kanbanSearch" type="search" placeholder="Search tasks" data-i18n-placeholder="kanban_search_tasks" oninput="filterKanban()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="kanban-filter" id="kanbanFilterWrap">
+            <button type="button" class="kanban-filter-button" id="kanbanFilterToggle" onclick="toggleKanbanFilterMenu(event)" aria-haspopup="menu" aria-expanded="false" aria-label="Filter" data-i18n-aria-label="kanban_filter">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span data-i18n="kanban_filter">Filter</span>
+              <span class="kanban-filter-badge" id="kanbanFilterBadge" hidden></span>
+            </button>
+            <div class="kanban-filter-popover" id="kanbanFilterPopover" role="menu" hidden>
+              <select id="kanbanAssigneeFilter" onchange="loadKanban(true)" aria-label="Assignee filter"></select>
+              <select id="kanbanTenantFilter" onchange="loadKanban(true)" aria-label="Tenant filter"></select>
+              <select id="kanbanCrewFilter" onchange="kanbanWorkflowTemplateFilter = this.value; loadKanban(true)" aria-label="Crew filter" data-i18n-aria-label="kanban_crew_filter_label"></select>
+              <label class="kanban-check"><input id="kanbanIncludeArchived" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_include_archived">Include archived</span></label>
+              <label class="kanban-check"><input id="kanbanOnlyMine" type="checkbox" onchange="loadKanban(true)"> <span data-i18n="kanban_only_mine">Only mine</span></label>
+            </div>
+          </div>
         </div>
         <div class="kanban-filter-divider"></div>
         <div id="kanbanStats" class="kanban-stats" aria-live="polite"></div>

@@ -18,6 +18,7 @@ let _kanbanBoardMenuOpen = false;
 // set programmatically by dispatchKanbanCrew(); Phase 2 adds the filter
 // dropdown that lets a user pick it manually.
 let kanbanWorkflowTemplateFilter = '';
+let _kanbanFilterMenuOpen = false;
 let _kanbanIsDispatching = false;
 let _kanbanSuppressCardClickUntil = 0;
 // SSE event stream — replaces the 30s polling cadence with a long-lived
@@ -2938,6 +2939,7 @@ async function loadKanban(animate){
     } catch(_) {}
     _kanbanSetSelectOptions($('kanbanAssigneeFilter'), _kanbanBoard.assignees || (assignees && assignees.assignees) || (config && config.assignees), 'kanban_all_assignees');
     _kanbanSetSelectOptions($('kanbanTenantFilter'), _kanbanBoard.tenants, 'kanban_all_tenants');
+    _kanbanUpdateFilterBadge();
     await loadKanbanStats();
     // Note: PR #1828 (v0.51.20) moved the boards refresh to the start of
     // loadKanban() so the active board is resolved BEFORE board-scoped
@@ -4696,6 +4698,70 @@ function _kanbanCloseBoardMenuOnOutside(ev){
       document.addEventListener('click', _kanbanCloseBoardMenuOnOutside, {once: true, capture: true});
     }, 0);
   }
+}
+
+// Filter popover — collapses assignee/tenant selects + archived/only-mine
+// checkboxes behind a single "Filter" button so the sidebar isn't dominated
+// by stacked filter controls. Mirrors the kanban-board-switcher open/close/
+// outside-click conventions above, plus an Escape handler.
+function toggleKanbanFilterMenu(ev){
+  if (ev) ev.stopPropagation();
+  const popover = document.getElementById('kanbanFilterPopover');
+  const toggle = document.getElementById('kanbanFilterToggle');
+  if (!popover || !toggle) return;
+  if (_kanbanFilterMenuOpen) { closeKanbanFilterMenu(); return; }
+  _kanbanFilterMenuOpen = true;
+  popover.hidden = false;
+  toggle.setAttribute('aria-expanded', 'true');
+  document.addEventListener('keydown', _kanbanFilterMenuEsc);
+  setTimeout(() => {
+    document.addEventListener('click', _kanbanCloseFilterMenuOnOutside, {once: true, capture: true});
+  }, 0);
+}
+
+function closeKanbanFilterMenu(){
+  _kanbanFilterMenuOpen = false;
+  const popover = document.getElementById('kanbanFilterPopover');
+  const toggle = document.getElementById('kanbanFilterToggle');
+  if (popover) popover.hidden = true;
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('keydown', _kanbanFilterMenuEsc);
+}
+
+function _kanbanCloseFilterMenuOnOutside(ev){
+  const wrap = document.getElementById('kanbanFilterWrap');
+  if (!wrap || !wrap.contains(ev.target)) {
+    closeKanbanFilterMenu();
+  } else {
+    // Clicked inside the popover (e.g. a select/checkbox) — re-arm so a
+    // later outside click still closes it.
+    setTimeout(() => {
+      document.addEventListener('click', _kanbanCloseFilterMenuOnOutside, {once: true, capture: true});
+    }, 0);
+  }
+}
+
+function _kanbanFilterMenuEsc(ev){
+  if (ev.key === 'Escape') closeKanbanFilterMenu();
+}
+
+// Active-filter indicator on the Filter button — shown whenever any control
+// inside the popover is set to a non-default value, so filters aren't
+// forgotten once collapsed. Search stays outside the popover and doesn't
+// factor in here.
+function _kanbanUpdateFilterBadge(){
+  const badge = document.getElementById('kanbanFilterBadge');
+  if (!badge) return;
+  const assignee = $('kanbanAssigneeFilter');
+  const tenant = $('kanbanTenantFilter');
+  const includeArchived = $('kanbanIncludeArchived');
+  const onlyMine = $('kanbanOnlyMine');
+  const active = !!((assignee && assignee.value) || (tenant && tenant.value) ||
+    (includeArchived && includeArchived.checked) || (onlyMine && onlyMine.checked) ||
+    kanbanWorkflowTemplateFilter);
+  badge.hidden = !active;
+  const toggle = document.getElementById('kanbanFilterToggle');
+  if (toggle) toggle.classList.toggle('has-active-filters', active);
 }
 
 async function switchKanbanBoard(slug){
