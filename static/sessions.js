@@ -9347,9 +9347,13 @@ function _wireSessionDragHandle(handle,rowEl,session){
     e.stopPropagation();
     _startSessionDrag(e,handle,rowEl,session);
   });
-  // A drag never opens the chat or the row's menu -- keep it from bubbling
-  // into the row's own pointerup/click handling.
-  ['pointerup','click'].forEach(ev=>handle.addEventListener(ev,e=>e.stopPropagation()));
+  // A stray click on the handle must not open the chat. NOT stopping
+  // pointerup here too -- that used to also swallow the drag's own
+  // document-level pointerup listener (registered on an ancestor, so
+  // stopPropagation() at the handle blocked it from ever bubbling up),
+  // which left the drag stuck (ghost + dimmed row never cleaned up) any
+  // time the pointer was released back over the handle itself.
+  handle.addEventListener('click',e=>e.stopPropagation());
 }
 
 function _startSessionDrag(e,handle,rowEl,session){
@@ -9403,9 +9407,9 @@ function _startSessionDrag(e,handle,rowEl,session){
   };
 
   const cleanupListeners=()=>{
-    document.removeEventListener('pointermove',onMove);
-    document.removeEventListener('pointerup',onUp);
-    document.removeEventListener('pointercancel',onCancel);
+    document.removeEventListener('pointermove',onMove,true);
+    document.removeEventListener('pointerup',onUp,true);
+    document.removeEventListener('pointercancel',onCancel,true);
     rowEl.classList.remove('session-drag-source');
     document.body.classList.remove('session-dragging-active');
     setTarget(null);
@@ -9466,9 +9470,13 @@ function _startSessionDrag(e,handle,rowEl,session){
     snapBack();
   };
 
-  document.addEventListener('pointermove',onMove);
-  document.addEventListener('pointerup',onUp);
-  document.addEventListener('pointercancel',onCancel);
+  // Capture phase: guarantees these fire even if some other handler (e.g. a
+  // row-level listener) calls stopPropagation() during the bubble phase --
+  // a drag must never get stuck with a stray ghost/dimmed row because some
+  // unrelated code stopped the pointerup from bubbling.
+  document.addEventListener('pointermove',onMove,true);
+  document.addEventListener('pointerup',onUp,true);
+  document.addEventListener('pointercancel',onCancel,true);
 }
 
 function _showProjectPicker(session, anchorEl){
