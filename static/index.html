@@ -263,7 +263,7 @@
         <div id="kanbanBulkBar" class="kanban-bulk-bar">
           <div class="kanban-bulk-bar-row">
             <select id="kanbanBulkStatus" aria-label="Bulk status"><option value="">Status</option><option value="ready">Ready</option><option value="blocked">Blocked</option><option value="done">Done</option><option value="archived">Archived</option></select>
-            <button class="btn secondary" onclick="bulkUpdateKanban()" data-i18n="kanban_bulk_action">Bulk action</button>
+            <button class="btn secondary" onclick="bulkUpdateKanban()" data-i18n="kanban_bulk_action">Action</button>
           </div>
           <div class="kanban-bulk-bar-row kanban-dispatch-row">
             <button class="btn secondary kanban-nudge-dispatch-btn" onclick="nudgeKanbanDispatcher()" data-i18n="kanban_nudge_dispatcher" title="Dry-run: shows what would be claimed without spawning workers">Preview</button>
@@ -336,7 +336,7 @@
         </div>
       </div>
       <div class="panel-head-sub">
-        <select id="insightsPeriod" onchange="loadInsights()" style="width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+        <select id="insightsPeriod" onchange="loadInsights()">
           <option value="7">7 days</option>
           <option value="30" selected>30 days</option>
           <option value="90">90 days</option>
@@ -352,14 +352,14 @@
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="analyticsRefreshBtn" onclick="loadAnalytics(true)" data-tooltip="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
         </div>
       </div>
-      <div class="panel-head-sub" style="display:flex;gap:6px">
-        <select id="analyticsPeriod" onchange="loadAnalytics()" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+      <div class="panel-head-sub">
+        <select id="analyticsPeriod" onchange="loadAnalytics()">
           <option value="7">7 days</option>
           <option value="30" selected>30 days</option>
           <option value="90">90 days</option>
           <option value="365">365 days</option>
         </select>
-        <select id="analyticsGranularity" onchange="loadAnalytics()" style="flex:1;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+        <select id="analyticsGranularity" onchange="loadAnalytics()">
           <option value="day" data-i18n="analytics_granularity_day">Day</option>
           <option value="week" selected data-i18n="analytics_granularity_week">Week</option>
           <option value="month" data-i18n="analytics_granularity_month">Month</option>
@@ -431,7 +431,7 @@
         </div>
       </div>
       <div class="panel-head-sub">
-        <select id="auditSessionFilter" onchange="loadAuditTrail()" style="width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+        <select id="auditSessionFilter" onchange="loadAuditTrail()">
           <option value="" data-i18n="audit_all_sessions">All sessions</option>
         </select>
       </div>
