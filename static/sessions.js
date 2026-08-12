@@ -1845,7 +1845,14 @@ async function loadSession(sid){
     }
     _loadingOlder = false;
     const _msgInner = $('msgInner');
-    if (_msgInner && currentSid !== sid) _msgInner.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">Loading conversation...</div>';
+    // position:absolute here (not height:100%) because #msgInner (this
+    // element's actual parent) is an auto-height flex column -- it only
+    // grows to fit its content, so a height:100% child inside it has
+    // nothing definite to resolve against and never actually centers.
+    // #messages (an ancestor, position:relative) is the real viewport this
+    // should center in, and absolute positioning skips straight to that
+    // nearest positioned ancestor regardless of #msgInner's height.
+    if (_msgInner && currentSid !== sid) _msgInner.innerHTML = '<div class="loading-spinner-wrap loading-spinner-wrap--overlay" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">'+esc(t('loading_conversation'))+'</span></div>';
   }
   // Phase 1: Load metadata only (~1KB) for fast session switching. Keep model
   // resolution out of the first-paint path; old provider-shaped model IDs are
@@ -7875,9 +7882,23 @@ function renderSessionListFromCache(){
       chevron.setAttribute('aria-expanded',isExpanded?'true':'false');
       const toggleFolder=(e)=>{
         e.stopPropagation();
-        _projectFoldersExpanded[p.project_id]=!_projectFoldersExpanded[p.project_id];
+        const nowExpanded=!_projectFoldersExpanded[p.project_id];
+        _projectFoldersExpanded[p.project_id]=nowExpanded;
         _saveProjectFoldersExpanded();
-        renderSessionListFromCache();
+        // Toggle the persisted DOM node directly (no renderSessionListFromCache())
+        // so the CSS grid-height transition on .project-folder-sessions actually
+        // has a "before" state to animate from -- a full re-render would replace
+        // the node outright, landing straight in its final state with no
+        // transition to play. The nested session list is now always rendered in
+        // the DOM (see below), just collapsed via CSS, so it's already there to
+        // toggle.
+        chevron.classList.toggle('expanded',nowExpanded);
+        chevron.setAttribute('aria-expanded',nowExpanded?'true':'false');
+        const nestedEl=chip.nextElementSibling;
+        if(nestedEl&&nestedEl.classList.contains('project-folder-sessions')){
+          nestedEl.classList.toggle('expanded',nowExpanded);
+          nestedEl.inert=!nowExpanded;
+        }
       };
       chevron.onclick=toggleFolder;
       chevron.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleFolder(e);}};
@@ -7964,22 +7985,35 @@ function renderSessionListFromCache(){
       // Nested session preview — reuses the same per-session row renderer as
       // the main list below (_renderOneSession), so click/context-menu/swipe
       // behavior stays identical; only the DOM location differs.
-      if(isExpanded){
-        const nested=document.createElement('div');
-        nested.className='project-folder-sessions';
-        const nestedSessions=profileFiltered
-          .filter(s=>s.project_id===p.project_id&&(_showArchived||!s.archived))
-          .sort(_sessionSidebarSortCompare);
-        if(nestedSessions.length){
-          for(const s of nestedSessions){ nested.appendChild(_renderOneSession(s,false)); }
-        }else{
-          const empty=document.createElement('div');
-          empty.className='project-folder-empty';
-          empty.textContent='No sessions in this project yet.';
-          nested.appendChild(empty);
-        }
-        bar.appendChild(nested);
+      //
+      // Always rendered now (not gated on isExpanded) so toggleFolder() above
+      // can animate an existing node instead of a full re-render popping it in
+      // at full height. Collapsed state is purely CSS (grid-template-rows
+      // 0fr->1fr on the outer node, see style.css) so the transition tracks the
+      // content's real height instead of a guessed max-height cap.
+      const nested=document.createElement('div');
+      nested.className='project-folder-sessions'+(isExpanded?' expanded':'');
+      // Collapsed height is 0 via CSS grid-template-rows, which only clips
+      // visually -- the rows inside (with their own buttons/drag handles)
+      // would otherwise still be reachable by Tab. `inert` removes them from
+      // the accessibility tree/tab order while collapsed without breaking
+      // the CSS transition the way display:none would.
+      nested.inert=!isExpanded;
+      const nestedInner=document.createElement('div');
+      nestedInner.className='project-folder-sessions-inner';
+      const nestedSessions=profileFiltered
+        .filter(s=>s.project_id===p.project_id&&(_showArchived||!s.archived))
+        .sort(_sessionSidebarSortCompare);
+      if(nestedSessions.length){
+        for(const s of nestedSessions){ nestedInner.appendChild(_renderOneSession(s,false)); }
+      }else{
+        const empty=document.createElement('div');
+        empty.className='project-folder-empty';
+        empty.textContent='No sessions in this project yet.';
+        nestedInner.appendChild(empty);
       }
+      nested.appendChild(nestedInner);
+      bar.appendChild(nested);
     }
     list.appendChild(bar);
   }
