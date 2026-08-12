@@ -5875,7 +5875,7 @@ main.main > #mainPlugin{display:none;}
 .project-folder-sessions{
   display:grid;grid-template-rows:0fr;
   margin-left:5px;padding-left:6px;border-left:1px solid var(--border);
-  transition:grid-template-rows .26s cubic-bezier(.2,.8,.2,1),margin .26s cubic-bezier(.2,.8,.2,1);
+  transition:grid-template-rows .16s cubic-bezier(.2,.8,.2,1),margin .16s cubic-bezier(.2,.8,.2,1);
 }
 .project-folder-sessions.expanded{grid-template-rows:1fr;margin:2px 0 4px;}
 .project-folder-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
