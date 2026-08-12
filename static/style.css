@@ -5935,14 +5935,6 @@ main.main > #mainPlugin{display:none;}
 .project-picker-item.active{color:var(--blue);}
 .project-picker-create{color:var(--blue);opacity:.7;border-top:1px solid var(--border2);margin-top:2px;padding-top:6px;}
 .project-picker-create:hover{opacity:1;background:var(--accent-bg);}
-/* Lives as a flex sibling in .session-title-row (between title and time);
-   the row's gap:6px handles spacing, no margin/vertical-align needed. */
-.session-project-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;display:inline-block;}
-/* Redundant with the kebab "..." that the same hover/focus reveals right
-   next to it -- hide the dot while it's showing. */
-.project-folder-sessions .session-item:hover .session-project-dot,
-.project-folder-sessions .session-item:focus-within .session-project-dot,
-.project-folder-sessions .session-item.menu-open .session-project-dot{display:none;}
 
 /* ── Drag a chat onto a project folder ── */
 .session-drag-handle{
