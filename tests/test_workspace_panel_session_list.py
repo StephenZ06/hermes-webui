@@ -1,4 +1,4 @@
-"""Regression tests for two related sidebar/panel UI fixes.
+"""Regression tests for workspace/session-list sidebar UI fixes.
 
 1. Workspace panel header collapse priority — as the right panel narrows,
    the git-badge must vanish first, the "Workspace" label second, and the
@@ -6,36 +6,18 @@
    because `.panel-header` used `justify-content:space-between` with no
    flex-shrink ratios or container queries.
 
-2. Project color dot truncation — the dot used to be appended INSIDE the
-   `.session-title` span (which is `overflow:hidden;text-overflow:ellipsis`),
-   so the dot got clipped along with long titles. Fix moves the dot to a
-   flex sibling in `.session-title-row` between title and timestamp, and
-   moves `.session-time` from `position:absolute` to flex flow so the
-   title's `flex:1` bound stops at the timestamp's left edge.
+2. `.session-time` moved from `position:absolute` to flex flow in
+   `.session-title-row`, so the title's `flex:1` bound stops at the
+   timestamp's left edge instead of running underneath it. (This used to
+   also matter for a project-color dot that lived between the title and
+   timestamp; the dot itself was removed entirely later on since it was
+   redundant with the project folder the chat is already nested under.)
 """
 
 import pathlib
 
 REPO = pathlib.Path(__file__).parent.parent
-SESSIONS_JS = (REPO / "static" / "sessions.js").read_text(encoding="utf-8")
 STYLE_CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
-
-
-def _extract_js_function_body(src: str, name: str) -> str:
-    start = src.find(f"function {name}(")
-    assert start >= 0, f"function {name} not found"
-    brace = src.find("{", start)
-    assert brace >= 0, f"function {name} body not found"
-    depth = 1
-    i = brace + 1
-    while depth > 0 and i < len(src):
-        if src[i] == "{":
-            depth += 1
-        elif src[i] == "}":
-            depth -= 1
-        i += 1
-    assert depth == 0, f"function {name} body did not close"
-    return src[start:i]
 
 
 # ── Bug 1: workspace panel header collapse priority ──────────────────────────
@@ -162,38 +144,14 @@ class TestWorkspacePanelCollapsePriority:
 # ── Bug 2: project color dot placement ───────────────────────────────────────
 
 
-class TestProjectDotPlacement:
-
-    def test_dot_appended_to_title_row_not_title(self):
-        """The project dot must be appended to `titleRow` (a flex sibling
-        of the title and timestamp), not to the title span (which truncates
-        with ellipsis and would clip the dot off long titles)."""
-        # Find _renderOneSession body
-        body = _extract_js_function_body(SESSIONS_JS, "_renderOneSession")
-        # Must append dot to titleRow
-        assert "titleRow.appendChild(dot)" in body, (
-            "Project dot must be appended to titleRow as a flex sibling, "
-            "not inside the truncating title span"
-        )
-        # Must NOT append dot to title (the truncating span)
-        assert "title.appendChild(dot)" not in body, (
-            "Old behaviour — dot inside title span gets clipped by the "
-            "ellipsis truncation. Dot must live in titleRow instead."
-        )
-
-    def test_dot_placed_between_title_and_timestamp(self):
-        """The dot is appended AFTER title.appendChild and BEFORE ts append
-        — that ordering puts the dot between the title and the timestamp
-        in the flex row."""
-        body = _extract_js_function_body(SESSIONS_JS, "_renderOneSession")
-        title_pos = body.find("titleRow.appendChild(title);")
-        dot_pos = body.find("titleRow.appendChild(dot);")
-        ts_pos = body.find("titleRow.appendChild(ts);")
-        assert title_pos >= 0 and dot_pos >= 0 and ts_pos >= 0
-        assert title_pos < dot_pos < ts_pos, (
-            f"Order must be title → dot → ts in the title row "
-            f"(positions: {title_pos}, {dot_pos}, {ts_pos})"
-        )
+class TestSessionTitleRowLayout:
+    """The project-color dot (`.session-project-dot`) that used to sit in
+    this row was removed entirely: it only ever rendered for chats nested
+    under a project folder (the flat list already excludes project-having
+    sessions), where the folder itself already conveys "this belongs to
+    project X" and the hover-revealed kebab menu sits in the same spot --
+    the dot was pure redundant clutter there. The title-row layout tests
+    below (timestamp flex flow) are unrelated to the dot and still apply."""
 
     def test_session_time_uses_flex_flow_not_absolute(self):
         """`.session-time` must use margin-left:auto in flex flow, not
@@ -215,24 +173,6 @@ class TestProjectDotPlacement:
         assert "margin-left:auto" in rule, (
             ".session-time must use margin-left:auto to push to the right "
             "edge of the flex row."
-        )
-
-    def test_session_project_dot_no_inline_block_baggage(self):
-        """`.session-project-dot` is now a flex sibling — the row's gap:6px
-        handles spacing, so the old `margin-left:4px` and
-        `vertical-align:middle` are unnecessary and only confuse layout."""
-        idx = STYLE_CSS.find(".session-project-dot{")
-        assert idx >= 0
-        rule = STYLE_CSS[idx: STYLE_CSS.find("}", idx)]
-        assert "margin-left:4px" not in rule, (
-            "Old margin-left:4px is unnecessary now — gap:6px on "
-            ".session-title-row handles spacing"
-        )
-        assert "vertical-align:middle" not in rule, (
-            "vertical-align is meaningless inside flex flow"
-        )
-        assert "flex-shrink:0" in rule, (
-            "Dot must not shrink (would disappear at narrow sidebar widths)"
         )
 
     def test_session_item_padding_at_rest_no_longer_reserves_86px(self):
