@@ -1403,7 +1403,7 @@
   :root:not(.dark) select{border-color:rgba(0,0,0,.12);}
   :root:not(.dark) .composer-wrap{background:var(--sidebar);border-top:1px solid var(--border);}
   :root:not(.dark) .composer-wrap::before{background:linear-gradient(to bottom,transparent,var(--sidebar));}
-  :root:not(.dark) .composer-box{background:var(--bg);border-color:rgba(0,0,0,.12);}
+  :root:not(.dark) .composer-box{background:var(--bg);border-color:transparent;}
   :root:not(.dark) .composer-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
   :root:not(.dark) .suggestion{border-color:rgba(0,0,0,.08);}
   :root:not(.dark) .suggestion:hover{background:var(--accent-bg);border-color:var(--accent-bg-strong);}
@@ -1520,6 +1520,10 @@
      height:100% (not just padding) so it's centered in the full panel height,
      not just sitting flush at the top the way a padded block would. */
   .loading-spinner-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:160px;box-sizing:border-box;padding:24px 12px;}
+  /* For placeholders whose direct parent is an auto-height container (so
+     height:100% above has nothing definite to resolve against) -- covers
+     the nearest position:relative ancestor instead, skipping past it. */
+  .loading-spinner-wrap--overlay{position:absolute;inset:0;width:auto;height:auto;min-height:0;padding:0;z-index:1;}
   .loading-spinner{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--border);border-top-color:var(--accent);animation:loading-spinner-spin .7s linear infinite;}
   @keyframes loading-spinner-spin{to{transform:rotate(360deg);}}
   body{background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
@@ -2587,15 +2591,10 @@
      tuned separately for dark vs light themes (see --logo-glow / .hm-g* below). */
   .empty-logo{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:10px;background:none;border:none;border-radius:0;box-shadow:none;}
   .empty-logo::before{content:"";position:absolute;left:50%;top:50%;width:190px;height:190px;transform:translate(-50%,-50%);border-radius:50%;background:var(--logo-glow);z-index:0;pointer-events:none;}
-  .empty-logo svg{position:relative;z-index:1;width:88px;height:88px;display:block;}
-  /* Light themes (default :root): deeper, richer gradient holds contrast on
-     a pale background; cooler, restrained bloom. */
-  :root .empty-logo .hm-g0{stop-color:#0AA6CC;}
-  :root .empty-logo .hm-g1{stop-color:#1E63D6;}
+  .empty-logo img{position:relative;z-index:1;width:80px;height:80px;display:block;}
+  /* Light themes (default :root): cooler, restrained bloom. */
   :root{--logo-glow:radial-gradient(circle,rgba(30,99,214,0.15) 0%,rgba(10,166,204,0.07) 45%,transparent 70%);}
-  /* Dark themes: bright cyan→blue mark with a luminous bloom. */
-  :root.dark .empty-logo .hm-g0{stop-color:#08EBF1;}
-  :root.dark .empty-logo .hm-g1{stop-color:#3889FD;}
+  /* Dark themes: brighter, more luminous bloom. */
   :root.dark{--logo-glow:radial-gradient(circle,rgba(8,235,241,0.20) 0%,rgba(56,137,253,0.15) 38%,transparent 72%);}
   @media (prefers-reduced-motion: no-preference){
     .empty-logo svg{animation:emptyLogoRise .5s ease-out both;}
@@ -2608,7 +2607,7 @@
   .suggestion:hover{background:var(--accent-bg);color:var(--text);border-color:var(--accent-bg);transform:translateX(2px);}
   /* ── Composer ── */
   .composer-wrap{padding:12px 20px 16px;background:var(--bg);flex-shrink:0;}
-  .composer-box{max-width:clamp(780px,60vw,1100px);margin:0 auto;background:linear-gradient(var(--input-bg),var(--input-bg)),var(--bg);border:1px solid var(--border2);border-radius:16px;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s;position:relative;z-index:2;}
+  .composer-box{max-width:clamp(780px,60vw,1100px);margin:0 auto;background:var(--bg);border:1px solid transparent;border-radius:16px;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s;position:relative;z-index:2;}
   .composer-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
   .composer-wrap.drag-over .composer-box{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
   .drop-hint{display:none;position:absolute;inset:0;align-items:center;justify-content:center;gap:10px;background:linear-gradient(var(--input-bg),var(--input-bg)),var(--bg);border:2px dashed var(--accent);border-radius:16px;font-size:13.5px;font-weight:600;color:var(--accent-text);pointer-events:none;z-index:30;flex-direction:column;text-align:center;padding:8px;}
@@ -5841,7 +5840,17 @@ main.main > #mainPlugin{display:none;}
 .project-chip:hover .project-folder-kebab,
 .project-chip:focus-within .project-folder-kebab{opacity:1;}
 .project-folder-kebab:hover{background:var(--hover-bg);color:var(--text);}
-.project-folder-sessions{display:flex;flex-direction:column;gap:2px;margin:2px 0 4px;padding-left:10px;border-left:1px solid var(--border);margin-left:8px;}
+/* Always in the DOM (see sessions.js); collapsed/expanded is purely this
+   grid-template-rows transition (0fr <-> 1fr), which -- unlike a fixed
+   max-height guess -- tracks the row's actual content height, so the
+   animation speed feels consistent whether a folder has 1 session or 20. */
+.project-folder-sessions{
+  display:grid;grid-template-rows:0fr;
+  margin-left:5px;padding-left:6px;border-left:1px solid var(--border);
+  transition:grid-template-rows .26s cubic-bezier(.2,.8,.2,1),margin .26s cubic-bezier(.2,.8,.2,1);
+}
+.project-folder-sessions.expanded{grid-template-rows:1fr;margin:2px 0 4px;}
+.project-folder-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
 .project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a
