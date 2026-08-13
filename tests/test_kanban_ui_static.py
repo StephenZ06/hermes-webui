@@ -86,7 +86,6 @@ def test_kanban_task_detail_renders_read_only_sections():
 
 def test_kanban_write_mvp_has_native_controls_and_api_calls():
     assert 'id="kanbanNewTaskBtn"' in INDEX
-    assert "async function createKanbanTask" in PANELS
     assert "async function updateKanbanTask" in PANELS
     assert "async function addKanbanComment" in PANELS
     # The exact tail varies because the multi-board PR appends
@@ -192,18 +191,12 @@ def test_kanban_new_task_header_button_opens_modal():
     assert "loadKanban(true)" in submit_body
     assert "loadKanbanTask" in submit_body
 
-    # 8. Inline quick-add still works for power-users — typing a title + Enter
-    #    creates immediately. Empty submit falls through to the modal.
-    assert "async function createKanbanTask()" in PANELS
-    quick_add = re.search(
-        r"async function createKanbanTask\(\)\{(.*?)\n\}", PANELS, re.DOTALL
-    )
-    assert quick_add
-    qa_body = quick_add.group(1)
-    assert "openKanbanCreate()" in qa_body, (
-        "Empty inline-input submit must open the modal, not silently return."
-    )
-    assert "api('/api/kanban/tasks'" in qa_body
+    # 8. The sidepanel inline quick-add row (input + button) was intentionally
+    #    removed — the panel-head "+" modal (checked above) is now the single
+    #    task-creation entry point, and createKanbanTask() was deleted as
+    #    dead code once its only DOM caller (#kanbanNewTaskTitle) was removed.
+    assert "async function createKanbanTask" not in PANELS
+    assert 'id="kanbanNewTaskTitle"' not in INDEX
 
 
 def test_kanban_task_detail_has_edit_button_and_modal_supports_edit_mode():

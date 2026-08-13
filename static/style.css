@@ -7279,8 +7279,6 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-crew-task-row .kanban-modal-row:last-of-type{margin-bottom:6px;}
 .kanban-crew-task-remove{font-size:11px;padding:4px 8px;}
 
-.kanban-new-task-row{display:flex;gap:6px;align-items:center;}
-.kanban-new-task-row input{flex:1;min-width:0;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font:inherit;font-size:12px;box-sizing:border-box;}
 .kanban-task-preview{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel);}
 .kanban-task-preview-header{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
 .kanban-back-btn{flex-shrink:0;font-size:11px;padding:4px 8px;}
@@ -7401,15 +7399,9 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-stats-grid{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .kanban-stat-cell{display:inline-flex;gap:4px;align-items:center;border:1px solid var(--border);border-radius:999px;background:var(--input-bg);padding:2px 7px;}
 .kanban-stat-cell.total{color:var(--text);}
-/* Two stacked rows instead of one wrapped row: [status select + Bulk action]
-   then [Preview + Run dispatcher]. Keeps the dispatcher pair together so they
-   can be sized as an equal-width pair without the unrelated status/bulk
-   controls competing for the same row's space. */
 .kanban-bulk-bar{display:flex;flex-direction:column;gap:6px;}
 .kanban-bulk-bar-row{display:flex;gap:6px;align-items:center;}
 .kanban-bulk-bar select{flex:1;min-width:96px;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;box-sizing:border-box;}
-.kanban-dispatch-row .kanban-nudge-dispatch-btn,
-.kanban-dispatch-row .kanban-run-dispatch-btn{flex:1 1 0;text-align:center;}
 
 .kanban-profile-lanes{display:flex;flex-direction:column;gap:18px;min-width:100%}
 .kanban-profile-lane{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.02);padding:10px}

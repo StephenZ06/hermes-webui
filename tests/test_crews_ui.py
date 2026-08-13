@@ -519,7 +519,10 @@ def test_route_handler_present_in_routes_py():
 
 def test_css_cost_lines_use_theme_tokens():
     idx = STYLE_CSS.index("/* Crews:")
-    block = STYLE_CSS[idx: idx + 3000]
+    # Window capped at 2000 (not further out) so it doesn't run into the
+    # unrelated "#1968" PR-reference comment further down in the kanban CSS
+    # block, which the hex-color regex below would otherwise false-positive on.
+    block = STYLE_CSS[idx: idx + 2000]
     assert ".kanban-crew-card-cost" in block
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block)
 
@@ -599,7 +602,9 @@ def test_filter_and_sort_behavior_real_execution():
 
 def test_css_search_and_last_dispatched_use_theme_tokens():
     idx = STYLE_CSS.index("/* Crews:")
-    block = STYLE_CSS[idx: idx + 3000]
+    # See test_css_cost_lines_use_theme_tokens for why this window is capped
+    # at 2000 rather than reaching further into the file.
+    block = STYLE_CSS[idx: idx + 2000]
     assert ".kanban-crews-search" in block
     assert ".kanban-crew-card-last-dispatched" in block
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", block)
