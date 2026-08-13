@@ -80,3 +80,23 @@ def test_subagent_branches_return_before_tool_boundary_logic():
         "tool-call-boundary logic, and must return, so it never falls "
         "through"
     )
+
+
+def test_subagent_complete_event_stays_identity_and_status_only():
+    # A prior task review already caught one draft leaking
+    # duration_seconds/summary into the subagent_complete SSE payload — per
+    # the RFC's "identity + status only" non-goal (see
+    # docs/rfcs/agent-canvas-visualization.md), the v1 relay deliberately
+    # forwards only subagent_id and status, even though the upstream
+    # "subagent.complete" event carries much more (duration_seconds,
+    # summary, token/cost counts). Pin that scope so it can't regress again.
+    body = _on_tool_body()
+    complete_start = body.index("put('subagent_complete'")
+    complete_end = body.index("})", complete_start) + 2
+    complete_call = body[complete_start:complete_end]
+    for leaky_key in ("duration_seconds", "summary", "cost_usd"):
+        assert f"'{leaky_key}'" not in complete_call, (
+            f"put('subagent_complete', {{...}}) must not include {leaky_key!r} "
+            "— the v1 relay is identity + status only "
+            f"(got: {complete_call!r})"
+        )

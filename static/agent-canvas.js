@@ -5,6 +5,7 @@
 (function(){
   const GRACE_MS = 5000;             // how long a finished node stays visible before pruning
   const ORPHAN_MS = 15 * 60 * 1000;  // safety net: prune a stuck 'running' node after this long
+  const ROOT_ID = '__root__';        // synthetic node representing the top-level agent
   const STATUS_COLOR = {
     running: '#5b9dff',
     completed: '#4caf6d',
@@ -12,6 +13,7 @@
     error: '#e0555b',
     timeout: '#e0555b',
     interrupted: '#9aa0a8',
+    root: '#8a8f98',
   };
 
   let _nodes = new Map();   // subagent_id -> node record
@@ -49,6 +51,11 @@
       _sim.force('link').links(edges);
       _sim.force('center', d3.forceCenter(_canvas.width / 2, _canvas.height / 2));
       _sim.alpha(0.6).restart();
+    }
+    const root = _nodes.get(ROOT_ID);
+    if(root){
+      root.fx = _canvas.width / 2;
+      root.fy = _canvas.height / 2;
     }
   }
 
@@ -95,7 +102,7 @@
     for(const n of _nodes.values()){
       if(n.x == null) continue;
       const color = STATUS_COLOR[n.status] || STATUS_COLOR.running;
-      const pulse = n.status === 'running' ? (Math.sin(t * 3 + n._phase) + 1) / 2 : 0;
+      const pulse = (n.status === 'running' && !n._isRoot) ? (Math.sin(t * 3 + n._phase) + 1) / 2 : 0;
       const radius = 14 + pulse * 4;
       _ctx.save();
       _ctx.shadowColor = color;
@@ -117,6 +124,7 @@
   }
 
   function _scheduleRemoval(id){
+    if(id === ROOT_ID) return;
     const n = _nodes.get(id);
     if(!n) return;
     n._fadingOut = true;
@@ -137,9 +145,18 @@
 
   function onSpawn(d){
     if(!d || !d.subagent_id || _nodes.has(d.subagent_id)) return;
+    if(!_nodes.has(ROOT_ID)){
+      _nodes.set(ROOT_ID, {
+        subagent_id: ROOT_ID,
+        parent_id: null,
+        status: 'root',
+        goal: 'Agent',
+        _isRoot: true,
+      });
+    }
     _nodes.set(d.subagent_id, {
       subagent_id: d.subagent_id,
-      parent_id: d.parent_id || null,
+      parent_id: d.parent_id || ROOT_ID,
       depth: d.depth || 0,
       goal: d.goal || '',
       model: d.model || '',
@@ -174,9 +191,15 @@
       container.appendChild(_canvas);
     }
     _resize();
+    _rebuildSimulation();
     if(!_raf) _draw();
     if(!_sweepTimer) _sweepTimer = setInterval(_sweepOrphans, 60000);
   }
 
-  window.AgentCanvas = {mount, onSpawn, onComplete};
+  function reset(){
+    _nodes.clear();
+    _rebuildSimulation();
+  }
+
+  window.AgentCanvas = {mount, onSpawn, onComplete, reset};
 })();
