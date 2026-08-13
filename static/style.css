@@ -7092,6 +7092,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-board-switcher-toggle:hover{border-color:var(--accent);color:var(--accent);}
 .kanban-board-switcher-toggle[aria-expanded="true"]{border-color:var(--accent);}
 .kanban-board-switcher-icon{font-size:14px;line-height:1;display:inline-block;min-width:14px;text-align:center;}
+.kanban-board-switcher-icon[hidden]{display:none;}
 .kanban-board-switcher-name{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .kanban-board-switcher-menu{
   position:absolute;top:calc(100% + 4px);left:0;
@@ -7149,10 +7150,13 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
   position:fixed;inset:0;background:rgba(7,12,19,.62);backdrop-filter:blur(6px);
   display:flex;align-items:center;justify-content:center;
   z-index:1100;padding:24px;
+  overflow-y:auto;
 }
 .kanban-modal-overlay[hidden]{display:none;}
 .kanban-modal{
   width:min(460px,100%);
+  max-height:calc(100vh - 48px);
+  overflow-y:auto;
   background:var(--surface);
   border:1px solid var(--accent-bg-strong, var(--border));
   border-radius:18px;
