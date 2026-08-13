@@ -9027,10 +9027,12 @@ function renderSessionListFromCache(){
       }, delay);
       return false;
     };
+    let _mouseFolderDragStarted=false;
     el.onpointerdown=(e)=>{
       if(e.pointerType==='touch') return;
       if(e.pointerType==='mouse' && e.button!==0) return;
       if(_isSessionActionTarget(e.target)) return;
+      _mouseFolderDragStarted=false;
       _beginSessionGesture(e.clientX,e.clientY,e.pointerType||'');
       if(e.pointerType==='pen'){
         _scheduleSessionLongPressMenu();
@@ -9038,6 +9040,22 @@ function renderSessionListFromCache(){
     };
     el.onpointermove=(e)=>{
       if(e.pointerType==='touch') return;
+      if(_mouseFolderDragStarted) return;
+      // Click-and-hold anywhere on the row (not just the dedicated drag
+      // handle) starts a folder drag on mouse — no separate long-press-menu
+      // or swipe gesture competes for this surface on mouse (both are
+      // touch/pen-only, see _isSessionSwipeTarget/_scheduleSessionLongPressMenu
+      // call sites), so a plain movement threshold is enough, matching how
+      // the dedicated handle already starts a drag immediately on move.
+      if(_gesturePointerType==='mouse'&&_gestureState==='pressing'&&!readOnly&&!_sessionSelectMode&&!_renamingSid&&!_isSessionActionTarget(e.target)){
+        const dx=Math.abs(e.clientX-_pointerDownX),dy=Math.abs(e.clientY-_pointerDownY);
+        if(dx>5||dy>5){
+          _mouseFolderDragStarted=true;
+          _gestureState='idle';
+          _startSessionDrag(e,el,el,s);
+          return;
+        }
+      }
       // Plain hover also dispatches pointermove. Only mark a row as dragging
       // after an actual press starts on this row; otherwise hovered rows stay
       // faded until the next sidebar rerender clears their DOM nodes.

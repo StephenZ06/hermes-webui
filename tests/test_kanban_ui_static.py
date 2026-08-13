@@ -476,12 +476,16 @@ def test_kanban_run_dispatcher_button_exists_and_is_distinct_from_preview():
     # Distinct visual class so users can tell it apart from the preview button.
     assert "kanban-run-dispatch-btn" in btn_html
 
-    # 4. The sidebar bulk bar also has a Run dispatcher button alongside the
-    # existing Preview button, so users in the filter pane can also run.
+    # 4. The sidebar bulk bar intentionally does NOT duplicate Preview/Run —
+    # the board-header buttons (checked above) are the single entry point,
+    # so the sidebar bulk bar only carries the bulk status action.
     bulk_idx = INDEX.find("kanbanBulkBar")
-    bulk_html = INDEX[bulk_idx:bulk_idx + 1500]
-    assert 'onclick="runKanbanDispatcher()"' in bulk_html, (
-        "Sidebar bulk bar must also expose Run dispatcher."
+    bulk_html = INDEX[bulk_idx:bulk_idx + 500]
+    assert 'onclick="runKanbanDispatcher()"' not in bulk_html, (
+        "Sidebar bulk bar must not duplicate the board-header Run dispatcher button."
+    )
+    assert 'onclick="nudgeKanbanDispatcher()"' not in bulk_html, (
+        "Sidebar bulk bar must not duplicate the board-header Preview dispatcher button."
     )
     # The dispatch result formatter exists and surfaces concrete numbers.
     assert "function _kanbanFormatDispatchResult" in PANELS
