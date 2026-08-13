@@ -697,6 +697,7 @@ function _rememberObservedStreamingSession(){{}}
 function _forgetObservedStreamingSession(){{}}
 function _reconcileActiveSessionIdleStateFromList(){{}}
 function _mergeOptimisticFirstTurnSessions(s){{ return s; }}
+function _applyOptimisticSessionFieldOverrides(s){{ return s; }}
 function _recordSessionProfileCount(){{}}
 function _syncSessionAttentionSoundState(){{}}
 function _pruneLineageReportCacheToVisibleSessions(){{}}
@@ -819,6 +820,7 @@ function _rememberObservedStreamingSession(){{}}
 function _forgetObservedStreamingSession(){{}}
 function _reconcileActiveSessionIdleStateFromList(){{}}
 function _mergeOptimisticFirstTurnSessions(s){{ return s; }}
+function _applyOptimisticSessionFieldOverrides(s){{ return s; }}
 function _recordSessionProfileCount(){{}}
 function _syncSessionAttentionSoundState(){{}}
 function _pruneLineageReportCacheToVisibleSessions(){{}}

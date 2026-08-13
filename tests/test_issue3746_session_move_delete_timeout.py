@@ -136,7 +136,7 @@ def test_new_project_and_move_shortcut_guards_503():
     when the session is streaming) instead of leaving an unhandled rejection (#3746)."""
     idx = SESSIONS_JS.find("Guard the move so a 503")
     assert idx > 0, "the new-project-and-move shortcut guard not found"
-    block = SESSIONS_JS[idx:idx + 700]
+    block = SESSIONS_JS[idx:idx + 800]
     assert "try{" in block and "}catch(e){" in block, (
         "the new-project-and-move move call must be wrapped in try/catch (#3746)"
     )

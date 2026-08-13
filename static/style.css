@@ -7199,6 +7199,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .kanban-modal-row-inline{display:flex;gap:10px;}
 .kanban-modal-row-inline > *{flex:1;min-width:0;}
 .kanban-modal-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;}
+.kanban-crews-hint{margin-bottom:12px;}
 .kanban-status-original-hint{
   display:block;
   margin-top:4px;
