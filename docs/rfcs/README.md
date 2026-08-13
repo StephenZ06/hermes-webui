@@ -70,3 +70,7 @@ First-time contributor RFCs should be discussed in an issue before opening a PR.
 - [`session-sse-contract-v1.md`](session-sse-contract-v1.md) — #4812 Proposed
   contract vocabulary, replay identity, event taxonomy, cursor/resume semantics,
   and implementation gates for `GET /api/sessions/{session_id}/events`.
+- [`agent-canvas-visualization.md`](agent-canvas-visualization.md) — Proposed
+  live node-graph visualization of `delegate_task` subagent activity, SSE
+  event feed, and vendored d3-force + Canvas2D rendering approach. No
+  implementation scheduled.
