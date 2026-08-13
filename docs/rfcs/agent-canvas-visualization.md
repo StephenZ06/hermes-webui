@@ -72,9 +72,14 @@ The upstream `"subagent.complete"` event carries more than this (`duration_secon
 confirmed after a task review caught an earlier draft leaking
 `duration_seconds`/`summary` into the emitted event (2026-08-13).
 
-No new SSE endpoint, no new contract, no journaling — this rides the
-same `api/chat/stream` connection the browser already has open for the
-active turn, matching the "live only" scope decision. (No `status_change`
+No new SSE endpoint and no new contract — this rides the same
+`api/chat/stream` connection the browser already has open for the active
+turn, matching the "live only" scope decision. These events are journaled
+like every other `put()` event, because `put()` unconditionally calls
+`run_journal.append_sse_event` for whatever it emits — that's just how the
+existing helper works, not something this feature opted into or skipped.
+The added volume is negligible and replay is benign (`onSpawn` dedupes on
+`subagent_id`). (No `status_change`
 event exists upstream today — only spawn and terminal complete. A future
 richer node-detail tier could also relay `"subagent.tool"`/
 `"subagent.progress"`, which are emitted but currently unused here too.)
@@ -105,6 +110,12 @@ richer node-detail tier could also relay `"subagent.tool"`/
 - SSE disconnect: canvas freezes in place with a "reconnecting…" banner;
   resumes live updates on reconnect. No event replay (consistent with
   live-only scope — a missed event is not backfilled).
+  **Deferred (not implemented in v1):** no task in the implementation plan
+  covered the "reconnecting…" banner, so it does not exist in the shipped
+  panel. Today an SSE drop is visually indistinguishable from "no
+  subagents currently running" — the canvas simply stops updating without
+  any indicator. This is a known gap for a future task, not a description
+  of current behavior.
 - Orphaned nodes (parent completed but a child's `complete`/`error` event
   never arrives, e.g. subagent process crash): prune after a timeout so
   the canvas doesn't accumulate zombie nodes across a long session.
