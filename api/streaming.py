@@ -9763,8 +9763,6 @@ def _run_agent_streaming(
                         put('subagent_complete', {
                             'subagent_id': subagent_id,
                             'status': cb_kwargs.get('status'),
-                            'duration_seconds': cb_kwargs.get('duration_seconds'),
-                            'summary': cb_kwargs.get('summary') or preview,
                         })
                     return
 
