@@ -9749,6 +9749,25 @@ def _run_agent_streaming(
                         _emit_metering()
                     return
 
+                if event_type in ('subagent.start', 'subagent.complete'):
+                    subagent_id = cb_kwargs.get('subagent_id')
+                    if event_type == 'subagent.start':
+                        put('subagent_spawn', {
+                            'subagent_id': subagent_id,
+                            'parent_id': cb_kwargs.get('parent_id'),
+                            'depth': cb_kwargs.get('depth'),
+                            'goal': cb_kwargs.get('goal') or preview,
+                            'model': cb_kwargs.get('model'),
+                        })
+                    else:
+                        put('subagent_complete', {
+                            'subagent_id': subagent_id,
+                            'status': cb_kwargs.get('status'),
+                            'duration_seconds': cb_kwargs.get('duration_seconds'),
+                            'summary': cb_kwargs.get('summary') or preview,
+                        })
+                    return
+
                 # (#3587) Advance reasoning index at tool-call boundaries.
                 # on_interim_assistant is suppressed for contentless tool-call
                 # messages (run_agent.py:3834), so the index never advances
