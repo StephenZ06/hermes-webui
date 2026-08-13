@@ -2077,7 +2077,7 @@ function _currentSessionIsReusableEmptyChat(){
 }
 
 $('fileInput').onchange=e=>{addFiles(Array.from(e.target.files));e.target.value='';};
-async function _createNewConversation(){
+async function _createNewConversation(project_id){
   // If the current session has no messages AND nothing is in flight, just focus
   // the composer rather than creating another empty session that will clutter the
   // sidebar list (#1171).
@@ -2096,11 +2096,73 @@ async function _createNewConversation(){
      && await _restoreRememberedNewChatDraftSession()){
     await renderSessionList();closeMobileSidebar();$('msg').focus();return;
   }
-  await newSession();await renderSessionList();closeMobileSidebar();$('msg').focus();
+  const opts=(project_id!==undefined)?{project_id}:{};
+  await newSession(undefined,opts);await renderSessionList();closeMobileSidebar();$('msg').focus();
 }
 // "+" in the Chat panel head now offers a choice instead of always creating a
 // conversation directly -- Cmd+K (see the keydown handler below) still creates
 // one immediately, unaffected by this menu.
+//
+// "New conversation" itself offers a second choice when project folders
+// exist: General or a specific folder (#agent-canvas-followups item 3).
+// Reuses the same .project-picker/.project-picker-item UI as _showProjectPicker
+// (sessions.js) for visual consistency, but creates a session directly via
+// _createNewConversation(project_id) instead of moving an existing one.
+function _createNewConversationWithPicker(anchorEl){
+  const sessionProfile=S.activeProfile||'default';
+  const visibleProjects=(typeof _allProjects!=='undefined'?_allProjects:[]).filter(p=>{
+    const projProfile=p&&p.profile;
+    if(!sessionProfile||!projProfile) return true;
+    if(projProfile===sessionProfile) return true;
+    if(projProfile==='default'||sessionProfile==='default') return true;
+    return false;
+  });
+  if(!visibleProjects.length){_createNewConversation();return;}
+  _showNewChatDestinationPicker(anchorEl,visibleProjects);
+}
+function _showNewChatDestinationPicker(anchorEl,visibleProjects){
+  document.querySelectorAll('.project-picker').forEach(p=>p.remove());
+  const picker=document.createElement('div');
+  picker.className='project-picker';
+  const general=document.createElement('div');
+  general.className='project-picker-item';
+  general.textContent='General';
+  general.onclick=()=>{picker.remove();document.removeEventListener('click',close);_createNewConversation(null);};
+  picker.appendChild(general);
+  for(const p of visibleProjects){
+    const item=document.createElement('div');
+    item.className='project-picker-item';
+    if(p.color){
+      const dot=document.createElement('span');
+      dot.className='color-dot';
+      dot.style.cssText='width:6px;height:6px;border-radius:50%;background:'+p.color+';flex-shrink:0;';
+      item.appendChild(dot);
+    }
+    const name=document.createElement('span');
+    name.textContent=p.name;
+    item.appendChild(name);
+    item.onclick=()=>{picker.remove();document.removeEventListener('click',close);_createNewConversation(p.project_id);};
+    picker.appendChild(item);
+  }
+  document.body.appendChild(picker);
+  const rect=anchorEl.getBoundingClientRect();
+  picker.style.position='fixed';
+  picker.style.zIndex='999';
+  const spaceBelow=window.innerHeight-rect.bottom;
+  if(spaceBelow<160&&rect.top>160){
+    picker.style.bottom=(window.innerHeight-rect.top+4)+'px';
+    picker.style.top='auto';
+  }else{
+    picker.style.top=(rect.bottom+4)+'px';
+    picker.style.bottom='auto';
+  }
+  const pickerW=Math.min(220,Math.max(160,picker.scrollWidth||160));
+  let left=rect.right-pickerW;
+  if(left<8) left=8;
+  picker.style.left=left+'px';
+  const close=(e)=>{if(!picker.contains(e.target)&&e.target!==anchorEl){picker.remove();document.removeEventListener('click',close);}};
+  setTimeout(()=>document.addEventListener('click',close),0);
+}
 function _toggleNewChatMenu(anchorBtn){
   const existing=document.querySelector('.new-chat-menu');
   if(existing){existing.remove();return;}
@@ -2119,7 +2181,7 @@ function _toggleNewChatMenu(anchorBtn){
     item.onclick=(e)=>{e.stopPropagation();menu.remove();onClick();};
     return item;
   };
-  menu.appendChild(mkItem(t('new_conversation'),()=>{_createNewConversation();}));
+  menu.appendChild(mkItem(t('new_conversation'),()=>{_createNewConversationWithPicker(anchorBtn);}));
   menu.appendChild(mkItem(t('new_project_folder'),()=>{
     if(typeof _startProjectCreate==='function') _startProjectCreate();
   }));

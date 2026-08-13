@@ -15,7 +15,7 @@ def _btn_new_chat_handler() -> str:
     # The "New conversation" logic lives in _createNewConversation() now --
     # the "+" in the Chat panel head opens a 2-option menu (New conversation /
     # New project folder) instead of running this directly on click.
-    start = BOOT_JS.find("async function _createNewConversation(){")
+    start = BOOT_JS.find("async function _createNewConversation(project_id){")
     end = BOOT_JS.find("$('btnDownload').onclick", start)
     assert start != -1 and end != -1, "_createNewConversation handler block not found"
     return BOOT_JS[start:end]
@@ -47,7 +47,7 @@ def test_new_session_remembers_regular_empty_session_id():
 def test_new_chat_button_restores_remembered_draft_before_creating_session():
     body = _btn_new_chat_handler()
     restore_idx = body.find("_restoreRememberedNewChatDraftSession")
-    new_idx = body.find("await newSession()")
+    new_idx = body.find("await newSession(undefined,opts)")
     assert restore_idx != -1, "New Chat button must try the remembered draft session first"
     assert new_idx != -1, "New Chat button must still fall back to creating a session"
     assert restore_idx < new_idx, "draft-session restore must happen before newSession fallback"
