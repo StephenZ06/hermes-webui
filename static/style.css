@@ -5052,6 +5052,7 @@ main.main > #mainPlugin{display:none;}
 #mainSettings{overflow-y:auto;}
 .agent-canvas-wrap{flex:1;min-height:0;position:relative;}
 .agent-canvas-wrap canvas{position:absolute;inset:0;}
+.agent-canvas-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:32px 64px;color:var(--muted);font-size:13px;line-height:1.5;pointer-events:none;}
 
 /* Sidebar menu (lives in the left sidebar under the cog panel) */
 .panel-view#panelSettings{gap:0;padding:0;}

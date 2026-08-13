@@ -23,6 +23,19 @@
   let _sim = null;
   let _raf = null;
   let _sweepTimer = null;
+  let _emptyEl = null;
+  let _lastEmptyState = null;
+
+  function _updateEmptyState(){
+    if(!_emptyEl) _emptyEl = document.getElementById('agentCanvasEmpty');
+    if(!_emptyEl) return;
+    // Only the synthetic root persisting after every real subagent has faded
+    // out (or nothing has ever spawned) counts as "empty" from the user's view.
+    const isEmpty = _nodes.size <= 1;
+    if(isEmpty === _lastEmptyState) return;
+    _emptyEl.style.display = isEmpty ? '' : 'none';
+    _lastEmptyState = isEmpty;
+  }
 
   function _nodesArray(){ return Array.from(_nodes.values()); }
 
@@ -73,6 +86,7 @@
       return;
     }
     _raf = requestAnimationFrame(_draw);
+    _updateEmptyState();
     if(!_ctx || !_canvas) return;
     const w = _canvas.width, h = _canvas.height;
     _ctx.clearRect(0, 0, w, h);
