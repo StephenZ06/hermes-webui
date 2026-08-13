@@ -68,9 +68,28 @@ def test_apply_button_visibility_keyed_on_session_state():
     assert "btnClearAgentDefDetail" in js
 
 
-def test_builtin_personas_cannot_be_edited_or_deleted_in_ui():
+def test_builtin_personas_cannot_be_edited_in_ui():
     js = read("static/panels.js")
     assert "_currentAgentDefDetail.builtin) return;" in js
+
+
+def test_builtin_personas_can_be_deleted_in_ui():
+    """Delete is a persistent soft-hide for builtins (agent_definitions.py
+    delete_definition), not a real removal -- BUILTIN_DEFINITIONS is a Python
+    source constant. The UI must not special-case builtins out of delete."""
+    js = read("static/panels.js")
+    delete_fn_start = js.find("async function deleteAgentDef()")
+    assert delete_fn_start != -1, "deleteAgentDef() not found"
+    delete_fn_end = js.find("\n}\n", delete_fn_start)
+    delete_fn_body = js[delete_fn_start:delete_fn_end]
+    assert "builtin" not in delete_fn_body, (
+        "deleteAgentDef() must not early-return on .builtin -- builtin delete "
+        "is now a supported soft-hide, gated server-side instead"
+    )
+    assert "show(delBtn);" in js, (
+        "the delete button must be shown unconditionally in read mode, "
+        "not hidden for builtin personas"
+    )
 
 
 def test_slash_command_wired():

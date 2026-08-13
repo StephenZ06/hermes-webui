@@ -133,15 +133,48 @@ def test_update_builtin_rejected():
     assert "built-in" in d2["error"].lower() or "builtin" in d2["error"].lower()
 
 
-def test_delete_builtin_rejected():
+def test_delete_builtin_soft_hides_it():
+    """BUILTIN_DEFINITIONS is a Python source constant, not stored data -- a
+    real delete would just reappear on the next restart. delete_definition()
+    persists the id as hidden instead; list_definitions() filters it out.
+    Restores the hidden-ids file afterward so the shared test server's
+    builtin roster isn't permanently changed for later tests."""
+    from api import agent_definitions
     d, status = get("/api/agent-definitions")
     builtin_id = next(x["id"] for x in d["definitions"] if x["id"].startswith("builtin:"))
-    d2, status2 = post("/api/agent-definitions/delete", {"id": builtin_id})
-    assert status2 == 400
-    # Builtin must still be present afterward.
-    d3, _ = get("/api/agent-definitions")
-    ids = [x["id"] for x in d3["definitions"]]
-    assert builtin_id in ids
+    try:
+        d2, status2 = post("/api/agent-definitions/delete", {"id": builtin_id})
+        assert status2 == 200
+        assert d2["ok"] is True
+
+        d3, _ = get("/api/agent-definitions")
+        ids = [x["id"] for x in d3["definitions"]]
+        assert builtin_id not in ids, "a hidden builtin must not appear in the list"
+    finally:
+        hidden = [h for h in agent_definitions._load_hidden_builtin_ids() if h != builtin_id]
+        agent_definitions._save_hidden_builtin_ids(hidden)
+
+    d4, _ = get("/api/agent-definitions")
+    ids4 = [x["id"] for x in d4["definitions"]]
+    assert builtin_id in ids4, "clearing the hidden-ids entry must restore it"
+
+
+def test_hidden_builtin_still_resolves_via_get_definition():
+    """A session that already has a now-hidden builtin persona applied must
+    not break: get_definition() is a direct id lookup, not the filtered list,
+    so it deliberately still resolves hidden builtins."""
+    from api import agent_definitions
+    d, status = get("/api/agent-definitions")
+    builtin_id = next(x["id"] for x in d["definitions"] if x["id"].startswith("builtin:"))
+    try:
+        d2, status2 = post("/api/agent-definitions/delete", {"id": builtin_id})
+        assert status2 == 200
+        resolved = agent_definitions.get_definition(builtin_id)
+        assert resolved is not None
+        assert resolved["id"] == builtin_id
+    finally:
+        hidden = [h for h in agent_definitions._load_hidden_builtin_ids() if h != builtin_id]
+        agent_definitions._save_hidden_builtin_ids(hidden)
 
 
 # ── Duplicate ────────────────────────────────────────────────────────────

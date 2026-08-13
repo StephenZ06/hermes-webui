@@ -130,6 +130,25 @@ def _save_custom_definitions(definitions: list) -> None:
     _atomic_write(_agent_definitions_path(), definitions)
 
 
+def _hidden_builtins_path() -> Path:
+    return _agent_definitions_path().with_name("agent_definitions_hidden_builtins.json")
+
+
+def _load_hidden_builtin_ids() -> list:
+    p = _hidden_builtins_path()
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return [str(x) for x in data] if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_hidden_builtin_ids(ids: list) -> None:
+    _atomic_write(_hidden_builtins_path(), ids)
+
+
 def _validate_color(color) -> None:
     if color and not _COLOR_RE.match(color):
         raise ValueError("Invalid color format")
@@ -150,9 +169,11 @@ def _clean_tags(tags) -> list:
 
 def list_definitions() -> dict:
     custom = _load_custom_definitions()
+    hidden = set(_load_hidden_builtin_ids())
+    visible_builtins = [d for d in BUILTIN_DEFINITIONS if d["id"] not in hidden]
     return {
-        "definitions": [*BUILTIN_DEFINITIONS, *custom],
-        "builtin_count": len(BUILTIN_DEFINITIONS),
+        "definitions": [*visible_builtins, *custom],
+        "builtin_count": len(visible_builtins),
     }
 
 
@@ -251,7 +272,17 @@ def delete_definition(def_id: str) -> None:
     if not def_id:
         raise ValueError("id is required")
     if def_id in _BUILTIN_IDS:
-        raise PermissionError("Built-in agent definitions cannot be deleted")
+        # BUILTIN_DEFINITIONS is a Python source constant, not stored data --
+        # a real delete would just reappear on the next restart. Persist the
+        # id as hidden instead; list_definitions() filters it out. get_definition()
+        # deliberately still resolves it, so a session that already had this
+        # persona applied doesn't break.
+        with _WRITE_LOCK:
+            hidden = _load_hidden_builtin_ids()
+            if def_id not in hidden:
+                hidden.append(def_id)
+                _save_hidden_builtin_ids(hidden)
+        return
     with _WRITE_LOCK:
         custom = _load_custom_definitions()
         remaining = [d for d in custom if d.get("id") != def_id]
