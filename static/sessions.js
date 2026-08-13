@@ -8927,6 +8927,8 @@ function renderSessionListFromCache(){
     let _clearDragTimer=null;
     let _longPressTimer=null;
     let _longPressMenuOpened=false;
+    let _longPressArmed=false;
+    let _touchFolderDragStarted=false;
     let _swipeTracking=false;
     let _pointerX=0;
     let _pointerY=0;
@@ -8944,21 +8946,25 @@ function renderSessionListFromCache(){
       _gestureState='pressing';
       _swipeTracking=false;
       _longPressMenuOpened=false;
+      _longPressArmed=false;
+      _touchFolderDragStarted=false;
       if(_clearDragTimer){clearTimeout(_clearDragTimer);_clearDragTimer=null;}
       el.classList.remove('dragging','swipe-committed','swipe-removing');
       el.style.removeProperty('height');
       el.style.removeProperty('min-height');
     };
+    // Touch: at the long-press delay, ARM rather than open the menu right
+    // away — this leaves a window for _touchFolderDragListener (below) to
+    // redirect into a folder drag if the finger then moves, instead of the
+    // menu popping up first and eating the gesture. If nothing moves,
+    // _finishSessionGesture opens the menu on release, same net timing a
+    // user perceives as "long-press opens the menu" either way.
     const _scheduleSessionLongPressMenu=()=>{
       _clearLongPressTimer();
       el.classList.add('long-pressing');
       _longPressTimer=setTimeout(()=>{
         if(_gestureState!=='pressing'||_renamingSid||_sessionSelectMode||readOnly) return;
-        _longPressMenuOpened=true;
-        clearTimeout(_tapTimer);
-        _tapTimer=null;
-        _lastTapTime=0;
-        _openSessionActionMenu(s, el);
+        _longPressArmed=true;
       },SESSION_LONG_PRESS_DELAY_MS);
     };
     const _isSessionSwipeTarget=()=>{
@@ -9107,8 +9113,25 @@ function renderSessionListFromCache(){
     };
     const _finishSessionGesture=(clientX,clientY,target,pointerType)=>{
       if(_gestureState==='idle') return false;  // press never began on this row
-      const wasDragging=_gestureState==='dragging'||_swipeTracking;
       _clearLongPressTimer();
+      // The long-press timer only ARMS (see _scheduleSessionLongPressMenu) so a
+      // subsequent move can redirect into a folder drag instead. If nothing
+      // promoted the gesture away from 'pressing' by release time, open the
+      // menu now — same thing the user asked for by holding still.
+      if(_longPressArmed&&_gestureState==='pressing'){
+        _longPressArmed=false;
+        if(_renamingSid||_sessionSelectMode||readOnly||_isSessionActionTarget(target)){
+          _gestureState='idle';
+          return false;
+        }
+        _longPressMenuOpened=true;
+        clearTimeout(_tapTimer);_tapTimer=null;_lastTapTime=0;
+        _gestureState='idle';
+        _openSessionActionMenu(s, el);
+        return true;
+      }
+      _longPressArmed=false;
+      const wasDragging=_gestureState==='dragging'||_swipeTracking;
       if(_renamingSid){_gestureState='idle';return false;}
       if(_isSessionActionTarget(target)){_gestureState='idle';return false;}
       _pointerX=clientX;
@@ -9189,6 +9212,31 @@ function renderSessionListFromCache(){
       // faded until the next sidebar rerender clears their DOM nodes.
       _updateSessionGesture(e.clientX,e.clientY);
     };
+    // Touch: a SEPARATE listener (not el.onpointermove, which ignores touch —
+    // that stays reserved for the touchstart/touchmove/touchend path per the
+    // "onclick/ondblclick are unreliable on touch devices" note above). This
+    // one only cares about the moment the long-press timer has ARMED
+    // (_scheduleSessionLongPressMenu) and the finger then moves: that's the
+    // "hold, then drag" signal, so redirect into the same _startSessionDrag()
+    // the handle and mouse path use, instead of letting the long-press-menu
+    // open. Native pointer events fire before their touch-event counterparts
+    // per spec, so this listener's decision to intercept happens before the
+    // existing touchmove -> _updateSessionGesture() swipe-tracking runs for
+    // the same physical movement.
+    el.addEventListener('pointermove',(e)=>{
+      if(e.pointerType!=='touch') return;
+      if(_touchFolderDragStarted) return;
+      if(!_longPressArmed||_gestureState!=='pressing'||readOnly||_sessionSelectMode||_renamingSid) return;
+      if(_isSessionActionTarget(e.target)) return;
+      const dx=Math.abs(e.clientX-_pointerDownX),dy=Math.abs(e.clientY-_pointerDownY);
+      if(dx>8||dy>8){
+        _touchFolderDragStarted=true;
+        _longPressArmed=false;
+        _gestureState='idle';
+        _clearLongPressTimer();
+        _startSessionDrag(e,el,el,s);
+      }
+    });
     el.onpointercancel=(e)=>{
       if(e.pointerType==='touch') return;
       _clearPointerDragState();
@@ -9221,6 +9269,11 @@ function renderSessionListFromCache(){
     el.addEventListener('touchmove',(e)=>{
       const touch=e.changedTouches&&e.changedTouches[0];
       if(!touch) return;
+      // Once the folder drag has taken over (see the pointermove listener
+      // above), keep suppressing native scroll for the rest of this touch
+      // sequence — the row's touch-action:pan-y would otherwise let vertical
+      // movement scroll the list instead of moving the drag ghost.
+      if(_touchFolderDragStarted){e.preventDefault();return;}
       if(_updateSessionGesture(touch.clientX,touch.clientY)) e.preventDefault();
     },{passive:false});
     el.addEventListener('touchcancel',_clearPointerDragState,{passive:true});
