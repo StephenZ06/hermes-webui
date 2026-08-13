@@ -8146,13 +8146,6 @@ function renderSessionListFromCache(){
       list.appendChild(more);
     }
   }
-  // Select mode toggle button (only when NOT in select mode)
-  if(!_sessionSelectMode){
-    const toggleBtn=document.createElement('div');toggleBtn.className='session-select-toggle';
-    toggleBtn.textContent=t('session_select_mode');
-    toggleBtn.onclick=(e)=>{e.stopPropagation();toggleSessionSelectMode();};
-    list.appendChild(toggleBtn);
-  }
   // Refresh FLIP and queued archive/delete reflow both drive
   // --session-reflow-offset. Refresh wins so one render has one transform writer.
   const reflowBefore=animateRefresh?flipBefore:_pendingSessionReflowPositions;
