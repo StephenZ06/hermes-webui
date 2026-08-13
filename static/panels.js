@@ -4639,6 +4639,7 @@ async function loadKanbanBoards(){
   if (nameEl) nameEl.textContent = activeMeta.name || activeMeta.slug || 'Default';
   if (iconEl) {
     iconEl.textContent = activeMeta.icon || '';
+    iconEl.hidden = !activeMeta.icon;
     if (activeMeta.color) iconEl.style.color = activeMeta.color;
     else iconEl.style.color = '';
   }

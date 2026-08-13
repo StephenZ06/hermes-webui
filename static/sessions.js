@@ -4019,6 +4019,41 @@ let _pendingSessionReflowPositions = null;
 const _optimisticallyRemovedSessionIds = new Set();
 const _sessionSwipeReturnOffsets = new Map();
 
+// #chat-sidebar-fixes: archive/move mutate _allSessions locally then re-render,
+// but a concurrent 30s background poll (startStreamingPoll) or any other
+// in-flight renderSessionList() fetch can resolve afterward with pre-mutation
+// server data and silently overwrite it via the wholesale `_allSessions =`
+// assignment below — the archived chat reappears, or a folder-move looks like
+// it never happened, until the next poll finally reflects the true state.
+// Mirrors the existing _optimisticallyRemovedSessionIds pattern: record the
+// field(s) we just set locally, reapply them onto any freshly-fetched session
+// object until the server itself reports the same value (at which point the
+// override has nothing left to correct and is dropped).
+const _optimisticSessionFieldOverrides = new Map(); // sid -> {archived?, project_id?}
+
+function _setOptimisticSessionField(sid, field, value){
+  const existing = _optimisticSessionFieldOverrides.get(sid) || {};
+  existing[field] = value;
+  _optimisticSessionFieldOverrides.set(sid, existing);
+}
+
+function _applyOptimisticSessionFieldOverrides(serverSessions){
+  if(!_optimisticSessionFieldOverrides.size) return serverSessions;
+  for(const s of serverSessions){
+    if(!s || !s.session_id) continue;
+    const overrides = _optimisticSessionFieldOverrides.get(s.session_id);
+    if(!overrides) continue;
+    let allConfirmed = true;
+    for(const field of Object.keys(overrides)){
+      if(s[field] === overrides[field]) continue;
+      s[field] = overrides[field];
+      allConfirmed = false;
+    }
+    if(allConfirmed) _optimisticSessionFieldOverrides.delete(s.session_id);
+  }
+  return serverSessions;
+}
+
 function _captureSessionReflowPositions(){
   const list=$('sessionList');
   if(!list) return null;
@@ -4917,6 +4952,7 @@ async function _archiveSession(session, archived=true, beforeListRender=null){
   try{
     const response=await api('/api/session/archive',{method:'POST',body:JSON.stringify({session_id:session.session_id,archived})});
     session.archived=archived;
+    _setOptimisticSessionField(session.session_id,'archived',archived);
     const cached=(_allSessions||[]).find(s=>s&&s.session_id===session.session_id);
     if(cached) cached.archived=archived;
     if(S.session&&S.session.session_id===session.session_id) S.session.archived=archived;
@@ -5497,6 +5533,7 @@ function _applySessionListPayload(sessData, projData, opts){
   const serverSessions=_optimisticallyRemovedSessionIds.size
     ? (sessData.sessions||[]).filter(s=>s&&!_optimisticallyRemovedSessionIds.has(s.session_id))
     : (sessData.sessions||[]);
+  _applyOptimisticSessionFieldOverrides(serverSessions);
   _sidebarReferenceSessions = Array.isArray(sessData.sidebar_reference_sessions)
     ? sessData.sidebar_reference_sessions
     : [];
@@ -9485,6 +9522,7 @@ function _startSessionDrag(e,handle,rowEl,session){
     }
     try{
       await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:projectId})});
+      _setOptimisticSessionField(session.session_id,'project_id',projectId);
       const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
       if(idx>=0) _allSessions[idx].project_id=projectId;
       _expandProjectFolder(projectId);
@@ -9541,6 +9579,7 @@ function _showProjectPicker(session, anchorEl){
       // _attachChildSessionsToSidebarRows), so mutating `session` only updates
       // the discarded copy. Write into the authoritative cache so the next
       // renderSessionListFromCache() reflects the move. (#2551)
+      _setOptimisticSessionField(session.session_id,'project_id',null);
       const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
       if(idx>=0) _allSessions[idx].project_id=null;
       renderSessionListFromCache();
@@ -9584,6 +9623,7 @@ function _showProjectPicker(session, anchorEl){
       try{
         await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:p.project_id})});
         // See #2551 — write to _allSessions, not the shallow sidebar copy.
+        _setOptimisticSessionField(session.session_id,'project_id',p.project_id);
         const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
         if(idx>=0) _allSessions[idx].project_id=p.project_id;
         _expandProjectFolder(p.project_id);
@@ -9616,6 +9656,7 @@ function _showProjectPicker(session, anchorEl){
       try{
         await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:res.project.project_id})});
         session.project_id=res.project.project_id;
+        _setOptimisticSessionField(session.session_id,'project_id',res.project.project_id);
         _expandProjectFolder(res.project.project_id);
         await renderSessionList();
         showToast('Created "'+res.project.name+'" and moved session');
