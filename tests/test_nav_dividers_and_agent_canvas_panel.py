@@ -12,12 +12,23 @@
    is the active main-view panel) didn't exist at all, so switchPanel()'s
    `$('panel'+capitalize(name))` lookup returned null and the sidebar area
    went fully blank for that panel.
+
+3. This app has a persistent customizable tab-order feature
+   (localStorage 'hermes-webui-tab-order', applied via _applyTabOrder() on
+   every boot). It re-sequences [data-panel] buttons with insertBefore --
+   but the divider divs have no data-panel attribute, so any saved order
+   (even a stale one from before this nav rearrangement) left them
+   stranded wherever the static HTML placed them while the real buttons
+   moved elsewhere, bunching all 3 dividers right after Chat. Each divider
+   now carries data-after-panel="<tab>" and _applyTabOrder() re-anchors it
+   immediately after that tab on every call.
 """
 import pathlib
 
 REPO = pathlib.Path(__file__).parent.parent
 HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
+PANELS_JS = (REPO / "static" / "panels.js").read_text(encoding="utf-8")
 
 
 def test_rail_dividers_use_dedicated_class_not_reused_sidebar_divider():
@@ -70,3 +81,35 @@ def test_panel_agent_canvas_exists_with_header():
     block = HTML[start:end]
     assert "panel-head" in block
     assert "Agent Canvas" in block or "tab_agent_canvas" in block
+
+
+def test_dividers_carry_anchor_panel_for_reorder_survival():
+    expected_anchors = ["tasks", "skills", "workspaces"]
+    for cls in ("rail-divider", "sidebar-nav-divider"):
+        anchors = []
+        for chunk in HTML.split(f'class="{cls}"')[1:]:
+            tag = chunk[: chunk.index(">")]
+            assert 'data-after-panel="' in tag, (
+                f"every .{cls} element must carry data-after-panel, missing on: {tag}"
+            )
+            anchors.append(tag.split('data-after-panel="', 1)[1].split('"', 1)[0])
+        assert anchors == expected_anchors, (
+            f".{cls} elements must carry data-after-panel in order "
+            f"{expected_anchors}, got {anchors}"
+        )
+
+
+def test_apply_tab_order_reanchors_dividers_after_moving_buttons():
+    start = PANELS_JS.index("function _applyTabOrder(order){")
+    end = PANELS_JS.index("\nfunction _applyTabVisibility(", start)
+    body = PANELS_JS[start:end]
+    move_idx = body.index("container.insertBefore(node,anchor||null)")
+    divider_idx = body.index("container.querySelectorAll('[data-after-panel]')")
+    assert divider_idx > move_idx, (
+        "divider re-anchoring must run AFTER the button-move loop, using "
+        "each anchor tab's final post-move position"
+    )
+    assert "container.insertBefore(divider,anchorNode.nextSibling)" in body, (
+        "each divider must be re-inserted immediately after its "
+        "data-after-panel tab's current DOM position"
+    )

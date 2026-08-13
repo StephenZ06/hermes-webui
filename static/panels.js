@@ -9232,6 +9232,16 @@ function _applyTabOrder(order){
       var node=container.querySelector('.nav-tab[data-panel="'+panel+'"]');
       if(node) container.insertBefore(node,anchor||null);
     });
+    // Group dividers aren't [data-panel] tabs, so the reorder above never
+    // touches them -- they'd stay wherever the static HTML placed them
+    // while the real buttons move around them. Re-anchor each divider
+    // immediately after its data-after-panel tab's current position so it
+    // keeps separating the same group even under a saved custom order.
+    Array.prototype.forEach.call(container.querySelectorAll('[data-after-panel]'),function(divider){
+      var afterPanel=divider.dataset.afterPanel;
+      var anchorNode=container.querySelector('.nav-tab[data-panel="'+afterPanel+'"]');
+      if(anchorNode) container.insertBefore(divider,anchorNode.nextSibling);
+    });
   });
 }
 
