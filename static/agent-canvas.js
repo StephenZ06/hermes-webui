@@ -61,6 +61,10 @@
   }
 
   function _draw(){
+    if(!_container || !_container.isConnected || _container.offsetParent === null){
+      _raf = null;
+      return;
+    }
     _raf = requestAnimationFrame(_draw);
     if(!_ctx || !_canvas) return;
     const w = _canvas.width, h = _canvas.height;
