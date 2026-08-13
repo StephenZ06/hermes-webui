@@ -5660,6 +5660,20 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       scrollIfPinned();
     });
 
+    source.addEventListener('subagent_spawn',e=>{
+      if(_terminalStateReached||_streamFinalized) return;
+      if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
+      let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
+      if(window.AgentCanvas&&typeof window.AgentCanvas.onSpawn==='function') window.AgentCanvas.onSpawn(d);
+    });
+
+    source.addEventListener('subagent_complete',e=>{
+      if(_terminalStateReached||_streamFinalized) return;
+      if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
+      let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
+      if(window.AgentCanvas&&typeof window.AgentCanvas.onComplete==='function') window.AgentCanvas.onComplete(d);
+    });
+
     // Phase 2: dedicated `todo_state` event carries a full snapshot of
     // the upstream TodoStore.  We treat it as the single source of truth
     // for the Todos panel — never merge, always replace.  The handler
