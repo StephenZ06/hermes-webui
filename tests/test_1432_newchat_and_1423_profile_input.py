@@ -49,7 +49,7 @@ class TestIssue1432NewChatGuardInFlight:
         # now -- the "+" button's own onclick just opens a menu (New
         # conversation / New project folder) that calls it.
         m = re.search(
-            r"async function _createNewConversation\(\)\{(.*?)\n\}",
+            r"async function _createNewConversation\(project_id\)\{(.*?)\n\}",
             src, re.DOTALL,
         )
         assert m, "_createNewConversation handler not found in boot.js"

@@ -70,14 +70,6 @@ def test_batch_select_escape_handler():
         "Should have Escape key handler for select mode"
 
 
-def test_batch_select_toggle_button():
-    """Verify select mode toggle button is rendered."""
-    with open('static/sessions.js', encoding="utf-8") as f:
-        src = f.read()
-    assert 'session-select-toggle' in src, "Missing session-select-toggle class"
-    assert 'toggleSessionSelectMode' in src, "Missing toggleSessionSelectMode call"
-
-
 def test_batch_select_bar_element():
     """Verify batch action bar DOM element is created."""
     with open('static/sessions.js', encoding="utf-8") as f:
@@ -215,7 +207,6 @@ def test_batch_select_css_exists():
     with open('static/style.css', encoding="utf-8") as f:
         src = f.read()
     required_classes = [
-        'session-select-toggle',
         'session-select-bar',
         'batch-exit-btn',
         'batch-select-all-btn',

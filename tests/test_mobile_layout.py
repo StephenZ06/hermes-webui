@@ -837,7 +837,7 @@ def test_new_conversation_closes_mobile_sidebar():
     # The "+" button's own onclick just opens a menu (New conversation / New
     # project folder); the actual session-creation logic, including
     # closeMobileSidebar(), lives in _createNewConversation().
-    idx = boot_js.find("async function _createNewConversation(){")
+    idx = boot_js.find("async function _createNewConversation(project_id){")
     assert idx != -1, "_createNewConversation not found in static/boot.js"
     handler_block = boot_js[idx:idx+1500]
     assert "closeMobileSidebar" in handler_block, \
