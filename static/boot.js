@@ -509,6 +509,68 @@ function _installPwaSidebarSwipeGesture(){
 }
 _installPwaSidebarSwipeGesture();
 
+// ── Swipe-left-to-close (mirrors the edge swipe-right-to-open gesture
+// above) — the mobile drawer previously only closed via the top-right
+// button or tapping the backdrop. Reuses the same thresholds/dx-vs-dy
+// ratio-gating so vertical scrolling inside the open drawer (e.g. the
+// session list) still works normally. Unlike the open-gesture, this one
+// doesn't need an edge-proximity check (any touch inside the open drawer
+// qualifies) and excludes real interactive elements only, not `.sidebar`
+// itself, since a start point inside the drawer is the whole point.
+let _sidebarSwipeClose=null;
+
+function _isInteractiveSidebarCloseTarget(target){
+  try{return !!(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"]'));}
+  catch(_){return false;}
+}
+
+function _onSidebarSwipeCloseStart(e){
+  if(_isDesktopWidth())return;
+  if(_isTouchPointerEvent(e))return;
+  if(e.pointerType==='mouse'||(e.pointerType&&e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
+  const sidebar=document.querySelector('.sidebar');
+  if(!sidebar||!sidebar.classList.contains('mobile-open'))return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(!point)return;
+  if(_isInteractiveSidebarCloseTarget(e.target))return;
+  _sidebarSwipeClose={startX:point.clientX,startY:point.clientY,active:true,closed:false};
+}
+
+function _onSidebarSwipeCloseMove(e){
+  if(_isTouchPointerEvent(e))return;
+  const swipe=_sidebarSwipeClose;
+  if(!swipe||!swipe.active||swipe.closed)return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(!point)return;
+  const dx=point.clientX-swipe.startX;
+  const dy=point.clientY-swipe.startY;
+  if(dx>0||Math.abs(dy)>_PWA_SIDEBAR_SWIPE_MAX_VERTICAL*1.5){_sidebarSwipeClose=null;return;}
+  const adx=-dx;
+  if(adx>=_PWA_SIDEBAR_SWIPE_CLAIM&&adx>Math.abs(dy)*1.2){
+    if(e.cancelable)e.preventDefault();
+  }
+  if(adx>=_PWA_SIDEBAR_SWIPE_TRIGGER&&Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL&&adx>Math.abs(dy)*1.5){
+    if(e.cancelable)e.preventDefault();
+    swipe.closed=true;
+    closeMobileSidebar();
+  }
+}
+
+function _onSidebarSwipeCloseEnd(e){if(_isTouchPointerEvent(e))return;_sidebarSwipeClose=null;}
+function _onSidebarSwipeCloseCancel(e){if(_isTouchPointerEvent(e))return;_sidebarSwipeClose=null;}
+
+function _installSidebarSwipeCloseGesture(){
+  window.addEventListener('touchstart', _onSidebarSwipeCloseStart, {capture:true,passive:true});
+  window.addEventListener('touchmove', _onSidebarSwipeCloseMove, {capture:true,passive:false});
+  window.addEventListener('touchend', _onSidebarSwipeCloseEnd, {capture:true,passive:true});
+  window.addEventListener('touchcancel', _onSidebarSwipeCloseCancel, {capture:true,passive:true});
+  window.addEventListener('pointerdown', _onSidebarSwipeCloseStart, {passive:true});
+  window.addEventListener('pointermove', _onSidebarSwipeCloseMove, {passive:false});
+  window.addEventListener('pointerup', _onSidebarSwipeCloseEnd, {passive:true});
+  window.addEventListener('pointercancel', _onSidebarSwipeCloseCancel, {passive:true});
+}
+_installSidebarSwipeCloseGesture();
+
 // ── Desktop sidebar collapse toggle ────────────────────────────────────────
 // Two discoverability paths into the same state:
 //   (1) Click the already-active rail icon → collapse / expand the sidebar.
