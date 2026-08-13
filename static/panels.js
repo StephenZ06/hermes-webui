@@ -3798,28 +3798,6 @@ function _kanbanLinksHtml(links){
   </div>`;
 }
 
-async function createKanbanTask(){
-  const input = document.getElementById('kanbanNewTaskTitle');
-  const title = input ? input.value.trim() : '';
-  if (!title) {
-    // Empty inline input (or a click on the panel-head "+" via openKanbanCreate)
-    // — open the full create-task modal so the user has somewhere obvious to
-    // type and configure the task. Mirrors the cron / skills pattern of routing
-    // header "+" clicks through to a clearly-modal create surface.
-    openKanbanCreate();
-    return;
-  }
-  try {
-    const created = await api('/api/kanban/tasks' + _kanbanBoardQuery(), {
-      method: 'POST',
-      body: JSON.stringify({title}),
-    });
-    if (input) input.value = '';
-    await loadKanban(true);
-    if (created && created.task && created.task.id) await loadKanbanTask(created.task.id);
-  } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Kanban: create-task modal (panel-head "+" button entry point).
 //

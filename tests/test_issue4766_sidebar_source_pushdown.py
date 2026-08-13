@@ -488,6 +488,7 @@ global._sessionActionMenu = null;
 global.S = {{ activeProfile: 'default' }};
 global._reconcileActiveSessionIdleStateFromList = rows => rows;
 global._mergeOptimisticFirstTurnSessions = rows => rows;
+global._applyOptimisticSessionFieldOverrides = rows => rows;
 global._sessionListRenderSignature = () => '';
 global._purgeStaleInflightEntries = () => {{}};
 global._syncSessionAttentionSoundState = () => {{}};
