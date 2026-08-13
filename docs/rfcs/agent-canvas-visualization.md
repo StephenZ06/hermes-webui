@@ -1,17 +1,18 @@
 # Agent Canvas: Live Subagent Workflow Visualization
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Author:** hermes-webui local
 - **Created:** 2026-08-13
 
 ## Problem
 
 Hermes already splits work across parallel subagents via `delegate_task`
-(`tools/delegate_tool.py`), but that activity is invisible to the user.
-The in-memory `_active_subagents` registry lives inside the `hermes` agent
-container's process memory with no reachable endpoint — there is no way to
-see, at a glance, which subagents are running, what spawned them, or how
-they're progressing.
+(`tools/delegate_tool.py`, in the sibling hermes-agent runtime — see
+Proposal below), but that activity is invisible to the user. The subagent
+lifecycle events it emits are relayed up to hermes-webui's `on_tool`
+callback (`api/streaming.py:8655`) but hit no matching branch there today
+and are silently dropped — there is no way to see, at a glance, which
+subagents are running, what spawned them, or how they're progressing.
 
 The existing Kanban "Office View" (`static/panels.js:2626-2777`) is the
 closest thing today, but it only visualizes Kanban-dispatched workers
@@ -36,28 +37,54 @@ closest thing today, but it only visualizes Kanban-dispatched workers
 
 ## Proposal
 
-### Backend: SSE event feed
+### Backend: relay existing subagent lifecycle events
 
-Add lifecycle hooks around `_active_subagents` in `tools/delegate_tool.py`
-that emit `agent_tree_event` messages on the existing SSE channel used by
-other WebUI event streams (see `docs/rfcs/session-sse-contract-v1.md` for
-the established contract pattern this should follow):
+Corrected after investigation (2026-08-13): `delegate_tool.py` is not part
+of this repo — it lives in the sibling hermes-agent runtime
+(`~/hermes-core-custom/tools/delegate_tool.py`, deployed at
+`~/.hermes/hermes-agent/`). But that runtime is imported and run
+**in-process** inside hermes-webui (`api/streaming.py` constructs
+`AIAgent` directly in a background thread), not over any IPC boundary —
+so this is still a single-repo (hermes-webui) change.
 
-- `spawn` — `{id, parent_id, agent_type, name}`
-- `status_change` — `{id, status}` (running / tool-call / done / error)
-- `complete` — `{id}`
+Better still: the events already exist and already cross into
+hermes-webui today. `delegate_tool.py`'s child-progress callback already
+emits `"subagent.start"` (on spawn, with `subagent_id`, `parent_id`,
+`depth`, `model`, `toolsets`, `child_session_id`, `goal`) and
+`"subagent.complete"` (on finish, with `status` — `ok`/`error`/`timeout`/
+`interrupted`/`failed`/`completed`, `duration_seconds`, `summary`,
+token/cost counts) via `parent_agent.tool_progress_callback`, which *is*
+`on_tool` in `api/streaming.py:8655`. They just hit no matching branch in
+`on_tool` today and are silently dropped.
 
-Events are tagged with the session id so the frontend can scope a canvas
-to the active session. No persistence layer — this is a live stream only,
-matching the "live only" scope decision.
+The fix is two new branches in `on_tool`, alongside the existing
+`'tool.started'`/`'tool.completed'` branches, each calling `put()` (the
+same helper that already pushes `'tool'`/`'tool_complete'` into
+`STREAMS[stream_id]`, which the browser already reads via
+`api/chat/stream`):
+
+- `'subagent.start'` → `put('subagent_spawn', {...})`
+- `'subagent.complete'` → `put('subagent_complete', {...})`
+
+No new SSE endpoint, no new contract, no journaling — this rides the
+same `api/chat/stream` connection the browser already has open for the
+active turn, matching the "live only" scope decision. (No `status_change`
+event exists upstream today — only spawn and terminal complete. A future
+richer node-detail tier could also relay `"subagent.tool"`/
+`"subagent.progress"`, which are emitted but currently unused here too.)
 
 ### Frontend: new `AgentCanvas` panel
 
 - `static/vendor/d3-force/` — vendor the physics-only d3-force build
   (~20KB), following the existing single-purpose-vendored-lib pattern
   used for `static/vendor/katex` and `static/vendor/js-yaml`.
-- `static/agent-canvas.js` — subscribes to the SSE feed, maintains
-  node/edge state, drives a Canvas2D render loop:
+- `static/agent-canvas.js` — defines a `window.AgentCanvas` hook object
+  (`onSpawn`/`onComplete`) that `static/messages.js`'s existing `_wireSSE`
+  calls into from two new `source.addEventListener('subagent_spawn'|
+  'subagent_complete', ...)` listeners (added next to the existing
+  `'tool'`/`'tool_complete'` listeners at `messages.js:5589`/`5625`) —
+  no separate `EventSource` of its own. Maintains node/edge state, drives
+  a Canvas2D render loop:
   - Force-directed layout via d3-force ticks (physics only; rendering is
     custom, not d3's SVG/DOM binding).
   - Node glow/color keyed to status.
@@ -78,26 +105,27 @@ matching the "live only" scope decision.
 
 ## Testing
 
-- Backend: unit tests in the style of `tests/test_kanban_office_view.py`,
-  asserting `agent_tree_event` emission and shape on spawn / status_change
-  / complete / error paths in `delegate_tool.py`.
+- Backend: `on_tool` in `api/streaming.py` is a closure nested inside a
+  large function and isn't unit-testable in isolation (no harness
+  constructs it standalone) — same situation as `on_reasoning`. Follow
+  the established precedent in
+  `tests/test_issue4729_reasoning_sse_coalesce.py`: source-structure
+  assertions that extract the closure body by text-slicing
+  `api/streaming.py` and assert it contains the expected `put(...)` calls
+  for `'subagent.start'`/`'subagent.complete'`.
 - Frontend: manual browser verification (canvas rendering, animation, and
   live update behavior are not practically unit-testable); no automated
   test planned for the Canvas2D render loop itself.
 
 ## Open questions
 
-- Exact SSE channel/endpoint to extend: reuse
-  `GET /api/sessions/{session_id}/events` (per
-  `session-sse-contract-v1.md`) with a new event type, or a dedicated
-  endpoint? Needs a decision against that RFC's current status before
-  implementation starts.
 - Multi-session concurrency: if multiple sessions each spawn subagents
   simultaneously, does the panel scope to the currently-viewed session
-  only, or offer a session picker?
+  only, or offer a session picker? (v1: current-session-only, since
+  `on_tool`/`STREAMS` are already per-`stream_id`.)
 
 ## Rollout plan
 
-Not scheduled. This RFC documents a design direction captured during
-brainstorming, for future implementation pickup — no PR planned until
-prioritized.
+Implementation starting now (2026-08-13) — see
+`docs/superpowers/plans/2026-08-13-agent-canvas.md` for the task
+breakdown.
