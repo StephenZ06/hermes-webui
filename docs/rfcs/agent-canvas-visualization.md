@@ -63,8 +63,14 @@ same helper that already pushes `'tool'`/`'tool_complete'` into
 `STREAMS[stream_id]`, which the browser already reads via
 `api/chat/stream`):
 
-- `'subagent.start'` → `put('subagent_spawn', {...})`
-- `'subagent.complete'` → `put('subagent_complete', {...})`
+- `'subagent.start'` → `put('subagent_spawn', {subagent_id, parent_id, depth, goal, model})`
+- `'subagent.complete'` → `put('subagent_complete', {subagent_id, status})`
+
+The upstream `"subagent.complete"` event carries more than this (`duration_seconds`,
+`summary`, token/cost counts) but the v1 relay deliberately forwards only
+`subagent_id` and `status` — per the "identity + status only" non-goal above,
+confirmed after a task review caught an earlier draft leaking
+`duration_seconds`/`summary` into the emitted event (2026-08-13).
 
 No new SSE endpoint, no new contract, no journaling — this rides the
 same `api/chat/stream` connection the browser already has open for the
