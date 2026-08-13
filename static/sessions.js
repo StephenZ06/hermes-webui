@@ -1506,6 +1506,11 @@ async function newSession(flash, options={}){
       _clearEmptyComposerModelOverride();
     }
     S.session=data.session;if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(data.session);S.messages=data.session.messages||[];
+    // Same reasoning as _clearPendingSelections above: this path bypasses
+    // loadSession() entirely, so it needs its own explicit Agent Canvas
+    // reset rather than relying on loadSession()'s cross-session-switch
+    // branch (#agent-canvas final review, item 3).
+    if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
     S._pendingSessionToolsets=null;
     if(_sessionSourceFilter==='cli') _sessionSourceFilter='webui';
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
@@ -1842,6 +1847,13 @@ async function loadSession(sid){
     // pump token events into an orphaned closure, freezing the main thread.
     if (currentSid && currentSid !== sid && typeof closeOtherLiveStreams === 'function') {
       closeOtherLiveStreams(sid);
+    }
+    // Agent Canvas nodes are keyed per-page, not per-session — a subagent
+    // still 'running' in the session we're leaving would otherwise pulse
+    // forever since its completion event gets filtered out once this
+    // session is no longer active (#agent-canvas final review, item 3).
+    if (currentSid && currentSid !== sid && window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') {
+      window.AgentCanvas.reset();
     }
     _loadingOlder = false;
     const _msgInner = $('msgInner');
@@ -4370,6 +4382,10 @@ function _renderBatchActionBar(){
       ids.forEach(_clearHandoffStorageForSession);
       if(S.session&&ids.includes(S.session.session_id)){
         S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('hermes-webui-session');
+        // Deleting the active session leaves it (and any still-running
+        // subagents) behind without going through loadSession(), so reset
+        // Agent Canvas explicitly here too (#agent-canvas final review, item 3).
+        if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
         if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
         const remaining=await api('/api/sessions'+_sessionListQueryString());
@@ -9316,6 +9332,10 @@ async function deleteSession(sid, beforeDelete=null){
   }
   if(S.session&&S.session.session_id===sid){
     S.session=null;S.messages=[];S.entries=[];
+    // Deleting the active session leaves it (and any still-running
+    // subagents) behind without going through loadSession(), so reset
+    // Agent Canvas explicitly here too (#agent-canvas final review, item 3).
+    if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
     if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     localStorage.removeItem('hermes-webui-session');
