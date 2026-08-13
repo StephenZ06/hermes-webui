@@ -6221,8 +6221,9 @@ function _setAgentDefHeaderButtons(mode, def) {
     const isApplied = !!(def && S.session && S.session.agent_definition_id === def.id);
     if (isApplied) { hide(applyBtn); show(clearBtn); } else { show(applyBtn); hide(clearBtn); }
     show(dupBtn);
-    if (def && def.builtin) { hide(editBtn); hide(delBtn); }
-    else { show(editBtn); show(delBtn); }
+    show(delBtn);
+    if (def && def.builtin) { hide(editBtn); }
+    else { show(editBtn); }
     hide(cancelBtn); hide(saveBtn);
   } else if (mode === 'create' || mode === 'edit') {
     if (header) header.style.display = 'flex';
@@ -6563,7 +6564,7 @@ document.addEventListener('click', (e) => {
 }, {capture:false});
 
 async function deleteAgentDef() {
-  if (!_currentAgentDefDetail || _currentAgentDefDetail.builtin) return;
+  if (!_currentAgentDefDetail) return;
   const name = _currentAgentDefDetail.name;
   const message = t('agent_def_delete_confirm') ? t('agent_def_delete_confirm').replace('{0}', name) : `Delete persona "${name}"?`;
   const ok = await showConfirmDialog({
