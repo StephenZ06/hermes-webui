@@ -31,6 +31,15 @@ RUN apt-get update -y --fix-missing --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js — required by hermes-agent's TUI and browser-automation tool
+# (hermes_cli/dep_ensure.py). Without it, ensure_dependency("browser") can
+# never actually succeed, so every `hermes chat` session re-asks to install
+# the browser engine instead of installing it once and persisting.
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Optional GPU user-space acceleration libraries for users who pass through
 # host GPU devices. The default image remains CPU-only.
 ARG INSTALL_GPU_LIBS=0
