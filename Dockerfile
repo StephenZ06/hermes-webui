@@ -74,6 +74,14 @@ assert c.execute('PRAGMA secure_delete').fetchone()[0] == 1, \
 c.execute('CREATE VIRTUAL TABLE _fts5_build_check USING fts5(x)'); \
 c.execute('DROP TABLE _fts5_build_check'); \
 c.close()"
+# Node.js — required by hermes-agent's TUI and browser-automation tool
+# (hermes_cli/dep_ensure.py). Without it, ensure_dependency("browser") can
+# never actually succeed, so every `hermes chat` session re-asks to install
+# the browser engine instead of installing it once and persisting.
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Optional GPU user-space acceleration libraries for users who pass through
 # host GPU devices. The default image remains CPU-only.
