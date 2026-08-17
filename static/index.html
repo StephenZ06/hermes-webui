@@ -513,6 +513,19 @@
       </div>
     </div>
     <div id="mainChat" class="main-view">
+    <div id="hermesCliPanel" class="hermes-cli-panel" hidden>
+      <div class="hermes-cli-header">
+        <div class="hermes-cli-title" data-i18n="hermes_cli_title">Hermes CLI</div>
+        <div class="hermes-cli-actions">
+          <button type="button" class="hermes-cli-action" id="btnHermesCliClear" onclick="clearHermesCliTerminal()" data-i18n="terminal_clear">Clear</button>
+          <button type="button" class="hermes-cli-action" id="btnHermesCliRestart" onclick="restartHermesCliTerminal()" data-i18n="terminal_restart">Restart</button>
+          <button type="button" class="hermes-cli-action" id="btnHermesCliClose" onclick="closeHermesCliPanel()" data-i18n="terminal_close">Close</button>
+        </div>
+      </div>
+      <div class="hermes-cli-viewport" id="hermesCliViewport" onclick="focusHermesCliInput()">
+        <div class="hermes-cli-surface" id="hermesCliSurface" aria-label="Hermes CLI terminal"></div>
+      </div>
+    </div>
     <div class="messages-shell">
       <button id="jumpToSessionStartBtn" class="session-jump-btn session-jump-btn--start" aria-label="Jump to beginning of session" data-i18n-aria-label="session_jump_start_label" data-i18n-title="session_jump_start_label" onclick="jumpToSessionStart()" style="display:none"><span aria-hidden="true">↑</span><span data-i18n="session_jump_start">Start</span></button>
       <button id="scrollToBottomBtn" class="scroll-to-bottom-btn" style="display:none" onclick="scrollToBottom()" aria-label="Scroll to bottom" data-i18n-aria-label="session_jump_end_label" data-i18n-title="session_jump_end_label"><span aria-hidden="true">↓</span><span class="session-jump-btn__text" data-i18n="session_jump_end">End</span></button>
@@ -1954,6 +1967,7 @@
 <script src="static/select-theme.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/workspace.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/terminal.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/hermes-cli-terminal.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/sessions.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/commands.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
