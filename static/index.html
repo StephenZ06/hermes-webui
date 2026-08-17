@@ -231,9 +231,12 @@
       <div class="sidebar-divider" aria-hidden="true"></div>
       <div class="session-list" id="sessionList"></div>
       <div class="hermes-cli-card">
-        <div class="hermes-cli-card-label" data-i18n="hermes_cli_title">Hermes CLI</div>
+        <div class="hermes-cli-card-label">
+          <span data-i18n="hermes_cli_title">Hermes CLI</span>
+          <span class="hermes-cli-status" id="hermesCliStatus" hidden>&bull; running</span>
+        </div>
         <button type="button" class="hermes-cli-interact-btn" id="hermesCliInteractBtn" onclick="handleHermesCliInteractClick()">
-          <span class="hermes-cli-interact-label" data-i18n="hermes_cli_interact">Interact</span>
+          <span class="hermes-cli-interact-label" id="hermesCliInteractLabel" data-i18n="hermes_cli_initialize">Initialize</span>
           <div class="hermes-cli-progress" aria-hidden="true">
             <span class="hermes-cli-progress-seg"></span>
             <span class="hermes-cli-progress-seg"></span>

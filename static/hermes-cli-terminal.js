@@ -26,7 +26,7 @@ function _ensureHermesCliXterm(){
   }
   const term=new window.Terminal({
     cursorBlink:true,
-    fontSize:13,
+    fontSize:12,
     fontFamily:'Menlo, Monaco, Consolas, "Liberation Mono", monospace',
     scrollback:2000,
     convertEol:false,
@@ -87,7 +87,7 @@ async function _resizeHermesCliTerminal(){
 
 function _connectHermesCliOutput(){
   const sid=HERMES_CLI_UI.sessionId;
-  if(!sid)return;
+  if(!sid)return Promise.resolve();
   if(HERMES_CLI_UI.source){
     try{if(HERMES_CLI_UI.source.readyState!==2)HERMES_CLI_UI.source.close();}catch(_){}
     HERMES_CLI_UI.source=null;
@@ -96,34 +96,55 @@ function _connectHermesCliOutput(){
   url.searchParams.set('session_id',sid);
   const source=new EventSource(url.href,{withCredentials:true});
   HERMES_CLI_UI.source=source;
-  source.addEventListener('output',ev=>{
-    if(HERMES_CLI_UI.source!==source)return;
-    let text='';
-    try{text=(JSON.parse(ev.data)||{}).text||'';}
-    catch(_){text=ev.data||'';}
-    if(HERMES_CLI_UI.term&&text)HERMES_CLI_UI.term.write(text);
-  });
-  source.addEventListener('terminal_closed',()=>{
-    if(HERMES_CLI_UI.source!==source)return;
-    if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli closed]\r\n');
-    try{if(source&&source.readyState!==2)source.close();}catch(_){}
-    HERMES_CLI_UI.source=null;
-  });
-  source.addEventListener('terminal_error',ev=>{
-    if(HERMES_CLI_UI.source!==source)return;
-    let msg=t('terminal_error');
-    try{msg=(JSON.parse(ev.data)||{}).error||msg;}catch(_){}
-    if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli error] '+msg+'\r\n');
-    try{if(source&&source.readyState!==2)source.close();}catch(_){}
-    HERMES_CLI_UI.source=null;
-  });
-  source.addEventListener('error',()=>{
-    if(HERMES_CLI_UI.source!==source)return;
-    if(source.readyState===EventSource.CLOSED){
-      if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli disconnected]\r\n');
-      try{source.close();}catch(_){}
+  // The loading indicator should track REAL readiness (first byte the CLI
+  // actually prints), not just the /api/terminal/start round-trip — the
+  // process is spawned async server-side and the HTTP response returns
+  // before hermes has produced any output, so resolving on that alone made
+  // the progress bar flash for a single frame. Resolve on first output (or
+  // an error/close), with a generous fallback so a stuck spawn doesn't wedge
+  // the button forever.
+  return new Promise(resolve=>{
+    let settled=false;
+    const settle=()=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(fallbackTimer);
+      resolve();
+    };
+    const fallbackTimer=setTimeout(settle,6000);
+    source.addEventListener('output',ev=>{
+      if(HERMES_CLI_UI.source!==source)return;
+      let text='';
+      try{text=(JSON.parse(ev.data)||{}).text||'';}
+      catch(_){text=ev.data||'';}
+      if(HERMES_CLI_UI.term&&text)HERMES_CLI_UI.term.write(text);
+      settle();
+    });
+    source.addEventListener('terminal_closed',()=>{
+      if(HERMES_CLI_UI.source!==source)return;
+      if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli closed]\r\n');
+      try{if(source&&source.readyState!==2)source.close();}catch(_){}
       HERMES_CLI_UI.source=null;
-    }
+      settle();
+    });
+    source.addEventListener('terminal_error',ev=>{
+      if(HERMES_CLI_UI.source!==source)return;
+      let msg=t('terminal_error');
+      try{msg=(JSON.parse(ev.data)||{}).error||msg;}catch(_){}
+      if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli error] '+msg+'\r\n');
+      try{if(source&&source.readyState!==2)source.close();}catch(_){}
+      HERMES_CLI_UI.source=null;
+      settle();
+    });
+    source.addEventListener('error',()=>{
+      if(HERMES_CLI_UI.source!==source)return;
+      if(source.readyState===EventSource.CLOSED){
+        if(HERMES_CLI_UI.term)HERMES_CLI_UI.term.writeln('\r\n[hermes cli disconnected]\r\n');
+        try{source.close();}catch(_){}
+        HERMES_CLI_UI.source=null;
+      }
+      settle();
+    });
   });
 }
 
@@ -144,8 +165,8 @@ async function _startHermesCliTerminal(restart=false){
     return;
   }
   HERMES_CLI_UI.sessionId=resp&&resp.session_id||null;
-  _connectHermesCliOutput();
   _fitHermesCliTerminal();
+  await _connectHermesCliOutput();
 }
 
 async function openHermesCliTerminal(){
@@ -168,11 +189,16 @@ async function openHermesCliTerminal(){
     focusHermesCliInput();
   });
   await _startHermesCliTerminal(false);
+  // Flip the sidebar button to its "running" (red, Close) state only once the
+  // CLI has actually produced output — not at click time — so it doesn't
+  // turn red while the progress bar is still spinning.
+  _syncHermesCliButtonState();
 }
 
-function closeHermesCliPanel(){
+async function closeHermesCliPanel(){
   const {panel}=_hermesCliEls();
   const mainChat=$('mainChat');
+  const sid=HERMES_CLI_UI.sessionId;
   if(HERMES_CLI_UI.source){
     try{if(HERMES_CLI_UI.source.readyState!==2)HERMES_CLI_UI.source.close();}catch(_){}
     HERMES_CLI_UI.source=null;
@@ -180,11 +206,25 @@ function closeHermesCliPanel(){
   if(mainChat)mainChat.classList.remove('hermes-cli-active');
   if(panel)panel.hidden=true;
   HERMES_CLI_UI.open=false;
+  HERMES_CLI_UI.sessionId=null;
+  _syncHermesCliButtonState();
+  if(sid){
+    try{await api('/api/terminal/close',{method:'POST',body:JSON.stringify({session_id:sid})});}catch(_){}
+  }
+}
+
+function _syncHermesCliButtonState(){
+  const btn=$('hermesCliInteractBtn');
+  const label=$('hermesCliInteractLabel');
+  const status=$('hermesCliStatus');
+  if(btn)btn.classList.toggle('running',HERMES_CLI_UI.open);
+  if(label)label.textContent=HERMES_CLI_UI.open?'Close':'Initialize';
+  if(status)status.hidden=!HERMES_CLI_UI.open;
 }
 
 async function handleHermesCliInteractClick(){
   if(HERMES_CLI_UI.open){
-    focusHermesCliInput();
+    await closeHermesCliPanel();
     return;
   }
   const btn=$('hermesCliInteractBtn');
