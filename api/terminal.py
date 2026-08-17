@@ -533,7 +533,14 @@ def _ensure_terminal_reaper() -> None:
         _terminal_reaper_started = True
 
 
-def start_terminal(session_id: str, workspace: Path, rows: int = 24, cols: int = 80, restart: bool = False) -> TerminalSession:
+def start_terminal(
+    session_id: str,
+    workspace: Path,
+    rows: int = 24,
+    cols: int = 80,
+    restart: bool = False,
+    argv: list[str] | None = None,
+) -> TerminalSession:
     """Start or return the embedded terminal for a WebUI session."""
     if not _TERMINAL_SUPPORTED:
         raise NotImplementedError("Embedded terminal is not supported on Windows")
@@ -578,11 +585,12 @@ def start_terminal(session_id: str, workspace: Path, rows: int = 24, cols: int =
             }
         )
         shell = _shell_path()
+        spawn_argv = list(argv) if argv else _shell_argv(shell)
         # Keep the shell in its own process group for explicit cleanup via
         # close_terminal()/close_all_terminals(); do not use PDEATHSIG here.
         request = _SpawnRequest(
             {
-                "args": _shell_argv(shell),
+                "args": spawn_argv,
                 "cwd": cwd,
                 "env": env,
                 "stdin": slave_fd,

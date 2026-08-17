@@ -19385,11 +19385,23 @@ def _terminal_remote_backend_enabled() -> bool:
     return _is_remote_terminal_backend(terminal_cfg)
 
 
+# Fixed, server-side pseudo session_id for the standalone "Hermes CLI" terminal
+# (sidebar tab -> live `hermes chat` process). Not a real chat session, so it
+# never collides with a chat's session_id (those are UUIDs); input/resize/
+# close/output all key off this same opaque id via the in-memory _TERMINALS
+# registry, which never validates session_id against the chat session store.
+_HERMES_CLI_TERMINAL_SESSION_ID = "__hermes_cli__"
+
+
 def _handle_terminal_start(handler, body):
     try:
         if not _embedded_terminal_gate_allows(handler):
             return bad(handler, _EMBEDDED_TERMINAL_GATE_DENIED_MESSAGE, 403)
-        sid, session = _terminal_session_lookup(body)
+        if body.get("hermes_cli"):
+            sid = _HERMES_CLI_TERMINAL_SESSION_ID
+            session = None
+        else:
+            sid, session = _terminal_session_lookup(body)
         if _terminal_remote_backend_enabled():
             return j(
                 handler,
@@ -19399,7 +19411,13 @@ def _handle_terminal_start(handler, body):
                 },
                 status=400,
             )
-        workspace = resolve_trusted_workspace(getattr(session, "workspace", "") or "")
+        if session is None:
+            workspace = Path.home()
+            from api.gateway_restart import _resolve_hermes_command
+            argv = [_resolve_hermes_command(), "chat"]
+        else:
+            workspace = resolve_trusted_workspace(getattr(session, "workspace", "") or "")
+            argv = None
         from api.terminal import start_terminal
         term = start_terminal(
             sid,
@@ -19407,6 +19425,7 @@ def _handle_terminal_start(handler, body):
             rows=int(body.get("rows") or 24),
             cols=int(body.get("cols") or 80),
             restart=bool(body.get("restart")),
+            argv=argv,
         )
         return j(
             handler,

@@ -2577,7 +2577,7 @@ function _isCliSession(session) {
 
 function _sessionSourceLabel(filter, count) {
   const n = Number(count) || 0;
-  return filter === 'cli' ? `CLI sessions (${n})` : `WebUI sessions (${n})`;
+  return filter === 'cli' ? `Hermes CLI (${n})` : `WebUI sessions (${n})`;
 }
 
 function _clearSessionSourceTabCounts() {
@@ -7876,12 +7876,13 @@ function renderSessionListFromCache(){
     sourceTabs.className='session-source-tabs';
     for(const filter of ['webui','cli']){
       const count=filter==='cli'?cliSessionTabCount:webuiSessionTabCount;
+      const isActive=filter==='cli'?(typeof HERMES_CLI_UI!=='undefined'&&HERMES_CLI_UI.open):_sessionSourceFilter===filter;
       const btn=document.createElement('button');
       btn.type='button';
-      btn.className='session-source-tab'+(_sessionSourceFilter===filter?' active':'');
+      btn.className='session-source-tab'+(isActive?' active':'');
       btn.textContent=_sessionSourceLabel(filter,count);
-      btn.setAttribute('aria-pressed', _sessionSourceFilter===filter?'true':'false');
-      btn.onclick=()=>_setSessionSourceFilter(filter);
+      btn.setAttribute('aria-pressed', isActive?'true':'false');
+      btn.onclick=filter==='cli'?()=>openHermesCliTerminal():()=>_setSessionSourceFilter(filter);
       sourceTabs.appendChild(btn);
     }
     list.appendChild(sourceTabs);
@@ -8106,7 +8107,7 @@ function renderSessionListFromCache(){
   if(_sessionSourceFilter==='cli'&&sessions.length===0){
     const empty=document.createElement('div');
     empty.className='session-empty-note';
-    empty.textContent=window._showCliSessions?'No CLI sessions found.':'Enable Show agent sessions in Settings to list CLI sessions here.';
+    empty.textContent=window._showCliSessions?'No Hermes CLI sessions found.':'Enable Show agent sessions in Settings to list Hermes CLI sessions here.';
     list.appendChild(empty);
   } else if(_activeProject&&sessions.length===0){
     const empty=document.createElement('div');
@@ -8308,7 +8309,7 @@ function renderSessionListFromCache(){
     }
     if(s.is_cli_session||_isMessagingSession(s)){
       el.classList.add('cli-session');
-      el.dataset.source=_getChannelLabel(s)||'CLI';
+      el.dataset.source=_getChannelLabel(s)||'Hermes CLI';
       el.dataset.sourceKey=_sourceKeyForSession(s)||'cli';
     }
     if(readOnly) el.classList.add('read-only-session');
@@ -8437,7 +8438,7 @@ function renderSessionListFromCache(){
       titleRow.appendChild(childCountEl);
     }
     if(s.is_cli_session||_isMessagingSession(s)){
-      const chipLabel=_getChannelLabel(s)||'CLI';
+      const chipLabel=_getChannelLabel(s)||'Hermes CLI';
       const chip=document.createElement('span');
       chip.className='session-source-chip';
       chip.textContent=chipLabel;
