@@ -6,14 +6,15 @@ SESSIONS_JS = ROOT / "static" / "sessions.js"
 STYLE_CSS = ROOT / "static" / "style.css"
 
 
-def test_sidebar_has_separate_webui_and_cli_session_source_tabs():
+def test_sidebar_keeps_cli_rows_excluded_via_source_filter():
+    """The WebUI/CLI sidebar tab bar was replaced by the "Hermes CLI" footer
+    card (live terminal launcher, not a session-list filter) — but the
+    underlying _sessionSourceFilter partitioning that keeps CLI-tagged rows
+    out of the default WebUI list must still exist and still default to
+    'webui' (never flips now that nothing sets it to 'cli')."""
     src = SESSIONS_JS.read_text(encoding="utf-8")
     assert "let _sessionSourceFilter = 'webui'" in src
     assert "hermes-session-source-filter" in src
-    assert "session-source-tabs" in src
-    assert "WebUI sessions" in src
-    assert "CLI sessions" in src
-    assert "_sessionSourceFilter==='cli'" in src
 
 
 def test_cli_filter_keeps_cli_rows_out_of_default_webui_list():
@@ -29,10 +30,8 @@ def test_cli_filter_keeps_cli_rows_out_of_default_webui_list():
     assert "sessionsRaw: showCliOnly ? cliSessionsRaw : webuiSessionsRaw," in src
 
 
-def test_session_source_tabs_have_dedicated_sidebar_styles():
+def test_session_empty_note_style_still_present():
     css = STYLE_CSS.read_text(encoding="utf-8")
-    assert ".session-source-tabs" in css
-    assert ".session-source-tab.active" in css
     assert ".session-empty-note" in css
 
 

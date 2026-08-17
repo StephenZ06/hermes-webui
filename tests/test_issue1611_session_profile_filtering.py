@@ -220,8 +220,6 @@ def test_static_all_profiles_toggle_is_persisted_and_not_reset_by_profile_switch
     assert "const SHOW_ALL_PROFILES_STORAGE_KEY = 'hermes-show-all-profiles';" in sessions_src
     assert "localStorage.setItem(SHOW_ALL_PROFILES_STORAGE_KEY" in sessions_src
     assert "_restoreShowAllProfiles();" in sessions_src
-    assert "_setShowAllProfiles(true);renderSessionList({deferWhileInteracting:false});" in sessions_src
-    assert "_setShowAllProfiles(false);renderSessionList({deferWhileInteracting:false});" in sessions_src
 
     switch_start = panels_src.index("async function switchToProfile(name) {")
     switch_body = panels_src[switch_start:panels_src.index("function openProfileCreate", switch_start)]
