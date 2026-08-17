@@ -159,7 +159,6 @@ async function openHermesCliTerminal(){
   if(mainChat)mainChat.classList.add('hermes-cli-active');
   panel.hidden=false;
   HERMES_CLI_UI.open=true;
-  if(typeof renderSessionListFromCache==='function')renderSessionListFromCache();
   if(!HERMES_CLI_UI.resizeObserver&&window.ResizeObserver){
     HERMES_CLI_UI.resizeObserver=new ResizeObserver(()=>_fitHermesCliTerminal());
     HERMES_CLI_UI.resizeObserver.observe(panel);
@@ -181,7 +180,20 @@ function closeHermesCliPanel(){
   if(mainChat)mainChat.classList.remove('hermes-cli-active');
   if(panel)panel.hidden=true;
   HERMES_CLI_UI.open=false;
-  if(typeof renderSessionListFromCache==='function')renderSessionListFromCache();
+}
+
+async function handleHermesCliInteractClick(){
+  if(HERMES_CLI_UI.open){
+    focusHermesCliInput();
+    return;
+  }
+  const btn=$('hermesCliInteractBtn');
+  if(btn){btn.classList.add('loading');btn.disabled=true;}
+  try{
+    await openHermesCliTerminal();
+  }finally{
+    if(btn){btn.classList.remove('loading');btn.disabled=false;}
+  }
 }
 
 function focusHermesCliInput(){

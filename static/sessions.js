@@ -2540,11 +2540,6 @@ function _isCliSession(session) {
   return session.is_cli_session === true;
 }
 
-function _sessionSourceLabel(filter, count) {
-  const n = Number(count) || 0;
-  return filter === 'cli' ? `Hermes CLI (${n})` : `WebUI sessions (${n})`;
-}
-
 function _clearSessionSourceTabCounts() {
   _serverWebuiSessionCount = null;
   _serverCliSessionCount = null;
@@ -7743,22 +7738,6 @@ function renderSessionListFromCache(){
     const note=_renderSessionListLoadErrorNote();
     if(note) list.appendChild(note);
   }
-  if(window._showCliSessions || cliSessionCount>0){
-    const sourceTabs=document.createElement('div');
-    sourceTabs.className='session-source-tabs';
-    for(const filter of ['webui','cli']){
-      const count=filter==='cli'?cliSessionTabCount:webuiSessionTabCount;
-      const isActive=filter==='cli'?(typeof HERMES_CLI_UI!=='undefined'&&HERMES_CLI_UI.open):_sessionSourceFilter===filter;
-      const btn=document.createElement('button');
-      btn.type='button';
-      btn.className='session-source-tab'+(isActive?' active':'');
-      btn.textContent=_sessionSourceLabel(filter,count);
-      btn.setAttribute('aria-pressed', isActive?'true':'false');
-      btn.onclick=filter==='cli'?()=>openHermesCliTerminal():()=>_setSessionSourceFilter(filter);
-      sourceTabs.appendChild(btn);
-    }
-    list.appendChild(sourceTabs);
-  }
   // Collapsed/expanded state per project, persisted the same way the
   // date-group sections do it (JSON blob in localStorage, re-read/re-saved
   // on every render) so re-rendering the sidebar doesn't collapse whatever
@@ -7943,25 +7922,6 @@ function renderSessionListFromCache(){
     }
     list.appendChild(bar);
   }
-  // Profile filter toggle (show sessions from other profiles).
-  // Cross-profile rows live SERVER-SIDE behind ?all_profiles=1, so the toggle
-  // must trigger a refetch — there's no client-cached aggregate to slice through.
-  // The server is authoritative for the count (renamed-root cross-alias is
-  // server-side). A naive strict-equality client fallback would mis-count.
-  const otherProfileCount = _otherProfileCount;
-  if(otherProfileCount>0&&!_showAllProfiles){
-    const pfToggle=document.createElement('div');
-    pfToggle.style.cssText='font-size:10px;padding:4px 10px;color:var(--muted);cursor:pointer;text-align:center;opacity:.7;';
-    pfToggle.textContent='Show '+otherProfileCount+' from other profiles';
-    pfToggle.onclick=()=>{_setShowAllProfiles(true);renderSessionList({deferWhileInteracting:false});};
-    list.appendChild(pfToggle);
-  } else if(_showAllProfiles){
-    const pfToggle=document.createElement('div');
-    pfToggle.style.cssText='font-size:10px;padding:4px 10px;color:var(--muted);cursor:pointer;text-align:center;opacity:.7;';
-    pfToggle.textContent='Show active profile only';
-    pfToggle.onclick=()=>{_setShowAllProfiles(false);renderSessionList({deferWhileInteracting:false});};
-    list.appendChild(pfToggle);
-  }
   // Show/hide archived toggle if there are archived sessions. Archived rows
   // are fetched on demand so large histories do not bloat every sidebar poll.
   if(archivedCount>0||_showArchived){
@@ -7976,12 +7936,7 @@ function renderSessionListFromCache(){
     list.appendChild(toggle);
   }
   // Empty state for active project filter
-  if(_sessionSourceFilter==='cli'&&sessions.length===0){
-    const empty=document.createElement('div');
-    empty.className='session-empty-note';
-    empty.textContent=window._showCliSessions?'No Hermes CLI sessions found.':'Enable Show agent sessions in Settings to list Hermes CLI sessions here.';
-    list.appendChild(empty);
-  } else if(_activeProject&&sessions.length===0){
+  if(_activeProject&&sessions.length===0){
     const empty=document.createElement('div');
     empty.className='session-empty-note';
     empty.textContent=_activeProject===NO_PROJECT_FILTER?'No unassigned sessions.':'No sessions in this project yet.';
