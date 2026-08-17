@@ -58,6 +58,19 @@ function _isTerminalCloseCommand(value){
   return ['exit','quit','logout','close'].includes(String(value||'').trim().toLowerCase());
 }
 
+// xterm.js auto-answers OSC 10/11/12 (fg/bg/cursor color) queries some CLI
+// apps send to detect a dark/light terminal theme. The answer round-trips
+// through our backend (browser -> /api/terminal/input -> pty), adding real
+// network latency a local terminal never has; if the app's own read timeout
+// for that query is short, the answer arrives too late to be consumed as
+// the reply and instead gets echoed into whatever prompt is now active,
+// showing up as literal `\x1b]11;rgb:.../...\x1b\` garbage. Since a late
+// reply is useless to the app anyway, drop it before it ever reaches the pty.
+const TERMINAL_OSC_COLOR_REPLY_RE=/^\x1b\](?:10|11|12);rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}(?:\x1b\\|\x07)$/;
+function _isTerminalOscColorReply(data){
+  return TERMINAL_OSC_COLOR_REPLY_RE.test(data);
+}
+
 function _trackTerminalInput(data){
   if(data==='\r'||data==='\n'){
     const command=TERMINAL_UI.typedLine;
@@ -225,6 +238,7 @@ function _ensureXterm(){
   }
   term.open(surface);
   term.onData(data=>{
+    if(_isTerminalOscColorReply(data))return;
     const completedCommand=_trackTerminalInput(data);
     if(completedCommand!==null&&_isTerminalCloseCommand(completedCommand)){
       closeComposerTerminal();

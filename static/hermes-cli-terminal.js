@@ -42,6 +42,7 @@ function _ensureHermesCliXterm(){
   }
   term.open(surface);
   term.onData(data=>{
+    if(_isTerminalOscColorReply(data))return;
     const sid=HERMES_CLI_UI.sessionId;
     if(!sid)return;
     api('/api/terminal/input',{method:'POST',body:JSON.stringify({
@@ -195,10 +196,16 @@ async function openHermesCliTerminal(){
   _syncHermesCliButtonState();
 }
 
-async function closeHermesCliPanel(){
+function closeHermesCliPanel(){
   const {panel}=_hermesCliEls();
   const mainChat=$('mainChat');
-  const sid=HERMES_CLI_UI.sessionId;
+  // Deliberately does NOT call /api/terminal/close: the hermes process (and
+  // anything it's mid-doing — e.g. a first-run browser-engine download)
+  // keeps running in the background. Killing it here made every reopen a
+  // cold start, re-triggering hermes's own first-run prompts before slow
+  // setup steps could ever finish. Closing the SSE stream is enough — the
+  // backend still fans output out to a bounded backlog that replays on
+  // reconnect (see api/terminal.py TerminalSession).
   if(HERMES_CLI_UI.source){
     try{if(HERMES_CLI_UI.source.readyState!==2)HERMES_CLI_UI.source.close();}catch(_){}
     HERMES_CLI_UI.source=null;
@@ -206,11 +213,7 @@ async function closeHermesCliPanel(){
   if(mainChat)mainChat.classList.remove('hermes-cli-active');
   if(panel)panel.hidden=true;
   HERMES_CLI_UI.open=false;
-  HERMES_CLI_UI.sessionId=null;
   _syncHermesCliButtonState();
-  if(sid){
-    try{await api('/api/terminal/close',{method:'POST',body:JSON.stringify({session_id:sid})});}catch(_){}
-  }
 }
 
 function _syncHermesCliButtonState(){
