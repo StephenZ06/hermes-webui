@@ -5364,7 +5364,7 @@ main.main > #mainPlugin{display:none;}
 .panel-head-btn svg{width:14px;height:14px;display:block;}
 .panel-head-sub{display:flex;gap:8px;padding:12px 12px 8px;font-size:11px;color:var(--muted);flex-shrink:0;}
 /* Chat sidebar weekly-usage widget (Codex-style: % remaining + reset). */
-.chat-usage-widget{padding:10px 12px 4px;flex-shrink:0;}
+.chat-usage-widget{padding:10px 12px 0;flex-shrink:0;}
 .chat-usage-widget-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:5px;}
 .chat-usage-widget-percent{font-weight:600;color:var(--text);}
 .chat-usage-widget-bar{height:5px;border-radius:999px;background:var(--input-bg);border:1px solid var(--border);overflow:hidden;}
