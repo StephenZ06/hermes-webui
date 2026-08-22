@@ -44,7 +44,7 @@ _UNCONFIRMED_STATUS_MARKERS = ("needs_confirmation", "not confirmed", "not_confi
 # set it to an explicit empty string to disable filtering entirely (distinct
 # from leaving it UNSET, which uses the default below) — used by the test
 # harness, which has no reason to know about /workspace.
-_DEFAULT_PROJECT_SCOPE_ROOTS = ("/workspace/MiniPC-Main", "/workspace/rp5")
+_DEFAULT_PROJECT_SCOPE_ROOTS = ("/workspace/MiniPC-Main", "/workspace/rp5", "/workspace/remote")
 
 
 def _project_scope_roots() -> tuple[str, ...]:
