@@ -109,7 +109,7 @@ def test_kanban_new_task_header_button_opens_modal():
     silently early-exits on empty title — the button looked completely dead.
     Now the header button calls openKanbanCreate(), which opens the
     #kanbanTaskModal overlay with title / description / status / priority /
-    assignee / tenant fields.
+    assignee fields.
     """
     # 1. Header "+" button is wired to openKanbanCreate(), NOT createKanbanTask().
     assert 'id="kanbanNewTaskBtn"' in INDEX
@@ -130,7 +130,6 @@ def test_kanban_new_task_header_button_opens_modal():
         "kanbanTaskModalStatus",
         "kanbanTaskModalPriority",
         "kanbanTaskModalAssignee",
-        "kanbanTaskModalTenant",
         "kanbanTaskModalError",
         "kanbanTaskModalSubmit",
     ):
@@ -141,7 +140,7 @@ def test_kanban_new_task_header_button_opens_modal():
     assert "if(event.target===this)closeKanbanTaskModal()" in INDEX
 
     # 4. openKanbanCreate() unhides the modal, focuses the title field, populates
-    #    assignee/tenant datalists, binds keydown listener.
+    #    the assignee select, binds keydown listener.
     assert "function openKanbanCreate()" in PANELS
     open_fn = re.search(
         r"function openKanbanCreate\(\)\{(.*?)\n\}", PANELS, re.DOTALL
@@ -149,12 +148,10 @@ def test_kanban_new_task_header_button_opens_modal():
     assert open_fn, "openKanbanCreate() not found"
     body = open_fn.group(1)
     assert "modal.hidden = false" in body
-    # Assignee is now a <select> populated from /api/profiles + board history,
-    # tenant is still a free-text <input> backed by a datalist.
+    # Assignee is a <select> populated from /api/profiles + board history.
     assert "_kanbanPopulateAssigneeSelect" in body, (
         "openKanbanCreate must populate the assignee <select> from /api/profiles."
     )
-    assert "_kanbanPopulateTenantDatalist" in body
     assert "_kanbanTaskModalKey" in body  # ESC + Enter handler attached
 
     # 5. closeKanbanTaskModal() hides the modal and unbinds the listener.
@@ -1335,3 +1332,42 @@ def test_kanban_unassigned_lane_in_sidebar_meta():
     meta_body = meta_match.group(1)
     # Must emit unassigned label when task.assignee is falsy.
     assert "t('kanban_unassigned')" in meta_body
+
+
+class TestKanbanArchiveDoesNotReopenDetailPanel:
+    """Regression: archiving a task must not reopen/re-render its detail
+    panel afterward. updateKanbanTask() defaults to reopening the detail
+    view after any patch (openDetail defaults true) — for status
+    transitions that makes sense (you want to see the task's new state),
+    but for archiving it means the just-archived task's detail panel pops
+    right back open, making it look like nothing happened / the task
+    won't go away. Two entry points needed the fix: the card's quick
+    "Archive" button, and the "Archived" status button inside the detail
+    panel itself.
+    """
+
+    def test_quick_card_action_suppresses_detail_reopen(self):
+        fn = extract_function(PANELS, "quickKanbanCardAction", prefix="async function")
+        assert "openDetail" in fn and "false" in fn, (
+            "quickKanbanCardAction must pass {openDetail:false} to "
+            "updateKanbanTask so the quick-action buttons stay fire-and-forget"
+        )
+
+    def test_detail_panel_archive_button_closes_instead_of_reopening(self):
+        assert "archiveKanbanTaskFromDetail" in PANELS, (
+            "detail-panel status buttons must route the 'archived' status "
+            "through a dedicated handler, not the generic updateKanbanTask "
+            "call every other status button uses"
+        )
+        fn = extract_function(PANELS, "archiveKanbanTaskFromDetail", prefix="async function")
+        assert "closeKanbanTaskDetail()" in fn, (
+            "archiving from the detail panel must close it back to the "
+            "board, not leave the archived task's detail sitting on screen"
+        )
+
+    def test_status_buttons_route_archived_through_dedicated_handler(self):
+        detail_fn = extract_function(PANELS, "_kanbanRenderTaskDetail")
+        # The 'archived' status button must NOT use the generic
+        # updateKanbanTask(...) call the other status buttons use.
+        assert "onclick=\"archiveKanbanTaskFromDetail(" in detail_fn
+        assert "updateKanbanTask('${esc(task.id)}',{status:'archived'})" not in detail_fn

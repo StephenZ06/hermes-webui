@@ -39,6 +39,218 @@ def open_state_db_readonly(db_path: Path, log: logging.Logger | None = None) -> 
         return sqlite3.connect(str(db_path))
 
 
+def resolve_agent_state_db_paths() -> list[Path]:
+    """Resolve every Hermes Agent ``state.db`` worth checking for the active profile.
+
+    Deliberately does NOT use ``api.models._active_state_db_path()`` /
+    ``api.profiles.get_active_hermes_home()`` — that whole resolution chain
+    bottoms out at ``HERMES_HOME``/``HERMES_BASE_HOME``, and in the
+    two-container docker-compose deployment (see hermes-stack/docker-compose.yml)
+    neither is set on the webui container, which runs as root with
+    ``HOME=/root``. The chain's final fallback is bare ``~/.hermes``, so it
+    silently resolves to the empty, nonexistent ``/root/.hermes/state.db``
+    instead of the real shared-volume state — confirmed empirically: the
+    real state.db (with genuine subagent rows) lives at
+    ``/home/hermeswebui/.hermes/state.db``, one directory above WebUI's own
+    ``HERMES_WEBUI_STATE_DIR`` (``.../hermeswebui/.hermes/webui``), which
+    *is* explicitly set in docker-compose.yml and is what every other WebUI
+    session-listing feature already relies on. Anchor off that instead.
+
+    In the gateway-bridged deployment (``HERMES_WEBUI_CHAT_BACKEND=gateway``,
+    see ``webui_gateway_chat_enabled()``), the single long-lived hermes-agent
+    gateway process serving every WebUI chat over its API-server platform has
+    no notion of "the WebUI's currently active profile" — it writes every row
+    (including delegate_task's subagent children) for those sessions to its
+    own single base ``state.db`` regardless of what profile the WebUI happens
+    to have selected. Profile-scoping the lookup there looks at a
+    ``profiles/<name>/state.db`` the gateway never writes to for
+    API-server-origin sessions, which made Agent Canvas appear empty on every
+    non-default profile.
+
+    But that same profile-scoped ``state.db`` IS genuinely written to by a
+    *native* ``hermes`` CLI session run with ``--profile <name>`` directly
+    inside the gateway container — an entirely separate origin from the
+    WebUI-bridged one, with its own real subagent rows. So this returns BOTH:
+    the base ``state.db`` (always, for gateway-bridged WebUI-origin sessions)
+    and the profile-scoped one when it exists and the active profile isn't
+    root (for CLI-origin sessions run under that profile). The caller unions
+    results from every path returned. In a single-container deployment
+    (``webui_gateway_chat_enabled()`` False), WebUI runs its own in-process
+    agent per profile and HERMES_HOME switches wholesale per profile, so only
+    that one profile-scoped-or-base path is returned — unioning with base
+    there would mix in a genuinely unrelated profile's sessions.
+    """
+    from api.config import STATE_DIR
+    base = STATE_DIR.parent
+    base_db = base / 'state.db'
+    try:
+        from api.gateway_chat import webui_gateway_chat_enabled
+        gateway_bridged = webui_gateway_chat_enabled()
+    except Exception:
+        logger.debug("resolve_agent_state_db_paths: gateway-chat-enabled check failed", exc_info=True)
+        gateway_bridged = False
+
+    profile_db: Path | None = None
+    try:
+        from api.profiles import get_active_profile_name, _is_root_profile
+        profile = get_active_profile_name()
+        if profile and not _is_root_profile(profile):
+            candidate = base / 'profiles' / profile / 'state.db'
+            if candidate.exists():
+                profile_db = candidate
+    except Exception:
+        logger.debug("resolve_agent_state_db_paths: profile lookup failed, using base", exc_info=True)
+
+    if gateway_bridged:
+        paths = [base_db]
+        if profile_db is not None and profile_db != base_db:
+            paths.append(profile_db)
+        return paths
+    return [profile_db or base_db]
+
+
+def list_parents_with_subagent_children(db_path: "Path | list[Path]", limit: int = 200) -> list[dict]:
+    """Group Hermes Agent's subagent sessions by parent for Agent Canvas history.
+
+    ``db_path`` may be a single ``Path`` (legacy call shape, still supported)
+    or a list of them — see ``resolve_agent_state_db_paths()``. Each database
+    is a fully separate universe (a session id in one never references a row
+    in another), so this collects each db's own top-level parents
+    independently via ``_list_parents_from_single_db`` and concatenates the
+    results, rather than merging raw rows before the tree-building pass.
+
+    Subagent child sessions (``source='subagent'``) never get a WebUI-side
+    sidecar JSON file — they're spawned entirely inside hermes-agent's own
+    process, never through any WebUI session-creation path — so they never
+    appear in ``all_sessions()``'s ``SESSION_DIR.glob('*.json')`` listing no
+    matter how the request is scoped (profile, archived, etc). The only way
+    to know "which chats delegated to subagents" is to ask state.db
+    directly, which is what this does. The *parent* session normally does
+    have a WebUI sidecar (it's a real chat the user started), so the caller
+    cross-references the returned ``parent_session_id`` values against the
+    WebUI session list for title/project/profile — this function only
+    answers "which parents had subagent children, and what were they".
+
+    Nested delegation (a subagent that itself spawned children — a real
+    supported Hermes feature, gated by ``delegation.max_spawn_depth``) means
+    a naive "group by immediate parent" would split one delegation tree into
+    several unrelated top-level entries, one per orchestrating subagent.
+    Instead this pulls every parented row (any source, not just
+    ``subagent`` — a nested child's own rows are still ``source='subagent'``
+    but keying only on that would miss a tree whose root happens to be
+    something else) in one query, then walks the full descendant chain under
+    each row whose *own* id never appears as someone else's child — i.e. a
+    genuine top-level chat, not an intermediate orchestrator node inside
+    another tree. Each returned child keeps its real ``parent_session_id``
+    so the frontend can reconstruct proper nesting depth, not just a flat
+    list, when it rebuilds the historical diagram.
+
+    Read-only, best-effort: returns ``[]`` on any failure (missing DB,
+    schema mismatch, lock contention) rather than raising, since this always
+    backs a supplementary sidebar view, never a page's primary content.
+    """
+    paths = [db_path] if isinstance(db_path, Path) else list(db_path)
+    combined: list[dict] = []
+    for path in paths:
+        combined.extend(_list_parents_from_single_db(path, limit))
+    combined.sort(key=lambda e: e["latest_at"], reverse=True)
+    return combined[:limit]
+
+
+def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
+    """Single-database body of ``list_parents_with_subagent_children``."""
+    if not db_path.exists():
+        return []
+    # Stat columns beyond the original id/source/.../ended_at set — live
+    # tracking (onSpawn/onToolActivity/onComplete WS events) populates
+    # model/tokens/cost in real time while a subagent is active, but that
+    # in-memory state is gone after a page reload or once enough time has
+    # passed that the tab re-fetched from scratch, silently degrading the
+    # rebuilt tree to a bare status dot. Pulling these from state.db closes
+    # that gap. Checked against the live schema first (not just wrapped in
+    # the outer try/except) so an older state.db missing one of these
+    # newer columns still returns the base fields instead of the whole
+    # query failing and returning nothing.
+    _STAT_COLUMNS = (
+        "model", "input_tokens", "output_tokens", "reasoning_tokens",
+        "api_call_count", "tool_call_count", "estimated_cost_usd", "actual_cost_usd",
+    )
+    try:
+        with closing(open_state_db_readonly(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            available = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+            stat_cols = [c for c in _STAT_COLUMNS if c in available]
+            select_cols = "id, source, parent_session_id, title, started_at, ended_at"
+            if stat_cols:
+                select_cols += ", " + ", ".join(stat_cols)
+            cur = conn.execute(
+                f"SELECT {select_cols} FROM sessions WHERE parent_session_id IS NOT NULL "
+                "ORDER BY started_at DESC LIMIT ?",
+                (max(1, limit) * 40,),
+            )
+            rows = cur.fetchall()
+    except Exception:
+        logger.debug("list_parents_with_subagent_children query failed for %s", db_path, exc_info=True)
+        return []
+
+    children_by_parent: dict[str, list[dict]] = {}
+    child_ids: set[str] = set()
+    for row in rows:
+        pid = row["parent_session_id"]
+        started_at = row["started_at"] or 0.0
+        row_keys = row.keys()
+        cost = None
+        if "actual_cost_usd" in row_keys and row["actual_cost_usd"] is not None:
+            cost = row["actual_cost_usd"]
+        elif "estimated_cost_usd" in row_keys and row["estimated_cost_usd"] is not None:
+            cost = row["estimated_cost_usd"]
+        children_by_parent.setdefault(pid, []).append({
+            "session_id": row["id"],
+            "parent_session_id": pid,
+            "title": row["title"],
+            "started_at": started_at,
+            "ended_at": row["ended_at"],
+            "status": "completed" if row["ended_at"] else "running",
+            "model": row["model"] if "model" in row_keys else None,
+            "input_tokens": row["input_tokens"] if "input_tokens" in row_keys else None,
+            "output_tokens": row["output_tokens"] if "output_tokens" in row_keys else None,
+            "reasoning_tokens": row["reasoning_tokens"] if "reasoning_tokens" in row_keys else None,
+            "api_call_count": row["api_call_count"] if "api_call_count" in row_keys else None,
+            "tool_call_count": row["tool_call_count"] if "tool_call_count" in row_keys else None,
+            "cost_usd": cost,
+        })
+        child_ids.add(row["id"])
+
+    def collect_descendants(sid: str, depth: int = 0) -> list[dict]:
+        # Depth-capped defensively against a pathological cycle — the schema
+        # shouldn't allow one, but a corrupt/hand-edited DB could.
+        if depth >= 12:
+            return []
+        out: list[dict] = []
+        for child in children_by_parent.get(sid, []):
+            out.append(child)
+            out.extend(collect_descendants(child["session_id"], depth + 1))
+        return out
+
+    parents = []
+    for pid, direct_children in children_by_parent.items():
+        if pid in child_ids:
+            # Not a real top-level chat — it's itself a subagent inside a
+            # larger tree, already reachable (and will be collected) from
+            # that tree's true root.
+            continue
+        descendants = collect_descendants(pid)
+        latest_at = max((c["started_at"] for c in descendants), default=0.0)
+        parents.append({
+            "parent_session_id": pid,
+            "children": descendants,
+            "latest_at": latest_at,
+        })
+
+    parents.sort(key=lambda e: e["latest_at"], reverse=True)
+    return parents[:limit]
+
+
 MESSAGING_SOURCES = {
     'discord',
     'email',

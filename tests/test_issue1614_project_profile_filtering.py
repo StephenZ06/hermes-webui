@@ -12,6 +12,12 @@ Fix:
   - Create/rename/delete/move endpoints reject ops on cross-profile projects.
   - ensure_cron_project() keys lookup by (name, profile).
   - One-time migration: untagged projects inherit profile from sessions, fall back to 'default'.
+
+Superseded (2026-08-19): the sidebar now always fetches ?all_profiles=1 --
+projects are a single entity visible on every profile, so rename/delete/move
+are no longer gated by the creating profile (see the "_allows_cross_profile"
+tests below). Only ensure_cron_project()'s per-profile behavior and the
+`profile` tag/migration itself are unchanged.
 """
 
 import json
@@ -246,8 +252,12 @@ def test_profile_field_on_project_dict_default_create(monkeypatch):
     )
 
 
-def test_project_rename_rejects_cross_profile():
-    """Source-string check that rename's active-profile guard is in place."""
+def test_project_rename_allows_cross_profile():
+    """A project is now a single shared entity visible on every profile
+    (see the sidebar's always-on ?all_profiles=1 fetch) -- rename is no
+    longer gated by the creating profile; any profile can rename it.
+    Supersedes the old #1614 per-profile-ownership guard on this route.
+    """
     from pathlib import Path
     src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
 
@@ -255,34 +265,49 @@ def test_project_rename_rejects_cross_profile():
     assert rename_idx > 0
     next_idx = src.find('"/api/projects/delete"', rename_idx)
     rename_block = src[rename_idx:next_idx]
-    assert '_profiles_match(proj.get("profile"), active_profile)' in rename_block, (
-        "Rename must check active-profile ownership"
+    assert '_profiles_match(proj.get("profile"), active_profile)' not in rename_block, (
+        "Rename must NOT gate on the creating profile -- projects are shared now"
     )
 
 
-def test_project_delete_rejects_cross_profile():
+def test_project_delete_allows_cross_profile():
+    """Same as rename: delete is no longer gated by the creating profile."""
     from pathlib import Path
     src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
 
     delete_idx = src.find('"/api/projects/delete"')
     assert delete_idx > 0
     delete_block = src[delete_idx:delete_idx + 1500]
-    assert '_profiles_match(proj.get("profile"), active_profile)' in delete_block, (
-        "Delete must check active-profile ownership"
+    assert '_profiles_match(proj.get("profile"), active_profile)' not in delete_block, (
+        "Delete must NOT gate on the creating profile -- projects are shared now"
     )
 
 
-def test_session_move_uses_session_profile():
-    """/api/session/move must use session.profile instead of active_profile for authorization."""
+def test_session_move_allows_any_profile_project():
+    """/api/session/move: any profile's session can be filed into any
+    project (folders are visible everywhere now), so the route only needs
+    to confirm the target project_id exists -- not who created it.
+    """
     from pathlib import Path
     src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
 
     move_idx = src.find('"/api/session/move"')
     assert move_idx > 0
     move_block = src[move_idx:move_idx + 2000]
-    assert '_profiles_match(target.get("profile"), _session_profile)' in move_block, (
-        "session/move must use session-scoped profile (not active_profile) for authorization"
+    assert '_profiles_match(target.get("profile"), _session_profile)' not in move_block, (
+        "session/move must not gate on project ownership -- projects are shared now"
     )
+
+
+def test_project_merge_route_exists():
+    """/api/projects/merge consolidates duplicate same-idea project rows
+    (created independently per-profile before global visibility existed)
+    into one shared project_id, reassigning their sessions.
+    """
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
+    assert '"/api/projects/merge"' in src
+    assert "_reassign_project_sessions(source_ids, target_id)" in src
 
 
 # ── Cleanup ────────────────────────────────────────────────────────────────

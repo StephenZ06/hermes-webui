@@ -161,14 +161,15 @@ def test_static_sessions_js_uses_all_profiles_query_when_toggle_on():
     assert "if(_showAllProfiles) qs.set('all_profiles','1');" in src, (
         "Expected session-list fetch query to flip on the all-profiles toggle state"
     )
-    assert "const projectQS = _showAllProfiles ? '?all_profiles=1' : '';" in src, (
-        "Expected project fetch path to flip on the all-profiles toggle state"
-    )
     assert "api('/api/sessions' + sessionListQS" in src, (
         "Expected /api/sessions fetch to use the variant query"
     )
-    assert "api('/api/projects' + projectQS" in src, (
-        "Expected /api/projects fetch to use the variant query"
+    # Project FOLDERS are intentionally decoupled from the _showAllProfiles
+    # toggle (which governs SESSION visibility only): every profile always
+    # sees every project folder; only the sessions inside stay profile-scoped.
+    # See tests/test_project_folders_visible_across_profiles.py.
+    assert "api('/api/projects?all_profiles=1'" in src, (
+        "Expected /api/projects fetch to always request the aggregate list"
     )
 
 

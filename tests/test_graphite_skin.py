@@ -46,7 +46,7 @@ def test_graphite_skin_tunes_workbench_chrome():
     assert ':root[data-skin="graphite"] .session-item{border-radius:8px;font-size:12.5px;' in CSS
     assert ':root[data-skin="graphite"] .session-meta{font-size:10.5px;' in CSS
     assert ':root[data-skin="graphite"] .session-item.active' in CSS
-    assert ':root[data-skin="graphite"] .session-item.active{position:relative;padding:10px 12px 10px 18px;' in CSS
+    assert ':root[data-skin="graphite"] .session-item.active{position:relative;padding:10px 12px 10px 23px;' in CSS
     assert ':root[data-skin="graphite"] .session-item.active.streaming' in CSS
     assert ':root[data-skin="graphite"] .session-item.active.menu-open{padding-right:40px;}' in CSS
     assert ':root[data-skin="graphite"] .session-item.active:hover .session-time:not(.is-hidden)' in CSS

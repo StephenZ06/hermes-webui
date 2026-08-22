@@ -238,11 +238,18 @@ def _discover_python(agent_dir: Path) -> str:
         if venv_py_win.exists():
             return str(venv_py_win)
 
-    # Local .venv inside this repo
+    # This webui's own venv. Its Dockerfile installs the hermes-agent
+    # package into it for in-process imports (session/state modules), so
+    # when the agent checkout has no venv of its own (the common case — it's
+    # a bare source checkout bundled just for CLI invocation, not a full
+    # install) this is a real, dependency-complete interpreter rather than
+    # the bare system python3 below, which lacks hermes_cli's dependencies
+    # entirely and fails on the first `import yaml`/`import click`/etc.
     for subdir, binary in (("bin", "python"), ("Scripts", "python.exe")):
-        local_venv = REPO_ROOT / ".venv" / subdir / binary
-        if local_venv.exists():
-            return str(local_venv)
+        for venv_name in ("venv", ".venv"):
+            local_venv = REPO_ROOT / venv_name / subdir / binary
+            if local_venv.exists():
+                return str(local_venv)
 
     # Fall back to system python3
     import shutil
@@ -9222,6 +9229,7 @@ _SETTINGS_DEFAULTS = {
     "show_busy_placeholder_hint": False,  # opt-in busy composer placeholder hint
     "hide_empty_state_suggestions": False,  # hide the default new-chat suggestion buttons
     "hide_empty_state_panel": False,  # hide the complete new-chat welcome panel
+    "hide_kanban_panel": False,  # hide the Kanban tab/panel from navigation
     "new_chat_on_workspace_switch": False,  # #5473 opt-in: switching to a DIFFERENT workspace starts a new chat (leaving the current conversation on its original workspace) instead of mutating the current session's workspace in place. Default OFF preserves the shipped in-place-switch behavior.
     "virtualize_transcript": False,  # #4343: virtualize long (>80 msg) transcripts. EXPERIMENTAL, opt-IN (default OFF). Was opt-out/default-on in #4325 but caused scroll-up flicker on long sessions with tall tool-call rows (variable-height anchor oscillation) — flipped off for everyone in #4343; re-enabling requires an explicit opt-in (see virtualize_transcript_optin migration in load_settings).
     "virtualize_transcript_optin": False,  # #4343 migration marker: True only once the user explicitly enables virtualize_transcript AFTER the default-off flip. A stored virtualize_transcript=True WITHOUT this marker is a stale pre-flip value and is reset to False on load (force-off-for-everyone migration).
@@ -9546,6 +9554,7 @@ _SETTINGS_BOOL_KEYS = {
     "show_busy_placeholder_hint",
     "hide_empty_state_suggestions",
     "hide_empty_state_panel",
+    "hide_kanban_panel",
     "new_chat_on_workspace_switch",
     "virtualize_transcript",
     "virtualize_transcript_optin",

@@ -737,22 +737,102 @@ def _webui_surface_context_prompt(surface_context: Optional[dict]) -> str:
     return "\n".join(lines)
 
 
+def _bound_project_prompt(session) -> Optional[str]:
+    """Return the forced project-lifecycle preload block for a bound chat.
+
+    Chats bound to a WORKSPACES.yaml project (``session.bound_project_key``)
+    get the resolved authoritative project context PLUS the full text of
+    project-lifecycle's SKILL.md injected on every turn, so the agent
+    operates deterministically under that project instead of guessing one
+    from chat text or relying on semantic skill selection. Unbound chats
+    (the overwhelming majority) are entirely unaffected — this returns None
+    immediately for them.
+
+    If the registry has drifted since binding (key removed, or gone
+    unavailable), this returns a visible error block instead of silently
+    behaving as if the chat were unbound.
+    """
+    project_key = getattr(session, "bound_project_key", None) if session is not None else None
+    if not project_key:
+        return None
+    from api.project_registry import resolve_registry_project, read_project_lifecycle_skill_text
+
+    project = resolve_registry_project(project_key)
+    if project is None or not project.get("available"):
+        reason = (project or {}).get("unavailable_reason") if project else "project no longer in registry"
+        return (
+            "PROJECT BINDING ERROR: this chat is bound to project "
+            f"'{project_key}', but it can no longer be resolved from the "
+            f"WORKSPACES.yaml registry ({reason}). Stop and tell the user "
+            "the binding needs to be redone before proceeding — do not "
+            "guess at a folder or continue as an unbound chat."
+        )
+
+    skill_text = read_project_lifecycle_skill_text()
+    if not skill_text:
+        return (
+            "PROJECT BINDING ERROR: this chat is bound to project "
+            f"'{project_key}', but the project-lifecycle skill file could "
+            "not be read. Stop and tell the user before proceeding."
+        )
+
+    if project["access_mode"] == "local":
+        location_lines = [f"- repo_path: {project['repo_path']}"]
+    else:
+        ssh = project.get("ssh") or {}
+        location_lines = [
+            "- access is via SSH (no local path)",
+            f"- ssh_target: {ssh.get('target')}",
+            f"- ssh_key: {ssh.get('key')}",
+            f"- remote_path: {ssh.get('remote_path')}",
+        ]
+    required_docs = ", ".join(project.get("required_docs") or []) or "(none listed)"
+
+    header = "\n".join([
+        f"This chat is bound to project '{project['name']}' (key: {project_key}).",
+        f"access_mode: {project['access_mode']}",
+        *location_lines,
+        f"required_docs: {required_docs}",
+        "This binding is authoritative and enforced. Operate ONLY inside this "
+        "resolved project location. Ignore any other folder or project name "
+        "the user's message text might mention — use this resolved location "
+        "instead. The project-lifecycle skill below is preloaded for this "
+        "chat; follow it.",
+    ])
+    return header + "\n\n" + skill_text.strip()
+
+
 def _webui_ephemeral_system_prompt(
     personality_prompt: Optional[str],
     surface_context: Optional[dict] = None,
     config_data: Optional[dict] = None,
+    session=None,
 ) -> str:
-    """Build WebUI-only runtime instructions that are not persisted to history."""
-    parts = []
+    """Build WebUI-only runtime instructions that are not persisted to history.
+
+    Ordered cache-friendly (stable -> volatile), mirroring the core agent's
+    own system-prompt tiering in hermes-agent-src/agent/system_prompt.py:
+    parts that are byte-identical across every WebUI request come first
+    (``_WEBUI_PROGRESS_PROMPT``), then parts stable for the life of a
+    session/persona/binding (personality, delivery context, bound-project
+    SKILL preload), and finally ``surface_context`` last since it carries
+    the per-session ``session_id`` — the one field guaranteed to differ
+    between sessions. Putting the session-unique field last (instead of
+    2nd, as before) maximizes the shared prefix upstream prompt caching can
+    reuse turn-to-turn instead of having it broken early.
+    """
+    parts = [_WEBUI_PROGRESS_PROMPT]
     if personality_prompt:
         parts.append(str(personality_prompt).strip())
-    surface_prompt = _webui_surface_context_prompt(surface_context)
-    if surface_prompt:
-        parts.append(surface_prompt)
-    parts.append(_WEBUI_PROGRESS_PROMPT)
     delivery_prompt = _webui_delivery_context_prompt(config_data)
     if delivery_prompt:
         parts.append(delivery_prompt)
+    bound_project_prompt = _bound_project_prompt(session)
+    if bound_project_prompt:
+        parts.append(bound_project_prompt)
+    surface_prompt = _webui_surface_context_prompt(surface_context)
+    if surface_prompt:
+        parts.append(surface_prompt)
     return "\n\n".join(part for part in parts if part)
 
 
@@ -9488,6 +9568,7 @@ def _run_agent_streaming(
                     'workspace': s.workspace,
                 },
                 config_data=_cfg,
+                session=s,
             )
             _pending_started_at = getattr(s, 'pending_started_at', None)
             meter().set_pending_started_at(stream_id, _pending_started_at)

@@ -278,7 +278,16 @@ def _clean_workspace_list(workspaces: list) -> list:
         # Rename confusing 'default' label to 'Home'
         if name.lower() == 'default':
             name = 'Home'
-        result.append({'path': str(p), 'name': name})
+        cleaned = {'path': str(p), 'name': name}
+        # A remote (SSHFS) entry's mountpoint may legitimately not exist yet
+        # (never mounted, or the host was unreachable at boot) — that's not
+        # "missing", it's just disconnected, so it must never be dropped
+        # here. kind/remote must survive cleaning or the entry silently
+        # degrades into an unmountable plain local workspace on next load.
+        if w.get('kind') == 'remote' and isinstance(w.get('remote'), dict):
+            cleaned['kind'] = 'remote'
+            cleaned['remote'] = dict(w['remote'])
+        result.append(cleaned)
     return result
 
 
@@ -333,6 +342,29 @@ def _migrate_global_workspaces() -> list:
         return cleaned
     except Exception:
         return []
+
+
+# Guards the read-modify-write sequence used to idempotently add a single
+# entry to the saved-workspace list (see add_workspace_entry_if_missing).
+# load_workspaces()/save_workspaces() on their own are not atomic with
+# respect to each other — two concurrent callers can both load before either
+# saves, and the second save silently clobbers the first caller's addition.
+_WORKSPACES_FILE_LOCK = threading.Lock()
+
+
+def add_workspace_entry_if_missing(path: str, name: str) -> None:
+    """Atomically append {'path': path, 'name': name} to the saved workspace
+    list unless an entry with the same path already exists.
+
+    Wraps the load -> check -> append -> save sequence in a process-wide lock
+    so concurrent callers (e.g. two sessions binding to different projects at
+    the same time) cannot race and clobber each other's addition.
+    """
+    with _WORKSPACES_FILE_LOCK:
+        wss = load_workspaces()
+        if not any(w.get("path") == path for w in wss):
+            wss.append({"path": path, "name": name})
+            save_workspaces(wss)
 
 
 def load_workspaces() -> list:
@@ -658,6 +690,18 @@ def _is_blocked_workspace_path(candidate: Path, raw_path: str | Path | None = No
         if _is_within(candidate, blocked):
             return True
     return False
+
+
+def is_blocked_system_path(path: str | Path) -> bool:
+    """Public wrapper around _is_blocked_workspace_path() for callers outside
+    this module that need to reject known OS/system directories (e.g. /etc,
+    /root) as a session workspace without going through the full
+    resolve_trusted_workspace() home/saved-list/boot-default trust chain —
+    for a source (like a curated project registry) that is itself considered
+    trusted but should still never be allowed to point at OS internals.
+    """
+    candidate = _resolve_path(path)
+    return _is_blocked_workspace_path(candidate, path)
 
 
 def _is_within(path: Path, root: Path) -> bool:

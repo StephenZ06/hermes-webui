@@ -286,6 +286,55 @@ def _gateway_use_runs_api_enabled(config_data=None, environ: dict[str, str] | No
     return raw in ("1", "true", "yes", "on")
 
 
+class GatewaySubagentControlError(RuntimeError):
+    """Raised when the gateway's /v1/subagents/* endpoint rejects or fails a request."""
+
+
+def _gateway_subagents_opener() -> urllib.request.OpenerDirector:
+    # Same hardening as HttpRunnerClient: never follow redirects, so a
+    # misbehaving gateway can't smuggle the Bearer key to another host.
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+    return urllib.request.build_opener(_NoRedirect)
+
+
+def gateway_subagents_request(
+    method: str, path: str, body: dict | None = None, *, config_data=None,
+) -> dict[str, Any]:
+    """Thin JSON proxy to the gateway's /v1/subagents/* control endpoints.
+
+    Used by Agent Canvas for the active-tree snapshot (reconnect/open) and
+    the interrupt/pause controls — the browser never holds the gateway API
+    key directly, so this always runs server-side.
+    """
+    base_url = _gateway_base_url(config_data)
+    api_key = _gateway_api_key()
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    data = json.dumps(body or {}).encode("utf-8") if method == "POST" else None
+    req = urllib.request.Request(base_url + path, data=data, headers=headers, method=method)
+    try:
+        with _gateway_subagents_opener().open(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read(2048).decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
+        raise GatewaySubagentControlError(f"Gateway returned HTTP {exc.code}: {detail[:500]}") from exc
+    except Exception as exc:
+        raise GatewaySubagentControlError(f"Gateway request failed: {exc}") from exc
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError as exc:
+        raise GatewaySubagentControlError("Gateway returned invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise GatewaySubagentControlError("Gateway returned a non-object JSON payload")
+    return payload
+
+
 def _gateway_reasoning_effort_for_request(cfg, *, model=None, model_provider=None):
     """Read and coerce user-configured reasoning effort for a gateway request."""
     try:
@@ -394,6 +443,55 @@ def _gateway_reasoning_delta(payload: dict) -> str:
     return ""
 
 
+def _subagent_spawn_fields(payload: dict) -> dict:
+    """Fields forwarded to the browser on 'subagent.start' (Agent Canvas)."""
+    return {
+        "subagent_id": payload.get("subagent_id"),
+        "parent_id": payload.get("parent_id"),
+        "depth": payload.get("depth"),
+        "goal": payload.get("goal"),
+        "model": payload.get("model"),
+        "task_index": payload.get("task_index"),
+        "task_count": payload.get("task_count"),
+        "toolsets": payload.get("toolsets"),
+        "child_session_id": payload.get("child_session_id"),
+    }
+
+
+def _subagent_tool_fields(payload: dict) -> dict:
+    """Fields forwarded to the browser on 'subagent.tool' (Agent Canvas)."""
+    return {
+        "subagent_id": payload.get("subagent_id"),
+        "tool": payload.get("tool"),
+        "preview": payload.get("preview"),
+        "tool_count": payload.get("tool_count"),
+    }
+
+
+def _subagent_complete_fields(payload: dict) -> dict:
+    """Fields forwarded to the browser on 'subagent.complete' (Agent Canvas).
+
+    Mirrors the rich ``complete_kwargs`` shape hermes-agent's delegate_tool.py
+    already computes (duration/tokens/cost/files/output_tail) — see
+    tools/delegate_tool.py's child_progress_cb("subagent.complete", ...)
+    call.
+    """
+    return {
+        "subagent_id": payload.get("subagent_id"),
+        "status": payload.get("status"),
+        "duration_seconds": payload.get("duration_seconds"),
+        "summary": payload.get("summary"),
+        "input_tokens": payload.get("input_tokens"),
+        "output_tokens": payload.get("output_tokens"),
+        "reasoning_tokens": payload.get("reasoning_tokens"),
+        "cost_usd": payload.get("cost_usd"),
+        "api_calls": payload.get("api_calls"),
+        "files_read": payload.get("files_read"),
+        "files_written": payload.get("files_written"),
+        "output_tail": payload.get("output_tail"),
+    }
+
+
 def _gateway_tool_progress_event(payload: dict) -> tuple[str, dict] | None:
     """Translate Hermes Gateway tool-progress SSE payloads to WebUI events."""
     if not isinstance(payload, dict):
@@ -429,6 +527,49 @@ def _gateway_tool_progress_event(payload: dict) -> tuple[str, dict] | None:
     if tid:
         event_payload["tid"] = str(tid)
     return ("tool_complete" if is_complete else "tool"), event_payload
+
+
+def _notify_session_stream_of_delegate_completion(session_id: str, event_name: str, event_payload: dict) -> None:
+    """Wake any persistent per-session SSE subscriber when a delegate_task
+    tool call finishes.
+
+    delegate_task can run subagents in the background (``background=true``):
+    the agent's visible turn -- and its turn-scoped SSE stream -- can finish
+    and close BEFORE the subagent (and this tool call) actually completes.
+    Agent Canvas stays in sync via its own reconciliation poll
+    (GET /api/subagents/active), but the chat transcript's tool-call card has
+    no equivalent -- it only updates live via this turn-scoped stream, and
+    otherwise self-heals from a stale transcript only on (re)connect (see
+    ``should_emit_session_updated``). Without this, a completed delegate_task
+    result is persisted server-side but invisible in an already-open tab
+    until a manual refresh reconnects the per-session stream and triggers
+    that one-shot catch-up check.
+
+    Push a live ``session-updated`` frame onto the persistent per-session
+    channel too -- the SAME channel/event name the reconnect self-heal
+    already uses (see api/routes.py's session-stream handler), so an
+    already-open tab picks up the change without a refresh. The frontend
+    handler re-validates the count itself against its own current state, so
+    a stale/premature count here is harmless -- it just won't trigger a
+    resync until the count is actually ahead.
+    """
+    if event_name != "tool_complete" or event_payload.get("name") != "delegate_task":
+        return
+    try:
+        from api.background_process import _emit_to_session_streams, persisted_message_count_for_session
+
+        persisted_count = persisted_message_count_for_session(session_id)
+        if persisted_count is None:
+            return
+        _emit_to_session_streams(session_id, "session-updated", {
+            "session_id": session_id,
+            "message_count": persisted_count,
+            "source": "delegate_task_complete",
+        })
+    except Exception:
+        logger.debug(
+            "delegate_task session-updated notify failed for %s", session_id, exc_info=True
+        )
 
 
 def _gateway_runs_approval_event(payload: dict) -> dict | None:
@@ -625,6 +766,19 @@ def _run_gateway_runs_api_streaming(
                     put_gateway_event(event_name, event_payload)
                     if event_name != "reasoning":
                         update_active_run(stream_id, phase="gateway-tool", latest_tool=event_payload.get("name"))
+                        _notify_session_stream_of_delegate_completion(session_id, event_name, event_payload)
+                sse_event = "message"
+                continue
+            if payload_event == "subagent.start":
+                put_gateway_event("subagent_spawn", _subagent_spawn_fields(payload))
+                sse_event = "message"
+                continue
+            if payload_event == "subagent.tool":
+                put_gateway_event("subagent_tool", _subagent_tool_fields(payload))
+                sse_event = "message"
+                continue
+            if payload_event == "subagent.complete":
+                put_gateway_event("subagent_complete", _subagent_complete_fields(payload))
                 sse_event = "message"
                 continue
             if payload_event == "message.delta":
@@ -943,6 +1097,7 @@ def _run_gateway_chat_streaming(
                     "workspace": s.workspace if s is not None else str(workspace),
                 },
                 config_data=cfg,
+                session=s,
             )
             prefill_messages = _prefill_messages_with_webui_context(prefill_context, cfg)
             prefill_messages = _normalize_prefill_messages_before_user_turn(prefill_messages)
@@ -1122,6 +1277,7 @@ def _run_gateway_chat_streaming(
                             put_gateway_event(event_name, event_payload)
                             if event_name != "reasoning":
                                 update_active_run(stream_id, phase="gateway-tool", latest_tool=event_payload.get("name"))
+                                _notify_session_stream_of_delegate_completion(session_id, event_name, event_payload)
                         sse_event = "message"
                         continue
                     if sse_event == "reasoning.available":
@@ -1130,6 +1286,18 @@ def _run_gateway_chat_streaming(
                             if stream_id in STREAM_REASONING_TEXT:
                                 STREAM_REASONING_TEXT[stream_id] += reason_delta
                             put_gateway_event("reasoning", {"text": reason_delta})
+                        sse_event = "message"
+                        continue
+                    if _payload_event == "subagent.start":
+                        put_gateway_event("subagent_spawn", _subagent_spawn_fields(payload))
+                        sse_event = "message"
+                        continue
+                    if _payload_event == "subagent.tool":
+                        put_gateway_event("subagent_tool", _subagent_tool_fields(payload))
+                        sse_event = "message"
+                        continue
+                    if _payload_event == "subagent.complete":
+                        put_gateway_event("subagent_complete", _subagent_complete_fields(payload))
                         sse_event = "message"
                         continue
                     last_payload = payload

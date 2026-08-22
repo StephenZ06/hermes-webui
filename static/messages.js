@@ -5667,6 +5667,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(window.AgentCanvas&&typeof window.AgentCanvas.onSpawn==='function') window.AgentCanvas.onSpawn(d);
     });
 
+    source.addEventListener('subagent_tool',e=>{
+      if(_terminalStateReached||_streamFinalized) return;
+      if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
+      let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
+      if(window.AgentCanvas&&typeof window.AgentCanvas.onToolActivity==='function') window.AgentCanvas.onToolActivity(d);
+    });
+
     source.addEventListener('subagent_complete',e=>{
       if(_terminalStateReached||_streamFinalized) return;
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;

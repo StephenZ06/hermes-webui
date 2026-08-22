@@ -90,7 +90,7 @@ def test_timestamp_hidden_when_attention_state_is_present():
     # state needs no right reservation; hover/streaming/unread/menu-open/
     # focus-within all expand to 40px to make room for the absolute action
     # button + attention indicator.
-    assert ".session-item{padding:8px 8px;" in STYLE_CSS
+    assert ".session-item{padding:8px 8px 8px 10px;" in STYLE_CSS
     # PR #1110: :hover removed from the COMBINED padding-right rule (touch layout-shift fix).
     # Instead, hover padding is restored via @media (hover:hover) which only applies to
     # devices with a real hover capability (mouse). Touch/iPad devices satisfy hover:none

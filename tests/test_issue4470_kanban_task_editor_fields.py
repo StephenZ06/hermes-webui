@@ -192,6 +192,7 @@ def test_submit_payload_behavioral_and_validation():
         "let _kanbanTaskModalMode = 'create';\n"
         "let _kanbanTaskModalEditingId = null;\n"
         "let _kanbanTaskModalInitialDisplayedStatus = null;\n"
+        "let _kanbanTaskModalOriginalTenant = '';\n"
         + fn_body + "\n"
         "function resetForCase(maxRuntimeValue) {\n"
         "  capturedPayload = null;\n"

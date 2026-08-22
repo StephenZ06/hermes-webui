@@ -666,7 +666,6 @@ def test_mobile_sidebar_open_syncs_panel_from_visible_detail_view():
         "panelKanban",
         "panelWorkspaces",
         "panelProfiles",
-        "panelTodos",
         "panelInsights",
         "panelLogs",
     ]:

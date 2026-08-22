@@ -256,13 +256,55 @@
     return `<span class="agent-canvas-dot status-${esc(status)}" aria-hidden="true"></span>`;
   }
 
-  function buildCard(node){
+  // Selecting a card must NOT go through scheduleRender()/render() — that
+  // wipes and rebuilds the whole tree (renderTree() does _treeEl.innerHTML =
+  // '' then re-creates every card), which retriggers every card's pop-in
+  // animation and looks like the whole delegation tree "refreshes" on every
+  // click. Selection only changes which card has .selected and what the
+  // detail panel shows, so just patch those two things directly.
+  function selectNode(id){
+    if(_selectedId === id) return;
+    const prevId = _selectedId;
+    _selectedId = id;
+    if(_treeEl){
+      if(prevId){
+        const prevEl = _treeEl.querySelector(`.agent-canvas-card[data-subagent-id="${CSS.escape(prevId)}"]`);
+        if(prevEl) prevEl.classList.remove('selected');
+      }
+      if(id){
+        const nextEl = _treeEl.querySelector(`.agent-canvas-card[data-subagent-id="${CSS.escape(id)}"]`);
+        if(nextEl) nextEl.classList.add('selected');
+      }
+    }
+    renderDetail();
+  }
+
+  const STAGGER_MS = 60;
+  const STAGGER_MAX_STEPS = 8;
+  // Cascading tree-reveal timing: a branch's line starts extending
+  // TRUNK_DELAY_MS after its own card has appeared, and that branch's
+  // children start springing in CARD_REVEAL_OFFSET_MS into the line's
+  // growth (while it's still extending) so the line visually "delivers"
+  // each card instead of the whole subtree popping in at once. Each
+  // nested level inherits its parent's actual reveal time, so a
+  // grandchild branch only starts growing once its own parent card has
+  // materialized (see buildBranch()).
+  const TRUNK_DELAY_MS = 150;
+  const CARD_REVEAL_OFFSET_MS = 140;
+
+  // When true, the NEXT buildCard() call for the root node skips its pop-in
+  // animation — used when swapping the "conductor alone" loading placeholder
+  // (see _showTreeLoading()) for the real tree, so the conductor card holds
+  // still while only the newly-known trunk/subagents animate in.
+  let _suppressRootPopOnce = false;
+
+  function buildCard(node, staggerIndex, baseDelayMs){
     const isRoot = !!node._isRoot;
     const dur = liveDuration(node);
     const statusText = STATUS_LABEL[node.status] || node.status;
     const kids = childrenOf(node.subagent_id);
     const statCells = [];
-    if(node.toolCount) statCells.push(`<span class="agent-canvas-stat">🔧 ${node.toolCount}</span>`);
+    if(node.toolCount) statCells.push(`<span class="agent-canvas-stat"><svg class="agent-canvas-stat-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>${node.toolCount}</span>`);
     if(node.inputTokens || node.outputTokens) statCells.push(`<span class="agent-canvas-stat">${fmtTokens((node.inputTokens||0)+(node.outputTokens||0))} tok</span>`);
     if(node.costUsd != null) statCells.push(`<span class="agent-canvas-stat">${fmtCost(node.costUsd)}</span>`);
     if(dur != null && !(isRoot && node.status === 'idle')) statCells.push(`<span class="agent-canvas-stat">${fmtDuration(dur)}</span>`);
@@ -273,6 +315,13 @@
     card.dataset.subagentId = node.subagent_id;
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
+    if(isRoot && _suppressRootPopOnce){
+      card.style.animation = 'none';
+      _suppressRootPopOnce = false;
+    }else{
+      const delay = (baseDelayMs || 0) + (staggerIndex ? Math.min(staggerIndex, STAGGER_MAX_STEPS) * STAGGER_MS : 0);
+      if(delay) card.style.animationDelay = delay + 'ms';
+    }
     card.innerHTML = `
       <div class="agent-canvas-card-head">
         ${statusDotHtml(node.status)}
@@ -282,33 +331,51 @@
       <div class="agent-canvas-card-status">${esc(statusText)}</div>
       ${statCells.length ? `<div class="agent-canvas-card-stats">${statCells.join('')}</div>` : ''}
     `;
-    const open = () => { _selectedId = node.subagent_id; scheduleRender(); };
+    const open = () => selectNode(node.subagent_id);
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } });
     return card;
   }
 
-  function buildBranch(node){
+  // node here is always a real subagent (never the root — the root's card
+  // and children row are built directly in renderTree()).
+  function buildBranch(node, staggerIndex, baseDelayMs){
     const branch = document.createElement('div');
-    branch.className = 'agent-canvas-branch' + (!TERMINAL_STATUSES.has(node.status) ? ' is-flowing' : '');
-    branch.appendChild(buildCard(node));
+    branch.className = 'agent-canvas-branch';
+    branch.appendChild(buildCard(node, staggerIndex, baseDelayMs));
     const kids = childrenOf(node.subagent_id);
     if(kids.length){
-      branch.appendChild(buildChildrenRow(kids));
+      const ownDelay = (baseDelayMs || 0) + (staggerIndex ? Math.min(staggerIndex, STAGGER_MAX_STEPS) * STAGGER_MS : 0);
+      branch.appendChild(buildChildrenRow(kids, !TERMINAL_STATUSES.has(node.status), ownDelay + TRUNK_DELAY_MS));
     }
     return branch;
   }
 
-  function buildChildrenRow(kids){
+  // Single trunk line into a bordered "cluster" box holding the (possibly
+  // wrapped, multi-row) children grid. Used for both the root's children and
+  // any nested branch's children — one connector scheme at every depth, so
+  // there's no per-row line-routing to work out once siblings wrap.
+  //
+  // baseDelayMs staggers the whole row's reveal so it starts extending only
+  // once its own parent card has actually appeared (see buildBranch()) —
+  // the line "grows" out of a card that's already on screen rather than
+  // everything popping in together.
+  function buildChildrenRow(kids, flowing, baseDelayMs){
     const wrap = document.createElement('div');
     wrap.className = 'agent-canvas-children-wrap';
-    const rail = document.createElement('div');
-    rail.className = 'agent-canvas-rail';
-    wrap.appendChild(rail);
+    const trunk = document.createElement('div');
+    trunk.className = 'agent-canvas-trunk' + (flowing ? ' is-flowing' : '');
+    if(baseDelayMs) trunk.style.animationDelay = baseDelayMs + 'ms';
+    wrap.appendChild(trunk);
+    const cluster = document.createElement('div');
+    cluster.className = 'agent-canvas-children-cluster';
+    if(baseDelayMs) cluster.style.animationDelay = baseDelayMs + 'ms';
     const row = document.createElement('div');
     row.className = 'agent-canvas-children';
-    for(const k of kids) row.appendChild(buildBranch(k));
-    wrap.appendChild(row);
+    const cardBaseDelay = (baseDelayMs || 0) + CARD_REVEAL_OFFSET_MS;
+    kids.forEach((k, i) => row.appendChild(buildBranch(k, i, cardBaseDelay)));
+    cluster.appendChild(row);
+    wrap.appendChild(cluster);
     return wrap;
   }
 
@@ -317,17 +384,16 @@
     _treeEl.innerHTML = '';
     const root = _nodes.get(ROOT_ID);
     if(!root){
+      _suppressRootPopOnce = false;
       return;
     }
     const rootCol = document.createElement('div');
     rootCol.className = 'agent-canvas-root-col';
+    const rootSuppressed = _suppressRootPopOnce;
     rootCol.appendChild(buildCard(root));
     const kids = childrenOf(ROOT_ID);
     if(kids.length){
-      const trunk = document.createElement('div');
-      trunk.className = 'agent-canvas-trunk' + (root.status === 'orchestrating' ? ' is-flowing' : '');
-      rootCol.appendChild(trunk);
-      rootCol.appendChild(buildChildrenRow(kids));
+      rootCol.appendChild(buildChildrenRow(kids, root.status === 'orchestrating', rootSuppressed ? TRUNK_DELAY_MS : 0));
     }
     _treeEl.appendChild(rootCol);
   }
@@ -399,7 +465,7 @@
       </div>` : ''}
     `;
     const closeBtn = _detailEl.querySelector('.agent-canvas-detail-close');
-    if(closeBtn) closeBtn.onclick = () => { _selectedId = null; scheduleRender(); };
+    if(closeBtn) closeBtn.onclick = () => selectNode(null);
     const interruptBtn = _detailEl.querySelector('[data-action="interrupt"]');
     if(interruptBtn) interruptBtn.onclick = () => interruptSubagent(node.subagent_id);
     const interruptBranchBtn = _detailEl.querySelector('[data-action="interrupt-branch"]');
@@ -798,6 +864,14 @@
         if(btn.classList.contains('loading')) return;
         const sid = btn.dataset.sid;
         const entry = _lastCanvasParents.find(p => p.parent_session_id === sid);
+        // On mobile the sidebar list lives in a drawer overlaying the
+        // canvas (.sidebar.mobile-open, position:fixed, covers the whole
+        // viewport) — the diagram below renders correctly right away, it's
+        // just hidden behind the still-open drawer until the user manually
+        // swipes it shut. Close it here instead of leaving that up to the
+        // user; the panel stays Agent Canvas throughout, same as desktop.
+        const isMobile = typeof _isDesktopWidth === 'function' && !_isDesktopWidth();
+        if(isMobile && typeof closeMobileSidebar === 'function') closeMobileSidebar();
         btn.classList.add('loading');
         _showTreeLoading();
         try{
@@ -813,8 +887,27 @@
     });
   }
 
+  // Shows the conductor card alone, in the exact spot and style the real
+  // tree's root card will occupy, while the historical delegation data is
+  // still being fetched. showHistoricalTree() then swaps this placeholder
+  // for the real tree with the conductor's pop-in suppressed (see
+  // _suppressRootPopOnce) so the card itself holds still and only the
+  // newly-known trunk/subagents animate in — one continuous reveal instead
+  // of a loading spinner that gets replaced by an unrelated layout.
   function _showTreeLoading(){
-    if(_treeEl) _treeEl.innerHTML = '<div class="agent-canvas-tree-loading"><div class="loading-spinner" aria-hidden="true"></div><span>Loading delegation history…</span></div>';
+    if(_treeEl){
+      _treeEl.innerHTML = `
+        <div class="agent-canvas-root-col">
+          <div class="agent-canvas-card is-conductor status-idle">
+            <div class="agent-canvas-card-head">
+              ${statusDotHtml('idle')}
+              <span class="agent-canvas-card-label">Conductor</span>
+            </div>
+            <div class="agent-canvas-card-sub">Main Hermes session</div>
+            <div class="agent-canvas-card-status">Loading delegation history&hellip;</div>
+          </div>
+        </div>`;
+    }
     if(_emptyEl) _emptyEl.style.display = 'none';
   }
 
@@ -849,14 +942,22 @@
         parent_id: isDirectChild ? null : c.parent_session_id,
         depth: 0,
         goal: String(c.title || '').replace(/^Subagent:\s*/, '') || 'Subagent',
-        model: '',
+        // Live tracking (onSpawn/onToolActivity/onComplete) fills these in
+        // as events stream in, but that's in-memory only — gone after a
+        // reload or once the live view has aged out. /api/agent-canvas/
+        // sessions now carries the same stats straight from state.db
+        // (see list_parents_with_subagent_children) so the reconstructed
+        // historical tree doesn't silently degrade to a bare status dot.
+        model: c.model || '',
         // A child state.db never got a completion event recorded shows as
         // 'running' from the raw query — but this is a FINISHED historical
         // session, so that can only mean it was cut off, not that it's
         // live right now. Show it as interrupted, not running.
         status: c.status === 'running' ? 'interrupted' : c.status,
-        toolCount: 0, tools: [], lastTool: null,
-        inputTokens: 0, outputTokens: 0, reasoningTokens: 0, apiCalls: 0, costUsd: null,
+        toolCount: c.tool_call_count || 0, tools: [], lastTool: null,
+        inputTokens: c.input_tokens || 0, outputTokens: c.output_tokens || 0,
+        reasoningTokens: c.reasoning_tokens || 0, apiCalls: c.api_call_count || 0,
+        costUsd: c.cost_usd != null ? c.cost_usd : null,
         filesRead: [], filesWritten: [], outputTail: [], summary: '',
         spawnedAt: (c.started_at || 0) * 1000,
         completedAt: c.ended_at ? c.ended_at * 1000 : null,
@@ -864,6 +965,7 @@
       });
     }
     _viewMode = 'history';
+    _suppressRootPopOnce = true;
     render();
   }
 

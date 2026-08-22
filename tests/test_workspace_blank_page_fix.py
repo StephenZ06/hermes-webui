@@ -195,7 +195,8 @@ class TestWorkspaceDropdownBlankPageCurrentWs:
         src = read('static/panels.js')
         assert re.search(
             r"renderWorkspaceDropdownInto\([^,]+,\s*[^,]+,\s*"
-            r"S\.session\?\.workspace\|\|S\._profileDefaultWorkspace\|\|data\.last\|\|''\)",
+            r"S\.session\?\.workspace\|\|S\._profileDefaultWorkspace\|\|data\.last\|\|''"
+            r"(,\s*[^)]+)?\)",
             src,
         ), (
             "renderWorkspaceDropdownInto must use session, profile default, or data.last "
@@ -267,3 +268,47 @@ class TestNewChatOnWorkspaceSwitchOptIn:
             'workspace_switched_new_chat',
         ):
             assert key in i18n, f"i18n key {key} must be defined"
+
+
+class TestBindProjectAndRefreshBlankPageAutoCreate:
+    """_bindProjectAndRefresh must auto-create a session on the blank
+    new-chat page — same shape as switchToWorkspace's Opus Q6 fix above.
+
+    Regression: the composer workspace dropdown's "Projects" section is
+    reachable on the blank landing page (before any session exists,
+    S.session is null). Without this, clicking a project there silently
+    no-ops — no toast, no network call, nothing — because the function
+    returned early on `!S.session`. A user reported exactly this: clicking
+    a project in the picker did nothing at all.
+    """
+
+    def test_auto_creates_session_when_none_active(self):
+        src = read('static/workspace.js')
+        m = re.search(r'async function _bindProjectAndRefresh\(.*?\n\}', src, re.DOTALL)
+        assert m, "_bindProjectAndRefresh not found"
+        fn = m.group(0)
+        assert "if(!S.session){" in fn, (
+            "_bindProjectAndRefresh must check for a missing session, not "
+            "just bail out on it"
+        )
+        assert "/api/session/new" in fn, (
+            "_bindProjectAndRefresh must call /api/session/new when "
+            "S.session is null, mirroring switchToWorkspace's blank-page fix"
+        )
+        assert "S.session=r.session" in fn, (
+            "_bindProjectAndRefresh must adopt the newly created session "
+            "before proceeding to bind"
+        )
+
+    def test_does_not_return_false_immediately_on_missing_session(self):
+        src = read('static/workspace.js')
+        fn_start = src.find('async function _bindProjectAndRefresh(')
+        assert fn_start != -1
+        # The old, buggy shape was a bare `if(!S.session)return false;` as
+        # the first statement — guard against that regression specifically,
+        # not just presence of the fix elsewhere in the function.
+        next_lines = src[fn_start:fn_start + 200]
+        assert "if(!S.session)return false;" not in next_lines, (
+            "must not silently no-op on missing session anymore — "
+            "auto-create one instead (see test above)"
+        )
