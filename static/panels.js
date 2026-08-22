@@ -8710,6 +8710,12 @@ async function switchToProfile(name) {
     if (_switchGen !== _profileSwitchGeneration) return false;
     S.activeProfile = data.active || name;
     S.activeProfileIsDefault = !!data.is_default;
+    // The sidebar usage widget (Codex weekly %, OpenCode Go monthly $ estimate,
+    // etc.) is provider-scoped server-side but only ever fetched once on page
+    // load — without this it silently kept showing the FIRST-loaded profile's
+    // usage data forever, including on profiles using a provider with no
+    // usage API at all (should just hide).
+    if (typeof loadAccountUsage === 'function') loadAccountUsage();
     if (typeof _resetCronUnreadForProfileSwitch === 'function') {
       _resetCronUnreadForProfileSwitch();
     }

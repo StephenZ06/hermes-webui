@@ -1998,8 +1998,12 @@ async function loadAccountUsage(){
     widget.hidden=true;
     return;
   }
+  // Prefer a window carrying a $ detail (e.g. OpenCode Go's monthly-spend
+  // estimate, since that provider's own usage API is percent-only and has
+  // no separate dollar field to key off) over the generic weekly-or-first
+  // pick used for percent-only providers like Codex.
   const weekly=(data&&data.available&&Array.isArray(data.windows))
-    ? data.windows.find(w=>/week/i.test(w.label||''))||data.windows[0]
+    ? data.windows.find(w=>w.detail)||data.windows.find(w=>/week/i.test(w.label||''))||data.windows[0]
     : null;
   if(!weekly||weekly.used_percent==null){
     widget.hidden=true;
@@ -2020,6 +2024,11 @@ async function loadAccountUsage(){
   }
   const resetEl=$('chatUsageWidgetReset');
   if(resetEl) resetEl.textContent=_formatAccountUsageReset(weekly.reset_at);
+  const detailEl=$('chatUsageWidgetDetail');
+  if(detailEl){
+    detailEl.hidden=!weekly.detail;
+    detailEl.textContent=weekly.detail||'';
+  }
 }
 function _formatAccountUsageReset(resetAtIso){
   if(!resetAtIso) return '';

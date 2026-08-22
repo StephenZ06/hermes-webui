@@ -1664,6 +1664,9 @@ async function _switchProfileForSessionLoad(profile){
     const data=await api('/api/profile/switch',{method:'POST',body:JSON.stringify({name}),timeoutToast:false});
     S.activeProfile=data.active||name;
     S.activeProfileIsDefault=!!data.is_default;
+    // See the matching call in panels.js's switchToProfile() for why this is
+    // needed — the usage widget otherwise never refetches on profile switch.
+    if(typeof loadAccountUsage==='function') loadAccountUsage();
     if(typeof _resetCronUnreadForProfileSwitch==='function'){
       _resetCronUnreadForProfileSwitch();
     }

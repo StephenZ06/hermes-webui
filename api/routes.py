@@ -11851,6 +11851,7 @@ def _handle_account_usage(handler, parsed) -> bool:
             "label": w.label,
             "used_percent": w.used_percent,
             "reset_at": w.reset_at.isoformat() if w.reset_at else None,
+            "detail": w.detail,
         }
         for w in snapshot.windows
     ]
