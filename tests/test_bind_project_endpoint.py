@@ -124,12 +124,7 @@ def test_bind_project_rejects_unavailable_project():
     assert "unavailable" in d.get("error", "").lower()
 
 
-def test_bind_project_then_unbind_is_rejected(tmp_path):
-    # Once bound, unbinding is disallowed (by design) — a chat's project
-    # context stays fixed for its lifetime rather than reverting. This is a
-    # server-side guard, not just a UI restriction (the WebUI hides the
-    # "Unbound" option once bound, but a direct API call must be rejected
-    # too, e.g. from a stale client).
+def test_bind_project_then_unbind_restores_previous_workspace(tmp_path):
     repo = tmp_path / "job-os"
     repo.mkdir()
     _write_registry({
@@ -140,17 +135,22 @@ def test_bind_project_then_unbind_is_rejected(tmp_path):
         }
     })
     sid = _new_session()
+    before, _ = get(f"/api/session?session_id={sid}")
+    original_workspace = before["session"]["workspace"]
     post("/api/session/bind_project", {"session_id": sid, "project_key": "job-os"})
 
     d, status = post("/api/session/bind_project", {"session_id": sid, "project_key": None})
 
-    assert status == 400, d
-    after, _ = get(f"/api/session?session_id={sid}")
-    assert after["session"]["bound_project_key"] == "job-os"
-    assert after["session"]["workspace"] == str(repo.resolve())
+    assert status == 200, d
+    assert d["session"]["bound_project_key"] is None
+    # Unbinding must revert the file explorer / terminal / composer chip
+    # back to whatever workspace was active before binding — not keep
+    # showing the (now unbound) project's files forever (#regression).
+    assert d["session"]["workspace"] == original_workspace
+    assert d["session"]["workspace"] != str(repo.resolve())
 
 
-def test_rebind_chain_to_different_project_still_allowed_then_unbind_rejected(tmp_path):
+def test_rebind_chain_then_unbind_restores_original_pre_bind_workspace(tmp_path):
     repo_a = tmp_path / "project-a"
     repo_a.mkdir()
     repo_b = tmp_path / "project-b"
@@ -160,18 +160,19 @@ def test_rebind_chain_to_different_project_still_allowed_then_unbind_rejected(tm
         "project-b": {"repo_path": str(repo_b), "access_mode": "local", "status": "confirmed project root"},
     })
     sid = _new_session()
+    before, _ = get(f"/api/session?session_id={sid}")
+    original_workspace = before["session"]["workspace"]
     post("/api/session/bind_project", {"session_id": sid, "project_key": "project-a"})
-    # Rebinding to a DIFFERENT project is still allowed — only the
-    # bound -> unbound transition is blocked.
     d_b, status_b = post("/api/session/bind_project", {"session_id": sid, "project_key": "project-b"})
     assert status_b == 200, d_b
     assert d_b["session"]["workspace"] == str(repo_b.resolve())
 
     d, status = post("/api/session/bind_project", {"session_id": sid, "project_key": None})
 
-    assert status == 400, d
-    after, _ = get(f"/api/session?session_id={sid}")
-    assert after["session"]["bound_project_key"] == "project-b"
+    assert status == 200, d
+    # Rebinding A -> B without unbinding in between, then unbinding, must
+    # restore the ORIGINAL pre-A workspace — not B's, and not A's.
+    assert d["session"]["workspace"] == original_workspace
 
 
 def test_bind_project_missing_session_id_is_400():

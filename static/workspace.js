@@ -867,11 +867,7 @@ async function renderBoundProjectControl(){
   if(!projects.length){ row.hidden=true; return; }
   row.hidden=false;
   const boundKey=S.session.bound_project_key||'';
-  // Once a chat is bound, unbinding is disallowed (server-enforced too, see
-  // /api/session/bind_project) — omit "Unbound" from the options entirely
-  // so there's nothing to select back to. Rebinding to a different project
-  // is still offered via the other <option>s below.
-  const options=boundKey?[]:['<option value="">'+t('bound_project_unbound','Unbound')+'</option>'];
+  const options=['<option value="">'+t('bound_project_unbound','Unbound')+'</option>'];
   for(const p of projects){
     const label=p.available?p.name:`${p.name} (${p.unavailable_reason||t('bound_project_unavailable','unavailable')})`;
     options.push(`<option value="${_escHtml(p.key)}" ${(!p.available&&p.key!==boundKey)?'disabled':''}>${_escHtml(label)}</option>`);
@@ -948,20 +944,14 @@ function renderBoundProjectDropdownSection(dd, projects, boundKey){
   heading.textContent=t('bound_project_label','Project');
   section.appendChild(heading);
 
-  // Once bound, unbinding is disallowed (server-enforced too) — omit the
-  // "Unbound" option entirely once a project is set, same as the workspace
-  // panel's <select> above. Rebinding to a different project stays available
-  // via the other options below.
-  if(!boundKey){
-    const unboundOpt=document.createElement('div');
-    unboundOpt.className='ws-opt ws-project-opt active';
-    unboundOpt.innerHTML=`<span class="ws-opt-name">${_escHtml(t('bound_project_unbound','Unbound'))}</span>`;
-    unboundOpt.onclick=async()=>{
-      closeWsDropdown();
-      await _bindProjectAndRefresh(null);
-    };
-    section.appendChild(unboundOpt);
-  }
+  const unboundOpt=document.createElement('div');
+  unboundOpt.className='ws-opt ws-project-opt'+(boundKey?'':' active');
+  unboundOpt.innerHTML=`<span class="ws-opt-name">${_escHtml(t('bound_project_unbound','Unbound'))}</span>`;
+  unboundOpt.onclick=async()=>{
+    closeWsDropdown();
+    await _bindProjectAndRefresh(null);
+  };
+  section.appendChild(unboundOpt);
 
   for(const p of projects){
     const opt=document.createElement('div');

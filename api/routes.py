@@ -16188,20 +16188,6 @@ def handle_post(handler, parsed) -> bool:
             if getattr(s, "active_stream_id", None):
                 return bad(handler, "Cannot rebind a session with a run in progress", 409)
             if project_key is None:
-                # Once a chat is bound to a project, unbinding is disallowed
-                # (by user request) — a chat's project context stays fixed
-                # for its lifetime instead of silently reverting. Rebinding
-                # to a DIFFERENT project is still allowed below; only the
-                # bound -> unbound transition is blocked. Server-side guard
-                # in addition to the UI hiding "Unbound" once bound, so a
-                # stale client/direct API call can't bypass it either.
-                if s.bound_project_key:
-                    return bad(
-                        handler,
-                        "This chat is bound to a project and cannot be unbound. "
-                        "You can rebind it to a different project instead.",
-                        400,
-                    )
                 s.bound_project_key = None
                 # Restore whatever workspace was active before the (first,
                 # if a rebind chain) bind — otherwise the file explorer,
