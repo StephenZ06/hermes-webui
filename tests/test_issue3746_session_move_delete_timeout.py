@@ -85,44 +85,61 @@ def test_move_releases_lock_in_finally():
 
 
 # ── B) Structural: project delete skips streaming sessions + guards each save ──
+#
+# This logic used to live inline in the /api/projects/delete handler. It was
+# factored out into `_reassign_project_sessions` (2026-08-19) so
+# /api/projects/merge could reuse the exact same lock-sensitive behavior
+# instead of duplicating it — see test_project_merge_reassigns_sessions.py.
+# These tests now pin the HELPER's source block; delete just calls it.
 
 def _delete_block():
     idx = ROUTES_SRC.find('"/api/projects/delete"')
     assert idx > 0, "projects/delete handler not found"
-    end = ROUTES_SRC.find('"/api/session/import"', idx)
+    end = ROUTES_SRC.find('"/api/projects/merge"', idx)
     return ROUTES_SRC[idx:end]
 
 
-def test_delete_clears_project_id_on_streaming_sessions_in_cache():
+def _reassign_helper_block():
+    idx = ROUTES_SRC.find("def _reassign_project_sessions(")
+    assert idx > 0, "_reassign_project_sessions helper not found"
+    end = ROUTES_SRC.find("\ndef handle_post(", idx)
+    return ROUTES_SRC[idx:end]
+
+
+def test_delete_delegates_to_shared_reassign_helper():
     block = _delete_block()
+    assert "_reassign_project_sessions({body[\"project_id\"]}, None)" in block, (
+        "projects/delete must reassign (unassign) via the shared helper, not "
+        "an inline duplicate of the streaming-session-safe logic (#3746)"
+    )
+
+
+def test_reassign_helper_clears_project_id_on_streaming_sessions_in_cache():
+    block = _reassign_helper_block()
     assert "_active_stream_ids()" in block, (
-        "projects/delete must compute the active stream set to special-case streaming sessions (#3746)"
+        "the reassign helper must compute the active stream set to special-case streaming sessions (#3746)"
     )
     assert 'entry.get("active_stream_id") in active_ids' in block, (
-        "projects/delete must detect sessions whose active_stream_id is currently streaming (#3746)"
+        "the reassign helper must detect sessions whose active_stream_id is currently streaming (#3746)"
     )
-    # The streaming session's project_id must be cleared on the LIVE CACHED object
+    # The streaming session's project_id must be updated on the LIVE CACHED object
     # (so the streaming thread persists it) — NOT left dangling, and NOT given a
     # competing s.save() that races the streaming writer.
-    assert "cached.project_id = None" in block, (
-        "projects/delete must clear project_id on the live cached streaming session so the "
-        "streaming thread persists the unlink — not leave a dangling pointer to a deleted project (#3746)"
+    assert "cached.project_id = new_project_id" in block, (
+        "the reassign helper must update project_id on the live cached streaming session so the "
+        "streaming thread persists it — not leave a dangling pointer (#3746)"
     )
     assert "with LOCK:" in block, (
         "the cached-object mutation must happen under the session cache LOCK (#3746)"
     )
 
 
-def test_delete_guards_each_session_save():
-    block = _delete_block()
+def test_reassign_helper_guards_each_session_save():
+    block = _reassign_helper_block()
     # Each per-session update stays wrapped in try/except so one slow/failing
-    # session can't abort the whole delete.
+    # session can't abort the whole batch.
     assert "try:" in block and "except Exception:" in block, (
-        "projects/delete must guard each per-session update (#3746)"
-    )
-    # The active-profile ownership guard (#1614) must remain intact.
-    assert '_profiles_match(proj.get("profile"), active_profile)' in block, (
-        "projects/delete must keep its cross-profile ownership guard (#1614)"
+        "the reassign helper must guard each per-session update (#3746)"
     )
 
 

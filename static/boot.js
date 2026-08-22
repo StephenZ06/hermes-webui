@@ -520,7 +520,12 @@ _installPwaSidebarSwipeGesture();
 let _sidebarSwipeClose=null;
 
 function _isInteractiveSidebarCloseTarget(target){
-  try{return !!(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"]'));}
+  // Session rows (and their fork/child rows) own their own horizontal
+  // swipe gesture (swipe-left-to-delete, swipe-right-to-archive, drag onto
+  // a project) — a touch starting on one must never also be claimed by
+  // this drawer-close gesture, or a delete-swipe closes the whole sidebar
+  // instead of revealing the delete action.
+  try{return !!(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],.session-item,.session-child-session-fork'));}
   catch(_){return false;}
 }
 
@@ -2800,6 +2805,14 @@ function applyEmptyStatePanelPref(){
   $('emptyState').classList.toggle('no-welcome',window._hideEmptyStatePanel===true);
 }
 
+function applyHideKanbanPref(){
+  const hide=window._hideKanbanPanel===true;
+  document.querySelectorAll('[data-panel="kanban"]').forEach(el=>{el.hidden=hide;});
+  if(hide && typeof _currentPanel!=='undefined' && _currentPanel==='kanban' && typeof switchPanel==='function'){
+    switchPanel('chat');
+  }
+}
+
 window.addEventListener('resize',()=>{
   _syncWorkspacePanelInlineWidth();
   syncWorkspacePanelState();
@@ -3497,6 +3510,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     applyEmptyStateSuggestionPref();
     window._hideEmptyStatePanel=s.hide_empty_state_panel===true;
     applyEmptyStatePanelPref();
+    window._hideKanbanPanel=s.hide_kanban_panel===true;
+    applyHideKanbanPref();
     // #4343: transcript virtualization is EXPERIMENTAL/opt-IN (default OFF).
     // #4346 Phase B (footer-jitter suppression during virtual-scroll
     // measurement re-renders) resolved the scroll-up flicker root cause,
@@ -3661,6 +3676,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     applyEmptyStateSuggestionPref();
     window._hideEmptyStatePanel=false;
     applyEmptyStatePanelPref();
+    window._hideKanbanPanel=false;
+    applyHideKanbanPref();
     window._virtualizeTranscript=false;  // settings-load failed: default-OFF (experimental/opt-in) (#4343)
     window._showTps=false;
     window._fadeTextEffect=false;

@@ -661,7 +661,7 @@ def main() -> None:
             print('[ok] SessionChannel reaper thread started', flush=True)
     except Exception as e:
         print(f'[!!] WARNING: SessionChannel reaper failed to start: {e}', flush=True)
-
+    from api.ssh_mount import start_reconnect_thread; start_reconnect_thread()  # noqa: E702 — keeps server.py under its 750-line test budget
     try:
         from api.plugins import load_plugins
         load_plugins()

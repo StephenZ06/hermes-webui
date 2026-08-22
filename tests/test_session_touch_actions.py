@@ -303,7 +303,11 @@ def test_session_removal_reflows_surviving_rows_smoothly():
 def test_ios_touch_events_drive_session_swipes():
     assert "el.addEventListener('touchstart'" in SESSIONS_JS
     assert "el.addEventListener('touchmove'" in SESSIONS_JS
-    assert "el.addEventListener('touchcancel',_clearPointerDragState" in SESSIONS_JS
+    # touchcancel must still clear drag/gesture state, but also open the
+    # long-press menu if it had already armed before the cancel arrived —
+    # otherwise a platform-interrupted long-press silently drops the menu
+    # (see _openLongPressMenuIfArmed).
+    assert "el.addEventListener('touchcancel',()=>{_openLongPressMenuIfArmed();_clearPointerDragState();}" in SESSIONS_JS
     assert "el.addEventListener('touchend'" in SESSIONS_JS
     assert "const _finishSessionGesture=(clientX,clientY,target,pointerType)=>{" in SESSIONS_JS
     assert "{passive:false}" in SESSIONS_JS
@@ -314,8 +318,8 @@ def test_ios_touch_events_drive_session_swipes():
 
 
 def test_touch_session_rows_preserve_vertical_scroll():
-    assert ".session-item{padding:8px 8px;" in STYLE_CSS
-    item_rule = STYLE_CSS[STYLE_CSS.find(".session-item{padding:8px 8px;"):STYLE_CSS.find("}", STYLE_CSS.find(".session-item{padding:8px 8px;"))]
+    assert ".session-item{padding:8px 8px 8px 10px;" in STYLE_CSS
+    item_rule = STYLE_CSS[STYLE_CSS.find(".session-item{padding:8px 8px 8px 10px;"):STYLE_CSS.find("}", STYLE_CSS.find(".session-item{padding:8px 8px 8px 10px;"))]
     assert "touch-action:pan-y" in item_rule
     assert "user-select:none" in item_rule
     assert "-webkit-user-select:none" in item_rule

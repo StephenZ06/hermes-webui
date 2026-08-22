@@ -7,6 +7,7 @@ const ICONS={
   archive:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2" width="13" height="3" rx="1"/><path d="M2.5 5v8h11V5"/><line x1="6" y1="8.5" x2="10" y2="8.5"/></svg>',
   unarchive:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2" width="13" height="3" rx="1"/><path d="M2.5 5v8h11V5"/><polyline points="6.5,7 8,5.5 9.5,7"/></svg>',
   dup:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="4.5" width="8.5" height="8.5" rx="1.5"/><path d="M3 11.5V3h8.5"/></svg>',
+  fork:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="2.5" x2="5" y2="10"/><circle cx="5" cy="12.5" r="1.8"/><circle cx="12" cy="4" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M12 5.8a5 5 0 0 1-5 5"/></svg>',
   trash:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M4.5 4.5v8.5h7v-8.5"/><line x1="7" y1="7" x2="7" y2="11"/><line x1="9" y1="7" x2="9" y2="11"/></svg>',
   more:'<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" stroke="none"><circle cx="8" cy="3" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="8" cy="13" r="1.25"/></svg>',
   edit:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13H3v-2z"/><path d="M10 4l2 2"/></svg>',
@@ -4854,6 +4855,32 @@ function _appendSessionShareActions(menu, session){
   ));
 }
 
+function _appendSessionForkAction(menu, session){
+  menu.appendChild(_buildSessionAction(
+    t('session_fork'),
+    t('session_fork_desc'),
+    ICONS.fork,
+    async()=>{
+      closeSessionActionMenu();
+      const branchableReadOnly=typeof _isBranchableReadOnlySession==='function'
+        ? _isBranchableReadOnlySession(session)
+        : false;
+      if(_isReadOnlySession(session)&&!branchableReadOnly){
+        showToast(t('session_fork_readonly'),3000,'error');
+        return;
+      }
+      try{
+        const res=await api('/api/session/branch',{method:'POST',body:JSON.stringify({session_id:session.session_id})});
+        if(res&&res.session_id){
+          await loadSession(res.session_id);
+          await renderSessionList();
+          showToast(t('branch_forked'));
+        }
+      }catch(err){showToast(t('branch_failed')+(err&&err.message?err.message:String(err||'')));}
+    }
+  ));
+}
+
 function _appendSessionDuplicateAction(menu, session){
   menu.appendChild(_buildSessionAction(
     t('session_duplicate'),
@@ -5070,6 +5097,7 @@ function _openSessionActionMenu(session, anchorEl){
     ));
   }
   if(!isExternalSession){
+    _appendSessionForkAction(menu, session);
     _appendSessionDuplicateAction(menu, session);
   }
   _appendSessionExportActions(menu, session);
@@ -5796,8 +5824,12 @@ async function _runRenderSessionListRefresh(opts, _gen){
 async function _loadSidebarSessionListPayload(sessionListQS, sessionRequestOpts){
   const projectPromise = (async() => {
     try{
-      const projectQS = _showAllProfiles ? '?all_profiles=1' : '';
-      return await api('/api/projects' + projectQS,{timeoutToast:false});
+      // Project FOLDERS are always shown across every profile, independent of
+      // the separate `_showAllProfiles` toggle (which controls whether OTHER
+      // PROFILES' SESSIONS are visible). A project created under one profile
+      // still only shows that profile's own chats inside it -- /api/sessions
+      // stays profile-scoped as normal; only the folder itself is global.
+      return await api('/api/projects?all_profiles=1',{timeoutToast:false});
     }catch(projectError){
       console.warn('renderProjectsList',projectError);
       return {projects:_allProjects||[]};
@@ -7266,7 +7298,7 @@ function _attachChildSessionsToSidebarRows(collapsedRows, rawSessions, rawRefere
       (typeof _isMessagingSession==='function'&&_isMessagingSession(parentRow))||
       parentRow.is_cli_session===true||
       parentRow.session_source==='messaging'||
-      (parentSourceMarker&&parentSourceMarker!=='webui'&&parentSourceMarker!=='subagent'&&parentSourceMarker!=='other'&&parentSourceMarker!=='fork')
+      (parentSourceMarker&&parentSourceMarker!=='webui'&&parentSourceMarker!=='subagent'&&parentSourceMarker!=='other'&&parentSourceMarker!=='fork'&&parentSourceMarker!=='api')
     );
     if(parentRow&&child._cross_surface_child_session&&parentIsExternal){
       if(childRenderable) orphans.push({...child,_orphan_child_session:true});
@@ -7950,7 +7982,6 @@ function renderSessionListFromCache(){
       const countSpan=document.createElement('span');
       countSpan.className='project-folder-count';
       countSpan.textContent=String(projectSessionCount);
-      chip.appendChild(countSpan);
       const kebab=document.createElement('button');
       kebab.type='button';
       kebab.className='project-folder-kebab';
@@ -7958,7 +7989,12 @@ function renderSessionListFromCache(){
       kebab.setAttribute('aria-label','Project options');
       kebab.innerHTML=ICONS.more;
       kebab.onclick=(e)=>{e.preventDefault();e.stopPropagation();_showProjectContextMenu(e,p,chip);};
+      // Kebab is invisible until hover/focus (opacity:0) but still occupies
+      // layout width — appended before the count so the count (always
+      // visible) is the row's true rightmost, edge-aligned element instead
+      // of sitting one kebab-width short of the box's right edge.
       chip.appendChild(kebab);
+      chip.appendChild(countSpan);
       let _pClickTimer=null;
       chip.onclick=(e)=>{
         clearTimeout(_pClickTimer);
@@ -8230,6 +8266,15 @@ function renderSessionListFromCache(){
       list.appendChild(more);
     }
   }
+  // Select mode toggle button (only when NOT in select mode). toggleSessionSelectMode()
+  // is otherwise unreachable from the UI — this is the only entry point into batch
+  // archive/move/delete of multiple sessions.
+  if(!_sessionSelectMode){
+    const toggleBtn=document.createElement('div');toggleBtn.className='session-select-toggle';
+    toggleBtn.textContent=t('session_select_mode');
+    toggleBtn.onclick=(e)=>{e.stopPropagation();toggleSessionSelectMode();};
+    list.appendChild(toggleBtn);
+  }
   // Refresh FLIP and queued archive/delete reflow both drive
   // --session-reflow-offset. Refresh wins so one render has one transform writer.
   const reflowBefore=animateRefresh?flipBefore:_pendingSessionReflowPositions;
@@ -8380,8 +8425,9 @@ function renderSessionListFromCache(){
       const childCountEl=document.createElement('span');
       childCountEl.className='session-child-count';
       const childLabel=t('session_meta_children', childCount);
-      childCountEl.textContent=childLabel;
+      childCountEl.innerHTML=`${ICONS.fork}<span class="session-child-count-num">${childCount}</span>`;
       childCountEl.title=_sessionChildBadgeTooltip(childLabel);
+      childCountEl.setAttribute('aria-label',childLabel);
       ['pointerdown','pointerup','click'].forEach(ev=>childCountEl.addEventListener(ev,e=>e.stopPropagation()));
       childCountEl.onclick=(e)=>{
         e.stopPropagation();
@@ -8391,6 +8437,11 @@ function renderSessionListFromCache(){
         renderSessionListFromCache();
       };
       titleRow.appendChild(childCountEl);
+      const childCountDivider=document.createElement('span');
+      childCountDivider.className='session-child-count-divider';
+      childCountDivider.textContent='•';
+      childCountDivider.setAttribute('aria-hidden','true');
+      titleRow.appendChild(childCountDivider);
     }
     if(s.is_cli_session||_isMessagingSession(s)){
       const chipLabel=_getChannelLabel(s)||'Hermes CLI';
@@ -8462,7 +8513,7 @@ function renderSessionListFromCache(){
         const childTitle=_sessionDisplayTitle(child)||'Untitled child session';
         const childTime=_formatRelativeSessionTime(_sessionTimestampMs(child));
         const parentNote=child._parent_segment_title?` via ${child._parent_segment_title}`:'';
-        return `-> ${childTitle}${parentNote} - ${childTime}`;
+        return `·  ${childTitle}${parentNote} - ${childTime}`;
       };
       const installForkChildSwipe=(rowEl, childSession, actionsEl)=>{
         let _pointerDownX=0;
@@ -8788,20 +8839,6 @@ function renderSessionListFromCache(){
     el._startRename = startRename;
     el.dataset.sid = s.session_id;
 
-    // Drag handle: mouse+touch drag onto a project folder to assign it.
-    // A dedicated handle (rather than repurposing the row's existing tap /
-    // long-press-for-menu / horizontal-swipe-to-archive gestures) so it
-    // can't misfire against any of those.
-    if(!readOnly&&!_sessionSelectMode){
-      const dragHandle=document.createElement('span');
-      dragHandle.className='session-drag-handle';
-      dragHandle.innerHTML=li('grip-vertical',14);
-      dragHandle.setAttribute('aria-hidden','true');
-      dragHandle.title=t('session_drag_handle_title');
-      _wireSessionDragHandle(dragHandle,el,s);
-      el.appendChild(dragHandle);
-    }
-
     // (Project dot is appended above, between title and timestamp, so it
     // sits outside the truncating title span and stays visible.)
     el.appendChild(sessionText);
@@ -9060,6 +9097,26 @@ function renderSessionListFromCache(){
         _clearDragTimer=setTimeout(()=>{_settleSessionSwipePaint();_clearDragTimer=null;},50);
       }
     };
+    // A long-press that gets interrupted by a platform-level pointercancel
+    // (OS gesture arbitration, scroll takeover, etc. — common on touch/pen)
+    // used to still open the menu, because the old code opened it directly
+    // inside the hold-delay timer regardless of what happened afterward. The
+    // new "arm on timer, open on release" design (_finishSessionGesture)
+    // means a pointercancel — which never reaches _finishSessionGesture —
+    // would otherwise silently drop the already-armed long-press with no
+    // menu at all. Call this from every cancel path so a cleanly-armed hold
+    // still opens the menu even when the pointer sequence doesn't end in a
+    // normal pointerup/touchend.
+    const _openLongPressMenuIfArmed=()=>{
+      if(_longPressArmed&&_gestureState==='pressing'&&!_renamingSid&&!_sessionSelectMode&&!readOnly){
+        _longPressArmed=false;
+        _longPressMenuOpened=true;
+        _gestureState='idle';
+        _openSessionActionMenu(s, el);
+        return true;
+      }
+      return false;
+    };
     const _finishSessionGesture=(clientX,clientY,target,pointerType)=>{
       if(_gestureState==='idle') return false;  // press never began on this row
       _clearLongPressTimer();
@@ -9134,6 +9191,14 @@ function renderSessionListFromCache(){
       if(_isSessionActionTarget(e.target)) return;
       _mouseFolderDragStarted=false;
       _beginSessionGesture(e.clientX,e.clientY,e.pointerType||'');
+      // Without this, a fast mouse movement can carry the pointer off the
+      // row (onto a neighboring row, or past the sidebar edge) before the
+      // >5px threshold below ever sees it — pointermove then targets
+      // whatever element the cursor lands on instead of this row, so the
+      // drag silently never starts. Capturing here (as the old dedicated
+      // handle always did) keeps every subsequent pointermove/up routed to
+      // this row regardless of where the cursor physically ends up.
+      try{el.setPointerCapture(e.pointerId);}catch(_){/* unsupported */}
       if(e.pointerType==='pen'){
         _scheduleSessionLongPressMenu();
       }
@@ -9188,6 +9253,7 @@ function renderSessionListFromCache(){
     });
     el.onpointercancel=(e)=>{
       if(e.pointerType==='touch') return;
+      _openLongPressMenuIfArmed();
       _clearPointerDragState();
     };
     el.onpointerleave=()=>{
@@ -9225,7 +9291,7 @@ function renderSessionListFromCache(){
       if(_touchFolderDragStarted){e.preventDefault();return;}
       if(_updateSessionGesture(touch.clientX,touch.clientY)) e.preventDefault();
     },{passive:false});
-    el.addEventListener('touchcancel',_clearPointerDragState,{passive:true});
+    el.addEventListener('touchcancel',()=>{_openLongPressMenuIfArmed();_clearPointerDragState();},{passive:true});
     el.addEventListener('touchend',(e)=>{
       const touch=e.changedTouches&&e.changedTouches[0];
       if(!touch) return;
@@ -9437,26 +9503,12 @@ function _expandProjectFolder(projectId){
 
 // ── Drag a chat onto a project folder ───────────────────────────────────
 // Pointer Events (not native HTML5 drag-and-drop, which has no touch
-// support) driven from a dedicated handle on each row rather than the
-// row itself, so it can never misfire against the row's existing tap /
-// long-press-for-menu / horizontal-swipe-to-archive gestures on the same
-// surface. Works identically for mouse and touch.
-function _wireSessionDragHandle(handle,rowEl,session){
-  handle.addEventListener('pointerdown',(e)=>{
-    if(e.pointerType==='mouse'&&e.button!==0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    _startSessionDrag(e,handle,rowEl,session);
-  });
-  // A stray click on the handle must not open the chat. NOT stopping
-  // pointerup here too -- that used to also swallow the drag's own
-  // document-level pointerup listener (registered on an ancestor, so
-  // stopPropagation() at the handle blocked it from ever bubbling up),
-  // which left the drag stuck (ghost + dimmed row never cleaned up) any
-  // time the pointer was released back over the handle itself.
-  handle.addEventListener('click',e=>e.stopPropagation());
-}
-
+// support), started directly from the row itself once the press holds
+// past a small movement threshold without triggering the row's tap /
+// long-press-for-menu / horizontal-swipe-to-archive gestures (see
+// el.onpointermove's mouse branch and the touch pointermove listener
+// above, both of which call _startSessionDrag). Works identically for
+// mouse and touch — no separate drag handle needed.
 function _startSessionDrag(e,handle,rowEl,session){
   const pointerId=e.pointerId;
   try{handle.setPointerCapture(pointerId);}catch(_){/* unsupported in this browser */}
@@ -9477,6 +9529,11 @@ function _startSessionDrag(e,handle,rowEl,session){
 
   let currentTargetChip=null;
   let moved=false;
+  // A session already in a project can be dragged back out by dropping it
+  // on the plain list (outside any project chip) instead of another project
+  // — otherwise there is no way to un-assign a session once dragged in.
+  const sessionListEl=document.getElementById('sessionList');
+  const canRemoveFromProject=!!(session&&session.project_id);
 
   const findDropTarget=(x,y)=>{
     const chips=document.querySelectorAll('.project-folder-row');
@@ -9487,11 +9544,21 @@ function _startSessionDrag(e,handle,rowEl,session){
     return null;
   };
 
+  const isOverRemoveZone=(x,y)=>{
+    if(!canRemoveFromProject||!sessionListEl) return false;
+    const r=sessionListEl.getBoundingClientRect();
+    return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
+  };
+
   const setTarget=(chip)=>{
     if(chip===currentTargetChip) return;
     if(currentTargetChip) currentTargetChip.classList.remove('project-drop-hover');
     currentTargetChip=chip;
     if(currentTargetChip) currentTargetChip.classList.add('project-drop-hover');
+  };
+
+  const setRemoveZoneHover=(on)=>{
+    if(sessionListEl) sessionListEl.classList.toggle('session-drop-remove-hover',on);
   };
 
   const positionGhost=(clientX,clientY)=>{
@@ -9504,7 +9571,9 @@ function _startSessionDrag(e,handle,rowEl,session){
     moved=true;
     ghost.classList.add('session-drag-ghost-active');
     positionGhost(ev.clientX,ev.clientY);
-    setTarget(findDropTarget(ev.clientX,ev.clientY));
+    const chip=findDropTarget(ev.clientX,ev.clientY);
+    setTarget(chip);
+    setRemoveZoneHover(!chip&&isOverRemoveZone(ev.clientX,ev.clientY));
   };
 
   const cleanupListeners=()=>{
@@ -9514,6 +9583,7 @@ function _startSessionDrag(e,handle,rowEl,session){
     rowEl.classList.remove('session-drag-source');
     document.body.classList.remove('session-dragging-active');
     setTarget(null);
+    setRemoveZoneHover(false);
   };
 
   const removeGhost=()=>{
@@ -9521,7 +9591,7 @@ function _startSessionDrag(e,handle,rowEl,session){
   };
 
   const snapBack=()=>{
-    ghost.style.transition='left .22s cubic-bezier(.2,.8,.2,1),top .22s cubic-bezier(.2,.8,.2,1),opacity .18s ease .1s';
+    ghost.style.transition='left .24s cubic-bezier(.22,.61,.36,1),top .24s cubic-bezier(.22,.61,.36,1),opacity .2s ease .1s';
     ghost.style.left=rect.left+'px';
     ghost.style.top=rect.top+'px';
     ghost.style.opacity='0';
@@ -9530,7 +9600,7 @@ function _startSessionDrag(e,handle,rowEl,session){
   };
 
   const dropInto=async(projectId,projectName)=>{
-    ghost.style.transition='transform .16s ease,opacity .16s ease';
+    ghost.style.transition='transform .2s cubic-bezier(.22,.61,.36,1),opacity .2s ease';
     ghost.style.transform='scale(.35)';
     ghost.style.opacity='0';
     ghost.addEventListener('transitionend',removeGhost,{once:true});
@@ -9541,13 +9611,13 @@ function _startSessionDrag(e,handle,rowEl,session){
       setTimeout(()=>droppedChip.classList.remove('project-drop-flash'),500);
     }
     try{
-      await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:projectId})});
-      _setOptimisticSessionField(session.session_id,'project_id',projectId);
+      await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:projectId||null})});
+      _setOptimisticSessionField(session.session_id,'project_id',projectId||null);
       const idx=_allSessions.findIndex(s=>s&&s.session_id===session.session_id);
-      if(idx>=0) _allSessions[idx].project_id=projectId;
-      _expandProjectFolder(projectId);
+      if(idx>=0) _allSessions[idx].project_id=projectId||null;
+      if(projectId) _expandProjectFolder(projectId);
       renderSessionListFromCache();
-      showToast('Moved to '+projectName);
+      showToast(projectId?('Moved to '+projectName):'Removed from project');
     }catch(err){
       showToast('Move failed: '+(err.message||err));
       renderSessionListFromCache();
@@ -9562,6 +9632,10 @@ function _startSessionDrag(e,handle,rowEl,session){
     const projectId=target&&target.dataset.projectId;
     if(target&&projectId&&projectId!==(session.project_id||'')){
       dropInto(projectId,target.dataset.projectName||'');
+      return;
+    }
+    if(!target&&isOverRemoveZone(ev.clientX,ev.clientY)){
+      dropInto(null,'');
       return;
     }
     snapBack();
@@ -9749,6 +9823,11 @@ function _startProjectCreate(){
         return;
       }
       await renderSessionList();
+      // Agent Canvas keeps its own sidebar DOM (it only reads _allProjects,
+      // just refreshed above, on its own render pass) — without this a
+      // project created while sitting on that panel wouldn't show up until
+      // the user switched away and back.
+      if(window.AgentCanvas && typeof window.AgentCanvas.renderSidebar==='function') window.AgentCanvas.renderSidebar();
       showToast('Project created');
     }else{
       inp.remove();

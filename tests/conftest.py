@@ -1041,6 +1041,11 @@ def test_server():
         # ~/.hermes/profiles/webui/ and overwrite real API keys.
         "HERMES_BASE_HOME":               str(TEST_STATE_DIR),
         "HERMES_WEBUI_PASSWORD":          "",
+        # Explicit empty string (distinct from unset) disables project-bind
+        # scope filtering (api.project_registry) for the test server — its
+        # real default roots are /workspace/MiniPC-Main and /workspace/rp5,
+        # which no test fixture path is ever under.
+        "HERMES_WEBUI_PROJECT_SCOPE_ROOTS": "",
     })
 
     # Pass agent dir if discovered so server.py doesn't have to re-discover

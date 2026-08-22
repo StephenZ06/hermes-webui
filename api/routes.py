@@ -1269,6 +1269,63 @@ def _gateway_status_payload() -> dict:
     }
 
 
+def _read_env_var(env_path: Path, key: str) -> str:
+    """Best-effort read of a single KEY=VALUE line from a .env file."""
+    try:
+        with env_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
+
+def _gateway_profiles_sharing_platform_token(current_profile: str, token_env_key: str) -> list[str]:
+    """Return other profile names whose ``token_env_key`` .env value matches
+    the current profile's — i.e. gateways impersonating the same bot.
+
+    Some deployments clone a profile's .env (including messaging bot
+    tokens) when creating new profiles, leaving every profile's gateway
+    able to connect as the same Discord/Telegram/etc. bot simultaneously.
+    When that happens, stopping only the active profile's gateway can
+    never make the platform look "stopped" in the UI — the sibling
+    profiles are still holding live sessions on the identical token. This
+    lets the lifecycle handler cascade stop/restart to those siblings too.
+    """
+    from api import config as api_config
+
+    base_dir = Path(api_config.STATE_DIR).parent
+    current_env = (
+        base_dir / "profiles" / current_profile / ".env"
+        if current_profile and current_profile != "default"
+        else base_dir / ".env"
+    )
+    current_token = _read_env_var(current_env, token_env_key)
+    if not current_token:
+        return []
+
+    siblings: list[str] = []
+    profiles_dir = base_dir / "profiles"
+    try:
+        candidates = [p.name for p in profiles_dir.iterdir() if p.is_dir()] if profiles_dir.exists() else []
+    except Exception:
+        candidates = []
+    if current_profile and current_profile != "default":
+        candidates.append("default")
+    for name in candidates:
+        if name == current_profile:
+            continue
+        env_path = base_dir / "profiles" / name / ".env" if name != "default" else base_dir / ".env"
+        if _read_env_var(env_path, token_env_key) == current_token:
+            siblings.append(name)
+    return siblings
+
+
 _GATEWAY_LIFECYCLE_TIMEOUT_SECONDS = 60
 
 # Server-side single-flight guard for gateway lifecycle actions. The client
@@ -1280,7 +1337,7 @@ _GATEWAY_LIFECYCLE_TIMEOUT_SECONDS = 60
 _GATEWAY_ACTION_LOCK = threading.Lock()
 
 
-def _run_gateway_lifecycle_command(action: str) -> subprocess.CompletedProcess:
+def _run_gateway_lifecycle_command(action: str, profile_override: str | None = None) -> subprocess.CompletedProcess:
     if action not in {"start", "stop", "restart"}:
         raise ValueError("unsupported gateway action")
 
@@ -1296,11 +1353,14 @@ def _run_gateway_lifecycle_command(action: str) -> subprocess.CompletedProcess:
         raise FileNotFoundError("Hermes agent CLI entrypoint not found")
 
     cmd = [str(getattr(api_config, "PYTHON_EXE", sys.executable)), str(main_py)]
-    profile_name = ""
-    try:
-        profile_name = str(get_active_profile_name() or "").strip()
-    except Exception as exc:
-        logger.debug("Could not resolve active profile for gateway lifecycle: %s", exc)
+    if profile_override is not None:
+        profile_name = profile_override
+    else:
+        profile_name = ""
+        try:
+            profile_name = str(get_active_profile_name() or "").strip()
+        except Exception as exc:
+            logger.debug("Could not resolve active profile for gateway lifecycle: %s", exc)
     if profile_name and profile_name != "default":
         cmd.extend(["--profile", profile_name])
     cmd.extend(["gateway", action])
@@ -1308,6 +1368,14 @@ def _run_gateway_lifecycle_command(action: str) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("BROWSER", "echo")
+    # Running main.py as a bare script only puts its own directory
+    # (agent_dir/hermes_cli) on sys.path, not agent_dir itself — so
+    # `import hermes_cli.something` inside it fails with ModuleNotFoundError
+    # regardless of cwd. Prepending agent_dir to PYTHONPATH makes the
+    # `hermes_cli` package importable the same way `python -m hermes_cli.main`
+    # would.
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(agent_dir) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
     return subprocess.run(
         cmd,
         cwd=str(agent_dir),
@@ -1325,6 +1393,35 @@ def _handle_gateway_lifecycle(handler, action: str, body: dict):
     # the lock for at most _GATEWAY_LIFECYCLE_TIMEOUT_SECONDS).
     if action not in {"start", "stop", "restart"}:
         return bad(handler, "unsupported gateway action", 400)
+    # Multi-container deployments (#3281 in agent_health.py) run the gateway
+    # in a separate container/host from this WebUI, reachable only over
+    # HTTP. Lifecycle actions shell out to the local `hermes` CLI against a
+    # PID recorded in the shared state volume — but PIDs aren't meaningful
+    # across container PID namespaces, so os.kill() on that number either
+    # hits nothing (silently reported as "already stopped", even though the
+    # real remote process is untouched) or, worse, an unrelated local PID.
+    # Fail loudly and honestly here instead of running a subprocess whose
+    # result can't be trusted to reflect what actually happened remotely.
+    try:
+        from api.agent_health import _remote_gateway_base_url
+        remote_base = _remote_gateway_base_url()
+    except Exception:
+        remote_base = None
+    if remote_base:
+        return j(
+            handler,
+            {
+                "ok": False,
+                "error": (
+                    "This gateway runs in a separate container/host "
+                    f"({remote_base}) — start/stop/restart aren't controllable "
+                    "from this WebUI instance. Manage it directly on that host "
+                    "(e.g. `hermes gateway stop`)."
+                ),
+                "action": action,
+            },
+            status=409,
+        )
     if not _GATEWAY_ACTION_LOCK.acquire(blocking=False):
         return j(
             handler,
@@ -1335,8 +1432,33 @@ def _handle_gateway_lifecycle(handler, action: str, body: dict):
             },
             status=409,
         )
+    cascaded_profiles: list[str] = []
     try:
         result = _run_gateway_lifecycle_command(action)
+        # Some deployments clone a profile's .env (including messaging bot
+        # tokens) when creating new profiles (#4102 — Discord "stop" no-op).
+        # When that happens every sibling profile's gateway can connect as
+        # the same Discord bot, so stopping only the active profile never
+        # makes the platform look stopped. Cascade stop/restart to any
+        # sibling profile sharing this profile's Discord token so the
+        # button actually does what it says.
+        if result.returncode == 0 and action in {"stop", "restart"}:
+            from api.profiles import get_active_profile_name
+            try:
+                active_profile = str(get_active_profile_name() or "default").strip() or "default"
+            except Exception:
+                active_profile = "default"
+            try:
+                siblings = _gateway_profiles_sharing_platform_token(active_profile, "DISCORD_BOT_TOKEN")
+            except Exception as exc:
+                logger.debug("Could not resolve Discord sibling profiles: %s", exc)
+                siblings = []
+            for sibling in siblings:
+                try:
+                    _run_gateway_lifecycle_command(action, profile_override=sibling)
+                    cascaded_profiles.append(sibling)
+                except Exception as exc:
+                    logger.warning("Cascaded gateway %s for sibling profile %s failed: %s", action, sibling, exc)
     except ValueError as exc:
         return bad(handler, str(exc), 400)
     except FileNotFoundError as exc:
@@ -1397,6 +1519,7 @@ def _handle_gateway_lifecycle(handler, action: str, body: dict):
             # payload carries the user-facing state.
             "message": f"Gateway {action} completed.",
             "status": _gateway_status_payload(),
+            "cascaded_profiles": cascaded_profiles,
         },
     )
 
@@ -10491,6 +10614,8 @@ def _pre_compression_continuation_session_id(session) -> str | None:
 from api.workspace import (
     load_workspaces,
     save_workspaces,
+    add_workspace_entry_if_missing,
+    is_blocked_system_path,
     get_last_workspace,
     get_profile_default_workspace,
     set_last_workspace,
@@ -14272,14 +14397,25 @@ def handle_get(handler, parsed) -> bool:
         return _handle_session_export(handler, parsed)
 
     if parsed.path == "/api/workspaces":
+        wss = load_workspaces()
+        if any(w.get("kind") == "remote" for w in wss):
+            from api.ssh_mount import mount_status
+            for w in wss:
+                if w.get("kind") == "remote":
+                    w["mount_status"] = mount_status(w)
         return j(
             handler,
             {
-                "workspaces": load_workspaces(),
+                "workspaces": wss,
                 "last": get_last_workspace(),
                 "terminal_remote_backend": _terminal_remote_backend_enabled(),
             },
         )
+
+    if parsed.path == "/api/workspaces/registry":
+        from api.project_registry import list_registry_projects
+
+        return j(handler, {"projects": list_registry_projects()})
 
     if parsed.path == "/api/workspaces/suggest":
         qs = parse_qs(parsed.query)
@@ -14303,6 +14439,77 @@ def handle_get(handler, parsed) -> bool:
 
     if parsed.path == "/api/git/status":
         return _handle_git_status(handler, parsed)
+
+    if parsed.path == "/api/subagents/active":
+        from api.gateway_chat import (
+            GatewaySubagentControlError,
+            gateway_subagents_request,
+            webui_gateway_chat_enabled,
+        )
+        if not webui_gateway_chat_enabled():
+            return j(handler, {"active": [], "spawn_paused": False, "gateway_enabled": False})
+        try:
+            data = gateway_subagents_request("GET", "/v1/subagents/active")
+        except GatewaySubagentControlError as e:
+            return j(handler, {"active": [], "spawn_paused": False, "gateway_enabled": True, "error": str(e)}, status=502)
+        return j(handler, {
+            "active": data.get("active") or [],
+            "spawn_paused": bool(data.get("spawn_paused")),
+            "gateway_enabled": True,
+        })
+
+    if parsed.path == "/api/agent-canvas/sessions":
+        # Subagent child sessions never get a WebUI sidecar file (they're
+        # spawned entirely inside hermes-agent, never through a WebUI
+        # session-creation path), so they never appear in the normal
+        # /api/sessions listing no matter how it's scoped — see
+        # list_parents_with_subagent_children()'s docstring. This is the
+        # only way the Agent Canvas history sidebar can know which chats
+        # ever delegated to a subagent.
+        from api.agent_sessions import list_parents_with_subagent_children, resolve_agent_state_db_paths
+        try:
+            from api.config import STATE_DIR
+
+            db_paths = resolve_agent_state_db_paths()
+            base_db_path = STATE_DIR.parent / 'state.db'
+            # resolve_agent_state_db_paths() can return the base state.db
+            # (the gateway-bridged deployment's single hermes-agent process
+            # writes every WebUI-origin delegate_task's rows there
+            # regardless of which WebUI profile is active) UNIONED with a
+            # profile-scoped one (real rows from a native `hermes` CLI
+            # session run with --profile <name>, which genuinely does write
+            # there). Only the base-sourced parents can mix in other
+            # profiles' chats and need the WebUI-session profile filter
+            # below — the profile-scoped ones are already exclusively that
+            # profile's by construction, filtering them the same way would
+            # wrongly drop them (no WebUI sidecar => no profile tag to match).
+            base_parents: list[dict] = []
+            scoped_parents: list[dict] = []
+            for path in db_paths:
+                bucket = base_parents if path == base_db_path else scoped_parents
+                bucket.extend(list_parents_with_subagent_children(path))
+        except Exception as e:
+            logger.debug("GET /api/agent-canvas/sessions failed", exc_info=True)
+            return j(handler, {"parents": [], "error": str(e)}, status=502)
+        try:
+            from api.profiles import get_active_profile_name, _profiles_match
+            from api.models import all_sessions
+
+            active_profile = get_active_profile_name()
+            profile_by_sid = {
+                s.get("session_id"): s.get("profile")
+                for s in (all_sessions() or [])
+                if isinstance(s, dict) and s.get("session_id")
+            }
+            base_parents = [
+                p for p in base_parents
+                if _profiles_match(profile_by_sid.get(p.get("parent_session_id")), active_profile)
+            ]
+        except Exception:
+            logger.debug("GET /api/agent-canvas/sessions: profile filtering failed, returning unfiltered", exc_info=True)
+        parents = base_parents + scoped_parents
+        parents.sort(key=lambda e: e.get("latest_at", 0), reverse=True)
+        return j(handler, {"parents": parents})
 
     if parsed.path == "/api/git/branches":
         return _handle_git_branches(handler, parsed)
@@ -15035,6 +15242,68 @@ def _resolve_new_session_workspace(body, visible_prev_session_id):
         get_last_workspace,
     )
     return str(workspace)
+def _reassign_project_sessions(old_project_ids: set, new_project_id) -> int:
+    """Repoint every session whose project_id is in `old_project_ids` at
+    `new_project_id` (pass None to unassign, e.g. project delete).
+
+    Shared by /api/projects/delete (new_project_id=None) and
+    /api/projects/merge (new_project_id=<target>). Originally inline in the
+    delete route; factored out so merge doesn't duplicate the same
+    lock-sensitive logic.
+
+    #3746: this is O(N) full-JSON read+save per session, and each save()
+    reserializes the entire messages array. For an actively-streaming session
+    we must NOT issue our own s.save() — it would race the streaming thread's
+    atomic writer and it carries the largest in-memory message array. Instead
+    we set project_id on the live cached Session object (under LOCK); the
+    streaming thread owns that object and persists it on its next
+    checkpoint/final save (the worker always does a final s.save() at turn
+    completion), so the update still lands without a competing write. (If the
+    streaming session isn't in the cache for some reason, fall back to a
+    direct save.) Guard each per-session update so one slow/failing session
+    can't abort the whole batch.
+
+    Returns the number of sessions repointed.
+    """
+    if not SESSION_INDEX_FILE.exists():
+        return 0
+    updated = 0
+    try:
+        index = json.loads(SESSION_INDEX_FILE.read_bytes())
+        active_ids = _active_stream_ids()
+        deferred_to_stream = []
+        for entry in index:
+            if entry.get("project_id") not in old_project_ids:
+                continue
+            sid = entry.get("session_id")
+            try:
+                if entry.get("active_stream_id") in active_ids:
+                    cleared_in_cache = False
+                    with LOCK:
+                        cached = SESSIONS.get(sid)
+                        if cached is not None:
+                            cached.project_id = new_project_id
+                            cleared_in_cache = True
+                    if cleared_in_cache:
+                        deferred_to_stream.append(sid)
+                        updated += 1
+                        continue
+                s = get_session(sid)
+                s.project_id = new_project_id
+                s.save()
+                updated += 1
+            except Exception:
+                logger.debug("Failed to update session %s", sid)
+        if deferred_to_stream:
+            logger.info(
+                "project session reassign: updated project_id on %d streaming "
+                "session(s) in-cache; streaming thread will persist: %s",
+                len(deferred_to_stream), deferred_to_stream,
+            )
+    except Exception:
+        logger.debug("Failed to load session index for project reassignment")
+    return updated
+
 
 def handle_post(handler, parsed) -> bool:
     """Handle all POST routes. Returns True if handled, False for 404."""
@@ -15891,6 +16160,121 @@ def handle_post(handler, parsed) -> bool:
         )
         return j(handler, {"session": s.compact()})
 
+
+    if parsed.path == "/api/session/bind_project":
+        try:
+            require(body, "session_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        try:
+            s = _get_or_materialize_session(body["session_id"])
+        except KeyError:
+            return bad(handler, "Session not found", 404)
+        except PermissionError:
+            return bad(handler, "Read-only imported sessions cannot be rebound", 403)
+        if getattr(s, "active_stream_id", None):
+            return bad(handler, "Cannot rebind a session with a run in progress", 409)
+
+        raw_key = body.get("project_key")
+        project_key = str(raw_key).strip() if raw_key else None
+
+        from api.project_registry import resolve_registry_project
+
+        with _get_session_agent_lock(body["session_id"]):
+            # Re-check under the lock: a run can start in the gap between the
+            # unlocked check above and acquiring this lock, and rebinding out
+            # from under an in-flight stream would desync its already-built
+            # context from the session's newly bound project mid-turn.
+            if getattr(s, "active_stream_id", None):
+                return bad(handler, "Cannot rebind a session with a run in progress", 409)
+            if project_key is None:
+                # Once a chat is bound to a project, unbinding is disallowed
+                # (by user request) — a chat's project context stays fixed
+                # for its lifetime instead of silently reverting. Rebinding
+                # to a DIFFERENT project is still allowed below; only the
+                # bound -> unbound transition is blocked. Server-side guard
+                # in addition to the UI hiding "Unbound" once bound, so a
+                # stale client/direct API call can't bypass it either.
+                if s.bound_project_key:
+                    return bad(
+                        handler,
+                        "This chat is bound to a project and cannot be unbound. "
+                        "You can rebind it to a different project instead.",
+                        400,
+                    )
+                s.bound_project_key = None
+                # Restore whatever workspace was active before the (first,
+                # if a rebind chain) bind — otherwise the file explorer,
+                # terminal, and composer workspace chip all keep showing the
+                # unbound project's files forever, since nothing else ever
+                # changes session.workspace back.
+                if s.pre_bind_workspace:
+                    s.workspace = s.pre_bind_workspace
+                    s.pre_bind_workspace = None
+            else:
+                project = resolve_registry_project(project_key)
+                if project is None:
+                    return bad(handler, f"Unknown project: {project_key}", 400)
+                if not project["available"]:
+                    return bad(
+                        handler,
+                        f"Project unavailable: {project['unavailable_reason']}",
+                        400,
+                    )
+                # Capture the pre-bind workspace only on the FIRST bind in a
+                # chain (A -> B without unbinding still restores the pre-A
+                # value on eventual unbind, not B's) — captured regardless of
+                # access_mode so an SSH-mode bind in the middle of a rebind
+                # chain still has a real pre-project workspace to fall back
+                # to below, not None.
+                if not s.pre_bind_workspace:
+                    s.pre_bind_workspace = s.workspace
+                if project["access_mode"] == "local" and project["repo_path"]:
+                    resolved_repo_path = str(Path(project["repo_path"]).expanduser().resolve())
+                    # The registry is a trusted *source*, but a curated entry
+                    # could still (accidentally or otherwise) point at an OS
+                    # directory — never let a bind hand the session a system
+                    # path just because it skips the normal
+                    # resolve_trusted_workspace() gate below.
+                    if is_blocked_system_path(resolved_repo_path):
+                        return bad(
+                            handler,
+                            f"Project path is not allowed: {resolved_repo_path}",
+                            400,
+                        )
+                    # The registry (WORKSPACES.yaml) is itself a trusted source —
+                    # at least as trusted as the ad hoc saved-workspace list — but
+                    # resolve_trusted_workspace()/the file-explorer, terminal, git,
+                    # and upload endpoints only trust paths under the user's home,
+                    # the boot default workspace, or this saved list. A registry
+                    # repo_path living elsewhere (the common case for curated
+                    # projects) would otherwise 404 the moment the user opens the
+                    # workspace panel for a chat they just bound. Registering it
+                    # here (idempotently, under a process-wide lock so concurrent
+                    # binds from other sessions can't clobber each other's
+                    # addition) makes every one of those endpoints work via the
+                    # SAME trust path they already use, instead of adding a
+                    # bound-project bypass to each one individually.
+                    add_workspace_entry_if_missing(resolved_repo_path, project["name"])
+                    s.workspace = resolved_repo_path
+                else:
+                    # Non-local (e.g. SSH) bind: file browsing/git for this
+                    # session routes through bound_project_key + the SSH
+                    # workspace resolver, not session.workspace. Reset it to
+                    # the pre-bind value (never leave it pointing at a
+                    # STALE local path from a previous project earlier in
+                    # this same rebind chain) so any endpoint that still
+                    # reads session.workspace directly sees the user's real
+                    # prior local workspace, not another project's files.
+                    s.workspace = s.pre_bind_workspace
+                s.bound_project_key = project_key
+            s.save()
+        publish_session_list_changed(
+            "session_bind_project",
+            profile=getattr(s, "profile", None),
+            session_id=getattr(s, "session_id", body["session_id"]),
+        )
+        return j(handler, {"session": s.compact()})
 
     if parsed.path == "/api/session/title/regenerate":
         try:
@@ -16807,6 +17191,12 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/workspaces/reorder":
         return _handle_workspace_reorder(handler, body)
 
+    if parsed.path == "/api/workspaces/reconnect":
+        return _handle_workspace_reconnect(handler, body)
+
+    if parsed.path == "/api/workspaces/disconnect":
+        return _handle_workspace_disconnect(handler, body)
+
     # ── Approval (POST) ──
     if parsed.path == "/api/approval/respond":
         return _handle_approval_respond(handler, body)
@@ -17258,6 +17648,43 @@ def handle_post(handler, parsed) -> bool:
         except Exception as e:
             return bad(handler, f"probe failed: {e}", 500)
 
+    # ── Subagent controls (Agent Canvas) ──
+    if parsed.path == "/api/subagents/interrupt":
+        try:
+            require(body, "subagent_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        from api.gateway_chat import (
+            GatewaySubagentControlError,
+            gateway_subagents_request,
+            webui_gateway_chat_enabled,
+        )
+        if not webui_gateway_chat_enabled():
+            return bad(handler, "Gateway chat backend is not enabled", 409)
+        try:
+            data = gateway_subagents_request(
+                "POST", "/v1/subagents/interrupt", {"subagent_id": body["subagent_id"]},
+            )
+        except GatewaySubagentControlError as e:
+            return bad(handler, str(e), 502)
+        return j(handler, data)
+
+    if parsed.path == "/api/subagents/pause":
+        from api.gateway_chat import (
+            GatewaySubagentControlError,
+            gateway_subagents_request,
+            webui_gateway_chat_enabled,
+        )
+        if not webui_gateway_chat_enabled():
+            return bad(handler, "Gateway chat backend is not enabled", 409)
+        try:
+            data = gateway_subagents_request(
+                "POST", "/v1/subagents/pause", {"paused": bool(body.get("paused"))},
+            )
+        except GatewaySubagentControlError as e:
+            return bad(handler, str(e), 502)
+        return j(handler, data)
+
     # ── Session pin (POST) ──
     if parsed.path == "/api/session/pin":
         try:
@@ -17432,23 +17859,16 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, "Session not found", 404)
         except PermissionError:
             return bad(handler, "Read-only imported sessions cannot be moved from WebUI", 403)
-        # #1614: refuse moves into a project owned by another profile.
+        # A project is a single shared entity visible on every profile now, so
+        # any profile's session can be filed into any project -- just confirm
+        # the target project_id actually exists.
         target_pid = body.get("project_id") or None
         if target_pid:
-            # Use the session's own profile for authorization, not the global
-            # active profile. A session belongs to a specific profile set at
-            # creation; projects from that profile should always be assignable,
-            # regardless of which profile is "active" at the process level.
-            # Matches the same principle as the profile chip fix — prefer
-            # session-scoped state over global active profile. (#3325 follow-up)
-            _session_profile = getattr(s, 'profile', None) or get_active_profile_name()
             target = next(
                 (p for p in load_projects() if p["project_id"] == target_pid),
                 None,
             )
             if not target:
-                return bad(handler, "Project not found", 404)
-            if not _profiles_match(target.get("profile"), _session_profile):
                 return bad(handler, "Project not found", 404)
         # #3746: acquire the per-session agent lock with a bounded timeout
         # instead of blocking indefinitely. The streaming thread holds this same
@@ -17525,10 +17945,9 @@ def handle_post(handler, parsed) -> bool:
         )
         if not proj:
             return bad(handler, "Project not found", 404)
-        # #1614: a project can only be renamed by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
+        # A project is now a single shared entity visible on every profile
+        # (see the sidebar all_profiles fetch) -- rename/delete are no longer
+        # gated by the creating profile; any profile can manage it.
         proj["name"] = body["name"].strip()[:128]
         if "color" in body:
             color = body["color"]
@@ -17549,62 +17968,53 @@ def handle_post(handler, parsed) -> bool:
         )
         if not proj:
             return bad(handler, "Project not found", 404)
-        # #1614: a project can only be deleted by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
         projects = [p for p in projects if p["project_id"] != body["project_id"]]
         save_projects(projects)
         # Unassign all sessions that belonged to this project.
-        # #3746: this loop is O(N) full-JSON read+save per session, and each
-        # save() reserializes the entire messages array. For a project with many
-        # messageful sessions that throughput alone can blow past the client's
-        # 30s timeout. For an actively-streaming session we must NOT issue our own
-        # s.save() — it would race the streaming thread's atomic writer and it
-        # carries the largest in-memory message array. Instead we clear project_id
-        # on the live cached Session object (under LOCK); the streaming thread owns
-        # that object and persists it on its next checkpoint/final save (the worker
-        # always does a final s.save() at turn completion), so the unlink still
-        # lands without a competing write. (If the streaming session isn't in the
-        # cache for some reason, fall back to a direct save.) Guard each per-session
-        # update so one slow/failing session can't abort the whole request.
-        if SESSION_INDEX_FILE.exists():
-            try:
-                index = json.loads(SESSION_INDEX_FILE.read_bytes())
-                active_ids = _active_stream_ids()
-                deferred_to_stream = []
-                for entry in index:
-                    if entry.get("project_id") != body["project_id"]:
-                        continue
-                    sid = entry.get("session_id")
-                    try:
-                        if entry.get("active_stream_id") in active_ids:
-                            # Clear on the live cached object so the streaming
-                            # thread's own next save persists project_id=None.
-                            cleared_in_cache = False
-                            with LOCK:
-                                cached = SESSIONS.get(sid)
-                                if cached is not None:
-                                    cached.project_id = None
-                                    cleared_in_cache = True
-                            if cleared_in_cache:
-                                deferred_to_stream.append(sid)
-                                continue
-                            # Not cached — fall through to a direct save.
-                        s = get_session(sid)
-                        s.project_id = None
-                        s.save()
-                    except Exception:
-                        logger.debug("Failed to update session %s", sid)
-                if deferred_to_stream:
-                    logger.info(
-                        "projects/delete: cleared project_id on %d streaming session(s) "
-                        "in-cache; streaming thread will persist: %s",
-                        len(deferred_to_stream), deferred_to_stream,
-                    )
-            except Exception:
-                logger.debug("Failed to load session index for project unlink")
+        _reassign_project_sessions({body["project_id"]}, None)
         return j(handler, {"ok": True})
+
+    if parsed.path == "/api/projects/merge":
+        # One-time-use-per-cleanup consolidation: several profiles can each
+        # independently create a same-idea project (e.g. "Triple S POS") before
+        # projects became visible across profiles, leaving multiple project_ids
+        # for what the user considers ONE project. Merge folds `source_project_ids`
+        # into `target_project_id`: every session pointing at a source id is
+        # repointed at the target, the source rows are deleted, and the target's
+        # name/color can optionally be normalized in the same call.
+        try:
+            require(body, "target_project_id", "source_project_ids")
+        except ValueError as e:
+            return bad(handler, str(e))
+        target_id = str(body["target_project_id"])
+        source_ids = body["source_project_ids"]
+        if not isinstance(source_ids, list) or not source_ids:
+            return bad(handler, "source_project_ids must be a non-empty list")
+        source_ids = {str(sid) for sid in source_ids}
+        if target_id in source_ids:
+            return bad(handler, "target_project_id cannot also be a source")
+        projects = load_projects()
+        by_id = {p["project_id"]: p for p in projects}
+        target = by_id.get(target_id)
+        if not target:
+            return bad(handler, "Target project not found", 404)
+        missing = source_ids - set(by_id.keys())
+        if missing:
+            return bad(handler, f"Source project(s) not found: {sorted(missing)}", 404)
+        if "name" in body:
+            name = str(body["name"]).strip()[:128]
+            if name:
+                target["name"] = name
+        if "color" in body:
+            import re as _re
+            color = body["color"]
+            if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
+                return bad(handler, "Invalid color format")
+            target["color"] = color
+        projects = [p for p in projects if p["project_id"] not in source_ids]
+        save_projects(projects)
+        merged_count = _reassign_project_sessions(source_ids, target_id)
+        return j(handler, {"ok": True, "project": target, "merged_sessions": merged_count})
 
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":
@@ -18325,6 +18735,31 @@ def _handle_sessions_search(handler, parsed):
     })
 
 
+def _resolve_ssh_bound_project(webui_session) -> dict | None:
+    """Return the resolved SSH-mode project a session is bound to, or None.
+
+    None covers every case where local filesystem handling should proceed
+    as normal: unbound session, bound to a local-mode project, or the
+    registry entry is missing/unavailable (that error surfaces from the
+    chat-turn system-prompt injection, not here — this helper just decides
+    routing for the file-explorer endpoints).
+    """
+    project_key = getattr(webui_session, "bound_project_key", None) if webui_session is not None else None
+    if not project_key:
+        return None
+    from api.project_registry import resolve_registry_project
+
+    project = resolve_registry_project(project_key)
+    if project is None or not project.get("available") or project.get("access_mode") != "ssh":
+        return None
+    return project
+
+
+def _remote_root_display(project: dict) -> str:
+    ssh_cfg = project.get("ssh") or {}
+    return str(ssh_cfg.get("remote_path") or "").rstrip("/") or "/"
+
+
 def _handle_list_dir(handler, parsed):
     qs = parse_qs(parsed.query)
     sid = qs.get("session_id", [""])[0]
@@ -18348,6 +18783,25 @@ def _handle_list_dir(handler, parsed):
             workspace = cli_meta.get("workspace", "")
         except Exception:
             return bad(handler, "Session not found", 404)
+    rel_path = qs.get("path", ["."])[0]
+    ssh_project = _resolve_ssh_bound_project(webui_session)
+    if ssh_project is not None:
+        from api.ssh_workspace import SshWorkspaceError, ssh_list_dir
+
+        try:
+            entries = ssh_list_dir(ssh_project, rel_path)
+        except (SshWorkspaceError, ValueError) as e:
+            return bad(handler, _sanitize_error(e), 502)
+        return j(
+            handler,
+            {
+                "entries": entries,
+                "signature": dir_signature(Path("/"), ".", entries),
+                "path": rel_path,
+                "workspace": f"ssh://{ssh_project['ssh']['target']}{_remote_root_display(ssh_project)}",
+                "workspace_recovered": False,
+            },
+        )
     try:
         if webui_session is None:
             workspace = resolve_trusted_workspace(workspace)
@@ -18365,7 +18819,6 @@ def _handle_list_dir(handler, parsed):
                     expected_workspace=stored_workspace,
                 )
                 workspace = Path(persisted.workspace)
-        rel_path = qs.get("path", ["."])[0]
         entries = list_dir(Path(workspace), rel_path)
         return j(
             handler,
@@ -21300,6 +21753,14 @@ def _handle_file_read(handler, parsed):
     rel = qs.get("path", [""])[0]
     if not rel:
         return bad(handler, "path is required")
+    ssh_project = _resolve_ssh_bound_project(s)
+    if ssh_project is not None:
+        from api.ssh_workspace import SshWorkspaceError, ssh_read_file
+
+        try:
+            return j(handler, ssh_read_file(ssh_project, rel))
+        except (SshWorkspaceError, ValueError) as e:
+            return bad(handler, _sanitize_error(e), 502)
     try:
         return j(handler, read_file_content(Path(s.workspace), rel))
     except ImportError as e:
@@ -26105,7 +26566,90 @@ def _handle_file_open_vscode(handler, body):
         return bad(handler, _sanitize_error(e))
 
 
+def _handle_workspace_add_remote(handler, body):
+    """Add + mount a remote (SSHFS) workspace entry.
+
+    Unlike a local Add-Space, there's no pre-existing path to validate —
+    the mountpoint is derived from the name and doesn't exist until
+    mount_remote() creates and mounts it. Mount happens synchronously here
+    so the user gets an immediate pass/fail instead of discovering a
+    broken mount later.
+    """
+    from api.ssh_mount import SshMountError, mount_remote
+
+    remote = body.get("remote") or {}
+    host = str(remote.get("host", "")).strip()
+    remote_path = str(remote.get("remote_path", "")).strip()
+    key_path = str(remote.get("key_path", "")).strip()
+    name = body.get("name", "").strip()
+    if not name:
+        return bad(handler, "name is required")
+    if not host or not remote_path or not key_path:
+        return bad(handler, "host, remote path, and key path are required")
+
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "remote"
+    mountpoint = f"/workspace/remote/{slug}"
+    wss = load_workspaces()
+    if any(w["path"] == mountpoint for w in wss):
+        return bad(handler, "Workspace already in list")
+
+    entry = {
+        "path": mountpoint,
+        "name": name,
+        "kind": "remote",
+        "remote": {"host": host, "remote_path": remote_path, "key_path": key_path},
+    }
+    try:
+        mount_remote(entry)
+    except SshMountError as e:
+        return bad(handler, str(e))
+
+    wss.append(entry)
+    save_workspaces(wss)
+    return j(handler, {"ok": True, "workspaces": wss})
+
+
+def _handle_workspace_reconnect(handler, body):
+    from api.ssh_mount import SshMountError, mount_remote, mount_status
+
+    path_str = body.get("path", "").strip()
+    if not path_str:
+        return bad(handler, "path is required")
+    wss = load_workspaces()
+    entry = next((w for w in wss if w["path"] == path_str), None)
+    if entry is None:
+        return bad(handler, "Workspace not found", 404)
+    if entry.get("kind") != "remote":
+        return bad(handler, "Not a remote workspace")
+    try:
+        mount_remote(entry)
+    except SshMountError as e:
+        return bad(handler, str(e))
+    return j(handler, {"ok": True, "mount_status": mount_status(entry)})
+
+
+def _handle_workspace_disconnect(handler, body):
+    from api.ssh_mount import SshMountError, mount_status, unmount_remote
+
+    path_str = body.get("path", "").strip()
+    if not path_str:
+        return bad(handler, "path is required")
+    wss = load_workspaces()
+    entry = next((w for w in wss if w["path"] == path_str), None)
+    if entry is None:
+        return bad(handler, "Workspace not found", 404)
+    if entry.get("kind") != "remote":
+        return bad(handler, "Not a remote workspace")
+    try:
+        unmount_remote(entry)
+    except SshMountError as e:
+        return bad(handler, str(e))
+    return j(handler, {"ok": True, "mount_status": mount_status(entry)})
+
+
 def _handle_workspace_add(handler, body):
+    if body.get("remote"):
+        return _handle_workspace_add_remote(handler, body)
     # Strip surrounding paired quotes BEFORE any further processing — macOS
     # Finder's "Copy as Pathname" wraps paths in single quotes, and users
     # routinely paste those quoted strings into the Add Space input.
@@ -26163,6 +26707,16 @@ def _handle_workspace_remove(handler, body):
     if not path_str:
         return bad(handler, "path is required")
     wss = load_workspaces()
+    entry = next((w for w in wss if w["path"] == path_str), None)
+    if entry is not None and entry.get("kind") == "remote":
+        # Unmount before dropping the entry so no orphaned FUSE mount
+        # survives a workspace removal. Best-effort: a failed unmount
+        # (host already gone) must not block removing the entry itself.
+        from api.ssh_mount import SshMountError, unmount_remote
+        try:
+            unmount_remote(entry)
+        except SshMountError as exc:
+            logger.warning("Failed to unmount removed workspace '%s': %s", path_str, exc)
     wss = [w for w in wss if w["path"] != path_str]
     save_workspaces(wss)
     return j(handler, {"ok": True, "workspaces": wss})

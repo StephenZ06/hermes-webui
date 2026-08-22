@@ -482,7 +482,10 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'insights') await loadInsights();
   if (nextPanel === 'logs') await loadLogs();
   if (nextPanel === 'audit') await loadAuditTrail();
-  if (nextPanel === 'agentCanvas' && window.AgentCanvas) window.AgentCanvas.mount($('agentCanvasWrap'));
+  if (nextPanel === 'agentCanvas' && window.AgentCanvas) {
+    window.AgentCanvas.mount($('agentCanvasWrap'));
+    if (typeof window.AgentCanvas.renderSidebar === 'function') window.AgentCanvas.renderSidebar();
+  }
   _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {
@@ -2493,7 +2496,26 @@ function _kanbanCardQuickActions(task){
 
 async function quickKanbanCardAction(event, taskId, status){
   if (event) event.stopPropagation();
-  return updateKanbanTask(taskId, {status});
+  // Quick actions are meant to be fire-and-forget from the board view.
+  // updateKanbanTask() defaults to reopening the task detail panel after a
+  // patch — for the archive action specifically that meant clicking
+  // "Archive" immediately popped the just-archived task's detail panel
+  // back open, making it look like nothing happened / the task wouldn't
+  // go away. Suppress that for both quick actions.
+  return updateKanbanTask(taskId, {status}, {openDetail: false});
+}
+
+async function archiveKanbanTaskFromDetail(taskId){
+  if (!taskId) return;
+  try {
+    await api('/api/kanban/tasks/' + encodeURIComponent(taskId) + _kanbanBoardQuery(), {
+      method: 'PATCH',
+      body: JSON.stringify({status: 'archived'}),
+    });
+    closeKanbanTaskDetail();
+    await loadKanban(true);
+    showToast(t('kanban_task_archived') || 'Task archived');
+  } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
 }
 
 function _kanbanSuppressNextCardClick(){
@@ -3881,6 +3903,13 @@ let _kanbanTaskModalFocusCleanup = null;
 // review: editing a 'running' task without touching status was reclaiming
 // the worker and moving the task back to triage.
 let _kanbanTaskModalInitialDisplayedStatus = null;
+// The Tenant input was removed from the create/edit modal, but existing
+// tasks can still carry a tenant (set via API, or before the field was
+// removed) and the board-level tenant filter still reads it. Without this,
+// submitKanbanTaskModal() would send `tenant: null` on every edit save
+// (no field to read from) and silently wipe it. Edit mode captures the
+// task's current value on open; create mode has nothing to preserve.
+let _kanbanTaskModalOriginalTenant = '';
 let _kanbanBoardModalFocusCleanup = null;
 
 async function _kanbanLoadProfileNames(){
@@ -3988,7 +4017,7 @@ function openKanbanCreate(){
       if (firstProfile) sel.value = firstProfile.value;
     }
   });
-  _kanbanPopulateTenantDatalist();
+  _kanbanTaskModalOriginalTenant = '';
   _kanbanPopulateWorkspacePathDatalist();
   _kanbanPopulateParentsDatalist();
   modal.hidden = false;
@@ -4032,11 +4061,11 @@ async function openKanbanEdit(taskId){
   const initialDisplayedStatus = _kanbanEditableStatusFor(task.status);
   const originalStatus = task.status || initialDisplayedStatus;
   _kanbanTaskModalInitialDisplayedStatus = initialDisplayedStatus;
+  _kanbanTaskModalOriginalTenant = task.tenant || '';
   _kanbanResetTaskModalFields({
     title: task.title || '',
     body: task.body || '',
     status: initialDisplayedStatus,
-    tenant: task.tenant || '',
     priority: typeof task.priority === 'number' ? task.priority : 0,
   });
   // Populate the assignee select AFTER reset so the option exists when we
@@ -4044,7 +4073,6 @@ async function openKanbanEdit(taskId){
   await _kanbanPopulateAssigneeSelect(task.assignee || '');
   _kanbanSetTaskModalStatusHint(originalStatus, initialDisplayedStatus);
   _kanbanSetTaskModalLabels('edit');
-  _kanbanPopulateTenantDatalist();
   modal.hidden = false;
   if (_kanbanTaskModalFocusCleanup) {
     _kanbanTaskModalFocusCleanup();
@@ -4079,7 +4107,6 @@ function _kanbanResetTaskModalFields(values){
   // Assignee handled separately by _kanbanPopulateAssigneeSelect() because
   // it's a <select> populated from /api/profiles + board history; setting
   // .value before the options exist would silently fail.
-  set('kanbanTaskModalTenant', v.tenant || '');
   set('kanbanTaskModalPriority', v.priority != null ? v.priority : 0);
   set('kanbanTaskModalSkills', Array.isArray(v.skills) ? v.skills.join(', ') : (v.skills || ''));
   set('kanbanTaskModalMaxRuntimeSeconds', v.max_runtime_seconds != null ? v.max_runtime_seconds : '');
@@ -4126,12 +4153,6 @@ function _kanbanSetTaskModalStatusHint(realStatus, editableStatus){
   const statusLabel = t(`kanban_status_${realStatus}`) || realStatus;
   hintEl.textContent = String(t('kanban_status_original_hint')).replace('{0}', statusLabel);
   hintEl.hidden = false;
-}
-
-function _kanbanPopulateTenantDatalist(){
-  const tenants = (_kanbanBoard && Array.isArray(_kanbanBoard.tenants)) ? _kanbanBoard.tenants : [];
-  const tList = document.getElementById('kanbanTaskModalTenantList');
-  if (tList) tList.innerHTML = tenants.map(v => `<option value="${esc(v)}"></option>`).join('');
 }
 
 function _kanbanPopulateWorkspacePathDatalist(){
@@ -4239,7 +4260,6 @@ async function submitKanbanTaskModal(){
   const bodyEl = document.getElementById('kanbanTaskModalBody');
   const statusEl = document.getElementById('kanbanTaskModalStatus');
   const assigneeEl = document.getElementById('kanbanTaskModalAssignee');
-  const tenantEl = document.getElementById('kanbanTaskModalTenant');
   const priorityEl = document.getElementById('kanbanTaskModalPriority');
   const workspaceKindEl = document.getElementById('kanbanTaskModalWorkspaceKind');
   const workspacePathEl = document.getElementById('kanbanTaskModalWorkspacePath');
@@ -4270,7 +4290,7 @@ async function submitKanbanTaskModal(){
   const payload = {title};
   const bodyVal = bodyEl ? bodyEl.value : '';
   const assigneeVal = assigneeEl ? assigneeEl.value.trim() : '';
-  const tenantVal = tenantEl ? tenantEl.value.trim() : '';
+  const tenantVal = _kanbanTaskModalOriginalTenant;
   const statusVal = statusEl ? statusEl.value : '';
   const priorityRaw = priorityEl ? priorityEl.value : '';
   const workspacePathVal = workspacePathEl ? workspacePathEl.value.trim() : '';
@@ -4438,7 +4458,14 @@ function _kanbanRenderTaskDetail(data){
   // dashboard plugin's contract. UI users want to claim/promote a ready task
   // via the dispatcher Nudge button, not flip it to running by hand.
   const statusButtons = ['triage', 'todo', 'ready', 'blocked', 'done', 'archived'].map(status =>
-    `<button class="btn secondary" onclick="updateKanbanTask('${esc(task.id)}',{status:'${status}'})">${esc(_kanbanColumnLabel(status))}</button>`
+    // Archiving means "make this go away" — unlike every other status
+    // transition here, re-rendering the detail view for the task afterward
+    // (updateKanbanTask's default) just leaves the archived task sitting
+    // on screen with no obvious next step, reading as "didn't do anything
+    // / can't get rid of it". Close back to the board for that one instead.
+    status === 'archived'
+      ? `<button class="btn secondary" onclick="archiveKanbanTaskFromDetail('${esc(task.id)}')">${esc(_kanbanColumnLabel(status))}</button>`
+      : `<button class="btn secondary" onclick="updateKanbanTask('${esc(task.id)}',{status:'${status}'})">${esc(_kanbanColumnLabel(status))}</button>`
   ).join('') + `<button class="btn secondary" onclick="blockKanbanTask('${esc(task.id)}')">${esc(t('kanban_block'))}</button><button class="btn secondary" onclick="unblockKanbanTask('${esc(task.id)}')">${esc(t('kanban_unblock'))}</button>`;
   return `<div class="kanban-task-preview-header">
       <button class="btn secondary kanban-back-btn" onclick="closeKanbanTaskDetail()">${esc(t('kanban_back_to_board'))}</button>
@@ -4648,8 +4675,14 @@ function _renderKanbanBoardMenu(boards, current){
     const icon = b.icon ? esc(b.icon) : '';
     const safeColor = _kanbanSafeColor(b.color);
     const colorStyle = safeColor ? `color:${safeColor}` : '';
+    // The icon slot reserves layout width even when empty (min-width in
+    // CSS) — for boards with neither a custom icon nor the current-board
+    // checkmark, that left an empty gap before the name that read as
+    // "space to the left of the text". Only emit the span when it will
+    // actually show something.
+    const iconGlyph = icon || (isCurrent ? '✓' : '');
     return `<button type="button" class="kanban-board-switcher-item ${isCurrent ? 'is-current' : ''}" role="menuitem" data-board-slug="${esc(b.slug)}" onclick="switchKanbanBoard('${esc(b.slug)}')">
-      <span class="kanban-board-switcher-item-icon" style="${colorStyle}">${icon || (isCurrent ? '✓' : '')}</span>
+      ${iconGlyph ? `<span class="kanban-board-switcher-item-icon" style="${colorStyle}">${iconGlyph}</span>` : ''}
       <span class="kanban-board-switcher-item-name">${esc(b.name || b.slug)}</span>
       <span class="kanban-board-switcher-item-count">${esc(String(total))}</span>
     </button>`;
@@ -6499,12 +6532,42 @@ function _renderPersonaPickerPopup(definitions) {
   if (!popup || popup.style.display === 'none') return;
   popup.innerHTML = '';
   const activeId = S.session && S.session.agent_definition_id;
-  if (!definitions.length) {
+  if (!definitions.length && !activeId) {
     const empty = document.createElement('div');
     empty.className = 'persona-picker-empty';
     empty.textContent = t('agent_def_no_match') || 'No personas yet.';
     popup.appendChild(empty);
     return;
+  }
+  // The applied persona can be a builtin that was since soft-deleted (hidden)
+  // — list_definitions()/this popup's `definitions` array excludes hidden
+  // builtins, but the backend still resolves and uses it for every turn
+  // (api/agent_definitions.py get_definition() deliberately still resolves
+  // hidden ids). Without this synthetic row there would be no way to clear
+  // it from the session — the "applied" state would be permanently stuck
+  // with no checked row to click.
+  if (activeId && !definitions.some(d => d.id === activeId)) {
+    const row = document.createElement('div');
+    row.className = 'persona-picker-row active persona-picker-row-missing';
+    row.dataset.personaId = activeId;
+    row.setAttribute('role', 'menuitemradio');
+    row.setAttribute('aria-checked', 'true');
+    const dot = document.createElement('span');
+    dot.className = 'persona-picker-dot';
+    dot.style.background = 'var(--muted)';
+    dot.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'persona-picker-label';
+    label.textContent = t('agent_def_applied_deleted') || 'Applied persona (deleted)';
+    row.appendChild(dot);
+    row.appendChild(label);
+    const check = document.createElement('span');
+    check.className = 'persona-picker-check';
+    check.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    check.setAttribute('aria-hidden', 'true');
+    row.appendChild(check);
+    row.onclick = () => _applyPersonaFromPicker({ id: activeId, name: label.textContent }, true);
+    popup.appendChild(row);
   }
   for (const def of definitions) {
     const isActive = activeId === def.id;
@@ -7273,9 +7336,14 @@ function _positionProfileDropdown(){
   }
 }
 
-function renderWorkspaceDropdownInto(dd, workspaces, currentWs){
+function renderWorkspaceDropdownInto(dd, workspaces, currentWs, projects){
   if(!dd)return;
   dd.innerHTML='';
+
+  // ── Bound project section (project-bound chats) ─────────────────────────
+  if(typeof renderBoundProjectDropdownSection==='function' && projects && projects.length){
+    renderBoundProjectDropdownSection(dd, projects, S.session?.bound_project_key||'');
+  }
 
   // ── Search row ──────────────────────────────────────────────────────────
   const searchRow=document.createElement('div');
@@ -7374,8 +7442,8 @@ function toggleWsDropdown(){
   if(open){closeWsDropdown();}
   else{
     closeProfileDropdown(); // close profile dropdown if open
-    loadWorkspaceList().then(data=>{
-      renderWorkspaceDropdownInto(dd, data.workspaces, S.session?.workspace||S._profileDefaultWorkspace||data.last||'');
+    Promise.all([loadWorkspaceList(), (typeof _fetchProjectRegistry==='function'?_fetchProjectRegistry():Promise.resolve([]))]).then(([data,projects])=>{
+      renderWorkspaceDropdownInto(dd, data.workspaces, S.session?.workspace||S._profileDefaultWorkspace||data.last||'', projects);
       _setWorkspaceDropdownOpenState(dd,true);
     });
   }
@@ -7394,8 +7462,8 @@ function toggleComposerWsDropdown(){
     closeProfileDropdown();
     if(typeof closeModelDropdown==='function') closeModelDropdown();
     if(typeof closeReasoningDropdown==='function') closeReasoningDropdown();
-    loadWorkspaceList().then(data=>{
-      renderWorkspaceDropdownInto(dd, data.workspaces, S.session?.workspace||S._profileDefaultWorkspace||data.last||'');
+    Promise.all([loadWorkspaceList(), (typeof _fetchProjectRegistry==='function'?_fetchProjectRegistry():Promise.resolve([]))]).then(([data,projects])=>{
+      renderWorkspaceDropdownInto(dd, data.workspaces, S.session?.workspace||S._profileDefaultWorkspace||data.last||'', projects);
       _setWorkspaceDropdownOpenState(dd,true);
       _positionComposerWsDropdown();
       if(chip){
@@ -7457,10 +7525,11 @@ function renderWorkspacesPanel(workspaces){
     row.draggable=true;
     const isActive = w.path === activePath;
     const activeBadge = isActive ? `<span class="detail-badge active" style="margin-left:6px;font-size:9px;padding:1px 6px">${esc(t('profile_active'))}</span>` : '';
+    const remoteDot = w.kind === 'remote' ? `<span class="ws-conn-dot ws-conn-dot-${esc(w.mount_status || 'disconnected')}" title="${esc((w.mount_status || 'disconnected').replace(/^./, c => c.toUpperCase()))}"></span>` : '';
     row.innerHTML=`
       <span class="ws-drag-handle" title="${esc(t('workspace_drag_hint'))}">${li('grip-vertical',12)}</span>
       <div class="ws-row-info">
-        <div class="ws-row-name">${esc(w.name)}${activeBadge}</div>
+        <div class="ws-row-name">${remoteDot}${esc(w.name)}${activeBadge}</div>
         <div class="ws-row-path">${esc(w.path)}</div>
       </div>`;
     // Click on info area only — not on drag handle
@@ -7547,6 +7616,14 @@ function _renderWorkspaceDetail(ws){
     ? `<span class="detail-badge active">${esc(t('profile_active'))}</span>`
     : `<span class="detail-badge">Inactive</span>`;
   const defaultBadge = isDefault ? ` <span class="detail-badge">${esc(t('profile_default_label'))}</span>` : '';
+  const isRemote = ws.kind === 'remote';
+  const connBadge = isRemote
+    ? `<span class="ws-conn-badge ws-conn-${esc(ws.mount_status || 'disconnected')}"><span class="ws-conn-dot"></span>${esc((ws.mount_status || 'disconnected').replace(/^./, c => c.toUpperCase()))}</span>`
+    : '';
+  const remoteRows = isRemote ? `
+        <div class="detail-row"><div class="detail-row-label">Connection</div><div class="detail-row-value">${connBadge}</div></div>
+        <div class="detail-row"><div class="detail-row-label">Host</div><div class="detail-row-value"><code>${esc((ws.remote && ws.remote.host) || '')}</code></div></div>
+        <div class="detail-row"><div class="detail-row-label">Remote path</div><div class="detail-row-value"><code>${esc((ws.remote && ws.remote.remote_path) || '')}</code></div></div>` : '';
   body.innerHTML = `
     <div class="main-view-content">
       <div class="detail-card">
@@ -7554,6 +7631,7 @@ function _renderWorkspaceDetail(ws){
         <div class="detail-row"><div class="detail-row-label">Name</div><div class="detail-row-value">${esc(ws.name || '')}</div></div>
         <div class="detail-row"><div class="detail-row-label">Path</div><div class="detail-row-value"><code>${esc(ws.path)}</code></div></div>
         <div class="detail-row"><div class="detail-row-label">Status</div><div class="detail-row-value">${statusBadge}${defaultBadge}</div></div>
+        ${remoteRows}
       </div>
       <div class="detail-card" style="margin-top:12px">
         <div class="detail-card-title">${esc(t('checkpoint_title'))}</div>
@@ -7572,6 +7650,8 @@ function _renderWorkspaceDetail(ws){
 function _setWorkspaceHeaderButtons(mode, ws){
   const header = $('mainWorkspaces') && $('mainWorkspaces').querySelector('.main-view-header');
   const actBtn = $('btnActivateWorkspaceDetail');
+  const reconnectBtn = $('btnReconnectWorkspaceDetail');
+  const disconnectBtn = $('btnDisconnectWorkspaceDetail');
   const editBtn = $('btnEditWorkspaceDetail');
   const delBtn = $('btnDeleteWorkspaceDetail');
   const cancelBtn = $('btnCancelWorkspaceDetail');
@@ -7583,15 +7663,19 @@ function _setWorkspaceHeaderButtons(mode, ws){
     const isActive = ws && ws.path === activePath;
     const isDefault = !!(ws && ws.is_default);
     if (isActive) hide(actBtn); else show(actBtn);
+    if (ws && ws.kind === 'remote') {
+      if (ws.mount_status === 'connected') { show(disconnectBtn); hide(reconnectBtn); }
+      else { show(reconnectBtn); hide(disconnectBtn); }
+    } else { hide(reconnectBtn); hide(disconnectBtn); }
     show(editBtn);
     if (isDefault) hide(delBtn); else show(delBtn);
     hide(cancelBtn); hide(saveBtn);
   } else if (mode === 'create' || mode === 'edit') {
     if (header) header.style.display = 'flex';
-    hide(actBtn); hide(editBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
+    hide(actBtn); hide(reconnectBtn); hide(disconnectBtn); hide(editBtn); hide(delBtn); show(cancelBtn); show(saveBtn);
   } else {
     if (header) header.style.display = 'none';
-    [actBtn, editBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
+    [actBtn, reconnectBtn, disconnectBtn, editBtn, delBtn, cancelBtn, saveBtn].forEach(hide);
   }
 }
 
@@ -7626,6 +7710,34 @@ async function activateCurrentWorkspace(){
   _renderWorkspaceDetail(_currentWorkspaceDetail);
 }
 
+async function reconnectCurrentWorkspace(){
+  if (!_currentWorkspaceDetail || _currentWorkspaceDetail.kind !== 'remote') return;
+  const path = _currentWorkspaceDetail.path;
+  try{
+    await api('/api/workspaces/reconnect', {method:'POST', body:JSON.stringify({path})});
+    const data = await api('/api/workspaces');
+    _workspaceList = data.workspaces || [];
+    renderWorkspacesPanel(_workspaceList);
+    const refreshed = _workspaceList.find(w => w.path === path);
+    if (refreshed) _renderWorkspaceDetail(refreshed);
+    showToast(t('workspace_reconnected') || 'Reconnected');
+  }catch(e){ showToast(t('error_prefix') + e.message, 'error'); }
+}
+
+async function disconnectCurrentWorkspace(){
+  if (!_currentWorkspaceDetail || _currentWorkspaceDetail.kind !== 'remote') return;
+  const path = _currentWorkspaceDetail.path;
+  try{
+    await api('/api/workspaces/disconnect', {method:'POST', body:JSON.stringify({path})});
+    const data = await api('/api/workspaces');
+    _workspaceList = data.workspaces || [];
+    renderWorkspacesPanel(_workspaceList);
+    const refreshed = _workspaceList.find(w => w.path === path);
+    if (refreshed) _renderWorkspaceDetail(refreshed);
+    showToast(t('workspace_disconnected') || 'Disconnected');
+  }catch(e){ showToast(t('error_prefix') + e.message, 'error'); }
+}
+
 async function deleteCurrentWorkspace(){
   if (!_currentWorkspaceDetail) return;
   const path = _currentWorkspaceDetail.path;
@@ -7640,15 +7752,25 @@ async function deleteCurrentWorkspace(){
   }catch(e){setStatus(t('remove_failed')+e.message);}
 }
 
+let _workspaceFormKind = 'local'; // 'local' | 'remote' — only meaningful while creating (edit is always rename-only)
+
 function openWorkspaceCreate(){
   if (typeof switchPanel === 'function' && _currentPanel !== 'workspaces') switchPanel('workspaces');
   _workspacePreFormDetail = _currentWorkspaceDetail ? { ..._currentWorkspaceDetail } : null;
   _workspaceMode = 'create';
+  _workspaceFormKind = 'local';
   _renderWorkspaceForm({ name:'', path:'', isEdit:false });
   // Mobile: the add-space form lives in the main view, which is covered by the
   // full-screen sidebar drawer. Close the drawer so the form is visible (mirror
   // openWorkspaceDetail's behaviour); no-op on desktop.
   _closeMobileSidebarAfterPanelSelection();
+}
+
+function switchWorkspaceFormKind(kind){
+  if (_workspaceFormKind === kind) return;
+  _workspaceFormKind = kind;
+  const nameEl = $('workspaceFormName');
+  _renderWorkspaceForm({ name: nameEl ? nameEl.value : '', path:'', isEdit:false });
 }
 
 function editCurrentWorkspace(){
@@ -7668,13 +7790,15 @@ function _renderWorkspaceForm({ name, path, isEdit }){
   const pathHint = isEdit
     ? `<div class="detail-form-hint">${esc(t('workspace_path_readonly') || 'Path cannot be changed. Rename only.')}</div>`
     : `<div class="detail-form-hint">${esc(t('workspace_paths_validated_hint'))}</div>`;
-  body.innerHTML = `
-    <div class="main-view-content">
-      <form class="detail-form" onsubmit="event.preventDefault(); saveWorkspaceForm();">
+  const isRemoteForm = !isEdit && _workspaceFormKind === 'remote';
+  const kindToggle = isEdit ? '' : `
         <div class="detail-form-row">
-          <label for="workspaceFormName">${esc(t('workspace_name_label') || 'Name')}</label>
-          <input type="text" id="workspaceFormName" value="${esc(name || '')}" placeholder="${esc(t('workspace_name_placeholder') || 'Optional friendly name')}" autocomplete="off">
-        </div>
+          <div class="ws-kind-toggle" role="group" aria-label="${esc(t('workspace_kind_label') || 'Space type')}">
+            <button type="button" class="ws-kind-toggle-btn${isRemoteForm ? '' : ' active'}" onclick="switchWorkspaceFormKind('local')">${esc(t('workspace_kind_local') || 'Local path')}</button>
+            <button type="button" class="ws-kind-toggle-btn${isRemoteForm ? ' active' : ''}" onclick="switchWorkspaceFormKind('remote')">${esc(t('workspace_kind_remote') || 'Remote (SSHFS)')}</button>
+          </div>
+        </div>`;
+  const localFields = `
         <div class="detail-form-row">
           <label for="workspaceFormPath">${esc(t('workspace_path_label') || 'Path')}</label>
           <div class="workspace-form-path-wrap" style="position:relative">
@@ -7682,15 +7806,38 @@ function _renderWorkspaceForm({ name, path, isEdit }){
             <div id="workspaceFormPathSuggestions" class="ws-suggestions" style="display:none"></div>
           </div>
           ${pathHint}
+        </div>`;
+  const remoteFields = `
+        <div class="detail-form-row">
+          <label for="workspaceFormHost">${esc(t('workspace_remote_host_label') || 'Host')}</label>
+          <input type="text" id="workspaceFormHost" placeholder="${esc(t('workspace_remote_host_placeholder') || 'user@192.168.1.50')}" autocomplete="off" required>
         </div>
+        <div class="detail-form-row">
+          <label for="workspaceFormRemotePath">${esc(t('workspace_remote_path_label') || 'Remote path')}</label>
+          <input type="text" id="workspaceFormRemotePath" placeholder="${esc(t('workspace_remote_path_placeholder') || '/home/pi/projects')}" autocomplete="off" required>
+        </div>
+        <div class="detail-form-row">
+          <label for="workspaceFormKeyPath">${esc(t('workspace_remote_key_label') || 'SSH key path (in container)')}</label>
+          <input type="text" id="workspaceFormKeyPath" placeholder="${esc(t('workspace_remote_key_placeholder') || '/run/secrets/my_ssh_key')}" autocomplete="off" required>
+          <div class="detail-form-hint">${esc(t('workspace_remote_key_hint') || 'The key file must already be bind-mounted into the hermes-webui container.')}</div>
+        </div>`;
+  body.innerHTML = `
+    <div class="main-view-content">
+      <form class="detail-form" onsubmit="event.preventDefault(); saveWorkspaceForm();">
+        ${kindToggle}
+        <div class="detail-form-row">
+          <label for="workspaceFormName">${esc(t('workspace_name_label') || 'Name')}</label>
+          <input type="text" id="workspaceFormName" value="${esc(name || '')}" placeholder="${esc(t('workspace_name_placeholder') || 'Optional friendly name')}" autocomplete="off" ${isRemoteForm ? 'required' : ''}>
+        </div>
+        ${isRemoteForm ? remoteFields : localFields}
         <div id="workspaceFormError" class="detail-form-error" style="display:none"></div>
       </form>
     </div>`;
   body.style.display = '';
   if (empty) empty.style.display = 'none';
   _setWorkspaceHeaderButtons(isEdit ? 'edit' : 'create');
-  if (!isEdit) _wireWorkspaceFormPathSuggestions();
-  const focus = isEdit ? $('workspaceFormName') : $('workspaceFormPath');
+  if (!isEdit && !isRemoteForm) _wireWorkspaceFormPathSuggestions();
+  const focus = isEdit ? $('workspaceFormName') : (isRemoteForm ? $('workspaceFormHost') : $('workspaceFormPath'));
   if (focus) focus.focus();
 }
 
@@ -7707,12 +7854,44 @@ function cancelWorkspaceForm(){
 
 async function saveWorkspaceForm(){
   const nameEl = $('workspaceFormName');
-  const pathEl = $('workspaceFormPath');
   const errEl = $('workspaceFormError');
-  if (!pathEl || !errEl) return;
+  if (!errEl) return;
   const name = (nameEl ? nameEl.value : '').trim();
-  const path = (pathEl.value || '').trim();
   errEl.style.display = 'none';
+
+  if (_workspaceMode === 'create' && _workspaceFormKind === 'remote') {
+    const hostEl = $('workspaceFormHost');
+    const remotePathEl = $('workspaceFormRemotePath');
+    const keyPathEl = $('workspaceFormKeyPath');
+    const host = (hostEl ? hostEl.value : '').trim();
+    const remotePath = (remotePathEl ? remotePathEl.value : '').trim();
+    const keyPath = (keyPathEl ? keyPathEl.value : '').trim();
+    if (!name || !host || !remotePath || !keyPath) {
+      errEl.textContent = t('workspace_remote_fields_required') || 'Name, host, remote path, and key path are all required';
+      errEl.style.display = '';
+      return;
+    }
+    try {
+      const data = await api('/api/workspaces/add', {
+        method:'POST',
+        body: JSON.stringify({ name, remote: { host, remote_path: remotePath, key_path: keyPath } }),
+      });
+      _workspaceList = data.workspaces || [];
+      _workspacePreFormDetail = null;
+      renderWorkspacesPanel(_workspaceList);
+      showToast(t('workspace_added'));
+      const added = _workspaceList[_workspaceList.length - 1];
+      if (added) openWorkspaceDetail(added.path);
+    } catch (e) {
+      errEl.textContent = t('error_prefix') + e.message;
+      errEl.style.display = '';
+    }
+    return;
+  }
+
+  const pathEl = $('workspaceFormPath');
+  if (!pathEl) return;
+  const path = (pathEl.value || '').trim();
   if (!path) { errEl.textContent = t('workspace_path_required') || 'Path is required'; errEl.style.display = ''; return; }
   try {
     if (_workspaceMode === 'edit' && _currentWorkspaceDetail) {
@@ -10377,6 +10556,8 @@ function _preferencesPayloadFromUi(){
   if(hideSuggestionsCb) payload.hide_empty_state_suggestions=hideSuggestionsCb.checked;
   const hideEmptyStatePanelCb=$('settingsHideEmptyStatePanel');
   if(hideEmptyStatePanelCb) payload.hide_empty_state_panel=hideEmptyStatePanelCb.checked;
+  const hideKanbanCb=$('settingsHideKanban');
+  if(hideKanbanCb) payload.hide_kanban_panel=hideKanbanCb.checked;
   const virtualizeTranscriptCb=$('settingsVirtualizeTranscript');
   if(virtualizeTranscriptCb){
     payload.virtualize_transcript=virtualizeTranscriptCb.checked;
@@ -11042,6 +11223,17 @@ async function loadSettingsPanel(){
       hideEmptyStatePanelCb.addEventListener('change',()=>{
         window._hideEmptyStatePanel=hideEmptyStatePanelCb.checked;
         if(typeof applyEmptyStatePanelPref==='function') applyEmptyStatePanelPref();
+        _schedulePreferencesAutosave();
+      },{once:false});
+    }
+    const hideKanbanCb=$('settingsHideKanban');
+    if(hideKanbanCb){
+      hideKanbanCb.checked=settings.hide_kanban_panel===true;
+      window._hideKanbanPanel=hideKanbanCb.checked;
+      if(typeof applyHideKanbanPref==='function') applyHideKanbanPref();
+      hideKanbanCb.addEventListener('change',()=>{
+        window._hideKanbanPanel=hideKanbanCb.checked;
+        if(typeof applyHideKanbanPref==='function') applyHideKanbanPref();
         _schedulePreferencesAutosave();
       },{once:false});
     }
@@ -14977,7 +15169,15 @@ async function _gatewayAction(action){
   buttons.forEach(btn=>{btn.disabled=true;});
   try{
     const result=await api(`/api/gateway/${encodeURIComponent(action)}`,{method:'POST',body:JSON.stringify({}),timeoutMs:70000,timeoutToast:false});
-    if(typeof showToast==='function') showToast(result&&result.message?result.message:t(`gateway_${action}_success`),3000,'success');
+    let msg=result&&result.message?result.message:t(`gateway_${action}_success`);
+    const cascaded=(result&&Array.isArray(result.cascaded_profiles))?result.cascaded_profiles:[];
+    if(cascaded.length){
+      // Other profiles share this gateway's messaging bot token (e.g. Discord) —
+      // stopping/restarting just this one would leave the platform looking
+      // "still connected" since the sibling gateways hold live sessions too.
+      msg+=` (also ${action==='restart'?'restarted':'stopped'}: ${cascaded.join(', ')})`;
+    }
+    if(typeof showToast==='function') showToast(msg,cascaded.length?5000:3000,'success');
   }catch(e){
     const msg=e&&e.message?e.message:String(e||'');
     if(typeof showToast==='function') showToast(`${t(`gateway_${action}_failed`)}${msg?': '+msg:''}`,5000,'error');

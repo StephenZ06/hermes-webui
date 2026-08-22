@@ -32,8 +32,8 @@ def test_zeus_preserves_default_gold_accent():
 
 
 def test_zeus_active_session_uses_gold_highlight():
-    assert ':root.dark[data-skin="zeus"] .session-item.active' in CSS
-    assert "border-left:2px solid #FFD700" in CSS
+    assert ':root.dark[data-skin="zeus"] .session-item.active{background:rgba(255,215,0,0.1);position:relative;padding-left:23px;color:#FFD700;}' in CSS
+    assert ':root.dark[data-skin="zeus"] .session-item.active::before{content:"";position:absolute;left:12px;top:8px;bottom:8px;width:2px;border-radius:999px;background:#FFD700;}' in CSS
 
 
 def test_zeus_modals_are_not_navy():

@@ -1243,6 +1243,8 @@ class Session:
                  process_wakeup_pause=None,
                  share_token=None,
                  share_created_at=None,
+                 bound_project_key=None,
+                 pre_bind_workspace=None,
                  **kwargs):
         self.session_id = session_id or uuid.uuid4().hex[:12]
         self.title = title
@@ -1348,6 +1350,13 @@ class Session:
         self.process_wakeup_pause = process_wakeup_pause if isinstance(process_wakeup_pause, dict) else {}
         self.share_token = str(share_token).strip() if share_token else None
         self.share_created_at = share_created_at
+        # WORKSPACES.yaml project key this chat is bound to, or None if
+        # unbound. Never a raw path — resolved via api.project_registry.
+        self.bound_project_key = str(bound_project_key).strip() if bound_project_key else None
+        # workspace value to restore on unbind, captured at first bind in a
+        # rebind chain (A -> B without unbinding in between still restores
+        # the pre-A value, not B's). None once unbound / never bound.
+        self.pre_bind_workspace = str(pre_bind_workspace).strip() if pre_bind_workspace else None
         # #5854: a compact fingerprint of anchor_activity_scenes ({scene_key:
         # updated_at}) persisted BEFORE the messages array so the sidebar-poll
         # freshness check can compare scene freshness without parsing the full
@@ -1420,6 +1429,7 @@ class Session:
             'enabled_toolsets', 'composer_draft',
             'process_wakeup_pause',
             'share_token', 'share_created_at',
+            'bound_project_key', 'pre_bind_workspace',
         ]
         meta = {k: getattr(self, k, None) for k in METADATA_FIELDS}
         # #5854: message_count and a compact anchor-scene fingerprint go in the
@@ -1808,6 +1818,7 @@ class Session:
             'process_wakeup_pause': self.process_wakeup_pause if isinstance(self.process_wakeup_pause, dict) else {},
             'share_token': self.share_token,
             'share_created_at': self.share_created_at,
+            'bound_project_key': self.bound_project_key,
             'is_streaming': _is_streaming_session(
                 self.active_stream_id, active_stream_ids
             ) if include_runtime else False,

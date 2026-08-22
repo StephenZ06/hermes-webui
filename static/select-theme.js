@@ -236,7 +236,9 @@
   });
 
   window.addEventListener('resize', function () { if (open) positionPopup(open.trigger, open.popup); });
-  window.addEventListener('scroll', function () { if (open) closePopup(); }, true);
+  window.addEventListener('scroll', function (e) {
+    if (open && !(open.popup && e.target && open.popup.contains(e.target))) closePopup();
+  }, true);
 
   // Catches both "a new <select> was added anywhere" (e.g. #profileFormModel,
   // rebuilt from scratch every time _renderProfileForm() runs) and "an

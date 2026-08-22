@@ -786,7 +786,7 @@ async function loadDir(path, opts={}){
       await refreshOpenPreviewIfMutated();
     }
     // Fetch git info for workspace root (non-blocking)
-    if(!path||path==='.') _refreshGitBadge();
+    if(!path||path==='.'){ _refreshGitBadge(); if(typeof renderBoundProjectControl==='function') renderBoundProjectControl(); }
   }catch(e){
     const grant = _workspaceEscapeGrantForPath(path);
     if(grant && e && e.status===403){
@@ -828,6 +828,166 @@ async function _refreshGitBadge(){
     if(!S.session||S.session.session_id!==sessionId)return;
     badge.style.display='none';
   }
+}
+
+// ── Project-bound chats ──────────────────────────────────────────────────
+// A chat can be bound to a WORKSPACES.yaml registry project (see
+// api/project_registry.py). Binding is enforced server-side: every turn
+// carries the resolved project context and force-preloads the
+// project-lifecycle skill (api/streaming.py:_bound_project_prompt). This
+// control just lets the user pick/change the binding for the active chat.
+let _boundProjectRegistryCache=null;
+let _boundProjectRegistryFetchedAt=0;
+const BOUND_PROJECT_REGISTRY_CACHE_MS=15000;
+
+async function _fetchProjectRegistry(force){
+  const now=Date.now();
+  if(!force && _boundProjectRegistryCache && (now-_boundProjectRegistryFetchedAt)<BOUND_PROJECT_REGISTRY_CACHE_MS){
+    return _boundProjectRegistryCache;
+  }
+  try{
+    const data=await api('/api/workspaces/registry');
+    _boundProjectRegistryCache=Array.isArray(data.projects)?data.projects:[];
+    _boundProjectRegistryFetchedAt=now;
+  }catch(e){
+    console.warn('_fetchProjectRegistry',e);
+    _boundProjectRegistryCache=_boundProjectRegistryCache||[];
+  }
+  return _boundProjectRegistryCache;
+}
+
+async function renderBoundProjectControl(){
+  const row=$('boundProjectRow');
+  const select=$('boundProjectSelect');
+  if(!row||!select||!S.session)return;
+  const sessionId=S.session.session_id;
+  const projects=await _fetchProjectRegistry();
+  if(!S.session||S.session.session_id!==sessionId)return; // session switched mid-fetch
+
+  if(!projects.length){ row.hidden=true; return; }
+  row.hidden=false;
+  const boundKey=S.session.bound_project_key||'';
+  // Once a chat is bound, unbinding is disallowed (server-enforced too, see
+  // /api/session/bind_project) — omit "Unbound" from the options entirely
+  // so there's nothing to select back to. Rebinding to a different project
+  // is still offered via the other <option>s below.
+  const options=boundKey?[]:['<option value="">'+t('bound_project_unbound','Unbound')+'</option>'];
+  for(const p of projects){
+    const label=p.available?p.name:`${p.name} (${p.unavailable_reason||t('bound_project_unavailable','unavailable')})`;
+    options.push(`<option value="${_escHtml(p.key)}" ${(!p.available&&p.key!==boundKey)?'disabled':''}>${_escHtml(label)}</option>`);
+  }
+  // A bound project can be renamed/removed from WORKSPACES.yaml out from
+  // under an already-bound chat. The backend still force-injects a visible
+  // "PROJECT BINDING ERROR" into every turn's system prompt for this case
+  // (api/streaming.py _bound_project_prompt), but without a matching
+  // <option>, `select.value=boundKey` below is a silent no-op and the
+  // dropdown falls back to showing "Unbound" — giving no visual cue that
+  // anything is wrong. Synthesize a disabled option so the UI surfaces the
+  // same broken-binding state the model is already being told about.
+  if(boundKey && !projects.some(p=>p.key===boundKey)){
+    const missingLabel=(t('bound_project_missing')||'Bound project not found: {0}').replace('{0}',boundKey);
+    options.push(`<option value="${_escHtml(boundKey)}" disabled>${_escHtml(missingLabel)}</option>`);
+  }
+  select.innerHTML=options.join('');
+  select.value=boundKey;
+}
+
+// Shared bind/unbind call used by both the workspace-panel select and the
+// composer workspace-switcher dropdown, so there's exactly one code path
+// that talks to POST /api/session/bind_project.
+async function _bindProjectAndRefresh(projectKey){
+  // Mirrors switchToWorkspace()'s blank-page handling (Opus review Q6,
+  // panels.js): the composer workspace dropdown — and its Projects section
+  // — is reachable before any session exists (the "What can I help with?"
+  // landing screen). Without this, clicking a project there silently
+  // no-ops (#regression: user saw "nothing happens" clicking Bind).
+  if(!S.session){
+    try{
+      const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({worktree:false})});
+      if(r&&r.session){
+        S._pendingSessionToolsets=null;
+        S.session=r.session;
+        S.messages=[];
+        if(typeof syncTopbar==='function') syncTopbar();
+        if(typeof renderMessages==='function') renderMessages();
+        if(typeof renderSessionList==='function') await renderSessionList();
+      }
+    }catch(e){
+      showToast((e&&e.message)||t('bound_project_bind_failed','Failed to update project binding'),5000,'error');
+      return false;
+    }
+    if(!S.session)return false;
+  }
+  const sessionId=S.session.session_id;
+  try{
+    const res=await api('/api/session/bind_project',{method:'POST',body:JSON.stringify({session_id:sessionId,project_key:projectKey})});
+    if(res && res.session && S.session && S.session.session_id===sessionId){
+      Object.assign(S.session,res.session);
+      showToast(projectKey?t('bound_project_bound','Chat bound to project'):t('bound_project_unbound_toast','Chat unbound'));
+      if(S.session.workspace) loadDir('.');
+      if(typeof syncWorkspaceDisplays==='function') syncWorkspaceDisplays();
+    }
+    return true;
+  }catch(e){
+    console.warn('_bindProjectAndRefresh',e);
+    showToast((e&&e.message)||t('bound_project_bind_failed','Failed to update project binding'),5000,'error');
+    return false;
+  }
+}
+
+// Renders a "Projects" section into the composer workspace-switcher dropdown
+// (see renderWorkspaceDropdownInto in panels.js), so a project can be bound
+// right at chat start, alongside the folder list — not only from the
+// workspace panel later. Reuses the exact same registry data and bind call.
+function renderBoundProjectDropdownSection(dd, projects, boundKey){
+  if(!dd||!projects||!projects.length)return;
+  const section=document.createElement('div');
+  section.className='ws-project-section';
+  const heading=document.createElement('div');
+  heading.className='ws-project-heading';
+  heading.textContent=t('bound_project_label','Project');
+  section.appendChild(heading);
+
+  // Once bound, unbinding is disallowed (server-enforced too) — omit the
+  // "Unbound" option entirely once a project is set, same as the workspace
+  // panel's <select> above. Rebinding to a different project stays available
+  // via the other options below.
+  if(!boundKey){
+    const unboundOpt=document.createElement('div');
+    unboundOpt.className='ws-opt ws-project-opt active';
+    unboundOpt.innerHTML=`<span class="ws-opt-name">${_escHtml(t('bound_project_unbound','Unbound'))}</span>`;
+    unboundOpt.onclick=async()=>{
+      closeWsDropdown();
+      await _bindProjectAndRefresh(null);
+    };
+    section.appendChild(unboundOpt);
+  }
+
+  for(const p of projects){
+    const opt=document.createElement('div');
+    const isActive=p.key===boundKey;
+    opt.className='ws-opt ws-project-opt'+(isActive?' active':'')+(p.available?'':' disabled');
+    const meta=p.available?(p.access_mode==='ssh'?'ssh':'local'):(p.unavailable_reason||t('bound_project_unavailable','unavailable'));
+    opt.innerHTML=`<span class="ws-opt-name">${_escHtml(p.name)}</span><span class="ws-opt-path">${_escHtml(meta)}</span>`;
+    if(p.available){
+      opt.onclick=async()=>{
+        closeWsDropdown();
+        await _bindProjectAndRefresh(p.key);
+      };
+    }
+    section.appendChild(opt);
+  }
+  dd.appendChild(section);
+  dd.appendChild(document.createElement('div')).className='ws-divider';
+}
+
+async function onBoundProjectSelectChange(selectEl){
+  if(!S.session)return;
+  const previousKey=S.session.bound_project_key||'';
+  selectEl.disabled=true;
+  const ok=await _bindProjectAndRefresh(selectEl.value||null);
+  if(!ok) selectEl.value=previousKey;
+  selectEl.disabled=false;
 }
 
 function navigateUp(){
