@@ -4740,7 +4740,13 @@ function renderModelDropdown(){
         // decoration and append the rendered-row count, otherwise the heading reads
         // "Nous (2 of 4) (4)" (double count). Count rendered rows, not modelCount,
         // so hoisted-configured models aren't double-counted. (#3691)
-        const count=hiddenCount?0:groupRows.length;
+        // Only nous/openrouter groups actually get that backend decoration
+        // (SUB_GROUP_PROVIDERS) — any other provider with overflow models
+        // (e.g. OpenCode Go: 15 shown + 13 more) has a plain label, so
+        // forcing count=0 unconditionally left the heading with no count at
+        // all instead of falling back to the visible-row count.
+        const _labelIsBackendDecorated=/\(\d+\s+of\s+\d+\)\s*$/.test(String(meta.label||''));
+        const count=(hiddenCount&&_labelIsBackendDecorated)?0:groupRows.length;
         const _plainLabel=String(meta.label||'').replace(/\s*\(\d+\s+of\s+\d+\)\s*$/,'');
         heading.textContent=count>1?`${_plainLabel} (${count})`:meta.label;
         dd.appendChild(heading);
