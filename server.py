@@ -657,11 +657,11 @@ def main() -> None:
 
     try:
         from api.background_process import start_session_channel_reaper
-        if start_session_channel_reaper():
-            print('[ok] SessionChannel reaper thread started', flush=True)
+        if start_session_channel_reaper(): print('[ok] SessionChannel reaper thread started', flush=True)  # noqa: E701
     except Exception as e:
         print(f'[!!] WARNING: SessionChannel reaper failed to start: {e}', flush=True)
     from api.ssh_mount import start_reconnect_thread; start_reconnect_thread()  # noqa: E702 — keeps server.py under its 750-line test budget
+    from api.gateway_ticker import start_gateway_ticker; start_gateway_ticker()  # noqa: E702 — keeps server.py under its 750-line test budget
     try:
         from api.plugins import load_plugins
         load_plugins()
