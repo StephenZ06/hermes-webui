@@ -25196,6 +25196,19 @@ def _normalize_chat_attachments(raw_attachments):
     return normalized
 
 
+# EXTERNAL CONSUMER — do not delete as "unused". The browser frontend uses the
+# streaming chat path, so this synchronous POST /api/chat handler (and the
+# process-global CHAT_LOCK it is the sole user of) looks dead from inside this
+# repo. It is not: hermes-agent's `delegate_to_profile` tool drives a target
+# profile's whole turn by POSTing here over loopback
+# (/api/profile/switch -> /api/session/new -> /api/chat), so cross-profile
+# delegation breaks silently if this endpoint, its response shape
+# ({"answer", "status"}), or its env-var threading below is removed or changed.
+# CHAT_LOCK's global serialization is likewise load-bearing for that feature:
+# because it is held across the entire turn, a nested delegation issued from
+# inside a child profile's turn would deadlock on it. That is prevented on the
+# hermes-agent side by the X-Hermes-Cross-Profile-Depth header read below,
+# which lets the tool reject an over-deep hop BEFORE it ever POSTs here.
 def _handle_chat_sync(handler, body):
     """Fallback synchronous chat endpoint (POST /api/chat). Not used by frontend."""
     stale_response = _agent_runtime_barrier_response(runner_local_owned=False)
@@ -25228,9 +25241,20 @@ def _handle_chat_sync(handler, body):
         s.model_provider = model_provider
     from api.streaming import _ENV_LOCK
 
+    # Cross-profile delegation depth, threaded in by hermes-agent's
+    # delegate_to_profile tool as a request header (see the note above this
+    # function). The child profile's turn runs on a brand-new AIAgent instance,
+    # so the tool's per-instance depth counter cannot survive this HTTP hop —
+    # republishing it as an env var for the duration of the turn is what lets
+    # the depth cap actually fire on a nested delegation. Absent header =>
+    # env var deliberately left unset (top-level call), same as TERMINAL_CWD.
+    _xprofile_depth = handler.headers.get("X-Hermes-Cross-Profile-Depth")
     with _ENV_LOCK:
         old_cwd = os.environ.get("TERMINAL_CWD")
         os.environ["TERMINAL_CWD"] = str(workspace)
+        old_xprofile_depth = os.environ.get("HERMES_CROSS_PROFILE_DEPTH")
+        if _xprofile_depth:
+            os.environ["HERMES_CROSS_PROFILE_DEPTH"] = str(_xprofile_depth).strip()
         old_exec_ask = os.environ.get("HERMES_EXEC_ASK")
         old_session_key = os.environ.get("HERMES_SESSION_KEY")
         os.environ["HERMES_EXEC_ASK"] = "1"
@@ -25340,6 +25364,10 @@ def _handle_chat_sync(handler, body):
                 os.environ.pop("TERMINAL_CWD", None)
             else:
                 os.environ["TERMINAL_CWD"] = old_cwd
+            if old_xprofile_depth is None:
+                os.environ.pop("HERMES_CROSS_PROFILE_DEPTH", None)
+            else:
+                os.environ["HERMES_CROSS_PROFILE_DEPTH"] = old_xprofile_depth
             if old_exec_ask is None:
                 os.environ.pop("HERMES_EXEC_ASK", None)
             else:
