@@ -556,7 +556,7 @@
         aria-controls="outlinePanelWrapper">&#9776;</button>
     <div class="messages" id="messages">
       <div class="empty-state" id="emptyState" style="display:none">
-        <div class="empty-logo"><img src="static/favicon-512.png?v=__WEBUI_VERSION__" width="80" height="80" alt="" aria-hidden="true"></div>
+        <div class="empty-logo"><img src="static/favicon-512.png?v=__WEBUI_VERSION__" width="100" height="100" alt="" aria-hidden="true"></div>
         <h2 data-i18n="empty_title">What can I help with?</h2>
         <p data-i18n="empty_subtitle">Ask anything, run commands, explore files, or manage your scheduled tasks.</p>
         <div class="suggestion-grid">
@@ -1331,6 +1331,11 @@
                 <div class="model-dropdown settings-model-dropdown" id="settingsModelDropdown"></div>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_model">Used for new conversations. Existing conversations keep their selected model.</div>
+            </div>
+            <div class="settings-field">
+              <label data-i18n="settings_label_approval_modes">Profile Approval Mode</label>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_approval_modes">How each profile handles tool/command approvals. "Auto" approves everything without asking (like Claude Code's auto mode) — use with care. "Smart" lets an LLM guardian auto-approve safe actions and deny risky ones. "Manual" asks every time.</div>
+              <div id="settingsApprovalModes" style="display:flex;flex-direction:column;gap:6px"></div>
             </div>
             <div class="settings-field">
               <label data-i18n="settings_label_auxiliary_models">Auxiliary Models</label>

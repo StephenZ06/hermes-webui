@@ -10884,10 +10884,61 @@ function _syncSettingsMaxTokensPlaceholder(field, fallbackValue){
     : 'No override';
 }
 
+async function _loadApprovalModesSettings(){
+  const container=$('settingsApprovalModes');
+  if(!container) return;
+  container.innerHTML='';
+  let data=null;
+  try{
+    data=await api('/api/profiles/approval_modes');
+  }catch(e){
+    container.textContent='Failed to load profiles.';
+    return;
+  }
+  const rows=(data&&Array.isArray(data.profiles))?data.profiles:[];
+  if(!rows.length){
+    container.textContent='No profiles found.';
+    return;
+  }
+  for(const row of rows){
+    const line=document.createElement('div');
+    line.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;';
+    const label=document.createElement('span');
+    label.textContent=row.name;
+    label.style.cssText='font-size:13px;color:var(--text);';
+    const sel=document.createElement('select');
+    sel.style.cssText='padding:5px 8px;font-size:12px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;';
+    [['manual','Manual'],['smart','Smart'],['off','Auto (off)']].forEach(([val,text])=>{
+      const opt=document.createElement('option');
+      opt.value=val;opt.textContent=text;
+      if(val===row.mode) opt.selected=true;
+      sel.appendChild(opt);
+    });
+    sel.onchange=async()=>{
+      const newMode=sel.value;
+      sel.disabled=true;
+      try{
+        await api('/api/profiles/set_approval_mode',{method:'POST',body:JSON.stringify({profile:row.name,mode:newMode})});
+        row.mode=newMode;
+        if(typeof showToast==='function') showToast('Approval mode for "'+row.name+'" set to '+newMode);
+      }catch(e){
+        sel.value=row.mode;
+        if(typeof showToast==='function') showToast((e&&e.message)||'Failed to update approval mode',5000,'error');
+      }finally{
+        sel.disabled=false;
+      }
+    };
+    line.appendChild(label);
+    line.appendChild(sel);
+    container.appendChild(line);
+  }
+}
+
 async function loadSettingsPanel(){
   try{
     const settings=await api('/api/settings');
     checkWebUIVersionSkew(settings);
+    if(typeof _loadApprovalModesSettings==='function') _loadApprovalModesSettings();
     // Populate the version badges from the server — keeps them in sync with git
     // tags automatically without any manual release step.
     //

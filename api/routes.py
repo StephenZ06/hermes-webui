@@ -15019,6 +15019,20 @@ def handle_get(handler, parsed) -> bool:
             if diag:
                 diag.finish()
 
+    if parsed.path == "/api/profiles/approval_modes":
+        from api import profiles as profiles_api
+        rows = []
+        for p in profiles_api.list_profiles_api():
+            name = p.get("name")
+            path = p.get("path")
+            if not name or not path:
+                continue
+            rows.append({
+                "name": name,
+                "mode": profiles_api._read_profile_approval_mode(Path(path)),
+            })
+        return j(handler, {"profiles": rows})
+
     if parsed.path == "/api/profile/active":
         from api import profiles as profiles_api
 
@@ -18080,6 +18094,31 @@ def handle_post(handler, parsed) -> bool:
         save_projects(projects)
         sessions_updated = _apply_project_workspace(body["project_id"], workspace_path)
         return j(handler, {"ok": True, "project": proj, "sessions_updated": sessions_updated})
+
+    if parsed.path == "/api/profiles/set_approval_mode":
+        from api import profiles as profiles_api
+
+        try:
+            require(body, "profile", "mode")
+        except ValueError as e:
+            return bad(handler, str(e))
+        mode = str(body["mode"]).strip().lower()
+        if mode not in profiles_api.VALID_APPROVAL_MODES:
+            return bad(
+                handler,
+                f"Invalid mode '{mode}'. Valid: {', '.join(profiles_api.VALID_APPROVAL_MODES)}.",
+                400,
+            )
+        profile_name = str(body["profile"]).strip()
+        target_path = None
+        for p in profiles_api.list_profiles_api():
+            if p.get("name") == profile_name:
+                target_path = p.get("path")
+                break
+        if not target_path:
+            return bad(handler, f"Unknown profile: {profile_name}", 404)
+        profiles_api._write_approval_mode_to_config(Path(target_path), mode)
+        return j(handler, {"ok": True, "profile": profile_name, "mode": mode})
 
     if parsed.path == "/api/projects/delete":
         try:
