@@ -481,10 +481,11 @@ from api.profiles import (  # noqa: F401, E402  (re-export)
 
 
 def _all_profiles_query_flag(parsed_url) -> bool:
-    """Return True if the request URL has `?all_profiles=1` (or true/yes).
+    """Return True if the request URL has `?all_profiles=1` (or true/yes/on).
 
-    Centralizes the opt-in parsing so /api/sessions and /api/projects use
-    the same shape. Accepts 1/true/yes (case-insensitive) for ergonomics.
+    Centralizes the opt-in parsing so /api/sessions, /api/projects,
+    /api/crons, and session search use the same shape. Accepts
+    1/true/yes/on (case-insensitive) for ergonomics.
     """
     qs = parse_qs(parsed_url.query)
     raw = qs.get('all_profiles', [''])[0].strip().lower()
