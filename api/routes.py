@@ -15877,6 +15877,10 @@ def handle_post(handler, parsed) -> bool:
             workspace = _resolve_new_session_workspace(body, workspace_prev_session_id)
         except (TypeError, ValueError) as e:
             return bad(handler, str(e))
+        if not workspace and body.get("project_id"):
+            _bound_path = _bound_project_workspace(body.get("project_id"))
+            if _bound_path:
+                workspace = _bound_path
         worktree_info = None
         worktree_skipped = None
         # Three-value worktree model (#6022): an explicit body value always
@@ -17977,7 +17981,7 @@ def handle_post(handler, parsed) -> bool:
                 status=503,
             )
         try:
-            s.project_id = target_pid
+            _apply_session_move_project_workspace(s, body)
             s.save()
         finally:
             _move_lock.release()

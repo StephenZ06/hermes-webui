@@ -85,3 +85,72 @@ def test_apply_project_workspace_ignores_other_projects(tmp_path, monkeypatch):
     updated = routes._apply_project_workspace("proj-a", "/bound/path")
 
     assert updated == 1
+
+
+def test_bound_project_workspace_returns_none_when_unbound():
+    assert routes._bound_project_workspace(
+        "proj-a", load_projects=lambda: [{"project_id": "proj-a", "name": "A"}]
+    ) is None
+
+
+def test_bound_project_workspace_returns_path_when_set():
+    assert routes._bound_project_workspace(
+        "proj-a",
+        load_projects=lambda: [{"project_id": "proj-a", "name": "A", "workspace_path": "/bound/path"}],
+    ) == "/bound/path"
+
+
+def test_apply_session_move_project_workspace_sets_workspace_from_bound_project():
+    """Moving a session into a Project that has a bound workspace_path
+    should set that session's workspace immediately (single-session path,
+    distinct from the bulk _apply_project_workspace helper used at bind
+    time)."""
+
+    class _MoveFakeSession:
+        def __init__(self):
+            self.project_id = None
+            self.workspace = "/original/workspace"
+
+    fake = _MoveFakeSession()
+    body = {"session_id": "s1", "project_id": "proj-bound"}
+    load_projects = lambda: [
+        {"project_id": "proj-bound", "name": "Bound", "workspace_path": "/bound/path"}
+    ]
+
+    result = routes._apply_session_move_project_workspace(fake, body, load_projects=load_projects)
+
+    assert result is fake
+    assert fake.project_id == "proj-bound"
+    assert fake.workspace == "/bound/path"
+
+
+def test_apply_session_move_project_workspace_leaves_workspace_when_unbound():
+    class _MoveFakeSession:
+        def __init__(self):
+            self.project_id = None
+            self.workspace = "/original/workspace"
+
+    fake = _MoveFakeSession()
+    body = {"session_id": "s1", "project_id": "proj-plain"}
+    load_projects = lambda: [{"project_id": "proj-plain", "name": "Plain"}]
+
+    routes._apply_session_move_project_workspace(fake, body, load_projects=load_projects)
+
+    assert fake.project_id == "proj-plain"
+    assert fake.workspace == "/original/workspace"
+
+
+def test_apply_session_move_project_workspace_unassign_clears_project_id():
+    class _MoveFakeSession:
+        def __init__(self):
+            self.project_id = "old-proj"
+            self.workspace = "/original/workspace"
+
+    fake = _MoveFakeSession()
+    body = {"session_id": "s1", "project_id": None}
+    load_projects = lambda: []
+
+    routes._apply_session_move_project_workspace(fake, body, load_projects=load_projects)
+
+    assert fake.project_id is None
+    assert fake.workspace == "/original/workspace"
