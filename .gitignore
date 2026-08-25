@@ -37,6 +37,9 @@ final-check.png
 
 # Version file written by Docker/CI build — generated, never committed
 api/_version.py
+
+# Scratch sandbox — throwaway scripts/files, never meant to be committed
+scratch/
 api/_scm_version.py
 
 # OS files
