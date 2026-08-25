@@ -2576,6 +2576,61 @@ def _read_profile_reasoning_effort(profile_dir) -> str:
         return 'default'
 
 
+VALID_APPROVAL_MODES = ("manual", "smart", "off")
+
+
+def _read_profile_approval_mode(profile_dir) -> str:
+    """Read ``approvals.mode`` from a profile's config.yaml.
+
+    Returns the lowercased configured value, or ``'smart'`` when unset/
+    blank/corrupt -- matching hermes-agent's own default
+    (hermes_cli/config_defaults.py ``"approvals": {"mode": "smart", ...}``).
+    """
+    try:
+        config_path = Path(profile_dir) / 'config.yaml'
+        if not config_path.exists():
+            return 'smart'
+        data = yaml.safe_load(config_path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            return 'smart'
+        approvals_cfg = data.get('approvals')
+        if not isinstance(approvals_cfg, dict):
+            return 'smart'
+        value = str(approvals_cfg.get('mode') or '').strip().lower()
+        return value if value in VALID_APPROVAL_MODES else 'smart'
+    except Exception:
+        return 'smart'
+
+
+def _write_approval_mode_to_config(profile_dir: Path, mode: str) -> None:
+    """Write ``approvals.mode`` into a profile's config.yaml.
+
+    Writes directly to *profile_dir* (not necessarily the active profile) --
+    mirrors ``_write_reasoning_effort_to_config``'s load/mutate/atomic-write
+    shape. *mode* must already be validated against ``VALID_APPROVAL_MODES``
+    by the caller.
+    """
+    config_path = profile_dir / 'config.yaml'
+    try:
+        import yaml as _yaml
+    except ImportError:
+        return
+    cfg = {}
+    if config_path.exists():
+        try:
+            loaded = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except Exception:
+            logger.debug("Failed to load config from %s", config_path)
+    approvals_section = cfg.get('approvals', {})
+    if not isinstance(approvals_section, dict):
+        approvals_section = {}
+    approvals_section['mode'] = mode
+    cfg['approvals'] = approvals_section
+    _atomic_write_text(config_path, _yaml.dump(cfg, default_flow_style=False, allow_unicode=True), encoding='utf-8')
+
+
 def _validate_profile_reasoning_effort(reasoning_effort: Optional[str]) -> Optional[str]:
     """Validate/normalize a reasoning-effort value for profile create/update.
 
