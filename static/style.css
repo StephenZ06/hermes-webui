@@ -1524,7 +1524,7 @@
   .layout{display:flex;width:100%;flex:1 1 auto;min-height:0;}
   .app-titlebar{display:flex;align-items:center;justify-content:center;height:38px;flex-shrink:0;background:var(--sidebar);border-bottom:1px solid var(--border);padding:0 12px;padding-top:var(--app-titlebar-safe-top);padding-left:max(12px,env(safe-area-inset-left,0));padding-right:max(12px,env(safe-area-inset-right,0));box-sizing:content-box;font-size:12px;color:var(--muted);user-select:none;-webkit-app-region:drag;position:relative;z-index:20;}
   .app-titlebar-left{display:flex;align-items:center;gap:4px;}
-  .app-titlebar-inner{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;justify-content:center;}
+  .app-titlebar-inner{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;justify-content:center;margin-left:14px;}
   /* Profile switcher — optional, opt-in via settings; sits in the titlebar left flex group */
   .app-titlebar-profile{display:inline-flex;align-items:center;gap:4px;height:28px;flex-shrink:0;background:none;border:1px solid var(--border2);color:var(--muted);border-radius:6px;cursor:pointer;padding:0 8px;-webkit-tap-highlight-color:transparent;transition:background-color .15s,color .15s,border-color .15s;font-size:11px;font-weight:500;white-space:nowrap;-webkit-app-region:no-drag;}
   .app-titlebar-profile:hover{background:var(--hover-bg);color:var(--text);border-color:var(--border);}
@@ -2293,7 +2293,7 @@
   .help-card-link:hover{background:var(--accent);border-color:var(--accent);color:var(--bg);}
   .help-card-link:hover svg{opacity:1;}
   .help-card-link svg{flex:0 0 auto;opacity:.8;}
-  .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0;background:var(--main-bg);touch-action:pan-y;}
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0;background:var(--main-bg);touch-action:pan-y;overscroll-behavior-x:none;}
   .topbar{padding:12px 20px;border-bottom:1px solid var(--border);background:var(--topbar-bg);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:10;}
   .topbar-title{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .topbar-meta{font-size:11px;color:var(--muted);margin-top:3px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -2304,7 +2304,7 @@
   .workspace-toggle-btn:disabled{opacity:.38;cursor:not-allowed;}
   .chip.model{color:var(--accent-text);border-color:var(--accent-bg-strong);background:var(--accent-bg);}
   .messages-shell{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;}
-  .messages{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;min-height:0;position:relative;z-index:0;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior-y:contain;overflow-anchor:auto;}
+  .messages{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;min-height:0;position:relative;z-index:0;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior-y:contain;overscroll-behavior-x:none;overflow-anchor:auto;}
 @media (hover:hover) and (pointer:fine){.messages{overflow-anchor:none;}}
   /* Overlay scroll controls so they do not affect the transcript's native scroll geometry. */
   .scroll-to-bottom-btn{position:absolute;right:20px;bottom:16px;width:32px;height:32px;border-radius:50%;border:1px solid var(--border2);background:var(--code-bg);color:var(--muted);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:10;transition:color .12s,border-color .12s,background .12s,transform .12s;}
@@ -2585,8 +2585,7 @@
      "spirit" bloom behind it — no app-icon tile. Glow + mark gradient are
      tuned separately for dark vs light themes (see --logo-glow / .hm-g* below). */
   .empty-logo{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:10px;background:none;border:none;border-radius:0;box-shadow:none;}
-  .empty-logo::before{content:"";position:absolute;left:50%;top:50%;width:190px;height:190px;transform:translate(-50%,-50%);border-radius:50%;background:var(--logo-glow);z-index:0;pointer-events:none;}
-  .empty-logo img{position:relative;z-index:1;width:80px;height:80px;display:block;}
+  .empty-logo img{position:relative;z-index:1;width:100px;height:100px;display:block;}
   /* Light themes (default :root): cooler, restrained bloom. */
   :root{--logo-glow:radial-gradient(circle,rgba(30,99,214,0.15) 0%,rgba(10,166,204,0.07) 45%,transparent 70%);}
   /* Dark themes: brighter, more luminous bloom. */
@@ -3081,6 +3080,7 @@
     .workspace-toggle-btn,.mobile-files-btn{display:inline-flex!important;}
     .app-titlebar{justify-content:space-between;}
     .app-titlebar-hamburger,.app-titlebar-spacer{display:flex;}
+    .app-titlebar-profile{display:none!important;}
   }
 
   /* Fit-based composer footer collapse. ui.js measures actual overflow on
@@ -5194,9 +5194,12 @@ main.main > #mainPlugin{display:none;}
 .agent-canvas-card.status-interrupted .agent-canvas-card-status{color:var(--muted);}
 .agent-canvas-card.status-orchestrating .agent-canvas-card-status{color:var(--accent);}
 .agent-canvas-card.status-idle .agent-canvas-card-status{color:var(--muted);}
+.agent-canvas-card-status-sep{opacity:.5;margin:0 1px;}
+.agent-canvas-card-status-time{text-transform:none;letter-spacing:normal;}
 .agent-canvas-card-stats{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px;}
 .agent-canvas-stat{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:9.5px;font-weight:600;color:var(--muted);background:color-mix(in srgb,var(--surface-subtle) 70%,var(--border2) 30%);border:1px solid var(--border);border-radius:5px;padding:2px 6px;}
 .agent-canvas-stat-icon{flex:none;opacity:.75;}
+.agent-canvas-card-terminal{margin-top:8px;font-family:var(--font-mono);font-size:9.5px;line-height:1.5;color:var(--muted);background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:4px 7px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word;}
 
 .agent-canvas-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--muted);}
 .agent-canvas-dot.status-running{background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);animation:agent-canvas-dot-pulse 1.4s ease-in-out infinite;}
