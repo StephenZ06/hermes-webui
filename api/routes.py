@@ -11074,29 +11074,41 @@ def _resolve_login_locale_key(raw_lang: str | None) -> str:
 _LOGIN_PAGE_HTML = """<!doctype html>
 <html lang="{{LANG}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{BOT_NAME}} — {{LOGIN_TITLE}}</title>
+<!-- Pre-paint theme bootstrap, same localStorage key/logic as the main app
+     (see index.html) so the login screen never flashes the wrong theme or
+     shows a hardcoded one that ignores what the user actually saved. -->
+<script>(function(){try{var themes={light:1,dark:1,system:1},t=(localStorage.getItem('hermes-theme')||'dark').toLowerCase();if(!themes[t])t='dark';if(t==='system')t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){document.documentElement.classList.add('dark');}})()</script>
+<meta name="theme-color" content="#FAF7F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141425" media="(prefers-color-scheme: dark)">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#1a1a2e;color:#e8e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
-  height:100vh;display:flex;align-items:center;justify-content:center}
-.card{background:#16213e;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:36px 32px;
-  width:320px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+:root{--bg:#FEFCF7;--card:#FAF7F0;--border2:rgba(0,0,0,.15);--text:#1A1610;--muted:#5C5344;
+  --accent:#B8860B;--accent-bg:rgba(184,134,11,.15);--accent-border:rgba(184,134,11,.35);--err:#C0392B}
+:root.dark{--bg:#0D0D1A;--card:#141425;--border2:rgba(255,255,255,.14);--text:#FFF8DC;--muted:#C0C0C0;
+  --accent:#7cb9ff;--accent-bg:rgba(124,185,255,.15);--accent-border:rgba(124,185,255,.3);--err:#e94560}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  height:100vh;display:flex;align-items:center;justify-content:center;transition:background-color .15s,color .15s}
+.card{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:36px 32px;
+  width:320px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)}
 .logo{width:56px;height:56px;display:block;margin:0 auto 12px}
 h1{font-size:18px;font-weight:600;margin-bottom:4px}
-.sub{font-size:12px;color:#8888aa;margin-bottom:24px}
-input{width:100%;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);
-  background:rgba(255,255,255,.04);color:#e8e8f0;font-size:14px;outline:none;margin-bottom:14px;
+.sub{font-size:12px;color:var(--muted);margin-bottom:24px}
+input{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);
+  background:color-mix(in srgb,var(--text) 4%,transparent);color:var(--text);font-size:14px;outline:none;margin-bottom:14px;
   transition:border-color .15s}
-input:focus{border-color:rgba(124,185,255,.5);box-shadow:0 0 0 3px rgba(124,185,255,.1)}
-button{width:100%;padding:10px;border-radius:10px;border:none;background:rgba(124,185,255,.15);
-  border:1px solid rgba(124,185,255,.3);color:#7cb9ff;font-size:14px;font-weight:600;cursor:pointer;
+input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-bg)}
+button{width:100%;padding:10px;border-radius:10px;border:none;background:var(--accent-bg);
+  border:1px solid var(--accent-border);color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;
   transition:all .15s}
-button:hover{background:rgba(124,185,255,.25)}
+button:hover{background:color-mix(in srgb,var(--accent-bg) 70%,var(--accent) 30%)}
 .oidc-login{display:block;margin-top:10px;padding:10px;border-radius:10px;text-decoration:none;
-  background:rgba(255,255,255,.04);border:1px solid rgba(111,214,164,.35);color:#6fd6a4;
+  background:color-mix(in srgb,var(--text) 4%,transparent);border:1px solid rgba(111,214,164,.35);color:#3f9d70;
   font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
 .oidc-login:hover{background:rgba(111,214,164,.12)}
-.passkey-login{margin-top:10px;background:rgba(255,255,255,.04);border-color:rgba(232,160,48,.35);color:#e8a030}
-.err{color:#e94560;font-size:12px;margin-top:10px;display:none}
+.passkey-login{margin-top:10px;background:color-mix(in srgb,var(--text) 4%,transparent);border-color:rgba(232,160,48,.35);color:#b3720a}
+:root.dark .oidc-login{color:#6fd6a4}
+:root.dark .passkey-login{color:#e8a030}
+.err{color:var(--err);font-size:12px;margin-top:10px;display:none}
 </style></head><body>
 <div class="card">
   <img class="logo" src="static/favicon-512.png?v={{WEBUI_VERSION}}" alt="{{BOT_NAME}}">
@@ -14449,7 +14461,27 @@ def handle_get(handler, parsed) -> bool:
             webui_gateway_chat_enabled,
         )
         if not webui_gateway_chat_enabled():
-            return j(handler, {"active": [], "spawn_paused": False, "gateway_enabled": False})
+            # In-process (single-container) chat never runs the separate
+            # gateway process this endpoint normally proxies to, so it used
+            # to unconditionally return an empty list here — Agent Canvas's
+            # reconcile() poll was a permanent no-op for this deployment
+            # shape, and the tree could only ever change via SSE events on
+            # the turn's own stream. A fire-and-forget subagent (still
+            # flushing on a daemon thread after the parent turn's stream
+            # already finalized — see delegate_tool.py's child_session_db
+            # ownership comment) then had no way to ever report completion,
+            # and card duration text never ticked between SSE events either.
+            # tools.delegate_tool's in-process registry is the same data
+            # the gateway process itself reads for this endpoint, so expose
+            # it directly instead of going through a nonexistent HTTP hop.
+            try:
+                from tools.delegate_tool import list_active_subagents
+
+                active = list_active_subagents()
+            except Exception:
+                logger.debug("subagents/active: in-process registry read failed", exc_info=True)
+                active = []
+            return j(handler, {"active": active, "spawn_paused": False, "gateway_enabled": False})
         try:
             data = gateway_subagents_request("GET", "/v1/subagents/active")
         except GatewaySubagentControlError as e:
@@ -15305,6 +15337,71 @@ def _reassign_project_sessions(old_project_ids: set, new_project_id) -> int:
     except Exception:
         logger.debug("Failed to load session index for project reassignment")
     return updated
+
+
+def _apply_project_workspace(project_id: str, workspace_path) -> int:
+    """Set `.workspace` on every session currently in `project_id`.
+
+    Same active-stream-safe update pattern as `_reassign_project_sessions`
+    (see that function's docstring for the race it avoids) -- reused here
+    with `workspace` as the field instead of `project_id`. Used by
+    POST /api/projects/set_workspace so binding a workspace to a Project
+    retroactively applies to every chat already filed into it.
+
+    Returns the number of sessions updated.
+    """
+    if not SESSION_INDEX_FILE.exists():
+        return 0
+    updated = 0
+    try:
+        index = json.loads(SESSION_INDEX_FILE.read_bytes())
+        active_ids = _active_stream_ids()
+        for entry in index:
+            if entry.get("project_id") != project_id:
+                continue
+            sid = entry.get("session_id")
+            try:
+                if entry.get("active_stream_id") in active_ids:
+                    with LOCK:
+                        cached = SESSIONS.get(sid)
+                        if cached is not None:
+                            cached.workspace = workspace_path
+                            updated += 1
+                    continue
+                s = get_session(sid)
+                s.workspace = workspace_path
+                s.save()
+                updated += 1
+            except Exception:
+                logger.exception("failed to apply project workspace to session %s", sid)
+    except Exception:
+        logger.exception("failed to apply project workspace for project %s", project_id)
+    return updated
+
+
+def _bound_project_workspace(project_id, load_projects=load_projects):
+    """Return the workspace_path bound to `project_id`, or None if the
+    project doesn't exist or has no binding. Shared by /api/session/new
+    (default for a brand-new session) and /api/session/move (immediate
+    switch for a single session moved into an already-bound Project)."""
+    if not project_id:
+        return None
+    proj = next((p for p in load_projects() if p["project_id"] == project_id), None)
+    return proj.get("workspace_path") if proj else None
+
+
+def _apply_session_move_project_workspace(session, body, load_projects=load_projects):
+    """Set session.project_id from body, and if the target project has a
+    bound workspace_path, also set session.workspace to it. Factored out
+    of the /api/session/move handler so it's testable without a fake HTTP
+    request; the handler still owns locking, the 404-unknown-project
+    check, and the response shape."""
+    target_pid = body.get("project_id") or None
+    session.project_id = target_pid
+    bound_path = _bound_project_workspace(target_pid, load_projects=load_projects)
+    if bound_path:
+        session.workspace = bound_path
+    return session
 
 
 def handle_post(handler, parsed) -> bool:
@@ -16305,7 +16402,13 @@ def handle_post(handler, parsed) -> bool:
         except KeyError:
             return bad(handler, "Session not found", 404)
         # Resolve personality from config.yaml agent.personalities section
-        # (matches hermes-agent CLI behavior)
+        # (matches hermes-agent CLI's name -> prompt lookup/formatting).
+        # Note: this only sets/clears the per-session override -- it does not
+        # by itself determine what personality applies on the next turn.
+        # _run_agent_streaming() in api/streaming.py falls back to the
+        # profile config's display.personality default when no session
+        # override is set, so clearing here (name="") can still result in
+        # a personality being applied.
         prompt = ""
         if name:
             from api.config import reload_config as _reload_cfg2
@@ -17944,6 +18047,35 @@ def handle_post(handler, parsed) -> bool:
             proj["color"] = color
         save_projects(projects)
         return j(handler, {"ok": True, "project": proj})
+
+    if parsed.path == "/api/projects/set_workspace":
+        try:
+            require(body, "project_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        projects = load_projects()
+        proj = next(
+            (p for p in projects if p["project_id"] == body["project_id"]), None
+        )
+        if not proj:
+            return bad(handler, "Project not found", 404)
+        raw_path = body.get("workspace_path")
+        workspace_path = str(raw_path).strip() if raw_path else None
+        if workspace_path:
+            try:
+                workspace_path = str(resolve_trusted_workspace(workspace_path))
+            except ValueError as e:
+                return bad(handler, str(e), 400)
+            if is_blocked_system_path(workspace_path):
+                return bad(
+                    handler,
+                    f"Project path is not allowed: {workspace_path}",
+                    400,
+                )
+        proj["workspace_path"] = workspace_path
+        save_projects(projects)
+        sessions_updated = _apply_project_workspace(body["project_id"], workspace_path)
+        return j(handler, {"ok": True, "project": proj, "sessions_updated": sessions_updated})
 
     if parsed.path == "/api/projects/delete":
         try:
@@ -25311,6 +25443,11 @@ def _handle_chat_sync(handler, body):
                 enabled_toolsets=_resolve_cli_toolsets(),
                 session_id=s.session_id,
             )
+            try:
+                from api.context_pressure_rollover import attach_rollover_hook
+                attach_rollover_hook(agent)
+            except Exception:
+                logger.debug("failed to attach session-rollover hook", exc_info=True)
             from api.streaming import (
                 _WEBUI_PROGRESS_PROMPT,
                 _assign_stable_message_ids,
