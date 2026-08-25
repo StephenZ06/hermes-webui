@@ -7811,6 +7811,7 @@ function renderSessionListFromCache(){
       const chip=document.createElement('span');
       chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');
       chip.dataset.projectId=p.project_id;
+      if(p.workspace_path) chip.title=p.workspace_path;
       chip.dataset.projectName=p.name;
       const isExpanded=Boolean(_projectFoldersExpanded[p.project_id]);
       const chevron=document.createElement('span');
@@ -9772,6 +9773,17 @@ function _showProjectContextMenu(e, proj, chip){
   menu.style.left=e.clientX+'px';
   menu.style.top=e.clientY+'px';
 
+  // Workspace Folder option (above Rename per design)
+  const workspaceItem=document.createElement('div');
+  const boundPath=proj.workspace_path||'';
+  workspaceItem.textContent=boundPath?('Workspace: '+boundPath):'Set Workspace Folder';
+  if(boundPath) workspaceItem.title=boundPath;
+  workspaceItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;';
+  workspaceItem.onmouseenter=()=>workspaceItem.style.background='var(--hover-bg)';
+  workspaceItem.onmouseleave=()=>workspaceItem.style.background='';
+  workspaceItem.onclick=()=>{menu.remove();_showProjectWorkspacePicker(proj,chip);};
+  menu.appendChild(workspaceItem);
+
   // Rename option
   const renameItem=document.createElement('div');
   renameItem.textContent='Rename';
@@ -9816,6 +9828,71 @@ function _showProjectContextMenu(e, proj, chip){
 
   document.body.appendChild(menu);
   const dismiss=()=>{menu.remove();document.removeEventListener('click',dismiss);};
+  setTimeout(()=>document.addEventListener('click',dismiss),0);
+}
+
+async function _showProjectWorkspacePicker(proj, chip){
+  document.querySelectorAll('.project-workspace-picker').forEach(el=>el.remove());
+  const wrap=document.createElement('div');
+  wrap.className='project-workspace-picker';
+  wrap.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:9999;width:320px;box-shadow:0 4px 16px rgba(0,0,0,.35);';
+  const rect=chip.getBoundingClientRect();
+  wrap.style.left=Math.max(8,rect.left)+'px';
+  wrap.style.top=(rect.bottom+4)+'px';
+
+  const label=document.createElement('div');
+  label.textContent='Workspace folder for "'+proj.name+'"';
+  label.style.cssText='font-size:12px;color:var(--muted);margin-bottom:6px;';
+  wrap.appendChild(label);
+
+  const input=document.createElement('input');
+  input.type='text';
+  input.value=proj.workspace_path||'';
+  input.placeholder='/absolute/path/to/folder';
+  input.style.cssText='width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);margin-bottom:8px;';
+  wrap.appendChild(input);
+
+  const err=document.createElement('div');
+  err.style.cssText='font-size:12px;color:var(--error,#e94560);margin-bottom:8px;display:none;';
+  wrap.appendChild(err);
+
+  const btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;justify-content:flex-end;gap:8px;';
+  const clearBtn=document.createElement('button');
+  clearBtn.type='button';
+  clearBtn.textContent='Clear';
+  clearBtn.style.cssText='padding:5px 10px;font-size:13px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;';
+  const saveBtn=document.createElement('button');
+  saveBtn.type='button';
+  saveBtn.textContent='Save';
+  saveBtn.style.cssText='padding:5px 10px;font-size:13px;background:var(--accent);border:none;border-radius:6px;color:#fff;cursor:pointer;';
+  btnRow.appendChild(clearBtn);
+  btnRow.appendChild(saveBtn);
+  wrap.appendChild(btnRow);
+
+  async function _save(path){
+    err.style.display='none';
+    try{
+      const res=await api('/api/projects/set_workspace',{method:'POST',body:JSON.stringify({project_id:proj.project_id,workspace_path:path||null})});
+      if(res&&res.project){
+        proj.workspace_path=res.project.workspace_path;
+        showToast(path?('Workspace bound · '+(res.sessions_updated||0)+' chats updated'):'Workspace cleared');
+        wrap.remove();
+        if(typeof renderSessionList==='function') await renderSessionList();
+      }
+    }catch(e){
+      err.textContent=(e&&e.message)||'Failed to save workspace';
+      err.style.display='';
+    }
+  }
+  saveBtn.onclick=()=>_save(input.value.trim());
+  clearBtn.onclick=()=>_save('');
+  input.onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();_save(input.value.trim());} if(e.key==='Escape'){e.preventDefault();wrap.remove();} };
+  input.onclick=(e)=>e.stopPropagation();
+
+  document.body.appendChild(wrap);
+  setTimeout(()=>input.focus(),10);
+  const dismiss=(ev)=>{ if(!wrap.contains(ev.target)){ wrap.remove(); document.removeEventListener('click',dismiss); } };
   setTimeout(()=>document.addEventListener('click',dismiss),0);
 }
 
