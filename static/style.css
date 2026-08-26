@@ -2212,7 +2212,7 @@
   .skills-cat-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 6px 4px;cursor:pointer;display:flex;align-items:center;gap:2px;user-select:none;}
   .skills-cat-header:hover{color:var(--text);}
   .cat-chevron{flex-shrink:0;width:12px;height:12px;}
-  .skill-item{width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--muted);display:flex;align-items:flex-start;gap:6px;transition:all .12s;line-height:1.4;overflow:hidden;max-height:200px;opacity:1;}
+  .skill-item{width:100%;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--muted);display:flex;align-items:flex-start;gap:6px;transition:background .12s,color .12s,opacity .12s;line-height:1.4;overflow:hidden;max-height:200px;opacity:1;}
   .skill-item:hover{background:var(--hover-bg);color:var(--text);}
   .skill-item.active{background:var(--accent-bg);color:var(--accent-text);}
   .skill-name{font-weight:500;flex-shrink:0;}
@@ -2984,7 +2984,7 @@
   .breadcrumb-sep{color:var(--border);margin:0 1px;font-size:11px;}
   .file-tree{flex:1;overflow-y:auto;padding:8px;}
   .file-tree.drag-over-upload{outline:2px dashed var(--blue,#3b82f6);outline-offset:-2px;border-radius:6px;}
-  .file-item{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--muted);transition:all .12s;min-width:0;}
+  .file-item{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--muted);transition:background .12s,color .12s,opacity .12s;min-width:0;}
   .file-item:hover{background:var(--hover-bg);color:var(--text);}
   .file-item.active{background:var(--accent-bg);color:var(--accent-text);}
   .file-item.dragging{opacity:.35;border:1px dashed var(--accent-bg-strong);}
@@ -3151,9 +3151,12 @@
     /* Viewport-phone rules handle app chrome and touch sizing; they intentionally
        overlap the container compact rules for actual phones. */
     /* ── Sidebar: slide-in overlay instead of hidden ── */
+    /* Same decelerating curve the desktop sidebar and the mobile right panel
+       use -- plain `ease` starts fast and coasts, which reads as the drawer
+       "arriving late"; this curve is what makes the motion feel settled. */
     .sidebar{position:fixed;left:0;top:0;bottom:0;width:100vw;max-width:none;z-index:200;box-sizing:border-box;
-      transform:translateX(-100%);transition:transform .25s ease;will-change:transform;}
-    .sidebar.mobile-open{transform:translateX(0);}
+      transform:translate3d(-100%,0,0);transition:transform .25s cubic-bezier(.22,1,.36,1);will-change:transform;}
+    .sidebar.mobile-open{transform:translate3d(0,0,0);}
     .sidebar .resize-handle{display:none;}
     /* Hamburger button (in app titlebar on mobile) */
     .app-titlebar{height:52px;justify-content:space-between;}
@@ -3179,12 +3182,21 @@
     /* Files button in topbar */
     .workspace-toggle-btn,.mobile-files-btn{display:inline-flex!important;}
     /* Right panel: slide-over from right */
+    /* Slide-over animates `transform`, NOT `right`: animating `right` re-runs
+       layout on the fixed panel every frame (and, because the panel hosts the
+       file tree / terminal, that layout pass is not cheap), which is what made
+       the mobile Files panel feel like it stuttered open instead of gliding.
+       transform is composited, so the slide runs entirely off the main thread.
+       Nothing in JS reads or writes the inline `right` value -- the panel is
+       purely class-toggled -- so parking it at right:0 and translating it out
+       of view is behaviourally identical. */
     .rightpanel{display:flex!important;position:fixed;
       --mobile-rightpanel-width:min(300px, 100vw);
-      right:calc(-1 * var(--mobile-rightpanel-width))!important;
-      top:0;bottom:0;width:var(--mobile-rightpanel-width)!important;max-width:100vw!important;z-index:200;padding-top:var(--app-titlebar-safe-top);box-sizing:border-box;transition:right .25s ease;
+      right:0!important;
+      top:0;bottom:0;width:var(--mobile-rightpanel-width)!important;max-width:100vw!important;z-index:200;padding-top:var(--app-titlebar-safe-top);box-sizing:border-box;
+      transform:translate3d(100%,0,0);transition:transform .25s cubic-bezier(.22,1,.36,1);will-change:transform;
       box-shadow:none!important;}
-    .rightpanel.mobile-open{right:0!important;box-shadow:-4px 0 24px rgba(0,0,0,.4)!important;}
+    .rightpanel.mobile-open{transform:translate3d(0,0,0);box-shadow:-4px 0 24px rgba(0,0,0,.4)!important;}
     .rightpanel .resize-handle{display:none;}
     .rightpanel .panel-header{row-gap:8px;}
     .rightpanel .panel-actions{align-items:center;gap:8px;}
@@ -6203,9 +6215,17 @@ main.main > #mainPlugin{display:none;}
 @media (max-width:640px){
   .project-folder-list .project-chip{padding:9px 8px;min-height:40px;}
   .project-folder-chevron{width:20px;height:20px;font-size:14px;}
-  .project-folder-kebab{width:26px;height:26px;}
+  /* opacity here as well as in the (hover:none) block above: that block is
+     CAPABILITY-based, and several mobile browsers (and every hybrid /
+     convertible device) report `hover:hover`, so it silently fails to match
+     and leaves the kebab at opacity:0 -- i.e. no visible three-dot button, so
+     Rename / Workspace Folder / colour / Delete are unreachable except via an
+     undiscoverable long-press. A viewport-based rule cannot be dodged that
+     way. Both rules are needed: this one misses a touch tablet in landscape
+     above 640px, the capability one misses a phone that claims hover. */
+  .project-folder-kebab{width:26px;height:26px;opacity:.72;}
 }
-.project-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted);transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
+.project-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted);transition:background .15s,color .15s,border-color .15s,opacity .15s,transform .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
 .project-chip:hover{background:rgba(255,255,255,.08);color:var(--text);}
 .project-chip.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg);}
 .project-chip.long-pressing{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg-strong);transform:scale(1.05);}
@@ -6267,7 +6287,7 @@ main.main > #mainPlugin{display:none;}
 .project-folder-rename-input{width:100%;box-sizing:border-box;max-width:none;min-width:0;border-radius:8px;padding:6px 8px;font-size:12px;}
 .project-picker{position:absolute;right:0;top:100%;background:var(--sidebar);border:1px solid var(--border2);border-radius:8px;padding:4px;z-index:30;min-width:160px;max-width:220px;width:max-content;box-shadow:0 4px 16px rgba(0,0,0,.3);}
 .batch-action-bar .batch-project-picker{position:static;right:auto;top:auto;min-width:100%;max-width:none;width:100%;box-shadow:none;margin-top:2px;background:var(--input-bg);}
-.project-picker-item{padding:5px 10px;font-size:11px;border-radius:6px;cursor:pointer;color:var(--muted);transition:all .1s;display:flex;align-items:center;gap:6px;}
+.project-picker-item{padding:5px 10px;font-size:11px;border-radius:6px;cursor:pointer;color:var(--muted);transition:background .1s,color .1s;display:flex;align-items:center;gap:6px;}
 .project-picker-item:hover{background:rgba(255,255,255,.08);color:var(--text);}
 .project-picker-item.active{color:var(--blue);}
 .project-picker-create{color:var(--blue);opacity:.7;border-top:1px solid var(--border2);margin-top:2px;padding-top:6px;}

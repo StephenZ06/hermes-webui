@@ -9955,15 +9955,42 @@ function _showProjectContextMenu(e, proj, chip){
   menu.appendChild(delItem);
 
   document.body.appendChild(menu);
+  _clampFixedToViewport(menu);
   const dismiss=()=>{menu.remove();document.removeEventListener('click',dismiss);};
   setTimeout(()=>document.addEventListener('click',dismiss),0);
+}
+
+// Keep a position:fixed popover fully on-screen. The menu/picker below are
+// positioned from a touch point or a chip's bounding box, which on a phone can
+// easily sit close enough to an edge that the popover renders partly (or
+// entirely) outside the viewport with no way to scroll to it -- the popovers
+// are position:fixed, so the page cannot scroll them into view. Measured after
+// insertion because the element's real width/height are not known until it is
+// in the document.
+function _clampFixedToViewport(el, margin=8){
+  if(!el||!el.getBoundingClientRect) return;
+  const r=el.getBoundingClientRect();
+  const vw=window.innerWidth||document.documentElement.clientWidth||0;
+  const vh=window.innerHeight||document.documentElement.clientHeight||0;
+  if(!vw||!vh) return;
+  let left=r.left, top=r.top;
+  if(r.width+margin*2>=vw) left=margin;
+  else if(r.right>vw-margin) left=vw-margin-r.width;
+  if(left<margin) left=margin;
+  if(r.height+margin*2>=vh) top=margin;
+  else if(r.bottom>vh-margin) top=vh-margin-r.height;
+  if(top<margin) top=margin;
+  el.style.left=Math.round(left)+'px';
+  el.style.top=Math.round(top)+'px';
 }
 
 async function _showProjectWorkspacePicker(proj, chip){
   document.querySelectorAll('.project-workspace-picker').forEach(el=>el.remove());
   const wrap=document.createElement('div');
   wrap.className='project-workspace-picker';
-  wrap.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:9999;width:320px;box-shadow:0 4px 16px rgba(0,0,0,.35);';
+  // width is min()-clamped rather than a flat 320px so the picker still fits
+  // (with its 8px gutter) on a narrow phone instead of running off-screen.
+  wrap.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:9999;width:min(320px,calc(100vw - 24px));box-sizing:border-box;box-shadow:0 4px 16px rgba(0,0,0,.35);';
   const rect=chip.getBoundingClientRect();
   wrap.style.left=Math.max(8,rect.left)+'px';
   wrap.style.top=(rect.bottom+4)+'px';
@@ -10019,6 +10046,7 @@ async function _showProjectWorkspacePicker(proj, chip){
   input.onclick=(e)=>e.stopPropagation();
 
   document.body.appendChild(wrap);
+  _clampFixedToViewport(wrap);
   setTimeout(()=>input.focus(),10);
   const dismiss=(ev)=>{ if(!wrap.contains(ev.target)){ wrap.remove(); document.removeEventListener('click',dismiss); } };
   setTimeout(()=>document.addEventListener('click',dismiss),0);
