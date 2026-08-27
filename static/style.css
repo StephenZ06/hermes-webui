@@ -5515,6 +5515,9 @@ main.main > #mainPlugin{display:none;}
 /* Each logical form row is a card surface. Stack with comfortable gap. */
 #mainSettings .settings-field{margin-bottom:12px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--sidebar);}
 #mainSettings .settings-field:last-of-type{margin-bottom:16px;}
+#mainSettings .settings-input{width:100%;box-sizing:border-box;padding:8px 10px;font-family:inherit;font-size:13px;color:var(--text);background:var(--code-bg);border:1px solid var(--border2);border-radius:8px;outline:none;transition:border-color .15s;}
+#mainSettings .settings-input:focus{border-color:var(--accent);}
+#mainSettings .settings-input::placeholder{color:var(--muted);opacity:.7;}
 #mainSettings .settings-field > label{display:block;font-size:12px;font-weight:500;letter-spacing:.01em;color:var(--muted);margin-bottom:6px;}
 /* Checkbox rows use inline flex labels — don't turn them into stacked caps */
 #mainSettings .settings-field > label[style*="display:flex"]{color:var(--text);font-size:13px;font-weight:500;margin-bottom:0;}

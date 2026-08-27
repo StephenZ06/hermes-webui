@@ -1338,6 +1338,11 @@
               <div id="settingsApprovalModes" style="display:flex;flex-direction:column;gap:6px"></div>
             </div>
             <div class="settings-field">
+              <label data-i18n="settings_label_hidden_folders">Hidden Workspace Folders</label>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_hidden_folders">Folder names to leave out of workspace folder pickers, separated by commas. Use * to match a group, for example ecc, ecc-*. Nothing is hidden on disk and the file tree is unaffected.</div>
+              <input type="text" id="settingsHiddenFolders" class="settings-input" placeholder="ecc, ecc-*" spellcheck="false" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+            </div>
+            <div class="settings-field">
               <label data-i18n="settings_label_auxiliary_models">Auxiliary Models</label>
               <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_auxiliary_models">Side-task routing for vision, compression, title generation, etc. "Auto" uses your main chat model.</div>
               <div id="auxModelsContainer"></div>

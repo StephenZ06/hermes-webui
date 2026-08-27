@@ -7,6 +7,7 @@ profile has its own workspace configuration.  State files live at
 ``{profile_home}/webui_state/last_workspace.txt``.  The global STATE_DIR
 paths are used as fallback when no profile module is available.
 """
+import fnmatch
 import hashlib
 import json
 import logging
@@ -752,6 +753,32 @@ def _trusted_workspace_roots() -> list[Path]:
     return roots
 
 
+def hidden_workspace_folder_patterns() -> list[str]:
+    """Folder-name globs the user has asked workspace pickers to skip.
+
+    Names or fnmatch globs only -- never paths. This hides nothing on disk and
+    does not touch the file tree; it exists so a workspace root shared with
+    tooling checkouts still lists the handful of directories anyone actually
+    binds to.
+    """
+    try:
+        from api.config import load_settings
+
+        raw = load_settings().get("workspace_hidden_folders")
+    except Exception:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [p.strip() for p in raw if isinstance(p, str) and p.strip()]
+
+
+def _is_hidden_workspace_folder(name: str, patterns: list[str]) -> bool:
+    if not patterns:
+        return False
+    lowered = name.lower()
+    return any(fnmatch.fnmatch(lowered, p.lower()) for p in patterns)
+
+
 def list_workspace_suggestions(prefix: str = "", limit: int = 12) -> list[str]:
     """Return workspace path suggestions under trusted roots only.
 
@@ -846,10 +873,13 @@ def list_workspace_suggestions(prefix: str = "", limit: int = 12) -> list[str]:
     except OSError:
         return suggestions[:limit]
 
+    hidden_patterns = hidden_workspace_folder_patterns()
     for child in children:
         if not child.is_dir():
             continue
         if child.name.startswith('.') and not show_hidden:
+            continue
+        if _is_hidden_workspace_folder(child.name, hidden_patterns):
             continue
         if leaf_lower and not child.name.lower().startswith(leaf_lower):
             continue
