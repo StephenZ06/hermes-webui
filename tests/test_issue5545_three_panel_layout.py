@@ -118,10 +118,14 @@ def test_mobile_slide_over_breakpoint_640px_remains_intact():
 
     assert rightpanel.get("display") == "flex!important"
     assert rightpanel.get("position") == "fixed"
-    assert rightpanel.get("right") == "calc(-1 * var(--mobile-rightpanel-width))!important"
+    # The closed panel is parked at right:0 and pushed off-canvas by a
+    # composited transform, so opening it does not re-lay-out the panel on
+    # every frame the way animating `right` did.
+    assert rightpanel.get("right") == "0!important"
+    assert rightpanel.get("transform") == "translate3d(100%,0,0)"
     assert rightpanel.get("width") == "var(--mobile-rightpanel-width)!important"
     assert rightpanel.get("box-shadow") == "none!important"
-    assert rightpanel_open.get("right") == "0!important"
+    assert rightpanel_open.get("transform") == "translate3d(0,0,0)"
 
 
 def test_no_unmatched_desktop_hide_breakpoint_above_900():
