@@ -1709,6 +1709,7 @@ let _projectBindDir = '';        // directory currently being browsed
 let _projectBindChildren = [];   // child directories of _projectBindDir
 let _projectBindQuery = '';
 let _projectBindPathMode = false; // query is a path, so it drives suggest directly
+let _projectBindBrowseOpen = false; // raw filesystem browser is opt-in, see _renderProjectBind
 let _projectBindLoading = false;
 let _projectBindSearchTimer = null;
 
@@ -1765,6 +1766,7 @@ async function openProjectWorkspaceBinder(proj){
   }
   _projectBindQuery = '';
   _projectBindPathMode = false;
+  _projectBindBrowseOpen = false;
   _projectBindDir = '';
   await refreshProjectWorkspaceBinder();
 }
@@ -1867,6 +1869,11 @@ function clearProjectBindSearch(){
     _loadProjectBindChildren(_projectBindDir).then(()=>_renderProjectBind());
     return;
   }
+  _renderProjectBind();
+}
+
+function toggleProjectBindBrowse(){
+  _projectBindBrowseOpen = !_projectBindBrowseOpen;
   _renderProjectBind();
 }
 
@@ -1979,8 +1986,26 @@ function _renderProjectBind(){
     }
   }
 
+  // The Spaces list is the curated answer; the raw filesystem browser underneath
+  // it is opt-in, so a workspace root full of unrelated directories (tooling
+  // checkouts, caches) is not what someone lands on. It opens on its own when
+  // there is nothing curated to show, or when a path query needs somewhere to
+  // put its results.
+  const browseOpen = _projectBindBrowseOpen || _projectBindPathMode || !_projectBindSpaces.length;
+  if (!_projectBindPathMode){
+    rows.push(`<button type="button" class="project-bind-browse-toggle${browseOpen ? ' open' : ''}" data-bind-browse-toggle="1" aria-expanded="${browseOpen ? 'true' : 'false'}">
+        <span class="project-bind-browse-caret" aria-hidden="true">${_projectBindCaretIcon()}</span>
+        <span>Browse all folders</span>
+      </button>`);
+  }
+  if (!browseOpen){
+    body.innerHTML = rows.join('');
+    _projectBindAttachRowHandlers(body);
+    if (footer) footer.hidden = true;
+    return;
+  }
   const crumbs = _projectBindPathMode ? [] : _projectBindCrumbs(_projectBindDir);
-  rows.push('<div class="project-bind-section">' + (_projectBindPathMode ? 'Matching folders' : 'Folders') + '</div>');
+  if (_projectBindPathMode) rows.push('<div class="project-bind-section">Matching folders</div>');
   if (crumbs.length){
     const parts = crumbs.map((c, i) =>
       `<button type="button" class="project-bind-crumb${i === crumbs.length - 1 ? ' current' : ''}" data-bind-dir="${_escHtml(c.path)}">${_escHtml(c.label)}</button>`
@@ -2008,15 +2033,7 @@ function _renderProjectBind(){
   }
 
   body.innerHTML = rows.join('');
-
-  body.querySelectorAll('[data-bind-dir]').forEach(el => {
-    el.onclick = (e)=>{ e.stopPropagation(); _projectBindOpenDir(el.dataset.bindDir); };
-    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _projectBindOpenDir(el.dataset.bindDir); } };
-  });
-  body.querySelectorAll('[data-bind-path]').forEach(el => {
-    el.onclick = (e)=>{ e.stopPropagation(); _bindProjectWorkspacePath(el.dataset.bindPath); };
-    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _bindProjectWorkspacePath(el.dataset.bindPath); } };
-  });
+  _projectBindAttachRowHandlers(body);
 
   // Footer binds the directory you are standing in, so a folder with no
   // subfolders is still selectable after you drill into it.
@@ -2030,6 +2047,24 @@ function _renderProjectBind(){
       if (btn && !alreadyBound) btn.onclick = ()=>_bindProjectWorkspacePath(dir);
     }
   }
+}
+
+function _projectBindAttachRowHandlers(body){
+  body.querySelectorAll('[data-bind-browse-toggle]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); toggleProjectBindBrowse(); };
+  });
+  body.querySelectorAll('[data-bind-dir]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); _projectBindOpenDir(el.dataset.bindDir); };
+    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _projectBindOpenDir(el.dataset.bindDir); } };
+  });
+  body.querySelectorAll('[data-bind-path]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); _bindProjectWorkspacePath(el.dataset.bindPath); };
+    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _bindProjectWorkspacePath(el.dataset.bindPath); } };
+  });
+}
+
+function _projectBindCaretIcon(){
+  return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
 }
 
 function _projectBindFolderIcon(){
