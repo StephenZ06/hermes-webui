@@ -1683,3 +1683,359 @@ if (typeof document !== 'undefined') {
     _wsUploadInit();
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project workspace binder
+//
+// The Project three-dot menu's "Workspace Folder" item used to drop a bare
+// text input next to the chip, which meant typing an absolute path from
+// memory. This replaces it with a project-scoped view inside the right
+// workspace panel: registered Spaces for the common case, plus a live folder
+// browser so a directory created seconds ago shows up without any re-index —
+// every listing is fetched fresh from /api/workspaces/suggest, never from the
+// _workspaceList cache the composer dropdown reads.
+//
+// It reuses the Spaces panel's .ws-row markup and the dropdown's .ws-search-*
+// controls; only the container chrome is new. While it is open the right panel
+// carries .project-bind-mode, and CSS (not JS) hides the Files/Artifacts/Todos
+// body, so renderFileTree() and syncWorkspacePanelUI() can keep running
+// underneath without fighting over `hidden` attributes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _projectBindTarget = null;   // {project_id, name, workspace_path}
+let _projectBindSpaces = [];     // fresh /api/workspaces rows
+let _projectBindRoots = [];      // trusted roots (empty-prefix suggest)
+let _projectBindDir = '';        // directory currently being browsed
+let _projectBindChildren = [];   // child directories of _projectBindDir
+let _projectBindQuery = '';
+let _projectBindPathMode = false; // query is a path, so it drives suggest directly
+let _projectBindLoading = false;
+let _projectBindSearchTimer = null;
+
+function _projectBindStripSlash(p){
+  return String(p || '').replace(/\/+$/, '') || String(p || '');
+}
+
+function _projectBindParent(p){
+  const clean = _projectBindStripSlash(p);
+  const cut = clean.lastIndexOf('/');
+  if (cut > 0) return clean.slice(0, cut);
+  if (cut === 0) return '/';
+  return '';
+}
+
+function _projectBindLeaf(p){
+  const clean = _projectBindStripSlash(p);
+  const cut = clean.lastIndexOf('/');
+  return cut >= 0 ? clean.slice(cut + 1) || clean : clean;
+}
+
+function _projectBindIsPathQuery(q){
+  const s = String(q || '').trim();
+  return s.startsWith('/') || s.startsWith('~');
+}
+
+async function openProjectWorkspaceBinder(proj){
+  if (!proj || !proj.project_id) return;
+  const panel = document.querySelector('.rightpanel');
+  const view = $('projectBindView');
+  if (!panel || !view) return;
+  _projectBindTarget = {
+    project_id: proj.project_id,
+    name: proj.name || 'Project',
+    workspace_path: proj.workspace_path || '',
+  };
+  // On a phone the sidebar drawer is stacked above the right panel, so leaving
+  // it open would hide the very view the menu item just asked for.
+  try{
+    if (typeof _isDesktopWidth === 'function' && !_isDesktopWidth() && typeof closeMobileSidebar === 'function') closeMobileSidebar();
+  }catch(_){}
+  panel.classList.add('project-bind-mode');
+  view.hidden = false;
+  // openWorkspacePanel('browse') refuses to open with no session and no default
+  // workspace; this view is project-scoped, so drive the mode directly.
+  try{ _setWorkspacePanelMode('browse'); }catch(_){}
+  const title = $('projectBindTitle');
+  if (title) title.textContent = _projectBindTarget.name;
+  const search = $('projectBindSearch');
+  if (search){
+    search.value = '';
+    search.oninput = _onProjectBindSearchInput;
+    search.onkeydown = (e)=>{ if(e.key === 'Escape'){ e.preventDefault(); clearProjectBindSearch(); } };
+  }
+  _projectBindQuery = '';
+  _projectBindPathMode = false;
+  _projectBindDir = '';
+  await refreshProjectWorkspaceBinder();
+}
+
+function closeProjectWorkspaceBinder(){
+  const panel = document.querySelector('.rightpanel');
+  const view = $('projectBindView');
+  if (panel) panel.classList.remove('project-bind-mode');
+  if (view) view.hidden = true;
+  if (_projectBindSearchTimer){ clearTimeout(_projectBindSearchTimer); _projectBindSearchTimer = null; }
+  _projectBindTarget = null;
+  _projectBindChildren = [];
+  try{ syncWorkspacePanelUI(); }catch(_){}
+}
+
+function _projectBindDefaultDir(){
+  // Open on the folder that is already bound rather than its parent: the
+  // footer then reads "Already bound to this folder" instead of offering to
+  // rebind one level up, and `..` is one tap away if the intent was to move.
+  const bound = _projectBindTarget && _projectBindTarget.workspace_path;
+  if (bound) return _projectBindStripSlash(bound);
+  return _projectBindRoots[0] || '';
+}
+
+async function refreshProjectWorkspaceBinder(){
+  if (!_projectBindTarget) return;
+  _projectBindLoading = true;
+  _renderProjectBind();
+  let spaces = [];
+  let roots = [];
+  try{
+    const data = await api('/api/workspaces');
+    spaces = (data && data.workspaces) || [];
+  }catch(_){ spaces = []; }
+  try{
+    const data = await api('/api/workspaces/suggest?prefix=');
+    roots = (data && data.suggestions) || [];
+  }catch(_){ roots = []; }
+  _projectBindSpaces = spaces;
+  _projectBindRoots = roots;
+  if (!_projectBindDir) _projectBindDir = _projectBindDefaultDir();
+  await _loadProjectBindChildren(_projectBindPathMode ? _projectBindQuery : _projectBindDir);
+  _projectBindLoading = false;
+  _renderProjectBind();
+}
+
+// Directory listings always go over the wire so a folder created after the app
+// booted is visible immediately.
+async function _loadProjectBindChildren(prefix){
+  const raw = String(prefix || '').trim();
+  if (!raw){ _projectBindChildren = []; return; }
+  // A trailing slash makes list_workspace_suggestions() list the directory's
+  // children; without one it filters siblings by the trailing segment, which is
+  // exactly what a half-typed path query wants.
+  const query = _projectBindPathMode ? raw : (_projectBindStripSlash(raw) + '/');
+  try{
+    const data = await api('/api/workspaces/suggest?limit=200&prefix=' + encodeURIComponent(query));
+    const list = (data && data.suggestions) || [];
+    if (_projectBindPathMode){
+      _projectBindChildren = list;
+      return;
+    }
+    // The endpoint also echoes trusted roots that prefix-match; keep only the
+    // direct children of the directory actually being browsed.
+    const base = _projectBindStripSlash(raw) + '/';
+    _projectBindChildren = list.filter(p => p.startsWith(base) && p.slice(base.length).indexOf('/') < 0);
+  }catch(_){ _projectBindChildren = []; }
+}
+
+function _onProjectBindSearchInput(e){
+  _projectBindQuery = (e && e.target && e.target.value) || '';
+  const pathMode = _projectBindIsPathQuery(_projectBindQuery);
+  if (_projectBindSearchTimer) clearTimeout(_projectBindSearchTimer);
+  if (!pathMode){
+    // Plain text filters what is already loaded — no round trip.
+    if (_projectBindPathMode){
+      _projectBindPathMode = false;
+      _projectBindSearchTimer = setTimeout(async ()=>{
+        await _loadProjectBindChildren(_projectBindDir);
+        _renderProjectBind();
+      }, 120);
+    }
+    _renderProjectBind();
+    return;
+  }
+  _projectBindPathMode = true;
+  _projectBindSearchTimer = setTimeout(async ()=>{
+    await _loadProjectBindChildren(_projectBindQuery);
+    _renderProjectBind();
+  }, 180);
+}
+
+function clearProjectBindSearch(){
+  const search = $('projectBindSearch');
+  if (search){ search.value = ''; search.focus(); }
+  const wasPathMode = _projectBindPathMode;
+  _projectBindQuery = '';
+  _projectBindPathMode = false;
+  if (wasPathMode){
+    _loadProjectBindChildren(_projectBindDir).then(()=>_renderProjectBind());
+    return;
+  }
+  _renderProjectBind();
+}
+
+async function _projectBindOpenDir(dir){
+  if (!dir) return;
+  _projectBindPathMode = false;
+  _projectBindQuery = '';
+  const search = $('projectBindSearch');
+  if (search) search.value = '';
+  _projectBindDir = _projectBindStripSlash(dir);
+  _projectBindLoading = true;
+  _renderProjectBind();
+  await _loadProjectBindChildren(_projectBindDir);
+  _projectBindLoading = false;
+  _renderProjectBind();
+}
+
+async function _bindProjectWorkspacePath(path){
+  if (!_projectBindTarget) return;
+  const pid = _projectBindTarget.project_id;
+  try{
+    const res = await api('/api/projects/set_workspace', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: pid, workspace_path: path || null }),
+    });
+    if (res && res.project){
+      _projectBindTarget.workspace_path = res.project.workspace_path || '';
+      showToast(path
+        ? ('Workspace bound · ' + (res.sessions_updated || 0) + ' chats updated')
+        : 'Workspace cleared');
+      _renderProjectBind();
+      if (typeof renderSessionList === 'function') await renderSessionList();
+    }
+  }catch(e){
+    showToast('Bind failed: ' + ((e && e.message) || e), 5000, 'error');
+  }
+}
+
+function _projectBindCrumbs(dir){
+  // Only offer ancestors that stay inside a trusted root — walking above one
+  // just returns an empty listing from the server.
+  const clean = _projectBindStripSlash(dir);
+  if (!clean) return [];
+  const root = _projectBindRoots
+    .filter(r => clean === _projectBindStripSlash(r) || clean.startsWith(_projectBindStripSlash(r) + '/'))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!root) return [{ label: _projectBindLeaf(clean) || clean, path: clean }];
+  const rootClean = _projectBindStripSlash(root);
+  const crumbs = [{ label: _projectBindLeaf(rootClean) || rootClean, path: rootClean }];
+  const rest = clean.slice(rootClean.length).split('/').filter(Boolean);
+  let acc = rootClean;
+  for (const seg of rest){
+    acc = acc + '/' + seg;
+    crumbs.push({ label: seg, path: acc });
+  }
+  return crumbs;
+}
+
+function _renderProjectBind(){
+  const body = $('projectBindBody');
+  const current = $('projectBindCurrent');
+  const footer = $('projectBindFooter');
+  const clearBtn = $('projectBindSearchClear');
+  if (!body || !_projectBindTarget) return;
+  if (clearBtn) clearBtn.hidden = !_projectBindQuery;
+
+  const bound = _projectBindTarget.workspace_path || '';
+  if (current){
+    current.innerHTML = bound
+      ? `<div class="project-bind-current-info">
+           <div class="project-bind-current-label">Bound folder</div>
+           <div class="project-bind-current-path" title="${_escHtml(bound)}">${_escHtml(bound)}</div>
+         </div>
+         <button type="button" class="project-bind-unbind">Unbind</button>`
+      : `<div class="project-bind-current-info">
+           <div class="project-bind-current-label">Bound folder</div>
+           <div class="project-bind-current-path project-bind-current-none">Not bound — chats use their own workspace</div>
+         </div>`;
+    const unbind = current.querySelector('.project-bind-unbind');
+    if (unbind) unbind.onclick = ()=>_bindProjectWorkspacePath('');
+    current.classList.toggle('is-bound', !!bound);
+  }
+
+  const q = _projectBindQuery.trim().toLowerCase();
+  const filterText = _projectBindPathMode ? '' : q;
+  const spaces = _projectBindSpaces.filter(w => !filterText
+    || String(w.name || '').toLowerCase().includes(filterText)
+    || String(w.path || '').toLowerCase().includes(filterText));
+  const children = _projectBindPathMode
+    ? _projectBindChildren
+    : _projectBindChildren.filter(p => !filterText || _projectBindLeaf(p).toLowerCase().includes(filterText));
+
+  const rows = [];
+
+  if (spaces.length){
+    rows.push('<div class="project-bind-section">Spaces</div>');
+    for (const w of spaces){
+      const isBound = bound && _projectBindStripSlash(w.path) === _projectBindStripSlash(bound);
+      const dot = w.kind === 'remote'
+        ? `<span class="ws-conn-dot ws-conn-dot-${_escHtml(w.mount_status || 'disconnected')}"></span>`
+        : '';
+      const badge = isBound ? '<span class="project-bind-badge">Bound</span>' : '';
+      rows.push(`<div class="ws-row project-bind-row${isBound ? ' active' : ''}" data-bind-path="${_escHtml(w.path)}" role="button" tabindex="0">
+          <span class="project-bind-icon">${_projectBindSpaceIcon()}</span>
+          <div class="ws-row-info">
+            <div class="ws-row-name">${dot}${_escHtml(w.name || _projectBindLeaf(w.path))}${badge}</div>
+            <div class="ws-row-path">${_escHtml(w.path)}</div>
+          </div>
+        </div>`);
+    }
+  }
+
+  const crumbs = _projectBindPathMode ? [] : _projectBindCrumbs(_projectBindDir);
+  rows.push('<div class="project-bind-section">' + (_projectBindPathMode ? 'Matching folders' : 'Folders') + '</div>');
+  if (crumbs.length){
+    const parts = crumbs.map((c, i) =>
+      `<button type="button" class="project-bind-crumb${i === crumbs.length - 1 ? ' current' : ''}" data-bind-dir="${_escHtml(c.path)}">${_escHtml(c.label)}</button>`
+    ).join('<span class="project-bind-crumb-sep">/</span>');
+    const up = _projectBindParent(_projectBindDir);
+    const canGoUp = crumbs.length > 1 && up;
+    rows.push(`<div class="project-bind-crumbs">${canGoUp ? `<button type="button" class="project-bind-crumb up" data-bind-dir="${_escHtml(up)}" title="Parent folder" aria-label="Parent folder">..</button><span class="project-bind-crumb-sep">/</span>` : ''}${parts}</div>`);
+  }
+  if (_projectBindLoading){
+    rows.push('<div class="project-bind-empty">Scanning…</div>');
+  } else if (!children.length){
+    rows.push(`<div class="project-bind-empty">${_projectBindPathMode ? 'No folder matches that path.' : 'No subfolders here.'}</div>`);
+  } else {
+    for (const p of children){
+      const isBound = bound && _projectBindStripSlash(p) === _projectBindStripSlash(bound);
+      rows.push(`<div class="ws-row project-bind-row project-bind-dir${isBound ? ' active' : ''}" data-bind-dir="${_escHtml(p)}" role="button" tabindex="0">
+          <span class="project-bind-icon">${_projectBindFolderIcon()}</span>
+          <div class="ws-row-info">
+            <div class="ws-row-name">${_escHtml(_projectBindLeaf(p))}${isBound ? '<span class="project-bind-badge">Bound</span>' : ''}</div>
+            <div class="ws-row-path">${_escHtml(p)}</div>
+          </div>
+          <button type="button" class="project-bind-use" data-bind-path="${_escHtml(p)}" title="Bind this folder" aria-label="Bind this folder">Bind</button>
+        </div>`);
+    }
+  }
+
+  body.innerHTML = rows.join('');
+
+  body.querySelectorAll('[data-bind-dir]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); _projectBindOpenDir(el.dataset.bindDir); };
+    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _projectBindOpenDir(el.dataset.bindDir); } };
+  });
+  body.querySelectorAll('[data-bind-path]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); _bindProjectWorkspacePath(el.dataset.bindPath); };
+    el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _bindProjectWorkspacePath(el.dataset.bindPath); } };
+  });
+
+  // Footer binds the directory you are standing in, so a folder with no
+  // subfolders is still selectable after you drill into it.
+  if (footer){
+    const dir = _projectBindPathMode ? '' : _projectBindDir;
+    const alreadyBound = dir && bound && _projectBindStripSlash(dir) === _projectBindStripSlash(bound);
+    footer.hidden = !dir;
+    if (dir){
+      footer.innerHTML = `<button type="button" class="project-bind-primary"${alreadyBound ? ' disabled' : ''}>${alreadyBound ? 'Already bound to this folder' : 'Bind “' + _escHtml(_projectBindLeaf(dir)) + '”'}</button>`;
+      const btn = footer.querySelector('.project-bind-primary');
+      if (btn && !alreadyBound) btn.onclick = ()=>_bindProjectWorkspacePath(dir);
+    }
+  }
+}
+
+function _projectBindFolderIcon(){
+  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+}
+
+function _projectBindSpaceIcon(){
+  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
+}
