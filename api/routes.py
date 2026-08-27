@@ -14434,11 +14434,23 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/workspaces/suggest":
         qs = parse_qs(parsed.query)
         prefix = qs.get("prefix", [""])[0]
+        # The composer's path autocomplete wants a short list, but the project
+        # workspace binder browses a directory a level at a time and needs the
+        # whole listing. Callers opt into a bigger page via ?limit=; the default
+        # stays at list_workspace_suggestions()'s own 12 so autocomplete is
+        # unchanged, and the ceiling keeps a huge directory from being rendered
+        # into the panel in one go.
+        try:
+            limit = int(qs.get("limit", ["12"])[0])
+        except (TypeError, ValueError):
+            limit = 12
+        limit = max(1, min(limit, 500))
         return j(
             handler,
             {
-                "suggestions": list_workspace_suggestions(prefix),
+                "suggestions": list_workspace_suggestions(prefix, limit=limit),
                 "prefix": prefix,
+                "limit": limit,
             },
         )
 

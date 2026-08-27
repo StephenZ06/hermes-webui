@@ -1334,7 +1334,7 @@
             </div>
             <div class="settings-field">
               <label data-i18n="settings_label_approval_modes">Profile Approval Mode</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_approval_modes">How each profile handles tool/command approvals. "Auto" approves everything without asking (like Claude Code's auto mode) — use with care. "Smart" lets an LLM guardian auto-approve safe actions and deny risky ones. "Manual" asks every time.</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:10px" data-i18n="settings_desc_approval_modes">How each profile handles tool and command approvals. Auto approves everything without asking — use with care. Smart lets an LLM guardian auto-approve safe actions and deny risky ones. Manual asks every time.</div>
               <div id="settingsApprovalModes" style="display:flex;flex-direction:column;gap:6px"></div>
             </div>
             <div class="settings-field">
@@ -1900,6 +1900,25 @@
       <button class="workspace-panel-tab active" id="workspaceFilesTab" type="button" onclick="switchWorkspacePanelTab('files')" role="tab" aria-selected="true" data-i18n="workspace_files_tab">Files</button>
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false"><span data-i18n="workspace_artifacts_tab">Artifacts</span> <span id="workspaceArtifactsCount" class="workspace-artifacts-count">0</span></button>
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
+    </div>
+    <!-- Project workspace binder: replaces the Files/Artifacts/Todos body while
+         .rightpanel carries .project-bind-mode (see openProjectWorkspaceBinder). -->
+    <div class="project-bind" id="projectBindView" hidden>
+      <div class="project-bind-head">
+        <button type="button" class="project-bind-back" id="projectBindBack" onclick="closeProjectWorkspaceBinder()" aria-label="Back to files" title="Back to files"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></button>
+        <div class="project-bind-titles">
+          <div class="project-bind-title" id="projectBindTitle"></div>
+          <div class="project-bind-sub">Chats in this project open in the bound folder.</div>
+        </div>
+        <button type="button" class="project-bind-refresh" id="projectBindRefresh" onclick="refreshProjectWorkspaceBinder()" aria-label="Rescan folders" title="Rescan folders"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      </div>
+      <div class="project-bind-current" id="projectBindCurrent"></div>
+      <div class="project-bind-search">
+        <input id="projectBindSearch" class="ws-search-input" type="text" placeholder="Search spaces, or type a path…" spellcheck="false" autocomplete="off" aria-label="Search spaces and folders" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other">
+        <button type="button" class="ws-search-clear" id="projectBindSearchClear" onclick="clearProjectBindSearch()" aria-label="Clear search" title="Clear search"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="project-bind-body" id="projectBindBody"></div>
+      <div class="project-bind-footer" id="projectBindFooter" hidden></div>
     </div>
     <div class="breadcrumb-bar" id="breadcrumbBar" style="display:none"></div>
     <div class="file-tree" id="fileTree"></div>

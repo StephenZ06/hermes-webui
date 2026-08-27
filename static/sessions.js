@@ -9985,71 +9985,16 @@ function _clampFixedToViewport(el, margin=8){
 }
 
 async function _showProjectWorkspacePicker(proj, chip){
-  document.querySelectorAll('.project-workspace-picker').forEach(el=>el.remove());
-  const wrap=document.createElement('div');
-  wrap.className='project-workspace-picker';
-  // width is min()-clamped rather than a flat 320px so the picker still fits
-  // (with its 8px gutter) on a narrow phone instead of running off-screen.
-  wrap.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:9999;width:min(320px,calc(100vw - 24px));box-sizing:border-box;box-shadow:0 4px 16px rgba(0,0,0,.35);';
-  const rect=chip.getBoundingClientRect();
-  wrap.style.left=Math.max(8,rect.left)+'px';
-  wrap.style.top=(rect.bottom+4)+'px';
-
-  const label=document.createElement('div');
-  label.textContent='Workspace folder for "'+proj.name+'"';
-  label.style.cssText='font-size:12px;color:var(--muted);margin-bottom:6px;';
-  wrap.appendChild(label);
-
-  const input=document.createElement('input');
-  input.type='text';
-  input.value=proj.workspace_path||'';
-  input.placeholder='/absolute/path/to/folder';
-  input.style.cssText='width:100%;box-sizing:border-box;padding:6px 8px;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);margin-bottom:8px;';
-  wrap.appendChild(input);
-
-  const err=document.createElement('div');
-  err.style.cssText='font-size:12px;color:var(--error,#e94560);margin-bottom:8px;display:none;';
-  wrap.appendChild(err);
-
-  const btnRow=document.createElement('div');
-  btnRow.style.cssText='display:flex;justify-content:flex-end;gap:8px;';
-  const clearBtn=document.createElement('button');
-  clearBtn.type='button';
-  clearBtn.textContent='Clear';
-  clearBtn.style.cssText='padding:5px 10px;font-size:13px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;';
-  const saveBtn=document.createElement('button');
-  saveBtn.type='button';
-  saveBtn.textContent='Save';
-  saveBtn.style.cssText='padding:5px 10px;font-size:13px;background:var(--accent);border:none;border-radius:6px;color:#fff;cursor:pointer;';
-  btnRow.appendChild(clearBtn);
-  btnRow.appendChild(saveBtn);
-  wrap.appendChild(btnRow);
-
-  async function _save(path){
-    err.style.display='none';
-    try{
-      const res=await api('/api/projects/set_workspace',{method:'POST',body:JSON.stringify({project_id:proj.project_id,workspace_path:path||null})});
-      if(res&&res.project){
-        proj.workspace_path=res.project.workspace_path;
-        showToast(path?('Workspace bound · '+(res.sessions_updated||0)+' chats updated'):'Workspace cleared');
-        wrap.remove();
-        if(typeof renderSessionList==='function') await renderSessionList();
-      }
-    }catch(e){
-      err.textContent=(e&&e.message)||'Failed to save workspace';
-      err.style.display='';
-    }
+  // Binding a workspace used to happen through a small popover with a bare
+  // path input. It now opens the right-hand workspace panel in project-bind
+  // mode (static/workspace.js), which lists registered Spaces and browses the
+  // filesystem live, so a folder created moments ago is selectable without
+  // anyone having to retype its absolute path.
+  if (typeof openProjectWorkspaceBinder === 'function'){
+    await openProjectWorkspaceBinder(proj);
+    return;
   }
-  saveBtn.onclick=()=>_save(input.value.trim());
-  clearBtn.onclick=()=>_save('');
-  input.onkeydown=(e)=>{ if(e.key==='Enter'){e.preventDefault();_save(input.value.trim());} if(e.key==='Escape'){e.preventDefault();wrap.remove();} };
-  input.onclick=(e)=>e.stopPropagation();
-
-  document.body.appendChild(wrap);
-  _clampFixedToViewport(wrap);
-  setTimeout(()=>input.focus(),10);
-  const dismiss=(ev)=>{ if(!wrap.contains(ev.target)){ wrap.remove(); document.removeEventListener('click',dismiss); } };
-  setTimeout(()=>document.addEventListener('click',dismiss),0);
+  showToast('Workspace panel unavailable', 5000, 'error');
 }
 
 async function _confirmDeleteProject(proj){

@@ -248,6 +248,11 @@ function _setWorkspacePanelMode(mode){
   if(!layout||!panel)return;
   _workspacePanelMode=(mode==='browse'||mode==='preview')?mode:'closed';
   const open=_workspacePanelMode!=='closed';
+  // Closing the panel also leaves the project workspace binder, so reopening it
+  // later lands back on Files instead of a stale project's bind view.
+  if(!open){
+    try{ if(typeof closeProjectWorkspaceBinder==='function') closeProjectWorkspaceBinder(); }catch(_){}
+  }
   document.documentElement.dataset.workspacePanel=open?'open':'closed';
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
@@ -295,6 +300,10 @@ function closeWorkspacePanel(){
 }
 
 function ensureWorkspacePreviewVisible(){
+  // A file preview and the project binder both want the whole panel body, and
+  // the preview is always the more immediate intent (someone just clicked a
+  // file), so the binder yields.
+  try{ if(typeof closeProjectWorkspaceBinder==='function') closeProjectWorkspaceBinder(); }catch(_){}
   if(_workspacePanelMode==='closed') _setWorkspacePanelMode('preview');
   else syncWorkspacePanelUI();
 }
