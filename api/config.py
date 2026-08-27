@@ -9292,6 +9292,7 @@ _SETTINGS_DEFAULTS = {
     "inflight_state_max_string_chars": 60000,  # max string length kept inside a recovery snapshot field
     "inflight_state_max_json_chars": 1500000,  # max serialized recovery snapshot payload before pruning
     "hidden_tabs": [],  # sidebar tab panel names hidden by user (e.g. ["tasks","kanban"]); chat and settings are always visible
+    "workspace_hidden_folders": [],  # folder names/globs to omit from workspace folder pickers (e.g. ["ecc","ecc-*"]); matched case-insensitively against the directory name only, never a path. Hides nothing on disk and does not affect the file tree.
     "tab_order": [],  # user-defined sidebar/rail tab order for reorderable tabs; chat/settings stay fixed
     "composer_control_order": [],  # user-defined composer footer control order; invalid/duplicate keys are ignored
     "language": "en",  # UI locale code; must match a key in static/i18n.js LOCALES
@@ -9784,6 +9785,29 @@ def save_settings(settings: dict) -> dict:
             # Validate list-valued ordering settings. Chat/settings stay fixed
             # for tabs; composer ordering only accepts known control keys.
             # Duplicates are collapsed while preserving the first requested order.
+            # Folder names or fnmatch globs, never paths: a value containing a
+            # separator would let a picker filter be written as something that
+            # looks like a path rule and silently never match.
+            if k == "workspace_hidden_folders":
+                if not isinstance(v, list):
+                    continue
+                seen = set()
+                cleaned = []
+                for s_ in v:
+                    if not isinstance(s_, str):
+                        continue
+                    s_ = s_.strip().strip("/").strip("\\")
+                    if not s_ or "/" in s_ or "\\" in s_ or len(s_) > 128:
+                        continue
+                    key = s_.lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    cleaned.append(s_)
+                    if len(cleaned) >= 64:
+                        break
+                current[k] = cleaned
+                continue
             if k in {"hidden_tabs", "tab_order", "composer_control_order"}:
                 if not isinstance(v, list):
                     continue

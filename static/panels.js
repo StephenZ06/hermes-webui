@@ -10476,10 +10476,22 @@ function _setOwnedSpeechPayload(payload,settingKey,value){
   if(_speechPreferenceIsOwned(settingKey)) payload[settingKey]=value;
 }
 
+function _parseHiddenFoldersInput(value){
+  // Comma separated names or globs. Path separators are rejected server-side,
+  // so strip them here too rather than silently sending a rule that can never
+  // match anything.
+  return String(value||'')
+    .split(',')
+    .map(s=>s.trim())
+    .filter(s=>s && s.indexOf('/')<0 && s.indexOf('\\')<0);
+}
+
 function _preferencesPayloadFromUi(){
   const payload={};
   const sendKeySel=$('settingsSendKey');
   if(sendKeySel) payload.send_key=sendKeySel.value;
+  const hiddenFoldersInput=$('settingsHiddenFolders');
+  if(hiddenFoldersInput) payload.workspace_hidden_folders=_parseHiddenFoldersInput(hiddenFoldersInput.value);
   const langSel=$('settingsLanguage');
   if(langSel) payload.language=langSel.value;
   const showUsageCb=$('settingsShowTokenUsage');
@@ -11053,6 +11065,16 @@ async function loadSettingsPanel(){
     // Send key preference
     const sendKeySel=$('settingsSendKey');
     if(sendKeySel){sendKeySel.value=settings.send_key||'enter';sendKeySel.addEventListener('change',_schedulePreferencesAutosave,{once:false});}
+    // Hidden workspace folders — comma separated names/globs kept out of the
+    // folder pickers. Saved on blur rather than per keystroke so a half-typed
+    // glob is never persisted.
+    const hiddenFoldersInput=$('settingsHiddenFolders');
+    if(hiddenFoldersInput){
+      const stored=Array.isArray(settings.workspace_hidden_folders)?settings.workspace_hidden_folders:[];
+      hiddenFoldersInput.value=stored.join(', ');
+      hiddenFoldersInput.addEventListener('change',_schedulePreferencesAutosave,{once:false});
+      hiddenFoldersInput.addEventListener('blur',_schedulePreferencesAutosave,{once:false});
+    }
     // Language preference — populate from LOCALES bundle
     const langSel=$('settingsLanguage');
     if(langSel){
