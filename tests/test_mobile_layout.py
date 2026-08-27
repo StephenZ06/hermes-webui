@@ -213,23 +213,26 @@ def test_rightpanel_mobile_slide_over_css():
     # At max-width:900px the rightpanel should be position:fixed, off-screen right
     assert "position:fixed" in CSS, \
         "style.css must have position:fixed for rightpanel mobile slide-over"
-    assert ".rightpanel.mobile-open{right:0" in CSS or ".rightpanel.mobile-open {right:0" in CSS, \
-        ".rightpanel.mobile-open must set right:0 to slide panel in from right"
+    assert ".rightpanel.mobile-open{transform:translate3d(0,0,0)" in CSS, \
+        ".rightpanel.mobile-open must translate back to 0 to slide the panel in from the right"
     assert "min(300px, 100vw)" in CSS or "min(300px,100vw)" in CSS, \
         "rightpanel mobile width should be capped defensively with 100vw"
     assert "var(--mobile-rightpanel-width)" in CSS, \
         "mobile rightpanel width variable should be used in compact mode rules"
-    assert "calc(-1 * var(--mobile-rightpanel-width))" in CSS, \
-        "closed mobile rightpanel should be off-canvas using a width-based negative offset"
+    # The panel parks at right:0 and is translated off-canvas instead of being
+    # animated via `right`, so the slide is composited rather than re-laying out
+    # the panel every frame. Nothing in JS reads the inline `right` value.
+    assert "transform:translate3d(100%,0,0)" in CSS, \
+        "closed mobile rightpanel should be off-canvas via a composited transform"
     mobile_640 = re.search(r'@media\(max-width:640px\)\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}', CSS, re.DOTALL)
     assert mobile_640, "@media(max-width:640px) block missing from style.css"
     rightpanel_block = mobile_640.group(1)
     assert re.search(r'\.rightpanel\{[^}]*width:\s*var\(--mobile-rightpanel-width\)\s*!important',
                      rightpanel_block, re.DOTALL), \
         ".rightpanel width must use var(--mobile-rightpanel-width) with !important in mobile block"
-    assert re.search(r'\.rightpanel\.mobile-open\{[^}]*right:\s*0\s*!important',
+    assert re.search(r'\.rightpanel\.mobile-open\{[^}]*transform:\s*translate3d\(0,\s*0,\s*0\)',
                      rightpanel_block, re.DOTALL), \
-        "mobile-open mobile rightpanel must force right:0 with !important"
+        "mobile-open mobile rightpanel must translate back onto the screen"
     assert re.search(r'\.rightpanel\{[^}]*box-shadow:\s*none\s*!important',
                      rightpanel_block, re.DOTALL), \
         "closed mobile rightpanel should have no shadow to avoid right-edge bleed"
@@ -256,14 +259,14 @@ def test_mobile_sidebar_drawer_uses_transform_instead_of_left():
 
     assert sidebar_rule.get("left") == "0", \
         "Mobile .sidebar should keep left:0 in the drawer rules"
-    assert sidebar_rule.get("transform") == "translateX(-100%)", \
-        "Closed mobile .sidebar should use transform:translateX(-100%)"
-    assert sidebar_rule.get("transition") == "transform .25s ease", \
-        "Mobile .sidebar should transition transform for drawer animation"
+    assert sidebar_rule.get("transform") == "translate3d(-100%,0,0)", \
+        "Closed mobile .sidebar should use transform:translate3d(-100%,0,0)"
+    assert sidebar_rule.get("transition") == "transform .25s cubic-bezier(.22,1,.36,1)", \
+        "Mobile .sidebar should transition transform on the shared decelerating curve"
     assert sidebar_rule.get("will-change") == "transform", \
         "Mobile .sidebar should promote the transform layer before drawer animation"
-    assert sidebar_open_rule.get("transform") == "translateX(0)", \
-        "Open mobile .sidebar should use transform:translateX(0)"
+    assert sidebar_open_rule.get("transform") == "translate3d(0,0,0)", \
+        "Open mobile .sidebar should use transform:translate3d(0,0,0)"
 
 
 def test_workspace_panel_inline_width_is_desktop_only():
@@ -520,16 +523,16 @@ def test_mobile_sidebar_opens_as_full_screen_surface_with_panel_rail():
     assert sidebar_rule.get("max-width") == "none", (
         "Mobile sidebar must not retain desktop/drawer max width"
     )
-    assert sidebar_rule.get("transform") == "translateX(-100%)", (
-        "Closed mobile sidebar should sit fully offscreen"
+    assert sidebar_rule.get("transform") == "translate3d(-100%,0,0)", (
+        "Closed mobile sidebar should sit fully offscreen on its own layer"
     )
-    assert sidebar_rule.get("transition") == "transform .25s ease", (
-        "Mobile sidebar should animate with transform"
+    assert sidebar_rule.get("transition") == "transform .25s cubic-bezier(.22,1,.36,1)", (
+        "Mobile sidebar should animate with transform on the shared decelerating curve"
     )
     assert sidebar_rule.get("will-change") == "transform", (
         "Mobile sidebar should promote the transform layer before opening"
     )
-    assert sidebar_open_rule.get("transform") == "translateX(0)", (
+    assert sidebar_open_rule.get("transform") == "translate3d(0,0,0)", (
         "Open mobile sidebar should slide the full session page into view"
     )
     assert not re.search(r'\.sidebar\s+\.sidebar-nav\{[^}]*display:\s*none', mobile_css), (

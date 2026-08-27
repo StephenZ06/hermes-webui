@@ -26,9 +26,20 @@ def test_messages_inner_mobile_has_containment():
     media_match = re.search(r'@media\(max-width:640px\)\{', content)
     assert media_match, "@media(max-width:640px) block not found"
 
-    # Extract content after the media query opening brace
-    media_start = media_match.start()
-    remaining_content = content[media_start:media_start + 5000]  # Look ahead 5000 chars
+    # Scan the whole media block rather than a fixed character window: the
+    # block keeps growing, and a lookahead cap turns any unrelated rule added
+    # above .messages-inner into a spurious failure.
+    depth = 0
+    block_end = media_match.end()
+    for i in range(media_match.end() - 1, len(content)):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                block_end = i
+                break
+    remaining_content = content[media_match.start():block_end]
 
     # Find .messages-inner rule within this section
     messages_inner_match = re.search(r'\.messages-inner\{([^}]*)\}', remaining_content)
