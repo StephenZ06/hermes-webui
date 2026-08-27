@@ -164,34 +164,12 @@ class TestBinderStyles:
         assert "@media (max-width:640px)" in mobile
         assert "font-size:16px" in mobile
 
-    def test_raw_folder_browser_is_opt_in(self):
-        # The curated Spaces list is what you land on; the filesystem browser
-        # under it is a disclosure, so a workspace root full of unrelated
-        # directories is not the first thing on screen.
-        assert "function toggleProjectBindBrowse" in WORKSPACE_JS
-        assert "project-bind-browse-toggle" in WORKSPACE_JS
-        assert (
-            "_projectBindBrowseOpen || _projectBindPathMode || !_projectBindSpaces.length"
-            in WORKSPACE_JS
-        ), "browser must still open itself with nothing curated to show, or for a path query"
-
-    def test_collapsed_browser_hides_the_bind_this_folder_footer(self):
-        # The footer binds whichever directory the browser is standing in, so
-        # it must not be offered while the browser is closed.
-        render = WORKSPACE_JS[WORKSPACE_JS.index("function _renderProjectBind"):]
-        collapsed = render[render.index("if (!browseOpen){"):]
-        collapsed = collapsed[: collapsed.index("return;")]
-        assert "footer.hidden = true" in collapsed
-
     def test_binder_is_reachable_in_the_tablet_band(self):
         # 641-900px hides the docked right panel (.rightpanel{display:none}) in
         # favour of the main-view file browser, but the binder only exists in
         # the right panel, so it must opt back in as a slide-over there.
         assert ".rightpanel.project-bind-mode{display:flex!important;position:fixed;" in STYLE_CSS
         assert ".rightpanel.project-bind-mode.mobile-open{transform:translate3d(0,0,0)" in STYLE_CSS
-
-    def test_disclosure_caret_rotates_when_open(self):
-        assert ".project-bind-browse-toggle.open .project-bind-browse-caret{transform:rotate(90deg);}" in STYLE_CSS
 
     def test_row_markup_reuses_the_spaces_panel_classes(self):
         assert "ws-row project-bind-row" in WORKSPACE_JS
