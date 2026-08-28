@@ -60,6 +60,15 @@
     el.style.opacity = '';
     el.style.transform = '';
     el.style.willChange = '';
+    el.style.transition = '';
+  }
+
+  // Several targets carry `transition: all` or a transform transition of their
+  // own. Left in place, the browser would transition the values Motion is
+  // already animating, layering a second easing on top of the first. Suppressed
+  // for the duration of the entrance, then handed straight back.
+  function suspendTransition(el){
+    if(el && el.style) el.style.transition = 'none';
   }
 
   /**
@@ -83,7 +92,7 @@
     const staggered = els.slice(0, 12);
     const rest = els.slice(12);
     rest.forEach(clearInline);
-    els.forEach(el => { el.style.willChange = 'transform, opacity'; });
+    els.forEach(el => { el.style.willChange = 'transform, opacity'; suspendTransition(el); });
     const controls = M.animate(
       staggered,
       { opacity: [0, 1], transform: ['translateY(' + distance + 'px)', 'translateY(0px)'] },
@@ -117,6 +126,7 @@
     const shown = 'translate' + axis + '(0px)' + (o.scale === false ? '' : ' scale(1)');
     const isIn = direction !== 'out';
     el.style.willChange = 'transform, opacity';
+    suspendTransition(el);
     const controls = M.animate(
       el,
       isIn
@@ -125,7 +135,14 @@
       { duration: o.duration || (isIn ? DUR.base : DUR.fast), easing: isIn ? EASE : 'ease-in' }
     );
     const done = (controls && controls.finished) || Promise.resolve();
-    return done.then(() => { if(isIn) clearInline(el); }).catch(() => { if(isIn) clearInline(el); });
+    const settle = () => {
+      if(isIn) clearInline(el);
+      // An exit keeps its final opacity/transform (the node is about to be
+      // hidden) but must never keep transition:none, or the element's own CSS
+      // animation would be dead the next time it is shown.
+      else if(el.style) el.style.transition = '';
+    };
+    return done.then(settle).catch(settle);
   }
 
   /**
@@ -145,15 +162,26 @@
     els.forEach(el => {
       if(el.dataset.motionLift === '1') return; // never bind twice
       el.dataset.motionLift = '1';
+      // Motion's hover gesture already ignores pointerType 'touch' in both
+      // directions, so a tap can never leave a phone stuck in a hover state.
+      // press does fire on touch, which is wanted: it is the tap feedback.
+      const settle = () => {
+        const controls = M.animate(el, { transform: 'translateY(0px) scale(1)' }, { duration: DUR.base, easing: EASE });
+        const done = (controls && controls.finished) || Promise.resolve();
+        // Hand the element back to its own CSS. Leaving `transform` inline
+        // would outrank any :hover/:active transform the stylesheet defines on
+        // it for the rest of the session.
+        done.catch(() => {}).then(() => { el.style.transform = ''; });
+      };
       const stopHover = M.hover(el, () => {
         M.animate(el, { transform: 'translateY(' + y + 'px) scale(' + scale + ')' }, { duration: DUR.fast, easing: EASE });
-        return () => M.animate(el, { transform: 'translateY(0px) scale(1)' }, { duration: DUR.base, easing: EASE });
+        return settle;
       });
       cleanups.push(stopHover);
       if(typeof M.press === 'function'){
         const stopPress = M.press(el, () => {
           M.animate(el, { transform: 'translateY(0px) scale(0.985)' }, { duration: 0.1, easing: 'ease-out' });
-          return () => M.animate(el, { transform: 'translateY(0px) scale(1)' }, { duration: DUR.fast, easing: EASE });
+          return settle;
         });
         cleanups.push(stopPress);
       }
@@ -276,7 +304,10 @@
     if(sub) parts.push(sub);
     Array.from(el.querySelectorAll('.suggestion')).forEach(s => parts.push(s));
     MotionUI.enter(parts, { y: 12, stagger: 0.045 });
-    MotionUI.lift('.empty-state .suggestion', { y: -2, scale: 1.015 });
+    // No lift on .suggestion: the stylesheet already gives it a hover
+    // treatment including transform:translateX(2px), under transition:all.
+    // A JS transform would win by specificity, cancel that translate, and get
+    // transitioned a second time by the CSS on top of Motion's own animation.
     if(heading) shimmerHeading(heading);
   }
 

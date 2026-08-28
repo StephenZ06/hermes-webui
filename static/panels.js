@@ -7216,14 +7216,27 @@ function _setWorkspaceDropdownOpenState(dd,open){
     dd.hidden=!open;
     return;
   }
+  // .ws-dropdown-footer is anchored bottom:calc(100% + 4px) -- it opens upward
+  // out of the chip, so it rises into place rather than dropping in.
   if(open){
+    dd.classList.remove('is-leaving');
     dd.hidden=false;
-    anim.presence(dd,'in',{from:'top',distance:6});
+    anim.presence(dd,'in',{from:'bottom',distance:6});
   }else{
     if(dd.hidden) return;
-    anim.presence(dd,'out',{from:'top',distance:6}).then(()=>{
+    // .ws-dropdown is display:none without .open, and .open has to come off
+    // synchronously because toggleComposerWsDropdown() reads it to decide what
+    // the next click does. A separate .is-leaving class keeps the node painted
+    // for the exit without lying about the open state.
+    dd.classList.add('is-leaving');
+    anim.presence(dd,'out',{from:'bottom',distance:6}).then(()=>{
+      dd.classList.remove('is-leaving');
       // Re-check: the dropdown may have been reopened during the exit.
-      if(!dd.classList.contains('open')) dd.hidden=true;
+      if(!dd.classList.contains('open')){
+        dd.hidden=true;
+        dd.style.opacity='';
+        dd.style.transform='';
+      }
     });
   }
 }

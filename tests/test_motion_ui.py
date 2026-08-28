@@ -126,10 +126,45 @@ class TestAccessibilityAndBehaviour:
         fn = fn[: fn.index("\nfunction ")]
         assert "!dd.classList.contains('open')" in fn
 
-    def test_toast_reuse_cancels_a_pending_exit(self):
-        assert "toastLeaving" in UI_JS
-        show = UI_JS[UI_JS.index("el.className='toast show '+t;") :][:400]
-        assert "delete el.dataset.toastLeaving" in show
+    def test_toast_is_left_to_its_own_css(self):
+        # .toast already animates opacity and transform with a .2s transition
+        # and .toast.show flips both. A JS transform would outrank that rule,
+        # be transitioned a second time on top of Motion, and slide the wrong
+        # way -- the toast is anchored top-right, not bottom.
+        assert "window.MotionUI" not in UI_JS, "the toast must not be driven by the motion layer"
+        assert ".toast{" in STYLE_CSS and "transition:opacity .2s,transform .2s" in STYLE_CSS
+
+    def test_dropdown_exit_is_actually_painted(self):
+        # .ws-dropdown is display:none without .open, and .open must come off
+        # synchronously because toggleComposerWsDropdown() reads it. Without a
+        # separate class the exit animation would run on a hidden element.
+        assert ".ws-dropdown.is-leaving{display:block" in STYLE_CSS
+        fn = PANELS_JS[PANELS_JS.index("function _setWorkspaceDropdownOpenState") :]
+        fn = fn[: fn.index("\nfunction ")]
+        assert "classList.add('is-leaving')" in fn
+        assert "classList.remove('is-leaving')" in fn
+
+    def test_no_lift_on_elements_that_already_transform_on_hover(self):
+        # .suggestion:hover carries transform:translateX(2px) under
+        # transition:all; a JS transform would win and cancel it.
+        assert "MotionUI.lift('.empty-state .suggestion'" not in MOTION_UI_JS
+        assert "lift" in MOTION_UI_JS  # the helper still exists for other targets
+
+    def test_lift_hands_the_element_back_to_css(self):
+        lift = MOTION_UI_JS[MOTION_UI_JS.index("function lift(") :]
+        lift = lift[: lift.index("\n  /**")]
+        assert "el.style.transform = ''" in lift, (
+            "a lingering inline transform outranks any :hover/:active transform in CSS"
+        )
+
+    def test_css_transitions_are_suspended_during_js_animation(self):
+        assert "function suspendTransition" in MOTION_UI_JS
+        for helper in ("function enter(", "function presence("):
+            start = MOTION_UI_JS.index(helper)
+            assert "suspendTransition" in MOTION_UI_JS[start : start + 1600], helper
+        clear = MOTION_UI_JS[MOTION_UI_JS.index("function clearInline") :]
+        clear = clear[: clear.index("\n  }")]
+        assert "el.style.transition = ''" in clear
 
     def test_binder_rows_do_not_re_animate_on_every_keystroke(self):
         assert "_projectBindLastAnimatedKey" in WORKSPACE_JS
