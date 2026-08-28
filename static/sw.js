@@ -37,6 +37,8 @@ const SHELL_ASSETS = [
   './static/terminal.js' + VQ,
   './static/onboarding.js' + VQ,
   './static/vendor/smd.min.js' + VQ,
+  './static/vendor/motion/13.1.1/motion.min.js' + VQ,
+  './static/motion-ui.js' + VQ,
   './static/vendor/katex/0.16.22/katex.min.css' + VQ,
   './static/vendor/katex/0.16.22/katex.min.js' + VQ,
   './static/favicon.svg',

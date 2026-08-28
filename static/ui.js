@@ -6976,6 +6976,7 @@ function _settleFinalScroll(token){
   _scrollPinned=true;
   _deferClearProgrammaticScroll();
 }
+let _scrollIfPinnedCoalesced=false;
 function scrollIfPinned(){
   if(!window._autoScrollFollow) return;
   if(_messageUserUnpinned){
@@ -6998,6 +6999,17 @@ function scrollIfPinned(){
   }
   if(!_scrollPinned) return;
   if(_recentNonMessageScrollIntent()) return;
+  // Coalesce a burst of same-frame calls (e.g. several tool/tool_complete SSE
+  // events firing back-to-back during a busy multi-tool-call turn) into a
+  // single settle instead of one scrollTop write + full ResizeObserver
+  // teardown/rebuild per event -- the redundant per-event churn produced
+  // visible up/down jitter in the worklog area while the agent was actively
+  // working. _setMessageScrollToBottom()'s own rAF retry (#3319) already
+  // re-reads scrollHeight one frame later, so skipping calls that land in an
+  // already-scheduled frame does not lose DOM growth from later in the burst.
+  if(_scrollIfPinnedCoalesced) return;
+  _scrollIfPinnedCoalesced=true;
+  requestAnimationFrame(()=>{ _scrollIfPinnedCoalesced=false; });
   if(_messageBottomDistance()>500) _setMessageScrollToBottom();
   _settleMessageScrollToBottom(false);
 }
@@ -8348,12 +8360,27 @@ function updateQueueBadge(sessionId){
 const TOAST_DEFAULT_MS=2800;
 const TOAST_ERROR_DEFAULT_MS=20000;
 function clearToastDismissTimer(el){if(!el)return;clearTimeout(el._t);el._t=null;}
-function setToastDismissTimer(el,duration){if(!el)return;clearToastDismissTimer(el);el._t=setTimeout(()=>{el.classList.remove('show');},duration);}
+function _hideToastAnimated(el){
+  if(!el)return;
+  const anim=window.MotionUI;
+  if(!anim||!anim.enabled()){el.classList.remove('show');return;}
+  anim.presence(el,'out',{from:'bottom',distance:10}).then(()=>{
+    // A newer toast may have reused the node while this one was leaving.
+    if(el.dataset.toastLeaving==='1'){
+      el.classList.remove('show');
+      el.style.opacity='';
+      el.style.transform='';
+      delete el.dataset.toastLeaving;
+    }
+  });
+  el.dataset.toastLeaving='1';
+}
+function setToastDismissTimer(el,duration){if(!el)return;clearToastDismissTimer(el);el._t=setTimeout(()=>{_hideToastAnimated(el);},duration);}
 function dismissToast(btnOrEl){
   const el=btnOrEl&&btnOrEl.closest?btnOrEl.closest('#toast'):(btnOrEl&&btnOrEl.id==='toast'?btnOrEl:null);
   if(!el)return;
   clearToastDismissTimer(el);
-  el.classList.remove('show');
+  _hideToastAnimated(el);
 }
 function copyToastText(btn){
   const el=btn&&btn.closest?btn.closest('#toast'):null;
@@ -8368,6 +8395,10 @@ function showToast(msg,ms,type){
   const duration=(ms==null)?(t==='error'?TOAST_ERROR_DEFAULT_MS:TOAST_DEFAULT_MS):ms;
   el.className='toast show '+t;
   el.dataset.toastMessage=s;
+  // A toast reusing a node that was mid-exit must cancel that exit, or the
+  // finished handler would hide the new message.
+  delete el.dataset.toastLeaving;
+  if(window.MotionUI) window.MotionUI.presence(el,'in',{from:'bottom',distance:10});
   if(t==='error') el.innerHTML=`<span class="toast-message">${esc(s)}</span><button class="toast-copy" type="button" data-toast-copy="1" onclick="copyToastText(this);event.stopPropagation()">Copy</button><button class="toast-dismiss" type="button" aria-label="Dismiss error toast" data-toast-dismiss="1" onclick="dismissToast(this);event.stopPropagation()">Dismiss</button>`;
   else el.textContent=s;
   el.onmouseenter=()=>clearToastDismissTimer(el);
