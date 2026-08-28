@@ -786,7 +786,7 @@ async function loadDir(path, opts={}){
       await refreshOpenPreviewIfMutated();
     }
     // Fetch git info for workspace root (non-blocking)
-    if(!path||path==='.'){ _refreshGitBadge(); if(typeof renderBoundProjectControl==='function') renderBoundProjectControl(); }
+    if(!path||path==='.'){ _refreshGitBadge(); if(typeof renderBoundProjectControl==='function') renderBoundProjectControl(); if(typeof renderProjectFolderBinding==='function') renderProjectFolderBinding(); }
   }catch(e){
     const grant = _workspaceEscapeGrantForPath(path);
     if(grant && e && e.status===403){
@@ -1927,6 +1927,10 @@ async function _bindProjectWorkspacePath(path){
       showToast(path
         ? ('Workspace bound · ' + (res.sessions_updated || 0) + ' chats updated')
         : 'Workspace cleared');
+      // The open chat may be filed under the project just (un)bound, so the
+      // workspace panel's indicator is stale until it re-reads the list.
+      _projectFolderBindingCache = null;
+      if (typeof renderProjectFolderBinding === 'function') renderProjectFolderBinding();
       _renderProjectBind();
       if (typeof renderSessionList === 'function') await renderSessionList();
     }
@@ -2092,4 +2096,84 @@ function _projectBindFolderIcon(){
 
 function _projectBindSpaceIcon(){
   return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sidebar Project folder binding indicator
+//
+// Deliberately separate from renderBoundProjectControl() above. That row binds
+// the chat to a WORKSPACES.yaml *registry* project (S.session.bound_project_key,
+// which the backend injects into the system prompt); this one reports the
+// workspace folder attached to the *sidebar Project* the chat is filed under
+// (session.project_id -> project.workspace_path). Two different features that
+// both say "project", which is why a chat inside a bound Project still read
+// "Project: Unbound" — that row was answering a different question.
+//
+// It also reports when the chat is not actually working in the bound folder.
+// Binding applies to chats created afterwards; one that predates the binding
+// keeps its own workspace, and saying "bound to X" while the agent works in Y
+// is the confusion worth avoiding.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _projectFolderBindingCache = null;
+
+async function _projectFolderList(){
+  // The sidebar owns the canonical list; fall back to the API when the panel
+  // renders before the sidebar has populated it.
+  if (typeof _allProjects !== 'undefined' && Array.isArray(_allProjects) && _allProjects.length){
+    return _allProjects;
+  }
+  if (_projectFolderBindingCache) return _projectFolderBindingCache;
+  try{
+    const data = await api('/api/projects');
+    _projectFolderBindingCache = (data && data.projects) || [];
+  }catch(_){ _projectFolderBindingCache = []; }
+  return _projectFolderBindingCache;
+}
+
+async function renderProjectFolderBinding(){
+  const row = $('projectFolderBindingRow');
+  if (!row) return;
+  const session = S.session;
+  if (!session || !session.project_id){ row.hidden = true; return; }
+  const sessionId = session.session_id;
+  const projects = await _projectFolderList();
+  if (!S.session || S.session.session_id !== sessionId) return; // switched mid-fetch
+  const proj = projects.find(p => p && p.project_id === session.project_id);
+  if (!proj){ row.hidden = true; return; }
+
+  const dot = $('projectFolderBindingDot');
+  const name = $('projectFolderBindingName');
+  const path = $('projectFolderBindingPath');
+  const useBtn = $('projectFolderBindingUse');
+  const bound = proj.workspace_path || '';
+  const current = session.workspace || '';
+  const strip = p => String(p || '').replace(/\/+$/, '');
+  const mismatch = !!bound && strip(bound) !== strip(current);
+
+  row.hidden = false;
+  row.classList.toggle('is-bound', !!bound);
+  row.classList.toggle('is-mismatch', mismatch);
+  if (dot) dot.style.background = proj.color || 'var(--muted)';
+  if (name) name.textContent = proj.name || 'Project';
+  if (path){
+    path.textContent = bound
+      ? (mismatch ? 'Bound to ' + bound + ' — this chat is in ' + (current || 'no folder') : bound)
+      : 'No workspace folder bound';
+    path.title = bound || '';
+  }
+  if (useBtn){
+    useBtn.hidden = !mismatch;
+    useBtn.title = mismatch ? 'Switch this chat to ' + bound : '';
+  }
+}
+
+async function useProjectFolderWorkspace(){
+  const session = S.session;
+  if (!session || !session.project_id) return;
+  const projects = await _projectFolderList();
+  const proj = projects.find(p => p && p.project_id === session.project_id);
+  if (!proj || !proj.workspace_path) return;
+  if (typeof switchToWorkspace === 'function') await switchToWorkspace(proj.workspace_path, proj.name);
+  renderProjectFolderBinding();
 }
