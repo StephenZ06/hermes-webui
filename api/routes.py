@@ -15380,8 +15380,17 @@ def _apply_project_workspace(project_id: str, workspace_path) -> int:
     POST /api/projects/set_workspace so binding a workspace to a Project
     retroactively applies to every chat already filed into it.
 
+    Only ever applies a real path. Clearing a Project's binding must NOT
+    push the empty value down onto its chats: a session with no workspace
+    cannot be loaded at all (Session.__init__ resolves the path), so an
+    unbind used to leave every chat in that Project returning 500. Unbinding
+    means "new chats stop defaulting here", not "break the existing ones",
+    so they keep whatever workspace they already had.
+
     Returns the number of sessions updated.
     """
+    if not workspace_path:
+        return 0
     if not SESSION_INDEX_FILE.exists():
         return 0
     updated = 0
