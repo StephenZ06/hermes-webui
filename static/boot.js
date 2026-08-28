@@ -425,6 +425,10 @@ const _PWA_SIDEBAR_SWIPE_EDGE=80;
 const _PWA_SIDEBAR_SWIPE_CLAIM=10;
 const _PWA_SIDEBAR_SWIPE_TRIGGER=64;
 const _PWA_SIDEBAR_SWIPE_MAX_VERTICAL=56;
+// px/ms. A flick above this opens (or closes) regardless of how far it got.
+const _PWA_SIDEBAR_FLING_VELOCITY=0.45;
+// Otherwise the drawer settles to whichever side it is closer to.
+const _PWA_SIDEBAR_SETTLE_FRACTION=0.35;
 let _pwaSidebarSwipe=null;
 
 function _isPwaStandalone(){
@@ -449,6 +453,22 @@ function _pwaSidebarSwipePoint(e){
 
 function _isTouchPointerEvent(e){
   return !!(e&&e.pointerType==='touch');
+}
+
+// Put the drawer into a draggable state: laid out and paintable, but not yet
+// open, and with its CSS transition suspended so the transform below follows
+// the finger exactly instead of easing towards it a frame late.
+function _prepareMobileSidebarForDrag(){
+  if(_isDesktopWidth())return null;
+  const sidebar=document.querySelector('.sidebar');
+  if(!sidebar)return null;
+  try{if(typeof _syncMobileSidebarPanelFromMainView==='function')_syncMobileSidebarPanelFromMainView();}catch(_){}
+  const layout=document.querySelector('.layout');
+  if(layout)layout.classList.remove('sidebar-collapsed');
+  sidebar.classList.remove('sidebar-collapsed','mobile-session-page');
+  try{document.documentElement.removeAttribute('data-sidebar-collapsed');}catch(_){}
+  sidebar.classList.add('mobile-panel-drawer','is-dragging');
+  return sidebar;
 }
 
 function _openMobileSidebarFromGesture(){
@@ -488,16 +508,69 @@ function _onPwaSidebarSwipeMove(e){
   if(dx<0||Math.abs(dy)>_PWA_SIDEBAR_SWIPE_MAX_VERTICAL*1.5){_pwaSidebarSwipe=null;return;}
   if(dx>=_PWA_SIDEBAR_SWIPE_CLAIM&&dx>Math.abs(dy)*1.2){
     if(e.cancelable)e.preventDefault();
+    // Direct manipulation: the drawer is pinned to the finger for the whole
+    // gesture rather than snapping open once a threshold is crossed. A binary
+    // trigger is what made this read as unresponsive next to a native drawer --
+    // nothing moves at all until it suddenly all moves.
+    if(!swipe.dragging){
+      swipe.dragging=true;
+      swipe.el=_prepareMobileSidebarForDrag();
+    }
   }
-  if(dx>=_PWA_SIDEBAR_SWIPE_TRIGGER&&Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL&&dx>Math.abs(dy)*1.5){
+  if(swipe.dragging&&swipe.el){
     if(e.cancelable)e.preventDefault();
-    swipe.opened=true;
-    _openMobileSidebarFromGesture();
+    const width=window.innerWidth||1;
+    const travel=Math.max(0,Math.min(dx,width));
+    // translate3d keeps this on the compositor; the drawer is already
+    // will-change:transform in the phone block, so no layer thrash per frame.
+    swipe.el.style.transform='translate3d(calc(-100% + '+travel+'px),0,0)';
+    const now=(window.performance&&performance.now)?performance.now():Date.now();
+    if(swipe.lastT!=null&&now>swipe.lastT){
+      // px/ms, smoothed a little so one jittery sample cannot decide the fling.
+      const sample=(travel-swipe.lastTravel)/(now-swipe.lastT);
+      swipe.vx=swipe.vx==null?sample:(swipe.vx*0.4+sample*0.6);
+    }
+    swipe.lastTravel=travel;
+    swipe.lastT=now;
   }
 }
 
-function _onPwaSidebarSwipeEnd(e){if(_isTouchPointerEvent(e))return;_pwaSidebarSwipe=null;}
-function _onPwaSidebarSwipeCancel(e){if(_isTouchPointerEvent(e))return;_pwaSidebarSwipe=null;}
+// Settle the dragged drawer. Position alone is not enough: a short, fast flick
+// should open it, and a slow drag that never got far should fall back, which is
+// what makes the gesture feel like it has weight rather than a cutoff.
+function _settleMobileSidebarDrag(swipe){
+  if(!swipe||!swipe.dragging||!swipe.el)return;
+  const el=swipe.el;
+  const width=window.innerWidth||1;
+  const travelled=swipe.lastTravel||0;
+  const velocity=swipe.vx||0;
+  const shouldOpen=velocity>_PWA_SIDEBAR_FLING_VELOCITY
+    ? true
+    : (velocity<-_PWA_SIDEBAR_FLING_VELOCITY ? false : travelled>width*_PWA_SIDEBAR_SETTLE_FRACTION);
+  el.style.transform='';
+  el.classList.remove('is-dragging'); // hands the settle back to the CSS transition
+  if(shouldOpen){
+    el.classList.add('mobile-open');
+  }else{
+    el.classList.remove('mobile-open','mobile-panel-drawer');
+  }
+}
+function _onPwaSidebarSwipeEnd(e){
+  if(_isTouchPointerEvent(e))return;
+  const swipe=_pwaSidebarSwipe;
+  _pwaSidebarSwipe=null;
+  _settleMobileSidebarDrag(swipe);
+}
+function _onPwaSidebarSwipeCancel(e){
+  if(_isTouchPointerEvent(e))return;
+  const swipe=_pwaSidebarSwipe;
+  _pwaSidebarSwipe=null;
+  if(swipe&&swipe.dragging&&swipe.el){
+    swipe.el.style.transform='';
+    swipe.el.classList.remove('is-dragging');
+    swipe.el.classList.remove('mobile-open','mobile-panel-drawer');
+  }
+}
 
 function _installPwaSidebarSwipeGesture(){
   // #4660 review (Codex CORE): the #pwaSidebarEdgeGuard element is now
