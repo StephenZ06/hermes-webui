@@ -7254,7 +7254,6 @@ async function loadWorkspaceList(){
 function _setWorkspaceDropdownOpenState(dd,open){
   if(!dd)return;
   dd.classList.toggle('open',!!open);
-  dd.hidden=!open;
   dd.setAttribute('aria-hidden',open?'false':'true');
   if(open){
     try{dd.inert=false;}catch(_){}
@@ -7262,6 +7261,24 @@ function _setWorkspaceDropdownOpenState(dd,open){
   }else{
     try{dd.inert=true;}catch(_){}
     dd.setAttribute('inert','');
+  }
+  // inert/aria are applied synchronously in both directions: a dismissed
+  // dropdown must leave the tab order the instant it closes, never after an
+  // animation. Only the `hidden` flip waits, so the exit is actually visible.
+  const anim=window.MotionUI;
+  if(!anim||!anim.enabled()){
+    dd.hidden=!open;
+    return;
+  }
+  if(open){
+    dd.hidden=false;
+    anim.presence(dd,'in',{from:'top',distance:6});
+  }else{
+    if(dd.hidden) return;
+    anim.presence(dd,'out',{from:'top',distance:6}).then(()=>{
+      // Re-check: the dropdown may have been reopened during the exit.
+      if(!dd.classList.contains('open')) dd.hidden=true;
+    });
   }
 }
 
@@ -10957,6 +10974,11 @@ async function loadSettingsPanel(){
     const settings=await api('/api/settings');
     checkWebUIVersionSkew(settings);
     if(typeof _loadApprovalModesSettings==='function') _loadApprovalModesSettings();
+    // Staggered entrance for the settings cards. Fired after the loaders above
+    // so a card is never animated while it is still being populated.
+    // (Apostrophes are avoided in comments inside this function: tests slice it
+    // out with a brace matcher that treats a quote as opening a string.)
+    if(window.MotionUI) window.MotionUI.enter('#mainSettings .settings-field',{y:10});
     // Populate the version badges from the server — keeps them in sync with git
     // tags automatically without any manual release step.
     //

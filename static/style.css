@@ -3513,6 +3513,27 @@
 .ws-conn-error{color:var(--error);}
 .ws-conn-error .ws-conn-dot{background:var(--error);}
 
+/* Hero text shimmer for the empty-state heading. Technique ported from Motion
+   Primitives' TextShimmer; see shimmerHeading() in static/motion-ui.js. Both
+   gradient ends are var(--text), so the resting state is the ordinary heading
+   colour and an interrupted sweep cannot leave the text mis-coloured. The class
+   is only ever added by JS, and only when motion is allowed. */
+.motion-text-shimmer{
+  background-image:linear-gradient(90deg,var(--text) 0%,var(--text) 38%,var(--accent-text,var(--accent)) 50%,var(--text) 62%,var(--text) 100%);
+  background-size:200% auto;
+  background-position:0% center;
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+  color:transparent;
+}
+@media (prefers-reduced-motion:reduce){
+  /* Belt and braces: JS already refuses to add the class, but if it is present
+     from a session that started before the preference changed, fall back to the
+     plain heading colour rather than a static gradient. */
+  .motion-text-shimmer{background-image:none;-webkit-text-fill-color:currentColor;color:var(--text);}
+}
+
 /* Sidebar Project folder binding indicator, in the workspace panel header
    stack. Separate from .bound-project-row, which is the WORKSPACES.yaml
    registry binding — see renderProjectFolderBinding() for why both exist. */

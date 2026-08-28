@@ -1726,6 +1726,7 @@ let _projectBindHistory = []; // folders visited in this session, for the Back b
 let _projectBindPathMode = false; // query is a path, so it drives suggest directly
 let _projectBindLoading = false;
 let _projectBindSearchTimer = null;
+let _projectBindLastAnimatedKey = null; // view identity, so rows animate on navigation, not on keystrokes
 
 function _projectBindStripSlash(p){
   return String(p || '').replace(/\/+$/, '') || String(p || '');
@@ -1782,6 +1783,7 @@ async function openProjectWorkspaceBinder(proj){
   _projectBindPathMode = false;
   _projectBindHistory = [];
   _projectBindDir = '';
+  _projectBindLastAnimatedKey = null;
   await refreshProjectWorkspaceBinder();
 }
 
@@ -2062,6 +2064,18 @@ function _renderProjectBind(){
     el.onclick = (e)=>{ e.stopPropagation(); _bindProjectWorkspacePath(el.dataset.bindPath); };
     el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _bindProjectWorkspacePath(el.dataset.bindPath); } };
   });
+
+  // Animate the row set only when it actually changes -- opening the binder or
+  // navigating into a folder -- and never on a keystroke in the search box,
+  // where a re-entrance per character would strobe rather than help.
+  if(window.MotionUI){
+    const bindViewKey = (_projectBindPathMode ? 'q' : 'd') + '|' + _projectBindDir;
+    if(bindViewKey !== _projectBindLastAnimatedKey){
+      _projectBindLastAnimatedKey = bindViewKey;
+      window.MotionUI.enter(body.querySelectorAll('.project-bind-row'), { y: 6, stagger: 0.025 });
+    }
+    window.MotionUI.lift(body.querySelectorAll('.project-bind-row'), { y: -1, scale: 1.006 });
+  }
 
   // Footer binds the directory you are standing in, so a folder with no
   // subfolders is still selectable after you drill into it.
