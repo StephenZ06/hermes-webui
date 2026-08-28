@@ -1570,7 +1570,7 @@
   .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(145deg,var(--accent-hover),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex-shrink:0;box-shadow:0 2px 8px var(--accent-bg-strong);}
   .sidebar-header h1{font-size:15px;font-weight:600;}
   .sidebar-section{padding:14px 14px 8px;}
-  .new-chat-btn{width:100%;padding:9px 12px;border-radius:9px;background:var(--accent-bg);border:1px solid var(--accent-bg-strong);color:var(--accent-text);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s;margin-bottom:8px;font-weight:500;}
+  .new-chat-btn{width:100%;padding:9px 12px;border-radius:9px;background:var(--accent-bg);border:1px solid var(--accent-bg-strong);color:var(--accent-text);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;margin-bottom:8px;font-weight:500;}
   .new-chat-btn:hover{background:var(--accent-bg-strong);border-color:var(--accent);}
   .session-list{flex:1;overflow-y:auto;padding:0 8px 8px;min-height:0;overscroll-behavior-y:contain;touch-action:pan-y;overflow-anchor:none;}
   .sidebar-search{position:relative;padding:12px 12px 8px;flex-shrink:0;}
@@ -2013,7 +2013,7 @@
   .approval-cmd{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:var(--font-mono);font-size:12px;color:var(--pre-text);white-space:pre-wrap;word-break:break-all;margin-bottom:14px;max-height:120px;overflow-y:auto;}
   .approval-counter{font-size:11px;color:var(--muted);margin:0 0 12px;font-variant-numeric:tabular-nums;letter-spacing:0.01em;}
   .approval-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-  .approval-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border2);background:var(--hover-bg);color:var(--text);cursor:pointer;transition:all .15s;white-space:nowrap;}
+  .approval-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border2);background:var(--hover-bg);color:var(--text);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;white-space:nowrap;}
   .approval-btn:hover{background:rgba(255,255,255,0.12);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.2);}
   .approval-btn:active{transform:translateY(0);box-shadow:none;}
   .approval-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
@@ -2021,7 +2021,7 @@
   .approval-btn.yolo{background:rgba(245,158,11,0.12);border-color:rgba(245,158,11,0.3);color:#f59e0b;}
   .approval-btn.yolo:hover{background:rgba(245,158,11,0.22);border-color:rgba(245,158,11,0.5);color:#fbbf24;}
   /* ── YOLO pill in composer footer ── */
-  .yolo-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);cursor:pointer;transition:all .15s;line-height:1.4;white-space:nowrap;}
+  .yolo-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;line-height:1.4;white-space:nowrap;}
   .yolo-pill:hover{background:rgba(245,158,11,0.25);border-color:rgba(245,158,11,0.5);transform:translateY(-1px);}
   .yolo-pill:active{transform:translateY(0);}
   .yolo-pill-icon{font-size:12px;}
@@ -2083,7 +2083,7 @@
   .clarify-countdown.urgent{color:var(--error);box-shadow:inset 0 -2px 0 var(--error);border-radius:2px;}
   .clarify-question{font-size:14px;color:var(--text);line-height:1.7;white-space:pre-wrap;margin-bottom:12px;}
   .clarify-choices{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
-  .clarify-choice{display:flex;align-items:flex-start;gap:10px;width:100%;padding:11px 14px;border-radius:12px;font-size:13px;font-weight:600;border:1px solid var(--accent-bg-strong);background:var(--accent-bg);color:var(--accent-text);cursor:pointer;transition:all .15s;white-space:normal;text-align:left;box-shadow:0 1px 0 rgba(255,255,255,.03) inset;}
+  .clarify-choice{display:flex;align-items:flex-start;gap:10px;width:100%;padding:11px 14px;border-radius:12px;font-size:13px;font-weight:600;border:1px solid var(--accent-bg-strong);background:var(--accent-bg);color:var(--accent-text);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;white-space:normal;text-align:left;box-shadow:0 1px 0 rgba(255,255,255,.03) inset;}
   .clarify-choice:hover{background:var(--accent-bg-strong);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.18);}
   .clarify-choice:focus-visible{outline:2px solid var(--accent-bg);outline-offset:2px;}
   .clarify-choice-badge{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:var(--accent-bg-strong);border:1px solid var(--accent-bg-strong);color:var(--accent-text);font-size:11px;font-weight:800;flex-shrink:0;line-height:1;}
@@ -2092,9 +2092,9 @@
   .clarify-choice.other{border-color:var(--accent-bg-strong);color:var(--accent-text);background:var(--accent-bg);}
   .clarify-choice.other:hover{background:var(--accent-bg-strong);border-color:var(--accent);}
   .clarify-response{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-  .clarify-input{flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--input-bg);color:var(--text);font:inherit;outline:none;transition:all .15s;}
+  .clarify-input{flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--input-bg);color:var(--text);font:inherit;outline:none;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;}
   .clarify-input:focus{border-color:var(--accent-bg);box-shadow:0 0 0 3px var(--accent-bg);background:var(--hover-bg);}
-  .clarify-submit{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:10px 14px;border-radius:8px;border:1px solid var(--accent-bg-strong);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;}
+  .clarify-submit{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:10px 14px;border-radius:8px;border:1px solid var(--accent-bg-strong);background:var(--accent-bg);color:var(--accent-text);font-size:12px;font-weight:700;cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;white-space:nowrap;}
   .clarify-submit:hover{background:var(--accent-bg-strong);transform:translateY(-1px);}
   .clarify-submit:disabled{opacity:.6;cursor:not-allowed;transform:none;}
   .clarify-submit.loading{opacity:.75;cursor:wait;}
@@ -2199,7 +2199,7 @@
   .cron-schedule{font-size:11px;color:var(--muted);margin:8px 0 6px;}
   .cron-prompt{font-size:11px;color:var(--muted);line-height:1.55;max-height:80px;overflow-y:auto;background:rgba(0,0,0,.2);padding:6px 8px;border-radius:6px;white-space:pre-wrap;margin-bottom:8px;box-sizing:border-box;}
   .cron-actions{display:flex;gap:6px;margin-bottom:8px;}
-  .cron-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid var(--border2);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer;transition:all .15s;}
+  .cron-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid var(--border2);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;}
   .cron-btn:hover{background:rgba(255,255,255,.1);color:var(--text);}
   .cron-btn.run{border-color:var(--accent-bg);color:var(--accent-text);}
   .cron-btn.run:hover{background:var(--accent-bg);}
@@ -2223,7 +2223,7 @@
   .knowledge-item{cursor:pointer;}
   .knowledge-type-badge{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted);opacity:.85;margin-top:1px;}
   .knowledge-item.active .knowledge-type-badge{color:var(--accent-text);opacity:1;}
-  .skill-toggle{flex-shrink:0;width:28px;height:14px;border-radius:7px;border:1px solid var(--border2);background:var(--border);cursor:pointer;position:relative;transition:all .15s;margin-top:3px;}
+  .skill-toggle{flex-shrink:0;width:28px;height:14px;border-radius:7px;border:1px solid var(--border2);background:var(--border);cursor:pointer;position:relative;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;margin-top:3px;}
   .skill-toggle.enabled{background:var(--accent-bg-strong);border-color:var(--accent);}
   .skill-toggle::after{content:'';position:absolute;top:1px;left:1px;width:10px;height:10px;border-radius:50%;background:var(--muted);transition:transform .15s;}
   .skill-toggle.enabled::after{transform:translateX(14px);background:var(--accent-text);}
@@ -2277,7 +2277,7 @@
   optgroup{color:var(--muted);font-size:11px;font-weight:700;}
   option{background:var(--bg);color:var(--text);padding:6px;}
   .sidebar-actions{display:flex;gap:6px;}
-  .sm-btn{flex:1;padding:8px 0;border-radius:8px;font-size:11px;font-weight:500;background:var(--input-bg);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;text-align:center;letter-spacing:.02em;}
+  .sm-btn{flex:1;padding:8px 0;border-radius:8px;font-size:11px;font-weight:500;background:var(--input-bg);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;text-align:center;letter-spacing:.02em;}
   .sm-btn:hover{background:rgba(255,255,255,0.09);color:var(--text);border-color:rgba(255,255,255,.15);}
   .sm-btn:disabled{opacity:.45;cursor:not-allowed;}
   /* Help tab (Settings → Help): icon-led resource cards (#3518) */
@@ -2288,7 +2288,7 @@
   .help-card-body{min-width:0;flex:1;}
   .help-card-title{font-size:13.5px;font-weight:650;color:var(--text);margin-bottom:3px;}
   .help-card-desc{font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:11px;}
-  .help-card-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:7px 13px;border-radius:7px;font-size:12px;font-weight:600;background:var(--input-bg);border:1px solid var(--border);color:var(--text);transition:all .15s;}
+  .help-card-link{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:7px 13px;border-radius:7px;font-size:12px;font-weight:600;background:var(--input-bg);border:1px solid var(--border);color:var(--text);transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;}
   /* On hover the button fills with --accent; text must contrast against that fill.
      --accent-text is an accent-on-background link color (often == --accent), so using
      it here produces same-color text on the accent fill (invisible — e.g. slate/gold/
@@ -2601,7 +2601,7 @@
   .empty-state h2{font-size:20px;color:var(--text);font-weight:700;letter-spacing:-.02em;}
   .empty-state p{font-size:14px;text-align:center;max-width:320px;}
   .suggestion-grid{display:flex;flex-direction:column;gap:8px;margin-top:12px;width:100%;max-width:380px;}
-  .suggestion{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;transition:all .15s;text-align:left;}
+  .suggestion{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;text-align:left;}
   .suggestion svg{flex:none;}
   .suggestion:hover{background:var(--accent-bg);color:var(--text);border-color:var(--accent-bg);transform:translateX(2px);}
   /* ── Composer ── */
@@ -2764,7 +2764,7 @@
   .cancel-btn{width:34px;height:34px;border-radius:50%;background:var(--error);border:none;color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .15s,box-shadow .15s;box-shadow:0 2px 10px rgba(0,0,0,.18);}
   .cancel-btn:hover{background:var(--error);transform:scale(1.06);box-shadow:0 4px 14px rgba(0,0,0,.25);filter:brightness(1.1);}
   .cancel-btn:active{transform:scale(.96);}
-  .icon-btn{width:34px;height:34px;border-radius:8px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;}
+  .icon-btn{width:34px;height:34px;border-radius:8px;background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;}
   .icon-btn{opacity:.75;}
   .icon-btn:hover{background:rgba(255,255,255,.08);color:var(--text);opacity:1;}
   .mic-btn{transition:color .15s,background .15s;}
@@ -2924,7 +2924,7 @@
   @container rightpanel (max-width: 160px){
     .workspace-panel-title-group{display:none;}
   }
-  .panel-icon-btn{width:24px;height:24px;background:none;border:none;color:var(--muted);cursor:pointer;border-radius:5px;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .panel-icon-btn{width:24px;height:24px;background:none;border:none;color:var(--muted);cursor:pointer;border-radius:5px;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;}
   .panel-icon-btn:hover{background:var(--hover-bg);color:var(--text);}
   .panel-icon-btn:disabled{opacity:.35;cursor:not-allowed;}
   .panel-icon-btn:disabled:hover{background:none;color:var(--muted);}
@@ -3170,6 +3170,10 @@
     .sidebar{position:fixed;left:0;top:0;bottom:0;width:100vw;max-width:none;z-index:200;box-sizing:border-box;
       transform:translate3d(-100%,0,0);transition:transform .25s cubic-bezier(.22,1,.36,1);will-change:transform;}
     .sidebar.mobile-open{transform:translate3d(0,0,0);}
+    /* While a finger is dragging the drawer the transform is written every
+       frame from JS, so any transition would make it trail the finger. The
+       class is dropped on release and the CSS transition settles it. */
+    .sidebar.is-dragging{transition:none!important;}
     .sidebar .resize-handle{display:none;}
     /* Hamburger button (in app titlebar on mobile) */
     .app-titlebar{height:52px;justify-content:space-between;}
@@ -3516,6 +3520,89 @@
 .ws-conn-error{color:var(--error);}
 .ws-conn-error .ws-conn-dot{background:var(--error);}
 
+/* Scroll containment. Without it, reaching the end of a panel hands the scroll
+   to the page behind it: the drawer rubber-bands, the address bar slides, and
+   the whole surface stops feeling like a view of its own. The messages list and
+   session list already did this; these are the panels that did not. */
+.file-tree,
+.main-view-body,
+.workspace-artifacts,
+.workspace-todos,
+#workspacesPanel,
+#profilesPanel,
+.agent-canvas-sidebar-list{
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+
+/* ── Touch responsiveness ───────────────────────────────────────────────────
+   Three separate causes of "taps feel dead" on a phone, none of them frame
+   rate:
+
+   1. touch-action:manipulation removes the browser's wait for a possible
+      double-tap-to-zoom before it dispatches the click. That delay is pure
+      perceived latency and no amount of animation smoothness hides it.
+   2. The default tap highlight paints a grey box over the control on press,
+      which reads as a web page rather than an app.
+   3. Almost nothing in the app had an :active state, so a press produced no
+      acknowledgement at all until whatever it triggered finished.
+
+   The press feedback is a composited scale, short enough (90ms) to feel like
+   the control reacting rather than an animation playing. */
+button,
+[role="button"],
+.suggestion,
+.chip,
+.session-item,
+.project-chip,
+.ws-row,
+.sm-btn,
+.settings-btn,
+.panel-icon-btn,
+.panel-head-btn,
+.workspace-panel-tab{
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+/* Scoped to coarse pointers: a mouse already has hover to acknowledge it, and
+   scaling on every desktop click would be noise. */
+@media (hover:none) and (pointer:coarse){
+  button:active,
+  [role="button"]:active,
+  .suggestion:active,
+  .sm-btn:active,
+  .settings-btn:active,
+  .panel-icon-btn:active,
+  .panel-head-btn:active,
+  .workspace-panel-tab:active,
+  .project-chip:active{
+    transform:scale(.97);
+    transition:transform .09s cubic-bezier(.4,0,.2,1);
+  }
+  /* Full-width rows are excluded from the scale: shrinking something that spans
+     the viewport reads as the layout flexing, not as the row being pressed.
+     They acknowledge with background instead. */
+  .session-item:active,
+  .ws-row:active,
+  .project-bind-row:active{
+    transform:none;
+    background:var(--hover-bg);
+  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  button:active,
+  [role="button"]:active,
+  .suggestion:active,
+  .sm-btn:active,
+  .settings-btn:active,
+  .panel-icon-btn:active,
+  .panel-head-btn:active,
+  .workspace-panel-tab:active,
+  .project-chip:active{transform:none;transition:none;}
+}
+
 /* Hero text shimmer for the empty-state heading. Technique ported from Motion
    Primitives' TextShimmer; see shimmerHeading() in static/motion-ui.js. Both
    gradient ends are var(--text), so the resting state is the ordinary heading
@@ -3654,7 +3741,7 @@
 .ws-kind-toggle-btn:not(:last-child){border-right:1px solid var(--border2);}
 .ws-kind-toggle-btn.active{background:var(--accent-bg);color:var(--accent-text);}
 .ws-kind-toggle-btn:hover:not(.active){background:var(--hover-bg);color:var(--text);}
-.ws-action-btn{padding:4px 8px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid var(--border2);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.ws-action-btn{padding:4px 8px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid var(--border2);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;white-space:nowrap;}
 .ws-action-btn:hover{background:rgba(255,255,255,.1);color:var(--text);}
 /* ── Profile dropdown + management panel ── */
 .profile-chip{user-select:none;color:var(--accent-text)!important;}
@@ -6528,7 +6615,7 @@ body.session-dragging-active{cursor:grabbing;user-select:none;-webkit-user-selec
 .themed-select-option.disabled{color:var(--muted);cursor:not-allowed;opacity:.6;}
 
 /* ── Code copy button ── */
-.code-copy-btn{background:var(--hover-bg);border:1px solid var(--border2);border-radius:4px;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;transition:all .15s;line-height:1.3;}
+.code-copy-btn{background:var(--hover-bg);border:1px solid var(--border2);border-radius:4px;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;transition:background-color .15s,background .15s,border-color .15s,color .15s,box-shadow .15s,transform .15s,opacity .15s;line-height:1.3;}
 .code-copy-btn:hover{background:rgba(255,255,255,.12);color:var(--text);}
 
 /* ── Tool card expand/collapse toggle ── */
