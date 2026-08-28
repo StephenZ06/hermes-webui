@@ -1597,7 +1597,7 @@
      and attention indicator (26x26 at right:6px) still need 40px reserved
      when they're visible — covered by the hover / streaming / unread /
      menu-open / focus-within rule below. */
-  .session-item{padding:8px 8px 8px 10px;margin-bottom:2px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);transition:background .18s cubic-bezier(.22,.61,.36,1),color .18s cubic-bezier(.22,.61,.36,1),transform .5s cubic-bezier(.22,.61,.36,1),box-shadow .18s cubic-bezier(.22,.61,.36,1);display:flex;align-items:center;gap:8px;min-width:0;position:relative;touch-action:pan-y;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transform:translate3d(var(--session-swipe-offset,0),var(--session-reflow-offset,0),0);}
+  .session-item{padding:8px 8px 8px 10px;margin-bottom:2px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);transition:background .18s cubic-bezier(.22,.61,.36,1),color .18s cubic-bezier(.22,.61,.36,1),transform .5s cubic-bezier(.22,.61,.36,1),box-shadow .18s cubic-bezier(.22,.61,.36,1);display:flex;align-items:center;gap:8px;min-width:0;position:relative;touch-action:pan-y pinch-zoom;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transform:translate3d(var(--session-swipe-offset,0),var(--session-reflow-offset,0),0);}
   .session-item.streaming,.session-item.unread,.session-item.needs-attention,.session-item:focus-within,.session-item.menu-open{padding-right:40px;}
   .session-item.needs-attention{box-shadow:inset 3px 0 0 var(--warning);background:color-mix(in srgb,var(--warning) 8%,transparent);}
   .session-item.attention-approval{box-shadow:inset 3px 0 0 var(--error);background:color-mix(in srgb,var(--error) 9%,transparent);}
@@ -3528,9 +3528,12 @@
    Three separate causes of "taps feel dead" on a phone, none of them frame
    rate:
 
-   1. touch-action:manipulation removes the browser's wait for a possible
-      double-tap-to-zoom before it dispatches the click. That delay is pure
-      perceived latency and no amount of animation smoothness hides it.
+   1. Declaring any touch-action other than auto removes the browser's wait for
+      a possible double-tap-to-zoom before it dispatches the click. That delay
+      is pure perceived latency and no amount of animation smoothness hides it.
+      pan-y pinch-zoom is used rather than manipulation on the rows the drawer
+      gesture crosses -- see below. Controls covered by #4696 keep
+      manipulation; that rule predates this work and is not what regressed.
    2. The default tap highlight paints a grey box over the control on press,
       which reads as a web page rather than an app.
    3. Almost nothing in the app had an :active state, so a press produced no
@@ -3551,8 +3554,35 @@ button,
 .panel-head-btn,
 .workspace-panel-tab{
   -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;
 }
+
+/* pan-y pinch-zoom, NOT manipulation, for the rows and tabs the left-edge
+   drawer gesture crosses. `manipulation` is pan-x + pan-y + pinch-zoom, so it
+   hands horizontal panning back to the browser and re-enables its own
+   edge-swipe-back navigation. .session-item in particular already declared
+   pan-y; a later rule giving it manipulation is what undid d461309a8.
+   pinch-zoom is kept so page zoom still works, and any non-auto value still
+   removes the double-tap-to-zoom tap delay.
+
+   Scoped deliberately: button / .icon-btn / .panel-icon-btn / .send-btn /
+   .approval-btn / [onclick] belong to #4696 and .project-chip to its long-press
+   handling, both of which chose manipulation on purpose and were in place when
+   the drawer gesture last worked. Overriding them by source order broke both. */
+.suggestion,
+.session-item,
+.ws-row,
+.project-bind-row,
+.sm-btn,
+.settings-btn,
+.panel-head-btn,
+.workspace-panel-tab{
+  touch-action:pan-y pinch-zoom;
+}
+
+/* .topbar-chips is overflow-x:auto on a phone, so its chips genuinely need the
+   horizontal axis. They sit in the top strip, well clear of the left edge the
+   drawer gesture watches. */
+.chip{touch-action:pan-x pan-y pinch-zoom;}
 
 /* Scoped to coarse pointers: a mouse already has hover to acknowledge it, and
    scaling on every desktop click would be noise. */
