@@ -1434,6 +1434,20 @@ async function newSession(flash, options={}){
     } else if(_activeProject&&_activeProject!==NO_PROJECT_FILTER){
       reqBody.project_id=_activeProject;
     }
+    // A project's bound workspace beats the inherited default. The server only
+    // falls back to the binding when `workspace` is absent, and inheritWs above
+    // is practically never absent (S._profileDefaultWorkspace is always set),
+    // so without this the binding was silently ignored on every New Chat and
+    // the conversation opened in the profile default instead. An explicit
+    // one-shot profile-switch workspace still wins, since that is a deliberate
+    // "open this workspace" action rather than an inherited value.
+    if(!switchWs&&reqBody.project_id){
+      // typeof-guarded: newSession() is also driven by tests and by early boot
+      // paths where the sidebar's project cache has not been populated yet.
+      const _projs=(typeof _allProjects!=='undefined'&&_allProjects)||[];
+      const _boundProj=_projs.find(p=>p&&p.project_id===reqBody.project_id);
+      if(_boundProj&&_boundProj.workspace_path) reqBody.workspace=_boundProj.workspace_path;
+    }
     // Forward a pre-session toolset override only from the empty composer (#4490).
     if(!S.session && Array.isArray(S._pendingSessionToolsets)) reqBody.enabled_toolsets=S._pendingSessionToolsets;
     const modelSelForNew=$('modelSelect');
