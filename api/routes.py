@@ -14417,6 +14417,12 @@ def handle_get(handler, parsed) -> bool:
             for w in wss:
                 if w.get("kind") == "remote":
                     w["mount_status"] = mount_status(w)
+        # Every workspace reports online/offline, not just remote ones: a local
+        # bind mount that vanished is just as unusable as a dropped SSHFS
+        # mount, and the pickers show one status dot for both.
+        from api.workspace import workspace_availability
+        for w in wss:
+            w["availability"] = workspace_availability(w)
         return j(
             handler,
             {

@@ -1722,6 +1722,7 @@ let _projectBindRoots = [];      // trusted roots (empty-prefix suggest)
 let _projectBindDir = '';        // directory currently being browsed
 let _projectBindChildren = [];   // child directories of _projectBindDir
 let _projectBindQuery = '';
+let _projectBindHistory = []; // folders visited in this session, for the Back button
 let _projectBindPathMode = false; // query is a path, so it drives suggest directly
 let _projectBindLoading = false;
 let _projectBindSearchTimer = null;
@@ -1779,6 +1780,7 @@ async function openProjectWorkspaceBinder(proj){
   }
   _projectBindQuery = '';
   _projectBindPathMode = false;
+  _projectBindHistory = [];
   _projectBindDir = '';
   await refreshProjectWorkspaceBinder();
 }
@@ -1791,6 +1793,7 @@ function closeProjectWorkspaceBinder(){
   if (_projectBindSearchTimer){ clearTimeout(_projectBindSearchTimer); _projectBindSearchTimer = null; }
   _projectBindTarget = null;
   _projectBindChildren = [];
+  _projectBindHistory = [];
   try{ syncWorkspacePanelUI(); }catch(_){}
 }
 
@@ -1884,8 +1887,21 @@ function clearProjectBindSearch(){
   _renderProjectBind();
 }
 
-async function _projectBindOpenDir(dir){
+function projectBindGoBack(){
+  const previous = _projectBindHistory.pop();
+  if (!previous) return;
+  _projectBindOpenDir(previous, {replay: true});
+}
+
+async function _projectBindOpenDir(dir, opts){
   if (!dir) return;
+  // Drilling in records where we came from so Back can retrace it. Going Back
+  // must not push, or Back would just toggle between two folders forever.
+  const record = !(opts && opts.replay);
+  if (record && _projectBindDir && _projectBindStripSlash(dir) !== _projectBindStripSlash(_projectBindDir)){
+    _projectBindHistory.push(_projectBindDir);
+    if (_projectBindHistory.length > 64) _projectBindHistory.shift();
+  }
   _projectBindPathMode = false;
   _projectBindQuery = '';
   const search = $('projectBindSearch');
@@ -1979,11 +1995,13 @@ function _renderProjectBind(){
     rows.push('<div class="project-bind-section">Spaces</div>');
     for (const w of spaces){
       const isBound = bound && _projectBindStripSlash(w.path) === _projectBindStripSlash(bound);
-      const dot = w.kind === 'remote'
-        ? `<span class="ws-conn-dot ws-conn-dot-${_escHtml(w.mount_status || 'disconnected')}"></span>`
-        : '';
+      // Every Space carries a status dot, not just remote ones: a local bind
+      // mount that vanished is just as unusable as a dropped SSHFS mount.
+      const online = _projectBindIsOnline(w);
+      const dotTitle = online ? 'Online' : 'Offline';
+      const dot = `<span class="ws-conn-dot ws-conn-dot-${online ? 'online' : 'offline'}" title="${dotTitle}" aria-hidden="true"></span>`;
       const badge = isBound ? '<span class="project-bind-badge">Bound</span>' : '';
-      rows.push(`<div class="ws-row project-bind-row${isBound ? ' active' : ''}" data-bind-path="${_escHtml(w.path)}" role="button" tabindex="0">
+      rows.push(`<div class="ws-row project-bind-row${isBound ? ' active' : ''}${online ? '' : ' is-offline'}" data-bind-path="${_escHtml(w.path)}" role="button" tabindex="0" aria-label="${_escHtml(w.name || _projectBindLeaf(w.path))} — ${dotTitle}">
           <span class="project-bind-icon">${_projectBindSpaceIcon()}</span>
           <div class="ws-row-info">
             <div class="ws-row-name">${dot}${_escHtml(w.name || _projectBindLeaf(w.path))}${badge}</div>
@@ -2001,7 +2019,13 @@ function _renderProjectBind(){
     ).join('<span class="project-bind-crumb-sep">/</span>');
     const up = _projectBindParent(_projectBindDir);
     const canGoUp = crumbs.length > 1 && up;
-    rows.push(`<div class="project-bind-crumbs">${canGoUp ? `<button type="button" class="project-bind-crumb up" data-bind-dir="${_escHtml(up)}" title="Parent folder" aria-label="Parent folder">..</button><span class="project-bind-crumb-sep">/</span>` : ''}${parts}</div>`);
+    // Back retraces the folders actually visited, which is not the same as ".."
+    // -- after jumping to a crumb or drilling in from a Space, the parent is
+    // often not where you came from.
+    const back = _projectBindHistory.length
+      ? `<button type="button" class="project-bind-back-btn" data-bind-back="1" title="Back to ${_escHtml(_projectBindLeaf(_projectBindHistory[_projectBindHistory.length - 1]))}" aria-label="Back to the previous folder">${_projectBindArrowIcon()}<span>Back</span></button>`
+      : '';
+    rows.push(`<div class="project-bind-nav">${back}<div class="project-bind-crumbs">${canGoUp ? `<button type="button" class="project-bind-crumb up" data-bind-dir="${_escHtml(up)}" title="Parent folder" aria-label="Parent folder">..</button><span class="project-bind-crumb-sep">/</span>` : ''}${parts}</div></div>`);
   }
   if (_projectBindLoading){
     rows.push('<div class="project-bind-empty">Scanning…</div>');
@@ -2023,6 +2047,9 @@ function _renderProjectBind(){
 
   body.innerHTML = rows.join('');
 
+  body.querySelectorAll('[data-bind-back]').forEach(el => {
+    el.onclick = (e)=>{ e.stopPropagation(); projectBindGoBack(); };
+  });
   body.querySelectorAll('[data-bind-dir]').forEach(el => {
     el.onclick = (e)=>{ e.stopPropagation(); _projectBindOpenDir(el.dataset.bindDir); };
     el.onkeydown = (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); _projectBindOpenDir(el.dataset.bindDir); } };
@@ -2044,6 +2071,19 @@ function _renderProjectBind(){
       if (btn && !alreadyBound) btn.onclick = ()=>_bindProjectWorkspacePath(dir);
     }
   }
+}
+
+function _projectBindIsOnline(w){
+  // The server sends availability for every workspace; mount_status is the
+  // older remote-only field, kept as a fallback so a stale cached payload
+  // still renders something sensible.
+  if (w && typeof w.availability === 'string') return w.availability === 'online';
+  if (w && w.kind === 'remote') return w.mount_status === 'connected';
+  return true;
+}
+
+function _projectBindArrowIcon(){
+  return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>';
 }
 
 function _projectBindFolderIcon(){
