@@ -1240,7 +1240,11 @@ class Session:
                  **kwargs):
         self.session_id = session_id or uuid.uuid4().hex[:12]
         self.title = title
-        self.workspace = str(Path(workspace).expanduser().resolve())
+        # A stored workspace of None/"" must not make the session unloadable:
+        # Path(None) raises, and a session that cannot be constructed is a 500
+        # on every route that touches it, with no way back to it from the UI.
+        # Fall back to the same default the constructor signature declares.
+        self.workspace = str(Path(workspace or DEFAULT_WORKSPACE).expanduser().resolve())
         self.model = model
         self.model_provider = str(model_provider).strip().lower() if model_provider else None
         # #5979: signature of the model the user DELIBERATELY picked this session

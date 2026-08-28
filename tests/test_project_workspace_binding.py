@@ -199,3 +199,69 @@ def test_server_fallback_still_covers_a_request_with_no_workspace():
     routes_src = (pathlib.Path(__file__).parent.parent / "api" / "routes.py").read_text(encoding="utf-8")
     assert 'if not workspace and body.get("project_id"):' in routes_src
     assert "_bound_project_workspace" in routes_src
+
+
+# ── Unbinding must not break the chats already in the Project ───────────────
+#
+# POST /api/projects/set_workspace with a null workspace_path used to push
+# that null down onto every session in the project. Session.__init__ resolves
+# the workspace with Path(), so Path(None) raised and those chats returned 500
+# on every route that loaded them -- unreachable from the UI, with the only
+# clue being a TypeError in the container log.
+
+def test_clearing_a_binding_does_not_touch_session_workspaces(monkeypatch, tmp_path):
+    index = tmp_path / "_index.json"
+    index.write_text(json.dumps([{"session_id": "s1", "project_id": "p1"}]), encoding="utf-8")
+    monkeypatch.setattr(routes, "SESSION_INDEX_FILE", index)
+
+    touched = []
+    monkeypatch.setattr(routes, "_active_stream_ids", lambda: set())
+    monkeypatch.setattr(routes, "get_session", lambda sid: touched.append(sid))
+
+    for empty in (None, "", 0):
+        assert routes._apply_project_workspace("p1", empty) == 0
+    assert touched == [], "no session may be loaded, let alone rewritten, on unbind"
+
+
+def test_binding_a_real_path_still_updates_sessions(monkeypatch, tmp_path):
+    index = tmp_path / "_index.json"
+    index.write_text(json.dumps([{"session_id": "s1", "project_id": "p1"}]), encoding="utf-8")
+    monkeypatch.setattr(routes, "SESSION_INDEX_FILE", index)
+    monkeypatch.setattr(routes, "_active_stream_ids", lambda: set())
+
+    class _S:
+        workspace = None
+        def save(self):
+            pass
+
+    session = _S()
+    monkeypatch.setattr(routes, "get_session", lambda sid: session)
+    assert routes._apply_project_workspace("p1", "/workspace/bound") == 1
+    assert session.workspace == "/workspace/bound"
+
+
+class TestSessionSurvivesANullWorkspace:
+    """A session must always be constructible, whatever is on disk."""
+
+    def test_none_workspace_falls_back_to_the_default(self):
+        from api.config import DEFAULT_WORKSPACE
+        from api.models import Session
+
+        assert Session(session_id="t", workspace=None).workspace == str(
+            pathlib.Path(DEFAULT_WORKSPACE).expanduser().resolve()
+        )
+
+    def test_blank_workspace_falls_back_to_the_default(self):
+        from api.config import DEFAULT_WORKSPACE
+        from api.models import Session
+
+        assert Session(session_id="t", workspace="").workspace == str(
+            pathlib.Path(DEFAULT_WORKSPACE).expanduser().resolve()
+        )
+
+    def test_a_real_workspace_is_still_honoured(self, tmp_path):
+        from api.models import Session
+
+        assert Session(session_id="t", workspace=str(tmp_path)).workspace == str(
+            tmp_path.resolve()
+        )
