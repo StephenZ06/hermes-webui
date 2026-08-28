@@ -738,6 +738,30 @@ def _trusted_workspace_roots() -> list[Path]:
     return roots
 
 
+def workspace_availability(entry: dict) -> str:
+    """'online' or 'offline' for a saved workspace entry.
+
+    Remote (SSHFS) entries are online while their mountpoint is a live mount;
+    local ones while their directory is actually readable. Never raises: a
+    stale FUSE endpoint fails its stat rather than returning False, and a
+    workspace list must not be able to take down the panel that renders it.
+    """
+    if entry.get("kind") == "remote":
+        try:
+            from api.ssh_mount import mount_status
+
+            return "online" if mount_status(entry) == "connected" else "offline"
+        except Exception:
+            return "offline"
+    path = entry.get("path")
+    if not path:
+        return "offline"
+    try:
+        return "online" if stat.S_ISDIR(os.stat(path).st_mode) else "offline"
+    except OSError:
+        return "offline"
+
+
 def hidden_workspace_folder_patterns() -> list[str]:
     """Folder-name globs the user has asked workspace pickers to skip.
 

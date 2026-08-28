@@ -7471,7 +7471,13 @@ function renderWorkspacesPanel(workspaces){
     row.draggable=true;
     const isActive = w.path === activePath;
     const activeBadge = isActive ? `<span class="detail-badge active" style="margin-left:6px;font-size:9px;padding:1px 6px">${esc(t('profile_active'))}</span>` : '';
-    const remoteDot = w.kind === 'remote' ? `<span class="ws-conn-dot ws-conn-dot-${esc(w.mount_status || 'disconnected')}" title="${esc((w.mount_status || 'disconnected').replace(/^./, c => c.toUpperCase()))}"></span>` : '';
+    // Status dot on every Space, not only remote ones — a local bind mount
+    // that vanished is just as unusable as a dropped SSHFS mount, and the
+    // server now reports availability for both.
+    const wsOnline = typeof w.availability === 'string'
+      ? w.availability === 'online'
+      : (w.kind === 'remote' ? w.mount_status === 'connected' : true);
+    const remoteDot = `<span class="ws-conn-dot ws-conn-dot-${wsOnline ? 'online' : 'offline'}" title="${wsOnline ? 'Online' : 'Offline'}"></span>`;
     row.innerHTML=`
       <span class="ws-drag-handle" title="${esc(t('workspace_drag_hint'))}">${li('grip-vertical',12)}</span>
       <div class="ws-row-info">

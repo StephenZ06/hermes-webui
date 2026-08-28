@@ -3491,6 +3491,10 @@
 .ws-conn-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle;background:var(--muted);}
 .ws-conn-dot-connected{background:var(--success);box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 20%,transparent);}
 .ws-conn-dot-error{background:var(--error);}
+/* online/offline is the whole-workspace status (local paths included), while
+   connected/error stays the SSHFS-specific wording used by the detail card. */
+.ws-conn-dot-online{background:var(--success);box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 20%,transparent);}
+.ws-conn-dot-offline{background:var(--error);box-shadow:0 0 0 2px color-mix(in srgb,var(--error) 18%,transparent);}
 .ws-conn-badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;color:var(--muted);}
 .ws-conn-badge .ws-conn-dot{margin-right:5px;}
 .ws-conn-connected{color:var(--success);}
@@ -3554,7 +3558,12 @@
 .project-bind-use:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg-strong);}
 .project-bind-empty{padding:14px 6px;font-size:12px;color:var(--muted);}
 
-.project-bind-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:2px 4px 8px;}
+.project-bind-nav{display:flex;align-items:center;gap:6px;padding:2px 4px 8px;}
+.project-bind-back-btn{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:4px 9px 4px 7px;border:1px solid var(--border2);border-radius:7px;background:var(--surface-subtle,var(--surface));color:var(--muted);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.project-bind-back-btn:hover{background:var(--hover-bg);color:var(--text);border-color:var(--border);}
+.project-bind-back-btn:active{transform:translateX(-1px);}
+.project-bind-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-width:0;}
+.project-bind-row.is-offline .ws-row-path{opacity:.6;}
 .project-bind-crumb{padding:3px 6px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:11px;font-family:inherit;cursor:pointer;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background .15s,color .15s;}
 .project-bind-crumb:hover{background:var(--hover-bg);color:var(--text);}
 .project-bind-crumb.current{color:var(--text);font-weight:600;}
@@ -3577,6 +3586,7 @@
   .project-bind-row{padding:11px 10px;}
   .project-bind-use{padding:6px 12px;font-size:12px;}
   .project-bind-crumb{padding:6px 8px;font-size:12px;}
+  .project-bind-back-btn{padding:8px 12px 8px 10px;font-size:12px;}
   /* 16px keeps iOS Safari from zooming the viewport when the field is focused. */
   .project-bind-search .ws-search-input{font-size:16px;padding:8px 10px;}
   .project-bind-search .ws-search-clear{width:28px;height:28px;}

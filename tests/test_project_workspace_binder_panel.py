@@ -164,12 +164,52 @@ class TestBinderStyles:
         assert "@media (max-width:640px)" in mobile
         assert "font-size:16px" in mobile
 
+    def test_back_button_retraces_visited_folders(self):
+        # ".." is not a back button: after jumping to a crumb or drilling in
+        # from a Space, the parent is usually not where you came from.
+        assert "function projectBindGoBack" in WORKSPACE_JS
+        assert "_projectBindHistory.push" in WORKSPACE_JS
+        assert "data-bind-back" in WORKSPACE_JS
+
+    def test_going_back_does_not_record_history(self):
+        # Otherwise Back would toggle between the same two folders forever.
+        nav = WORKSPACE_JS[WORKSPACE_JS.index("async function _projectBindOpenDir"):]
+        nav = nav[: nav.index("async function _bindProjectWorkspacePath")]
+        assert "opts && opts.replay" in nav
+        back = WORKSPACE_JS[WORKSPACE_JS.index("function projectBindGoBack"):]
+        assert "{replay: true}" in back[: back.index("\n}")]
+
+    def test_history_is_cleared_between_projects(self):
+        opener = WORKSPACE_JS[WORKSPACE_JS.index("async function openProjectWorkspaceBinder"):]
+        assert "_projectBindHistory = []" in opener[: opener.index("await refreshProjectWorkspaceBinder")]
+
+    def test_every_space_row_carries_a_status_dot(self):
+        assert "function _projectBindIsOnline" in WORKSPACE_JS
+        assert "ws-conn-dot ws-conn-dot-${online ? 'online' : 'offline'}" in WORKSPACE_JS
+        # The dot sits immediately before the name text.
+        assert "${dot}${_escHtml(w.name" in WORKSPACE_JS
+
+    def test_online_state_falls_back_to_mount_status(self):
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("function _projectBindIsOnline"):]
+        fn = fn[: fn.index("\n}")]
+        assert "w.availability === 'online'" in fn
+        assert "w.mount_status === 'connected'" in fn
+
     def test_binder_is_reachable_in_the_tablet_band(self):
         # 641-900px hides the docked right panel (.rightpanel{display:none}) in
         # favour of the main-view file browser, but the binder only exists in
         # the right panel, so it must opt back in as a slide-over there.
         assert ".rightpanel.project-bind-mode{display:flex!important;position:fixed;" in STYLE_CSS
         assert ".rightpanel.project-bind-mode.mobile-open{transform:translate3d(0,0,0)" in STYLE_CSS
+
+    def test_status_dot_colours_are_defined(self):
+        assert ".ws-conn-dot-online{background:var(--success)" in STYLE_CSS
+        assert ".ws-conn-dot-offline{background:var(--error)" in STYLE_CSS
+
+    def test_back_button_has_a_touch_sized_target(self):
+        mobile = STYLE_CSS[STYLE_CSS.index("@media (max-width:640px){\n  .project-bind-head"):]
+        mobile = mobile[: mobile.index("\n}")]
+        assert ".project-bind-back-btn" in mobile
 
     def test_row_markup_reuses_the_spaces_panel_classes(self):
         assert "ws-row project-bind-row" in WORKSPACE_JS
