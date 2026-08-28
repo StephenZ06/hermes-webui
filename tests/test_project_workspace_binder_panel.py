@@ -315,3 +315,58 @@ class TestBinderPathHelpers:
 
     def test_empty_directory_has_no_crumbs(self):
         assert _run_helpers("_projectBindCrumbs('')", ["/home/u"]) == []
+
+
+class TestProjectFolderBindingIndicator:
+    """The workspace panel must say which folder the chat's Project is bound to.
+
+    The panel already had a "Project" row, but that one is the WORKSPACES.yaml
+    *registry* binding (session.bound_project_key). A chat filed under a
+    sidebar Project with a bound workspace folder still read "Unbound" there,
+    because that row answers a different question entirely.
+    """
+
+    def test_indicator_markup_exists_and_is_separate_from_the_registry_row(self):
+        assert 'id="projectFolderBindingRow"' in INDEX_HTML
+        assert 'id="projectFolderBindingPath"' in INDEX_HTML
+        # Both rows coexist; the new one must not replace the registry select.
+        assert 'id="boundProjectSelect"' in INDEX_HTML
+        assert INDEX_HTML.index('id="boundProjectRow"') < INDEX_HTML.index('id="projectFolderBindingRow"')
+
+    def test_indicator_reads_the_sidebar_project_binding(self):
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("async function renderProjectFolderBinding"):]
+        fn = fn[: fn.index("\nasync function useProjectFolderWorkspace")]
+        assert "session.project_id" in fn
+        assert "proj.workspace_path" in fn
+        # bound_project_key belongs to the other row and must not leak in here.
+        assert "bound_project_key" not in fn
+
+    def test_indicator_flags_a_chat_not_using_the_bound_folder(self):
+        # Binding applies to chats created afterwards; an older chat keeps its
+        # own workspace, and claiming "bound to X" while the agent works in Y
+        # is the exact confusion this row exists to remove.
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("async function renderProjectFolderBinding"):]
+        fn = fn[: fn.index("\nasync function useProjectFolderWorkspace")]
+        assert "mismatch" in fn
+        assert "session.workspace" in fn
+
+    def test_mismatch_offers_a_one_tap_switch(self):
+        assert "function useProjectFolderWorkspace" in WORKSPACE_JS
+        assert 'onclick="useProjectFolderWorkspace()"' in INDEX_HTML
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("async function useProjectFolderWorkspace"):]
+        assert "switchToWorkspace" in fn
+
+    def test_indicator_is_rendered_with_the_workspace_root(self):
+        assert "renderProjectFolderBinding()" in WORKSPACE_JS
+        root_render = WORKSPACE_JS[WORKSPACE_JS.index("if(!path||path==='.'){ _refreshGitBadge();"):]
+        assert "renderProjectFolderBinding" in root_render[:400]
+
+    def test_project_list_falls_back_to_the_api(self):
+        # The panel can render before the sidebar has populated _allProjects.
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("async function _projectFolderList"):]
+        fn = fn[: fn.index("\nasync function renderProjectFolderBinding")]
+        assert "typeof _allProjects !== 'undefined'" in fn
+        assert "api('/api/projects')" in fn
+
+    def test_binder_takes_over_the_panel_without_the_indicator(self):
+        assert ".rightpanel.project-bind-mode .project-folder-binding" in STYLE_CSS

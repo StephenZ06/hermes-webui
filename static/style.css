@@ -3502,6 +3502,25 @@
 .ws-conn-error{color:var(--error);}
 .ws-conn-error .ws-conn-dot{background:var(--error);}
 
+/* Sidebar Project folder binding indicator, in the workspace panel header
+   stack. Separate from .bound-project-row, which is the WORKSPACES.yaml
+   registry binding — see renderProjectFolderBinding() for why both exist. */
+.project-folder-binding{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border2);background:var(--surface-subtle,var(--surface));}
+.project-folder-binding[hidden]{display:none;}
+.project-folder-binding-dot{flex-shrink:0;width:8px;height:8px;border-radius:50%;background:var(--muted);}
+.project-folder-binding-text{flex:1;min-width:0;}
+.project-folder-binding-name{font-size:11px;font-weight:650;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.project-folder-binding-path{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.project-folder-binding.is-mismatch{background:color-mix(in srgb,var(--error) 8%,transparent);}
+.project-folder-binding.is-mismatch .project-folder-binding-path{color:var(--error);}
+.project-folder-binding-use{flex-shrink:0;padding:3px 9px;border:1px solid var(--border2);border-radius:7px;background:transparent;color:var(--muted);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.project-folder-binding-use:hover{background:var(--hover-bg);color:var(--text);border-color:var(--border);}
+.project-folder-binding-use[hidden]{display:none;}
+@media (max-width:640px){
+  .project-folder-binding{padding:10px 12px;}
+  .project-folder-binding-use{padding:7px 12px;font-size:12px;}
+}
+
 /* ── Project workspace binder ────────────────────────────────────────────────
    A project-scoped view that takes over the right workspace panel body while
    .rightpanel carries .project-bind-mode. Hiding the Files/Artifacts/Todos
@@ -3515,6 +3534,7 @@
 .rightpanel.project-bind-mode #wsEmptyState,
 .rightpanel.project-bind-mode .preview-area,
 .rightpanel.project-bind-mode .bound-project-row,
+.rightpanel.project-bind-mode .project-folder-binding,
 .rightpanel.project-bind-mode .git-badge,
 .rightpanel.project-bind-mode #btnUpDir,
 .rightpanel.project-bind-mode #btnNewFile,

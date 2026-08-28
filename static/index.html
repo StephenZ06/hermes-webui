@@ -1894,6 +1894,18 @@
       <span class="bound-project-label" data-i18n="bound_project_label" title="Bound project">Project</span>
       <select class="bound-project-select" id="boundProjectSelect" onchange="onBoundProjectSelectChange(this)" data-i18n-aria-label="bound_project_label" aria-label="Bound project"></select>
     </div>
+    <!-- Sidebar Project folder binding. Distinct from .bound-project-row above,
+         which binds the chat to a WORKSPACES.yaml registry project; this row
+         reports the workspace folder attached to the Project the chat is
+         filed under, and whether the chat is actually using it. -->
+    <div class="project-folder-binding" id="projectFolderBindingRow" hidden>
+      <span class="project-folder-binding-dot" id="projectFolderBindingDot" aria-hidden="true"></span>
+      <div class="project-folder-binding-text">
+        <div class="project-folder-binding-name" id="projectFolderBindingName"></div>
+        <div class="project-folder-binding-path" id="projectFolderBindingPath"></div>
+      </div>
+      <button type="button" class="project-folder-binding-use" id="projectFolderBindingUse" onclick="useProjectFolderWorkspace()" hidden>Use</button>
+    </div>
     <div class="workspace-panel-tabs" role="tablist" aria-label="Workspace panel views" data-i18n-aria-label="workspace_panel_views">
       <button class="workspace-panel-tab active" id="workspaceFilesTab" type="button" onclick="switchWorkspacePanelTab('files')" role="tab" aria-selected="true" data-i18n="workspace_files_tab">Files</button>
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false"><span data-i18n="workspace_artifacts_tab">Artifacts</span> <span id="workspaceArtifactsCount" class="workspace-artifacts-count">0</span></button>
