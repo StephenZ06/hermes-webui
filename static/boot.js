@@ -500,19 +500,22 @@ function _onPwaSidebarSwipeStart(e){
 function _onPwaSidebarSwipeMove(e){
   if(_isTouchPointerEvent(e))return;
   const swipe=_pwaSidebarSwipe;
-  if(!swipe||!swipe.active||swipe.opened)return;
+  if(!swipe||!swipe.active)return;
   const point=_pwaSidebarSwipePoint(e);
   if(!point)return;
   const dx=point.clientX-swipe.startX;
   const dy=point.clientY-swipe.startY;
-  if(dx<0||Math.abs(dy)>_PWA_SIDEBAR_SWIPE_MAX_VERTICAL*1.5){_pwaSidebarSwipe=null;return;}
-  if(dx>=_PWA_SIDEBAR_SWIPE_CLAIM&&dx>Math.abs(dy)*1.2){
-    if(e.cancelable)e.preventDefault();
-    // Direct manipulation: the drawer is pinned to the finger for the whole
-    // gesture rather than snapping open once a threshold is crossed. A binary
-    // trigger is what made this read as unresponsive next to a native drawer --
-    // nothing moves at all until it suddenly all moves.
-    if(!swipe.dragging){
+  // Bail-out checks only apply BEFORE the drag takes ownership of the drawer.
+  // Once it is being dragged the gesture can end only by being released:
+  // dropping the state here left the inline transform in place and froze the
+  // drawer wherever the finger happened to be, which is what a small backwards
+  // wobble or a bit of vertical drift mid-drag used to do.
+  if(!swipe.dragging){
+    if(dx<0||Math.abs(dy)>_PWA_SIDEBAR_SWIPE_MAX_VERTICAL*1.5){_pwaSidebarSwipe=null;return;}
+    if(dx>=_PWA_SIDEBAR_SWIPE_CLAIM&&dx>Math.abs(dy)*1.2){
+      if(e.cancelable)e.preventDefault();
+      // Direct manipulation: the drawer is pinned to the finger for the whole
+      // gesture rather than snapping open once a threshold is crossed.
       swipe.dragging=true;
       swipe.el=_prepareMobileSidebarForDrag();
     }
@@ -555,11 +558,22 @@ function _settleMobileSidebarDrag(swipe){
     el.classList.remove('mobile-open','mobile-panel-drawer');
   }
 }
+// Last-resort cleanup. If anything at all dropped the gesture state while a
+// drag was live, the drawer would keep its inline transform forever; there is
+// no code path where a released pointer should leave one behind.
+function _clearStrandedSidebarDrag(){
+  const stuck=document.querySelector('.sidebar.is-dragging');
+  if(!stuck)return;
+  stuck.style.transform='';
+  stuck.classList.remove('is-dragging');
+  if(!stuck.classList.contains('mobile-open')) stuck.classList.remove('mobile-panel-drawer');
+}
 function _onPwaSidebarSwipeEnd(e){
   if(_isTouchPointerEvent(e))return;
   const swipe=_pwaSidebarSwipe;
   _pwaSidebarSwipe=null;
   _settleMobileSidebarDrag(swipe);
+  _clearStrandedSidebarDrag();
 }
 function _onPwaSidebarSwipeCancel(e){
   if(_isTouchPointerEvent(e))return;
@@ -570,6 +584,7 @@ function _onPwaSidebarSwipeCancel(e){
     swipe.el.classList.remove('is-dragging');
     swipe.el.classList.remove('mobile-open','mobile-panel-drawer');
   }
+  _clearStrandedSidebarDrag();
 }
 
 function _installPwaSidebarSwipeGesture(){
