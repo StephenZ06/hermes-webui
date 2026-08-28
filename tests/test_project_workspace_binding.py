@@ -154,3 +154,48 @@ def test_apply_session_move_project_workspace_unassign_clears_project_id():
 
     assert fake.project_id is None
     assert fake.workspace == "/original/workspace"
+
+
+# ── A bound project must actually reach the new conversation ────────────────
+#
+# The binding saved fine and /api/session/new had a fallback for it, but the
+# fallback only fired when the request carried no workspace at all -- and the
+# New Chat path always sends one (S._profileDefaultWorkspace is always set).
+# So every new conversation in a bound project opened in the profile default
+# instead, and the agent reported that as its working folder.
+
+import pathlib
+
+SESSIONS_JS = (pathlib.Path(__file__).parent.parent / "static" / "sessions.js").read_text(encoding="utf-8")
+
+
+def _new_chat_request_builder():
+    start = SESSIONS_JS.index("const inheritWs=switchWs")
+    return SESSIONS_JS[start : SESSIONS_JS.index("const data=await api('/api/session/new'", start)]
+
+
+def test_new_chat_sends_the_bound_project_workspace():
+    body = _new_chat_request_builder()
+    assert "_boundProj.workspace_path" in body
+    assert "reqBody.workspace=_boundProj.workspace_path" in body
+
+
+def test_bound_workspace_is_only_applied_when_a_project_is_attached():
+    body = _new_chat_request_builder()
+    assert "if(!switchWs&&reqBody.project_id)" in body
+
+
+def test_an_explicit_profile_switch_workspace_still_wins():
+    # switchWs is a deliberate "open this workspace" action, not an inherited
+    # default, so a project binding must not override it.
+    body = _new_chat_request_builder()
+    guard = body[body.index("if(!switchWs&&reqBody.project_id)") :]
+    assert "switchWs" in guard.split("\n")[0]
+
+
+def test_server_fallback_still_covers_a_request_with_no_workspace():
+    # The client-side precedence is the fix; the server fallback stays as the
+    # safety net for any caller that omits workspace entirely.
+    routes_src = (pathlib.Path(__file__).parent.parent / "api" / "routes.py").read_text(encoding="utf-8")
+    assert 'if not workspace and body.get("project_id"):' in routes_src
+    assert "_bound_project_workspace" in routes_src
