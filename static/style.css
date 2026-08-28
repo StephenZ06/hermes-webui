@@ -3405,6 +3405,9 @@
 .ws-chip{user-select:none;}
 .ws-dropdown{display:none;position:absolute;bottom:calc(100% + 4px);left:0;right:0;min-width:200px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 -4px 24px rgba(0,0,0,.4);z-index:200;overflow:hidden;max-height:320px;overflow-y:auto;}
 .ws-dropdown.open{display:block;}
+/* Painted only while the exit animation runs; .open is already off by then
+   so state checks elsewhere stay correct. See _setWorkspaceDropdownOpenState. */
+.ws-dropdown.is-leaving{display:block;pointer-events:none;}
 .ws-dropdown-footer{left:0;right:auto;bottom:calc(100% + 4px);min-width:280px;max-width:min(420px,calc(100vw - 32px));}
 .model-dropdown{display:none;position:absolute;bottom:calc(100% + 4px);left:0;min-width:280px;max-width:min(420px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 -4px 24px rgba(0,0,0,.4);z-index:200;overflow:hidden;max-height:min(70vh,640px);overflow-y:auto;}
 .model-dropdown.open{display:block;}

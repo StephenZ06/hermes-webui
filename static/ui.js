@@ -8772,27 +8772,18 @@ function updateQueueBadge(sessionId){
 const TOAST_DEFAULT_MS=2800;
 const TOAST_ERROR_DEFAULT_MS=20000;
 function clearToastDismissTimer(el){if(!el)return;clearTimeout(el._t);el._t=null;}
-function _hideToastAnimated(el){
-  if(!el)return;
-  const anim=window.MotionUI;
-  if(!anim||!anim.enabled()){el.classList.remove('show');return;}
-  anim.presence(el,'out',{from:'bottom',distance:10}).then(()=>{
-    // A newer toast may have reused the node while this one was leaving.
-    if(el.dataset.toastLeaving==='1'){
-      el.classList.remove('show');
-      el.style.opacity='';
-      el.style.transform='';
-      delete el.dataset.toastLeaving;
-    }
-  });
-  el.dataset.toastLeaving='1';
-}
-function setToastDismissTimer(el,duration){if(!el)return;clearToastDismissTimer(el);el._t=setTimeout(()=>{_hideToastAnimated(el);},duration);}
+// The toast is deliberately NOT driven by MotionUI. .toast already carries
+// opacity + transform with its own .2s transition, and .toast.show flips both,
+// so the enter/exit is done, composited, and correct. A JS transform would
+// outrank .toast.show's transform, get transitioned a second time by the CSS on
+// top of Motion's animation, and slide the wrong way -- the toast is anchored
+// top-right, not bottom.
+function setToastDismissTimer(el,duration){if(!el)return;clearToastDismissTimer(el);el._t=setTimeout(()=>{el.classList.remove('show');},duration);}
 function dismissToast(btnOrEl){
   const el=btnOrEl&&btnOrEl.closest?btnOrEl.closest('#toast'):(btnOrEl&&btnOrEl.id==='toast'?btnOrEl:null);
   if(!el)return;
   clearToastDismissTimer(el);
-  _hideToastAnimated(el);
+  el.classList.remove('show');
 }
 function copyToastText(btn){
   const el=btn&&btn.closest?btn.closest('#toast'):null;
@@ -8807,10 +8798,6 @@ function showToast(msg,ms,type){
   const duration=(ms==null)?(t==='error'?TOAST_ERROR_DEFAULT_MS:TOAST_DEFAULT_MS):ms;
   el.className='toast show '+t;
   el.dataset.toastMessage=s;
-  // A toast reusing a node that was mid-exit must cancel that exit, or the
-  // finished handler would hide the new message.
-  delete el.dataset.toastLeaving;
-  if(window.MotionUI) window.MotionUI.presence(el,'in',{from:'bottom',distance:10});
   if(t==='error') el.innerHTML=`<span class="toast-message">${esc(s)}</span><button class="toast-copy" type="button" data-toast-copy="1" onclick="copyToastText(this);event.stopPropagation()">Copy</button><button class="toast-dismiss" type="button" aria-label="Dismiss error toast" data-toast-dismiss="1" onclick="dismissToast(this);event.stopPropagation()">Dismiss</button>`;
   else el.textContent=s;
   el.onmouseenter=()=>clearToastDismissTimer(el);
