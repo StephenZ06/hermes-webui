@@ -5429,10 +5429,19 @@ main.main > #mainPlugin{display:none;}
   animation:agent-canvas-trunk-grow .22s cubic-bezier(.22,.61,.36,1) both,agent-canvas-flow .6s linear infinite;
 }
 @keyframes agent-canvas-flow{to{background-position:0 18px;}}
+/* A rebuild that only re-parents nodes already on screen must not replay the
+   reveal — see buildChildrenRow() in agent-canvas.js. A flowing trunk keeps
+   flowing; only the one-shot grow is dropped. */
+.agent-canvas-trunk.no-reveal{animation:none;}
+.agent-canvas-trunk.no-reveal.is-flowing{animation:agent-canvas-flow .6s linear infinite;}
+.agent-canvas-children-cluster.no-reveal{animation:none;}
 @media (prefers-reduced-motion:reduce){
   .agent-canvas-trunk{animation:none;}
   .agent-canvas-children-cluster{animation:none;}
   .agent-canvas-trunk.is-flowing{animation:none;background:var(--accent);}
+  /* Matches the .no-reveal.is-flowing specificity above, so reduced motion
+     still wins over it. */
+  .agent-canvas-trunk.no-reveal.is-flowing{animation:none;background:var(--accent);}
 }
 
 @property --agent-canvas-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
@@ -5488,6 +5497,13 @@ main.main > #mainPlugin{display:none;}
 .agent-canvas-card-stats{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px;}
 .agent-canvas-stat{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:9.5px;font-weight:600;color:var(--muted);background:color-mix(in srgb,var(--surface-subtle) 70%,var(--border2) 30%);border:1px solid var(--border);border-radius:5px;padding:2px 6px;}
 .agent-canvas-stat-icon{flex:none;opacity:.75;}
+/* These three carry their own display value, which outranks the [hidden]
+   attribute's default display:none. buildCard() renders all slots up front
+   and hides the empty ones so an update never inserts or removes a child,
+   so they have to actually disappear when empty. */
+.agent-canvas-card-sub[hidden],
+.agent-canvas-card-stats[hidden],
+.agent-canvas-card-terminal[hidden]{display:none;}
 .agent-canvas-card-terminal{margin-top:8px;font-family:var(--font-mono);font-size:9.5px;line-height:1.5;color:var(--muted);background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:4px 7px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-word;}
 
 .agent-canvas-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--muted);}

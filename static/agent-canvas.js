@@ -54,6 +54,12 @@
   let _pauseBtnEl = null;
   let _emptyEl = null;
   let _renderQueued = false;
+  // Shape of the tree at the last DOM build, plus the ids that were on screen
+  // then. A render whose shape is unchanged patches the existing cards rather
+  // than rebuilding them (see renderTree()); a render that does rebuild uses
+  // the id set so only the newly-arrived branch animates.
+  let _lastTreeSignature = '';
+  let _renderedCardIds = new Set();
   let _lastActivityAt = 0;
   let _liveTimer = null;
   let _tickTimer = null;
@@ -137,8 +143,12 @@
     node.status = nextStatus;
   }
 
+  // Entries carry a monotonic id so renderFeed() can tell which ones are new
+  // and prepend only those, instead of re-writing the whole list (and
+  // restarting every row's fade-in) on each event.
+  let _feedSeq = 0;
   function pushFeed(entry){
-    _feed.unshift({ ts: Date.now(), ...entry });
+    _feed.unshift({ ts: Date.now(), ...entry, id: ++_feedSeq });
     if(_feed.length > FEED_MAX) _feed.length = FEED_MAX;
     _lastActivityAt = Date.now();
   }
@@ -316,50 +326,102 @@
   // still while only the newly-known trunk/subagents animate in.
   let _suppressRootPopOnce = false;
 
-  // ctx (optional) makes the card builders reusable outside the live canvas:
-  // { nodes } is the map children are resolved against and { interactive }
-  // false drops selection/click wiring for a read-only embedded diagram.
-  function buildCard(node, staggerIndex, baseDelayMs, ctx){
-    const nodes = (ctx && ctx.nodes) || _nodes;
-    const interactive = !ctx || ctx.interactive !== false;
-    const isRoot = !!node._isRoot;
-    const dur = liveDuration(node);
-    const statusText = STATUS_LABEL[node.status] || node.status;
-    const kids = childrenOf(node.subagent_id, nodes);
-    const showDur = dur != null && !(isRoot && node.status === 'idle');
+  // Every card is built once from this skeleton and then PATCHED in place by
+  // updateCardEl(). The five slots are always present (empty ones carry
+  // [hidden]) so an update never has to insert or remove a child, which is
+  // what makes a live status change cheap enough to avoid rebuilding.
+  const CARD_SKELETON = `
+      <div class="agent-canvas-card-head">
+        <span class="agent-canvas-dot" aria-hidden="true"></span>
+        <span class="agent-canvas-card-label"></span>
+      </div>
+      <div class="agent-canvas-card-sub" hidden></div>
+      <div class="agent-canvas-card-status"></div>
+      <div class="agent-canvas-card-stats" hidden></div>
+      <div class="agent-canvas-card-terminal" hidden></div>`;
+
+  function cardStatsHtml(node, kids){
     const statCells = [];
     if(node.toolCount) statCells.push(`<span class="agent-canvas-stat"><svg class="agent-canvas-stat-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>${node.toolCount}</span>`);
     if(node.inputTokens || node.outputTokens) statCells.push(`<span class="agent-canvas-stat">${fmtTokens((node.inputTokens||0)+(node.outputTokens||0))} tok</span>`);
     if(node.costUsd != null) statCells.push(`<span class="agent-canvas-stat">${fmtCost(node.costUsd)}</span>`);
     if(kids.length) statCells.push(`<span class="agent-canvas-stat">${kids.length} child${kids.length===1?'':'ren'}</span>`);
-    const activityText = isRoot ? '' : cardActivityText(node);
+    return statCells.join('');
+  }
 
-    const card = document.createElement('div');
-    card.className = 'agent-canvas-card status-' + node.status + (isRoot ? ' is-conductor' : '')
+  function setSlot(el, html){
+    if(!el) return;
+    if(el.innerHTML !== html) el.innerHTML = html;
+    const empty = !html;
+    if(el.hidden !== empty) el.hidden = empty;
+  }
+
+  // Writes a node's current state onto an existing card. Only assigns what
+  // actually changed: re-writing a className or an innerHTML that already
+  // matches is free, but re-writing one that does not restarts the CSS
+  // animations underneath it (the card's spring-in, the dot's pulse, the
+  // running card's orbit), which is exactly the flicker this avoids.
+  function updateCardEl(card, node, ctx){
+    const nodes = (ctx && ctx.nodes) || _nodes;
+    const interactive = !ctx || ctx.interactive !== false;
+    const isRoot = !!node._isRoot;
+    const kids = childrenOf(node.subagent_id, nodes);
+    const dur = liveDuration(node);
+    const showDur = dur != null && !(isRoot && node.status === 'idle');
+    const statusText = STATUS_LABEL[node.status] || node.status;
+
+    const nextClass = 'agent-canvas-card status-' + node.status + (isRoot ? ' is-conductor' : '')
       + ((interactive && node.subagent_id === _selectedId) ? ' selected' : '')
       + (interactive ? '' : ' is-static');
+    if(card.className !== nextClass) card.className = nextClass;
+
+    const dot = card.querySelector('.agent-canvas-dot');
+    const dotClass = 'agent-canvas-dot status-' + node.status;
+    if(dot && dot.className !== dotClass) dot.className = dotClass;
+
+    const label = card.querySelector('.agent-canvas-card-label');
+    const labelText = isRoot ? (node.rootLabel || 'Conductor') : shortLabel(node.goal);
+    if(label && label.textContent !== labelText) label.textContent = labelText;
+
+    const subText = isRoot ? (node.rootSub || 'Main Hermes session') : (node.model || '');
+    setSlot(card.querySelector('.agent-canvas-card-sub'), subText ? esc(subText) : '');
+
+    setSlot(card.querySelector('.agent-canvas-card-status'),
+      `${esc(statusText)}${showDur ? ` <span class="agent-canvas-card-status-sep">•</span> <span class="agent-canvas-card-status-time" data-role="duration">${esc(fmtDuration(dur))}</span>` : ''}`);
+
+    setSlot(card.querySelector('.agent-canvas-card-stats'), cardStatsHtml(node, kids));
+
+    const activityText = isRoot ? '' : cardActivityText(node);
+    setSlot(card.querySelector('.agent-canvas-card-terminal'),
+      activityText ? esc(activityText.length > 160 ? activityText.slice(0, 159) + '…' : activityText) : '');
+  }
+
+  // ctx (optional) makes the card builders reusable outside the live canvas:
+  // { nodes } is the map children are resolved against, { interactive } false
+  // drops selection/click wiring for a read-only embedded diagram, and
+  // { seen } is the set of ids that were already on screen before this
+  // rebuild — those cards skip their entrance so a structural change animates
+  // only the branch that actually arrived.
+  function buildCard(node, staggerIndex, baseDelayMs, ctx){
+    const interactive = !ctx || ctx.interactive !== false;
+    const isRoot = !!node._isRoot;
+
+    const card = document.createElement('div');
     card.dataset.subagentId = node.subagent_id;
     if(interactive){
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
     }
-    if(isRoot && _suppressRootPopOnce){
+    const alreadyOnScreen = !!(ctx && ctx.seen && ctx.seen.has(node.subagent_id));
+    if((isRoot && _suppressRootPopOnce) || alreadyOnScreen){
       card.style.animation = 'none';
-      _suppressRootPopOnce = false;
+      if(isRoot) _suppressRootPopOnce = false;
     }else{
       const delay = (baseDelayMs || 0) + (staggerIndex ? Math.min(staggerIndex, STAGGER_MAX_STEPS) * STAGGER_MS : 0);
       if(delay) card.style.animationDelay = delay + 'ms';
     }
-    card.innerHTML = `
-      <div class="agent-canvas-card-head">
-        ${statusDotHtml(node.status)}
-        <span class="agent-canvas-card-label">${isRoot ? esc(node.rootLabel || 'Conductor') : esc(shortLabel(node.goal))}</span>
-      </div>
-      ${isRoot ? `<div class="agent-canvas-card-sub">${esc(node.rootSub || 'Main Hermes session')}</div>` : (node.model ? `<div class="agent-canvas-card-sub">${esc(node.model)}</div>` : '')}
-      <div class="agent-canvas-card-status">${esc(statusText)}${showDur ? ` <span class="agent-canvas-card-status-sep">•</span> <span class="agent-canvas-card-status-time" data-role="duration">${esc(fmtDuration(dur))}</span>` : ''}</div>
-      ${statCells.length ? `<div class="agent-canvas-card-stats">${statCells.join('')}</div>` : ''}
-      ${activityText ? `<div class="agent-canvas-card-terminal">${esc(activityText.length > 160 ? activityText.slice(0, 159) + '…' : activityText)}</div>` : ''}
-    `;
+    card.innerHTML = CARD_SKELETON;
+    updateCardEl(card, node, ctx);
     if(interactive){
       const open = () => selectNode(node.subagent_id);
       card.addEventListener('click', open);
@@ -394,13 +456,20 @@
   function buildChildrenRow(kids, flowing, baseDelayMs, ctx){
     const wrap = document.createElement('div');
     wrap.className = 'agent-canvas-children-wrap';
+    // A row whose children were all on screen before this rebuild is not an
+    // arrival, so its line must not grow again — only a row containing a
+    // genuinely new subagent plays the reveal.
+    const anyNew = !(ctx && ctx.seen) || kids.some(k => !ctx.seen.has(k.subagent_id));
+    // Suppression is a class, not an inline animation: an inline style would
+    // outrank the prefers-reduced-motion rules, which is the one place the
+    // stylesheet must always win.
     const trunk = document.createElement('div');
-    trunk.className = 'agent-canvas-trunk' + (flowing ? ' is-flowing' : '');
-    if(baseDelayMs) trunk.style.animationDelay = baseDelayMs + 'ms';
+    trunk.className = 'agent-canvas-trunk' + (flowing ? ' is-flowing' : '') + (anyNew ? '' : ' no-reveal');
+    if(anyNew && baseDelayMs) trunk.style.animationDelay = baseDelayMs + 'ms';
     wrap.appendChild(trunk);
     const cluster = document.createElement('div');
-    cluster.className = 'agent-canvas-children-cluster';
-    if(baseDelayMs) cluster.style.animationDelay = baseDelayMs + 'ms';
+    cluster.className = 'agent-canvas-children-cluster' + (anyNew ? '' : ' no-reveal');
+    if(anyNew && baseDelayMs) cluster.style.animationDelay = baseDelayMs + 'ms';
     const row = document.createElement('div');
     row.className = 'agent-canvas-children';
     const cardBaseDelay = (baseDelayMs || 0) + CARD_REVEAL_OFFSET_MS;
@@ -410,43 +479,134 @@
     return wrap;
   }
 
+  // The tree's shape: which nodes exist and who they hang off, in render
+  // order. Status, tool counts and durations are deliberately NOT part of it —
+  // those are what change on almost every event, and they are patched in
+  // place rather than rebuilt.
+  function treeSignature(){
+    if(!_nodes.has(ROOT_ID)) return '';
+    const parts = [ROOT_ID];
+    const walk = id => {
+      for(const kid of childrenOf(id)){
+        parts.push(kid.subagent_id + '<' + (kid.parent_id || ROOT_ID));
+        walk(kid.subagent_id);
+      }
+    };
+    walk(ROOT_ID);
+    return parts.join('|');
+  }
+
+  // Writes current node state onto the cards already in the DOM. Returns false
+  // if the DOM and the node map have drifted apart, so the caller falls back
+  // to a rebuild rather than leaving a half-updated tree.
+  function patchTree(){
+    const cards = _treeEl.querySelectorAll('.agent-canvas-card');
+    if(!cards.length) return false;
+    for(const card of cards){
+      const node = _nodes.get(card.dataset.subagentId);
+      if(!node) return false;
+      updateCardEl(card, node);
+    }
+    // The trunk's flowing state follows the status of the card it hangs off,
+    // which is the wrap's previous sibling at every depth. classList.toggle
+    // with the value it already has is a no-op, so a settled trunk keeps its
+    // animation running rather than restarting it.
+    for(const wrap of _treeEl.querySelectorAll('.agent-canvas-children-wrap')){
+      const owner = wrap.previousElementSibling;
+      if(!owner || !owner.classList.contains('agent-canvas-card')) continue;
+      const node = _nodes.get(owner.dataset.subagentId);
+      const trunk = wrap.firstElementChild;
+      if(!node || !trunk || !trunk.classList.contains('agent-canvas-trunk')) continue;
+      const flowing = node._isRoot
+        ? node.status === 'orchestrating'
+        : !TERMINAL_STATUSES.has(node.status);
+      trunk.classList.toggle('is-flowing', flowing);
+    }
+    return true;
+  }
+
+  // Rebuilding wipes and re-creates every card, which restarts every card's
+  // pop-in, the dot's pulse and the running card's orbit — measured at 27
+  // animationstart events per card against 2 animationend over a handful of
+  // tool calls, i.e. entrances that visibly began and never finished. Since
+  // scheduleRender() runs on every subagent event and every reconcile tick,
+  // the common render is one where nothing structural changed: patch those in
+  // place, and rebuild only when the shape itself moved.
   function renderTree(){
     if(!_treeEl) return;
-    _treeEl.innerHTML = '';
     const root = _nodes.get(ROOT_ID);
     if(!root){
+      _treeEl.innerHTML = '';
+      _lastTreeSignature = '';
+      _renderedCardIds = new Set();
       _suppressRootPopOnce = false;
       return;
     }
+    const signature = treeSignature();
+    if(signature === _lastTreeSignature && !_suppressRootPopOnce && patchTree()) return;
+
+    const ctx = { seen: _renderedCardIds };
     const rootCol = document.createElement('div');
     rootCol.className = 'agent-canvas-root-col';
     const rootSuppressed = _suppressRootPopOnce;
-    rootCol.appendChild(buildCard(root));
+    rootCol.appendChild(buildCard(root, 0, 0, ctx));
     const kids = childrenOf(ROOT_ID);
     if(kids.length){
-      rootCol.appendChild(buildChildrenRow(kids, root.status === 'orchestrating', rootSuppressed ? TRUNK_DELAY_MS : 0));
+      rootCol.appendChild(buildChildrenRow(kids, root.status === 'orchestrating', rootSuppressed ? TRUNK_DELAY_MS : 0, ctx));
     }
+    _treeEl.innerHTML = '';
     _treeEl.appendChild(rootCol);
+    _lastTreeSignature = signature;
+    _renderedCardIds = new Set(
+      Array.from(_treeEl.querySelectorAll('.agent-canvas-card'), el => el.dataset.subagentId)
+    );
   }
 
-  function renderFeed(){
-    if(!_feedEl) return;
-    if(!_feed.length){
-      _feedEl.innerHTML = '<div class="agent-canvas-feed-empty">No activity yet.</div>';
-      return;
-    }
-    const html = _feed.map(entry => {
-      const node = _nodes.get(entry.subagentId);
-      const name = node ? shortLabel(node.goal) : entry.subagentId;
-      const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const kindCls = entry.kind + (entry.isError ? ' is-error' : '');
-      return `<div class="agent-canvas-feed-item ${esc(kindCls)}">
+  function feedItemHtml(entry){
+    const node = _nodes.get(entry.subagentId);
+    const name = node ? shortLabel(node.goal) : entry.subagentId;
+    const time = new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const kindCls = entry.kind + (entry.isError ? ' is-error' : '');
+    return `<div class="agent-canvas-feed-item ${esc(kindCls)}">
         <span class="agent-canvas-feed-time">${esc(time)}</span>
         <span class="agent-canvas-feed-kind">${esc(entry.kind)}</span>
         <span class="agent-canvas-feed-text" title="${esc(name + ' — ' + entry.text)}">${esc(entry.text)}</span>
       </div>`;
-    }).join('');
-    _feedEl.innerHTML = html;
+  }
+
+  // Same reasoning as renderTree(): every row carries a fade-in, so rewriting
+  // the list on each event restarted all of them at once. The feed only ever
+  // grows at the top, so prepend what is new and drop the overflow.
+  let _lastFeedTopId = null;
+  function renderFeed(){
+    if(!_feedEl) return;
+    if(!_feed.length){
+      if(_lastFeedTopId !== null || !_feedEl.firstChild){
+        _feedEl.innerHTML = '<div class="agent-canvas-feed-empty">No activity yet.</div>';
+        _lastFeedTopId = null;
+      }
+      return;
+    }
+    const newestId = _feed[0].id;
+    if(newestId === _lastFeedTopId) return;
+    if(_lastFeedTopId !== null && _feedEl.querySelector('.agent-canvas-feed-item')){
+      const fresh = [];
+      for(const entry of _feed){
+        if(entry.id <= _lastFeedTopId) break;
+        fresh.push(entry);
+      }
+      if(fresh.length){
+        // Oldest of the new batch goes in first, so the newest ends up on top.
+        for(let i = fresh.length - 1; i >= 0; i--){
+          _feedEl.insertAdjacentHTML('afterbegin', feedItemHtml(fresh[i]));
+        }
+        while(_feedEl.children.length > FEED_MAX) _feedEl.lastElementChild.remove();
+        _lastFeedTopId = newestId;
+        return;
+      }
+    }
+    _feedEl.innerHTML = _feed.map(feedItemHtml).join('');
+    _lastFeedTopId = newestId;
   }
 
   function fileListHtml(label, files){
@@ -697,6 +857,12 @@
     _feed = [];
     _selectedId = null;
     _lastActivityAt = 0;
+    // The next render is for a different session, so nothing on screen is
+    // reusable: drop the incremental-render bookkeeping and let it rebuild
+    // (and animate) from scratch.
+    _lastTreeSignature = '';
+    _renderedCardIds = new Set();
+    _lastFeedTopId = null;
     // sessions.js calls this on every session switch. A switch triggered by
     // clicking a history entry re-enters 'history' mode right after (see
     // renderSidebar()'s click handler, which runs showHistoricalTree()
@@ -1030,6 +1196,9 @@
     _nodes.clear();
     _selectedId = null;
     _feed = [];
+    _lastTreeSignature = '';
+    _renderedCardIds = new Set();
+    _lastFeedTopId = null;
     const nodes = buildTreeNodes(parentEntry.parent_session_id, parentEntry.children);
     for(const [id, node] of nodes) _nodes.set(id, node);
     _viewMode = 'history';
@@ -1076,6 +1245,9 @@
     _selectedId = null;
     _feed = [];
     _lastActivityAt = 0;
+    _lastTreeSignature = '';
+    _renderedCardIds = new Set();
+    _lastFeedTopId = null;
     _viewMode = 'live';
     ensureRoot();
     reconcile();
