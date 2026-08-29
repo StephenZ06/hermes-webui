@@ -3646,7 +3646,10 @@ button,
 .motion-text-shimmer{
   background-image:linear-gradient(90deg,var(--text) 0%,var(--text) 38%,var(--accent-text,var(--accent)) 50%,var(--text) 62%,var(--text) 100%);
   background-size:200% auto;
-  background-position:0% center;
+  /* Resting position keeps the highlight past the right edge, so the text
+     renders in the plain colour even if the sweep is interrupted before
+     shimmerHeading() can drop the class. See the JS for the -30% math. */
+  background-position:-30% center;
   -webkit-background-clip:text;
   background-clip:text;
   -webkit-text-fill-color:transparent;

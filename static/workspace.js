@@ -2068,9 +2068,18 @@ function _renderProjectBind(){
   // Animate the row set only when it actually changes -- opening the binder or
   // navigating into a folder -- and never on a keystroke in the search box,
   // where a re-entrance per character would strobe rather than help.
+  //
+  // Every navigation renders TWICE: once immediately with _projectBindLoading
+  // set (the body is just "Scanning…", no folder rows yet), then again once
+  // the listing arrives. Keying only on the view meant the first of those
+  // burned the key, so the entrance played on rows that were thrown away by
+  // the second render's innerHTML rewrite -- and the real rows, the ones you
+  // end up looking at, were then skipped by the guard and never animated at
+  // all. Skip the loading pass so the entrance lands on the render that
+  // actually carries the rows.
   if(window.MotionUI){
     const bindViewKey = (_projectBindPathMode ? 'q' : 'd') + '|' + _projectBindDir;
-    if(bindViewKey !== _projectBindLastAnimatedKey){
+    if(!_projectBindLoading && bindViewKey !== _projectBindLastAnimatedKey){
       _projectBindLastAnimatedKey = bindViewKey;
       window.MotionUI.enter(body.querySelectorAll('.project-bind-row'), { y: 6, stagger: 0.025 });
     }

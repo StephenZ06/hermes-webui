@@ -274,6 +274,15 @@
   // ordinary heading colour and the effect cannot leave the text mis-coloured
   // if the animation is interrupted.
   //
+  // The sweep has to end PAST the text, not at its edge. background-position
+  // percentages place the image against the box, so with background-size:200%
+  // the highlight (the gradient's 50% stop) sits at `-W*P + W` for box width
+  // W: at P=0% that is exactly the right edge, which left the accent ramp
+  // parked on the final word instead of carrying off the end. P=-30% puts the
+  // band's near edge at 1.06W, clear of the text. The class is dropped once
+  // the sweep finishes so the heading goes back to being ordinary text rather
+  // than permanently gradient-clipped.
+  //
   // This is the one effect that exceeds the 150-350ms interaction budget; at
   // 1.1s it reads as arrival polish rather than a control responding.
   function shimmerHeading(heading){
@@ -285,11 +294,14 @@
     heading.classList.add('motion-text-shimmer');
     const controls = M.animate(
       heading,
-      { backgroundPosition: ['200% center', '0% center'] },
+      { backgroundPosition: ['200% center', '-30% center'] },
       { duration: 1.1, easing: 'ease-in-out' }
     );
     const done = (controls && controls.finished) || Promise.resolve();
-    done.catch(() => {}).then(() => { heading.style.backgroundPosition = ''; });
+    done.catch(() => {}).then(() => {
+      heading.style.backgroundPosition = '';
+      heading.classList.remove('motion-text-shimmer');
+    });
   }
 
   function animateEmptyState(el){
