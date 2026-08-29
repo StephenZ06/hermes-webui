@@ -157,32 +157,71 @@ def list_parents_with_subagent_children(db_path: "Path | list[Path]", limit: int
     return combined[:limit]
 
 
+# Stat columns beyond the base id/source/.../ended_at set — live tracking
+# (onSpawn/onToolActivity/onComplete WS events) populates model/tokens/cost in
+# real time while a subagent is active, but that in-memory state is gone after
+# a page reload or once enough time has passed that the tab re-fetched from
+# scratch, silently degrading the rebuilt tree to a bare status dot. Pulling
+# these from state.db closes that gap. Every query below checks them against
+# the live schema first (not just wrapping the call in try/except) so an older
+# state.db missing one of these newer columns still returns the base fields
+# instead of the whole query failing and returning nothing.
+_STAT_COLUMNS = (
+    "model", "input_tokens", "output_tokens", "reasoning_tokens",
+    "api_call_count", "tool_call_count", "estimated_cost_usd", "actual_cost_usd",
+)
+
+_BASE_COLUMNS = "id, source, parent_session_id, title, started_at, ended_at"
+
+
+def _select_columns(conn: sqlite3.Connection) -> str:
+    """Return the SELECT list for ``sessions``, minus columns this DB lacks."""
+    available = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+    stat_cols = [c for c in _STAT_COLUMNS if c in available]
+    if stat_cols:
+        return _BASE_COLUMNS + ", " + ", ".join(stat_cols)
+    return _BASE_COLUMNS
+
+
+def _session_node_dict(row: sqlite3.Row) -> dict:
+    """Project one ``sessions`` row into the node shape the canvas consumes.
+
+    Shared by the Agent Canvas history sidebar and the Scheduled-jobs
+    delegation diagram so both diagrams are built from identical fields —
+    a stat added here shows up in both instead of only the one that was
+    edited.
+    """
+    row_keys = row.keys()
+    cost = None
+    if "actual_cost_usd" in row_keys and row["actual_cost_usd"] is not None:
+        cost = row["actual_cost_usd"]
+    elif "estimated_cost_usd" in row_keys and row["estimated_cost_usd"] is not None:
+        cost = row["estimated_cost_usd"]
+    return {
+        "session_id": row["id"],
+        "parent_session_id": row["parent_session_id"],
+        "title": row["title"],
+        "started_at": row["started_at"] or 0.0,
+        "ended_at": row["ended_at"],
+        "status": "completed" if row["ended_at"] else "running",
+        "model": row["model"] if "model" in row_keys else None,
+        "input_tokens": row["input_tokens"] if "input_tokens" in row_keys else None,
+        "output_tokens": row["output_tokens"] if "output_tokens" in row_keys else None,
+        "reasoning_tokens": row["reasoning_tokens"] if "reasoning_tokens" in row_keys else None,
+        "api_call_count": row["api_call_count"] if "api_call_count" in row_keys else None,
+        "tool_call_count": row["tool_call_count"] if "tool_call_count" in row_keys else None,
+        "cost_usd": cost,
+    }
+
+
 def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
     """Single-database body of ``list_parents_with_subagent_children``."""
     if not db_path.exists():
         return []
-    # Stat columns beyond the original id/source/.../ended_at set — live
-    # tracking (onSpawn/onToolActivity/onComplete WS events) populates
-    # model/tokens/cost in real time while a subagent is active, but that
-    # in-memory state is gone after a page reload or once enough time has
-    # passed that the tab re-fetched from scratch, silently degrading the
-    # rebuilt tree to a bare status dot. Pulling these from state.db closes
-    # that gap. Checked against the live schema first (not just wrapped in
-    # the outer try/except) so an older state.db missing one of these
-    # newer columns still returns the base fields instead of the whole
-    # query failing and returning nothing.
-    _STAT_COLUMNS = (
-        "model", "input_tokens", "output_tokens", "reasoning_tokens",
-        "api_call_count", "tool_call_count", "estimated_cost_usd", "actual_cost_usd",
-    )
     try:
         with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            available = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
-            stat_cols = [c for c in _STAT_COLUMNS if c in available]
-            select_cols = "id, source, parent_session_id, title, started_at, ended_at"
-            if stat_cols:
-                select_cols += ", " + ", ".join(stat_cols)
+            select_cols = _select_columns(conn)
             cur = conn.execute(
                 f"SELECT {select_cols} FROM sessions WHERE parent_session_id IS NOT NULL "
                 "ORDER BY started_at DESC LIMIT ?",
@@ -197,28 +236,7 @@ def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
     child_ids: set[str] = set()
     for row in rows:
         pid = row["parent_session_id"]
-        started_at = row["started_at"] or 0.0
-        row_keys = row.keys()
-        cost = None
-        if "actual_cost_usd" in row_keys and row["actual_cost_usd"] is not None:
-            cost = row["actual_cost_usd"]
-        elif "estimated_cost_usd" in row_keys and row["estimated_cost_usd"] is not None:
-            cost = row["estimated_cost_usd"]
-        children_by_parent.setdefault(pid, []).append({
-            "session_id": row["id"],
-            "parent_session_id": pid,
-            "title": row["title"],
-            "started_at": started_at,
-            "ended_at": row["ended_at"],
-            "status": "completed" if row["ended_at"] else "running",
-            "model": row["model"] if "model" in row_keys else None,
-            "input_tokens": row["input_tokens"] if "input_tokens" in row_keys else None,
-            "output_tokens": row["output_tokens"] if "output_tokens" in row_keys else None,
-            "reasoning_tokens": row["reasoning_tokens"] if "reasoning_tokens" in row_keys else None,
-            "api_call_count": row["api_call_count"] if "api_call_count" in row_keys else None,
-            "tool_call_count": row["tool_call_count"] if "tool_call_count" in row_keys else None,
-            "cost_usd": cost,
-        })
+        children_by_parent.setdefault(pid, []).append(_session_node_dict(row))
         child_ids.add(row["id"])
 
     def collect_descendants(sid: str, depth: int = 0) -> list[dict]:
@@ -249,6 +267,119 @@ def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
 
     parents.sort(key=lambda e: e["latest_at"], reverse=True)
     return parents[:limit]
+
+
+def cron_session_id_prefix(job_id: str) -> str:
+    """Prefix every state.db session row for one cron job's runs starts with.
+
+    The agent's scheduler names a run's session ``cron_<job_id>_<stamp>``;
+    ``_latest_cron_session_info_for_jobs`` in api/routes.py matches the same
+    shape. Kept here as one named constant-builder so the delegation lookup
+    and that sidebar lookup cannot drift apart.
+    """
+    return f"cron_{job_id}_"
+
+
+def list_cron_run_trees(
+    db_path: "Path | list[Path]", job_id: str, scan_limit: int = 100
+) -> list[dict]:
+    """Return one delegation tree per recorded run of a cron job, newest first.
+
+    A scheduled job's run is a normal Hermes session (``source='cron'``, id
+    ``cron_<job_id>_<stamp>``), so anything it delegated to is an ordinary
+    subagent row parented to that session — the exact same structure Agent
+    Canvas draws for a chat. This returns, per run, the run session itself
+    plus every descendant with its real ``parent_session_id`` preserved, so
+    the frontend can rebuild proper nesting depth rather than a flat list.
+
+    ``scan_limit`` bounds how many of the job's newest runs are examined, not
+    how many are worth showing: most runs of most jobs delegate to nothing,
+    so a caller that wants "the last few runs that actually delegated" has to
+    look past them. The caller filters and caps what it renders.
+
+    Read-only and best-effort: returns ``[]`` on any failure, since this
+    backs a supplementary diagram, never the page's primary content.
+    """
+    paths = [db_path] if isinstance(db_path, Path) else list(db_path)
+    runs: list[dict] = []
+    for path in paths:
+        runs.extend(_cron_run_trees_from_single_db(path, job_id, scan_limit))
+    runs.sort(key=lambda r: r.get("started_at") or 0, reverse=True)
+    return runs[:scan_limit]
+
+
+def _cron_run_trees_from_single_db(db_path: Path, job_id: str, scan_limit: int) -> list[dict]:
+    """Single-database body of ``list_cron_run_trees``."""
+    if not db_path.exists() or not job_id:
+        return []
+    prefix = cron_session_id_prefix(job_id)
+    capped = max(1, min(500, scan_limit))
+    try:
+        with closing(open_state_db_readonly(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            select_cols = _select_columns(conn)
+            # Range scan on the primary key rather than LIKE: a job id is
+            # user-visible data, and LIKE would treat any '_' in it as a
+            # single-character wildcard and pull in a different job's runs.
+            #
+            # The source/parent conditions matter as much as the prefix: a
+            # session spawned *by* a run can carry an id built from the run's
+            # own id, and without them such a descendant would be listed as a
+            # run of its own — and then re-listed as a child of the real run.
+            run_rows = conn.execute(
+                f"SELECT {select_cols} FROM sessions WHERE id >= ? AND id < ? "
+                "AND parent_session_id IS NULL "
+                "AND LOWER(COALESCE(source, '')) = 'cron' "
+                "ORDER BY COALESCE(started_at, 0) DESC LIMIT ?",
+                (prefix, prefix + "\uffff", capped),
+            ).fetchall()
+            if not run_rows:
+                return []
+            run_ids = [r["id"] for r in run_rows]
+            placeholders = ",".join("?" for _ in run_ids)
+            # Walk down from the run sessions instead of pulling every
+            # parented row in the DB: state.db holds every chat's subagents
+            # too, and a job's tree is a tiny slice of that.
+            descendant_rows = conn.execute(
+                f"""
+                WITH RECURSIVE tree(id) AS (
+                    SELECT id FROM sessions WHERE id IN ({placeholders})
+                    UNION
+                    SELECT s.id FROM sessions s JOIN tree t ON s.parent_session_id = t.id
+                )
+                SELECT {select_cols} FROM sessions
+                WHERE id IN (SELECT id FROM tree) AND parent_session_id IS NOT NULL
+                ORDER BY COALESCE(started_at, 0) ASC
+                """,
+                run_ids,
+            ).fetchall()
+    except Exception:
+        logger.debug("list_cron_run_trees query failed for %s", db_path, exc_info=True)
+        return []
+
+    children_by_parent: dict[str, list[dict]] = {}
+    for row in descendant_rows:
+        children_by_parent.setdefault(row["parent_session_id"], []).append(
+            _session_node_dict(row)
+        )
+
+    def collect_descendants(sid: str, depth: int = 0) -> list[dict]:
+        # Depth-capped defensively against a pathological cycle, same as
+        # list_parents_with_subagent_children's own walk.
+        if depth >= 12:
+            return []
+        out: list[dict] = []
+        for child in children_by_parent.get(sid, []):
+            out.append(child)
+            out.extend(collect_descendants(child["session_id"], depth + 1))
+        return out
+
+    runs = []
+    for row in run_rows:
+        run = _session_node_dict(row)
+        run["children"] = collect_descendants(run["session_id"])
+        runs.append(run)
+    return runs
 
 
 MESSAGING_SOURCES = {

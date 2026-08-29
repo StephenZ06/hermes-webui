@@ -14854,6 +14854,13 @@ def handle_get(handler, parsed) -> bool:
             _ensure_agent_cron_import_path()
             return _handle_cron_history(handler, parsed)
 
+    if parsed.path == "/api/crons/delegation":
+        from api.profiles import cron_profile_context
+
+        with cron_profile_context():
+            _ensure_agent_cron_import_path()
+            return _handle_cron_delegation(handler, parsed)
+
     if parsed.path == "/api/crons/run":
         from api.profiles import cron_profile_context
 
@@ -22739,6 +22746,53 @@ def _handle_cron_history(handler, parsed):
             except OSError:
                 logger.debug("Failed to stat cron output file %s", f)
     return j(handler, {"job_id": job_id, "runs": runs, "total": total, "offset": offset})
+
+
+def _handle_cron_delegation(handler, parsed):
+    """Return the delegation tree of each recorded run of one cron job.
+
+    Backs the Scheduled-jobs page's delegation diagram, which reuses Agent
+    Canvas's tree renderer. A cron run is a normal Hermes session, so its
+    subagents are ordinary parented rows in state.db — see
+    ``list_cron_run_trees()``. Read-only and best-effort: a state.db that
+    cannot be read yields an empty run list, never a page-level error, since
+    the diagram is supplementary to the job's own details.
+    """
+    import re as _re
+
+    from api.agent_sessions import list_cron_run_trees, resolve_agent_state_db_paths
+
+    qs = parse_qs(parsed.query)
+    job_id = qs.get("job_id", [""])[0]
+    if not job_id:
+        return j(handler, {"error": "job_id required"}, status=400)
+    # Same shape check the run-history endpoints use — a cron job_id is a
+    # 12-char hex id from the agent's scheduler.
+    if not _re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", job_id) or job_id in (".", ".."):
+        return j(handler, {"error": "invalid job_id"}, status=400)
+    try:
+        limit = max(1, min(50, int(qs.get("limit", ["10"])[0])))
+    except (ValueError, TypeError):
+        return j(handler, {"error": "limit must be an integer"}, status=400)
+    # Most runs of most jobs delegate to nothing, so "the newest `limit` runs"
+    # is the wrong window: an hourly job's last ten runs can all be childless
+    # while yesterday's delegated, and the page would report that the job has
+    # never delegated. Scan a wider slice of runs and return only the ones
+    # that actually have a tree, plus how many runs were seen so the page can
+    # tell "has never run" apart from "has run, none of them delegated".
+    scan_limit = min(500, max(100, limit * 10))
+    try:
+        scanned = list_cron_run_trees(resolve_agent_state_db_paths(), job_id, scan_limit)
+    except Exception as e:
+        logger.debug("GET /api/crons/delegation failed", exc_info=True)
+        return j(handler, {"job_id": job_id, "runs": [], "run_count": 0, "error": str(e)}, status=502)
+    delegating = [run for run in scanned if run.get("children")][:limit]
+    return j(handler, {
+        "job_id": job_id,
+        "runs": delegating,
+        "run_count": len(scanned),
+        "scan_limit": scan_limit,
+    })
 
 
 def _handle_cron_run_detail(handler, parsed):

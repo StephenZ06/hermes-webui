@@ -56,6 +56,7 @@
   let _renderQueued = false;
   let _lastActivityAt = 0;
   let _liveTimer = null;
+  let _tickTimer = null;
   // 'live' tracks the real active session via SSE + reconcile() polling.
   // 'history' shows a frozen diagram rebuilt from state.db for a finished
   // chat clicked in the sidebar — see renderSidebar()/showHistoricalTree().
@@ -105,6 +106,20 @@
     if(n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
     if(n >= 1000) return (n / 1000).toFixed(1) + 'k';
     return String(n);
+  }
+
+  // What the card's terminal-style activity line shows: the live "current
+  // task" (last tool call's preview) while running, or the completion
+  // summary once terminal — falling back to the last tool activity when a
+  // subagent finished without ever setting a summary, so a completed card
+  // never goes blank.
+  function cardActivityText(node){
+    const liveText = node.lastTool ? (node.lastTool.preview || node.lastTool.tool || '') : '';
+    if(TERMINAL_STATUSES.has(node.status)){
+      const text = node.summary || liveText;
+      return text ? text.trim().replace(/\s+/g, ' ') : '';
+    }
+    return liveText.trim().replace(/\s+/g, ' ');
   }
 
   function liveDuration(node){
@@ -163,9 +178,12 @@
     root.status = hasActive ? 'orchestrating' : 'idle';
   }
 
-  function childrenOf(id){
+  // `nodes` defaults to the live map, but a frozen diagram rendered outside
+  // this page (renderStaticTree(), used by the Scheduled jobs page) passes
+  // its own map so it can be drawn without disturbing live state.
+  function childrenOf(id, nodes){
     const out = [];
-    for(const n of _nodes.values()){
+    for(const n of (nodes || _nodes).values()){
       if(n.subagent_id !== ROOT_ID && (n.parent_id || ROOT_ID) === id) out.push(n);
     }
     out.sort((a, b) => (a.spawnedAt || 0) - (b.spawnedAt || 0));
@@ -298,23 +316,33 @@
   // still while only the newly-known trunk/subagents animate in.
   let _suppressRootPopOnce = false;
 
-  function buildCard(node, staggerIndex, baseDelayMs){
+  // ctx (optional) makes the card builders reusable outside the live canvas:
+  // { nodes } is the map children are resolved against and { interactive }
+  // false drops selection/click wiring for a read-only embedded diagram.
+  function buildCard(node, staggerIndex, baseDelayMs, ctx){
+    const nodes = (ctx && ctx.nodes) || _nodes;
+    const interactive = !ctx || ctx.interactive !== false;
     const isRoot = !!node._isRoot;
     const dur = liveDuration(node);
     const statusText = STATUS_LABEL[node.status] || node.status;
-    const kids = childrenOf(node.subagent_id);
+    const kids = childrenOf(node.subagent_id, nodes);
+    const showDur = dur != null && !(isRoot && node.status === 'idle');
     const statCells = [];
     if(node.toolCount) statCells.push(`<span class="agent-canvas-stat"><svg class="agent-canvas-stat-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg>${node.toolCount}</span>`);
     if(node.inputTokens || node.outputTokens) statCells.push(`<span class="agent-canvas-stat">${fmtTokens((node.inputTokens||0)+(node.outputTokens||0))} tok</span>`);
     if(node.costUsd != null) statCells.push(`<span class="agent-canvas-stat">${fmtCost(node.costUsd)}</span>`);
-    if(dur != null && !(isRoot && node.status === 'idle')) statCells.push(`<span class="agent-canvas-stat">${fmtDuration(dur)}</span>`);
     if(kids.length) statCells.push(`<span class="agent-canvas-stat">${kids.length} child${kids.length===1?'':'ren'}</span>`);
+    const activityText = isRoot ? '' : cardActivityText(node);
 
     const card = document.createElement('div');
-    card.className = 'agent-canvas-card status-' + node.status + (isRoot ? ' is-conductor' : '') + (node.subagent_id === _selectedId ? ' selected' : '');
+    card.className = 'agent-canvas-card status-' + node.status + (isRoot ? ' is-conductor' : '')
+      + ((interactive && node.subagent_id === _selectedId) ? ' selected' : '')
+      + (interactive ? '' : ' is-static');
     card.dataset.subagentId = node.subagent_id;
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
+    if(interactive){
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+    }
     if(isRoot && _suppressRootPopOnce){
       card.style.animation = 'none';
       _suppressRootPopOnce = false;
@@ -325,28 +353,31 @@
     card.innerHTML = `
       <div class="agent-canvas-card-head">
         ${statusDotHtml(node.status)}
-        <span class="agent-canvas-card-label">${isRoot ? 'Conductor' : esc(shortLabel(node.goal))}</span>
+        <span class="agent-canvas-card-label">${isRoot ? esc(node.rootLabel || 'Conductor') : esc(shortLabel(node.goal))}</span>
       </div>
-      ${isRoot ? '<div class="agent-canvas-card-sub">Main Hermes session</div>' : (node.model ? `<div class="agent-canvas-card-sub">${esc(node.model)}</div>` : '')}
-      <div class="agent-canvas-card-status">${esc(statusText)}</div>
+      ${isRoot ? `<div class="agent-canvas-card-sub">${esc(node.rootSub || 'Main Hermes session')}</div>` : (node.model ? `<div class="agent-canvas-card-sub">${esc(node.model)}</div>` : '')}
+      <div class="agent-canvas-card-status">${esc(statusText)}${showDur ? ` <span class="agent-canvas-card-status-sep">•</span> <span class="agent-canvas-card-status-time" data-role="duration">${esc(fmtDuration(dur))}</span>` : ''}</div>
       ${statCells.length ? `<div class="agent-canvas-card-stats">${statCells.join('')}</div>` : ''}
+      ${activityText ? `<div class="agent-canvas-card-terminal">${esc(activityText.length > 160 ? activityText.slice(0, 159) + '…' : activityText)}</div>` : ''}
     `;
-    const open = () => selectNode(node.subagent_id);
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } });
+    if(interactive){
+      const open = () => selectNode(node.subagent_id);
+      card.addEventListener('click', open);
+      card.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } });
+    }
     return card;
   }
 
   // node here is always a real subagent (never the root — the root's card
   // and children row are built directly in renderTree()).
-  function buildBranch(node, staggerIndex, baseDelayMs){
+  function buildBranch(node, staggerIndex, baseDelayMs, ctx){
     const branch = document.createElement('div');
     branch.className = 'agent-canvas-branch';
-    branch.appendChild(buildCard(node, staggerIndex, baseDelayMs));
-    const kids = childrenOf(node.subagent_id);
+    branch.appendChild(buildCard(node, staggerIndex, baseDelayMs, ctx));
+    const kids = childrenOf(node.subagent_id, ctx && ctx.nodes);
     if(kids.length){
       const ownDelay = (baseDelayMs || 0) + (staggerIndex ? Math.min(staggerIndex, STAGGER_MAX_STEPS) * STAGGER_MS : 0);
-      branch.appendChild(buildChildrenRow(kids, !TERMINAL_STATUSES.has(node.status), ownDelay + TRUNK_DELAY_MS));
+      branch.appendChild(buildChildrenRow(kids, !TERMINAL_STATUSES.has(node.status), ownDelay + TRUNK_DELAY_MS, ctx));
     }
     return branch;
   }
@@ -360,7 +391,7 @@
   // once its own parent card has actually appeared (see buildBranch()) —
   // the line "grows" out of a card that's already on screen rather than
   // everything popping in together.
-  function buildChildrenRow(kids, flowing, baseDelayMs){
+  function buildChildrenRow(kids, flowing, baseDelayMs, ctx){
     const wrap = document.createElement('div');
     wrap.className = 'agent-canvas-children-wrap';
     const trunk = document.createElement('div');
@@ -373,7 +404,7 @@
     const row = document.createElement('div');
     row.className = 'agent-canvas-children';
     const cardBaseDelay = (baseDelayMs || 0) + CARD_REVEAL_OFFSET_MS;
-    kids.forEach((k, i) => row.appendChild(buildBranch(k, i, cardBaseDelay)));
+    kids.forEach((k, i) => row.appendChild(buildBranch(k, i, cardBaseDelay, ctx)));
     cluster.appendChild(row);
     wrap.appendChild(cluster);
     return wrap;
@@ -449,7 +480,7 @@
       ${node.model ? `<div class="agent-canvas-detail-row"><span>Model</span><span>${esc(node.model)}</span></div>` : ''}
       ${!node._isRoot ? `<div class="agent-canvas-detail-row"><span>Depth</span><span>${esc(node.depth)}</span></div>` : ''}
       ${(node.taskIndex != null && node.taskCount != null) ? `<div class="agent-canvas-detail-row"><span>Batch task</span><span>${esc(node.taskIndex + 1)} / ${esc(node.taskCount)}</span></div>` : ''}
-      ${(dur != null && !(node._isRoot && node.status === 'idle')) ? `<div class="agent-canvas-detail-row"><span>Duration</span><span>${esc(fmtDuration(dur))}</span></div>` : ''}
+      ${(dur != null && !(node._isRoot && node.status === 'idle')) ? `<div class="agent-canvas-detail-row"><span>Duration</span><span data-role="duration">${esc(fmtDuration(dur))}</span></div>` : ''}
       ${node.apiCalls ? `<div class="agent-canvas-detail-row"><span>API calls</span><span>${esc(node.apiCalls)}</span></div>` : ''}
       ${(node.inputTokens || node.outputTokens) ? `<div class="agent-canvas-detail-row"><span>Tokens</span><span>${esc(fmtTokens(node.inputTokens))} in / ${esc(fmtTokens(node.outputTokens))} out${node.reasoningTokens ? ' / ' + esc(fmtTokens(node.reasoningTokens)) + ' reasoning' : ''}</span></div>` : ''}
       ${node.costUsd != null ? `<div class="agent-canvas-detail-row"><span>Cost</span><span>${esc(fmtCost(node.costUsd))}</span></div>` : ''}
@@ -470,6 +501,30 @@
     if(interruptBtn) interruptBtn.onclick = () => interruptSubagent(node.subagent_id);
     const interruptBranchBtn = _detailEl.querySelector('[data-action="interrupt-branch"]');
     if(interruptBranchBtn) interruptBranchBtn.onclick = () => interruptBranch(node.subagent_id);
+  }
+
+  // Ticks the visible "Running • 12m 52s" duration text every second without
+  // going through render()/renderTree() — those wipe and rebuild the whole
+  // card tree (see the comment on selectNode()), which would retrigger every
+  // card's pop-in animation once a second. Only non-terminal nodes' duration
+  // moves, so this just patches those two text nodes in place.
+  function tickDurations(){
+    for(const node of _nodes.values()){
+      if(TERMINAL_STATUSES.has(node.status)) continue;
+      const dur = liveDuration(node);
+      if(dur == null) continue;
+      const text = fmtDuration(dur);
+      if(_treeEl){
+        const cardTimeEl = _treeEl.querySelector(
+          `.agent-canvas-card[data-subagent-id="${CSS.escape(node.subagent_id)}"] [data-role="duration"]`
+        );
+        if(cardTimeEl) cardTimeEl.textContent = text;
+      }
+      if(_detailEl && _selectedId === node.subagent_id){
+        const detailTimeEl = _detailEl.querySelector('[data-role="duration"]');
+        if(detailTimeEl) detailTimeEl.textContent = text;
+      }
+    }
   }
 
   function renderLivePill(){
@@ -631,6 +686,7 @@
     _pauseBtnEl.onclick = toggleSpawnPaused;
     if(!_liveTimer) _liveTimer = setInterval(renderLivePill, 5000);
     if(!_reconcileTimer) _reconcileTimer = setInterval(reconcile, 5000);
+    if(!_tickTimer) _tickTimer = setInterval(tickDurations, 1000);
     ensureRoot();
     reconcile();
     render();
@@ -781,7 +837,7 @@
   // search filter, which never needs a refetch.
   function _renderSidebarFromCache(listEl, allParents){
     if(!allParents.length){
-      listEl.innerHTML = '<div class="agent-canvas-sidebar-empty">No chats have delegated to subagents yet. Once Hermes runs a multi-agent task, it\'ll show up here — even after it finishes.</div>';
+      listEl.innerHTML = '<div class="agent-canvas-sidebar-empty"></div>';
       return;
     }
     const all = (typeof _allSessions !== 'undefined' && Array.isArray(_allSessions)) ? _allSessions : [];
@@ -913,14 +969,17 @@
 
   // ---- historical diagram (finished-state view for a past delegation) -----
 
-  function showHistoricalTree(parentEntry){
-    _nodes.clear();
-    _selectedId = null;
-    _feed = [];
-    const children = Array.isArray(parentEntry.children) ? parentEntry.children : [];
-    const firstStart = children.length ? Math.min(...children.map(c => c.started_at || Infinity)) : 0;
-    const lastEnd = children.length ? Math.max(...children.map(c => c.ended_at || 0)) : 0;
-    _nodes.set(ROOT_ID, {
+  // Rebuilds a finished delegation tree as a node map from the state.db-backed
+  // child rows /api/agent-canvas/sessions and /api/crons/delegation both
+  // return. Kept separate from showHistoricalTree() so the Scheduled jobs
+  // page can draw the same diagram (renderStaticTree()) from the same shape
+  // without touching this module's live state.
+  function buildTreeNodes(parentSessionId, children, rootPatch){
+    const nodes = new Map();
+    const kids = Array.isArray(children) ? children : [];
+    const firstStart = kids.length ? Math.min(...kids.map(c => c.started_at || Infinity)) : 0;
+    const lastEnd = kids.length ? Math.max(...kids.map(c => c.ended_at || 0)) : 0;
+    nodes.set(ROOT_ID, Object.assign({
       subagent_id: ROOT_ID, parent_id: null, depth: -1,
       goal: 'Main session', model: '', status: 'completed',
       toolCount: 0, tools: [], lastTool: null,
@@ -930,14 +989,14 @@
       completedAt: lastEnd ? lastEnd * 1000 : null,
       durationSeconds: (firstStart && Number.isFinite(firstStart) && lastEnd) ? (lastEnd - firstStart) : null,
       _isRoot: true,
-    });
-    for(const c of children){
+    }, rootPatch || {}));
+    for(const c of kids){
       // Direct children of the clicked chat map to the root (childrenOf()
       // treats a null parent_id as ROOT_ID); a nested grandchild keeps its
       // real parent so it nests under its own parent card, reconstructing
       // the same multi-level tree nested delegation actually produced.
-      const isDirectChild = c.parent_session_id === parentEntry.parent_session_id;
-      _nodes.set(c.session_id, {
+      const isDirectChild = c.parent_session_id === parentSessionId;
+      nodes.set(c.session_id, {
         subagent_id: c.session_id,
         parent_id: isDirectChild ? null : c.parent_session_id,
         depth: 0,
@@ -964,9 +1023,48 @@
         durationSeconds: (c.started_at && c.ended_at) ? (c.ended_at - c.started_at) : null,
       });
     }
+    return nodes;
+  }
+
+  function showHistoricalTree(parentEntry){
+    _nodes.clear();
+    _selectedId = null;
+    _feed = [];
+    const nodes = buildTreeNodes(parentEntry.parent_session_id, parentEntry.children);
+    for(const [id, node] of nodes) _nodes.set(id, node);
     _viewMode = 'history';
     _suppressRootPopOnce = true;
     render();
+  }
+
+  // Draws a read-only delegation diagram into any container, from the same
+  // child-row shape the history sidebar uses. No selection, no live polling,
+  // no shared state with the live canvas — the Scheduled jobs page renders
+  // one of these per cron run (see _renderCronDelegation() in panels.js).
+  //
+  // opts: { parentSessionId, children[], rootLabel, rootSub, rootStatus, root }
+  // `root` carries any further node fields for the root card (duration,
+  // token/cost stats) so a caller with real numbers for it — a cron run row,
+  // say — shows them instead of the totals derived from its children.
+  function renderStaticTree(container, opts){
+    if(!container) return;
+    const o = opts || {};
+    const nodes = buildTreeNodes(o.parentSessionId, o.children, Object.assign({
+      rootLabel: o.rootLabel || 'Conductor',
+      rootSub: o.rootSub || '',
+      status: o.rootStatus || 'completed',
+    }, o.root || {}));
+    const ctx = { nodes: nodes, interactive: false };
+    const root = nodes.get(ROOT_ID);
+    container.innerHTML = '';
+    const rootCol = document.createElement('div');
+    rootCol.className = 'agent-canvas-root-col';
+    rootCol.appendChild(buildCard(root, 0, 0, ctx));
+    const kids = childrenOf(ROOT_ID, nodes);
+    if(kids.length){
+      rootCol.appendChild(buildChildrenRow(kids, !TERMINAL_STATUSES.has(root.status), 0, ctx));
+    }
+    container.appendChild(rootCol);
   }
 
   // "View" on the Agent Canvas sidebar's Canvas card — leaves whatever
@@ -984,7 +1082,7 @@
     render();
   }
 
-  window.AgentCanvas = { mount, onSpawn, onToolActivity, onComplete, reset, renderSidebar, returnToLiveView, filterAgentCanvasSessions, clearAgentCanvasSearch };
+  window.AgentCanvas = { mount, onSpawn, onToolActivity, onComplete, reset, renderSidebar, returnToLiveView, filterAgentCanvasSessions, clearAgentCanvasSearch, renderStaticTree };
 })();
 
 // Small global wrappers so the sidebar search box's oninput/onclick

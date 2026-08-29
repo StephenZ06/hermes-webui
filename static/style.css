@@ -1530,7 +1530,12 @@
   .app-titlebar-left{display:flex;align-items:center;gap:4px;}
   .app-titlebar-inner{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;justify-content:center;}
   /* Profile switcher — optional, opt-in via settings; sits in the titlebar left flex group */
-  .app-titlebar-profile{display:inline-flex;align-items:center;gap:4px;height:28px;flex-shrink:0;background:none;border:1px solid var(--border2);color:var(--muted);border-radius:6px;cursor:pointer;padding:0 8px;-webkit-tap-highlight-color:transparent;transition:background-color .15s,color .15s,border-color .15s;font-size:11px;font-weight:500;white-space:nowrap;-webkit-app-region:no-drag;}
+  /* margin-inline-end, not a gap on .app-titlebar-left: the left group is
+     always in the DOM (empty on desktop when the switcher is off), so a gap
+     there would shift the centred title even with no button rendered. This
+     button only renders above 900px, where the hamburger beside it is
+     hidden, so the margin never doubles up as sibling spacing. */
+  .app-titlebar-profile{display:inline-flex;align-items:center;gap:4px;margin-inline-end:14px;height:28px;flex-shrink:0;background:none;border:1px solid var(--border2);color:var(--muted);border-radius:6px;cursor:pointer;padding:0 8px;-webkit-tap-highlight-color:transparent;transition:background-color .15s,color .15s,border-color .15s;font-size:11px;font-weight:500;white-space:nowrap;-webkit-app-region:no-drag;}
   .app-titlebar-profile:hover{background:var(--hover-bg);color:var(--text);border-color:var(--border);}
   .app-titlebar-profile.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg-strong);}
   .app-titlebar-profile.switching{opacity:.6;pointer-events:none;}
@@ -5521,6 +5526,25 @@ main.main > #mainPlugin{display:none;}
 @keyframes agent-canvas-dot-pulse{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);}50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 10%,transparent);}}
 @media (prefers-reduced-motion:reduce){.agent-canvas-dot.status-running,.agent-canvas-dot.status-orchestrating,.agent-canvas-dot.status-idle,.agent-canvas-live-pill.is-live{animation:none;}}
 
+/* Delegation diagram embedded in a Scheduled job's detail page. The cards,
+   trunks and clusters are the Agent Canvas components above, unchanged —
+   only the frame around them is local: a scroll box sized for a detail card
+   instead of the canvas page's full-height pane. */
+.cron-delegation-runs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.cron-delegation-run{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px;border:1px solid var(--border2);background:var(--surface-subtle);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.cron-delegation-run:hover{background:var(--hover-bg);color:var(--text);}
+.cron-delegation-run.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg-strong);}
+.cron-delegation-run-when{font-variant-numeric:tabular-nums;}
+.cron-delegation-run-count{font-family:var(--font-mono);font-size:9.5px;padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--border) 55%,transparent);}
+/* The height bound is what makes overflow:auto mean anything here: a deeply
+   nested tree is as tall as the delegation went, and without a cap the card
+   grows to match and pushes the run-output card off the page. Bounded, the
+   diagram scrolls inside its own box and the cards below stay reachable. */
+.cron-delegation-canvas{overflow:auto;max-height:min(60vh,520px);padding:18px 8px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--surface-subtle) 40%,transparent);}
+/* A card in an embedded diagram is a read-only node, not a control: no
+   pointer, no hover lift, no focus ring. */
+.agent-canvas-card.is-static{cursor:default;}
+.agent-canvas-card.is-static:hover{border-color:var(--border2);transform:none;box-shadow:0 1px 2px rgba(0,0,0,.06),0 4px 10px -6px rgba(0,0,0,.16);}
 .agent-canvas-side{flex:0 0 300px;min-width:0;display:flex;flex-direction:column;border-left:1px solid var(--border);overflow:hidden;}
 .agent-canvas-detail{flex:0 0 auto;max-height:55%;overflow-y:auto;padding:14px;border-bottom:1px solid var(--border);}
 .agent-canvas-detail-empty{color:var(--muted);font-size:12px;padding:4px 0;}

@@ -41,6 +41,9 @@ let _cronList = null; // cached cron jobs (array)
 let _currentCronDetail = null; // full cron job object
 let _currentCronDetailKey = '';
 let _cronMode = 'empty'; // 'empty' | 'read' | 'create' | 'edit'
+let _cronDelegationRuns = [];   // runs of the open job that delegated, newest first
+let _cronDelegationRunCount = 0; // runs the backend scanned, delegating or not
+let _cronDelegationSelected = 0; // index into _cronDelegationRuns of the run being diagrammed
 let _cronPreFormDetail = null; // snapshot of prior selection when entering a form
 let _showAllCronProfiles = false;
 let _cronOtherProfileCount = 0;
@@ -1303,6 +1306,16 @@ function _renderCronDetail(job){
   const outputTitle = _cronOutputTitle(job);
   const skillsRow = isNoAgent ? '' : `<div class="detail-row"><div class="detail-row-label">${esc(t('cron_skills_label') || 'Skills')}</div><div class="detail-row-value">${esc(skills)}</div></div>`;
   const instructionCard = isNoAgent ? _cronScriptCardHtml(job) : _cronAgentPromptCardHtml(job);
+  // Script-mode jobs shell out; they never run an agent, so there is no
+  // delegation tree to draw and the card would only ever say "nothing here".
+  // A read-only job belongs to another profile whose state.db this profile
+  // cannot read, same as its live output above.
+  const showDelegation = !isNoAgent && !isReadOnly;
+  const delegationCard = showDelegation ? `
+      <div class="detail-card cron-delegation-card" id="cronDelegationCard">
+        <div class="detail-card-title">${esc(t('cron_delegation_title') || 'Delegation')}</div>
+        <div style="color:var(--muted);font-size:12px">${esc(t('loading') || 'Loading')}</div>
+      </div>` : '';
   body.innerHTML = `
     <div class="main-view-content">
       ${attentionBanner}
@@ -1323,6 +1336,7 @@ function _renderCronDetail(job){
         ${lastError}
       </div>
       ${instructionCard}
+      ${delegationCard}
       <div class="detail-card ${!isReadOnly && _cronNewJobIds.has(String(job.id)) ? 'has-new-run' : ''}" id="cronDetailRuns">
         <div class="detail-card-title">${esc(outputTitle)}</div>
         <div style="color:var(--muted);font-size:12px">${esc(isReadOnly ? 'Live output is available only when this profile is active here.' : (t('loading') || 'Loading'))}</div>
@@ -1334,6 +1348,97 @@ function _renderCronDetail(job){
   _setCronHeaderButtons('read', job);
   // Load runs asynchronously
   if (!isReadOnly) _loadCronDetailRuns(job.id, _currentCronDetailKey);
+  _cronDelegationRuns = [];
+  _cronDelegationRunCount = 0;
+  _cronDelegationSelected = 0;
+  if (showDelegation) _loadCronDelegation(job.id, _currentCronDetailKey);
+}
+
+// The delegation diagram for a scheduled job: each recorded run of the job is
+// a real Hermes session, so anything it delegated to is an ordinary subagent
+// tree hanging off it — the same structure Agent Canvas draws for a chat.
+// This reuses that page's renderer (AgentCanvas.renderStaticTree) rather than
+// drawing a second, subtly different tree, so both stay in step.
+async function _loadCronDelegation(jobId, detailKey){
+  let runs = [];
+  let runCount = 0;
+  try {
+    const data = await api(`/api/crons/delegation?job_id=${encodeURIComponent(jobId)}&limit=10`, { timeoutToast: false });
+    // The backend already dropped the runs that delegated to nothing and
+    // reports how many it looked at, so the card can tell "never run" apart
+    // from "ran, never delegated" without shipping every childless run.
+    runs = Array.isArray(data && data.runs) ? data.runs : [];
+    runCount = Number(data && data.run_count) || 0;
+  } catch(_e) {
+    // Best-effort: a state.db this deployment cannot read must leave the
+    // rest of the job's detail intact, not blank the page.
+    runs = [];
+    runCount = 0;
+  }
+  if (!_cronDetailMatches(jobId, detailKey)) return;
+  _cronDelegationRuns = runs;
+  _cronDelegationRunCount = runCount;
+  _cronDelegationSelected = 0;
+  _renderCronDelegationCard();
+}
+
+function _renderCronDelegationCard(){
+  const card = $('cronDelegationCard');
+  if (!card) return;
+  const title = esc(t('cron_delegation_title') || 'Delegation');
+  const runs = _cronDelegationRuns;
+  if (!runs.length) {
+    const hint = _cronDelegationRunCount
+      ? (t('cron_delegation_none') || "None of this job's recent runs delegated to a subagent. Runs that spawn subagents show their delegation tree here.")
+      : (t('cron_delegation_no_runs') || 'No runs recorded yet. Once this job runs and delegates to subagents, its delegation tree is drawn here.');
+    card.innerHTML = `<div class="detail-card-title">${title}</div>
+      <div style="color:var(--muted);font-size:12px">${esc(hint)}</div>`;
+    return;
+  }
+  if (_cronDelegationSelected >= runs.length) _cronDelegationSelected = 0;
+  const active = runs[_cronDelegationSelected];
+  const picker = runs.length > 1
+    ? `<div class="cron-delegation-runs" role="tablist">${runs.map((run, i) => `
+        <button type="button" class="cron-delegation-run${i === _cronDelegationSelected ? ' active' : ''}" role="tab" aria-selected="${i === _cronDelegationSelected}" onclick="selectCronDelegationRun(${i})">
+          <span class="cron-delegation-run-when">${esc(run.started_at ? new Date(run.started_at * 1000).toLocaleString() : (t('not_available') || 'n/a'))}</span>
+          <span class="cron-delegation-run-count">${run.children.length}</span>
+        </button>`).join('')}</div>`
+    : '';
+  card.innerHTML = `<div class="detail-card-title">${title}</div>
+    ${picker}
+    <div class="cron-delegation-canvas"><div class="agent-canvas-tree" id="cronDelegationTree"></div></div>`;
+  const treeEl = $('cronDelegationTree');
+  if (treeEl && window.AgentCanvas && typeof window.AgentCanvas.renderStaticTree === 'function') {
+    const label = active.started_at
+      ? new Date(active.started_at * 1000).toLocaleString()
+      : (_currentCronDetail && _currentCronDetail.name) || 'Run';
+    window.AgentCanvas.renderStaticTree(treeEl, {
+      parentSessionId: active.session_id,
+      children: active.children,
+      rootLabel: label,
+      rootSub: t('cron_delegation_root_sub') || 'Scheduled run',
+      // A run row with no ended_at is genuinely still executing — unlike the
+      // history sidebar's finished chats, a cron job can be mid-run right now.
+      rootStatus: active.ended_at ? 'completed' : 'running',
+      root: {
+        toolCount: active.tool_call_count || 0,
+        inputTokens: active.input_tokens || 0,
+        outputTokens: active.output_tokens || 0,
+        reasoningTokens: active.reasoning_tokens || 0,
+        apiCalls: active.api_call_count || 0,
+        costUsd: active.cost_usd != null ? active.cost_usd : null,
+        spawnedAt: (active.started_at || 0) * 1000,
+        completedAt: active.ended_at ? active.ended_at * 1000 : null,
+        durationSeconds: (active.started_at && active.ended_at) ? (active.ended_at - active.started_at) : null,
+      },
+    });
+  }
+}
+
+function selectCronDelegationRun(index){
+  if (_cronDelegationSelected === index) return;
+  _cronDelegationSelected = index;
+  _renderCronDelegationCard();
 }
 
 function _setCronHeaderButtons(mode, job) {
@@ -2056,6 +2161,11 @@ function _startCronWatch(jobId, detailKey) {
         _stopCronWatch();
         if (_cronDetailMatches(jobId, detailKey)) {
           _loadCronDetailRuns(jobId, detailKey);
+          // The run that just finished may have delegated — refresh the
+          // diagram with the output, not only on the next visit to the job.
+          if (!_isCronScriptJob(_currentCronDetail) && !(_currentCronDetail && _currentCronDetail.read_only)) {
+            _loadCronDelegation(jobId, detailKey);
+          }
         }
         return;
       }
