@@ -13622,7 +13622,12 @@ def handle_get(handler, parsed) -> bool:
             logger.debug("GET /api/agent-canvas/sessions failed", exc_info=True)
             return j(handler, {"parents": [], "error": str(e)}, status=502)
         try:
-            from api.profiles import get_active_profile_name, _profiles_match
+            # No `from api.profiles import ...` here: both helpers are already
+            # imported at module scope (see the re-export block near the top),
+            # and a function-level import of the same names makes them locals
+            # of this whole handler. Every earlier branch that used the bare
+            # name then read an unassigned local instead of the module one --
+            # GET /api/projects raised NameError on every call because of it.
             from api.models import all_sessions
 
             active_profile = get_active_profile_name()
