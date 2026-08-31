@@ -49,12 +49,12 @@ def test_chat_folder_row_is_the_same_height_as_a_canvas_folder_row():
     """Both views render `.project-chip.project-folder-row` inside
     `.project-folder-list`, so they share padding and font size. The chat row
     additionally carries a kebab button, and while that button was 20px tall it
-    -- not the row's text -- set the row height, making chat rows taller than
-    Agent Canvas rows. At 18px the kebab matches the chevron and the text line
-    box becomes the tallest child in both, so the two measure identically
-    (33.19px at the default font size, verified in a browser).
+    -- not the row's text -- set the row height. Both the kebab and the chevron
+    are 16px so the text line box is the tallest child again and the padding
+    actually controls the row height: 24px at the default font size, measured on
+    the real rendered rows in both views.
     """
-    assert ".project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:4px 8px;" in STYLE_CSS, (
+    assert ".project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:3px 8px;" in STYLE_CSS, (
         "both views share this selector, so the row height must be set here or they diverge"
     )
     # Coarse pointers keep a real touch target; shrinking the row is a mouse-density
@@ -62,13 +62,13 @@ def test_chat_folder_row_is_the_same_height_as_a_canvas_folder_row():
     assert ".project-folder-list .project-chip{padding:9px 8px;min-height:40px;}" in STYLE_CSS, (
         "the touch-target override must survive the desktop density change"
     )
-    assert ".project-folder-kebab{width:18px;height:18px;" in STYLE_CSS, (
+    assert ".project-folder-kebab{width:16px;height:16px;" in STYLE_CSS, (
         "a kebab taller than the row's text line box silently drives the row height"
     )
     assert ".project-folder-chevron{" in STYLE_CSS
     chevron = STYLE_CSS[STYLE_CSS.index(".project-folder-chevron{"):]
     chevron = chevron[:chevron.index("}")]
-    assert "width:18px;height:18px" in chevron, "chevron and kebab should match"
+    assert "width:16px;height:16px" in chevron, "chevron and kebab should match"
 
 
 def test_folder_row_has_a_press_state_and_a_matched_chevron_curve():
