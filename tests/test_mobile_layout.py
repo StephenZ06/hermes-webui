@@ -476,11 +476,18 @@ def test_mobile_sidebar_edge_guard_claims_body_edge_only():
     assert guard.get("top") == "calc(52px + var(--app-titlebar-safe-top))", (
         "edge guard should start below the PWA titlebar so it does not block hamburger"
     )
-    assert guard.get("width") == "24px"
-    assert guard.get("pointer-events") == "none", (
-        "edge guard must be pointer-events:none so taps/vertical scrolls starting in the "
-        "strip fall through to the .messages scroller; the edge-swipe gesture is handled by "
-        "window-level capture listeners, not by the guard intercepting hit-testing (#4660 review)"
+    assert guard.get("width") == "30px", (
+        "WebKit's edge swipe-back recognizer covers roughly the first 30pt; a narrower "
+        "strip lets touches past the guard and straight into the back gesture"
+    )
+    assert guard.get("pointer-events") == "auto", (
+        "edge guard must receive the touchstart so boot.js can preventDefault() it -- that "
+        "is the only thing that stops WebKit starting its own swipe-back in an installed "
+        "iOS PWA. boot.js hands the strip's default behaviour back by hand (tap replay + "
+        "forwarded scrolling), so this does not create a dead gutter"
+    )
+    assert guard.get("touch-action") == "none", (
+        "the browser must not claim an axis in the strip before the JS gesture does"
     )
     assert guard.get("z-index") == "198", (
         "edge guard should sit below the full-screen sidebar but above the page body"

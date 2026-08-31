@@ -8,12 +8,11 @@ STYLE_CSS = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 
 def test_pwa_edge_swipe_gesture_is_registered_for_mobile_sidebar():
     assert "function _installPwaSidebarSwipeGesture" in BOOT_JS
-    # #4660 review (Codex CORE): the guard element must NOT have its own touch
-    # listener — it's pointer-events:none and the window-level capture handlers
-    # below see the edge swipe regardless, so taps/scrolls starting in the strip
-    # pass through to the app instead of being intercepted.
-    assert "guard.addEventListener(" not in BOOT_JS
-    assert "_onPwaSidebarEdgeGuardStart" not in BOOT_JS
+    # The guard element MUST have its own non-passive touchstart listener: WebKit
+    # decides whether to start its edge swipe-back during the touchstart dispatch,
+    # so a preventDefault() from the drag handler's first touchmove is always too
+    # late. Scoped to the strip so the rest of the page keeps passive touchstart.
+    assert "guard.addEventListener('touchstart', _onPwaSidebarEdgeGuardStart, {passive:false})" in BOOT_JS
     assert "window.addEventListener('touchstart', _onPwaSidebarSwipeStart, {capture:true,passive:true})" in BOOT_JS
     assert "window.addEventListener('touchmove', _onPwaSidebarSwipeMove, {capture:true,passive:false})" in BOOT_JS
     assert "window.addEventListener('touchend', _onPwaSidebarSwipeEnd, {capture:true,passive:true})" in BOOT_JS
@@ -43,19 +42,68 @@ def test_pwa_sidebar_swipe_is_edge_gated_standalone_and_horizontal():
     assert ".messages" not in BOOT_JS[BOOT_JS.find("function _isInteractiveSwipeTarget"):BOOT_JS.find("function _openMobileSidebarFromGesture")]
 
 
-def test_pwa_sidebar_edge_guard_is_non_interactive_and_swipe_uses_window_capture():
-    # #4660 review (Codex CORE): the left edge guard must not intercept hit-testing.
-    # It is pointer-events:none (CSS) with NO dedicated touch listener, so taps and
-    # vertical scrolls starting in the strip fall through to the .messages scroller.
-    # The edge-swipe-to-open gesture is handled by window-level CAPTURE listeners,
-    # and _onPwaSidebarSwipeMove only preventDefaults once horizontal intent is set.
-    assert "_onPwaSidebarEdgeGuardStart" not in BOOT_JS, (
-        "the interactive edge-guard handler must be gone (guard is pointer-events:none)"
+def test_edge_guard_cancels_webkit_swipe_back_in_touchstart():
+    """The regression this file exists for: an iOS PWA left-edge swipe navigated
+    back instead of opening the drawer.
+
+    Root cause: WebKit commits to its interactive swipe-back during the
+    touchstart dispatch. The gesture's only preventDefault() lived in the move
+    handler and fired after ~10px of proven horizontal intent, so the browser had
+    already taken the touch. overscroll-behavior-x (the previous attempted fix)
+    governs Chromium overscroll navigation and does nothing here.
+    """
+    start = BOOT_JS[
+        BOOT_JS.find("function _onPwaSidebarEdgeGuardStart"):
+        BOOT_JS.find("function _onPwaSidebarEdgeGuardMove")
+    ]
+    assert start, "_onPwaSidebarEdgeGuardStart must exist"
+    assert "e.preventDefault()" in start, (
+        "the edge guard must preventDefault the touchstart itself; by touchmove "
+        "WebKit's navigation gesture is already running"
     )
-    assert "guard.addEventListener(" not in BOOT_JS
-    move = BOOT_JS[BOOT_JS.find("function _onPwaSidebarSwipeMove"):BOOT_JS.find("function _onPwaSidebarSwipeEnd")]
-    assert "_PWA_SIDEBAR_SWIPE_CLAIM" in move and "e.preventDefault()" in move, (
-        "horizontal-intent claim should preventDefault only inside the move handler"
+    assert "{passive:false}" in BOOT_JS[
+        BOOT_JS.find("function _installPwaSidebarSwipeGesture"):
+    ], "a passive listener cannot cancel the gesture"
+
+
+def test_edge_guard_gives_back_the_default_behaviour_it_swallows():
+    """Preventing touchstart kills taps and scrolling in the strip, so the strip
+    has to replay both by hand or it becomes a dead gutter down the left of every
+    chat -- which is why the guard was made pointer-events:none the last time."""
+    assert "function _replayEdgeGuardTap" in BOOT_JS
+    assert "MouseEvent('click'" in BOOT_JS
+    assert "function _elementBeneathEdgeGuard" in BOOT_JS
+    assert "guard.style.pointerEvents='none'" in BOOT_JS, (
+        "the guard must step out of hit-testing during the lookup or it finds itself"
+    )
+    assert "function _scrollableUnder" in BOOT_JS
+    assert "scrollTop-=step" in BOOT_JS.replace(" ", ""), (
+        "vertical drags starting in the strip must be forwarded to the scroller under it"
+    )
+    assert "function _flingScroller" in BOOT_JS, (
+        "forwarded scrolling without inertia stops dead on release"
+    )
+
+
+def test_drawer_settle_is_a_velocity_seeded_spring_with_css_fallback():
+    settle = BOOT_JS[
+        BOOT_JS.find("function _settleMobileSidebarDrag"):
+        BOOT_JS.find("function _springDrawerTo")
+    ]
+    assert "_springDrawerTo(" in settle
+    spring = BOOT_JS[BOOT_JS.find("function _springDrawerTo"):]
+    assert "type:'spring'" in spring
+    assert "velocity:(Number(velocityPxPerMs)||0)*1000" in spring, (
+        "the flick's own velocity must seed the spring, or the settle restarts from rest"
+    )
+    assert "prefersReducedMotion()" in spring and "return null" in spring, (
+        "no Motion / reduced motion must fall back to the CSS transition"
+    )
+    assert "_scheduleSidebarDragFrame" in BOOT_JS and "requestAnimationFrame" in BOOT_JS, (
+        "drag transform writes must be coalesced to one per painted frame"
+    )
+    assert "if(_sidebarSettleAnim)return;" in BOOT_JS, (
+        "an in-flight settle must not be cleaned up as a stranded drag"
     )
 
 

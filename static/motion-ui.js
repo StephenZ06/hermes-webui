@@ -25,6 +25,10 @@
   'use strict';
 
   const DUR = { fast: 0.18, base: 0.24, slow: 0.32 };
+  // One spring for every surface that appears — dialogs, menus, popovers — so
+  // they all arrive with the same weight instead of each carrying its own
+  // hand-tuned duration.
+  const ENTER_SPRING = { type: 'spring', stiffness: 620, damping: 38, mass: 0.9 };
   // Same decelerating curve the sidebar and workspace panel slides use, so
   // JS-driven and CSS-driven motion in the same view read as one system.
   const EASE = [0.22, 1, 0.36, 1];
@@ -127,20 +131,26 @@
     const isIn = direction !== 'out';
     el.style.willChange = 'transform, opacity';
     suspendTransition(el);
-    const controls = M.animate(
-      el,
-      isIn
-        ? { opacity: [0, 1], transform: [hidden, shown] }
-        : { opacity: [1, 0], transform: [shown, hidden] },
-      { duration: o.duration || (isIn ? DUR.base : DUR.fast), easing: isIn ? EASE : 'ease-in' }
-    );
+    const keyframes = isIn
+      ? { opacity: [0, 1], transform: [hidden, shown] }
+      : { opacity: [1, 0], transform: [shown, hidden] };
+    // Entrances get a spring so a surface arrives with some weight rather than
+    // easing to a stop; exits stay short and linear-ish, because a springy
+    // dismissal reads as hesitation. animateMini compiles both to WAAPI, which
+    // runs off the main thread — the same reason slidePanel uses it.
+    const options = isIn
+      ? (o.duration ? { duration: o.duration, easing: EASE } : ENTER_SPRING)
+      : { duration: o.duration || DUR.fast, easing: 'ease-in' };
+    const run = (typeof M.animateMini === 'function' && !o.forceJs) ? M.animateMini : M.animate;
+    const controls = run(el, keyframes, options);
     const done = (controls && controls.finished) || Promise.resolve();
     const settle = () => {
       if(isIn) clearInline(el);
       // An exit keeps its final opacity/transform (the node is about to be
       // hidden) but must never keep transition:none, or the element's own CSS
-      // animation would be dead the next time it is shown.
-      else if(el.style) el.style.transition = '';
+      // animation would be dead the next time it is shown — nor will-change,
+      // which would strand a compositor layer on a hidden element.
+      else if(el.style){ el.style.transition = ''; el.style.willChange = ''; }
     };
     return done.then(settle).catch(settle);
   }
@@ -233,6 +243,139 @@
     return Promise.resolve();
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Panel collapse / expand.
+  //
+  // The sidebar and the workspace panel used to collapse by transitioning
+  // `width` from 300px to 0. Width is a layout property, so the browser ran a
+  // full layout of the flex row — and therefore of the entire message list —
+  // on every frame of the animation. Measured with CDP Performance metrics on a
+  // 1440x900 desktop viewport:
+  //
+  //     800 messages, width transition : 137-173ms of layout over 11 frames
+  //                                      (12-16ms per frame — the whole budget)
+  //     800 messages, this function    : 6-8ms of layout total, 2-3 layouts
+  //
+  // The technique is FLIP with the panel taken out of flow. The state change is
+  // applied once, so layout runs once; the panel is pinned to its old rect with
+  // position:fixed so that single layout cannot make it jump or vanish; and both
+  // the panel and the main column are then carried to their new positions on
+  // composited transforms, which cost no layout at all.
+  //
+  // Everything is inline styling that is cleared on completion, and the whole
+  // thing degrades to calling apply() directly when Motion is missing or motion
+  // is reduced — the CSS width transition still exists and still works.
+  const PANEL_SPRING = { type: 'spring', stiffness: 460, damping: 44, mass: 1 };
+
+  // The panel's own CSS width transition has to be off BEFORE the state change,
+  // not after: with it live, the rect read straight after the class toggle
+  // returns a value from the first frame of the transition rather than the real
+  // final geometry, and every measurement downstream is wrong.
+  function freezePanel(el){
+    el.style.setProperty('transition', 'none', 'important');
+  }
+
+  function thawPanel(el){
+    // One forced read with transitions still off, so the geometry the element
+    // snaps back to when the inline pin is dropped is not itself transitioned.
+    try{ void el.offsetWidth; }catch(_){}
+    el.style.removeProperty('transition');
+  }
+
+  function pinPanel(el, rect){
+    // The collapsed rules use `width:0 !important`, so the pin has to be
+    // important too or the panel is zero-width the moment the class lands.
+    el.style.setProperty('position', 'fixed', 'important');
+    el.style.setProperty('left', rect.left + 'px', 'important');
+    el.style.setProperty('top', rect.top + 'px', 'important');
+    el.style.setProperty('width', rect.width + 'px', 'important');
+    el.style.setProperty('height', rect.height + 'px', 'important');
+    el.style.setProperty('opacity', '1', 'important');
+    el.style.setProperty('z-index', '6', 'important');
+  }
+
+  function unpinPanel(el){
+    ['position','left','top','width','height','opacity','z-index','transform']
+      .forEach(prop => el.style.removeProperty(prop));
+    thawPanel(el);
+  }
+
+  // Motion's main `animate()` drives these from JS, one style write per frame,
+  // and on the composer subtree that provokes a layout every frame (measured:
+  // 32 layouts / 58ms). `animateMini` compiles the same spring into a WAAPI
+  // animation that runs off the main thread, which does not (5-6 layouts / 9ms).
+  // So this uses animateMini and falls back to animate() only if it is missing.
+  function springTransform(el, fromTransform, toTransform){
+    const M = motionLib();
+    const keyframes = { transform: [fromTransform, toTransform] };
+    // The element's resting style is set to the END value, so when the WAAPI
+    // animation stops filling there is nothing to snap back to.
+    el.style.transform = toTransform === 'none' ? '' : toTransform;
+    if(M && typeof M.animateMini === 'function'){
+      return M.animateMini(el, keyframes, PANEL_SPRING);
+    }
+    return M.animate(el, keyframes, PANEL_SPRING);
+  }
+
+  // side: 'left' for the sidebar, 'right' for the workspace panel  // which way the panel leaves the viewport.
+  function slidePanel(panel, apply, opts){
+    const options = opts || {};
+    const side = options.side === 'right' ? 'right' : 'left';
+    const main = options.main || document.querySelector('.main');
+    if(typeof apply !== 'function') return;
+    if(!panel || !main || !enabled()){ apply(); return; }
+
+    let panelBefore, mainBefore, panelAfter, mainAfter;
+    try{
+      panelBefore = panel.getBoundingClientRect();
+      mainBefore = main.getBoundingClientRect();
+      freezePanel(panel);
+      apply(); // the one and only layout-invalidating step
+      panelAfter = panel.getBoundingClientRect();
+      mainAfter = main.getBoundingClientRect();
+    }catch(_){
+      try{ apply(); }catch(__){}
+      try{ thawPanel(panel); }catch(__){}
+      return;
+    }
+
+    const expanding = panelAfter.width > panelBefore.width;
+    const rect = expanding ? panelAfter : panelBefore;
+    if(Math.abs(panelAfter.width - panelBefore.width) < 1 || rect.width < 1){
+      thawPanel(panel);
+      return; // nothing actually moved
+    }
+
+    const offscreen = side === 'left' ? -rect.width : rect.width;
+    const panelFrom = expanding ? offscreen : 0;
+    const panelTo = expanding ? 0 : offscreen;
+    // How far the main column jumped when the state was applied. It is carried
+    // back and animated to zero so the content glides instead of popping.
+    const mainFrom = mainBefore.left - mainAfter.left;
+
+    pinPanel(panel, rect);
+    const running = [];
+    try{
+      running.push(springTransform(panel,
+        'translateX(' + panelFrom + 'px)', 'translateX(' + panelTo + 'px)'));
+      if(Math.abs(mainFrom) > 0.5){
+        running.push(springTransform(main, 'translateX(' + mainFrom + 'px)', 'none'));
+      }
+    }catch(_){
+      unpinPanel(panel);
+      main.style.transform = '';
+      return;
+    }
+
+    const settle = () => {
+      unpinPanel(panel);
+      main.style.transform = '';
+    };
+    Promise.all(running.map(a => {
+      try{ return a.finished; }catch(_){ return Promise.resolve(); }
+    })).then(settle, settle);
+  }
+
   window.MotionUI = {
     enabled,
     prefersReducedMotion,
@@ -240,6 +383,7 @@
     presence,
     lift,
     listChange,
+    slidePanel,
     DUR,
     EASE,
   };
