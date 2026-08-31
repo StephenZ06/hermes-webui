@@ -13,7 +13,19 @@
 
 services:
   hermes-webui:
-    build: .
+    build:
+      context: .
+      args:
+        # Cache-busting depends on this being a real value. Every asset URL is
+        # `?v=<this>` and the service worker names its cache `hermes-shell-<this>`,
+        # so with the Dockerfile's `unknown` default the version never changes,
+        # the URLs never change, the cache is never invalidated, and the browser
+        # keeps serving the first copy of style.css / *.js it ever cached — no
+        # matter how many times the image is rebuilt and the container recreated.
+        # `.git` is excluded from the build context (see .dockerignore), so the
+        # build cannot derive this itself; it has to be passed in:
+        #   HERMES_VERSION=$(git describe --tags --always --dirty) docker compose build
+        HERMES_VERSION: ${HERMES_VERSION:-unknown}
     ports:
     # select only one; use 127.0.0.1 version to expose to localhost only
       - "127.0.0.1:8787:8787"
