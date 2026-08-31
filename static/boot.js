@@ -258,7 +258,16 @@ function _setWorkspacePanelMode(mode){
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
   try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
-  layout.classList.toggle('workspace-panel-collapsed',!open);
+  if(_isCompactWorkspaceViewport()){
+    layout.classList.toggle('workspace-panel-collapsed',!open);
+  }else{
+    // Desktop: same composited slide the sidebar uses. On compact viewports the
+    // panel is a fixed slide-over that already animates on transform alone, so
+    // there is nothing to correct there.
+    _slidePanelIfPossible(panel,'right',function(){
+      layout.classList.toggle('workspace-panel-collapsed',!open);
+    });
+  }
   if(_isCompactWorkspaceViewport()){
     panel.classList.toggle('mobile-open',open);
   }else{
@@ -467,6 +476,7 @@ function _prepareMobileSidebarForDrag(){
   if(layout)layout.classList.remove('sidebar-collapsed');
   sidebar.classList.remove('sidebar-collapsed','mobile-session-page');
   try{document.documentElement.removeAttribute('data-sidebar-collapsed');}catch(_){}
+  _stopSidebarSettle();
   sidebar.classList.add('mobile-panel-drawer','is-dragging');
   return sidebar;
 }
@@ -524,9 +534,6 @@ function _onPwaSidebarSwipeMove(e){
     if(e.cancelable)e.preventDefault();
     const width=window.innerWidth||1;
     const travel=Math.max(0,Math.min(dx,width));
-    // translate3d keeps this on the compositor; the drawer is already
-    // will-change:transform in the phone block, so no layer thrash per frame.
-    swipe.el.style.transform='translate3d(calc(-100% + '+travel+'px),0,0)';
     const now=(window.performance&&performance.now)?performance.now():Date.now();
     if(swipe.lastT!=null&&now>swipe.lastT){
       // px/ms, smoothed a little so one jittery sample cannot decide the fling.
@@ -535,14 +542,47 @@ function _onPwaSidebarSwipeMove(e){
     }
     swipe.lastTravel=travel;
     swipe.lastT=now;
+    swipe.pendingTravel=travel;
+    _scheduleSidebarDragFrame(swipe);
   }
+}
+
+// Touch events arrive faster than the compositor paints, and iOS coalesces them
+// unevenly, so a style write per event is both wasted work and a source of
+// uneven motion. The finger position is buffered and written once per frame
+// instead: same target, one write per painted frame.
+function _scheduleSidebarDragFrame(swipe){
+  if(!swipe||swipe.frame)return;
+  swipe.frame=requestAnimationFrame(function(){
+    swipe.frame=0;
+    if(!swipe.dragging||!swipe.el)return;
+    // translate3d keeps this on the compositor; the drawer is already
+    // will-change:transform in the phone block, so no layer thrash per frame.
+    swipe.el.style.transform='translate3d(calc(-100% + '+swipe.pendingTravel+'px),0,0)';
+  });
+}
+function _cancelSidebarDragFrame(swipe){
+  if(swipe&&swipe.frame){try{cancelAnimationFrame(swipe.frame);}catch(_){}swipe.frame=0;}
 }
 
 // Settle the dragged drawer. Position alone is not enough: a short, fast flick
 // should open it, and a slow drag that never got far should fall back, which is
 // what makes the gesture feel like it has weight rather than a cutoff.
+//
+// The release is handed to a Motion spring seeded with the finger's own
+// velocity, so a flick keeps its speed through the settle instead of restarting
+// from a standstill the way a fixed-duration CSS transition does. Without
+// Motion, or under prefers-reduced-motion, the inline transform is dropped and
+// the CSS transition settles it exactly as before.
+let _sidebarSettleAnim=null;
+function _stopSidebarSettle(){
+  const anim=_sidebarSettleAnim;
+  _sidebarSettleAnim=null;
+  if(anim&&typeof anim.stop==='function'){try{anim.stop();}catch(_){}}
+}
 function _settleMobileSidebarDrag(swipe){
   if(!swipe||!swipe.dragging||!swipe.el)return;
+  _cancelSidebarDragFrame(swipe);
   const el=swipe.el;
   const width=window.innerWidth||1;
   const travelled=swipe.lastTravel||0;
@@ -550,18 +590,58 @@ function _settleMobileSidebarDrag(swipe){
   const shouldOpen=velocity>_PWA_SIDEBAR_FLING_VELOCITY
     ? true
     : (velocity<-_PWA_SIDEBAR_FLING_VELOCITY ? false : travelled>width*_PWA_SIDEBAR_SETTLE_FRACTION);
-  el.style.transform='';
-  el.classList.remove('is-dragging'); // hands the settle back to the CSS transition
-  if(shouldOpen){
-    el.classList.add('mobile-open');
-  }else{
-    el.classList.remove('mobile-open','mobile-panel-drawer');
+  // The state class flips now, not when the motion lands, so anything reading
+  // drawer state mid-settle sees the outcome. is-dragging stays on until the
+  // spring finishes, keeping the CSS transition out of the spring's way.
+  if(shouldOpen)el.classList.add('mobile-open');
+  else el.classList.remove('mobile-open');
+  const anim=_springDrawerTo(el,travelled-width,shouldOpen?0:-width,velocity);
+  if(!anim){
+    el.style.transform='';
+    el.classList.remove('is-dragging'); // hands the settle back to the CSS transition
+    if(!shouldOpen)el.classList.remove('mobile-panel-drawer');
+    return;
   }
+  _sidebarSettleAnim=anim;
+  const done=function(){
+    // A settle superseded by a new drag must not clear that drag's transform.
+    if(_sidebarSettleAnim!==anim)return;
+    _sidebarSettleAnim=null;
+    el.style.transform='';
+    el.classList.remove('is-dragging');
+    if(!shouldOpen)el.classList.remove('mobile-panel-drawer');
+  };
+  try{ anim.finished.then(done,done); }catch(_){ done(); }
+}
+
+// px/ms measured off the finger, converted to Motion's px/s and seeded into the
+// spring's initial velocity. Returns null when Motion is unavailable or motion
+// is reduced, so callers fall back to the CSS transition.
+function _springDrawerTo(el,fromX,toX,velocityPxPerMs){
+  const M=(typeof window!=='undefined'&&window.Motion)||null;
+  if(!M||typeof M.animate!=='function')return null;
+  try{
+    if(window.MotionUI&&typeof window.MotionUI.prefersReducedMotion==='function'
+      &&window.MotionUI.prefersReducedMotion())return null;
+  }catch(_){}
+  try{
+    el.style.transform='translate3d('+fromX+'px,0,0)';
+    return M.animate(el,{x:[fromX,toX]},{
+      type:'spring',
+      velocity:(Number(velocityPxPerMs)||0)*1000,
+      stiffness:520,
+      damping:46,
+      mass:1,
+      restDelta:0.5,
+      restSpeed:2,
+    });
+  }catch(_){ return null; }
 }
 // Last-resort cleanup. If anything at all dropped the gesture state while a
 // drag was live, the drawer would keep its inline transform forever; there is
 // no code path where a released pointer should leave one behind.
 function _clearStrandedSidebarDrag(){
+  if(_sidebarSettleAnim)return; // a spring is mid-flight; it owns the transform
   const stuck=document.querySelector('.sidebar.is-dragging');
   if(!stuck)return;
   stuck.style.transform='';
@@ -580,6 +660,8 @@ function _onPwaSidebarSwipeCancel(e){
   const swipe=_pwaSidebarSwipe;
   _pwaSidebarSwipe=null;
   if(swipe&&swipe.dragging&&swipe.el){
+    _cancelSidebarDragFrame(swipe);
+    _stopSidebarSettle();
     swipe.el.style.transform='';
     swipe.el.classList.remove('is-dragging');
     swipe.el.classList.remove('mobile-open','mobile-panel-drawer');
@@ -587,14 +669,154 @@ function _onPwaSidebarSwipeCancel(e){
   _clearStrandedSidebarDrag();
 }
 
+// ── Taking the left edge back from WebKit ──────────────────────────────────
+// On iOS the installed PWA has its own interactive swipe-back gesture on the
+// left edge, and WebKit decides whether to start it *during the touchstart
+// dispatch*. Nothing preventDefault()ed later in the gesture can call it back.
+// That is the whole bug: the drag handler below only preventDefaults once ~10px
+// of horizontal intent is proven, by which point WebKit already owns the touch
+// — so the swipe navigated back, or fought the drag and ended up snapping the
+// page around. overscroll-behavior-x does not help either; it governs Chromium
+// overscroll navigation, not WebKit's edge recognizer.
+//
+// The one thing that stops it is preventDefault() on the touchstart itself.
+// Doing that window-wide would make every touch on the page non-passive and
+// tax scroll-start latency everywhere, so it is scoped to the narrow strip
+// where WebKit's recognizer actually lives (#pwaSidebarEdgeGuard).
+//
+// The strip pays for that by losing its own default behaviour, so the handlers
+// below give it back rather than leaving a dead gutter down the left of every
+// chat: a touch that never moves is replayed as a click on whatever sits
+// underneath, and a vertical drag is forwarded to the scroller underneath with
+// its own inertia. Horizontal intent is left alone — that is the drawer drag.
+const _PWA_EDGE_GUARD_SLOP=8;
+const _PWA_EDGE_GUARD_TAP_MS=400;
+const _PWA_EDGE_GUARD_FRICTION=0.95;
+let _pwaEdgeGuardTouch=null;
+
+function _pwaEdgeGuardEl(){
+  try{return document.getElementById('pwaSidebarEdgeGuard');}catch(_){return null;}
+}
+
+// The guard sits above the content it is protecting, so it has to step out of
+// hit-testing for the duration of the lookup or it just finds itself.
+function _elementBeneathEdgeGuard(x,y){
+  const guard=_pwaEdgeGuardEl();
+  const prev=guard?guard.style.pointerEvents:null;
+  if(guard)guard.style.pointerEvents='none';
+  let el=null;
+  try{el=document.elementFromPoint(x,y);}catch(_){el=null;}
+  if(guard)guard.style.pointerEvents=prev||'';
+  return (el&&el!==guard)?el:null;
+}
+
+function _scrollableUnder(el){
+  for(let node=el;node&&node!==document.body;node=node.parentElement){
+    let style=null;
+    try{style=getComputedStyle(node);}catch(_){break;}
+    if(!style)break;
+    if(/(auto|scroll)/.test(style.overflowY)&&node.scrollHeight>node.clientHeight+1)return node;
+  }
+  return document.querySelector('.messages')||null;
+}
+
+function _onPwaSidebarEdgeGuardStart(e){
+  if(_isDesktopWidth())return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(!point)return;
+  // Must be here, in touchstart. By touchmove the navigation gesture is gone.
+  if(e.cancelable)e.preventDefault();
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  _pwaEdgeGuardTouch={startX:point.clientX,startY:point.clientY,startT:now,
+    mode:null,scroller:null,lastY:point.clientY,lastT:now,vy:0};
+}
+
+function _onPwaSidebarEdgeGuardMove(e){
+  const guard=_pwaEdgeGuardTouch;
+  if(!guard)return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(!point)return;
+  const dx=point.clientX-guard.startX;
+  const dy=point.clientY-guard.startY;
+  if(!guard.mode){
+    if(Math.abs(dx)<_PWA_EDGE_GUARD_SLOP&&Math.abs(dy)<_PWA_EDGE_GUARD_SLOP)return;
+    // Horizontal belongs to the drawer drag, which is already running off the
+    // window listeners; this only claims the vertical case.
+    guard.mode=Math.abs(dy)>Math.abs(dx)?'scroll':'drawer';
+    if(guard.mode==='scroll'){
+      guard.scroller=_scrollableUnder(_elementBeneathEdgeGuard(guard.startX,guard.startY));
+      guard.lastY=point.clientY;
+      guard.lastT=(window.performance&&performance.now)?performance.now():Date.now();
+      return;
+    }
+  }
+  if(guard.mode!=='scroll'||!guard.scroller)return;
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  const step=point.clientY-guard.lastY;
+  guard.scroller.scrollTop-=step;
+  if(now>guard.lastT){
+    const sample=step/(now-guard.lastT);
+    guard.vy=guard.vy?(guard.vy*0.4+sample*0.6):sample;
+  }
+  guard.lastY=point.clientY;
+  guard.lastT=now;
+}
+
+function _onPwaSidebarEdgeGuardEnd(e){
+  const guard=_pwaEdgeGuardTouch;
+  _pwaEdgeGuardTouch=null;
+  if(!guard)return;
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  if(!guard.mode){
+    // Never moved: this was a tap the guard swallowed. Hand it back.
+    if((now-guard.startT)<=_PWA_EDGE_GUARD_TAP_MS)_replayEdgeGuardTap(guard.startX,guard.startY);
+    return;
+  }
+  if(guard.mode==='scroll')_flingScroller(guard.scroller,guard.vy);
+}
+
+function _onPwaSidebarEdgeGuardCancel(){ _pwaEdgeGuardTouch=null; }
+
+function _replayEdgeGuardTap(x,y){
+  const el=_elementBeneathEdgeGuard(x,y);
+  if(!el)return;
+  try{
+    el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));
+  }catch(_){}
+}
+
+// Forwarded scrolling without this reads as "the list stops dead when I let
+// go", which is exactly the kind of thing that makes a web app feel like a web
+// app. Decay per frame, and abandon it the moment a new touch lands.
+let _edgeGuardFlingFrame=0;
+function _flingScroller(scroller,vyPxPerMs){
+  if(_edgeGuardFlingFrame){try{cancelAnimationFrame(_edgeGuardFlingFrame);}catch(_){}_edgeGuardFlingFrame=0;}
+  if(!scroller)return;
+  let velocity=(Number(vyPxPerMs)||0)*16.67; // px/ms → px/frame at 60Hz
+  if(Math.abs(velocity)<1)return;
+  const stop=function(){
+    if(_edgeGuardFlingFrame){try{cancelAnimationFrame(_edgeGuardFlingFrame);}catch(_){}_edgeGuardFlingFrame=0;}
+  };
+  window.addEventListener('touchstart',stop,{capture:true,passive:true,once:true});
+  const step=function(){
+    scroller.scrollTop-=velocity;
+    velocity*=_PWA_EDGE_GUARD_FRICTION;
+    if(Math.abs(velocity)>0.4)_edgeGuardFlingFrame=requestAnimationFrame(step);
+    else{_edgeGuardFlingFrame=0;window.removeEventListener('touchstart',stop,{capture:true});}
+  };
+  _edgeGuardFlingFrame=requestAnimationFrame(step);
+}
+
 function _installPwaSidebarSwipeGesture(){
-  // #4660 review (Codex CORE): the #pwaSidebarEdgeGuard element is now
-  // pointer-events:none (CSS), so it can no longer intercept hit-testing for
-  // taps / vertical scrolls that merely start in the left edge strip — those
-  // pass through to the underlying .messages scroller. The edge-swipe-to-open
-  // gesture is handled entirely by the window-level CAPTURE touch/pointer
-  // listeners below (which see the event regardless of the guard), so no
-  // dedicated guard-element listener is needed.
+  const guard=_pwaEdgeGuardEl();
+  if(guard){
+    // passive:false is the entire point — a passive listener cannot cancel
+    // WebKit's edge gesture, and a passive one is what this used to be.
+    guard.addEventListener('touchstart', _onPwaSidebarEdgeGuardStart, {passive:false});
+    window.addEventListener('touchmove', _onPwaSidebarEdgeGuardMove, {capture:true,passive:true});
+    window.addEventListener('touchend', _onPwaSidebarEdgeGuardEnd, {capture:true,passive:true});
+    window.addEventListener('touchcancel', _onPwaSidebarEdgeGuardCancel, {capture:true,passive:true});
+  }
   window.addEventListener('touchstart', _onPwaSidebarSwipeStart, {capture:true,passive:true});
   window.addEventListener('touchmove', _onPwaSidebarSwipeMove, {capture:true,passive:false});
   window.addEventListener('touchend', _onPwaSidebarSwipeEnd, {capture:true,passive:true});
@@ -697,12 +919,31 @@ function _syncSidebarAria(){
   if(active)active.setAttribute('aria-expanded',!_isSidebarCollapsed());
 }
 
+// Routes a panel's collapse/expand through MotionUI.slidePanel when it is
+// available, and just performs the state change when it is not. Keeping this in
+// one place means the fallback path is identical for both panels.
+function _slidePanelIfPossible(panel,side,apply){
+  try{
+    if(window.MotionUI&&typeof window.MotionUI.slidePanel==='function'){
+      window.MotionUI.slidePanel(panel,apply,{side:side});
+      return;
+    }
+  }catch(_){}
+  apply();
+}
+
 function toggleSidebar(forceState){
   if(!_isDesktopWidth())return; // mobile uses an overlay; never collapse there
   const layout=document.querySelector('.layout');
   if(!layout)return;
   const next=typeof forceState==='boolean'?forceState:!_isSidebarCollapsed();
-  layout.classList.toggle('sidebar-collapsed',next);
+  // The state change itself is one class toggle. MotionUI.slidePanel wraps it so
+  // the resulting layout runs once and the visible motion is a composited
+  // transform, instead of a width transition that re-lays out the whole message
+  // list on every frame. Without Motion it just calls the callback.
+  _slidePanelIfPossible(document.querySelector('.sidebar'),'left',function(){
+    layout.classList.toggle('sidebar-collapsed',next);
+  });
   // Clear the flash-prevention root-level marker once JS owns the state.
   try{document.documentElement.removeAttribute('data-sidebar-collapsed');}catch(_){}
   try{localStorage.setItem(_SIDEBAR_COLLAPSED_KEY,next?'1':'0');}catch(_){}

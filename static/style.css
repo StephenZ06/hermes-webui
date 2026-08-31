@@ -2030,15 +2030,22 @@
   /* ── Queue flyout (same slide-up pattern as approval-card) ── */
   .queue-card{position:absolute;left:0;right:0;bottom:0;max-width:var(--msg-max);margin:0 auto;padding:0 20px;box-sizing:border-box;width:100%;overflow:hidden;pointer-events:none;z-index:2;}
   .queue-card.visible{pointer-events:auto;}
+  /* The dock reservations below are applied instantly, NOT transitioned.
+     Transitioning `padding-bottom` on the message scroller re-laid it out on
+     every frame (measured: 17 layouts / 29ms on an 800-message list) and, worse,
+     changed scrollHeight on every one of those frames — which is exactly what
+     the pinned-to-bottom and scroll-anchoring logic has to fight during
+     streaming. The docks themselves still animate; they slide in on transform,
+     which costs no layout at all. */
   /* When queue is visible, add bottom padding to messages so last bubble isn't covered */
   .messages.queue-open{padding-bottom:var(--queue-card-height,280px);}
   /* Terminal flyout reserves transcript space so recent messages stay readable above it. */
-  .messages.terminal-open{padding-bottom:var(--terminal-card-height,320px);scroll-padding-bottom:var(--terminal-card-height,320px);transition:padding-bottom .26s cubic-bezier(.2,.8,.2,1);}
-  .messages.terminal-collapsed{padding-bottom:var(--terminal-dock-height,72px);scroll-padding-bottom:var(--terminal-dock-height,72px);transition:padding-bottom .22s cubic-bezier(.2,.8,.2,1);}
-  .messages.handoff-dock-visible{padding-bottom:var(--handoff-dock-height,72px);scroll-padding-bottom:var(--handoff-dock-height,72px);transition:padding-bottom .22s cubic-bezier(.2,.8,.2,1);}
-  .messages.clarify-open{padding-bottom:var(--clarify-card-height,320px);scroll-padding-bottom:var(--clarify-card-height,320px);transition:padding-bottom .22s cubic-bezier(.2,.8,.2,1);}
+  .messages.terminal-open{padding-bottom:var(--terminal-card-height,320px);scroll-padding-bottom:var(--terminal-card-height,320px);}
+  .messages.terminal-collapsed{padding-bottom:var(--terminal-dock-height,72px);scroll-padding-bottom:var(--terminal-dock-height,72px);}
+  .messages.handoff-dock-visible{padding-bottom:var(--handoff-dock-height,72px);scroll-padding-bottom:var(--handoff-dock-height,72px);}
+  .messages.clarify-open{padding-bottom:var(--clarify-card-height,320px);scroll-padding-bottom:var(--clarify-card-height,320px);}
   .messages.clarify-collapsed{padding-bottom:var(--clarify-dock-height,72px);scroll-padding-bottom:var(--clarify-dock-height,72px);}
-  .messages.approval-open{padding-bottom:var(--approval-card-height,260px);scroll-padding-bottom:var(--approval-card-height,260px);transition:padding-bottom .22s cubic-bezier(.2,.8,.2,1);}
+  .messages.approval-open{padding-bottom:var(--approval-card-height,260px);scroll-padding-bottom:var(--approval-card-height,260px);}
   .messages.approval-collapsed{padding-bottom:var(--approval-dock-height,72px);scroll-padding-bottom:var(--approval-dock-height,72px);}
   .messages.terminal-expanding-from-dock{transition:none!important;}
   .queue-card-inner{background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:14px 14px 0 0;contain:paint;transform:translateY(100%);opacity:0;transition:transform .35s cubic-bezier(.32,.72,.16,1),opacity .2s ease;overflow:hidden;max-height:240px;overflow-y:auto;padding-bottom:4px;}
@@ -3188,8 +3195,18 @@
     .mobile-overlay.visible{display:none;}
     /* Keep edge guard aligned with the mobile titlebar's effective 52px height.
        If this rule or app-titlebar sizing changes, update both together to
-       avoid accidental sidebar swipe collisions. */
-    .pwa-sidebar-edge-guard{display:block;position:fixed;left:0;top:calc(52px + var(--app-titlebar-safe-top));bottom:0;width:24px;z-index:198;background:transparent;pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+       avoid accidental sidebar swipe collisions.
+
+       pointer-events must stay `auto`: the strip's job is to receive the
+       touchstart so boot.js can preventDefault() it, which is the only thing
+       that stops WebKit starting its own edge swipe-back in an installed iOS
+       PWA. It is 30px because WebKit's recognizer covers roughly the first 30pt
+       — a narrower strip lets touches past it straight into the back gesture.
+       boot.js hands the strip's own default behaviour back by hand (taps are
+       replayed onto the element underneath, vertical drags are forwarded to the
+       scroller underneath), so this is not a dead gutter.
+       touch-action:none stops the browser claiming an axis before the JS does. */
+    .pwa-sidebar-edge-guard{display:block;position:fixed;left:0;top:calc(52px + var(--app-titlebar-safe-top));bottom:0;width:30px;z-index:198;background:transparent;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
     /* Files button in topbar */
     .workspace-toggle-btn,.mobile-files-btn{display:inline-flex!important;}
     /* Right panel: slide-over from right */
@@ -8291,3 +8308,62 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
 /* Settings field highlight (mirrors msg-question-highlight / _highlightQuestionRow pattern) */
 .settings-field-highlight { animation: settings-field-pulse 1.6s ease-out; }
 @keyframes settings-field-pulse { 0% { box-shadow: 0 0 0 0 var(--focus-ring); } 35% { box-shadow: 0 0 0 4px var(--focus-ring); } 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); } }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Accordions that actually animate to their real height.
+
+   Every disclosure body in this file animates `max-height`, which has two
+   failure modes the eye picks up immediately:
+
+     - `max-height:none` on the open state (.activity, .compression-reference)
+       cannot be interpolated at all, so those panels snap open and only the
+       close is animated.
+     - a guessed cap (1600px, 520px, 320px, 260px, 220px) means the transition
+       keeps running for its full duration after the content has already
+       stopped moving. That is the "opens, then sits there" feel.
+
+   `interpolate-size: allow-keywords` makes `height: 0 -> auto` interpolable, so
+   the panel animates to exactly its own content height and stops when it gets
+   there. It is scoped to @supports on purpose: browsers without it keep the
+   existing max-height behaviour untouched, so this can only improve things.
+   ───────────────────────────────────────────────────────────────────────────── */
+@supports (interpolate-size: allow-keywords){
+  :root{interpolate-size:allow-keywords;}
+
+  .activity-body{height:0;transition:height .34s cubic-bezier(.22,1,.36,1),opacity .22s ease;}
+  .activity.open .activity-body{height:auto;max-height:none;}
+
+  .tool-worklog-tool-group-body,
+  .tool-group-body{height:0;max-height:none;transition:height .3s cubic-bezier(.22,1,.36,1);}
+  .tool-worklog-tool-group.open .tool-worklog-tool-group-body,
+  .tool-group.open .tool-group-body{height:auto;max-height:none;}
+  .tool-worklog-tool-group-collapsed .tool-worklog-tool-group-body,
+  .tool-worklog-tool-group-collapsed .tool-group-body{height:0;}
+
+  /* Capped bodies keep their cap: it is a scroll boundary, not an animation
+     target. Under the cap the height animation now lands exactly on the
+     content; over it, the body scrolls as it always did. */
+  .tool-card-detail,.tl-detail{height:0;transition:height .26s cubic-bezier(.22,1,.36,1),opacity .2s ease,border-top-color .22s ease;}
+  .tool-card.open .tool-card-detail,.tl.open .tl-detail{height:auto;}
+
+  .transparent-event-row .tool-card-detail,
+  .transparent-event-row .thinking-card-body{height:0;transition:height .28s cubic-bezier(.22,1,.36,1),opacity .2s ease,transform .24s ease,border-top-color .2s ease,padding .22s ease;}
+  .transparent-event-row .tool-card.open .tool-card-detail,
+  .transparent-event-row .thinking-card.open .thinking-card-body{height:auto;}
+
+  .compression-reference-body{height:0;transition:height .22s cubic-bezier(.22,1,.36,1),opacity .18s ease,padding .22s ease,border-top-color .22s ease;}
+  .compression-reference-card.open .compression-reference-body{height:auto;max-height:none;}
+
+  .compression-complete-body{height:0;transition:height .22s cubic-bezier(.22,1,.36,1),opacity .18s ease,padding .22s ease,border-top-color .22s ease;}
+  .compression-complete-card.open .compression-complete-body{height:auto;}
+
+  .thinking-card-body{height:0;transition:height .22s cubic-bezier(.22,1,.36,1),opacity .18s ease,padding .22s ease,border-top-color .22s ease;}
+  .thinking-card.open .thinking-card-body{height:auto;}
+
+  @media (prefers-reduced-motion: reduce){
+    .activity-body,.tool-group-body,.tool-worklog-tool-group-body,
+    .tool-card-detail,.tl-detail,.compression-reference-body,
+    .compression-complete-body,.thinking-card-body{transition:none;}
+  }
+}

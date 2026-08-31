@@ -34,9 +34,14 @@ class TestDrawerFollowsTheFinger:
         assert "mobile-open" not in body, "preparing a drag must not open the drawer"
 
     def test_transform_tracks_the_pointer(self):
+        # The move handler measures the finger; the write itself is coalesced into
+        # rAF so a burst of touchmoves costs one style write per painted frame.
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
-        assert "translate3d(calc(-100% + " in body, "the drawer must be pinned to the finger"
         assert "Math.min(dx,width)" in body.replace(" ", ""), "travel must be clamped to the viewport"
+        assert "_scheduleSidebarDragFrame(swipe)" in body
+        frame = _fn(BOOT_JS, "_scheduleSidebarDragFrame")
+        assert "requestAnimationFrame" in frame
+        assert "translate3d(calc(-100% + " in frame, "the drawer must be pinned to the finger"
 
     def test_css_transition_is_suspended_while_dragging(self):
         # A transition during the drag would make the drawer trail the finger.

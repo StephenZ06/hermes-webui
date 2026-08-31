@@ -131,7 +131,13 @@ class TestAccessibilityAndBehaviour:
         # and .toast.show flips both. A JS transform would outrank that rule,
         # be transitioned a second time on top of Motion, and slide the wrong
         # way -- the toast is anchored top-right, not bottom.
-        assert "window.MotionUI" not in UI_JS, "the toast must not be driven by the motion layer"
+        # Scoped to showToast itself. ui.js as a whole does use the motion layer
+        # now (the app dialog gets an entrance and an exit through
+        # MotionUI.presence); it is specifically the toast that must not.
+        start = UI_JS.index("function showToast(")
+        end = UI_JS.find("\nfunction ", start + 1)
+        toast = UI_JS[start:end if end != -1 else len(UI_JS)]
+        assert "MotionUI" not in toast, "the toast must not be driven by the motion layer"
         assert ".toast{" in STYLE_CSS and "transition:opacity .2s,transform .2s" in STYLE_CSS
 
     def test_dropdown_exit_is_actually_painted(self):

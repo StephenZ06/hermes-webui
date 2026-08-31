@@ -8502,12 +8502,49 @@ let _appDialogBound=false;
 
 function _isAppDialogOpen(){
   const overlay=$('appDialogOverlay');
+  // An overlay still painting its exit animation is NOT open. Without this the
+  // dialog would read as open for the length of the fade and callers that
+  // re-check it (escape handling, re-entrant opens) would see a stale state.
+  if(overlay&&overlay.dataset&&overlay.dataset.closing==='1') return false;
   return !!(overlay&&overlay.style.display!=='none');
 }
 
 function _getAppDialogFocusable(){
   return [$('appDialogInput'), $('appDialogCancel'), $('appDialogConfirm'), $('appDialogClose')]
     .filter(el=>el&&el.style.display!=='none'&&!el.disabled);
+}
+
+// The dialog used to appear and vanish on display:none alone. These give it an
+// entrance and an exit without changing when the overlay is considered open —
+// display flips first on the way in, and the exit still hides it synchronously
+// for callers that check _isAppDialogOpen(), it just keeps painting for the
+// length of the fade.
+function _animateAppDialogIn(overlay,dialog){
+  const M=window.MotionUI;
+  try{ delete overlay.dataset.closing; }catch(_){}
+  if(!M||!M.enabled()) return;
+  try{
+    M.presence(overlay,'in',{distance:0,scale:false,duration:0.16});
+    if(dialog) M.presence(dialog,'in',{from:'bottom',distance:12});
+  }catch(_){}
+}
+function _animateAppDialogOut(overlay,dialog){
+  const M=window.MotionUI;
+  const hide=()=>{
+    // A dialog reopened mid-exit clears the flag; this stale callback must not
+    // then hide the new one.
+    if(!overlay.dataset||overlay.dataset.closing!=='1') return;
+    try{ delete overlay.dataset.closing; }catch(_){}
+    overlay.style.display='none';
+    overlay.style.opacity='';
+    if(dialog&&dialog.style){dialog.style.opacity='';dialog.style.transform='';}
+  };
+  try{ overlay.dataset.closing='1'; }catch(_){}
+  if(!M||!M.enabled()){ hide(); return; }
+  try{
+    if(dialog) M.presence(dialog,'out',{from:'bottom',distance:8});
+    M.presence(overlay,'out',{distance:0,scale:false}).then(hide,hide);
+  }catch(_){ hide(); }
 }
 
 function _finishAppDialog(result, restoreFocus=true){
@@ -8520,7 +8557,7 @@ function _finishAppDialog(result, restoreFocus=true){
   APP_DIALOG.resolve=null;
   APP_DIALOG.kind=null;
   APP_DIALOG.lastFocus=null;
-  if(overlay){overlay.style.display='none';overlay.setAttribute('aria-hidden','true');}
+  if(overlay){_animateAppDialogOut(overlay,dialog);overlay.setAttribute('aria-hidden','true');}
   if(dialog) dialog.setAttribute('role','dialog');
   if(input){input.value='';input.style.display='none';input.placeholder='';}
   if(confirmBtn){confirmBtn.classList.remove('danger');confirmBtn.textContent=t('dialog_confirm_btn');}
@@ -8607,7 +8644,7 @@ function showConfirmDialog(opts={}){
     confirmBtn.classList.toggle('danger',!!opts.danger);
   }
   if(dialog) dialog.setAttribute('role',opts.danger?'alertdialog':'dialog');
-  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');}
+  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
   return new Promise(resolve=>{
     APP_DIALOG.resolve=resolve;
     setTimeout(()=>((opts.focusCancel?cancelBtn:confirmBtn)||confirmBtn||cancelBtn).focus(),0);
@@ -8643,7 +8680,7 @@ function showPromptDialog(opts={}){
     confirmBtn.classList.toggle('danger',!!opts.danger);
   }
   if(dialog) dialog.setAttribute('role',opts.danger?'alertdialog':'dialog');
-  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');}
+  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
   return new Promise(resolve=>{
     APP_DIALOG.resolve=resolve;
     setTimeout(()=>{
