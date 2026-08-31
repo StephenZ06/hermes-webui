@@ -173,8 +173,18 @@ class TestProjectChipLongPressTouch:
         assert "addEventListener('touchend'" in block
         assert "{passive:false}" in block
         assert "e.preventDefault();e.stopPropagation();" in block
-        # the long-press handler cancels the pending single-tap filter timer
-        assert "clearTimeout(_pClickTimer)" in block
+        # Suppressing the tap is now entirely the touchend preventDefault above:
+        # with no synthetic click, chip.onclick never runs and the folder does
+        # not toggle behind the menu. There is no longer a pending single-tap
+        # timer to cancel -- the toggle used to sit behind a 220ms setTimeout so
+        # a double-click could be told apart from a single one, which put that
+        # delay on every expand and collapse. A normal tap is unaffected: its
+        # touchend does not preventDefault, so the click still lands.
+        assert "_pClickTimer" not in SESSIONS_JS, (
+            "the deferred-click timer should not come back; it made every folder "
+            "toggle wait 220ms"
+        )
+        assert "_lpHandled" in block
 
     def test_touchstart_clears_inflight_timer_before_scheduling(self):
         """Regression: a second finger / stray touchstart must not orphan the
