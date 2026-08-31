@@ -7885,15 +7885,18 @@ function renderSessionListFromCache(){
       // of sitting one kebab-width short of the box's right edge.
       chip.appendChild(kebab);
       chip.appendChild(countSpan);
-      let _pClickTimer=null;
-      chip.onclick=(e)=>{
-        clearTimeout(_pClickTimer);
-        _pClickTimer=setTimeout(()=>{
-          _pClickTimer=null;
-          toggleFolder(e);
-        },220);
-      };
-      chip.ondblclick=(e)=>{e.stopPropagation();clearTimeout(_pClickTimer);_pClickTimer=null;_startProjectRename(p,chip);};
+      // Toggle on the click itself. This used to sit behind a 220ms setTimeout
+      // purely to find out whether a second click was coming (dblclick renames),
+      // which put that delay on EVERY expand and EVERY collapse -- the common
+      // action paying for the rare one. The Agent Canvas rows toggle straight
+      // out of onclick and that is what they feel like by comparison.
+      //
+      // Nothing is lost: a double-click still fires two clicks, so the folder
+      // toggles twice and lands back exactly where it started before the rename
+      // input opens. The 0.16s grid transition just reverses from wherever it
+      // got to, which is the normal behaviour of an interrupted CSS transition.
+      chip.onclick=(e)=>{ toggleFolder(e); };
+      chip.ondblclick=(e)=>{e.stopPropagation();_startProjectRename(p,chip);};
       chip.oncontextmenu=(e)=>{e.preventDefault();_showProjectContextMenu(e,p,chip);};
       // Touch long-press → context menu (mobile UX: project chips can only be
       // deleted via the right-click menu, which has no touch equivalent).
@@ -7916,7 +7919,6 @@ function renderSessionListFromCache(){
           if(_lpHandled) return;  // already consumed by another gesture — stale fire is a no-op
           _lpHandled=true;
           chip.classList.remove('long-pressing');
-          clearTimeout(_pClickTimer);_pClickTimer=null;
           const syn={clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}};
           _showProjectContextMenu(syn,p,chip);
         },500);
