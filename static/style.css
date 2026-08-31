@@ -6487,18 +6487,18 @@ main.main > #mainPlugin{display:none;}
    UI font scales it instead of clipping it. 4px here puts the row at ~29px
    against the 19.2px text line box, down from ~33px at 6px. Agent Canvas rows
    are the same selector, so both views move together and stay identical. */
-.project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:4px 8px;font-size:12px;font-weight:500;justify-content:flex-start;}
+.project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:3px 8px;font-size:12px;line-height:1.3;font-weight:500;justify-content:flex-start;}
 /* Press feedback. The row previously only responded to hover, so a click read
    as "nothing happened" until the list finished expanding. Kept to background
    alone -- a transform on a full-width row reads as the row wobbling, not as a
    button depressing -- and kept faster than the hover fade so the press lands
    before the finger/cursor leaves. */
 .project-folder-list .project-chip:active{background:var(--hover-bg);transition:background .06s ease;}
-.project-folder-chevron{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;color:var(--muted);font-size:13px;transition:transform .16s cubic-bezier(.2,.8,.2,1);}
+.project-folder-chevron{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;color:var(--muted);font-size:13px;transition:transform .16s cubic-bezier(.2,.8,.2,1);}
 .project-folder-chevron.expanded{transform:rotate(90deg);}
 .project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
 .project-folder-count{font-size:10px;color:var(--muted);flex-shrink:0;padding:0 2px;}
-.project-folder-kebab{width:18px;height:18px;flex-shrink:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;padding:0;line-height:1;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s,color .15s;}
+.project-folder-kebab{width:16px;height:16px;flex-shrink:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;padding:0;line-height:1;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s,color .15s;}
 .project-folder-kebab svg{width:14px;height:14px;}
 .project-chip:hover .project-folder-kebab,
 .project-chip:focus-within .project-folder-kebab{opacity:1;}
