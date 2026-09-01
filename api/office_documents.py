@@ -12,8 +12,11 @@ OFFICE_PREVIEW_KIND = "office"
 OFFICE_RENDER_MODE = "code"
 OFFICE_DEPENDENCY_HINT = (
     "Office preview is not available on this server. Install python-docx, "
-    "openpyxl, and python-pptx to enable it: pip install python-docx openpyxl "
-    "python-pptx"
+    "openpyxl, and python-pptx into the same Python that runs the WebUI to "
+    "enable it. In Docker: docker exec <container> /app/venv/bin/pip install "
+    "python-docx openpyxl python-pptx (a plain 'pip install' in a docker exec "
+    "shell hits the wrong Python and won't fix this). From source: pip install "
+    "python-docx openpyxl python-pptx"
 )
 OFFICE_PREVIEW_TRUNCATED_NOTICE = "[Preview truncated: Office content exceeds safe limits]"
 MAX_OFFICE_PREVIEW_CHARS = 120_000

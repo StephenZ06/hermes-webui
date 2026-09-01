@@ -5,6 +5,17 @@ repository. Keep it project-specific and safe to publish. Do not put personal
 machine setup, private network details, credentials, tokens, or local-only
 workflow notes here.
 
+## Before any change
+
+Invoke the `project-lifecycle` skill before editing, fixing, refactoring,
+reviewing, or documenting anything in this repository — including a single
+well-specified fix, a one-line comment correction, or a task that arrives
+already diagnosed and scoped. Small size or a clear diagnosis is not an
+exemption; it only decides which row of `project-lifecycle`'s own mode table
+applies (almost always Maintain), not whether the skill applies at all. Do
+not go straight to `grep`/`Read`/`Edit` on a "just fix X" request without
+invoking it first.
+
 ## Read first
 
 Before making changes, read:
