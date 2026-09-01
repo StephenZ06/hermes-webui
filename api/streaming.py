@@ -9493,6 +9493,12 @@ def _run_agent_streaming(
                         logger.debug('[webui] Evicted LRU agent from cache: %s', _evicted_sid)
                     logger.debug('[webui] Created new agent for session %s', session_id)
 
+            try:
+                from api.context_pressure_rollover import attach_rollover_hook
+                attach_rollover_hook(agent)
+            except Exception:
+                logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
+
             # Store agent instance for cancel/interrupt propagation
             with STREAMS_LOCK:
                 AGENT_INSTANCES[stream_id] = agent
@@ -9526,6 +9532,16 @@ def _run_agent_streaming(
             # (matches hermes-agent CLI behavior — passes via ephemeral_system_prompt)
             _personality_prompt = None
             _pname = getattr(s, 'personality', None)
+            if not _pname:
+                # No per-session override: fall back to the profile's config-level
+                # default (display.personality) — the same field the CLI/gateway/TUI
+                # surfaces already read via hermes_cli.personality.active_personality_name.
+                # Session personality has no way to distinguish "never chosen" from
+                # "explicitly cleared" (both store None, see /api/personality/set), so
+                # an explicit clear also re-adopts this default on the next turn.
+                _default_pname = _cfg.get('display', {}).get('personality')
+                if isinstance(_default_pname, str) and _default_pname.strip().lower() not in ('', 'none', 'default', 'neutral'):
+                    _pname = _default_pname.strip().lower()
             if _pname:
                 _agent_cfg = _cfg.get('agent', {})
                 _personalities = _agent_cfg.get('personalities', {})
@@ -10130,6 +10146,11 @@ def _run_agent_streaming(
                             if 'credential_pool' in _agent_params:
                                 _agent_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
                             agent = _AIAgent(**_agent_kwargs)
+                            try:
+                                from api.context_pressure_rollover import attach_rollover_hook
+                                attach_rollover_hook(agent)
+                            except Exception:
+                                logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
                             with STREAMS_LOCK:
                                 AGENT_INSTANCES[stream_id] = agent
                             from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
@@ -11355,6 +11376,11 @@ def _run_agent_streaming(
                     if 'credential_pool' in _agent_params:
                         _heal_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
                     _heal_agent = _AIAgent(**_heal_kwargs)
+                    try:
+                        from api.context_pressure_rollover import attach_rollover_hook
+                        attach_rollover_hook(_heal_agent)
+                    except Exception:
+                        logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
                     with STREAMS_LOCK:
                         AGENT_INSTANCES[stream_id] = _heal_agent
                     from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
