@@ -6,3 +6,6 @@ __pycache__
 tests/
 .env*
 /AGENTS.md
+# Host dev virtualenv: its bin/ symlinks point at host paths that do not
+# exist in the image, so a copied .venv bakes in a broken interpreter.
+.venv
