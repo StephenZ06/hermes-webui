@@ -98,6 +98,35 @@ The WebUI can keep code that is only presentation, validation, or routing glue:
 - WebUI-only caches and client-facing state that do not open agent SessionDB.
 - Docker documentation describing the transition while both paths are supported.
 
+## Reverse dependency: hermes-agent importing WebUI modules
+
+Every class above describes WebUI importing the agent checkout. Cross-profile
+delegation runs the other way and is the only surface that does.
+
+hermes-agent's `delegate_to_profile` tool (`tools/delegate_to_profile.py` in
+the agent checkout) imports `api.auth`, `api.config`, `api.helpers`, and
+`api.profiles`, and drives `POST /api/profile/switch`, `POST
+/api/session/new`, and `POST /api/chat` over loopback to run a subtask in a
+different profile. It depends on WebUI internals in three ways:
+
+- `api.profiles.list_profiles_api()` must return each profile's `description`
+  (read from `<profile>/profile.yaml` by `_profile_meta_fields`). The model
+  picks the target profile from those descriptions, so dropping the field
+  silently reduces the tool to an unusable empty enum rather than failing.
+- `api.auth.create_session(bound_profile=..., ttl_seconds=...)` plus
+  `sign_profile_cookie_value` are what let the tool mint a scoped, short-lived
+  credential for its own authenticated loopback request. The pre-signed
+  `hermes_profile` cookie must be accepted on the FIRST request; see
+  `tests/test_cross_profile_delegation_auth.py`.
+- `_handle_chat_sync` must keep republishing `X-Hermes-Cross-Profile-Depth` as
+  `HERMES_CROSS_PROFILE_DEPTH`; see `tests/test_cross_profile_depth_header.py`
+  for why the hop cap cannot live on the agent side alone.
+
+The tool gates itself on those imports succeeding, so under the CLI or a bare
+gateway it is simply not offered. That keeps the coupling from spreading, but
+it does mean this feature is WebUI-hosted only and would need an agent-side
+API equivalent before the WebUI source mount can be removed.
+
 ## Audit expectations
 
 `tests/test_agent_source_dependency_audit.py` pins the contract shape:
