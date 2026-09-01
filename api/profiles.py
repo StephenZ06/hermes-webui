@@ -2009,7 +2009,7 @@ def _build_profile_rows_fast() -> list | None:
             'model': model,
             'provider': provider,
             'has_env': (home / '.env').exists(),
-            'visible': _profile_visible_from_meta(home),
+            **_profile_meta_fields(home),
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
@@ -2079,7 +2079,7 @@ def list_profiles_api() -> list:
                         'model': p.model,
                         'provider': p.provider,
                         'has_env': p.has_env,
-                        'visible': _profile_visible_from_meta(p.path),
+                        **_profile_meta_fields(p.path),
                         'skill_count': enabled_count,
                         'enabled_skills': enabled_count,
                         'total_skills': total_count,
@@ -2099,7 +2099,7 @@ def list_profiles_api() -> list:
             'model': None,
             'provider': None,
             'has_env': (hermes_home / '.env').exists(),
-            'visible': _profile_visible_from_meta(hermes_home),
+            **_profile_meta_fields(hermes_home),
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
@@ -2148,7 +2148,7 @@ def list_profiles_api() -> list:
                 'model': p.model,
                 'provider': p.provider,
                 'has_env': p.has_env,
-                'visible': _profile_visible_from_meta(p.path),
+                **_profile_meta_fields(p.path),
                 'skill_count': enabled_count,
                 'enabled_skills': enabled_count,
                 'total_skills': total_count,
@@ -2161,19 +2161,43 @@ def list_profiles_api() -> list:
     return [{**p, 'is_active': p['name'] == active} for p in rows]
 
 
-def _profile_visible_from_meta(profile_path: Path) -> bool:
-    """Return False only for an explicit boolean ``visible: false`` in profile.yaml."""
+def _profile_meta_fields(profile_path: Path) -> dict:
+    """Return every ``profile.yaml``-derived row field from a SINGLE parse.
+
+    ``list_profiles_api()`` has four return paths (fast rows, isolated-mode
+    primary, isolated-mode fallback, upstream slow path) plus
+    ``_default_profile_dict()``. Each one used to inline its own
+    ``'visible': _profile_visible_from_meta(...)`` call, so adding a second
+    meta-derived field meant editing five parallel blocks and re-reading and
+    re-parsing the same file once per field. Every path now splats this one
+    dict instead, which is the chokepoint: a new key added here appears in all
+    of them at once, and the file is read exactly once per profile.
+
+    Fail open on every error (missing file, unreadable, malformed YAML, a
+    non-mapping document): a profile with a broken ``profile.yaml`` stays
+    visible and simply has no description, rather than disappearing from the
+    switcher.
+    """
+    data = None
     try:
         meta_path = Path(profile_path) / 'profile.yaml'
-        if not meta_path.exists():
-            return True
-        data = yaml.safe_load(meta_path.read_text(encoding='utf-8'))
+        if meta_path.exists():
+            data = yaml.safe_load(meta_path.read_text(encoding='utf-8'))
     except Exception:
-        return True
+        data = None
     if not isinstance(data, dict):
-        return True
-    visible = data.get('visible')
-    return visible is not False
+        data = {}
+    description = data.get('description')
+    return {
+        # Only an explicit boolean ``visible: false`` hides a profile; the
+        # string "false", 0, and a missing key all leave it visible.
+        'visible': data.get('visible') is not False,
+        # Written by ``description_auto`` (or by hand) and used to route a
+        # subtask to the profile that best fits it. Non-strings are dropped
+        # rather than stringified -- ``"['a', 'b']"`` is worse than no
+        # description at all for a consumer matching on prose.
+        'description': description.strip() if isinstance(description, str) else '',
+    }
 
 
 def _default_profile_dict() -> dict:
@@ -2188,7 +2212,10 @@ def _default_profile_dict() -> dict:
         'model': None,
         'provider': None,
         'has_env': (_DEFAULT_HERMES_HOME / '.env').exists(),
-        'visible': True,
+        # This fallback returns the default profile as the ONLY row, so its
+        # meta-derived visibility is deliberately overridden: honouring a
+        # ``visible: false`` here would leave the switcher with nothing at all.
+        **{**_profile_meta_fields(_DEFAULT_HERMES_HOME), 'visible': True},
         'skill_count': enabled_count,
         'enabled_skills': enabled_count,
         'total_skills': compatible_count,

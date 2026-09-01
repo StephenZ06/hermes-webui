@@ -601,10 +601,28 @@ def verify_password(plain: str) -> bool:
     return False
 
 
-def create_session(*, auth_type: str | None = None, username: str | None = None, bound_profile: str | None = None) -> str:
-    """Create a new auth session. Returns signed cookie value."""
+def create_session(
+    *,
+    auth_type: str | None = None,
+    username: str | None = None,
+    bound_profile: str | None = None,
+    ttl_seconds: float | None = None,
+) -> str:
+    """Create a new auth session. Returns signed cookie value.
+
+    ``ttl_seconds`` overrides the configured session lifetime for one session.
+    It exists for credentials a server-side caller mints for itself -- notably
+    cross-profile delegation, which drives a target profile's turn over
+    authenticated loopback HTTP from inside this process. Those sessions are
+    persisted to ``.sessions.json`` like any other, so a crash between mint and
+    revoke would otherwise strand a 30-day credential on disk; bounding the TTL
+    at mint time caps that even when the revoking ``finally`` never runs. A
+    non-positive or missing value falls back to the configured TTL, so an
+    accidental ``ttl_seconds=0`` can never mint an already-dead session.
+    """
     token = secrets.token_hex(32)
-    expiry = time.time() + _resolve_session_ttl()
+    ttl = float(ttl_seconds) if ttl_seconds and ttl_seconds > 0 else _resolve_session_ttl()
+    expiry = time.time() + ttl
     record: float | dict
     if any(value is not None for value in (auth_type, username, bound_profile)):
         record = {
