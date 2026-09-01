@@ -1916,6 +1916,107 @@ def _agent_gateway_restart_failure_message(target: str, restart_result: dict) ->
         'Run `hermes gateway restart` manually.'
     )
 
+POST_UPDATE_HOOK_DIRNAME = 'post-update.d'
+_POST_UPDATE_HOOK_TIMEOUT_SECONDS = 120
+
+
+def _post_update_hook_dir() -> Path:
+    """Resolve ``$HERMES_HOME/post-update.d``.
+
+    Read from the environment on every call rather than caching at import, so
+    a profile switch that re-points HERMES_HOME is honoured.
+    """
+    try:
+        from api.config import _DEFAULT_HERMES_HOME as default_home
+    except Exception:
+        default_home = Path.home() / '.hermes'
+    home = os.getenv('HERMES_HOME') or str(default_home)
+    return Path(home).expanduser() / POST_UPDATE_HOOK_DIRNAME
+
+
+def _run_post_update_hooks(target: str, path: Path) -> list:
+    """Run the user's scripts in ``$HERMES_HOME/post-update.d`` after an update.
+
+    Both apply paths move the checkout onto the remote ref -- the force path
+    with a literal ``reset --hard`` -- which destroys any local commit carried
+    on top of upstream. Hooks are the supported seam for re-applying such a
+    local customisation (a custom module in the agent's ``tools/`` directory
+    being the motivating case) on every update, instead of the user
+    rediscovering the loss the next time the feature silently stops existing.
+
+    Called BEFORE the gateway/server restart so whatever a hook restores is on
+    disk by the time the new process imports its modules.
+
+    Fail-soft by contract: the update has already been applied when this runs,
+    so a broken, hanging, or unexecutable hook is logged and recorded, never
+    raised -- aborting here would strand the caller between states. Returns one
+    result dict per hook that ran.
+    """
+    hook_dir = _post_update_hook_dir()
+    try:
+        entries = sorted(hook_dir.iterdir())
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    except OSError:
+        logger.warning(
+            'post-update hooks: cannot read %s', hook_dir, exc_info=True)
+        return []
+
+    env = dict(os.environ)
+    env['HERMES_UPDATE_TARGET'] = target
+    env['HERMES_UPDATE_REPO'] = str(path)
+
+    results = []
+    for entry in entries:
+        name = entry.name
+        # Hidden files are editor/backup droppings, not hooks. A missing
+        # executable bit means "parked": run it through a shell we picked for
+        # the user and a disabled hook silently comes back to life.
+        if name.startswith('.'):
+            continue
+        try:
+            if not entry.is_file() or not os.access(entry, os.X_OK):
+                continue
+        except OSError:
+            continue
+        try:
+            proc = subprocess.run(
+                [str(entry), target, str(path)],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=_POST_UPDATE_HOOK_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                'post-update hook %s timed out after %ss and was killed',
+                name, _POST_UPDATE_HOOK_TIMEOUT_SECONDS)
+            results.append(
+                {'hook': name, 'ok': False, 'status': 'timeout', 'output': ''})
+            continue
+        except OSError as exc:
+            logger.warning(
+                'post-update hook %s could not be executed: %s', name, exc)
+            results.append(
+                {'hook': name, 'ok': False, 'status': 'error',
+                 'output': str(exc)})
+            continue
+        output = ((proc.stdout or '') + (proc.stderr or '')).strip()
+        ok = proc.returncode == 0
+        if ok:
+            logger.info('post-update hook %s succeeded (%s)', name, target)
+        else:
+            logger.warning(
+                'post-update hook %s exited %s (%s): %s',
+                name, proc.returncode, target, output[:500])
+        results.append({
+            'hook': name,
+            'ok': ok,
+            'status': 'ok' if ok else 'failed',
+            'output': output,
+        })
+    return results
+
 
 def _discard_local_changes(path: Path, reset_ref: str) -> bool:
     """Discard local changes and reset *path* to *reset_ref*."""
@@ -2048,6 +2149,10 @@ def apply_force_update(target: str, channel=None) -> dict:
 
         with _cache_lock:
             _update_cache['checked_at'] = 0
+
+        # Before any restart: a hook that restores a file the agent
+        # imports is useless once the process has been re-execed.
+        _run_post_update_hooks(target, path)
 
         if target == 'agent':
             gateway_ok, gateway_result = _ensure_gateway_restart_for_agent_update()
@@ -2363,6 +2468,10 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
             with _cache_lock:
                 _update_cache['checked_at'] = 0
 
+            # Before any restart: a hook that restores a file the agent
+            # imports is useless once the process has been re-execed.
+            _run_post_update_hooks(target, path)
+
             if target == 'agent':
                 gateway_ok, gateway_result = _ensure_gateway_restart_for_agent_update()
                 if not gateway_ok:
@@ -2394,6 +2503,10 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
     # Invalidate cache
     with _cache_lock:
         _update_cache['checked_at'] = 0
+
+    # Before any restart: a hook that restores a file the agent
+    # imports is useless once the process has been re-execed.
+    _run_post_update_hooks(target, path)
 
     if target == 'agent':
         gateway_ok, gateway_result = _ensure_gateway_restart_for_agent_update()
