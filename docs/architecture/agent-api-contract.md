@@ -118,9 +118,14 @@ different profile. It depends on WebUI internals in three ways:
   credential for its own authenticated loopback request. The pre-signed
   `hermes_profile` cookie must be accepted on the FIRST request; see
   `tests/test_cross_profile_delegation_auth.py`.
-- `_handle_chat_sync` must keep republishing `X-Hermes-Cross-Profile-Depth` as
-  `HERMES_CROSS_PROFILE_DEPTH`; see `tests/test_cross_profile_depth_header.py`
-  for why the hop cap cannot live on the agent side alone.
+- `_handle_chat_sync` must keep recording `X-Hermes-Cross-Profile-Depth`
+  against the turn's session through `api.cross_profile_depth`, and the tool
+  reads it back with the `session_id` the registry hands every handler. See
+  `tests/test_cross_profile_depth_header.py` for why the hop cap cannot live on
+  the agent side alone, and `tests/test_cross_profile_depth_isolation.py` for
+  why it must not live in `os.environ`: a delegated child turn holds its depth
+  for the turn's whole duration, so a process-global made every concurrent turn
+  read that depth and refuse its own first hop.
 
 The tool gates itself on those imports succeeding, so under the CLI or a bare
 gateway it is simply not offered. That keeps the coupling from spreading, but

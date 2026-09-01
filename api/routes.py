@@ -25511,12 +25511,18 @@ def _handle_chat_sync(handler, body):
     # the depth cap actually fire on a nested delegation. Absent header =>
     # env var deliberately left unset (top-level call), same as TERMINAL_CWD.
     _xprofile_depth = handler.headers.get("X-Hermes-Cross-Profile-Depth")
+    from api import cross_profile_depth
+
+    # Recorded against this session rather than in os.environ. A delegated child
+    # turn holds its depth for the turn's whole duration, so a process-global
+    # made every OTHER turn running concurrently read that depth and refuse its
+    # own first hop with "depth limit reached". Entered manually so the turn
+    # body below keeps its indentation.
+    _depth_scope = cross_profile_depth.for_session(s.session_id, _xprofile_depth)
+    _depth_scope.__enter__()
     with _ENV_LOCK:
         old_cwd = os.environ.get("TERMINAL_CWD")
         os.environ["TERMINAL_CWD"] = str(workspace)
-        old_xprofile_depth = os.environ.get("HERMES_CROSS_PROFILE_DEPTH")
-        if _xprofile_depth:
-            os.environ["HERMES_CROSS_PROFILE_DEPTH"] = str(_xprofile_depth).strip()
         old_exec_ask = os.environ.get("HERMES_EXEC_ASK")
         old_session_key = os.environ.get("HERMES_SESSION_KEY")
         os.environ["HERMES_EXEC_ASK"] = "1"
@@ -25626,15 +25632,12 @@ def _handle_chat_sync(handler, body):
                 persist_user_message=msg,
             )
     finally:
+        _depth_scope.__exit__(None, None, None)
         with _ENV_LOCK:
             if old_cwd is None:
                 os.environ.pop("TERMINAL_CWD", None)
             else:
                 os.environ["TERMINAL_CWD"] = old_cwd
-            if old_xprofile_depth is None:
-                os.environ.pop("HERMES_CROSS_PROFILE_DEPTH", None)
-            else:
-                os.environ["HERMES_CROSS_PROFILE_DEPTH"] = old_xprofile_depth
             if old_exec_ask is None:
                 os.environ.pop("HERMES_EXEC_ASK", None)
             else:
