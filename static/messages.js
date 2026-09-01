@@ -5970,22 +5970,28 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       scrollIfPinned();
     });
 
+    // No _terminalStateReached/_streamFinalized guard here (unlike the main
+    // content handlers above): a delegate_task subagent can be a
+    // fire-and-forget background child that keeps running on its own daemon
+    // thread after the parent turn's own reply has already finished
+    // streaming (see delegate_tool.py's child_session_db ownership comment)
+    // — the connection stays open for exactly this reason. Dropping a late
+    // subagent_complete because the main turn already said "done" left
+    // Agent Canvas cards stuck showing "running" forever with no other
+    // event ever arriving to correct them.
     source.addEventListener('subagent_spawn',e=>{
-      if(_terminalStateReached||_streamFinalized) return;
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onSpawn==='function') window.AgentCanvas.onSpawn(d);
     });
 
     source.addEventListener('subagent_tool',e=>{
-      if(_terminalStateReached||_streamFinalized) return;
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onToolActivity==='function') window.AgentCanvas.onToolActivity(d);
     });
 
     source.addEventListener('subagent_complete',e=>{
-      if(_terminalStateReached||_streamFinalized) return;
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onComplete==='function') window.AgentCanvas.onComplete(d);
