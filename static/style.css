@@ -3867,7 +3867,7 @@ button,
 .shortcuts-help-group-title:first-child{margin-top:2px;}
 .shortcuts-help-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;font-size:13px;color:var(--text);}
 .shortcuts-help-keys{display:flex;gap:4px;flex-shrink:0;}
-.shortcuts-help-key{background:var(--hover-bg);border:1px solid var(--border2);border-radius:6px;padding:2px 7px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;color:var(--text);}
+.shortcuts-help-key{background:var(--hover-bg);border:1px solid var(--border2);border-radius:6px;padding:2px 7px;font-size:11px;font-family:var(--font-mono);color:var(--text);}
 .ws-action-btn.danger:hover{background:rgba(239,83,80,.1);color:var(--error);border-color:var(--error);}
 .ws-add-row{display:flex;gap:8px;align-items:center;padding:10px 0 4px;}
 .ws-add-input-wrap{flex:1;min-width:0;}
@@ -4120,7 +4120,7 @@ body.resizing .sidebar{transition:none!important;}
 .skill-security-finding-critical .skill-security-finding-severity,.skill-security-finding-high .skill-security-finding-severity{color:var(--error);}
 .skill-security-finding-medium .skill-security-finding-severity{color:var(--warning);}
 .skill-security-finding-desc{flex:1;min-width:0;color:var(--text);}
-.skill-security-finding-loc{color:var(--muted);font-size:11px;font-family:var(--font-mono, monospace);flex-shrink:0;}
+.skill-security-finding-loc{color:var(--muted);font-size:11px;font-family:var(--font-mono);flex-shrink:0;}
 .skill-frontmatter{margin-bottom:16px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;}
 .skill-frontmatter>summary{padding:8px 12px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);cursor:pointer;user-select:none;list-style:none;}
 .skill-frontmatter>summary::-webkit-details-marker{display:none;}
@@ -7329,7 +7329,7 @@ body code[class*="language-"],body pre[class*="language-"],body pre code[class*=
 /* Knowledge Browser detail pane */
 .knowledge-detail-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
 .knowledge-detail-meta .knowledge-type-badge{background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--muted);gap:6px;}
-.knowledge-source-path{font-size:11px;color:var(--muted);opacity:.7;font-family:'SF Mono',ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.knowledge-source-path{font-size:11px;color:var(--muted);opacity:.7;font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .knowledge-detail-content{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.6;color:var(--text);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:16px;margin:0;}
 
 /* Hide header title/actions entirely when empty state is active */
@@ -7762,7 +7762,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
 .audit-entry-status-running{color:var(--accent);border-color:var(--accent);background:var(--accent-bg);}
 .audit-entry-status-completed{color:var(--success);border-color:var(--success);background:color-mix(in srgb, var(--success) 12%, transparent);}
 .audit-entry-status-interrupted{color:var(--warning);border-color:var(--warning);background:color-mix(in srgb, var(--warning) 12%, transparent);}
-.audit-entry-session{font-family:var(--font-mono,monospace);font-size:11px;}
+.audit-entry-session{font-family:var(--font-mono);font-size:11px;}
 .audit-entry-model{color:var(--text);}
 .audit-entry-time{margin-left:auto;}
 .audit-entry-preview{font-size:13px;color:var(--text);line-height:1.4;word-break:break-word;}
@@ -7851,7 +7851,7 @@ main.main.showing-insights > #mainInsights{display:flex;overflow-y:auto;}
      currently-chosen option, none of the others" bug. The darkened
      background alone still reads clearly as a modal scrim. */
   position:fixed;inset:0;background:rgba(7,12,19,.78);
-  display:flex;align-items:center;align-items:safe center;justify-content:center;overflow-y:auto;
+  display:flex;align-items:center;align-items:safe center;justify-content:center;
   z-index:1100;padding:24px;
   overflow-y:auto;
 }

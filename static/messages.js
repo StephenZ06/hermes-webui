@@ -6266,13 +6266,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           // #4720: reset _oldestIdx (full-load symmetry; keeps the #4613 anchor aligned).
           if(typeof _oldestIdx!=='undefined')_oldestIdx=d.session._messages_offset||0;
           S.messages=_filterRecoveryControlMessages(S.messages || []);
-          if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
-          if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
-          if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
           if(S.session&&S.session.session_id){
             try{localStorage.setItem('hermes-webui-session',S.session.session_id);}catch(_){}
             if(typeof _setActiveSessionUrl==='function') _setActiveSessionUrl(S.session.session_id);
           }
+          if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
+          if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
+          if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
           const _markerOnlyAssistantError=_replaceMarkerOnlyAssistantWithStreamError(S.messages);
           if(
             window._compressionUi&&window._compressionUi.automatic&&

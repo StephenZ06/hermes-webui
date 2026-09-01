@@ -1970,6 +1970,11 @@ async function loadSession(sid){
     // session_id.
     const _selfHealedCurrent = (e.status===404) && (currentSid===sid);
     if (_isCurrentLoad()) _loadingSessionId = null;
+    // Restart the on-screen session's stream; full rationale below.
+    if (currentSid && !_selfHealedCurrent && _loadingSessionId === null
+        && typeof startSessionStream === 'function') {
+      startSessionStream(currentSid);
+    }
     // The session stream was stopped unconditionally at the top of this load
     // (mirroring stopApprovalPolling). On the happy path it's restarted ~120
     // lines below, but this failure exit never reaches that point — leaving
@@ -1985,10 +1990,6 @@ async function loadSession(sid){
     // early-returns) because only here can the current session have just
     // self-healed away — re-arming a 404'd/deleted session_id would spin the
     // SSE reconnect loop against a dead session.
-    if (currentSid && !_selfHealedCurrent && _loadingSessionId === null
-        && typeof startSessionStream === 'function') {
-      startSessionStream(currentSid);
-    }
     return;
   }
   // Guard: api() may have redirected (401) and returned undefined; in that case
