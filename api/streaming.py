@@ -10567,6 +10567,8 @@ def _run_agent_streaming(
             try:
                 from api.context_pressure_rollover import attach_rollover_hook
                 attach_rollover_hook(agent)
+                from api.project_lifecycle_hook import ensure_project_lifecycle_hook
+                ensure_project_lifecycle_hook()
             except Exception:
                 logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
 
@@ -11322,6 +11324,8 @@ def _run_agent_streaming(
                             try:
                                 from api.context_pressure_rollover import attach_rollover_hook
                                 attach_rollover_hook(agent)
+                                from api.project_lifecycle_hook import ensure_project_lifecycle_hook
+                                ensure_project_lifecycle_hook()
                             except Exception:
                                 logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
                             with STREAMS_LOCK:
@@ -12626,6 +12630,8 @@ def _run_agent_streaming(
                     try:
                         from api.context_pressure_rollover import attach_rollover_hook
                         attach_rollover_hook(_heal_agent)
+                        from api.project_lifecycle_hook import ensure_project_lifecycle_hook
+                        ensure_project_lifecycle_hook()
                     except Exception:
                         logger.debug('[webui] failed to attach session-rollover hook', exc_info=True)
                     with STREAMS_LOCK:

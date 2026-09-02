@@ -25581,6 +25581,8 @@ def _handle_chat_sync(handler, body):
             try:
                 from api.context_pressure_rollover import attach_rollover_hook
                 attach_rollover_hook(agent)
+                from api.project_lifecycle_hook import ensure_project_lifecycle_hook
+                ensure_project_lifecycle_hook()
             except Exception:
                 logger.debug("failed to attach session-rollover hook", exc_info=True)
             from api.streaming import (
