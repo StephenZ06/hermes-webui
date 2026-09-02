@@ -109,9 +109,16 @@ def _evaluate_session_rollover(agent, messages, system_message, real_tokens, tas
         logger.exception("session_rollover evaluation failed; retaining current session")
         return False, messages, None
 
-    if outcome.reason in ("not_due", "checkpoint_failed"):
-        if outcome.reason == "checkpoint_failed":
-            logger.warning("session_rollover checkpoint failed for %s", session_id)
+    # "transition_failed" belongs here too: the coordinator hands back the
+    # ORIGINAL messages in that case, so reporting the hook as having handled
+    # compression would suppress the in-loop 50% fallback and leave the real
+    # context pressure unrelieved for the rest of the turn.
+    if outcome.reason in ("not_due", "checkpoint_failed", "transition_failed"):
+        if outcome.reason != "not_due":
+            logger.warning(
+                "session_rollover %s for %s; falling back to in-loop compaction",
+                outcome.reason, session_id,
+            )
         return False, messages, None
 
     if outcome.renewed:
