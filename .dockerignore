@@ -6,6 +6,9 @@ __pycache__
 tests/
 .env*
 /AGENTS.md
-# Host dev virtualenv: its bin/ symlinks point at host paths that do not
-# exist in the image, so a copied .venv bakes in a broken interpreter.
+# Host dev virtualenvs: their bin/ symlinks point at host paths that do not
+# exist in the image, so a copied venv bakes in a broken interpreter. The
+# glob form matters — a bare `.venv` only matches at the context root, which
+# let every .claude/worktrees/*/.venv through (148MB of build context).
 .venv
+**/.venv
