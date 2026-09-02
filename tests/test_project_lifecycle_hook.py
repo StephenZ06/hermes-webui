@@ -19,12 +19,21 @@ from api import project_lifecycle_hook as plh
 
 
 class _FakeManager:
-    def __init__(self):
-        self.hooks = {}
+    """Mirrors the real PluginManager surface used for registration.
 
-    def register_hook(self, name, callback):
-        self.hooks.setdefault(name, []).append(callback)
-        return object()
+    The real object has no public registrar — register_hook lives on
+    PluginContext, which only a loaded plugin receives — so callbacks are
+    appended to ``_hooks``, exactly as agent/shell_hooks does. An earlier
+    version of this double exposed register_hook and passed happily against
+    an API that does not exist.
+    """
+
+    def __init__(self):
+        self._hooks = {}
+
+    @property
+    def hooks(self):
+        return self._hooks
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +83,8 @@ def test_registration_failure_is_not_fatal():
     """A turn must still run if the plugin manager is unavailable or angry."""
 
     class _Broken:
-        def register_hook(self, *_a, **_k):
+        @property
+        def _hooks(self):
             raise RuntimeError("plugin manager exploded")
 
     assert plh.ensure_project_lifecycle_hook(manager=_Broken()) is False

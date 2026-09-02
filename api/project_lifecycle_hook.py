@@ -67,7 +67,15 @@ def ensure_project_lifecycle_hook(manager=None) -> bool:
             return False
         try:
             mgr = manager if manager is not None else _default_manager()
-            mgr.register_hook(HOOK_NAME, _project_lifecycle_context)
+            # Same mechanism agent/shell_hooks.register_from_config() uses to
+            # attach a callback that is not part of a packaged plugin:
+            # PluginManager exposes invoke_hook/has_hook but no public
+            # registrar (register_hook lives on PluginContext, which only a
+            # loaded plugin gets). Guard against double-adding our own
+            # callback in case the module is re-imported under a new name.
+            callbacks = mgr._hooks.setdefault(HOOK_NAME, [])
+            if _project_lifecycle_context not in callbacks:
+                callbacks.append(_project_lifecycle_context)
         except Exception:
             logger.warning(
                 "project-lifecycle hook could not be registered; turns will "
