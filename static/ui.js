@@ -7412,16 +7412,23 @@ function scrollIfPinned(){
   // working. _setMessageScrollToBottom()'s own rAF retry (#3319) already
   // re-reads scrollHeight one frame later, so skipping calls that land in an
   // already-scheduled frame does not lose DOM growth from later in the burst.
-  if(_scrollIfPinnedCoalesced) return;
+  // Guarded the same way as every other cross-module reference in this file:
+  // scrollIfPinned() is extracted and executed in isolation by the scroll
+  // contract tests, where the coalescing latch and rAF do not exist. Reading
+  // an undeclared binding there is a ReferenceError that aborts the whole
+  // function, so the behaviour under test never runs.
+  if(typeof _scrollIfPinnedCoalesced!=='undefined'&&_scrollIfPinnedCoalesced) return;
   _scrollIfPinnedCoalesced=true;
-  requestAnimationFrame(()=>{ _scrollIfPinnedCoalesced=false; });
+  if(typeof requestAnimationFrame==='function'){
+    requestAnimationFrame(()=>{ _scrollIfPinnedCoalesced=false; });
+  }
   if(_messageBottomDistance()>500) _setMessageScrollToBottom();
   // Live/playing-out turn: hand the tail to the rAF glide instead of snapping
   // scrollTop and rebuilding the settle ResizeObserver on every tick. The
   // completion paths (scrollToBottom(), the DOM-replace follow) still run the
   // full settle, so late layout — Prism, KaTeX, Mermaid, images — is still
   // re-anchored once the turn ends.
-  if(_tailFollowStreamLive()){ _tailFollowStart(); return; }
+  if(typeof _tailFollowStreamLive==='function'&&_tailFollowStreamLive()){ _tailFollowStart(); return; }
   _settleMessageScrollToBottom(false);
 }
 function scrollToBottom(){
