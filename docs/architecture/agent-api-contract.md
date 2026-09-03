@@ -98,6 +98,38 @@ The WebUI can keep code that is only presentation, validation, or routing glue:
 - WebUI-only caches and client-facing state that do not open agent SessionDB.
 - Docker documentation describing the transition while both paths are supported.
 
+## Local agent changes must survive an update
+
+A WebUI update of the `agent` target resets the agent checkout to the remote
+ref -- the force path with a literal `git reset --hard` preceded by
+`git clean -fd`. Any local commit carried on top of upstream is destroyed, and
+the failure is silent: the module disappears, its importer's `except` swallows
+the `ImportError`, and the feature simply stops existing. This has happened to
+`delegate_to_profile` and to the API session-rollover port.
+
+Nothing local in that checkout is safe. Two mechanisms restore it, both run by
+`_run_post_update_hooks` before any restart:
+
+- **Files upstream does not have** live in `$HERMES_HOME/custom-agent-tools/`,
+  mirroring the repo layout, and are copied back by
+  `post-update.d/10-restore-custom-agent-tools.sh`. Used for
+  `tools/delegate_to_profile.py` and `gateway/api_session_rollover.py` plus
+  their tests.
+- **Modifications to files upstream owns** live as patches in
+  `$HERMES_HOME/custom-agent-patches/*.patch`, re-applied by
+  `post-update.d/20-reapply-agent-patches.sh`. Storing our copy of a tracked
+  file instead would clobber every future upstream change to it. Currently
+  carries the rollover port's edits to `agent/conversation_loop.py` and
+  `hermes_cli/config_defaults.py`.
+
+Both are idempotent -- an already-applied patch reverse-checks clean and is
+skipped -- so they are no-ops on an untouched tree. When upstream drifts far
+enough that a patch stops applying, the hook reports it and leaves the tree
+alone rather than force a half-applied edit.
+
+**When adding anything to the agent checkout, add it to one of those two
+places in the same change, or the next update deletes it.**
+
 ## Reverse dependency: hermes-agent importing WebUI modules
 
 Every class above describes WebUI importing the agent checkout. Cross-profile
