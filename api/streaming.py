@@ -5543,7 +5543,64 @@ def _sanitize_messages_for_api(
             # Keep but strip the temporary marker
             msg = {k: v for k, v in msg.items() if k != '_recovered'}
         final.append(msg)
-    return final
+    # Outbound-only: the stored transcript keeps every copy; only the payload
+    # this call is building drops the repeats.
+    return _collapse_repeated_tool_results(final)
+
+
+# Byte-identical tool results repeated inside one conversation are pure cost:
+# measured on the live transcript, tool results are 92.1% of everything sent to
+# the model and 9.1% of that is the same bytes sent again (mostly skill_view
+# re-reading one skill body several times in a session).
+_REPEATED_TOOL_RESULT_MIN_BYTES = 1000
+_REPEATED_TOOL_RESULT_MARKER = (
+    "[identical to the earlier {tool} result in this conversation; "
+    "body omitted to save context]"
+)
+
+
+def _collapse_repeated_tool_results(messages, *, min_bytes=None):
+    """Send a repeated tool result once, then reference it.
+
+    A content collapse, deliberately not a message drop: a tool message is
+    paired to a preceding assistant ``tool_calls`` entry by ``tool_call_id``,
+    and strict providers reject a history where that pairing is broken. Only
+    the body is replaced, and only from the SECOND occurrence onward, so the
+    model still sees the full result once.
+
+    Keyed on (tool_name, exact content) — identical bytes from a different tool
+    are a different fact, and a re-read that returned something else is real new
+    information, so neither is collapsed. Structured/multimodal content is
+    skipped entirely. Idempotent: the marker is not itself collapsible, so
+    re-composing the payload every turn does not churn the prefix and break
+    prompt caching.
+    """
+    if not messages:
+        return messages
+    limit = _REPEATED_TOOL_RESULT_MIN_BYTES if min_bytes is None else min_bytes
+
+    seen: set = set()
+    out = []
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get("role") != "tool":
+            out.append(msg)
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str) or len(content) < limit:
+            out.append(msg)
+            continue
+        tool = str(msg.get("tool_name") or "")
+        key = (tool, content)
+        if key in seen:
+            collapsed = dict(msg)
+            collapsed["content"] = _REPEATED_TOOL_RESULT_MARKER.format(
+                tool=tool or "tool"
+            )
+            out.append(collapsed)
+            continue
+        seen.add(key)
+        out.append(msg)
+    return out
 
 
 def _sanitize_messages_for_agent(
