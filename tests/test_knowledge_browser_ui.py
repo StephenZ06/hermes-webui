@@ -51,7 +51,10 @@ def test_panels_js_core_wiring_present():
 def test_read_only_no_create_edit_delete_buttons():
     """Knowledge Browser is read-only in v1 — no create/edit/delete affordances."""
     html = read("static/index.html")
-    panel_match = re.search(r'<div class="panel-view" id="panelKnowledge">.*?</div>\s*<!-- Todo panel -->', html, re.DOTALL)
+    # End at whatever panel comment follows rather than naming one: the panel
+    # after Knowledge has changed before (Todo, now Insights) and the assertion
+    # below is about this panel's own markup, not its neighbour's identity.
+    panel_match = re.search(r'<div class="panel-view" id="panelKnowledge">.*?</div>\s*<!--', html, re.DOTALL)
     assert panel_match, "panelKnowledge block not found"
     panel_html = panel_match.group(0)
     assert "openKnowledgeCreate" not in panel_html

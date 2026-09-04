@@ -40,7 +40,10 @@ def test_render_uses_single_pass_partition_helper():
     assert "null is a deliberate \"not computed\" sentinel" in render_body
     assert "const webuiSessionTabCount=_sessionSourceTabCount('webui', renderedWebuiSessionCount, renderedCliSessionCount);" in render_body
     assert "const cliSessionTabCount=_sessionSourceTabCount('cli', renderedWebuiSessionCount, renderedCliSessionCount);" in render_body
-    assert "const count=filter==='cli'?cliSessionTabCount:webuiSessionTabCount;" in render_body
+    # The WebUI/CLI pill bar that read those counts back out of a `filter`
+    # variable was removed in fc84a9a7f in favour of the sidebar footer
+    # launcher. The counts themselves are still computed and still asserted
+    # above; only the pill's own lookup is gone.
     assert "const count=filter==='cli'?renderedCliSessionCount:renderedWebuiSessionCount;" not in render_body
     assert "withMessages.filter(" not in render_body
 

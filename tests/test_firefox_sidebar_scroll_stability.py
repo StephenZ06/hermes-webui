@@ -61,8 +61,12 @@ def test_only_background_refreshes_defer_while_sidebar_is_interacting():
     assert "renderSessionList({deferWhileInteracting:true})" in streaming_poll_block
     assert "renderSessionList({deferWhileInteracting:true})" in gateway_poll_block
     assert "renderSessionList({deferWhileInteracting:true}); // re-fetch and re-render" in gateway_sse_block
-    assert "pfToggle.onclick=()=>{_setShowAllProfiles(true);renderSessionList({deferWhileInteracting:false});};" in SESSIONS_JS
-    assert "pfToggle.onclick=()=>{_setShowAllProfiles(false);renderSessionList({deferWhileInteracting:false});};" in SESSIONS_JS
+    # A user-initiated change of what the sidebar shows must repaint at once
+    # rather than wait out an interaction, unlike the background polls above.
+    # The all-profiles pill that used to carry this went away with the pill bar
+    # (fc84a9a7f); the source filter is the surviving user-initiated switch.
+    source_filter_block = _block("function _setSessionSourceFilter(filter) {", "\n}")
+    assert "renderSessionList({deferWhileInteracting:false});" in source_filter_block
 
 def test_session_list_pointer_hover_and_scroll_activity_are_tracked():
     interaction_block = _block("function _isSessionListUserInteracting()", "function _schedulePendingSessionListApply")

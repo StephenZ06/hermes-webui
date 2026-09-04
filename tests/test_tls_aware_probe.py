@@ -50,12 +50,32 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class _HTTPServer(http.server.HTTPServer):
+    """HTTPServer that closes a TLS connection the way a real server does.
+
+    ``BaseHTTPRequestHandler`` just closes the socket, which leaves the TLS
+    session without its ``close_notify``. OpenSSL 3.2+ reports that as
+    ``SSL_read: unexpected eof while reading`` and curl exits 56 -- even though
+    the whole response body arrived -- so the probe under test would look
+    broken against this stub while working fine against uvicorn, which does
+    shut TLS down cleanly.
+    """
+
+    def shutdown_request(self, request):
+        if isinstance(request, ssl.SSLSocket):
+            try:
+                request = request.unwrap()
+            except (OSError, ValueError, ssl.SSLError):
+                pass
+        super().shutdown_request(request)
+
+
 class _Server:
     """Minimal /health server, optionally TLS-wrapped, on a background thread."""
 
     def __init__(self, cert: str | None = None, key: str | None = None):
         self.port = _free_port()
-        self.httpd = http.server.HTTPServer(("127.0.0.1", self.port), _HealthHandler)
+        self.httpd = _HTTPServer(("127.0.0.1", self.port), _HealthHandler)
         if cert and key:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(cert, key)

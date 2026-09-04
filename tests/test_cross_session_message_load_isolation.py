@@ -309,6 +309,16 @@ function createEnvironment() {
 
   globalThis._messageReloadLimitForSession = () => 2;
 
+  // loadSession paints a localized loading overlay before its first fetch.
+  // ui.js and i18n.js are not loaded in this harness, so `esc` and `t` have to
+  // be stubbed -- without them the very first load throws a ReferenceError
+  // before any api() call, and the ordering waits below spin forever.
+  globalThis.esc = (value) => String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]),
+  );
+  globalThis.t = (key) => String(key);
+
   globalThis._msgInner = { innerHTML: 'INIT_LOADING' };
   const _msgInput = { value: '' };
   globalThis.$ = (id) => {

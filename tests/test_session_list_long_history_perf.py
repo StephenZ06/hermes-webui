@@ -313,7 +313,9 @@ def test_frontend_session_list_sorts_effective_streaming_rows_first():
     assert "function _sessionRunningSortRank(session)" in src
     assert "_isSessionEffectivelyStreaming(session)" in src
     assert "session.active_stream_id && session.has_pending_user_message" in src
-    assert "const orderedSessions=[...sessions].sort(_sessionSidebarSortCompare);" in src
+    # Project-foldered sessions render under their folder, so the flat list
+    # sorts the unfoldered subset rather than every session.
+    assert "const orderedSessions=[...mainListSessions].sort(_sessionSidebarSortCompare);" in src
 
 
 def test_frontend_session_date_buckets_use_runtime_sort_timestamp():
