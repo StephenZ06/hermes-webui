@@ -108,12 +108,16 @@ def test_selected_text_reply_styles_and_i18n_exist_for_all_locales():
     assert ".selection-context-quote" in css
     assert "-webkit-line-clamp:3" in css
     assert "white-space:pre-wrap" in css
-    assert "max-width:clamp(780px,60vw,1100px)" in css
+    # What this pair is really pinning is that the selection-chip rail resolves
+    # to the same width as the composer box it stacks on. That ladder now lives
+    # in one token both read, and the ultrawide override that used to widen both
+    # to 1600px is gone -- see tests/test_composer_wide_viewport_layout.py.
+    assert "--composer-max:clamp(780px,60vw,1100px)" in css
+    assert ".composer-selection-chips{display:flex;flex-direction:column;gap:8px;max-width:var(--composer-max);" in css
     assert "margin:0 auto" in css
     assert "max-height:min(32vh,280px)" in css
     assert "overflow-y:auto" in css
     assert "scrollbar-gutter:stable" in css
-    assert "@media (min-width:1600px){.composer-selection-chips{max-width:1600px;}}" in css
     assert "min-width:28px" in css
     assert "min-height:28px" in css
     assert "min-width:44px" in css

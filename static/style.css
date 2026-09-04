@@ -911,9 +911,16 @@
   :root[data-skin="geist-contrast"] .rightpanel,
   :root[data-skin="geist-contrast"] .topbar,
   :root[data-skin="geist-contrast"] .composer-wrap{background:var(--sidebar)!important;border-color:var(--border)!important;box-shadow:none!important;backdrop-filter:saturate(180%) blur(12px);}
+  /* .empty-state is deliberately absent from this list. It is flex:1 inside
+     the transparent .messages scroller, so an opaque surface on it paints the
+     chat area only as far down as the empty state itself reaches — and an
+     empty .messages-inner still contributes its 52px of padding below that.
+     The result was a 52px band of #mainChat's --bg across the full width of
+     the chat, directly above the composer: the chat background visibly
+     stopping short with a black gap under it. A chat that has messages in it
+     is already --bg on this skin, so the empty state belongs there too. */
   :root[data-skin="geist-contrast"] .main,
   :root[data-skin="geist-contrast"] .chat,
-  :root[data-skin="geist-contrast"] .empty-state,
   :root[data-skin="geist-contrast"] .panel-view,
   :root[data-skin="geist-contrast"] .settings-section,
   :root[data-skin="geist-contrast"] .settings-card,
@@ -1371,7 +1378,7 @@
   :root:not(.dark) .project-chip.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg-strong);}
   :root:not(.dark) .chip{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.04);}
   :root:not(.dark) .chip.model{color:var(--accent-text);border-color:var(--accent-bg-strong);background:var(--accent-bg);}
-.composer-selection-chips{display:flex;flex-direction:column;gap:8px;max-width:clamp(780px,60vw,1100px);width:100%;box-sizing:border-box;margin:0 auto;padding:8px 0 0;min-height:0;max-height:min(32vh,280px);overflow-y:auto;scrollbar-gutter:stable;}
+.composer-selection-chips{display:flex;flex-direction:column;gap:8px;max-width:var(--composer-max);width:100%;box-sizing:border-box;margin:0 auto;padding:8px 0 0;min-height:0;max-height:min(32vh,280px);overflow-y:auto;scrollbar-gutter:stable;}
 .composer-selection-chips[hidden]{display:none;}
 .selection-context-card{display:flex;gap:10px;align-items:stretch;border:1px solid var(--border2);border-radius:12px;background:linear-gradient(135deg,var(--surface-subtle),rgba(255,255,255,.015));box-shadow:0 1px 0 rgba(255,255,255,.03) inset;color:var(--text);overflow:hidden;}
 .selection-context-accent{width:3px;flex:0 0 3px;background:var(--accent);opacity:.82;}
@@ -1386,7 +1393,6 @@
 .selection-context-quote{margin:0;color:var(--muted);font-family:var(--font-ui);font-size:12.5px;line-height:1.45;white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
 .selection-chip-edit{font-size:11px;border:1px solid var(--accent);outline:none;border-radius:6px;padding:2px 6px;background:var(--surface);color:var(--text);width:130px;max-width:70vw;}
 .selection-chip-edit:focus{box-shadow:0 0 0 2px var(--focus-ring);}
-@media (min-width:1600px){.composer-selection-chips{max-width:1600px;}}
 @media (hover:none) and (pointer:coarse){.composer-selection-chips{max-height:min(28dvh,220px);}.selection-context-name,.selection-context-remove{min-height:44px;}.selection-context-remove{min-width:44px;}}
 .sent-selection-context{margin:10px 0 0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--user-bubble-border) 72%,var(--accent) 28%);border-left:3px solid var(--accent);border-radius:10px;background:color-mix(in srgb,var(--user-bubble-bg) 86%,var(--accent-bg) 14%);}
 .sent-selection-context-label{margin-bottom:5px;color:var(--accent-text);font-size:11px;font-weight:750;line-height:1.25;letter-spacing:.01em;}
@@ -2617,8 +2623,34 @@
   .suggestion svg{flex:none;}
   .suggestion:hover{background:var(--accent-bg);color:var(--text);border-color:var(--accent-bg);transform:translateX(2px);}
   /* ── Composer ── */
+  /* One width ladder for everything stacked in the composer column. The box
+     and the selection-chip rail sit directly on top of each other, so they
+     have to resolve to the same number; they each used to spell the clamp out
+     and each carried its own ultrawide override, which is two places to
+     forget. 60vw keeps the composer growing with the window and 1100px is the
+     ordinary ceiling.
+
+     The ultrawide step used to be 1600px, described in its own comment as a
+     cap. It never capped anything — the clamp above already stops at 1100px,
+     so the rule only ever ran in the widening direction. Measured in the
+     running app at 2560x1440 it produced a 1600px composer against an 860px
+     conversation column: the chip cluster and the send button ~1100px apart
+     with dead space between them, and the whole footer visibly out of line
+     with the text it belongs to.
+
+     1200px is the replacement, and it is a floor as much as a ceiling. The
+     session-toolsets chip reveals itself with a container query on
+     .composer-footer at 1100px, and .composer-footer is 2px narrower than
+     .composer-box (its border), so anything under 1102px here would make that
+     chip permanently unreachable rather than merely narrow. 1200px clears the
+     threshold with room to spare and still keeps the footer near the
+     conversation column. Keep the two numbers in step: raising the container
+     query without raising this, or lowering this under 1102px, silently
+     deletes the toolsets chip. */
+  :root{--composer-max:clamp(780px,60vw,1100px);}
+  @media (min-width:1600px){:root{--composer-max:1200px;}}
   .composer-wrap{padding:12px 20px 16px;background:var(--bg);flex-shrink:0;}
-  .composer-box{max-width:clamp(780px,60vw,1100px);margin:0 auto;background:var(--bg);border:1px solid var(--border2);border-radius:16px;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s;position:relative;z-index:2;}
+  .composer-box{max-width:var(--composer-max);margin:0 auto;background:var(--bg);border:1px solid var(--border2);border-radius:16px;display:flex;flex-direction:column;transition:border-color .2s,box-shadow .2s;position:relative;z-index:2;}
   .composer-box:focus-within{border-color:var(--accent);}
   .composer-wrap.drag-over .composer-box{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);}
   .drop-hint{display:none;position:absolute;inset:0;align-items:center;justify-content:center;gap:10px;background:linear-gradient(var(--input-bg),var(--input-bg)),var(--bg);border:2px dashed var(--accent);border-radius:16px;font-size:13.5px;font-weight:600;color:var(--accent-text);pointer-events:none;z-index:30;flex-direction:column;text-align:center;padding:8px;}
@@ -2648,13 +2680,24 @@
   /* Composer footer chip wraps share position:relative + flex:0 0 auto so
      they keep their natural width and let .composer-left handle overflow
      via horizontal scroll. flex-shrink:0 here is what fixes #2740 (chips
-     were compressing past their content and visually overlapping). Each
-     wrap declares its own display / gap below as needed. */
+     were compressing past their content and visually overlapping).
+
+     display:flex + align-items:center belongs here too, and is not cosmetic.
+     .composer-left lays out these wraps, not the chips inside them, so a wrap
+     left as a block turns its inline-flex chip into an inline-level box that
+     is positioned on the wrap's own text baseline, inside a line box sized by
+     the inherited strut. That is a different vertical positioning model from
+     the flex centring the other wraps get, and the two only agree while the
+     strut stays shorter than the chips — change the inherited line-height or
+     the UI font's ascent/descent and the odd wrap out drifts a couple of
+     pixels away from the row. The workspace pill was the one wrap already
+     centring with flexbox, so it was the one that visibly disagreed. Centre
+     them all the same way and the font stops being able to move any of them. */
   .composer-profile-wrap,
   .composer-ws-wrap,
   .composer-reasoning-wrap,
   .composer-toolsets-wrap,
-  .composer-model-wrap{position:relative;flex:0 0 auto;}
+  .composer-model-wrap{position:relative;flex:0 0 auto;display:flex;align-items:center;}
   .composer-profile-chip{display:inline-flex;align-items:center;gap:8px;max-width:180px;padding:8px 10px 8px 12px;border-radius:999px;border:1px solid transparent;background-color:transparent;font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
   .composer-profile-chip:hover{background-color:var(--hover-bg);}
   .composer-profile-chip.active{background:var(--accent-bg);border-color:var(--accent-bg-strong);}
@@ -2663,7 +2706,7 @@
   .composer-profile-chip.switching .composer-profile-icon{position:relative;}
   .composer-profile-icon,.composer-profile-chevron{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;}
   .composer-profile-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .composer-ws-wrap{display:flex;align-items:center;gap:4px;}
+  .composer-ws-wrap{gap:4px;}
   .composer-workspace-group{display:inline-flex;align-items:stretch;max-width:284px;border-radius:999px;overflow:hidden;background-color:transparent;border:1px solid var(--border2);transition:background-color .15s,border-color .15s;}
   .composer-workspace-group:hover{background-color:var(--hover-bg);}
   .composer-workspace-group:hover{border-color:var(--border2);}
@@ -3158,11 +3201,13 @@
      toolsets+context-ring+send all need room to breathe, see #1431). At
      narrower container widths the chip is hidden by the base rule above —
      the underlying state and /api/session/toolsets endpoint continue to work
-     for scripted callers regardless of UI visibility. Uses display:block to
-     match sibling wraps (.composer-profile-wrap, .composer-model-wrap, etc.)
-     rather than display:flex — the chip child has its own inline-flex layout. */
+     for scripted callers regardless of UI visibility. Reveals as display:flex
+     to match the sibling wraps (.composer-profile-wrap, .composer-model-wrap,
+     etc.): revealing it as a block would leave this chip — the only one that
+     exists solely on wide viewports — centred on the wrap's own text baseline
+     while every chip beside it is centred by flexbox. */
   @container composer-footer (min-width: 1100px) {
-    .composer-toolsets-wrap{display:block;}
+    .composer-toolsets-wrap{display:flex;}
   }
 
   @media(max-width:640px){
@@ -8267,11 +8312,6 @@ main.main.showing-logs > #mainLogs{display:flex;}
   direction:ltr;
   text-align:left;
   unicode-bidi:isolate;
-}
-
-/* Cap composer width on very wide displays so the chip-cluster gap stays bounded */
-@media (min-width:1600px) {
-  .composer-box{max-width:1600px;margin:0 auto;}
 }
 
 #composerMobileCtxBadge { display: none !important; }
