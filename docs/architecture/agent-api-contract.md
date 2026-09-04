@@ -113,14 +113,15 @@ Nothing local in that checkout is safe. Two mechanisms restore it, both run by
 - **Files upstream does not have** live in `$HERMES_HOME/custom-agent-tools/`,
   mirroring the repo layout, and are copied back by
   `post-update.d/10-restore-custom-agent-tools.sh`. Used for
-  `tools/delegate_to_profile.py` and `gateway/api_session_rollover.py` plus
-  their tests.
+  `tools/delegate_to_profile.py`, `gateway/api_session_rollover.py` and
+  `tools/skill_sections.py` plus their tests.
 - **Modifications to files upstream owns** live as patches in
   `$HERMES_HOME/custom-agent-patches/*.patch`, re-applied by
   `post-update.d/20-reapply-agent-patches.sh`. Storing our copy of a tracked
   file instead would clobber every future upstream change to it. Currently
   carries the rollover port's edits to `agent/conversation_loop.py` and
-  `hermes_cli/config_defaults.py`.
+  `hermes_cli/config_defaults.py`, and `skill_view` section scoping's edits to
+  `tools/skills_tool.py`.
 
 Both are idempotent -- an already-applied patch reverse-checks clean and is
 skipped -- so they are no-ops on an untouched tree. When upstream drifts far
@@ -129,6 +130,33 @@ alone rather than force a half-applied edit.
 
 **When adding anything to the agent checkout, add it to one of those two
 places in the same change, or the next update deletes it.**
+
+### `skill_view` section scoping
+
+Skill content is the largest single contributor to model context in this
+deployment, and a turn usually needs one part of a long document. `skill_view`
+therefore takes an optional `section`, naming a markdown heading: the heading
+and everything under it is returned, subsections included, in place of the
+whole file.
+
+The slicing lives in `tools/skill_sections.py`, a file upstream does not have,
+so the patch to the upstream-owned `tools/skills_tool.py` stays small -- the
+schema gains the parameter, and the tool handler calls `apply_section` on the
+result. Three behaviours are worth knowing:
+
+- An unscoped view is unchanged except that a long document now also carries a
+  `sections` outline, so the next call can scope itself. Skills that must be
+  followed end to end keep arriving whole.
+- A section name that matches nothing in a long document withholds the content
+  and returns the outline. Falling back to the whole file would defeat the
+  request that was made.
+- A scoped view carries its own dedup identity. The repeat-view stub keys on
+  the skill file, so without this, asking for a second section would be told
+  the content is already in the conversation when only the first section was.
+
+If `tools/skill_sections.py` goes missing -- the exact thing an update does --
+the tool keeps working and logs a warning naming the module, rather than
+silently returning whole documents forever.
 
 ## Reverse dependency: hermes-agent importing WebUI modules
 

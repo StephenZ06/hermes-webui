@@ -1,6 +1,6 @@
 # Project status — hermes-webui
 
-Last updated: 2026-09-03. Written as a session handoff; read this before
+Last updated: 2026-09-04. Written as a session handoff; read this before
 starting work on delegation, context cost, or anything in the agent checkout.
 
 ## Objective
@@ -16,12 +16,13 @@ and into hardening the things that were silently broken along the way.
 |---|---|
 | `master` | 126 commits ahead of `origin/master`, 0 behind. Rebased onto current upstream. |
 | Deployment | Container `hermes-webui-hermes-webui-1`, healthy, built from `master`. |
-| Test suite | 20 failures, against a 29-failure pre-rebase baseline. Net −9, zero new. |
-| Fork | `master-rebased-onto-upstream` pushed to `StephenZ06/hermes-webui`. |
+| Test suite | 9 failures, against a 29-failure pre-rebase baseline. Zero new. |
+| Fork | `master-rebased-onto-upstream` and `archive/master-pre-rebase` on `StephenZ06/hermes-webui`. |
 
 `origin` is `nesquena/hermes-webui` and rejects pushes (403). `fork` is the
-writable remote. A stale `feature/plan-canvas` branch still sits on the fork
-pointing at pre-rebase history; repointing it needs a force-push.
+writable remote. The stale `feature/plan-canvas` branch is gone from the fork:
+its tip was pushed first as `archive/master-pre-rebase` (it is an ancestor of
+the local `backup/master-pre-rebase`), so no pre-rebase history was lost.
 
 Uncommitted in the working tree: branding assets only (favicons, `Avatar*.png`,
 a `Fox1.png` deletion). Deliberately left alone — they are the user's.
@@ -44,6 +45,17 @@ a `Fox1.png` deletion). Deliberately left alone — they are the user's.
   never passed through the gateway platform's own wiring.
 - **Context cost**: `tool_output.max_bytes` 50000 → 20000 on all 8 profiles,
   and `_collapse_repeated_tool_results` in `api/streaming.py`.
+- **`skill_view` section scoping** (agent-side). `skill_view` takes an optional
+  `section` naming a markdown heading and returns that heading's subtree
+  instead of the file. Slicing lives in `tools/skill_sections.py`; the patch to
+  the upstream-owned `tools/skills_tool.py` only adds the parameter and calls
+  it. A long unscoped view now also carries a `sections` outline so the next
+  call can scope itself, and a scoped view has its own dedup identity so a
+  second section is not answered with "already sent".
+- **Eight locale keys** (`session_fork*`, `composer_control_fork`,
+  `cron_delegation_*`) translated into all fourteen non-English locales. They
+  had shipped English-only, and the per-locale key-coverage tests had been red
+  for it — 11 of the 20 failures in the table above were this one gap.
 
 ## Verified vs not
 
@@ -51,7 +63,10 @@ Verified with live turns or live measurement: delegation routing end to end;
 depth isolation; the post-update restore path against a real wipe; the
 lifecycle hook actually injecting; no horizontal overflow at phone viewports;
 canvas costing zero model context; the repeated-result collapse saving 7.8% on
-real transcripts.
+real transcripts; section scoping against the real skills tree — one section of
+`test-driven-development` is 1017 chars against 10252 for the file, and the
+outline that 79% of skill bytes now carry costs 4.8% of those bytes, confirmed
+again inside the rebuilt container.
 
 **Not verified**: a real LCM rollover firing. Policy, checkpoint, rotation,
 in-place restore and failure-fallback are all confirmed, but `_compress_context`
@@ -92,21 +107,22 @@ Two restore paths, both run before any restart:
   clobber future upstream changes to it.
 
 Both idempotent. Currently protected: `tools/delegate_to_profile.py`,
-`gateway/api_session_rollover.py`, their tests, and the rollover port's patch to
-`agent/conversation_loop.py` and `hermes_cli/config_defaults.py`.
+`gateway/api_session_rollover.py`, `tools/skill_sections.py`, their tests, the
+rollover port's patch to `agent/conversation_loop.py` and
+`hermes_cli/config_defaults.py`, and section scoping's patch to
+`tools/skills_tool.py`.
 
 Full detail in `docs/architecture/agent-api-contract.md`.
 
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
-2. **`skill_view` section-scoping.** It is 36% of all model context. The cap
-   makes truncation cheaper, not smarter; returning the relevant section is the
-   real fix. Agent-side, so it needs patch protection.
-3. **8 locale keys** (`session_fork*`, `cron_delegation_*`) missing across ~6
-   languages. Deliberately left: user-facing copy needing review.
-4. **Fork housekeeping.** Repoint or delete the stale `feature/plan-canvas`
-   branch (force-push required).
-5. Optional: 19 remaining pre-existing test failures, all failing before this
-   work started. `test_static_asset_resolver` is order-dependent and passes
-   standalone.
+2. **Watch whether the model actually uses `skill_view(section=...)`.** The
+   outline is charged to every unscoped view of a long document, so the feature
+   only pays for itself if scoped calls happen. If they do not, the next lever
+   is the tool description.
+3. The 9 remaining test failures, all pre-existing and unrelated to this work:
+   cross-session message load isolation, Firefox sidebar scroll stability,
+   codex spark model ids, knowledge-browser read-only buttons, PWA startup
+   helper, session-list sort, sidebar partition helper, and two TLS probe
+   tests.
