@@ -9897,9 +9897,28 @@ def _run_agent_streaming(
                             'model': cb_kwargs.get('model'),
                         })
                     else:
+                        # Forwards the whole shape delegate_tool.py's
+                        # complete_kwargs already carries, matching
+                        # gateway_chat.py's _subagent_complete_fields so a
+                        # node's detail panel looks the same whether the turn
+                        # ran in-process or through the gateway. The RFC's
+                        # original "identity + status only" v1 scope left
+                        # every richer block in that panel permanently blank
+                        # on this path. Absent keys arrive as None and the
+                        # frontend's onComplete() type-guards each one.
                         put('subagent_complete', {
                             'subagent_id': subagent_id,
                             'status': cb_kwargs.get('status'),
+                            'summary': cb_kwargs.get('summary'),
+                            'duration_seconds': cb_kwargs.get('duration_seconds'),
+                            'input_tokens': cb_kwargs.get('input_tokens'),
+                            'output_tokens': cb_kwargs.get('output_tokens'),
+                            'reasoning_tokens': cb_kwargs.get('reasoning_tokens'),
+                            'cost_usd': cb_kwargs.get('cost_usd'),
+                            'api_calls': cb_kwargs.get('api_calls'),
+                            'files_read': cb_kwargs.get('files_read'),
+                            'files_written': cb_kwargs.get('files_written'),
+                            'output_tail': cb_kwargs.get('output_tail'),
                         })
                     return
 

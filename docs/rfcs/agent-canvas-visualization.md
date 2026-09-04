@@ -31,8 +31,10 @@ closest thing today, but it only visualizes Kanban-dispatched workers
 
 - No history/replay of past runs. Live-only: the canvas reflects the
   current run and clears when it completes.
-- No per-node metrics (tokens, duration, tool-call counts) or log preview
-  in v1. Nodes carry identity + status only.
+- ~~No per-node metrics (tokens, duration, tool-call counts) or log preview
+  in v1. Nodes carry identity + status only.~~ Retired: the detail panel now
+  shows what a finished subagent did, which needs the completion payload.
+  See "Backend: relay existing subagent lifecycle events" below.
 - No changes to Kanban Office View or its worker model.
 
 ## Proposal
@@ -64,13 +66,18 @@ same helper that already pushes `'tool'`/`'tool_complete'` into
 `api/chat/stream`):
 
 - `'subagent.start'` → `put('subagent_spawn', {subagent_id, parent_id, depth, goal, model})`
-- `'subagent.complete'` → `put('subagent_complete', {subagent_id, status})`
+- `'subagent.complete'` → `put('subagent_complete', {subagent_id, status,
+  summary, duration_seconds, input_tokens, output_tokens, reasoning_tokens,
+  cost_usd, api_calls, files_read, files_written, output_tail})`
 
-The upstream `"subagent.complete"` event carries more than this (`duration_seconds`,
-`summary`, token/cost counts) but the v1 relay deliberately forwards only
-`subagent_id` and `status` — per the "identity + status only" non-goal above,
-confirmed after a task review caught an earlier draft leaking
-`duration_seconds`/`summary` into the emitted event (2026-08-13).
+The completion relay originally forwarded only `subagent_id` and `status`, per
+the "identity + status only" non-goal above. That was widened to the full
+`complete_kwargs` shape `delegate_tool.py` already emits, because the detail
+panel's Goal block now shows the completion summary once a subagent is
+terminal — what it did rather than what it was asked to do. `api/gateway_chat.py`'s
+`_subagent_complete_fields` already forwarded exactly this set on the gateway
+path, so the two paths now agree and a node's panel no longer depends on
+whether the turn ran in-process or through the gateway.
 
 No new SSE endpoint and no new contract — this rides the same
 `api/chat/stream` connection the browser already has open for the active

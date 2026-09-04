@@ -618,6 +618,20 @@
     </div>`;
   }
 
+  // One block, two meanings. While a subagent runs, the useful thing to read
+  // is the goal it was given; once it is terminal the useful thing is what it
+  // actually did, so the block swaps to the completion summary and relabels
+  // itself. The goal is still on screen either way — it is the panel title.
+  // A subagent that finished without ever setting a summary keeps showing its
+  // goal rather than losing the block entirely.
+  function goalBlockHtml(node){
+    const useSummary = TERMINAL_STATUSES.has(node.status) && node.summary;
+    const text = useSummary ? node.summary : node.goal;
+    if(!text) return '';
+    const label = useSummary ? 'Summary' : 'Goal';
+    return `<div class="agent-canvas-detail-block"><div class="agent-canvas-detail-label">${label}</div><div class="agent-canvas-detail-goal">${esc(text)}</div></div>`;
+  }
+
   function renderDetail(){
     if(!_detailEl) return;
     const node = _selectedId ? _nodes.get(_selectedId) : null;
@@ -644,8 +658,7 @@
       ${node.apiCalls ? `<div class="agent-canvas-detail-row"><span>API calls</span><span>${esc(node.apiCalls)}</span></div>` : ''}
       ${(node.inputTokens || node.outputTokens) ? `<div class="agent-canvas-detail-row"><span>Tokens</span><span>${esc(fmtTokens(node.inputTokens))} in / ${esc(fmtTokens(node.outputTokens))} out${node.reasoningTokens ? ' / ' + esc(fmtTokens(node.reasoningTokens)) + ' reasoning' : ''}</span></div>` : ''}
       ${node.costUsd != null ? `<div class="agent-canvas-detail-row"><span>Cost</span><span>${esc(fmtCost(node.costUsd))}</span></div>` : ''}
-      ${node.goal ? `<div class="agent-canvas-detail-block"><div class="agent-canvas-detail-label">Goal</div><div class="agent-canvas-detail-goal">${esc(node.goal)}</div></div>` : ''}
-      ${node.summary ? `<div class="agent-canvas-detail-block"><div class="agent-canvas-detail-label">Summary</div><div class="agent-canvas-detail-goal">${esc(node.summary)}</div></div>` : ''}
+      ${goalBlockHtml(node)}
       ${outputTail ? `<div class="agent-canvas-detail-block"><div class="agent-canvas-detail-label">Recent tool activity</div>${outputTail}</div>` : ''}
       ${fileListHtml('Files read', node.filesRead)}
       ${fileListHtml('Files written', node.filesWritten)}
