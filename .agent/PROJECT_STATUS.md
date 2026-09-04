@@ -14,9 +14,9 @@ and into hardening the things that were silently broken along the way.
 
 | Area | State |
 |---|---|
-| `master` | 126 commits ahead of `origin/master`, 0 behind. Rebased onto current upstream. |
+| `master` | 132 commits ahead of `origin/master`, 0 behind. Rebased onto current upstream. |
 | Deployment | Container `hermes-webui-hermes-webui-1`, healthy, built from `master`. |
-| Test suite | 9 failures, against a 29-failure pre-rebase baseline. Zero new. |
+| Test suite | Green: 15586 passed, 0 failed, against a 29-failure pre-rebase baseline. |
 | Fork | `master-rebased-onto-upstream` and `archive/master-pre-rebase` on `StephenZ06/hermes-webui`. |
 
 `origin` is `nesquena/hermes-webui` and rejects pushes (403). `fork` is the
@@ -55,7 +55,13 @@ a `Fox1.png` deletion). Deliberately left alone — they are the user's.
 - **Eight locale keys** (`session_fork*`, `composer_control_fork`,
   `cron_delegation_*`) translated into all fourteen non-English locales. They
   had shipped English-only, and the per-locale key-coverage tests had been red
-  for it — 11 of the 20 failures in the table above were this one gap.
+  for it — 11 of the 20 failures this session started with were that one gap.
+- **The last 9 test failures**, none of which described a real defect except
+  one: `b2504229f` had dropped the PWA startup helper's preload link while
+  fixing an unrelated empty-state flash. The rest were assertions pinning code
+  that a later, deliberate change had removed or moved, plus two harness gaps
+  (a stub TLS server that never sent `close_notify`, and a node harness missing
+  `esc`/`t` stubs that deadlocked its own microtask spin loop).
 
 ## Verified vs not
 
@@ -121,8 +127,5 @@ Full detail in `docs/architecture/agent-api-contract.md`.
    outline is charged to every unscoped view of a long document, so the feature
    only pays for itself if scoped calls happen. If they do not, the next lever
    is the tool description.
-3. The 9 remaining test failures, all pre-existing and unrelated to this work:
-   cross-session message load isolation, Firefox sidebar scroll stability,
-   codex spark model ids, knowledge-browser read-only buttons, PWA startup
-   helper, session-list sort, sidebar partition helper, and two TLS probe
-   tests.
+3. Nothing else queued. The suite is green, so a new failure from here is a
+   real one — worth reading rather than filing next to a known backlog.
