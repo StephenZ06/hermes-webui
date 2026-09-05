@@ -2,9 +2,13 @@
 
 Follow-up to #6892 (sync auto-generated session titles to state.db).
 When two WebUI sessions generate the SAME auto-title, hermes-agent's
-state.db uniqueness rule makes the second ``set_auto_title_if_empty``
-raise ValueError, which ``sync_session_title`` used to swallow at debug
-level -- leaving the second row blank in ``hermes sessions list``.
+state.db uniqueness rule makes the second auto-title write raise
+ValueError, which ``sync_session_title`` used to swallow at debug level
+-- leaving the second row blank in ``hermes sessions list``.  (That write
+was ``set_auto_title_if_empty`` when these tests were written; hermes-agent
+has since replaced it with ``set_auto_title(..., source=...)``, which
+expresses the same rule through title provenance -- see
+tests/test_state_sync_title_api_drift.py.)
 These tests prove the collision path now de-duplicates (suffix variant)
 instead of leaving the row untitled, and that unique titles are unchanged.
 """

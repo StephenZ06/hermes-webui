@@ -197,6 +197,17 @@ def sync_session_usage(session_id: str, input_tokens: int=0, output_tokens: int=
             logger.debug("Failed to close state.db")
 
 
+def _set_auto_title(db, session_id: str, title: str) -> bool:
+    """Write an auto-generated title with ``llm`` provenance.
+
+    Kept in one place because the source argument is what makes the write safe:
+    state.db refuses a lower-or-equal-ranked source against a row that already
+    has a title, which is what stops a generated title from landing on top of a
+    user's manual rename.
+    """
+    return db.set_auto_title(session_id, title, source=db.TITLE_SOURCE_LLM)
+
+
 def sync_session_title(session_id: str, title: str, profile: Optional[str] = None) -> None:
     """Sync an auto-generated title to state.db (not gated by sync_to_insights).
 
@@ -205,11 +216,19 @@ def sync_session_title(session_id: str, title: str, profile: Optional[str] = Non
     titles for WebUI sessions.  This function bridges that gap and is called
     from the background title update/refresh paths after a title is persisted.
 
-    Uses ``set_auto_title_if_empty`` so it will only populate a NULL title and
-    never overwrite a manual rename made via CLI/Gateway/TUI.  This means
-    title refreshes (where state.db already holds the initial auto-title) are
-    effectively no-ops at the state.db layer -- acceptable because the primary
-    goal is ensuring ``hermes sessions list`` is not blank.
+    Writes through ``set_auto_title`` with ``llm`` provenance, which only
+    populates a NULL title and never overwrites a manual rename made via
+    CLI/Gateway/TUI.  state.db ranks title sources derived(0) < llm(1) <
+    user(2) and treats a stored NULL source as ``user`` (pre-provenance rows
+    are indistinguishable from a manual ``/title`` of that era), so an llm
+    write is refused against anything already holding the row -- including an
+    earlier llm title.  This means title refreshes (where state.db already
+    holds the initial auto-title) are effectively no-ops at the state.db layer
+    -- acceptable because the primary goal is ensuring ``hermes sessions list``
+    is not blank.
+
+    This replaced ``set_auto_title_if_empty``, which hermes-agent removed; the
+    provenance ranking expresses the same rule.  See ``_set_auto_title``.
 
     On a title collision (two sessions with the same auto-title), the title is
     de-duplicated via ``get_next_title_in_lineage`` (e.g. "My Session" ->
@@ -224,7 +243,7 @@ def sync_session_title(session_id: str, title: str, profile: Optional[str] = Non
         # Ensure the session row exists (idempotent) so the UPDATE has a target.
         db.ensure_session(session_id=session_id, source='webui')
         try:
-            db.set_auto_title_if_empty(session_id, title)
+            _set_auto_title(db, session_id, title)
         except ValueError:
             # state.db enforces uniqueness on sessions.title, so a byte-identical
             # auto-title generated for two sessions raises ValueError here. Derive
@@ -232,7 +251,21 @@ def sync_session_title(session_id: str, title: str, profile: Optional[str] = Non
             # retry instead of leaving the second row blank (#6964).
             alt = db.get_next_title_in_lineage(title)
             if alt and alt != title:
-                db.set_auto_title_if_empty(session_id, alt)
+                _set_auto_title(db, session_id, alt)
+    except (AttributeError, TypeError):
+        # The WebUI runs hermes-agent in-process out of a checkout the update
+        # path force-resets, so its state.db API can move between one restart
+        # and the next -- and it did, taking set_auto_title_if_empty with it.
+        # The old bare `except Exception` logged that at debug, so titles just
+        # stopped arriving and `hermes sessions list` went quietly blank for
+        # every WebUI session. Signature drift gets its own level so the next
+        # move is noticed the day it happens rather than months later.
+        logger.warning(
+            "Session title sync failed for %s: hermes-agent's state.db title "
+            "API does not look the way this code expects. Titles will be blank "
+            "in `hermes sessions list` until this is reconciled.",
+            session_id, exc_info=True,
+        )
     except Exception:
         logger.debug("Failed to sync session title to state.db for %s", session_id)
     finally:
