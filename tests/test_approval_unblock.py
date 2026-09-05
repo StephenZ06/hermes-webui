@@ -20,6 +20,12 @@ import pytest
 # The HTTP tests use the test server (port 8788, separate process).
 # The unit tests operate directly on the module.
 try:
+    # api.config is what puts the agent checkout on sys.path, so tools.* does
+    # not resolve until it has run. Without this the module-level import below
+    # raises, APPROVAL_AVAILABLE goes False, and all 27 tests in this file skip
+    # silently -- they only ran at all when some earlier-collected module
+    # happened to import api first.
+    from api import config as _api_config  # noqa: F401
     from tools.approval import (
         register_gateway_notify,
         unregister_gateway_notify,
@@ -27,9 +33,13 @@ try:
         _gateway_queues,
         _gateway_notify_cbs,
         _lock,
-        _ApprovalEntry,
         submit_pending,
     )
+    # _ApprovalEntry moved to tools.approval_gateway_wait when the agent split
+    # tools/approval.py up. It is private, so unlike the public names it got no
+    # entry in that module's plugin-compat shim and simply vanished from the
+    # old path.
+    from tools.approval_gateway_wait import _ApprovalEntry
     # has_pending and pop_pending were removed from tools.approval when the
     # agent renamed has_pending -> has_blocking_approval (gateway queue check)
     # and removed the polling-mode pop_pending. Routes now check _pending
@@ -217,9 +227,13 @@ class TestApprovalModuleExports:
             "tools.approval must export resolve_gateway_approval"
 
     def test_approval_entry_exported(self):
-        import tools.approval as ap
-        assert hasattr(ap, "_ApprovalEntry"), \
-            "tools.approval must export _ApprovalEntry"
+        # Pins where _ApprovalEntry actually lives. It used to be reachable on
+        # tools.approval; the agent's split of that module moved it, and being
+        # private it was left out of the plugin-compat shim that keeps the
+        # public names resolvable, so the old path raises AttributeError.
+        import tools.approval_gateway_wait as agw
+        assert hasattr(agw, "_ApprovalEntry"), \
+            "tools.approval_gateway_wait must export _ApprovalEntry"
 
     def test_streaming_fallback_uses_blocking_approval_contract(self):
         assert "has_blocking_approval as _has_blocking_approval" in STREAMING_SRC, \

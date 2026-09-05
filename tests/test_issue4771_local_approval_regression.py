@@ -44,11 +44,16 @@ from api.gateway_chat import _STREAM_RUN_IDS
 
 try:
     import tools.approval as ta
+    # _ApprovalEntry moved to tools.approval_gateway_wait when the agent split
+    # tools/approval.py up. Being private, it got no entry in the plugin-compat
+    # shim that keeps the public names reachable on the old path.
+    from tools.approval_gateway_wait import _ApprovalEntry
     from api import route_approvals as ra
     APPROVAL_AVAILABLE = True
 except ImportError:
     ta = None
     ra = None
+    _ApprovalEntry = None
     APPROVAL_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(
@@ -109,7 +114,7 @@ def _seed_local_pending_approval(sid: str):
     with ta._lock:
         ta._gateway_queues.pop(sid, None)
         ta._pending.pop(sid, None)
-    entry = ta._ApprovalEntry({
+    entry = _ApprovalEntry({
         "command": "rm -rf /tmp/x",
         "description": "Dangerous command",
         "pattern_key": "dangerous_command",

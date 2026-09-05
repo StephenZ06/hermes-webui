@@ -37,7 +37,10 @@ def _seed_gateway_entry(ta, sid, pattern_key):
     Mirrors the local in-process agent path: a guarded command blocks on an
     ``_ApprovalEntry`` in ``_gateway_queues`` waiting for the user's choice.
     """
-    entry = ta._ApprovalEntry({
+    # _ApprovalEntry moved out of tools.approval when the agent split that
+    # module; private names got no plugin-compat shim on the old path.
+    _approval_wait = importlib.import_module("tools.approval_gateway_wait")
+    entry = _approval_wait._ApprovalEntry({
         "command": "rm -rf /tmp/6017",
         "pattern_key": pattern_key,
         "pattern_keys": [pattern_key],

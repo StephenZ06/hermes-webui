@@ -2853,7 +2853,9 @@ def _set_turn_session_identity(session_id: str):
     sid = str(session_id or "")
     tokens: dict = {}
     try:
-        from tools.approval import set_current_session_key
+        # tools.approval_context is where this lives; tools.approval re-exports
+        # it only through a plugin-compat shim dated for removal.
+        from tools.approval_context import set_current_session_key
         tokens["approval"] = set_current_session_key(sid)
     except Exception:
         logger.debug("per-turn approval session-key bind failed", exc_info=True)
@@ -2898,7 +2900,8 @@ def _reset_turn_session_identity(tokens) -> None:
     tok = tokens.get("approval")
     if tok is not None:
         try:
-            from tools.approval import reset_current_session_key
+            # Paired with the bind above — same module, same reason.
+            from tools.approval_context import reset_current_session_key
             reset_current_session_key(tok)
         except Exception:
             logger.debug("per-turn approval session-key reset failed", exc_info=True)
