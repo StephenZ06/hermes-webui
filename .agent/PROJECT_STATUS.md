@@ -192,10 +192,10 @@ and no duplicate block.
 
 ## Deployment (2026-09-05)
 
-Live and verified. Image `38df92b90784`, stamped
-`exp-v0.52.264-132-gde4893ed4-dirty`, container healthy, `127.0.0.1:8787`
-serving `agent-canvas.js` at 62196 bytes with `goalBlockHtml` present and
-`style.css` carrying both `--composer-max` steps.
+Live and verified, most recently at `exp-v0.52.264-139-g1c6e793ba-dirty`:
+container healthy on the native daemon, `127.0.0.1:8787` published, and the
+running image confirmed to carry the session-title fix, the compat
+repointing and the composer CSS.
 
 **Read this before the next redeploy — two Docker engines run on this box.**
 Docker Desktop's WSL integration overwrites `/run/docker.sock` when it starts,
@@ -233,6 +233,68 @@ Also note the native WebUI container has a restart policy, so killing its
 `server.py` by PID frees 8787 for a few seconds and then a new PID takes it
 back with the same stale code. Killing the process is not a deploy.
 
+## hermes-agent API drift (2026-09-05)
+
+The agent checkout is force-reset by the WebUI update path, so its API moves on
+its own schedule. One update on 2026-09-05 broke three separate things, and
+only one of them announced itself.
+
+**Session titles stopped reaching state.db, silently.** The agent removed
+`SessionDB.set_auto_title_if_empty`; `sync_session_title` still called it inside
+a bare `except Exception` logging at debug, so the AttributeError vanished.
+`ensure_session` kept creating the row, so nothing looked wrong — titles just
+never arrived and `hermes sessions list` went blank for every WebUI session,
+undoing #6892. Now `set_auto_title(..., source=TITLE_SOURCE_LLM)`, which is
+behaviourally identical: state.db ranks sources derived(0) < llm(1) < user(2)
+and treats a stored NULL source as `user`, so an llm write lands only on a NULL
+title and never over a manual rename, a legacy row, or an earlier auto-title.
+`AttributeError`/`TypeError` now log at warning — the swallow is what made a
+one-line breakage invisible.
+
+**`_ApprovalEntry` moved rather than disappeared**, to
+`tools.approval_gateway_wait`, when the agent split `tools/approval.py`. Public
+names that moved got `_PLUGIN_COMPAT_LAZY` entries and still resolve on the old
+path; private ones did not. Six test files went red. Production only ever
+mentioned it in comments.
+
+**Nine production imports were on paths with a deadline.**
+`hermes_cli.plugin_compat` sets `COMPAT_REMOVAL_DATE = 2026-09-14`, one global
+date for all 335 facades, at which point "the commit that added them is
+reverted". Nothing was failing; nothing would have, until they all stopped at
+once. All repointed at their real modules.
+
+`tests/test_agent_compat_shim_paths.py` now reads the agent's own
+`compat_manifest.json` (2091 names, 335 facades) and fails on any repo import
+that resolves only through a shim. It needs no maintenance when the agent moves
+something new — it simply starts failing. The manifest's own note says
+`scripts/check_compat_pointers.py forbids in-tree use`, so this is upstream's
+rule applied here.
+
+**Two things worth knowing for the next one of these.**
+
+Test doubles must follow the split. A fake parked on the old module path is
+never reached once production imports from the real home, and the failure is
+misleading rather than obvious: `/reload-mcp` reported "MCP runtime
+unavailable" instead of the error under test, and a profile-home test saw zero
+calls to a `discover_mcp_tools` it had itself installed. Three files needed
+repointing.
+
+`_servers` and `_lock` stay on `tools.mcp_tool`. They are defined in that file
+rather than re-exported, and `/reload-mcp` mutates them, so following the shim
+there would have been a silent correctness bug instead of an import error.
+Check where a name is *defined* before repointing it, not just where it
+resolves.
+
+Also fixed along the way: all 27 tests in `test_approval_unblock.py` were
+skipping silently. Its module-level `from tools.approval import ...` runs before
+anything imports `api.config`, which is what puts the agent on `sys.path`, so
+the import raised, `APPROVAL_AVAILABLE` went False and the file evaporated. They
+ran only when an earlier-collected module happened to import `api` first. Same
+trap caught `tests/test_state_sync_title_api_drift.py`: conftest snapshots
+`sys.path` before `api.state_sync` extends it and an autouse guard restores that
+snapshot after every test, so the first test in a file strips the agent dir for
+every test after it.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
@@ -251,6 +313,11 @@ back with the same stale code. Killing the process is not a deploy.
 5. **Confirm the black band was the geist-contrast one.** Only that skin
    reproduced it. If the reporter is on another skin, the gap is still open and
    the skin name is the missing input.
-6. Nothing else queued. The suite is green (15601 passed), so a new failure
-   from here is a real one — worth reading rather than filing next to a known
+6. **Watch for the 2026-09-14 compat removal.** After that date the shims are
+   gone from the agent entirely. `tests/test_agent_compat_shim_paths.py` should
+   go quiet on its own (an empty manifest skips it); if it starts failing again
+   before then, something new drifted.
+7. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
+   from 118 because 27 previously-invisible tests now run), so a new failure
+   from here is a real one, worth reading rather than filing next to a known
    backlog.
