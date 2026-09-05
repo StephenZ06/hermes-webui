@@ -2721,6 +2721,39 @@
   .composer-workspace-chip.active{color:var(--text);background:var(--accent-bg);}
   .composer-workspace-icon,.composer-workspace-chevron{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;}
   .composer-workspace-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* Centre these labels on their glyphs rather than on their line box.
+     Flexbox centres the box; where the glyphs sit inside it is the font's
+     decision, and the x-height band's centre lands
+     (ascent - descent - xHeight) / 2 below the box centre. That expression has
+     no line-height term in it, which is why no amount of align-items,
+     line-height or padding ever moved this: the text simply sits low, next to
+     an icon that does not. Locally the fallback font makes it +0.5px and it
+     passes unnoticed; the -apple-system stack resolves to Segoe UI on Windows,
+     whose ascent/descent are far more asymmetric, and there it is about
+     +2.2px — visible as text riding low against the folder icon in the
+     workspace pill.
+
+     text-box-edge trims the line box down to the glyph metrics so flex has the
+     ink to centre. The under-edge is `text`, not `alphabetic`, and that is
+     load-bearing: every one of these labels clips to its box for an ellipsis,
+     so an alphabetic edge — which ends the box at the baseline — cuts the tail
+     off every descender. Verified in headless Chromium on the string
+     "workspace": under `cap alphabetic` the deepest ink pixel is the baseline
+     itself, and the x-band does not move for the trouble. `cap text` keeps the
+     font's descent edge, leaving the offset at (cap - descent - xHeight) / 2 —
+     -0.5px measured locally, about -0.35px for Segoe UI.
+
+     All seven labels in the row are listed on purpose. Correcting one alone
+     would shift it 2.5px away from its neighbours on the affected font, which
+     is a worse misalignment than the one being fixed. */
+  .composer-workspace-label,
+  .composer-profile-label,
+  .composer-model-label,
+  .composer-reasoning-label,
+  .composer-toolsets-label,
+  .provider-quota-chip-label,
+  .yolo-pill-label{text-box:trim-both cap text;}
   .composer-reasoning-chip{display:inline-flex;align-items:center;gap:5px;max-width:none;padding:8px 10px;border-radius:999px;border:1px solid transparent;background-color:transparent;color:var(--muted);font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
   .composer-reasoning-chip.inactive{opacity:.78;}
   .composer-reasoning-chip:hover{color:var(--text);background-color:var(--hover-bg);}
