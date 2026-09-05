@@ -295,9 +295,13 @@ def test_run_agent_streaming_installs_and_resets_profile_home_override(tmp_path,
     import api.config as _config_mod
     monkeypatch.setattr(_config_mod, "_resolve_cli_toolsets", lambda cfg: [])
     monkeypatch.setattr(_config_mod, "get_config_for_profile_home", lambda profile_home: {})
-    _fake_mcp_module = types.ModuleType("tools.mcp_tool")
+    # discover_mcp_tools moved to tools.mcp_tool_discovery in hermes-agent's
+    # decomposition; tools.mcp_tool only re-exports it through a plugin-compat
+    # shim that is removed on COMPAT_REMOVAL_DATE, so streaming.py imports it
+    # from its real home and a fake parked on the old path is never called.
+    _fake_mcp_module = types.ModuleType("tools.mcp_tool_discovery")
     _fake_mcp_module.discover_mcp_tools = _discover_mcp_tools
-    monkeypatch.setitem(sys.modules, "tools.mcp_tool", _fake_mcp_module)
+    monkeypatch.setitem(sys.modules, "tools.mcp_tool_discovery", _fake_mcp_module)
 
     monkeypatch.setattr(profiles_api, "get_hermes_home_for_profile", lambda name: _home)
     monkeypatch.setattr(profiles_api, "get_profile_runtime_env", lambda home: {})
@@ -480,9 +484,13 @@ def test_run_agent_streaming_falls_back_to_skill_module_patch_for_static_modules
     monkeypatch.setitem(sys.modules, 'tools.skills_tool', fake_skills_tool)
     monkeypatch.setitem(sys.modules, 'tools.skill_manager_tool', fake_skill_manager_tool)
 
-    _fake_mcp_module = types.ModuleType("tools.mcp_tool")
+    # discover_mcp_tools moved to tools.mcp_tool_discovery in hermes-agent's
+    # decomposition; tools.mcp_tool only re-exports it through a plugin-compat
+    # shim that is removed on COMPAT_REMOVAL_DATE, so streaming.py imports it
+    # from its real home and a fake parked on the old path is never called.
+    _fake_mcp_module = types.ModuleType("tools.mcp_tool_discovery")
     _fake_mcp_module.discover_mcp_tools = _discover_mcp_tools
-    monkeypatch.setitem(sys.modules, "tools.mcp_tool", _fake_mcp_module)
+    monkeypatch.setitem(sys.modules, "tools.mcp_tool_discovery", _fake_mcp_module)
 
     import api.config as _config_mod
     monkeypatch.setattr(_config_mod, "_resolve_cli_toolsets", lambda cfg: [])

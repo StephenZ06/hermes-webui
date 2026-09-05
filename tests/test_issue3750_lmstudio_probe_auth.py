@@ -349,7 +349,14 @@ display:
             return ["low", "medium", "high"]
 
     monkeypatch.setitem(sys.modules, "hermes_cli", type("HermesCli", (), {})())
+    # lmstudio_model_reasoning_options moved to hermes_cli.models_local in
+    # hermes-agent's decomposition; hermes_cli.models keeps it only through a
+    # plugin-compat shim that is removed on COMPAT_REMOVAL_DATE, so config.py
+    # imports it from its real home. Both paths are faked: the probe resolves
+    # via models_local, and the old name stays so nothing else in the module
+    # sees a half-installed hermes_cli.
     monkeypatch.setitem(sys.modules, "hermes_cli.models", _CliModule)
+    monkeypatch.setitem(sys.modules, "hermes_cli.models_local", _CliModule)
 
     status = config.get_reasoning_status()
 
@@ -395,7 +402,14 @@ display:
             raise TypeError("unexpected keyword argument: api_key")
 
     monkeypatch.setitem(sys.modules, "hermes_cli", type("HermesCli", (), {})())
+    # lmstudio_model_reasoning_options moved to hermes_cli.models_local in
+    # hermes-agent's decomposition; hermes_cli.models keeps it only through a
+    # plugin-compat shim that is removed on COMPAT_REMOVAL_DATE, so config.py
+    # imports it from its real home. Both paths are faked: the probe resolves
+    # via models_local, and the old name stays so nothing else in the module
+    # sees a half-installed hermes_cli.
     monkeypatch.setitem(sys.modules, "hermes_cli.models", _CliModule)
+    monkeypatch.setitem(sys.modules, "hermes_cli.models_local", _CliModule)
     monkeypatch.setattr(
         config.logger,
         "warning",

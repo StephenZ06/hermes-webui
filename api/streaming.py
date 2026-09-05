@@ -9504,7 +9504,8 @@ def _run_agent_streaming(
         # lives outside this WebUI repo.  This change fixes the headline bug
         # for users who run a single non-default profile per WebUI process.
         try:
-            from tools.mcp_tool import discover_mcp_tools
+            # tools.mcp_tool re-exports this only through a removal-dated shim.
+            from tools.mcp_tool_discovery import discover_mcp_tools
             discover_mcp_tools()
         except Exception:
             pass  # MCP not available or not configured — non-fatal

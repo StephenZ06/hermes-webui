@@ -4015,7 +4015,9 @@ def _lmstudio_model_reasoning_options(
         )
 
     try:
-        from hermes_cli.models import (
+        # hermes_cli.models re-exports this only through a removal-dated
+        # plugin-compat shim.
+        from hermes_cli.models_local import (
             lmstudio_model_reasoning_options as _cli_lmstudio_model_reasoning_options,
         )
     except Exception:

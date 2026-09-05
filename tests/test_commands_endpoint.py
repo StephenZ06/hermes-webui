@@ -14,16 +14,32 @@ from tests.conftest import TEST_BASE, requires_agent_modules
 
 
 def _install_fake_mcp_tool(monkeypatch, shutdown, discover, servers=None, lock=None):
+    """Stand in for the MCP runtime, laid out the way the real one is.
+
+    hermes-agent's decomposition split the entry points off tools.mcp_tool:
+    discover_mcp_tools now lives in tools.mcp_tool_discovery and
+    shutdown_mcp_servers in tools.mcp_tool_lifecycle, reachable on the old path
+    only through a plugin-compat shim that is removed on COMPAT_REMOVAL_DATE.
+    api/commands.py imports each from its real home, so a fake that offers them
+    only on tools.mcp_tool makes that import fail and the endpoint raise "MCP
+    runtime unavailable" long before the code under test runs. The mutable
+    state (_servers, _lock) is still defined in tools/mcp_tool.py itself and
+    stays there.
+    """
     import sys
     tools_pkg = ModuleType("tools")
     tools_pkg.__path__ = []
     mcp_tool = ModuleType("tools.mcp_tool")
-    mcp_tool.shutdown_mcp_servers = shutdown
-    mcp_tool.discover_mcp_tools = discover
     mcp_tool._servers = servers if servers is not None else {}
     mcp_tool._lock = lock if lock is not None else threading.Lock()
+    discovery = ModuleType("tools.mcp_tool_discovery")
+    discovery.discover_mcp_tools = discover
+    lifecycle = ModuleType("tools.mcp_tool_lifecycle")
+    lifecycle.shutdown_mcp_servers = shutdown
     monkeypatch.setitem(sys.modules, "tools", tools_pkg)
     monkeypatch.setitem(sys.modules, "tools.mcp_tool", mcp_tool)
+    monkeypatch.setitem(sys.modules, "tools.mcp_tool_discovery", discovery)
+    monkeypatch.setitem(sys.modules, "tools.mcp_tool_lifecycle", lifecycle)
     return mcp_tool
 
 
