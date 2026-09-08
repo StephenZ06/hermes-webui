@@ -5517,10 +5517,30 @@ main.main > #mainPlugin{display:none;}
    flexed: a <canvas> carries an intrinsic 300x150 size that fights flex
    sizing, and the scene reads clientWidth/clientHeight every frame to size
    its drawing buffer, so the element must be laid out by CSS alone. */
-.office-wrap{flex:1;min-height:0;position:relative;overflow:hidden;}
+.office-wrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+.office-header{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);}
+.office-pill{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:6px;background:var(--surface-subtle);color:var(--muted);border:1px solid var(--border2);}
+.office-pill.is-live{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,transparent);animation:office-live-pulse 2s ease-in-out infinite;}
+@keyframes office-live-pulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+.office-hint{flex:1;font-size:12px;color:var(--muted);}
+.office-stage{flex:1;min-height:0;position:relative;overflow:hidden;}
 .office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;}
 .office-unsupported{padding:24px;max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6;color:var(--muted);text-align:center;}
 .office-sidebar-note{padding:10px 14px;font-size:12px;line-height:1.5;color:var(--muted);}
+.office-detail{position:absolute;top:14px;right:14px;width:min(320px,calc(100% - 28px));max-height:calc(100% - 28px);overflow-y:auto;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);box-shadow:0 8px 30px rgba(0,0,0,.22);font-size:12px;}
+.office-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.office-detail-title{flex:1;font-weight:650;font-size:13px;color:var(--text);}
+.office-detail-close{border:0;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;padding:0 2px;}
+.office-detail-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;color:var(--muted);}
+.office-detail-row span:last-child{color:var(--text);text-align:right;}
+.office-detail-block{margin-top:10px;}
+.office-detail-label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+.office-detail-goal{color:var(--text);line-height:1.5;word-break:break-word;}
+.office-detail-tool{font-family:var(--font-mono);font-size:11px;color:var(--text);word-break:break-all;}
+.office-detail-tool span{color:var(--muted);}
+.office-detail-actions{margin-top:12px;display:flex;gap:8px;}
+.office-detail-action{flex:1;font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--surface-subtle);color:var(--text);cursor:pointer;}
+.office-detail-action:hover{border-color:var(--accent);color:var(--accent);}
 /* ── Agent Canvas: live org-chart of the real Hermes delegation tree ── */
 .agent-canvas-wrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 .agent-canvas-header{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);}

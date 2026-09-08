@@ -1,6 +1,6 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — phases 1-2 implemented, phases 3-6 outstanding
+- **Status:** Accepted — phases 1-3 implemented, phases 4-6 outstanding
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -163,8 +163,8 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
 1. **Vendored three.js, import map, `office` panel rendering a lit floor.**
    Proves the no-bundler ES-module path and the WebGL lifecycle. *(done)*
 2. **`HermesOfficeAdapter` plus headless tests. No 3D.** *(done)*
-3. Projects outlet: dynamic desks, the four real event states, click-through
-   to the existing agent detail view.
+3. **Projects outlet: dynamic desks, the four real event states, click-through
+   to the existing agent detail view.** *(done)*
 4. Parity: interrupt/pause controls, `GET /api/subagents/active`
    reconciliation, history via `GET /api/agent-canvas/sessions`.
 5. Business outlet — after the Agent Library exists.
@@ -246,3 +246,45 @@ it.
 Verified in headless Chromium as well as under node: a spawn/tool/spawn/
 complete sequence through the real page produces two seated workers, an
 orchestrating conductor, and state that survives `unmount()`.
+
+## Phase 3 as built
+
+The floor plan is a function of the live delegation tree, so it lives in its
+own pure module: `static/office/layout.js` takes the adapter's desks and
+returns world positions — pods grouped by cluster (a subagent's parent), laid
+out on concentric rings around the conductor. Like the adapter it runs under
+node, and `tests/test_office_layout.py` pins the two properties that are not
+obvious from reading it:
+
+- **Pods never overlap**, at 2, 6, 7, 13 and 20 pods. Ring radius has to clear
+  both the ring inside it and its own neighbours around the circle; taking
+  only the first leaves the office a small island in a large empty floor,
+  taking only the second lets adjacent rings collide.
+- **A new subagent does not move the existing office.** Pods keep their ring
+  slot for as long as their cluster exists, in first-seen order. An office
+  that rearranges itself on every spawn is unreadable.
+
+The camera frames `center` and `radius` rather than the origin: a part-filled
+ring is lopsided — two pods out of six sit on one side of the conductor — and
+framing on the origin leaves the office in a corner with dead floor opposite
+it. Framing also accounts for isometric foreshortening (a horizontal distance
+R covers only R·sin(elevation) of screen height), without which the office
+sits as a small island in the middle of the panel whatever the zoom.
+
+`static/office/builders.js` holds the procedural meshes — pod slab, desk with
+a live canvas-texture monitor, chair, jointed figure, sprite nameplate — and
+`poseWorker` drives a figure toward its pose each frame. Poses come straight
+from adapter state: `work`, `tool`, `done`, `error`, `stopped`, `idle`. The
+desk screen shows the current tool call; the nameplate carries the label and a
+status glyph. Geometries and materials are shared through caches, since a busy
+run puts a few dozen figures on the floor.
+
+Clicking a worker raycasts to its seat group and opens a detail panel with the
+same fields Agent Canvas shows, plus **Open conversation** — `delegate_task`
+gives every child a real session, so that is the existing chat view rather
+than an office-only log.
+
+Verified in headless Chromium: five subagents across two clusters render as
+pods, desks, figures and readable nameplates in both themes; a click sweep
+resolves a worker and opens its detail panel; `unmount()` still releases the
+context with office state intact.
