@@ -1,0 +1,6 @@
+{
+  "name": "hermes-webui-office",
+  "private": true,
+  "type": "module",
+  "description": "Marks static/office/*.js as ES modules. The browser already knows they are (they load via <script type=\"module\"> and the import map in static/index.html); this is for node, so tests/test_office_adapter.py can import adapter.js directly and drive the real code instead of asserting on its source text. NOT a package and NOT a build step — the repo root package.json's 'no bundler' note still holds."
+}

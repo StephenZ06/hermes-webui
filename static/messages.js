@@ -5983,18 +5983,21 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onSpawn==='function') window.AgentCanvas.onSpawn(d);
+      if(window.HermesOffice&&typeof window.HermesOffice.onSpawn==='function') window.HermesOffice.onSpawn(d);
     });
 
     source.addEventListener('subagent_tool',e=>{
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onToolActivity==='function') window.AgentCanvas.onToolActivity(d);
+      if(window.HermesOffice&&typeof window.HermesOffice.onToolActivity==='function') window.HermesOffice.onToolActivity(d);
     });
 
     source.addEventListener('subagent_complete',e=>{
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
       if(window.AgentCanvas&&typeof window.AgentCanvas.onComplete==='function') window.AgentCanvas.onComplete(d);
+      if(window.HermesOffice&&typeof window.HermesOffice.onComplete==='function') window.HermesOffice.onComplete(d);
     });
 
     // Phase 2: dedicated `todo_state` event carries a full snapshot of

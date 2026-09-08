@@ -1,6 +1,6 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — phase 1 implemented, phases 2-6 outstanding
+- **Status:** Accepted — phases 1-2 implemented, phases 3-6 outstanding
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -162,7 +162,7 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
 
 1. **Vendored three.js, import map, `office` panel rendering a lit floor.**
    Proves the no-bundler ES-module path and the WebGL lifecycle. *(done)*
-2. `HermesOfficeAdapter` plus headless tests. No 3D.
+2. **`HermesOfficeAdapter` plus headless tests. No 3D.** *(done)*
 3. Projects outlet: dynamic desks, the four real event states, click-through
    to the existing agent detail view.
 4. Parity: interrupt/pause controls, `GET /api/subagents/active`
@@ -193,6 +193,56 @@ licence (`static/vendor/three/0.185.1/LICENSE.md`).
 | `eslint.runtime-guard.config.mjs` | ESM override for `static/office/**` |
 | `tests/test_office_panel.py` | structure invariants for all of the above |
 
+Phase 2 adds `static/office/adapter.js`, `static/office/package.json`, the
+`window.HermesOffice` event intake, the `static/messages.js` fan-out, and
+`tests/test_office_adapter.py`.
+
 Verified in headless Chromium (SwiftShader): the module graph resolves,
 a WebGL2 context comes up, the loop runs, and `unmount()` tears the canvas
 and context down without throwing.
+
+## Phase 2 as built
+
+`static/office/adapter.js` is the whole brain, and knows nothing about how
+anything looks: no DOM, no fetch, no three.js, no timers of its own. It takes
+the three SSE events and the `/api/subagents/active` snapshot and maintains
+one state object — a conductor, workers, desks — emitting small commands
+(`worker.spawn`, `worker.tool`, `worker.status`, `worker.pose`,
+`desk.reclaim`, `conductor`, `reset`) to subscribers.
+
+That purity is load-bearing rather than tidiness: `static/office/package.json`
+declares `"type": "module"` so node can import the file directly, and
+`tests/test_office_adapter.py` therefore drives the **real** adapter through
+scenarios (with an injected clock) instead of asserting on its source text —
+a first for the front-end suite here, which is otherwise structural.
+
+Rules the tests pin, each of which is a way the office could quietly lie
+about what Hermes is doing:
+
+- **A repeat spawn allocates no second desk.** The live stream and the
+  reconcile snapshot both report the same subagent.
+- **Terminal is sticky.** A late `subagent_tool` after completion must not
+  resurrect a finished worker into a working pose, and an unrecognised
+  completion status still ends the worker — a card stuck on "running"
+  forever is a failure mode Agent Canvas already had.
+- **Orphan events are counted, not invented.** A page attached mid-run sees
+  tool and completion events for subagents that spawned before the stream
+  existed; the office must not conjure a worker out of a tool call.
+- **A snapshot never removes anyone.** Reconcile is catch-up, not truth about
+  absence.
+- **Desk pressure never evicts a live worker.** Finished workers keep their
+  seats; at the cap the office reclaims the desk of the worker that finished
+  longest ago, preferring one in the same parent cluster so siblings stay
+  together. If nothing can be reclaimed, the office grows past its cap rather
+  than reseating a running subagent.
+- **State outlives the panel.** The adapter is module-level and `unmount()`
+  does not touch it: subagents keep running while the user is on Chat, and
+  their events keep arriving.
+
+`static/messages.js` now fans the three events to `window.HermesOffice`
+alongside Agent Canvas. Both views read the same Hermes truth; neither owns
+it.
+
+Verified in headless Chromium as well as under node: a spawn/tool/spawn/
+complete sequence through the real page produces two seated workers, an
+orchestrating conductor, and state that survives `unmount()`.

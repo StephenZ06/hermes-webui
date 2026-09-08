@@ -313,6 +313,15 @@ an import map in `static/index.html`, a new `office` panel, and
 disposed on leaving the panel. `tests/test_office_panel.py` (17) green;
 runtime-lint gate green with an ESM override for `static/office/**`.
 
+**Phase 2 landed:** `static/office/adapter.js` — pure ES module, no DOM, no
+fetch, no three.js, no timers — turning the three SSE events and the
+`/api/subagents/active` snapshot into conductor/workers/desks state, with
+`static/messages.js` fanning live events to `window.HermesOffice` alongside
+Agent Canvas. `static/office/package.json` (`"type": "module"`) lets node
+import the adapter, so `tests/test_office_adapter.py` drives the real code
+through scenarios with an injected clock rather than asserting on source
+text. 31 tests; 48 across both office files.
+
 Two facts worth keeping:
 
 - r185's module build is **split** — `three.module.min.js` re-exports from
@@ -346,10 +355,13 @@ Revert point for the whole line of work: tag `pre-office-phase1`.
    gone from the agent entirely. `tests/test_agent_compat_shim_paths.py` should
    go quiet on its own (an empty manifest skips it); if it starts failing again
    before then, something new drifted.
-7. **Office phase 2: `HermesOfficeAdapter`.** Pure state, no three.js, headless
-   tests — `subagent_spawn`/`_tool`/`_complete` to an `OfficeState`. Note that
-   queued, per-message and handoff states have no backing event today (see the
-   RFC); do not fake them.
+7. **Office phase 3: the Projects outlet.** Put the adapter's desks and
+   workers on the floor — procedural desk/person meshes, poses driven by
+   `worker.pose`, click-through to the existing agent detail view. The
+   adapter already emits everything the scene needs; it owns no timer, so the
+   scene calls `adapter.tick()` from its own loop. Note that queued,
+   per-message and handoff states have no backing event today (see the RFC);
+   do not fake them.
 8. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
    from 118 because 27 previously-invisible tests now run), so a new failure
    from here is a real one, worth reading rather than filing next to a known

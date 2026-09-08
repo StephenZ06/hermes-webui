@@ -17,6 +17,13 @@
 // subagent_spawn / subagent_tool / subagent_complete events. See
 // docs/rfcs/office-visualization.md.
 import { createOfficeScene } from './scene.js';
+import { createOfficeAdapter } from './adapter.js';
+
+// The adapter outlives the panel on purpose. Subagents keep running while the
+// user is on the Chat panel, and their events keep arriving; resetting office
+// state on unmount would mean every visit to the panel showed an empty floor
+// for a run that is very much still going.
+const _adapter = createOfficeAdapter();
 
 let _container = null;
 let _canvas = null;
@@ -127,4 +134,19 @@ function isRunning() {
   return !!(_scene && _scene.isRunning());
 }
 
-window.HermesOffice = { mount, unmount, isRunning };
+// Event intake. static/messages.js fans the live SSE events here alongside
+// Agent Canvas; both views read the same Hermes truth, neither owns it.
+// Phase 2 records the events into office state; phase 3 puts them on the
+// floor. Hermes decides what happens — this only ever describes it.
+function onSpawn(payload) { return _adapter.onSpawn(payload); }
+function onToolActivity(payload) { return _adapter.onToolActivity(payload); }
+function onComplete(payload) { return _adapter.onComplete(payload); }
+function applySnapshot(snapshot) { return _adapter.applySnapshot(snapshot); }
+function reset() { return _adapter.reset(); }
+function getState() { return _adapter.getState(); }
+
+window.HermesOffice = {
+  mount, unmount, isRunning,
+  onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
+  adapter: _adapter,
+};
