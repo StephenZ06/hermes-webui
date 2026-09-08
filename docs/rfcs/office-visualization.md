@@ -1,6 +1,6 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — phases 1-4 implemented, phases 5-6 outstanding
+- **Status:** Accepted — phases 1-5 implemented, phase 6 outstanding
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -167,7 +167,8 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
    to the existing agent detail view.** *(done)*
 4. **Parity: interrupt/pause controls, `GET /api/subagents/active`
    reconciliation, history via `GET /api/agent-canvas/sessions`.** *(done)*
-5. Business outlet — after the Agent Library exists.
+5. **Business outlet.** *(done — see the caveat below; it does not wait for
+   the Agent Library, it degrades honestly without one.)*
 6. Consider making the office the default and retiring Agent Canvas, keeping
    `renderStaticTree` for the cron delegation diagram.
 
@@ -328,3 +329,45 @@ subagent the stream never delivered, the pause button posts and relabels, the
 sidebar lists two chats, clicking one replays three workers (including a
 nested grandchild seated in its parent's cluster, and a never-ended row shown
 as interrupted), and "Back to live" restores the live office intact.
+
+## Phase 5 as built
+
+Business and Projects are one engine, and the mechanism is smaller than the
+RFC first assumed: `static/office/roster.js` returns a desk list in **exactly
+the shape the adapter produces**, so `computeLayout` and the scene never learn
+which outlet is showing. The outlet is a desk-assignment policy and nothing
+else — no second orchestrator, no agent registry, no way to "run" an agent
+from the floor. Hermes decides what to delegate and to whom; a department is
+somewhere to sit the subagents it actually spawned.
+
+- Six standing departments in fixed order — Marketing, Emails, Sales,
+  Operations, Finance, Delivery — plus a visible overflow, **The Floor**.
+- Every department always has at least one desk, so an idle office reads as a
+  company rather than an empty room. A desk with nobody at it shows its roster
+  name; the scene prefers `desk.seatLabel` when a seat is free.
+- Workers are seated by matching their goal against department keywords,
+  scored rather than first-match ("invoice reminder email" mentions both
+  Finance and Emails; the department with more evidence wins). Running workers
+  are seated before finished ones, so a busy department shows live work.
+- Nothing unrecognised is forced into a department — it goes to The Floor,
+  where it is visibly unfiled. And a full office grows rather than dropping a
+  worker Hermes really is running.
+- The choice persists in `localStorage['hermes-webui-office-mode']`, read
+  through a try/catch because blocked site data throws on access rather than
+  returning null.
+
+### The Agent Library caveat
+
+This phase was planned to wait for a department-scoped agent library. It does
+not, because it can degrade honestly without one: `/api/personalities` carries
+a persona's name and description and nothing else, so departments are inferred
+from the persona's own words. That inference is the only part of the Business
+outlet that is a guess, it is contained in one function
+(`roster.js#departmentFor`), and anything it cannot place is shown on The
+Floor rather than filed somewhere convenient. When a real agent library lands
+with a department field, `buildRoster` reads it and the keyword pass is
+deleted. See `docs/HERMES_STUDIO_PARITY_PLAN.md`.
+
+Verified in headless Chromium: four subagents across three departments seat
+correctly with the unmatched one on The Floor, empty roster desks show their
+persona names, and the outlet choice survives a reload.

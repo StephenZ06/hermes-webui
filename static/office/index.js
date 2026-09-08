@@ -28,6 +28,7 @@
 import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
+import { buildRoster, businessView } from './roster.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
 // user is on the Chat panel, and their events keep arriving; resetting office
@@ -39,6 +40,12 @@ const _adapter = createOfficeAdapter();
 // missed while the page was closed or the stream was reconnecting, not the
 // primary source — that is the live SSE fan-out.
 const RECONCILE_MS = 5000;
+
+// Which floor plan is showing. 'projects' draws exactly what delegate_task
+// did — a desk per subagent, pods by parent. 'business' draws the same run on
+// a standing departmental floor. Both read identical adapter state; only desk
+// assignment differs.
+const OUTLET_STORAGE_KEY = 'hermes-webui-office-mode';
 
 let _container = null;
 let _canvas = null;
@@ -56,6 +63,10 @@ let _pollTimer = null;
 let _syncQueued = false;
 let _selectedId = null;
 let _spawnPaused = false;
+let _outlet = readOutlet();
+let _roster = buildRoster([]);
+let _rosterLoaded = false;
+let _outletBtnEls = {};
 
 // 'live' tracks the running session. 'history' shows a frozen office rebuilt
 // from state.db for a finished chat picked in the sidebar — it gets its own
@@ -71,6 +82,22 @@ const STATUS_LABEL = {
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'error', 'timeout', 'interrupted']);
+
+function readOutlet() {
+  try {
+    return localStorage.getItem(OUTLET_STORAGE_KEY) === 'business' ? 'business' : 'projects';
+  } catch (_err) {
+    // Private windows and blocked site data throw on access, not on read of a
+    // missing key; the office still has to render.
+    return 'projects';
+  }
+}
+
+function writeOutlet(mode) {
+  try {
+    localStorage.setItem(OUTLET_STORAGE_KEY, mode);
+  } catch (_err) { /* a remembered preference is not worth failing over */ }
+}
 
 function activeAdapter() {
   return (_viewMode === 'history' && _historyAdapter) ? _historyAdapter : _adapter;
@@ -127,7 +154,11 @@ function scheduleSync() {
     _syncQueued = false;
     if (!_scene) return;
     const state = activeAdapter().getState();
-    _scene.syncOffice(state);
+    // Business is a desk-assignment policy, not a second engine: it rewrites
+    // `desks` into roster seats and hands the scene the same shape Projects
+    // does, so neither the layout nor the scene knows which outlet is up.
+    const view = _outlet === 'business' ? businessView(state, _roster) : state;
+    _scene.syncOffice(view);
     renderPill(state);
     renderDetail(state);
   });
@@ -151,6 +182,44 @@ function renderPill(state) {
       ? 'A finished run, rebuilt from what Hermes recorded. Click a worker for detail.'
       : "Hermes' real delegation tree, live. Click a worker for detail.";
   }
+}
+
+function renderOutletSwitch() {
+  Object.keys(_outletBtnEls).forEach(mode => {
+    const btn = _outletBtnEls[mode];
+    if (btn) btn.classList.toggle('is-active', mode === _outlet);
+  });
+}
+
+function setOutlet(mode) {
+  const next = mode === 'business' ? 'business' : 'projects';
+  if (next === _outlet) return;
+  _outlet = next;
+  writeOutlet(next);
+  renderOutletSwitch();
+  if (next === 'business') loadRoster();
+  scheduleSync();
+}
+
+/**
+ * Load the standing roster the Business floor is drawn from.
+ *
+ * Personas are the closest thing this app has to a named agent roster today;
+ * `/api/personalities` carries a name and a description and nothing else, so
+ * departments are inferred from those words (see static/office/roster.js).
+ * Failure is not fatal — the six departments still stand, with placeholder
+ * desks.
+ */
+async function loadRoster() {
+  if (_rosterLoaded) return;
+  _rosterLoaded = true;
+  try {
+    const data = await request('/api/personalities', { timeoutToast: false });
+    _roster = buildRoster((data && data.personalities) || []);
+  } catch (_err) {
+    _roster = buildRoster([]);
+  }
+  if (_outlet === 'business') scheduleSync();
 }
 
 function renderPauseButton() {
@@ -407,6 +476,10 @@ function mount(container) {
     <div class="office-header">
       <span class="office-pill" id="officePill">IDLE</span>
       <span class="office-hint" id="officeHint">Hermes' real delegation tree, live. Click a worker for detail.</span>
+      <span class="office-outlet" role="group" aria-label="Floor plan">
+        <button type="button" class="office-outlet-btn" data-outlet="projects">Projects</button>
+        <button type="button" class="office-outlet-btn" data-outlet="business">Business</button>
+      </span>
       <button type="button" class="office-header-btn" id="officeBackBtn" hidden>Back to live</button>
       <button type="button" class="office-header-btn" id="officePauseBtn">Pause spawning</button>
     </div>
@@ -422,7 +495,14 @@ function mount(container) {
   _backBtnEl = container.querySelector('#officeBackBtn');
   _pauseBtnEl.onclick = toggleSpawnPaused;
   _backBtnEl.onclick = returnToLive;
+  _outletBtnEls = {};
+  container.querySelectorAll('.office-outlet-btn').forEach(btn => {
+    _outletBtnEls[btn.dataset.outlet] = btn;
+    btn.onclick = () => setOutlet(btn.dataset.outlet);
+  });
   renderPauseButton();
+  renderOutletSwitch();
+  loadRoster();
 
   try {
     _scene = createOfficeScene(_canvas, {
@@ -496,6 +576,7 @@ function unmount() {
   _hintEl = null;
   _pauseBtnEl = null;
   _backBtnEl = null;
+  _outletBtnEls = {};
 }
 
 /** True while the scene exists and its render loop is running. Used by tests. */
@@ -518,7 +599,7 @@ function getState() { return activeAdapter().getState(); }
 window.officeReturnToLive = returnToLive;
 
 window.HermesOffice = {
-  mount, unmount, isRunning, renderSidebar, returnToLive,
+  mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet,
   onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
   adapter: _adapter,
 };

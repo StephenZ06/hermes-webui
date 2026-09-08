@@ -1,0 +1,242 @@
+// Business outlet — a departmental floor plan over the same live state.
+//
+// The Projects outlet draws exactly what `delegate_task` did: a desk per
+// subagent, pods by parent. Business draws the same run as a company — six
+// standing departments whose desks are named before anyone sits at them, so
+// an idle office still reads as an organisation rather than an empty room.
+//
+// Both outlets consume identical adapter state. The only difference is desk
+// assignment policy, which is what this module is: it returns a desk list in
+// exactly the shape the adapter produces, so `computeLayout` and the scene
+// need no idea which outlet is showing.
+//
+// What this is NOT: a second orchestrator. No agent here can be "run". Hermes
+// decides what to delegate and to whom; a department is a place to sit the
+// subagents it actually spawned.
+//
+// Standing caveat: hermes-webui has no department-scoped agent library yet —
+// `/api/personalities` returns names and descriptions only (see
+// api/routes.py's /api/personalities). Departments are therefore inferred
+// from the persona's own words, and anything that matches nothing lands on
+// the floor rather than being forced into a department it does not belong to.
+// When a real agent library lands, `buildRoster` reads its department field
+// and the keyword pass below goes away. See docs/HERMES_STUDIO_PARITY_PLAN.md.
+//
+// Pure: no DOM, no fetch, no three.js, so tests/test_office_roster.py runs it
+// under node.
+
+/**
+ * The standing departments, in floor order. Order is fixed so a department
+ * keeps its place on the floor whatever the roster holds — an office whose
+ * rooms move when someone is hired is not an office.
+ */
+export const DEPARTMENTS = [
+  {
+    key: 'marketing', name: 'Marketing',
+    keywords: ['marketing', 'content', 'brand', 'campaign', 'social', 'newsletter',
+      'ads', 'ad ', 'seo', 'copy', 'blog', 'video', 'design', 'graphic'],
+  },
+  {
+    key: 'emails', name: 'Emails',
+    keywords: ['email', 'inbox', 'mail', 'reply', 'correspondence', 'outreach',
+      'follow up', 'follow-up'],
+  },
+  {
+    key: 'sales', name: 'Sales',
+    keywords: ['sales', 'lead', 'prospect', 'pipeline', 'deal', 'proposal',
+      'quote', 'crm', 'customer'],
+  },
+  {
+    key: 'operations', name: 'Operations',
+    keywords: ['operation', 'ops', 'process', 'compliance', 'legal', 'policy',
+      'admin', 'intel', 'research', 'report', 'dashboard'],
+  },
+  {
+    key: 'finance', name: 'Finance',
+    keywords: ['finance', 'invoice', 'billing', 'payment', 'account', 'budget',
+      'payroll', 'cost', 'reconcil', 'tax'],
+  },
+  {
+    key: 'delivery', name: 'Delivery',
+    keywords: ['delivery', 'deliver', 'project', 'qa', 'quality', 'test',
+      'onboard', 'support', 'ship', 'release', 'engineer', 'build', 'code',
+      'implement', 'fix', 'refactor', 'debug'],
+  },
+];
+
+/**
+ * Where a subagent goes when nothing matches. A visible overflow is the
+ * honest answer: forcing an unrecognised worker into a department would make
+ * the floor plan lie about what Hermes is doing.
+ */
+export const OVERFLOW = { key: 'floor', name: 'The Floor' };
+
+const DEPARTMENT_BY_KEY = new Map(DEPARTMENTS.map(d => [d.key, d]));
+
+function normalise(text) {
+  return String(text == null ? '' : text).toLowerCase().replace(/[_\-/]+/g, ' ');
+}
+
+/**
+ * Best-matching department for a piece of text, or null.
+ *
+ * Scored rather than first-match: "invoice reminder email" mentions both
+ * Finance and Emails, and the department with more evidence should win
+ * instead of whichever happens to be declared first.
+ */
+export function departmentFor(text) {
+  const hay = normalise(text);
+  if (!hay.trim()) return null;
+  let best = null;
+  let bestScore = 0;
+  for (const dept of DEPARTMENTS) {
+    let score = 0;
+    for (const keyword of dept.keywords) {
+      if (hay.includes(keyword)) score += keyword.length;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = dept;
+    }
+  }
+  return best;
+}
+
+function titleCase(name) {
+  return String(name || '')
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Build the standing roster from the app's personas.
+ *
+ * Every department always exists and always has at least one desk, so the
+ * office is a company before it is busy.
+ *
+ * @param {Array<{name: string, description: string}>} personalities
+ * @returns {{departments: Array<object>}}
+ */
+export function buildRoster(personalities) {
+  const list = Array.isArray(personalities) ? personalities : [];
+  const seatsByDept = new Map(DEPARTMENTS.map(d => [d.key, []]));
+  const overflowSeats = [];
+
+  list.forEach(persona => {
+    if (!persona || !persona.name) return;
+    const label = titleCase(persona.name);
+    // The persona's name carries the intent; its description is supporting
+    // evidence, so both are searched but the name is weighted by being read
+    // first and scored on its own when it matches anything at all.
+    const dept = departmentFor(persona.name)
+      || departmentFor(`${persona.name} ${persona.description || ''}`);
+    const seat = {
+      id: `seat-${dept ? dept.key : OVERFLOW.key}-${persona.name}`,
+      department: dept ? dept.key : OVERFLOW.key,
+      label,
+      persona: persona.name,
+      placeholder: false,
+    };
+    if (dept) seatsByDept.get(dept.key).push(seat);
+    else overflowSeats.push(seat);
+  });
+
+  const departments = DEPARTMENTS.map(dept => {
+    const seats = seatsByDept.get(dept.key);
+    if (!seats.length) {
+      // A department with no persona still gets its desk, so all six pods
+      // stand whatever the config holds.
+      seats.push({
+        id: `seat-${dept.key}-lead`,
+        department: dept.key,
+        label: `${dept.name} Lead`,
+        persona: null,
+        placeholder: true,
+      });
+    }
+    return { key: dept.key, name: dept.name, seats };
+  });
+
+  departments.push({ key: OVERFLOW.key, name: OVERFLOW.name, seats: overflowSeats });
+  return { departments };
+}
+
+/**
+ * Seat the live workers on the departmental floor.
+ *
+ * Returns adapter-shaped state: identical to what `getState()` produces
+ * except that `desks` are roster seats rather than allocation order. The
+ * scene and the layout therefore need no idea which outlet is showing.
+ *
+ * @param {object} state adapter state
+ * @param {object} roster from `buildRoster`
+ */
+export function businessView(state, roster) {
+  const source = state || {};
+  const workers = Array.isArray(source.workers) ? source.workers : [];
+  const departments = (roster && roster.departments) ? roster.departments : buildRoster([]).departments;
+
+  // Seats in floor order, each still free.
+  const desks = [];
+  const seatIndexByDept = new Map();
+  departments.forEach(dept => {
+    seatIndexByDept.set(dept.key, []);
+    dept.seats.forEach(seat => {
+      const desk = {
+        id: seat.id,
+        index: desks.length,
+        workerId: null,
+        cluster: dept.key,
+        seatLabel: seat.label,
+      };
+      seatIndexByDept.get(dept.key).push(desk);
+      desks.push(desk);
+    });
+  });
+
+  const takeFreeSeat = deptKey => {
+    const seats = seatIndexByDept.get(deptKey);
+    if (!seats) return null;
+    return seats.find(desk => desk.workerId === null) || null;
+  };
+
+  // Running workers are seated first so a busy department shows its live work
+  // rather than whichever subagent happened to spawn first.
+  const ordered = workers.slice().sort((a, b) => {
+    const aLive = a.status === 'running' ? 0 : 1;
+    const bLive = b.status === 'running' ? 0 : 1;
+    if (aLive !== bLive) return aLive - bLive;
+    return (a.spawnedAt || 0) - (b.spawnedAt || 0);
+  });
+
+  ordered.forEach(worker => {
+    const dept = departmentFor(worker.goal || worker.label || '');
+    let desk = dept ? takeFreeSeat(dept.key) : null;
+    if (!desk) desk = takeFreeSeat(OVERFLOW.key);
+    if (!desk) {
+      // Every seat in the department and on the floor is taken: add another
+      // floor desk rather than dropping a worker Hermes really is running.
+      desk = {
+        id: `seat-${OVERFLOW.key}-extra-${worker.id}`,
+        index: desks.length,
+        workerId: null,
+        cluster: OVERFLOW.key,
+        seatLabel: OVERFLOW.name,
+      };
+      seatIndexByDept.get(OVERFLOW.key).push(desk);
+      desks.push(desk);
+    }
+    desk.workerId = worker.id;
+  });
+
+  return Object.assign({}, source, { desks });
+}
+
+/** Display name for a department key, for the panel's own chrome. */
+export function departmentName(key) {
+  if (key === OVERFLOW.key) return OVERFLOW.name;
+  const dept = DEPARTMENT_BY_KEY.get(key);
+  return dept ? dept.name : key;
+}

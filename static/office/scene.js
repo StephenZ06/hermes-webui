@@ -295,7 +295,10 @@ export function createOfficeScene(canvas, options) {
       seat.group.userData.workerId = seat.workerId;
       seat.pose = worker ? worker.pose : 'idle';
 
-      const label = worker ? worker.label : 'Empty desk';
+      // Projects desks are anonymous until someone sits at them; Business
+      // desks are named by the roster before anyone does, which is what makes
+      // an idle departmental floor read as a company rather than a void.
+      const label = worker ? worker.label : (desk.seatLabel || 'Empty desk');
       const status = worker ? worker.status : '';
       if (label !== seat.label || status !== seat.status) {
         seat.label = label;
