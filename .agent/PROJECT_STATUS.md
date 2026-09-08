@@ -313,6 +313,26 @@ an import map in `static/index.html`, a new `office` panel, and
 disposed on leaving the panel. `tests/test_office_panel.py` (17) green;
 runtime-lint gate green with an ESM override for `static/office/**`.
 
+**Phases 3-6 landed** (branch `feat/office-visualization`): the Projects
+outlet (pods by cluster on concentric rings, procedural desks/figures, poses
+from adapter state, click-through to the subagent's own chat), reconcile
+polling plus pause/interrupt and history replay, the Business outlet (six
+standing departments over the same engine), and the phase-6 decision.
+
+**Phase 6 decided: Agent Canvas stays, the office is a peer, and the office is
+not the default.** The office is a `<canvas>` — a screen reader gets nothing
+from it and no ARIA changes that, so retiring the DOM view would remove the
+only readable version of this data for some users. WebGL is also not universal
+(the office's own fallback points at Agent Canvas), and `renderStaticTree` has
+a second consumer in the cron delegation diagram. Making the office the default
+is a user-visible product call and was deliberately left alone.
+
+`tests/test_office_browser_smoke.py` is opt-in — `HERMES_WEBUI_BROWSER_TESTS=1`
+— because this panel fails *silently* in a browser (a module that does not
+resolve, an import map that does not apply, WebGL that does not start) while
+every source-structure and node test still passes. It boots the real server,
+loads the real page, and asserts the floor is up.
+
 **Phase 2 landed:** `static/office/adapter.js` — pure ES module, no DOM, no
 fetch, no three.js, no timers — turning the three SSE events and the
 `/api/subagents/active` snapshot into conductor/workers/desks state, with
@@ -355,14 +375,17 @@ Revert point for the whole line of work: tag `pre-office-phase1`.
    gone from the agent entirely. `tests/test_agent_compat_shim_paths.py` should
    go quiet on its own (an empty manifest skips it); if it starts failing again
    before then, something new drifted.
-7. **Office phase 3: the Projects outlet.** Put the adapter's desks and
-   workers on the floor — procedural desk/person meshes, poses driven by
-   `worker.pose`, click-through to the existing agent detail view. The
-   adapter already emits everything the scene needs; it owns no timer, so the
-   scene calls `adapter.tick()` from its own loop. Note that queued,
-   per-message and handoff states have no backing event today (see the RFC);
-   do not fake them.
-8. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
+7. **Office: decide whether it becomes the default.** All six phases are done
+   and the two views are peers. Flipping the default (or reordering the rail)
+   is a product call, deliberately not taken unattended. Note that queued,
+   per-message and handoff states still have no backing event (see the RFC);
+   they are not faked, and adding first-class events for them is a separate
+   backend change.
+8. **Office: replace the Business keyword matcher when an agent library
+   lands.** `roster.js#departmentFor` infers a department from a persona's own
+   words because `/api/personalities` carries nothing else. One function, one
+   deletion, when a department field exists.
+9. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
    from 118 because 27 previously-invisible tests now run), so a new failure
    from here is a real one, worth reading rather than filing next to a known
    backlog.
