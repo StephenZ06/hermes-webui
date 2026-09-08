@@ -5492,8 +5492,9 @@ main.main > #mainWorkspaces,
 main.main > #mainProfiles,
 main.main > #mainInsights,
 main.main > #mainLogs,
-main.main > #mainAgentCanvas{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-agentCanvas) > #mainChat{display:flex;}
+main.main > #mainAgentCanvas,
+main.main > #mainOffice{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-agentCanvas):not(.showing-office) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-agents > #mainAgents{display:flex;}
@@ -5506,10 +5507,20 @@ main.main.showing-profiles > #mainProfiles{display:flex;}
 main.main.showing-logs > #mainLogs{display:flex;}
 main.main.showing-plugin > #mainPlugin{display:flex;}
 main.main.showing-agentCanvas > #mainAgentCanvas{display:flex;}
+main.main.showing-office > #mainOffice{display:flex;}
 main.main > #mainPlugin{display:none;}
 #mainPlugin .main-view-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 #pluginPageContainer{flex:1;display:flex;flex-direction:column;min-height:0;}
 #mainSettings{overflow-y:auto;}
+/* ── Office: WebGL floor view of the real Hermes delegation tree ──
+   The canvas is absolutely positioned inside a relative wrap rather than
+   flexed: a <canvas> carries an intrinsic 300x150 size that fights flex
+   sizing, and the scene reads clientWidth/clientHeight every frame to size
+   its drawing buffer, so the element must be laid out by CSS alone. */
+.office-wrap{flex:1;min-height:0;position:relative;overflow:hidden;}
+.office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;}
+.office-unsupported{padding:24px;max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6;color:var(--muted);text-align:center;}
+.office-sidebar-note{padding:10px 14px;font-size:12px;line-height:1.5;color:var(--muted);}
 /* ── Agent Canvas: live org-chart of the real Hermes delegation tree ── */
 .agent-canvas-wrap{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 .agent-canvas-header{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);}

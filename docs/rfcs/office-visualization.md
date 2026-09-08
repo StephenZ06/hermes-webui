@@ -1,0 +1,198 @@
+# Office: 3D Floor View of the Hermes Delegation Tree
+
+- **Status:** Accepted — phase 1 implemented, phases 2-6 outstanding
+- **Author:** hermes-webui local
+- **Created:** 2026-09-08
+
+## Problem
+
+The Agent Canvas (`docs/rfcs/agent-canvas-visualization.md`,
+`static/agent-canvas.js`) renders Hermes' live delegation tree as an org
+chart. It is accurate and dense, but it reads as a diagram: a run with six
+parallel subagents looks like six boxes, and the shape of the work — who is
+busy, who is waiting, what a subagent is touching right now — has to be read
+rather than seen.
+
+[agents-office](https://github.com/ajsahni/agents-office) demonstrates the
+alternative: an isometric 3D office where each agent is a person at a desk,
+and work is legible at a glance from posture and activity. Its rendering
+layer is worth reusing. Its runtime is not — it is a simulation with a thin
+live path that shells out to Claude through its own Node server, backed by a
+hardcoded 35-agent roster.
+
+## Goals
+
+- A new `office` panel: an isometric 3D floor whose workers are Hermes'
+  **real** subagents, driven by the delegation events the app already
+  receives.
+- Two outlets over one engine:
+  - **Projects** — desks allocated dynamically per spawned subagent. No
+    departments. This is the honest view of what `delegate_task` actually
+    does.
+  - **Business** — a fixed six-department roster (Marketing, Emails, Sales,
+    Operations, Finance, Delivery) whose named agents are Hermes personas the
+    conductor delegates to as normal.
+- Clicking a worker opens that subagent's existing Hermes detail/log view.
+- Ship behind a new panel without changing existing behaviour. Agent Canvas
+  keeps working throughout.
+
+## Non-goals
+
+- **No new orchestration.** Hermes remains the sole source of truth for
+  parent tasks, subagents, status, tool calls, results, failures and
+  handoffs. The office draws; it never decides, never spawns, never runs an
+  agent registry or a broadcast loop.
+- No second transport. The office consumes the same SSE relay and REST
+  endpoints Agent Canvas already uses.
+- No build step. This app has no bundler (`package.json`) and does not
+  acquire one here.
+- Not a replacement for Agent Canvas in this RFC. Retirement is a later
+  decision, and is blocked on parity (history view, pause/interrupt, and the
+  cron delegation diagram, which reuses `AgentCanvas.renderStaticTree`).
+
+## Architecture
+
+```
+hermes-agent delegate_tool          (unchanged — sole orchestrator)
+        |  subagent.start / .tool / .complete
+        v
+api/gateway_chat.py                 (unchanged relay)
+        |  SSE subagent_spawn / subagent_tool / subagent_complete
+        v
+static/messages.js _wireSSE
+        |
+   HermesOfficeAdapter              (new; pure state, zero three.js)
+   normalises events -> OfficeState { workers, desks, tasks }
+        |                                   |
+        v                                   v
+   office scene (three.js)          static/agent-canvas.js (untouched)
+```
+
+The adapter is the only new logic. It holds `Map<subagent_id, worker>` and
+emits scene commands (`allocateDesk`, `setPose`, `toolPulse`, `bubble`,
+`complete`, `error`). The scene never fetches, never polls, never holds app
+state. That split is what makes the interesting half testable headlessly, in
+the same style as the existing `tests/test_agent_canvas_*.py` suite.
+
+### Event mapping, and what does not exist
+
+Four of the states we want map onto events that already reach the browser
+(`api/gateway_chat.py:537-583`):
+
+| Visual state | Source |
+|---|---|
+| allocate desk | `subagent_spawn` |
+| working animation | `subagent_spawn` |
+| tool activity indicator | `subagent_tool` |
+| completed / error | `subagent_complete` (`status`) |
+
+Three do not, and are deliberately **not** faked in v1:
+
+- **queued** — there is no pre-spawn event. `subagent.start` is the first
+  signal. A queued status is visible only by polling
+  `GET /api/subagents/active`.
+- **agent message bubble** — there is no per-message event. The closest real
+  signal is `subagent_tool.preview`.
+- **handoff** — there is no handoff event. A nested spawn
+  (`parent_id !== root`) is nested delegation, which is a different thing.
+
+Adding first-class events for these is a separate backend change, out of
+scope here.
+
+### Outlets
+
+Both outlets consume the same adapter state. The only difference is desk
+assignment policy — not a second engine.
+
+**Projects.** Conductor at the centre. Desks are allocated as
+`subagent_spawn` arrives; layout is a function of the live worker count
+rather than a constant, which is what the upstream reference gets wrong for
+our purposes (its `LAYOUT` and `AGENTS` are static module exports and the
+scene is built once from them). Worker label is the subagent's `goal`.
+
+**Business.** Six fixed department pods. Each named agent is a Hermes persona
+(`/api/personalities`, `_agent_definitions.get_definition()`); the conductor
+reaches them through ordinary `delegate_task`. Spawns are bound to a roster
+slot by persona/goal match, with an overflow pod for anything unmatched.
+This outlet depends on a department-scoped agent library with briefs, which
+does not exist yet — see the Agent Library item in
+`docs/HERMES_STUDIO_PARITY_PLAN.md`.
+
+The outlet choice persists in `localStorage['hermes-webui-office-mode']`.
+
+### Routing
+
+This app is panel-based (`switchPanel()`, `MAIN_VIEW_PANELS` in
+`static/panels.js`), not route-based, so the office is a panel — `office` —
+peer to `agentCanvas`, rather than a literal `/office` URL.
+
+### No bundler
+
+The reference code is ESM with bare `import ... from 'three'`. Rather than
+adding a build step, three.js r185 is vendored at
+`static/vendor/three/0.185.1/` (matching the existing
+`static/vendor/<lib>/<version>/` convention) and an import map in
+`static/index.html` maps the bare `three` specifier to it. Office modules are
+the app's only first-party ES modules; everything else stays IIFE-with-global
+as before.
+
+Two implementation notes that cost time when missed:
+
+- The r185 module build is **split**: `three.module.min.js` re-exports from
+  `three.core.min.js`. Both must be vendored or the module 404s at load and
+  the panel is silently blank.
+- The import map must precede every `<script type="module">` in the document.
+  A map that lands after one is ignored for the module graph already
+  resolving.
+
+### WebGL lifecycle
+
+WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
+
+- `createOfficeScene()` owns the renderer, its geometries and materials, and
+  the rAF loop.
+- Device pixel ratio is capped at 2.
+- The loop stops on `visibilitychange`.
+- **Leaving the panel disposes the context outright**, not merely pauses it.
+  Browsers cap live WebGL contexts per page; a panel the user flips in and
+  out of would exhaust that cap within a session, after which every later
+  mount draws nothing.
+
+## Phases
+
+1. **Vendored three.js, import map, `office` panel rendering a lit floor.**
+   Proves the no-bundler ES-module path and the WebGL lifecycle. *(done)*
+2. `HermesOfficeAdapter` plus headless tests. No 3D.
+3. Projects outlet: dynamic desks, the four real event states, click-through
+   to the existing agent detail view.
+4. Parity: interrupt/pause controls, `GET /api/subagents/active`
+   reconciliation, history via `GET /api/agent-canvas/sessions`.
+5. Business outlet — after the Agent Library exists.
+6. Consider making the office the default and retiring Agent Canvas, keeping
+   `renderStaticTree` for the cron delegation diagram.
+
+## Licensing
+
+agents-office is PolyForm Noncommercial 1.0.0; this repository is MIT. Copied
+code cannot ship under this repo's licence. This work therefore treats the
+upstream project as a **visual and structural reference only** — the same
+posture `Agent Canvas FounderOS Migration.md` took toward FounderOS — and
+writes its own scene code. three.js itself is MIT and is vendored with its
+licence (`static/vendor/three/0.185.1/LICENSE.md`).
+
+## Phase 1 as built
+
+| Path | Role |
+|---|---|
+| `static/vendor/three/0.185.1/` | three.js r185 (module + core + LICENSE) |
+| `static/office/scene.js` | renderer, iso camera, lighting, ground, loop, dispose |
+| `static/office/index.js` | `window.HermesOffice.mount/unmount`, observers |
+| `static/index.html` | import map, rail + nav tabs, `#mainOffice`, `#panelOffice` |
+| `static/panels.js` | `MAIN_VIEW_PANELS` entry, mount hook, unmount-on-leave |
+| `static/style.css` | panel visibility rules, `.office-wrap` / `.office-canvas` |
+| `eslint.runtime-guard.config.mjs` | ESM override for `static/office/**` |
+| `tests/test_office_panel.py` | structure invariants for all of the above |
+
+Verified in headless Chromium (SwiftShader): the module graph resolves,
+a WebGL2 context comes up, the loop runs, and `unmount()` tears the canvas
+and context down without throwing.

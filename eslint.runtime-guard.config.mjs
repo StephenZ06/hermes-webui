@@ -32,4 +32,16 @@ export default [
       "no-import-assign": "error",
     },
   },
+  {
+    // static/office/* are the app's only first-party ES modules (they import
+    // three.js through the <head> import map). Parsed as "script" their
+    // `import`/`export` statements are syntax errors, which would fail the
+    // whole gate rather than lint them. Same rules, module parser.
+    files: ["static/office/**/*.js"],
+    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+    rules: {
+      "no-const-assign": "error",
+      "no-import-assign": "error",
+    },
+  },
 ];

@@ -67,7 +67,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','agentCanvas'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','agentCanvas','office'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -443,6 +443,15 @@ async function switchPanel(name, opts = {}) {
   if (prevPanel === 'kanban' && nextPanel !== 'kanban') {
     if (typeof _kanbanStopPolling === 'function') _kanbanStopPolling();
   }
+  // Leaving the Office panel releases its WebGL context outright, not just the
+  // render loop: browsers cap how many live contexts a page may hold, and a
+  // panel the user flips in and out of would burn through that cap in a single
+  // session, after which every later mount draws nothing.
+  if (prevPanel === 'office' && nextPanel !== 'office') {
+    if (window.HermesOffice && typeof window.HermesOffice.unmount === 'function') {
+      window.HermesOffice.unmount();
+    }
+  }
   _currentPanel = nextPanel;
   // Mobile drawer visibility: a rail/tab click on a phone should surface the
   // panel synchronously, NOT after the panel's async data load. If the re-open
@@ -488,6 +497,12 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'agentCanvas' && window.AgentCanvas) {
     window.AgentCanvas.mount($('agentCanvasWrap'));
     if (typeof window.AgentCanvas.renderSidebar === 'function') window.AgentCanvas.renderSidebar();
+  }
+  // static/office/index.js is an ES module, so window.HermesOffice may not
+  // exist yet on a very early switch — the guard is load-order tolerance, not
+  // a feature flag.
+  if (nextPanel === 'office' && window.HermesOffice && typeof window.HermesOffice.mount === 'function') {
+    window.HermesOffice.mount($('officeWrap'));
   }
   _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();

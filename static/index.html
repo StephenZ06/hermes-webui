@@ -75,6 +75,20 @@
   <link rel="stylesheet" href="static/vendor/katex/0.16.22/katex.min.css">
   <!-- streaming-markdown: incremental DOM-building markdown parser for live streams -->
   <!-- Self-hosted from npm:streaming-markdown@0.2.15 — no CDN dependency.           -->
+  <!-- Import map for the Office visualization's ES modules (static/office/*).
+       MUST come before every <script type="module"> in this document: the map is
+       consulted at module-resolution time, so a module graph that starts loading
+       first would fail to resolve the bare "three" specifier.
+       three.js r185 (MIT) is vendored at static/vendor/three/0.185.1/ — this app
+       has no bundler, so the import map is what lets office modules use the same
+       bare specifier the upstream reference code does. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./static/vendor/three/0.185.1/three.module.min.js"
+    }
+  }
+  </script>
   <!-- sha384 of smd.min.js @0.2.15: sha384-T6r95ocN9t3W8tUK2Fa6FPaO7bJryyjyW0WCalrUnpgtm2qXr5xcN4vwPYEJ6vHa -->
   <!-- ES module imports do not support the integrity= attribute (W3C limitation);    -->
   <!-- version is pinned in the vendored file path; hash documented above for audit. -->
@@ -161,6 +175,7 @@
     <button class="rail-btn nav-tab active has-tooltip" data-panel="chat" onclick="switchPanel('chat',{fromRailClick:true})" data-tooltip="Chat" data-i18n-title="tab_chat" aria-label="Chat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="kanban" hidden onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban" aria-label="Kanban"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="agentCanvas" onclick="switchPanel('agentCanvas',{fromRailClick:true})" data-tooltip="Agent Canvas" data-i18n-title="tab_agent_canvas" data-i18n-aria-label="tab_agent_canvas" aria-label="Agent Canvas"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v3.5M10.7 12.5 8 15.7M13.3 12.5 16 15.7"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="office" onclick="switchPanel('office',{fromRailClick:true})" data-tooltip="Office" data-i18n-title="tab_office" data-i18n-aria-label="tab_office" aria-label="Office"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M15 10h3a2 2 0 0 1 2 2v9"/><path d="M2 21h20"/><path d="M8 7h2M8 11h2M8 15h2"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="tasks" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Tasks" data-i18n-title="tab_tasks" aria-label="Tasks"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
     <div class="rail-divider" data-after-panel="tasks" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="agents" onclick="switchPanel('agents',{fromRailClick:true})" data-tooltip="Personas" data-i18n-title="tab_agents" aria-label="Personas"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.333 1 2.667 1 4 1s2.667 0 4-1"/></svg></button>
@@ -186,6 +201,7 @@
       <button class="nav-tab active has-tooltip has-tooltip--bottom" data-panel="chat" data-label="Chat" onclick="switchPanel('chat',{fromRailClick:true})" data-tooltip="Chat" data-i18n-title="tab_chat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="kanban" data-label="Kanban" hidden onclick="switchPanel('kanban',{fromRailClick:true})" data-tooltip="Kanban" data-i18n-title="tab_kanban"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="agentCanvas" data-label="Agent Canvas" onclick="switchPanel('agentCanvas',{fromRailClick:true})" data-tooltip="Agent Canvas" data-i18n-title="tab_agent_canvas" data-i18n-aria-label="tab_agent_canvas"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M12 7.5v3.5M10.7 12.5 8 15.7M13.3 12.5 16 15.7"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="office" data-label="Office" onclick="switchPanel('office',{fromRailClick:true})" data-tooltip="Office" data-i18n-title="tab_office" data-i18n-aria-label="tab_office"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M15 10h3a2 2 0 0 1 2 2v9"/><path d="M2 21h20"/><path d="M8 7h2M8 11h2M8 15h2"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="tasks" data-label="Tasks" onclick="switchPanel('tasks',{fromRailClick:true})" data-tooltip="Tasks" data-i18n-title="tab_tasks"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
       <div class="sidebar-nav-divider" data-after-panel="tasks" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="agents" data-label="Personas" onclick="switchPanel('agents',{fromRailClick:true})" data-tooltip="Personas" data-i18n-title="tab_agents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M8 15c1.333 1 2.667 1 4 1s2.667 0 4-1"/></svg></button>
@@ -374,6 +390,18 @@
           <span class="hermes-cli-interact-label" data-i18n="canvas_card_view">View</span>
         </button>
       </div>
+    </div>
+    <!-- Office panel sidebar. Phase 1 is deliberately static: the outlet
+         switch (Business / Projects) and the worker list land in phases 3-5,
+         once HermesOfficeAdapter is feeding the scene. See
+         docs/rfcs/office-visualization.md. -->
+    <div class="panel-view" id="panelOffice">
+      <div class="panel-head">
+        <span data-i18n="tab_office">Office</span>
+      </div>
+      <div class="panel-head-sub">A live 3D floor of Hermes' real delegation tree. Hermes still owns every spawn, tool call and result — this only draws them.</div>
+      <div class="sidebar-divider" aria-hidden="true"></div>
+      <div class="office-sidebar-note">Phase 1: the floor and its render loop. Desks and workers arrive once the event adapter lands.</div>
     </div>
     <!-- Workspaces panel -->
     <div class="panel-view" id="panelWorkspaces">
@@ -1102,6 +1130,12 @@
         <div class="main-view-title">Agent Canvas</div>
       </div>
       <div class="agent-canvas-wrap" id="agentCanvasWrap"></div>
+    </div>
+    <div id="mainOffice" class="main-view">
+      <div class="main-view-header">
+        <div class="main-view-title">Office</div>
+      </div>
+      <div class="office-wrap" id="officeWrap"></div>
     </div>
     <div id="mainSettings" class="main-view">
       <div class="settings-main">
@@ -2063,6 +2097,10 @@
 <script src="static/vendor/d3-force/3.0.0/d3-quadtree.min.js" defer></script>
 <script src="static/vendor/d3-force/3.0.0/d3-force.min.js" defer></script>
 <script src="static/agent-canvas.js?v=__WEBUI_VERSION__" defer></script>
+<!-- Office visualization. type="module" (not defer) because it imports three.js
+     through the import map declared in <head>; module scripts are deferred by
+     default, so this still executes after panels.js like every tag around it. -->
+<script type="module" src="static/office/index.js?v=__WEBUI_VERSION__"></script>
 <script src="static/onboarding.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/tour.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/boot.js?v=__WEBUI_VERSION__" defer></script>

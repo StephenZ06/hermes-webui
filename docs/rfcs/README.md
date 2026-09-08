@@ -74,3 +74,7 @@ First-time contributor RFCs should be discussed in an issue before opening a PR.
   implemented live node-graph visualization of `delegate_task` subagent
   activity, SSE event feed, and vendored d3-force + Canvas2D rendering
   approach.
+- [`office-visualization.md`](office-visualization.md) — isometric 3D floor
+  view of the same real delegation tree: vendored three.js behind an import
+  map (no bundler), a `HermesOfficeAdapter` between Hermes events and the
+  scene, and Business/Projects outlets over one engine.

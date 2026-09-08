@@ -1,6 +1,6 @@
 # Project status — hermes-webui
 
-Last updated: 2026-09-04. Written as a session handoff; read this before
+Last updated: 2026-09-08. Written as a session handoff; read this before
 starting work on delegation, context cost, or anything in the agent checkout.
 
 ## Objective
@@ -295,6 +295,35 @@ trap caught `tests/test_state_sync_title_api_drift.py`: conftest snapshots
 snapshot after every test, so the first test in a file strips the agent dir for
 every test after it.
 
+## Office visualization (started 2026-09-08, branch `feat/office-visualization`)
+
+A second view of the same real delegation tree: an isometric 3D floor where
+subagents are people at desks, instead of Agent Canvas' org chart.
+[agents-office](https://github.com/ajsahni/agents-office) is the visual
+reference only — it is PolyForm Noncommercial while this repo is MIT, and its
+runtime is a simulation over a hardcoded 35-agent roster. Design, event
+mapping, outlets and phasing: `docs/rfcs/office-visualization.md`.
+
+Hermes keeps orchestration. The office draws; it never spawns, decides or
+holds a registry.
+
+**Phase 1 landed:** three.js r185 vendored at `static/vendor/three/0.185.1/`,
+an import map in `static/index.html`, a new `office` panel, and
+`static/office/{scene,index}.js` rendering a lit floor whose WebGL context is
+disposed on leaving the panel. `tests/test_office_panel.py` (17) green;
+runtime-lint gate green with an ESM override for `static/office/**`.
+
+Two facts worth keeping:
+
+- r185's module build is **split** — `three.module.min.js` re-exports from
+  `three.core.min.js`. Vendoring only the entry file 404s at load and the
+  panel goes blank with nothing in the console but a bare 404.
+- Verification for anything in this panel has to be a real browser. The
+  structure tests pass whether or not three.js resolves; a headless Chromium
+  run with `--use-angle=swiftshader` is what caught the split build.
+
+Revert point for the whole line of work: tag `pre-office-phase1`.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
@@ -317,7 +346,11 @@ every test after it.
    gone from the agent entirely. `tests/test_agent_compat_shim_paths.py` should
    go quiet on its own (an empty manifest skips it); if it starts failing again
    before then, something new drifted.
-7. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
+7. **Office phase 2: `HermesOfficeAdapter`.** Pure state, no three.js, headless
+   tests — `subagent_spawn`/`_tool`/`_complete` to an `OfficeState`. Note that
+   queued, per-message and handoff states have no backing event today (see the
+   RFC); do not fake them.
+8. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
    from 118 because 27 previously-invisible tests now run), so a new failure
    from here is a real one, worth reading rather than filing next to a known
    backlog.
