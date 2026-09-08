@@ -597,6 +597,9 @@ function mount(container) {
   _pillEl = container.querySelector('#officePill');
   _hintEl = container.querySelector('#officeHint');
   _summaryEl = container.querySelector('#officeSummary');
+  // The dedup guard below is keyed on text, and the element is brand new, so
+  // a remount whose state has not changed would otherwise leave it empty.
+  _lastSummary = '';
   _pauseBtnEl = container.querySelector('#officePauseBtn');
   _backBtnEl = container.querySelector('#officeBackBtn');
   _pauseBtnEl.onclick = toggleSpawnPaused;

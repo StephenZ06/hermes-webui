@@ -179,6 +179,16 @@ def test_scene_dispose_releases_gpu_resources_and_the_context():
     )
 
 
+def test_the_spoken_summary_is_not_deduped_across_a_remount():
+    # renderSummary skips writing when the text has not changed, because
+    # aria-live re-announces on every write. mount() builds a brand-new
+    # element, so the guard has to be cleared or a remount whose state has not
+    # moved leaves the summary empty.
+    mount_at = OFFICE_INDEX_JS.index("function mount(container)")
+    body = OFFICE_INDEX_JS[mount_at:OFFICE_INDEX_JS.index("\n}\n", mount_at)]
+    assert "_lastSummary = ''" in body
+
+
 def test_render_loop_stops_when_the_tab_is_hidden():
     assert "visibilitychange" in OFFICE_INDEX_JS
     assert "document.hidden" in OFFICE_INDEX_JS
