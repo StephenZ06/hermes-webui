@@ -399,9 +399,17 @@
       <div class="panel-head">
         <span data-i18n="tab_office">Office</span>
       </div>
-      <div class="panel-head-sub">A live 3D floor of Hermes' real delegation tree. Hermes still owns every spawn, tool call and result — this only draws them.</div>
+      <div class="panel-head-sub">Chats that delegated to subagents — replay any of them on the floor. Hermes still owns every spawn, tool call and result; this only draws them.</div>
       <div class="sidebar-divider" aria-hidden="true"></div>
-      <div class="office-sidebar-note">Phase 1: the floor and its render loop. Desks and workers arrive once the event adapter lands.</div>
+      <div class="office-sidebar-list" id="officeSessionList"></div>
+      <div class="hermes-cli-card">
+        <div class="hermes-cli-card-label">
+          <span>Office</span>
+        </div>
+        <button type="button" class="hermes-cli-interact-btn" onclick="officeReturnToLive()">
+          <span class="hermes-cli-interact-label">View live</span>
+        </button>
+      </div>
     </div>
     <!-- Workspaces panel -->
     <div class="panel-view" id="panelWorkspaces">

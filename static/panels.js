@@ -503,6 +503,7 @@ async function switchPanel(name, opts = {}) {
   // a feature flag.
   if (nextPanel === 'office' && window.HermesOffice && typeof window.HermesOffice.mount === 'function') {
     window.HermesOffice.mount($('officeWrap'));
+    if (typeof window.HermesOffice.renderSidebar === 'function') window.HermesOffice.renderSidebar();
   }
   _syncLogsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();

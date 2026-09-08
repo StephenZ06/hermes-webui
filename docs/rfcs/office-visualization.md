@@ -1,6 +1,6 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — phases 1-3 implemented, phases 4-6 outstanding
+- **Status:** Accepted — phases 1-4 implemented, phases 5-6 outstanding
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -165,8 +165,8 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
 2. **`HermesOfficeAdapter` plus headless tests. No 3D.** *(done)*
 3. **Projects outlet: dynamic desks, the four real event states, click-through
    to the existing agent detail view.** *(done)*
-4. Parity: interrupt/pause controls, `GET /api/subagents/active`
-   reconciliation, history via `GET /api/agent-canvas/sessions`.
+4. **Parity: interrupt/pause controls, `GET /api/subagents/active`
+   reconciliation, history via `GET /api/agent-canvas/sessions`.** *(done)*
 5. Business outlet — after the Agent Library exists.
 6. Consider making the office the default and retiring Agent Canvas, keeping
    `renderStaticTree` for the cron delegation diagram.
@@ -288,3 +288,43 @@ Verified in headless Chromium: five subagents across two clusters render as
 pods, desks, figures and readable nameplates in both themes; a click sweep
 resolves a worker and opens its detail panel; `unmount()` still releases the
 context with office state intact.
+
+## Phase 4 as built
+
+The office now reaches parity with Agent Canvas on controls and history, over
+exactly the REST surface Agent Canvas already uses — no second transport:
+
+- **Reconcile.** `GET /api/subagents/active` every 5s while the panel is
+  mounted, fed through `adapter.applySnapshot`. It is a catch-up for what the
+  stream missed while the page was closed or reconnecting, never the primary
+  source, and it is best-effort: a transient failure must not blow away the
+  office already built from live events. The timer is cleared on unmount —
+  one left running keeps hitting the API forever for a panel nobody is
+  looking at.
+- **Pause spawning / Interrupt.** `POST /api/subagents/pause` in the header,
+  `POST /api/subagents/interrupt` on a selected worker. Interrupt is offered
+  only on a live, non-terminal worker: a historical office is a record of
+  something that already finished, and there is nothing there to stop.
+- **History.** The panel sidebar lists the chats that ever delegated
+  (`GET /api/agent-canvas/sessions`); clicking one replays it on the floor.
+
+History is replayed through an **ordinary adapter** rather than by teaching
+the adapter a frozen mode: `static/office/history.js` translates state.db rows
+into the same `onSpawn` / `onComplete` payloads the live stream delivers, and
+a second adapter instance consumes them. The live adapter keeps accumulating
+underneath, untouched, so "Back to live" is a view switch rather than a
+rebuild. That second instance is given a much larger desk cap — a finished run
+can exceed the live one, and nothing should be reclaimed in a record of what
+already happened.
+
+One correction the translation makes: a child row with no `ended_at` reads as
+`running` from the raw query, but in a *finished* session that can only mean
+it was cut off, so it replays as `interrupted`. Showing it as running would
+claim a subagent is live when nothing is. Agent Canvas makes the same
+correction.
+
+Verified in headless Chromium against stubbed endpoints: reconcile adopts a
+subagent the stream never delivered, the pause button posts and relabels, the
+sidebar lists two chats, clicking one replays three workers (including a
+nested grandchild seated in its parent's cluster, and a never-ended row shown
+as interrupted), and "Back to live" restores the live office intact.
