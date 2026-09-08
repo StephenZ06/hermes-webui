@@ -25,11 +25,20 @@ export const POD_GAP = 10;
 export const CONDUCTOR_RADIUS = 11;
 /** Pods per ring. Ring 1 takes 6, ring 2 takes 12, and so on. */
 const RING_BASE_CAPACITY = 6;
-/** At most this many seats across before a pod grows another row. */
-const MAX_POD_COLUMNS = 3;
+/**
+ * Seats across a pod. Small pods stay narrow so a two-subagent branch reads
+ * as a pair rather than a row; large ones widen toward square, because a
+ * department with fifteen desks laid out three wide becomes a corridor five
+ * rows deep that shoves every other pod off the floor.
+ */
+const MIN_POD_COLUMNS = 3;
+const MAX_POD_COLUMNS = 6;
 
 function podGrid(seatCount) {
-  const cols = Math.max(1, Math.min(MAX_POD_COLUMNS, seatCount));
+  const square = Math.ceil(Math.sqrt(Math.max(1, seatCount)));
+  const cols = Math.max(1, Math.min(
+    seatCount, MAX_POD_COLUMNS, Math.max(MIN_POD_COLUMNS, square),
+  ));
   const rows = Math.max(1, Math.ceil(seatCount / cols));
   return { cols, rows };
 }
@@ -88,13 +97,20 @@ export function computeLayout(desks, options) {
     byCluster.get(cluster).push(desk);
   }
 
-  // A ring's radius has to clear the widest pod on it, so size every pod
-  // before placing any of them.
+  // Size every pod before placing any of them: a ring's radius depends on how
+  // wide its own pods are.
   const clusters = Array.from(byCluster.entries());
   const sizes = clusters.map(([, seats]) => podSize(seats.length));
-  const widestPod = sizes.reduce(
-    (max, size) => Math.max(max, size.width, size.depth), 0,
-  );
+
+  // Widest pod *per ring*, not across the whole office. One large pod used to
+  // push every ring outward, leaving small pods marooned in empty floor.
+  const extentByRing = new Map();
+  sizes.forEach((size, podIndex) => {
+    const { ring } = ringSlot(podIndex);
+    const extent = Math.max(size.width, size.depth);
+    extentByRing.set(ring, Math.max(extentByRing.get(ring) || 0, extent));
+  });
+  const extentOf = ring => extentByRing.get(ring) || 0;
 
   // Ring radii, computed once so every pod on a ring shares one. A ring has
   // to clear two things: the ring inside it, and its own neighbours around
@@ -105,12 +121,12 @@ export function computeLayout(desks, options) {
     for (let r = ringRadii.length; r <= ring; r += 1) {
       const capacity = RING_BASE_CAPACITY * r;
       // Clearance from whatever is immediately inside: the conductor's pod is
-      // a radius, an inner ring of pods is a radius plus half a pod.
+      // a radius, an inner ring of pods reaches out by half its own extent.
       const inward = r === 1
-        ? CONDUCTOR_RADIUS + widestPod / 2 + config.podGap
-        : ringRadii[r - 1] + widestPod + config.podGap;
+        ? CONDUCTOR_RADIUS + extentOf(1) / 2 + config.podGap
+        : ringRadii[r - 1] + extentOf(r - 1) / 2 + extentOf(r) / 2 + config.podGap;
       // Chord clearance between neighbours on this ring.
-      const around = (widestPod + config.podGap) / (2 * Math.sin(Math.PI / capacity));
+      const around = (extentOf(r) + config.podGap) / (2 * Math.sin(Math.PI / capacity));
       ringRadii.push(Math.max(inward, around));
     }
     return ringRadii[ring];
@@ -168,9 +184,12 @@ export function computeLayout(desks, options) {
       x: pod.x, z: pod.z, reach: Math.max(pod.width, pod.depth) / 2,
     })),
   );
+  // Weighted by reach: a fifteen-desk pod is more of the office than a
+  // one-desk pod, and an unweighted mean leaves the busy half off-frame.
+  const weight = points.reduce((sum, p) => sum + p.reach, 0) || 1;
   const center = {
-    x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
-    z: points.reduce((sum, p) => sum + p.z, 0) / points.length,
+    x: points.reduce((sum, p) => sum + p.x * p.reach, 0) / weight,
+    z: points.reduce((sum, p) => sum + p.z * p.reach, 0) / weight,
   };
   const radius = points.reduce((max, p) => Math.max(
     max, Math.hypot(p.x - center.x, p.z - center.z) + p.reach,

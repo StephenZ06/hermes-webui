@@ -216,6 +216,65 @@ def test_a_pod_grows_rows_rather_than_an_endless_line(driver):
     assert len(xs) == 3 and len(zs) == 3, "9 desks pack 3x3, not 9x1"
 
 
+def test_a_large_pod_widens_toward_square(driver):
+    # Fifteen desks three wide is a corridor five rows deep that shoves every
+    # other pod off the floor. Real persona lists produce pods this size.
+    out = layout(driver, n_desks(15, cluster="p1"))
+    pod = out["pods"][0]
+    xs = {round(seat["x"], 4) for seat in pod["seats"]}
+    zs = {round(seat["z"], 4) for seat in pod["seats"]}
+    assert len(xs) == 4 and len(zs) == 4
+
+
+def test_one_large_pod_does_not_push_unrelated_rings_outward(driver):
+    # Ring radius is set by the widest pod *on that ring*, not across the whole
+    # office — otherwise a single big department maroons every small pod in
+    # empty floor.
+    small = [{"id": f"d{c}", "index": c, "workerId": f"w{c}", "cluster": f"p{c}"}
+             for c in range(7)]
+    with_giant = small + [
+        {"id": f"g{i}", "index": 100 + i, "workerId": f"gw{i}", "cluster": "giant"}
+        for i in range(18)
+    ]
+    before = layout(driver, small)
+    after = layout(driver, with_giant)
+    ring1_before = [p for p in before["pods"] if p["ring"] == 1][0]
+    ring1_after = [p for p in after["pods"] if p["ring"] == 1][0]
+    assert ring1_before["x"] == pytest.approx(ring1_after["x"])
+    assert ring1_before["z"] == pytest.approx(ring1_after["z"])
+
+
+def test_pods_of_very_different_sizes_still_never_overlap(driver):
+    # The uniform-pod cases above cannot catch a packing bug that only shows
+    # when one pod is far larger than its neighbours — which is exactly what a
+    # real roster produces.
+    records = []
+    for c in range(8):
+        for i in range(1 if c % 2 else 14):
+            records.append({"id": f"d{c}-{i}", "index": i, "workerId": f"w{c}{i}",
+                            "cluster": f"p{c}"})
+    out = layout(driver, records)
+    for i, a in enumerate(out["pods"]):
+        for b in out["pods"][i + 1:]:
+            assert _pod_clearance(a, b) > 0, (
+                f"pods {a['cluster']} and {b['cluster']} overlap"
+            )
+
+
+def test_the_camera_centre_is_weighted_by_how_much_floor_a_pod_takes(driver):
+    # An unweighted mean leaves a busy fifteen-desk department half off-frame
+    # next to a one-desk pod on the opposite side.
+    records = [{"id": "small", "index": 0, "workerId": "w0", "cluster": "small"}]
+    records += [{"id": f"big{i}", "index": i, "workerId": f"b{i}", "cluster": "big"}
+                for i in range(15)]
+    out = layout(driver, records)
+    big = next(p for p in out["pods"] if p["cluster"] == "big")
+    small = next(p for p in out["pods"] if p["cluster"] == "small")
+    to_big = math.hypot(out["center"]["x"] - big["x"], out["center"]["z"] - big["z"])
+    to_small = math.hypot(out["center"]["x"] - small["x"], out["center"]["z"] - small["z"])
+    assert to_big < to_small, "the centre leans toward the pod that is most of the office"
+
+
 # ── purity ───────────────────────────────────────────────────────────────────
 
 def test_the_layout_touches_no_browser_or_renderer_api():

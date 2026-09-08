@@ -410,6 +410,24 @@ was close the parity gaps that made the office the lesser view:
 The office is not the default. Making it so is a user-visible product call,
 and the panel is one click away in the rail either way.
 
+## Packing, after seeing it against a real config
+
+Running the office in the real app with a real persona list exposed a defect
+the synthetic checks could not: every uniform-pod test passed while the actual
+floor was unreadable. Two fixes, both in `layout.js`:
+
+- **Ring radius is set by the widest pod *on that ring*,** not across the whole
+  office. One large department used to push every ring outward, marooning
+  small pods in empty floor.
+- **Large pods widen toward square** (3 columns minimum, 6 maximum) instead of
+  staying three wide. Fifteen desks three across is a corridor five rows deep
+  that shoves everything else off the floor.
+- The camera centre is weighted by how much floor each pod occupies, so a
+  fifteen-desk department does not sit half off-frame opposite a one-desk pod.
+
+The tests that missed this used uniformly-sized pods throughout; there is now
+a mixed-size non-overlap case, which is what a real roster produces.
+
 ## Status summary
 
 | Phase | State |
