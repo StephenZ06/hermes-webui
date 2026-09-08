@@ -53,6 +53,8 @@ let _scene = null;
 let _detailEl = null;
 let _pillEl = null;
 let _hintEl = null;
+let _summaryEl = null;
+let _lastSummary = '';
 let _pauseBtnEl = null;
 let _backBtnEl = null;
 let _resizeObserver = null;
@@ -75,6 +77,7 @@ let _viewMode = 'live';
 let _historyAdapter = null;
 let _historyParents = [];
 let _historyParentId = null;
+let _sessionQuery = '';
 
 const STATUS_LABEL = {
   running: 'Running', completed: 'Completed', failed: 'Failed',
@@ -130,6 +133,34 @@ function fmtCost(usd) {
   return '$' + Number(usd).toFixed(usd >= 1 ? 2 : 4);
 }
 
+/**
+ * A running worker has no recorded duration yet, so derive one from its
+ * spawn time. A detail panel that shows nothing until a subagent finishes is
+ * least useful exactly while someone is watching it work.
+ */
+function liveDuration(worker) {
+  if (!worker) return null;
+  if (worker.durationSeconds != null) return worker.durationSeconds;
+  if (!worker.spawnedAt) return null;
+  return Math.max(0, (Date.now() - worker.spawnedAt) / 1000);
+}
+
+/** Every worker below `id` in the delegation tree, deepest last. */
+function descendantsOf(id, workers) {
+  const out = [];
+  const stack = [id];
+  while (stack.length) {
+    const current = stack.pop();
+    for (const worker of workers) {
+      if (worker.parentId === current) {
+        out.push(worker);
+        stack.push(worker.id);
+      }
+    }
+  }
+  return out;
+}
+
 function toast(message) {
   if (typeof window.showToast === 'function') window.showToast(message);
 }
@@ -161,6 +192,7 @@ function scheduleSync() {
     _scene.syncOffice(view);
     renderPill(state);
     renderDetail(state);
+    renderSummary(state);
   });
 }
 
@@ -222,6 +254,33 @@ async function loadRoster() {
   if (_outlet === 'business') scheduleSync();
 }
 
+/**
+ * A spoken equivalent of the floor.
+ *
+ * The office is a canvas, which is opaque to a screen reader — the picture is
+ * the whole point of the view, and no amount of ARIA on a <canvas> changes
+ * that. This keeps the same facts available as text. It is deliberately not a
+ * replacement: Agent Canvas remains the DOM view of the same tree, which is
+ * one of the reasons it is not being retired (see the RFC's phase 6).
+ */
+function renderSummary(state) {
+  if (!_summaryEl) return;
+  const workers = state.workers || [];
+  const running = workers.filter(w => w.status === 'running');
+  const parts = [
+    _viewMode === 'history' ? 'Historical run.' : 'Live delegation.',
+    `${workers.length} subagent${workers.length === 1 ? '' : 's'}, ${running.length} running.`,
+  ];
+  running.slice(0, 8).forEach(w => {
+    parts.push(`${w.label}: ${w.tool && w.tool.name ? 'using ' + w.tool.name : 'working'}.`);
+  });
+  const text = parts.join(' ');
+  // aria-live re-announces on every change, so only write when it moved.
+  if (text === _lastSummary) return;
+  _lastSummary = text;
+  _summaryEl.textContent = text;
+}
+
 function renderPauseButton() {
   if (!_pauseBtnEl) return;
   _pauseBtnEl.textContent = _spawnPaused ? 'Resume spawning' : 'Pause spawning';
@@ -248,7 +307,8 @@ function renderDetail(state) {
   if (worker.taskIndex != null && worker.taskCount != null) {
     row('Batch task', `${worker.taskIndex + 1} / ${worker.taskCount}`);
   }
-  if (worker.durationSeconds != null) row('Duration', fmtDuration(worker.durationSeconds));
+  const duration = liveDuration(worker);
+  if (duration != null) row('Duration', fmtDuration(duration));
   if (worker.apiCalls) row('API calls', worker.apiCalls);
   if (worker.inputTokens || worker.outputTokens) {
     row('Tokens', `${fmtTokens(worker.inputTokens)} in / ${fmtTokens(worker.outputTokens)} out`);
@@ -262,12 +322,32 @@ function renderDetail(state) {
   worker.tool.preview ? ` <span>${esc(worker.tool.preview)}</span>` : ''}</div></div>`
     : '';
 
+  const tail = Array.isArray(worker.outputTail) && worker.outputTail.length
+    ? `<div class="office-detail-block"><div class="office-detail-label">Recent tool activity</div>${
+  worker.outputTail.map(entry => `<div class="office-detail-tool${entry && entry.isError ? ' is-error' : ''}">${
+    esc(entry && entry.tool)}${entry && entry.preview ? ` <span>${esc(entry.preview)}</span>` : ''}</div>`).join('')}</div>`
+    : '';
+
+  const files = ['filesRead', 'filesWritten'].map((key, i) => {
+    const list = worker[key];
+    if (!Array.isArray(list) || !list.length) return '';
+    return `<div class="office-detail-block"><div class="office-detail-label">${
+      i === 0 ? 'Files read' : 'Files written'}</div>${
+      list.map(f => `<div class="office-detail-tool">${esc(f)}</div>`).join('')}</div>`;
+  }).join('');
+
   // Interrupting is a live control. A historical office is a record of
   // something that already finished; there is nothing there to stop.
   const canInterrupt = _viewMode === 'live' && !TERMINAL.has(worker.status);
+  const liveDescendants = canInterrupt
+    ? descendantsOf(worker.id, state.workers || []).filter(w => !TERMINAL.has(w.status))
+    : [];
   const actions = [];
   if (canInterrupt) {
     actions.push('<button type="button" class="office-detail-action danger" data-action="interrupt">Interrupt</button>');
+  }
+  if (liveDescendants.length) {
+    actions.push('<button type="button" class="office-detail-action danger" data-action="interrupt-branch">Interrupt branch</button>');
   }
   if (worker.childSessionId) {
     actions.push('<button type="button" class="office-detail-action" data-action="open-session">Open conversation</button>');
@@ -283,6 +363,8 @@ function renderDetail(state) {
     ${worker.goal ? `<div class="office-detail-block"><div class="office-detail-label">Goal</div><div class="office-detail-goal">${esc(worker.goal)}</div></div>` : ''}
     ${tool}
     ${worker.summary ? `<div class="office-detail-block"><div class="office-detail-label">Summary</div><div class="office-detail-goal">${esc(worker.summary)}</div></div>` : ''}
+    ${tail}
+    ${files}
     ${actions.length ? `<div class="office-detail-actions">${actions.join('')}</div>` : ''}
   `;
   const close = _detailEl.querySelector('.office-detail-close');
@@ -291,6 +373,10 @@ function renderDetail(state) {
   if (open) open.onclick = () => openWorkerSession(worker);
   const interrupt = _detailEl.querySelector('[data-action="interrupt"]');
   if (interrupt) interrupt.onclick = () => interruptWorker(worker.id);
+  const branch = _detailEl.querySelector('[data-action="interrupt-branch"]');
+  if (branch) {
+    branch.onclick = () => interruptBranch(worker.id, liveDescendants.map(w => w.id));
+  }
 }
 
 /**
@@ -319,6 +405,15 @@ async function interruptWorker(subagentId) {
   } catch (err) {
     toast('Interrupt failed: ' + (err && err.message ? err.message : err));
   }
+}
+
+/**
+ * Stop a subagent and everything below it, deepest first — a parent should
+ * not be left interrupting into children that already stopped.
+ */
+async function interruptBranch(subagentId, descendantIds) {
+  const targets = (descendantIds || []).slice().reverse().concat([subagentId]);
+  for (const id of targets) await interruptWorker(id);
 }
 
 async function toggleSpawnPaused() {
@@ -389,12 +484,20 @@ function returnToLive() {
 function renderSessionList() {
   const list = document.getElementById('officeSessionList');
   if (!list) return;
+  const query = _sessionQuery.trim().toLowerCase();
+  const visible = query
+    ? _historyParents.filter(p => String(p.title || '').toLowerCase().includes(query))
+    : _historyParents;
+  if (query && !visible.length) {
+    list.innerHTML = '<div class="office-sidebar-note">No delegating chat matches that filter.</div>';
+    return;
+  }
   if (!_historyParents.length) {
     list.innerHTML = '<div class="office-sidebar-note">No chat has delegated to a subagent yet. '
       + 'When one does, it appears here and can be replayed on the floor.</div>';
     return;
   }
-  list.innerHTML = _historyParents.map(parent => {
+  list.innerHTML = visible.map(parent => {
     const id = parent.parent_session_id;
     const count = Array.isArray(parent.children) ? parent.children.length : 0;
     const active = id === _historyParentId ? ' is-active' : '';
@@ -484,13 +587,16 @@ function mount(container) {
       <button type="button" class="office-header-btn" id="officePauseBtn">Pause spawning</button>
     </div>
     <div class="office-stage">
-      <canvas class="office-canvas" id="officeCanvas"></canvas>
+      <canvas class="office-canvas" id="officeCanvas" role="img"
+              aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
       <div class="office-detail" id="officeDetail" hidden></div>
+      <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
     </div>`;
   _canvas = container.querySelector('#officeCanvas');
   _detailEl = container.querySelector('#officeDetail');
   _pillEl = container.querySelector('#officePill');
   _hintEl = container.querySelector('#officeHint');
+  _summaryEl = container.querySelector('#officeSummary');
   _pauseBtnEl = container.querySelector('#officePauseBtn');
   _backBtnEl = container.querySelector('#officeBackBtn');
   _pauseBtnEl.onclick = toggleSpawnPaused;
@@ -574,6 +680,7 @@ function unmount() {
   _detailEl = null;
   _pillEl = null;
   _hintEl = null;
+  _summaryEl = null;
   _pauseBtnEl = null;
   _backBtnEl = null;
   _outletBtnEls = {};
@@ -592,6 +699,24 @@ function onComplete(payload) { return _adapter.onComplete(payload); }
 function applySnapshot(snapshot) { return _adapter.applySnapshot(snapshot); }
 function reset() { _selectedId = null; return _adapter.reset(); }
 function getState() { return activeAdapter().getState(); }
+
+/** Sidebar filter box, mirroring the Agent Canvas one. */
+function filterOfficeSessions() {
+  const input = document.getElementById('officeSearch');
+  _sessionQuery = input ? input.value : '';
+  const clear = document.getElementById('officeSearchClear');
+  if (clear) clear.hidden = !_sessionQuery;
+  renderSessionList();
+}
+
+function clearOfficeSearch() {
+  const input = document.getElementById('officeSearch');
+  if (input) input.value = '';
+  filterOfficeSessions();
+}
+
+window.filterOfficeSessions = filterOfficeSessions;
+window.clearOfficeSearch = clearOfficeSearch;
 
 // Small global wrapper so the "View live" button on the office sidebar card
 // can be a plain onclick="" attribute like every other sidebar card in this

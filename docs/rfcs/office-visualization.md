@@ -1,6 +1,6 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — phases 1-5 implemented, phase 6 outstanding
+- **Status:** Accepted — implemented; phase 6 decided (Agent Canvas stays)
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -169,8 +169,8 @@ WebGL inside a long-lived SPA panel leaks hard, so ownership is explicit:
    reconciliation, history via `GET /api/agent-canvas/sessions`.** *(done)*
 5. **Business outlet.** *(done — see the caveat below; it does not wait for
    the Agent Library, it degrades honestly without one.)*
-6. Consider making the office the default and retiring Agent Canvas, keeping
-   `renderStaticTree` for the cron delegation diagram.
+6. **Considered making the office the default and retiring Agent Canvas.**
+   *(done — decided against; see below.)*
 
 ## Licensing
 
@@ -371,3 +371,57 @@ deleted. See `docs/HERMES_STUDIO_PARITY_PLAN.md`.
 Verified in headless Chromium: four subagents across three departments seat
 correctly with the unmatched one on The Floor, empty roster desks show their
 persona names, and the outlet choice survives a reload.
+
+## Phase 6: the office does not replace Agent Canvas
+
+Phase 6 asked whether the office should become the default view and Agent
+Canvas retire. Having built the office, the answer is no, and not on grounds
+of polish.
+
+**Agent Canvas is the accessible view of this data, and the office cannot be.**
+The office is a `<canvas>`. A screen reader gets nothing from it, and no
+amount of ARIA changes that — the picture *is* the view. Retiring the DOM
+rendering of the delegation tree would remove the only version of this
+information some users can read. That alone settles it.
+
+Two further reasons:
+
+- **WebGL is not universal.** Blocked, unavailable or software-rendered
+  contexts are real. The office already falls back to a message pointing at
+  Agent Canvas; that fallback has to point at something that exists.
+- **`renderStaticTree` has a second consumer.** The Scheduled-jobs page draws
+  a cron run's delegation diagram with it (`static/panels.js`). Retiring the
+  module means porting that too, for no user-visible gain.
+
+So the two views stay peers, reading the same Hermes truth through the same
+adapter-shaped path, and neither is the "real" one. What phase 6 did instead
+was close the parity gaps that made the office the lesser view:
+
+- Live duration for a running subagent, rather than nothing until it finishes.
+- Recent tool activity (`output_tail`), files read and files written in the
+  detail panel.
+- **Interrupt branch**, deepest descendant first, so a parent is not left
+  interrupting into children that already stopped.
+- A sidebar filter over the delegating chats, matching Agent Canvas.
+- An `sr-only` live region summarising the floor in words — how many
+  subagents, how many running, and what each is touching. Not a replacement
+  for the DOM view; a courtesy for anyone who lands on this panel.
+
+The office is not the default. Making it so is a user-visible product call,
+and the panel is one click away in the rail either way.
+
+## Status summary
+
+| Phase | State |
+|---|---|
+| 1. Vendored three.js, import map, panel shell | done |
+| 2. `HermesOfficeAdapter` | done |
+| 3. Projects outlet | done |
+| 4. Reconcile, pause/interrupt, history | done |
+| 5. Business outlet | done (roster inferred from personas — see caveat) |
+| 6. Default/retirement decision | decided: Agent Canvas stays, office is a peer |
+
+Everything Hermes owns it still owns. Across all six phases the office added
+no orchestration: no spawn, no retry, no agent registry, no second transport.
+It reads `subagent_spawn` / `subagent_tool` / `subagent_complete`, four REST
+endpoints Agent Canvas already used, and draws what it is told.
