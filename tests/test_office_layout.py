@@ -28,9 +28,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 _DRIVER = r"""
-const { computeLayout } = await import(process.argv[2]);
-const desks = JSON.parse(process.argv[3] || '[]');
-process.stdout.write(JSON.stringify(computeLayout(desks)));
+const { computeLayout, walkwaySpan, slabEdgeDistance } = await import(process.argv[2]);
+const input = JSON.parse(process.argv[3] || '{}');
+if (Array.isArray(input)) {
+  process.stdout.write(JSON.stringify(computeLayout(input)));
+} else {
+  process.stdout.write(JSON.stringify({
+    span: input.pod ? walkwaySpan(input.pod, input.hubHalf, input.options) : null,
+    edge: input.edge
+      ? slabEdgeDistance(input.edge.hw, input.edge.hd, input.edge.dx, input.edge.dz)
+      : null,
+  }));
+}
 """
 
 
@@ -296,3 +305,59 @@ def test_the_layout_touches_no_browser_or_renderer_api():
         assert forbidden not in LAYOUT_SRC, (
             f"layout.js must stay pure — found {forbidden!r}"
         )
+
+
+# ── walkways ─────────────────────────────────────────────────────────────────
+
+def geom(driver, **payload):
+    proc = subprocess.run(
+        [NODE, str(driver), LAYOUT.as_uri(), json.dumps(payload)],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"office layout driver failed: {proc.stderr.strip()}")
+    return json.loads(proc.stdout)
+
+
+def test_a_square_slab_reaches_further_on_the_diagonal(driver):
+    # Pods and the conductor plinth are squares, not discs. Treating them as
+    # discs is what left a visible gap between the walkway and the platforms.
+    axis = geom(driver, edge={"hw": 5, "hd": 5, "dx": 1, "dz": 0})["edge"]
+    diagonal = geom(driver, edge={"hw": 5, "hd": 5,
+                                  "dx": 2 ** -0.5, "dz": 2 ** -0.5})["edge"]
+    assert axis == pytest.approx(5)
+    assert diagonal == pytest.approx(5 * 2 ** 0.5)
+
+
+@pytest.mark.parametrize("angle_deg", [0, 30, 45, 60, 90, 135, 200, 315])
+def test_a_walkway_spans_exactly_between_the_two_platforms(driver, angle_deg):
+    # It must not stop short (a broken bridge) and must not stop dead on the
+    # edge (a hairline seam) — it tucks slightly under both.
+    hub_half, pod_half_w, pod_half_d, distance = 7.7, 15.0, 5.5, 48.0
+    a = math.radians(angle_deg)
+    pod = {"x": math.sin(a) * distance, "z": math.cos(a) * distance,
+           "halfWidth": pod_half_w, "halfDepth": pod_half_d}
+    out = geom(driver, pod=pod, hubHalf=hub_half)["span"]
+
+    dx, dz = pod["x"] / distance, pod["z"] / distance
+    hub_edge = geom(driver, edge={"hw": hub_half, "hd": hub_half, "dx": dx, "dz": dz})["edge"]
+    pod_edge = geom(driver, edge={"hw": pod_half_w, "hd": pod_half_d, "dx": dx, "dz": dz})["edge"]
+
+    overlap = 0.6
+    assert out["start"] == pytest.approx(hub_edge - overlap), "starts under the conductor"
+    assert out["end"] == pytest.approx(distance - pod_edge + overlap), "ends under the pod"
+    assert out["length"] == pytest.approx(out["end"] - out["start"])
+
+
+def test_no_walkway_when_the_platforms_already_touch(driver):
+    # A pod close enough to overlap the hub gets no bridge rather than a
+    # zero-length sliver poking out of both.
+    out = geom(driver, pod={"x": 0, "z": 9, "halfWidth": 8, "halfDepth": 8},
+               hubHalf=7.7)["span"]
+    assert out is None
+
+
+def test_a_pod_at_the_origin_gets_no_walkway(driver):
+    out = geom(driver, pod={"x": 0, "z": 0, "halfWidth": 5, "halfDepth": 5},
+               hubHalf=7.7)["span"]
+    assert out is None

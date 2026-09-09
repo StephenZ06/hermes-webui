@@ -69,6 +69,56 @@ export function ringSlot(podIndex) {
 }
 
 /**
+ * Distance from the centre of an axis-aligned rectangular slab to its edge,
+ * along a unit direction.
+ *
+ * Pods and the conductor's plinth are squares, not discs, so their edge is
+ * further away on the diagonal than on the axis — using a single radius
+ * leaves a walkway hanging short of some pods and overlapping others.
+ *
+ * @param {number} halfWidth half-extent along x
+ * @param {number} halfDepth half-extent along z
+ * @param {number} dirX unit direction x
+ * @param {number} dirZ unit direction z
+ */
+export function slabEdgeDistance(halfWidth, halfDepth, dirX, dirZ) {
+  const byX = Math.abs(dirX) > 1e-9 ? halfWidth / Math.abs(dirX) : Infinity;
+  const byZ = Math.abs(dirZ) > 1e-9 ? halfDepth / Math.abs(dirZ) : Infinity;
+  const edge = Math.min(byX, byZ);
+  return isFinite(edge) ? edge : Math.max(halfWidth, halfDepth);
+}
+
+/**
+ * The walkway joining a pod to the hub in the middle of the office.
+ *
+ * Returns where the slab starts and ends measured from the origin, so it can
+ * be tucked slightly *under* both platforms rather than stopping at their
+ * edges — a walkway that stops exactly on an edge still shows a hairline seam
+ * where the two meet, and one that stops short of it reads as a broken bridge.
+ *
+ * @returns {{start:number, end:number, length:number, angle:number}|null}
+ *   null when the pod is so close that no walkway would be visible.
+ */
+export function walkwaySpan(pod, hubHalfExtent, options) {
+  const config = Object.assign({ overlap: 0.6, minLength: 1 }, options || {});
+  const distance = Math.hypot(pod.x, pod.z);
+  if (!(distance > 0)) return null;
+  const dirX = pod.x / distance;
+  const dirZ = pod.z / distance;
+
+  const hubEdge = slabEdgeDistance(hubHalfExtent, hubHalfExtent, dirX, dirZ);
+  const podEdge = slabEdgeDistance(pod.halfWidth, pod.halfDepth, dirX, dirZ);
+
+  // Overlap both ends so the walkway disappears under each platform instead
+  // of butting against it.
+  const start = Math.max(0, hubEdge - config.overlap);
+  const end = distance - podEdge + config.overlap;
+  const length = end - start;
+  if (length < config.minLength) return null;
+  return { start, end, length, angle: Math.atan2(pod.x, pod.z) };
+}
+
+/**
  * Lay the office out.
  *
  * @param {Array<object>} desks adapter desks — `{id, index, workerId, cluster}`

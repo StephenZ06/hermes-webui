@@ -14,7 +14,7 @@
 // owner: start/stop bracket the rAF loop, dispose() releases every geometry,
 // material and the renderer's own context.
 import * as THREE from 'three';
-import { computeLayout, CONDUCTOR_RADIUS } from './layout.js';
+import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
   makePlant, makeWalkway, drawNameplate, drawScreen, poseWorker,
@@ -59,6 +59,10 @@ const ISO_VERTICAL_SCALE = ISO_DIRECTION.y;
 // Screen-right, in world space, for this fixed isometric view. Used to slide
 // a focused desk out from under the detail panel, which owns the right edge.
 const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
+// The conductor's plinth is a square of this side, and pods are their content
+// plus this much slab. Both are needed to find where a walkway should stop.
+const CONDUCTOR_SLAB = CONDUCTOR_RADIUS * 1.4;
+const POD_SLAB_PADDING = 3;
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -208,7 +212,7 @@ export function createOfficeScene(canvas, options) {
   function ensureConductor() {
     if (conductor) return conductor;
     const group = new THREE.Group();
-    const pod = makePod(CONDUCTOR_RADIUS * 1.4, CONDUCTOR_RADIUS * 1.4, palette);
+    const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
     const person = makePerson(palette, palette.conductor);
     person.position.y = 0.6;
@@ -230,8 +234,8 @@ export function createOfficeScene(canvas, options) {
       office.remove(pod.group);
       disposeTree(pod.group);
     }
-    const slabWidth = width + 3;
-    const slabDepth = depth + 3;
+    const slabWidth = width + POD_SLAB_PADDING;
+    const slabDepth = depth + POD_SLAB_PADDING;
     const group = makePod(slabWidth, slabDepth, palette);
 
     // Signage, only where there is a real name to paint.
@@ -259,21 +263,22 @@ export function createOfficeScene(canvas, options) {
    * A walkway from each pod back toward the conductor, so the floor reads as
    * a place with circulation rather than islands floating in a void.
    */
-  function ensureWalkway(cluster, podX, podZ, podReach) {
+  function ensureWalkway(cluster, pod) {
     let walk = walkways.get(cluster);
-    const distance = Math.hypot(podX, podZ);
-    const inner = CONDUCTOR_RADIUS * 0.8;
-    const length = Math.max(0, distance - podReach - inner);
-    if (length < 1) {
+    const span = walkwaySpan({
+      x: pod.x, z: pod.z,
+      halfWidth: (pod.width + POD_SLAB_PADDING) / 2,
+      halfDepth: (pod.depth + POD_SLAB_PADDING) / 2,
+    }, CONDUCTOR_SLAB / 2);
+    if (!span) {
       if (walk) { office.remove(walk); disposeTree(walk); walkways.delete(cluster); }
       return;
     }
     if (walk) { office.remove(walk); disposeTree(walk); }
-    walk = makeWalkway(length, palette);
-    const mid = inner + length / 2;
-    const angle = Math.atan2(podX, podZ);
-    walk.position.set(Math.sin(angle) * mid, 0.04, Math.cos(angle) * mid);
-    walk.rotation.y = angle;
+    walk = makeWalkway(span.length, palette);
+    const mid = span.start + span.length / 2;
+    walk.position.set(Math.sin(span.angle) * mid, 0.04, Math.cos(span.angle) * mid);
+    walk.rotation.y = span.angle;
     office.add(walk);
     walkways.set(cluster, walk);
   }
@@ -361,7 +366,7 @@ export function createOfficeScene(canvas, options) {
       liveClusters.add(pod.cluster);
       const record = ensurePod(pod.cluster, pod.width, pod.depth, pod.label || '');
       record.group.position.set(pod.x, 0, pod.z);
-      ensureWalkway(pod.cluster, pod.x, pod.z, Math.max(pod.width, pod.depth) / 2);
+      ensureWalkway(pod.cluster, pod);
     });
 
     (state.desks || []).forEach(desk => {
