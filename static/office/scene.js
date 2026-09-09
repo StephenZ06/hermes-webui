@@ -480,9 +480,22 @@ export function createOfficeScene(canvas, options) {
     seats.forEach(seat => { seat.plate.visible = (lod === 'near'); });
   }
 
-  /** Current camera state. Used by the panel and by tests. */
+  /**
+   * Current camera state, plus the pose each figure is actually rendering.
+   *
+   * The rendered pose can differ from the adapter's — an idle behaviour plays
+   * over plain work — and it is otherwise invisible from outside the scene,
+   * which makes it impossible to check without resorting to pixel diffing.
+   */
   function getView() {
-    return { x: view.x, z: view.z, zoom: view.zoom, lod, focusedId, tweening: !!tween };
+    const poses = {};
+    seats.forEach(seat => {
+      if (seat.workerId) poses[seat.workerId] = seat.person.userData.pose;
+    });
+    return {
+      x: view.x, z: view.z, zoom: view.zoom, lod, focusedId,
+      tweening: !!tween, poses,
+    };
   }
 
   function applyCamera(width, height) {

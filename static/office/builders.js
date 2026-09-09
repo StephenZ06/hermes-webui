@@ -12,6 +12,7 @@
 // Every builder returns a THREE.Object3D. Callers own disposal; `disposeTree`
 // releases anything a builder allocated that is not in the shared caches.
 import * as THREE from 'three';
+import { idlePoseFor } from './idle.js';
 
 const _materials = new Map();
 const _geometries = new Map();
@@ -253,6 +254,18 @@ const POSES = {
   stopped: { shoulderX: -0.55, shoulderZ: 0.05, headX: 0.02, torsoX: 0.00, lift: 0 },
   error:   { shoulderX: -0.35, shoulderZ: 0.12, headX: 0.55, torsoX: 0.30, lift: -0.12 },
   idle:    { shoulderX: -0.45, shoulderZ: 0.00, headX: 0.00, torsoX: 0.00, lift: 0 },
+
+  // ---- idle behaviours -------------------------------------------------
+  // Decoration, not state. These only ever play over `work` — a figure that
+  // is thinking rather than mid-tool-call — and each one is visually distinct
+  // from every pose above that *means* something, so nobody reads a stretch
+  // as an error or a sip as a completion.
+  //
+  // `lean` and `sip` keep the figure at the desk; `stretch` stands it up.
+  lean:    { shoulderX: -0.55, shoulderZ: -0.22, headX: 0.20, torsoX: -0.16, lift: 0 },
+  sip:     { shoulderX: -1.70, shoulderZ: 0.55, headX: -0.14, torsoX: 0.02, lift: 0 },
+  stretch: { shoulderX: -2.55, shoulderZ: -0.70, headX: -0.18, torsoX: -0.06, lift: 0.35 },
+  glance:  { shoulderX: -1.05, shoulderZ: 0.16, headX: 0.05, torsoX: 0.04, lift: 0, headY: 0.85 },
 };
 
 export function poseTargets(pose) {
@@ -273,12 +286,15 @@ function lerp(a, b, t) {
 export function poseWorker(person, pose, elapsed, dt) {
   const joints = person && person.userData && person.userData.joints;
   if (!joints) return;
-  const target = poseTargets(pose);
+  // An idle behaviour may be playing over plain work; everything below drives
+  // toward whichever pose that resolves to.
+  const played = idlePoseFor(person.userData, pose, elapsed * 1000);
+  const target = poseTargets(played);
   // ~12Hz approach, capped so a long frame (tab restored) snaps rather than
   // overshoots past the target.
   const k = Math.min(1, dt * 12);
 
-  const typing = pose === 'work' || pose === 'tool';
+  const typing = played === 'work' || played === 'tool';
   const jitterL = typing ? Math.sin(elapsed * 9.0) * 0.07 : 0;
   const jitterR = typing ? Math.sin(elapsed * 7.4 + 1.3) * 0.08 : 0;
   const breathe = Math.sin(elapsed * 1.6) * 0.015;
@@ -288,9 +304,12 @@ export function poseWorker(person, pose, elapsed, dt) {
   joints.shoulderL.rotation.z = lerp(joints.shoulderL.rotation.z, -target.shoulderZ, k);
   joints.shoulderR.rotation.z = lerp(joints.shoulderR.rotation.z, target.shoulderZ, k);
   joints.head.rotation.x = lerp(joints.head.rotation.x, target.headX, k);
+  // A glance turns the head toward a neighbour; every other pose faces front.
+  const headY = target.headY ? (person.userData.glanceDir || target.headY) : 0;
+  joints.head.rotation.y = lerp(joints.head.rotation.y, headY, k);
   joints.torso.rotation.x = lerp(joints.torso.rotation.x, target.torsoX + breathe, k);
   joints.torso.position.y = lerp(joints.torso.position.y, 1.55 + target.lift, k);
-  person.userData.pose = pose;
+  person.userData.pose = played;
 }
 
 /* ---------- nameplate ---------- */

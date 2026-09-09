@@ -136,6 +136,11 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     assert camera["focused"]["zoom"] > camera["overview"]["zoom"], (
         "focusing must zoom in, not merely re-centre"
     )
+    assert camera["overview"]["poses"], (
+        "the scene reports each figure's rendered pose — an idle behaviour "
+        "plays over plain work and is otherwise invisible from outside"
+    )
+    assert set(camera["overview"]["poses"]) == {"demo-1", "demo-2", "demo-3"}
     assert camera["back"]["focusedId"] is None
     assert abs(camera["back"]["zoom"] - camera["overview"]["zoom"]) < 1e-6, (
         "reset must return to the framed overview, not an approximation of it"
