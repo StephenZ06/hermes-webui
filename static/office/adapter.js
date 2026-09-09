@@ -55,11 +55,16 @@ const DEFAULTS = {
   // absent from before the office concludes it stopped. Two rather than one so
   // a single partial or racing snapshot cannot retire a live worker.
   missingSnapshotsBeforeEnded: 2,
-  // How long a finished worker keeps its desk before leaving. Long enough to
-  // see it finish and read the result, short enough that a second delegation
-  // does not stack on top of the first. 0 keeps them forever, which is what
-  // the historical replay wants — that office is a record, not a live floor.
-  completedLingerMs: 25000,
+  // How long a finished worker keeps its desk before leaving, or 0 to keep it
+  // until the next run clears the floor.
+  //
+  // 0 is the default deliberately. A timed sweep was tried and was wrong: it
+  // deleted the desks, the goals on their nameplates and the completion
+  // summaries while the user was still reading them. Stacking across
+  // delegations — the problem the sweep was reaching for — is already solved
+  // by clearFinishedForNewRun(), which clears the previous run when the next
+  // one starts and not a moment sooner.
+  completedLingerMs: 0,
   // Soft ceiling on simultaneous desks. Reached, the office reclaims the
   // desk of the worker that finished longest ago rather than growing without
   // bound. A live worker is never evicted, so the cap can be exceeded when

@@ -539,23 +539,22 @@ reasoning that a completed subagent is part of the record of the run. Real use
 disproved it inside a day: delegate twice and the second run stacks on top of
 the first, and the floor only ever grows.
 
-Two rules replace it, and they are deliberately separate:
+**A new run starts on a clean floor.** When a spawn arrives and *nothing* is
+still running, the previous run's leftovers go first. The "nothing still
+running" condition is what keeps this safe — a spawn arriving mid-run is a
+sibling in the same batch or a nested child, and clearing then would erase
+live work.
 
-- **A linger.** A finished worker keeps its desk for 25s, then leaves. Long
-  enough to watch it finish and read the summary; short enough that it is gone
-  before it becomes clutter. Removing on completion would mean never seeing
-  the result — or even the tick that says there was one.
-- **A new run starts on a clean floor.** When a spawn arrives and *nothing* is
-  still running, the previous run's leftovers go first. The linger alone is
-  not enough: delegate again inside 25s and the two runs would share the
-  floor. The "nothing still running" condition is what keeps this safe — a
-  spawn arriving mid-run is a sibling in the same batch or a nested child, and
-  clearing then would erase live work.
+A 25s linger was tried alongside this and removed again. It deleted the desks,
+the goals on their nameplates and the completion summaries while the user was
+still reading them — the office emptied itself out for no reason a viewer
+could see. Clearing on the next run already solves the stacking the linger was
+reaching for, and it does it at the only moment the old run genuinely stops
+being what you are looking at. `completedLingerMs` survives as an option and
+defaults to 0.
 
-The sweep runs from `tick()`, which the scene already calls each frame, so the
-adapter still owns no timer of its own. The historical replay opts out with
-`completedLingerMs: 0`: that office is a record of a finished run, and
-sweeping it would empty the floor the moment it was drawn.
+When a linger *is* configured, the sweep runs from `tick()`, which the scene
+already calls each frame, so the adapter still owns no timer of its own.
 
 One consequence worth noting: desk reclaim under cap pressure now only comes
 up while something is still running, since an all-finished office is cleared

@@ -520,9 +520,25 @@ def test_a_spawn_mid_run_clears_nothing(driver):
     assert {w["id"] for w in out["state"]["workers"]} == {"a", "b", "c"}
 
 
+def test_by_default_a_finished_run_stays_until_the_next_one(driver):
+    # The default is no timed sweep at all. One was tried and was wrong: it
+    # deleted the desks, the goals on their nameplates and the completion
+    # summaries while the user was still reading them. Stacking is handled by
+    # clearing on the next run, which is the moment the old one stops being
+    # what you are looking at.
+    out = run(driver, [
+        spawn("a"), complete("a", summary="found it"),
+        {"op": "advance", "ms": 10_000_000},
+        {"op": "tick"},
+    ])
+    w = worker(out["state"], "a")
+    assert w["status"] == "completed" and w["summary"] == "found it"
+    assert w["goal"], "the goal is what the nameplate reads"
+    assert len(out["state"]["desks"]) == 1, "and it keeps its desk"
+
+
 def test_a_zero_linger_keeps_everyone(driver):
-    # What the historical replay uses: that office is a record of a finished
-    # run, and sweeping it would empty the floor the moment it was drawn.
+    # Also what the historical replay asks for explicitly.
     out = run(driver, [
         spawn("a"), complete("a"),
         {"op": "advance", "ms": 10_000_000},
