@@ -83,6 +83,9 @@ let _sessionQuery = '';
 const STATUS_LABEL = {
   running: 'Running', completed: 'Completed', failed: 'Failed',
   error: 'Error', timeout: 'Timed out', interrupted: 'Interrupted',
+  // Inferred, not reported: it left the live registry without a completion
+  // event ever reaching us. Named for what we actually know.
+  ended: 'Ended · no result reported',
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'error', 'timeout', 'interrupted']);

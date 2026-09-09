@@ -28,6 +28,10 @@ export const ROOT_ID = '__conductor__';
 /** Statuses after which a worker never runs again. */
 export const TERMINAL_STATUSES = new Set([
   'completed', 'failed', 'error', 'timeout', 'interrupted',
+  // 'ended' is inferred, never reported: the subagent left the live registry
+  // without us ever seeing its completion event. It finished; we do not know
+  // how. Claiming 'completed' would invent a result nobody reported.
+  'ended',
 ]);
 
 // delegate_tool.py reports completion as ok/error/timeout/interrupted/
@@ -47,6 +51,10 @@ const DEFAULTS = {
   // settles back to plain work. Purely presentational, but it lives here so
   // the scene has no state of its own to drift out of sync.
   toolPoseMs: 2600,
+  // How many consecutive healthy snapshots a known-running subagent must be
+  // absent from before the office concludes it stopped. Two rather than one so
+  // a single partial or racing snapshot cannot retire a live worker.
+  missingSnapshotsBeforeEnded: 2,
   // Soft ceiling on simultaneous desks. Reached, the office reclaims the
   // desk of the worker that finished longest ago rather than growing without
   // bound. A live worker is never evicted, so the cap can be exceeded when
@@ -90,6 +98,12 @@ export function createOfficeAdapter(options) {
   // that spawned before the stream was attached. Counted so the condition is
   // visible rather than silent.
   let orphanEvents = 0;
+  // Subagents this adapter has actually seen in a healthy snapshot. Only these
+  // can be retired by absence: a worker known solely from SSE may simply be
+  // outside whatever the snapshot covers, and inferring anything from its
+  // absence would be guessing.
+  let snapshotSeen = new Set();
+  let snapshotMisses = new Map();
 
   function emit(command) {
     listeners.forEach(fn => {
@@ -157,7 +171,8 @@ export function createOfficeAdapter(options) {
 
   function poseFor(worker, at) {
     switch (worker.status) {
-      case 'completed': return 'done';
+      case 'completed':
+      case 'ended': return 'done';
       case 'interrupted': return 'stopped';
       case 'failed':
       case 'error':
@@ -330,6 +345,10 @@ export function createOfficeAdapter(options) {
     // so that one field is only trusted when the response carries no error.
     if (!data.error) spawnPaused = !!data.spawn_paused;
     const active = Array.isArray(data.active) ? data.active : [];
+    const present = new Set();
+    for (const record of active) {
+      if (record && record.subagent_id) present.add(record.subagent_id);
+    }
     for (const record of active) {
       if (!record || !record.subagent_id) continue;
       let worker = workers.get(record.subagent_id);
@@ -347,6 +366,8 @@ export function createOfficeAdapter(options) {
         if (worker && record.started_at) worker.spawnedAt = record.started_at * 1000;
       }
       if (!worker) continue;
+      snapshotSeen.add(worker.id);
+      snapshotMisses.delete(worker.id);
       if (numberOrNull(record.tool_count) != null) worker.toolCount = record.tool_count;
       const status = normaliseStatus(record.status);
       if (status && status !== worker.status && !TERMINAL_STATUSES.has(worker.status)) {
@@ -356,7 +377,41 @@ export function createOfficeAdapter(options) {
         emit({ type: 'worker.status', worker: publicWorker(worker) });
       }
     }
+    retireVanishedWorkers(present, !data.error);
     syncConductor();
+  }
+
+  /**
+   * Retire workers that have dropped out of the live registry.
+   *
+   * A finished subagent does not appear in `/api/subagents/active` with a
+   * terminal status — delegate_tool's `_unregister_subagent` removes the
+   * record outright when the child finishes (see
+   * tools/delegate_tool_child_run.py). So absence is the only signal the
+   * snapshot carries about completion, and without acting on it a subagent
+   * whose completion event never arrived — a fire-and-forget child that
+   * finished after its parent's stream closed — sits at "running" forever.
+   *
+   * Absence is trusted narrowly: only for workers previously observed in a
+   * healthy snapshot, only when this snapshot itself is healthy, and only
+   * after several consecutive misses. The status is 'ended', not 'completed':
+   * we know it stopped, we never saw how it went, and saying otherwise would
+   * invent a result.
+   */
+  function retireVanishedWorkers(present, healthy) {
+    if (!healthy) return;
+    for (const worker of workers.values()) {
+      if (TERMINAL_STATUSES.has(worker.status)) continue;
+      if (!snapshotSeen.has(worker.id)) continue;
+      if (present.has(worker.id)) continue;
+      const misses = (snapshotMisses.get(worker.id) || 0) + 1;
+      snapshotMisses.set(worker.id, misses);
+      if (misses < config.missingSnapshotsBeforeEnded) continue;
+      worker.status = 'ended';
+      worker.endedAt = config.now();
+      refreshPose(worker, worker.endedAt);
+      emit({ type: 'worker.status', worker: publicWorker(worker) });
+    }
   }
 
   /**
@@ -381,6 +436,8 @@ export function createOfficeAdapter(options) {
   function reset() {
     workers = new Map();
     desks = [];
+    snapshotSeen = new Set();
+    snapshotMisses = new Map();
     conductorStatus = 'idle';
     spawnPaused = false;
     orphanEvents = 0;

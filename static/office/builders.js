@@ -320,6 +320,9 @@ export function makeNameplate(palette, text) {
 const STATUS_GLYPH = {
   running: '▶', completed: '✓', failed: '✕', error: '✕',
   timeout: '⏱', interrupted: '■',
+  // Deliberately not '✓': the subagent stopped, but no completion was ever
+  // reported, and a tick would claim a clean result we never saw.
+  ended: '◦',
 };
 
 export function drawNameplate(sprite, palette, text, status) {

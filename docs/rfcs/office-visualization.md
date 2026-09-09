@@ -478,6 +478,48 @@ field it does gate is `spawn_paused`, and only against an error response: a
 502 returns `spawn_paused: false`, which is an error, not a fact about
 pausing.
 
+### Correction: reconcile cannot complete anything by itself
+
+An earlier revision of this document claimed the guard fix was what let a
+fire-and-forget subagent finally report completion. That was wrong, and a
+live run proved it — the card still sat at "running".
+
+`delegate_tool`'s `_unregister_subagent` **removes** a child from the live
+registry the moment it finishes (`tools/delegate_tool_child_run.py`). A
+finished subagent therefore never appears in `/api/subagents/active` with a
+terminal status; it simply disappears. An adapter that only adds and updates
+workers from that list — which is what both this office and Agent Canvas did —
+can never learn that anything completed.
+
+What the guard fix actually repaired is real but narrower: the snapshot's data
+was being discarded wholesale, so running subagents were not being *adopted*.
+Completion was never covered.
+
+**Absence is the completion signal.** The registry holds exactly the live
+children, so a worker previously observed running and now gone from a healthy
+snapshot has stopped. The office acts on that, narrowly:
+
+- only for workers it has actually seen in a healthy snapshot (a worker known
+  only from SSE may sit outside whatever the snapshot covers, and its absence
+  says nothing);
+- only when the snapshot itself carries no error (a 502 returns an empty
+  `active`, and treating that as "everyone finished" would wipe the office on
+  one bad poll);
+- only after two consecutive misses, so a single racing snapshot cannot retire
+  a live worker.
+
+The resulting status is **`ended`**, not `completed`, and its nameplate glyph
+is `◦` rather than `✓`. We know the subagent stopped; we never saw how it
+went. A tick would claim a clean result nobody reported.
+
+A real `subagent_complete` still wins — retirement is only the fallback for
+when that event never arrives. Note the latency: polling runs at 5s and only
+while the panel is mounted, so retirement lands roughly 10s after the child
+actually finishes, or ~10s after the user next opens the panel.
+
+Agent Canvas has the same structural gap and is left as it is; this RFC does
+not change it.
+
 Relatedly, `POST /api/subagents/pause` returns 409 without a gateway process,
 so the office hides its Pause button in that deployment. A button that can
 only ever error is worse than no button.

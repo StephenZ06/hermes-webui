@@ -378,6 +378,82 @@ def test_a_failing_snapshot_does_not_report_spawning_as_unpaused(driver):
     assert out["state"]["spawnPaused"] is True
 
 
+# ── retiring a subagent that vanished from the registry ──────────────────────
+
+def snapshot(*ids, **fields):
+    payload = {
+        "gateway_enabled": True,
+        "active": [{"subagent_id": i, "goal": f"goal for {i}", "status": "running"}
+                   for i in ids],
+    }
+    payload.update(fields)
+    return {"op": "snapshot", "payload": payload}
+
+
+def test_a_subagent_that_leaves_the_registry_is_retired(driver):
+    # delegate_tool's _unregister_subagent removes a child from the live
+    # registry the moment it finishes, so a completed subagent does not appear
+    # in /api/subagents/active with a terminal status — it just disappears.
+    # Absence is therefore the only completion signal the snapshot carries, and
+    # without acting on it a fire-and-forget child whose completion event never
+    # arrived sits at "running" forever. That was a real, user-reported bug.
+    out = run(driver, [snapshot("a", "b"), snapshot("a"), snapshot("a")])
+    assert worker(out["state"], "b")["status"] == "ended"
+    assert worker(out["state"], "b")["pose"] == "done"
+    assert worker(out["state"], "a")["status"] == "running"
+
+
+def test_retirement_says_ended_not_completed(driver):
+    # We know it stopped. We never saw how it went. Calling it 'completed'
+    # would invent a result nobody reported.
+    out = run(driver, [snapshot("a"), snapshot(), snapshot()])
+    w = worker(out["state"], "a")
+    assert w["status"] == "ended"
+    assert w["summary"] == "" and w["durationSeconds"] is None
+
+
+def test_one_missing_snapshot_is_not_enough_to_retire(driver):
+    # A single partial or racing snapshot must not retire a live worker.
+    out = run(driver, [snapshot("a"), snapshot()])
+    assert worker(out["state"], "a")["status"] == "running"
+
+
+def test_a_worker_that_reappears_is_not_retired(driver):
+    out = run(driver, [snapshot("a"), snapshot(), snapshot("a"), snapshot()])
+    assert worker(out["state"], "a")["status"] == "running"
+
+
+def test_a_failing_snapshot_never_retires_anyone(driver):
+    # A 502 returns an empty `active`. Treating that as "everyone finished"
+    # would wipe the whole office on one bad poll.
+    out = run(driver, [
+        snapshot("a"),
+        snapshot(error="gateway unreachable"),
+        snapshot(error="gateway unreachable"),
+        snapshot(error="gateway unreachable"),
+    ])
+    assert worker(out["state"], "a")["status"] == "running"
+
+
+def test_a_worker_known_only_from_the_stream_is_never_retired(driver):
+    # Snapshots may not cover everything the SSE stream reports. Absence from
+    # a list that never claimed to include this worker says nothing.
+    out = run(driver, [spawn("sse-only"), snapshot(), snapshot(), snapshot()])
+    assert worker(out["state"], "sse-only")["status"] == "running"
+
+
+def test_a_real_completion_still_wins_over_retirement(driver):
+    # The completion event carries the actual result; retirement is only the
+    # fallback for when it never arrives.
+    out = run(driver, [
+        snapshot("a"),
+        complete("a", status="ok", summary="did the thing", duration_seconds=4),
+        snapshot(), snapshot(),
+    ])
+    w = worker(out["state"], "a")
+    assert w["status"] == "completed" and w["summary"] == "did the thing"
+
+
 # ── housekeeping ─────────────────────────────────────────────────────────────
 
 def test_reset_clears_the_office(driver):
