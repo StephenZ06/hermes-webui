@@ -37,7 +37,7 @@ pytestmark = pytest.mark.skipif(
 _DRIVER = r"""
 // The adapter path arrives as a file:// URL argument, so this has to be a
 // dynamic import — an import statement takes a literal specifier.
-const { createOfficeAdapter } = await import(process.argv[2]);
+const { createOfficeAdapter, profileNameFromCluster } = await import(process.argv[2]);
 
 const scenario = JSON.parse(process.argv[3] || '{}');
 let clock = 1000000;
@@ -65,7 +65,9 @@ for (const step of (scenario.steps || [])) {
   }
 }
 
-process.stdout.write(JSON.stringify({ commands, state: adapter.getState() }));
+const probes = {};
+for (const raw of (scenario.clusterProbes || [])) probes[raw] = profileNameFromCluster(raw);
+process.stdout.write(JSON.stringify({ commands, state: adapter.getState(), probes }));
 """
 
 
@@ -545,6 +547,48 @@ def test_a_zero_linger_keeps_everyone(driver):
         {"op": "tick"},
     ], options={"completedLingerMs": 0})
     assert len(out["state"]["workers"]) == 1
+
+
+# ── cross-profile children ───────────────────────────────────────────────────
+
+def test_a_cross_profile_child_gets_its_own_pod_named_by_profile(driver):
+    # tools/delegate_to_profile.py reports the target profile as the parent,
+    # so each profile lands on its own pod. Naming it is the point: "which
+    # profile is this?" is what the separate pod is there to answer.
+    out = run(driver, [
+        spawn("here"),
+        spawn("there", parent_id="profile:docs-gits"),
+    ])
+    desks = {d["workerId"]: d for d in out["state"]["desks"]}
+    assert desks["there"]["cluster"] == "profile:docs-gits"
+    assert desks["there"]["clusterLabel"] == "Docs Gits"
+    assert desks["here"]["cluster"] != desks["there"]["cluster"], "separate pods"
+    assert "clusterLabel" not in desks["here"], "an ordinary subagent gets no sign"
+
+
+def test_two_profiles_do_not_share_a_pod(driver):
+    out = run(driver, [
+        spawn("a", parent_id="profile:frontend"),
+        spawn("b", parent_id="profile:backend"),
+    ])
+    clusters = {d["workerId"]: d["cluster"] for d in out["state"]["desks"]}
+    assert clusters["a"] != clusters["b"]
+
+
+def test_the_profile_name_is_read_only_from_the_prefix(driver):
+    out = run(driver, [], clusterProbes=[
+        "profile:docs-gits", "profile:coding_opencode", "profile:", "__conductor__",
+        "some-other-parent", "",
+    ])
+    assert out["probes"] == {
+        "profile:docs-gits": "Docs Gits",
+        "profile:coding_opencode": "Coding Opencode",
+        # Nothing to name is no sign, rather than an empty one.
+        "profile:": "",
+        "__conductor__": "",
+        "some-other-parent": "",
+        "": "",
+    }
 
 
 # ── housekeeping ─────────────────────────────────────────────────────────────

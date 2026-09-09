@@ -112,6 +112,17 @@ Two restore paths, both run before any restart:
   `20-reapply-agent-patches.sh`. Storing our copy of a tracked file would
   clobber future upstream changes to it.
 
+`tools/delegate_to_profile.py` now also reports its child to the Office: it
+calls the parent's `tool_progress_callback` with `subagent.start` /
+`subagent.complete`, so a cross-profile delegation draws a desk like any other
+subagent. Two things to know before touching it. The callback is invoked as
+`(event_type, tool_name, preview, args, **kwargs)` — four positionals, matching
+`_ChildProgressRelay._relay`; pass one and `api/streaming.py`'s `on_tool` reads
+it as a *tool name* and the event silently degrades to `tool.started`, drawing
+nothing. And the child runs behind a synchronous `POST /api/chat`, so there is
+no progress stream: start and complete only, never `subagent.tool`. A desk
+showing invented tool activity would be worse than one that says "working".
+
 Both idempotent. Currently protected: `tools/delegate_to_profile.py`,
 `gateway/api_session_rollover.py`, `tools/skill_sections.py`, their tests, the
 rollover port's patch to `agent/conversation_loop.py` and

@@ -73,6 +73,18 @@ const DEFAULTS = {
   now: () => Date.now(),
 };
 
+/** `profile:docs-gits` -> `Docs Gits`; anything else -> '' (no sign). */
+export function profileNameFromCluster(cluster) {
+  const raw = String(cluster || '');
+  if (raw.indexOf('profile:') !== 0) return '';
+  const name = raw.slice('profile:'.length).trim();
+  if (!name) return '';
+  return name
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function shortLabel(goal) {
   const g = String(goal || '').trim().replace(/\s+/g, ' ');
   if (!g) return 'Subagent';
@@ -224,6 +236,12 @@ export function createOfficeAdapter(options) {
     }
     desk.workerId = worker.id;
     desk.cluster = cluster;
+    // A cross-profile child reports its target profile as its parent
+    // (`profile:<name>`, from tools/delegate_to_profile.py). Naming that pod
+    // is the whole point of showing it separately — "which profile is this?"
+    // is the question the floor is being asked to answer.
+    const profileLabel = profileNameFromCluster(cluster);
+    if (profileLabel) desk.clusterLabel = profileLabel;
     worker.deskId = desk.id;
     return desk;
   }
