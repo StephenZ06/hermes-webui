@@ -31,6 +31,20 @@ const CAMERA_DISTANCE = 220;
 const GROUND_SIZE = 400;
 const KEY_LIGHT_INTENSITY = 1.6;
 const FILL_LIGHT_INTENSITY = 0.55;
+// Camera motion. A fixed diagram-camera makes the office read as a chart; a
+// camera that travels makes it read as a place. Focusing flies to a desk and
+// zooms in, and the view returns to the whole floor on Escape or a click on
+// empty ground.
+const FOCUS_ZOOM = 2.6;
+const TWEEN_MS = 850;
+// Zoom-driven level of detail. Nameplates are the first thing to overlap into
+// noise once the floor is dense, so they go first; the figures themselves are
+// the point of the view and stay.
+const LOD_NEAR_ZOOM = 0.9;
+// Wheel zoom bounds, as a multiple of whatever the auto-framed zoom is.
+const ZOOM_MIN = 0.35;
+const ZOOM_MAX = 3.2;
+
 // Breathing room left around the office when the camera frames it.
 const FRAME_MARGIN = 1.15;
 // Extra world units of headroom for the parts that stand up off the floor —
@@ -41,6 +55,9 @@ const FRAME_HEADROOM = 10;
 // covers only R * sin(elevation) of screen height. Framing on the raw radius
 // therefore leaves the office a small island in the middle of the panel.
 const ISO_VERTICAL_SCALE = ISO_DIRECTION.y;
+// Screen-right, in world space, for this fixed isometric view. Used to slide
+// a focused desk out from under the detail panel, which owns the right edge.
+const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -114,6 +131,16 @@ export function createOfficeScene(canvas, options) {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -400, 800);
   const cameraTarget = new THREE.Vector3(0, 0, 0);
   let framedCenter = { x: 0, z: 0 };
+
+  // `overview` is where auto-framing wants the camera; `view` is where it
+  // actually is. They diverge while focused on a desk or while the user has
+  // zoomed by hand, and a tween carries the camera between them.
+  const overview = { x: 0, z: 0, zoom: 1 };
+  const view = { x: 0, z: 0, zoom: 1 };
+  let tween = null;
+  let focusedId = null;
+  let manualZoom = false;
+  let lod = 'near';
   let palette = PALETTES[prefersDark() ? 'dark' : 'light'];
 
   // Tracked so dispose() can release them without walking the graph and
@@ -223,6 +250,7 @@ export function createOfficeScene(canvas, options) {
     // Marks the whole subtree as belonging to a worker so a raycast hit on
     // any child resolves back to one id.
     group.userData.deskId = deskId;
+    plate.visible = (lod === 'near');
     office.add(group);
     seat = {
       group, person, plate, screen: desk.userData.screen,
@@ -342,8 +370,119 @@ export function createOfficeScene(canvas, options) {
     if (Math.abs(wanted - framedRadius) < 2 && moved < 2) return;
     framedRadius = wanted;
     framedCenter = { x: next.x, z: next.z };
-    cameraTarget.set(framedCenter.x, 0, framedCenter.z);
+    overview.x = framedCenter.x;
+    overview.z = framedCenter.z;
+    overview.zoom = zoomForRadius(lastWidth, lastHeight, framedRadius);
+    // A camera the user has taken control of — focused on a desk, or zoomed by
+    // hand — must not be yanked back because another subagent spawned.
+    if (focusedId || manualZoom) return;
+    if (view.zoom === 1 && view.x === 0 && view.z === 0) applyView(overview);
+    else startTween(overview);
+  }
+
+  function zoomForRadius(width, height, radius) {
+    const aspect = height > 0 ? width / height : 1;
+    const halfWidth = FRUSTUM_HALF_HEIGHT * aspect;
+    if (!(radius > 0)) return 1;
+    // Fit the floor in both axes: its full radius across, its foreshortened
+    // radius (plus standing headroom) down. Whichever is tighter wins.
+    return Math.min(
+      2.2,
+      halfWidth / radius,
+      FRUSTUM_HALF_HEIGHT / (radius * ISO_VERTICAL_SCALE + FRAME_HEADROOM),
+    );
+  }
+
+  // ---- camera motion ----------------------------------------------------
+
+  // Slow out of the start, slow into the end: a linear camera move reads as a
+  // jump cut at both ends.
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function applyView(next) {
+    view.x = next.x;
+    view.z = next.z;
+    view.zoom = next.zoom;
+    cameraTarget.set(view.x, 0, view.z);
     applyCamera(lastWidth, lastHeight);
+    syncLod();
+  }
+
+  function startTween(to) {
+    tween = {
+      t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+      dur: TWEEN_MS,
+      from: { x: view.x, z: view.z, zoom: view.zoom },
+      to: { x: to.x, z: to.z, zoom: to.zoom },
+    };
+  }
+
+  function advanceTween(now) {
+    if (!tween) return;
+    const t = Math.min(1, (now - tween.t0) / tween.dur);
+    const k = easeInOutCubic(t);
+    applyView({
+      x: tween.from.x + (tween.to.x - tween.from.x) * k,
+      z: tween.from.z + (tween.to.z - tween.from.z) * k,
+      zoom: tween.from.zoom + (tween.to.zoom - tween.from.zoom) * k,
+    });
+    if (t >= 1) tween = null;
+  }
+
+  /**
+   * How far to slide a focused desk left, in world units, so the detail panel
+   * does not sit on top of the thing it is describing.
+   */
+  function panelShift(zoom) {
+    const px = typeof config.panelInset === 'function' ? (config.panelInset() || 0) : 0;
+    if (!px || !lastHeight || !zoom) return 0;
+    const pixelsPerUnit = (zoom * lastHeight) / (2 * FRUSTUM_HALF_HEIGHT);
+    return pixelsPerUnit > 0 ? (px / 2) / pixelsPerUnit : 0;
+  }
+
+  /** Fly to a worker's desk. Unknown ids are ignored rather than guessed at. */
+  function focusOnWorker(workerId) {
+    const seat = Array.from(seats.values()).find(s => s.workerId === workerId);
+    if (!seat) return false;
+    focusedId = workerId;
+    manualZoom = false;
+    const shift = panelShift(FOCUS_ZOOM);
+    startTween({
+      x: seat.group.position.x + SCREEN_RIGHT.x * shift,
+      z: seat.group.position.z + SCREEN_RIGHT.z * shift,
+      zoom: FOCUS_ZOOM,
+    });
+    return true;
+  }
+
+  /** Back to the whole floor. */
+  function resetView() {
+    focusedId = null;
+    manualZoom = false;
+    startTween(overview);
+  }
+
+  function isFocused() {
+    return !!focusedId;
+  }
+
+  /**
+   * Zoom-driven level of detail. Nameplates are the first thing to collapse
+   * into noise on a dense floor, so they are what a zoomed-out view drops;
+   * the figures are the point of the picture and always stay.
+   */
+  function syncLod() {
+    const next = view.zoom >= LOD_NEAR_ZOOM ? 'near' : 'far';
+    if (next === lod) return;
+    lod = next;
+    seats.forEach(seat => { seat.plate.visible = (lod === 'near'); });
+  }
+
+  /** Current camera state. Used by the panel and by tests. */
+  function getView() {
+    return { x: view.x, z: view.z, zoom: view.zoom, lod, focusedId, tweening: !!tween };
   }
 
   function applyCamera(width, height) {
@@ -353,15 +492,7 @@ export function createOfficeScene(canvas, options) {
     camera.right = halfWidth;
     camera.top = FRUSTUM_HALF_HEIGHT;
     camera.bottom = -FRUSTUM_HALF_HEIGHT;
-    // Fit the floor in both axes: its full radius across, its foreshortened
-    // radius (plus standing headroom) down. Whichever is tighter wins.
-    camera.zoom = framedRadius > 0
-      ? Math.min(
-        2.2,
-        halfWidth / framedRadius,
-        FRUSTUM_HALF_HEIGHT / (framedRadius * ISO_VERTICAL_SCALE + FRAME_HEADROOM),
-      )
-      : 1;
+    camera.zoom = view.zoom > 0 ? view.zoom : 1;
     camera.position.copy(cameraTarget).addScaledVector(ISO_DIRECTION, CAMERA_DISTANCE);
     camera.lookAt(cameraTarget);
     camera.updateProjectionMatrix();
@@ -424,9 +555,42 @@ export function createOfficeScene(canvas, options) {
 
   function onClick(event) {
     const id = workerIdAt(event.clientX, event.clientY);
-    if (id && typeof config.onSelect === 'function') config.onSelect(id);
+    if (id) {
+      focusOnWorker(id);
+      if (typeof config.onSelect === 'function') config.onSelect(id);
+      return;
+    }
+    // A click on empty floor is how you get back out — the same gesture as
+    // dismissing the detail panel, so the two never disagree.
+    if (focusedId || manualZoom) resetView();
+    if (typeof config.onSelect === 'function') config.onSelect(null);
   }
   canvas.addEventListener('click', onClick);
+
+  function onWheel(event) {
+    event.preventDefault();
+    // Zooming by hand takes the camera off auto-framing until the view is
+    // reset; otherwise the next spawn would snap it back mid-gesture.
+    manualZoom = true;
+    tween = null;
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    const bounded = Math.min(
+      overview.zoom * ZOOM_MAX,
+      Math.max(overview.zoom * ZOOM_MIN, view.zoom * factor),
+    );
+    applyView({ x: view.x, z: view.z, zoom: bounded });
+  }
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+
+  function onKeyDown(event) {
+    if (event.key !== 'Escape') return;
+    if (!focusedId && !manualZoom) return;
+    resetView();
+    if (typeof config.onSelect === 'function') config.onSelect(null);
+  }
+  // Keyed to the canvas' owner document so the shortcut works wherever focus
+  // sits inside the panel, and is removed with the scene.
+  document.addEventListener('keydown', onKeyDown);
 
   function onPointerMove(event) {
     canvas.style.cursor = workerIdAt(event.clientX, event.clientY) ? 'pointer' : '';
@@ -452,7 +616,11 @@ export function createOfficeScene(canvas, options) {
     // updateStyle=false: the canvas is sized by CSS, and letting three.js
     // write inline width/height styles would fight the flex layout.
     renderer.setSize(width, height, false);
-    applyCamera(width, height);
+    // The framed zoom depends on aspect ratio, so a resize re-derives it. A
+    // camera the user is driving keeps its own zoom.
+    overview.zoom = zoomForRadius(width, height, framedRadius);
+    if (!focusedId && !manualZoom && !tween) applyView(overview);
+    else applyCamera(width, height);
   }
   resize();
 
@@ -469,6 +637,8 @@ export function createOfficeScene(canvas, options) {
     const t = (now || 0) / 1000;
     const dt = lastFrameAt ? Math.min(0.1, t - lastFrameAt) : 0.016;
     lastFrameAt = t;
+
+    if (tween) advanceTween(now || 0);
 
     // The adapter owns no timer, so its time-dependent poses (a tool call
     // settling back to plain work) only advance because the scene asks.
@@ -506,6 +676,8 @@ export function createOfficeScene(canvas, options) {
     stop();
     canvas.removeEventListener('click', onClick);
     canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('wheel', onWheel);
+    document.removeEventListener('keydown', onKeyDown);
     clearOffice();
     disposeSharedCaches();
     scene.clear();
@@ -524,6 +696,6 @@ export function createOfficeScene(canvas, options) {
 
   return {
     start, stop, resize, dispose, isRunning, applyTheme, syncOffice,
-    workerIdAt, scene,
+    workerIdAt, focusOnWorker, resetView, isFocused, getView, scene,
   };
 }

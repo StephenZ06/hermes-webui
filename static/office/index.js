@@ -214,9 +214,13 @@ function renderPill(state) {
   if (_backBtnEl) _backBtnEl.hidden = _viewMode !== 'history';
   if (_pauseBtnEl) _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
   if (_hintEl) {
-    _hintEl.textContent = _viewMode === 'history'
-      ? 'A finished run, rebuilt from what Hermes recorded. Click a worker for detail.'
-      : "Hermes' real delegation tree, live. Click a worker for detail.";
+    if (_scene && _scene.isFocused()) {
+      _hintEl.textContent = 'Focused on one desk — Esc, or click the floor, to pull back out.';
+    } else {
+      _hintEl.textContent = _viewMode === 'history'
+        ? 'A finished run, rebuilt from what Hermes recorded. Click a worker to fly to it.'
+        : "Hermes' real delegation tree, live. Click a worker to fly to it.";
+    }
   }
 }
 
@@ -373,7 +377,15 @@ function renderDetail(state) {
     ${actions.length ? `<div class="office-detail-actions">${actions.join('')}</div>` : ''}
   `;
   const close = _detailEl.querySelector('.office-detail-close');
-  if (close) close.onclick = () => { _selectedId = null; scheduleSync(); };
+  if (close) {
+    close.onclick = () => {
+      _selectedId = null;
+      // Closing the panel and leaving the camera buried in one desk would
+      // strand the user zoomed in with nothing selected.
+      if (_scene) _scene.resetView();
+      scheduleSync();
+    };
+  }
   const open = _detailEl.querySelector('[data-action="open-session"]');
   if (open) open.onclick = () => openWorkerSession(worker);
   const interrupt = _detailEl.querySelector('[data-action="interrupt"]');
@@ -630,6 +642,20 @@ function mount(container) {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => { _selectedId = id; scheduleSync(); },
       onTick: () => activeAdapter().tick(),
+      // The detail panel owns the right edge of the stage; the camera slides
+      // a focused desk clear of it rather than flying to a spot the panel
+      // then covers.
+      // Measured when the panel is up; otherwise derived from the same rule
+      // its CSS uses. A click focuses before the panel has rendered, so
+      // asking a hidden element for its width would always answer 0 and the
+      // camera would fly to a spot the panel then covers.
+      panelInset: () => {
+        if (!_detailEl) return 0;
+        const measured = _detailEl.getBoundingClientRect().width;
+        if (measured) return measured + 28;
+        const stage = _canvas ? _canvas.getBoundingClientRect().width : 0;
+        return stage ? Math.min(320, stage - 28) + 28 : 0;
+      },
     });
   } catch (err) {
     console.warn('[office] scene could not start:', err && err.message ? err.message : err);
@@ -714,6 +740,24 @@ function onToolActivity(payload) { return _adapter.onToolActivity(payload); }
 function onComplete(payload) { return _adapter.onComplete(payload); }
 function applySnapshot(snapshot) { return _adapter.applySnapshot(snapshot); }
 function reset() { _selectedId = null; return _adapter.reset(); }
+
+/** Camera state — diagnostics, and what the browser tests assert on. */
+function getView() { return _scene ? _scene.getView() : null; }
+
+/** Fly to a worker's desk from outside the canvas (sidebar, tests). */
+function focusWorker(id) {
+  if (!_scene || !_scene.focusOnWorker(id)) return false;
+  _selectedId = id;
+  scheduleSync();
+  return true;
+}
+
+/** Pull back to the whole floor. */
+function resetView() {
+  if (_scene) _scene.resetView();
+  _selectedId = null;
+  scheduleSync();
+}
 function getState() { return activeAdapter().getState(); }
 
 /** Sidebar filter box, mirroring the Agent Canvas one. */
@@ -741,6 +785,7 @@ window.officeReturnToLive = returnToLive;
 
 window.HermesOffice = {
   mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet,
+  getView, focusWorker, resetView,
   onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
   adapter: _adapter,
 };

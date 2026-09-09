@@ -87,6 +87,18 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         }""")
         pg.screenshot(path=str(tmp_path / "office-projects.png"))
 
+        # Camera: focusing flies to a desk and zooms in; reset returns exactly.
+        camera = pg.evaluate("""async () => {
+          const O = window.HermesOffice;
+          const overview = O.getView();
+          O.focusWorker('demo-2');
+          await new Promise(r => setTimeout(r, 1200));
+          const focused = O.getView();
+          O.resetView();
+          await new Promise(r => setTimeout(r, 1200));
+          return { overview, focused, back: O.getView() };
+        }""")
+
         pg.evaluate("() => document.querySelector('[data-outlet=\\\"business\\\"]').click()")
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(tmp_path / "office-business.png"))
@@ -117,5 +129,17 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     # Leaving the panel must release the context while office state survives —
     # the run is still going, and Agent Canvas must be untouched.
     assert after["canvasGone"] and after["officeStateKept"] == 3
+
+    # The camera actually travels, and comes back to where it started.
+    assert camera["overview"]["focusedId"] is None
+    assert camera["focused"]["focusedId"] == "demo-2"
+    assert camera["focused"]["zoom"] > camera["overview"]["zoom"], (
+        "focusing must zoom in, not merely re-centre"
+    )
+    assert camera["back"]["focusedId"] is None
+    assert abs(camera["back"]["zoom"] - camera["overview"]["zoom"]) < 1e-6, (
+        "reset must return to the framed overview, not an approximation of it"
+    )
+
     assert after["agentCanvasAlive"]
     assert not errors, f"console errors in the real app: {errors}"
