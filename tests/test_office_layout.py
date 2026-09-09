@@ -189,6 +189,20 @@ def test_the_camera_centre_follows_the_occupied_floor(driver):
         assert reach <= lopsided["radius"] + 0.001
 
 
+def test_a_pod_is_only_labelled_when_its_desks_carry_a_name(driver):
+    # Business desks carry their department's display name and the scene
+    # paints it on the pod floor. A Projects cluster is a parent subagent id,
+    # which means nothing to a reader, so it gets no sign at all.
+    unlabelled = layout(driver, n_desks(2, cluster="p1"))
+    assert unlabelled["pods"][0]["label"] == ""
+
+    labelled = layout(driver, [
+        {"id": "d0", "index": 0, "workerId": "w0", "cluster": "finance",
+         "clusterLabel": "Finance"},
+    ])
+    assert labelled["pods"][0]["label"] == "Finance"
+
+
 # ── stability ────────────────────────────────────────────────────────────────
 
 def test_adding_a_subagent_does_not_move_the_existing_office(driver):

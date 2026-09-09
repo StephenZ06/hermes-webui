@@ -196,6 +196,13 @@ def test_desks_carry_a_seat_label_so_empty_departments_read_as_a_company(driver)
     )
 
 
+def test_business_desks_carry_their_department_name_for_the_floor_sign(driver):
+    out = run(driver, personalities=[{"name": "invoice_clerk", "description": ""}])
+    labels = {d["cluster"]: d.get("clusterLabel") for d in out["view"]["desks"]}
+    assert labels["finance"] == "Finance"
+    assert labels["marketing"] == "Marketing"
+
+
 def test_business_desks_match_the_adapter_desk_shape(driver):
     # This is what lets one layout and one scene serve both outlets.
     out = run(driver, state={"workers": [worker("w1", "invoice run")]})

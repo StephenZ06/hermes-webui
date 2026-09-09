@@ -89,6 +89,91 @@ export function makePod(width, depth, palette) {
   return group;
 }
 
+/**
+ * A department name lying on the floor, letterspaced, as painted signage.
+ *
+ * Only the Business outlet has names worth painting — Projects pods are a
+ * subagent's parent id, which means nothing to a reader. Passing no text
+ * returns null rather than an empty sign.
+ */
+export function makeFloorTitle(text, width, palette) {
+  const label = String(text || '').trim();
+  if (!label) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 176;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '700 96px Georgia, "Times New Roman", serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  // Letterspacing by hand: ctx.letterSpacing is too new to rely on, and this
+  // is the whole reason the sign reads as signage rather than a caption.
+  const spacing = 16;
+  const chars = Array.from(label.toUpperCase());
+  const total = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
+  let x = (canvas.width - total) / 2;
+  ctx.fillStyle = palette.floorTitle;
+  for (const c of chars) {
+    ctx.fillText(c, x, canvas.height / 2);
+    x += ctx.measureText(c).width + spacing;
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  const height = width * (canvas.height / canvas.width);
+  const geometry = new THREE.PlaneGeometry(width, height);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, opacity: 0.7, depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.66;
+  // Tracked for disposal: this trio belongs to one pod, not to the caches.
+  mesh.userData.floorTitle = { texture, geometry, material };
+  return mesh;
+}
+
+/* ---------- set dressing ---------- */
+
+/**
+ * A potted plant. Purely scenery — it carries no state and never changes, so
+ * it can never mislead anyone about what Hermes is doing.
+ */
+export function makePlant(palette) {
+  const group = new THREE.Group();
+  const pot = cylinder(0.42, 0.34, 0.7, 10, palette.pot);
+  pot.position.y = 0.35;
+  group.add(pot);
+  // Three offset blades rather than a sphere: reads as foliage at this scale.
+  for (let i = 0; i < 3; i += 1) {
+    const blade = new THREE.Mesh(
+      geometry(`blade|${i}`, () => new THREE.ConeGeometry(0.42, 1.5, 6)),
+      material(palette.plant, { rough: 0.95 }),
+    );
+    blade.position.set(Math.cos(i * 2.1) * 0.18, 1.35, Math.sin(i * 2.1) * 0.18);
+    blade.rotation.z = Math.cos(i * 2.1) * 0.22;
+    blade.rotation.x = Math.sin(i * 2.1) * 0.22;
+    blade.castShadow = true;
+    group.add(blade);
+  }
+  return group;
+}
+
+/**
+ * A walkway slab joining a pod back toward the conductor, so the floor plan
+ * reads as a place with circulation rather than islands in a void.
+ */
+export function makeWalkway(length, palette) {
+  const slab = box(2.6, 0.06, Math.max(1, length), palette.walkway);
+  slab.position.y = 0.04;
+  slab.castShadow = false;
+  slab.receiveShadow = true;
+  return slab;
+}
+
 /* ---------- desk ---------- */
 
 /**
@@ -394,6 +479,12 @@ export function disposeTree(root) {
     }
     const plate = obj.userData && obj.userData.plate;
     if (plate) plate.texture.dispose();
+    const title = obj.userData && obj.userData.floorTitle;
+    if (title) {
+      title.texture.dispose();
+      title.geometry.dispose();
+      title.material.dispose();
+    }
     if (obj.isSprite && obj.material) obj.material.dispose();
   });
 }

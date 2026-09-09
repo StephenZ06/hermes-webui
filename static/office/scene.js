@@ -16,8 +16,9 @@
 import * as THREE from 'three';
 import { computeLayout, CONDUCTOR_RADIUS } from './layout.js';
 import {
-  makePod, makeDesk, makeChair, makePerson, makeNameplate,
-  drawNameplate, drawScreen, poseWorker, disposeTree, disposeSharedCaches,
+  makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
+  makePlant, makeWalkway, drawNameplate, drawScreen, poseWorker,
+  disposeTree, disposeSharedCaches,
 } from './builders.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
@@ -73,6 +74,7 @@ const PALETTES = {
     screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
     plateBg: 'rgba(255,255,255,0.92)', plateText: '#151414', plateAccent: '#1e9070',
     conductor: '#2b3245',
+    floorTitle: '#8d8d95', pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
   },
   dark: {
     ground: '#1b1b2b', grid: '#2b2b40',
@@ -84,6 +86,7 @@ const PALETTES = {
     screenText: '#5adeb7', screenTextBright: '#b9f5e2',
     plateBg: 'rgba(20,20,37,0.92)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
     conductor: '#8fd3f4',
+    floorTitle: '#6f6f86', pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
   },
 };
 
@@ -194,6 +197,8 @@ export function createOfficeScene(canvas, options) {
 
   /** cluster -> {group, width, depth} */
   let pods = new Map();
+  /** cluster -> walkway slab joining that pod to the middle of the office */
+  let walkways = new Map();
   /** deskId -> {group, person, plate, screen, workerId, pose, tint} */
   let seats = new Map();
   let conductor = null;
@@ -218,18 +223,59 @@ export function createOfficeScene(canvas, options) {
     return conductor;
   }
 
-  function ensurePod(cluster, width, depth) {
+  function ensurePod(cluster, width, depth, label) {
     let pod = pods.get(cluster);
-    if (pod && pod.width === width && pod.depth === depth) return pod;
+    if (pod && pod.width === width && pod.depth === depth && pod.label === label) return pod;
     if (pod) {
       office.remove(pod.group);
       disposeTree(pod.group);
     }
-    const group = makePod(width + 3, depth + 3, palette);
+    const slabWidth = width + 3;
+    const slabDepth = depth + 3;
+    const group = makePod(slabWidth, slabDepth, palette);
+
+    // Signage, only where there is a real name to paint.
+    const title = makeFloorTitle(label, slabWidth * 0.8, palette);
+    if (title) {
+      title.position.z = slabDepth / 2 - 1.6;
+      group.add(title);
+    }
+
+    // Two plants on opposite corners. Scenery carries no state, so it can
+    // never mislead anyone about what Hermes is doing.
+    [[-1, -1], [1, 1]].forEach(([sx, sz]) => {
+      const plant = makePlant(palette);
+      plant.position.set(sx * (slabWidth / 2 - 1.1), 0.6, sz * (slabDepth / 2 - 1.1));
+      group.add(plant);
+    });
+
     office.add(group);
-    pod = { group, width, depth };
+    pod = { group, width, depth, label };
     pods.set(cluster, pod);
     return pod;
+  }
+
+  /**
+   * A walkway from each pod back toward the conductor, so the floor reads as
+   * a place with circulation rather than islands floating in a void.
+   */
+  function ensureWalkway(cluster, podX, podZ, podReach) {
+    let walk = walkways.get(cluster);
+    const distance = Math.hypot(podX, podZ);
+    const inner = CONDUCTOR_RADIUS * 0.8;
+    const length = Math.max(0, distance - podReach - inner);
+    if (length < 1) {
+      if (walk) { office.remove(walk); disposeTree(walk); walkways.delete(cluster); }
+      return;
+    }
+    if (walk) { office.remove(walk); disposeTree(walk); }
+    walk = makeWalkway(length, palette);
+    const mid = inner + length / 2;
+    const angle = Math.atan2(podX, podZ);
+    walk.position.set(Math.sin(angle) * mid, 0.04, Math.cos(angle) * mid);
+    walk.rotation.y = angle;
+    office.add(walk);
+    walkways.set(cluster, walk);
   }
 
   function ensureSeat(deskId, tintIndex) {
@@ -270,10 +316,17 @@ export function createOfficeScene(canvas, options) {
 
   function removePod(cluster) {
     const pod = pods.get(cluster);
-    if (!pod) return;
-    office.remove(pod.group);
-    disposeTree(pod.group);
-    pods.delete(cluster);
+    if (pod) {
+      office.remove(pod.group);
+      disposeTree(pod.group);
+      pods.delete(cluster);
+    }
+    const walk = walkways.get(cluster);
+    if (walk) {
+      office.remove(walk);
+      disposeTree(walk);
+      walkways.delete(cluster);
+    }
   }
 
   function screenLines(worker) {
@@ -306,8 +359,9 @@ export function createOfficeScene(canvas, options) {
 
     layout.pods.forEach(pod => {
       liveClusters.add(pod.cluster);
-      const record = ensurePod(pod.cluster, pod.width, pod.depth);
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, pod.label || '');
       record.group.position.set(pod.x, 0, pod.z);
+      ensureWalkway(pod.cluster, pod.x, pod.z, Math.max(pod.width, pod.depth) / 2);
     });
 
     (state.desks || []).forEach(desk => {
@@ -527,6 +581,8 @@ export function createOfficeScene(canvas, options) {
   function clearOffice() {
     seats.forEach(seat => disposeTree(seat.group));
     pods.forEach(pod => disposeTree(pod.group));
+    walkways.forEach(walk => disposeTree(walk));
+    walkways = new Map();
     if (conductor) disposeTree(conductor);
     scene.remove(office);
     seats = new Map();

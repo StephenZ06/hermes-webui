@@ -149,6 +149,9 @@ export function computeLayout(desks, options) {
     const { cols, rows } = podGrid(clusterDesks.length);
     const pod = {
       cluster, ring, indexInRing, angle,
+      // Present only when the desks carry one (the Business outlet); the
+      // scene paints it on the pod floor and skips the sign without it.
+      label: (clusterDesks[0] && clusterDesks[0].clusterLabel) || '',
       x, z,
       width: size.width, depth: size.depth,
       seats: [],

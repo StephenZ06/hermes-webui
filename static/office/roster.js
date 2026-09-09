@@ -190,6 +190,10 @@ export function businessView(state, roster) {
         workerId: null,
         cluster: dept.key,
         seatLabel: seat.label,
+        // Painted on the floor of the pod. Only Business has names worth
+        // painting; a Projects cluster is a parent subagent id, which means
+        // nothing to a reader.
+        clusterLabel: dept.name,
       };
       seatIndexByDept.get(dept.key).push(desk);
       desks.push(desk);
@@ -224,6 +228,7 @@ export function businessView(state, roster) {
         workerId: null,
         cluster: OVERFLOW.key,
         seatLabel: OVERFLOW.name,
+        clusterLabel: OVERFLOW.name,
       };
       seatIndexByDept.get(OVERFLOW.key).push(desk);
       desks.push(desk);
