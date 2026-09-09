@@ -5512,6 +5512,20 @@ main.main > #mainPlugin{display:none;}
 #mainPlugin .main-view-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 #pluginPageContainer{flex:1;display:flex;flex-direction:column;min-height:0;}
 #mainSettings{overflow-y:auto;}
+/* ── Async delegation batch deliveries ──
+   A background fan-out's consolidated results arrive as a user-role row whose
+   text is the model's evidence, not reading material. Collapsed to one line,
+   styled as a system notice rather than something the user said. */
+.async-delegation-row{margin:6px 0;}
+.async-delegation-card{border:1px solid var(--border2);border-radius:10px;background:var(--surface-subtle);overflow:hidden;}
+.async-delegation-card.has-failures{border-color:color-mix(in srgb,var(--danger,#d05a5a) 45%,var(--border2));}
+.async-delegation-summary{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:12px;color:var(--muted);list-style:none;}
+.async-delegation-summary::-webkit-details-marker{display:none;}
+.async-delegation-summary:hover{color:var(--text);}
+.async-delegation-title{flex:1;font-weight:600;}
+.async-delegation-id{font-family:var(--font-mono);font-size:10px;opacity:.65;}
+.async-delegation-body{margin:0;padding:10px 12px 12px;border-top:1px solid var(--border2);max-height:420px;overflow:auto;font-family:var(--font-mono);font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text);}
+
 /* ── Office: WebGL floor view of the real Hermes delegation tree ──
    The canvas is absolutely positioned inside a relative wrap rather than
    flexed: a <canvas> carries an intrinsic 300x150 size that fights flex

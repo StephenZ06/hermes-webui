@@ -15245,6 +15245,82 @@ function _isContextCompactionMessage(m){
 function _isContextCompactionText(text){
   return /^\s*\[context compaction/i.test(String(text||'')) || /^\s*context compaction/i.test(String(text||''));
 }
+// ── Async delegation batch deliveries ────────────────────────────────────────
+// When a background delegate_task fan-out finishes, hermes-agent injects a
+// consolidated results block into the transcript as a *user* row. That text is
+// the model's input, not something a person should have to read: every other
+// client collapses it to a one-line event (the TUI via display_kind
+// 'async_delegation_complete', the CLI resume recap via _RESUME_EVENT_TEXT).
+// The WebUI was the outlier, rendering the whole wall as if the user had typed
+// it.
+//
+// The in-process runtime the WebUI uses does not stamp display_kind — only the
+// gateway and TUI delivery paths do — so the marker text is the signal here.
+// That string is already a contract on both sides (see
+// tests/test_async_delegation_webui_bridge.py, and the agent's own
+// test_internal_notification_marker_82888.py), and display_kind is preferred
+// whenever it is present so this improves on its own if that changes.
+const _ASYNC_DELEGATION_MARKER=/^\s*\[ASYNC DELEGATION BATCH COMPLETE(?:\s*[—–-]\s*([^\]]*))?\]/;
+
+function _isAsyncDelegationBatchText(text){
+  return _ASYNC_DELEGATION_MARKER.test(String(text||''));
+}
+
+function _asyncDelegationBatchInfo(m){
+  if(!m||m.role!=='user') return null;
+  const text=msgContent(m)||String(m.content||'');
+  const stamped=m.display_kind==='async_delegation_complete';
+  if(!stamped&&!_isAsyncDelegationBatchText(text)) return null;
+
+  const meta=(m.display_metadata&&typeof m.display_metadata==='object')?m.display_metadata:{};
+  const header=String(text||'').match(_ASYNC_DELEGATION_MARKER);
+  const info={
+    delegationId:String(meta.delegation_id||(header&&header[1])||'').trim(),
+    taskCount:Number(meta.task_count)||0,
+    completed:Number(meta.completed_count)||0,
+    failed:Number(meta.failed_count)||0,
+    durationSeconds:(typeof meta.duration_seconds==='number')?meta.duration_seconds:null,
+    text:String(text||''),
+  };
+  // Per-task lines carry the real tally when no metadata was stamped: the
+  // agent writes one "--- <icon> TASK i/n" header per subagent.
+  if(!info.taskCount||!(info.completed||info.failed)){
+    let done=0, failed=0, total=0;
+    const lineRe=/^---\s*([✓✗⚠])\s*TASK\s+(\d+)\s*\/\s*(\d+)/gm;
+    let hit;
+    while((hit=lineRe.exec(info.text))){
+      total=Math.max(total, Number(hit[3])||0);
+      if(hit[1]==='✓') done++; else failed++;
+    }
+    if(!info.taskCount) info.taskCount=total||done+failed;
+    if(!info.completed) info.completed=done;
+    if(!info.failed) info.failed=failed;
+  }
+  if(info.durationSeconds==null){
+    const dur=info.text.match(/Total duration:\s*([\d.]+)\s*s/i);
+    if(dur) info.durationSeconds=Number(dur[1]);
+  }
+  return info;
+}
+
+function _isAsyncDelegationBatchMessage(m){
+  return !!_asyncDelegationBatchInfo(m);
+}
+
+/** One line a human can read at a glance, from the tally. */
+function _asyncDelegationSummaryText(info){
+  const n=info.taskCount||0;
+  const parts=[`${n} subagent${n===1?'':'s'}`];
+  if(info.failed>0) parts.push(`${info.completed} completed, ${info.failed} failed`);
+  // "all completed" only when the tally actually accounts for every task. A
+  // truncated payload yields fewer task lines than the batch size, and
+  // claiming a clean sweep there would be a summary that lies.
+  else if(n&&info.completed>=n) parts.push('all completed');
+  else if(n) parts.push(`${info.completed} of ${n} completed`);
+  if(info.durationSeconds!=null) parts.push(`${info.durationSeconds}s`);
+  return `Background delegation finished — ${parts.join(' · ')}`;
+}
+
 function _isPreservedCompressionTaskListMarkerText(text){
   return /^\s*\[your active task list was preserved across context compression\]/i.test(String(text||''));
 }
@@ -17362,6 +17438,61 @@ function renderMessages(options){
         row.dataset.role='process_wakeup';
         row.dataset.rawText=processText;
         row._wakeupRenderedHtml=nextRowHtml;
+        row.innerHTML=nextRowHtml;
+      }
+      inner.appendChild(row);
+      userRows.set(rawIdx, row);
+      continue;
+    }
+
+    const delegationInfo=isUser?_asyncDelegationBatchInfo(m):null;
+    if(delegationInfo){
+      // Collapsed by default: the payload is the model's evidence, and the
+      // assistant's own reply already summarises it for the reader.
+      currentAssistantTurn=null;
+      let row=_msgNodeRecycleEnabled?_recycleStash.get(rawIdx):null;
+      if(row&&!row.classList.contains('async-delegation-row')) row=null;
+      const summaryText=_asyncDelegationSummaryText(delegationInfo);
+      const idHtml=delegationInfo.delegationId
+        ? `<span class="async-delegation-id">${esc(delegationInfo.delegationId)}</span>` : '';
+      const nextRowHtml=`<details class="async-delegation-card${delegationInfo.failed>0?' has-failures':''}">`
+        + `<summary class="async-delegation-summary">${li('git-branch',13)}`
+        + `<span class="async-delegation-title">${esc(summaryText)}</span>${idHtml}</summary>`
+        + `<pre class="async-delegation-body">${esc(delegationInfo.text)}</pre>`
+        + `</details>`;
+      if(row){
+        row.className='msg-row async-delegation-row';
+        row.id=_userMessageDomId(rawIdx);
+        row.dataset.msgIdx=rawIdx;
+        row.dataset.sessionMsgIdx=_messageSessionIndexForRawIdx(rawIdx);
+        row.dataset.messageAnchorKey=_messageViewportAnchorKeyForMessage(m);
+        row.dataset.role='async_delegation';
+        delete row.dataset.editing;
+        // Same expando comparison the process-wakeup card uses: an expanded
+        // <details> serializes an `open` attribute into innerHTML, so
+        // comparing against live innerHTML would rebuild and re-collapse the
+        // card on every rerender while the user was reading it.
+        if(row._delegationRenderedHtml!==nextRowHtml){
+          const _prior=row.querySelector&&row.querySelector('details.async-delegation-card');
+          const _wasOpen=!!(_prior&&_prior.open);
+          row.dataset.rawText=delegationInfo.text;
+          row._delegationRenderedHtml=nextRowHtml;
+          row.innerHTML=nextRowHtml;
+          if(_wasOpen){
+            const _card=row.querySelector('details.async-delegation-card');
+            if(_card) _card.open=true;
+          }
+        }
+      }else{
+        row=document.createElement('div');
+        row.className='msg-row async-delegation-row';
+        row.id=_userMessageDomId(rawIdx);
+        row.dataset.msgIdx=rawIdx;
+        row.dataset.sessionMsgIdx=_messageSessionIndexForRawIdx(rawIdx);
+        row.dataset.messageAnchorKey=_messageViewportAnchorKeyForMessage(m);
+        row.dataset.role='async_delegation';
+        row.dataset.rawText=delegationInfo.text;
+        row._delegationRenderedHtml=nextRowHtml;
         row.innerHTML=nextRowHtml;
       }
       inner.appendChild(row);
