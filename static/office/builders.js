@@ -470,6 +470,24 @@ export function makePerson(palette, tint) {
   shoulderR.add(armR);
   torso.add(shoulderR);
 
+  // Legs exist only so a figure can walk. Seated at a desk they are behind
+  // furniture and hidden, which is why the office got this far without them.
+  const legs = new THREE.Group();
+  const hipL = new THREE.Group();
+  hipL.position.set(-0.19, 0, 0);
+  const legL = capsule(0.155, 0.62, material(palette.trousers, { rough: 0.95 }));
+  legL.position.y = -0.42;
+  hipL.add(legL);
+  const hipR = new THREE.Group();
+  hipR.position.set(0.19, 0, 0);
+  const legR = capsule(0.155, 0.62, material(palette.trousers, { rough: 0.95 }));
+  legR.position.y = -0.42;
+  hipR.add(legR);
+  legs.add(hipL, hipR);
+  legs.position.y = 1.55;
+  legs.visible = false;
+  group.add(legs);
+
   const head = new THREE.Group();
   head.position.y = 1.0;
   const skull = new THREE.Mesh(
@@ -487,7 +505,7 @@ export function makePerson(palette, tint) {
   head.add(hair);
   torso.add(head);
 
-  group.userData.joints = { torso, shoulderL, shoulderR, head };
+  group.userData.joints = { torso, shoulderL, shoulderR, head, legs, hipL, hipR };
   group.userData.pose = 'work';
   group.userData.poseTargets = null;
   return group;
@@ -517,6 +535,43 @@ const POSES = {
   glance:  { shoulderX: -1.05, shoulderZ: 0.16, headX: 0.05, torsoX: 0.04, lift: 0, headY: 0.85 },
 };
 
+/**
+ * Drive a figure that is on its feet.
+ *
+ * Separate from poseWorker's eased targets because walking is periodic rather
+ * than a state to settle into: the limbs swing off a phase, and the whole
+ * figure bobs with the stride.
+ *
+ * @param {THREE.Group} person from `makePerson`
+ * @param {number} phase distance walked, in world units
+ * @param {number} settle 0..1 — how much of the walk to apply, so a figure can
+ *   ease out of it as it arrives rather than stopping mid-stride
+ */
+export function poseWalking(person, phase, settle) {
+  const joints = person && person.userData && person.userData.joints;
+  if (!joints) return;
+  const k = settle == null ? 1 : Math.max(0, Math.min(1, settle));
+  const swing = Math.sin(phase * 2.6) * 0.62 * k;
+  joints.legs.visible = k > 0.02;
+  joints.hipL.rotation.x = swing;
+  joints.hipR.rotation.x = -swing;
+  // Arms counter-swing, and the torso rides the stride.
+  joints.shoulderL.rotation.x = -swing * 0.55;
+  joints.shoulderR.rotation.x = swing * 0.55;
+  joints.shoulderL.rotation.z = 0;
+  joints.shoulderR.rotation.z = 0;
+  joints.head.rotation.x = 0.05 * k;
+  joints.head.rotation.y = 0;
+  joints.torso.rotation.x = 0.09 * k;
+  joints.torso.position.y = 1.55 + Math.abs(Math.sin(phase * 2.6)) * 0.06 * k;
+}
+
+/** Put the legs away — a seated figure has none as far as the office knows. */
+export function hideLegs(person) {
+  const joints = person && person.userData && person.userData.joints;
+  if (joints && joints.legs) joints.legs.visible = false;
+}
+
 export function poseTargets(pose) {
   return POSES[pose] || POSES.idle;
 }
@@ -535,6 +590,8 @@ function lerp(a, b, t) {
 export function poseWorker(person, pose, elapsed, dt) {
   const joints = person && person.userData && person.userData.joints;
   if (!joints) return;
+  // Anything driven by poseWorker is at a desk; only poseWalking shows legs.
+  if (joints.legs) joints.legs.visible = false;
   // An idle behaviour may be playing over plain work; everything below drives
   // toward whichever pose that resolves to.
   const played = idlePoseFor(person.userData, pose, elapsed * 1000);

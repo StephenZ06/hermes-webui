@@ -19,8 +19,11 @@ import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
   makePlant, makeWalkway, makeSlabOutline, makeConnector, marchOutline,
   setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
-  poseWorker, disposeTree, disposeSharedCaches,
+  poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
 } from './builders.js';
+import {
+  createWanderer, createArrival, advanceArrival, arrivalSettle,
+} from './motion.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
 // office is authored against this so a desk keeps the same on-screen size
@@ -71,6 +74,9 @@ const OUTLINE_SPEED = 2.4;
 // somewhere rather than circling, and matching speeds made the two read as one
 // continuous line where they meet.
 const CONNECTOR_SPEED_RATIO = 1.8;
+// How far behind its chair a subagent starts when it spawns. Far enough to
+// read as arriving, close enough to be seated before its first tool call.
+const ARRIVAL_DISTANCE = 9;
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -81,7 +87,7 @@ const PALETTES = {
     podTop: '#ffffff', podSide: '#e4dfd4',
     deskTop: '#c9a227', deskLeg: '#8b8b93',
     chair: '#5f6672',
-    shirt: '#6b8fb5', skin: '#e8b98e', hair: '#3b2b1d',
+    shirt: '#6b8fb5', skin: '#e8b98e', hair: '#3b2b1d', trousers: '#3e4048',
     screenBezel: '#2c2c34', screenBg: '#14141c',
     screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
     plateBg: 'rgba(255,255,255,0.92)', plateText: '#151414', plateAccent: '#1e9070',
@@ -94,7 +100,7 @@ const PALETTES = {
     podTop: '#24243a', podSide: '#1a1a2a',
     deskTop: '#8a6d1f', deskLeg: '#4a4a58',
     chair: '#3a3f4b',
-    shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20',
+    shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20', trousers: '#2b2d36',
     screenBezel: '#0e0e14', screenBg: '#0a0a12',
     screenText: '#5adeb7', screenTextBright: '#b9f5e2',
     plateBg: 'rgba(20,20,37,0.92)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
@@ -232,6 +238,10 @@ export function createOfficeScene(canvas, options) {
     const person = makePerson(palette, palette.conductor);
     person.position.y = 0.6;
     group.add(person);
+    // Paces its plinth between delegations. Only ever while genuinely idle:
+    // a walking figure reads as activity, and the office does not imply work
+    // Hermes has not reported.
+    group.userData.wanderer = createWanderer({ radius: CONDUCTOR_RADIUS * 0.42 });
     const plate = makeNameplate(palette, 'Conductor');
     plate.position.set(0, 5.4, 0);
     group.add(plate);
@@ -341,6 +351,10 @@ export function createOfficeScene(canvas, options) {
     const person = makePerson(palette, TINTS[tintIndex % TINTS.length]);
     person.position.set(0, 0, 1.9);
     group.add(person);
+    // A desk only ever appears because a subagent just spawned, so every seat
+    // starts with its occupant walking in from behind the chair.
+    const arrival = createArrival(ARRIVAL_DISTANCE);
+    person.position.z = 1.9 + arrival.offset;
     const plate = makeNameplate(palette, '');
     plate.position.set(0, 5.0, 0);
     group.add(plate);
@@ -350,7 +364,7 @@ export function createOfficeScene(canvas, options) {
     plate.visible = (lod === 'near');
     office.add(group);
     seat = {
-      group, person, plate, screen: desk.userData.screen,
+      group, person, plate, screen: desk.userData.screen, arrival,
       workerId: null, pose: 'idle', label: '', status: '', toolKey: '',
     };
     seats.set(deskId, seat);
@@ -787,6 +801,7 @@ export function createOfficeScene(canvas, options) {
     lastFrameAt = t;
 
     if (tween) advanceTween(now || 0);
+    const dtMs = dt * 1000;
 
     // The adapter owns no timer, so its time-dependent poses (a tool call
     // settling back to plain work) only advance because the scene asks.
@@ -797,7 +812,6 @@ export function createOfficeScene(canvas, options) {
     // how a line comes up or goes quiet, and cutting it short mid-transition
     // would leave a half-lit colour on screen.
     const marchOffset = t * OUTLINE_SPEED;
-    const dtMs = dt * 1000;
     pods.forEach(record => {
       advanceDashFade(record.outline, dtMs);
       if (record.active) marchOutline(record.outline, marchOffset);
@@ -813,10 +827,45 @@ export function createOfficeScene(canvas, options) {
       if (isDashActive(conductorOutline)) marchOutline(conductorOutline, marchOffset);
     }
 
-    seats.forEach(seat => poseWorker(seat.person, seat.pose, t, dt));
+    seats.forEach(seat => {
+      // A subagent walks to its desk before it starts; only once seated does
+      // its posture describe what Hermes says it is doing.
+      if (seat.arrival && !seat.arrival.done) {
+        advanceArrival(seat.arrival, dtMs);
+        seat.person.position.z = 1.9 + seat.arrival.offset;
+        poseWalking(seat.person, seat.arrival.phase, arrivalSettle(seat.arrival));
+        if (seat.arrival.done) hideLegs(seat.person);
+        return;
+      }
+      poseWorker(seat.person, seat.pose, t, dt);
+    });
+
     if (conductor) {
-      poseWorker(conductor.userData.person,
-        conductor.userData.status === 'orchestrating' ? 'work' : 'idle', t, dt);
+      const person = conductor.userData.person;
+      const wanderer = conductor.userData.wanderer;
+      const orchestrating = conductor.userData.status === 'orchestrating';
+      if (orchestrating) {
+        // Back to the middle of the plinth, then to work. It walks there
+        // rather than snapping, so the change of state is something you see
+        // happen.
+        const seated = wanderer.moveTo(0, 0, dtMs);
+        person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
+        if (seated) {
+          poseWorker(person, 'work', t, dt);
+        } else {
+          person.rotation.y = wanderer.state.heading;
+          poseWalking(person, wanderer.state.phase, 1);
+        }
+      } else {
+        wanderer.update(dtMs);
+        person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
+        if (wanderer.state.moving) {
+          person.rotation.y = wanderer.state.heading;
+          poseWalking(person, wanderer.state.phase, 1);
+        } else {
+          poseWorker(person, 'idle', t, dt);
+        }
+      }
     }
 
     renderer.render(scene, camera);
