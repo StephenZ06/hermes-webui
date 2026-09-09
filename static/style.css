@@ -5549,7 +5549,13 @@ main.main > #mainPlugin{display:none;}
 .office-session-row{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:8px;background:none;color:var(--text);font-size:12px;cursor:pointer;}
 .office-session-row:hover{background:var(--surface-subtle);}
 .office-session-row.is-active{background:var(--surface-subtle);border-color:var(--border2);}
+.office-session-row{align-items:center;flex-direction:row;gap:8px;}
+.office-session-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
 .office-session-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+/* Live marker. These listings mix profiles, so this dot is the only thing that
+   says which run is happening now rather than one that already finished. */
+.office-session-live{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px color-mix(in srgb,var(--success) 22%,transparent);animation:office-live-pulse 2s ease-in-out infinite;}
+.office-session-row.is-live .office-session-title{color:var(--text);}
 .office-session-meta{font-size:11px;color:var(--muted);}
 .office-stage{flex:1;min-height:0;position:relative;overflow:hidden;}
 .office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;}

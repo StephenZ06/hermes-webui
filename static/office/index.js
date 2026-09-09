@@ -47,6 +47,15 @@ const RECONCILE_MS = 5000;
 // assignment differs.
 const OUTLET_STORAGE_KEY = 'hermes-webui-office-mode';
 
+// A stored run whose children never recorded an end is only called live if it
+// has been active recently; past that it was cut off, not running.
+const LIVE_WINDOW_SECONDS = 900;
+// Stand-in id for a delegation running outside any known chat session.
+const LIVE_ENTRY_ID = '__live__';
+// How often the stored listing is refetched while the panel is open, so a run
+// that started elsewhere shows up without a manual refresh.
+const SIDEBAR_REFRESH_MS = 15000;
+
 let _container = null;
 let _canvas = null;
 let _scene = null;
@@ -62,6 +71,7 @@ let _themeObserver = null;
 let _visibilityHandler = null;
 let _unsubscribe = null;
 let _pollTimer = null;
+let _sidebarTimer = null;
 let _syncQueued = false;
 let _selectedId = null;
 let _spawnPaused = false;
@@ -508,18 +518,91 @@ function returnToLive() {
   scheduleSync();
 }
 
+/**
+ * A one-line summary of what a run is actually doing, built from the goals of
+ * its subagents.
+ *
+ * The chat's own title is about the conversation, not the delegation — two
+ * different fan-outs from the same chat are indistinguishable under it — so
+ * the goals are what names the row. Falls back to the chat title when there
+ * are no goals to read.
+ */
+function delegationSummary(goals, fallback) {
+  const cleaned = (goals || [])
+    .map(g => String(g || '').replace(/^Subagent:\s*/, '').trim())
+    .filter(Boolean);
+  if (!cleaned.length) return String(fallback || 'Untitled chat');
+  const head = cleaned[0].length > 44 ? cleaned[0].slice(0, 43) + '…' : cleaned[0];
+  return cleaned.length > 1 ? `${head} +${cleaned.length - 1} more` : head;
+}
+
+/** True while a stored run still has subagents that never recorded an end. */
+function looksLive(parent) {
+  const children = Array.isArray(parent.children) ? parent.children : [];
+  if (!children.some(c => c && !c.ended_at)) return false;
+  // A row that never recorded an end is either genuinely running or was cut
+  // off long ago; only recent activity can tell them apart, and claiming a
+  // dead run is live is worse than missing a live one.
+  const latest = Number(parent.latest_at) || 0;
+  if (!latest) return false;
+  return (Date.now() / 1000 - latest) < LIVE_WINDOW_SECONDS;
+}
+
+/**
+ * The run happening right now, as a sidebar entry.
+ *
+ * A delegation has to appear the moment it starts, and the stored listing
+ * cannot supply that: those rows land in state.db as the children are
+ * created, and the listing is only refetched periodically. This is built from
+ * the live adapter instead, and is replaced by the stored entry once that
+ * catches up.
+ */
+function liveEntry() {
+  if (_viewMode !== 'live') return null;
+  const state = _adapter.getState();
+  if (!state.workers.length) return null;
+  const session = (typeof window.S === 'object' && window.S && window.S.session) || null;
+  const running = state.workers.filter(w => w.status === 'running').length;
+  return {
+    parent_session_id: (session && session.session_id) || LIVE_ENTRY_ID,
+    title: delegationSummary(state.workers.map(w => w.goal), session && session.title),
+    children: state.workers.map(w => ({ session_id: w.id })),
+    latest_at: Date.now() / 1000,
+    _live: running > 0,
+    _isLiveEntry: true,
+  };
+}
+
+/** Stored listing plus the run in flight, newest first, without duplicates. */
+function sidebarEntries() {
+  const live = liveEntry();
+  const stored = _historyParents.map(p => Object.assign({}, p, { _live: looksLive(p) }));
+  if (!live) return stored;
+  const at = stored.findIndex(p => p.parent_session_id === live.parent_session_id);
+  if (at >= 0) {
+    // The stored row exists but is behind: keep its identity, take the live
+    // run's freshness.
+    stored[at] = Object.assign({}, stored[at], {
+      title: live.title, children: live.children, _live: live._live,
+    });
+    return [stored[at]].concat(stored.slice(0, at), stored.slice(at + 1));
+  }
+  return [live].concat(stored);
+}
+
 function renderSessionList() {
   const list = document.getElementById('officeSessionList');
   if (!list) return;
+  const entries = sidebarEntries();
   const query = _sessionQuery.trim().toLowerCase();
   const visible = query
-    ? _historyParents.filter(p => String(p.title || '').toLowerCase().includes(query))
-    : _historyParents;
+    ? entries.filter(p => String(p.title || '').toLowerCase().includes(query))
+    : entries;
   if (query && !visible.length) {
     list.innerHTML = '<div class="office-sidebar-note">No delegating chat matches that filter.</div>';
     return;
   }
-  if (!_historyParents.length) {
+  if (!entries.length) {
     list.innerHTML = '<div class="office-sidebar-note">No chat has delegated to a subagent yet. '
       + 'When one does, it appears here and can be replayed on the floor.</div>';
     return;
@@ -528,13 +611,27 @@ function renderSessionList() {
     const id = parent.parent_session_id;
     const count = Array.isArray(parent.children) ? parent.children.length : 0;
     const active = id === _historyParentId ? ' is-active' : '';
-    return `<button type="button" class="office-session-row${active}" data-parent-id="${esc(id)}">
-      <span class="office-session-title">${esc(parent.title || 'Untitled chat')}</span>
-      <span class="office-session-meta">${count} subagent${count === 1 ? '' : 's'}</span>
+    // The dot sits to the right of the row and is the only thing that
+    // distinguishes a run happening now from one that finished — these
+    // listings mix profiles, so "which of these is live" is not otherwise
+    // answerable from the row.
+    const dot = parent._live
+      ? '<span class="office-session-live" title="Subagents running now" aria-label="live"></span>'
+      : '';
+    return `<button type="button" class="office-session-row${active}${parent._live ? ' is-live' : ''}" data-parent-id="${esc(id)}"${parent._isLiveEntry ? ' data-live-entry="1"' : ''}>
+      <span class="office-session-text">
+        <span class="office-session-title">${esc(parent.title || 'Untitled chat')}</span>
+        <span class="office-session-meta">${count} subagent${count === 1 ? '' : 's'}</span>
+      </span>${dot}
     </button>`;
   }).join('');
   list.querySelectorAll('.office-session-row').forEach(row => {
-    row.onclick = () => showHistory(row.dataset.parentId);
+    row.onclick = () => {
+      // The live row is the office you are already looking at; there is no
+      // stored run to replay yet, so clicking it returns to the live view.
+      if (row.dataset.liveEntry) returnToLive();
+      else showHistory(row.dataset.parentId);
+    };
   });
 }
 
@@ -575,6 +672,10 @@ function teardownObservers() {
   if (_pollTimer) {
     clearInterval(_pollTimer);
     _pollTimer = null;
+  }
+  if (_sidebarTimer) {
+    clearInterval(_sidebarTimer);
+    _sidebarTimer = null;
   }
 }
 
@@ -666,7 +767,13 @@ function mount(container) {
     return;
   }
 
-  _unsubscribe = _adapter.subscribe(() => { if (_viewMode === 'live') scheduleSync(); });
+  _unsubscribe = _adapter.subscribe(cmd => {
+    if (_viewMode === 'live') scheduleSync();
+    // A delegation has to show up in the sidebar the moment it starts, not on
+    // the next poll: the stored listing cannot know about it yet.
+    if (cmd && (cmd.type === 'worker.spawn' || cmd.type === 'worker.status'
+      || cmd.type === 'worker.remove' || cmd.type === 'reset')) renderSessionList();
+  });
 
   if (typeof ResizeObserver === 'function') {
     _resizeObserver = new ResizeObserver(() => { if (_scene) _scene.resize(); });
@@ -697,6 +804,9 @@ function mount(container) {
   // catch-up for what the stream missed.
   _pollTimer = setInterval(reconcile, RECONCILE_MS);
   reconcile();
+  // Runs started under another profile, or in another tab, only reach this
+  // panel through the stored listing.
+  _sidebarTimer = setInterval(() => { renderSidebar(); }, SIDEBAR_REFRESH_MS);
 
   _scene.resize();
   _scene.syncOffice(activeAdapter().getState());
