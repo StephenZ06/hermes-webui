@@ -799,9 +799,24 @@
     if(_viewMode === 'history') return; // don't let live polling clobber a frozen historical view
     try{
       const data = await api('/api/subagents/active', { timeoutToast: false });
-      if(!data || data.gateway_enabled === false) return;
-      _spawnPaused = !!data.spawn_paused;
-      renderPauseButton();
+      if(!data) return;
+      // Deliberately NOT skipping on `gateway_enabled === false`. That guard
+      // predates api/routes.py's in-process branch (2026-08-26), which answers
+      // this endpoint from tools.delegate_tool's own registry for the
+      // single-container deployment — a fully populated `active` list reported
+      // alongside gateway_enabled:false. Skipping made reconcile a permanent
+      // no-op for exactly the deployment that needs it most: with no separate
+      // gateway process, a fire-and-forget subagent that finishes after its
+      // parent's stream closed has no other way to be noticed, and its card
+      // stayed "running" forever.
+      //
+      // A 502 also returns an empty `active` with spawn_paused:false, which is
+      // an error rather than a fact about pausing, so trust that field only
+      // when the response carries no error.
+      if(!data.error){
+        _spawnPaused = !!data.spawn_paused;
+        renderPauseButton();
+      }
       const active = Array.isArray(data.active) ? data.active : [];
       if(!active.length) return;
       ensureRoot();

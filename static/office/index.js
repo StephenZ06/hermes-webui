@@ -65,6 +65,7 @@ let _pollTimer = null;
 let _syncQueued = false;
 let _selectedId = null;
 let _spawnPaused = false;
+let _gatewayEnabled = true;
 let _outlet = readOutlet();
 let _roster = buildRoster([]);
 let _rosterLoaded = false;
@@ -208,7 +209,7 @@ function renderPill(state) {
     _pillEl.classList.toggle('is-live', live);
   }
   if (_backBtnEl) _backBtnEl.hidden = _viewMode !== 'history';
-  if (_pauseBtnEl) _pauseBtnEl.hidden = _viewMode === 'history';
+  if (_pauseBtnEl) _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
   if (_hintEl) {
     _hintEl.textContent = _viewMode === 'history'
       ? 'A finished run, rebuilt from what Hermes recorded. Click a worker for detail.'
@@ -285,6 +286,7 @@ function renderPauseButton() {
   if (!_pauseBtnEl) return;
   _pauseBtnEl.textContent = _spawnPaused ? 'Resume spawning' : 'Pause spawning';
   _pauseBtnEl.classList.toggle('is-paused', _spawnPaused);
+  _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
 }
 
 function renderDetail(state) {
@@ -438,8 +440,16 @@ async function toggleSpawnPaused() {
 async function reconcile() {
   try {
     const data = await request('/api/subagents/active', { timeoutToast: false });
-    if (!data || data.gateway_enabled === false) return;
+    if (!data) return;
     _adapter.applySnapshot(data);
+    // Pausing spawns is a gateway-process control: the in-process deployment
+    // answers POST /api/subagents/pause with 409. Offering a button that can
+    // only ever error is worse than not offering it.
+    const gatewayEnabled = data.gateway_enabled !== false;
+    if (_gatewayEnabled !== gatewayEnabled) {
+      _gatewayEnabled = gatewayEnabled;
+      renderPauseButton();
+    }
     if (_spawnPaused !== !!data.spawn_paused) {
       _spawnPaused = !!data.spawn_paused;
       renderPauseButton();

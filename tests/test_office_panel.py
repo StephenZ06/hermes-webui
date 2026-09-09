@@ -122,6 +122,34 @@ def test_rail_and_sidebar_nav_both_expose_the_office_tab():
     )
 
 
+def test_office_is_the_default_delegation_view():
+    # The office leads and Agent Canvas follows it, in both navs. Agent Canvas
+    # is kept, not retired — it is the DOM (screen-reader-readable) view of the
+    # same tree, and the office's own no-WebGL fallback points at it. See the
+    # RFC's phase 6.
+    for start_marker, end_marker in (
+        ('<nav class="rail"', "</nav>"),
+        ('<div class="sidebar-nav">', 'data-panel="settings"'),
+    ):
+        start = INDEX_HTML.index(start_marker)
+        block = INDEX_HTML[start:INDEX_HTML.index(end_marker, start)]
+        assert block.index('data-panel="office"') < block.index('data-panel="agentCanvas"'), (
+            f"office must precede agentCanvas in {start_marker}"
+        )
+        assert 'data-panel="agentCanvas"' in block, "Agent Canvas stays reachable"
+
+
+def test_the_landing_panel_is_still_chat():
+    # Promoting the office is not the same as booting into it. This is a chat
+    # app; opening it into a 3D floor instead of the user's conversations
+    # would be a surprising default.
+    rail_start = INDEX_HTML.index('<nav class="rail"')
+    rail_end = INDEX_HTML.index("</nav>", rail_start)
+    rail = INDEX_HTML[rail_start:rail_end]
+    active = re.findall(r'<button[^>]*class="[^"]*\bactive\b[^"]*"[^>]*data-panel="([a-zA-Z]+)"', rail)
+    assert active == ["chat"], f"exactly the chat tab starts active, got {active}"
+
+
 def test_office_main_view_and_sidebar_panel_exist():
     assert 'id="mainOffice"' in INDEX_HTML
     assert 'id="officeWrap"' in INDEX_HTML, "the scene mounts into #officeWrap"

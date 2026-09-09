@@ -349,13 +349,33 @@ def test_snapshot_does_not_reopen_a_finished_worker(driver):
     assert worker(out["state"], "a")["status"] == "completed"
 
 
-def test_snapshot_is_a_noop_when_the_gateway_is_off(driver):
+def test_snapshot_still_applies_without_a_gateway_process(driver):
+    # `gateway_enabled: false` does NOT mean "no data". The single-container
+    # deployment answers /api/subagents/active from tools.delegate_tool's own
+    # in-process registry and reports a fully populated `active` list next to
+    # that flag (api/routes.py, 2026-08-26). Skipping on it made reconcile a
+    # permanent no-op for exactly the deployment that needs it most: with no
+    # gateway process, a fire-and-forget subagent that finishes after its
+    # parent's stream closed has no other way to be noticed.
     out = run(driver, [{"op": "snapshot", "payload": {
-        "gateway_enabled": False, "spawn_paused": True,
-        "active": [{"subagent_id": "a"}],
+        "gateway_enabled": False, "spawn_paused": False,
+        "active": [{"subagent_id": "a", "goal": "in-process child", "status": "running"}],
     }}])
-    assert out["state"]["workers"] == []
-    assert out["state"]["spawnPaused"] is False
+    assert [w["id"] for w in out["state"]["workers"]] == ["a"]
+
+
+def test_a_failing_snapshot_does_not_report_spawning_as_unpaused(driver):
+    # A 502 from the gateway returns an empty `active` with spawn_paused:false.
+    # That is an error, not a fact about pausing, and taking it at face value
+    # would silently flip the pause control back on a failed poll.
+    out = run(driver, [
+        {"op": "snapshot", "payload": {"gateway_enabled": True, "spawn_paused": True, "active": []}},
+        {"op": "snapshot", "payload": {
+            "gateway_enabled": True, "spawn_paused": False, "active": [],
+            "error": "gateway unreachable",
+        }},
+    ])
+    assert out["state"]["spawnPaused"] is True
 
 
 # ── housekeeping ─────────────────────────────────────────────────────────────

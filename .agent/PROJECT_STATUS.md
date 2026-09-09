@@ -319,13 +319,26 @@ from adapter state, click-through to the subagent's own chat), reconcile
 polling plus pause/interrupt and history replay, the Business outlet (six
 standing departments over the same engine), and the phase-6 decision.
 
-**Phase 6 decided: Agent Canvas stays, the office is a peer, and the office is
-not the default.** The office is a `<canvas>` — a screen reader gets nothing
+**Phase 6 decided: Agent Canvas stays; the office leads the rail.** The office
+is now the default delegation view — above Agent Canvas in the rail and the
+mobile sidebar-nav — with Agent Canvas kept beneath it, not hidden. The office
+is a `<canvas>` — a screen reader gets nothing
 from it and no ARIA changes that, so retiring the DOM view would remove the
 only readable version of this data for some users. WebGL is also not universal
 (the office's own fallback points at Agent Canvas), and `renderStaticTree` has
-a second consumer in the cron delegation diagram. Making the office the default
-is a user-visible product call and was deliberately left alone.
+a second consumer in the cron delegation diagram. The office does lead the rail
+now, but the app still opens on Chat — promoting a view is not the same as
+booting into it.
+
+**A stale guard fixed in both views:** `GET /api/subagents/active` answers from
+the in-process registry with a populated `active` list *and*
+`gateway_enabled: false` (the single-container shape — this deployment). Agent
+Canvas had skipped on that flag since before the in-process branch existed
+(guard 2026-08-18, branch 2026-08-26), so reconcile was a permanent no-op here
+and a fire-and-forget subagent finishing after its parent's stream closed
+stayed "running" forever. The office is also careful with `spawn_paused` (a 502
+reports `false`, which is an error, not a fact) and hides its Pause button
+where that endpoint can only answer 409.
 
 `tests/test_office_browser_smoke.py` is opt-in — `HERMES_WEBUI_BROWSER_TESTS=1`
 — because this panel fails *silently* in a browser (a module that does not

@@ -1,6 +1,7 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — implemented; phase 6 decided (Agent Canvas stays)
+- **Status:** Accepted — implemented; office is the default delegation view,
+  Agent Canvas kept as the accessible peer
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -407,8 +408,23 @@ was close the parity gaps that made the office the lesser view:
   subagents, how many running, and what each is touching. Not a replacement
   for the DOM view; a courtesy for anyone who lands on this panel.
 
-The office is not the default. Making it so is a user-visible product call,
-and the panel is one click away in the rail either way.
+### Default view
+
+The office now leads: it sits above Agent Canvas in the rail and in the mobile
+sidebar-nav, so it is the delegation view reached first. Agent Canvas is kept
+directly beneath it for the reasons above — it is not hidden and not retired.
+
+Promoting the office is deliberately **not** the same as booting into it. The
+landing panel is still Chat; opening a chat app into a 3D floor instead of the
+user's conversations would be a surprising default, and nothing about that is
+implied by "make the office the default view of delegation".
+
+One caveat worth knowing: this app has a persistent custom tab order
+(`localStorage['hermes-webui-tab-order']`, applied by `_applyTabOrder()` on
+every boot). A user who has already reordered their rail keeps their own
+order, with the office appended — their preference wins over this default,
+which is correct, but it means the promotion is invisible to them until they
+reorder.
 
 ## Packing, after seeing it against a real config
 
@@ -437,9 +453,40 @@ a mixed-size non-overlap case, which is what a real roster produces.
 | 3. Projects outlet | done |
 | 4. Reconcile, pause/interrupt, history | done |
 | 5. Business outlet | done (roster inferred from personas — see caveat) |
-| 6. Default/retirement decision | decided: Agent Canvas stays, office is a peer |
+| 6. Default/retirement decision | office leads the rail; Agent Canvas kept as the accessible peer |
 
 Everything Hermes owns it still owns. Across all six phases the office added
 no orchestration: no spawn, no retry, no agent registry, no second transport.
 It reads `subagent_spawn` / `subagent_tool` / `subagent_complete`, four REST
 endpoints Agent Canvas already used, and draws what it is told.
+
+## Reconcile in the single-container deployment
+
+`GET /api/subagents/active` answers from `tools.delegate_tool`'s own in-process
+registry when there is no separate gateway process, returning a fully
+populated `active` list **alongside `gateway_enabled: false`**
+(`api/routes.py`, added 2026-08-26). Agent Canvas' reconcile had skipped on
+that flag since 2026-08-18 — eight days earlier — so reconciliation was a
+permanent no-op for exactly the deployment that needs it most: with no gateway
+process, a fire-and-forget subagent that finishes after its parent's stream
+has closed has no other way to be noticed, and its card stayed "running"
+forever. The office had inherited the same guard by copying it.
+
+Both are fixed. `gateway_enabled` is now read for what it actually means —
+whether the *gateway process* is there — rather than as "no data". The one
+field it does gate is `spawn_paused`, and only against an error response: a
+502 returns `spawn_paused: false`, which is an error, not a fact about
+pausing.
+
+Relatedly, `POST /api/subagents/pause` returns 409 without a gateway process,
+so the office hides its Pause button in that deployment. A button that can
+only ever error is worse than no button.
+
+## Queued, revisited
+
+Phase 4 recorded that `queued` has no backing event. Confirmed at the source
+while wiring the default view: `delegate_tool_child_run.py` registers a child
+with `status: "running"` and the registry drops the record on completion, so
+the live snapshot only ever reports `running`. There is no queued state to
+read anywhere — not in SSE, not in the snapshot. It stays unimplemented rather
+than guessed.

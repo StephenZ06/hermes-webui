@@ -316,8 +316,19 @@ export function createOfficeAdapter(options) {
    */
   function applySnapshot(snapshot) {
     const data = snapshot || {};
-    if (data.gateway_enabled === false) return;
-    spawnPaused = !!data.spawn_paused;
+    // NOTE: do not skip on `gateway_enabled === false`. That reads like "no
+    // data", but the single-container (in-process) deployment reports exactly
+    // that while still returning a fully populated `active` list straight from
+    // tools.delegate_tool's registry — see api/routes.py's /api/subagents/active
+    // in-process branch. Skipping made reconcile a permanent no-op there,
+    // which is the one deployment shape that needs it most: it has no separate
+    // gateway process, so a fire-and-forget subagent finishing after its
+    // parent's stream closed has no other way to be noticed.
+    //
+    // A 502 from the gateway also returns an empty `active` with
+    // spawn_paused:false, which is an error rather than a fact about pausing,
+    // so that one field is only trusted when the response carries no error.
+    if (!data.error) spawnPaused = !!data.spawn_paused;
     const active = Array.isArray(data.active) ? data.active : [];
     for (const record of active) {
       if (!record || !record.subagent_id) continue;
