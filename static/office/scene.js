@@ -17,7 +17,8 @@ import * as THREE from 'three';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
-  makePlant, makeWalkway, drawNameplate, drawScreen, poseWorker,
+  makePlant, makeWalkway, makeSlabOutline, makeConnector, marchOutline,
+  setOutlineActive, drawNameplate, drawScreen, poseWorker,
   disposeTree, disposeSharedCaches,
 } from './builders.js';
 
@@ -63,6 +64,9 @@ const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 // plus this much slab. Both are needed to find where a walkway should stop.
 const CONDUCTOR_SLAB = CONDUCTOR_RADIUS * 1.4;
 const POD_SLAB_PADDING = 3;
+// World units per second the dashes travel. Slow enough to read as "in
+// progress" rather than as an alarm.
+const OUTLINE_SPEED = 2.4;
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -79,6 +83,7 @@ const PALETTES = {
     plateBg: 'rgba(255,255,255,0.92)', plateText: '#151414', plateAccent: '#1e9070',
     conductor: '#2b3245',
     floorTitle: '#8d8d95', pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
+    outlineIdle: '#a8a294', outlineActive: '#1e9070', connector: '#9a9490',
   },
   dark: {
     ground: '#1b1b2b', grid: '#2b2b40',
@@ -91,6 +96,7 @@ const PALETTES = {
     plateBg: 'rgba(20,20,37,0.92)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
     conductor: '#8fd3f4',
     floorTitle: '#6f6f86', pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
+    outlineIdle: '#575775', outlineActive: '#5adeb7', connector: '#41415e',
   },
 };
 
@@ -203,6 +209,8 @@ export function createOfficeScene(canvas, options) {
   let pods = new Map();
   /** cluster -> walkway slab joining that pod to the middle of the office */
   let walkways = new Map();
+  /** cluster -> the line showing that pod is attached to the conductor */
+  let connectors = new Map();
   /** deskId -> {group, person, plate, screen, workerId, pose, tint} */
   let seats = new Map();
   let conductor = null;
@@ -214,6 +222,9 @@ export function createOfficeScene(canvas, options) {
     const group = new THREE.Group();
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
+    const outline = makeSlabOutline(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
+    group.add(outline);
+    group.userData.outlineLine = outline;
     const person = makePerson(palette, palette.conductor);
     person.position.y = 0.6;
     group.add(person);
@@ -253,10 +264,30 @@ export function createOfficeScene(canvas, options) {
       group.add(plant);
     });
 
+    const outline = makeSlabOutline(slabWidth, slabDepth, palette);
+    group.add(outline);
+
     office.add(group);
-    pod = { group, width, depth, label };
+    pod = { group, width, depth, label, outline, active: false };
     pods.set(cluster, pod);
     return pod;
+  }
+
+  /**
+   * The line saying a pod is attached to the conductor.
+   *
+   * Drawn between the same two platform edges the walkway spans, just above
+   * it, so the two cues agree rather than crossing each other.
+   */
+  function ensureConnector(cluster, pod, span) {
+    let line = connectors.get(cluster);
+    if (line) { office.remove(line); disposeTree(line); connectors.delete(cluster); }
+    if (!span) return;
+    const from = { x: Math.sin(span.angle) * span.start, z: Math.cos(span.angle) * span.start };
+    const to = { x: Math.sin(span.angle) * span.end, z: Math.cos(span.angle) * span.end };
+    line = makeConnector(from.x, from.z, to.x, to.z, palette);
+    office.add(line);
+    connectors.set(cluster, line);
   }
 
   /**
@@ -272,7 +303,7 @@ export function createOfficeScene(canvas, options) {
     }, CONDUCTOR_SLAB / 2);
     if (!span) {
       if (walk) { office.remove(walk); disposeTree(walk); walkways.delete(cluster); }
-      return;
+      return null;
     }
     if (walk) { office.remove(walk); disposeTree(walk); }
     walk = makeWalkway(span.length, palette);
@@ -281,6 +312,7 @@ export function createOfficeScene(canvas, options) {
     walk.rotation.y = span.angle;
     office.add(walk);
     walkways.set(cluster, walk);
+    return span;
   }
 
   function ensureSeat(deskId, tintIndex) {
@@ -332,6 +364,12 @@ export function createOfficeScene(canvas, options) {
       disposeTree(walk);
       walkways.delete(cluster);
     }
+    const line = connectors.get(cluster);
+    if (line) {
+      office.remove(line);
+      disposeTree(line);
+      connectors.delete(cluster);
+    }
   }
 
   function screenLines(worker) {
@@ -366,7 +404,8 @@ export function createOfficeScene(canvas, options) {
       liveClusters.add(pod.cluster);
       const record = ensurePod(pod.cluster, pod.width, pod.depth, pod.label || '');
       record.group.position.set(pod.x, 0, pod.z);
-      ensureWalkway(pod.cluster, pod);
+      const span = ensureWalkway(pod.cluster, pod);
+      ensureConnector(pod.cluster, pod, span);
     });
 
     (state.desks || []).forEach(desk => {
@@ -405,7 +444,23 @@ export function createOfficeScene(canvas, options) {
     Array.from(seats.keys()).forEach(id => { if (!liveDesks.has(id)) removeSeat(id); });
     Array.from(pods.keys()).forEach(c => { if (!liveClusters.has(c)) removePod(c); });
 
+    // An outline marches only where work is actually happening: a pod whose
+    // subagents have all finished goes still, which is what makes the moving
+    // ones mean something.
+    const liveClustersWithWork = new Set();
+    (state.workers || []).forEach(worker => {
+      if (worker.status !== 'running') return;
+      const desk = (state.desks || []).find(d => d.workerId === worker.id);
+      if (desk) liveClustersWithWork.add(desk.cluster);
+    });
+    pods.forEach((record, cluster) => {
+      record.active = liveClustersWithWork.has(cluster);
+      setOutlineActive(record.outline, record.active, palette);
+    });
+
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
+    setOutlineActive(conductor.userData.outlineLine,
+      conductorStatus === 'orchestrating', palette);
     if (conductor.userData.status !== conductorStatus) {
       conductor.userData.status = conductorStatus;
       drawNameplate(conductor.userData.plate, palette, 'Conductor',
@@ -587,7 +642,9 @@ export function createOfficeScene(canvas, options) {
     seats.forEach(seat => disposeTree(seat.group));
     pods.forEach(pod => disposeTree(pod.group));
     walkways.forEach(walk => disposeTree(walk));
+    connectors.forEach(line => disposeTree(line));
     walkways = new Map();
+    connectors = new Map();
     if (conductor) disposeTree(conductor);
     scene.remove(office);
     seats = new Map();
@@ -717,6 +774,17 @@ export function createOfficeScene(canvas, options) {
     // The adapter owns no timer, so its time-dependent poses (a tool call
     // settling back to plain work) only advance because the scene asks.
     if (typeof config.onTick === 'function') config.onTick();
+
+    // The dashes travel only where something is running; a still outline on a
+    // finished pod is the point of the cue.
+    const marchOffset = t * OUTLINE_SPEED;
+    pods.forEach(record => {
+      if (record.active) marchOutline(record.outline, marchOffset);
+    });
+    if (conductor && conductor.userData.outlineLine
+      && conductor.userData.outlineLine.userData.outline.active) {
+      marchOutline(conductor.userData.outlineLine, marchOffset);
+    }
 
     seats.forEach(seat => poseWorker(seat.person, seat.pose, t, dt));
     if (conductor) {

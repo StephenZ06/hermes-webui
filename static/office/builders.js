@@ -136,6 +136,100 @@ export function makeFloorTitle(text, width, palette) {
   return mesh;
 }
 
+/* ---------- progress outlines ---------- */
+
+/**
+ * A dashed outline tracing the edge of a platform.
+ *
+ * Built as a real THREE.Line with LineDashedMaterial rather than faked with
+ * geometry, so the dashes stay crisp at every zoom. Five points rather than a
+ * LineLoop: computeLineDistances() only measures the segments it is given, and
+ * a loop's closing segment would otherwise have no dash pattern at all.
+ *
+ * The base distances are kept so `marchOutline` can shift the pattern without
+ * recomputing anything — three's LineDashedMaterial has no dash offset of its
+ * own, so the movement has to come from the line-distance attribute.
+ */
+export function makeSlabOutline(width, depth, palette, height) {
+  const hw = width / 2;
+  const hd = depth / 2;
+  const y = height == null ? 0.66 : height;
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-hw, y, -hd),
+    new THREE.Vector3(hw, y, -hd),
+    new THREE.Vector3(hw, y, hd),
+    new THREE.Vector3(-hw, y, hd),
+    new THREE.Vector3(-hw, y, -hd),
+  ]);
+  const material = new THREE.LineDashedMaterial({
+    color: palette.outlineIdle,
+    dashSize: 0.9,
+    gapSize: 0.7,
+    transparent: true,
+    opacity: 0.55,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.computeLineDistances();
+  const attribute = geometry.getAttribute('lineDistance');
+  line.userData.outline = {
+    geometry, material,
+    base: Float32Array.from(attribute.array),
+    // One dash plus one gap: shifting by more than this repeats the pattern,
+    // so the offset can wrap and never grow without bound.
+    period: material.dashSize + material.gapSize,
+    active: false,
+  };
+  return line;
+}
+
+/**
+ * Shift a dashed outline's pattern along the line.
+ * @param {THREE.Line} line from `makeSlabOutline`
+ * @param {number} offset distance travelled, in world units
+ */
+export function marchOutline(line, offset) {
+  const outline = line && line.userData && line.userData.outline;
+  if (!outline) return;
+  const attribute = outline.geometry.getAttribute('lineDistance');
+  const shift = offset % outline.period;
+  for (let i = 0; i < outline.base.length; i += 1) {
+    attribute.array[i] = outline.base[i] + shift;
+  }
+  attribute.needsUpdate = true;
+}
+
+/** Colour and brightness follow whether that platform has live work. */
+export function setOutlineActive(line, active, palette) {
+  const outline = line && line.userData && line.userData.outline;
+  if (!outline || outline.active === active) return;
+  outline.active = active;
+  outline.material.color.set(active ? palette.outlineActive : palette.outlineIdle);
+  // Idle stays clearly visible: the cue is a *still* outline, not a missing
+  // one, and a platform whose edge vanishes when work ends looks broken.
+  outline.material.opacity = active ? 0.95 : 0.6;
+}
+
+/**
+ * The line joining the conductor to one pod.
+ *
+ * Deliberately solid where the platform outlines are dashed: the outlines say
+ * "work is happening here", this says "these two are connected", and two
+ * dashed lines meeting at a corner would read as one continuous thing.
+ */
+export function makeConnector(fromX, fromZ, toX, toZ, palette, height) {
+  const y = height == null ? 0.34 : height;
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(fromX, y, fromZ),
+    new THREE.Vector3(toX, y, toZ),
+  ]);
+  const material = new THREE.LineBasicMaterial({
+    color: palette.connector, transparent: true, opacity: 0.7,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.userData.connector = { geometry, material };
+  return line;
+}
+
 /* ---------- set dressing ---------- */
 
 /**
@@ -479,6 +573,16 @@ export function disposeTree(root) {
     }
     const plate = obj.userData && obj.userData.plate;
     if (plate) plate.texture.dispose();
+    const outline = obj.userData && obj.userData.outline;
+    if (outline) {
+      outline.geometry.dispose();
+      outline.material.dispose();
+    }
+    const connector = obj.userData && obj.userData.connector;
+    if (connector) {
+      connector.geometry.dispose();
+      connector.material.dispose();
+    }
     const title = obj.userData && obj.userData.floorTitle;
     if (title) {
       title.texture.dispose();
