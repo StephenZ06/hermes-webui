@@ -87,6 +87,8 @@ let _outletBtnEls = {};
 let _viewMode = 'live';
 let _historyAdapter = null;
 let _historyParents = [];
+// session id -> the name its last delegation gave it
+const _liveSummaries = new Map();
 let _historyParentId = null;
 let _sessionQuery = '';
 
@@ -494,15 +496,17 @@ async function reconcile() {
 function showHistory(parentSessionId) {
   const parent = _historyParents.find(p => p.parent_session_id === parentSessionId);
   if (!parent) return;
-  // A finished run can be far larger than the live desk cap, and nothing
-  // should be reclaimed in a record of what happened.
-  // A historical office is a record, not a live floor: nothing is swept and
-  // nothing is reclaimed.
+  // A historical office is a record, not a live floor: it can be far larger
+  // than the live desk cap, nothing is swept and nothing is reclaimed.
   _historyAdapter = createOfficeAdapter({ maxDesks: 400, completedLingerMs: 0 });
   applyHistory(_historyAdapter, parent);
   _viewMode = 'history';
   _historyParentId = parentSessionId;
   _selectedId = null;
+  // The camera was framed on — possibly zoomed into a desk of — a different
+  // run. Carrying that over would leave it pointed at a worker that no longer
+  // exists, on a floor the user has never seen.
+  if (_scene) _scene.resetView();
   renderSessionList();
   scheduleSync();
 }
@@ -513,6 +517,7 @@ function returnToLive() {
   _historyAdapter = null;
   _historyParentId = null;
   _selectedId = null;
+  if (_scene) _scene.resetView();
   renderSessionList();
   reconcile();
   scheduleSync();
@@ -563,9 +568,14 @@ function liveEntry() {
   if (!state.workers.length) return null;
   const session = (typeof window.S === 'object' && window.S && window.S.session) || null;
   const running = state.workers.filter(w => w.status === 'running').length;
+  const id = (session && session.session_id) || LIVE_ENTRY_ID;
+  const title = delegationSummary(state.workers.map(w => w.goal), session && session.title);
+  // Kept so the row keeps its name in the window between the workers being
+  // swept and the stored listing catching up.
+  _liveSummaries.set(id, title);
   return {
-    parent_session_id: (session && session.session_id) || LIVE_ENTRY_ID,
-    title: delegationSummary(state.workers.map(w => w.goal), session && session.title),
+    parent_session_id: id,
+    title,
     children: state.workers.map(w => ({ session_id: w.id })),
     latest_at: Date.now() / 1000,
     _live: running > 0,
@@ -573,10 +583,31 @@ function liveEntry() {
   };
 }
 
+/**
+ * The name a stored run should carry.
+ *
+ * Named from its children's goals for the same reason the live row is: the
+ * chat's own title describes the conversation, and an untitled chat has none
+ * at all — which is how a row that read "read README.md +2 more" while running
+ * reverted to "Untitled chat" the moment its live workers were swept.
+ *
+ * `_liveSummaries` covers the gap in between: the stored listing is refetched
+ * on a timer, so for a few seconds after a run ends there may be neither live
+ * workers nor a stored row carrying the children yet.
+ */
+function storedTitle(parent) {
+  const children = Array.isArray(parent.children) ? parent.children : [];
+  const remembered = _liveSummaries.get(parent.parent_session_id);
+  return delegationSummary(children.map(c => c && c.title),
+    remembered || parent.title);
+}
+
 /** Stored listing plus the run in flight, newest first, without duplicates. */
 function sidebarEntries() {
   const live = liveEntry();
-  const stored = _historyParents.map(p => Object.assign({}, p, { _live: looksLive(p) }));
+  const stored = _historyParents.map(p => Object.assign({}, p, {
+    _live: looksLive(p), title: storedTitle(p),
+  }));
   if (!live) return stored;
   const at = stored.findIndex(p => p.parent_session_id === live.parent_session_id);
   if (at >= 0) {

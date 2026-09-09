@@ -52,14 +52,18 @@ function lift(name) {
 
 const liveWindow = src.match(/const LIVE_WINDOW_SECONDS = (\d+);/)[1];
 const body = `const LIVE_WINDOW_SECONDS = ${liveWindow};\n`
-  + lift('delegationSummary') + '\n' + lift('looksLive');
+  + 'const _liveSummaries = new Map(Object.entries(REMEMBERED));\n'
+  + lift('delegationSummary') + '\n' + lift('looksLive') + '\n' + lift('storedTitle');
 
-const api = new Function(body + '\nreturn { delegationSummary, looksLive };')();
+const api = new Function('REMEMBERED',
+  body + '\nreturn { delegationSummary, looksLive, storedTitle };')(
+    (JSON.parse(process.argv[3] || '{}').remembered) || {});
 const input = JSON.parse(process.argv[3] || '{}');
 process.stdout.write(JSON.stringify({
   summary: input.goals !== undefined
     ? api.delegationSummary(input.goals, input.fallback) : null,
   live: input.parent !== undefined ? api.looksLive(input.parent) : null,
+  storedTitle: input.stored !== undefined ? api.storedTitle(input.stored) : null,
   liveWindow: Number(liveWindow),
 }));
 """
@@ -200,3 +204,52 @@ def test_the_dot_is_rendered_and_styled():
     assert "office-session-live" in OFFICE_SRC
     assert 'aria-label="live"' in OFFICE_SRC
     assert ".office-session-live{" in CSS
+
+
+# ── the name has to survive the run finishing ────────────────────────────────
+
+def test_a_stored_row_is_named_from_its_children_not_the_chat(driver):
+    # The bug this fixes: a row read "read README.md +2 more" while running and
+    # reverted to "Untitled chat" once its live workers were swept, because
+    # only the live row was ever named from goals.
+    out = run(driver, stored={
+        "parent_session_id": "chat-1",
+        "title": "Untitled chat",
+        "children": [
+            {"title": "Subagent: read README.md"},
+            {"title": "Subagent: count the tests"},
+        ],
+    })
+    assert out["storedTitle"] == "read README.md +1 more"
+
+
+def test_a_remembered_name_covers_the_gap_before_the_listing_catches_up(driver):
+    # For a few seconds after a run ends there may be neither live workers nor
+    # a stored row carrying the children yet.
+    out = run(driver,
+              stored={"parent_session_id": "chat-1", "title": "Untitled chat",
+                      "children": []},
+              remembered={"chat-1": "read README.md +2 more"})
+    assert out["storedTitle"] == "read README.md +2 more"
+
+
+def test_a_real_chat_title_is_still_used_when_there_is_nothing_better(driver):
+    out = run(driver, stored={"parent_session_id": "chat-1",
+                              "title": "Refactor the parser", "children": []})
+    assert out["storedTitle"] == "Refactor the parser"
+
+
+# ── switching runs resets the camera ─────────────────────────────────────────
+
+def test_opening_another_run_resets_the_camera():
+    # Carrying a zoomed-in camera across would leave it pointed at a worker
+    # that does not exist on the floor being opened.
+    at = OFFICE_SRC.index("function showHistory(")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
+    assert "_scene.resetView()" in body
+
+
+def test_returning_to_live_resets_the_camera():
+    at = OFFICE_SRC.index("function returnToLive()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
+    assert "_scene.resetView()" in body
