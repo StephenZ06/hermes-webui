@@ -67,7 +67,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','agentCanvas','office'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -494,10 +494,6 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'insights') await loadInsights();
   if (nextPanel === 'logs') await loadLogs();
   if (nextPanel === 'audit') await loadAuditTrail();
-  if (nextPanel === 'agentCanvas' && window.AgentCanvas) {
-    window.AgentCanvas.mount($('agentCanvasWrap'));
-    if (typeof window.AgentCanvas.renderSidebar === 'function') window.AgentCanvas.renderSidebar();
-  }
   // static/office/index.js is an ES module, so window.HermesOffice may not
   // exist yet on a very early switch — the guard is load-order tolerance, not
   // a feature flag.

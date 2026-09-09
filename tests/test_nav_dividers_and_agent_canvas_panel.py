@@ -11,7 +11,10 @@
 2. #panelAgentCanvas (the wide-sidebar panel-view shown when Agent Canvas
    is the active main-view panel) didn't exist at all, so switchPanel()'s
    `$('panel'+capitalize(name))` lookup returned null and the sidebar area
-   went fully blank for that panel.
+   went fully blank for that panel. The Agent Canvas panel has since been
+   removed in favour of the Office, so that check is now made against every
+   main-view panel rather than against that one — the rule outlived its
+   original subject.
 
 3. This app has a persistent customizable tab-order feature
    (localStorage 'hermes-webui-tab-order', applied via _applyTabOrder() on
@@ -70,17 +73,30 @@ def test_sidebar_nav_divider_css_has_explicit_sizing():
     assert "width:" in rule
 
 
-def test_panel_agent_canvas_exists_with_header():
-    assert 'id="panelAgentCanvas"' in HTML, (
-        "switchPanel() looks up $('panel'+capitalize(name)) for the active "
-        "panel -- without #panelAgentCanvas the sidebar area goes blank "
-        "when Agent Canvas is the active main-view panel"
-    )
-    start = HTML.index('id="panelAgentCanvas"')
-    end = HTML.index("</div>", HTML.index("</div>", start) + 1)
-    block = HTML[start:end]
-    assert "panel-head" in block
-    assert "Agent Canvas" in block or "tab_agent_canvas" in block
+def test_every_main_view_panel_has_a_sidebar_panel_view():
+    """switchPanel() looks up $('panel'+capitalize(name)) for the active panel.
+
+    A panel registered in MAIN_VIEW_PANELS without a matching #panel<Name>
+    makes that lookup return null and the whole sidebar area go blank — the
+    bug this file was opened for. Checked against every panel rather than the
+    one that happened to hit it.
+    """
+    panels_js = (REPO / "static" / "panels.js").read_text(encoding="utf-8")
+    listed = panels_js.split("const MAIN_VIEW_PANELS = [", 1)[1].split("]", 1)[0]
+    names = [chunk.strip().strip("'\"") for chunk in listed.split(",") if chunk.strip()]
+    assert names, "expected MAIN_VIEW_PANELS to be parseable"
+
+    # Panels that deliberately borrow another panel's sidebar.
+    fallbacks = panels_js.split("MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = {", 1)[1].split("}", 1)[0]
+
+    for name in names:
+        if f"{name}:" in fallbacks:
+            continue
+        dom_id = f'id="panel{name[0].upper()}{name[1:]}"'
+        assert dom_id in HTML, (
+            f"{name} is a main-view panel but has no {dom_id}; its sidebar "
+            "would render blank"
+        )
 
 
 def test_dividers_carry_anchor_panel_for_reorder_survival():

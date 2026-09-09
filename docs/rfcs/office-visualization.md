@@ -1,7 +1,7 @@
 # Office: 3D Floor View of the Hermes Delegation Tree
 
-- **Status:** Accepted — implemented; office is the default delegation view,
-  Agent Canvas kept as the accessible peer
+- **Status:** Accepted — implemented; the office is the delegation view and
+  the Agent Canvas panel has been removed
 - **Author:** hermes-webui local
 - **Created:** 2026-09-08
 
@@ -560,3 +560,38 @@ One consequence worth noting: desk reclaim under cap pressure now only comes
 up while something is still running, since an all-finished office is cleared
 outright instead. The reclaim tests were rewritten to hold a live worker open
 rather than deleted, because that is the case reclaim still serves.
+
+## Phase 6 revisited: the Agent Canvas panel was removed after all
+
+Phase 6 argued for keeping Agent Canvas as a peer, chiefly on accessibility:
+the office is a `<canvas>` and Agent Canvas was the DOM rendering of the same
+tree. The panel has since been removed at the user's direction, the office
+having covered its job.
+
+What that reasoning got right is worth keeping in view: **a screen reader now
+gets the office's `sr-only` summary and nothing else.** That summary is no
+longer a courtesy — it is the only non-visual account of a delegation, which
+is a real reduction from a full DOM tree. Anyone changing it should treat it
+as load-bearing.
+
+The other two objections were dependencies rather than opinions, and were
+handled rather than overruled:
+
+- **`renderStaticTree` has a second consumer.** The Scheduled-jobs page draws
+  each cron run's delegation diagram with it, over the `.agent-canvas-*`
+  styles. `static/agent-canvas.js` therefore stays loaded, headless: no rail
+  tab, no panel-view, no main-view, and `static/messages.js` no longer fans
+  live events at it. Its live code is now unreachable and is documented as
+  such at the top of the file, left in place because `renderStaticTree()`
+  shares this file's card and tree builders and unpicking that is a refactor
+  with no user-visible gain.
+- **The no-WebGL fallback pointed at Agent Canvas.** It now says what is wrong
+  and what would fix it, instead of directing people to a panel that no longer
+  exists.
+
+Two tests followed their subject rather than being deleted with the panel: the
+blank-sidebar guard now checks *every* main-view panel has a matching
+`#panel<Name>` (the rule outlived the panel that first broke it), and the SSE
+listener test now asserts the office receives the events, since "the backend
+relay must have a frontend consumer" is unchanged. The empty-state test was
+dropped outright — its subject was the panel's own placeholder.

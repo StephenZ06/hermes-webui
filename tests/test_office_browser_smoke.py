@@ -103,11 +103,15 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(tmp_path / "office-business.png"))
 
-        pg.evaluate("() => window.switchPanel('agentCanvas')")
+        pg.evaluate("() => window.switchPanel('chat')")
         pg.wait_for_timeout(800)
         after = pg.evaluate("""() => ({
           canvasGone: !document.querySelector('.office-canvas'),
-          agentCanvasAlive: !!document.querySelector('#agentCanvasTree'),
+          agentCanvasPanelGone: !document.querySelector('#panelAgentCanvas'),
+          agentCanvasTabGone: !document.querySelector('[data-panel="agentCanvas"]'),
+          // The module stays loaded for the Scheduled-jobs delegation diagram.
+          staticTreeRendererAlive:
+            !!(window.AgentCanvas && typeof window.AgentCanvas.renderStaticTree === 'function'),
           officeStateKept: window.HermesOffice.getState().workers.length,
         })""")
         pg.screenshot(path=str(tmp_path / "office-left.png"))
@@ -146,5 +150,11 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         "reset must return to the framed overview, not an approximation of it"
     )
 
-    assert after["agentCanvasAlive"]
+    assert after["agentCanvasPanelGone"] and after["agentCanvasTabGone"], (
+        "the Agent Canvas panel was removed in favour of the office"
+    )
+    assert after["staticTreeRendererAlive"], (
+        "its module stays loaded: the Scheduled-jobs page draws each cron run's "
+        "delegation diagram with renderStaticTree"
+    )
     assert not errors, f"console errors in the real app: {errors}"

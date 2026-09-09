@@ -1,3 +1,20 @@
+// Agent Canvas — RETIRED AS A PANEL, kept for one renderer.
+//
+// The Office panel (static/office/) replaced this view. What still uses this
+// file is the Scheduled-jobs page, which draws each cron run's delegation
+// diagram with `renderStaticTree()` (see _renderCronDelegation in
+// static/panels.js) and needs the `.agent-canvas-*` styles that go with it.
+//
+// Everything else here — mount(), the live SSE handlers, reconcile polling,
+// the history sidebar — is no longer reachable: no rail tab, no panel-view,
+// no main-view, and static/messages.js no longer fans events here. It is left
+// in place rather than surgically removed because renderStaticTree() shares
+// this file's card/tree builders, and unpicking that is a refactor with no
+// user-visible gain. If you are here to change live delegation behaviour, the
+// file you want is static/office/adapter.js.
+//
+// Original header follows.
+//
 // Agent Canvas: a live org-chart of the real Hermes delegation tree for the
 // current chat session — a Conductor root (the main session) with subagent
 // branches hanging below it, styled after the FounderOS Conductor/org UI

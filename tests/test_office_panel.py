@@ -122,21 +122,40 @@ def test_rail_and_sidebar_nav_both_expose_the_office_tab():
     )
 
 
-def test_office_is_the_default_delegation_view():
-    # The office leads and Agent Canvas follows it, in both navs. Agent Canvas
-    # is kept, not retired — it is the DOM (screen-reader-readable) view of the
-    # same tree, and the office's own no-WebGL fallback points at it. See the
-    # RFC's phase 6.
+def test_the_office_is_the_only_delegation_panel():
+    # The Agent Canvas panel was removed once the office covered it. Its
+    # module stays loaded, but headless: nothing should reach the panel.
     for start_marker, end_marker in (
         ('<nav class="rail"', "</nav>"),
         ('<div class="sidebar-nav">', 'data-panel="settings"'),
     ):
         start = INDEX_HTML.index(start_marker)
         block = INDEX_HTML[start:INDEX_HTML.index(end_marker, start)]
-        assert block.index('data-panel="office"') < block.index('data-panel="agentCanvas"'), (
-            f"office must precede agentCanvas in {start_marker}"
-        )
-        assert 'data-panel="agentCanvas"' in block, "Agent Canvas stays reachable"
+        assert 'data-panel="office"' in block
+        assert 'data-panel="agentCanvas"' not in block
+
+    assert 'id="panelAgentCanvas"' not in INDEX_HTML
+    assert 'id="mainAgentCanvas"' not in INDEX_HTML
+    assert "'agentCanvas'" not in PANELS_JS.split("MAIN_VIEW_PANELS")[1].split("]")[0]
+    assert "showing-agentCanvas" not in CSS
+
+
+def test_the_cron_delegation_diagram_still_has_its_renderer():
+    # agent-canvas.js is kept loaded for exactly one reason: the Scheduled-jobs
+    # page draws each cron run's delegation tree with renderStaticTree. Removing
+    # the script would break that page, which is not what "remove the panel"
+    # meant.
+    assert 'src="static/agent-canvas.js' in INDEX_HTML
+    assert "AgentCanvas.renderStaticTree(treeEl" in PANELS_JS
+    assert ".agent-canvas-card" in CSS, "and the styles that diagram renders with"
+
+
+def test_the_office_no_longer_points_at_a_panel_that_is_gone():
+    # The no-WebGL fallback used to send people to Agent Canvas.
+    office_index = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
+    at = office_index.index("function renderUnsupported(")
+    body = office_index[at:office_index.index("\n}\n", at)]
+    assert "Agent Canvas" not in body
 
 
 def test_the_landing_panel_is_still_chat():

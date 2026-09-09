@@ -11,8 +11,8 @@
 //   window.HermesOffice.onSpawn/onToolActivity/onComplete  -- live events
 //
 // static/panels.js drives mount/unmount from switchPanel(); static/messages.js
-// fans the SSE events here alongside Agent Canvas. Mount is idempotent, so a
-// repeat switch into an already-mounted panel just resumes the render loop.
+// fans the SSE events here. Mount is idempotent, so a repeat switch into an
+// already-mounted panel just resumes the render loop.
 //
 // This layer owns everything that talks to the network — the adapter, the
 // layout and the history translation are all pure — and it uses only the REST
@@ -279,9 +279,11 @@ async function loadRoster() {
  *
  * The office is a canvas, which is opaque to a screen reader — the picture is
  * the whole point of the view, and no amount of ARIA on a <canvas> changes
- * that. This keeps the same facts available as text. It is deliberately not a
- * replacement: Agent Canvas remains the DOM view of the same tree, which is
- * one of the reasons it is not being retired (see the RFC's phase 6).
+ * that. This keeps the same facts available as text.
+ *
+ * It carries more weight than it used to: the Agent Canvas panel, which was
+ * the DOM rendering of this same tree, has been removed, so this summary is
+ * now the only non-visual account of a delegation. Keep it accurate.
  */
 function renderSummary(state) {
   if (!_summaryEl) return;
@@ -711,9 +713,12 @@ function teardownObservers() {
 }
 
 function renderUnsupported(container) {
+  // Nothing to redirect to any more: the office is the delegation view. Say
+  // what is wrong and what would fix it rather than pointing at a panel that
+  // no longer exists.
   container.innerHTML = '<div class="office-unsupported">This browser could not start WebGL, '
-    + 'so the office view can\'t render. The Agent Canvas panel shows the same delegation '
-    + 'tree without WebGL.</div>';
+    + 'so the office floor can\'t render. Delegation still runs normally — enable hardware '
+    + 'acceleration, or open the WebUI in a browser with WebGL, to see it.</div>';
 }
 
 /**
@@ -876,8 +881,8 @@ function isRunning() {
   return !!(_scene && _scene.isRunning());
 }
 
-// Event intake. static/messages.js fans the live SSE events here alongside
-// Agent Canvas; both views read the same Hermes truth, neither owns it.
+// Event intake. static/messages.js fans the live SSE events here. Hermes
+// remains the source of truth; this only records what it reports.
 function onSpawn(payload) { return _adapter.onSpawn(payload); }
 function onToolActivity(payload) { return _adapter.onToolActivity(payload); }
 function onComplete(payload) { return _adapter.onComplete(payload); }
