@@ -388,12 +388,25 @@ Revert point for the whole line of work: tag `pre-office-phase1`.
    gone from the agent entirely. `tests/test_agent_compat_shim_paths.py` should
    go quiet on its own (an empty manifest skips it); if it starts failing again
    before then, something new drifted.
-7. **Office: decide whether it becomes the default.** All six phases are done
-   and the two views are peers. Flipping the default (or reordering the rail)
-   is a product call, deliberately not taken unattended. Note that queued,
-   per-message and handoff states still have no backing event (see the RFC);
-   they are not faked, and adding first-class events for them is a separate
-   backend change.
+7. **Office: finish the live walkthrough.** Built, merged, deployed and in
+   use — the office leads the rail, the landing panel is still Chat.
+   Verified against a real delegating run on 2026-09-09: a fire-and-forget
+   subagent retires to `ended` roughly 10s after it finishes, instead of
+   sitting at "running" forever. Still exercised only synthetically: parallel
+   fan-out, nested delegation, the Business outlet, history replay, Interrupt.
+
+   The finding worth carrying: **a finished subagent disappears from
+   `/api/subagents/active`.** `_unregister_subagent` drops the record
+   (`tools/delegate_tool_child_run.py:806`), so it never appears there with a
+   terminal status — absence is the only completion signal that endpoint
+   carries. Anything reconciling against it must infer completion from a
+   worker going missing, narrowly (see the RFC). Agent Canvas has the same
+   structural gap, does not act on absence, and still shows such a subagent as
+   running.
+
+   `queued` has no source at all, for the same reason: children are registered
+   as `running` and the record is dropped on completion. Per-message and
+   handoff likewise have no event. None of the three are faked.
 8. **Office: replace the Business keyword matcher when an agent library
    lands.** `roster.js#departmentFor` infers a department from a persona's own
    words because `/api/personalities` carries nothing else. One function, one
