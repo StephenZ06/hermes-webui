@@ -602,6 +602,9 @@ def test_render_messages_keeps_anchor_owned_turn_out_of_legacy_activity_rebuilds
         function _isPreservedCompressionTaskListMessage() {{ return false; }}
         function _preservedCompressionTaskListCardsHtml() {{ return ''; }}
         function _isContextCompactionMessage() {{ return false; }}
+        // Async delegation deliveries render as a collapsed notice rather than
+        // a user bubble; this transcript has none.
+        function _asyncDelegationBatchInfo() {{ return null; }}
         function _createAssistantTurn() {{
           const turn = new FakeElement('div');
           turn.className = 'assistant-turn';
