@@ -155,10 +155,15 @@ def test_long_goals_are_shortened_for_the_desk_label(driver):
 
 
 def test_siblings_are_reseated_in_their_own_cluster(driver):
+    # Desk reclaim only comes up while something is still running: once every
+    # worker is terminal the floor is cleared for the next run instead (see
+    # test_a_new_run_starts_on_a_clean_floor). So `live` holds the office open.
+    #
     # c1 (parent p1) finishes first, so by age alone its desk would be the one
     # reclaimed. c3 belongs to p2's cluster, and keeping siblings together
     # wins: it takes c2's desk instead.
     out = run(driver, [
+        spawn("live"),
         spawn("c1", parent_id="p1"),
         spawn("c2", parent_id="p2"),
         complete("c1"),
@@ -166,12 +171,12 @@ def test_siblings_are_reseated_in_their_own_cluster(driver):
         complete("c2"),
         {"op": "advance", "ms": 10},
         spawn("c3", parent_id="p2"),
-    ], options={"maxDesks": 2})
+    ], options={"maxDesks": 3})
     desks = {d["id"]: d for d in out["state"]["desks"]}
-    assert desks["desk-1"]["workerId"] == "c3", (
-        "desk-1 was p2's cluster; c3 is p2's child and should sit there"
+    assert desks["desk-2"]["workerId"] == "c3", (
+        "desk-2 was p2's cluster; c3 is p2's child and should sit there"
     )
-    assert worker(out["state"], "c1")["deskId"] == "desk-0", "c1 keeps its seat"
+    assert worker(out["state"], "c1")["deskId"] == "desk-1", "c1 keeps its seat"
 
 
 # ── tool activity ────────────────────────────────────────────────────────────
@@ -277,6 +282,7 @@ def test_the_conductor_stays_busy_until_every_worker_is_terminal(driver):
 # ── desk pressure ────────────────────────────────────────────────────────────
 
 def test_a_finished_worker_gives_up_its_desk_under_pressure(driver):
+    # b is still running, so this is cap pressure rather than a new run.
     out = run(driver, [
         spawn("a"), spawn("b"),
         complete("a"),
@@ -293,15 +299,17 @@ def test_a_finished_worker_gives_up_its_desk_under_pressure(driver):
 
 
 def test_the_longest_finished_worker_is_evicted_first(driver):
+    # `live` keeps the office from being cleared wholesale, so the cap is what
+    # decides who loses a desk.
     out = run(driver, [
-        spawn("a"), spawn("b"),
+        spawn("live"), spawn("a"), spawn("b"),
         complete("a"),
         {"op": "advance", "ms": 5000},
         complete("b"),
         {"op": "advance", "ms": 10},
         spawn("c"),
-    ], options={"maxDesks": 2})
-    assert worker(out["state"], "c")["deskId"] == "desk-0"
+    ], options={"maxDesks": 3})
+    assert worker(out["state"], "c")["deskId"] == "desk-1"
     reclaim = next(c for c in out["commands"] if c["type"] == "desk.reclaim")
     assert reclaim["previousWorkerId"] == "a", "a finished first, so a loses its seat first"
 
@@ -452,6 +460,75 @@ def test_a_real_completion_still_wins_over_retirement(driver):
     ])
     w = worker(out["state"], "a")
     assert w["status"] == "completed" and w["summary"] == "did the thing"
+
+
+# ── finished workers leaving ─────────────────────────────────────────────────
+
+def test_a_finished_worker_leaves_after_its_linger(driver):
+    # Reported from real use: finished subagents kept their desks, so a second
+    # delegation stacked on top of the first and the floor only ever grew.
+    out = run(driver, [
+        spawn("a"), complete("a"),
+        {"op": "advance", "ms": 26_000},
+        {"op": "tick"},
+    ], options={"completedLingerMs": 25_000})
+    assert out["state"]["workers"] == []
+    assert out["state"]["desks"] == [], "the desk goes with the worker"
+    assert "worker.remove" in types(out)
+
+
+def test_it_stays_long_enough_to_be_read(driver):
+    # Removing on completion would mean never seeing the result, or even the
+    # tick that says it finished.
+    out = run(driver, [
+        spawn("a"), complete("a", summary="found it"),
+        {"op": "advance", "ms": 5_000},
+        {"op": "tick"},
+    ], options={"completedLingerMs": 25_000})
+    w = worker(out["state"], "a")
+    assert w["status"] == "completed" and w["summary"] == "found it"
+
+
+def test_a_running_worker_is_never_swept(driver):
+    out = run(driver, [
+        spawn("a"), spawn("b"), complete("b"),
+        {"op": "advance", "ms": 60_000},
+        {"op": "tick"},
+    ], options={"completedLingerMs": 25_000})
+    assert [w["id"] for w in out["state"]["workers"]] == ["a"]
+
+
+def test_a_new_run_starts_on_a_clean_floor(driver):
+    # The linger alone is not enough: delegate again inside it and the two
+    # runs would share the floor.
+    out = run(driver, [
+        spawn("a"), spawn("b"), complete("a"), complete("b"),
+        {"op": "advance", "ms": 1_000},
+        spawn("c"),
+    ], options={"completedLingerMs": 25_000})
+    assert [w["id"] for w in out["state"]["workers"]] == ["c"]
+    assert len(out["state"]["desks"]) == 1
+
+
+def test_a_spawn_mid_run_clears_nothing(driver):
+    # A sibling in the same batch, or a nested child, arrives while others are
+    # still working. Clearing then would erase live work.
+    out = run(driver, [
+        spawn("a"), spawn("b"), complete("b"),
+        spawn("c"),
+    ], options={"completedLingerMs": 25_000})
+    assert {w["id"] for w in out["state"]["workers"]} == {"a", "b", "c"}
+
+
+def test_a_zero_linger_keeps_everyone(driver):
+    # What the historical replay uses: that office is a record of a finished
+    # run, and sweeping it would empty the floor the moment it was drawn.
+    out = run(driver, [
+        spawn("a"), complete("a"),
+        {"op": "advance", "ms": 10_000_000},
+        {"op": "tick"},
+    ], options={"completedLingerMs": 0})
+    assert len(out["state"]["workers"]) == 1
 
 
 # ── housekeeping ─────────────────────────────────────────────────────────────

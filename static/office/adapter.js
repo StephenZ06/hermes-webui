@@ -55,6 +55,11 @@ const DEFAULTS = {
   // absent from before the office concludes it stopped. Two rather than one so
   // a single partial or racing snapshot cannot retire a live worker.
   missingSnapshotsBeforeEnded: 2,
+  // How long a finished worker keeps its desk before leaving. Long enough to
+  // see it finish and read the result, short enough that a second delegation
+  // does not stack on top of the first. 0 keeps them forever, which is what
+  // the historical replay wants — that office is a record, not a live floor.
+  completedLingerMs: 25000,
   // Soft ceiling on simultaneous desks. Reached, the office reclaims the
   // desk of the worker that finished longest ago rather than growing without
   // bound. A live worker is never evicted, so the cap can be exceeded when
@@ -143,6 +148,57 @@ export function createOfficeAdapter(options) {
     return chosen ? chosen.desk : null;
   }
 
+  /** Drop a worker and free the desk it was sitting at. */
+  function removeWorker(id) {
+    const worker = workers.get(id);
+    if (!worker) return false;
+    workers.delete(id);
+    snapshotSeen.delete(id);
+    snapshotMisses.delete(id);
+    const at = desks.findIndex(desk => desk.workerId === id);
+    let deskId = null;
+    if (at >= 0) {
+      deskId = desks[at].id;
+      desks.splice(at, 1);
+    }
+    emit({ type: 'worker.remove', workerId: id, deskId });
+    return true;
+  }
+
+  /**
+   * Retire finished workers once they have been on screen long enough to read.
+   *
+   * Without this a second delegation stacks on top of the first and the floor
+   * only ever grows. Called from tick(), so it advances with the scene's own
+   * loop rather than a timer of the adapter's.
+   */
+  function sweepFinished(at) {
+    if (!config.completedLingerMs) return 0;
+    let removed = 0;
+    for (const worker of Array.from(workers.values())) {
+      if (!TERMINAL_STATUSES.has(worker.status)) continue;
+      const endedAt = worker.endedAt || 0;
+      if (!endedAt || (at - endedAt) < config.completedLingerMs) continue;
+      if (removeWorker(worker.id)) removed += 1;
+    }
+    return removed;
+  }
+
+  /**
+   * A new run starts on a clean floor.
+   *
+   * Only when nothing is still running: a spawn arriving mid-run is nested
+   * delegation or a sibling in the same batch, and clearing then would erase
+   * work that is still going.
+   */
+  function clearFinishedForNewRun() {
+    if (!workers.size) return;
+    for (const worker of workers.values()) {
+      if (!TERMINAL_STATUSES.has(worker.status)) return;
+    }
+    Array.from(workers.keys()).forEach(removeWorker);
+  }
+
   function allocateDesk(worker) {
     const cluster = worker.parentId || ROOT_ID;
     let desk = null;
@@ -223,6 +279,9 @@ export function createOfficeAdapter(options) {
     if (!id) return null;
     const existing = workers.get(id);
     if (existing) return publicWorker(existing);
+
+    // The previous run's leftovers go before the new one is seated.
+    clearFinishedForNewRun();
 
     const at = config.now();
     const worker = {
@@ -422,7 +481,7 @@ export function createOfficeAdapter(options) {
    */
   function tick() {
     const at = config.now();
-    let changed = 0;
+    let changed = sweepFinished(at);
     for (const worker of workers.values()) {
       if (refreshPose(worker, at)) {
         changed += 1;

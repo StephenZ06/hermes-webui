@@ -232,11 +232,10 @@ about what Hermes is doing:
   existed; the office must not conjure a worker out of a tool call.
 - **A snapshot never removes anyone.** Reconcile is catch-up, not truth about
   absence.
-- **Desk pressure never evicts a live worker.** Finished workers keep their
-  seats; at the cap the office reclaims the desk of the worker that finished
-  longest ago, preferring one in the same parent cluster so siblings stay
-  together. If nothing can be reclaimed, the office grows past its cap rather
-  than reseating a running subagent.
+- **Desk pressure never evicts a live worker.** At the cap the office reclaims
+  the desk of the worker that finished longest ago, preferring one in the same
+  parent cluster so siblings stay together. If nothing can be reclaimed, the
+  office grows past its cap rather than reseating a running subagent.
 - **State outlives the panel.** The adapter is module-level and `unmount()`
   does not touch it: subagents keep running while the user is on Chat, and
   their events keep arriving.
@@ -532,3 +531,33 @@ with `status: "running"` and the registry drops the record on completion, so
 the live snapshot only ever reports `running`. There is no queued state to
 read anywhere — not in SSE, not in the snapshot. It stays unimplemented rather
 than guessed.
+
+## Finished workers leave
+
+The first cut had finished workers keep their desks indefinitely, on the
+reasoning that a completed subagent is part of the record of the run. Real use
+disproved it inside a day: delegate twice and the second run stacks on top of
+the first, and the floor only ever grows.
+
+Two rules replace it, and they are deliberately separate:
+
+- **A linger.** A finished worker keeps its desk for 25s, then leaves. Long
+  enough to watch it finish and read the summary; short enough that it is gone
+  before it becomes clutter. Removing on completion would mean never seeing
+  the result — or even the tick that says there was one.
+- **A new run starts on a clean floor.** When a spawn arrives and *nothing* is
+  still running, the previous run's leftovers go first. The linger alone is
+  not enough: delegate again inside 25s and the two runs would share the
+  floor. The "nothing still running" condition is what keeps this safe — a
+  spawn arriving mid-run is a sibling in the same batch or a nested child, and
+  clearing then would erase live work.
+
+The sweep runs from `tick()`, which the scene already calls each frame, so the
+adapter still owns no timer of its own. The historical replay opts out with
+`completedLingerMs: 0`: that office is a record of a finished run, and
+sweeping it would empty the floor the moment it was drawn.
+
+One consequence worth noting: desk reclaim under cap pressure now only comes
+up while something is still running, since an all-finished office is cleared
+outright instead. The reclaim tests were rewritten to hold a live worker open
+rather than deleted, because that is the case reclaim still serves.

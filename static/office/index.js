@@ -486,7 +486,9 @@ function showHistory(parentSessionId) {
   if (!parent) return;
   // A finished run can be far larger than the live desk cap, and nothing
   // should be reclaimed in a record of what happened.
-  _historyAdapter = createOfficeAdapter({ maxDesks: 400 });
+  // A historical office is a record, not a live floor: nothing is swept and
+  // nothing is reclaimed.
+  _historyAdapter = createOfficeAdapter({ maxDesks: 400, completedLingerMs: 0 });
   applyHistory(_historyAdapter, parent);
   _viewMode = 'history';
   _historyParentId = parentSessionId;
