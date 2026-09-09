@@ -18,8 +18,8 @@ import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
   makePlant, makeWalkway, makeSlabOutline, makeConnector, marchOutline,
-  setOutlineActive, drawNameplate, drawScreen, poseWorker,
-  disposeTree, disposeSharedCaches,
+  setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
+  poseWorker, disposeTree, disposeSharedCaches,
 } from './builders.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
@@ -67,6 +67,10 @@ const POD_SLAB_PADDING = 3;
 // World units per second the dashes travel. Slow enough to read as "in
 // progress" rather than as an alarm.
 const OUTLINE_SPEED = 2.4;
+// The bridge's charge runs faster than a platform's edge: it is travelling
+// somewhere rather than circling, and matching speeds made the two read as one
+// continuous line where they meet.
+const CONNECTOR_SPEED_RATIO = 1.8;
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -281,13 +285,23 @@ export function createOfficeScene(canvas, options) {
    */
   function ensureConnector(cluster, pod, span) {
     let line = connectors.get(cluster);
+    // Rebuilt only when the geometry actually moves. Recreating it on every
+    // sync would reset the line's live state and restart its fade, so a busy
+    // run would show a bridge perpetually switching on and never lit.
+    const key = span ? `${span.angle.toFixed(4)}|${span.start.toFixed(3)}|${span.end.toFixed(3)}` : '';
+    if (line && line.userData.spanKey === key) return;
     if (line) { office.remove(line); disposeTree(line); connectors.delete(cluster); }
     if (!span) return;
     const from = { x: Math.sin(span.angle) * span.start, z: Math.cos(span.angle) * span.start };
     const to = { x: Math.sin(span.angle) * span.end, z: Math.cos(span.angle) * span.end };
     line = makeConnector(from.x, from.z, to.x, to.z, palette);
+    line.userData.spanKey = key;
     office.add(line);
     connectors.set(cluster, line);
+    // A pod that is already working when its bridge is (re)built lights up
+    // with it rather than waiting for the next state change.
+    const record = pods.get(cluster);
+    if (record && record.active) setOutlineActive(line, true);
   }
 
   /**
@@ -455,12 +469,15 @@ export function createOfficeScene(canvas, options) {
     });
     pods.forEach((record, cluster) => {
       record.active = liveClustersWithWork.has(cluster);
-      setOutlineActive(record.outline, record.active, palette);
+      setOutlineActive(record.outline, record.active);
+      const link = connectors.get(cluster);
+      // The bridge carries the same charge as the pod it feeds.
+      if (link) setOutlineActive(link, record.active);
     });
 
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
     setOutlineActive(conductor.userData.outlineLine,
-      conductorStatus === 'orchestrating', palette);
+      conductorStatus === 'orchestrating');
     if (conductor.userData.status !== conductorStatus) {
       conductor.userData.status = conductorStatus;
       drawNameplate(conductor.userData.plate, palette, 'Conductor',
@@ -776,14 +793,24 @@ export function createOfficeScene(canvas, options) {
     if (typeof config.onTick === 'function') config.onTick();
 
     // The dashes travel only where something is running; a still outline on a
-    // finished pod is the point of the cue.
+    // finished pod is the point of the cue. The fade runs regardless — it is
+    // how a line comes up or goes quiet, and cutting it short mid-transition
+    // would leave a half-lit colour on screen.
     const marchOffset = t * OUTLINE_SPEED;
+    const dtMs = dt * 1000;
     pods.forEach(record => {
+      advanceDashFade(record.outline, dtMs);
       if (record.active) marchOutline(record.outline, marchOffset);
     });
-    if (conductor && conductor.userData.outlineLine
-      && conductor.userData.outlineLine.userData.outline.active) {
-      marchOutline(conductor.userData.outlineLine, marchOffset);
+    connectors.forEach(link => {
+      advanceDashFade(link, dtMs);
+      // Charge travels out from the conductor toward the pod.
+      if (isDashActive(link)) marchOutline(link, marchOffset * CONNECTOR_SPEED_RATIO);
+    });
+    const conductorOutline = conductor && conductor.userData.outlineLine;
+    if (conductorOutline) {
+      advanceDashFade(conductorOutline, dtMs);
+      if (isDashActive(conductorOutline)) marchOutline(conductorOutline, marchOffset);
     }
 
     seats.forEach(seat => poseWorker(seat.person, seat.pose, t, dt));

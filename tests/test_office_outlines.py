@@ -28,8 +28,8 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 
 _DRIVER = r"""
-const { makeSlabOutline, marchOutline, setOutlineActive, makeConnector } =
-  await import(process.argv[2]);
+const { makeSlabOutline, marchOutline, setOutlineActive, advanceDashFade,
+  isDashActive, makeConnector } = await import(process.argv[2]);
 
 const palette = {
   outlineIdle: '#111111', outlineActive: '#00ff00', connector: '#222222',
@@ -41,8 +41,8 @@ const line = makeSlabOutline(input.width || 10, input.depth || 6, palette);
 const attr = line.geometry.getAttribute('lineDistance');
 out.pointCount = line.geometry.getAttribute('position').count;
 out.corners = Array.from(line.geometry.getAttribute('position').array);
-out.baseDistances = Array.from(line.userData.outline.base);
-out.period = line.userData.outline.period;
+out.baseDistances = Array.from(line.userData.dashed.base);
+out.period = line.userData.dashed.period;
 
 // BufferAttribute.needsUpdate is set-only in three — reading it gives
 // undefined — so the observable proof that an upload was requested is the
@@ -57,17 +57,36 @@ out.versionAfterMarch = attr.version;
 // Colour/brightness follow the active flag.
 out.idleColor = line.material.color.getHexString();
 out.idleOpacity = line.material.opacity;
-setOutlineActive(line, true, palette);
+
+// Switching on starts an eased transition rather than assigning outright.
+setOutlineActive(line, true);
+out.colorImmediatelyAfterSwitch = line.material.color.getHexString();
+out.activeFlag = line.userData.dashed.active;
+advanceDashFade(line, 100);
+out.midFadeColor = line.material.color.getHexString();
+out.midFadeOpacity = line.material.opacity;
+out.stillFading = advanceDashFade(line, 100);
+advanceDashFade(line, 5000);
 out.activeColor = line.material.color.getHexString();
 out.activeOpacity = line.material.opacity;
-out.activeFlag = line.userData.outline.active;
-setOutlineActive(line, false, palette);
+out.fadeFinished = advanceDashFade(line, 100);
+
+setOutlineActive(line, false);
+advanceDashFade(line, 5000);
 out.backToIdleColor = line.material.color.getHexString();
 
 const connector = makeConnector(1, 2, 30, 40, palette);
 out.connectorPoints = Array.from(connector.geometry.getAttribute('position').array);
 out.connectorDashed = connector.material.type === 'LineDashedMaterial';
 out.connectorType = connector.material.type;
+out.connectorHasDistances = !!connector.geometry.getAttribute('lineDistance');
+out.connectorDashSize = connector.material.dashSize;
+out.outlineDashSize = line.material.dashSize;
+out.connectorActiveBefore = isDashActive(connector);
+setOutlineActive(connector, true);
+advanceDashFade(connector, 5000);
+out.connectorActiveAfter = isDashActive(connector);
+out.connectorLitColor = connector.material.color.getHexString();
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -189,6 +208,31 @@ def test_the_state_can_be_switched_back(result):
     assert result["backToIdleColor"] == "111111"
 
 
+# ── coming up smoothly ───────────────────────────────────────────────────────
+
+def test_switching_on_does_not_snap(result):
+    # A line that jumps from grey to green the instant a subagent spawns reads
+    # as a glitch; the same change eased over ~400ms reads as a current
+    # arriving.
+    assert result["colorImmediatelyAfterSwitch"] == "111111", (
+        "the flag flips at once, the appearance does not"
+    )
+
+
+def test_the_transition_passes_through_the_middle(result):
+    # Partway through it is neither colour and neither opacity.
+    assert result["midFadeColor"] not in ("111111", "00ff00")
+    assert result["idleOpacity"] < result["midFadeOpacity"] < result["activeOpacity"]
+    assert result["stillFading"] is True
+
+
+def test_the_transition_finishes_and_stops(result):
+    assert result["activeColor"] == "00ff00"
+    assert result["fadeFinished"] is False, (
+        "a fade that never reports done would be advanced forever"
+    )
+
+
 # ── the connector ────────────────────────────────────────────────────────────
 
 def test_the_connector_spans_the_two_points_it_was_given(result):
@@ -197,11 +241,28 @@ def test_the_connector_spans_the_two_points_it_was_given(result):
     assert [pts[3], pts[5]] == [30, 40]
 
 
-def test_the_connector_is_solid_where_the_outlines_are_dashed(result):
-    # The outlines say "work is happening here"; this says "these two are
-    # connected". Two dashed lines meeting would read as one continuous thing.
-    assert result["connectorDashed"] is False
-    assert result["connectorType"] == "LineBasicMaterial"
+def test_the_connector_carries_the_same_charge_as_the_platforms(result):
+    # This reverses an earlier call. The connector was solid so that "these two
+    # are connected" read differently from "work is happening here"; showing
+    # the charge travelling along the bridge says both at once, and is what
+    # was asked for.
+    assert result["connectorDashed"] is True
+    assert result["connectorType"] == "LineDashedMaterial"
+    assert result["connectorHasDistances"], (
+        "without line distances a dashed material renders solid"
+    )
+
+
+def test_the_bridge_dashes_are_finer_than_a_platform_edge(result):
+    # Identical patterns made the two read as one continuous line where they
+    # meet.
+    assert result["connectorDashSize"] < result["outlineDashSize"]
+
+
+def test_the_connector_lights_up_like_an_outline(result):
+    assert result["connectorActiveBefore"] is False
+    assert result["connectorActiveAfter"] is True
+    assert result["connectorLitColor"] == "00ff00"
 
 
 # ── wiring ───────────────────────────────────────────────────────────────────
@@ -211,13 +272,34 @@ def test_only_platforms_with_running_work_march():
     assert "worker.status !== 'running'" in SCENE_SRC
 
 
+def test_the_bridge_lights_with_the_pod_it_feeds():
+    assert "if (link) setOutlineActive(link, record.active)" in SCENE_SRC
+
+
+def test_the_fade_runs_even_when_the_line_is_not_marching():
+    # Cutting the transition short mid-way would leave a half-lit colour on
+    # screen for as long as the panel stayed open.
+    at = SCENE_SRC.index("const marchOffset = t * OUTLINE_SPEED;")
+    window = SCENE_SRC[at:at + 900]
+    assert window.index("advanceDashFade(record.outline") < window.index("if (record.active)")
+
+
+def test_a_connector_is_not_rebuilt_unless_it_moves():
+    # Recreating it every sync would reset its live state and restart its
+    # fade, so a busy run would show a bridge perpetually switching on.
+    assert "line.userData.spanKey === key" in SCENE_SRC
+
+
 def test_the_connector_follows_the_same_span_as_the_walkway():
     # Two cues drawn between different points would visibly disagree.
     assert "ensureConnector(pod.cluster, pod, span)" in SCENE_SRC
 
 
 def test_outlines_and_connectors_are_disposed():
+    # Both kinds are the same object now, so one branch frees both: each owns
+    # its geometry and material outright rather than sharing the caches.
     builders = BUILDERS.read_text(encoding="utf-8")
     at = builders.index("export function disposeTree")
     body = builders[at:at + 1200]
-    assert "outline" in body and "connector" in body
+    assert "userData.dashed" in body
+    assert "dashed.geometry.dispose()" in body and "dashed.material.dispose()" in body

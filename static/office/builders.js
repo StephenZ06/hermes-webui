@@ -138,96 +138,166 @@ export function makeFloorTitle(text, width, palette) {
 
 /* ---------- progress outlines ---------- */
 
+// How long an outline takes to come up or go quiet. Long enough to read as a
+// current switching on rather than a state flipping.
+const DASH_FADE_MS = 420;
+
 /**
- * A dashed outline tracing the edge of a platform.
+ * A dashed line whose pattern can be marched along its own length.
  *
  * Built as a real THREE.Line with LineDashedMaterial rather than faked with
- * geometry, so the dashes stay crisp at every zoom. Five points rather than a
- * LineLoop: computeLineDistances() only measures the segments it is given, and
- * a loop's closing segment would otherwise have no dash pattern at all.
- *
- * The base distances are kept so `marchOutline` can shift the pattern without
- * recomputing anything — three's LineDashedMaterial has no dash offset of its
- * own, so the movement has to come from the line-distance attribute.
+ * geometry, so the dashes stay crisp at every zoom. The base line distances
+ * are kept because three's LineDashedMaterial has no dash offset of its own —
+ * the movement has to come from rewriting that attribute.
  */
+export function makeDashedLine(points, opts) {
+  const options = opts || {};
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineDashedMaterial({
+    color: options.color,
+    dashSize: options.dashSize ?? 0.9,
+    gapSize: options.gapSize ?? 0.7,
+    transparent: true,
+    opacity: options.opacity ?? 0.55,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.computeLineDistances();
+  const attribute = geometry.getAttribute('lineDistance');
+  line.userData.dashed = {
+    geometry, material,
+    base: Float32Array.from(attribute.array),
+    // One dash plus one gap: shifting further repeats the pattern, so the
+    // offset can wrap and never grow without bound.
+    period: material.dashSize + material.gapSize,
+    active: false,
+    // Colour and opacity are eased between states rather than snapped, so a
+    // platform coming to life reads as a current arriving.
+    fade: null,
+    idle: { color: new THREE.Color(options.color), opacity: options.opacity ?? 0.55 },
+    live: { color: new THREE.Color(options.color), opacity: options.opacity ?? 0.55 },
+  };
+  return line;
+}
+
+/** The two appearances a dashed line eases between. */
+export function setDashPalette(line, idleColor, idleOpacity, liveColor, liveOpacity) {
+  const dashed = line && line.userData && line.userData.dashed;
+  if (!dashed) return;
+  dashed.idle.color.set(idleColor);
+  dashed.idle.opacity = idleOpacity;
+  dashed.live.color.set(liveColor);
+  dashed.live.opacity = liveOpacity;
+  const target = dashed.active ? dashed.live : dashed.idle;
+  dashed.material.color.copy(target.color);
+  dashed.material.opacity = target.opacity;
+}
+
+/** The outline tracing the edge of a platform. */
 export function makeSlabOutline(width, depth, palette, height) {
   const hw = width / 2;
   const hd = depth / 2;
   const y = height == null ? 0.66 : height;
-  const geometry = new THREE.BufferGeometry().setFromPoints([
+  // Five points rather than a LineLoop: computeLineDistances() only measures
+  // the segments it is given, and a loop's closing edge would otherwise carry
+  // no dash pattern at all.
+  const line = makeDashedLine([
     new THREE.Vector3(-hw, y, -hd),
     new THREE.Vector3(hw, y, -hd),
     new THREE.Vector3(hw, y, hd),
     new THREE.Vector3(-hw, y, hd),
     new THREE.Vector3(-hw, y, -hd),
-  ]);
-  const material = new THREE.LineDashedMaterial({
-    color: palette.outlineIdle,
-    dashSize: 0.9,
-    gapSize: 0.7,
-    transparent: true,
-    opacity: 0.55,
-  });
-  const line = new THREE.Line(geometry, material);
-  line.computeLineDistances();
-  const attribute = geometry.getAttribute('lineDistance');
-  line.userData.outline = {
-    geometry, material,
-    base: Float32Array.from(attribute.array),
-    // One dash plus one gap: shifting by more than this repeats the pattern,
-    // so the offset can wrap and never grow without bound.
-    period: material.dashSize + material.gapSize,
-    active: false,
-  };
+  ], { color: palette.outlineIdle, dashSize: 0.9, gapSize: 0.7, opacity: 0.6 });
+  setDashPalette(line, palette.outlineIdle, 0.6, palette.outlineActive, 0.95);
   return line;
-}
-
-/**
- * Shift a dashed outline's pattern along the line.
- * @param {THREE.Line} line from `makeSlabOutline`
- * @param {number} offset distance travelled, in world units
- */
-export function marchOutline(line, offset) {
-  const outline = line && line.userData && line.userData.outline;
-  if (!outline) return;
-  const attribute = outline.geometry.getAttribute('lineDistance');
-  const shift = offset % outline.period;
-  for (let i = 0; i < outline.base.length; i += 1) {
-    attribute.array[i] = outline.base[i] + shift;
-  }
-  attribute.needsUpdate = true;
-}
-
-/** Colour and brightness follow whether that platform has live work. */
-export function setOutlineActive(line, active, palette) {
-  const outline = line && line.userData && line.userData.outline;
-  if (!outline || outline.active === active) return;
-  outline.active = active;
-  outline.material.color.set(active ? palette.outlineActive : palette.outlineIdle);
-  // Idle stays clearly visible: the cue is a *still* outline, not a missing
-  // one, and a platform whose edge vanishes when work ends looks broken.
-  outline.material.opacity = active ? 0.95 : 0.6;
 }
 
 /**
  * The line joining the conductor to one pod.
  *
- * Deliberately solid where the platform outlines are dashed: the outlines say
- * "work is happening here", this says "these two are connected", and two
- * dashed lines meeting at a corner would read as one continuous thing.
+ * Dashed and marching like the platform outlines: the charge travels out from
+ * the conductor toward the pod, which is what makes the bridge read as
+ * carrying something rather than merely existing. Finer dashes than a
+ * platform edge so the two are still distinguishable where they meet.
  */
 export function makeConnector(fromX, fromZ, toX, toZ, palette, height) {
   const y = height == null ? 0.34 : height;
-  const geometry = new THREE.BufferGeometry().setFromPoints([
+  const line = makeDashedLine([
     new THREE.Vector3(fromX, y, fromZ),
     new THREE.Vector3(toX, y, toZ),
-  ]);
-  const material = new THREE.LineBasicMaterial({
-    color: palette.connector, transparent: true, opacity: 0.7,
-  });
-  const line = new THREE.Line(geometry, material);
-  line.userData.connector = { geometry, material };
+  ], { color: palette.connector, dashSize: 0.55, gapSize: 0.85, opacity: 0.45 });
+  setDashPalette(line, palette.connector, 0.45, palette.outlineActive, 0.9);
   return line;
+}
+
+/**
+ * Shift a dashed line's pattern along its own length.
+ * @param {THREE.Line} line from `makeDashedLine`
+ * @param {number} offset distance travelled, in world units
+ */
+export function marchOutline(line, offset) {
+  const dashed = line && line.userData && line.userData.dashed;
+  if (!dashed) return;
+  const attribute = dashed.geometry.getAttribute('lineDistance');
+  const shift = offset % dashed.period;
+  for (let i = 0; i < dashed.base.length; i += 1) {
+    attribute.array[i] = dashed.base[i] + shift;
+  }
+  attribute.needsUpdate = true;
+}
+
+/**
+ * Switch a dashed line between its live and idle appearance.
+ *
+ * Starts an eased transition rather than assigning outright: a line that snaps
+ * from grey to green the instant a subagent spawns reads as a glitch, where
+ * the same change over ~400ms reads as a current arriving.
+ */
+export function setOutlineActive(line, active) {
+  const dashed = line && line.userData && line.userData.dashed;
+  if (!dashed || dashed.active === active) return;
+  dashed.active = active;
+  const target = active ? dashed.live : dashed.idle;
+  dashed.fade = {
+    elapsed: 0,
+    duration: DASH_FADE_MS,
+    fromColor: dashed.material.color.clone(),
+    fromOpacity: dashed.material.opacity,
+    toColor: target.color.clone(),
+    toOpacity: target.opacity,
+  };
+}
+
+// Ease-out: the change is quickest at the start, which is what makes it feel
+// like something switching on rather than sliding.
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/**
+ * Advance a dashed line's appearance transition.
+ * @param {number} dtMs milliseconds since the last frame
+ * @returns {boolean} true while still animating
+ */
+export function advanceDashFade(line, dtMs) {
+  const dashed = line && line.userData && line.userData.dashed;
+  if (!dashed || !dashed.fade) return false;
+  const fade = dashed.fade;
+  fade.elapsed += dtMs;
+  const t = Math.min(1, fade.elapsed / fade.duration);
+  const k = easeOutCubic(t);
+  dashed.material.color.copy(fade.fromColor).lerp(fade.toColor, k);
+  dashed.material.opacity = fade.fromOpacity + (fade.toOpacity - fade.fromOpacity) * k;
+  if (t >= 1) {
+    dashed.fade = null;
+    return false;
+  }
+  return true;
+}
+
+/** True when this line is currently showing its live appearance. */
+export function isDashActive(line) {
+  const dashed = line && line.userData && line.userData.dashed;
+  return !!(dashed && dashed.active);
 }
 
 /* ---------- set dressing ---------- */
@@ -573,15 +643,10 @@ export function disposeTree(root) {
     }
     const plate = obj.userData && obj.userData.plate;
     if (plate) plate.texture.dispose();
-    const outline = obj.userData && obj.userData.outline;
-    if (outline) {
-      outline.geometry.dispose();
-      outline.material.dispose();
-    }
-    const connector = obj.userData && obj.userData.connector;
-    if (connector) {
-      connector.geometry.dispose();
-      connector.material.dispose();
+    const dashed = obj.userData && obj.userData.dashed;
+    if (dashed) {
+      dashed.geometry.dispose();
+      dashed.material.dispose();
     }
     const title = obj.userData && obj.userData.floorTitle;
     if (title) {
