@@ -1,4 +1,5 @@
 """Shared helpers for reading Hermes Agent sessions from state.db."""
+import json
 import logging
 import sqlite3
 from contextlib import closing
@@ -214,6 +215,100 @@ def _session_node_dict(row: sqlite3.Row) -> dict:
     }
 
 
+# How much of a delegation goal is worth keeping as a title. Long enough to
+# tell two tasks apart in a sidebar, short enough not to carry a whole prompt.
+_DERIVED_TITLE_MAX = 160
+
+
+def _text_from_message_content(raw) -> str:
+    """Plain text from a stored message body, which may be JSON parts."""
+    if raw is None:
+        return ""
+    text = raw if isinstance(raw, str) else str(raw)
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "[{":
+        return stripped
+    try:
+        parsed = json.loads(stripped)
+    except Exception:
+        return stripped
+    if isinstance(parsed, dict):
+        return str(parsed.get("text") or "").strip()
+    if isinstance(parsed, list):
+        parts = [
+            str(part.get("text") or "")
+            for part in parsed
+            if isinstance(part, dict) and part.get("type") in (None, "text")
+        ]
+        return " ".join(p for p in parts if p).strip()
+    return stripped
+
+
+def _derived_titles(conn: sqlite3.Connection, session_ids: list[str]) -> dict[str, str]:
+    """First user message per session, as a stand-in title.
+
+    Subagent sessions are created by hermes-agent without a title — every one
+    of them stores ``title = NULL`` — so a rebuilt delegation tree would label
+    every desk "Subagent" and every conversation "Untitled chat". The goal is
+    not lost though: it is the child's *first user message*, which is exactly
+    the text ``delegate_task`` handed it. This recovers it, which repairs runs
+    that finished long before this code existed as well as new ones.
+
+    Best-effort and read-only, like everything else backing this view: any
+    failure returns what was gathered so far rather than raising.
+    """
+    if not session_ids:
+        return {}
+    try:
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(messages)")}
+    except Exception:
+        return {}
+    if not {"session_id", "role", "content"} <= columns:
+        return {}
+
+    titles: dict[str, str] = {}
+    # Chunked to stay clear of SQLite's bound-parameter ceiling.
+    for start in range(0, len(session_ids), 400):
+        chunk = session_ids[start:start + 400]
+        placeholders = ",".join("?" * len(chunk))
+        try:
+            rows = conn.execute(
+                # MIN(rowid) with bare columns: SQLite returns the row that
+                # matched the aggregate, which is the earliest user message.
+                f"SELECT session_id, content, MIN(rowid) FROM messages "
+                f"WHERE role = 'user' AND session_id IN ({placeholders}) "
+                "GROUP BY session_id",
+                chunk,
+            ).fetchall()
+        except Exception:
+            logger.debug("derived-title query failed", exc_info=True)
+            return titles
+        for row in rows:
+            text = _text_from_message_content(row[1])
+            if not text:
+                continue
+            collapsed = " ".join(text.split())
+            titles[row[0]] = (
+                collapsed[:_DERIVED_TITLE_MAX - 1] + "\u2026"
+                if len(collapsed) > _DERIVED_TITLE_MAX else collapsed
+            )
+    return titles
+
+
+def _apply_derived_titles(conn: sqlite3.Connection, children: list[dict]) -> None:
+    """Fill in titles for child rows that have none."""
+    missing = [c["session_id"] for c in children if not (c.get("title") or "").strip()]
+    if not missing:
+        return
+    derived = _derived_titles(conn, missing)
+    for child in children:
+        if (child.get("title") or "").strip():
+            continue
+        found = derived.get(child["session_id"])
+        if found:
+            child["title"] = found
+
+
 def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
     """Single-database body of ``list_parents_with_subagent_children``."""
     if not db_path.exists():
@@ -234,10 +329,21 @@ def _list_parents_from_single_db(db_path: Path, limit: int) -> list[dict]:
 
     children_by_parent: dict[str, list[dict]] = {}
     child_ids: set[str] = set()
+    all_children: list[dict] = []
     for row in rows:
         pid = row["parent_session_id"]
-        children_by_parent.setdefault(pid, []).append(_session_node_dict(row))
+        child = _session_node_dict(row)
+        children_by_parent.setdefault(pid, []).append(child)
+        all_children.append(child)
         child_ids.add(row["id"])
+
+    # Subagent sessions carry no title of their own; their goal is the first
+    # user message. Without this every rebuilt desk reads "Subagent".
+    try:
+        with closing(open_state_db_readonly(db_path)) as conn:
+            _apply_derived_titles(conn, all_children)
+    except Exception:
+        logger.debug("derived titles unavailable for %s", db_path, exc_info=True)
 
     def collect_descendants(sid: str, depth: int = 0) -> list[dict]:
         # Depth-capped defensively against a pathological cycle — the schema
