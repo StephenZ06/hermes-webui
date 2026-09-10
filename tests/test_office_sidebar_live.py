@@ -53,10 +53,11 @@ function lift(name) {
 const liveWindow = src.match(/const LIVE_WINDOW_SECONDS = (\d+);/)[1];
 const body = `const LIVE_WINDOW_SECONDS = ${liveWindow};\n`
   + 'const _liveSummaries = new Map(Object.entries(REMEMBERED));\n'
-  + lift('delegationSummary') + '\n' + lift('looksLive') + '\n' + lift('storedTitle');
+  + lift('delegationSummary') + '\n' + lift('looksLive') + '\n' + lift('storedTitle')
+  + '\n' + lift('historySignature');
 
 const api = new Function('REMEMBERED',
-  body + '\nreturn { delegationSummary, looksLive, storedTitle };')(
+  body + '\nreturn { delegationSummary, looksLive, storedTitle, historySignature };')(
     (JSON.parse(process.argv[3] || '{}').remembered) || {});
 const input = JSON.parse(process.argv[3] || '{}');
 process.stdout.write(JSON.stringify({
@@ -64,6 +65,7 @@ process.stdout.write(JSON.stringify({
     ? api.delegationSummary(input.goals, input.fallback) : null,
   live: input.parent !== undefined ? api.looksLive(input.parent) : null,
   storedTitle: input.stored !== undefined ? api.storedTitle(input.stored) : null,
+  signature: input.signatureOf !== undefined ? api.historySignature(input.signatureOf) : null,
   liveWindow: Number(liveWindow),
 }));
 """
@@ -179,8 +181,19 @@ def test_the_live_row_is_built_from_adapter_state_not_the_listing():
 def test_the_live_row_does_not_duplicate_its_stored_row():
     # Once the listing catches up, the same conversation must not appear twice.
     at = OFFICE_SRC.index("function sidebarEntries()")
-    window = OFFICE_SRC[at:at + 900]
+    window = OFFICE_SRC[at:at + 1400]
     assert "findIndex" in window and "parent_session_id === live.parent_session_id" in window
+
+
+def test_only_the_running_delegation_carries_the_live_dot():
+    # Reported: delegating from a chat lit the live dot on the row below it too.
+    # `looksLive` is a 15-minute heuristic over unclosed child rows, and the
+    # cross-profile ledger leaves 'running' rows behind for finished runs, so a
+    # chat delegated from minutes ago keeps pulsing. When the adapter is
+    # tracking a live run it is authoritative: every other row is not live.
+    at = OFFICE_SRC.index("function sidebarEntries()")
+    window = OFFICE_SRC[at:at + 1400]
+    assert "_live: live ? false : looksLive(p)" in window
 
 
 def test_clicking_the_live_row_returns_to_the_live_view():
@@ -253,3 +266,76 @@ def test_returning_to_live_resets_the_camera():
     at = OFFICE_SRC.index("function returnToLive()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
     assert "_scene.resetView()" in body
+
+
+# ── the frozen view has to notice the run finishing ──────────────────────────
+
+def test_the_signature_changes_when_a_child_finishes(driver):
+    """Reported: subagents stuck reading 'Interrupted' after the run completed.
+
+    A history view is built once from the listing as it stood when the row was
+    clicked. Clicked mid-run, it froze the children as unfinished and nothing
+    ever rebuilt it. The listing refreshes on a timer, so the fix is to notice
+    that the open run's rows changed and rebuild — this is what "changed" means.
+    """
+    running = {"parent_session_id": "chat-1", "children": [
+        {"session_id": "a", "status": "running", "ended_at": None},
+    ]}
+    finished = {"parent_session_id": "chat-1", "children": [
+        {"session_id": "a", "status": "completed", "ended_at": 1012.5},
+    ]}
+
+    assert run(driver, signatureOf=running)["signature"] != run(
+        driver, signatureOf=finished)["signature"]
+
+
+def test_the_signature_is_stable_when_nothing_changed(driver):
+    # The listing is refetched every few seconds; rebuilding the office on every
+    # one of those would throw away the camera and the open detail panel.
+    entry = {"parent_session_id": "chat-1", "children": [
+        {"session_id": "a", "status": "completed", "ended_at": 1012.5},
+        {"session_id": "b", "status": "completed", "ended_at": 1020.0},
+    ]}
+
+    assert run(driver, signatureOf=entry)["signature"] == run(
+        driver, signatureOf=entry)["signature"]
+
+
+def test_the_signature_changes_when_a_sibling_appears(driver):
+    one = {"parent_session_id": "chat-1", "children": [{"session_id": "a", "status": "running"}]}
+    two = {"parent_session_id": "chat-1", "children": [
+        {"session_id": "a", "status": "running"},
+        {"session_id": "b", "status": "running"},
+    ]}
+
+    assert run(driver, signatureOf=one)["signature"] != run(driver, signatureOf=two)["signature"]
+
+
+def test_a_missing_entry_signs_as_nothing(driver):
+    assert run(driver, signatureOf=None)["signature"] == ""
+
+
+def test_the_open_history_view_is_rebuilt_when_its_run_changes():
+    # Source-level: renderSidebar owns the refetch, so that is where a stale
+    # frozen office has to be noticed.
+    at = OFFICE_SRC.index("async function renderSidebar()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
+    assert "refreshHistory" in body, (
+        "a history view built mid-run stays frozen with unfinished children "
+        "unless the listing refresh rebuilds it"
+    )
+
+
+def test_rebuilding_does_not_yank_the_camera():
+    at = OFFICE_SRC.index("function refreshHistory()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
+    assert "resetView" not in body, (
+        "a background rebuild must not re-frame a floor the user is reading; "
+        "only picking a different run does that"
+    )
+
+
+def test_the_replay_is_told_whether_the_run_is_live():
+    assert "applyHistory(_historyAdapter, parent, { live: looksLive(parent) })" in OFFICE_SRC, (
+        "without this a run still in flight replays as interrupted"
+    )

@@ -90,6 +90,9 @@ let _historyParents = [];
 // session id -> the name its last delegation gave it
 const _liveSummaries = new Map();
 let _historyParentId = null;
+// What the open history view was built from, so a listing refresh that brought
+// no news does not rebuild it out from under the reader.
+let _historySignature = '';
 let _sessionQuery = '';
 
 const STATUS_LABEL = {
@@ -492,16 +495,56 @@ async function reconcile() {
 // ---- history ------------------------------------------------------------
 
 /**
+ * What the office drawn for a run depends on, as one comparable string.
+ *
+ * Which children there are and how each one ended — nothing else changes the
+ * floor, so nothing else should cost the user their camera and their open
+ * detail panel on a listing refresh that brought no news.
+ */
+function historySignature(parent) {
+  const children = (parent && Array.isArray(parent.children)) ? parent.children : [];
+  return children
+    .map(c => `${(c && c.session_id) || ''}:${(c && c.status) || ''}:${(c && c.ended_at) || ''}`)
+    .join('|');
+}
+
+/** Build the frozen office for one listing entry. No camera, no view mode. */
+function buildHistoryOffice(parent) {
+  // A historical office is a record, not a live floor: it can be far larger
+  // than the live desk cap, nothing is swept and nothing is reclaimed.
+  _historyAdapter = createOfficeAdapter({ maxDesks: 400, completedLingerMs: 0 });
+  // A run that is still going has children with no recorded end. Replayed as
+  // history those read as "cut off"; told the run is live, they read as
+  // working — which is what they are.
+  applyHistory(_historyAdapter, parent, { live: looksLive(parent) });
+  _historySignature = historySignature(parent);
+}
+
+/**
+ * Rebuild the open history view when its run has moved on.
+ *
+ * A history office is built once, from the listing as it stood when the row
+ * was clicked. Clicked while the run was still going — which the cross-profile
+ * ledger made easy, since it lists a delegation from the moment it starts —
+ * it froze every child as unfinished and nothing ever corrected it. Called
+ * from the listing refresh, so the frozen floor catches up on its own.
+ */
+function refreshHistory() {
+  if (_viewMode !== 'history' || !_historyParentId) return;
+  const parent = _historyParents.find(p => p.parent_session_id === _historyParentId);
+  if (!parent || historySignature(parent) === _historySignature) return;
+  buildHistoryOffice(parent);
+  scheduleSync();
+}
+
+/**
  * Show the frozen office for a finished chat. The live adapter is untouched
  * and keeps accumulating; only what is drawn changes.
  */
 function showHistory(parentSessionId) {
   const parent = _historyParents.find(p => p.parent_session_id === parentSessionId);
   if (!parent) return;
-  // A historical office is a record, not a live floor: it can be far larger
-  // than the live desk cap, nothing is swept and nothing is reclaimed.
-  _historyAdapter = createOfficeAdapter({ maxDesks: 400, completedLingerMs: 0 });
-  applyHistory(_historyAdapter, parent);
+  buildHistoryOffice(parent);
   _viewMode = 'history';
   _historyParentId = parentSessionId;
   _selectedId = null;
@@ -518,6 +561,7 @@ function returnToLive() {
   _viewMode = 'live';
   _historyAdapter = null;
   _historyParentId = null;
+  _historySignature = '';
   _selectedId = null;
   if (_scene) _scene.resetView();
   renderSessionList();
@@ -607,8 +651,16 @@ function storedTitle(parent) {
 /** Stored listing plus the run in flight, newest first, without duplicates. */
 function sidebarEntries() {
   const live = liveEntry();
+  // When the adapter is tracking a live run, that run is the *only* live row.
+  // `looksLive` is a heuristic over unclosed child rows + a 15-minute activity
+  // window, and the cross-profile ledger leaves 'running' rows behind for a
+  // delegation that has actually finished — so a chat you delegated from a few
+  // minutes ago would keep a pulsing dot and, sitting right under the current
+  // run, read as "the chat below is also live". The adapter knows precisely
+  // which run is in flight; defer to it and only fall back to the heuristic in
+  // history view, where there is no adapter truth to defer to.
   const stored = _historyParents.map(p => Object.assign({}, p, {
-    _live: looksLive(p), title: storedTitle(p),
+    _live: live ? false : looksLive(p), title: storedTitle(p),
   }));
   if (!live) return stored;
   const at = stored.findIndex(p => p.parent_session_id === live.parent_session_id);
@@ -680,6 +732,7 @@ async function renderSidebar() {
   } catch (_err) {
     _historyParents = [];
   }
+  refreshHistory();
   renderSessionList();
 }
 
@@ -929,7 +982,17 @@ window.clearOfficeSearch = clearOfficeSearch;
 // Small global wrapper so the "View live" button on the office sidebar card
 // can be a plain onclick="" attribute like every other sidebar card in this
 // app. A function declared in a module is not a global, so this is explicit.
-window.officeReturnToLive = returnToLive;
+//
+// "View live" means: show me the live floor. That is a main-view switch, not
+// just a view-mode reset — pressed from a chat (or a history replay) it must
+// land on the office, mount it if needed, then track the running session.
+window.officeReturnToLive = function officeReturnToLive() {
+  if (typeof window.switchPanel === 'function') {
+    Promise.resolve(window.switchPanel('office')).then(returnToLive);
+  } else {
+    returnToLive();
+  }
+};
 
 window.HermesOffice = {
   mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet,
