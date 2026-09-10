@@ -662,6 +662,8 @@ def main() -> None:
         print(f'[!!] WARNING: SessionChannel reaper failed to start: {e}', flush=True)
     from api.ssh_mount import start_reconnect_thread; start_reconnect_thread()  # noqa: E702 — keeps server.py under its 750-line test budget
     from api.gateway_ticker import start_gateway_ticker; start_gateway_ticker()  # noqa: E702 — keeps server.py under its 750-line test budget
+    from api.stt_warmup import start_stt_warmup; start_stt_warmup()  # noqa: E702 — non-blocking local-Whisper preload; same line-budget reason as above
+    from api.model_warmup import start_model_warmup; start_model_warmup()  # noqa: E702 — non-blocking model-catalog prewarm; keeps the first model-list read (page load / profile switch) off the ~2.5s cold rebuild
     try:
         from api.plugins import load_plugins
         load_plugins()
