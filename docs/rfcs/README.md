@@ -78,3 +78,7 @@ First-time contributor RFCs should be discussed in an issue before opening a PR.
   view of the same real delegation tree: vendored three.js behind an import
   map (no bundler), a `HermesOfficeAdapter` between Hermes events and the
   scene, and Business/Projects outlets over one engine.
+- [`chat-split-view-panes.md`](chat-split-view-panes.md) — Proposed pluggable
+  pane registry for the chat right-panel (extends today's Files/Artifacts/Todos
+  strip) plus three panes on top of it: Canvas, Live preview, Plane tasks, each
+  session-aware with explicit teardown.
