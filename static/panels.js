@@ -60,6 +60,23 @@ let _pendingSettingsTargetPanel = null; // destination selected while settings h
 let _logsAutoRefreshTimer = null;
 let _lastLogsLines = [];
 let _logsSeverityFilter = 'all';
+// Insights stat cards / charts only refreshed on panel-open or the manual
+// button; System health polls on its own, so the numbers next to it drifted
+// stale as the app was used. Poll while the panel (and tab) is visible.
+let _insightsAutoRefreshTimer = null;
+const INSIGHTS_AUTO_REFRESH_MS = 15000;
+
+// Drop the standard loading placeholder into a panel's content container
+// *synchronously*, before the panel's loader awaits its fetch — so a panel
+// switch shows the loader in front of a blank panel instead of leaving the
+// previous panel's content sitting there until the new data lands. No-ops if
+// the placeholder (or fresh content) is already there.
+function _panelLoading(el) {
+  if (!el || el.querySelector('.loading-spinner')) return;
+  el.innerHTML = '<div class="loading-spinner-wrap" role="status">'
+    + '<div class="loading-spinner" aria-hidden="true"></div>'
+    + '<span class="sr-only">' + esc(t('loading')) + '</span></div>';
+}
 
 // Map of panel names → i18n keys for the app titlebar label.
 const APP_TITLEBAR_KEYS = {
@@ -502,6 +519,7 @@ async function switchPanel(name, opts = {}) {
     if (typeof window.HermesOffice.renderSidebar === 'function') window.HermesOffice.renderSidebar();
   }
   _syncLogsAutoRefresh();
+  _syncInsightsAutoRefresh();
   if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
   if (nextPanel === 'settings') {
     switchSettingsSection(_currentSettingsSection);
@@ -3083,6 +3101,7 @@ function _kanbanUnavailableHtml(err){
 async function loadKanban(animate){
   const board = $('kanbanBoard');
   const list = $('kanbanList');
+  if (!animate) _panelLoading(board);
   try {
     if (animate && board) board.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:13px">${esc(t('loading'))}</div>`;
     // Resolve the active board before board-scoped requests. If another CLI or
@@ -5292,6 +5311,33 @@ function _syncLogsAutoRefresh() {
   else _stopLogsAutoRefresh();
 }
 
+function _startInsightsAutoRefresh() {
+  if (_insightsAutoRefreshTimer) return;
+  _insightsAutoRefreshTimer = setInterval(() => {
+    if (_currentPanel !== 'insights') { _stopInsightsAutoRefresh(); return; }
+    if (document.visibilityState !== 'visible') return;
+    loadInsights(false);
+  }, INSIGHTS_AUTO_REFRESH_MS);
+}
+
+function _stopInsightsAutoRefresh() {
+  if (_insightsAutoRefreshTimer) {
+    clearInterval(_insightsAutoRefreshTimer);
+    _insightsAutoRefreshTimer = null;
+  }
+}
+
+function _syncInsightsAutoRefresh() {
+  if (_currentPanel === 'insights' && document.visibilityState === 'visible') _startInsightsAutoRefresh();
+  else _stopInsightsAutoRefresh();
+}
+
+// Coming back to the tab on the Insights panel should catch up immediately, not
+// wait out the interval.
+document.addEventListener('visibilitychange', () => {
+  if (_currentPanel === 'insights' && document.visibilityState === 'visible') loadInsights(false);
+});
+
 async function copyLogsAll() {
   const lines = _filteredLogsLines();
   const text = lines.join('\n');
@@ -5426,6 +5472,20 @@ async function loadInsights(animate) {
     refreshBtn.disabled = true;
   }
   const period = ($('insightsPeriod') || {}).value || '30';
+  // The re-render replaces the whole panel; keep the reader where they were and
+  // keep any expanded card open (the auto-refresh runs every 15s).
+  const _scrollTop = box.scrollTop;
+  const _openCards = new Set(
+    [...box.querySelectorAll('details.insights-card[open]')].map(d => d.className)
+  );
+  // System health has its own poll loop and updates metrics in place; carry its
+  // last-rendered values across the rebuild so an auto-refresh tick doesn't
+  // flash it back to "Loading…" for a frame.
+  const _prevHealth = box.querySelector('#systemHealthPanel');
+  const _prevHealthMetrics = _prevHealth ? _prevHealth.querySelector('.system-health-metrics') : null;
+  const _prevHealthHtml = _prevHealthMetrics ? _prevHealthMetrics.innerHTML : null;
+  const _prevHealthClass = _prevHealth ? _prevHealth.className : null;
+  const _prevHealthStatus = _prevHealth ? (_prevHealth.querySelector('#systemHealthStatus') || {}).innerHTML : null;
   try {
     const [data, wikiStatus, skillUsage] = await Promise.all([
       api(`/api/insights?days=${period}`),
@@ -5433,6 +5493,18 @@ async function loadInsights(animate) {
       api('/api/skills/usage').catch(() => ({usage:{}, skill_names:[], total_invocations:0, unique_skills_used:0})),
     ]);
     _renderInsights(data, box, wikiStatus, skillUsage);
+    box.querySelectorAll('details.insights-card').forEach(d => {
+      if (_openCards.has(d.className)) d.open = true;
+    });
+    box.scrollTop = _scrollTop;
+    if (_prevHealthHtml != null) {
+      const nh = box.querySelector('#systemHealthPanel');
+      const nm = nh && nh.querySelector('.system-health-metrics');
+      if (nm) nm.innerHTML = _prevHealthHtml;
+      if (nh && _prevHealthClass) nh.className = _prevHealthClass;
+      const ns = nh && nh.querySelector('#systemHealthStatus');
+      if (ns && _prevHealthStatus != null) ns.innerHTML = _prevHealthStatus;
+    }
     if (typeof _syncSystemHealthMonitorVisibility === 'function') _syncSystemHealthMonitorVisibility();
     if (typeof pollSystemHealth === 'function') void pollSystemHealth();
   } catch(e) {
@@ -5844,6 +5916,7 @@ async function clearConversation() {
 async function loadSkills() {
   if (_skillsData) { renderSkills(_skillsData); return; }
   const box = $('skillsList');
+  _panelLoading(box);
   try {
     const data = await api('/api/skills');
     _skillsData = data.skills || [];
@@ -6323,6 +6396,7 @@ async function deleteCurrentSkill() {
 async function loadAgentDefinitions() {
   if (_agentDefsData) { renderAgentDefinitions(_agentDefsData); return; }
   const box = $('agentsList');
+  _panelLoading(box);
   try {
     const data = await api('/api/agent-definitions');
     _agentDefsData = data.definitions || [];
@@ -7661,6 +7735,7 @@ window.addEventListener('resize',()=>{
 async function loadWorkspacesPanel(){
   const panel=$('workspacesPanel');
   if(!panel)return;
+  if(!_workspaceList || !_workspaceList.length) _panelLoading(panel);
   const data=await loadWorkspaceList();
   renderWorkspacesPanel(data.workspaces);
 }
@@ -8433,6 +8508,7 @@ function _refreshProfileSwitchBackground(gen){
 async function loadProfilesPanel() {
   const panel = $('profilesPanel');
   if (!panel) return;
+  if (!_profilesCache) _panelLoading(panel);
   try {
     const data = await api('/api/profiles');
     _profilesCache = data;
@@ -9329,6 +9405,7 @@ async function deleteProfile(name) {
 // ── Memory panel ──
 async function loadMemory(force) {
   const panel = $('memoryPanel');
+  if (!_memoryData) _panelLoading(panel);
   try {
     const memoryUrl = S.session && S.session.session_id
       ? `/api/memory?session_id=${encodeURIComponent(S.session.session_id)}`
