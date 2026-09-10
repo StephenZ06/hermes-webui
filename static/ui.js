@@ -17297,8 +17297,13 @@ function renderMessages(options){
         }
       }
     }
-    const isProcessWakeup=m&&m._source==='process_wakeup';
     const isUser=m.role==='user';
+    // An async-delegation batch is delivered as a process_wakeup turn, but it
+    // carries its own purpose-built collapsed card. The generic process-wakeup
+    // branch cannot parse its body and would dump the whole results wall, so it
+    // has to be recognised before `isProcessWakeup` claims the row.
+    const _asyncDelegationInfo=isUser?_asyncDelegationBatchInfo(m):null;
+    const isProcessWakeup=m&&m._source==='process_wakeup'&&!_asyncDelegationInfo;
     if(!isUser&&_isMarkerOnlyAssistantCompressionMessage(m)){
       content='**Error:** No response received after context compression. Please retry.';
     }
@@ -17445,7 +17450,7 @@ function renderMessages(options){
       continue;
     }
 
-    const delegationInfo=isUser?_asyncDelegationBatchInfo(m):null;
+    const delegationInfo=_asyncDelegationInfo;
     if(delegationInfo){
       // Collapsed by default: the payload is the model's evidence, and the
       // assistant's own reply already summarises it for the reader.
@@ -19762,6 +19767,84 @@ function postProcessRenderedMessages(container) {
   renderMermaidBlocks(container);
   renderKatexBlocks(container);
   initTreeViews(container);
+  collapseAnswerSources(container);
+}
+
+// A web-search answer usually ends with a "Sources" / "References" heading and
+// a link list that can be longer than the answer itself. Fold that tail into a
+// collapsed <details> so it stops dominating the transcript. Runs only on
+// settled assistant segments (never a live one, which is still growing) and is
+// idempotent — the body is stamped once it has been folded.
+const _ANSWER_SOURCES_HEADINGS = new Set([
+  'sources', 'source', 'references', 'reference', 'citations', 'citation',
+  'works cited', 'further reading',
+]);
+function _normalizeSourcesHeading(text) {
+  return String(text || '')
+    .replace(/[*_`#]/g, '')
+    .replace(/[:：]\s*$/, '')
+    .trim()
+    .toLowerCase();
+}
+function collapseAnswerSources(container) {
+  const root = container || $('msgInner');
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  const bodies = root.querySelectorAll(
+    '.assistant-segment:not([data-live-assistant]) .msg-body');
+  for (let b = 0; b < bodies.length; b++) {
+    const body = bodies[b];
+    if (body.dataset.sourcesCollapsed === '1') continue;
+    if (body.closest('#liveAssistantTurn')) continue;
+    if (body.querySelector('details.answer-sources')) { body.dataset.sourcesCollapsed = '1'; continue; }
+    const kids = Array.from(body.children);
+    // Find the last heading whose text names a sources section.
+    let headIdx = -1;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const el = kids[i];
+      if (/^H[1-6]$/.test(el.tagName) && _ANSWER_SOURCES_HEADINGS.has(_normalizeSourcesHeading(el.textContent))) {
+        headIdx = i;
+        break;
+      }
+    }
+    if (headIdx < 0 || headIdx === kids.length - 1) continue;
+    const tail = kids.slice(headIdx + 1);
+    // Only fold when the tail really is a citation list: every block is a list
+    // or a link-bearing paragraph, nothing that looks like prose or a new
+    // section. A "References" section of running text is left alone.
+    let linkCount = 0;
+    let ok = true;
+    for (const el of tail) {
+      const tag = el.tagName;
+      if (tag === 'UL' || tag === 'OL') {
+        linkCount += el.querySelectorAll('a[href]').length;
+        continue;
+      }
+      if (tag === 'P') {
+        const links = el.querySelectorAll('a[href]').length;
+        if (!links) { ok = false; break; }
+        linkCount += links;
+        continue;
+      }
+      ok = false;
+      break;
+    }
+    if (!ok || linkCount < 1) continue;
+    const head = kids[headIdx];
+    // The summary text is the answer's own heading; the fallback only matters
+    // for the (impossible-in-practice) empty-heading case, so it is not a
+    // localized string.
+    const label = head.textContent.trim().replace(/[:：]\s*$/, '') || 'Sources';
+    const details = document.createElement('details');
+    details.className = 'answer-sources';
+    const summary = document.createElement('summary');
+    summary.className = 'answer-sources-summary';
+    summary.textContent = `${label} (${linkCount})`;
+    details.appendChild(summary);
+    body.insertBefore(details, head);
+    tail.forEach(el => details.appendChild(el));
+    head.remove();
+    body.dataset.sourcesCollapsed = '1';
+  }
 }
 
 function highlightCode(container) {

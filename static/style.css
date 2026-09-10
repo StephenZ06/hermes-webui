@@ -2387,6 +2387,15 @@
   .provider-error-details{margin:12px 0 0;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;}
   .provider-error-details>summary{cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;padding:8px 12px;}
   .provider-error-details>pre{margin:0;border:0;border-top:1px solid var(--border);border-radius:0;max-height:220px;}
+  /* A web-search answer's trailing "Sources" list, folded into a collapsed
+     disclosure by collapseAnswerSources() (static/ui.js). */
+  .msg-body details.answer-sources{margin:12px 0 0;}
+  .msg-body details.answer-sources>summary{cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;list-style:none;display:inline-flex;align-items:center;gap:6px;padding:2px 0;}
+  .msg-body details.answer-sources>summary::-webkit-details-marker{display:none;}
+  .msg-body details.answer-sources>summary::before{content:"▸";font-size:10px;color:var(--muted);}
+  .msg-body details.answer-sources[open]>summary::before{content:"▾";}
+  .msg-body details.answer-sources[open]>summary{margin-bottom:6px;}
+  .msg-body details.answer-sources>ul,.msg-body details.answer-sources>ol{margin-top:0;}
   .process-wakeup-row{padding:6px 0;}
   .process-wakeup-notice{margin:8px 0 8px var(--msg-rail);max-width:min(var(--msg-max),760px);padding:8px 10px;border:1px solid var(--border);border-left:2px solid var(--accent-bg-strong);border-radius:9px;background:var(--surface-subtle,var(--hover-bg));color:var(--muted);}
   .process-wakeup-label{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-text);}
@@ -2960,7 +2969,9 @@
     .hermes-cli-viewport{padding:6px 8px;}
     .hermes-cli-action{padding:6px 8px;font-size:11px;}
   }
-  .hermes-cli-card{flex:0 0 auto;margin:6px 8px 40px;padding:8px;border-radius:8px;background:var(--surface);border:1px solid var(--border2);display:flex;flex-direction:column;gap:6px;}
+  .hermes-cli-card{flex:0 0 auto;margin:6px 8px 8px;padding:8px;border-radius:8px;background:var(--surface);border:1px solid var(--border2);display:flex;flex-direction:column;gap:6px;}
+  /* Mobile keeps a larger bottom gap to clear the browser/nav chrome. */
+  @media (max-width:640px){.hermes-cli-card{margin-bottom:40px;}}
   .hermes-cli-card-label{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
   .hermes-cli-status{color:var(--success);font-weight:600;letter-spacing:0;text-transform:none;}
   .hermes-cli-interact-btn{position:relative;width:100%;min-height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--border2);background:var(--accent-bg);color:var(--accent-text);font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,transform .1s ease;overflow:hidden;}
@@ -5556,7 +5567,7 @@ main.main > #mainPlugin{display:none;}
 .office-session-row.is-live .office-session-title{color:var(--text);}
 .office-session-meta{font-size:11px;color:var(--muted);}
 .office-stage{flex:1;min-height:0;position:relative;overflow:hidden;}
-.office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;}
+.office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .office-unsupported{padding:24px;max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6;color:var(--muted);text-align:center;}
 .office-sidebar-note{padding:10px 14px;font-size:12px;line-height:1.5;color:var(--muted);}
 .office-detail{position:absolute;top:14px;right:14px;width:min(320px,calc(100% - 28px));max-height:calc(100% - 28px);overflow-y:auto;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);box-shadow:0 8px 30px rgba(0,0,0,.22);font-size:12px;}
@@ -6654,10 +6665,10 @@ main.main > #mainPlugin{display:none;}
    project, active state) is unchanged. */
 .project-folder-list{display:flex;flex-direction:column;gap:4px;padding:6px 8px 6px;flex-shrink:0;}
 /* padding, not a fixed height: the row still sizes to its own text, so a larger
-   UI font scales it instead of clipping it. 4px here puts the row at ~29px
-   against the 19.2px text line box, down from ~33px at 6px. Agent Canvas rows
-   are the same selector, so both views move together and stay identical. */
-.project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:3px 8px;font-size:12px;line-height:1.3;font-weight:500;justify-content:flex-start;}
+   UI font scales it instead of clipping it. Agent Canvas rows are the same
+   selector, so both views move together and stay identical. The @media
+   (max-width:640px) block below keeps the mobile row at its own size. */
+.project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:7px 8px;min-height:34px;font-size:12px;line-height:1.3;font-weight:500;justify-content:flex-start;}
 /* Press feedback. The row previously only responded to hover, so a click read
    as "nothing happened" until the list finished expanding. Kept to background
    alone -- a transform on a full-width row reads as the row wobbling, not as a
