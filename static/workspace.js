@@ -419,80 +419,37 @@ registerChatPane({id:'files'});
 registerChatPane({id:'artifacts', mount:()=>{ if(typeof renderSessionArtifacts==='function') renderSessionArtifacts(); }});
 registerChatPane({id:'todos', mount:()=>{ if(typeof _loadWorkspacePanelTodos==='function') _loadWorkspacePanelTodos(); }});
 
-// ── Canvas pane (docs/rfcs/chat-split-view-panes.md, Slice 2) ──
+// ── Office pane (docs/rfcs/chat-split-view-panes.md, Slice 2) ──
 //
-// A compact, non-interactive delegation tree docked beside the chat. Reuses
-// AgentCanvas.renderStaticTree() (agent-canvas.js) -- the SAME snapshot
-// renderer the cron delegation card already uses -- fed from the SAME live
-// adapter the Office 3D view reads (window.HermesOffice.adapter /
-// .getState()), NOT from AgentCanvas's own onSpawn/onToolActivity/onComplete
-// handlers: agent-canvas.js's file header says outright that live event path
-// was retired when the Office replaced it as a panel, and static/messages.js
-// no longer feeds it. Reviving that path would mean re-wiring the SSE fan-out
-// this file has nothing to do with; reading the Office's adapter instead
-// needs no such thing, since the Office already receives every event.
-let _canvasPaneUnsubscribe = null;
-
-/** Office adapter worker -> the {session_id, parent_session_id, ...} shape
- * AgentCanvas.renderStaticTree()'s buildTreeNodes() expects (see its state.db
- * row comments). `parent_session_id: null` marks a top-level worker -- passing
- * `parentSessionId: null` to renderStaticTree below is what makes
- * buildTreeNodes' `c.parent_session_id === parentSessionId` treat it as a
- * direct child of the root; a worker whose parentId names ANOTHER live worker
- * (real nested delegation) keeps that id so it nests under its own parent,
- * same as office/history.js's replay does for the 3D floor. */
-function _officeWorkersAsCanvasChildren(workers){
-  const list = Array.isArray(workers) ? workers : [];
-  const liveIds = new Set(list.map(w => w.id));
-  return list.map(w => ({
-    session_id: w.id,
-    parent_session_id: (w.parentId && liveIds.has(w.parentId)) ? w.parentId : null,
-    title: w.goal || w.label || '',
-    status: w.status,
-    model: w.model,
-    started_at: w.spawnedAt ? w.spawnedAt / 1000 : 0,
-    ended_at: w.endedAt ? w.endedAt / 1000 : 0,
-    tool_call_count: w.toolCount || 0,
-    input_tokens: w.inputTokens,
-    output_tokens: w.outputTokens,
-    reasoning_tokens: w.reasoningTokens,
-    api_call_count: w.apiCalls,
-    cost_usd: w.costUsd,
-  }));
-}
-
-function _renderWorkspaceCanvasPane(){
-  const container = $('workspaceCanvasTree');
-  if(!container) return;
-  if(!window.HermesOffice || typeof window.HermesOffice.getState !== 'function'
-    || !window.AgentCanvas || typeof window.AgentCanvas.renderStaticTree !== 'function'){
-    return;
-  }
-  const state = window.HermesOffice.getState();
-  const conductorRunning = state && state.conductor && state.conductor.status === 'orchestrating';
-  window.AgentCanvas.renderStaticTree(container, {
-    parentSessionId: null,
-    children: _officeWorkersAsCanvasChildren(state && state.workers),
-    // Left untranslated on purpose, matching the Office 3D floor's own
-    // canvas-drawn "Conductor" signage (static/office/scene.js) -- neither
-    // goes through t(), so the two stay consistent.
-    rootLabel: 'Conductor',
-    rootStatus: conductorRunning ? 'running' : 'completed',
-    live: true,
-  });
-}
-
+// Mounts the SAME singleton HermesOffice 3D scene the full Office panel
+// uses, directly -- no separate renderer, no separate data feed. (An
+// earlier version of this pane drew a flat 2-D delegation tree via
+// AgentCanvas.renderStaticTree() fed from the Office's adapter state; this
+// replaced it wholesale, so the real thing shows here instead of a
+// simplified stand-in.)
+//
+// HermesOffice supports exactly ONE live mount at a time -- mount(container)
+// tears down whatever container held it before (static/office/index.js).
+// That is a real constraint, not a bug to route around here: switching to
+// the full Office panel while this pane is active reclaims the scene there,
+// same as switching between any two hosts always has. This pane's own
+// unmount() skips tearing the scene down when the main Office panel is the
+// reason it's leaving -- that panel already owns the reclaim via its own
+// mount() call, and calling unmount() here first would just make the
+// hand-off flicker.
 registerChatPane({
-  id: 'canvas',
+  id: 'office',
   mount: () => {
-    _renderWorkspaceCanvasPane();
-    if(window.HermesOffice && window.HermesOffice.adapter
-      && typeof window.HermesOffice.adapter.subscribe === 'function'){
-      _canvasPaneUnsubscribe = window.HermesOffice.adapter.subscribe(_renderWorkspaceCanvasPane);
+    const container = $('workspaceOfficePane');
+    if(container && window.HermesOffice && typeof window.HermesOffice.mount === 'function'){
+      window.HermesOffice.mount(container);
     }
   },
   unmount: () => {
-    if(typeof _canvasPaneUnsubscribe === 'function'){ _canvasPaneUnsubscribe(); _canvasPaneUnsubscribe = null; }
+    if(typeof _currentPanel !== 'undefined' && _currentPanel === 'office') return;
+    if(window.HermesOffice && typeof window.HermesOffice.unmount === 'function'){
+      window.HermesOffice.unmount();
+    }
   },
 });
 
@@ -706,7 +663,7 @@ let _activeChatPaneId = 'files';
  * An unknown id falls back to 'files' -- matching the pre-registry switch
  * function's ternary exactly. `_workspacePanelActiveTab`'s value space was
  * audited before widening it past the original three (files/artifacts/todos)
- * to add 'canvas', then 'plane', then 'preview' -- it turned out to have
+ * to add 'office', then 'plane', then 'preview' -- it turned out to have
  * exactly one other reader in this file (the dataset mirror below), so all
  * three were safe; re-check before adding a 7th.
  */
@@ -723,7 +680,7 @@ function switchRightPanelPane(id){
   // Built-in tab buttons keep their existing ids; a pane registered under a
   // different id gets no tab-strip wiring yet -- that's a later slice
   // (render the strip from the registry instead of these hardcoded buttons).
-  ['files','artifacts','todos','canvas','plane','preview'].forEach(known=>{
+  ['files','artifacts','todos','office','plane','preview'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -733,8 +690,8 @@ function switchRightPanelPane(id){
   if(artifacts) artifacts.hidden = nextId !== 'artifacts';
   const todosPanel = $('workspaceTodosPanel');
   if(todosPanel) todosPanel.hidden = nextId !== 'todos';
-  const canvasPane = $('workspaceCanvasPane');
-  if(canvasPane) canvasPane.hidden = nextId !== 'canvas';
+  const officePane = $('workspaceOfficePane');
+  if(officePane) officePane.hidden = nextId !== 'office';
   const planePane = $('workspacePlanePane');
   if(planePane) planePane.hidden = nextId !== 'plane';
   const livePreviewPane = $('workspaceLivePreviewPane');

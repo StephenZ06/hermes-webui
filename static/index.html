@@ -1935,7 +1935,7 @@
       <button class="workspace-panel-tab active" id="workspaceFilesTab" type="button" onclick="switchWorkspacePanelTab('files')" role="tab" aria-selected="true" data-i18n="workspace_files_tab">Files</button>
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false"><span data-i18n="workspace_artifacts_tab">Artifacts</span> <span id="workspaceArtifactsCount" class="workspace-artifacts-count">0</span></button>
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
-      <button class="workspace-panel-tab" id="workspaceCanvasTab" type="button" onclick="switchWorkspacePanelTab('canvas')" role="tab" aria-selected="false" data-i18n="workspace_canvas_tab">Canvas</button>
+      <button class="workspace-panel-tab" id="workspaceOfficeTab" type="button" onclick="switchWorkspacePanelTab('office')" role="tab" aria-selected="false" data-i18n="tab_office">Office</button>
       <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false" data-i18n="tab_tasks">Tasks</button>
       <button class="workspace-panel-tab" id="workspacePreviewTab" type="button" onclick="switchWorkspacePanelTab('preview')" role="tab" aria-selected="false" data-i18n="workspace_preview_tab">Preview</button>
     </div>
@@ -1962,13 +1962,15 @@
     <div class="file-tree" id="fileTree"></div>
     <div class="workspace-artifacts" id="workspaceArtifacts" hidden></div>
     <div class="workspace-todos" id="workspaceTodosPanel" hidden style="flex:1;overflow-y:auto;padding:8px 12px"></div>
-    <!-- Canvas pane (docs/rfcs/chat-split-view-panes.md, Slice 2): a
-         compact, non-interactive delegation tree for the active chat,
-         rendered by AgentCanvas.renderStaticTree() from the same live
-         office adapter the Office 3D view reads (static/office/adapter.js). -->
-    <div class="workspace-canvas-pane" id="workspaceCanvasPane" hidden>
-      <div class="agent-canvas-tree" id="workspaceCanvasTree"></div>
-    </div>
+    <!-- Office pane (docs/rfcs/chat-split-view-panes.md, Slice 2, later
+         swapped from a flat delegation-tree Canvas to the real Office 3D
+         scene per explicit request): mounts the SAME singleton HermesOffice
+         instance the full Office panel uses (office-wrap gives it the
+         flex-column layout that view relies on). HermesOffice supports
+         exactly one live mount at a time -- opening the full Office panel
+         while this pane is showing reclaims the scene there and leaves this
+         container empty until it is reactivated. -->
+    <div class="office-wrap workspace-office-pane" id="workspaceOfficePane" hidden></div>
     <!-- Plane (Kanban tasks) pane (docs/rfcs/chat-split-view-panes.md,
          Slice 3): a read-only task list reusing the Kanban panel's own
          sidebar row renderer (_kanbanRenderSidebar) and live data/polling --

@@ -7588,13 +7588,12 @@ main.main > .main-view:not([id="mainChat"]):not([id="mainSettings"]) .main-view-
 .rightpanel[data-active-tab="files"] .workspace-artifacts{display:none!important;}
 .rightpanel[data-active-tab="todos"] .breadcrumb-bar,.rightpanel[data-active-tab="todos"] .file-tree,.rightpanel[data-active-tab="todos"] #wsEmptyState,.rightpanel[data-active-tab="todos"] .workspace-artifacts{display:none!important;}
 .rightpanel:not([data-active-tab="todos"]) .workspace-todos{display:none!important;}
-.rightpanel[data-active-tab="canvas"] .breadcrumb-bar,.rightpanel[data-active-tab="canvas"] .file-tree,.rightpanel[data-active-tab="canvas"] #wsEmptyState,.rightpanel[data-active-tab="canvas"] .workspace-artifacts{display:none!important;}
-.rightpanel:not([data-active-tab="canvas"]) .workspace-canvas-pane{display:none!important;}
+.rightpanel[data-active-tab="office"] .breadcrumb-bar,.rightpanel[data-active-tab="office"] .file-tree,.rightpanel[data-active-tab="office"] #wsEmptyState,.rightpanel[data-active-tab="office"] .workspace-artifacts{display:none!important;}
+.rightpanel:not([data-active-tab="office"]) .workspace-office-pane{display:none!important;}
 .rightpanel[data-active-tab="plane"] .breadcrumb-bar,.rightpanel[data-active-tab="plane"] .file-tree,.rightpanel[data-active-tab="plane"] #wsEmptyState,.rightpanel[data-active-tab="plane"] .workspace-artifacts{display:none!important;}
 .rightpanel:not([data-active-tab="plane"]) .workspace-plane-pane{display:none!important;}
 .workspace-plane-pane{flex:1;overflow:hidden;min-height:0;}
 .workspace-plane-pane .kanban-list{height:100%;padding:8px 12px;}
-.workspace-canvas-pane{flex:1;overflow:auto;padding:8px 12px;}
 .rightpanel[data-active-tab="preview"] .breadcrumb-bar,.rightpanel[data-active-tab="preview"] .file-tree,.rightpanel[data-active-tab="preview"] #wsEmptyState,.rightpanel[data-active-tab="preview"] .workspace-artifacts{display:none!important;}
 .rightpanel:not([data-active-tab="preview"]) .workspace-livepreview-pane{display:none!important;}
 .workspace-livepreview-pane{flex:1;overflow:hidden;min-height:0;display:flex;flex-direction:column;}

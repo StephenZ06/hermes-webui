@@ -46,8 +46,10 @@ preview remembers a URL per session/workspace.
 
 - A free-form multi-pane / drag-to-split layout. One pane visible at a time,
   chosen from the tab strip, same as today.
-- A second copy of the Office 3D scene. Canvas here is the 2-D tree
-  (`agent-canvas.js`), which is cheap; the Office stays the dedicated view.
+- ~~A second copy of the Office 3D scene...~~ **Superseded by explicit
+  request**: the pane now mounts the real Office scene (see "Pane: Office"),
+  sharing the one singleton rather than running a second copy — the
+  constraint this trades against is spelled out there.
 - Editing Plane tasks from the pane in v1 — read + open-in-panel only.
 - Persisting a live-preview iframe across a full reload (it re-navigates from
   the remembered URL).
@@ -78,16 +80,45 @@ current show/hide of `#fileTree`, `#workspaceArtifacts`, `#workspaceTodosPanel`
 moves into their `mount`/`unmount`). The tab strip is rendered from the
 registry, filtered by `isAvailable`.
 
-### Pane: Canvas
+### Pane: Office
 
-- `mount` calls `AgentCanvas.mount(host)` (already exists) and subscribes the
-  same adapter feed the Office uses (`static/office/adapter.js` /
-  `messages.js` `_wireSSE` → `onSpawn` / `onToolActivity` / `onComplete`).
-- `onSession` → `AgentCanvas.reset()` then replay from
-  `/api/agent-canvas/sessions` for the new sid (same as the Office's
-  `applyHistory`).
-- `unmount` → `AgentCanvas.unmount()` + drop the subscription.
-- `isAvailable` → always (empty state: "No subagents yet").
+**As shipped, second revision (2026-09-12) — swapped from the original
+"Canvas" design below by explicit request, after Canvas had already shipped
+and been used.** Rather than a flat 2-D delegation tree, the pane mounts the
+real `HermesOffice` 3D scene — the exact one the full Office panel shows —
+directly:
+
+- `mount(container)` calls `window.HermesOffice.mount(container)`. No
+  separate renderer, no separate data feed — this pane is a thin pass-through
+  onto the same singleton scene.
+- `unmount()` calls `window.HermesOffice.unmount()`, **except** while the
+  main Office panel is the active top-level view (`_currentPanel ===
+  'office'`) — that panel already reclaims the scene via its own `mount()`
+  call, so unmounting here first would just make the hand-off flicker.
+- **The constraint this trades on, stated plainly**: `HermesOffice` supports
+  exactly one live mount at a time (`static/office/index.js`'s `mount()`
+  tears down whatever container held it before — a real WebGL-context-cap
+  concern, not an oversight). The chat sidebar and the full Office panel are
+  two *independent* UI surfaces that can both be on screen simultaneously
+  (the right panel persists across `_currentPanel` changes), so this is a
+  genuine, user-visible trade-off, not a hidden bug:
+  - Leaving the main Office panel while this pane's tab is active: the scene
+    follows back to the pane (`static/panels.js`'s `switchPanel()` was
+    patched to re-mount into `#workspaceOfficePane` instead of unmounting,
+    when that pane is the active one and the right panel is open).
+  - Clicking into this pane's tab while the main Office panel is showing: the
+    scene moves to the pane, and the main panel goes blank until it's
+    revisited (its own `switchPanel('office')` re-mount call brings it back).
+    Not specially handled — accepted as the direct, self-explanatory result
+    of the user's own click, unlike the first case above, which would
+    otherwise make the scene vanish with no click of theirs to explain it.
+- Original design, superseded: a flat, non-interactive 2-D delegation tree
+  via `AgentCanvas.renderStaticTree()`, fed from the Office's adapter state
+  with a `live` option added to `buildTreeNodes()`/`renderStaticTree()` to
+  stop it coercing a genuinely-running worker to "interrupted" (a real bug in
+  the shared renderer, caught and fixed at the time — kept in
+  `static/agent-canvas.js` since nothing about it was Canvas-pane-specific,
+  even though no pane calls it with `live: true` anymore).
 
 ### Pane: Live preview
 
@@ -185,8 +216,7 @@ shows the same board the full Kanban panel shows:
 
 | State | Owner | Released on |
 |---|---|---|
-| Canvas adapter subscription | Canvas pane | unmount (tab-away, collapse, teardown) |
-| Canvas DOM | `AgentCanvas` | `AgentCanvas.unmount()` |
+| Office WebGL scene (one singleton, two possible hosts) | `HermesOffice` | `HermesOffice.unmount()` — from whichever host's tab-away/panel-leave fires, unless the OTHER host is about to reclaim it (see "Pane: Office") |
 | Live-preview iframe socket | Live-preview pane | unmount → `src=''` |
 | Plane SSE | Plane pane | unmount → `_kanbanStopPolling()` |
 | Active pane id | `localStorage` | n/a (survives reload; re-validated by `isAvailable`) |
@@ -216,39 +246,21 @@ does for the Office (`panels.js:455` `HermesOffice.unmount()`).
    The tab strip itself still renders from the three hardcoded buttons, not
    the registry — that part of Slice 1 is deferred to whichever later slice
    first needs a pane not named files/artifacts/todos in the strip.
-2. **Slice 2 — Canvas pane. Implemented (2026-09-12).** A non-interactive
-   delegation tree, `AgentCanvas.renderStaticTree()` fed from
-   `window.HermesOffice.adapter`/`.getState()` — the SAME live feed the Office
-   3D view reads — not from `AgentCanvas`'s own `onSpawn`/`onToolActivity`/
-   `onComplete` handlers, which agent-canvas.js's own file header says were
-   retired when the Office replaced it as a panel (`static/messages.js` no
-   longer calls them). Reviving that path would have meant re-wiring the SSE
-   fan-out; reading the Office's adapter instead needs nothing extra, since it
-   already receives every event live.
+2. **Slice 2 — Office pane. Implemented (2026-09-12), then swapped
+   (2026-09-12) to the real 3D scene by explicit request** — see "Pane:
+   Office" above for the full design and its trade-off. First revision was a
+   non-interactive 2-D delegation tree (`AgentCanvas.renderStaticTree()` fed
+   from `window.HermesOffice.adapter`/`.getState()`, catching a real
+   `buildTreeNodes()` status-coercion bug along the way — kept in
+   `static/agent-canvas.js`, unused by any pane now but real, tested, shared
+   code); the second revision mounts `HermesOffice` itself directly, which
+   also meant patching `static/panels.js`'s `switchPanel()` so leaving the
+   main Office panel hands the live scene back to this pane instead of
+   tearing it down, when the pane is the one showing it.
 
-   **Deviation found mid-implementation:** `buildTreeNodes()`'s status mapping
-   unconditionally coerced `running` → `interrupted`, correct for its only
-   prior caller (a *finished* cron run row that never recorded a completion
-   event) but wrong for a subagent that is genuinely still running right now.
-   Added a `live` option (default `false`, so the cron delegation card's exact
-   existing behavior is unchanged) that the Canvas pane passes `true` — the
-   same distinction `office/history.js`'s `historicalStatus()` already makes
-   for the Office's own historical replay.
-
-   Nesting: a worker becomes a direct child of the root unless its `parentId`
-   names another currently-live worker, in which case it nests under that
-   worker instead — mirrors `office/history.js`'s `isDirect` check for the 3D
-   floor's replay.
-
-   Added `workspace_canvas_tab` to all 15 locale blocks (a short, standard
-   translation of "canvas" per locale — flag for a native-speaker pass rather
-   than treat as final).
-
-   Tests: `tests/test_chat_pane_registry.py` (tree renders from the adapter
-   state with `live: true`; nested delegation keeps its real parent; mount
-   subscribes, leaving unsubscribes; a live adapter event re-renders while
-   mounted) plus `tests/test_cron_delegation_diagram.py` (unchanged cron
-   behavior with the new `live`-less default).
+   Tests: `tests/test_chat_pane_registry.py` (mount calls `HermesOffice.
+   mount()` with the pane's container; leaving unmounts; leaving does NOT
+   unmount while the main Office panel owns it).
 3. **Slice 3 — Plane (Kanban tasks) pane. Implemented (2026-09-12), scope
    corrected.** The tab shows "Tasks" (`data-i18n="tab_tasks"`, an existing,
    already-15-locale key — no new translation needed) and its internal pane

@@ -464,8 +464,20 @@ async function switchPanel(name, opts = {}) {
   // render loop: browsers cap how many live contexts a page may hold, and a
   // panel the user flips in and out of would burn through that cap in a single
   // session, after which every later mount draws nothing.
+  //
+  // Exception: the chat right panel's own Office pane (static/workspace.js,
+  // docs/rfcs/chat-split-view-panes.md) shares this exact singleton scene. If
+  // that pane's tab is the active one and the panel is open, the scene
+  // should follow the user back there instead of vanishing -- re-mount into
+  // its container (the same call switching to that tab already makes)
+  // rather than tearing the context down just to have nothing showing it.
   if (prevPanel === 'office' && nextPanel !== 'office') {
-    if (window.HermesOffice && typeof window.HermesOffice.unmount === 'function') {
+    const sidebarWantsOffice = typeof _activeChatPaneId !== 'undefined' && _activeChatPaneId === 'office'
+      && typeof _workspacePanelMode !== 'undefined' && _workspacePanelMode !== 'closed';
+    const sidebarOfficeContainer = sidebarWantsOffice ? $('workspaceOfficePane') : null;
+    if (sidebarOfficeContainer && window.HermesOffice && typeof window.HermesOffice.mount === 'function') {
+      window.HermesOffice.mount(sidebarOfficeContainer);
+    } else if (window.HermesOffice && typeof window.HermesOffice.unmount === 'function') {
       window.HermesOffice.unmount();
     }
   }
