@@ -1,6 +1,6 @@
 # Chat split view — pluggable right-panel panes
 
-- **Status:** Proposed (Slices 1-2 implemented)
+- **Status:** Proposed (Slices 1-3 implemented)
 - **Author:** @StephenZ06
 - **Created:** 2026-09-11
 
@@ -107,6 +107,27 @@ registry, filtered by `isAvailable`.
 
 ### Pane: Plane tasks
 
+**As shipped (Slice 3) — corrected from the design below.** There is no
+"chat's bound project → board" link anywhere in the codebase; Kanban boards
+are a per-browser/global preference, independent of WebUI Projects. The pane
+shows the same board the full Kanban panel shows:
+
+- `mount` calls the existing `loadKanban()` (resolves/refreshes the active
+  board, starts the shared poll/SSE connection if not already running).
+  `_kanbanRenderBoard()`'s existing additive-branch pattern (already used to
+  keep its "Office view" in sync with every caller) renders the pane via
+  `_kanbanRenderSidebar()`, extended with an optional container id + click
+  handler — no second fetch, poll, or SSE connection.
+- `unmount` stops the shared connection unless the full Kanban panel is also
+  showing (mirrors `switchPanel()`'s own guard for the same connection).
+- Clicking a task switches to the full Kanban panel first, then opens it
+  there (`#kanbanTaskPreview` lives inside that panel's own DOM) — no editing
+  in the pane.
+- Always available (no `isAvailable` gate) — same as the full Kanban panel's
+  own availability today.
+
+<details><summary>Original pre-implementation design (kept for history)</summary>
+
 - `mount` renders a compact read-only board: reuse `renderKanbanBoard`'s row
   builder against `/api/kanban/config` + `/api/kanban/tasks` for the board
   resolved from the chat's bound project
@@ -116,6 +137,8 @@ registry, filtered by `isAvailable`.
 - Clicking a task opens the full Kanban panel focused on it (`switchPanel
   ('kanban')` + task id) — no editing in the pane for v1.
 - `isAvailable` → `!settings.hide_kanban_panel` and a board resolves.
+
+</details>
 
 ### State ownership / exits
 
@@ -185,8 +208,42 @@ does for the Office (`panels.js:455` `HermesOffice.unmount()`).
    subscribes, leaving unsubscribes; a live adapter event re-renders while
    mounted) plus `tests/test_cron_delegation_diagram.py` (unchanged cron
    behavior with the new `live`-less default).
-3. **Slice 3 — Plane pane.** Read-only board, bound-project resolution, SSE
-   teardown. Tests: board resolves from bound project; unmount closes the SSE.
+3. **Slice 3 — Plane (Kanban tasks) pane. Implemented (2026-09-12), scope
+   corrected.** The tab shows "Tasks" (`data-i18n="tab_tasks"`, an existing,
+   already-15-locale key — no new translation needed) and its internal pane
+   id stays `plane` for continuity with this RFC's naming; "Plane" was always
+   this app's own built-in Kanban board (`api/kanban_bridge.py`), never an
+   integration with the separate `plane.so` product.
+
+   **Deviation found mid-implementation:** there is no "bound project → board"
+   link anywhere in the codebase. Kanban boards are a per-browser/global
+   preference (`localStorage` hint → server's `current` → `default`, see
+   `loadKanbanBoards()`), entirely independent of the WebUI Projects concept
+   this RFC assumed when it was written. Building that link would be a new
+   data-model feature (a `board` field on Projects, or the reverse), not a
+   "read-only pane" — out of scope for this slice. Shipped instead: the pane
+   shows the SAME board the full Kanban panel shows.
+
+   No new fetch, poll, or SSE connection: the pane reuses `loadKanban()`'s
+   existing machinery and `_kanbanRenderSidebar()`'s row renderer (extended
+   with an optional `containerId` + `opts.openTask`, default args unchanged
+   for the Kanban panel's own sidebar) via an additive branch in
+   `_kanbanRenderBoard()` — the same pattern that function already uses to
+   keep its "Office view" (a *different* existing feature, Kanban-dispatched
+   workers) in sync with every one of its callers. Opening a task switches to
+   the full Kanban panel first, since the task detail view renders into
+   `#kanbanTaskPreview`, which lives inside that panel's own DOM.
+
+   Unmount stops the shared poll/SSE connection unless the full Kanban panel
+   is *also* showing (mirrors `switchPanel()`'s own guard for the same
+   connection) — the pane and the full panel are independent consumers of one
+   shared board/connection, not two separate ones.
+
+   Tests: `tests/test_chat_pane_registry.py` (mount loads the board; the pane
+   renders through the shared sidebar renderer with the pane's own container
+   id and click handler; it does not render while hidden; opening a task
+   switches panels first; unmount's stop-polling guard both ways) plus the
+   full existing Kanban suite, unchanged.
 4. **Slice 4 — Live preview pane.** Setting-gated, CSP `frame-src` change,
    URL persistence, localhost-URL chip mining. Tests: URL persists per
    workspace; unmount blanks `src`; pane hidden when the setting is off.

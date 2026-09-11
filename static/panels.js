@@ -2399,9 +2399,15 @@ function _kanbanVisibleTasks(){
   });
 }
 
-function _kanbanRenderSidebar(columns){
-  const list = $('kanbanList');
+// `containerId` and `opts.openTask` let a second, differently-hosted list
+// reuse this exact row shape (the chat right panel's Plane pane, docs/rfcs/
+// chat-split-view-panes.md Slice 3): the Kanban panel's own sidebar keeps
+// its exact prior call (no args -> 'kanbanList' + 'loadKanbanTask'), so this
+// is purely additive.
+function _kanbanRenderSidebar(columns, containerId, opts){
+  const list = $(containerId || 'kanbanList');
   if (!list) return;
+  const openTask = (opts && opts.openTask) || 'loadKanbanTask';
   const tasks = columns.flatMap(col => (col.tasks || []).map(task => ({...task, status: task.status || col.name})));
   if (!tasks.length) {
     list.innerHTML = `<div class="kanban-empty" data-i18n="kanban_no_matching_tasks">${esc(t('kanban_no_matching_tasks'))}</div>`;
@@ -2409,7 +2415,7 @@ function _kanbanRenderSidebar(columns){
   }
   list.innerHTML = tasks.map(task => {
     const meta = _kanbanTaskMeta(task);
-    return `<button class="kanban-list-item" onclick="loadKanbanTask('${esc(task.id)}')">
+    return `<button class="kanban-list-item" onclick="${openTask}('${esc(task.id)}')">
       <span class="kanban-list-status">${esc(_kanbanColumnLabel(task.status))}</span>
       <span class="kanban-list-title">${esc(_kanbanTaskTitle(task))}</span>
       ${meta.length ? `<span class="kanban-meta">${esc(meta.join(' · '))}</span>` : ''}
@@ -2785,6 +2791,12 @@ function _kanbanRenderBoard(){
   // track whatever board data is currently loaded, not a separately-triggered
   // refresh.
   if (typeof _kanbanRenderOfficeView === 'function') _kanbanRenderOfficeView();
+  // Same additive-branch reasoning as the office view above: the chat right
+  // panel's Plane pane (docs/rfcs/chat-split-view-panes.md, Slice 3) needs to
+  // stay in sync with every one of this function's callers -- loadKanban's
+  // initial load AND its poll/SSE refresh, filterKanban, the lane-view toggle
+  // -- and picking one up here is the only place that covers all of them.
+  if (typeof _renderWorkspacePlanePane === 'function') _renderWorkspacePlanePane();
   _kanbanPopulateCrewFilter();
   if (!_kanbanBoard || !_kanbanBoard.columns) {
     board.innerHTML = _kanbanEmptyBoardHtml();

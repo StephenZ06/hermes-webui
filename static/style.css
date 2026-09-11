@@ -7590,6 +7590,10 @@ main.main > .main-view:not([id="mainChat"]):not([id="mainSettings"]) .main-view-
 .rightpanel:not([data-active-tab="todos"]) .workspace-todos{display:none!important;}
 .rightpanel[data-active-tab="canvas"] .breadcrumb-bar,.rightpanel[data-active-tab="canvas"] .file-tree,.rightpanel[data-active-tab="canvas"] #wsEmptyState,.rightpanel[data-active-tab="canvas"] .workspace-artifacts{display:none!important;}
 .rightpanel:not([data-active-tab="canvas"]) .workspace-canvas-pane{display:none!important;}
+.rightpanel[data-active-tab="plane"] .breadcrumb-bar,.rightpanel[data-active-tab="plane"] .file-tree,.rightpanel[data-active-tab="plane"] #wsEmptyState,.rightpanel[data-active-tab="plane"] .workspace-artifacts{display:none!important;}
+.rightpanel:not([data-active-tab="plane"]) .workspace-plane-pane{display:none!important;}
+.workspace-plane-pane{flex:1;overflow:hidden;min-height:0;}
+.workspace-plane-pane .kanban-list{height:100%;padding:8px 12px;}
 .workspace-canvas-pane{flex:1;overflow:auto;padding:8px 12px;}
 .cron-run-usage-strip{display:inline-flex;align-items:center;gap:4px;margin-left:8px;color:var(--text-secondary);font-size:11px;opacity:.72;white-space:nowrap;}
 .cron-run-usage-footer{display:flex;margin:8px 0 0 0;padding-top:8px;border-top:1px solid var(--border-subtle);}

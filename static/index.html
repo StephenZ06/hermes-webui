@@ -1936,6 +1936,7 @@
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false"><span data-i18n="workspace_artifacts_tab">Artifacts</span> <span id="workspaceArtifactsCount" class="workspace-artifacts-count">0</span></button>
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
       <button class="workspace-panel-tab" id="workspaceCanvasTab" type="button" onclick="switchWorkspacePanelTab('canvas')" role="tab" aria-selected="false" data-i18n="workspace_canvas_tab">Canvas</button>
+      <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false" data-i18n="tab_tasks">Tasks</button>
     </div>
     <!-- Project workspace binder: replaces the Files/Artifacts/Todos body while
          .rightpanel carries .project-bind-mode (see openProjectWorkspaceBinder). -->
@@ -1966,6 +1967,15 @@
          office adapter the Office 3D view reads (static/office/adapter.js). -->
     <div class="workspace-canvas-pane" id="workspaceCanvasPane" hidden>
       <div class="agent-canvas-tree" id="workspaceCanvasTree"></div>
+    </div>
+    <!-- Plane (Kanban tasks) pane (docs/rfcs/chat-split-view-panes.md,
+         Slice 3): a read-only task list reusing the Kanban panel's own
+         sidebar row renderer (_kanbanRenderSidebar) and live data/polling --
+         there is no separate fetch or connection here. Opening a task
+         switches to the full Kanban panel first (its detail view lives
+         there, not in a global overlay). -->
+    <div class="workspace-plane-pane" id="workspacePlanePane" hidden>
+      <div class="kanban-list" id="workspacePlaneList"></div>
     </div>
     <div id="wsEmptyState" style="display:none;flex:1;align-items:center;justify-content:center;padding:24px 16px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6"></div>
     <div class="preview-area" id="previewArea">

@@ -46,10 +46,12 @@ def _page(browser):
             <button id="workspaceArtifactsTab"></button>
             <button id="workspaceTodosTab"></button>
             <button id="workspaceCanvasTab"></button>
+            <button id="workspacePlaneTab"></button>
           </div>
           <section id="workspaceArtifacts" hidden></section>
           <section id="workspaceTodosPanel" hidden></section>
           <section id="workspaceCanvasPane" hidden><div id="workspaceCanvasTree"></div></section>
+          <section id="workspacePlanePane" hidden><div id="workspacePlaneList"></div></section>
         </aside>
         """
     )
@@ -71,7 +73,7 @@ def test_the_built_in_panes_are_registered_on_load(browser):
     page = _page(browser)
     try:
         ids = page.evaluate("() => listChatPanes().map(p => p.id).sort()")
-        assert ids == ["artifacts", "canvas", "files", "todos"]
+        assert ids == ["artifacts", "canvas", "files", "plane", "todos"]
     finally:
         page.close()
 
@@ -249,5 +251,115 @@ def test_a_live_update_re_renders_the_pane_while_mounted(browser):
         page.evaluate("() => window._officeListener()")
         after = page.evaluate("() => window._renderCalls.length")
         assert after == before + 1
+    finally:
+        page.close()
+
+
+# ── Plane (Kanban tasks) pane (Slice 3) ──────────────────────────────────────
+
+def _install_fake_kanban(page, columns=None):
+    """Stand in for the Kanban globals in static/panels.js -- not loaded in
+    this isolated workspace.js harness. `_kanbanRenderSidebar` is faked too
+    (not the real DOM-writing one) so these tests assert on the CONTRACT
+    (which columns, which container id, which click handler) rather than
+    depending on panels.js's row markup."""
+    page.evaluate(
+        """(columns) => {
+          window._loadKanbanCalls = 0;
+          window._stopPollingCalls = 0;
+          window._sidebarCalls = [];
+          window._currentPanel = 'chat';
+          window._switchPanelCalls = [];
+          window._loadKanbanTaskCalls = [];
+          window.loadKanban = () => { window._loadKanbanCalls++; };
+          window._kanbanStopPolling = () => { window._stopPollingCalls++; };
+          window._kanbanVisibleTasks = () => columns;
+          window._kanbanRenderSidebar = (cols, containerId, opts) => {
+            window._sidebarCalls.push({cols, containerId, opts});
+          };
+          window.switchPanel = async (name) => { window._switchPanelCalls.push(name); window._currentPanel = name; };
+          window.loadKanbanTask = (taskId) => { window._loadKanbanTaskCalls.push(taskId); };
+        }""",
+        columns or [],
+    )
+
+
+def test_mounting_plane_loads_the_board(browser):
+    page = _page(browser)
+    try:
+        _install_fake_kanban(page)
+        page.evaluate("() => switchRightPanelPane('plane')")
+        calls = page.evaluate("() => window._loadKanbanCalls")
+        assert calls == 1
+    finally:
+        page.close()
+
+
+def test_the_pane_is_rendered_through_the_shared_sidebar_renderer(browser):
+    page = _page(browser)
+    try:
+        cols = [{"name": "ready", "tasks": [{"id": "t1", "title": "Do a thing"}]}]
+        _install_fake_kanban(page, cols)
+        # _renderWorkspacePlanePane() is normally invoked from
+        # _kanbanRenderBoard()'s additive branch (static/panels.js), which
+        # isn't loaded here -- call it directly, the same way that branch
+        # would, once the pane is visible.
+        page.evaluate("() => switchRightPanelPane('plane')")
+        page.evaluate("() => _renderWorkspacePlanePane()")
+        calls = page.evaluate("() => window._sidebarCalls")
+        assert len(calls) == 1
+        assert calls[0]["containerId"] == "workspacePlaneList"
+        assert calls[0]["opts"]["openTask"] == "_openKanbanTaskFromPlanePane"
+        assert calls[0]["cols"] == cols
+    finally:
+        page.close()
+
+
+def test_the_pane_does_not_render_while_hidden(browser):
+    page = _page(browser)
+    try:
+        _install_fake_kanban(page, [{"name": "ready", "tasks": [{"id": "t1"}]}])
+        # Never switched to 'plane' -- the pane stays hidden.
+        page.evaluate("() => _renderWorkspacePlanePane()")
+        calls = page.evaluate("() => window._sidebarCalls")
+        assert calls == []
+    finally:
+        page.close()
+
+
+def test_opening_a_task_switches_to_the_kanban_panel_first(browser):
+    page = _page(browser)
+    try:
+        _install_fake_kanban(page)
+        page.evaluate("() => _openKanbanTaskFromPlanePane('t1')")
+        switches = page.evaluate("() => window._switchPanelCalls")
+        opened = page.evaluate("() => window._loadKanbanTaskCalls")
+        assert switches == ["kanban"]
+        assert opened == ["t1"]
+    finally:
+        page.close()
+
+
+def test_leaving_plane_stops_polling_unless_the_kanban_panel_is_also_open(browser):
+    page = _page(browser)
+    try:
+        _install_fake_kanban(page)
+        page.evaluate("() => switchRightPanelPane('plane')")
+        page.evaluate("() => switchRightPanelPane('files')")
+        stopped = page.evaluate("() => window._stopPollingCalls")
+        assert stopped == 1
+    finally:
+        page.close()
+
+
+def test_leaving_plane_keeps_polling_if_the_kanban_panel_is_showing(browser):
+    page = _page(browser)
+    try:
+        _install_fake_kanban(page)
+        page.evaluate("() => switchRightPanelPane('plane')")
+        page.evaluate("() => { window._currentPanel = 'kanban'; }")
+        page.evaluate("() => switchRightPanelPane('files')")
+        stopped = page.evaluate("() => window._stopPollingCalls")
+        assert stopped == 0
     finally:
         page.close()

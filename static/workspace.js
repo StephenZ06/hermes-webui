@@ -496,6 +496,58 @@ registerChatPane({
   },
 });
 
+// ── Plane pane (docs/rfcs/chat-split-view-panes.md, Slice 3) ──
+//
+// A read-only task list docked beside the chat. There is no per-chat
+// "bound project -> board" link in this codebase -- Kanban boards
+// (api/kanban_bridge.py) are a per-browser/global preference (localStorage
+// hint -> server 'current' -> 'default', see loadKanbanBoards() in
+// static/panels.js) entirely independent of the WebUI Projects concept the
+// RFC assumed. This pane shows the SAME board the full Kanban panel would,
+// live: it reuses loadKanban()'s fetch/poll/SSE machinery and
+// _kanbanRenderSidebar()'s row renderer unchanged, rather than opening a
+// second connection or duplicating the board-resolution logic.
+//
+// Opening a task from here switches to the full Kanban panel first: the task
+// detail view (loadKanbanTask()) renders into #kanbanTaskPreview, which lives
+// inside the Kanban panel's own DOM and is invisible while any other panel is
+// showing.
+async function _openKanbanTaskFromPlanePane(taskId){
+  if(typeof switchPanel === 'function') await switchPanel('kanban');
+  if(typeof loadKanbanTask === 'function') loadKanbanTask(taskId);
+}
+
+/** Called from _kanbanRenderBoard()'s additive branch (static/panels.js) so
+ * this pane stays in sync with every path that already refreshes the board:
+ * loadKanban's initial load, its poll/SSE-driven refresh, filterKanban, the
+ * lane-view toggle. Cheap no-op when the pane isn't the visible tab. */
+function _renderWorkspacePlanePane(){
+  const pane = $('workspacePlanePane');
+  if(!pane || pane.hidden) return;
+  if(typeof _kanbanVisibleTasks !== 'function' || typeof _kanbanRenderSidebar !== 'function') return;
+  _kanbanRenderSidebar(_kanbanVisibleTasks(), 'workspacePlaneList', {openTask: '_openKanbanTaskFromPlanePane'});
+}
+
+registerChatPane({
+  id: 'plane',
+  mount: () => {
+    // loadKanban() also resolves/refreshes the active board and starts the
+    // shared poll/SSE connection if it isn't already running -- both are
+    // idempotent (see loadKanbanBoards()/_kanbanStartPolling() in panels.js),
+    // so this is safe whether or not the full Kanban panel is also live.
+    if(typeof loadKanban === 'function') loadKanban(false);
+  },
+  unmount: () => {
+    // Leave the shared connection running if the full Kanban panel (a
+    // completely independent consumer of the same board/poll state) is still
+    // showing -- mirrors switchPanel()'s own `prevPanel === 'kanban' &&
+    // nextPanel !== 'kanban'` guard in static/panels.js.
+    if(typeof _currentPanel === 'undefined' || _currentPanel !== 'kanban'){
+      if(typeof _kanbanStopPolling === 'function') _kanbanStopPolling();
+    }
+  },
+});
+
 let _activeChatPaneId = 'files';
 
 /**
@@ -506,9 +558,9 @@ let _activeChatPaneId = 'files';
  * An unknown id falls back to 'files' -- matching the pre-registry switch
  * function's ternary exactly. `_workspacePanelActiveTab`'s value space was
  * audited before widening it past the original three (files/artifacts/todos)
- * to add 'canvas' -- it turned out to have exactly one other reader in this
- * file (the dataset mirror below), so this was safe; re-check before adding
- * a 5th.
+ * to add 'canvas', then 'plane' -- it turned out to have exactly one other
+ * reader in this file (the dataset mirror below), so both were safe;
+ * re-check before adding a 6th.
  */
 function switchRightPanelPane(id){
   const nextId = _chatPanes.has(id) ? id : 'files';
@@ -523,7 +575,7 @@ function switchRightPanelPane(id){
   // Built-in tab buttons keep their existing ids; a pane registered under a
   // different id gets no tab-strip wiring yet -- that's a later slice
   // (render the strip from the registry instead of these hardcoded buttons).
-  ['files','artifacts','todos','canvas'].forEach(known=>{
+  ['files','artifacts','todos','canvas','plane'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -535,6 +587,8 @@ function switchRightPanelPane(id){
   if(todosPanel) todosPanel.hidden = nextId !== 'todos';
   const canvasPane = $('workspaceCanvasPane');
   if(canvasPane) canvasPane.hidden = nextId !== 'canvas';
+  const planePane = $('workspacePlanePane');
+  if(planePane) planePane.hidden = nextId !== 'plane';
 
   const next = getChatPane(nextId);
   if(next && typeof next.mount === 'function'){
