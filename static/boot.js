@@ -1136,6 +1136,34 @@ function _micToastKeyForRecognitionError(error){
   let _micPointerDown=false;
   let _micStartSeq=0;
   const _micHoldThresholdMs=300;
+  // Some Chromium forks (Arc, ungoogled builds, network-filtered setups) expose
+  // webkitSpeechRecognition but its Google backend never answers: recording
+  // starts, the UI shows "listening", and no onresult/onerror/onend ever fires.
+  // This watchdog trips if a started session produces nothing, then falls the
+  // mic over to server-side transcription so the button is not silently dead.
+  let _srWatchdog=null;
+  let _srSawResult=false;
+  const _srWatchdogMs=8000;
+  function _clearSrWatchdog(){ if(_srWatchdog){ clearTimeout(_srWatchdog); _srWatchdog=null; } }
+  function _armSrWatchdog(){
+    _clearSrWatchdog();
+    _srSawResult=false;
+    _srWatchdog=setTimeout(()=>{
+      _srWatchdog=null;
+      if(_srSawResult||_activeCaptureMode!=='speech'||!window._micActive) return;
+      _speechStopRequested=true;
+      try{ if(recognition) recognition.abort(); }catch(_e){}
+      localStorage.setItem(_micForceMediaRecorderKey,'1');
+      _forceMediaRecorder=true;
+      recognition=null;
+      _isRecording=false;
+      _micRestartCount=0;
+      void _releaseMicWakeLock();
+      _setRecording(false);
+      window._micPendingSend=false;
+      showToast(t(_canRecordAudio?'mic_no_speech':'mic_network'));
+    },_srWatchdogMs);
+  }
 
   function _setButtonTooltipAndKey(btn, key){
     const text = t(key);
@@ -1270,7 +1298,11 @@ function _micToastKeyForRecognitionError(error){
         err.status=res.status;
         throw err;
       }
-      _commitTranscript(data.transcript||'', prefixSnapshot);
+      const _text=String(data.transcript||'').trim();
+      _commitTranscript(_text, prefixSnapshot);
+      // A 200 with nothing in it (silence, a muted device, an undecodable blob)
+      // otherwise leaves the composer unchanged and the user with no signal.
+      if(!_text) showToast(t('mic_no_speech'));
     }catch(err){
       if(_isServerSttUnavailable(err)&&_allowBrowserSttFallback()){
         window._micPendingSend=false;
@@ -1369,6 +1401,7 @@ function _micToastKeyForRecognitionError(error){
   function _stopMic(){
     _micStartSeq+=1;
     _isRecording=false;
+    _clearSrWatchdog();
     if(!window._micActive) return;
     // Stop the backend that was ACTIVE WHEN RECORDING STARTED — not whatever
     // _rawAudioMode says now. The user can toggle Settings → Sound mid-recording,
@@ -1400,6 +1433,9 @@ function _micToastKeyForRecognitionError(error){
     sr.onstart=()=>{ _finalText=''; };
 
     sr.onresult=(event)=>{
+      // A result — even an interim one — proves the backend is alive.
+      _srSawResult=true;
+      _clearSrWatchdog();
       // #5294: a real result means the continuity restarts are PRODUCTIVE, not a
       // stolen-audio-session tight loop — reset the restart budget so a long
       // dictation with many natural pauses isn't silently capped at
@@ -1419,6 +1455,7 @@ function _micToastKeyForRecognitionError(error){
     };
 
     sr.onend=()=>{
+      _clearSrWatchdog();
       const committed=_finalText
         ? (_prefix&&!_prefix.endsWith(' ')&&!_prefix.endsWith('\n')
             ? _prefix+' '+_finalText.trimStart()
@@ -1458,6 +1495,7 @@ function _micToastKeyForRecognitionError(error){
     };
 
     sr.onerror=(event)=>{
+      _clearSrWatchdog();
       // While dictating with continuity on, a no-speech/aborted error is a normal
       // pause or transient audio-session hiccup — swallow it and let onend restart
       // (bounded by _micMaxRestarts). Desktop one-shot still surfaces the toast.
@@ -1579,6 +1617,7 @@ function _micToastKeyForRecognitionError(error){
       recognition.continuous=_micDictationContinuous();
       recognition.lang=(typeof _locale!=='undefined'&&_locale._speech)||'en-US';
       recognition.start();
+      _armSrWatchdog();
       void _acquireMicWakeLock();
       _setRecording(true);
       return;

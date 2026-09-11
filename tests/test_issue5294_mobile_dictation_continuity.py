@@ -84,6 +84,10 @@ let _micRestartCount = 0;
 const _micMaxRestarts = 20;
 let _activeCaptureMode = null;
 let _forceMediaRecorder = false;
+let _srWatchdog = null;
+let _srSawResult = false;
+const _srWatchdogMs = 8000;
+const _canRecordAudio = true;
 const _micForceMediaRecorderKey = 'mic_force_mediarecorder';
 const _locale = { _speech: 'en-US' };
 let ta = { value: '' };
@@ -103,6 +107,8 @@ function _releaseMicWakeLock() { _micWakeLock = null; return Promise.resolve(); 
 function _acquireMicWakeLock() { return Promise.resolve(); }
 
 // ── The real functions under test ───────────────────────────────────────────
+eval(extractFunc('_clearSrWatchdog'));
+eval(extractFunc('_armSrWatchdog'));
 eval(extractFunc('_micDictationContinuous'));
 eval(extractFunc('_micShouldRestartDictation'));
 eval(extractFunc('_ensureSpeechRecognition'));
