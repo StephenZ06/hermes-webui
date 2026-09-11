@@ -989,6 +989,18 @@ pre-split-view-panes` to get back here if the split-view work needs to be
 thrown away. Still uncommitted by design: branding assets only (`Fox1.png`
 deletion, favicons, `Avatar*.png`) — the user's own WIP, never touch.
 
+## #5 chat split-view panes — Slice 1 done (2026-09-12)
+
+`registerChatPane` / `switchRightPanelPane` live in `static/workspace.js`
+(not a new file — see the RFC's "Deviation" note, found by a real test
+failure). Files/Artifacts/Todos are registry entries now; behavior unchanged.
+Tab strip is still the three hardcoded buttons — rendering it from the
+registry is deferred to whichever later slice first needs a 4th tab.
+
+Next: **Slice 2, the Canvas pane** — mount the existing (unmounted-since-
+the-Office) `AgentCanvas` into a `registerChatPane({id:'canvas', ...})`
+entry. Lowest-risk remaining slice, all the rendering code already exists.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
