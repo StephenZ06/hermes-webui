@@ -2838,12 +2838,13 @@
   .composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-kicker{display:none;}
   .composer-mobile-config-kicker{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
   .composer-mobile-config-value{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  /* The value text (the only visible child once the kicker is hidden) reads a
-     touch high against the icon beside it — flexbox centres the line box, not
-     the glyphs. Nudge it down onto the icon's optical centre. Reported for the
-     Workspace row; the model / quota / reasoning rows share the markup and get
-     the same correction. */
-  .composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-value{position:relative;top:1px;}
+  /* The value text (the only visible child once the kicker is hidden) reads
+     high against the icon beside it — flexbox centres the line box, not the
+     glyphs. Nudge it down onto the icon's optical centre. Reported for the
+     Workspace row (1px wasn't enough — still visibly high; 3px matches the
+     icon); the model / quota / reasoning rows share the markup and get the
+     same correction. */
+  .composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-value{position:relative;top:3px;}
   .composer-mobile-context-action{flex:1 0 100%;align-items:flex-start;cursor:default;overflow:visible;}
   .composer-mobile-context-copy{flex:1 1 auto;gap:2px;}
   .composer-mobile-context-detail{font-size:11px;color:var(--muted);white-space:normal;line-height:1.25;}
