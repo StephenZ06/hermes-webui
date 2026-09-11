@@ -1937,6 +1937,7 @@
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
       <button class="workspace-panel-tab" id="workspaceCanvasTab" type="button" onclick="switchWorkspacePanelTab('canvas')" role="tab" aria-selected="false" data-i18n="workspace_canvas_tab">Canvas</button>
       <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false" data-i18n="tab_tasks">Tasks</button>
+      <button class="workspace-panel-tab" id="workspacePreviewTab" type="button" onclick="switchWorkspacePanelTab('preview')" role="tab" aria-selected="false" data-i18n="workspace_preview_tab">Preview</button>
     </div>
     <!-- Project workspace binder: replaces the Files/Artifacts/Todos body while
          .rightpanel carries .project-bind-mode (see openProjectWorkspaceBinder). -->
@@ -1976,6 +1977,35 @@
          there, not in a global overlay). -->
     <div class="workspace-plane-pane" id="workspacePlanePane" hidden>
       <div class="kanban-list" id="workspacePlaneList"></div>
+    </div>
+    <!-- Live preview pane (docs/rfcs/chat-split-view-panes.md, Slice 4): an
+         iframe onto a URL the user types -- a dev server or app the agent
+         just started. Named "LivePreview" throughout, distinct from the
+         unrelated #previewArea below (that one renders a workspace FILE).
+         What this can embed is governed by the Content-Security-Policy
+         frame-src the server already sends on every response (a same-origin
+         default; an operator widens it via HERMES_WEBUI_CSP_FRAME_EXTRA,
+         api/helpers.py) -- this pane adds no new relaxation of that policy,
+         only a UI onto whatever it already allows. -->
+    <div class="workspace-livepreview-pane" id="workspaceLivePreviewPane" hidden>
+      <div class="livepreview-bar">
+        <input type="text" id="workspaceLivePreviewUrl" class="ws-search-input livepreview-url-input" placeholder="http://localhost:3000" spellcheck="false" autocomplete="off" data-i18n-placeholder="workspace_livepreview_placeholder" onkeydown="if(event.key==='Enter'){event.preventDefault();loadWorkspaceLivePreview();}">
+        <button type="button" class="panel-icon-btn" id="btnLivePreviewGo" onclick="loadWorkspaceLivePreview()" title="Load" data-i18n-title="workspace_livepreview_load" aria-label="Load"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+        <button type="button" class="panel-icon-btn" id="btnLivePreviewReload" onclick="reloadWorkspaceLivePreview()" title="Reload" data-i18n-title="kanban_refresh" aria-label="Reload"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></button>
+        <button type="button" class="panel-icon-btn" id="btnLivePreviewOpen" onclick="openWorkspaceLivePreviewInTab()" title="Open in new browser tab" data-i18n-title="open_in_browser" aria-label="Open in new browser tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>
+      </div>
+      <div class="livepreview-body">
+        <!-- No allow-same-origin: combined with allow-scripts that would let a
+             framed page read/write the parent's cookies whenever the typed
+             URL happens to be same-origin with this app (#779's own
+             invariant, test_sandbox_allows_scripts_only -- caught here
+             before shipping). The CSP frame-src allowlist controls WHICH
+             origins can be embedded at all; this sandbox attribute is a
+             second, independent layer and does not defer to it. -->
+        <iframe id="workspaceLivePreviewFrame" class="livepreview-frame" hidden sandbox="allow-scripts allow-forms allow-popups" title="Live preview"></iframe>
+        <div class="livepreview-empty" id="workspaceLivePreviewEmpty" data-i18n="workspace_livepreview_empty">Enter a URL to preview a running app.</div>
+        <div class="livepreview-blocked" id="workspaceLivePreviewBlocked" hidden></div>
+      </div>
     </div>
     <div id="wsEmptyState" style="display:none;flex:1;align-items:center;justify-content:center;padding:24px 16px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6"></div>
     <div class="preview-area" id="previewArea">

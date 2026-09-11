@@ -548,6 +548,154 @@ registerChatPane({
   },
 });
 
+// ── Live preview pane (docs/rfcs/chat-split-view-panes.md, Slice 4) ──
+//
+// An iframe onto a URL the user types -- a dev server or app the agent just
+// started. What this can embed is governed by the Content-Security-Policy
+// frame-src the server ALREADY sends on every response (api/helpers.py):
+// same-origin by default, widened only if an operator opts in via
+// HERMES_WEBUI_CSP_FRAME_EXTRA. This pane adds no new relaxation of that
+// policy -- it is a UI onto whatever the server already allows, and shows a
+// clear message (rather than a silent blank frame) when the current URL
+// isn't one of those origins.
+let _livePreviewViolationHandler = null;
+
+function _livePreviewStorageKey(){
+  const ws = (window.S && S.session && S.session.workspace) || '';
+  return 'hermes-webui-livepreview:' + ws;
+}
+
+function _restoreWorkspaceLivePreviewUrl(){
+  const input = $('workspaceLivePreviewUrl');
+  if(!input) return;
+  try{
+    const saved = localStorage.getItem(_livePreviewStorageKey());
+    if(saved) input.value = saved;
+  }catch(_e){ /* storage may be unavailable (private mode, quota) -- fine, just no memory */ }
+}
+
+function _livePreviewNormalizeUrl(raw){
+  const value = String(raw || '').trim();
+  if(!value) return '';
+  // "localhost:5173" is a VALID URL on its own -- scheme "localhost", opaque
+  // path "5173" (any `scheme:opaque-path` parses per the URL spec, the same
+  // shape as "mailto:x") -- so a plain `new URL(value)` success is not proof
+  // it is http(s). Try the value as typed first (covers http://... and
+  // https://...); only if that isn't http(s) — parse failure OR some other
+  // scheme — retry with an assumed http:// prefix, the shape people actually
+  // type for a bare host:port.
+  const asHttp = (candidate) => {
+    try{
+      const u = new URL(candidate);
+      return (u.protocol === 'http:' || u.protocol === 'https:') ? candidate : null;
+    }catch(_e){ return null; }
+  };
+  return asHttp(value) || asHttp('http://' + value) || '';
+}
+
+function _clearLivePreviewViolationWatch(){
+  if(_livePreviewViolationHandler){
+    document.removeEventListener('securitypolicyviolation', _livePreviewViolationHandler);
+    _livePreviewViolationHandler = null;
+  }
+}
+
+/** CSP blocks an iframe navigation silently -- no onerror fires for it in any
+ * browser. The `securitypolicyviolation` event is the one reliable signal, so
+ * arm a listener for the frame-src directive before setting `frame.src`, and
+ * show a real explanation instead of leaving a permanently blank iframe. */
+function _armLivePreviewViolationWatch(url){
+  _clearLivePreviewViolationWatch();
+  let origin = '';
+  try{ origin = new URL(url).origin; }catch(_e){}
+  _livePreviewViolationHandler = (event) => {
+    const directive = String((event && (event.effectiveDirective || event.violatedDirective)) || '');
+    if(!directive.includes('frame-src')) return;
+    _showWorkspaceLivePreviewBlocked(origin);
+  };
+  document.addEventListener('securitypolicyviolation', _livePreviewViolationHandler);
+}
+
+function _showWorkspaceLivePreviewBlocked(origin){
+  const frame = $('workspaceLivePreviewFrame');
+  const blocked = $('workspaceLivePreviewBlocked');
+  if(frame) frame.hidden = true;
+  if(blocked){
+    blocked.hidden = false;
+    blocked.textContent = (typeof t === 'function' ? t('workspace_livepreview_blocked', origin) : null)
+      || `This origin can't be embedded: ${origin}`;
+  }
+}
+
+function loadWorkspaceLivePreview(){
+  const input = $('workspaceLivePreviewUrl');
+  const frame = $('workspaceLivePreviewFrame');
+  const empty = $('workspaceLivePreviewEmpty');
+  const blocked = $('workspaceLivePreviewBlocked');
+  if(!input || !frame) return;
+  const url = _livePreviewNormalizeUrl(input.value);
+  if(!url){
+    frame.hidden = true;
+    if(empty) empty.hidden = false;
+    if(blocked) blocked.hidden = true;
+    _clearLivePreviewViolationWatch();
+    return;
+  }
+  input.value = url;
+  try{ localStorage.setItem(_livePreviewStorageKey(), url); }catch(_e){}
+  if(empty) empty.hidden = true;
+  if(blocked) blocked.hidden = true;
+  frame.hidden = false;
+  _armLivePreviewViolationWatch(url);
+  frame.onload = () => {
+    // A CSP-blocked navigation still fires 'load' for the resulting blank
+    // document in some browsers -- this cannot prove success. It only clears
+    // a blocked banner left over from a PREVIOUS attempt; the violation
+    // listener above is what actually detects a block on THIS attempt.
+    if(blocked) blocked.hidden = true;
+  };
+  frame.src = url;
+}
+
+function reloadWorkspaceLivePreview(){
+  const frame = $('workspaceLivePreviewFrame');
+  const input = $('workspaceLivePreviewUrl');
+  if(!frame || frame.hidden || !input || !input.value){ loadWorkspaceLivePreview(); return; }
+  _armLivePreviewViolationWatch(input.value);
+  // Re-assigning the same src does not reliably reload in every browser;
+  // going through blank first guarantees a fresh navigation (and a fresh
+  // shot at the violation listener above).
+  frame.src = 'about:blank';
+  frame.src = input.value;
+}
+
+function openWorkspaceLivePreviewInTab(){
+  const input = $('workspaceLivePreviewUrl');
+  const url = input && _livePreviewNormalizeUrl(input.value);
+  if(url) window.open(url, '_blank', 'noopener');
+}
+
+registerChatPane({
+  id: 'preview',
+  mount: () => {
+    _restoreWorkspaceLivePreviewUrl();
+    const input = $('workspaceLivePreviewUrl');
+    if(input && input.value) loadWorkspaceLivePreview();
+  },
+  unmount: () => {
+    // Blank the iframe so a preview left running (a dev server's websocket,
+    // a page's own polling) actually stops instead of continuing to run
+    // invisibly in a hidden pane.
+    const frame = $('workspaceLivePreviewFrame');
+    if(frame){ frame.onload = null; frame.src = 'about:blank'; frame.hidden = true; }
+    const empty = $('workspaceLivePreviewEmpty');
+    if(empty) empty.hidden = false;
+    const blocked = $('workspaceLivePreviewBlocked');
+    if(blocked) blocked.hidden = true;
+    _clearLivePreviewViolationWatch();
+  },
+});
+
 let _activeChatPaneId = 'files';
 
 /**
@@ -558,9 +706,9 @@ let _activeChatPaneId = 'files';
  * An unknown id falls back to 'files' -- matching the pre-registry switch
  * function's ternary exactly. `_workspacePanelActiveTab`'s value space was
  * audited before widening it past the original three (files/artifacts/todos)
- * to add 'canvas', then 'plane' -- it turned out to have exactly one other
- * reader in this file (the dataset mirror below), so both were safe;
- * re-check before adding a 6th.
+ * to add 'canvas', then 'plane', then 'preview' -- it turned out to have
+ * exactly one other reader in this file (the dataset mirror below), so all
+ * three were safe; re-check before adding a 7th.
  */
 function switchRightPanelPane(id){
   const nextId = _chatPanes.has(id) ? id : 'files';
@@ -575,7 +723,7 @@ function switchRightPanelPane(id){
   // Built-in tab buttons keep their existing ids; a pane registered under a
   // different id gets no tab-strip wiring yet -- that's a later slice
   // (render the strip from the registry instead of these hardcoded buttons).
-  ['files','artifacts','todos','canvas','plane'].forEach(known=>{
+  ['files','artifacts','todos','canvas','plane','preview'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -589,6 +737,8 @@ function switchRightPanelPane(id){
   if(canvasPane) canvasPane.hidden = nextId !== 'canvas';
   const planePane = $('workspacePlanePane');
   if(planePane) planePane.hidden = nextId !== 'plane';
+  const livePreviewPane = $('workspaceLivePreviewPane');
+  if(livePreviewPane) livePreviewPane.hidden = nextId !== 'preview';
 
   const next = getChatPane(nextId);
   if(next && typeof next.mount === 'function'){

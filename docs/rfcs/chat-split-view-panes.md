@@ -1,6 +1,6 @@
 # Chat split view — pluggable right-panel panes
 
-- **Status:** Proposed (Slices 1-3 implemented)
+- **Status:** Proposed (all 4 slices implemented)
 - **Author:** @StephenZ06
 - **Created:** 2026-09-11
 
@@ -91,19 +91,60 @@ registry, filtered by `isAvailable`.
 
 ### Pane: Live preview
 
-- `mount` renders a URL bar + a sandboxed iframe
-  (`sandbox="allow-scripts allow-forms allow-popups allow-same-origin"` —
-  same-origin only if the URL is the WebUI's own origin; otherwise drop it).
-- URL remembered per `workspace` in `localStorage`
-  (`hermes-webui-livepreview:<workspace-hash>`).
-- Auto-fill: if the agent runs a tool that prints `http://localhost:<port>` or
-  `http://127.0.0.1:<port>` (mirror `agent-canvas`'s URL mining), offer it as a
-  one-click chip. Do **not** auto-navigate.
-- A reload button and an "open in browser tab" button.
-- `unmount` → blank the iframe `src` (stop the page, free the socket).
-- CSP: the iframe loads third-party origins, which the app CSP must allow in
-  `frame-src`. Gate the whole pane behind a setting
-  (`chat_live_preview_enabled`, default off) so self-hosters opt in.
+**As shipped (Slice 4) — corrected from the design below.**
+`api/helpers.py` already sends an *enforced* Content-Security-Policy on every
+response, with `frame-src` same-origin by default and an existing,
+already-validated operator opt-in to widen it
+(`HERMES_WEBUI_CSP_FRAME_EXTRA`). This pane needed no CSP change at all —
+it's a UI onto whatever that policy already allows:
+
+- `mount` restores the workspace's remembered URL (if any) and loads it;
+  `unmount` blanks the iframe `src` (stop the page, free the socket).
+- URL bar + sandboxed iframe, `sandbox="allow-scripts allow-forms
+  allow-popups"` — **not** `allow-same-origin`, corrected from the design
+  below. This repo already has a hard invariant against that exact
+  combination (`tests/test_779_html_preview.py::test_sandbox_allows_scripts_
+  only`, "would expose parent cookies"), which this pane's first draft
+  violated and the full suite caught before it shipped: `allow-scripts` +
+  `allow-same-origin` on a URL that happens to be same-origin with the WebUI
+  itself (nothing stops a user typing the app's own URL into the box) lets
+  the framed page read/write the parent's cookies. The CSP `frame-src`
+  allowlist controls *which origins* can be embedded at all; this sandbox
+  attribute is a separate, independent layer underneath it, not something
+  the allowlist substitutes for.
+  Reload and "open in new tab" buttons. Enter in the URL field loads it.
+- URL remembered per `session.workspace` in `localStorage`
+  (`hermes-webui-livepreview:<workspace>`, no hash needed — a raw path is a
+  fine key).
+- A bare `host:port` (the common case people actually type) gets an assumed
+  `http://` prefix. **Bug caught by the test for this**: a naive
+  "does `new URL(x)` throw" check is not a valid http(s) test —
+  `new URL("localhost:5173")` **succeeds**, parsing `localhost` as the
+  *scheme* (any `scheme:opaque-path` is a valid URL, the same shape as
+  `mailto:x`), so the very case this exists to handle silently produced an
+  empty URL. Fixed by checking `protocol === 'http:' || 'https:'` on both the
+  as-typed attempt and the `http://`-prefixed retry, not "did it throw".
+- CSP silently drops a blocked iframe navigation — no `onerror` fires for it
+  in any browser. Listens for the `securitypolicyviolation` DOM event
+  (`effectiveDirective`/`violatedDirective` including `"frame-src"`) and shows
+  an explanation naming `HERMES_WEBUI_CSP_FRAME_EXTRA`, instead of a
+  permanently blank iframe with no indication of why.
+- No settings gate: unconditionally available, same as Canvas and Tasks. A
+  dedicated `chat_live_preview_enabled` toggle would be redundant with the
+  CSP allowlist, which is the setting that actually determines whether the
+  pane can do anything.
+- **Deferred, not shipped**: auto-filling the URL bar from a
+  `http://localhost:<port>`-shaped string the agent's tool output prints
+  (mirroring `agent-canvas`'s URL mining). Real value, but a genuinely new,
+  more speculative feature (scanning tool output for URLs) rather than UI on
+  an existing capability like the rest of this slice — left for a follow-up
+  if wanted.
+
+Tests: `tests/test_chat_pane_registry.py` (URL loads and persists; a bare
+host gets `http://`; a non-http URL and an empty URL are both rejected
+safely; mount restores the saved URL; a `securitypolicyviolation` for
+`frame-src` shows the blocked message and one for an unrelated directive is
+ignored; reload forces a fresh navigation; unmount blanks the frame).
 
 ### Pane: Plane tasks
 
@@ -244,9 +285,12 @@ does for the Office (`panels.js:455` `HermesOffice.unmount()`).
    id and click handler; it does not render while hidden; opening a task
    switches panels first; unmount's stop-polling guard both ways) plus the
    full existing Kanban suite, unchanged.
-4. **Slice 4 — Live preview pane.** Setting-gated, CSP `frame-src` change,
-   URL persistence, localhost-URL chip mining. Tests: URL persists per
-   workspace; unmount blanks `src`; pane hidden when the setting is off.
+4. **Slice 4 — Live preview pane. Implemented (2026-09-12), scope corrected**
+   — see "Pane: Live preview" above. No CSP change needed (the enforced
+   policy + `HERMES_WEBUI_CSP_FRAME_EXTRA` already existed); no settings
+   gate (redundant with that policy); URL-normalization bug caught by its
+   own test before shipping; localhost-URL chip mining deferred as a
+   separate, more speculative feature.
 
 Each slice is its own PR with before/after screenshots at desktop + narrow +
 mobile widths.
@@ -258,9 +302,14 @@ mobile widths.
   bar so "Canvas" doesn't read as a workspace sub-view? Leaning: keep it in
   place, rename the strip's aria-label from "Workspace panel views" to
   "Chat side panel".
-- Live preview across origins needs `frame-src *` (or a user allowlist) in the
-  CSP. Allowlist is safer but is another settings surface. Default-off + a
-  single `frame-src` relaxation behind the flag is the v1 compromise.
+- ~~Live preview across origins needs `frame-src *`...~~ Resolved: this
+  allowlist already existed (`HERMES_WEBUI_CSP_FRAME_EXTRA`,
+  `api/helpers.py`) before this RFC was written; no new settings surface
+  needed.
 - Does Canvas-in-pane replace the "View live" affordance that currently jumps
   to the Office, or complement it? Complement: the pane is the glance, the
   Office is the room.
+- Still open: whether the tab strip should keep rendering from six hardcoded
+  buttons or start rendering from the registry (`listChatPanes()` +
+  `isAvailable`) — no pane has needed dynamic availability yet, but a future
+  one (e.g. Plane truly scoped to a bound project) likely will.
