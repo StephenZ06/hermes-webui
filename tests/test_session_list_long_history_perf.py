@@ -56,9 +56,15 @@ def _sessions_payload_rows():
             "last_message_at": 20,
         },
         {
+            # Filed under a project so it stays profile-scoped and excluded
+            # below -- an unfoldered ("General") row is the deliberate
+            # exception to profile scoping (see
+            # tests/test_general_chat_visible_across_profiles.py) and would
+            # otherwise appear here, which is not what this fixture is for.
             "session_id": "other-profile",
             "title": "Other profile",
             "profile": "other",
+            "project_id": "other-project",
             "archived": False,
             "message_count": 5,
             "updated_at": 10,

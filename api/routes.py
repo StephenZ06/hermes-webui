@@ -2600,6 +2600,17 @@ def _build_session_list_cache_payload(
     # the "Show N from other profiles" affordance without sending the
     # cross-profile rows by default.
     #
+    # Exception: a session with no project_id ("General" in the new-chat
+    # destination picker -- the unfoldered/date-grouped list) is never
+    # profile-scoped. Project folders are a per-profile organizing concept
+    # (#1614), so hiding a foldered chat behind the active profile makes
+    # sense; a General chat isn't filed under anything profile-specific, and
+    # a user who starts one from whichever profile happens to be active does
+    # not expect it to vanish from the sidebar the next time they switch.
+    # This only changes what LISTS as visible here -- session access control
+    # (auth.py, models.py, upload.py's own _profiles_match calls) is
+    # unrelated and still enforces the owning profile on every operation.
+    #
     # IMPORTANT: scope BEFORE _keep_latest_messaging_session_per_source.
     # _messaging_source_key is profile-blind (#1614 follow-up): if the
     # same Slack/Telegram identity has sessions in profiles A and B, a
@@ -2612,7 +2623,10 @@ def _build_session_list_cache_payload(
         scoped = merged
         other_profile_count = 0
     else:
-        scoped = [s for s in merged if _profiles_match(s.get("profile"), active_profile)]
+        scoped = [
+            s for s in merged
+            if not s.get("project_id") or _profiles_match(s.get("profile"), active_profile)
+        ]
         other_profile_count = 0 if _is_isolated_profile_mode() else len(merged) - len(scoped)
     diag_stage("messaging_dedupe")
     archived_scoped = _keep_latest_messaging_session_per_source(
@@ -5757,6 +5771,115 @@ def apply_cors_preflight_headers(handler) -> None:
     handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+
+def _agent_canvas_state_db_parents() -> list:
+    """Chats that delegated to a `delegate_task` subagent, from hermes-agent's state.db.
+
+    Subagent child sessions never get a WebUI sidecar file (they're spawned
+    entirely inside hermes-agent, never through a WebUI session-creation
+    path), so they never appear in the normal /api/sessions listing no matter
+    how it's scoped — see list_parents_with_subagent_children()'s docstring.
+    This is the only way the history sidebar can know which chats ever
+    delegated to a subagent.
+
+    Raises on a database failure; the caller turns that into a 502.
+    """
+    from api.agent_sessions import list_parents_with_subagent_children, resolve_agent_state_db_paths
+    from api.config import STATE_DIR
+
+    db_paths = resolve_agent_state_db_paths()
+    base_db_path = STATE_DIR.parent / 'state.db'
+    # resolve_agent_state_db_paths() can return the base state.db (the
+    # gateway-bridged deployment's single hermes-agent process writes every
+    # WebUI-origin delegate_task's rows there regardless of which WebUI
+    # profile is active) UNIONED with a profile-scoped one (real rows from a
+    # native `hermes` CLI session run with --profile <name>, which genuinely
+    # does write there). Only the base-sourced parents can mix in other
+    # profiles' chats and need the WebUI-session profile filter below — the
+    # profile-scoped ones are already exclusively that profile's by
+    # construction, filtering them the same way would wrongly drop them (no
+    # WebUI sidecar => no profile tag to match).
+    base_parents: list = []
+    scoped_parents: list = []
+    for path in db_paths:
+        bucket = base_parents if path == base_db_path else scoped_parents
+        bucket.extend(list_parents_with_subagent_children(path))
+    return _filter_parents_to_active_profile(base_parents) + scoped_parents
+
+
+def _filter_parents_to_active_profile(parents: list) -> list:
+    """Drop history entries whose parent chat belongs to another profile.
+
+    Best-effort: a lookup failure returns the list unfiltered rather than
+    emptying a sidebar.
+    """
+    try:
+        # No `from api.profiles import ...` here: both helpers are already
+        # imported at module scope (see the re-export block near the top), and
+        # a function-level import of the same names makes them locals of the
+        # whole function.
+        from api.models import all_sessions
+
+        active_profile = get_active_profile_name()
+        profile_by_sid = {
+            s.get("session_id"): s.get("profile")
+            for s in (all_sessions() or [])
+            if isinstance(s, dict) and s.get("session_id")
+        }
+        return [
+            p for p in parents
+            if _profiles_match(profile_by_sid.get(p.get("parent_session_id")), active_profile)
+        ]
+    except Exception:
+        logger.debug("agent-canvas: profile filtering failed, returning unfiltered", exc_info=True)
+        return parents
+
+
+def _merge_cross_profile_ledger(parents: list) -> list:
+    """Fold cross-profile delegations into the state.db entries.
+
+    A `delegate_to_profile` child is created through POST /api/session/new, so
+    it is an ordinary `source='webui'` row in the TARGET profile's state.db
+    with no parent_session_id — nothing state.db can group. Without this merge
+    a chat whose only delegations were cross-profile never appeared in the
+    sidebar at all, and one that delegated both ways showed only half its run.
+
+    Best-effort: a broken ledger costs the cross-profile entries, never the
+    state.db ones.
+    """
+    try:
+        from api import cross_profile_ledger
+
+        ledger_parents = _filter_parents_to_active_profile(
+            cross_profile_ledger.parents_with_delegations()
+        )
+    except Exception:
+        logger.debug("agent-canvas: cross-profile ledger unavailable", exc_info=True)
+        return parents
+
+    by_id = {p.get("parent_session_id"): p for p in parents}
+    for entry in ledger_parents:
+        existing = by_id.get(entry.get("parent_session_id"))
+        if existing is None:
+            parents.append(entry)
+            by_id[entry.get("parent_session_id")] = entry
+            continue
+        # The same chat delegated both ways. One entry, both sets of children,
+        # dated by whichever run is newer.
+        seen = {c.get("session_id") for c in existing.get("children") or []}
+        existing.setdefault("children", []).extend(
+            c for c in entry.get("children") or [] if c.get("session_id") not in seen
+        )
+        existing["latest_at"] = max(existing.get("latest_at") or 0, entry.get("latest_at") or 0)
+    return parents
+
+
+def _agent_canvas_parents() -> list:
+    """Every chat with a replayable delegation run, newest first."""
+    parents = _merge_cross_profile_ledger(_agent_canvas_state_db_parents())
+    parents.sort(key=lambda e: e.get("latest_at", 0), reverse=True)
+    return parents
 
 
 def _csrf_exempt_path(path: str) -> bool:
@@ -14511,62 +14634,11 @@ def handle_get(handler, parsed) -> bool:
         })
 
     if parsed.path == "/api/agent-canvas/sessions":
-        # Subagent child sessions never get a WebUI sidecar file (they're
-        # spawned entirely inside hermes-agent, never through a WebUI
-        # session-creation path), so they never appear in the normal
-        # /api/sessions listing no matter how it's scoped — see
-        # list_parents_with_subagent_children()'s docstring. This is the
-        # only way the Agent Canvas history sidebar can know which chats
-        # ever delegated to a subagent.
-        from api.agent_sessions import list_parents_with_subagent_children, resolve_agent_state_db_paths
         try:
-            from api.config import STATE_DIR
-
-            db_paths = resolve_agent_state_db_paths()
-            base_db_path = STATE_DIR.parent / 'state.db'
-            # resolve_agent_state_db_paths() can return the base state.db
-            # (the gateway-bridged deployment's single hermes-agent process
-            # writes every WebUI-origin delegate_task's rows there
-            # regardless of which WebUI profile is active) UNIONED with a
-            # profile-scoped one (real rows from a native `hermes` CLI
-            # session run with --profile <name>, which genuinely does write
-            # there). Only the base-sourced parents can mix in other
-            # profiles' chats and need the WebUI-session profile filter
-            # below — the profile-scoped ones are already exclusively that
-            # profile's by construction, filtering them the same way would
-            # wrongly drop them (no WebUI sidecar => no profile tag to match).
-            base_parents: list[dict] = []
-            scoped_parents: list[dict] = []
-            for path in db_paths:
-                bucket = base_parents if path == base_db_path else scoped_parents
-                bucket.extend(list_parents_with_subagent_children(path))
+            return j(handler, {"parents": _agent_canvas_parents()})
         except Exception as e:
             logger.debug("GET /api/agent-canvas/sessions failed", exc_info=True)
             return j(handler, {"parents": [], "error": str(e)}, status=502)
-        try:
-            # No `from api.profiles import ...` here: both helpers are already
-            # imported at module scope (see the re-export block near the top),
-            # and a function-level import of the same names makes them locals
-            # of this whole handler. Every earlier branch that used the bare
-            # name then read an unassigned local instead of the module one --
-            # GET /api/projects raised NameError on every call because of it.
-            from api.models import all_sessions
-
-            active_profile = get_active_profile_name()
-            profile_by_sid = {
-                s.get("session_id"): s.get("profile")
-                for s in (all_sessions() or [])
-                if isinstance(s, dict) and s.get("session_id")
-            }
-            base_parents = [
-                p for p in base_parents
-                if _profiles_match(profile_by_sid.get(p.get("parent_session_id")), active_profile)
-            ]
-        except Exception:
-            logger.debug("GET /api/agent-canvas/sessions: profile filtering failed, returning unfiltered", exc_info=True)
-        parents = base_parents + scoped_parents
-        parents.sort(key=lambda e: e.get("latest_at", 0), reverse=True)
-        return j(handler, {"parents": parents})
 
     if parsed.path == "/api/git/branches":
         return _handle_git_branches(handler, parsed)
@@ -18861,9 +18933,13 @@ def _handle_sessions_search(handler, parsed):
     all_profiles = _all_profiles_enabled(parsed)
     sessions = all_sessions()
     if not all_profiles:
+        # Same General-chat exception as /api/sessions (see _build_session_list_
+        # cache_payload's profile_scope comment): an unfoldered session isn't
+        # profile-scoped, so it should still turn up in search regardless of
+        # the active profile.
         sessions = [
             s for s in sessions
-            if _profiles_match(s.get("profile"), active_profile)
+            if not s.get("project_id") or _profiles_match(s.get("profile"), active_profile)
         ]
     # Reject a malformed depth instead of letting int() raise ValueError and
     # surface as a confusing 500. Clamp to >= 0 so a negative value can't reach
@@ -25461,16 +25537,19 @@ def _normalize_chat_attachments(raw_attachments):
 # EXTERNAL CONSUMER — do not delete as "unused". The browser frontend uses the
 # streaming chat path, so this synchronous POST /api/chat handler (and the
 # process-global CHAT_LOCK it is the sole user of) looks dead from inside this
-# repo. It is not: hermes-agent's `delegate_to_profile` tool drives a target
-# profile's whole turn by POSTing here over loopback
-# (/api/profile/switch -> /api/session/new -> /api/chat), so cross-profile
-# delegation breaks silently if this endpoint, its response shape
-# ({"answer", "status"}), or its env-var threading below is removed or changed.
-# CHAT_LOCK's global serialization is likewise load-bearing for that feature:
-# because it is held across the entire turn, a nested delegation issued from
-# inside a child profile's turn would deadlock on it. That is prevented on the
-# hermes-agent side by the X-Hermes-Cross-Profile-Depth header read below,
-# which lets the tool reject an over-deep hop BEFORE it ever POSTs here.
+# repo. It is not: it is the documented loopback entry point for driving one
+# session's whole turn and getting the answer back inline
+# ({"answer", "status"}), and hermes-agent's `delegate_to_profile` tool still
+# sends the X-Hermes-Cross-Profile-Depth header read below so a deployment
+# pinned to this endpoint stays depth-capped.
+#
+# That tool no longer runs its child turns here. CHAT_LOCK is held across the
+# ENTIRE turn, so two delegations to two different profiles serialised against
+# each other — a three-profile fan-out took the sum of its three turns — and a
+# nested delegation would have deadlocked on a lock its own parent held. The
+# tool now uses /api/chat/start plus /api/chat/stream/status, which take only a
+# per-session lock, and records the child's delegation depth directly against
+# the child session (api/cross_profile_depth.py) since it runs in this process.
 def _handle_chat_sync(handler, body):
     """Fallback synchronous chat endpoint (POST /api/chat). Not used by frontend."""
     stale_response = _agent_runtime_barrier_response(runner_local_owned=False)
