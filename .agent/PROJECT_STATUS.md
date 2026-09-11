@@ -989,17 +989,41 @@ pre-split-view-panes` to get back here if the split-view work needs to be
 thrown away. Still uncommitted by design: branding assets only (`Fox1.png`
 deletion, favicons, `Avatar*.png`) — the user's own WIP, never touch.
 
-## #5 chat split-view panes — Slice 1 done (2026-09-12)
+## #5 chat split-view panes — Slices 1-3 done (2026-09-12)
 
 `registerChatPane` / `switchRightPanelPane` live in `static/workspace.js`
 (not a new file — see the RFC's "Deviation" note, found by a real test
-failure). Files/Artifacts/Todos are registry entries now; behavior unchanged.
-Tab strip is still the three hardcoded buttons — rendering it from the
-registry is deferred to whichever later slice first needs a 4th tab.
+failure). Files/Artifacts/Todos, Canvas, and Tasks (internal id `plane`) are
+all registry entries now. Tab strip is still five hardcoded buttons —
+rendering it from the registry is deferred to whichever later slice first
+needs to add/remove a tab dynamically (`isAvailable`).
 
-Next: **Slice 2, the Canvas pane** — mount the existing (unmounted-since-
-the-Office) `AgentCanvas` into a `registerChatPane({id:'canvas', ...})`
-entry. Lowest-risk remaining slice, all the rendering code already exists.
+- **Slice 2 (Canvas)**: reads `window.HermesOffice.adapter`/`.getState()` —
+  the SAME live feed the Office 3D view uses — NOT `AgentCanvas`'s own
+  onSpawn/onComplete handlers, which that file's own header says were retired
+  when the Office replaced it. Found and fixed a real bug in the shared
+  renderer: `buildTreeNodes()` unconditionally turned `running` into
+  `interrupted` (right for its only prior caller, a finished cron row; wrong
+  for a subagent genuinely still working). Added a `live` option, default
+  `false`, cron's behavior byte-for-byte unchanged.
+- **Slice 3 (Tasks, internal id `plane`)**: the RFC assumed a "chat's bound
+  project → Kanban board" link that **does not exist** in this codebase —
+  boards are a per-browser/global preference, unrelated to WebUI Projects.
+  Corrected scope: the pane shows the same board the full Kanban panel shows,
+  reusing `loadKanban()` + `_kanbanRenderSidebar()` directly (extended with
+  an optional container id + click handler) — no second connection. A stray
+  literal `"static/panels.js"` in an HTML doc-comment collided with
+  `test_extensions_settings_panel.py`'s script-load-order substring check;
+  reworded, not a real regression.
+
+Both slices needed a real correction to the RFC's pre-implementation design —
+worth re-reading the RFC's "Deviation found" notes before touching either
+pane again, and before starting Slice 4.
+
+Next: **Slice 4, Live preview** — the remaining slice, and the one the RFC
+itself flags as riskiest: it is the only pane with a genuinely NEW capability
+(an arbitrary-origin iframe) rather than a reuse of an existing live feed,
+and the only one touching CSP (`frame-src`). Setting-gated, default off.
 
 ## Next actions
 
