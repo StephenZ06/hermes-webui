@@ -99,7 +99,10 @@ was stubbed. It needs a session crossing 50% of a 200k-token window.
    Leave one at its default and `from_config()` returns a *disabled* policy.
 6. **`_handle_chat_sync` (`POST /api/chat`) is the sole holder of `CHAT_LOCK`.**
    The browser uses the streaming path. Driving a parent turn through the sync
-   endpoint makes a delegated child block on its own parent until timeout.
+   endpoint makes a delegated child block on its own parent until timeout —
+   and, until 2026-09-10, made every cross-profile delegation serialise against
+   every other one. `delegate_to_profile` no longer uses that endpoint; see
+   "Cross-profile delegation runs in parallel" below.
 
 ## Agent checkout: making local changes survive
 
@@ -119,17 +122,526 @@ subagent. Two things to know before touching it. The callback is invoked as
 `(event_type, tool_name, preview, args, **kwargs)` — four positionals, matching
 `_ChildProgressRelay._relay`; pass one and `api/streaming.py`'s `on_tool` reads
 it as a *tool name* and the event silently degrades to `tool.started`, drawing
-nothing. And the child runs behind a synchronous `POST /api/chat`, so there is
-no progress stream: start and complete only, never `subagent.tool`. A desk
-showing invented tool activity would be worse than one that says "working".
+nothing. And the tool polls the child's stream only for the fact that it
+closed, never for its contents: start and complete only, never `subagent.tool`.
+A desk showing invented tool activity would be worse than one that says
+"working".
+
+Getting the parent agent there needed a third thing (2026-09-10). The registry
+never hands a handler the agent: `model_tools._execute_tool` builds
+`dispatch_kwargs` from ids alone and has no agent in scope to add, so
+`kw.get("parent_agent")` was always `None` and cross-profile children drew
+nothing. `delegate_task` is not a counter-example — it reaches an agent only
+because `agent/tool_executor.py` special-cases it by name. Rather than add a
+second special case to a checkout every update force-resets, the tool now finds
+the live agent itself (`_live_parent_agent`): the WebUI already keeps it in
+`api.config.AGENT_INSTANCES`, keyed by the stream that owns the session
+(`session_writeback_owner`, falling back to a scan of
+`STREAM_SESSION_OWNERS`). That agent carries the very
+`tool_progress_callback` the Office listens on. `_session_id_from_context`
+backs it up by reading `HERMES_SESSION_ID`, which the WebUI binds for every
+turn — without a session id the depth cap silently disappears, because
+`_current_depth` answers 0 for a session it cannot find. That part still needs
+**no** `custom-agent-patches` entry: it lives in files upstream does not own.
+Making the delegations run *in parallel* does need one — see below.
 
 Both idempotent. Currently protected: `tools/delegate_to_profile.py`,
 `gateway/api_session_rollover.py`, `tools/skill_sections.py`, their tests, the
 rollover port's patch to `agent/conversation_loop.py` and
-`hermes_cli/config_defaults.py`, and section scoping's patch to
-`tools/skills_tool.py`.
+`hermes_cli/config_defaults.py`, section scoping's patch to
+`tools/skills_tool.py`, parallel cross-profile delegation's patch
+(`30-parallel-cross-profile-delegation.patch`) to
+`agent/tool_dispatch_helpers.py` and `agent/tool_executor.py`, and
+`40-opencode-go-thinking-disable.patch` to
+`plugins/model-providers/opencode-zen/__init__.py` (+ its test) — OpenCode Go's
+Kimi/DeepSeek endpoints 400 on `thinking: {type: disabled}`.
+
+## Cross-profile delegation runs in parallel (2026-09-10)
+
+Reported as "the task wasn't done in parallel — I only see one subagent, and
+the docs-gits agent never appeared on the office floor". Both were real, from
+two independent causes. Evidence is session `6a3b001f57af`, run
+`b3f3027651174c03b4e51d77e6a18328`: three `delegate_to_profile` calls arrived
+in ONE assistant message (4.5 ms and 4.2 ms between one `tool_complete` and the
+next `tool` start — the model did batch them), and ran 52.2 s, then 64.9 s,
+then 79.7 s with zero overlap. 199 s for work that should have taken ~80 s.
+
+**Serialisation had two layers, and fixing only the outer one buys nothing.**
+
+1. `agent/tool_dispatch_helpers.py` admits calls to a parallel run from an
+   allowlist; anything absent is a sequential barrier. `delegate_to_profile`
+   was absent. Now in `_PARALLEL_SAFE_SPAWNERS` — kept out of
+   `_PARALLEL_SAFE_TOOLS`, whose name promises read-only.
+2. Even admitted, every child turn ran on `POST /api/chat`, which holds the
+   process-global `CHAT_LOCK` for its whole duration. Three concurrent threads
+   would simply have queued on it. The tool now drives the child on the
+   streaming path — `/api/chat/start`, poll `/api/chat/stream/status`, read the
+   reply back from `GET /api/session` — which takes only a per-session lock.
+3. And the concurrent batch deadline defaults to 420 s, shorter than a real
+   turn. `_CONCURRENT_DEADLINE_EXEMPT_TOOLS` (in `agent/tool_executor.py`)
+   drops the deadline for a batch containing one, exactly as
+   `_SEQUENTIAL_DEADLINE_EXEMPT_TOOLS` already did for `delegate_task`. Without
+   it a genuine fan-out reports every branch timed out while the turns run on.
+
+The depth cap needed rehoming: only `_handle_chat_sync` reads the
+`X-Hermes-Cross-Profile-Depth` header, and the streaming path has no handler to
+republish it. The tool runs inside the WebUI process, so `_child_depth` now
+records the depth against the child's session id directly, in the same
+`api/cross_profile_depth.py` registry `_current_depth` reads. The header is
+still sent so a deployment pinned to the sync endpoint stays capped.
+
+**The office floor was a separate bug.** `clearFinishedForNewRun()` in
+`static/office/adapter.js` cleared the floor whenever a spawn arrived and every
+known worker was terminal — a proxy for "a new run started" that is exactly
+wrong for a fan-out whose siblings do not overlap. Sequential delegation meant
+sibling #2 deleted sibling #1's desk, and #3 deleted #2's: docs-gits WAS drawn,
+for 52 s, then removed 1.1 s after it finished. Spawn events now carry
+`run_id` (`static/messages.js` stamps the SSE stream id onto the payload) and
+`clearForRun()` only clears on a CHANGE of a known run. A running worker is
+still never removed, and a spawn with no run id — the reconcile snapshot and
+the historical replay both — keeps the old proxy.
+
+Tests: `tests/test_office_adapter.py` (run identity),
+`tests/tools/test_delegate_to_profile.py` and
+`tests/tools/test_parallel_cross_profile_delegation.py` in the agent checkout.
+Full WebUI suite green at 15844 passed.
+
+Verified live on run `423ad7568b594a35a708305593585ce4`: three spawns 17 ms
+apart, completions at 33.0 s / 44.3 s / 80.6 s — genuinely overlapping.
+
+### `GET /api/session` is not current when a turn ends
+
+That same run returned "completed but returned no answer" for all three
+delegations, and the Office desks said so too. The wait was correct: the
+child's `done` event fired at t=507.40 and polling stopped at t=507.97 (the
+journal keeps receiving events until t=513.65, but those are *title*
+generation, not the turn). The reply was on the session object at t=507.28.
+`GET /api/session?...&msg_limit=12` still answered **200 with no assistant
+row**. Its payload is a display projection — sidecar reconciled against
+state.db, `_message_window_for_display` → `_messages_for_limited_payload` —
+and that reconciliation is not current the instant a turn ends. Replayed
+offline against the same sessions afterwards it returns the reply fine, so the
+window is small and it is a staleness, not a scoping or auth failure (all
+three GETs were 200).
+
+`_final_answer` now reads the WebUI's **own session store** first
+(`api.models.get_session`), which the tool can do because it runs in that
+process, with the HTTP projection as the fallback and a bounded retry
+(`ANSWER_SETTLE_SECONDS`, 15 s) over both. Confirmed in the running container:
+`_local_transcript` returns the real reply for all three sessions that had
+reported none. Do not "simplify" this back to a single HTTP read.
+
+### Cross-profile runs were absent from the Office history
+
+The history sidebar answers "which chats delegated?" from hermes-agent's
+`state.db`, where a `delegate_task` child is a row carrying
+`parent_session_id`. A `delegate_to_profile` child is not that: the tool
+creates it with `POST /api/session/new`, so it lands in the **target
+profile's** `state.db` as an ordinary `source='webui'` row with
+`parent_session_id` NULL. Confirmed on the live boxes — `7af3a152ed3c` in
+`profiles/docs-gits/state.db`, `901a6287484f` in `backend`, `13f258fe5f81` in
+`frontend`, all parentless. Nothing recorded that one chat caused them, so a
+cross-profile run was watchable live and gone from history the moment it
+ended. Every row the sidebar *did* show was a `delegate_task` run on
+coding-opencode — one profile and one model on all eight children is correct
+for that tool, which spawns inside the current profile by design.
+
+Fixed with a WebUI-side ledger, `api/cross_profile_ledger.py`, writing to the
+(previously empty and entirely unreferenced) `$STATE_DIR/
+cross_profile_delegations/`. One JSON file per child,
+`<parent_session_id>/<child_session_id>.json` — per child, not per parent,
+because siblings now run in parallel and a file per parent would make three
+concurrent delegations read-modify-write the same file and lose each other's
+rows. Records shaped like `agent_sessions._session_node_dict` so the endpoint
+merges the two lists without translating either, plus a `cluster` field.
+
+Writing `parent_session_id` onto the child's state.db row was the other option
+and is worse: the parent lives in a *different* profile's database, and
+`list_parents_with_subagent_children` is built on each database being a
+separate universe. A cross-database parent id surfaces the child as its own
+top-level entry.
+
+`GET /api/agent-canvas/sessions`'s body is now three helpers in
+`api/routes.py` — `_agent_canvas_state_db_parents`,
+`_filter_parents_to_active_profile`, `_merge_cross_profile_ledger` — so the
+merge is testable without a handler. A chat that delegated both ways gets one
+entry dated by the newer run; a child in both sources is drawn once; a broken
+ledger costs the cross-profile entries and never the state.db ones.
+
+`static/office/history.js` honours `cluster` for a **direct** child only, so a
+replayed cross-profile child keeps its `profile:<name>` pod instead of being
+dropped onto the conductor. Real nesting still wins: a grandchild belongs
+under its own parent, not under a profile sign.
+
+Tests: `tests/test_cross_profile_ledger.py` (20), three added to
+`tests/test_office_history.py`, six to the agent's
+`tests/tools/test_delegate_to_profile.py` (52 there now). Full WebUI suite
+green at 15867 passed.
+
+**Not verified**: no live cross-profile run has been recorded yet — the ledger
+only starts filling from the next delegation, and existing runs cannot be
+back-filled (nothing recorded the parent link at the time). Deployed
+2026-09-10; needs one fan-out, then the run should appear in the Office
+sidebar and replay with three profile pods.
+
+### The model kept reaching for the wrong tool
+
+Run `46a709ca…` (session `e4610e650d33`, 2026-09-10 11:27Z) looked like a
+regression — three desks, one profile, one model — and was not. The prompt
+named docs-gits / frontend / backend. The model ran `tool_search`, then
+`tool_describe('delegate_to_profile')`, wrote in its own reasoning *"Let me
+delegate all three in parallel using delegate_to_profile"* — and then emitted
+`delegate_task`. That spawns inside the current profile, so all three children
+were coding-opencode / kimi-k2.7-code at `depth=0` with `parent_id=None`. The
+Office drew that correctly.
+
+Three things pushed it there, and the third was ours:
+
+1. `delegate_to_profile` is a **deferred** tool (`tool_search` reported
+   `total_available: 6`), so calling it is a third bridge hop —
+   `tool_search` → `tool_describe` → `tool_call`. `delegate_task` is always in
+   the schema.
+2. It took one goal per call. Three profiles meant three of those hops, while
+   `delegate_task` took `tasks=[...]` in one.
+3. Its description said *"Use delegate_task instead to split work across
+   several workers"* and never mentioned parallelism — a sentence written when
+   two cross-profile delegations genuinely could not overlap. The parallelism
+   fix removed the constraint and left the description that described it.
+
+Fixed by giving the tool the batch it was missing: `tasks=[{profile, goal,
+context?, workspace?}, ...]`, capped at `MAX_PARALLEL_TASKS` (6, because each
+task holds a WebUI session and a whole turn of another profile). The
+per-delegation body is now `_delegate_one`, called directly for one task and
+once per thread for a batch — everything it touches (its auth session, its
+child session, its desk, its ledger record) belongs to that task alone, which
+is what makes the fan-out safe. Results come back in the order the model listed
+them whatever order they finish in, and one task failing costs its own answer
+only. The whole batch is refused for one bad entry: half a fan-out leaves the
+model to work out which subtask silently did not happen.
+
+The description now names the batch as the preferred shape and says outright
+that `delegate_task` cannot cross profiles.
+
+Passing `profile`/`goal` *and* `tasks` is an error rather than a guess — "run
+the one, the three, or all four" has no right answer.
+
+Tests: 67 in `tests/tools/test_delegate_to_profile.py`, including a
+`threading.Barrier(3)` rendezvous that fails if the tasks are run serially
+(every other batch test passes under serial execution). Schema verified
+against the live profile set inside the running container.
+
+Verified live on run `04fd4987…` (session `94c77261bc8e`, 2026-09-10 11:39Z):
+ONE `delegate_to_profile` call with three tasks, three spawns inside 0.19 s,
+three profiles and three models, completions at +27.5 / +43.8 / +78.3 s, real
+answers, tagged blocks in the order asked for though they finished in another,
+and all three recorded in the ledger.
+
+### A finished run replayed as three 'Interrupted' desks
+
+Reported straight after that run. The run was fine — every ledger record says
+`completed` with a real `ended_at`, and every entry on disk replays as
+completed. The bug is *when the office snapshot was taken*:
+
+1. The ledger records a delegation at spawn (`status: running`, no
+   `ended_at`), deliberately — an interrupted run still delegated.
+2. The sidebar listing refetches on a timer, so during the run it holds those
+   unfinished rows.
+3. `historicalStatus()` mapped `running` to `interrupted`, on the reasoning
+   that in a *finished* session that can only mean cut off. True of an old
+   state.db row; false while the run is still going.
+4. `showHistory()` built `_historyAdapter` once, from the listing as it stood
+   at click time, and nothing ever rebuilt it — so the frozen floor said
+   Interrupted long after the run completed.
+
+Before the ledger a cross-profile run was not in the sidebar at all, so this
+could not happen to it; the ledger made the run appear from the instant it
+starts, which is exactly the window that breaks.
+
+`static/office/history.js` now takes `{live}`: a still-running child of a live
+run stays `running` and gets **no completion event at all** — the adapter
+coerces any non-terminal completion to `completed`, so emitting one would
+invent an outcome. A finished run keeps the original correction.
+
+`static/office/index.js` gained `historySignature(parent)` (children × status ×
+ended_at) and `refreshHistory()`, called from the listing refresh: when the
+open run's rows change the frozen office is rebuilt, deliberately WITHOUT
+`resetView()` so a background rebuild does not yank the camera or close the
+detail panel being read. Only picking a different run re-frames.
+
+Reproduced and verified both ways against the real listing:
+
+| listing | live | replayed |
+|---|---|---|
+| mid-run | true | 3 running, conductor orchestrating |
+| mid-run | false | 3 interrupted, conductor idle |
+| finished | either | 3 completed, conductor idle |
+
+Known edge: a run the user genuinely interrupts reads `running` until
+`LIVE_WINDOW_SECONDS` elapses, then `interrupted`. Self-correcting, and the
+alternative is calling live work "cut off" — the reported bug.
+
+Tests: 11 added (4 in `tests/test_office_history.py`, 7 in
+`tests/test_office_sidebar_live.py`). Full WebUI suite green at 15878 passed.
 
 Full detail in `docs/architecture/agent-api-contract.md`.
+
+### Switching chats stranded the previous run frozen on the Office floor (2026-09-10, uncommitted)
+
+Reported: the Office animates while a delegation is live, then after clicking a
+different chat in the sidebar (or ~30s later) the connector lines are dead and
+the floor is frozen on a run whose subagents have already finished. Figures
+still move (the render loop never stopped; the idle conductor paces), which is
+what made it look like a half-broken animation rather than a completed run.
+
+Root cause: `static/messages.js` gates the `subagent_spawn/tool/complete` SSE
+feed on `S.session.session_id === activeSid`. Leave a chat and its still-open
+desks never receive their completion events; the global reconcile poll
+(`/api/subagents/active`) retires them ~10s later and the floor is left frozen.
+The Office live view is meant to "track the running session"
+(`static/office/index.js`), and the old Agent Canvas reset itself on every
+cross-session switch in `loadSession()` for this exact reason — but the Office
+that replaced it (commit `4af629c4`) was never given the same call. The
+`window.AgentCanvas.reset()` line at `static/sessions.js` ~1873 still runs,
+against a module kept alive only for `renderStaticTree`.
+
+Fix: one `window.HermesOffice.reset()` call next to it, same
+`currentSid && currentSid !== sid` guard. The floor clears on switch and the
+new session's stream + reconcile snapshot rebuild it from what is live now.
+Design choice was "follow the active chat" (not a global live view).
+
+Tests: `test_office_panel.py::test_loadsession_resets_the_office_on_a_cross_session_switch`
+(wiring), `tests/test_office_animation_resume.py` (browser, opt-in — reset
+clears desks/seats and the loop keeps running). Widened the char-offset window
+in `test_session_channel_option_x.py::test_load_session_rearms_stream_on_every_early_return`
+(16000 → 17000) — the added lines pushed the fetch-error catch past its cutoff,
+same brittleness that was widened once before for #4946.
+
+### Office visual-polish pass (2026-09-10, uncommitted)
+
+Five reported nits, all in `static/office/`:
+
+1. **Floor signage, not a nameplate.** `ensureConductor` now paints "Conductor"
+   on the plinth with `makeFloorTitle` (the Business-floor treatment) and the
+   floating plate is gone — with it, the `drawNameplate(conductor…, 'running')`
+   status repaint; the plinth outline already carries the orchestrating cue.
+   `syncOffice` labels the `__conductor__` cluster pod "Subagents" (Business
+   pods still win with their department name; nested-subagent pods stay
+   unlabelled).
+2. **Desk nameplates fill their box.** `makeNameplate` canvas 512→640, sprite
+   9.5→11; `drawNameplate` measure-fits to the plate edge (new `fitText`
+   binary-search) instead of a hard 20-char slice; `shortLabel` cap 42→56.
+   `test_office_adapter.py` updated (label length 56).
+3. **Connector lines fade in.** `makeConnector` idle opacity 0.45→**0** (an
+   unlit bridge is not drawn), `DASH_FADE_MS` 420→800 — a delegation starting
+   eases the bridge up from nothing. Platform-edge outlines unchanged (a
+   still edge is a deliberate "finished" cue; `idleOpacity >= 0.5` is pinned).
+4. **Arrivals route around furniture.** `createArrival(distance, speed,
+   lateral)` — the figure starts out in the aisle to one side (sides alternate
+   by desk index) and `advanceArrival` tapers `lateral`→0 over the last
+   `ARRIVAL_MERGE` units, so it rounds into the chair instead of walking
+   straight through the monitor and chair of the row behind. Scene applies
+   `arrival.lateral` to `person.position.x` and faces the figure along its
+   travel direction, snapping to `Math.PI` when seated.
+5. **Seated figures face the monitor.** `person.rotation.y = Math.PI` in
+   `ensureSeat` — makePerson's "work" pose reaches +z and the seat is on the
+   desk's +z side, so the figure was typing with its back to the screen.
+6. **Floor signage** (follow-up). `makeFloorTitle` gained an opt-in `{fit}`:
+   with it, the font auto-fits so the letterspaced text spans ~92% of the
+   canvas (84–176px, tracking scales with it) — a short name like "Sales" is
+   painted as large as "Operations" instead of a third the size. Without it,
+   the original fixed 96px/16-track behaviour is unchanged. `fit` is passed for
+   the conductor plinth (`CONDUCTOR_SLAB*0.82`) and every named pod
+   (`slabWidth*0.88`); the two catch-all pods — "Subagents" and "The Floor" —
+   sit on large slabs and keep the original size and placement (explicitly
+   asked for). Fitted signs are placed their own height back from the front
+   edge so a taller sign never pokes past it.
+
+Also: **"View live" now switches the main view.** `window.officeReturnToLive`
+was a bare alias for `returnToLive()` (view-mode reset only); it now
+`switchPanel('office')` then `returnToLive()`, so pressed from a chat or a
+history replay it lands on the live floor. `test_office_history.py` updated.
+
+Tests: `test_office_motion.py` (aisle arrival), `test_office_outlines.py`
+(bridge fades from invisible), `test_office_panel.py` (signage, facing),
+`tests/test_office_visual_polish.py` (browser, opt-in — screenshots + View
+live + label length). Full office suite (236) green; runtime-guard lint clean.
+
+### Office navigation + two sidebar tweaks (2026-09-10, uncommitted)
+
+1. **Desktop project-folder rows are taller.** `.project-folder-list
+   .project-chip` padding `3px 8px` → `7px 8px` + `min-height:34px`
+   (`static/style.css`). The `@media (max-width:640px)` override
+   (`9px 8px; min-height:40px`) is unchanged, so mobile is untouched. Chat
+   sidebar and Agent Canvas rows share the selector and still match.
+   `test_project_folder_row_responsiveness.py` updated.
+
+2. **Office camera is navigable** (`static/office/scene.js`). One Pointer
+   Events path for mouse and touch: drag pans (`groundPoint` unprojects the
+   cursor to the floor and the grabbed point tracks it), wheel and two-finger
+   pinch zoom toward the cursor/pinch-centre (`zoomAbout`), a stationary press
+   that lifts quickly is a tap. A tap picks a worker (fly to its desk, as
+   before), or — new — frames the pod under it: pod groups carry
+   `userData.podCluster` (the conductor plinth too) and `focusOnPod` tweens to
+   its centre at a fitted zoom. Empty ground still pulls back out. Works on both
+   outlets. `.office-canvas` gets `touch-action:none` + `cursor:grab` so the
+   gestures reach the canvas instead of scrolling the page. The old `click`
+   listener is gone; `focusOnWorker`/`resetView`/`getView` unchanged.
+   Tests: `tests/test_office_navigation.py` (browser — pan, wheel zoom, tap a
+   pod, synthetic pinch), `test_office_panel.py` (wiring + touch-action).
+
+3. **The bottom sidebar card sits lower.** `.hermes-cli-card` margin
+   `6px 8px 40px` → `6px 8px 8px` so left/right/bottom gaps match; a
+   `@media (max-width:640px)` rule keeps `margin-bottom:40px` on mobile to clear
+   the browser chrome. Covers both the "HERMES CLI" and "OFFICE" cards (same
+   class).
+
+### Async-delegation batch still dumped its wall (2026-09-10, uncommitted)
+
+Reported again after edb084dda ("collapse async delegation deliveries"). That
+fix added the `_asyncDelegationBatchInfo` detection + `async-delegation-row`
+card, but its check in the `renderMsgs` loop sat **after** the process-wakeup
+branch, and nothing excluded the batch from `isProcessWakeup`. The live delivery
+path stamps the injected turn `_source='process_wakeup'`
+(`_start_async_delegation_wakeup_turn` → `start_session_turn(source=
+"process_wakeup")` → `stamp_message_source`), so every real batch reached the
+browser as a process-wakeup row. `_processWakeupInfo` cannot parse the batch
+body, so it fell to the raw `<pre class="process-wakeup-text">` dump — the whole
+results wall, which is what the card existed to stop. (On a plain reload the DB
+row carries no `_source`, so the card *did* render — the bug only showed live.)
+
+Evidence: session `8359391b986e` msg 1175 in `coding-opencode/state.db` —
+`role='user'`, `display_kind=NULL`, content starts with the marker. The current
+`ui.js` detector returns `detected:true` for that exact string; the render loop
+was the gap. Browser repro
+(`tests/test_async_delegation_render_browser.py`): without the fix the row is
+`.process-wakeup-row .process-wakeup-text` (wall); with it, a collapsed
+`.async-delegation-row` card, `data-role='async_delegation'`.
+
+Fix (`static/ui.js`): hoist `_asyncDelegationInfo` above `isProcessWakeup` and
+make `isProcessWakeup = … && !_asyncDelegationInfo`; the existing card branch
+reuses it. Tests: `test_async_delegation_message_collapse.py` (+2),
+`test_async_delegation_render_browser.py` (new, opt-in).
+
+### `invalid thinking: only type=enabled is allowed` — fixed agent-side (2026-09-10)
+
+The turn the batch triggers (an assistant reply, then **title generation** for
+the now-titled session) 400'd: `HTTP 400 … invalid thinking: only type=enabled
+is allowed for this model`, provider `opencode-go`, model `kimi-k2.7-code`.
+
+Chain: title-gen (`api/streaming.py::generate_title_raw_via_agent`) sets
+`agent.reasoning_config = {"enabled": False}` and expects each provider profile
+to *drop* the disable when its endpoint can't express it. hermes-agent's
+`OpenCodeGoProfile` (`plugins/model-providers/opencode-zen/__init__.py`
+`_thinking_toggle_extras`) instead emitted `thinking: {"type": "disabled"}` for
+Kimi K2 / DeepSeek — and OpenCode Go's "Console Go" relay rejects that
+("only type=enabled is allowed"). A pinned agent test
+(`test_disabled_emits_thinking_disabled_without_effort`) had codified the wrong
+assumption. Confirmed from `docker logs`: the 400 fires right after title-gen's
+`/api/reasoning?model=kimi-k2.7-code&provider=opencode-go`.
+
+Fix (agent, via `custom-agent-patches/40-opencode-go-thinking-disable.patch`):
+`_thinking_toggle_extras`'s `enabled is False` branch now returns `({}, {})` —
+omit the field, ride the model's default thinking (a silently-ignored disable
+beats a dead turn). Agent tests updated (`test_opencode_go_profile.py`, 30
+pass). **Applied to the live `~/.hermes/hermes-agent` checkout** — needs a
+container recreate (bind-mounted, so `up -d` picks it up alongside the WebUI
+rebuild).
+
+### Speech recognition failed silently (2026-09-10, uncommitted)
+
+Reported on Arc (Chromium): mic shows "listening", no text, no error. Two
+silent-failure paths, both in `static/boot.js`:
+
+1. **Browser `webkitSpeechRecognition` hang.** Arc / ungoogled / network-filtered
+   Chromium expose the API but its Google backend never answers —
+   `recognition.start()` succeeds, `_setRecording(true)` paints "listening",
+   and no `onresult` / `onerror` / `onend` ever fires. No watchdog → dead mic.
+   Fix: `_armSrWatchdog()` armed right after `recognition.start()`, cleared on
+   the first `onresult` / on `onend` / `onerror` / `_stopMic`. If nothing lands
+   in 8s it aborts, persists `mic_force_mediarecorder='1'` (so later clicks use
+   `/api/transcribe`), releases the wake lock, and toasts `mic_no_speech`
+   (`mic_network` when there is no MediaRecorder to fall back to).
+2. **Server STT returned a 200 with an empty transcript** (silence, a muted
+   device, an undecodable blob) → `_transcribeBlob` called
+   `_commitTranscript('')` which leaves the composer untouched and says
+   nothing. Now toasts `mic_no_speech` when `res.ok` but the trimmed transcript
+   is blank.
+
+Server STT is available in the live container (`(True, 'local')` — faster-whisper
+`base`, `stt.enabled: true`; no `ffmpeg` binary but PyAV decodes webm/opus).
+Tests: `tests/test_speech_recognition_watchdog.py` (new), harness update in
+`test_issue5294_mobile_dictation_continuity.py`. Mic/voice suite (324) green.
+
+### Faster STT: warm the model, persist the cache, fall back to local, prefer Groq (2026-09-11)
+
+The 16.9 s first `/api/transcribe` was a one-time faster-whisper model
+**download** (~150 MB), not transcription — warm calls were 0.4–1.1 s. But the
+HF cache lived in the container's ephemeral layer, so every `up --build`
+re-downloaded it, and the configured provider had no fallback.
+
+- **`api/stt_warmup.py`** (new) + a `;`-chained call in `server.py`: a daemon
+  thread preloads the local Whisper model at boot when faster-whisper is
+  installed and STT is enabled, so the first dictation is never cold.
+- **`HF_HOME=/home/hermeswebui/.hermes/webui/hf-cache`** in all three
+  `docker-compose*.yml` — the model cache now lives inside the mounted `.hermes`
+  volume and downloads once, ever.
+- **`api/upload.py`**: `handle_transcribe` now retries via
+  `transcribe_audio_local_fallback` when the configured provider fails (down,
+  rate-limited, no key), and `handle_transcribe_capability` reports `available`
+  whenever a local backend exists — so a cloud-provider outage never drops the
+  mic to (often-broken) browser SpeechRecognition.
+- **`~/.hermes/config.yaml`** (user config): `stt.provider: groq`
+  (`whisper-large-v3-turbo` — ~300–800 ms, better accuracy, ~$0.03/hr),
+  `stt.local.model: base.en` + `language: en` for the local path/fallback.
+  Groq needs `GROQ_API_KEY` in `~/.hermes/.env` (line 413, currently commented);
+  until then STT transparently uses local `base.en`.
+- `test_server_py_under_750_lines` → `test_server_py_stays_thin` (ceiling
+  749 → 760; the split has landed, one wire-in line per starter is fine).
+
+Tests: `tests/test_stt_warmup.py` (new, 6), 2 added to
+`test_voice_transcribe_endpoint.py`.
+
+**Follow-up — Groq wasn't actually being used** (the first live transcribe after
+deploy still took 17.5 s and downloaded `base`). Two causes:
+
+1. **Profile config overrode `provider`.** `_load_stt_config()` merges the
+   active profile's `config.yaml` over the base, and every
+   `~/.hermes/profiles/*/config.yaml` carried a default `stt:` block with
+   `provider: local`. Only visible once `api.upload` (→ `api.profiles`) is
+   imported, which is why a bare `python -c` test showed `groq` and the running
+   WebUI showed `local`. Fixed: set `provider: groq`, `local.model: base.en`,
+   `local.language: en`, `groq.model: whisper-large-v3-turbo` in the base
+   config **and all 7 profile configs**.
+2. **`GROQ_API_KEY` from `~/.hermes/.env` was invisible.**
+   `tools.transcription_common` evaluates `_has_groq_key = _has_key("GROQ_API_KEY"…)`
+   at *module import*, before the agent's lazy `.env` injection runs — so the
+   check cached `False`. Fixed: `docker-compose*.yml` now pass
+   `GROQ_API_KEY=${GROQ_API_KEY:-}` into the container env (`os.environ`, from
+   PID 1), and `~/Apps/hermes-webui/.env` (git-ignored, compose auto-loads)
+   holds the key. Verified in-container: `_get_provider` → `groq`, capability
+   `(True, 'groq')`, transcribe `prov=groq`.
+
+### Insights panel stat cards were stale (2026-09-11, uncommitted)
+
+Reported: Sessions / Messages / Tokens / Cost (and the charts / model table)
+didn't update while the Insights panel stayed open — only System health did,
+because it has its own `startSystemHealthMonitor` poll (`static/ui.js`).
+`loadInsights()` only ran on panel-open, the manual refresh button, or a period
+change.
+
+Fix (`static/panels.js`): `_startInsightsAutoRefresh` / `_stop` / `_sync`
+mirroring the logs pattern — a 15 s `setInterval` that calls
+`loadInsights(false)` while `_currentPanel === 'insights'` and the tab is
+visible, self-terminating when the panel is left; wired into `switchPanel` next
+to `_syncLogsAutoRefresh()` and a `visibilitychange` catch-up. The re-render
+(`box.innerHTML = …`) now preserves scroll position, any open
+`details.insights-card`, and the System-health panel's last-rendered metric
+values (so an auto tick doesn't flash it to "Loading…" before its own poll
+refills it).
+
+Tests: `test_insights.py::test_insights_panel_auto_refreshes_while_visible`,
+`tests/test_insights_autorefresh_browser.py` (opt-in — one tick fires, stops on
+leave).
 
 ## Chat-page layout on large monitors (uncommitted, 2026-09-04)
 
@@ -376,6 +888,50 @@ Two facts worth keeping:
   run with `--use-angle=swiftshader` is what caught the split build.
 
 Revert point for the whole line of work: tag `pre-office-phase1`.
+
+## UX batch (2026-09-11)
+
+Seven-task overnight batch. Five landed, one is an RFC, two need the user to
+point at the exact element.
+
+- **Office live dot** — the sidebar marked every stored run live when it had an
+  unclosed child row within a 15-min window; the cross-profile ledger leaves
+  `running` rows behind for finished runs, so a chat delegated from minutes ago
+  kept pulsing and read as "the chat below is also live". `sidebarEntries()`
+  now defers to the adapter: when it is tracking a live run, that run is the
+  only live row; `looksLive` still runs in history view. `2b…`.
+- **Web-search Sources** — `collapseAnswerSources()` in `static/ui.js`
+  post-render folds a trailing "Sources"/"References" link list into a
+  collapsed `<details>`. Settled assistant segments only, folds only when every
+  trailing block is a list or link-bearing paragraph, stamps the body once.
+  Browser-verified.
+- **Loading placeholder** — `.loading-spinner` is now an indeterminate progress
+  bar (same markup everywhere, CSS-only), the wrap paints an opaque `--bg`
+  ground so it stands in front of the panel, and the fetch-on-switch panels
+  (`loadSkills` / `loadAgentDefinitions` / `loadKanban` / `loadMemory` /
+  `loadProfilesPanel` / `loadWorkspacesPanel`) call `_panelLoading()` before
+  they await.
+- **Model warmup** — `api/model_warmup.py`, started from `server.py` next to
+  `start_stt_warmup()`. `get_available_models()` cold-rebuild is ~2.5s
+  (measured in the live container) and lands on the first model-list read (page
+  load / profile switch). Now prewarmed in a daemon thread. Active profile
+  only. **server.py is at 751 lines — budget 760.**
+- **Mobile config value nudge** — `.composer-mobile-config-value` in the mobile
+  composer sheet was 1px high of its icon; `position:relative;top:1px` for the
+  non-context rows.
+- **Chat split view** → `docs/rfcs/chat-split-view-panes.md` (Proposed). Not
+  implemented: it is a pane registry over the existing `.rightpanel` Files/
+  Artifacts/Todos strip plus Canvas / Live-preview / Plane panes — Major, wants
+  review + per-slice PRs, too much to land unsupervised.
+- **Deferred — need the user to point at the element:**
+  - *"Make the General chat appear for all profiles."* No project, session,
+    board or UI string named "General" exists in the live state. Best guess:
+    the unfoldered/date-grouped chat list (which the user may call "General"),
+    profile-filtered by design (#1614). Not touched — changing profile
+    isolation on a guess is the wrong call.
+  - *Task-4 was interpreted* as the mobile composer sheet's workspace button
+    and given the 1px nudge above; if that is the wrong modal, it is a
+    one-line revert.
 
 ## Next actions
 
