@@ -989,14 +989,19 @@ pre-split-view-panes` to get back here if the split-view work needs to be
 thrown away. Still uncommitted by design: branding assets only (`Fox1.png`
 deletion, favicons, `Avatar*.png`) — the user's own WIP, never touch.
 
-## #5 chat split-view panes — Slices 1-3 done (2026-09-12)
+## #5 chat split-view panes — all 4 slices done (2026-09-12)
 
-`registerChatPane` / `switchRightPanelPane` live in `static/workspace.js`
-(not a new file — see the RFC's "Deviation" note, found by a real test
-failure). Files/Artifacts/Todos, Canvas, and Tasks (internal id `plane`) are
-all registry entries now. Tab strip is still five hardcoded buttons —
-rendering it from the registry is deferred to whichever later slice first
-needs to add/remove a tab dynamically (`isAvailable`).
+`docs/rfcs/chat-split-view-panes.md` is fully implemented. `registerChatPane`
+/ `switchRightPanelPane` live in `static/workspace.js` (not a new file — see
+the RFC's "Deviation" note, found by a real test failure). Files/Artifacts/
+Todos, Canvas, Tasks (internal id `plane`), and Preview are all registry
+entries now — six tab buttons, still hardcoded; rendering the strip from the
+registry (`listChatPanes()` + `isAvailable`) is the RFC's one still-open
+question, deferred until a pane actually needs dynamic availability.
+
+**Every slice past the first needed a real correction to its pre-
+implementation design** — re-read the RFC's "Deviation found" notes before
+touching any of these panes again:
 
 - **Slice 2 (Canvas)**: reads `window.HermesOffice.adapter`/`.getState()` —
   the SAME live feed the Office 3D view uses — NOT `AgentCanvas`'s own
@@ -1016,14 +1021,25 @@ needs to add/remove a tab dynamically (`isAvailable`).
   `test_extensions_settings_panel.py`'s script-load-order substring check;
   reworded, not a real regression.
 
-Both slices needed a real correction to the RFC's pre-implementation design —
-worth re-reading the RFC's "Deviation found" notes before touching either
-pane again, and before starting Slice 4.
+- **Slice 4 (Preview)**: assumed CSP needed relaxing and a new settings gate
+  to do it safely. Both assumptions were wrong — `api/helpers.py` already
+  sends an enforced CSP with a validated operator opt-in
+  (`HERMES_WEBUI_CSP_FRAME_EXTRA`) for exactly this; no code or setting
+  needed there. Two real bugs caught by tests before shipping: (1)
+  `new URL("localhost:5173")` does not throw — it parses `localhost` as the
+  URL *scheme* — so the original "did it throw" http(s) check silently
+  produced an empty URL for the single most common thing people type; fixed
+  by checking `protocol` explicitly. (2) The iframe's sandbox combined
+  `allow-scripts` with `allow-same-origin`, which this repo has a standing
+  hard test against (`test_779_html_preview.py::test_sandbox_
+  allows_scripts_only`, "would expose parent cookies") — nothing stops a
+  user typing the WebUI's own URL into the box, at which point that
+  combination lets the framed page read the parent's cookies. Dropped
+  `allow-same-origin`; the full suite caught this before it shipped.
 
-Next: **Slice 4, Live preview** — the remaining slice, and the one the RFC
-itself flags as riskiest: it is the only pane with a genuinely NEW capability
-(an arbitrary-origin iframe) rather than a reuse of an existing live feed,
-and the only one touching CSP (`frame-src`). Setting-gated, default off.
+Nothing further queued for #5 — the RFC's feature set is complete. If new
+panes are ever wanted, start from the RFC's rollout-plan pattern (state
+ownership table, deviation-tracking) rather than from scratch.
 
 ## Next actions
 
