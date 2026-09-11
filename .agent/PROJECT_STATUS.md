@@ -961,6 +961,34 @@ batch (this follow-up round covers it); **#5 (chat split-view panes,
 else is done** — the user asked to keep being reminded it's next, so mention
 it at the end of any status update until they say to start it.
 
+## Checkpoint before #5 (2026-09-12)
+
+Before starting split-view work, committed a backlog of already-implemented,
+already-tested work that had been sitting **uncommitted** in the tree since
+earlier sessions (verified against the pre-compaction conversation summary,
+then re-verified with `./scripts/test.sh` before each commit — 281/281 on the
+touched files, full suite re-run after):
+
+- `1d9b49258` STT: `api/stt_warmup.py` boot preload, `api/upload.py` local
+  fallback + capability detection, Groq env passthrough in all 3
+  `docker-compose*.yml`, `test_sprint10.py`'s line-budget bump.
+- `c52d9e1fa` Mic: the Web-Speech watchdog in `static/boot.js` (Arc/Chromium
+  forks whose backend never answers) + the empty-transcript toast.
+- `e434c0617` Office: `api/cross_profile_ledger.py` — **this was the missing
+  half of `d7e422253`**, already-committed code that did `from api import
+  cross_profile_ledger` for a module that had never actually been added, so
+  that feature was running on a silent `except ImportError` degrade the
+  whole time. Also the cross-session `HermesOffice.reset()`, `run_id`
+  stamping, and the office visual-polish/nav-mouse-pinch-pan work.
+- `6f72032cc` Test-only catch-up for three already-shipped fixes (async-
+  delegation card precedence, Insights auto-refresh, folder-row height) whose
+  tests hadn't been added yet.
+
+Tag **`pre-split-view-panes`** marks this point — `git reset --hard
+pre-split-view-panes` to get back here if the split-view work needs to be
+thrown away. Still uncommitted by design: branding assets only (`Fox1.png`
+deletion, favicons, `Avatar*.png`) — the user's own WIP, never touch.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
