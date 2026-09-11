@@ -369,30 +369,103 @@ if(typeof document !== 'undefined'){
   else _setWorkspacePanelTabDataset();
 }
 
-function switchWorkspacePanelTab(tab){
-  _workspacePanelActiveTab = tab === 'artifacts' ? 'artifacts' : tab === 'todos' ? 'todos' : 'files';
+// ── Chat right-panel pane registry (docs/rfcs/chat-split-view-panes.md) ──
+//
+// The right panel already has a tab strip -- Files / Artifacts / Todos.
+// Extracting the switch into a registry means the panes that come next
+// (Canvas, Live preview, Plane tasks) are new entries, not edits scattered
+// through the switch function, the resize code, and the mobile code.
+//
+// Deliberately kept in THIS file rather than a separate static/panes.js:
+// several tests build an isolated page by injecting only workspace.js's
+// source (e.g. tests/test_issue6867_artifacts_settled_recovery.py via
+// page.add_script_tag(content=WORKSPACE_JS)) -- a second file would need its
+// own script tag added to every such harness, and one missed harness fails
+// with a bare ReferenceError. A pane registered from elsewhere still only
+// needs registerChatPane() to exist by the time it runs, which it does as
+// long as workspace.js has loaded -- true today for every panel that can
+// reach the right panel.
+const _chatPanes = new Map();
+
+/**
+ * Register a chat right-panel pane.
+ *
+ *   id      - registry key / dataset value ('files', 'artifacts', ...).
+ *   mount   - called once the pane becomes active. Optional -- 'files' has
+ *             none: it's the file tree + preview area, always live, shown
+ *             only by the .rightpanel[data-active-tab] CSS rule for its id.
+ *   unmount - called when the pane STOPS being active (tab-away). Optional.
+ *             Where a later pane releases what it opened while mounted (an
+ *             SSE subscription, an iframe's connection) -- see the RFC's
+ *             state-ownership table.
+ */
+function registerChatPane(pane){
+  if(!pane || !pane.id) return;
+  _chatPanes.set(pane.id, pane);
+}
+
+function getChatPane(id){
+  return _chatPanes.get(id) || null;
+}
+
+function listChatPanes(){
+  return Array.from(_chatPanes.values());
+}
+
+// The three built-ins, extracted from the pre-registry switch function
+// unchanged: 'artifacts' and 'todos' just moved their one-line mount call
+// here; 'files' had no mount call to move.
+registerChatPane({id:'files'});
+registerChatPane({id:'artifacts', mount:()=>{ if(typeof renderSessionArtifacts==='function') renderSessionArtifacts(); }});
+registerChatPane({id:'todos', mount:()=>{ if(typeof _loadWorkspacePanelTodos==='function') _loadWorkspacePanelTodos(); }});
+
+let _activeChatPaneId = 'files';
+
+/**
+ * Switch the right panel's active pane: unmount the outgoing pane (if it
+ * defines one), flip the tab strip + .rightpanel[data-active-tab] (CSS owns
+ * show/hide from there), then mount the incoming pane.
+ *
+ * An unknown id falls back to 'files' -- matching the pre-registry switch
+ * function's ternary exactly. Do not widen the id space (add a 4th value)
+ * without first auditing every `_workspacePanelActiveTab === 'files'`-style
+ * comparison in this file; today those three are the only values that have
+ * ever existed, and code elsewhere may assume it.
+ */
+function switchRightPanelPane(id){
+  const nextId = _chatPanes.has(id) ? id : 'files';
+  const prev = getChatPane(_activeChatPaneId);
+  if(prev && _activeChatPaneId !== nextId && typeof prev.unmount === 'function'){
+    try{ prev.unmount(); }catch(e){ console.warn('chat pane unmount failed:', _activeChatPaneId, e); }
+  }
+  _activeChatPaneId = nextId;
+  _workspacePanelActiveTab = nextId;
   _setWorkspacePanelTabDataset();
-  const filesTab = $('workspaceFilesTab');
-  const artifactsTab = $('workspaceArtifactsTab');
-  const todosTab = $('workspaceTodosTab');
-  if(filesTab){
-    filesTab.classList.toggle('active', _workspacePanelActiveTab === 'files');
-    filesTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'files' ? 'true' : 'false');
-  }
-  if(artifactsTab){
-    artifactsTab.classList.toggle('active', _workspacePanelActiveTab === 'artifacts');
-    artifactsTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'artifacts' ? 'true' : 'false');
-  }
-  if(todosTab){
-    todosTab.classList.toggle('active', _workspacePanelActiveTab === 'todos');
-    todosTab.setAttribute('aria-selected', _workspacePanelActiveTab === 'todos' ? 'true' : 'false');
-  }
+
+  // Built-in tab buttons keep their existing ids; a pane registered under a
+  // different id gets no tab-strip wiring yet -- that's the next slice
+  // (render the strip from the registry instead of these three buttons).
+  ['files','artifacts','todos'].forEach(known=>{
+    const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
+    if(!btn) return;
+    btn.classList.toggle('active', nextId === known);
+    btn.setAttribute('aria-selected', nextId === known ? 'true' : 'false');
+  });
   const artifacts = $('workspaceArtifacts');
-  if(artifacts) artifacts.hidden = _workspacePanelActiveTab !== 'artifacts';
+  if(artifacts) artifacts.hidden = nextId !== 'artifacts';
   const todosPanel = $('workspaceTodosPanel');
-  if(todosPanel) todosPanel.hidden = _workspacePanelActiveTab !== 'todos';
-  if(_workspacePanelActiveTab === 'artifacts') renderSessionArtifacts();
-  if(_workspacePanelActiveTab === 'todos') _loadWorkspacePanelTodos();
+  if(todosPanel) todosPanel.hidden = nextId !== 'todos';
+
+  const next = getChatPane(nextId);
+  if(next && typeof next.mount === 'function'){
+    try{ next.mount(); }catch(e){ console.warn('chat pane mount failed:', nextId, e); }
+  }
+}
+
+// Public entry point -- unchanged name and signature -- so index.html's
+// onclick handlers and every other existing call site need no edits.
+function switchWorkspacePanelTab(tab){
+  return switchRightPanelPane(tab);
 }
 
 function _loadWorkspacePanelTodos(){

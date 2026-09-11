@@ -1,6 +1,6 @@
 # Chat split view — pluggable right-panel panes
 
-- **Status:** Proposed
+- **Status:** Proposed (Slice 1 implemented)
 - **Author:** @StephenZ06
 - **Created:** 2026-09-11
 
@@ -134,10 +134,24 @@ does for the Office (`panels.js:455` `HermesOffice.unmount()`).
 
 ## Rollout plan
 
-1. **Slice 1 — registry, no behaviour change.** Extract Files / Artifacts /
-   Todos into `registerChatPane` entries; `switchRightPanelPane` renders the
-   tab strip from the registry. Tests: the three existing panes still switch,
-   persist, and collapse exactly as before.
+1. **Slice 1 — registry, no behaviour change. Implemented (2026-09-12).**
+   Extracted Files / Artifacts / Todos into `registerChatPane` entries;
+   `switchWorkspacePanelTab()` is now a one-line delegate to the new
+   `switchRightPanelPane()`. Tests: `tests/test_chat_pane_registry.py`
+   (built-ins register on load, mount/unmount fire correctly, unknown id
+   falls back to `files`) plus the full existing workspace-panel suite,
+   unchanged.
+
+   **Deviation from the original text above:** the registry lives in
+   `static/workspace.js` itself, not a new `static/panes.js`. A large number
+   of existing tests build an isolated page by injecting only `workspace.js`'s
+   source (`page.add_script_tag(content=WORKSPACE_JS)`, ~30 files) — a second
+   file would need its own script tag added to every one of them, and any
+   harness that was missed fails with a bare `ReferenceError` (found by
+   `test_issue6867_artifacts_settled_recovery.py` red on the first attempt).
+   The tab strip itself still renders from the three hardcoded buttons, not
+   the registry — that part of Slice 1 is deferred to whichever later slice
+   first needs a pane not named files/artifacts/todos in the strip.
 2. **Slice 2 — Canvas pane.** Depends only on Slice 1 + the existing
    `AgentCanvas` / adapter. Tests: spawn → row appears in the pane; session
    switch resets it; tab-away unsubscribes.
