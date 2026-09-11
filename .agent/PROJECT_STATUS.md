@@ -1037,6 +1037,31 @@ touching any of these panes again:
   combination lets the framed page read the parent's cookies. Dropped
   `allow-same-origin`; the full suite caught this before it shipped.
 
+## #5 follow-up: Canvas pane swapped for the real Office scene (2026-09-12)
+
+After the above shipped, explicit request: replace the flat 2-D delegation
+tree with the actual `HermesOffice` 3D scene, mounted directly into the
+sidebar (`window.HermesOffice.mount(container)`/`.unmount()` — no separate
+renderer or data feed anymore).
+
+**Real constraint surfaced, not a bug**: `HermesOffice` supports exactly one
+live mount at a time (`static/office/index.js`), and the chat sidebar + the
+full Office panel are two independent surfaces that can both be on screen
+simultaneously (the right panel persists across `_currentPanel`). Handled
+one direction — `static/panels.js`'s `switchPanel()` now hands the scene
+back to the sidebar pane on leaving the main Office panel, instead of
+tearing it down, when that pane is the active tab. Left the other direction
+(clicking the sidebar tab while the main panel is showing) as the plain,
+self-explanatory result of the user's own click — the main panel goes blank
+until revisited. **If this trade-off is annoying in practice, the fix is a
+friendlier hand-off message in the losing container, not a different
+mount strategy** — flagged, not built, since it needs the user to actually
+hit it to be worth the added complexity.
+
+Old design kept as RFC history; its one real byproduct (a `live` option on
+`buildTreeNodes()`/`renderStaticTree()`, agent-canvas.js) stays — genuine,
+tested, shared-code fix, just unused by any pane now.
+
 Nothing further queued for #5 — the RFC's feature set is complete. If new
 panes are ever wanted, start from the RFC's rollout-plan pattern (state
 ownership table, deviation-tracking) rather than from scratch.
