@@ -262,16 +262,16 @@ export function createOfficeScene(canvas, options) {
     return conductor;
   }
 
-  function ensurePod(cluster, width, depth, label) {
+  function ensurePod(cluster, width, depth, label, color) {
     let pod = pods.get(cluster);
-    if (pod && pod.width === width && pod.depth === depth && pod.label === label) return pod;
+    if (pod && pod.width === width && pod.depth === depth && pod.label === label && pod.color === color) return pod;
     if (pod) {
       office.remove(pod.group);
       disposeTree(pod.group);
     }
     const slabWidth = width + POD_SLAB_PADDING;
     const slabDepth = depth + POD_SLAB_PADDING;
-    const group = makePod(slabWidth, slabDepth, palette);
+    const group = makePod(slabWidth, slabDepth, palette, color);
     // A tap on the slab (not on a worker) frames this pod.
     group.userData.podCluster = cluster;
 
@@ -301,7 +301,7 @@ export function createOfficeScene(canvas, options) {
     group.add(outline);
 
     office.add(group);
-    pod = { group, width, depth, label, outline, active: false };
+    pod = { group, width, depth, label, color, outline, active: false };
     pods.set(cluster, pod);
     return pod;
   }
@@ -460,7 +460,7 @@ export function createOfficeScene(canvas, options) {
       // subagent's own children) has no name worth painting.
       const podLabel = pod.label
         || (pod.cluster === '__conductor__' ? 'Subagents' : '');
-      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel);
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null);
       record.group.position.set(pod.x, 0, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
       ensureConnector(pod.cluster, pod, span);
@@ -692,6 +692,32 @@ export function createOfficeScene(canvas, options) {
     return {
       x: view.x, z: view.z, zoom: view.zoom, lod, focusedId,
       tweening: !!tween, poses,
+    };
+  }
+
+  const _podScreenV = new THREE.Vector3();
+
+  /**
+   * Where a pod floats on screen right now, in CSS pixels relative to the
+   * canvas's own top-left corner -- so a caller outside this module (the
+   * per-department floating stat cards in index.js) can position a plain DOM
+   * element over a pod without knowing anything about the camera, zoom, or
+   * projection math. Anchored a few world units above the floor rather than
+   * on it, so the card reads as floating above the pod rather than sitting
+   * on the slab. Returns null for a pod that does not exist (yet), or that
+   * has projected behind the camera.
+   */
+  function podScreenRect(cluster) {
+    const pod = pods.get(cluster);
+    if (!pod || !canvas) return null;
+    camera.updateMatrixWorld();
+    _podScreenV.set(pod.group.position.x, 8, pod.group.position.z);
+    _podScreenV.project(camera);
+    if (_podScreenV.z > 1) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (_podScreenV.x + 1) / 2 * rect.width,
+      y: (1 - _podScreenV.y) / 2 * rect.height,
     };
   }
 
@@ -1107,6 +1133,7 @@ export function createOfficeScene(canvas, options) {
 
   return {
     start, stop, resize, dispose, isRunning, applyTheme, syncOffice,
-    workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView, scene,
+    workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
+    podScreenRect, scene,
   };
 }

@@ -103,6 +103,46 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(tmp_path / "office-business.png"))
 
+        # Per-department floating stat cards: only the real page can prove the
+        # world-to-screen projection actually lands somewhere on the canvas --
+        # a node test can check the math is *called*, not that a real
+        # OrthographicCamera answers something sane.
+        dept_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
+          name: el.querySelector('.office-dept-card-name')?.textContent,
+          left: el.style.left, top: el.style.top,
+          hasColor: !!el.style.getPropertyValue('--office-dept-color'),
+        }))""")
+
+        # Task Status panel: whole-office, so it must show the same 3 demo
+        # workers on the Business floor too, not just on Projects.
+        tasks_on_business = pg.evaluate("""() => ({
+          filterCounts: Array.from(document.querySelectorAll('.office-tasks-filter')).map(
+            b => b.textContent.trim()),
+          rowCount: document.querySelectorAll('.office-tasks-row').length,
+        })""")
+
+        pg.evaluate("() => document.querySelector('[data-outlet=\\\"projects\\\"]').click()")
+        pg.wait_for_timeout(500)
+        cards_after_leaving_business = pg.evaluate(
+            "() => document.querySelectorAll('.office-dept-card').length"
+        )
+        rows_on_projects = pg.evaluate(
+            "() => document.querySelectorAll('.office-tasks-row').length"
+        )
+
+        # Filtering to "Done" only shows the one demo worker that completed;
+        # clicking a row flies the camera to that worker.
+        focus_from_task_row = pg.evaluate("""async () => {
+          const before = window.HermesOffice.getView().focusedId;
+          document.querySelector('[data-filter="done"]').click();
+          const doneRows = document.querySelectorAll('.office-tasks-row').length;
+          const row = document.querySelector('.office-tasks-row');
+          if (row) row.click();
+          await new Promise(r => setTimeout(r, 900));
+          return { before, doneRows, after: window.HermesOffice.getView().focusedId };
+        }""")
+        pg.evaluate("() => window.HermesOffice.resetView()")
+
         pg.evaluate("() => window.switchPanel('chat')")
         pg.wait_for_timeout(800)
         after = pg.evaluate("""() => ({
@@ -158,3 +198,39 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         "delegation diagram with renderStaticTree"
     )
     assert not errors, f"console errors in the real app: {errors}"
+
+    # 6 standing departments plus "The Floor" -- roster.js's buildRoster()
+    # always appends the overflow as a 7th standing entry (the same "a
+    # visible overflow is the honest answer" reasoning as everything else on
+    # this floor), so it gets a card too. Uncoloured: only a real department
+    # tints its floor.
+    assert len(dept_cards) == 7, "every standing department (plus the overflow) gets a card"
+    by_name = {c["name"]: c for c in dept_cards}
+    assert set(by_name) == {
+        "Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery", "The Floor",
+    }
+    for card in dept_cards:
+        assert card["left"] and card["top"], (
+            f"{card['name']}'s card was never positioned over its pod"
+        )
+    for name in ("Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery"):
+        assert by_name[name]["hasColor"], f"{name}'s card carries no floor colour"
+    assert not by_name["The Floor"]["hasColor"], "the overflow is not a department and stays uncoloured"
+    assert cards_after_leaving_business == 0, (
+        "the cards are Business-only and must not linger over the Projects floor"
+    )
+
+    assert tasks_on_business["rowCount"] == 3, (
+        "the Task Status panel is whole-office and must show the same 3 "
+        "workers on Business as it does on Projects"
+    )
+    assert any("All" in c and "3" in c for c in tasks_on_business["filterCounts"])
+    assert rows_on_projects == 3, "leaving Business must not empty the panel"
+
+    assert focus_from_task_row["before"] is None
+    assert focus_from_task_row["doneRows"] == 1, (
+        "exactly one demo worker (demo-3) completed; the Done filter must show only it"
+    )
+    assert focus_from_task_row["after"] == "demo-3", (
+        "clicking a task row must fly the camera to that worker, same as clicking its desk"
+    )

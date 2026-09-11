@@ -1066,6 +1066,38 @@ Nothing further queued for #5 — the RFC's feature set is complete. If new
 panes are ever wanted, start from the RFC's rollout-plan pattern (state
 ownership table, deviation-tracking) rather than from scratch.
 
+## Office: Business floor visual parity with agents-office (2026-09-12)
+
+User-requested comparison against github.com/ajsahni/agents-office (visual
+reference only — PolyForm Noncommercial vs. this repo's MIT, see
+docs/rfcs/office-visualization.md's Licensing section, which already covered
+this exact repo before tonight). Three additions, full detail in that RFC's
+new "Business floor visual parity" section:
+
+1. **Department floor colour** — `roster.js` `DEPARTMENTS` now carry a
+   `color`, blended into the palette's pod colours (not painted flat) via
+   `THREE.Color.lerp`. Caught a real bug before shipping: `buildRoster()`'s
+   department-mapping step dropped the `color` field it was handed, so every
+   department read as null until the test (`test_each_department_carries_
+   its_own_floor_colour`) caught it.
+2. **Per-department floating stat card** — new `scene.js` query
+   `podScreenRect(cluster)` (world-to-screen projection), one DOM card per
+   standing floor, repositioned every frame via the scene's existing
+   `onTick`. Includes "The Floor" overflow (roster.js's `buildRoster` always
+   appends it as a 7th standing entry) — uncoloured, which the browser test
+   initially got wrong (expected 6, real count is 7) before the assertion was
+   corrected to match actual, consistent behaviour.
+3. **Aggregate Task Status panel** — new `.office-body` split
+   (`.office-stage` + `.office-tasks`), whole-office and outlet-independent
+   (reads raw adapter state, not `businessView()`'s transform). All/Running/
+   Done/Stopped filter; click a row to fly the camera to that worker (reuses
+   `focusOnWorker`).
+
+Deliberately NOT built: the reference's own task-dispatch bar, chat-with-
+department-lead, "agent meeting", and fabricated metrics this app has no way
+to measure (e.g. "cost per user") — see the assessment given before this work
+started for the full in-scope/out-of-scope breakdown.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

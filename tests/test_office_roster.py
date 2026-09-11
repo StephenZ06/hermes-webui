@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _DRIVER = r"""
-const { buildRoster, businessView, departmentFor } = await import(process.argv[2]);
+const { buildRoster, businessView, departmentFor, colorForDepartment } = await import(process.argv[2]);
 const input = JSON.parse(process.argv[3] || '{}');
 
 const roster = buildRoster(input.personalities || []);
@@ -43,8 +43,9 @@ const matched = (input.probe || []).map(text => {
   const dept = departmentFor(text);
   return [text, dept ? dept.key : null];
 });
+const colorLookup = (input.colorProbe || []).map(key => [key, colorForDepartment(key)]);
 
-process.stdout.write(JSON.stringify({ roster, view, matched }));
+process.stdout.write(JSON.stringify({ roster, view, matched, colorLookup }));
 """
 
 
@@ -201,6 +202,35 @@ def test_business_desks_carry_their_department_name_for_the_floor_sign(driver):
     labels = {d["cluster"]: d.get("clusterLabel") for d in out["view"]["desks"]}
     assert labels["finance"] == "Finance"
     assert labels["marketing"] == "Marketing"
+
+
+def test_each_department_carries_its_own_floor_colour(driver):
+    out = run(driver, personalities=[{"name": "invoice_clerk", "description": ""}])
+    colors = {d["cluster"]: d.get("clusterColor") for d in out["view"]["desks"]}
+    for key in ("marketing", "emails", "sales", "operations", "finance", "delivery"):
+        assert colors[key], f"{key} must carry a floor colour"
+    assert len({colors[k] for k in colors if k in (
+        "marketing", "emails", "sales", "operations", "finance", "delivery")}) == 6, (
+        "every department's floor colour must be distinct"
+    )
+
+
+def test_color_for_department_answers_a_hex_colour_or_null(driver):
+    out = run(driver, colorProbe=["marketing", "floor", "__conductor__", "nonsense"])
+    lookup = dict(out["colorLookup"])
+    assert lookup["marketing"].startswith("#")
+    assert lookup["floor"] is None
+    assert lookup["__conductor__"] is None
+    assert lookup["nonsense"] is None
+
+
+def test_the_overflow_floor_carries_no_department_colour(driver):
+    # "The Floor" is explicitly not a department (see roster.js's OVERFLOW
+    # comment) -- tinting it would claim otherwise.
+    out = run(driver, state={"workers": [worker("w1", "something unrecognisable xyz")]})
+    floor_desks = [d for d in out["view"]["desks"] if d["cluster"] == "floor"]
+    assert floor_desks, "the probe goal must actually miss every department"
+    assert all(not d.get("clusterColor") for d in floor_desks)
 
 
 def test_business_desks_match_the_adapter_desk_shape(driver):

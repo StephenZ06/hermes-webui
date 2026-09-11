@@ -32,32 +32,32 @@
  */
 export const DEPARTMENTS = [
   {
-    key: 'marketing', name: 'Marketing',
+    key: 'marketing', name: 'Marketing', color: '#c9758a',
     keywords: ['marketing', 'content', 'brand', 'campaign', 'social', 'newsletter',
       'ads', 'ad ', 'seo', 'copy', 'blog', 'video', 'design', 'graphic'],
   },
   {
-    key: 'emails', name: 'Emails',
+    key: 'emails', name: 'Emails', color: '#7a9e73',
     keywords: ['email', 'inbox', 'mail', 'reply', 'correspondence', 'outreach',
       'follow up', 'follow-up'],
   },
   {
-    key: 'sales', name: 'Sales',
+    key: 'sales', name: 'Sales', color: '#c99a55',
     keywords: ['sales', 'lead', 'prospect', 'pipeline', 'deal', 'proposal',
       'quote', 'crm', 'customer'],
   },
   {
-    key: 'operations', name: 'Operations',
+    key: 'operations', name: 'Operations', color: '#8d7fa8',
     keywords: ['operation', 'ops', 'process', 'compliance', 'legal', 'policy',
       'admin', 'intel', 'research', 'report', 'dashboard'],
   },
   {
-    key: 'finance', name: 'Finance',
+    key: 'finance', name: 'Finance', color: '#6f7a89',
     keywords: ['finance', 'invoice', 'billing', 'payment', 'account', 'budget',
       'payroll', 'cost', 'reconcil', 'tax'],
   },
   {
-    key: 'delivery', name: 'Delivery',
+    key: 'delivery', name: 'Delivery', color: '#5f89ab',
     keywords: ['delivery', 'deliver', 'project', 'qa', 'quality', 'test',
       'onboard', 'support', 'ship', 'release', 'engineer', 'build', 'code',
       'implement', 'fix', 'refactor', 'debug'],
@@ -72,6 +72,17 @@ export const DEPARTMENTS = [
 export const OVERFLOW = { key: 'floor', name: 'The Floor' };
 
 const DEPARTMENT_BY_KEY = new Map(DEPARTMENTS.map(d => [d.key, d]));
+
+/**
+ * A department's floor accent colour, or null for a cluster that names no
+ * department (the Projects outlet, "Subagents", "The Floor" overflow) — those
+ * keep the palette's plain, uncoloured pod so only Business floors read as a
+ * company with distinct rooms.
+ */
+export function colorForDepartment(clusterKey) {
+  const dept = DEPARTMENT_BY_KEY.get(clusterKey);
+  return dept ? dept.color : null;
+}
 
 function normalise(text) {
   return String(text == null ? '' : text).toLowerCase().replace(/[_\-/]+/g, ' ');
@@ -156,7 +167,7 @@ export function buildRoster(personalities) {
         placeholder: true,
       });
     }
-    return { key: dept.key, name: dept.name, seats };
+    return { key: dept.key, name: dept.name, color: dept.color, seats };
   });
 
   departments.push({ key: OVERFLOW.key, name: OVERFLOW.name, seats: overflowSeats });
@@ -194,6 +205,9 @@ export function businessView(state, roster) {
         // painting; a Projects cluster is a parent subagent id, which means
         // nothing to a reader.
         clusterLabel: dept.name,
+        // Tints the pod floor (see builders.js's makePod). Same reasoning as
+        // clusterLabel: only Business departments have one.
+        clusterColor: dept.color,
       };
       seatIndexByDept.get(dept.key).push(desk);
       desks.push(desk);

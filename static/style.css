@@ -5584,11 +5584,49 @@ main.main > #mainPlugin{display:none;}
 .office-session-live{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px color-mix(in srgb,var(--success) 22%,transparent);animation:office-live-pulse 2s ease-in-out infinite;}
 .office-session-row.is-live .office-session-title{color:var(--text);}
 .office-session-meta{font-size:11px;color:var(--muted);}
+.office-body{flex:1;min-height:0;display:flex;flex-direction:row;overflow:hidden;}
 .office-stage{flex:1;min-height:0;position:relative;overflow:hidden;}
+/* Aggregate Task Status panel -- a whole-office view of the real workers the
+   adapter is tracking, next to the floor rather than buried in a per-desk
+   click. Independent of which outlet is up (static/office/index.js's
+   renderTaskStatusPanel reads the raw adapter state, not the outlet-specific
+   desk view), so it never has to rebuild when Business/Projects is toggled. */
+.office-tasks{flex:0 0 min(260px,32%);min-width:180px;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--border);background:var(--sidebar);}
+.office-tasks-head{flex:0 0 auto;padding:12px 14px 8px;}
+.office-tasks-title{display:block;font-size:12px;font-weight:650;letter-spacing:.03em;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
+.office-tasks-filters{display:flex;flex-wrap:wrap;gap:6px;}
+.office-tasks-filter{border:1px solid var(--border2);background:transparent;border-radius:999px;padding:4px 9px;font-size:11px;color:var(--muted);cursor:pointer;}
+.office-tasks-filter span{margin-left:3px;font-weight:650;color:var(--text);}
+.office-tasks-filter.is-active{background:var(--accent-bg);border-color:var(--accent-bg-strong,var(--accent));color:var(--accent-text,var(--text));}
+.office-tasks-filter.is-active span{color:inherit;}
+.office-tasks-list{flex:1;min-height:0;overflow-y:auto;padding:4px 10px 12px;display:flex;flex-direction:column;gap:6px;}
+.office-tasks-empty{padding:16px 4px;color:var(--muted);font-size:12px;text-align:center;}
+.office-tasks-row{display:flex;align-items:flex-start;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:9px;background:var(--surface);color:inherit;text-align:left;cursor:pointer;font:inherit;}
+.office-tasks-row:hover{border-color:var(--border-strong,var(--border2));background:var(--hover-bg,var(--surface));}
+.office-tasks-row-status{flex:0 0 auto;width:8px;height:8px;margin-top:4px;border-radius:50%;background:var(--muted);}
+.office-tasks-row-status.status-running{background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);}
+.office-tasks-row-status.status-done{background:var(--success,#3fae6a);}
+.office-tasks-row-status.status-stopped{background:var(--error,#c05656);}
+.office-tasks-row-body{min-width:0;display:flex;flex-direction:column;gap:2px;}
+.office-tasks-row-goal{font-size:12px;line-height:1.35;color:var(--text);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.office-tasks-row-meta{font-size:10px;color:var(--muted);text-transform:capitalize;}
+@media (max-width:640px){.office-tasks{display:none;}}
 .office-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .office-unsupported{padding:24px;max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6;color:var(--muted);text-align:center;}
 .office-sidebar-note{padding:10px 14px;font-size:12px;line-height:1.5;color:var(--muted);}
 .office-detail{position:absolute;top:14px;right:14px;width:min(320px,calc(100% - 28px));max-height:calc(100% - 28px);overflow-y:auto;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);box-shadow:0 8px 30px rgba(0,0,0,.22);font-size:12px;}
+/* Per-department floating stat cards (Business outlet). One absolutely-
+   positioned container spanning the stage; each card is repositioned every
+   frame (static/office/index.js's repositionDepartmentCards) to track its
+   pod as the camera pans/zooms, so the cards themselves only need `left`/
+   `top` set inline -- everything else here is the fixed look of one card. */
+.office-dept-cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.office-dept-card{position:absolute;transform:translate(-50%,-100%);min-width:112px;padding:8px 12px;border-radius:10px;border:1px solid var(--border2);border-left:3px solid var(--office-dept-color,var(--accent));background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.18);font-size:11px;line-height:1.35;white-space:nowrap;}
+.office-dept-card-name{font-weight:650;font-size:11px;letter-spacing:.02em;text-transform:uppercase;color:var(--office-dept-color,var(--text));margin-bottom:2px;}
+.office-dept-card-count{font-size:17px;font-weight:700;color:var(--text);}
+.office-dept-card-count span{margin-left:4px;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);}
+.office-dept-card-stats{display:flex;gap:10px;margin-top:4px;color:var(--muted);}
+.office-dept-card-stat strong{color:var(--text);margin-right:3px;}
 .office-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
 .office-detail-title{flex:1;font-weight:650;font-size:13px;color:var(--text);}
 .office-detail-close{border:0;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;padding:0 2px;}

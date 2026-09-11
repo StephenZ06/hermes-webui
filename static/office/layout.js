@@ -202,6 +202,9 @@ export function computeLayout(desks, options) {
       // Present only when the desks carry one (the Business outlet); the
       // scene paints it on the pod floor and skips the sign without it.
       label: (clusterDesks[0] && clusterDesks[0].clusterLabel) || '',
+      // Same story, same source (a department's accent colour) -- absent for
+      // Projects clusters, which tint nothing.
+      color: (clusterDesks[0] && clusterDesks[0].clusterColor) || null,
       x, z,
       width: size.width, depth: size.depth,
       seats: [],

@@ -595,3 +595,36 @@ blank-sidebar guard now checks *every* main-view panel has a matching
 listener test now asserts the office receives the events, since "the backend
 relay must have a frontend consumer" is unchanged. The empty-state test was
 dropped outright — its subject was the panel's own placeholder.
+
+## Business floor visual parity (2026-09-12)
+
+Three more things brought over from the agents-office reference — visual
+reference only, per the Licensing section above; all hand-written:
+
+- **Department floor colour.** Each of the six standing departments
+  (`static/office/roster.js`'s `DEPARTMENTS`) now carries a `color`, threaded
+  through `businessView()` → `computeLayout()`'s `pod.color` → `makePod()`,
+  which blends it into the palette's own pod colours (`THREE.Color.lerp`)
+  rather than painting a flat brand colour over whichever theme is active.
+  Projects pods and the "The Floor" overflow carry no colour and stay
+  exactly as before.
+- **Per-department floating stat card.** One card per standing floor
+  (department name, seat count, live active/done counts derived from the
+  same adapter state the floor is drawn from), positioned every frame by a
+  new `podScreenRect(cluster)` query on the scene (world-to-screen
+  projection, CSS pixels relative to the canvas) so it tracks the pod as the
+  camera pans/zooms. No metric this app cannot actually measure — unlike the
+  reference's "cost per user" style numbers, which have no equivalent here.
+- **Aggregate Task Status panel.** A new right-hand column inside the office
+  view (`.office-body` now splits `.office-stage` and `.office-tasks`),
+  listing every worker the adapter is tracking with a live All/Running/Done/
+  Stopped filter, independent of which outlet is showing — it reads the raw
+  adapter state, not `businessView()`'s desk transform, since a subagent is
+  the same real subagent whichever floor plan draws it. Clicking a row calls
+  the existing `focusOnWorker()`, the same as clicking a desk.
+
+All three are real screen-projected/DOM state, not screenshots — verified
+against the actual running scene in `tests/test_office_browser_smoke.py`
+(`HERMES_WEBUI_BROWSER_TESTS=1`), plus node-level tests for the pure pieces
+(`test_office_roster.py`, `test_office_layout.py`, `test_office_pod_color.py`,
+`test_office_task_status.py`).

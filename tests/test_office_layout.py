@@ -212,6 +212,19 @@ def test_a_pod_is_only_labelled_when_its_desks_carry_a_name(driver):
     assert labelled["pods"][0]["label"] == "Finance"
 
 
+def test_a_pod_is_only_coloured_when_its_desks_carry_a_colour(driver):
+    # Same story as the label above, same source (a department's accent
+    # colour) -- a Projects cluster tints nothing.
+    uncoloured = layout(driver, n_desks(2, cluster="p1"))
+    assert uncoloured["pods"][0]["color"] is None
+
+    coloured = layout(driver, [
+        {"id": "d0", "index": 0, "workerId": "w0", "cluster": "finance",
+         "clusterLabel": "Finance", "clusterColor": "#6f7a89"},
+    ])
+    assert coloured["pods"][0]["color"] == "#6f7a89"
+
+
 # ── stability ────────────────────────────────────────────────────────────────
 
 def test_adding_a_subagent_does_not_move_the_existing_office(driver):

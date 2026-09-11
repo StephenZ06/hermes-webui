@@ -66,6 +66,18 @@ let _summaryEl = null;
 let _lastSummary = '';
 let _pauseBtnEl = null;
 let _backBtnEl = null;
+// Per-department floating stat cards (Business outlet only). Keyed by
+// department key, one DOM element each, repositioned every frame to track
+// the pod as the camera pans/zooms (see repositionDepartmentCards below).
+let _deptCardsEl = null;
+const _deptCardEls = new Map();
+// Aggregate Task Status panel: every worker the adapter currently knows
+// about, whole-office, independent of which outlet is showing (a subagent is
+// the same real subagent whichever floor plan draws it).
+let _tasksFiltersEl = null;
+let _tasksListEl = null;
+let _tasksFilter = 'all';
+let _lastTaskStatusWorkers = [];
 let _resizeObserver = null;
 let _themeObserver = null;
 let _visibilityHandler = null;
@@ -212,7 +224,202 @@ function scheduleSync() {
     renderPill(state);
     renderDetail(state);
     renderSummary(state);
+    renderDepartmentCards(view, state);
+    renderTaskStatusPanel(state);
   });
+}
+
+// A worker never runs again after one of these (see office/adapter.js's own
+// TERMINAL_STATUSES) -- the same vocabulary, duplicated rather than imported
+// so this module keeps reading a plain adapter snapshot rather than needing
+// the adapter module itself.
+const _DEPT_CARD_TERMINAL = new Set([
+  'completed', 'failed', 'error', 'timeout', 'interrupted', 'ended',
+]);
+
+/**
+ * The floating stat card seen over each standing floor on the Business
+ * outlet: name, seat count, and two honest live counts (active / done)
+ * derived from the SAME state the floor itself is drawn from -- no metric
+ * this app cannot actually measure (unlike the reference product's "cost per
+ * user" style numbers, which have no equivalent here). One card per entry in
+ * `_roster.departments`, which is the 6 standing departments plus "The
+ * Floor" overflow (roster.js's buildRoster always appends it) -- the
+ * overflow gets a card too, just no floor colour, matching the tint.
+ */
+function renderDepartmentCards(view, state) {
+  if (!_deptCardsEl) return;
+  if (_outlet !== 'business' || !_roster || !Array.isArray(_roster.departments)) {
+    if (_deptCardEls.size) { _deptCardsEl.innerHTML = ''; _deptCardEls.clear(); }
+    return;
+  }
+  const workersById = new Map((state.workers || []).map(w => [w.id, w]));
+  const desksByCluster = new Map();
+  (view.desks || []).forEach(desk => {
+    if (!desksByCluster.has(desk.cluster)) desksByCluster.set(desk.cluster, []);
+    desksByCluster.get(desk.cluster).push(desk);
+  });
+
+  const seen = new Set();
+  _roster.departments.forEach(dept => {
+    seen.add(dept.key);
+    const desks = desksByCluster.get(dept.key) || [];
+    let active = 0;
+    let done = 0;
+    desks.forEach(desk => {
+      const worker = desk.workerId ? workersById.get(desk.workerId) : null;
+      if (!worker) return;
+      if (worker.status === 'running') active += 1;
+      else if (_DEPT_CARD_TERMINAL.has(worker.status)) done += 1;
+    });
+
+    let el = _deptCardEls.get(dept.key);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'office-dept-card';
+      _deptCardsEl.appendChild(el);
+      _deptCardEls.set(dept.key, el);
+    }
+    if (dept.color) el.style.setProperty('--office-dept-color', dept.color);
+    el.innerHTML = `
+      <div class="office-dept-card-name">${esc(dept.name)}</div>
+      <div class="office-dept-card-count">${desks.length}<span>agent${desks.length === 1 ? '' : 's'}</span></div>
+      <div class="office-dept-card-stats">
+        <span class="office-dept-card-stat"><strong>${active}</strong>active</span>
+        <span class="office-dept-card-stat"><strong>${done}</strong>done</span>
+      </div>`;
+  });
+
+  // A department that dropped out of the current roster (a reload with a
+  // different config, in principle) loses its card rather than leaving a
+  // stale one floating with nothing to anchor it.
+  Array.from(_deptCardEls.keys()).forEach(key => {
+    if (seen.has(key)) return;
+    const el = _deptCardEls.get(key);
+    if (el) el.remove();
+    _deptCardEls.delete(key);
+  });
+
+  repositionDepartmentCards();
+}
+
+/**
+ * Keeps each card over its pod as the camera pans/zooms/tweens. Called every
+ * frame via the scene's onTick (see createOfficeScene below) -- cheap when
+ * there is nothing to reposition, which is every frame outside the Business
+ * outlet.
+ */
+function repositionDepartmentCards() {
+  if (_outlet !== 'business' || !_deptCardEls.size) return;
+  if (!_scene || typeof _scene.podScreenRect !== 'function') return;
+  _deptCardEls.forEach((el, cluster) => {
+    const rect = _scene.podScreenRect(cluster);
+    if (!rect) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.style.left = rect.x + 'px';
+    el.style.top = rect.y + 'px';
+  });
+}
+
+// ── Task Status panel ──
+//
+// A whole-office aggregate of the real workers the adapter is tracking, next
+// to the floor rather than buried in a per-desk detail click. Independent of
+// which outlet is showing: a subagent is the same real subagent whether the
+// floor plan draws it as an anonymous desk (Projects) or a department seat
+// (Business).
+
+/** Adapter statuses collapse to three buckets a filter chip can show a count
+ * for. 'running' stays its own bucket (the one thing worth watching live);
+ * 'completed' is 'done'; everything else terminal (failed/error/timeout/
+ * interrupted/ended) is 'stopped' -- distinct outcomes in the adapter, but
+ * none of them is "still going", which is the only distinction this panel's
+ * filter makes below "done". */
+function taskStatusBucket(status) {
+  if (status === 'running') return 'running';
+  if (status === 'completed') return 'done';
+  if (_DEPT_CARD_TERMINAL.has(status)) return 'stopped';
+  return 'other';
+}
+
+const TASK_STATUS_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'running', label: 'Running' },
+  { key: 'done', label: 'Done' },
+  { key: 'stopped', label: 'Stopped' },
+];
+
+/** Pure so tests/test_office_task_status.py can drive it without a DOM. */
+function taskStatusCounts(workers) {
+  const counts = { all: 0, running: 0, done: 0, stopped: 0, other: 0 };
+  (workers || []).forEach(w => {
+    counts.all += 1;
+    counts[taskStatusBucket(w.status)] += 1;
+  });
+  return counts;
+}
+
+function renderTaskStatusFilters() {
+  if (!_tasksFiltersEl) return;
+  const counts = taskStatusCounts((_lastTaskStatusWorkers || []));
+  _tasksFiltersEl.innerHTML = TASK_STATUS_FILTERS.map(f => `
+    <button type="button" class="office-tasks-filter${_tasksFilter === f.key ? ' is-active' : ''}"
+            data-filter="${f.key}" role="tab" aria-selected="${_tasksFilter === f.key}">
+      ${esc(f.label)} <span>${counts[f.key]}</span>
+    </button>`).join('');
+  _tasksFiltersEl.querySelectorAll('.office-tasks-filter').forEach(btn => {
+    btn.onclick = () => {
+      _tasksFilter = btn.dataset.filter;
+      renderTaskStatusFilters();
+      renderTaskStatusList(_lastTaskStatusWorkers || []);
+    };
+  });
+}
+
+/** How long ago, in the same short-form the rest of the app uses for a live
+ * run ("42s", "3m") -- not a full timestamp, which would be noise in a list
+ * meant to be scanned at a glance. */
+function taskStatusAge(worker) {
+  const from = worker.spawnedAt;
+  if (!from) return '';
+  const end = worker.endedAt || Date.now();
+  const seconds = Math.max(0, Math.round((end - from) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.round(minutes / 60)}h`;
+}
+
+function renderTaskStatusList(workers) {
+  _lastTaskStatusWorkers = workers || [];
+  if (!_tasksListEl) return;
+  const rows = _lastTaskStatusWorkers.filter(w =>
+    _tasksFilter === 'all' || taskStatusBucket(w.status) === _tasksFilter);
+  if (!rows.length) {
+    _tasksListEl.innerHTML = '<div class="office-tasks-empty">Nothing here yet.</div>';
+    return;
+  }
+  // Most recently spawned first -- what just started is what someone opening
+  // this panel most likely wants to see.
+  const ordered = rows.slice().sort((a, b) => (b.spawnedAt || 0) - (a.spawnedAt || 0));
+  _tasksListEl.innerHTML = ordered.map(w => `
+    <button type="button" class="office-tasks-row" data-worker-id="${esc(w.id)}">
+      <span class="office-tasks-row-status status-${esc(taskStatusBucket(w.status))}" aria-hidden="true"></span>
+      <span class="office-tasks-row-body">
+        <span class="office-tasks-row-goal">${esc(w.goal || w.label || 'Subagent')}</span>
+        <span class="office-tasks-row-meta">${esc(w.status || '')}${taskStatusAge(w) ? ' · ' + esc(taskStatusAge(w)) : ''}</span>
+      </span>
+    </button>`).join('');
+  _tasksListEl.querySelectorAll('.office-tasks-row').forEach(row => {
+    row.onclick = () => {
+      if (_scene && typeof _scene.focusOnWorker === 'function') _scene.focusOnWorker(row.dataset.workerId);
+    };
+  });
+}
+
+function renderTaskStatusPanel(state) {
+  renderTaskStatusFilters();
+  renderTaskStatusList(state.workers || []);
 }
 
 function renderPill(state) {
@@ -803,17 +1010,33 @@ function mount(container) {
       <button type="button" class="office-header-btn" id="officeBackBtn" hidden>Back to live</button>
       <button type="button" class="office-header-btn" id="officePauseBtn">Pause spawning</button>
     </div>
-    <div class="office-stage">
-      <canvas class="office-canvas" id="officeCanvas" role="img"
-              aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
-      <div class="office-detail" id="officeDetail" hidden></div>
-      <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
+    <div class="office-body">
+      <div class="office-stage">
+        <canvas class="office-canvas" id="officeCanvas" role="img"
+                aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
+        <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>
+        <div class="office-detail" id="officeDetail" hidden></div>
+        <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
+      </div>
+      <div class="office-tasks" id="officeTasks">
+        <div class="office-tasks-head">
+          <span class="office-tasks-title">Task Status</span>
+          <div class="office-tasks-filters" id="officeTasksFilters" role="tablist" aria-label="Filter by status"></div>
+        </div>
+        <div class="office-tasks-list" id="officeTasksList"></div>
+      </div>
     </div>`;
   _canvas = container.querySelector('#officeCanvas');
   _detailEl = container.querySelector('#officeDetail');
   _pillEl = container.querySelector('#officePill');
   _hintEl = container.querySelector('#officeHint');
   _summaryEl = container.querySelector('#officeSummary');
+  _deptCardsEl = container.querySelector('#officeDeptCards');
+  _deptCardEls.clear();
+  _tasksFiltersEl = container.querySelector('#officeTasksFilters');
+  _tasksListEl = container.querySelector('#officeTasksList');
+  _tasksFilter = 'all';
+  renderTaskStatusFilters();
   // The dedup guard below is keyed on text, and the element is brand new, so
   // a remount whose state has not changed would otherwise leave it empty.
   _lastSummary = '';
@@ -833,7 +1056,7 @@ function mount(container) {
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => { _selectedId = id; scheduleSync(); },
-      onTick: () => activeAdapter().tick(),
+      onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
       // The detail panel owns the right edge of the stage; the camera slides
       // a focused desk clear of it rather than flying to a spot the panel
       // then covers.
@@ -927,6 +1150,12 @@ function unmount() {
   _pauseBtnEl = null;
   _backBtnEl = null;
   _outletBtnEls = {};
+  _deptCardsEl = null;
+  _deptCardEls.clear();
+  _tasksFiltersEl = null;
+  _tasksListEl = null;
+  _tasksFilter = 'all';
+  _lastTaskStatusWorkers = [];
 }
 
 /** True while the scene exists and its render loop is running. Used by tests. */

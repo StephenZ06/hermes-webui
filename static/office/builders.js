@@ -77,16 +77,33 @@ function capsule(radius, length, color) {
  * The raised slab a cluster of desks sits on. Gives a pod a visible edge so
  * a delegation branch reads as one team rather than scattered furniture.
  */
-export function makePod(width, depth, palette) {
+/**
+ * `tint`, when given (a department's accent colour — see roster.js's
+ * colorForDepartment), is blended into the palette's own pod colours rather
+ * than replacing them: a Business floor reads as its department while
+ * staying the same material and staying correct in both the light and dark
+ * palette, instead of a flat brand colour painted over whichever theme is
+ * active.
+ */
+export function makePod(width, depth, palette, tint) {
   const group = new THREE.Group();
-  const slab = box(width, 0.6, depth, palette.podTop);
+  const topColor = tint ? mixColor(palette.podTop, tint, 0.3) : palette.podTop;
+  const sideColor = tint ? mixColor(palette.podSide, tint, 0.34) : palette.podSide;
+  const slab = box(width, 0.6, depth, topColor);
   slab.position.y = 0.3;
   slab.castShadow = false;
   group.add(slab);
-  const skirt = box(width - 0.8, 0.5, depth - 0.8, palette.podSide);
+  const skirt = box(width - 0.8, 0.5, depth - 0.8, sideColor);
   skirt.position.y = -0.15;
   group.add(skirt);
   return group;
+}
+
+/** THREE.Color.lerp under a hex-in, hex-out signature so callers (and the
+ * material cache, which keys on the exact colour string) never touch a
+ * THREE.Color instance directly. */
+function mixColor(baseHex, tintHex, amount) {
+  return '#' + new THREE.Color(baseHex).lerp(new THREE.Color(tintHex), amount).getHexString();
 }
 
 /**
