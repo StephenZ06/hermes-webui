@@ -193,7 +193,7 @@ def test_static_tree_shares_the_live_canvas_builders():
     assert "function childrenOf(id, nodes){" in canvas
     assert "function buildCard(node, staggerIndex, baseDelayMs, ctx){" in canvas
     assert "function buildBranch(node, staggerIndex, baseDelayMs, ctx){" in canvas
-    assert "function buildTreeNodes(parentSessionId, children, rootPatch){" in canvas
+    assert "function buildTreeNodes(parentSessionId, children, rootPatch, opts){" in canvas
     # An embedded diagram is read-only: no selection, no click handlers.
     assert "const interactive = !ctx || ctx.interactive !== false;" in canvas
     assert "interactive: false" in canvas

@@ -1,6 +1,6 @@
 # Chat split view — pluggable right-panel panes
 
-- **Status:** Proposed (Slice 1 implemented)
+- **Status:** Proposed (Slices 1-2 implemented)
 - **Author:** @StephenZ06
 - **Created:** 2026-09-11
 
@@ -152,9 +152,39 @@ does for the Office (`panels.js:455` `HermesOffice.unmount()`).
    The tab strip itself still renders from the three hardcoded buttons, not
    the registry — that part of Slice 1 is deferred to whichever later slice
    first needs a pane not named files/artifacts/todos in the strip.
-2. **Slice 2 — Canvas pane.** Depends only on Slice 1 + the existing
-   `AgentCanvas` / adapter. Tests: spawn → row appears in the pane; session
-   switch resets it; tab-away unsubscribes.
+2. **Slice 2 — Canvas pane. Implemented (2026-09-12).** A non-interactive
+   delegation tree, `AgentCanvas.renderStaticTree()` fed from
+   `window.HermesOffice.adapter`/`.getState()` — the SAME live feed the Office
+   3D view reads — not from `AgentCanvas`'s own `onSpawn`/`onToolActivity`/
+   `onComplete` handlers, which agent-canvas.js's own file header says were
+   retired when the Office replaced it as a panel (`static/messages.js` no
+   longer calls them). Reviving that path would have meant re-wiring the SSE
+   fan-out; reading the Office's adapter instead needs nothing extra, since it
+   already receives every event live.
+
+   **Deviation found mid-implementation:** `buildTreeNodes()`'s status mapping
+   unconditionally coerced `running` → `interrupted`, correct for its only
+   prior caller (a *finished* cron run row that never recorded a completion
+   event) but wrong for a subagent that is genuinely still running right now.
+   Added a `live` option (default `false`, so the cron delegation card's exact
+   existing behavior is unchanged) that the Canvas pane passes `true` — the
+   same distinction `office/history.js`'s `historicalStatus()` already makes
+   for the Office's own historical replay.
+
+   Nesting: a worker becomes a direct child of the root unless its `parentId`
+   names another currently-live worker, in which case it nests under that
+   worker instead — mirrors `office/history.js`'s `isDirect` check for the 3D
+   floor's replay.
+
+   Added `workspace_canvas_tab` to all 15 locale blocks (a short, standard
+   translation of "canvas" per locale — flag for a native-speaker pass rather
+   than treat as final).
+
+   Tests: `tests/test_chat_pane_registry.py` (tree renders from the adapter
+   state with `live: true`; nested delegation keeps its real parent; mount
+   subscribes, leaving unsubscribes; a live adapter event re-renders while
+   mounted) plus `tests/test_cron_delegation_diagram.py` (unchanged cron
+   behavior with the new `live`-less default).
 3. **Slice 3 — Plane pane.** Read-only board, bound-project resolution, SSE
    teardown. Tests: board resolves from bound project; unmount closes the SSE.
 4. **Slice 4 — Live preview pane.** Setting-gated, CSP `frame-src` change,

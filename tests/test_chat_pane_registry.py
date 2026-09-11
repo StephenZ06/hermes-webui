@@ -45,9 +45,11 @@ def _page(browser):
             <button id="workspaceFilesTab"></button>
             <button id="workspaceArtifactsTab"></button>
             <button id="workspaceTodosTab"></button>
+            <button id="workspaceCanvasTab"></button>
           </div>
           <section id="workspaceArtifacts" hidden></section>
           <section id="workspaceTodosPanel" hidden></section>
+          <section id="workspaceCanvasPane" hidden><div id="workspaceCanvasTree"></div></section>
         </aside>
         """
     )
@@ -65,11 +67,11 @@ def _page(browser):
     return page
 
 
-def test_the_three_built_in_panes_are_registered_on_load(browser):
+def test_the_built_in_panes_are_registered_on_load(browser):
     page = _page(browser)
     try:
         ids = page.evaluate("() => listChatPanes().map(p => p.id).sort()")
-        assert ids == ["artifacts", "files", "todos"]
+        assert ids == ["artifacts", "canvas", "files", "todos"]
     finally:
         page.close()
 
@@ -155,5 +157,97 @@ def test_switchworkspacepaneltab_delegates_to_the_registry(browser):
         page.evaluate("() => switchWorkspacePanelTab('artifacts')")
         active = page.evaluate("() => document.getElementById('workspaceArtifactsTab').classList.contains('active')")
         assert active is True
+    finally:
+        page.close()
+
+
+# ── Canvas pane (Slice 2) ────────────────────────────────────────────────────
+
+def _install_fake_office_and_canvas(page, workers=None):
+    """Stand in for window.HermesOffice (the live adapter) and window.AgentCanvas
+    (the renderer) -- neither is loaded in this isolated workspace.js harness."""
+    page.evaluate(
+        """(workers) => {
+          window._renderCalls = [];
+          window._unsubscribed = 0;
+          window.AgentCanvas = {
+            renderStaticTree: (container, opts) => { window._renderCalls.push(opts); },
+          };
+          window.HermesOffice = {
+            getState: () => ({ conductor: { status: 'orchestrating' }, workers }),
+            adapter: {
+              subscribe: (fn) => { window._officeListener = fn; return () => { window._unsubscribed++; }; },
+            },
+          };
+        }""",
+        workers or [],
+    )
+
+
+def test_switching_to_canvas_renders_the_tree_from_the_office_adapter(browser):
+    page = _page(browser)
+    try:
+        _install_fake_office_and_canvas(page, [
+            {"id": "s1", "parentId": None, "goal": "Read README", "status": "running",
+             "spawnedAt": 1000, "endedAt": None, "toolCount": 2,
+             "inputTokens": 10, "outputTokens": 20, "reasoningTokens": 0,
+             "apiCalls": 1, "costUsd": 0.01},
+        ])
+        page.evaluate("() => switchRightPanelPane('canvas')")
+        calls = page.evaluate("() => window._renderCalls")
+        assert len(calls) == 1
+        opts = calls[0]
+        assert opts["live"] is True, "a genuinely-running worker must not be shown as interrupted"
+        assert opts["parentSessionId"] is None
+        assert opts["rootStatus"] == "running"
+        assert len(opts["children"]) == 1
+        child = opts["children"][0]
+        assert child["session_id"] == "s1"
+        assert child["parent_session_id"] is None
+        assert child["status"] == "running"
+        assert child["title"] == "Read README"
+    finally:
+        page.close()
+
+
+def test_nested_delegation_keeps_its_real_parent(browser):
+    page = _page(browser)
+    try:
+        _install_fake_office_and_canvas(page, [
+            {"id": "s1", "parentId": None, "goal": "top", "status": "running", "spawnedAt": 1000},
+            {"id": "s2", "parentId": "s1", "goal": "nested", "status": "running", "spawnedAt": 1001},
+        ])
+        page.evaluate("() => switchRightPanelPane('canvas')")
+        children = page.evaluate("() => window._renderCalls[0].children")
+        by_id = {c["session_id"]: c for c in children}
+        assert by_id["s1"]["parent_session_id"] is None
+        assert by_id["s2"]["parent_session_id"] == "s1"
+    finally:
+        page.close()
+
+
+def test_canvas_pane_subscribes_on_mount_and_unsubscribes_on_leave(browser):
+    page = _page(browser)
+    try:
+        _install_fake_office_and_canvas(page, [])
+        page.evaluate("() => switchRightPanelPane('canvas')")
+        has_listener = page.evaluate("() => typeof window._officeListener === 'function'")
+        assert has_listener is True
+        page.evaluate("() => switchRightPanelPane('files')")
+        unsub_count = page.evaluate("() => window._unsubscribed")
+        assert unsub_count == 1
+    finally:
+        page.close()
+
+
+def test_a_live_update_re_renders_the_pane_while_mounted(browser):
+    page = _page(browser)
+    try:
+        _install_fake_office_and_canvas(page, [])
+        page.evaluate("() => switchRightPanelPane('canvas')")
+        before = page.evaluate("() => window._renderCalls.length")
+        page.evaluate("() => window._officeListener()")
+        after = page.evaluate("() => window._renderCalls.length")
+        assert after == before + 1
     finally:
         page.close()

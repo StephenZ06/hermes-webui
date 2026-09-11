@@ -1185,7 +1185,8 @@
   // return. Kept separate from showHistoricalTree() so the Scheduled jobs
   // page can draw the same diagram (renderStaticTree()) from the same shape
   // without touching this module's live state.
-  function buildTreeNodes(parentSessionId, children, rootPatch){
+  function buildTreeNodes(parentSessionId, children, rootPatch, opts){
+    const live = !!(opts && opts.live);
     const nodes = new Map();
     const kids = Array.isArray(children) ? children : [];
     const firstStart = kids.length ? Math.min(...kids.map(c => c.started_at || Infinity)) : 0;
@@ -1219,11 +1220,15 @@
         // (see list_parents_with_subagent_children) so the reconstructed
         // historical tree doesn't silently degrade to a bare status dot.
         model: c.model || '',
-        // A child state.db never got a completion event recorded shows as
-        // 'running' from the raw query — but this is a FINISHED historical
-        // session, so that can only mean it was cut off, not that it's
-        // live right now. Show it as interrupted, not running.
-        status: c.status === 'running' ? 'interrupted' : c.status,
+        // A child state.db row with no recorded end shows as 'running' from
+        // the raw query. For a FINISHED historical session that can only mean
+        // it was cut off, not that it's live right now, so it's shown as
+        // interrupted. `live` is the exception (added for the Canvas pane,
+        // which renders the SAME subagents the Office is tracking live): a
+        // worker genuinely still running must say so, not "interrupted" —
+        // the same distinction static/office/history.js's historicalStatus()
+        // already makes for the Office's own historical replay.
+        status: (c.status === 'running' && !live) ? 'interrupted' : c.status,
         toolCount: c.tool_call_count || 0, tools: [], lastTool: null,
         inputTokens: c.input_tokens || 0, outputTokens: c.output_tokens || 0,
         reasoningTokens: c.reasoning_tokens || 0, apiCalls: c.api_call_count || 0,
@@ -1256,10 +1261,14 @@
   // no shared state with the live canvas — the Scheduled jobs page renders
   // one of these per cron run (see _renderCronDelegation() in panels.js).
   //
-  // opts: { parentSessionId, children[], rootLabel, rootSub, rootStatus, root }
+  // opts: { parentSessionId, children[], rootLabel, rootSub, rootStatus, root, live }
   // `root` carries any further node fields for the root card (duration,
   // token/cost stats) so a caller with real numbers for it — a cron run row,
   // say — shows them instead of the totals derived from its children.
+  // `live` (default false, matching every caller before it existed): the
+  // children are subagents that may genuinely still be running right now
+  // (the Canvas pane), not a finished historical run (the cron delegation
+  // card) — see buildTreeNodes' status comment.
   function renderStaticTree(container, opts){
     if(!container) return;
     const o = opts || {};
@@ -1267,7 +1276,7 @@
       rootLabel: o.rootLabel || 'Conductor',
       rootSub: o.rootSub || '',
       status: o.rootStatus || 'completed',
-    }, o.root || {}));
+    }, o.root || {}), { live: o.live });
     const ctx = { nodes: nodes, interactive: false };
     const root = nodes.get(ROOT_ID);
     container.innerHTML = '';

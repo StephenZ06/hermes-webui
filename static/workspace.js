@@ -419,6 +419,83 @@ registerChatPane({id:'files'});
 registerChatPane({id:'artifacts', mount:()=>{ if(typeof renderSessionArtifacts==='function') renderSessionArtifacts(); }});
 registerChatPane({id:'todos', mount:()=>{ if(typeof _loadWorkspacePanelTodos==='function') _loadWorkspacePanelTodos(); }});
 
+// ── Canvas pane (docs/rfcs/chat-split-view-panes.md, Slice 2) ──
+//
+// A compact, non-interactive delegation tree docked beside the chat. Reuses
+// AgentCanvas.renderStaticTree() (agent-canvas.js) -- the SAME snapshot
+// renderer the cron delegation card already uses -- fed from the SAME live
+// adapter the Office 3D view reads (window.HermesOffice.adapter /
+// .getState()), NOT from AgentCanvas's own onSpawn/onToolActivity/onComplete
+// handlers: agent-canvas.js's file header says outright that live event path
+// was retired when the Office replaced it as a panel, and static/messages.js
+// no longer feeds it. Reviving that path would mean re-wiring the SSE fan-out
+// this file has nothing to do with; reading the Office's adapter instead
+// needs no such thing, since the Office already receives every event.
+let _canvasPaneUnsubscribe = null;
+
+/** Office adapter worker -> the {session_id, parent_session_id, ...} shape
+ * AgentCanvas.renderStaticTree()'s buildTreeNodes() expects (see its state.db
+ * row comments). `parent_session_id: null` marks a top-level worker -- passing
+ * `parentSessionId: null` to renderStaticTree below is what makes
+ * buildTreeNodes' `c.parent_session_id === parentSessionId` treat it as a
+ * direct child of the root; a worker whose parentId names ANOTHER live worker
+ * (real nested delegation) keeps that id so it nests under its own parent,
+ * same as office/history.js's replay does for the 3D floor. */
+function _officeWorkersAsCanvasChildren(workers){
+  const list = Array.isArray(workers) ? workers : [];
+  const liveIds = new Set(list.map(w => w.id));
+  return list.map(w => ({
+    session_id: w.id,
+    parent_session_id: (w.parentId && liveIds.has(w.parentId)) ? w.parentId : null,
+    title: w.goal || w.label || '',
+    status: w.status,
+    model: w.model,
+    started_at: w.spawnedAt ? w.spawnedAt / 1000 : 0,
+    ended_at: w.endedAt ? w.endedAt / 1000 : 0,
+    tool_call_count: w.toolCount || 0,
+    input_tokens: w.inputTokens,
+    output_tokens: w.outputTokens,
+    reasoning_tokens: w.reasoningTokens,
+    api_call_count: w.apiCalls,
+    cost_usd: w.costUsd,
+  }));
+}
+
+function _renderWorkspaceCanvasPane(){
+  const container = $('workspaceCanvasTree');
+  if(!container) return;
+  if(!window.HermesOffice || typeof window.HermesOffice.getState !== 'function'
+    || !window.AgentCanvas || typeof window.AgentCanvas.renderStaticTree !== 'function'){
+    return;
+  }
+  const state = window.HermesOffice.getState();
+  const conductorRunning = state && state.conductor && state.conductor.status === 'orchestrating';
+  window.AgentCanvas.renderStaticTree(container, {
+    parentSessionId: null,
+    children: _officeWorkersAsCanvasChildren(state && state.workers),
+    // Left untranslated on purpose, matching the Office 3D floor's own
+    // canvas-drawn "Conductor" signage (static/office/scene.js) -- neither
+    // goes through t(), so the two stay consistent.
+    rootLabel: 'Conductor',
+    rootStatus: conductorRunning ? 'running' : 'completed',
+    live: true,
+  });
+}
+
+registerChatPane({
+  id: 'canvas',
+  mount: () => {
+    _renderWorkspaceCanvasPane();
+    if(window.HermesOffice && window.HermesOffice.adapter
+      && typeof window.HermesOffice.adapter.subscribe === 'function'){
+      _canvasPaneUnsubscribe = window.HermesOffice.adapter.subscribe(_renderWorkspaceCanvasPane);
+    }
+  },
+  unmount: () => {
+    if(typeof _canvasPaneUnsubscribe === 'function'){ _canvasPaneUnsubscribe(); _canvasPaneUnsubscribe = null; }
+  },
+});
+
 let _activeChatPaneId = 'files';
 
 /**
@@ -427,10 +504,11 @@ let _activeChatPaneId = 'files';
  * show/hide from there), then mount the incoming pane.
  *
  * An unknown id falls back to 'files' -- matching the pre-registry switch
- * function's ternary exactly. Do not widen the id space (add a 4th value)
- * without first auditing every `_workspacePanelActiveTab === 'files'`-style
- * comparison in this file; today those three are the only values that have
- * ever existed, and code elsewhere may assume it.
+ * function's ternary exactly. `_workspacePanelActiveTab`'s value space was
+ * audited before widening it past the original three (files/artifacts/todos)
+ * to add 'canvas' -- it turned out to have exactly one other reader in this
+ * file (the dataset mirror below), so this was safe; re-check before adding
+ * a 5th.
  */
 function switchRightPanelPane(id){
   const nextId = _chatPanes.has(id) ? id : 'files';
@@ -443,9 +521,9 @@ function switchRightPanelPane(id){
   _setWorkspacePanelTabDataset();
 
   // Built-in tab buttons keep their existing ids; a pane registered under a
-  // different id gets no tab-strip wiring yet -- that's the next slice
-  // (render the strip from the registry instead of these three buttons).
-  ['files','artifacts','todos'].forEach(known=>{
+  // different id gets no tab-strip wiring yet -- that's a later slice
+  // (render the strip from the registry instead of these hardcoded buttons).
+  ['files','artifacts','todos','canvas'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -455,6 +533,8 @@ function switchRightPanelPane(id){
   if(artifacts) artifacts.hidden = nextId !== 'artifacts';
   const todosPanel = $('workspaceTodosPanel');
   if(todosPanel) todosPanel.hidden = nextId !== 'todos';
+  const canvasPane = $('workspaceCanvasPane');
+  if(canvasPane) canvasPane.hidden = nextId !== 'canvas';
 
   const next = getChatPane(nextId);
   if(next && typeof next.mount === 'function'){
