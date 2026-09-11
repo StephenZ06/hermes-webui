@@ -437,8 +437,25 @@ def handle_transcribe(handler):
             return j(handler, {'error': 'Speech-to-text is unavailable on this server'}, status=503)
         result = transcribe_audio(temp_path)
         if not result.get('success'):
+            # A configured cloud provider that is down, rate-limited, or missing
+            # its key must not kill dictation when a local Whisper backend is
+            # installed — fall back to it transparently (it is preloaded at boot,
+            # see api/stt_warmup.py). transcribe_audio_local_fallback never
+            # lazy-installs and never reaches for cloud.
+            try:
+                from tools.transcription_tools import transcribe_audio_local_fallback
+                fallback = transcribe_audio_local_fallback(temp_path)
+            except Exception:
+                fallback = None
+            if fallback and fallback.get('success'):
+                result = fallback
+        if not result.get('success'):
             msg = str(result.get('error') or 'Transcription failed')
-            status = 503 if 'unavailable' in msg.lower() or 'not configured' in msg.lower() else 400
+            lower = msg.lower()
+            status = 503 if (
+                'unavailable' in lower or 'not configured' in lower
+                or 'no stt provider' in lower
+            ) else 400
             return j(handler, {'error': msg}, status=status)
         transcript = str(result.get('transcript') or '').strip()
         return j(handler, {'ok': True, 'transcript': transcript})
@@ -586,6 +603,20 @@ def _stt_provider_capability():
 
 def handle_transcribe_capability(handler):
     available, provider = _stt_provider_capability()
+    if not available:
+        # An unreachable/unkeyed configured provider still leaves a locally
+        # installed Whisper backend usable as the transparent fallback in
+        # handle_transcribe, so the mic should not fall back to (often broken)
+        # browser SpeechRecognition.
+        try:
+            import tools.transcription_tools as _stt
+            if getattr(_stt, "_HAS_FASTER_WHISPER", False) or (
+                callable(getattr(_stt, "_has_local_command", None))
+                and _stt._has_local_command()
+            ):
+                available, provider = True, "local"
+        except Exception:
+            pass
     return j(handler, {"ok": True, "available": bool(available), "provider": provider})
 
 

@@ -99,6 +99,40 @@ def test_handle_transcribe_surfaces_provider_error(monkeypatch):
     assert handler.payload()["error"] == "STT not configured"
 
 
+def test_handle_transcribe_falls_back_to_local_when_the_provider_fails(monkeypatch):
+    # A configured cloud provider that is down / unkeyed must not kill dictation
+    # when a local Whisper backend is installed.
+    fake_mod = types.ModuleType("tools.transcription_tools")
+    fake_mod.transcribe_audio = lambda path: {"success": False, "error": "STT not configured"}
+    fake_mod.transcribe_audio_local_fallback = lambda path: {
+        "success": True, "transcript": "recovered locally", "provider": "local",
+    }
+    _install_fake_transcription_tools(monkeypatch, fake_mod)
+
+    body, content_type = _multipart_body(
+        files={"file": ("voice.webm", b"RIFFfakeaudio", "audio/webm")}
+    )
+    handler = _FakeHandler(body, content_type)
+    handle_transcribe(handler)
+
+    assert handler.status == 200
+    assert handler.payload() == {"ok": True, "transcript": "recovered locally"}
+
+
+def test_capability_reports_available_when_only_a_local_backend_exists(monkeypatch):
+    monkeypatch.setattr(upload, "_stt_provider_capability", lambda: (False, "none"))
+    fake_mod = types.ModuleType("tools.transcription_tools")
+    fake_mod._HAS_FASTER_WHISPER = True
+    _install_fake_transcription_tools(monkeypatch, fake_mod)
+
+    handler = _FakeHandler(b"", "")
+    handle_transcribe_capability(handler)
+
+    assert handler.status == 200
+    assert handler.payload()["available"] is True
+    assert handler.payload()["provider"] == "local"
+
+
 def test_handle_transcribe_capability_reports_unavailable_without_provider(monkeypatch):
     monkeypatch.setattr(upload, "_stt_provider_capability", lambda: (False, "none"))
 

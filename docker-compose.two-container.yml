@@ -114,6 +114,11 @@ services:
       - HERMES_WEBUI_HOST=0.0.0.0
       - HERMES_WEBUI_PORT=8787
       - HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
+      # HF model cache inside the mounted .hermes volume — a local Whisper STT
+      # model downloads once, not on every container recreate.
+      - HF_HOME=/home/hermeswebui/.hermes/webui/hf-cache
+      # Groq API key for /api/transcribe (Whisper STT). Set GROQ_API_KEY in .env.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       # Let the WebUI health/status checks reach the gateway container over
       # the compose network. Cron listing is local, but scheduled ticking and
       # the Tasks/System gateway pill need a reachable gateway URL (#4483).

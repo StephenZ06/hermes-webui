@@ -65,11 +65,20 @@ services:
       - HERMES_WEBUI_PORT=8787
       # Where to store sessions, workspaces, and other state (default: ~/.hermes/webui)
       - HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
+      # Keep the Hugging Face model cache inside the mounted .hermes volume so a
+      # local Whisper model (faster-whisper STT) downloads ONCE, not on every
+      # image rebuild / container recreate.
+      - HF_HOME=/home/hermeswebui/.hermes/webui/hf-cache
       # Default workspace directory shown on first launch
 #      - HERMES_WEBUI_DEFAULT_WORKSPACE=/workspace
       # Optional: enable password auth. Set HERMES_WEBUI_PASSWORD in .env
       # (required if you expose the port beyond 127.0.0.1).
       - HERMES_WEBUI_PASSWORD=${HERMES_WEBUI_PASSWORD:-}
+      # Groq API key for /api/transcribe (Whisper STT). Set GROQ_API_KEY in .env.
+      # Passed through the process env so it is visible regardless of
+      # profile/.env load order (the agent parses ~/.hermes/.env lazily, after
+      # the STT module has already cached its key check). Empty = local Whisper.
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       #
       # Bind-mount permission handling (fixes #1389, #1399):
       #   When you mount an EXISTING ~/.hermes directory (the common case),
