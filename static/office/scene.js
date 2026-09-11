@@ -77,6 +77,10 @@ const CONNECTOR_SPEED_RATIO = 1.8;
 // How far behind its chair a subagent starts when it spawns. Far enough to
 // read as arriving, close enough to be seated before its first tool call.
 const ARRIVAL_DISTANCE = 9;
+// How far to one side the walk-in starts — out in the aisle between desk
+// columns, so the figure clears the monitor and chair of the row behind it
+// instead of walking through them.
+const ARRIVAL_LATERAL = 5;
 
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -230,6 +234,8 @@ export function createOfficeScene(canvas, options) {
   function ensureConductor() {
     if (conductor) return conductor;
     const group = new THREE.Group();
+    // A tap on the plinth frames it, the same as a tap on any pod.
+    group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
     const outline = makeSlabOutline(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
@@ -242,11 +248,15 @@ export function createOfficeScene(canvas, options) {
     // a walking figure reads as activity, and the office does not imply work
     // Hermes has not reported.
     group.userData.wanderer = createWanderer({ radius: CONDUCTOR_RADIUS * 0.42 });
-    const plate = makeNameplate(palette, 'Conductor');
-    plate.position.set(0, 5.4, 0);
-    group.add(plate);
+    // Its name is painted on the plinth, the way the Business floor names a
+    // department — a floating nameplate over the one figure at the centre read
+    // as a label on a person rather than on the space.
+    const sign = makeFloorTitle('Conductor', CONDUCTOR_SLAB * 0.82, palette, { fit: true });
+    if (sign) {
+      sign.position.z = CONDUCTOR_SLAB / 2 - sign.geometry.parameters.height / 2 - 0.8;
+      group.add(sign);
+    }
     group.userData.person = person;
-    group.userData.plate = plate;
     office.add(group);
     conductor = group;
     return conductor;
@@ -262,11 +272,20 @@ export function createOfficeScene(canvas, options) {
     const slabWidth = width + POD_SLAB_PADDING;
     const slabDepth = depth + POD_SLAB_PADDING;
     const group = makePod(slabWidth, slabDepth, palette);
+    // A tap on the slab (not on a worker) frames this pod.
+    group.userData.podCluster = cluster;
 
-    // Signage, only where there is a real name to paint.
-    const title = makeFloorTitle(label, slabWidth * 0.8, palette);
+    // Signage, only where there is a real name to paint. The catch-all pods
+    // ("Subagents", "The Floor") keep the original fixed size; the named ones
+    // (departments, profiles) auto-fit larger so a short name is not dwarfed.
+    const plainSign = label === 'Subagents' || label === 'The Floor';
+    const title = plainSign
+      ? makeFloorTitle(label, slabWidth * 0.8, palette)
+      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true });
     if (title) {
-      title.position.z = slabDepth / 2 - 1.6;
+      title.position.z = plainSign
+        ? slabDepth / 2 - 1.6
+        : slabDepth / 2 - title.geometry.parameters.height / 2 - 0.8;
       group.add(title);
     }
 
@@ -350,11 +369,17 @@ export function createOfficeScene(canvas, options) {
     group.add(chair);
     const person = makePerson(palette, TINTS[tintIndex % TINTS.length]);
     person.position.set(0, 0, 1.9);
+    // Face the desk. makePerson's "work" pose reaches +z; the seat sits the
+    // figure on the +z side of the desk, so without this the figure types with
+    // its back to the monitor.
+    person.rotation.y = Math.PI;
     group.add(person);
     // A desk only ever appears because a subagent just spawned, so every seat
-    // starts with its occupant walking in from behind the chair.
-    const arrival = createArrival(ARRIVAL_DISTANCE);
-    person.position.z = 1.9 + arrival.offset;
+    // starts with its occupant walking in — from the aisle to one side, sides
+    // alternating so a pod does not fill from one direction.
+    const side = (tintIndex % 2 === 0) ? 1 : -1;
+    const arrival = createArrival(ARRIVAL_DISTANCE, undefined, side * ARRIVAL_LATERAL);
+    person.position.set(arrival.lateral, 0, 1.9 + arrival.offset);
     const plate = makeNameplate(palette, '');
     plate.position.set(0, 5.0, 0);
     group.add(plate);
@@ -430,7 +455,12 @@ export function createOfficeScene(canvas, options) {
 
     layout.pods.forEach(pod => {
       liveClusters.add(pod.cluster);
-      const record = ensurePod(pod.cluster, pod.width, pod.depth, pod.label || '');
+      // The pod holding the conductor's own direct children is "Subagents";
+      // Business pods carry a department name; everything else (a nested
+      // subagent's own children) has no name worth painting.
+      const podLabel = pod.label
+        || (pod.cluster === '__conductor__' ? 'Subagents' : '');
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel);
       record.group.position.set(pod.x, 0, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
       ensureConnector(pod.cluster, pod, span);
@@ -492,11 +522,10 @@ export function createOfficeScene(canvas, options) {
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
     setOutlineActive(conductor.userData.outlineLine,
       conductorStatus === 'orchestrating');
-    if (conductor.userData.status !== conductorStatus) {
-      conductor.userData.status = conductorStatus;
-      drawNameplate(conductor.userData.plate, palette, 'Conductor',
-        conductorStatus === 'orchestrating' ? 'running' : '');
-    }
+    // The plinth outline (lit above) carries the orchestrating cue now; the
+    // status is still tracked because the pacing logic in the render loop
+    // reads it.
+    conductor.userData.status = conductorStatus;
 
     frameOffice(layout.center, layout.radius);
   }
@@ -602,6 +631,29 @@ export function createOfficeScene(canvas, options) {
     return true;
   }
 
+  /**
+   * Frame one pod — a tap on the floor of a section, not on a worker. Zooms in
+   * far enough to read the desks without leaving the pod's own floor.
+   */
+  function focusOnPod(cluster) {
+    let pos;
+    let span;
+    if (cluster === '__conductor__' && conductor) {
+      pos = conductor.position;
+      span = CONDUCTOR_SLAB;
+    } else {
+      const rec = pods.get(cluster);
+      if (!rec) return false;
+      pos = rec.group.position;
+      span = Math.max(rec.width, rec.depth) + POD_SLAB_PADDING;
+    }
+    focusedId = null;
+    manualZoom = true;
+    const zoom = clampZoom(zoomForRadius(lastWidth, lastHeight, span * 0.62));
+    startTween({ x: pos.x, z: pos.z, zoom });
+    return true;
+  }
+
   /** Back to the whole floor. */
   function resetView() {
     focusedId = null;
@@ -698,49 +750,183 @@ export function createOfficeScene(canvas, options) {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
-  function workerIdAt(clientX, clientY) {
+  function objectAt(clientX, clientY, key) {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    camera.updateMatrixWorld();
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(office.children, true);
     for (const hit of hits) {
       let node = hit.object;
       while (node) {
-        if (node.userData && node.userData.workerId) return node.userData.workerId;
+        if (node.userData && node.userData[key] != null) return node.userData[key];
         node = node.parent;
       }
     }
     return null;
   }
+  const workerIdAt = (x, y) => objectAt(x, y, 'workerId');
+  const podClusterAt = (x, y) => objectAt(x, y, 'podCluster');
 
-  function onClick(event) {
-    const id = workerIdAt(event.clientX, event.clientY);
+  /** Where a screen point lands on the ground plane, in world units. */
+  const _groundV = new THREE.Vector3();
+  const _groundDir = new THREE.Vector3();
+  function groundPoint(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+    // applyCamera moves the camera without refreshing its world matrix, and
+    // unproject reads it directly.
+    camera.updateMatrixWorld();
+    _groundV.set(ndcX, ndcY, -1).unproject(camera);
+    camera.getWorldDirection(_groundDir);
+    const t = Math.abs(_groundDir.y) > 1e-6 ? -_groundV.y / _groundDir.y : 0;
+    return { x: _groundV.x + _groundDir.x * t, z: _groundV.z + _groundDir.z * t };
+  }
+
+  function clampZoom(z) {
+    return Math.min(overview.zoom * ZOOM_MAX, Math.max(overview.zoom * ZOOM_MIN, z));
+  }
+
+  /** Zoom to `nextZoom` while keeping the world point under (clientX, clientY) fixed. */
+  function zoomAbout(clientX, clientY, nextZoom) {
+    const before = groundPoint(clientX, clientY);
+    applyView({ x: view.x, z: view.z, zoom: clampZoom(nextZoom) });
+    const after = groundPoint(clientX, clientY);
+    applyView({ x: view.x - (after.x - before.x), z: view.z - (after.z - before.z), zoom: view.zoom });
+  }
+
+  function takeManualControl() {
+    tween = null;
+    focusedId = null;
+    manualZoom = true;
+  }
+
+  // ---- gestures: mouse drag + wheel, one-finger pan, two-finger pinch ------
+  // One code path for mouse and touch via Pointer Events. A press that never
+  // travels far and lifts quickly is a tap (pick a worker, or frame a pod, or
+  // pull back out); anything else pans, and a second finger pinches.
+  const TAP_SLOP = 6;
+  const TAP_MS = 500;
+  const pointers = new Map();
+  let gesture = null;
+  let downAt = 0;
+  let downClient = null;
+  let travelled = 0;
+  let pinchDist = 0;
+  let pinchMid = null;
+
+  function onPointerDown(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    try { canvas.setPointerCapture(event.pointerId); } catch (_err) { /* not supported */ }
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 1) {
+      downAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      downClient = { x: event.clientX, y: event.clientY };
+      travelled = 0;
+      gesture = null;
+      if (event.pointerType === 'mouse') canvas.style.cursor = 'grabbing';
+    } else if (pointers.size === 2) {
+      const p = Array.from(pointers.values());
+      pinchDist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      pinchMid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+      gesture = 'pinch';
+      takeManualControl();
+    }
+  }
+
+  function onPointerMoveGesture(event) {
+    const prev = pointers.get(event.pointerId);
+    if (!prev) {
+      // hover with no button: just the cursor hint
+      if (event.pointerType === 'mouse') {
+        canvas.style.cursor = workerIdAt(event.clientX, event.clientY)
+          || podClusterAt(event.clientX, event.clientY) ? 'pointer' : 'grab';
+      }
+      return;
+    }
+    const cur = { x: event.clientX, y: event.clientY };
+
+    if (pointers.size >= 2 && gesture === 'pinch') {
+      pointers.set(event.pointerId, cur);
+      const p = Array.from(pointers.values());
+      const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      const mid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+      if (pinchDist > 0) {
+        zoomAbout(mid.x, mid.y, view.zoom * (dist / pinchDist));
+      }
+      if (pinchMid) {
+        const a = groundPoint(pinchMid.x, pinchMid.y);
+        const b = groundPoint(mid.x, mid.y);
+        applyView({ x: view.x - (b.x - a.x), z: view.z - (b.z - a.z), zoom: view.zoom });
+      }
+      pinchDist = dist;
+      pinchMid = mid;
+      return;
+    }
+
+    travelled += Math.hypot(cur.x - prev.x, cur.y - prev.y);
+    pointers.set(event.pointerId, cur);
+    if (gesture !== 'pan' && travelled > TAP_SLOP) {
+      gesture = 'pan';
+      takeManualControl();
+    }
+    if (gesture === 'pan') {
+      const a = groundPoint(prev.x, prev.y);
+      const b = groundPoint(cur.x, cur.y);
+      applyView({ x: view.x - (b.x - a.x), z: view.z - (b.z - a.z), zoom: view.zoom });
+    }
+  }
+
+  function endPointer(event) {
+    try { canvas.releasePointerCapture(event.pointerId); } catch (_err) { /* fine */ }
+    const wasSingle = pointers.size === 1;
+    pointers.delete(event.pointerId);
+
+    if (pointers.size === 0) {
+      if (event.pointerType === 'mouse') canvas.style.cursor = 'grab';
+      const dt = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - downAt;
+      if (wasSingle && gesture == null && travelled <= TAP_SLOP && dt <= TAP_MS && downClient) {
+        handleTap(downClient.x, downClient.y);
+      }
+      gesture = null;
+      pinchMid = null;
+    } else if (pointers.size === 1) {
+      // Second finger lifted mid-pinch: keep panning with the one that's left.
+      gesture = null;
+      pinchMid = null;
+    }
+  }
+
+  function handleTap(clientX, clientY) {
+    const id = workerIdAt(clientX, clientY);
     if (id) {
       focusOnWorker(id);
       if (typeof config.onSelect === 'function') config.onSelect(id);
       return;
     }
-    // A click on empty floor is how you get back out — the same gesture as
-    // dismissing the detail panel, so the two never disagree.
+    const cluster = podClusterAt(clientX, clientY);
+    if (cluster) {
+      focusOnPod(cluster);
+      if (typeof config.onSelect === 'function') config.onSelect(null);
+      return;
+    }
+    // Empty ground is the way back out — same gesture as dismissing the panel.
     if (focusedId || manualZoom) resetView();
     if (typeof config.onSelect === 'function') config.onSelect(null);
   }
-  canvas.addEventListener('click', onClick);
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMoveGesture);
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
 
   function onWheel(event) {
     event.preventDefault();
-    // Zooming by hand takes the camera off auto-framing until the view is
-    // reset; otherwise the next spawn would snap it back mid-gesture.
-    manualZoom = true;
-    tween = null;
-    const factor = Math.exp(-event.deltaY * 0.0015);
-    const bounded = Math.min(
-      overview.zoom * ZOOM_MAX,
-      Math.max(overview.zoom * ZOOM_MIN, view.zoom * factor),
-    );
-    applyView({ x: view.x, z: view.z, zoom: bounded });
+    takeManualControl();
+    zoomAbout(event.clientX, event.clientY, view.zoom * Math.exp(-event.deltaY * 0.0015));
   }
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -753,11 +939,6 @@ export function createOfficeScene(canvas, options) {
   // Keyed to the canvas' owner document so the shortcut works wherever focus
   // sits inside the panel, and is removed with the scene.
   document.addEventListener('keydown', onKeyDown);
-
-  function onPointerMove(event) {
-    canvas.style.cursor = workerIdAt(event.clientX, event.clientY) ? 'pointer' : '';
-  }
-  canvas.addEventListener('pointermove', onPointerMove);
 
   // ---- sizing -----------------------------------------------------------
   let lastWidth = 0;
@@ -831,10 +1012,20 @@ export function createOfficeScene(canvas, options) {
       // A subagent walks to its desk before it starts; only once seated does
       // its posture describe what Hermes says it is doing.
       if (seat.arrival && !seat.arrival.done) {
+        const prevX = seat.person.position.x;
+        const prevZ = seat.person.position.z;
         advanceArrival(seat.arrival, dtMs);
+        seat.person.position.x = seat.arrival.lateral;
         seat.person.position.z = 1.9 + seat.arrival.offset;
+        const dX = seat.person.position.x - prevX;
+        const dZ = seat.person.position.z - prevZ;
+        if (Math.hypot(dX, dZ) > 1e-4) seat.person.rotation.y = Math.atan2(dX, dZ);
         poseWalking(seat.person, seat.arrival.phase, arrivalSettle(seat.arrival));
-        if (seat.arrival.done) hideLegs(seat.person);
+        if (seat.arrival.done) {
+          hideLegs(seat.person);
+          seat.person.position.set(0, 0, 1.9);
+          seat.person.rotation.y = Math.PI;
+        }
         return;
       }
       poseWorker(seat.person, seat.pose, t, dt);
@@ -892,8 +1083,10 @@ export function createOfficeScene(canvas, options) {
 
   function dispose() {
     stop();
-    canvas.removeEventListener('click', onClick);
-    canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('pointerdown', onPointerDown);
+    canvas.removeEventListener('pointermove', onPointerMoveGesture);
+    canvas.removeEventListener('pointerup', endPointer);
+    canvas.removeEventListener('pointercancel', endPointer);
     canvas.removeEventListener('wheel', onWheel);
     document.removeEventListener('keydown', onKeyDown);
     clearOffice();
@@ -914,6 +1107,6 @@ export function createOfficeScene(canvas, options) {
 
   return {
     start, stop, resize, dispose, isRunning, applyTheme, syncOffice,
-    workerIdAt, focusOnWorker, resetView, isFocused, getView, scene,
+    workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView, scene,
   };
 }

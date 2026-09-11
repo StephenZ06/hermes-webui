@@ -55,12 +55,13 @@ if (input.wander) {
 }
 
 if (input.arrival) {
-  const a = createArrival(input.arrival.distance, input.arrival.speed);
+  const a = createArrival(input.arrival.distance, input.arrival.speed,
+                          input.arrival.lateral);
   const track = [];
   for (const ms of input.arrival.steps) {
     advanceArrival(a, ms);
     track.push({ offset: a.offset, done: a.done, phase: a.phase,
-                 settle: arrivalSettle(a) });
+                 lateral: a.lateral, settle: arrivalSettle(a) });
   }
   out.arrival = track;
 }
@@ -173,6 +174,25 @@ def test_the_walk_settles_rather_than_stopping_mid_stride(driver):
     assert out[-1]["settle"] == 0, "and nothing left once seated"
 
 
+def test_the_walk_in_comes_from_the_aisle_and_merges_to_the_chair(driver):
+    # Straight-behind arrivals walked through the monitor and chair of the row
+    # behind. Now the figure starts out to one side and only crosses back onto
+    # the desk's centre line for the last stretch.
+    out = run(driver, arrival={"distance": 12, "speed": 6.5, "lateral": 5,
+                               "steps": [80] * 24})["arrival"]
+    assert out[0]["lateral"] == pytest.approx(5), "starts out in the aisle"
+    assert out[-1]["done"] is True
+    assert out[-1]["lateral"] == pytest.approx(0), "ends on the centre line, in the chair"
+    # Monotonic taper toward 0 as the chair approaches.
+    laterals = [abs(p["lateral"]) for p in out]
+    assert laterals == sorted(laterals, reverse=True)
+
+
+def test_a_straight_walk_in_still_has_no_lateral(driver):
+    out = run(driver, arrival={"distance": 9, "speed": 6.5, "steps": [200] * 8})["arrival"]
+    assert all(p["lateral"] == 0 for p in out)
+
+
 def test_an_arrival_that_is_done_stays_done(driver):
     out = run(driver, arrival={"distance": 1, "speed": 6.5,
                                "steps": [500, 500, 500]})["arrival"]
@@ -204,7 +224,7 @@ def test_arrival_is_driven_before_the_working_pose():
     # While walking in, the figure's posture is the walk — not whatever Hermes
     # says the subagent is doing, which it has not started yet.
     at = SCENE_SRC.index("if (seat.arrival && !seat.arrival.done)")
-    body = SCENE_SRC[at:at + 500]
+    body = SCENE_SRC[at:at + 900]
     assert "poseWalking(seat.person" in body
     assert body.index("return;") < body.index("poseWorker") if "poseWorker" in body else True
 

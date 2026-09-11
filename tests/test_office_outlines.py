@@ -83,10 +83,15 @@ out.connectorHasDistances = !!connector.geometry.getAttribute('lineDistance');
 out.connectorDashSize = connector.material.dashSize;
 out.outlineDashSize = line.material.dashSize;
 out.connectorActiveBefore = isDashActive(connector);
+out.connectorIdleOpacity = connector.material.opacity;
 setOutlineActive(connector, true);
+out.connectorOpacityImmediatelyAfterSwitch = connector.material.opacity;
+advanceDashFade(connector, 120);
+out.connectorOpacityMidFade = connector.material.opacity;
 advanceDashFade(connector, 5000);
 out.connectorActiveAfter = isDashActive(connector);
 out.connectorLitColor = connector.material.color.getHexString();
+out.connectorLitOpacity = connector.material.opacity;
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -263,6 +268,15 @@ def test_the_connector_lights_up_like_an_outline(result):
     assert result["connectorActiveBefore"] is False
     assert result["connectorActiveAfter"] is True
     assert result["connectorLitColor"] == "00ff00"
+
+
+def test_an_idle_bridge_is_invisible_and_fades_in(result):
+    # Unlike a platform edge (which stays faintly drawn when still), an unlit
+    # bridge is not drawn at all — so a delegation starting reads as the charge
+    # arriving, easing up from nothing rather than a green line snapping on.
+    assert result["connectorIdleOpacity"] == 0
+    assert result["connectorOpacityImmediatelyAfterSwitch"] == 0, "eases, not snaps"
+    assert 0 < result["connectorOpacityMidFade"] < result["connectorLitOpacity"]
 
 
 # ── wiring ───────────────────────────────────────────────────────────────────

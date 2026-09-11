@@ -153,7 +153,7 @@ def test_long_goals_are_shortened_for_the_desk_label(driver):
     out = run(driver, [spawn("a", goal=goal)])
     w = worker(out["state"], "a")
     assert w["goal"] == goal, "the full goal stays available for the detail view"
-    assert len(w["label"]) == 42 and w["label"].endswith("…")
+    assert len(w["label"]) == 56 and w["label"].endswith("…")
 
 
 def test_siblings_are_reseated_in_their_own_cluster(driver):
@@ -641,4 +641,65 @@ def test_office_state_survives_leaving_the_panel():
     assert "_adapter" not in body, (
         "unmount() releases the scene, not the state: clearing office state on "
         "the way out would show an empty floor for a run still in flight"
+    )
+
+
+# ── run identity ─────────────────────────────────────────────────────────────
+
+def test_sequential_delegations_in_one_run_keep_their_desks(driver):
+    # The real defect: cross-profile delegation is serialised (each
+    # delegate_to_profile call is a sequential barrier in hermes-agent's batch
+    # planner), so sibling #2 spawns after sibling #1 has already completed.
+    # The all-terminal heuristic read that as "a new run started" and deleted
+    # the previous profile's desk — the floor ended a three-way fan-out
+    # showing one worker. A run id says outright that it is the same run.
+    out = run(driver, [
+        spawn("docs", run_id="r1"), complete("docs"),
+        spawn("front", run_id="r1"), complete("front"),
+        spawn("back", run_id="r1"),
+    ])
+    assert [w["id"] for w in out["state"]["workers"]] == ["docs", "front", "back"]
+    assert len(out["state"]["desks"]) == 3
+
+
+def test_a_different_run_id_still_clears_the_floor(driver):
+    out = run(driver, [
+        spawn("a", run_id="r1"), complete("a"),
+        spawn("b", run_id="r2"),
+    ])
+    assert [w["id"] for w in out["state"]["workers"]] == ["b"]
+    assert len(out["state"]["desks"]) == 1
+
+
+def test_a_new_run_never_evicts_a_worker_that_is_still_running(driver):
+    # The office must not claim a live subagent stopped. A run id changes what
+    # counts as a new run, never the promise that running work is left alone.
+    out = run(driver, [
+        spawn("a", run_id="r1"),
+        spawn("b", run_id="r2"),
+    ])
+    assert {w["id"] for w in out["state"]["workers"]} == {"a", "b"}
+
+
+def test_a_spawn_without_a_run_id_keeps_the_old_heuristic(driver):
+    # applySnapshot and the historical replay both spawn without one.
+    out = run(driver, [spawn("a"), complete("a"), spawn("b")])
+    assert [w["id"] for w in out["state"]["workers"]] == ["b"]
+
+
+def test_reset_forgets_the_run(driver):
+    out = run(driver, [
+        spawn("a", run_id="r1"), complete("a"),
+        {"op": "reset"},
+        spawn("b", run_id="r1"),
+    ])
+    assert [w["id"] for w in out["state"]["workers"]] == ["b"]
+
+
+def test_the_stream_tags_office_events_with_its_run(driver):
+    # Without this the office can never tell one run from the next: the SSE
+    # payload carries the subagent, not the run it belongs to.
+    assert "d.run_id=d.run_id||streamId;" in MESSAGES_SRC.replace(" ", ""), (
+        "static/messages.js must stamp the stream id onto subagent_spawn "
+        "before handing it to the office"
     )

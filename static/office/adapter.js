@@ -88,7 +88,7 @@ export function profileNameFromCluster(cluster) {
 function shortLabel(goal) {
   const g = String(goal || '').trim().replace(/\s+/g, ' ');
   if (!g) return 'Subagent';
-  return g.length > 42 ? g.slice(0, 41) + '…' : g;
+  return g.length > 56 ? g.slice(0, 55) + '…' : g;
 }
 
 function normaliseStatus(raw) {
@@ -115,6 +115,12 @@ export function createOfficeAdapter(options) {
   let desks = [];
   let conductorStatus = 'idle';
   let spawnPaused = false;
+  /**
+   * The run the floor currently belongs to, from `run_id` on the spawn event
+   * (the SSE stream id — see static/messages.js). '' while unknown: the
+   * reconcile snapshot and the historical replay both spawn without one.
+   */
+  let currentRunId = '';
   // Events that named a subagent the office has never heard of. Not an
   // error: a page opened mid-run sees tool/complete events for subagents
   // that spawned before the stream was attached. Counted so the condition is
@@ -206,7 +212,9 @@ export function createOfficeAdapter(options) {
    *
    * Only when nothing is still running: a spawn arriving mid-run is nested
    * delegation or a sibling in the same batch, and clearing then would erase
-   * work that is still going.
+   * work that is still going. That "nothing is still running" test is only a
+   * proxy for "a new run began", and a bad one whenever siblings do not
+   * overlap — see clearForRun().
    */
   function clearFinishedForNewRun() {
     if (!workers.size) return;
@@ -214,6 +222,28 @@ export function createOfficeAdapter(options) {
       if (!TERMINAL_STATUSES.has(worker.status)) return;
     }
     Array.from(workers.keys()).forEach(removeWorker);
+  }
+
+  /**
+   * Decide whether this spawn opens a new run, and clear the floor if it does.
+   *
+   * The all-terminal proxy above is wrong for a fan-out whose siblings do not
+   * overlap, and cross-profile delegation is exactly that: hermes-agent's
+   * batch planner treats every delegate_to_profile call as a sequential
+   * barrier (agent/tool_dispatch_helpers.py), so sibling #2 starts after
+   * sibling #1 has already completed. The floor was clearing between them and
+   * a three-profile fan-out ended up showing one desk.
+   *
+   * A run id settles it outright. Only a CHANGE of a known run id clears;
+   * while the run is unknown ('') the old proxy still applies, because that
+   * is all a snapshot-adopted or replayed worker gives us. Either way a
+   * running worker is never removed — the office does not get to claim that
+   * live work stopped.
+   */
+  function clearForRun(runId) {
+    if (runId && currentRunId && runId === currentRunId) return;
+    clearFinishedForNewRun();
+    if (runId) currentRunId = runId;
   }
 
   function allocateDesk(worker) {
@@ -304,7 +334,7 @@ export function createOfficeAdapter(options) {
     if (existing) return publicWorker(existing);
 
     // The previous run's leftovers go before the new one is seated.
-    clearFinishedForNewRun();
+    clearForRun(data.run_id ? String(data.run_id) : '');
 
     const at = config.now();
     const worker = {
@@ -523,6 +553,7 @@ export function createOfficeAdapter(options) {
     conductorStatus = 'idle';
     spawnPaused = false;
     orphanEvents = 0;
+    currentRunId = '';
     emit({ type: 'reset' });
   }
 
@@ -530,6 +561,7 @@ export function createOfficeAdapter(options) {
   function getState() {
     return {
       conductor: { id: ROOT_ID, status: conductorStatus },
+      runId: currentRunId,
       spawnPaused,
       orphanEvents,
       workers: Array.from(workers.values()).map(publicWorker),

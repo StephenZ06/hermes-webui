@@ -96,22 +96,41 @@ export function makePod(width, depth, palette) {
  * subagent's parent id, which means nothing to a reader. Passing no text
  * returns null rather than an empty sign.
  */
-export function makeFloorTitle(text, width, palette) {
+export function makeFloorTitle(text, width, palette, opts) {
   const label = String(text || '').trim();
   if (!label) return null;
+  const fit = !!(opts && opts.fit);
 
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
-  canvas.height = 176;
+  canvas.height = fit ? 220 : 176;
   const ctx = canvas.getContext('2d');
-  ctx.font = '700 96px Georgia, "Times New Roman", serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
+  const chars = Array.from(label.toUpperCase());
+  let fontPx = 96;
   // Letterspacing by hand: ctx.letterSpacing is too new to rely on, and this
   // is the whole reason the sign reads as signage rather than a caption.
-  const spacing = 16;
-  const chars = Array.from(label.toUpperCase());
+  let spacing = 16;
+
+  if (fit) {
+    // Pick the largest font (within bounds) whose letterspaced text spans ~92%
+    // of the canvas, so a short name like "Sales" is painted as large as
+    // "Operations" instead of a third the size. Tracking scales with the font.
+    const trackRatio = 0.17;
+    const widthAt = (px) => {
+      ctx.font = `700 ${px}px Georgia, "Times New Roman", serif`;
+      const sp = px * trackRatio;
+      const w = chars.reduce((sum, c) => sum + ctx.measureText(c).width + sp, 0) - sp;
+      return { w, sp };
+    };
+    const base = widthAt(100);
+    fontPx = Math.max(84, Math.min(176, 100 * (canvas.width * 0.92) / base.w));
+    spacing = widthAt(fontPx).sp;
+  }
+
+  ctx.font = `700 ${fontPx}px Georgia, "Times New Roman", serif`;
   const total = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
   let x = (canvas.width - total) / 2;
   ctx.fillStyle = palette.floorTitle;
@@ -139,8 +158,8 @@ export function makeFloorTitle(text, width, palette) {
 /* ---------- progress outlines ---------- */
 
 // How long an outline takes to come up or go quiet. Long enough to read as a
-// current switching on rather than a state flipping.
-const DASH_FADE_MS = 420;
+// current easing in rather than a line snapping on.
+const DASH_FADE_MS = 800;
 
 /**
  * A dashed line whose pattern can be marched along its own length.
@@ -225,7 +244,10 @@ export function makeConnector(fromX, fromZ, toX, toZ, palette, height) {
     new THREE.Vector3(fromX, y, fromZ),
     new THREE.Vector3(toX, y, toZ),
   ], { color: palette.connector, dashSize: 0.55, gapSize: 0.85, opacity: 0.45 });
-  setDashPalette(line, palette.connector, 0.45, palette.outlineActive, 0.9);
+  // Idle opacity 0: an unlit bridge is not drawn at all, so a delegation
+  // starting reads as the charge *arriving* — the line fades up from nothing
+  // over DASH_FADE_MS rather than a green dash-line appearing at full strength.
+  setDashPalette(line, palette.connector, 0.0, palette.outlineActive, 0.9);
   return line;
 }
 
@@ -628,7 +650,7 @@ export function poseWorker(person, pose, elapsed, dt) {
  */
 export function makeNameplate(palette, text) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
+  canvas.width = 640;
   canvas.height = 96;
   const ctx = canvas.getContext('2d');
   const texture = new THREE.CanvasTexture(canvas);
@@ -636,7 +658,10 @@ export function makeNameplate(palette, text) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: texture, transparent: true, depthWrite: false,
   }));
-  sprite.scale.set(9.5, 1.8, 1);
+  // A little wider than the old 9.5, and the canvas is bigger and the text now
+  // measure-fits to the edge — the old plate clipped at ~20 characters with the
+  // box half empty to the right.
+  sprite.scale.set(11, 1.7, 1);
   sprite.userData.plate = { canvas, ctx, texture };
   drawNameplate(sprite, palette, text, null);
   return sprite;
@@ -649,6 +674,19 @@ const STATUS_GLYPH = {
   // reported, and a tick would claim a clean result we never saw.
   ended: '◦',
 };
+
+/** Clip `text` to `maxWidth` px under the context's current font, with an ellipsis. */
+function fitText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return text.slice(0, lo).trimEnd() + '…';
+}
 
 export function drawNameplate(sprite, palette, text, status) {
   const plate = sprite && sprite.userData && sprite.userData.plate;
@@ -675,8 +713,12 @@ export function drawNameplate(sprite, palette, text, status) {
     ctx.fillText(glyph, 22, 49);
   }
   ctx.fillStyle = palette.plateText;
+  const textX = glyph ? 60 : 22;
+  // Fill the plate to its edge, then ellipsize — a fixed character cap left the
+  // box visibly half-used.
+  const room = canvas.width - textX - 18;
   const label = String(text == null ? '' : text);
-  ctx.fillText(label.length > 20 ? label.slice(0, 19) + '…' : label, glyph ? 60 : 22, 49);
+  ctx.fillText(fitText(ctx, label, room), textX, 49);
 
   texture.needsUpdate = true;
 }

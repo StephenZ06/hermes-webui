@@ -24,6 +24,7 @@ REPO = pathlib.Path(__file__).parent.parent
 INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
 PANELS_JS = (REPO / "static" / "panels.js").read_text(encoding="utf-8")
+SESSIONS_JS = (REPO / "static" / "sessions.js").read_text(encoding="utf-8")
 OFFICE_INDEX_JS = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
 OFFICE_SCENE_JS = (REPO / "static" / "office" / "scene.js").read_text(encoding="utf-8")
 ESLINT_CONFIG = (REPO / "eslint.runtime-guard.config.mjs").read_text(encoding="utf-8")
@@ -186,6 +187,24 @@ def test_panel_switch_mounts_and_unmounts_the_office():
     )
 
 
+def test_loadsession_resets_the_office_on_a_cross_session_switch():
+    # The live floor tracks the running session. When loadSession() moves to a
+    # different session, the office keeps feeding only from the new session's
+    # SSE stream (static/messages.js gates subagent_* on the active sid), so the
+    # previous session's still-running desks never receive their completion
+    # events and sit frozen — dead connector lines, desks stuck at "working",
+    # the idle conductor pacing an otherwise dead floor. The old Agent Canvas
+    # reset itself here for exactly this reason; the Office that replaced it
+    # must too.
+    idx = SESSIONS_JS.find("currentSid !== sid && window.HermesOffice")
+    assert idx != -1, (
+        "loadSession() must call window.HermesOffice.reset() when switching to a "
+        "different session, guarded by `currentSid && currentSid !== sid`"
+    )
+    window = SESSIONS_JS[idx:idx + 200]
+    assert "HermesOffice.reset()" in window
+
+
 # ── CSS visibility ───────────────────────────────────────────────────────────
 
 def test_office_main_view_css_shows_and_hides_with_the_panel():
@@ -239,6 +258,53 @@ def test_the_spoken_summary_is_not_deduped_across_a_remount():
 def test_render_loop_stops_when_the_tab_is_hidden():
     assert "visibilitychange" in OFFICE_INDEX_JS
     assert "document.hidden" in OFFICE_INDEX_JS
+
+
+def test_the_scene_pans_zooms_and_frames_a_pod():
+    # Drag pans, wheel/pinch zoom, a stationary press is a tap that picks a
+    # worker or frames the pod under it.
+    for hook in ("pointerdown", "pointermove", "pointerup", "pointercancel"):
+        assert f"canvas.addEventListener('{hook}'" in OFFICE_SCENE_JS
+    assert "function focusOnPod(" in OFFICE_SCENE_JS
+    assert "podClusterAt" in OFFICE_SCENE_JS and "group.userData.podCluster" in OFFICE_SCENE_JS
+    assert "function zoomAbout(" in OFFICE_SCENE_JS, "wheel/pinch zoom toward the cursor"
+    # The canvas must own the touch axes or the page scrolls instead of the floor.
+    assert ".office-canvas{" in CSS
+    canvas_rule = CSS[CSS.index(".office-canvas{"):]
+    canvas_rule = canvas_rule[:canvas_rule.index("}")]
+    assert "touch-action:none" in canvas_rule
+
+
+# ── floor signage and seated figures ────────────────────────────────────────
+
+def test_the_conductor_is_named_on_the_floor_not_on_a_nameplate():
+    # A floating plate over the one figure at the centre read as a label on a
+    # person; painted on the plinth it reads as the name of the space, matching
+    # the Business floor.
+    assert "makeFloorTitle('Conductor'" in OFFICE_SCENE_JS
+    assert "makeNameplate(palette, 'Conductor')" not in OFFICE_SCENE_JS
+    assert "conductor.userData.plate" not in OFFICE_SCENE_JS
+
+
+def test_the_conductors_own_pod_is_labelled_subagents():
+    assert "'Subagents'" in OFFICE_SCENE_JS
+    assert "__conductor__" in OFFICE_SCENE_JS
+
+
+def test_the_catch_all_pod_signs_keep_the_original_size():
+    # "Subagents" and "The Floor" sit on large slabs and were fine at the fixed
+    # size; only the named pods (departments, profiles) and the conductor
+    # auto-fit larger.
+    assert "label === 'Subagents' || label === 'The Floor'" in OFFICE_SCENE_JS
+    assert "makeFloorTitle('Conductor', CONDUCTOR_SLAB * 0.82, palette, { fit: true })" in OFFICE_SCENE_JS
+
+
+def test_a_seated_figure_faces_its_monitor():
+    # makePerson's "work" pose reaches +z and the seat sits the figure on the
+    # +z side of the desk; without the turn it types with its back to the screen.
+    at = OFFICE_SCENE_JS.index("function ensureSeat(")
+    body = OFFICE_SCENE_JS[at:at + 1400]
+    assert "person.rotation.y = Math.PI" in body
 
 
 # ── lint gate ────────────────────────────────────────────────────────────────

@@ -5982,6 +5982,11 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     source.addEventListener('subagent_spawn',e=>{
       if(!S.session||S.session.session_id!==activeSid||S.activeStreamId!==streamId) return;
       let d;try{d=JSON.parse(e.data||'{}');}catch(_){return;}
+      // Which run this subagent belongs to. The office clears the floor when
+      // a NEW run starts, and without this it has to guess from "is anything
+      // still running" — which is wrong for a fan-out whose siblings do not
+      // overlap, and cross-profile delegation never overlaps.
+      d.run_id=d.run_id||streamId;
       if(window.HermesOffice&&typeof window.HermesOffice.onSpawn==='function') window.HermesOffice.onSpawn(d);
     });
 

@@ -935,11 +935,12 @@ def test_load_session_rearms_stream_on_every_early_return():
         "helper must (re)arm startSessionStream for the currently-shown S.session"
     )
 
-    # Isolate the loadSession body. Widened window: the #4946 visit-ack helpers
-    # added inside loadSession pushed the fetch-error catch's stream restart past
-    # the old 14000-char cutoff.
+    # Isolate the loadSession body. Widened window twice: the #4946 visit-ack
+    # helpers pushed the fetch-error catch's stream restart past the old
+    # 14000-char cutoff, then the Office cross-session reset pushed it past
+    # 16000.
     fn_ix = js.index("async function loadSession(")
-    body = js[fn_ix:fn_ix + 16000]
+    body = js[fn_ix:fn_ix + 17000]
 
     # The unconditional teardown must still be there (this is what creates the
     # dead-stream window the re-arm closes).

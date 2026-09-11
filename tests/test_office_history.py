@@ -35,10 +35,11 @@ _DRIVER = r"""
 const { historyEventsFromParent, applyHistory } = await import(process.argv[2]);
 const { createOfficeAdapter } = await import(process.argv[3]);
 const parent = JSON.parse(process.argv[4] || '{}');
+const options = JSON.parse(process.argv[5] || '{}');
 
-const events = historyEventsFromParent(parent);
+const events = historyEventsFromParent(parent, options);
 const adapter = createOfficeAdapter({ maxDesks: 400, now: () => 1000000 });
-applyHistory(adapter, parent);
+applyHistory(adapter, parent, options);
 
 process.stdout.write(JSON.stringify({ events, state: adapter.getState() }));
 """
@@ -51,9 +52,10 @@ def driver(tmp_path_factory):
     return path
 
 
-def replay(driver, parent):
+def replay(driver, parent, **options):
     proc = subprocess.run(
-        [NODE, str(driver), HISTORY.as_uri(), ADAPTER.as_uri(), json.dumps(parent)],
+        [NODE, str(driver), HISTORY.as_uri(), ADAPTER.as_uri(), json.dumps(parent),
+         json.dumps(options)],
         capture_output=True, text=True, timeout=60, check=False,
     )
     if proc.returncode != 0:
@@ -200,9 +202,13 @@ def test_interrupt_is_offered_only_on_a_live_running_worker():
 def test_the_sidebar_history_list_is_wired_to_the_panel():
     assert 'id="officeSessionList"' in INDEX_HTML
     assert "window.HermesOffice.renderSidebar()" in PANELS_JS
-    assert "window.officeReturnToLive = returnToLive;" in OFFICE_INDEX_SRC, (
+    assert "window.officeReturnToLive = function officeReturnToLive(" in OFFICE_INDEX_SRC, (
         "the sidebar card uses a plain onclick attribute; a function declared "
         "inside a module is not a global"
+    )
+    assert "switchPanel('office')" in OFFICE_INDEX_SRC, (
+        "'View live' must bring the office main view up, not just reset the "
+        "view mode under whatever panel is showing"
     )
 
 
@@ -211,3 +217,88 @@ def test_history_translation_stays_pure():
         assert forbidden not in HISTORY_SRC, (
             f"history.js must stay pure — found {forbidden!r}"
         )
+
+
+# ── cross-profile children ───────────────────────────────────────────────────
+
+def test_a_cross_profile_child_keeps_its_profile_pod(driver):
+    # A delegate_to_profile child is a direct child of the clicked chat, so
+    # `isDirect` would seat it on the conductor and the replayed floor would
+    # lose the thing the live floor shows most clearly: which profile ran it.
+    # The ledger records the cluster, so the replay uses it.
+    out = replay(driver, parent_entry(
+        child("docs", cluster="profile:docs-gits"),
+        child("front", cluster="profile:frontend"),
+    ))
+
+    spawns = {s["subagent_id"]: s["parent_id"] for s in out["events"]["spawns"]}
+    assert spawns == {"docs": "profile:docs-gits", "front": "profile:frontend"}
+    desks = {d["id"]: d for d in out["state"]["desks"]}
+    docs_desk = desks[worker(out["state"], "docs")["deskId"]]
+    assert docs_desk["cluster"] == "profile:docs-gits"
+    assert docs_desk["clusterLabel"] == "Docs Gits"
+
+
+def test_a_cluster_never_overrides_real_nesting(driver):
+    # A nested grandchild's own parent still wins: the cluster is only the
+    # answer for a row that has no other parent to hang off.
+    out = replay(driver, parent_entry(
+        child("a"),
+        child("b", parent_session_id="a", cluster="profile:frontend"),
+    ))
+
+    spawns = {s["subagent_id"]: s["parent_id"] for s in out["events"]["spawns"]}
+    assert spawns["b"] == "a"
+
+
+def test_a_child_without_a_cluster_is_unchanged(driver):
+    out = replay(driver, parent_entry(child("a")))
+    assert out["events"]["spawns"][0]["parent_id"] is None
+
+
+# ── a run that is still going ────────────────────────────────────────────────
+
+def test_a_running_child_of_a_live_run_is_not_called_interrupted(driver):
+    """Reported: every subagent read 'Interrupted' on a run that completed.
+
+    The cross-profile ledger records a delegation at spawn — status 'running',
+    no ended_at — so the sidebar listing carries those rows for the whole run.
+    Replayed, 'running' was read as 'cut off', which is only true of a run that
+    is over. Reproduced from the real 94c77261bc8e listing as it looked during
+    the run: three children, three 'Interrupted'.
+    """
+    out = replay(driver, parent_entry(
+        child("a", status="running", ended_at=None),
+        child("b", status="running", ended_at=None),
+    ), live=True)
+
+    assert out["events"]["completes"] == [], "nothing has finished yet"
+    assert worker(out["state"], "a")["status"] == "running"
+    assert worker(out["state"], "b")["status"] == "running"
+
+
+def test_a_running_child_of_a_finished_run_is_still_interrupted(driver):
+    # The original correction, unchanged: no end recorded and nothing running
+    # means it was cut off, and saying 'completed' would invent a result.
+    out = replay(driver, parent_entry(child("a", status="running", ended_at=None)))
+
+    assert worker(out["state"], "a")["status"] == "interrupted"
+
+
+def test_a_finished_child_of_a_live_run_keeps_its_outcome(driver):
+    # Siblings finish at different times; the ones that are done are done.
+    out = replay(driver, parent_entry(
+        child("done", status="completed"),
+        child("still", status="running", ended_at=None),
+    ), live=True)
+
+    assert worker(out["state"], "done")["status"] == "completed"
+    assert worker(out["state"], "still")["status"] == "running"
+
+
+def test_the_conductor_is_working_while_a_live_run_replays(driver):
+    # A replayed office is normally finished (see the test above); one built
+    # from a run still in flight must not look finished.
+    out = replay(driver, parent_entry(child("a", status="running", ended_at=None)), live=True)
+
+    assert out["state"]["conductor"]["status"] == "orchestrating"

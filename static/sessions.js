@@ -1873,6 +1873,12 @@ async function loadSession(sid){
     if (currentSid && currentSid !== sid && window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') {
       window.AgentCanvas.reset();
     }
+    // Same for the Office live floor (which replaced Agent Canvas): its
+    // subagent_* feed is gated on the active sid, so the leaving session's
+    // still-open desks never get their completion events and the floor freezes.
+    if (currentSid && currentSid !== sid && window.HermesOffice && typeof window.HermesOffice.reset === 'function') {
+      window.HermesOffice.reset();
+    }
     _loadingOlder = false;
     const _msgInner = $('msgInner');
     // position:absolute here (not height:100%) because #msgInner (this

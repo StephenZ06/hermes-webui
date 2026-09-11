@@ -123,19 +123,33 @@ export function createWanderer(opts) {
   return { state, update, moveTo };
 }
 
+// Over the last this-many units of the walk the figure merges from the aisle
+// back onto the desk's centre line, so it curves into the chair instead of
+// arriving side-on.
+const ARRIVAL_MERGE = 3.4;
+
 /**
  * A subagent walking to its desk.
  *
- * Starts behind the chair — outside the pod, where someone arriving would
- * come from — and walks forward into the seat. Local to the seat, so it works
- * whatever direction that desk faces.
+ * Starts out in the aisle beside the desk — `lateral` units to one side and
+ * `distance` behind — and walks in, merging onto the centre line only for the
+ * last stretch so it rounds into the chair rather than ploughing straight
+ * through the row behind it. Local to the seat, so it works whatever direction
+ * that desk faces.
  *
  * @param {number} distance how far behind the chair to start
+ * @param {number} [speed]
+ * @param {number} [lateral] signed aisle offset to start from; 0 walks straight in
  */
-export function createArrival(distance, speed) {
+export function createArrival(distance, speed, lateral) {
   return {
     // Local z offset from the seated position; counts down to 0.
     offset: distance,
+    // Local x offset from the seated position; derived from `offset` so it
+    // tapers to 0 as the figure reaches the chair.
+    lateral: lateral || 0,
+    lateralStart: lateral || 0,
+    distance,
     speed: speed || ARRIVAL_SPEED,
     phase: 0,
     done: false,
@@ -155,6 +169,9 @@ export function advanceArrival(arrival, dtMs) {
     arrival.offset = 0;
     arrival.done = true;
   }
+  // Hold the aisle line until the last ARRIVAL_MERGE units, then ease across.
+  const merge = Math.max(0, Math.min(1, arrival.offset / ARRIVAL_MERGE));
+  arrival.lateral = arrival.lateralStart * merge;
   return arrival;
 }
 
