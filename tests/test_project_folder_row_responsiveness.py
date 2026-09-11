@@ -47,14 +47,12 @@ def test_canvas_project_rows_still_toggle_synchronously():
 
 def test_chat_folder_row_is_the_same_height_as_a_canvas_folder_row():
     """Both views render `.project-chip.project-folder-row` inside
-    `.project-folder-list`, so they share padding and font size. The chat row
-    additionally carries a kebab button, and while that button was 20px tall it
-    -- not the row's text -- set the row height. Both the kebab and the chevron
-    are 16px so the text line box is the tallest child again and the padding
-    actually controls the row height: 24px at the default font size, measured on
-    the real rendered rows in both views.
+    `.project-folder-list`, so they share padding, min-height and font size --
+    the chat sidebar and the Agent Canvas rows move together whatever the value.
+    Both the kebab and the chevron are 16px so the text line box / min-height is
+    the tallest child and the row height is set here, not by a stray control.
     """
-    assert ".project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:3px 8px;" in STYLE_CSS, (
+    assert ".project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;padding:7px 8px;min-height:34px;" in STYLE_CSS, (
         "both views share this selector, so the row height must be set here or they diverge"
     )
     # Coarse pointers keep a real touch target; shrinking the row is a mouse-density

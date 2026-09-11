@@ -160,6 +160,25 @@ def test_insights_frontend_renders_daily_token_chart_and_model_usage_table():
     assert "insights_no_usage_data" in PANELS_JS
 
 
+def test_insights_panel_auto_refreshes_while_visible():
+    # System health polls on its own; the stat cards / charts used to drift stale
+    # until a manual refresh or panel re-open.
+    assert "_insightsAutoRefreshTimer" in PANELS_JS
+    assert "function _startInsightsAutoRefresh" in PANELS_JS
+    assert "function _syncInsightsAutoRefresh" in PANELS_JS
+    assert "_syncInsightsAutoRefresh();" in PANELS_JS, "must be wired into switchPanel"
+    # The tick stops itself once the panel is left, and skips (does not stop)
+    # while the tab is backgrounded.
+    start = PANELS_JS.index("function _startInsightsAutoRefresh")
+    body = PANELS_JS[start:start + 400]
+    assert "_currentPanel !== 'insights'" in body and "_stopInsightsAutoRefresh()" in body
+    assert "document.visibilityState !== 'visible'" in body
+    assert "loadInsights(false)" in body
+    # A re-render keeps the reader's place and any expanded card open.
+    assert "box.scrollTop = _scrollTop" in PANELS_JS
+    assert "details.insights-card[open]" in PANELS_JS
+
+
 def test_insights_frontend_has_daily_chart_styles_and_range_switching_hooks():
     assert "insightsPeriod" in INDEX_HTML
     assert 'option value="7"' in INDEX_HTML

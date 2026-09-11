@@ -139,6 +139,15 @@ def test_an_assistant_message_is_never_treated_as_a_delivery(driver):
     assert out["detected"] is False
 
 
+def test_a_process_wakeup_delivered_batch_is_still_recognised(driver):
+    # The live delivery path stamps _source='process_wakeup'; detection must not
+    # care, so the render loop can prefer the delegation card over the generic
+    # process-wakeup branch.
+    out = run(driver, user(BATCH_TEXT, _source="process_wakeup"))
+    assert out["detected"] is True
+    assert out["info"]["taskCount"] == 6
+
+
 def test_a_stamped_row_is_recognised_even_without_the_marker(driver):
     # The gateway and TUI paths stamp display_kind; the WebUI's in-process path
     # does not. Honouring the stamp means this gets better on its own if that
@@ -211,6 +220,19 @@ def test_the_row_renders_as_a_notice_rather_than_a_user_bubble():
     )
     assert "details class=\"async-delegation-card" in UI_SRC, (
         "collapsed by default, expandable — the payload is kept, not dropped"
+    )
+
+
+def test_a_batch_delivered_as_a_process_wakeup_still_gets_the_delegation_card():
+    """The batch is injected via a `source=process_wakeup` turn, so the row
+    reaches the browser with `_source==='process_wakeup'`. Without excluding it,
+    the generic process-wakeup branch claims the row first and dumps the whole
+    results wall (it cannot parse the batch body), which is exactly the "a
+    message I did not send" the delegation card was added to stop.
+    """
+    assert "const _asyncDelegationInfo=isUser?_asyncDelegationBatchInfo(m):null;" in UI_SRC
+    assert "m._source==='process_wakeup'&&!_asyncDelegationInfo" in UI_SRC, (
+        "isProcessWakeup must yield to the async-delegation card"
     )
 
 
