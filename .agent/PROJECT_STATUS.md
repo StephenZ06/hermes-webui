@@ -933,6 +933,34 @@ point at the exact element.
     and given the 1px nudge above; if that is the wrong modal, it is a
     one-line revert.
 
+**Follow-up, same session — both resolved with user confirmation:**
+
+- **#1 confirmed and fixed.** "General chat" = the unfoldered/date-grouped
+  list (the "General" choice in the new-chat destination picker). It was
+  hidden by profile scoping (#1614) exactly like a foldered chat, which the
+  user didn't expect since nothing about it is profile-specific — mirrors the
+  project-folders exception already shipped ("project folders show on every
+  profile"). Fixed at both listing chokepoints: `_build_session_list_cache_
+  payload`'s `profile_scope` filter (the sidebar) and `_handle_sessions_
+  search` — a session with no `project_id` now passes regardless of active
+  profile; a foldered session stays scoped exactly as before. Access control
+  (auth.py / models.py / upload.py's own `_profiles_match` calls — the checks
+  gating read/mutate on a specific session) is untouched on purpose: only
+  what LISTS as visible changed, not what a profile is allowed to run.
+  Updated the two existing test files that pinned the old
+  hide-everything-cross-profile behavior for unfoldered rows
+  (`test_sessions_search_profile_scope.py`, `test_session_list_long_history_
+  perf.py`'s fixture) to distinguish foldered-must-stay-hidden from
+  General-must-show; added `test_general_chat_visible_across_profiles.py`.
+- **#4 confirmed, same element, needed more.** 1px wasn't enough per live
+  report; bumped `.composer-mobile-config-value`'s down-nudge to 3px.
+
+**User's explicit sequencing:** work through the rest of the original 7-task
+batch (this follow-up round covers it); **#5 (chat split-view panes,
+`docs/rfcs/chat-split-view-panes.md`) is deliberately held until everything
+else is done** — the user asked to keep being reminded it's next, so mention
+it at the end of any status update until they say to start it.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
