@@ -118,6 +118,33 @@ export function walkwaySpan(pod, hubHalfExtent, options) {
   return { start, end, length, angle: Math.atan2(pod.x, pod.z) };
 }
 
+// A Projects pod has no fixed identity the way a Business department does —
+// its cluster key is a subagent id, gone once that run ends — so its floor
+// colour can never be a deliberate human choice the way a department's is.
+// It still gets one: a fixed palette, picked deterministically from the
+// cluster's own key, so the SAME pod keeps the SAME colour for its whole
+// life (stable across every re-layout as the run continues) while different
+// concurrent pods read as different rooms. Distinct hues from the Business
+// palette are not required — the two outlets are never on screen together —
+// but kept in the same muted family so a Business habit ("the colour is the
+// room") carries over.
+const PROJECTS_POD_PALETTE = [
+  '#c9758a', '#7a9e73', '#c99a55', '#8d7fa8',
+  '#6f7a89', '#5f89ab', '#b98a5f', '#6f9e91',
+];
+
+/** Deterministic string hash (not cryptographic — a stable, well-spread
+ * index into a small palette is all this needs). */
+export function colorForProjectsCluster(cluster) {
+  const key = String(cluster || '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % PROJECTS_POD_PALETTE.length;
+  return PROJECTS_POD_PALETTE[index];
+}
+
 /**
  * Lay the office out.
  *
@@ -196,15 +223,21 @@ export function computeLayout(desks, options) {
     const x = Math.cos(angle) * ringRadius;
     const z = Math.sin(angle) * ringRadius;
 
+    // A Business desk always carries clusterColor explicitly -- a real
+    // colour for a department, or a deliberate `null` for "The Floor"
+    // overflow (roster.js's businessView sets it either way). A Projects
+    // desk never carries the key at all. That distinction, not "is it
+    // falsy", is what decides whether this pod gets a colour: an overflow
+    // pod's explicit null must stay uncoloured, while a Projects pod (no
+    // signal either way) gets one derived from its own cluster key.
+    const explicitColorDesk = clusterDesks.find(d => Object.prototype.hasOwnProperty.call(d, 'clusterColor'));
     const { cols, rows } = podGrid(clusterDesks.length);
     const pod = {
       cluster, ring, indexInRing, angle,
       // Present only when the desks carry one (the Business outlet); the
       // scene paints it on the pod floor and skips the sign without it.
       label: (clusterDesks[0] && clusterDesks[0].clusterLabel) || '',
-      // Same story, same source (a department's accent colour) -- absent for
-      // Projects clusters, which tint nothing.
-      color: (clusterDesks[0] && clusterDesks[0].clusterColor) || null,
+      color: explicitColorDesk ? (explicitColorDesk.clusterColor || null) : colorForProjectsCluster(cluster),
       x, z,
       width: size.width, depth: size.depth,
       seats: [],

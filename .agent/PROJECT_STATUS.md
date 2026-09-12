@@ -1102,9 +1102,19 @@ started for the full in-scope/out-of-scope breakdown.
 Projects outlet too, per explicit request ("what about the personal
 section?"). `officeCardSpecs()` is the one place Business (named, coloured)
 and Projects (neither) differ; both outlets share the same render/
-reposition/cleanup path. Floor colour and the Task Status panel needed no
-change — colour is department-specific by nature, and the task panel was
+reposition/cleanup path. The Task Status panel needed no change — it was
 already outlet-independent by design.
+
+**Second follow-up same day**: floor colour *did* need a change after all —
+asked directly why Projects pods have no colour. Added
+`colorForProjectsCluster()` to `layout.js` (string hash into a fixed
+palette), so a Projects pod gets a stable, derived colour instead of none;
+`computeLayout()` now tells "no colour, on purpose" (Business overflow's
+explicit `clusterColor: null`) apart from "no colour signal at all"
+(a Projects desk, which never carries the key) via `hasOwnProperty`, not
+truthiness. `officeCardSpecs()`'s Projects branch passes the same derived
+colour to the floating card. See `docs/rfcs/office-visualization.md`'s
+"Follow-up same day: Projects floor colour" for the full writeup.
 
 ## Next actions
 

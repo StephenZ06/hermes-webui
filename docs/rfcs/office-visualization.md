@@ -606,8 +606,14 @@ reference only, per the Licensing section above; all hand-written:
   through `businessView()` → `computeLayout()`'s `pod.color` → `makePod()`,
   which blends it into the palette's own pod colours (`THREE.Color.lerp`)
   rather than painting a flat brand colour over whichever theme is active.
-  Projects pods and the "The Floor" overflow carry no colour and stay
-  exactly as before.
+  "The Floor" overflow deliberately stays uncoloured (an unrecognised worker
+  is not a department). Projects pods have no department to hang a human
+  colour on, but as of the same-day follow-up below they are not left bare
+  either — `computeLayout()` distinguishes "no colour, on purpose" (an
+  explicit `clusterColor: null`) from "no signal at all" (a Projects desk,
+  which never carries the key) and derives a stable colour for the latter
+  from `colorForProjectsCluster()`, a plain string hash into a fixed palette
+  — same cluster id always renders the same colour, with no state to persist.
 - **Per-pod floating stat card.** One card per pod (seat count, live
   active/done counts derived from the same adapter state the floor is drawn
   from), positioned every frame by a new `podScreenRect(cluster)` query on
@@ -615,9 +621,10 @@ reference only, per the Licensing section above; all hand-written:
   so it tracks the pod as the camera pans/zooms. No metric this app cannot
   actually measure — unlike the reference's "cost per user" style numbers,
   which have no equivalent here. Generalised to Projects the same day
-  (`officeCardSpecs()`): Business's card carries the department's name and
-  colour, Projects' does not — a Projects pod is just "whoever's parent
-  spawned this cluster", not a named thing, and the card does not invent one.
+  (`officeCardSpecs()`): a Projects pod is just "whoever's parent spawned
+  this cluster", not a named thing, so its card carries no name — but it
+  does carry a colour, the same derived one as its floor, so the card still
+  reads as belonging to that pod rather than a colourless placeholder.
 - **Aggregate Task Status panel.** A new right-hand column inside the office
   view (`.office-body` now splits `.office-stage` and `.office-tasks`),
   listing every worker the adapter is tracking with a live All/Running/Done/
@@ -632,3 +639,30 @@ against the actual running scene in `tests/test_office_browser_smoke.py`
 pure pieces (`test_office_roster.py`, `test_office_layout.py`,
 `test_office_pod_color.py`, `test_office_task_status.py`,
 `test_office_pod_stat_cards.py`).
+
+### Follow-up same day: Projects floor colour
+
+Asked directly: "why are there no colours [on the Projects floor]?" The
+department-colour work above deliberately left Projects pods bare, on the
+reasoning that colour is a human choice and a Projects cluster (a subagent's
+own id) has nobody to make that choice. On reflection that reasoning does
+not hold up the same way the "no name" call does — colour, unlike a name, has
+a mechanical fallback: derive one, deterministically, from the cluster id
+itself, so a pod stays the same colour every time it is drawn without
+inventing an identity for it.
+
+- `layout.js` gained `colorForProjectsCluster(cluster)` (a small string hash
+  mod a fixed 8-colour palette) and `computeLayout()` now calls it for any
+  desk cluster that never carries a `clusterColor` key at all — as opposed to
+  a Business desk, which always carries the key explicitly (a real colour, or
+  `null` for the "The Floor" overflow). `hasOwnProperty` is the actual
+  decision point, not the value's truthiness, precisely so the overflow's
+  deliberate `null` is never mistaken for "no signal" and coloured anyway.
+- `roster.js`'s `businessView()` was tightened so both of its overflow-desk
+  code paths set `clusterColor: null` explicitly (one already did; the
+  "every seat taken, add another desk" fallback did not and needed it).
+- `officeCardSpecs()`'s Projects branch now passes the same derived colour
+  through to the floating stat card, so the card matches its floor.
+- The palette intentionally overlaps Business's six department colours (the
+  two outlets are never on screen at once) plus two new hues, so a Projects
+  floor doesn't come out visually thinner than Business's.

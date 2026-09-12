@@ -29,6 +29,7 @@ import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
 import { buildRoster, businessView } from './roster.js';
+import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
 // user is on the Chat panel, and their events keep arriving; resetting office
@@ -239,10 +240,12 @@ const _DEPT_CARD_TERMINAL = new Set([
 
 /**
  * Which pods get a floating stat card, and what to print on it -- the one
- * thing that differs between the outlets. Business has a fixed, named,
- * coloured roster; Projects has neither (a pod is just "whoever's parent
- * spawned this cluster"), so its cards carry no name and no colour rather
- * than inventing one. Returns null when there is nothing to show (the
+ * thing that differs between the outlets. Business has a fixed, named
+ * roster; Projects has no fixed identity (a pod is just "whoever's parent
+ * spawned this cluster"), so its cards carry no name -- but DO get a
+ * colour, the same `colorForProjectsCluster()` derivation the floor itself
+ * uses (layout.js's computeLayout), so a card's accent always matches the
+ * floor it floats over. Returns null when there is nothing to show (the
  * caller clears any existing cards in that case).
  *
  * Business also includes "The Floor" overflow (roster.js's buildRoster
@@ -260,7 +263,7 @@ function officeCardSpecs(view) {
   const clusters = new Set();
   (view.desks || []).forEach(desk => { if (desk.cluster) clusters.add(desk.cluster); });
   if (!clusters.size) return null;
-  return Array.from(clusters).map(key => ({ key, name: null, color: null }));
+  return Array.from(clusters).map(key => ({ key, name: null, color: colorForProjectsCluster(key) }));
 }
 
 /**

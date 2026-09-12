@@ -28,9 +28,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 _DRIVER = r"""
-const { computeLayout, walkwaySpan, slabEdgeDistance } = await import(process.argv[2]);
+const { computeLayout, walkwaySpan, slabEdgeDistance, colorForProjectsCluster } = await import(process.argv[2]);
 const input = JSON.parse(process.argv[3] || '{}');
-if (Array.isArray(input)) {
+if (input && input.colorForCluster !== undefined) {
+  process.stdout.write(JSON.stringify({ derivedColor: colorForProjectsCluster(input.colorForCluster) }));
+} else if (Array.isArray(input)) {
   process.stdout.write(JSON.stringify(computeLayout(input)));
 } else {
   process.stdout.write(JSON.stringify({
@@ -213,16 +215,26 @@ def test_a_pod_is_only_labelled_when_its_desks_carry_a_name(driver):
 
 
 def test_a_pod_is_only_coloured_when_its_desks_carry_a_colour(driver):
-    # Same story as the label above, same source (a department's accent
-    # colour) -- a Projects cluster tints nothing.
-    uncoloured = layout(driver, n_desks(2, cluster="p1"))
-    assert uncoloured["pods"][0]["color"] is None
+    # A Business desk always carries `clusterColor` explicitly -- a real
+    # colour, or a deliberate `null` for the "The Floor" overflow. A Projects
+    # desk never carries the key at all, so it has no human-chosen colour to
+    # pass through -- but it still gets a stable, derived one instead of
+    # going bare.
+    derived = layout(driver, n_desks(2, cluster="p1"))
+    assert derived["pods"][0]["color"] is not None
+    assert derived["pods"][0]["color"] == layout(driver, {"colorForCluster": "p1"})["derivedColor"]
 
     coloured = layout(driver, [
         {"id": "d0", "index": 0, "workerId": "w0", "cluster": "finance",
          "clusterLabel": "Finance", "clusterColor": "#6f7a89"},
     ])
     assert coloured["pods"][0]["color"] == "#6f7a89"
+
+    overflow = layout(driver, [
+        {"id": "d0", "index": 0, "workerId": "w0", "cluster": "floor",
+         "clusterLabel": "The Floor", "clusterColor": None},
+    ])
+    assert overflow["pods"][0]["color"] is None
 
 
 # ── stability ────────────────────────────────────────────────────────────────

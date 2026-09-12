@@ -1,8 +1,10 @@
 """The floating per-pod stat card generalised to both outlets.
 
-Business has a fixed, named, coloured roster; Projects does not (a pod is
-just "whoever's parent spawned this cluster") -- static/office/index.js's
-officeCardSpecs() is the one place that difference lives. Real behaviour is
+Business has a fixed, named, coloured roster; Projects has no name to give a
+pod (it's just "whoever's parent spawned this cluster") but still gets a
+colour, derived and stable rather than a human's choice --
+static/office/index.js's officeCardSpecs() is the one place that difference
+lives. Real behaviour is
 covered end-to-end by tests/test_office_browser_smoke.py
 (HERMES_WEBUI_BROWSER_TESTS=1, since it needs a real OrthographicCamera to
 prove the projection lands somewhere sane); this file pins the source-level
@@ -35,8 +37,8 @@ def test_office_card_specs_has_a_branch_for_each_outlet():
     body = _function_body(OFFICE_INDEX_SRC, "officeCardSpecs")
     assert "_outlet === 'business'" in body
     assert "_roster.departments.map" in body
-    # The Projects branch invents neither a name nor a colour.
-    assert "name: null, color: null" in body
+    # The Projects branch invents no name, but does derive a stable colour.
+    assert "name: null, color: colorForProjectsCluster(key)" in body
 
 
 def test_projects_cards_are_derived_from_the_live_desks_not_a_standing_list():

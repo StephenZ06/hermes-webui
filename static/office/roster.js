@@ -205,9 +205,13 @@ export function businessView(state, roster) {
         // painting; a Projects cluster is a parent subagent id, which means
         // nothing to a reader.
         clusterLabel: dept.name,
-        // Tints the pod floor (see builders.js's makePod). Same reasoning as
-        // clusterLabel: only Business departments have one.
-        clusterColor: dept.color,
+        // Tints the pod floor (see layout.js's computeLayout and builders
+        // .js's makePod). A real department gets its declared colour; "The
+        // Floor" overflow gets an explicit `null` -- present and deliberate,
+        // not merely absent -- so computeLayout can tell "no colour, on
+        // purpose" apart from a Projects desk, which never carries this key
+        // at all and gets one derived instead.
+        clusterColor: dept.key === OVERFLOW.key ? null : dept.color,
       };
       seatIndexByDept.get(dept.key).push(desk);
       desks.push(desk);
@@ -243,6 +247,7 @@ export function businessView(state, roster) {
         cluster: OVERFLOW.key,
         seatLabel: OVERFLOW.name,
         clusterLabel: OVERFLOW.name,
+        clusterColor: null,
       };
       seatIndexByDept.get(OVERFLOW.key).push(desk);
       desks.push(desk);

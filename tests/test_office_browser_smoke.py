@@ -232,25 +232,24 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
 
     # Projects pods (both when the panel first opens on the default outlet,
     # and again after switching back to it) get the same floating cards --
-    # generic, since a Projects pod has no department name or colour to show.
+    # unnamed (a pod has no department to name), but still coloured, since the
+    # floor itself is now tinted per pod and the card should match its floor.
     assert len(projects_cards) == 2, (
         "demo-1/demo-2 seat under the conductor's own pod, demo-3 under a pod "
         "of its own -- 2 pods, 2 cards"
     )
     for card in projects_cards:
-        assert not card["hasName"] and not card["hasColor"], (
-            "a Projects card must not invent a department name or colour"
-        )
+        assert not card["hasName"], "a Projects card must not invent a department name"
+        assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
         assert card["left"] and card["top"], "a Projects card was never positioned over its pod"
 
     assert len(cards_after_leaving_business) == 2, (
-        "the cards are Business-only in NAME/COLOUR, not existence -- leaving "
-        "Business must replace them with Projects' own generic cards, not zero"
+        "the cards are Business-only in NAME, not existence -- leaving "
+        "Business must replace them with Projects' own unnamed cards, not zero"
     )
     for card in cards_after_leaving_business:
-        assert not card["hasName"] and not card["hasColor"], (
-            "Business's named/coloured cards must not linger over the Projects floor"
-        )
+        assert not card["hasName"], "Business's named cards must not linger over the Projects floor"
+        assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
 
     assert tasks_on_business["rowCount"] == 3, (
         "the Task Status panel is whole-office and must show the same 3 "
