@@ -238,11 +238,6 @@ export function computeLayout(desks, options) {
       // scene paints it on the pod floor and skips the sign without it.
       label: (clusterDesks[0] && clusterDesks[0].clusterLabel) || '',
       color: explicitColorDesk ? (explicitColorDesk.clusterColor || null) : colorForProjectsCluster(cluster),
-      // Signage glyph next to the name -- Business departments only; a
-      // Projects pod has no department to draw an icon for, same as its
-      // label, so it is simply absent (no derived fallback the way colour
-      // gets one).
-      icon: (clusterDesks[0] && clusterDesks[0].clusterIcon) || null,
       x, z,
       width: size.width, depth: size.depth,
       seats: [],

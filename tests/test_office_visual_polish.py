@@ -1,7 +1,6 @@
 """Source-structure pins for the visual-polish pass on top of the department
-floor colours: a bloom post-process, a hemisphere+rim lighting rig, a
-department icon painted inline on its floor sign, and a per-pod whiteboard
-and working-pod glow.
+floor colours: a bloom post-process, a hemisphere+rim lighting rig, and a
+per-pod whiteboard and working-pod glow.
 
 scene.js's WebGL setup fails the same way phase 1's plumbing does -- silently,
 with a blank or half-drawn panel and no console error -- so these are the same
@@ -71,27 +70,19 @@ def test_theme_switch_repaints_the_hemisphere_and_rim_lights():
     assert "rimLight.color.set(palette.rim)" in body
 
 
-# ── department icon ──────────────────────────────────────────────────────────
+# ── outline removed ──────────────────────────────────────────────────────────
 
-def test_ensure_pod_threads_an_icon_into_the_floor_sign():
-    # An earlier attempt painted the icon in its own band above the name, and
-    # separately as a sprite floating above the pod -- both worked as drawing
-    # but the extra height/position pushed things into the desk or looked
-    # bolted-on. It is now one argument to the same makeFloorTitle() call
-    # that already draws the name.
-    at = SCENE_SRC.index("function ensurePod(")
-    body = SCENE_SRC[at:SCENE_SRC.index("\n  function ", at + 10)]
-    assert "makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true, icon })" in body
-    assert "makeDeptIcon" not in SCENE_SRC
-
-
-def test_a_pod_rebuilds_when_only_its_icon_changes():
-    # Mirrors label/colour: ensurePod's early-return guard must include icon,
-    # or a department that gets an icon (or loses one) after the pod already
-    # exists would never repaint it.
-    at = SCENE_SRC.index("function ensurePod(")
-    guard = SCENE_SRC[at:SCENE_SRC.index(") return pod;", at)]
-    assert "pod.icon === icon" in guard
+def test_the_dashed_pod_outline_is_gone():
+    # Reported to visibly "stick out" past a pod's corners (an isometric-
+    # parallax artifact of its height sitting above the slab top) -- removed
+    # from scene.js entirely rather than nudged closer to the surface again.
+    # A working pod's glow (below) is the only "this is active" cue on the
+    # floor now. makeSlabOutline itself stays defined and tested in
+    # test_office_outlines.py as a correct, reusable piece of the same
+    # dashed-line machinery the conductor<->pod bridges still use.
+    assert "makeSlabOutline" not in SCENE_SRC
+    assert "outlineLine" not in SCENE_SRC
+    assert "record.outline" not in SCENE_SRC
 
 
 # ── working-pod glow ─────────────────────────────────────────────────────────
@@ -125,10 +116,13 @@ def test_the_floor_grid_texture_was_removed():
     assert "export function makeFloorTiles" not in BUILDERS_SRC
 
 
-def test_every_pod_gets_exactly_one_whiteboard_alongside_its_two_plants():
+def test_every_pod_gets_exactly_one_whiteboard_and_one_plant():
+    # A second plant used to stand on the same corner as the floor sign and
+    # covered part of the text.
     at = SCENE_SRC.index("function ensurePod(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function ", at + 10)]
     assert body.count("makeWhiteboard(") == 1
+    assert body.count("makePlant(") == 1
 
 
 # ── disposal ─────────────────────────────────────────────────────────────────
@@ -171,12 +165,29 @@ def test_floor_sign_text_is_stroked_for_contrast_against_any_floor_colour():
     assert "floorTitleStroke:" in SCENE_SRC, "both palettes must define the stroke colour"
 
 
-def test_pod_outline_sits_close_to_the_slab_surface():
-    # Reported: the dashed outline visibly "stuck out" past a pod's corners.
-    # The isometric camera looks down at an angle, so a point held higher
-    # above the slab at the same x/z projects further outward on screen than
-    # the slab's own edge -- the outline's old 0.66 default (matching the
-    # floor sign's height, for no real reason) made that gap noticeable.
-    at = BUILDERS_SRC.index("export function makeSlabOutline(")
-    body = BUILDERS_SRC[at:BUILDERS_SRC.index("\n}", at)]
-    assert "height == null ? 0.605 : height" in body
+def test_composer_renders_multisampled_so_edges_stay_smooth():
+    # Reported: model edges (a figure's head especially) went jagged once
+    # bloom landed. WebGL only antialiases the default framebuffer -- routing
+    # the render through a composer moves it to an offscreen target, where
+    # the renderer's own `antialias: true` no longer applies at all. `samples`
+    # asks for multisampling explicitly on the composer's own target instead.
+    assert "samples: 4" in SCENE_SRC
+    # HalfFloatType must survive alongside it: EffectComposer's own default
+    # target used it (for the glow mesh's deliberately over-1.0 colour, see
+    # builders.js's makePodGlow), and a custom target that dropped it would
+    # clamp that colour to white before bloom ever saw it.
+    assert "type: THREE.HalfFloatType" in SCENE_SRC
+
+
+def test_an_empty_seats_nameplate_is_hidden_not_just_unlabelled():
+    # Reported: an idle Business seat's "<Department> Lead" nameplate only
+    # repeated what the floor sign already says. A nameplate now earns its
+    # own black bar exactly when there is a real worker to report on --
+    # current activity while running, or a summary once done.
+    assert "seat.plate.visible = (lod === 'near') && !!worker;" in SCENE_SRC
+    at = SCENE_SRC.index("function syncLod() {")
+    body = SCENE_SRC[at:at + 300]
+    assert "!!seat.workerId" in body, (
+        "the zoom-driven LOD toggle must respect the same rule, or zooming "
+        "in/out would resurrect an empty seat's nameplate"
+    )

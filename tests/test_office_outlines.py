@@ -1,8 +1,12 @@
 """Progress outlines and connector lines.
 
-A platform whose subagents are working traces a marching dashed outline; one
-whose work has finished goes still. A thin solid line joins each pod to the
-conductor.
+A dashed line joins each pod to the conductor and marches while the pod is
+working, going still once it finishes. `makeSlabOutline` -- a matching dashed
+line traced around a pod's own edge -- is the same underlying machinery and
+is pinned here too, even though scene.js no longer draws one around a pod
+(reported as visibly "sticking out" past the floor's corners; a working
+pod's glow is the only "this is active" cue on the floor now, see
+docs/rfcs/office-visualization.md).
 
 three.js imports cleanly under node and these builders touch no DOM, so this
 drives the real geometry rather than asserting on source text. The mechanics
@@ -281,21 +285,18 @@ def test_an_idle_bridge_is_invisible_and_fades_in(result):
 
 # ── wiring ───────────────────────────────────────────────────────────────────
 
-def test_only_platforms_with_running_work_march():
-    assert "if (record.active) marchOutline(record.outline, marchOffset)" in SCENE_SRC
-    assert "worker.status !== 'running'" in SCENE_SRC
-
-
 def test_the_bridge_lights_with_the_pod_it_feeds():
     assert "if (link) setOutlineActive(link, record.active)" in SCENE_SRC
 
 
-def test_the_fade_runs_even_when_the_line_is_not_marching():
-    # Cutting the transition short mid-way would leave a half-lit colour on
-    # screen for as long as the panel stayed open.
-    at = SCENE_SRC.index("const marchOffset = t * OUTLINE_SPEED;")
-    window = SCENE_SRC[at:at + 900]
-    assert window.index("advanceDashFade(record.outline") < window.index("if (record.active)")
+# The dashed outline around a pod's own edge was reported as visibly
+# "sticking out" past the floor's corners and was removed from scene.js
+# entirely (makeSlabOutline itself, and its marching/fade wiring on
+# record.outline/conductor.userData.outlineLine, are gone -- a working pod's
+# glow, see builders.js's makePodGlow, is the only "this is active" cue on
+# the floor now). makeSlabOutline stays defined and tested above as a
+# correct, reusable piece of the same dashed-line machinery the connector
+# bridges still use; it's simply unused by scene.js today.
 
 
 def test_a_connector_is_not_rebuilt_unless_it_moves():

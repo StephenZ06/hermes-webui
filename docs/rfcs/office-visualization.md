@@ -828,3 +828,69 @@ green; and manual Playwright screenshots (Business and Projects, overview and
 focused) confirming the inline icon, the readable stroked text, the flush
 outline, the absent floor grid, and the absent floating cards all actually
 look right in the real running app.
+
+### Follow-up same day: jagged edges, the outline gone for good, and reverting the icon
+
+Screenshot-driven feedback against the pass immediately above -- some of it
+reversed decisions from the *same day's earlier* follow-up:
+
+1. **Model edges (a figure's head especially) were visibly jagged.** Root
+   cause: routing the render through `EffectComposer` moved it off the
+   canvas' own framebuffer, and WebGL only antialiases the default
+   framebuffer -- the renderer's `antialias: true` had silently stopped
+   doing anything the moment bloom landed. Fixed by constructing the
+   composer with its own `WebGLRenderTarget(1, 1, { samples: 4, type:
+   THREE.HalfFloatType })` instead of letting `EffectComposer` build its
+   default one — `samples` asks for multisampling explicitly on that
+   offscreen target; `HalfFloatType` is carried over from what the default
+   target would have used, and matters because dropping it would clamp the
+   glow mesh's deliberately-over-1.0 colour to white before bloom ever saw
+   it.
+2. **The dashed pod outline is gone entirely**, not just moved closer to the
+   surface as the previous follow-up tried. `makeSlabOutline`,
+   `setOutlineActive`/`marchOutline`/`advanceDashFade` calls on
+   `record.outline` and `conductor.userData.outlineLine`, and the outline
+   mesh itself are all removed from `scene.js`. `makeSlabOutline` stays
+   defined in `builders.js` and fully tested in `test_office_outlines.py` --
+   it's the same dashed-line machinery `makeConnector` (the conductor<->pod
+   bridges, unaffected) still uses, just no longer called for a pod's own
+   edge. A working pod's glow is now the only "this is active" signal on the
+   floor.
+3. **The department icon is removed, full stop** -- not moved, reverted.
+   Both the inline-in-the-sign version from the same day's earlier
+   follow-up and the floating-sprite version before that are gone:
+   `makeFloorTitle` no longer takes an `icon` option, `roster.js`'s
+   `DEPARTMENTS` lost their `icon` field and `iconForDepartment()`,
+   `businessView()` stopped stamping `clusterIcon` on desks, and
+   `layout.js`'s `computeLayout()` stopped deriving `pod.icon`. The
+   contrast fix (stroked text, see the previous follow-up) stays -- that
+   was a separate, still-wanted change.
+4. **The floating per-desk nameplate ("<Department> Lead", the placeholder
+   label an empty Business seat shows) is gone; the *nameplate feature
+   itself* is not.** Only reported as unwanted for a seat nobody is
+   actually sitting at, since the floor sign already names the department --
+   a real worker's nameplate (current tool activity while running, or a
+   summary once done, exactly what the report asked to keep) is untouched.
+   `syncOffice`'s desk loop now sets `seat.plate.visible = (lod === 'near')
+   && !!worker`, and `syncLod()`'s own zoom-driven toggle was given the same
+   `!!seat.workerId` guard -- without it, zooming in/out would resurrect an
+   empty seat's nameplate regardless of the desk loop's own decision.
+5. **One of the two plants was blocking the floor sign's text.** The sign
+   sits on a pod's `+z` corner; the plant at `[1, 1]` (also `+z`) shared that
+   side and could overlap it, especially on a small pod. Removed that one,
+   kept the `[-1, -1]` plant. The whiteboard (a different corner) is
+   unaffected.
+
+Verified: full office node suite green after each removal (`makeSlabOutline`
+usage tests replaced with a "the outline is gone" assertion in
+`test_office_visual_polish.py`, the two removed `test_office_outlines.py`
+tests that pinned scene.js's old outline wiring dropped with a note pointing
+at `makeSlabOutline`'s continued, correct, tested-elsewhere existence, every
+`icon`-related test across `test_office_roster.py`/`test_office_layout.py`/
+`test_office_visual_polish.py`/`test_office_visual_extras.py` removed
+alongside the feature); `test_office_browser_smoke.py` unchanged and still
+green under `HERMES_WEBUI_BROWSER_TESTS=1`; and manual Playwright screenshots
+confirming an idle desk's nameplate is actually gone while a working one's
+stays, the outline is actually gone, no icon appears, only one plant sits
+near the sign, and — cropped in tight on a figure's head — the edges read as
+antialiased rather than a staircase.

@@ -1159,6 +1159,28 @@ plus four specific visual reports. All fixed:
 tests updated to match. Full writeup in `docs/rfcs/office-visualization.md`'s
 "Follow-up same day: smoothness, an outline artifact, and reworking the icon".
 
+**Fifth follow-up same day**: screenshot-driven, reversing parts of the pass
+directly above.
+- Jagged model edges: `EffectComposer` moved rendering off the canvas'
+  own framebuffer, where the renderer's `antialias: true` doesn't apply --
+  fixed with an explicit `WebGLRenderTarget({samples: 4, type:
+  HalfFloatType})` passed to the composer (HalfFloatType kept so the glow
+  mesh's over-1.0 colour isn't clamped before bloom sees it).
+- The dashed pod outline is gone entirely now (not just moved closer to the
+  surface) -- `makeSlabOutline` stays defined/tested, just unused by
+  scene.js; a working pod's glow is the only "active" cue on the floor.
+- The department icon reverted completely (not moved -- gone), both the
+  inline-sign version from the pass above and the earlier floating-sprite
+  version. The text-contrast stroke fix stays.
+- An idle desk's "<Department> Lead" nameplate is hidden (the floor sign
+  already names the department); a real worker's nameplate -- current
+  activity or a completion summary -- is untouched, exactly as asked.
+- One of the two pod plants (the one sharing the sign's corner) removed;
+  it was covering part of the floor sign's text.
+
+Full writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day:
+jagged edges, the outline gone for good, and reverting the icon".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

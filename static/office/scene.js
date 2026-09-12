@@ -22,7 +22,7 @@ import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
   makePlant, makePodGlow, makeWhiteboard,
-  makeWalkway, makeSlabOutline, makeConnector, marchOutline,
+  makeWalkway, makeConnector, marchOutline,
   setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
 } from './builders.js';
@@ -225,11 +225,24 @@ export function createOfficeScene(canvas, options) {
   scene.add(rimLight);
 
   // ---- post-processing ---------------------------------------------------
+  // Routing the render through a composer moves it off the canvas' own
+  // framebuffer, where `antialias: true` above no longer applies -- WebGL
+  // only antialiases the default framebuffer, not an offscreen render target
+  // a post-process pipeline draws into. Without this, every edge (a
+  // figure's head is where it shows up most) goes jagged the moment bloom
+  // lands. `samples: 4` asks for the same kind of multisampling explicitly on
+  // the composer's own target; `HalfFloatType` matches what EffectComposer
+  // would have created by default and keeps the glow mesh's deliberately
+  // over-1.0 colour (see builders.js's makePodGlow) from being clamped to
+  // white before bloom ever sees it.
+  const composerTarget = new THREE.WebGLRenderTarget(1, 1, {
+    samples: 4, type: THREE.HalfFloatType,
+  });
   // One bloom pass over the whole render. Nothing in the ordinary palette sits
   // near the 1.0 threshold (see BLOOM_THRESHOLD above), so this only lights up
   // a working pod's own glow mesh -- no per-object "selective bloom" layer
   // trick needed.
-  const composer = new EffectComposer(renderer);
+  const composer = new EffectComposer(renderer, composerTarget);
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
@@ -288,9 +301,6 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
-    const outline = makeSlabOutline(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
-    group.add(outline);
-    group.userData.outlineLine = outline;
     // Same glow a working pod gets, driven by orchestrating status rather
     // than by liveClustersWithWork -- see the render loop.
     const glow = makePodGlow(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette.conductor);
@@ -317,10 +327,10 @@ export function createOfficeScene(canvas, options) {
     return conductor;
   }
 
-  function ensurePod(cluster, width, depth, label, color, icon) {
+  function ensurePod(cluster, width, depth, label, color) {
     let pod = pods.get(cluster);
     if (pod && pod.width === width && pod.depth === depth && pod.label === label
-      && pod.color === color && pod.icon === icon) return pod;
+      && pod.color === color) return pod;
     if (pod) {
       office.remove(pod.group);
       disposeTree(pod.group);
@@ -334,12 +344,10 @@ export function createOfficeScene(canvas, options) {
     // Signage, only where there is a real name to paint. The catch-all pods
     // ("Subagents", "The Floor") keep the original fixed size; the named ones
     // (departments, profiles) auto-fit larger so a short name is not dwarfed.
-    // A department's icon (see roster.js's iconForDepartment) is painted
-    // inline, to the left of the name, by makeFloorTitle itself.
     const plainSign = label === 'Subagents' || label === 'The Floor';
     const title = plainSign
       ? makeFloorTitle(label, slabWidth * 0.8, palette)
-      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true, icon });
+      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true });
     if (title) {
       title.position.z = plainSign
         ? slabDepth / 2 - 1.6
@@ -347,20 +355,17 @@ export function createOfficeScene(canvas, options) {
       group.add(title);
     }
 
-    // Two plants on opposite corners, and a whiteboard on a third. Scenery
+    // One plant, on the corner facing away from the sign (the sign sits on
+    // the +z side above), plus a whiteboard on a third corner. Scenery
     // carries no state, so it can never mislead anyone about what Hermes is
-    // doing.
-    [[-1, -1], [1, 1]].forEach(([sx, sz]) => {
-      const plant = makePlant(palette);
-      plant.position.set(sx * (slabWidth / 2 - 1.1), 0.6, sz * (slabDepth / 2 - 1.1));
-      group.add(plant);
-    });
+    // doing. A second plant used to stand on the sign's own side and covered
+    // part of the text.
+    const plant = makePlant(palette);
+    plant.position.set(-(slabWidth / 2 - 1.1), 0.6, -(slabDepth / 2 - 1.1));
+    group.add(plant);
     const whiteboard = makeWhiteboard(palette);
     whiteboard.position.set(slabWidth / 2 - 1.1, 0, -(slabDepth / 2 - 1.1));
     group.add(whiteboard);
-
-    const outline = makeSlabOutline(slabWidth, slabDepth, palette);
-    group.add(outline);
 
     // A soft coloured wash, only visible while the pod is doing real work --
     // toggled in syncOffice, pulsed in the render loop. Starts invisible.
@@ -369,7 +374,7 @@ export function createOfficeScene(canvas, options) {
 
     office.add(group);
     pod = {
-      group, width, depth, label, color, icon, outline, active: false,
+      group, width, depth, label, color, active: false,
       glowMaterial: glow.material,
     };
     pods.set(cluster, pod);
@@ -530,7 +535,7 @@ export function createOfficeScene(canvas, options) {
       // subagent's own children) has no name worth painting.
       const podLabel = pod.label
         || (pod.cluster === '__conductor__' ? 'Subagents' : '');
-      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null, pod.icon || null);
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null);
       record.group.position.set(pod.x, 0, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
       ensureConnector(pod.cluster, pod, span);
@@ -550,8 +555,11 @@ export function createOfficeScene(canvas, options) {
       seat.pose = worker ? worker.pose : 'idle';
 
       // Projects desks are anonymous until someone sits at them; Business
-      // desks are named by the roster before anyone does, which is what makes
-      // an idle departmental floor read as a company rather than a void.
+      // desks are named by the roster before anyone does. The floor sign
+      // already carries the department's name, though, so an empty seat's
+      // nameplate would only repeat it -- the nameplate is worth its own
+      // black bar exactly when there's a real worker to say something the
+      // floor doesn't: what it's doing, or what it finished with.
       const label = worker ? worker.label : (desk.seatLabel || 'Empty desk');
       const status = worker ? worker.status : '';
       if (label !== seat.label || status !== seat.status) {
@@ -559,6 +567,7 @@ export function createOfficeScene(canvas, options) {
         seat.status = status;
         drawNameplate(seat.plate, palette, label, status);
       }
+      seat.plate.visible = (lod === 'near') && !!worker;
       // Screens are canvas uploads; only repaint when the text changed.
       const toolKey = worker
         ? `${worker.status}|${worker.tool ? worker.tool.name + worker.tool.preview : ''}|${worker.summary}`
@@ -583,18 +592,14 @@ export function createOfficeScene(canvas, options) {
     });
     pods.forEach((record, cluster) => {
       record.active = liveClustersWithWork.has(cluster);
-      setOutlineActive(record.outline, record.active);
       const link = connectors.get(cluster);
       // The bridge carries the same charge as the pod it feeds.
       if (link) setOutlineActive(link, record.active);
     });
 
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
-    setOutlineActive(conductor.userData.outlineLine,
-      conductorStatus === 'orchestrating');
-    // The plinth outline (lit above) carries the orchestrating cue now; the
-    // status is still tracked because the pacing logic in the render loop
-    // reads it.
+    // The glow (above) carries the orchestrating cue now; the status is
+    // still tracked because the pacing logic in the render loop reads it.
     conductor.userData.status = conductorStatus;
 
     frameOffice(layout.center, layout.radius);
@@ -744,7 +749,7 @@ export function createOfficeScene(canvas, options) {
     const next = view.zoom >= LOD_NEAR_ZOOM ? 'near' : 'far';
     if (next === lod) return;
     lod = next;
-    seats.forEach(seat => { seat.plate.visible = (lod === 'near'); });
+    seats.forEach(seat => { seat.plate.visible = (lod === 'near') && !!seat.workerId; });
   }
 
   /**
@@ -1099,17 +1104,14 @@ export function createOfficeScene(canvas, options) {
     // settling back to plain work) only advance because the scene asks.
     if (typeof config.onTick === 'function') config.onTick();
 
-    // The dashes travel only where something is running; a still outline on a
-    // finished pod is the point of the cue. The fade runs regardless — it is
-    // how a line comes up or goes quiet, and cutting it short mid-transition
-    // would leave a half-lit colour on screen.
+    // The bridge's dashes travel only where something is running; the fade
+    // runs regardless — it is how a line comes up or goes quiet, and cutting
+    // it short mid-transition would leave a half-lit colour on screen.
     const marchOffset = t * OUTLINE_SPEED;
     pods.forEach(record => {
-      advanceDashFade(record.outline, dtMs);
-      if (record.active) marchOutline(record.outline, marchOffset);
-      // The glow eases toward its target opacity rather than snapping, same
-      // reasoning as the outline's own fade, and gently pulses while active
-      // so a working pod reads as alive rather than a static coloured patch.
+      // The glow eases toward its target opacity rather than snapping, and
+      // gently pulses while active so a working pod reads as alive rather
+      // than a static coloured patch.
       pulseGlow(record.glowMaterial, record.active, t, dt);
     });
     connectors.forEach(link => {
@@ -1117,11 +1119,6 @@ export function createOfficeScene(canvas, options) {
       // Charge travels out from the conductor toward the pod.
       if (isDashActive(link)) marchOutline(link, marchOffset * CONNECTOR_SPEED_RATIO);
     });
-    const conductorOutline = conductor && conductor.userData.outlineLine;
-    if (conductorOutline) {
-      advanceDashFade(conductorOutline, dtMs);
-      if (isDashActive(conductorOutline)) marchOutline(conductorOutline, marchOffset);
-    }
     if (conductor) {
       pulseGlow(conductor.userData.glowMaterial, conductor.userData.status === 'orchestrating', t, dt);
     }

@@ -115,19 +115,11 @@ function mixColor(baseHex, tintHex, amount) {
  * Only the Business outlet has names worth painting — Projects pods are a
  * subagent's parent id, which means nothing to a reader. Passing no text
  * returns null rather than an empty sign.
- *
- * `opts.icon` (roster.js's `iconForDepartment`) is painted once, at the left
- * of the name, on the same line and baseline — not a separate band or a
- * floating badge. An earlier attempt put the icon in its own band above the
- * name and, separately, as a sprite floating above the pod; both worked as
- * drawing but read as a second thing bolted onto the sign rather than part
- * of it. "ICON SALES" on one line is what a real door sign looks like.
  */
 export function makeFloorTitle(text, width, palette, opts) {
   const label = String(text || '').trim();
   if (!label) return null;
   const fit = !!(opts && opts.fit);
-  const icon = opts && opts.icon ? String(opts.icon) : '';
 
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
@@ -159,34 +151,14 @@ export function makeFloorTitle(text, width, palette, opts) {
   }
 
   ctx.font = `700 ${fontPx}px Georgia, "Times New Roman", serif`;
-  const textWidth = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
-
-  // The icon sits a little taller than the letters (emoji glyphs read small
-  // next to all-caps serif at the same point size) and a fixed gap ahead of
-  // the first letter.
-  const iconFontPx = Math.round(fontPx * 1.2);
-  const iconGap = fontPx * 0.4;
-  let iconWidth = 0;
-  if (icon) {
-    ctx.font = `${iconFontPx}px "Noto Color Emoji", sans-serif`;
-    iconWidth = ctx.measureText(icon).width;
-  }
-
-  const total = textWidth + (icon ? iconWidth + iconGap : 0);
+  const total = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
   let x = (canvas.width - total) / 2;
-
-  if (icon) {
-    ctx.font = `${iconFontPx}px "Noto Color Emoji", sans-serif`;
-    ctx.fillText(icon, x, canvas.height / 2);
-    x += iconWidth + iconGap;
-  }
 
   // Filled in the palette's own signage tone, with a contrasting stroke
   // behind it: the floor under the sign is now a saturated department/
   // cluster colour rather than a plain palette tone, and a fixed light-grey
   // fill alone reads fine on some floor colours and vanishes on others. The
   // stroke is what keeps the letters legible whatever they sit on.
-  ctx.font = `700 ${fontPx}px Georgia, "Times New Roman", serif`;
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(3, fontPx * 0.08);
   ctx.strokeStyle = palette.floorTitleStroke;

@@ -1,5 +1,4 @@
-"""The visual-polish builders: a pod's working glow, a whiteboard prop, and
-a department's icon painted inline on its own floor sign.
+"""The visual-polish builders: a pod's working glow and a whiteboard prop.
 
 Real three.js under node, same fixture shape as tests/test_office_pod_color.py
 and tests/test_office_outlines.py: builders.js imports the bare specifier
@@ -23,11 +22,9 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 _DRIVER = r"""
 // makeFloorTitle draws to a 2D canvas -- something node has no native
 // concept of. This test only checks the resulting THREE objects' structure
-// (mesh/sprite type, blending, dispose tags, geometry aspect ratio), never
-// actual pixels, so a no-op stub canvas is enough to let the drawing code
-// run without throwing -- the same reasoning as test_office_pod_color.py's
-// `three` stub. measureText answers a fixed width per call so the icon-vs-
-// text width math the driver checks stays predictable.
+// (mesh/sprite type, blending, dispose tags), never actual pixels, so a
+// no-op stub canvas is enough to let the drawing code run without throwing --
+// the same reasoning as test_office_pod_color.py's `three` stub.
 function fakeCanvas() {
   const noop = () => {};
   return {
@@ -54,8 +51,7 @@ const palette = {
 
 const glow = makePodGlow(10, 6, '#3f7fd4');
 const board = makeWhiteboard(palette);
-const plain = makeFloorTitle('Sales', 20, palette);
-const iconed = makeFloorTitle('Sales', 20, palette, { icon: '\u{1F4B0}' });
+const title = makeFloorTitle('Sales', 20, palette);
 
 const out = {
   glow: {
@@ -73,19 +69,14 @@ const out = {
     allShadowless: board.children.every(c => c.castShadow === false),
   },
   title: {
-    plainHasMap: !!plain.material.map,
-    hasDisposeTag: !!plain.userData.floorTitle,
-    iconedHasDisposeTag: !!iconed.userData.floorTitle,
-    // An icon adds width to the same single-line sign rather than height --
-    // no separate band, no separate floating object.
-    sameHeight: iconed.geometry.parameters.height === plain.geometry.parameters.height,
+    hasMap: !!title.material.map,
+    hasDisposeTag: !!title.userData.floorTitle,
   },
 };
 
 disposeTree(glow);
 disposeTree(board);
-disposeTree(plain);
-disposeTree(iconed);
+disposeTree(title);
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -143,9 +134,7 @@ def test_whiteboard_is_a_small_group_of_shadowless_parts(driver):
     )
 
 
-def test_floor_title_accepts_an_icon_without_growing_into_a_separate_band(driver):
+def test_floor_title_still_builds_a_disposable_textured_plane(driver):
     out = run(driver)["title"]
-    assert out["plainHasMap"]
+    assert out["hasMap"]
     assert out["hasDisposeTag"]
-    assert out["iconedHasDisposeTag"]
-    assert out["sameHeight"], "the icon must not grow the sign into a taller plane"

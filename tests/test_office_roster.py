@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _DRIVER = r"""
-const { buildRoster, businessView, departmentFor, colorForDepartment, iconForDepartment } = await import(process.argv[2]);
+const { buildRoster, businessView, departmentFor, colorForDepartment } = await import(process.argv[2]);
 const input = JSON.parse(process.argv[3] || '{}');
 
 const roster = buildRoster(input.personalities || []);
@@ -44,9 +44,8 @@ const matched = (input.probe || []).map(text => {
   return [text, dept ? dept.key : null];
 });
 const colorLookup = (input.colorProbe || []).map(key => [key, colorForDepartment(key)]);
-const iconLookup = (input.iconProbe || []).map(key => [key, iconForDepartment(key)]);
 
-process.stdout.write(JSON.stringify({ roster, view, matched, colorLookup, iconLookup }));
+process.stdout.write(JSON.stringify({ roster, view, matched, colorLookup }));
 """
 
 
@@ -220,26 +219,6 @@ def test_color_for_department_answers_a_hex_colour_or_null(driver):
     out = run(driver, colorProbe=["marketing", "floor", "__conductor__", "nonsense"])
     lookup = dict(out["colorLookup"])
     assert lookup["marketing"].startswith("#")
-    assert lookup["floor"] is None
-    assert lookup["__conductor__"] is None
-    assert lookup["nonsense"] is None
-
-
-def test_each_department_carries_its_own_floor_icon(driver):
-    out = run(driver, personalities=[
-        {"name": "invoice_clerk", "description": ""},
-        {"name": "mystery_persona", "description": "does something unclassifiable"},
-    ])
-    icons = {d["cluster"]: d.get("clusterIcon") for d in out["view"]["desks"]}
-    for key in ("marketing", "emails", "sales", "operations", "finance", "delivery"):
-        assert icons[key], f"{key} must carry a floor icon"
-    assert icons["floor"] is None, "the overflow floor names no department and gets no icon"
-
-
-def test_icon_for_department_answers_a_glyph_or_null(driver):
-    out = run(driver, iconProbe=["marketing", "floor", "__conductor__", "nonsense"])
-    lookup = dict(out["iconLookup"])
-    assert lookup["marketing"]
     assert lookup["floor"] is None
     assert lookup["__conductor__"] is None
     assert lookup["nonsense"] is None
