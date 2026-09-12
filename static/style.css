@@ -5615,6 +5615,18 @@ main.main > #mainPlugin{display:none;}
 .office-unsupported{padding:24px;max-width:52ch;margin:0 auto;font-size:13px;line-height:1.6;color:var(--muted);text-align:center;}
 .office-sidebar-note{padding:10px 14px;font-size:12px;line-height:1.5;color:var(--muted);}
 .office-detail{position:absolute;top:14px;right:14px;width:min(320px,calc(100% - 28px));max-height:calc(100% - 28px);overflow-y:auto;padding:12px 14px;border-radius:12px;border:1px solid var(--border2);background:var(--surface);box-shadow:0 8px 30px rgba(0,0,0,.22);font-size:12px;}
+/* Per-department floating stat cards (Business outlet). One absolutely-
+   positioned container spanning the stage; each card is repositioned every
+   frame (static/office/index.js's repositionDepartmentCards) to track its
+   pod as the camera pans/zooms, so the cards themselves only need `left`/
+   `top` set inline -- everything else here is the fixed look of one card. */
+.office-dept-cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.office-dept-card{position:absolute;transform:translate(-50%,-100%);min-width:112px;padding:8px 12px;border-radius:10px;border:1px solid var(--border2);border-left:3px solid var(--office-dept-color,var(--accent));background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.18);font-size:11px;line-height:1.35;white-space:nowrap;}
+.office-dept-card-name{font-weight:650;font-size:11px;letter-spacing:.02em;text-transform:uppercase;color:var(--office-dept-color,var(--text));margin-bottom:2px;}
+.office-dept-card-count{font-size:17px;font-weight:700;color:var(--text);}
+.office-dept-card-count span{margin-left:4px;font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);}
+.office-dept-card-stats{display:flex;gap:10px;margin-top:4px;color:var(--muted);}
+.office-dept-card-stat strong{color:var(--text);margin-right:3px;}
 .office-detail-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
 .office-detail-title{flex:1;font-weight:650;font-size:13px;color:var(--text);}
 .office-detail-close{border:0;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;padding:0 2px;}

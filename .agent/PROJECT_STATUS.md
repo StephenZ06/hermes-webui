@@ -1181,6 +1181,20 @@ directly above.
 Full writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day:
 jagged edges, the outline gone for good, and reverting the icon".
 
+**Sixth follow-up same day**: "the stat cards above the employees are now
+gone, please add that back" -- a miscommunication from two follow-ups back
+where "remove the black-background labels above the pods" was read as
+covering both the per-pod stat card and the per-desk nameplate, and only
+the nameplate half of that got corrected. Restored the per-pod stat card
+(`officeCardSpecs`/`renderDepartmentCards`/`repositionDepartmentCards` in
+`index.js`, its CSS, `test_office_pod_stat_cards.py`, the dept-card
+assertions in `test_office_browser_smoke.py`) by reverse-applying exactly
+those hunks from the commit that removed it -- every other change since
+(bloom's multisampled target, the outline's removal, the icon's reversion,
+the idle-seat nameplate fix, the single-plant fix) is untouched. Full
+writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day: the
+per-pod stat card was never asked to go".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

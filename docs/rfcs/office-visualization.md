@@ -894,3 +894,39 @@ confirming an idle desk's nameplate is actually gone while a working one's
 stays, the outline is actually gone, no icon appears, only one plant sits
 near the sign, and — cropped in tight on a figure's head — the edges read as
 antialiased rather than a staircase.
+
+### Follow-up same day: the per-pod stat card was never asked to go
+
+Reported: "the stat cards above the employees are now gone, please add that
+back." A miscommunication from two follow-ups back — the floating per-pod
+stat card (`.office-dept-card`: seat count, active/done, a department's name
+and colour on Business) and the per-*desk* nameplate (`✓ Under tests/...`,
+the black bar over a worker's own head) are two different, unrelated UI
+elements, and "remove the black-background labels above the pods" was read
+as covering both. The nameplate-only correction two follow-ups later (idle
+seats hide theirs, a real worker's stays) fixed the wrong half of that
+misread and never restored the other.
+
+Fixed by reverse-applying exactly the hunks that removed it in the
+smoothness/outline/icon commit — `officeCardSpecs()`/`renderDepartmentCards()`
+/`repositionDepartmentCards()` and their module state back in `index.js`, the
+`.office-dept-cards`/`.office-dept-card*` rules back in `style.css`,
+`tests/test_office_pod_stat_cards.py` restored from git history, and
+`tests/test_office_browser_smoke.py`'s dept-card assertions restored — while
+leaving every other change from that commit and the two after it (bloom's
+multisampled target, the outline's full removal, the icon's full reversion,
+the idle-seat nameplate fix, the single-plant fix) untouched, since none of
+those diffs ever touched this feature's code. The one adjustment on top:
+`_DEPT_CARD_TERMINAL` (the restored feature's original name for its terminal-
+status `Set`) renamed to `_TERMINAL_STATUSES` to match the name a later,
+unrelated cleanup in the same commit gave it — the Task Status panel's own
+node-driver test already expects that name, and duplicating the same `Set`
+under two names would be worse than keeping one.
+
+Verified: full office node suite green, including `test_office_pod_stat_cards
+.py` restored verbatim; `test_office_browser_smoke.py` (its full original
+dept-card assertions plus everything added since) green under
+`HERMES_WEBUI_BROWSER_TESTS=1`; and manual screenshots of both outlets
+confirming the cards are back, correctly named/coloured, positioned over
+their pods, alongside every fix from the two follow-ups since (no outline,
+no icon, the idle "Emails Lead"-style nameplate still correctly hidden).

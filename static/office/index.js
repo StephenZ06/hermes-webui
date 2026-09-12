@@ -29,6 +29,7 @@ import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
 import { buildRoster, businessView } from './roster.js';
+import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
 // user is on the Chat panel, and their events keep arriving; resetting office
@@ -66,6 +67,11 @@ let _summaryEl = null;
 let _lastSummary = '';
 let _pauseBtnEl = null;
 let _backBtnEl = null;
+// Per-department floating stat cards (Business outlet only). Keyed by
+// department key, one DOM element each, repositioned every frame to track
+// the pod as the camera pans/zooms (see repositionDepartmentCards below).
+let _deptCardsEl = null;
+const _deptCardEls = new Map();
 // Aggregate Task Status panel: every worker the adapter currently knows
 // about, whole-office, independent of which outlet is showing (a subagent is
 // the same real subagent whichever floor plan draws it).
@@ -219,6 +225,7 @@ function scheduleSync() {
     renderPill(state);
     renderDetail(state);
     renderSummary(state);
+    renderDepartmentCards(view, state);
     renderTaskStatusPanel(state);
   });
 }
@@ -226,10 +233,122 @@ function scheduleSync() {
 // A worker never runs again after one of these (see office/adapter.js's own
 // TERMINAL_STATUSES) -- the same vocabulary, duplicated rather than imported
 // so this module keeps reading a plain adapter snapshot rather than needing
-// the adapter module itself. Used by the Task Status panel below.
+// the adapter module itself.
 const _TERMINAL_STATUSES = new Set([
   'completed', 'failed', 'error', 'timeout', 'interrupted', 'ended',
 ]);
+
+/**
+ * Which pods get a floating stat card, and what to print on it -- the one
+ * thing that differs between the outlets. Business has a fixed, named
+ * roster; Projects has no fixed identity (a pod is just "whoever's parent
+ * spawned this cluster"), so its cards carry no name -- but DO get a
+ * colour, the same `colorForProjectsCluster()` derivation the floor itself
+ * uses (layout.js's computeLayout), so a card's accent always matches the
+ * floor it floats over. Returns null when there is nothing to show (the
+ * caller clears any existing cards in that case).
+ *
+ * Business also includes "The Floor" overflow (roster.js's buildRoster
+ * always appends it as a 7th standing entry) -- uncoloured, matching the
+ * pod tint.
+ */
+function officeCardSpecs(view) {
+  if (_outlet === 'business') {
+    if (!_roster || !Array.isArray(_roster.departments)) return null;
+    return _roster.departments.map(dept => ({ key: dept.key, name: dept.name, color: dept.color }));
+  }
+  // Projects: one card per pod actually on the floor right now -- pods come
+  // and go with the live delegation tree, there is no standing list to draw
+  // an empty one from the way Business always has all six.
+  const clusters = new Set();
+  (view.desks || []).forEach(desk => { if (desk.cluster) clusters.add(desk.cluster); });
+  if (!clusters.size) return null;
+  return Array.from(clusters).map(key => ({ key, name: null, color: colorForProjectsCluster(key) }));
+}
+
+/**
+ * The floating stat card seen over each pod: an optional name (Business
+ * only), seat count, and two honest live counts (active / done) derived
+ * from the SAME state the floor itself is drawn from -- no metric this app
+ * cannot actually measure (unlike the reference product's "cost per user"
+ * style numbers, which have no equivalent here).
+ */
+function renderDepartmentCards(view, state) {
+  if (!_deptCardsEl) return;
+  const specs = officeCardSpecs(view);
+  if (!specs) {
+    if (_deptCardEls.size) { _deptCardsEl.innerHTML = ''; _deptCardEls.clear(); }
+    return;
+  }
+  const workersById = new Map((state.workers || []).map(w => [w.id, w]));
+  const desksByCluster = new Map();
+  (view.desks || []).forEach(desk => {
+    if (!desksByCluster.has(desk.cluster)) desksByCluster.set(desk.cluster, []);
+    desksByCluster.get(desk.cluster).push(desk);
+  });
+
+  const seen = new Set();
+  specs.forEach(spec => {
+    seen.add(spec.key);
+    const desks = desksByCluster.get(spec.key) || [];
+    let active = 0;
+    let done = 0;
+    desks.forEach(desk => {
+      const worker = desk.workerId ? workersById.get(desk.workerId) : null;
+      if (!worker) return;
+      if (worker.status === 'running') active += 1;
+      else if (_TERMINAL_STATUSES.has(worker.status)) done += 1;
+    });
+
+    let el = _deptCardEls.get(spec.key);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'office-dept-card';
+      _deptCardsEl.appendChild(el);
+      _deptCardEls.set(spec.key, el);
+    }
+    if (spec.color) el.style.setProperty('--office-dept-color', spec.color);
+    else el.style.removeProperty('--office-dept-color');
+    el.innerHTML = `
+      ${spec.name ? `<div class="office-dept-card-name">${esc(spec.name)}</div>` : ''}
+      <div class="office-dept-card-count">${desks.length}<span>agent${desks.length === 1 ? '' : 's'}</span></div>
+      <div class="office-dept-card-stats">
+        <span class="office-dept-card-stat"><strong>${active}</strong>active</span>
+        <span class="office-dept-card-stat"><strong>${done}</strong>done</span>
+      </div>`;
+  });
+
+  // A pod that dropped off the floor (Business: a reload with a different
+  // config, in principle; Projects: its run simply finished and it was
+  // swept) loses its card rather than leaving a stale one floating with
+  // nothing to anchor it.
+  Array.from(_deptCardEls.keys()).forEach(key => {
+    if (seen.has(key)) return;
+    const el = _deptCardEls.get(key);
+    if (el) el.remove();
+    _deptCardEls.delete(key);
+  });
+
+  repositionDepartmentCards();
+}
+
+/**
+ * Keeps each card over its pod as the camera pans/zooms/tweens. Called every
+ * frame via the scene's onTick (see createOfficeScene below) -- cheap when
+ * there is nothing to reposition, which is whenever the current outlet has
+ * no cards up.
+ */
+function repositionDepartmentCards() {
+  if (!_deptCardEls.size) return;
+  if (!_scene || typeof _scene.podScreenRect !== 'function') return;
+  _deptCardEls.forEach((el, cluster) => {
+    const rect = _scene.podScreenRect(cluster);
+    if (!rect) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.style.left = rect.x + 'px';
+    el.style.top = rect.y + 'px';
+  });
+}
 
 // ── Task Status panel ──
 //
@@ -924,6 +1043,7 @@ function mount(container) {
       <div class="office-stage">
         <canvas class="office-canvas" id="officeCanvas" role="img"
                 aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
+        <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>
         <div class="office-detail" id="officeDetail" hidden></div>
         <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
       </div>
@@ -940,6 +1060,8 @@ function mount(container) {
   _pillEl = container.querySelector('#officePill');
   _hintEl = container.querySelector('#officeHint');
   _summaryEl = container.querySelector('#officeSummary');
+  _deptCardsEl = container.querySelector('#officeDeptCards');
+  _deptCardEls.clear();
   _tasksFiltersEl = container.querySelector('#officeTasksFilters');
   _tasksListEl = container.querySelector('#officeTasksList');
   _tasksFilter = 'all';
@@ -963,7 +1085,7 @@ function mount(container) {
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => { _selectedId = id; scheduleSync(); },
-      onTick: () => { activeAdapter().tick(); },
+      onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
       // The detail panel owns the right edge of the stage; the camera slides
       // a focused desk clear of it rather than flying to a spot the panel
       // then covers.
@@ -1057,6 +1179,8 @@ function unmount() {
   _pauseBtnEl = null;
   _backBtnEl = null;
   _outletBtnEls = {};
+  _deptCardsEl = null;
+  _deptCardEls.clear();
   _tasksFiltersEl = null;
   _tasksListEl = null;
   _tasksFilter = 'all';
