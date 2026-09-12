@@ -238,18 +238,42 @@ const _DEPT_CARD_TERMINAL = new Set([
 ]);
 
 /**
- * The floating stat card seen over each standing floor on the Business
- * outlet: name, seat count, and two honest live counts (active / done)
- * derived from the SAME state the floor itself is drawn from -- no metric
- * this app cannot actually measure (unlike the reference product's "cost per
- * user" style numbers, which have no equivalent here). One card per entry in
- * `_roster.departments`, which is the 6 standing departments plus "The
- * Floor" overflow (roster.js's buildRoster always appends it) -- the
- * overflow gets a card too, just no floor colour, matching the tint.
+ * Which pods get a floating stat card, and what to print on it -- the one
+ * thing that differs between the outlets. Business has a fixed, named,
+ * coloured roster; Projects has neither (a pod is just "whoever's parent
+ * spawned this cluster"), so its cards carry no name and no colour rather
+ * than inventing one. Returns null when there is nothing to show (the
+ * caller clears any existing cards in that case).
+ *
+ * Business also includes "The Floor" overflow (roster.js's buildRoster
+ * always appends it as a 7th standing entry) -- uncoloured, matching the
+ * pod tint.
+ */
+function officeCardSpecs(view) {
+  if (_outlet === 'business') {
+    if (!_roster || !Array.isArray(_roster.departments)) return null;
+    return _roster.departments.map(dept => ({ key: dept.key, name: dept.name, color: dept.color }));
+  }
+  // Projects: one card per pod actually on the floor right now -- pods come
+  // and go with the live delegation tree, there is no standing list to draw
+  // an empty one from the way Business always has all six.
+  const clusters = new Set();
+  (view.desks || []).forEach(desk => { if (desk.cluster) clusters.add(desk.cluster); });
+  if (!clusters.size) return null;
+  return Array.from(clusters).map(key => ({ key, name: null, color: null }));
+}
+
+/**
+ * The floating stat card seen over each pod: an optional name (Business
+ * only), seat count, and two honest live counts (active / done) derived
+ * from the SAME state the floor itself is drawn from -- no metric this app
+ * cannot actually measure (unlike the reference product's "cost per user"
+ * style numbers, which have no equivalent here).
  */
 function renderDepartmentCards(view, state) {
   if (!_deptCardsEl) return;
-  if (_outlet !== 'business' || !_roster || !Array.isArray(_roster.departments)) {
+  const specs = officeCardSpecs(view);
+  if (!specs) {
     if (_deptCardEls.size) { _deptCardsEl.innerHTML = ''; _deptCardEls.clear(); }
     return;
   }
@@ -261,9 +285,9 @@ function renderDepartmentCards(view, state) {
   });
 
   const seen = new Set();
-  _roster.departments.forEach(dept => {
-    seen.add(dept.key);
-    const desks = desksByCluster.get(dept.key) || [];
+  specs.forEach(spec => {
+    seen.add(spec.key);
+    const desks = desksByCluster.get(spec.key) || [];
     let active = 0;
     let done = 0;
     desks.forEach(desk => {
@@ -273,16 +297,17 @@ function renderDepartmentCards(view, state) {
       else if (_DEPT_CARD_TERMINAL.has(worker.status)) done += 1;
     });
 
-    let el = _deptCardEls.get(dept.key);
+    let el = _deptCardEls.get(spec.key);
     if (!el) {
       el = document.createElement('div');
       el.className = 'office-dept-card';
       _deptCardsEl.appendChild(el);
-      _deptCardEls.set(dept.key, el);
+      _deptCardEls.set(spec.key, el);
     }
-    if (dept.color) el.style.setProperty('--office-dept-color', dept.color);
+    if (spec.color) el.style.setProperty('--office-dept-color', spec.color);
+    else el.style.removeProperty('--office-dept-color');
     el.innerHTML = `
-      <div class="office-dept-card-name">${esc(dept.name)}</div>
+      ${spec.name ? `<div class="office-dept-card-name">${esc(spec.name)}</div>` : ''}
       <div class="office-dept-card-count">${desks.length}<span>agent${desks.length === 1 ? '' : 's'}</span></div>
       <div class="office-dept-card-stats">
         <span class="office-dept-card-stat"><strong>${active}</strong>active</span>
@@ -290,9 +315,10 @@ function renderDepartmentCards(view, state) {
       </div>`;
   });
 
-  // A department that dropped out of the current roster (a reload with a
-  // different config, in principle) loses its card rather than leaving a
-  // stale one floating with nothing to anchor it.
+  // A pod that dropped off the floor (Business: a reload with a different
+  // config, in principle; Projects: its run simply finished and it was
+  // swept) loses its card rather than leaving a stale one floating with
+  // nothing to anchor it.
   Array.from(_deptCardEls.keys()).forEach(key => {
     if (seen.has(key)) return;
     const el = _deptCardEls.get(key);
@@ -306,11 +332,11 @@ function renderDepartmentCards(view, state) {
 /**
  * Keeps each card over its pod as the camera pans/zooms/tweens. Called every
  * frame via the scene's onTick (see createOfficeScene below) -- cheap when
- * there is nothing to reposition, which is every frame outside the Business
- * outlet.
+ * there is nothing to reposition, which is whenever the current outlet has
+ * no cards up.
  */
 function repositionDepartmentCards() {
-  if (_outlet !== 'business' || !_deptCardEls.size) return;
+  if (!_deptCardEls.size) return;
   if (!_scene || typeof _scene.podScreenRect !== 'function') return;
   _deptCardEls.forEach((el, cluster) => {
     const rect = _scene.podScreenRect(cluster);

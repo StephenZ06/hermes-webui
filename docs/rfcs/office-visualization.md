@@ -608,13 +608,16 @@ reference only, per the Licensing section above; all hand-written:
   rather than painting a flat brand colour over whichever theme is active.
   Projects pods and the "The Floor" overflow carry no colour and stay
   exactly as before.
-- **Per-department floating stat card.** One card per standing floor
-  (department name, seat count, live active/done counts derived from the
-  same adapter state the floor is drawn from), positioned every frame by a
-  new `podScreenRect(cluster)` query on the scene (world-to-screen
-  projection, CSS pixels relative to the canvas) so it tracks the pod as the
-  camera pans/zooms. No metric this app cannot actually measure — unlike the
-  reference's "cost per user" style numbers, which have no equivalent here.
+- **Per-pod floating stat card.** One card per pod (seat count, live
+  active/done counts derived from the same adapter state the floor is drawn
+  from), positioned every frame by a new `podScreenRect(cluster)` query on
+  the scene (world-to-screen projection, CSS pixels relative to the canvas)
+  so it tracks the pod as the camera pans/zooms. No metric this app cannot
+  actually measure — unlike the reference's "cost per user" style numbers,
+  which have no equivalent here. Generalised to Projects the same day
+  (`officeCardSpecs()`): Business's card carries the department's name and
+  colour, Projects' does not — a Projects pod is just "whoever's parent
+  spawned this cluster", not a named thing, and the card does not invent one.
 - **Aggregate Task Status panel.** A new right-hand column inside the office
   view (`.office-body` now splits `.office-stage` and `.office-tasks`),
   listing every worker the adapter is tracking with a live All/Running/Done/
@@ -625,6 +628,7 @@ reference only, per the Licensing section above; all hand-written:
 
 All three are real screen-projected/DOM state, not screenshots — verified
 against the actual running scene in `tests/test_office_browser_smoke.py`
-(`HERMES_WEBUI_BROWSER_TESTS=1`), plus node-level tests for the pure pieces
-(`test_office_roster.py`, `test_office_layout.py`, `test_office_pod_color.py`,
-`test_office_task_status.py`).
+(`HERMES_WEBUI_BROWSER_TESTS=1`, both outlets), plus node-level tests for the
+pure pieces (`test_office_roster.py`, `test_office_layout.py`,
+`test_office_pod_color.py`, `test_office_task_status.py`,
+`test_office_pod_stat_cards.py`).
