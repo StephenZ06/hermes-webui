@@ -129,8 +129,8 @@ export function walkwaySpan(pod, hubHalfExtent, options) {
 // but kept in the same muted family so a Business habit ("the colour is the
 // room") carries over.
 const PROJECTS_POD_PALETTE = [
-  '#c9758a', '#7a9e73', '#c99a55', '#8d7fa8',
-  '#6f7a89', '#5f89ab', '#b98a5f', '#6f9e91',
+  '#e0527d', '#4fae5e', '#e0a934', '#9457c7',
+  '#2f9e8f', '#3f7fd4', '#d97a3f', '#3fb0a8',
 ];
 
 /** Deterministic string hash (not cryptographic — a stable, well-spread

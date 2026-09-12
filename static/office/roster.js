@@ -32,32 +32,32 @@
  */
 export const DEPARTMENTS = [
   {
-    key: 'marketing', name: 'Marketing', color: '#c9758a',
+    key: 'marketing', name: 'Marketing', color: '#e0527d',
     keywords: ['marketing', 'content', 'brand', 'campaign', 'social', 'newsletter',
       'ads', 'ad ', 'seo', 'copy', 'blog', 'video', 'design', 'graphic'],
   },
   {
-    key: 'emails', name: 'Emails', color: '#7a9e73',
+    key: 'emails', name: 'Emails', color: '#4fae5e',
     keywords: ['email', 'inbox', 'mail', 'reply', 'correspondence', 'outreach',
       'follow up', 'follow-up'],
   },
   {
-    key: 'sales', name: 'Sales', color: '#c99a55',
+    key: 'sales', name: 'Sales', color: '#e0a934',
     keywords: ['sales', 'lead', 'prospect', 'pipeline', 'deal', 'proposal',
       'quote', 'crm', 'customer'],
   },
   {
-    key: 'operations', name: 'Operations', color: '#8d7fa8',
+    key: 'operations', name: 'Operations', color: '#9457c7',
     keywords: ['operation', 'ops', 'process', 'compliance', 'legal', 'policy',
       'admin', 'intel', 'research', 'report', 'dashboard'],
   },
   {
-    key: 'finance', name: 'Finance', color: '#6f7a89',
+    key: 'finance', name: 'Finance', color: '#2f9e8f',
     keywords: ['finance', 'invoice', 'billing', 'payment', 'account', 'budget',
       'payroll', 'cost', 'reconcil', 'tax'],
   },
   {
-    key: 'delivery', name: 'Delivery', color: '#5f89ab',
+    key: 'delivery', name: 'Delivery', color: '#3f7fd4',
     keywords: ['delivery', 'deliver', 'project', 'qa', 'quality', 'test',
       'onboard', 'support', 'ship', 'release', 'engineer', 'build', 'code',
       'implement', 'fix', 'refactor', 'debug'],

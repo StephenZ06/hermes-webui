@@ -79,16 +79,19 @@ function capsule(radius, length, color) {
  */
 /**
  * `tint`, when given (a department's accent colour — see roster.js's
- * colorForDepartment), is blended into the palette's own pod colours rather
- * than replacing them: a Business floor reads as its department while
+ * colorForDepartment — or a Projects cluster's derived one, see layout.js's
+ * colorForProjectsCluster), is blended into the palette's own pod colours
+ * rather than replacing them: a floor reads as its department/cluster while
  * staying the same material and staying correct in both the light and dark
  * palette, instead of a flat brand colour painted over whichever theme is
- * active.
+ * active. The blend is weighted heavily toward the tint (0.62/0.68) so a
+ * coloured floor actually reads as coloured at a glance rather than a faint
+ * wash over the neutral palette.
  */
 export function makePod(width, depth, palette, tint) {
   const group = new THREE.Group();
-  const topColor = tint ? mixColor(palette.podTop, tint, 0.3) : palette.podTop;
-  const sideColor = tint ? mixColor(palette.podSide, tint, 0.34) : palette.podSide;
+  const topColor = tint ? mixColor(palette.podTop, tint, 0.62) : palette.podTop;
+  const sideColor = tint ? mixColor(palette.podSide, tint, 0.68) : palette.podSide;
   const slab = box(width, 0.6, depth, topColor);
   slab.position.y = 0.3;
   slab.castShadow = false;
