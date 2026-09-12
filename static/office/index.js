@@ -47,6 +47,10 @@ const RECONCILE_MS = 5000;
 // a standing departmental floor. Both read identical adapter state; only desk
 // assignment differs.
 const OUTLET_STORAGE_KEY = 'hermes-webui-office-mode';
+// Whether the Task Status column is collapsed to a slim strip -- remembered
+// the same way the outlet choice is, so reclaiming the canvas' width sticks
+// across visits rather than resetting itself open every time.
+const TASKS_COLLAPSED_STORAGE_KEY = 'hermes-webui-office-tasks-collapsed';
 
 // A stored run whose children never recorded an end is only called live if it
 // has been active recently; past that it was cut off, not running.
@@ -79,6 +83,9 @@ let _tasksFiltersEl = null;
 let _tasksListEl = null;
 let _tasksFilter = 'all';
 let _lastTaskStatusWorkers = [];
+let _tasksEl = null;
+let _tasksCollapseBtnEl = null;
+let _tasksCollapsed = readTasksCollapsed();
 let _resizeObserver = null;
 let _themeObserver = null;
 let _visibilityHandler = null;
@@ -131,6 +138,20 @@ function readOutlet() {
 function writeOutlet(mode) {
   try {
     localStorage.setItem(OUTLET_STORAGE_KEY, mode);
+  } catch (_err) { /* a remembered preference is not worth failing over */ }
+}
+
+function readTasksCollapsed() {
+  try {
+    return localStorage.getItem(TASKS_COLLAPSED_STORAGE_KEY) === '1';
+  } catch (_err) {
+    return false;
+  }
+}
+
+function writeTasksCollapsed(collapsed) {
+  try {
+    localStorage.setItem(TASKS_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
   } catch (_err) { /* a remembered preference is not worth failing over */ }
 }
 
@@ -386,6 +407,26 @@ function taskStatusCounts(workers) {
     counts[taskStatusBucket(w.status)] += 1;
   });
   return counts;
+}
+
+/**
+ * The Task Status column collapses to a slim strip -- the filters and list
+ * stay in the DOM (so a collapse never has to rebuild them), only their
+ * visibility follows the state. Remembered per-browser so reclaiming the
+ * canvas' width sticks across visits.
+ */
+function renderTasksCollapse() {
+  if (!_tasksEl || !_tasksCollapseBtnEl) return;
+  _tasksEl.classList.toggle('is-collapsed', _tasksCollapsed);
+  _tasksCollapseBtnEl.setAttribute('aria-expanded', String(!_tasksCollapsed));
+  _tasksCollapseBtnEl.textContent = _tasksCollapsed ? '‹' : '›';
+  _tasksCollapseBtnEl.title = _tasksCollapsed ? 'Show Task Status' : 'Collapse Task Status';
+}
+
+function toggleTasksCollapsed() {
+  _tasksCollapsed = !_tasksCollapsed;
+  writeTasksCollapsed(_tasksCollapsed);
+  renderTasksCollapse();
 }
 
 function renderTaskStatusFilters() {
@@ -1049,7 +1090,11 @@ function mount(container) {
       </div>
       <div class="office-tasks" id="officeTasks">
         <div class="office-tasks-head">
-          <span class="office-tasks-title">Task Status</span>
+          <div class="office-tasks-head-row">
+            <span class="office-tasks-title">Task Status</span>
+            <button type="button" class="office-tasks-collapse-btn" id="officeTasksCollapseBtn"
+                    aria-expanded="true" aria-controls="officeTasksFilters officeTasksList">›</button>
+          </div>
           <div class="office-tasks-filters" id="officeTasksFilters" role="tablist" aria-label="Filter by status"></div>
         </div>
         <div class="office-tasks-list" id="officeTasksList"></div>
@@ -1062,6 +1107,10 @@ function mount(container) {
   _summaryEl = container.querySelector('#officeSummary');
   _deptCardsEl = container.querySelector('#officeDeptCards');
   _deptCardEls.clear();
+  _tasksEl = container.querySelector('#officeTasks');
+  _tasksCollapseBtnEl = container.querySelector('#officeTasksCollapseBtn');
+  _tasksCollapseBtnEl.onclick = toggleTasksCollapsed;
+  renderTasksCollapse();
   _tasksFiltersEl = container.querySelector('#officeTasksFilters');
   _tasksListEl = container.querySelector('#officeTasksList');
   _tasksFilter = 'all';
@@ -1181,6 +1230,8 @@ function unmount() {
   _outletBtnEls = {};
   _deptCardsEl = null;
   _deptCardEls.clear();
+  _tasksEl = null;
+  _tasksCollapseBtnEl = null;
   _tasksFiltersEl = null;
   _tasksListEl = null;
   _tasksFilter = 'all';

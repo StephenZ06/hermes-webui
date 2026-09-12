@@ -146,3 +146,40 @@ def test_the_panel_sits_beside_the_stage_not_over_it():
     # Hidden rather than squeezed on a phone -- the isometric floor needs the
     # room, and a shrunken 3rd column would be unreadable either way.
     assert "@media (max-width:640px){.office-tasks{display:none;}}" in CSS
+
+
+# ── collapsible ──────────────────────────────────────────────────────────────
+
+def test_the_collapse_button_is_wired_in_mount_and_toggles_state():
+    assert "_tasksCollapseBtnEl.onclick = toggleTasksCollapsed;" in OFFICE_SRC
+    at = OFFICE_SRC.index("function toggleTasksCollapsed()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
+    assert "_tasksCollapsed = !_tasksCollapsed;" in body
+    assert "writeTasksCollapsed(_tasksCollapsed);" in body
+
+
+def test_the_collapsed_state_is_remembered_across_visits():
+    # The same persistence pattern as the outlet choice (readOutlet/
+    # writeOutlet) -- a reload should not silently re-expand a column the
+    # user deliberately collapsed to get the canvas' width back.
+    assert "TASKS_COLLAPSED_STORAGE_KEY" in OFFICE_SRC
+    assert "localStorage.getItem(TASKS_COLLAPSED_STORAGE_KEY)" in OFFICE_SRC
+    assert "localStorage.setItem(TASKS_COLLAPSED_STORAGE_KEY" in OFFICE_SRC
+
+
+def test_filters_and_list_stay_in_the_dom_while_collapsed():
+    # Collapsing must not tear down and rebuild the filter buttons/rows --
+    # only their visibility (a CSS class on the column) changes, so a
+    # re-expand shows exactly what was there before, with no re-render lag.
+    at = OFFICE_SRC.index("function renderTasksCollapse()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
+    assert "classList.toggle('is-collapsed', _tasksCollapsed)" in body
+    assert "office-tasks.is-collapsed .office-tasks-filters" in CSS
+    assert "office-tasks.is-collapsed .office-tasks-list" in CSS
+
+
+def test_unmount_clears_the_collapse_button_reference():
+    at = OFFICE_SRC.index("function unmount()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
+    assert "_tasksEl = null;" in body
+    assert "_tasksCollapseBtnEl = null;" in body

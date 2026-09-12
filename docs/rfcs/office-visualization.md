@@ -930,3 +930,35 @@ dept-card assertions plus everything added since) green under
 confirming the cards are back, correctly named/coloured, positioned over
 their pods, alongside every fix from the two follow-ups since (no outline,
 no icon, the idle "Emails Lead"-style nameplate still correctly hidden).
+
+### Follow-up same day: a collapsible Task Status column
+
+Asked directly: make the Task Status column collapsible. `.office-tasks`
+sits beside `.office-stage` in a flex row (`.office-body`); collapsing it
+frees that width back to the canvas rather than merely hiding content in
+place, since the canvas (`position: absolute; inset: 0` inside `.office-
+stage`) already fills whatever room its flex sibling leaves it.
+
+- A new `.office-tasks-collapse-btn` sits next to the "Task Status" title
+  (both now wrapped in a `.office-tasks-head-row` flex row). Clicking it
+  toggles `_tasksCollapsed` and an `is-collapsed` class on `.office-tasks`;
+  `.office-tasks.is-collapsed{flex:0 0 40px;min-width:40px}` shrinks the
+  column to a slim strip holding only the button, with everything else
+  (title, filters, list) `display:none` under that class — never torn down
+  and rebuilt, so re-expanding shows exactly what was there a moment ago.
+  `flex-basis`/`min-width` transition over 180ms rather than snapping.
+- Remembered the same way the outlet choice already is: a new
+  `TASKS_COLLAPSED_STORAGE_KEY` / `readTasksCollapsed()` / `writeTasksCollapsed()`
+  trio mirroring `OUTLET_STORAGE_KEY`/`readOutlet()`/`writeOutlet()` — a
+  reload should not silently re-expand a column the user deliberately
+  collapsed to get the canvas' width back.
+
+Verified: new source-pinned tests in `test_office_task_status.py` (the button
+is wired to the toggle function, the toggle flips state and persists it, the
+collapsed CSS rule hides filters/list without removing them, `unmount()`
+nulls the new element refs); the existing browser smoke test extended with a
+real click-collapse-expand round trip under `HERMES_WEBUI_BROWSER_TESTS=1`,
+asserting the canvas' own `getBoundingClientRect().width` actually grows
+when collapsed and returns to exactly its original value on expand (not just
+that a class toggled) and that the collapsed flag lands in `localStorage`;
+plus manual screenshots of both states.

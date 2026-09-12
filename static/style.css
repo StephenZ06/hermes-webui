@@ -5591,9 +5591,18 @@ main.main > #mainPlugin{display:none;}
    click. Independent of which outlet is up (static/office/index.js's
    renderTaskStatusPanel reads the raw adapter state, not the outlet-specific
    desk view), so it never has to rebuild when Business/Projects is toggled. */
-.office-tasks{flex:0 0 min(260px,32%);min-width:180px;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--border);background:var(--sidebar);}
+.office-tasks{flex:0 0 min(260px,32%);min-width:180px;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--border);background:var(--sidebar);transition:flex-basis .18s ease,min-width .18s ease;}
+.office-tasks.is-collapsed{flex:0 0 40px;min-width:40px;}
 .office-tasks-head{flex:0 0 auto;padding:12px 14px 8px;}
-.office-tasks-title{display:block;font-size:12px;font-weight:650;letter-spacing:.03em;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
+.office-tasks.is-collapsed .office-tasks-head{padding:12px 8px;}
+.office-tasks-head-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.office-tasks.is-collapsed .office-tasks-head-row{justify-content:center;}
+.office-tasks-title{display:block;font-size:12px;font-weight:650;letter-spacing:.03em;text-transform:uppercase;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.office-tasks.is-collapsed .office-tasks-title,
+.office-tasks.is-collapsed .office-tasks-filters,
+.office-tasks.is-collapsed .office-tasks-list{display:none;}
+.office-tasks-collapse-btn{flex:0 0 auto;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border2);background:transparent;border-radius:6px;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0;}
+.office-tasks-collapse-btn:hover{color:var(--text);border-color:var(--border-strong,var(--border2));}
 .office-tasks-filters{display:flex;flex-wrap:wrap;gap:6px;}
 .office-tasks-filter{border:1px solid var(--border2);background:transparent;border-radius:999px;padding:4px 9px;font-size:11px;color:var(--muted);cursor:pointer;}
 .office-tasks-filter span{margin-left:3px;font-weight:650;color:var(--text);}

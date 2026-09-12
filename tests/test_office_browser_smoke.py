@@ -156,6 +156,24 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         }""")
         pg.evaluate("() => window.HermesOffice.resetView()")
 
+        # Collapsing the Task Status column frees canvas width and remembers
+        # its state; expanding again gives the width back.
+        collapse_toggle = pg.evaluate("""async () => {
+          const canvas = document.querySelector('.office-canvas');
+          const before = canvas.getBoundingClientRect().width;
+          const btn = document.getElementById('officeTasksCollapseBtn');
+          btn.click();
+          await new Promise(r => setTimeout(r, 600));
+          const collapsedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
+          const collapsedWidth = canvas.getBoundingClientRect().width;
+          const stored = localStorage.getItem('hermes-webui-office-tasks-collapsed');
+          btn.click();
+          await new Promise(r => setTimeout(r, 600));
+          const expandedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
+          const expandedWidth = canvas.getBoundingClientRect().width;
+          return { before, collapsedClass, collapsedWidth, stored, expandedClass, expandedWidth };
+        }""")
+
         pg.evaluate("() => window.switchPanel('chat')")
         pg.wait_for_timeout(800)
         after = pg.evaluate("""() => ({
@@ -264,4 +282,14 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     )
     assert focus_from_task_row["after"] == "demo-3", (
         "clicking a task row must fly the camera to that worker, same as clicking its desk"
+    )
+
+    assert collapse_toggle["collapsedClass"], "the collapse button must add is-collapsed"
+    assert collapse_toggle["collapsedWidth"] > collapse_toggle["before"], (
+        "collapsing the column must actually free canvas width, not just relabel the button"
+    )
+    assert collapse_toggle["stored"] == "1", "the collapsed state must be remembered across visits"
+    assert not collapse_toggle["expandedClass"], "clicking again must expand it back"
+    assert collapse_toggle["expandedWidth"] == collapse_toggle["before"], (
+        "expanding again must give the canvas back exactly the width it had before"
     )

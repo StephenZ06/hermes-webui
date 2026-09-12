@@ -1195,6 +1195,15 @@ the idle-seat nameplate fix, the single-plant fix) is untouched. Full
 writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day: the
 per-pod stat card was never asked to go".
 
+**Seventh follow-up same day**: made the Task Status column collapsible, as
+directly asked. A button next to the title toggles an `is-collapsed` class
+that shrinks `.office-tasks` to a 40px strip (canvas fills the reclaimed
+width automatically, since it's `position:absolute;inset:0` inside a flex
+sibling) without tearing down the filters/list, and remembers the choice in
+localStorage the same way the outlet picker does. Full writeup in
+`docs/rfcs/office-visualization.md`'s "Follow-up same day: a collapsible
+Task Status column".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
