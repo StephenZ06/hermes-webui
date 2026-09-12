@@ -67,6 +67,33 @@ def test_vendored_three_carries_its_mit_licence():
     )
 
 
+ADDONS_DIR = REPO / "static" / "vendor" / "three" / "0.185.1" / "addons"
+
+
+def test_every_addon_scene_js_imports_is_actually_vendored():
+    # scene.js's bloom pass pulls in several three.js addon modules via the
+    # "three/addons/" import map prefix (see test_import_map_maps_the_addons_
+    # prefix_too below) -- each one has to actually exist on disk, the same
+    # failure class as the three.core.min.js split above: importing a file
+    # that was never vendored 404s at load time and the panel goes silently
+    # blank, with nothing here to catch it except checking the files exist.
+    imported = re.findall(r"three/addons/([\w./-]+\.js)", OFFICE_SCENE_JS)
+    assert imported, "expected at least one 'three/addons/...' import in scene.js"
+    for rel in imported:
+        assert (ADDONS_DIR / rel).is_file(), f"scene.js imports {rel} but it is not vendored at {ADDONS_DIR}"
+
+
+def test_import_map_maps_the_addons_prefix_too():
+    start = INDEX_HTML.index('<script type="importmap">')
+    end = INDEX_HTML.index("</script>", start)
+    block = INDEX_HTML[start:end]
+    assert '"three/addons/"' in block, (
+        "a trailing-slash prefix entry, not a per-file one -- so any addon "
+        "module under the vendored tree resolves without a new map entry"
+    )
+    assert "addons/" in block
+
+
 # ── import map ───────────────────────────────────────────────────────────────
 
 def test_import_map_maps_three_to_the_vendored_file():

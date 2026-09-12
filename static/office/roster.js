@@ -32,32 +32,32 @@
  */
 export const DEPARTMENTS = [
   {
-    key: 'marketing', name: 'Marketing', color: '#e0527d',
+    key: 'marketing', name: 'Marketing', color: '#e0527d', icon: '📣',
     keywords: ['marketing', 'content', 'brand', 'campaign', 'social', 'newsletter',
       'ads', 'ad ', 'seo', 'copy', 'blog', 'video', 'design', 'graphic'],
   },
   {
-    key: 'emails', name: 'Emails', color: '#4fae5e',
+    key: 'emails', name: 'Emails', color: '#4fae5e', icon: '✉',
     keywords: ['email', 'inbox', 'mail', 'reply', 'correspondence', 'outreach',
       'follow up', 'follow-up'],
   },
   {
-    key: 'sales', name: 'Sales', color: '#e0a934',
+    key: 'sales', name: 'Sales', color: '#e0a934', icon: '💰',
     keywords: ['sales', 'lead', 'prospect', 'pipeline', 'deal', 'proposal',
       'quote', 'crm', 'customer'],
   },
   {
-    key: 'operations', name: 'Operations', color: '#9457c7',
+    key: 'operations', name: 'Operations', color: '#9457c7', icon: '⚙',
     keywords: ['operation', 'ops', 'process', 'compliance', 'legal', 'policy',
       'admin', 'intel', 'research', 'report', 'dashboard'],
   },
   {
-    key: 'finance', name: 'Finance', color: '#2f9e8f',
+    key: 'finance', name: 'Finance', color: '#2f9e8f', icon: '📊',
     keywords: ['finance', 'invoice', 'billing', 'payment', 'account', 'budget',
       'payroll', 'cost', 'reconcil', 'tax'],
   },
   {
-    key: 'delivery', name: 'Delivery', color: '#3f7fd4',
+    key: 'delivery', name: 'Delivery', color: '#3f7fd4', icon: '📦',
     keywords: ['delivery', 'deliver', 'project', 'qa', 'quality', 'test',
       'onboard', 'support', 'ship', 'release', 'engineer', 'build', 'code',
       'implement', 'fix', 'refactor', 'debug'],
@@ -82,6 +82,18 @@ const DEPARTMENT_BY_KEY = new Map(DEPARTMENTS.map(d => [d.key, d]));
 export function colorForDepartment(clusterKey) {
   const dept = DEPARTMENT_BY_KEY.get(clusterKey);
   return dept ? dept.color : null;
+}
+
+/**
+ * A department's floor sign glyph, painted next to its name (see builders.js's
+ * makeFloorTitle's `icon` option) — or null for anything that names no
+ * department. Purely decorative signage, same reasoning as the colour: a
+ * department is a place someone can recognise at a glance, so it gets a mark
+ * of its own the way a real office floor plan would.
+ */
+export function iconForDepartment(clusterKey) {
+  const dept = DEPARTMENT_BY_KEY.get(clusterKey);
+  return dept ? dept.icon : null;
 }
 
 function normalise(text) {
@@ -167,7 +179,7 @@ export function buildRoster(personalities) {
         placeholder: true,
       });
     }
-    return { key: dept.key, name: dept.name, color: dept.color, seats };
+    return { key: dept.key, name: dept.name, color: dept.color, icon: dept.icon, seats };
   });
 
   departments.push({ key: OVERFLOW.key, name: OVERFLOW.name, seats: overflowSeats });
@@ -212,6 +224,9 @@ export function businessView(state, roster) {
         // purpose" apart from a Projects desk, which never carries this key
         // at all and gets one derived instead.
         clusterColor: dept.key === OVERFLOW.key ? null : dept.color,
+        // Signage glyph next to the name. The overflow floor names no
+        // department, so it gets none either.
+        clusterIcon: dept.key === OVERFLOW.key ? null : dept.icon,
       };
       seatIndexByDept.get(dept.key).push(desk);
       desks.push(desk);
@@ -248,6 +263,7 @@ export function businessView(state, roster) {
         seatLabel: OVERFLOW.name,
         clusterLabel: OVERFLOW.name,
         clusterColor: null,
+        clusterIcon: null,
       };
       seatIndexByDept.get(OVERFLOW.key).push(desk);
       desks.push(desk);

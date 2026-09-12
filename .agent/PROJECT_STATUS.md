@@ -1116,6 +1116,26 @@ truthiness. `officeCardSpecs()`'s Projects branch passes the same derived
 colour to the floating card. See `docs/rfcs/office-visualization.md`'s
 "Follow-up same day: Projects floor colour" for the full writeup.
 
+**Third follow-up same day**: colours still read too washed-out vs. the
+reference screenshot — bumped `makePod`'s tint blend 0.3/0.34 -> 0.62/0.68 and
+replaced both colour palettes (Business's six, Projects' eight) with more
+saturated hues. Then asked to build six more visual features, explicitly
+including bloom ("I have a good enough computer to run no.6"): a working
+pod's own glow (additive, HDR-pushed so only it — not the ordinary palette —
+clears the bloom threshold), a whiteboard prop, a per-pod floor-tile texture,
+a floating department icon badge (first attempt baked it into the floor sign
+and it ended up hidden under the desk; fixed as a separate billboarded
+sprite), a hemisphere+rim lighting rig replacing the flat ambient light, and
+a full bloom post-process (`EffectComposer`/`RenderPass`/`UnrealBloomPass`/
+`OutputPass`, vendored from upstream three.js r185 examples, MIT, at
+`static/vendor/three/0.185.1/addons/`, resolved via a new `"three/addons/"`
+import-map prefix). Verified with real node tests for the pure logic and new
+builders, source-pinned scene.js wiring tests, the existing browser smoke
+test, and manual Playwright screenshots (including a raw canvas-pixel read
+confirming transparency survived the composer pipeline). Full writeup in
+`docs/rfcs/office-visualization.md`'s "Follow-up same day: colour pop, then
+six more visual features".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

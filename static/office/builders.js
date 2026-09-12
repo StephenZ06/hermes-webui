@@ -369,6 +369,94 @@ export function makePlant(palette) {
 }
 
 /**
+ * A faint grid overlaid on a pod's own floor, drawn to the pod's exact
+ * footprint rather than tiled from a shared texture, so the line spacing
+ * always reads as roughly the same physical size whatever the pod's
+ * dimensions are. Purely a floor-finish detail — the coloured slab beneath
+ * it is still what carries department/cluster identity.
+ */
+export function makeFloorTiles(width, depth, palette) {
+  const canvas = document.createElement('canvas');
+  const scale = 24; // px per world unit — enough resolution to stay crisp at focus zoom.
+  canvas.width = Math.max(2, Math.round(width * scale));
+  canvas.height = Math.max(2, Math.round(depth * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.strokeStyle = palette.grid;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 1;
+  const step = 2 * scale; // one line every 2 world units
+  for (let x = step; x < canvas.width; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = step; y < canvas.height; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(canvas.width, y + 0.5);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const geometry = new THREE.PlaneGeometry(width, depth);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, opacity: 0.6, depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.61; // just proud of the slab top (0.6), under the signage (0.66)
+  mesh.userData.floorTiles = { texture, geometry, material };
+  return mesh;
+}
+
+/**
+ * A soft coloured wash over a pod's floor, shown only while the pod is doing
+ * real work (see scene.js's `record.active`). Its own per-instance material
+ * (never the shared `material()` cache — every pod's activity state is
+ * independent, and two different clusters can share a colour, see layout.js's
+ * `colorForProjectsCluster`) so its opacity can pulse without touching any
+ * other pod. The colour is pushed past normal 0-1 range on purpose: with the
+ * scene's bloom pass in place (see scene.js), only pixels brighter than that
+ * range actually bloom, which is what makes a working pod visibly glow
+ * instead of just tinting a bit brighter.
+ */
+export function makePodGlow(width, depth, tint) {
+  const geometry = new THREE.PlaneGeometry(width + 1.4, depth + 1.4);
+  const color = new THREE.Color(tint || '#ffffff');
+  color.multiplyScalar(2.4);
+  const material = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.63;
+  mesh.userData.podGlow = { geometry, material };
+  return mesh;
+}
+
+/**
+ * A small whiteboard on a stand — one extra piece of set dressing per pod
+ * alongside the two plants, purely for visual variety. Carries no state.
+ */
+export function makeWhiteboard(palette) {
+  const group = new THREE.Group();
+  const board = box(1.7, 1.15, 0.06, palette.board);
+  board.position.y = 1.35;
+  group.add(board);
+  const frame = box(1.8, 1.25, 0.05, palette.deskLeg);
+  frame.position.set(0, 1.35, -0.02);
+  group.add(frame);
+  [-0.7, 0.7].forEach(sx => {
+    const leg = cylinder(0.04, 0.04, 1.35, 6, palette.deskLeg);
+    leg.position.set(sx, 0.675, 0);
+    group.add(leg);
+  });
+  return group;
+}
+
+/**
  * A walkway slab joining a pod back toward the conductor, so the floor plan
  * reads as a place with circulation rather than islands in a void.
  */
@@ -687,6 +775,33 @@ export function makeNameplate(palette, text) {
   return sprite;
 }
 
+/**
+ * A department's glyph (roster.js's `iconForDepartment`), floating above its
+ * floor sign. A sprite rather than baked into the floor sign itself: the
+ * floor sign already spans most of the pod's footprint, and a first attempt
+ * at painting the icon into the same texture placed it right where a pod's
+ * own desk sits, hidden underneath it. Floating it above the pod like a
+ * nameplate sidesteps the whole problem and stays legible at every zoom.
+ */
+export function makeDeptIcon(icon) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 160;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '128px "Noto Color Emoji", sans-serif';
+  ctx.fillText(String(icon), canvas.width / 2, canvas.height / 2 + 8);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture, transparent: true, depthWrite: false,
+  }));
+  sprite.scale.set(2.6, 2.6, 1);
+  sprite.userData.plate = { canvas, ctx, texture };
+  return sprite;
+}
+
 const STATUS_GLYPH = {
   running: '▶', completed: '✓', failed: '✕', error: '✕',
   timeout: '⏱', interrupted: '■',
@@ -772,6 +887,17 @@ export function disposeTree(root) {
       title.texture.dispose();
       title.geometry.dispose();
       title.material.dispose();
+    }
+    const tiles = obj.userData && obj.userData.floorTiles;
+    if (tiles) {
+      tiles.texture.dispose();
+      tiles.geometry.dispose();
+      tiles.material.dispose();
+    }
+    const glow = obj.userData && obj.userData.podGlow;
+    if (glow) {
+      glow.geometry.dispose();
+      glow.material.dispose();
     }
     if (obj.isSprite && obj.material) obj.material.dispose();
   });

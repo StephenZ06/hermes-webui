@@ -214,6 +214,21 @@ def test_a_pod_is_only_labelled_when_its_desks_carry_a_name(driver):
     assert labelled["pods"][0]["label"] == "Finance"
 
 
+def test_a_pod_is_only_iconed_when_its_desks_carry_one(driver):
+    # Same story as the label above -- a department's floor glyph (roster.js's
+    # iconForDepartment) is Business-only signage; a Projects cluster gets no
+    # derived fallback the way its colour does, since there is no icon that
+    # would mean anything for an arbitrary subagent id.
+    unlabelled = layout(driver, n_desks(2, cluster="p1"))
+    assert unlabelled["pods"][0]["icon"] is None
+
+    iconed = layout(driver, [
+        {"id": "d0", "index": 0, "workerId": "w0", "cluster": "finance",
+         "clusterLabel": "Finance", "clusterIcon": "📊"},
+    ])
+    assert iconed["pods"][0]["icon"] == "📊"
+
+
 def test_a_pod_is_only_coloured_when_its_desks_carry_a_colour(driver):
     # A Business desk always carries `clusterColor` explicitly -- a real
     # colour, or a deliberate `null` for the "The Floor" overflow. A Projects

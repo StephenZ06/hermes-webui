@@ -81,11 +81,15 @@
        first would fail to resolve the bare "three" specifier.
        three.js r185 (MIT) is vendored at static/vendor/three/0.185.1/ — this app
        has no bundler, so the import map is what lets office modules use the same
-       bare specifier the upstream reference code does. -->
+       bare specifier the upstream reference code does. The "three/addons/" prefix
+       entry does the same for the postprocessing addon modules vendored at
+       .../0.185.1/addons/ (also r185, unminified upstream source — three ships no
+       minified build of the addons, so these are used as-is). -->
   <script type="importmap">
   {
     "imports": {
-      "three": "./static/vendor/three/0.185.1/three.module.min.js"
+      "three": "./static/vendor/three/0.185.1/three.module.min.js",
+      "three/addons/": "./static/vendor/three/0.185.1/addons/"
     }
   }
   </script>

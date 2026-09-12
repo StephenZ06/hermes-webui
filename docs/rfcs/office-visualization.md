@@ -666,3 +666,91 @@ inventing an identity for it.
 - The palette intentionally overlaps Business's six department colours (the
   two outlets are never on screen at once) plus two new hues, so a Projects
   floor doesn't come out visually thinner than Business's.
+
+### Follow-up same day: colour pop, then six more visual features
+
+Reported: the pod colours above still read too washed-out next to the
+reference screenshot. Two causes, both tuning rather than behaviour: `makePod`
+blended a department/cluster's tint into the palette at 0.3/0.34 (barely a
+wash); bumped to 0.62/0.68. And `roster.js`'s six department colours and
+`layout.js`'s `PROJECTS_POD_PALETTE` were themselves fairly desaturated dusty
+tones; replaced with more saturated hues, same roles, no exact value pinned by
+any test (`test_office_pod_color.py` only asserts relational properties).
+
+Asked next for further ideas, then to build all of them (explicitly
+including bloom: "I have a good enough computer to run no.6 (MinisForum
+UM790)" — bloom cost is paid by whoever's *browser* renders the page, not the
+machine running hermes-webui itself, but the office is normally opened by the
+person running it, so this held). Six additions, all original code against
+observed behaviour/screenshots only (see Licensing above):
+
+1. **A working pod's own glow** (`builders.js`'s `makePodGlow`). A soft
+   additive-blended plane over a pod's floor, invisible (`opacity: 0`) until
+   the pod is actually doing work, then pulses gently
+   (`scene.js`'s `pulseGlow`, eased rather than snapped — same reasoning as
+   the marching outline's own dash fade). Its own per-instance material,
+   never the shared `material()` cache: two different clusters can share a
+   colour (`colorForProjectsCluster`'s hash can collide), and every pod's
+   activity is independent. The conductor gets one too, driven by
+   `orchestrating` status rather than `liveClustersWithWork`.
+2. **Small props**: a whiteboard (`makeWhiteboard`) alongside the two
+   existing plants — pure scenery, no state, one per pod.
+3. **A faint floor grid** (`makeFloorTiles`), drawn to each pod's own exact
+   footprint (not a shared repeating texture) so the line spacing reads as a
+   consistent physical size regardless of a pod's dimensions.
+4. **A department's own glyph** (`roster.js`'s new `icon` field on
+   `DEPARTMENTS`, `iconForDepartment()`, threaded through `businessView()` →
+   `computeLayout()`'s `pod.icon` → `makeDeptIcon()`). First attempt painted
+   it into the same canvas as the floor-sign text, in its own band above the
+   name — worked as a 2D drawing (verified in isolation) but the extra height
+   pushed the sign backward into the pod, hiding the icon behind/under the
+   desk. Fixed by making it a separate camera-facing `THREE.Sprite`,
+   floating well above the pod (y 8.5, scaled down) instead of lying flat on
+   the floor — sidesteps the occlusion problem entirely and reads at any
+   zoom, the same reasoning `makeNameplate` already uses for worker labels.
+   Business only; a Projects pod has no department to draw a mark for.
+5. **Lighting**: the flat `AmbientLight` became a `HemisphereLight` (a
+   sky-toned colour from above, a ground-toned one from below, per palette),
+   plus a low rim `DirectionalLight` opposite the key light so a pod's far
+   side isn't flat black. Both repainted on `applyTheme()`.
+6. **Bloom**: `EffectComposer` + `RenderPass` + `UnrealBloomPass` +
+   `OutputPass`, vendored from the upstream three.js r185 examples (same MIT
+   licence as the core build already vendored; unminified, since three ships
+   no minified addon build) at `static/vendor/three/0.185.1/addons/`, resolved
+   via a new `"three/addons/"` import-map prefix entry (one entry maps the
+   whole tree, not one per file). Threshold set to 1.0: everything in the
+   ordinary palette sits under normal 0-1 colour range, so nothing here needs
+   the usual "selective bloom" layer trick — only the glow mesh above, whose
+   colour is deliberately pushed past 1.0
+   (`THREE.Color.multiplyScalar(2.4)`), actually blooms. `renderer.toneMapping
+   = ACESFilmicToneMapping` so that over-bright colour rolls off softly
+   instead of clipping to flat white. The panel's canvas stays transparent
+   through the whole pipeline (`renderer.setClearAlpha(0)`, unset on
+   `RenderPass` so it inherits that) — checked directly by reading back the
+   canvas's own pixels at a background corner during manual verification,
+   not just inferred from the API.
+
+Composer passes own further GPU resources beyond what
+`EffectComposer.dispose()` itself frees (bloom's blur render targets, the
+output pass's material) — `dispose()` now calls `pass.dispose()` on each pass
+individually first, or a panel revisited enough times would leak them the same
+way an undisposed renderer would.
+
+Verified: the pure logic (`iconForDepartment`, the pod colour/icon threading)
+under real node (`test_office_roster.py`, `test_office_layout.py`); the new
+builders under real three.js-under-node
+(`test_office_visual_extras.py`, same vendored-build stub as
+`test_office_pod_color.py`, plus a minimal no-op canvas-2D stub since these
+draw to a canvas and node has none); scene.js's wiring pinned at the source
+level (`test_office_visual_polish.py` — composer ordering/resize/dispose,
+hemisphere/rim lights, icon threading, glow-eases-not-snaps, one whiteboard
+per pod); the addon vendoring itself (`test_office_panel.py` — every
+`three/addons/...` import in scene.js is checked against a file that actually
+exists on disk, the same failure class as the existing three.core.min.js
+split check); and the real running app end to end
+(`test_office_browser_smoke.py`, `HERMES_WEBUI_BROWSER_TESTS=1`), plus manual
+screenshots taken through Playwright during development to confirm the icon
+placement fix, the floor tiles, the whiteboard, and canvas transparency
+(RGBA read back as `[0,0,0,0]` at a background corner) all actually look
+right — this repo has no pixel-diffing harness, so a rendering-only feature
+like this gets a real look, not just an assertion that code ran.

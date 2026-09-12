@@ -14,10 +14,15 @@
 // owner: start/stop bracket the rAF loop, dispose() releases every geometry,
 // material and the renderer's own context.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
-  makePlant, makeWalkway, makeSlabOutline, makeConnector, marchOutline,
+  makeDeptIcon, makePlant, makeFloorTiles, makePodGlow, makeWhiteboard,
+  makeWalkway, makeSlabOutline, makeConnector, marchOutline,
   setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
 } from './builders.js';
@@ -36,6 +41,16 @@ const CAMERA_DISTANCE = 220;
 const GROUND_SIZE = 400;
 const KEY_LIGHT_INTENSITY = 1.6;
 const FILL_LIGHT_INTENSITY = 0.55;
+// A low, cool light from behind the key light, so a pod's far side isn't
+// pure black — cheap depth cue, no shadow cost (this one never casts).
+const RIM_LIGHT_INTENSITY = 0.45;
+// Bloom only exists to make a working pod's glow (builders.js's
+// makePodGlow, pushed past normal 0-1 colour range on purpose) actually
+// bloom — everything else in the scene sits well under 1.0 in linear space,
+// so a threshold this close to 1 leaves the rest of the office alone.
+const BLOOM_STRENGTH = 0.8;
+const BLOOM_RADIUS = 0.4;
+const BLOOM_THRESHOLD = 1.0;
 // Camera motion. A fixed diagram-camera makes the office read as a chart; a
 // camera that travels makes it read as a place. Focusing flies to a desk and
 // zooms in, and the view returns to the whole floor on Escape or a click on
@@ -98,6 +113,7 @@ const PALETTES = {
     conductor: '#2b3245',
     floorTitle: '#8d8d95', pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
     outlineIdle: '#a8a294', outlineActive: '#1e9070', connector: '#9a9490',
+    board: '#fbfaf6', hemiSky: '#f4f1ea', hemiGround: '#c9c2ae', rim: '#cfe0f7',
   },
   dark: {
     ground: '#1b1b2b', grid: '#2b2b40',
@@ -111,6 +127,7 @@ const PALETTES = {
     conductor: '#8fd3f4',
     floorTitle: '#6f6f86', pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
     outlineIdle: '#575775', outlineActive: '#5adeb7', connector: '#41415e',
+    board: '#2a2a38', hemiSky: '#39456b', hemiGround: '#0e0e18', rim: '#3f5f8f',
   },
 };
 
@@ -153,6 +170,10 @@ export function createOfficeScene(canvas, options) {
   // PCFSoftShadowMap is deprecated as of r185 and silently falls back to
   // PCFShadowMap with a console warning; ask for what we actually get.
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // ACES lets the bloom pass' deliberately-over-1 glow colours (see
+  // builders.js's makePodGlow) roll off softly instead of just clipping to
+  // white, and reads as filmic rather than washed out for everything else.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -400, 800);
@@ -176,7 +197,11 @@ export function createOfficeScene(canvas, options) {
   const ownedMaterials = [];
 
   // ---- lighting rig -----------------------------------------------------
-  const ambient = new THREE.AmbientLight(0xffffff, FILL_LIGHT_INTENSITY);
+  // A hemisphere light in place of a flat ambient: a warm-ish sky tone from
+  // above and a darker ground tone from below reads as bounced light rather
+  // than a uniform fill, which is most of what separated the reference
+  // screenshot's floor from a flatly-lit one.
+  const ambient = new THREE.HemisphereLight(palette.hemiSky, palette.hemiGround, FILL_LIGHT_INTENSITY);
   scene.add(ambient);
 
   const keyLight = new THREE.DirectionalLight(0xffffff, KEY_LIGHT_INTENSITY);
@@ -190,6 +215,24 @@ export function createOfficeScene(canvas, options) {
   keyLight.shadow.camera.top = 140;
   keyLight.shadow.camera.bottom = -140;
   scene.add(keyLight);
+
+  // A low rim light from behind/opposite the key light so a pod's far side
+  // isn't flat black. Cheap: no shadow map, no extra render pass.
+  const rimLight = new THREE.DirectionalLight(palette.rim, RIM_LIGHT_INTENSITY);
+  rimLight.position.set(-70, 50, -60);
+  scene.add(rimLight);
+
+  // ---- post-processing ---------------------------------------------------
+  // One bloom pass over the whole render. Nothing in the ordinary palette sits
+  // near the 1.0 threshold (see BLOOM_THRESHOLD above), so this only lights up
+  // a working pod's own glow mesh -- no per-object "selective bloom" layer
+  // trick needed.
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 
   // ---- ground -----------------------------------------------------------
   const groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
@@ -238,9 +281,15 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
+    group.add(makeFloorTiles(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette));
     const outline = makeSlabOutline(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(outline);
     group.userData.outlineLine = outline;
+    // Same glow a working pod gets, driven by orchestrating status rather
+    // than by liveClustersWithWork -- see the render loop.
+    const glow = makePodGlow(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette.conductor);
+    group.add(glow);
+    group.userData.glowMaterial = glow.material;
     const person = makePerson(palette, palette.conductor);
     person.position.y = 0.6;
     group.add(person);
@@ -262,9 +311,10 @@ export function createOfficeScene(canvas, options) {
     return conductor;
   }
 
-  function ensurePod(cluster, width, depth, label, color) {
+  function ensurePod(cluster, width, depth, label, color, icon) {
     let pod = pods.get(cluster);
-    if (pod && pod.width === width && pod.depth === depth && pod.label === label && pod.color === color) return pod;
+    if (pod && pod.width === width && pod.depth === depth && pod.label === label
+      && pod.color === color && pod.icon === icon) return pod;
     if (pod) {
       office.remove(pod.group);
       disposeTree(pod.group);
@@ -274,6 +324,10 @@ export function createOfficeScene(canvas, options) {
     const group = makePod(slabWidth, slabDepth, palette, color);
     // A tap on the slab (not on a worker) frames this pod.
     group.userData.podCluster = cluster;
+
+    // A faint grid on the floor itself, under everything else -- see
+    // builders.js's makeFloorTiles.
+    group.add(makeFloorTiles(slabWidth, slabDepth, palette));
 
     // Signage, only where there is a real name to paint. The catch-all pods
     // ("Subagents", "The Floor") keep the original fixed size; the named ones
@@ -288,20 +342,41 @@ export function createOfficeScene(canvas, options) {
         : slabDepth / 2 - title.geometry.parameters.height / 2 - 0.8;
       group.add(title);
     }
+    // A department's glyph floats well above the pod -- high enough that it
+    // never overlaps a seated figure or the desk between them (see
+    // makeDeptIcon's own comment for why this isn't part of the floor sign).
+    if (icon) {
+      const badge = makeDeptIcon(icon);
+      badge.scale.multiplyScalar(0.7);
+      badge.position.set(0, 8.5, slabDepth / 2 - 1.4);
+      group.add(badge);
+    }
 
-    // Two plants on opposite corners. Scenery carries no state, so it can
-    // never mislead anyone about what Hermes is doing.
+    // Two plants on opposite corners, and a whiteboard on a third. Scenery
+    // carries no state, so it can never mislead anyone about what Hermes is
+    // doing.
     [[-1, -1], [1, 1]].forEach(([sx, sz]) => {
       const plant = makePlant(palette);
       plant.position.set(sx * (slabWidth / 2 - 1.1), 0.6, sz * (slabDepth / 2 - 1.1));
       group.add(plant);
     });
+    const whiteboard = makeWhiteboard(palette);
+    whiteboard.position.set(slabWidth / 2 - 1.1, 0, -(slabDepth / 2 - 1.1));
+    group.add(whiteboard);
 
     const outline = makeSlabOutline(slabWidth, slabDepth, palette);
     group.add(outline);
 
+    // A soft coloured wash, only visible while the pod is doing real work --
+    // toggled in syncOffice, pulsed in the render loop. Starts invisible.
+    const glow = makePodGlow(slabWidth, slabDepth, color);
+    group.add(glow);
+
     office.add(group);
-    pod = { group, width, depth, label, color, outline, active: false };
+    pod = {
+      group, width, depth, label, color, icon, outline, active: false,
+      glowMaterial: glow.material,
+    };
     pods.set(cluster, pod);
     return pod;
   }
@@ -460,7 +535,7 @@ export function createOfficeScene(canvas, options) {
       // subagent's own children) has no name worth painting.
       const podLabel = pod.label
         || (pod.cluster === '__conductor__' ? 'Subagents' : '');
-      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null);
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null, pod.icon || null);
       record.group.position.set(pod.x, 0, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
       ensureConnector(pod.cluster, pod, span);
@@ -741,6 +816,9 @@ export function createOfficeScene(canvas, options) {
     palette = next;
     groundMaterial.color.set(palette.ground);
     if (grid.material && grid.material.color) grid.material.color.set(palette.grid);
+    ambient.color.set(palette.hemiSky);
+    ambient.groundColor.set(palette.hemiGround);
+    rimLight.color.set(palette.rim);
     // Materials are shared and keyed by colour, so a theme change means new
     // ones. Rebuilding the office group is cheaper and more honest than
     // hunting down every mesh that used the old palette.
@@ -985,6 +1063,7 @@ export function createOfficeScene(canvas, options) {
     // updateStyle=false: the canvas is sized by CSS, and letting three.js
     // write inline width/height styles would fight the flex layout.
     renderer.setSize(width, height, false);
+    composer.setSize(width, height);
     // The framed zoom depends on aspect ratio, so a resize re-derives it. A
     // camera the user is driving keeps its own zoom.
     overview.zoom = zoomForRadius(width, height, framedRadius);
@@ -997,6 +1076,17 @@ export function createOfficeScene(canvas, options) {
   let rafId = 0;
   let running = false;
   let lastFrameAt = 0;
+
+  /**
+   * Ease a pod/conductor glow's opacity toward its target (lit, pulsing
+   * gently, or off) rather than snapping -- the same reasoning as the
+   * outline's own dash fade.
+   */
+  function pulseGlow(material, active, t, dt) {
+    if (!material) return;
+    const target = active ? 0.16 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.4)) : 0;
+    material.opacity += (target - material.opacity) * Math.min(1, dt * 4);
+  }
 
   function frame(now) {
     if (!running) return;
@@ -1022,6 +1112,10 @@ export function createOfficeScene(canvas, options) {
     pods.forEach(record => {
       advanceDashFade(record.outline, dtMs);
       if (record.active) marchOutline(record.outline, marchOffset);
+      // The glow eases toward its target opacity rather than snapping, same
+      // reasoning as the outline's own fade, and gently pulses while active
+      // so a working pod reads as alive rather than a static coloured patch.
+      pulseGlow(record.glowMaterial, record.active, t, dt);
     });
     connectors.forEach(link => {
       advanceDashFade(link, dtMs);
@@ -1032,6 +1126,9 @@ export function createOfficeScene(canvas, options) {
     if (conductorOutline) {
       advanceDashFade(conductorOutline, dtMs);
       if (isDashActive(conductorOutline)) marchOutline(conductorOutline, marchOffset);
+    }
+    if (conductor) {
+      pulseGlow(conductor.userData.glowMaterial, conductor.userData.status === 'orchestrating', t, dt);
     }
 
     seats.forEach(seat => {
@@ -1085,7 +1182,7 @@ export function createOfficeScene(canvas, options) {
       }
     }
 
-    renderer.render(scene, camera);
+    composer.render();
   }
 
   function start() {
@@ -1122,6 +1219,14 @@ export function createOfficeScene(canvas, options) {
     ownedMaterials.forEach(m => { try { m.dispose(); } catch (_err) { /* already gone */ } });
     ownedGeometries.length = 0;
     ownedMaterials.length = 0;
+    // EffectComposer.dispose() only releases its own read/write render
+    // targets and copy pass -- each added pass owns further GPU resources
+    // (bloom's blur render targets and materials, the output pass' material)
+    // and is disposed individually here.
+    composer.passes.forEach(pass => {
+      if (typeof pass.dispose === 'function') { try { pass.dispose(); } catch (_err) { /* already gone */ } }
+    });
+    try { composer.dispose(); } catch (_err) { /* already gone */ }
     // Releases the WebGL context itself. Without this, switching in and out
     // of the panel eventually exhausts the browser's context limit and every
     // later mount renders nothing.
