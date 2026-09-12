@@ -1098,6 +1098,14 @@ department-lead, "agent meeting", and fabricated metrics this app has no way
 to measure (e.g. "cost per user") — see the assessment given before this work
 started for the full in-scope/out-of-scope breakdown.
 
+**Follow-up same day**: the floating stat card (item 2) generalised to the
+Projects outlet too, per explicit request ("what about the personal
+section?"). `officeCardSpecs()` is the one place Business (named, coloured)
+and Projects (neither) differ; both outlets share the same render/
+reposition/cleanup path. Floor colour and the Task Status panel needed no
+change — colour is department-specific by nature, and the task panel was
+already outlet-independent by design.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
