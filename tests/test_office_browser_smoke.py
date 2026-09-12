@@ -87,16 +87,6 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         }""")
         pg.screenshot(path=str(tmp_path / "office-projects.png"))
 
-        # Projects pods get a floating stat card too -- generic (no name, no
-        # colour, since a Projects pod is just "whoever's parent spawned it",
-        # not a named department). demo-1/demo-2 seat under the conductor's
-        # own pod; demo-3 seats under a pod of its own (demo-1's children).
-        projects_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
-          hasName: !!el.querySelector('.office-dept-card-name'),
-          hasColor: !!el.style.getPropertyValue('--office-dept-color'),
-          left: el.style.left, top: el.style.top,
-        }))""")
-
         # Camera: focusing flies to a desk and zooms in; reset returns exactly.
         camera = pg.evaluate("""async () => {
           const O = window.HermesOffice;
@@ -113,16 +103,6 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(tmp_path / "office-business.png"))
 
-        # Per-department floating stat cards: only the real page can prove the
-        # world-to-screen projection actually lands somewhere on the canvas --
-        # a node test can check the math is *called*, not that a real
-        # OrthographicCamera answers something sane.
-        dept_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
-          name: el.querySelector('.office-dept-card-name')?.textContent,
-          left: el.style.left, top: el.style.top,
-          hasColor: !!el.style.getPropertyValue('--office-dept-color'),
-        }))""")
-
         # Task Status panel: whole-office, so it must show the same 3 demo
         # workers on the Business floor too, not just on Projects.
         tasks_on_business = pg.evaluate("""() => ({
@@ -133,12 +113,6 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
 
         pg.evaluate("() => document.querySelector('[data-outlet=\\\"projects\\\"]').click()")
         pg.wait_for_timeout(500)
-        # Leaving Business must drop its named/coloured cards, not merely
-        # leave zero cards -- Projects has its own (generic) ones now.
-        cards_after_leaving_business = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
-          hasName: !!el.querySelector('.office-dept-card-name'),
-          hasColor: !!el.style.getPropertyValue('--office-dept-color'),
-        }))""")
         rows_on_projects = pg.evaluate(
             "() => document.querySelectorAll('.office-tasks-row').length"
         )
@@ -211,45 +185,6 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         "delegation diagram with renderStaticTree"
     )
     assert not errors, f"console errors in the real app: {errors}"
-
-    # 6 standing departments plus "The Floor" -- roster.js's buildRoster()
-    # always appends the overflow as a 7th standing entry (the same "a
-    # visible overflow is the honest answer" reasoning as everything else on
-    # this floor), so it gets a card too. Uncoloured: only a real department
-    # tints its floor.
-    assert len(dept_cards) == 7, "every standing department (plus the overflow) gets a card"
-    by_name = {c["name"]: c for c in dept_cards}
-    assert set(by_name) == {
-        "Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery", "The Floor",
-    }
-    for card in dept_cards:
-        assert card["left"] and card["top"], (
-            f"{card['name']}'s card was never positioned over its pod"
-        )
-    for name in ("Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery"):
-        assert by_name[name]["hasColor"], f"{name}'s card carries no floor colour"
-    assert not by_name["The Floor"]["hasColor"], "the overflow is not a department and stays uncoloured"
-
-    # Projects pods (both when the panel first opens on the default outlet,
-    # and again after switching back to it) get the same floating cards --
-    # unnamed (a pod has no department to name), but still coloured, since the
-    # floor itself is now tinted per pod and the card should match its floor.
-    assert len(projects_cards) == 2, (
-        "demo-1/demo-2 seat under the conductor's own pod, demo-3 under a pod "
-        "of its own -- 2 pods, 2 cards"
-    )
-    for card in projects_cards:
-        assert not card["hasName"], "a Projects card must not invent a department name"
-        assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
-        assert card["left"] and card["top"], "a Projects card was never positioned over its pod"
-
-    assert len(cards_after_leaving_business) == 2, (
-        "the cards are Business-only in NAME, not existence -- leaving "
-        "Business must replace them with Projects' own unnamed cards, not zero"
-    )
-    for card in cards_after_leaving_business:
-        assert not card["hasName"], "Business's named cards must not linger over the Projects floor"
-        assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
 
     assert tasks_on_business["rowCount"] == 3, (
         "the Task Status panel is whole-office and must show the same 3 "

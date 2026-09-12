@@ -39,8 +39,8 @@ function lift(name) {
   return src.slice(start, i);
 }
 
-const terminalMatch = src.match(/const _DEPT_CARD_TERMINAL = new Set\(\[([^\]]*)\]\);/s);
-const body = `const _DEPT_CARD_TERMINAL = new Set([${terminalMatch[1]}]);\n`
+const terminalMatch = src.match(/const _TERMINAL_STATUSES = new Set\(\[([^\]]*)\]\);/s);
+const body = `const _TERMINAL_STATUSES = new Set([${terminalMatch[1]}]);\n`
   + lift('taskStatusBucket') + '\n' + lift('taskStatusCounts');
 
 const api = new Function(body + '\nreturn { taskStatusBucket, taskStatusCounts };')();
@@ -121,7 +121,7 @@ def test_an_empty_office_counts_to_zero(driver):
 def test_the_panel_is_rendered_from_raw_adapter_state_not_the_outlet_view():
     # A subagent is the same real subagent whichever floor plan draws it --
     # this must not need businessView()'s desk transform to work.
-    at = OFFICE_SRC.index("renderDepartmentCards(view, state);")
+    at = OFFICE_SRC.index("renderSummary(state);")
     window = OFFICE_SRC[at:at + 200]
     assert "renderTaskStatusPanel(state);" in window
 

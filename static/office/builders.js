@@ -115,11 +115,19 @@ function mixColor(baseHex, tintHex, amount) {
  * Only the Business outlet has names worth painting — Projects pods are a
  * subagent's parent id, which means nothing to a reader. Passing no text
  * returns null rather than an empty sign.
+ *
+ * `opts.icon` (roster.js's `iconForDepartment`) is painted once, at the left
+ * of the name, on the same line and baseline — not a separate band or a
+ * floating badge. An earlier attempt put the icon in its own band above the
+ * name and, separately, as a sprite floating above the pod; both worked as
+ * drawing but read as a second thing bolted onto the sign rather than part
+ * of it. "ICON SALES" on one line is what a real door sign looks like.
  */
 export function makeFloorTitle(text, width, palette, opts) {
   const label = String(text || '').trim();
   if (!label) return null;
   const fit = !!(opts && opts.fit);
+  const icon = opts && opts.icon ? String(opts.icon) : '';
 
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
@@ -151,10 +159,40 @@ export function makeFloorTitle(text, width, palette, opts) {
   }
 
   ctx.font = `700 ${fontPx}px Georgia, "Times New Roman", serif`;
-  const total = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
+  const textWidth = chars.reduce((sum, c) => sum + ctx.measureText(c).width + spacing, 0) - spacing;
+
+  // The icon sits a little taller than the letters (emoji glyphs read small
+  // next to all-caps serif at the same point size) and a fixed gap ahead of
+  // the first letter.
+  const iconFontPx = Math.round(fontPx * 1.2);
+  const iconGap = fontPx * 0.4;
+  let iconWidth = 0;
+  if (icon) {
+    ctx.font = `${iconFontPx}px "Noto Color Emoji", sans-serif`;
+    iconWidth = ctx.measureText(icon).width;
+  }
+
+  const total = textWidth + (icon ? iconWidth + iconGap : 0);
   let x = (canvas.width - total) / 2;
+
+  if (icon) {
+    ctx.font = `${iconFontPx}px "Noto Color Emoji", sans-serif`;
+    ctx.fillText(icon, x, canvas.height / 2);
+    x += iconWidth + iconGap;
+  }
+
+  // Filled in the palette's own signage tone, with a contrasting stroke
+  // behind it: the floor under the sign is now a saturated department/
+  // cluster colour rather than a plain palette tone, and a fixed light-grey
+  // fill alone reads fine on some floor colours and vanishes on others. The
+  // stroke is what keeps the letters legible whatever they sit on.
+  ctx.font = `700 ${fontPx}px Georgia, "Times New Roman", serif`;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(3, fontPx * 0.08);
+  ctx.strokeStyle = palette.floorTitleStroke;
   ctx.fillStyle = palette.floorTitle;
   for (const c of chars) {
+    ctx.strokeText(c, x, canvas.height / 2);
     ctx.fillText(c, x, canvas.height / 2);
     x += ctx.measureText(c).width + spacing;
   }
@@ -165,7 +203,7 @@ export function makeFloorTitle(text, width, palette, opts) {
   const height = width * (canvas.height / canvas.width);
   const geometry = new THREE.PlaneGeometry(width, height);
   const material = new THREE.MeshBasicMaterial({
-    map: texture, transparent: true, opacity: 0.7, depthWrite: false,
+    map: texture, transparent: true, opacity: 0.85, depthWrite: false,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
@@ -235,7 +273,13 @@ export function setDashPalette(line, idleColor, idleOpacity, liveColor, liveOpac
 export function makeSlabOutline(width, depth, palette, height) {
   const hw = width / 2;
   const hd = depth / 2;
-  const y = height == null ? 0.66 : height;
+  // Just proud of the slab top (0.6): the isometric camera looks down at an
+  // angle, so a point held higher above the slab at the same x/z projects to
+  // a screen position shifted outward from the slab's own edge -- the higher
+  // the gap, the more the dashes visibly "stick out" past the floor's own
+  // corners. 0.66 (this used to match the floor sign's height) made that
+  // gap noticeable; this sits right at the surface instead.
+  const y = height == null ? 0.605 : height;
   // Five points rather than a LineLoop: computeLineDistances() only measures
   // the segments it is given, and a loop's closing edge would otherwise carry
   // no dash pattern at all.
@@ -369,48 +413,6 @@ export function makePlant(palette) {
 }
 
 /**
- * A faint grid overlaid on a pod's own floor, drawn to the pod's exact
- * footprint rather than tiled from a shared texture, so the line spacing
- * always reads as roughly the same physical size whatever the pod's
- * dimensions are. Purely a floor-finish detail — the coloured slab beneath
- * it is still what carries department/cluster identity.
- */
-export function makeFloorTiles(width, depth, palette) {
-  const canvas = document.createElement('canvas');
-  const scale = 24; // px per world unit — enough resolution to stay crisp at focus zoom.
-  canvas.width = Math.max(2, Math.round(width * scale));
-  canvas.height = Math.max(2, Math.round(depth * scale));
-  const ctx = canvas.getContext('2d');
-  ctx.strokeStyle = palette.grid;
-  ctx.globalAlpha = 0.5;
-  ctx.lineWidth = 1;
-  const step = 2 * scale; // one line every 2 world units
-  for (let x = step; x < canvas.width; x += step) {
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, canvas.height);
-    ctx.stroke();
-  }
-  for (let y = step; y < canvas.height; y += step) {
-    ctx.beginPath();
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(canvas.width, y + 0.5);
-    ctx.stroke();
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const geometry = new THREE.PlaneGeometry(width, depth);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture, transparent: true, opacity: 0.6, depthWrite: false,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.61; // just proud of the slab top (0.6), under the signage (0.66)
-  mesh.userData.floorTiles = { texture, geometry, material };
-  return mesh;
-}
-
-/**
  * A soft coloured wash over a pod's floor, shown only while the pod is doing
  * real work (see scene.js's `record.active`). Its own per-instance material
  * (never the shared `material()` cache — every pod's activity state is
@@ -431,7 +433,7 @@ export function makePodGlow(width, depth, tint) {
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.63;
+  mesh.position.y = 0.61;
   mesh.userData.podGlow = { geometry, material };
   return mesh;
 }
@@ -439,18 +441,26 @@ export function makePodGlow(width, depth, tint) {
 /**
  * A small whiteboard on a stand — one extra piece of set dressing per pod
  * alongside the two plants, purely for visual variety. Carries no state.
+ *
+ * Never casts a shadow: a decorative prop this small isn't worth the shadow
+ * pass rendering four more objects from the light's point of view on every
+ * pod, every frame -- the same reasoning makeWalkway and makeFloorTitle
+ * already apply to their own meshes.
  */
 export function makeWhiteboard(palette) {
   const group = new THREE.Group();
   const board = box(1.7, 1.15, 0.06, palette.board);
   board.position.y = 1.35;
+  board.castShadow = false;
   group.add(board);
   const frame = box(1.8, 1.25, 0.05, palette.deskLeg);
   frame.position.set(0, 1.35, -0.02);
+  frame.castShadow = false;
   group.add(frame);
   [-0.7, 0.7].forEach(sx => {
     const leg = cylinder(0.04, 0.04, 1.35, 6, palette.deskLeg);
     leg.position.set(sx, 0.675, 0);
+    leg.castShadow = false;
     group.add(leg);
   });
   return group;
@@ -775,33 +785,6 @@ export function makeNameplate(palette, text) {
   return sprite;
 }
 
-/**
- * A department's glyph (roster.js's `iconForDepartment`), floating above its
- * floor sign. A sprite rather than baked into the floor sign itself: the
- * floor sign already spans most of the pod's footprint, and a first attempt
- * at painting the icon into the same texture placed it right where a pod's
- * own desk sits, hidden underneath it. Floating it above the pod like a
- * nameplate sidesteps the whole problem and stays legible at every zoom.
- */
-export function makeDeptIcon(icon) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 160;
-  canvas.height = 160;
-  const ctx = canvas.getContext('2d');
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '128px "Noto Color Emoji", sans-serif';
-  ctx.fillText(String(icon), canvas.width / 2, canvas.height / 2 + 8);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: texture, transparent: true, depthWrite: false,
-  }));
-  sprite.scale.set(2.6, 2.6, 1);
-  sprite.userData.plate = { canvas, ctx, texture };
-  return sprite;
-}
-
 const STATUS_GLYPH = {
   running: '▶', completed: '✓', failed: '✕', error: '✕',
   timeout: '⏱', interrupted: '■',
@@ -887,12 +870,6 @@ export function disposeTree(root) {
       title.texture.dispose();
       title.geometry.dispose();
       title.material.dispose();
-    }
-    const tiles = obj.userData && obj.userData.floorTiles;
-    if (tiles) {
-      tiles.texture.dispose();
-      tiles.geometry.dispose();
-      tiles.material.dispose();
     }
     const glow = obj.userData && obj.userData.podGlow;
     if (glow) {

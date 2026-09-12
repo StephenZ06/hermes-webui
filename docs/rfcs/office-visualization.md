@@ -754,3 +754,77 @@ placement fix, the floor tiles, the whiteboard, and canvas transparency
 (RGBA read back as `[0,0,0,0]` at a background corner) all actually look
 right — this repo has no pixel-diffing harness, so a rendering-only feature
 like this gets a real look, not just an assertion that code ran.
+
+### Follow-up same day: smoothness, an outline artifact, and reworking the icon
+
+Four reports against the pass above, all fixed the same day:
+
+1. **"Not as smooth"** since bloom landed. Three concrete costs, all cut:
+   - `EffectComposer.setPixelRatio(1)`, independent of the renderer's own
+     (uncapped, up to 2x) ratio. Bloom is a soft, blurred effect; its
+     five-level mip blur chain gained no visible sharpness from rendering at
+     full device pixel ratio and was the single biggest new per-frame cost.
+   - The per-pod floor-tile grid (a canvas-texture plane per pod) is gone
+     entirely — see point 3 below; one less draw call and texture per pod.
+   - `makeWhiteboard`'s four parts (board, frame, two legs) now set
+     `castShadow = false`. A decorative prop this small wasn't worth the
+     shadow pass rendering four more objects from the light's point of view,
+     on every pod, every frame.
+   - The floating per-pod DOM stat cards (`officeCardSpecs`/
+     `renderDepartmentCards`/`repositionDepartmentCards`, `index.js`) are
+     removed entirely (see point 4) — their per-frame `podScreenRect`
+     projection and DOM writes for every visible pod are gone too.
+2. **The dashed pod outline visibly "stuck out" past the floor's corners.**
+   `makeSlabOutline`'s default height was 0.66 (originally chosen to match
+   the floor sign, for no real reason tied to the outline itself) against a
+   slab top at 0.6. The isometric camera looks down at an angle, so a line
+   held higher above the slab at the same x/z projects to a screen position
+   shifted outward from the slab's own edge — the higher the gap, the more
+   the dashes read as floating past the corners rather than tracing them.
+   Dropped to 0.605, right at the surface.
+3. **The floor grid texture is gone.** Reported as visual noise on top of an
+   already-tinted, now-textured (icon+stroke) sign — not polish. Removed
+   `makeFloorTiles` entirely rather than toning it down.
+4. **The department icon moved from a floating badge into the sign itself**,
+   and the floating per-pod stat cards are gone. Both were the same
+   complaint really — "the floor already says what this is, stop drawing
+   more things above it":
+   - `makeFloorTitle` now takes `opts.icon` and paints it once, inline, to
+     the left of the name, on the same line and baseline — "📦 DELIVERY" as
+     one sign, not a name plus a separately-floating sprite badge. Simpler
+     than either of the two previous attempts (a canvas band above the name,
+     then a floating `THREE.Sprite`) and needs no vertical offset math that
+     could push anything into the desk.
+   - The per-pod floating stat card (`.office-dept-card`, its CSS, and every
+     function that built/positioned it) is removed outright, in both
+     outlets. The floor sign already carries the pod's identity; a black
+     floating box repeating seat/active/done counts above it was judged
+     redundant now that the sign itself is more legible (see point 5) — the
+     Task Status panel (a separate, still-present feature) already covers
+     the aggregate counts in one place instead of scattered over the floor.
+5. **"Subagents" (and department names) were hard to read against some pod
+   colours.** A fixed mid-tone fill reads fine against a plain palette tone
+   but not against every saturated department/cluster tint the floor can now
+   be. `makeFloorTitle` now strokes each letter (and, implicitly, the space
+   around the icon) in a colour from the opposite end of the lightness scale
+   from its fill (new palette field `floorTitleStroke`, one per theme) before
+   filling it — the classic "text with an outline" trick, which guarantees
+   legibility against literally any floor colour rather than tuning one grey
+   that happens to work against six specific hues. Sign opacity also bumped
+   0.7 -> 0.85 for the same reason.
+
+Verified: the pure `makeFloorTitle`/`makeWhiteboard`/`makePodGlow` behaviour
+under real three.js-under-node (`test_office_visual_extras.py`, rewritten);
+scene.js's wiring re-pinned (`test_office_visual_polish.py` — capped bloom
+pixel ratio, shadowless whiteboard, the outline's new height constant, the
+stroke/fill fields, the icon now living inside the `makeFloorTitle` call
+instead of a `makeDeptIcon` sprite, `makeFloorTiles` gone from both files);
+`test_office_pod_stat_cards.py` deleted outright (nothing left to test); the
+Task Status panel's own node test fixed to match the renamed shared constant
+(`_DEPT_CARD_TERMINAL` → `_TERMINAL_STATUSES`, since it now serves only that
+panel); `test_office_browser_smoke.py`'s dept-card assertions removed, its
+camera/task-status/console-error coverage otherwise unchanged and still
+green; and manual Playwright screenshots (Business and Projects, overview and
+focused) confirming the inline icon, the readable stroked text, the flush
+outline, the absent floor grid, and the absent floating cards all actually
+look right in the real running app.

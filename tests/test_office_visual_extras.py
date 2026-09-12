@@ -1,5 +1,5 @@
-"""The visual-polish builders: floor tiles, a pod's working glow, a
-whiteboard prop, and a department's floating icon badge.
+"""The visual-polish builders: a pod's working glow, a whiteboard prop, and
+a department's icon painted inline on its own floor sign.
 
 Real three.js under node, same fixture shape as tests/test_office_pod_color.py
 and tests/test_office_outlines.py: builders.js imports the bare specifier
@@ -21,19 +21,22 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 
 _DRIVER = r"""
-// makeFloorTiles and makeDeptIcon draw to a 2D canvas -- something node has
-// no native concept of. This test only checks the resulting THREE objects'
-// structure (mesh/sprite type, blending, dispose tags), never actual pixels,
-// so a no-op stub canvas is enough to let the drawing code run without
-// throwing -- the same reasoning as test_office_pod_color.py's `three` stub.
+// makeFloorTitle draws to a 2D canvas -- something node has no native
+// concept of. This test only checks the resulting THREE objects' structure
+// (mesh/sprite type, blending, dispose tags, geometry aspect ratio), never
+// actual pixels, so a no-op stub canvas is enough to let the drawing code
+// run without throwing -- the same reasoning as test_office_pod_color.py's
+// `three` stub. measureText answers a fixed width per call so the icon-vs-
+// text width math the driver checks stays predictable.
 function fakeCanvas() {
   const noop = () => {};
   return {
     width: 0, height: 0,
     getContext: () => ({
       strokeStyle: '', globalAlpha: 1, lineWidth: 1, fillStyle: '', font: '',
-      textAlign: '', textBaseline: '',
-      beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop, fillText: noop,
+      textAlign: '', textBaseline: '', lineJoin: '',
+      beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
+      fillText: noop, strokeText: noop,
       measureText: () => ({ width: 8 }),
     }),
   };
@@ -41,25 +44,20 @@ function fakeCanvas() {
 globalThis.document = { createElement: () => fakeCanvas() };
 
 const {
-  makeFloorTiles, makePodGlow, makeWhiteboard, makeDeptIcon, disposeTree,
+  makePodGlow, makeWhiteboard, makeFloorTitle, disposeTree,
 } = await import(process.argv[2]);
 
 const palette = {
-  grid: '#d8d3c8', board: '#fbfaf6', deskLeg: '#8b8b93',
+  board: '#fbfaf6', deskLeg: '#8b8b93',
+  floorTitle: '#8d8d95', floorTitleStroke: 'rgba(0,0,0,0.5)',
 };
 
-const tiles = makeFloorTiles(10, 6, palette);
 const glow = makePodGlow(10, 6, '#3f7fd4');
 const board = makeWhiteboard(palette);
-const icon = makeDeptIcon('\u{1F4E6}');
+const plain = makeFloorTitle('Sales', 20, palette);
+const iconed = makeFloorTitle('Sales', 20, palette, { icon: '\u{1F4B0}' });
 
 const out = {
-  tiles: {
-    isMesh: !!tiles.isMesh,
-    hasMap: !!tiles.material.map,
-    opacity: tiles.material.opacity,
-    hasDisposeTag: !!tiles.userData.floorTiles,
-  },
   glow: {
     isMesh: !!glow.isMesh,
     opacity: glow.material.opacity,
@@ -72,19 +70,22 @@ const out = {
   board: {
     isGroup: !!board.isGroup,
     childCount: board.children.length,
+    allShadowless: board.children.every(c => c.castShadow === false),
   },
-  icon: {
-    isSprite: !!icon.isSprite,
-    hasDisposeTag: !!icon.userData.plate,
+  title: {
+    plainHasMap: !!plain.material.map,
+    hasDisposeTag: !!plain.userData.floorTitle,
+    iconedHasDisposeTag: !!iconed.userData.floorTitle,
+    // An icon adds width to the same single-line sign rather than height --
+    // no separate band, no separate floating object.
+    sameHeight: iconed.geometry.parameters.height === plain.geometry.parameters.height,
   },
 };
 
-// disposeTree must not throw on any of these -- each carries GPU resources
-// this test never explicitly frees otherwise.
-disposeTree(tiles);
 disposeTree(glow);
 disposeTree(board);
-disposeTree(icon);
+disposeTree(plain);
+disposeTree(iconed);
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -123,14 +124,6 @@ def run(driver):
     return json.loads(proc.stdout)
 
 
-def test_floor_tiles_are_a_faint_textured_overlay(driver):
-    out = run(driver)["tiles"]
-    assert out["isMesh"]
-    assert out["hasMap"], "the grid pattern is a canvas texture, not a flat colour"
-    assert 0 < out["opacity"] < 1, "a floor finish detail, not an opaque plate"
-    assert out["hasDisposeTag"], "disposeTree must find and release its texture/geometry/material"
-
-
 def test_pod_glow_starts_invisible_and_additive_and_hdr(driver):
     out = run(driver)["glow"]
     assert out["isMesh"]
@@ -140,13 +133,19 @@ def test_pod_glow_starts_invisible_and_additive_and_hdr(driver):
     assert out["hasDisposeTag"]
 
 
-def test_whiteboard_is_a_small_group_of_parts(driver):
+def test_whiteboard_is_a_small_group_of_shadowless_parts(driver):
     out = run(driver)["board"]
     assert out["isGroup"]
     assert out["childCount"] >= 3, "a board face, a frame, and at least one leg"
+    assert out["allShadowless"], (
+        "a prop this small isn't worth a shadow-pass render of four more "
+        "objects per pod, every frame"
+    )
 
 
-def test_dept_icon_is_a_billboarded_sprite(driver):
-    out = run(driver)["icon"]
-    assert out["isSprite"], "a sprite always faces the camera, unlike a flat floor plane"
+def test_floor_title_accepts_an_icon_without_growing_into_a_separate_band(driver):
+    out = run(driver)["title"]
+    assert out["plainHasMap"]
     assert out["hasDisposeTag"]
+    assert out["iconedHasDisposeTag"]
+    assert out["sameHeight"], "the icon must not grow the sign into a taller plane"

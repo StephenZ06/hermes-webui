@@ -21,7 +21,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
-  makeDeptIcon, makePlant, makeFloorTiles, makePodGlow, makeWhiteboard,
+  makePlant, makePodGlow, makeWhiteboard,
   makeWalkway, makeSlabOutline, makeConnector, marchOutline,
   setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
@@ -111,7 +111,8 @@ const PALETTES = {
     screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
     plateBg: 'rgba(255,255,255,0.92)', plateText: '#151414', plateAccent: '#1e9070',
     conductor: '#2b3245',
-    floorTitle: '#8d8d95', pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
+    floorTitle: '#8d8d95', floorTitleStroke: 'rgba(20,18,14,0.55)',
+    pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
     outlineIdle: '#a8a294', outlineActive: '#1e9070', connector: '#9a9490',
     board: '#fbfaf6', hemiSky: '#f4f1ea', hemiGround: '#c9c2ae', rim: '#cfe0f7',
   },
@@ -125,7 +126,8 @@ const PALETTES = {
     screenText: '#5adeb7', screenTextBright: '#b9f5e2',
     plateBg: 'rgba(20,20,37,0.92)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
     conductor: '#8fd3f4',
-    floorTitle: '#6f6f86', pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
+    floorTitle: '#c9c9da', floorTitleStroke: 'rgba(6,6,12,0.6)',
+    pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
     outlineIdle: '#575775', outlineActive: '#5adeb7', connector: '#41415e',
     board: '#2a2a38', hemiSky: '#39456b', hemiGround: '#0e0e18', rim: '#3f5f8f',
   },
@@ -233,6 +235,11 @@ export function createOfficeScene(canvas, options) {
     new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
+  // Bloom is a soft, blurred effect -- rendering its five-level mip chain at
+  // full device pixel ratio (up to 2x, see the renderer's own setPixelRatio
+  // above) buys no visible sharpness and was the single biggest new cost this
+  // pass added. Capped to 1x regardless of the renderer's own ratio.
+  composer.setPixelRatio(1);
 
   // ---- ground -----------------------------------------------------------
   const groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
@@ -281,7 +288,6 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
-    group.add(makeFloorTiles(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette));
     const outline = makeSlabOutline(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(outline);
     group.userData.outlineLine = outline;
@@ -325,31 +331,20 @@ export function createOfficeScene(canvas, options) {
     // A tap on the slab (not on a worker) frames this pod.
     group.userData.podCluster = cluster;
 
-    // A faint grid on the floor itself, under everything else -- see
-    // builders.js's makeFloorTiles.
-    group.add(makeFloorTiles(slabWidth, slabDepth, palette));
-
     // Signage, only where there is a real name to paint. The catch-all pods
     // ("Subagents", "The Floor") keep the original fixed size; the named ones
     // (departments, profiles) auto-fit larger so a short name is not dwarfed.
+    // A department's icon (see roster.js's iconForDepartment) is painted
+    // inline, to the left of the name, by makeFloorTitle itself.
     const plainSign = label === 'Subagents' || label === 'The Floor';
     const title = plainSign
       ? makeFloorTitle(label, slabWidth * 0.8, palette)
-      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true });
+      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true, icon });
     if (title) {
       title.position.z = plainSign
         ? slabDepth / 2 - 1.6
         : slabDepth / 2 - title.geometry.parameters.height / 2 - 0.8;
       group.add(title);
-    }
-    // A department's glyph floats well above the pod -- high enough that it
-    // never overlaps a seated figure or the desk between them (see
-    // makeDeptIcon's own comment for why this isn't part of the floor sign).
-    if (icon) {
-      const badge = makeDeptIcon(icon);
-      badge.scale.multiplyScalar(0.7);
-      badge.position.set(0, 8.5, slabDepth / 2 - 1.4);
-      group.add(badge);
     }
 
     // Two plants on opposite corners, and a whiteboard on a third. Scenery

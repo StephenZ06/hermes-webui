@@ -1136,6 +1136,29 @@ confirming transparency survived the composer pipeline). Full writeup in
 `docs/rfcs/office-visualization.md`'s "Follow-up same day: colour pop, then
 six more visual features".
 
+**Fourth follow-up same day**: motion felt less smooth after the pass above,
+plus four specific visual reports. All fixed:
+- Smoothness: `EffectComposer.setPixelRatio(1)` (bloom's blur chain gained no
+  sharpness from the renderer's own up-to-2x ratio and was the biggest new
+  per-frame cost), `makeWhiteboard`'s four parts set `castShadow = false`,
+  the floor-tile texture removed outright (also asked for directly), and the
+  floating per-pod DOM stat cards removed outright (ditto) — their per-frame
+  `podScreenRect` projection/DOM writes are gone too.
+- The dashed pod outline "sticking out" past corners: an isometric-parallax
+  artifact from its height (0.66) sitting well above the slab top (0.6);
+  dropped to 0.605.
+- The department icon moved from a floating sprite badge into the floor
+  sign itself — `makeFloorTitle(text, width, palette, {icon})` paints it
+  inline, left of the name, one sign instead of a name plus a badge.
+- Floor-sign text (especially "Subagents") was hard to read against some
+  pod tints — `makeFloorTitle` now strokes each letter in a theme's
+  opposite-lightness colour before filling it (new `floorTitleStroke`
+  palette field), guaranteeing contrast against any floor colour.
+
+`test_office_pod_stat_cards.py` deleted (nothing left to test); other office
+tests updated to match. Full writeup in `docs/rfcs/office-visualization.md`'s
+"Follow-up same day: smoothness, an outline artifact, and reworking the icon".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

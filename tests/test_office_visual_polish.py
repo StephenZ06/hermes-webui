@@ -1,7 +1,7 @@
 """Source-structure pins for the visual-polish pass on top of the department
 floor colours: a bloom post-process, a hemisphere+rim lighting rig, a
-department icon badge, and per-pod set dressing (floor tiles, a whiteboard,
-a working-pod glow).
+department icon painted inline on its floor sign, and a per-pod whiteboard
+and working-pod glow.
 
 scene.js's WebGL setup fails the same way phase 1's plumbing does -- silently,
 with a blank or half-drawn panel and no console error -- so these are the same
@@ -73,11 +73,16 @@ def test_theme_switch_repaints_the_hemisphere_and_rim_lights():
 
 # ── department icon ──────────────────────────────────────────────────────────
 
-def test_ensure_pod_threads_an_icon_through_to_a_floating_badge():
+def test_ensure_pod_threads_an_icon_into_the_floor_sign():
+    # An earlier attempt painted the icon in its own band above the name, and
+    # separately as a sprite floating above the pod -- both worked as drawing
+    # but the extra height/position pushed things into the desk or looked
+    # bolted-on. It is now one argument to the same makeFloorTitle() call
+    # that already draws the name.
     at = SCENE_SRC.index("function ensurePod(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function ", at + 10)]
-    assert "icon" in body
-    assert "makeDeptIcon(icon)" in body
+    assert "makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true, icon })" in body
+    assert "makeDeptIcon" not in SCENE_SRC
 
 
 def test_a_pod_rebuilds_when_only_its_icon_changes():
@@ -112,10 +117,12 @@ def test_glow_eases_toward_its_target_rather_than_snapping():
 
 # ── set dressing ─────────────────────────────────────────────────────────────
 
-def test_every_pod_and_the_conductor_get_floor_tiles():
-    assert SCENE_SRC.count("makeFloorTiles(") == 2, (
-        "one call in ensurePod, one in ensureConductor"
-    )
+def test_the_floor_grid_texture_was_removed():
+    # Reported: an extra per-pod texture on top of the already-tinted slab
+    # read as visual noise, not polish -- and cost a draw call and a canvas
+    # texture upload per pod for it. builders.js no longer defines it at all.
+    assert "makeFloorTiles" not in SCENE_SRC
+    assert "export function makeFloorTiles" not in BUILDERS_SRC
 
 
 def test_every_pod_gets_exactly_one_whiteboard_alongside_its_two_plants():
@@ -129,5 +136,47 @@ def test_every_pod_gets_exactly_one_whiteboard_alongside_its_two_plants():
 def test_disposetree_releases_every_new_userdata_tagged_resource():
     at = BUILDERS_SRC.index("export function disposeTree(")
     body = BUILDERS_SRC[at:at + 1400]
-    for tag in ("floorTiles", "podGlow"):
-        assert f"userData.{tag}" in body, f"disposeTree must know how to free a {tag}"
+    assert "userData.podGlow" in body, "disposeTree must know how to free a podGlow"
+
+
+# ── smoothness ───────────────────────────────────────────────────────────────
+
+def test_bloom_renders_at_a_capped_pixel_ratio():
+    # Reported: motion got less smooth after this pass landed. Bloom's 5-level
+    # blur chain rendering at full device pixel ratio (up to 2x) was the
+    # single biggest new per-frame cost -- a soft effect gains no visible
+    # sharpness from it, so it is capped independent of the renderer's own
+    # (still-uncapped, for everything else) ratio.
+    assert "composer.setPixelRatio(1)" in SCENE_SRC
+
+
+def test_whiteboard_props_never_cast_a_shadow():
+    at = BUILDERS_SRC.index("export function makeWhiteboard(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("\n}", at)]
+    assert body.count("castShadow = false") == 3, (
+        "board, frame, and both legs (one assignment, run per leg) must all "
+        "skip the shadow pass -- a decorative prop this small isn't worth "
+        "rendering four more shadow casters per pod, every frame"
+    )
+
+
+def test_floor_sign_text_is_stroked_for_contrast_against_any_floor_colour():
+    # Reported: "Subagents" (and department names) were hard to read against
+    # some pod colours -- a fixed fill alone reads fine against a plain
+    # palette tone but not against every saturated department/cluster tint.
+    at = BUILDERS_SRC.index("export function makeFloorTitle(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("\nexport function", at + 10)]
+    assert "ctx.strokeText(c" in body
+    assert "ctx.strokeStyle = palette.floorTitleStroke" in body
+    assert "floorTitleStroke:" in SCENE_SRC, "both palettes must define the stroke colour"
+
+
+def test_pod_outline_sits_close_to_the_slab_surface():
+    # Reported: the dashed outline visibly "stuck out" past a pod's corners.
+    # The isometric camera looks down at an angle, so a point held higher
+    # above the slab at the same x/z projects further outward on screen than
+    # the slab's own edge -- the outline's old 0.66 default (matching the
+    # floor sign's height, for no real reason) made that gap noticeable.
+    at = BUILDERS_SRC.index("export function makeSlabOutline(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("\n}", at)]
+    assert "height == null ? 0.605 : height" in body
