@@ -4,6 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sticky Board</title>
+<script>
+// Runs synchronously before <body> is parsed/painted, so the real theme
+// colors are already on :root by the time anything renders -- without
+// this, the page briefly shows its light-fallback (or blank white, since a
+// nested browsing context paints its own white canvas before any of its
+// bytes apply regardless of the parent iframe element's own CSS
+// background) until the bottom-of-body script got around to running,
+// which is a visible flash on every hard refresh. window.__STICKY_THEME_VARS__
+// is reused by the full syncThemeFromParent() further down so the list of
+// vars lives in one place.
+window.__STICKY_THEME_VARS__ = [
+  '--bg', '--surface', '--surface-subtle', '--border', '--border2',
+  '--text', '--muted', '--accent', '--accent-hover', '--accent-bg', '--font-ui'
+];
+(function() {
+  try {
+    var parentRoot = window.parent.document.documentElement;
+    var cs = window.parent.getComputedStyle(parentRoot);
+    var root = document.documentElement;
+    window.__STICKY_THEME_VARS__.forEach(function(name) {
+      var val = cs.getPropertyValue(name);
+      if (val) root.style.setProperty(name, val.trim());
+    });
+    var primaryFg = cs.getPropertyValue('--panel-head-primary-fg');
+    root.style.setProperty('--primary-fg', (primaryFg && primaryFg.trim()) || '#fff');
+  } catch (e) { /* cross-origin or parent not ready -- :root's own fallbacks apply */ }
+})();
+</script>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   /* Theme tokens: default light fallbacks, matching hermes-webui's own
@@ -210,10 +238,7 @@
   // readable straight off the parent's <html> element instead of
   // duplicating hermes-webui's own skin palette definitions here (which
   // would drift out of sync the moment a skin's colors change there).
-  var THEME_VARS = [
-    '--bg', '--surface', '--surface-subtle', '--border', '--border2',
-    '--text', '--muted', '--accent', '--accent-hover', '--accent-bg', '--font-ui'
-  ];
+  var THEME_VARS = window.__STICKY_THEME_VARS__;
 
   function syncThemeFromParent() {
     try {
@@ -732,6 +757,22 @@
     } else if (e.key === 'Backspace' && t.value === '') {
       e.preventDefault();
       deleteSubItemFocusPrev(colId, noteId, idx);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // Move focus between sub-items in the same note, preserving the
+      // caret's column position (clamped to the target's length) instead
+      // of always jumping to the end -- feels like a normal multi-line
+      // editor rather than a series of unrelated fields.
+      var noteEl = t.closest('.note');
+      if (!noteEl) return;
+      var inputs = noteEl.querySelectorAll('.sub-item-text');
+      var pos = Array.prototype.indexOf.call(inputs, t);
+      var target = inputs[e.key === 'ArrowUp' ? pos - 1 : pos + 1];
+      if (target) {
+        e.preventDefault();
+        var offset = Math.min(t.selectionStart, target.value.length);
+        target.focus();
+        target.setSelectionRange(offset, offset);
+      }
     }
   });
 
