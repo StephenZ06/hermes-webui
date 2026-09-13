@@ -1286,6 +1286,36 @@ Four unrelated user asks landed together (commit `567708bbb`):
    list), which is expected when adding a tab to that group, not a
    regression.
 
+### Follow-up same day: resolved item 3's blocker, then found a bigger one
+
+User reloaded the LM Studio model at 131072 context (fixed item 3 above) --
+confirmed working. They then asked to also try Dockerizing a local model
+(Ollama) so it could be toggled via `docker compose up/down` instead of
+depending on a host GUI app staying open. Added `docker-compose.ollama.yml`
+(standalone, not merged into the base stack -- same pattern as the existing
+two/three-container files) and a new `ollama` hermes profile.
+
+Hit a real wall, not a config mistake: **this host has an AMD Radeon 780M
+iGPU, no NVIDIA card, and Docker/WSL2 has no GPU passthrough to it.** The
+Ollama container is CPU-only. Measured prompt-processing at ~10.2
+tokens/sec (`llama3.1:8b`, q8_0 KV cache, 65536 context) against Hermes
+Agent's own ~13,000-token system prompt (tool schemas, SOUL.md) --
+~21 minutes just to ingest the prompt before generation starts. Along the
+way also OOM'd twice at higher settings (131072 context needs ~16GiB of
+fp16 KV cache alone for an 8B model) before raising the Docker VM's memory
+limit 8GB->16GB (`.wslconfig`) and adding KV quantization got it merely
+*not crashing* -- speed was the real, separate problem underneath.
+
+The LM Studio `local` profile does NOT have this problem because it runs
+natively on Windows and gets the same AMD iGPU via Vulkan directly --
+that's the actual reason it was fast enough, not model choice or context
+size. User decided: keep LM Studio (`local` profile) as the daily driver;
+the `ollama` profile + `docker-compose.ollama.yml` stay in the repo as a
+documented option but are not practical for interactive use on this
+hardware. Recorded as [[project_local_model_gpu_constraint]] in auto-memory
+so this doesn't get re-attempted for speed without checking GPU passthrough
+status first.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
