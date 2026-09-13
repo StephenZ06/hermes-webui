@@ -250,9 +250,10 @@ def test_the_outlet_choice_is_remembered():
 
 
 def test_business_is_a_desk_policy_not_a_second_engine():
-    assert "businessView(state, _roster) : state" in OFFICE_INDEX_SRC, (
+    assert "businessView(state, _roster) : projectsFloorView(state)" in OFFICE_INDEX_SRC, (
         "the outlet must rewrite desks and hand the scene the same shape "
-        "Projects does"
+        "Projects does -- projectsFloorView() only filters that same state, "
+        "it doesn't invent a second one"
     )
     for forbidden in ("delegate", "broadcast", "/api/agents/run"):
         assert forbidden not in ROSTER_CODE, (

@@ -1040,3 +1040,63 @@ sampling script for the fade (screenshots alone had missed both bugs
 entirely, since each failure mode is invisible at any single sampled
 instant), and a zoomed-way-out screenshot with eight subagents for the
 ground.
+
+### Follow-up same day: business-classified work stays off the Projects floor
+
+Asked directly, then clarified (asked which of three readings was meant --
+sidebar-only, Task-Status-only, or the whole 3D floor): a delegated task
+that reads as Business work should show live *only* on the Business floor,
+not on Projects too.
+
+`projectsFloorView()` (`static/office/index.js`) filters `state.desks`
+before handing them to the scene, using the exact same `departmentFor()`
+`businessView()` itself already uses to seat a desk -- "would this land in
+a department" is answered identically on both floors, so a run can never be
+business-classified on one and generic on the other. Every descendant of a
+business-classified worker is hidden with it (`descendantsOf()`, an
+existing helper reused as-is), even one whose own goal reads as generic
+("read this file") -- it exists because business work delegated it, so it's
+part of that branch, not re-classified independently. Outlet-independent
+state -- the sidebar's live indicator, the detail panel, and the Task
+Status column (explicitly outlet-independent by original design, see the
+first "Aggregate Task Status panel" entry above) -- is untouched; only
+`_scene.syncOffice()` and the floating stat cards see the filtered view.
+
+**Worth flagging, not a bug**: `roster.js`'s "Delivery" department keyword
+list (`delivery, deliver, project, qa, quality, test, onboard, support,
+ship, release, engineer, build, code, implement, fix, refactor, debug`) was
+written to catch Hermes's own software-engineering output as one of the six
+company "departments" -- which means an ordinary coding task like "fix the
+failing test suite" or "refactor the build script" now also counts as
+"business" under this feature, and disappears from Projects the same way an
+invoice-reconciliation task would. Given how much of this app's real usage
+*is* coding work, that could empty the Projects floor far more than "hide
+invoicing/marketing/sales work" alone would suggest. Shipped as specified
+(the classification is answered identically to what Business already
+decides, by design); narrowing Delivery's keyword list would be a separate,
+deliberate decision with its own tradeoffs against the existing Business
+floor, not something to change quietly as a side effect of this feature.
+
+A second, unrelated bug surfaced while writing the browser-smoke coverage
+for this: `test_office_browser_smoke.py`'s own `demo-3` goal ("read
+api/routes.py") turned out to itself match `departmentFor()`'s Marketing
+department -- `normalize()` turns the slash into a space
+("read api routes.py"), and Marketing's `'ad '` keyword (meant to catch "ad
+campaign" as a whole word) matches the tail of "re**ad** " too. A real,
+pre-existing false positive in `roster.js`'s keyword list, not something
+introduced here -- worked around in the test by picking a goal that
+doesn't collide ("inspect the routes configuration file"), left unfixed in
+`roster.js` itself as out of scope for this pass.
+
+Verified: a new `test_office_projects_floor_filter.py` (real node, lifting
+`projectsFloorView()`/`descendantsOf()` out of `index.js` and running them
+against the real `departmentFor()` from `roster.js` rather than a
+stand-in) covering: a business-classified worker dropped, an unclassifiable
+one kept, a business worker's descendant hidden even with a generic-sounding
+goal of its own, an unrelated unclassified worker on the same floor left
+alone, a desk with no worker yet kept rather than guessed at, and other
+state fields passed through unchanged; the existing browser smoke test
+extended to assert the business-classified demo worker has no seat on
+Projects (both on first load and after switching back to it) while
+actually being seated for real on Business; full office suite and full
+suite both green.

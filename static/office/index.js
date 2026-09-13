@@ -28,7 +28,7 @@
 import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
-import { buildRoster, businessView } from './roster.js';
+import { buildRoster, businessView, departmentFor } from './roster.js';
 import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
@@ -227,6 +227,33 @@ function request(path, opts) {
 // ---- rendering ----------------------------------------------------------
 
 /**
+ * The Projects floor, with business-classified work held back for the
+ * Business floor instead of appearing on both. A worker's own goal decides
+ * it -- the same `departmentFor()` businessView() itself uses to seat a
+ * desk, so "would this land in a department" is answered identically on
+ * both floors and a run can never be business-classified on one and not
+ * the other. Every descendant of a business-classified worker is hidden
+ * with it, even one whose own goal reads as generic ("read this file") --
+ * it exists because business work delegated it, so it's part of that same
+ * branch, not re-classified independently.
+ *
+ * Outlet-independent state -- the sidebar's live indicator, the detail
+ * panel, and the Task Status column -- is untouched; this only reshapes
+ * what `_scene.syncOffice()` and the floating stat cards draw.
+ */
+function projectsFloorView(state) {
+  const workers = state.workers || [];
+  const hidden = new Set();
+  workers.forEach(worker => {
+    if (!departmentFor(worker.goal || worker.label || '')) return;
+    hidden.add(worker.id);
+    descendantsOf(worker.id, workers).forEach(d => hidden.add(d.id));
+  });
+  const desks = (state.desks || []).filter(desk => !desk.workerId || !hidden.has(desk.workerId));
+  return Object.assign({}, state, { desks });
+}
+
+/**
  * Push adapter state at the scene, coalesced to one call per frame. A burst
  * of parallel spawns arrives as a burst of events; rebuilding the floor once
  * per event would rebuild it a dozen times for one visual change.
@@ -241,7 +268,7 @@ function scheduleSync() {
     // Business is a desk-assignment policy, not a second engine: it rewrites
     // `desks` into roster seats and hands the scene the same shape Projects
     // does, so neither the layout nor the scene knows which outlet is up.
-    const view = _outlet === 'business' ? businessView(state, _roster) : state;
+    const view = _outlet === 'business' ? businessView(state, _roster) : projectsFloorView(state);
     _scene.syncOffice(view);
     renderPill(state);
     renderDetail(state);

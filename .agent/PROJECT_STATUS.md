@@ -1229,6 +1229,22 @@ Task Status column".
 Full writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day:
 conductor glow, a stray sidepanel, a fade, and unbounded ground".
 
+**Ninth follow-up same day**: business-classified work now stays off the
+Projects floor entirely (`projectsFloorView()` in `index.js`, same
+`departmentFor()` businessView() already used, descendants of a
+business-classified worker hidden with it via the existing
+`descendantsOf()` helper). Flagged, not fixed: `roster.js`'s "Delivery"
+department keywords (test/fix/build/code/refactor/debug/...) mean ordinary
+coding tasks now also count as "business" and vanish from Projects the same
+as invoicing work would -- shipped as specified since classification must
+match Business exactly, but worth a deliberate look given how much of this
+app's usage is coding work. Also found and worked around (not fixed, out of
+scope): a pre-existing false positive in Marketing's `'ad '` keyword
+matching words ending in "ad" (e.g. "read") after `normalize()` turns
+slashes into spaces. Full writeup in
+`docs/rfcs/office-visualization.md`'s "Follow-up same day: business-
+classified work stays off the Projects floor".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

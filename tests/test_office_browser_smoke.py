@@ -66,7 +66,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
           const O = window.HermesOffice;
           O.onSpawn({subagent_id:'demo-1', goal:'audit the delegation path', model:'opus', depth:1});
           O.onSpawn({subagent_id:'demo-2', goal:'write the regression tests', depth:1});
-          O.onSpawn({subagent_id:'demo-3', parent_id:'demo-1', goal:'read api/routes.py', depth:2});
+          O.onSpawn({subagent_id:'demo-3', parent_id:'demo-1', goal:'inspect the routes configuration file', depth:2});
           O.onToolActivity({subagent_id:'demo-2', tool:'Read', preview:'tests/test_office.py'});
           O.onComplete({subagent_id:'demo-3', status:'ok', duration_seconds:6.5, summary:'found the branch'});
         }""")
@@ -89,8 +89,11 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
 
         # Projects pods get a floating stat card too -- generic (no name, no
         # colour, since a Projects pod is just "whoever's parent spawned it",
-        # not a named department). demo-1/demo-2 seat under the conductor's
-        # own pod; demo-3 seats under a pod of its own (demo-1's children).
+        # not a named department). demo-1 seats under the conductor's own
+        # pod; demo-3 seats under a pod of its own (demo-1's children).
+        # demo-2's goal ("write the regression tests") reads as Delivery
+        # business work, so it's held back from the Projects floor entirely
+        # (see projectsFloorView() in index.js) -- it isn't a third pod here.
         projects_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
           hasName: !!el.querySelector('.office-dept-card-name'),
           hasColor: !!el.style.getPropertyValue('--office-dept-color'),
@@ -101,7 +104,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         camera = pg.evaluate("""async () => {
           const O = window.HermesOffice;
           const overview = O.getView();
-          O.focusWorker('demo-2');
+          O.focusWorker('demo-1');
           await new Promise(r => setTimeout(r, 1200));
           const focused = O.getView();
           O.resetView();
@@ -112,6 +115,9 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         pg.evaluate("() => document.querySelector('[data-outlet=\\\"business\\\"]').click()")
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(tmp_path / "office-business.png"))
+        # The flip side of demo-2 being held off the Projects floor: it must
+        # actually be seated somewhere real on Business, not just dropped.
+        business_poses = pg.evaluate("() => window.HermesOffice.getView().poses")
 
         # Per-department floating stat cards: only the real page can prove the
         # world-to-screen projection actually lands somewhere on the canvas --
@@ -139,6 +145,8 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
           hasName: !!el.querySelector('.office-dept-card-name'),
           hasColor: !!el.style.getPropertyValue('--office-dept-color'),
         }))""")
+        # Still held back the second time, not just on first load.
+        projects_poses_again = pg.evaluate("() => window.HermesOffice.getView().poses")
         rows_on_projects = pg.evaluate(
             "() => document.querySelectorAll('.office-tasks-row').length"
         )
@@ -221,7 +229,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
 
     # The camera actually travels, and comes back to where it started.
     assert camera["overview"]["focusedId"] is None
-    assert camera["focused"]["focusedId"] == "demo-2"
+    assert camera["focused"]["focusedId"] == "demo-1"
     assert camera["focused"]["zoom"] > camera["overview"]["zoom"], (
         "focusing must zoom in, not merely re-centre"
     )
@@ -229,7 +237,9 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         "the scene reports each figure's rendered pose — an idle behaviour "
         "plays over plain work and is otherwise invisible from outside"
     )
-    assert set(camera["overview"]["poses"]) == {"demo-1", "demo-2", "demo-3"}
+    # demo-2 is business-classified (Delivery, via "regression tests") and
+    # so has no seat on the Projects floor at all -- see projectsFloorView().
+    assert set(camera["overview"]["poses"]) == {"demo-1", "demo-3"}
     assert camera["back"]["focusedId"] is None
     assert abs(camera["back"]["zoom"] - camera["overview"]["zoom"]) < 1e-6, (
         "reset must return to the framed overview, not an approximation of it"
@@ -267,8 +277,9 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     # unnamed (a pod has no department to name), but still coloured, since the
     # floor itself is now tinted per pod and the card should match its floor.
     assert len(projects_cards) == 2, (
-        "demo-1/demo-2 seat under the conductor's own pod, demo-3 under a pod "
-        "of its own -- 2 pods, 2 cards"
+        "demo-1 alone seats under the conductor's own pod (demo-2 is held "
+        "back as business-classified work), demo-3 under a pod of its own "
+        "-- 2 pods, 2 cards"
     )
     for card in projects_cards:
         assert not card["hasName"], "a Projects card must not invent a department name"
@@ -282,6 +293,15 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     for card in cards_after_leaving_business:
         assert not card["hasName"], "Business's named cards must not linger over the Projects floor"
         assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
+
+    # demo-2 ("write the regression tests") is business-classified as
+    # Delivery: held off the Projects floor entirely (both times it's shown,
+    # not just on first load), but actually seated for real on Business --
+    # not merely dropped everywhere.
+    assert "demo-2" in business_poses, "a business-classified worker must actually be seated on Business"
+    assert "demo-2" not in projects_poses_again, (
+        "a business-classified worker must stay off the Projects floor after switching back to it too"
+    )
 
     assert tasks_on_business["rowCount"] == 3, (
         "the Task Status panel is whole-office and must show the same 3 "
