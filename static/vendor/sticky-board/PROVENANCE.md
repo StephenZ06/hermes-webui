@@ -14,6 +14,14 @@ Modifications from upstream:
   `localStorage` is kept only as a fallback (used if the server request
   fails, and as a one-time migration source the first time this page loads
   against an instance with no saved board yet) -- otherwise unchanged.
+- Chrome (header, columns, buttons, board background) reskinned to follow
+  hermes-webui's active skin/dark-light theme instead of a fixed cream
+  palette -- `syncThemeFromParent()` reads the parent `<html>`'s live
+  computed CSS custom properties (`--bg`, `--surface`, `--accent`, etc.) and
+  applies them locally, with a `MutationObserver` re-syncing on any
+  skin/theme change while the panel is open. Note colors themselves
+  (yellow/green/pink/blue) stay literal -- they're the user's own note
+  colors, like colored paper, not app chrome.
 
 Embedded in hermes-webui via an `<iframe>` in the Notes panel
 (`static/index.html`'s `#mainNotes`). Same-origin, so its `fetch()` calls to
