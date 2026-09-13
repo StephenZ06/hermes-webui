@@ -88,7 +88,7 @@
   .note.dragging{opacity:.4;transform:rotate(2deg)}
   .note-header{display:flex;align-items:flex-start;justify-content:space-between;gap:.3rem}
   .note-title{
-    font-size:.85rem;font-weight:600;flex:1;
+    font-size:.85rem;font-weight:600;flex:1;color:#000;
     border:none;background:transparent;outline:none;
     cursor:text;padding:2px 4px;border-radius:3px;resize:none;
     font-family:var(--font);line-height:1.3;
@@ -103,6 +103,12 @@
     color:#555;
   }
   .icon-btn:hover{background:rgba(0,0,0,.18)}
+  /* Note text always sits on the note's own pastel color, not the app's
+     theme background, so it stays literal black regardless of dark/light
+     skin -- only .note's own icon-btn (the × delete button), not the
+     column header's, which should keep following the theme like the rest
+     of the chrome. */
+  .note .icon-btn{color:#000;}
 
   /* Color Dots */
   .color-picker{display:flex;gap:3px;margin-top:4px}
@@ -116,19 +122,19 @@
   .sub-items{margin-top:.4rem;padding-left:.2rem}
   .sub-item{
     display:flex;align-items:center;gap:.3rem;
-    font-size:.75rem;padding:2px 0;color:#555;
+    font-size:.75rem;padding:2px 0;color:#000;
   }
   .sub-item-dot{width:4px;height:4px;border-radius:50%;background:#999;flex-shrink:0}
   .sub-item-text{
     border:none;background:transparent;outline:none;flex:1;
-    font-size:.75rem;font-family:var(--font);padding:1px 3px;border-radius:3px;color:#555;
+    font-size:.75rem;font-family:var(--font);padding:1px 3px;border-radius:3px;color:#000;
   }
   .sub-item-text:focus{background:rgba(255,255,255,.5)}
   .sub-item .icon-btn{width:16px;height:16px;font-size:.6rem;opacity:0}
   .sub-item:hover .icon-btn{opacity:1}
   .add-sub-btn{
     border:none;background:transparent;cursor:pointer;
-    font-size:.7rem;color:#999;padding:2px 4px;margin-top:2px;
+    font-size:.7rem;color:#000;padding:2px 4px;margin-top:2px;
     font-family:var(--font);transition:color .15s;
   }
   .add-sub-btn:hover{color:var(--accent)}
@@ -146,7 +152,7 @@
   .assignee-icon.empty{background:rgba(0,0,0,.08);color:#999}
   .assignee-icon.filled{background:var(--accent);color:var(--primary-fg);font-size:.6rem;font-weight:700;letter-spacing:-.5px}
   .assignee-name{
-    font-size:.7rem;color:#777;border:none;background:transparent;
+    font-size:.7rem;color:#000;border:none;background:transparent;
     outline:none;font-family:var(--font);padding:1px 3px;border-radius:3px;
     width:100%;
   }
