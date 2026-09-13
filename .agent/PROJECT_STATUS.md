@@ -1,6 +1,6 @@
 # Project status — hermes-webui
 
-Last updated: 2026-09-08. Written as a session handoff; read this before
+Last updated: 2026-09-13. Written as a session handoff; read this before
 starting work on delegation, context cost, or anything in the agent checkout.
 
 ## Objective
@@ -1245,6 +1245,47 @@ slashes into spaces. Full writeup in
 `docs/rfcs/office-visualization.md`'s "Follow-up same day: business-
 classified work stays off the Projects floor".
 
+## 2026-09-13: OpenCode Go usage widget + Notes panel + LM Studio profile
+
+Four unrelated user asks landed together (commit `567708bbb`):
+
+1. **Bulk delete in General Chat.** Already existed
+   (`static/sessions.js`'s select-mode toggle, batch action bar, checkbox
+   rendering) -- no code change. Not a stub: i18n'd, CSS'd, and verified live
+   via a throwaway Playwright script that select-mode toggles correctly.
+2. **OpenCode Go token usage in the sidebar widget.** `agent.account_usage`'s
+   `fetch_account_usage()` only knows Codex/Anthropic/OpenRouter -- providers
+   with a real percent-quota API. `api/providers.py#account_usage_from_pool()`
+   synthesizes the same shape from the local credential pool's
+   available/exhausted/dead ratio for flat-namespace resellers like
+   opencode-go, wired into `api/routes.py#_handle_account_usage()` as a
+   fallback when the native fetch is empty. No frontend change needed --
+   `static/ui.js#loadAccountUsage()` already renders whatever shape the
+   endpoint returns.
+3. **LM Studio local-model profile.** Created (`hermes profile create local
+   --clone-from default`), provider/base_url/model/api_key all configured
+   correctly (`model.provider=lmstudio`,
+   `model.base_url=http://host.docker.internal:1234/v1`). Blocked, not by
+   this repo: the loaded model (`huihui-qwen3.5-9b-abliterated`) has only
+   8,192 tokens of context allocated in LM Studio itself (confirmed via its
+   `/api/v0/models` introspection endpoint: `loaded_context_length` vs.
+   `max_context_length: 262144`), below Hermes Agent's 64K floor. No remote
+   API exists to change a loaded model's context (`POST
+   /api/v0/models/load` -> "Unexpected endpoint or method"). Needs the user
+   to reload the model in LM Studio's own UI/`lms` CLI with a larger context
+   setting.
+4. **Sticky notes for projects.** New Notes panel/tab
+   (`api/sticky_notes.py` + `static/notes.js`), a per-project corkboard:
+   colored notes, freeform text (autosaves 500ms after typing stops), a
+   project filter dropdown (backed by the WebUI's own `/api/projects`
+   registry, not the WORKSPACES.yaml one), create/delete. Storage is a flat
+   JSON list at `STATE_DIR/sticky_notes.json`, same shape convention as
+   `PROJECTS_FILE`. Full suite green after landing this (16069 passed) --
+   two structural tests needed a one-line update for the new nav tab
+   (`test_nav_dividers_and_agent_canvas_panel.py`'s hardcoded divider-anchor
+   list), which is expected when adding a tab to that group, not a
+   regression.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.
@@ -1290,7 +1331,10 @@ classified work stays off the Projects floor".
    lands.** `roster.js#departmentFor` infers a department from a persona's own
    words because `/api/personalities` carries nothing else. One function, one
    deletion, when a department field exists.
-9. Nothing else queued. The suite is green (15607 passed, 91 skipped — down
-   from 118 because 27 previously-invisible tests now run), so a new failure
-   from here is a real one, worth reading rather than filing next to a known
-   backlog.
+9. The suite was green (15607 passed) as of the previous entry; still green
+   (16069 passed) after the 2026-09-13 work above, so a new failure from here
+   is a real one, worth reading rather than filing next to a known backlog.
+10. **Unblock the `local` (LM Studio) profile.** User needs to reload
+    `huihui-qwen3.5-9b-abliterated` in LM Studio with >=64K context (its true
+    max is 262,144), or pick another already-large-context model. Nothing to
+    do from inside this repo/container until then.
