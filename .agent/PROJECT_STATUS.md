@@ -1309,12 +1309,16 @@ limit 8GB->16GB (`.wslconfig`) and adding KV quantization got it merely
 The LM Studio `local` profile does NOT have this problem because it runs
 natively on Windows and gets the same AMD iGPU via Vulkan directly --
 that's the actual reason it was fast enough, not model choice or context
-size. User decided: keep LM Studio (`local` profile) as the daily driver;
-the `ollama` profile + `docker-compose.ollama.yml` stay in the repo as a
-documented option but are not practical for interactive use on this
-hardware. Recorded as [[project_local_model_gpu_constraint]] in auto-memory
-so this doesn't get re-attempted for speed without checking GPU passthrough
+size. Recorded as [[project_local_model_gpu_constraint]] in auto-memory so
+this doesn't get re-attempted for speed without checking GPU passthrough
 status first.
+
+**Update, same day:** user decided to drop the Dockerized path entirely
+rather than keep it as a documented-but-unused option -- `docker-compose.ollama.yml`
+removed, the `ollama` container and its model-weights volume torn down
+(`docker compose -f docker-compose.ollama.yml down -v`), and the `ollama`
+hermes profile deleted. LM Studio (`local` profile) is the only local-model
+path now.
 
 ## Next actions
 
