@@ -273,11 +273,27 @@
     });
   }
 
+  // This page is embedded in hermes-webui via an iframe on the same origin.
+  // The parent document auto-attaches an X-Hermes-CSRF-Token to its own
+  // fetch() calls (see its inline bootstrap script), but that patch lives on
+  // the parent's `window`, not this iframe's separate one -- so POSTs from
+  // here need the token pulled from the parent and attached by hand, or the
+  // backend's CSRF check (api/routes.py's _check_csrf) 403s them.
+  function csrfHeaders() {
+    var token = '';
+    try {
+      token = (window.parent && window.parent.__HERMES_CONFIG__ && window.parent.__HERMES_CONFIG__.csrfToken) || '';
+    } catch (e) { /* cross-origin or parent not ready -- fall back to no token */ }
+    return token ? { 'X-Hermes-CSRF-Token': token } : {};
+  }
+
   function saveState() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+    var headers = csrfHeaders();
+    headers['Content-Type'] = 'application/json';
     fetch('/api/sticky_board', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify({ board: state })
     }).catch(function(e) {
       console.error('sticky-board: save to server failed', e);
