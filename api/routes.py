@@ -11975,6 +11975,19 @@ def _handle_account_usage(handler, parsed) -> bool:
         from agent.account_usage import fetch_account_usage
         with cron_profile_context_for_home(profile_home):
             snapshot = fetch_account_usage(provider, base_url=base_url, api_key=None)
+            # hermes-agent's own fetch_account_usage() only knows a handful
+            # of providers with a real percent-based usage API of their own
+            # (Codex, Anthropic, OpenRouter). A flat-namespace Hermes-hosted
+            # reseller like opencode-go has no such API -- only a local pool
+            # of interchangeable keys -- so fall back to a percent
+            # synthesized from that pool's own exhausted/available ratio
+            # (see api/providers.py's account_usage_from_pool) rather than
+            # showing nothing for it.
+            if snapshot is None or not snapshot.available:
+                from api.providers import account_usage_from_pool
+                pool_snapshot = account_usage_from_pool(provider)
+                if pool_snapshot is not None:
+                    snapshot = pool_snapshot
     except Exception:
         logger.debug("account usage fetch failed for profile %r", profile_name, exc_info=True)
 
@@ -14477,6 +14490,11 @@ def handle_get(handler, parsed) -> bool:
             return j(handler, _session_list_payload_to_response(payload), pretty=False)
         finally:
             diag.finish()
+
+    if parsed.path == "/api/sticky_notes":
+        from api.sticky_notes import load_notes
+
+        return j(handler, {"notes": load_notes()})
 
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
@@ -18289,6 +18307,47 @@ def handle_post(handler, parsed) -> bool:
         save_projects(projects)
         merged_count = _reassign_project_sessions(source_ids, target_id)
         return j(handler, {"ok": True, "project": target, "merged_sessions": merged_count})
+
+    # ── Sticky notes CRUD (POST) ──
+    if parsed.path == "/api/sticky_notes/create":
+        from api.sticky_notes import create_note
+
+        try:
+            require(body, "text")
+        except ValueError as e:
+            return bad(handler, str(e))
+        text = str(body["text"])[:2000]
+        color = body.get("color")
+        project_id = body.get("project_id") or None
+        note = create_note(text=text, project_id=project_id, color=color)
+        return j(handler, {"ok": True, "note": note})
+
+    if parsed.path == "/api/sticky_notes/update":
+        from api.sticky_notes import update_note
+
+        try:
+            require(body, "id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        text = body.get("text")
+        if text is not None:
+            text = str(text)[:2000]
+        project_id = body["project_id"] if "project_id" in body else ...
+        note = update_note(str(body["id"]), text=text, color=body.get("color"), project_id=project_id)
+        if note is None:
+            return bad(handler, "Note not found", 404)
+        return j(handler, {"ok": True, "note": note})
+
+    if parsed.path == "/api/sticky_notes/delete":
+        from api.sticky_notes import delete_note
+
+        try:
+            require(body, "id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        if not delete_note(str(body["id"])):
+            return bad(handler, "Note not found", 404)
+        return j(handler, {"ok": True})
 
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":

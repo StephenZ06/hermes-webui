@@ -5522,7 +5522,8 @@ main.main > #mainProfiles,
 main.main > #mainInsights,
 main.main > #mainLogs,
 main.main > #mainOffice{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office) > #mainChat{display:flex;}
+main.main > #mainNotes{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office):not(.showing-notes) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-agents > #mainAgents{display:flex;}
@@ -5535,6 +5536,7 @@ main.main.showing-profiles > #mainProfiles{display:flex;}
 main.main.showing-logs > #mainLogs{display:flex;}
 main.main.showing-plugin > #mainPlugin{display:flex;}
 main.main.showing-office > #mainOffice{display:flex;}
+main.main.showing-notes > #mainNotes{display:flex;}
 /* The Office is a whole-screen view with its own right-hand column (Task
    Status) -- the chat-only Files/Artifacts/Todos/Canvas/Live/Plane workspace
    panel is unrelated to it and, being a sibling of <main> rather than a
@@ -5545,6 +5547,34 @@ main.main > #mainPlugin{display:none;}
 #mainPlugin .main-view-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 #pluginPageContainer{flex:1;display:flex;flex-direction:column;min-height:0;}
 #mainSettings{overflow-y:auto;}
+/* ── Sticky notes board (Notes panel) ── */
+#mainNotes .main-view-actions{display:flex;align-items:center;gap:8px;}
+#mainNotes select#notesProjectSelect{background:var(--bg-secondary,var(--bg));color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;max-width:200px;}
+.sticky-notes-board{flex:1;overflow-y:auto;padding:20px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:16px;}
+.sticky-note{width:220px;min-height:180px;display:flex;flex-direction:column;border-radius:4px;padding:12px 12px 8px;box-shadow:0 3px 8px rgba(0,0,0,.18);transform:rotate(var(--sticky-tilt,-1deg));transition:transform .15s ease;}
+.sticky-note:nth-child(3n){--sticky-tilt:1deg;}
+.sticky-note:nth-child(3n+1){--sticky-tilt:-1.5deg;}
+.sticky-note:hover{transform:rotate(0deg) scale(1.02);}
+.sticky-note-project{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;opacity:.6;margin-bottom:6px;color:#3a3220;}
+.sticky-note-text{flex:1;resize:none;border:none;background:transparent;outline:none;font:inherit;font-size:14px;line-height:1.4;color:#3a3220;min-height:90px;}
+.sticky-note-footer{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+.sticky-note-swatches{display:flex;gap:4px;}
+.sticky-note-swatch{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);cursor:pointer;padding:0;}
+.sticky-note-swatch.active{box-shadow:0 0 0 2px rgba(0,0,0,.4);}
+.sticky-note-swatch--yellow{background:#fff59d;}
+.sticky-note-swatch--pink{background:#f8bbd0;}
+.sticky-note-swatch--blue{background:#b3e5fc;}
+.sticky-note-swatch--green{background:#c8e6c9;}
+.sticky-note-swatch--orange{background:#ffe0b2;}
+.sticky-note-swatch--purple{background:#e1bee7;}
+.sticky-note-delete{background:none;border:none;cursor:pointer;padding:4px;color:#3a3220;opacity:.55;border-radius:4px;}
+.sticky-note-delete:hover{opacity:1;background:rgba(0,0,0,.08);}
+.sticky-note--yellow{background:#fff59d;}
+.sticky-note--pink{background:#f8bbd0;}
+.sticky-note--blue{background:#b3e5fc;}
+.sticky-note--green{background:#c8e6c9;}
+.sticky-note--orange{background:#ffe0b2;}
+.sticky-note--purple{background:#e1bee7;}
 /* ── Async delegation batch deliveries ──
    A background fan-out's consolidated results arrive as a user-role row whose
    text is the model's evidence, not reading material. Collapsed to one line,

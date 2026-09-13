@@ -989,6 +989,49 @@ def _local_pool_snapshot(provider):
     )
 
 
+def account_usage_from_pool(provider: str):
+    """A Codex-shaped {available, windows:[{label,used_percent,reset_at,detail}]}
+    snapshot synthesized from the local credential pool, for a provider
+    (e.g. ``opencode-go``, a flat-namespace Hermes-hosted reseller) that has
+    no native percent-based usage API of its own -- only a pool of
+    interchangeable keys, each simply available/exhausted/dead.
+
+    Returns a SimpleNamespace matching the same AccountUsageSnapshot shape
+    ``_local_pool_snapshot()`` already produces and
+    ``api/routes.py``'s ``_handle_account_usage`` already knows how to
+    serialize, so the sidebar's chat-usage-widget shows this identically to
+    a provider with a real weekly-quota window. "Percent used" is
+    approximated as the exhausted-credential ratio -- the closest honest
+    analogue to "percent of quota used" a pool of keys actually has.
+    """
+    snapshot = _local_pool_snapshot(provider)
+    if snapshot is None:
+        return None
+    pool = getattr(snapshot, "pool", None) or {}
+    total = int(pool.get("total_credentials") or 0)
+    if total <= 0:
+        return None
+    exhausted = int(pool.get("exhausted_credentials") or 0)
+    dead = int(pool.get("dead_credentials") or 0)
+    used_percent = round(100.0 * (exhausted + dead) / total, 1)
+    # The earliest reset among exhausted credentials, if any -- the closest
+    # thing to "when does this reset" a pool of independent keys has.
+    reset_at = None
+    for row in pool.get("credentials") or []:
+        candidate = _parse_dt(row.get("retry_after"))
+        if candidate is not None and (reset_at is None or candidate < reset_at):
+            reset_at = candidate
+    details = getattr(snapshot, "details", None) or ()
+    detail = str(details[0]) if details else None
+    window = SimpleNamespace(
+        label="Capacity",
+        used_percent=used_percent,
+        reset_at=reset_at,
+        detail=detail,
+    )
+    return SimpleNamespace(provider=provider, plan=None, windows=(window,), available=True)
+
+
 def _get_hermes_home() -> Path:
     """Return the active Hermes home directory."""
     try:
