@@ -1204,6 +1204,31 @@ localStorage the same way the outlet picker does. Full writeup in
 `docs/rfcs/office-visualization.md`'s "Follow-up same day: a collapsible
 Task Status column".
 
+**Eighth follow-up same day**: five more reports.
+- Conductor's plinth no longer glows/tints with activity (reported
+  distracting; the pacing figure already carries that cue).
+- The chat-only Workspace rightpanel (Files/Artifacts/Todos/Canvas/Live/
+  Plane) no longer shows next to the Office -- it's a sibling of `<main>`,
+  needed its own `showing-office ~ .rightpanel` CSS rule.
+- A cross-fade on Projects/Business switch. Two real bugs found only by
+  sampling `getComputedStyle(...).opacity` every 10ms through a real
+  switch (screenshots and fixed waits both missed them): a fixed
+  `setTimeout` reveal fired before a slow (Business, roster fetch) sync
+  finished; fixed to tied to `scheduleSync()` completing. That alone then
+  under-fired for a *fast* switch (add+remove within the same frame or two
+  is invisible) -- fixed with an `OUTLET_FADE_MIN_MS` floor so the reveal
+  waits out whichever is longer.
+- Ground/grid now grows with the office (`ensureGroundCovers()`, called
+  from `frameOffice()`) instead of a fixed 400-unit cap, so a large office
+  zoomed all the way out never shows the floor's own edge.
+- Investigated, not fixed: subagent interrupt needs `webui_chat_backend:
+  gateway` *and* a running Hermes API server on port 8642 -- neither
+  present in this deployment (confirmed nothing listens there). Flipping
+  the config alone would just relabel the error. Needs its own decision.
+
+Full writeup in `docs/rfcs/office-visualization.md`'s "Follow-up same day:
+conductor glow, a stray sidepanel, a fade, and unbounded ground".
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

@@ -962,3 +962,81 @@ asserting the canvas' own `getBoundingClientRect().width` actually grows
 when collapsed and returns to exactly its original value on expand (not just
 that a class toggled) and that the collapsed flag lands in `localStorage`;
 plus manual screenshots of both states.
+
+### Follow-up same day: conductor glow, a stray sidepanel, a fade, and unbounded ground
+
+Five more reports, landed together:
+
+1. **The conductor's own plinth no longer tints/glows with activity.**
+   Reported as distracting -- it's the one fixed landmark on the floor,
+   there whether anything is running or not, so it shouldn't visually
+   change the way a working pod does. `ensureConductor()` no longer builds
+   a glow mesh at all; the pacing figure already carries the "it's doing
+   something" cue. Regular pods and the conductor's own status tracking
+   (still needed by the pacing/wanderer logic) are unaffected.
+2. **The chat-only Workspace panel (`<aside class="rightpanel">`:
+   Files/Artifacts/Todos/Canvas/Live/Plane) was showing next to the Office.**
+   It's a sibling of `<main>`, not a child, so none of the existing
+   per-view `main.main.showing-X > #mainX` CSS rules ever touched it --
+   added `main.main.showing-office ~ .rightpanel` (plus its edge-toggle
+   button) via a general sibling combinator, hiding both specifically for
+   the Office's own whole-screen, already-has-its-own-right-column layout.
+3. **A cross-fade when switching Projects/Business.** `.office-canvas`
+   fades to 0 and back via a new `is-switching-outlet` CSS class, so
+   scheduleSync's desk/pod add-and-remove reconciliation (a hard cut
+   otherwise -- furniture and figures blinking away mid-frame) reads as a
+   deliberate transition. Two real bugs surfaced building this, both
+   caught by sampling `getComputedStyle(...).opacity` every 10ms through a
+   real switch rather than trusting a screenshot or a fixed wait:
+   - A first attempt revealed the floor on a fixed `setTimeout` (guessed at
+     220ms, matching the CSS transition duration). Switching to Business
+     can mean waiting on a `/api/personalities` fetch and rebuilding a
+     department's worth of floor signs -- measured well past that guess
+     under load, so the timer fired before the new floor was actually
+     drawn, revealing a stale or half-built frame. Fixed by tying the
+     reveal to `scheduleSync()` itself finishing (a new `_outletFadePending`
+     flag it clears once the synced floor is drawn), however long that
+     takes.
+   - That alone made the opposite mistake for a *cheap* switch: reconciling
+     within a couple of frames let the class get added and removed again
+     before the browser ever painted the faded-out state -- add-then-remove
+     within the same frame or two is a known case of a CSS transition never
+     being visibly observed, confirmed by the opacity sampling staying at
+     `1` for the entire switch. Fixed with `OUTLET_FADE_MIN_MS` (220): the
+     reveal now waits out whichever is longer, that minimum or the real
+     sync time.
+4. **Ground/grid size grows with the office instead of a fixed cap.**
+   Reported: zooming out far enough on a large office showed the ground
+   plane's own hard edge against the transparent canvas. A fixed size can
+   never rule that out for an arbitrarily large delegation tree, so
+   `ensureGroundCovers(radius)` (called from `frameOffice()`, which already
+   recomputes the office's radius on every sync) rebuilds a bigger one --
+   sized to cover the worst case the user can actually zoom out to
+   (`ZOOM_MIN` beyond the office's own auto-framed fit, times a safety
+   factor for wide-monitor aspect ratios) -- whenever the current one falls
+   short. Never shrunk back down (a big run's pods being swept shouldn't
+   flash the edge back into view), and grid divisions are capped at 600
+   regardless of size (past a few hundred, lines are imperceptible anyway,
+   and this only grows for a very large, very zoomed-out office).
+5. **Investigated, not fixed here**: subagent interrupt ("Gateway chat
+   backend is not enabled") turns out to need a `webui_chat_backend: gateway`
+   config value *and* a running Hermes API server on the port it points at
+   (`http://127.0.0.1:8642` by default) -- neither is present in this
+   deployment (confirmed: nothing listening on that port), so flipping the
+   config flag alone would just change the error, or break the main chat's
+   own backend routing. Real fix is standing up that server, which is
+   outside this repo's own code and needs its own decision, not a quick
+   toggle.
+
+Verified: full office node suite green, including new
+`test_office_panel.py` (`.rightpanel` hiding), `test_office_visual_polish.py`
+(conductor glow gone, ground growth/cap/never-shrinks, the two fade fixes --
+the min-duration one pinned by name so a future refactor can't quietly drop
+it back to "just wait for scheduleSync") tests; the existing browser smoke
+test green under `HERMES_WEBUI_BROWSER_TESTS=1` (twice, given how
+timing-sensitive this area proved); full suite (16034 passed clean); plus
+manual Playwright verification for each -- a real 10ms-interval opacity
+sampling script for the fade (screenshots alone had missed both bugs
+entirely, since each failure mode is invisible at any single sampled
+instant), and a zoomed-way-out screenshot with eight subagents for the
+ground.

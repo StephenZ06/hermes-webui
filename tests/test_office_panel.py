@@ -247,6 +247,17 @@ def test_chat_default_selector_excludes_the_office():
     )
 
 
+def test_the_chat_workspace_rightpanel_is_hidden_on_the_office():
+    # Reported: the chat-only Files/Artifacts/Todos/Canvas/Live/Plane
+    # workspace panel (`<aside class="rightpanel">`) kept showing next to
+    # the Office. It's a sibling of <main>, not a child, so none of the
+    # per-view `main.main.showing-X > #mainX` rules above ever touched it --
+    # it needs its own rule, keyed off the same showing-office class via a
+    # general sibling combinator.
+    assert 'main.main.showing-office ~ .rightpanel' in CSS
+    assert 'main.main.showing-office ~ #btnWorkspacePanelEdgeToggle' in CSS
+
+
 # ── scene lifecycle ──────────────────────────────────────────────────────────
 
 def test_office_entry_publishes_the_global_the_panel_calls():

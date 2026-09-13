@@ -255,26 +255,84 @@ export function createOfficeScene(canvas, options) {
   composer.setPixelRatio(1);
 
   // ---- ground -----------------------------------------------------------
-  const groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
-  const groundMaterial = new THREE.MeshStandardMaterial({
-    color: palette.ground, roughness: 0.95, metalness: 0.0,
-  });
-  ownedGeometries.push(groundGeometry);
-  ownedMaterials.push(groundMaterial);
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // A fixed-size floor shows its own edge -- a hard border against the
+  // transparent canvas -- the moment a big enough office, zoomed out far
+  // enough, outgrows it. Rebuilt larger (never smaller: shrinking it back
+  // would flash the edge again the moment a big run's pods are swept) as
+  // ensureGroundCovers() sees the framed office actually needs the room.
+  let groundHalfSize = GROUND_SIZE / 2;
+  let ground = null;
+  let groundGeometry = null;
+  let groundMaterial = null;
+  let grid = null;
 
-  const grid = new THREE.GridHelper(GROUND_SIZE, 80, palette.grid, palette.grid);
-  grid.position.y = 0.02;
-  if (grid.material) {
-    grid.material.transparent = true;
-    grid.material.opacity = 0.45;
-    ownedMaterials.push(grid.material);
+  function buildGround(halfSize) {
+    const size = halfSize * 2;
+    const geometry = new THREE.PlaneGeometry(size, size);
+    const material = new THREE.MeshStandardMaterial({
+      color: palette.ground, roughness: 0.95, metalness: 0.0,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    // Capped rather than scaled 1:1 with size: past a few hundred divisions
+    // the lines are imperceptible anyway (this only grows for a very large,
+    // very zoomed-out office), and an uncapped count would turn one big run
+    // into thousands of extra line segments for no visible gain.
+    const divisions = Math.min(600, Math.max(20, Math.round(size / 5)));
+    const gridHelper = new THREE.GridHelper(size, divisions, palette.grid, palette.grid);
+    gridHelper.position.y = 0.02;
+    if (gridHelper.material) {
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = 0.45;
+    }
+    return { mesh, geometry, material, gridHelper };
   }
-  if (grid.geometry) ownedGeometries.push(grid.geometry);
-  scene.add(grid);
+
+  function installGround(halfSize) {
+    if (ground) {
+      scene.remove(ground);
+      groundGeometry.dispose();
+      groundMaterial.dispose();
+    }
+    if (grid) {
+      scene.remove(grid);
+      if (grid.geometry) grid.geometry.dispose();
+      if (grid.material) grid.material.dispose();
+    }
+    const built = buildGround(halfSize);
+    groundHalfSize = halfSize;
+    ground = built.mesh;
+    groundGeometry = built.geometry;
+    groundMaterial = built.material;
+    grid = built.gridHelper;
+    scene.add(ground);
+    scene.add(grid);
+    // Only these two ever land in these arrays (see dispose() below) --
+    // replacing the array contents outright is safe and correct here.
+    ownedGeometries.length = 0;
+    ownedMaterials.length = 0;
+    ownedGeometries.push(groundGeometry);
+    ownedMaterials.push(groundMaterial);
+    if (grid.geometry) ownedGeometries.push(grid.geometry);
+    if (grid.material) ownedMaterials.push(grid.material);
+  }
+
+  /**
+   * Grow the ground to cover whatever the camera can show of it, including
+   * the farthest the user can zoom out (ZOOM_MIN, beyond the office's own
+   * auto-framed fit). The x3 folds in wide-monitor aspect ratios (the
+   * frustum widens with aspect, not just height) plus slack -- an exact
+   * figure isn't worth chasing since this only ever needs to be "clearly
+   * enough", not tight.
+   */
+  function ensureGroundCovers(radius) {
+    const needed = Math.max(GROUND_SIZE / 2, (radius * FRAME_MARGIN / ZOOM_MIN) * 3);
+    if (needed <= groundHalfSize * 1.05) return;
+    installGround(needed);
+  }
+
+  installGround(groundHalfSize);
 
   // ---- office contents --------------------------------------------------
   // Everything that represents delegation state hangs off one group, so a
@@ -301,11 +359,10 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
     group.add(pod);
-    // Same glow a working pod gets, driven by orchestrating status rather
-    // than by liveClustersWithWork -- see the render loop.
-    const glow = makePodGlow(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette.conductor);
-    group.add(glow);
-    group.userData.glowMaterial = glow.material;
+    // Unlike a pod, the conductor's plinth never tints/glows with activity --
+    // reported as distracting since it's the one fixed landmark on the floor,
+    // there whether anything is running or not. The pacing figure (below)
+    // already carries the "it's doing something" cue for the conductor.
     const person = makePerson(palette, palette.conductor);
     person.position.y = 0.6;
     group.add(person);
@@ -618,6 +675,7 @@ export function createOfficeScene(canvas, options) {
     // user's cursor, so only react once the change is worth a camera move.
     if (Math.abs(wanted - framedRadius) < 2 && moved < 2) return;
     framedRadius = wanted;
+    ensureGroundCovers(framedRadius);
     framedCenter = { x: next.x, z: next.z };
     overview.x = framedCenter.x;
     overview.z = framedCenter.z;
@@ -1119,9 +1177,6 @@ export function createOfficeScene(canvas, options) {
       // Charge travels out from the conductor toward the pod.
       if (isDashActive(link)) marchOutline(link, marchOffset * CONNECTOR_SPEED_RATIO);
     });
-    if (conductor) {
-      pulseGlow(conductor.userData.glowMaterial, conductor.userData.status === 'orchestrating', t, dt);
-    }
 
     seats.forEach(seat => {
       // A subagent walks to its desk before it starts; only once seated does

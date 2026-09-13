@@ -92,8 +92,13 @@ def test_every_pod_gets_a_glow_mesh_and_stores_its_material():
     assert "glowMaterial: glow.material" in SCENE_SRC
 
 
-def test_the_conductor_glow_is_driven_by_orchestrating_status_not_active_clusters():
-    assert "conductor.userData.glowMaterial" in SCENE_SRC
+def test_the_conductor_never_glows():
+    # Reported as distracting: the conductor's plinth is the one fixed
+    # landmark on the floor, there whether anything is running or not, so
+    # tinting/pulsing it with activity (the way a pod does) just adds noise.
+    # The conductor's own status is still tracked -- the pacing figure uses
+    # it -- just no longer wired to a glow.
+    assert "conductor.userData.glowMaterial" not in SCENE_SRC
     assert "conductor.userData.status === 'orchestrating'" in SCENE_SRC
 
 
@@ -191,3 +196,88 @@ def test_an_empty_seats_nameplate_is_hidden_not_just_unlabelled():
         "the zoom-driven LOD toggle must respect the same rule, or zooming "
         "in/out would resurrect an empty seat's nameplate"
     )
+
+
+# ── ground grows with the office ────────────────────────────────────────────
+
+def test_the_ground_grows_to_cover_the_worst_case_zoomed_out_view():
+    # Reported: zooming out far enough on a large office showed the ground
+    # plane's own edge -- a hard border against the transparent canvas. A
+    # fixed-size floor can never rule that out for an arbitrarily large
+    # delegation tree, so it's grown instead, keyed to the same radius
+    # frameOffice() already recomputes on every sync.
+    assert "function ensureGroundCovers(radius)" in SCENE_SRC
+    assert "ensureGroundCovers(framedRadius)" in SCENE_SRC
+    at = SCENE_SRC.index("function frameOffice(")
+    body = SCENE_SRC[at:at + 700]
+    assert "ensureGroundCovers(framedRadius)" in body
+
+
+def test_ground_growth_is_never_shrunk_and_replaces_the_old_one():
+    # Shrinking it back the moment a big run's pods are swept would flash
+    # the edge into view again; installGround() must fully retire the old
+    # geometry/material rather than leaking it.
+    at = SCENE_SRC.index("function ensureGroundCovers(radius) {")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  }", at)]
+    assert "needed <= groundHalfSize * 1.05" in body, "small growth must not trigger a rebuild"
+    at2 = SCENE_SRC.index("function installGround(halfSize) {")
+    body2 = SCENE_SRC[at2:SCENE_SRC.index("\n  }", at2)]
+    assert "groundGeometry.dispose()" in body2
+    assert "groundMaterial.dispose()" in body2
+    assert "grid.geometry.dispose()" in body2
+    assert "grid.material.dispose()" in body2
+
+
+# ── outlet-switch animation ──────────────────────────────────────────────────
+
+def test_switching_outlets_fades_the_canvas_instead_of_a_hard_cut():
+    OFFICE_INDEX_SRC = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
+    CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
+    at = OFFICE_INDEX_SRC.index("function setOutlet(")
+    body = OFFICE_INDEX_SRC[at:OFFICE_INDEX_SRC.index("\n}", at)]
+    assert "animateOutletSwitch()" in body
+    assert ".office-canvas.is-switching-outlet{opacity:0;}" in CSS
+    canvas_rule_start = CSS.index(".office-canvas{")
+    canvas_rule = CSS[canvas_rule_start:CSS.index("}", canvas_rule_start)]
+    assert "transition:opacity" in canvas_rule, (
+        "an instant opacity jump reads as a glitch, not a deliberate cross-fade"
+    )
+
+
+def test_the_fade_reveal_waits_for_the_real_sync_not_just_a_timer():
+    # A first attempt used only a fixed setTimeout, sized to "220ms ought to
+    # cover it". Measured: switching to Business can mean waiting on a
+    # /api/personalities fetch and rebuilding a department's worth of floor
+    # signs, which blew well past that guess under load -- the timer fired
+    # before the new floor was actually drawn, revealing a stale or
+    # half-built frame instead of masking the swap. animateOutletSwitch()
+    # itself no longer starts any timer; it only flags the fade as pending.
+    OFFICE_INDEX_SRC = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
+    animate_start = OFFICE_INDEX_SRC.index("function animateOutletSwitch(")
+    animate_body = OFFICE_INDEX_SRC[animate_start:OFFICE_INDEX_SRC.index("\n}", animate_start)]
+    assert "window.setTimeout" not in animate_body
+    assert "_outletFadePending = true" in animate_body
+    sync_start = OFFICE_INDEX_SRC.index("function scheduleSync(")
+    sync_body = OFFICE_INDEX_SRC[sync_start:OFFICE_INDEX_SRC.index("\n  });", sync_start)]
+    assert "_outletFadePending" in sync_body
+    assert "revealAfterOutletFade()" in sync_body
+
+
+def test_the_fade_reveal_also_waits_out_a_minimum_visible_duration():
+    # Measured separately: a switch cheap enough to reconcile within a
+    # couple of animation frames (most Projects<->Business switches) let
+    # scheduleSync remove the class before the browser ever painted the
+    # faded-out frame -- add-then-remove within the same frame or two is a
+    # known case of a CSS transition never being visibly observed at all,
+    # confirmed by sampling getComputedStyle('.office-canvas').opacity every
+    # 10ms through a real switch: it never left "1" until this guard was
+    # added. revealAfterOutletFade() now waits out whichever is longer,
+    # OUTLET_FADE_MIN_MS or the real sync time.
+    OFFICE_INDEX_SRC = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
+    assert "const OUTLET_FADE_MIN_MS = 220;" in OFFICE_INDEX_SRC
+    at = OFFICE_INDEX_SRC.index("function revealAfterOutletFade(")
+    body = OFFICE_INDEX_SRC[at:OFFICE_INDEX_SRC.index("\n}", at)]
+    assert "performance.now() - _outletFadeStartedAt" in body
+    assert "OUTLET_FADE_MIN_MS - elapsed" in body
+    assert "window.setTimeout(reveal, remaining)" in body
+    assert "classList.remove('is-switching-outlet')" in body

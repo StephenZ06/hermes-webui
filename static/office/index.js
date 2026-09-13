@@ -248,7 +248,46 @@ function scheduleSync() {
     renderSummary(state);
     renderDepartmentCards(view, state);
     renderTaskStatusPanel(state);
+    if (_outletFadePending) {
+      _outletFadePending = false;
+      revealAfterOutletFade();
+    }
   });
+}
+
+// The fade-out is at least this long before the reveal starts, whatever
+// scheduleSync's own timing is -- a switch cheap enough to reconcile within
+// a couple of frames (most Projects<->Business switches, measured) would
+// otherwise remove the class before the browser ever paints the faded-out
+// frame, so the whole cross-fade is invisible: add-then-remove within the
+// same frame or two is a well-known case of a CSS transition never being
+// observed at all, not just a short one. Matches the CSS transition's own
+// .22s duration.
+const OUTLET_FADE_MIN_MS = 220;
+
+/**
+ * Reveal the floor once BOTH scheduleSync has actually finished (so a slow
+ * switch -- Business waiting on a `/api/personalities` fetch and a
+ * department's worth of floor signs -- never reveals a stale or half-built
+ * frame) AND the fade-out has been visible for at least
+ * OUTLET_FADE_MIN_MS (so a fast switch doesn't add-then-remove the class
+ * within the same frame or two, which a browser can coalesce into no
+ * visible transition at all). Whichever of the two takes longer wins.
+ */
+function revealAfterOutletFade() {
+  const elapsed = performance.now() - _outletFadeStartedAt;
+  const remaining = OUTLET_FADE_MIN_MS - elapsed;
+  const reveal = () => {
+    // One more frame so the just-synced floor has actually painted before
+    // the fade reveals it -- removing the class in the same callback that
+    // just ran scheduleSync's work would sometimes reveal the previous
+    // frame's half-drawn state instead.
+    window.requestAnimationFrame(() => {
+      if (_canvas) _canvas.classList.remove('is-switching-outlet');
+    });
+  };
+  if (remaining > 0) window.setTimeout(reveal, remaining);
+  else reveal();
 }
 
 // A worker never runs again after one of these (see office/adapter.js's own
@@ -530,7 +569,39 @@ function setOutlet(mode) {
   writeOutlet(next);
   renderOutletSwitch();
   if (next === 'business') loadRoster();
+  animateOutletSwitch();
   scheduleSync();
+}
+
+// Set while a fade-out is waiting on the *next* scheduleSync to actually
+// finish reconciling the new outlet's floor -- see scheduleSync() below.
+let _outletFadePending = false;
+// When that fade-out started, so the reveal can also wait out a minimum
+// visible duration (see OUTLET_FADE_MIN_MS/revealAfterOutletFade below).
+let _outletFadeStartedAt = 0;
+
+/**
+ * A brief fade rather than the floor instantly swapping under the camera:
+ * desks/pods are added and removed the moment scheduleSync's next frame
+ * reconciles the new outlet's view, which otherwise reads as a hard cut --
+ * furniture and figures blinking away and others popping in mid-frame.
+ * Hiding the canvas for one beat while that reconciliation happens turns it
+ * into a deliberate transition instead.
+ *
+ * The reveal is tied to scheduleSync() actually completing, not a fixed
+ * timer: switching to Business can mean waiting on a `/api/personalities`
+ * fetch and rebuilding a department's worth of floor signs, which measured
+ * well past a first guess of "220ms ought to cover it" under load -- a
+ * timer that fires before the new floor is actually drawn reveals a stale
+ * or half-built frame instead of masking the swap.
+ */
+function animateOutletSwitch() {
+  if (!_canvas) return;
+  _canvas.classList.add('is-switching-outlet');
+  _outletFadeStartedAt = performance.now();
+  // setOutlet() calls scheduleSync() right after this; that's what actually
+  // clears the flag once the new floor is drawn (see scheduleSync() below).
+  _outletFadePending = true;
 }
 
 /**
@@ -1230,6 +1301,7 @@ function unmount() {
   _outletBtnEls = {};
   _deptCardsEl = null;
   _deptCardEls.clear();
+  _outletFadePending = false;
   _tasksEl = null;
   _tasksCollapseBtnEl = null;
   _tasksFiltersEl = null;

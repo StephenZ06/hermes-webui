@@ -159,18 +159,32 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         # Collapsing the Task Status column frees canvas width and remembers
         # its state; expanding again gives the width back.
         collapse_toggle = pg.evaluate("""async () => {
+          // The column's flex-basis animates over 180ms (see .office-tasks'
+          // own transition); poll for the canvas width to actually settle
+          // rather than guessing a fixed delay, which flaked under load
+          // elsewhere in this same test (measured: 600ms was not always
+          // enough once composer/MSAA rendering was also busy).
+          const settled = async (isDone, timeoutMs) => {
+            const start = performance.now();
+            let last = null;
+            while (performance.now() - start < timeoutMs) {
+              const w = canvas.getBoundingClientRect().width;
+              if (isDone(w) && w === last) return w;
+              last = w;
+              await new Promise(r => setTimeout(r, 30));
+            }
+            return canvas.getBoundingClientRect().width;
+          };
           const canvas = document.querySelector('.office-canvas');
           const before = canvas.getBoundingClientRect().width;
           const btn = document.getElementById('officeTasksCollapseBtn');
           btn.click();
-          await new Promise(r => setTimeout(r, 600));
+          const collapsedWidth = await settled(w => w > before, 2000);
           const collapsedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
-          const collapsedWidth = canvas.getBoundingClientRect().width;
           const stored = localStorage.getItem('hermes-webui-office-tasks-collapsed');
           btn.click();
-          await new Promise(r => setTimeout(r, 600));
+          const expandedWidth = await settled(w => w <= before, 2000);
           const expandedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
-          const expandedWidth = canvas.getBoundingClientRect().width;
           return { before, collapsedClass, collapsedWidth, stored, expandedClass, expandedWidth };
         }""")
 
