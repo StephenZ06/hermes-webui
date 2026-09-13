@@ -230,27 +230,58 @@
   // ── State ──────────────────────────────────
   var state;
 
+  function backfillAssignee(loaded) {
+    loaded.columns.forEach(function(col) {
+      col.notes.forEach(function(note) {
+        if (typeof note.assignee === 'undefined') note.assignee = '';
+      });
+    });
+    return loaded;
+  }
+
+  // Persisted server-side (api/sticky_board.py, STATE_DIR/sticky_board.json)
+  // so the board is shared across every browser/device open on this
+  // hermes-webui instance, not just the one that created it.
   function loadState() {
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        state = JSON.parse(raw);
-        // Migrate: add assignee field to notes that don't have it
-        state.columns.forEach(function(col) {
-          col.notes.forEach(function(note) {
-            if (typeof note.assignee === 'undefined') note.assignee = '';
-          });
-        });
-        saveState();
+    return fetch('/api/sticky_board').then(function(res) { return res.json(); }).then(function(data) {
+      if (data && data.board && Array.isArray(data.board.columns)) {
+        state = backfillAssignee(data.board);
         return;
       }
-    } catch(e) { /* ignore */ }
-    state = getDefaultData();
-    saveState();
+      // Nothing saved server-side yet -- migrate this browser's old
+      // localStorage copy (pre-server-storage versions of this page) so it
+      // isn't silently lost, otherwise seed the starter board.
+      var raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+      try {
+        state = raw ? backfillAssignee(JSON.parse(raw)) : getDefaultData();
+      } catch (e) {
+        state = getDefaultData();
+      }
+      saveState();
+    }).catch(function(e) {
+      // Server unreachable -- degrade to whatever this browser has cached
+      // rather than showing a blank board.
+      console.error('sticky-board: could not load from server, falling back to localStorage', e);
+      var raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e2) { /* ignore */ }
+      try {
+        state = raw ? backfillAssignee(JSON.parse(raw)) : getDefaultData();
+      } catch (e2) {
+        state = getDefaultData();
+      }
+    });
   }
 
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+    fetch('/api/sticky_board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ board: state })
+    }).catch(function(e) {
+      console.error('sticky-board: save to server failed', e);
+    });
   }
 
   function findCol(colId) {
@@ -627,8 +658,7 @@
   document.getElementById('btn-reset').addEventListener('click', resetBoard);
 
   // ── Init ───────────────────────────────────
-  loadState();
-  render();
+  loadState().then(render);
 
 })();
 </script>

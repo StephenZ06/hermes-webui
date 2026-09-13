@@ -14491,6 +14491,11 @@ def handle_get(handler, parsed) -> bool:
         finally:
             diag.finish()
 
+    if parsed.path == "/api/sticky_board":
+        from api.sticky_board import load_board
+
+        return j(handler, {"board": load_board()})
+
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
         # Default: filter to the active profile. ?all_profiles=1 returns the
@@ -18302,6 +18307,20 @@ def handle_post(handler, parsed) -> bool:
         save_projects(projects)
         merged_count = _reassign_project_sessions(source_ids, target_id)
         return j(handler, {"ok": True, "project": target, "merged_sessions": merged_count})
+
+    # ── Sticky board save (POST) ──
+    if parsed.path == "/api/sticky_board":
+        from api.sticky_board import save_board
+
+        try:
+            require(body, "board")
+        except ValueError as e:
+            return bad(handler, str(e))
+        board = body["board"]
+        if not isinstance(board, dict) or not isinstance(board.get("columns"), list):
+            return bad(handler, "board must be an object with a columns list")
+        save_board(board)
+        return j(handler, {"ok": True})
 
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":
