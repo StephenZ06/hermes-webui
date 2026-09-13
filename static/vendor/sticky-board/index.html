@@ -756,6 +756,15 @@ window.__STICKY_THEME_VARS__ = [
       insertSubItemAfter(colId, noteId, idx);
     } else if (e.key === 'Backspace' && t.value === '') {
       e.preventDefault();
+      // render() below clears #board and rebuilds it, which desyncs this
+      // input from the DOM while it still has focus -- the browser then
+      // fires a native blur/focusout on it as part of that removal, which
+      // bubbles into handleEdit's 'edit-sub' case and would otherwise
+      // rewrite `note.subItems[idx]` (still pointing at the slot we're
+      // about to delete) back in *after* the splice, undoing it. Blurring
+      // here first lets that handler run and settle against the still-
+      // intact array (a harmless same-value rewrite) before we touch it.
+      t.blur();
       deleteSubItemFocusPrev(colId, noteId, idx);
     } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       // Move focus between sub-items in the same note, preserving the
