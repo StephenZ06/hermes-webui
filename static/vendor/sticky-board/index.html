@@ -694,18 +694,45 @@
 
   // Enter on a sub-item: save what's typed so far (the 'change'/'focusout'
   // handlers above haven't fired yet -- the field isn't blurred), then
-  // insert a fresh sub-item right after it and focus that one.
+  // insert a fresh sub-item right after it and focus that one. Backspace on
+  // an already-empty sub-item deletes it and moves focus to the end of the
+  // previous one instead -- the standard checklist/outline behavior (Notion,
+  // Trello, ...). Backspace is deliberately NOT hijacked while there's still
+  // text to delete: only fires when the field is empty (checked via value,
+  // not selection -- an empty field trivially has its caret at position 0),
+  // so ordinary character-by-character editing is untouched.
+  function deleteSubItemFocusPrev(colId, noteId, idx) {
+    var note = findNote(colId, noteId);
+    if (!note) return;
+    note.subItems.splice(idx, 1);
+    saveState(); render();
+    if (idx > 0) {
+      var noteEl = document.querySelector('.note[data-note-id="' + noteId + '"]');
+      var prev = noteEl && noteEl.querySelectorAll('.sub-item-text')[idx - 1];
+      if (prev) {
+        prev.focus();
+        var end = prev.value.length;
+        prev.setSelectionRange(end, end);
+      }
+    }
+  }
+
   document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Enter') return;
     var t = e.target;
     if (!t.classList || !t.classList.contains('sub-item-text')) return;
-    e.preventDefault();
     var colId = t.getAttribute('data-col-id');
     var noteId = t.getAttribute('data-note-id');
     var idx = parseInt(t.getAttribute('data-sub-idx'), 10);
-    var note = findNote(colId, noteId);
-    if (note) note.subItems[idx] = t.value.trim();
-    insertSubItemAfter(colId, noteId, idx);
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var note = findNote(colId, noteId);
+      if (note) note.subItems[idx] = t.value.trim();
+      insertSubItemAfter(colId, noteId, idx);
+    } else if (e.key === 'Backspace' && t.value === '') {
+      e.preventDefault();
+      deleteSubItemFocusPrev(colId, noteId, idx);
+    }
   });
 
   // ── Drag & Drop ────────────────────────────
