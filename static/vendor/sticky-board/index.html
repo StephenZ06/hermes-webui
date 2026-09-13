@@ -19,10 +19,10 @@
     --text:#333;--muted:#777;--accent:#5c6bc0;--accent-hover:#3f51b5;
     --accent-bg:rgba(92,107,194,.05);--primary-fg:#fff;
     --shadow:0 2px 8px rgba(0,0,0,.12);
-    --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+    --font-ui:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,system-ui,sans-serif;
   }
   html{font-size:15px}
-  body{font-family:var(--font);background:var(--bg);min-height:100vh;color:var(--text)}
+  body{font-family:var(--font-ui);background:var(--bg);min-height:100vh;color:var(--text)}
 
   /* Header */
   header{
@@ -35,7 +35,7 @@
   .header-actions{display:flex;gap:.5rem}
   .btn{
     border:none;padding:.45rem .9rem;border-radius:6px;cursor:pointer;
-    font-size:.85rem;font-weight:600;transition:all .15s;font-family:var(--font);
+    font-size:.85rem;font-weight:600;transition:all .15s;font-family:var(--font-ui);
   }
   .btn-primary{background:var(--accent);color:var(--primary-fg)}
   .btn-primary:hover{background:var(--accent-hover)}
@@ -74,7 +74,7 @@
   .add-note-btn{
     width:100%;padding:.5rem;border:2px dashed var(--border);
     border-radius:8px;background:transparent;cursor:pointer;
-    font-size:.8rem;color:var(--muted);transition:all .15s;font-family:var(--font);
+    font-size:.8rem;color:var(--muted);transition:all .15s;font-family:var(--font-ui);
   }
   .add-note-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
 
@@ -91,7 +91,7 @@
     font-size:.85rem;font-weight:600;flex:1;color:#000;
     border:none;background:transparent;outline:none;
     cursor:text;padding:2px 4px;border-radius:3px;resize:none;
-    font-family:var(--font);line-height:1.3;
+    font-family:var(--font-ui);line-height:1.3;
   }
   .note-title:focus{background:rgba(255,255,255,.5)}
   .note-actions{display:flex;gap:.15rem;opacity:0;transition:opacity .15s;flex-shrink:0}
@@ -110,13 +110,41 @@
      of the chrome. */
   .note .icon-btn{color:#000;}
 
-  /* Color Dots */
-  .color-picker{display:flex;gap:3px;margin-top:4px}
+  /* Color trigger button (note-actions): shows the note's current color,
+     opens the color-picker modal below to change it. */
+  .color-trigger-btn{border-radius:50%;border:2px solid rgba(0,0,0,.2);}
+  .color-trigger-btn:hover{border-color:rgba(0,0,0,.4)}
+
+  /* Color Dots (used inside the modal) */
   .color-dot{
     width:14px;height:14px;border-radius:50%;border:2px solid transparent;
     cursor:pointer;transition:border-color .15s;
   }
   .color-dot:hover,.color-dot.active{border-color:rgba(0,0,0,.4)}
+  .color-dot.color-dot-lg{width:32px;height:32px;border-width:3px;}
+
+  /* Color picker modal */
+  .color-picker-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+    align-items:center;justify-content:center;z-index:1000;
+  }
+  .color-picker-overlay.open{display:flex;}
+  .color-picker-panel{
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:1rem 1.2rem;box-shadow:var(--shadow);min-width:220px;
+  }
+  .color-picker-header{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:.8rem;gap:1rem;
+  }
+  .color-picker-title{font-size:.9rem;font-weight:700;color:var(--text)}
+  .color-picker-close{
+    width:22px;height:22px;border:none;background:var(--border2);color:var(--text);
+    border-radius:4px;cursor:pointer;display:flex;align-items:center;
+    justify-content:center;font-size:.8rem;
+  }
+  .color-picker-close:hover{background:var(--border)}
+  .color-picker-swatches{display:flex;gap:.7rem;}
 
   /* Sub Items */
   .sub-items{margin-top:.4rem;padding-left:.2rem}
@@ -127,7 +155,7 @@
   .sub-item-dot{width:4px;height:4px;border-radius:50%;background:#999;flex-shrink:0}
   .sub-item-text{
     border:none;background:transparent;outline:none;flex:1;
-    font-size:.75rem;font-family:var(--font);padding:1px 3px;border-radius:3px;color:#000;
+    font-size:.75rem;font-family:var(--font-ui);padding:1px 3px;border-radius:3px;color:#000;
   }
   .sub-item-text:focus{background:rgba(255,255,255,.5)}
   .sub-item .icon-btn{width:16px;height:16px;font-size:.6rem;opacity:0}
@@ -135,29 +163,9 @@
   .add-sub-btn{
     border:none;background:transparent;cursor:pointer;
     font-size:.7rem;color:#000;padding:2px 4px;margin-top:2px;
-    font-family:var(--font);transition:color .15s;
+    font-family:var(--font-ui);transition:color .15s;
   }
   .add-sub-btn:hover{color:var(--accent)}
-
-  /* Assignee */
-  .note-assignee{
-    display:flex;align-items:center;gap:5px;margin-top:5px;
-    cursor:pointer;padding:2px 0;
-  }
-  .assignee-icon{
-    width:20px;height:20px;border-radius:50%;display:flex;align-items:center;
-    justify-content:center;flex-shrink:0;
-  }
-  .assignee-icon svg{width:12px;height:12px}
-  .assignee-icon.empty{background:rgba(0,0,0,.08);color:#999}
-  .assignee-icon.filled{background:var(--accent);color:var(--primary-fg);font-size:.6rem;font-weight:700;letter-spacing:-.5px}
-  .assignee-name{
-    font-size:.7rem;color:#000;border:none;background:transparent;
-    outline:none;font-family:var(--font);padding:1px 3px;border-radius:3px;
-    width:100%;
-  }
-  .assignee-name:focus{background:rgba(255,255,255,.5)}
-  .assignee-name::placeholder{color:#aaa;font-style:italic}
 
   /* Add Column */
   .add-column{
@@ -168,7 +176,7 @@
     padding:.7rem 1.2rem;border:2px dashed var(--border);
     border-radius:12px;background:transparent;cursor:pointer;
     font-size:.85rem;color:var(--muted);font-weight:600;transition:all .15s;
-    font-family:var(--font);
+    font-family:var(--font-ui);
   }
   .add-col-btn:hover{border-color:var(--accent);color:var(--accent)}
 
@@ -204,7 +212,7 @@
   // would drift out of sync the moment a skin's colors change there).
   var THEME_VARS = [
     '--bg', '--surface', '--surface-subtle', '--border', '--border2',
-    '--text', '--muted', '--accent', '--accent-hover', '--accent-bg'
+    '--text', '--muted', '--accent', '--accent-hover', '--accent-bg', '--font-ui'
   ];
 
   function syncThemeFromParent() {
@@ -272,14 +280,14 @@
   function getDefaultData() {
     return { columns: [
       { id:uid(), title:'To Do', color:'#fff59d', notes:[
-        {id:uid(),title:'Drag notes between columns',color:'#fff59d',subItems:[],assignee:''},
-        {id:uid(),title:'Click any text to edit it',color:'#fff59d',subItems:[],assignee:''},
+        {id:uid(),title:'Drag notes between columns',color:'#fff59d',subItems:[]},
+        {id:uid(),title:'Click any text to edit it',color:'#fff59d',subItems:[]},
       ]},
       { id:uid(), title:'In Progress', color:'#90caf9', notes:[
-        {id:uid(),title:'Use the color dots to categorize',color:'#90caf9',subItems:['Sub-items break a note down'],assignee:''},
+        {id:uid(),title:'Use the color dots to categorize',color:'#90caf9',subItems:['Sub-items break a note down']},
       ]},
       { id:uid(), title:'Done', color:'#a8e6a3', notes:[
-        {id:uid(),title:'Everything auto-saves',color:'#a8e6a3',subItems:[],assignee:''},
+        {id:uid(),title:'Everything auto-saves',color:'#a8e6a3',subItems:[]},
       ]},
     ]};
   }
@@ -287,22 +295,13 @@
   // ── State ──────────────────────────────────
   var state;
 
-  function backfillAssignee(loaded) {
-    loaded.columns.forEach(function(col) {
-      col.notes.forEach(function(note) {
-        if (typeof note.assignee === 'undefined') note.assignee = '';
-      });
-    });
-    return loaded;
-  }
-
   // Persisted server-side (api/sticky_board.py, STATE_DIR/sticky_board.json)
   // so the board is shared across every browser/device open on this
   // hermes-webui instance, not just the one that created it.
   function loadState() {
     return fetch('/api/sticky_board').then(function(res) { return res.json(); }).then(function(data) {
       if (data && data.board && Array.isArray(data.board.columns)) {
-        state = backfillAssignee(data.board);
+        state = data.board;
         return;
       }
       // Nothing saved server-side yet -- migrate this browser's old
@@ -311,7 +310,7 @@
       var raw = null;
       try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
       try {
-        state = raw ? backfillAssignee(JSON.parse(raw)) : getDefaultData();
+        state = raw ? JSON.parse(raw) : getDefaultData();
       } catch (e) {
         state = getDefaultData();
       }
@@ -323,7 +322,7 @@
       var raw = null;
       try { raw = localStorage.getItem(STORAGE_KEY); } catch (e2) { /* ignore */ }
       try {
-        state = raw ? backfillAssignee(JSON.parse(raw)) : getDefaultData();
+        state = raw ? JSON.parse(raw) : getDefaultData();
       } catch (e2) {
         state = getDefaultData();
       }
@@ -367,9 +366,9 @@
   }
 
   // ── Build DOM safely ───────────────────────
-  function buildColorDot(color, noteColor, colId, noteId) {
+  function buildColorDot(color, noteColor, colId, noteId, extraClass) {
     var dot = el('span', {
-      className: 'color-dot' + (color === noteColor ? ' active' : ''),
+      className: 'color-dot' + (extraClass ? ' ' + extraClass : '') + (color === noteColor ? ' active' : ''),
       style: 'background:' + color,
       'data-action': 'set-color',
       'data-col-id': colId,
@@ -409,6 +408,17 @@
       'data-col-id': colId,
       'data-note-id': note.id
     });
+    // Color trigger -- shows the note's current color, opens the color
+    // picker modal to change it (moved off the note's front on request;
+    // it used to be four dots shown inline on every note).
+    var colorBtn = el('button', {
+      className: 'icon-btn color-trigger-btn',
+      style: 'background:' + note.color,
+      'data-action': 'open-color-picker',
+      'data-col-id': colId,
+      'data-note-id': note.id,
+      title: 'Change color'
+    });
     // Delete button
     var delBtn = el('button', {
       className: 'icon-btn',
@@ -418,44 +428,8 @@
       title: 'Delete',
       textContent: '×'
     });
-    var actionsDiv = el('div', { className: 'note-actions' }, [delBtn]);
+    var actionsDiv = el('div', { className: 'note-actions' }, [colorBtn, delBtn]);
     var headerDiv = el('div', { className: 'note-header' }, [titleInput, actionsDiv]);
-
-    // Color picker
-    var colorDots = COLORS.map(function(c) {
-      return buildColorDot(c, note.color, colId, note.id);
-    });
-    var colorPicker = el('div', { className: 'color-picker' }, colorDots);
-
-    // Assignee
-    var assigneeIcon;
-    var assigneeName = (note.assignee || '').trim();
-    if (assigneeName) {
-      var initials = assigneeName.split(/\s+/).map(function(w) { return w[0]; }).join('').toUpperCase().slice(0,2);
-      assigneeIcon = el('span', { className: 'assignee-icon filled', textContent: initials });
-    } else {
-      assigneeIcon = el('span', { className: 'assignee-icon empty' });
-      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('fill', 'none');
-      svg.setAttribute('stroke', 'currentColor');
-      svg.setAttribute('stroke-width', '2');
-      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '12'); circle.setAttribute('cy', '8'); circle.setAttribute('r', '4');
-      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M4 21v-1a6 6 0 0 1 12 0v1');
-      svg.appendChild(circle); svg.appendChild(path);
-      assigneeIcon.appendChild(svg);
-    }
-    var assigneeInput = el('input', {
-      className: 'assignee-name',
-      value: note.assignee || '',
-      'data-action': 'edit-assignee',
-      'data-col-id': colId,
-      'data-note-id': note.id,
-      placeholder: 'Assign...'
-    });
-    var assigneeRow = el('div', { className: 'note-assignee' }, [assigneeIcon, assigneeInput]);
 
     // Sub items
     var subItemEls = note.subItems.map(function(s, i) {
@@ -478,7 +452,7 @@
       draggable: true,
       'data-col-id': colId,
       'data-note-id': note.id
-    }, [headerDiv, colorPicker, assigneeRow, subsDiv, addSubBtn]);
+    }, [headerDiv, subsDiv, addSubBtn]);
 
     return noteDiv;
   }
@@ -564,7 +538,7 @@
   function addNote(colId) {
     var col = findCol(colId);
     if (!col) return;
-    col.notes.push({ id:uid(), title:'New Note', color:col.color || '#fff59d', subItems:[], assignee:'' });
+    col.notes.push({ id:uid(), title:'New Note', color:col.color || '#fff59d', subItems:[] });
     saveState(); render();
     var notes = document.querySelectorAll('.note[data-col-id="' + colId + '"]');
     var last = notes[notes.length - 1];
@@ -591,6 +565,21 @@
     }
   }
 
+  // Enter on a sub-item inserts a new empty one right below it and focuses
+  // it, like a checklist -- see the keydown listener below.
+  function insertSubItemAfter(colId, noteId, idx) {
+    var note = findNote(colId, noteId);
+    if (!note) return;
+    note.subItems.splice(idx + 1, 0, '');
+    saveState(); render();
+    var noteEl = document.querySelector('.note[data-note-id="' + noteId + '"]');
+    if (noteEl) {
+      var inputs = noteEl.querySelectorAll('.sub-item-text');
+      var next = inputs[idx + 1];
+      if (next) next.focus();
+    }
+  }
+
   function deleteSubItem(colId, noteId, idx) {
     var note = findNote(colId, noteId);
     if (!note) return;
@@ -604,6 +593,49 @@
     state = getDefaultData();
     saveState(); render();
   }
+
+  // ── Color picker modal ─────────────────────
+  // One overlay, built once and appended to <body> (a sibling of #board,
+  // not inside it, so render()'s `board.textContent = ''` never touches
+  // it) -- repopulated with the target note's swatches each time it opens.
+  var colorPickerOverlay = null;
+  var colorPickerSwatches = null;
+
+  function initColorPickerModal() {
+    var closeBtn = el('button', {
+      className: 'color-picker-close',
+      'data-action': 'close-color-picker',
+      'aria-label': 'Close',
+      textContent: '×'
+    });
+    var titleEl = el('div', { className: 'color-picker-title', textContent: 'Choose a color' });
+    var headerEl = el('div', { className: 'color-picker-header' }, [titleEl, closeBtn]);
+    colorPickerSwatches = el('div', { className: 'color-picker-swatches' });
+    var panel = el('div', { className: 'color-picker-panel' }, [headerEl, colorPickerSwatches]);
+    colorPickerOverlay = el('div', { className: 'color-picker-overlay' }, [panel]);
+    colorPickerOverlay.addEventListener('click', function(e) {
+      if (e.target === colorPickerOverlay) closeColorPicker();
+    });
+    document.body.appendChild(colorPickerOverlay);
+  }
+
+  function openColorPicker(colId, noteId) {
+    var note = findNote(colId, noteId);
+    if (!note) return;
+    colorPickerSwatches.textContent = '';
+    COLORS.forEach(function(c) {
+      colorPickerSwatches.appendChild(buildColorDot(c, note.color, colId, noteId, 'color-dot-lg'));
+    });
+    colorPickerOverlay.classList.add('open');
+  }
+
+  function closeColorPicker() {
+    if (colorPickerOverlay) colorPickerOverlay.classList.remove('open');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeColorPicker();
+  });
 
   // ── Event Delegation ───────────────────────
   document.addEventListener('click', function(e) {
@@ -621,9 +653,12 @@
       case 'delete-col': deleteColumn(colId); break;
       case 'add-sub': addSubItem(colId, noteId); break;
       case 'delete-sub': deleteSubItem(colId, noteId, parseInt(subIdx)); break;
+      case 'open-color-picker': openColorPicker(colId, noteId); break;
+      case 'close-color-picker': closeColorPicker(); break;
       case 'set-color':
         var n = findNote(colId, noteId);
         if (n) { n.color = color; saveState(); render(); }
+        closeColorPicker();
         break;
     }
   });
@@ -651,19 +686,27 @@
         var note2 = findNote(colId, noteId);
         if (note2) { note2.subItems[parseInt(subIdx)] = val; saveState(); }
         break;
-      case 'edit-assignee':
-        var note3 = findNote(colId, noteId);
-        if (note3) {
-          note3.assignee = t.value.trim();
-          saveState();
-          if (e.type === 'focusout') render();
-        }
-        break;
     }
   }
 
   document.addEventListener('change', handleEdit);
   document.addEventListener('focusout', handleEdit);
+
+  // Enter on a sub-item: save what's typed so far (the 'change'/'focusout'
+  // handlers above haven't fired yet -- the field isn't blurred), then
+  // insert a fresh sub-item right after it and focus that one.
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    var t = e.target;
+    if (!t.classList || !t.classList.contains('sub-item-text')) return;
+    e.preventDefault();
+    var colId = t.getAttribute('data-col-id');
+    var noteId = t.getAttribute('data-note-id');
+    var idx = parseInt(t.getAttribute('data-sub-idx'), 10);
+    var note = findNote(colId, noteId);
+    if (note) note.subItems[idx] = t.value.trim();
+    insertSubItemAfter(colId, noteId, idx);
+  });
 
   // ── Drag & Drop ────────────────────────────
   var dragData = null;
@@ -733,6 +776,7 @@
   // ── Init ───────────────────────────────────
   syncThemeFromParent();
   watchParentTheme();
+  initColorPickerModal();
   loadState().then(render);
 
 })();
