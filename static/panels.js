@@ -518,7 +518,6 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'memory') await loadMemory();
   if (nextPanel === 'knowledge') await loadKnowledgeItems();
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
-  if (nextPanel === 'notes') await loadStickyNotes();
   if (nextPanel === 'profiles') await loadProfilesPanel();
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') await loadInsights();

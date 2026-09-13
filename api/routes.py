@@ -14491,11 +14491,6 @@ def handle_get(handler, parsed) -> bool:
         finally:
             diag.finish()
 
-    if parsed.path == "/api/sticky_notes":
-        from api.sticky_notes import load_notes
-
-        return j(handler, {"notes": load_notes()})
-
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
         # Default: filter to the active profile. ?all_profiles=1 returns the
@@ -18307,47 +18302,6 @@ def handle_post(handler, parsed) -> bool:
         save_projects(projects)
         merged_count = _reassign_project_sessions(source_ids, target_id)
         return j(handler, {"ok": True, "project": target, "merged_sessions": merged_count})
-
-    # ── Sticky notes CRUD (POST) ──
-    if parsed.path == "/api/sticky_notes/create":
-        from api.sticky_notes import create_note
-
-        try:
-            require(body, "text")
-        except ValueError as e:
-            return bad(handler, str(e))
-        text = str(body["text"])[:2000]
-        color = body.get("color")
-        project_id = body.get("project_id") or None
-        note = create_note(text=text, project_id=project_id, color=color)
-        return j(handler, {"ok": True, "note": note})
-
-    if parsed.path == "/api/sticky_notes/update":
-        from api.sticky_notes import update_note
-
-        try:
-            require(body, "id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        text = body.get("text")
-        if text is not None:
-            text = str(text)[:2000]
-        project_id = body["project_id"] if "project_id" in body else ...
-        note = update_note(str(body["id"]), text=text, color=body.get("color"), project_id=project_id)
-        if note is None:
-            return bad(handler, "Note not found", 404)
-        return j(handler, {"ok": True, "note": note})
-
-    if parsed.path == "/api/sticky_notes/delete":
-        from api.sticky_notes import delete_note
-
-        try:
-            require(body, "id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        if not delete_note(str(body["id"])):
-            return bad(handler, "Note not found", 404)
-        return j(handler, {"ok": True})
 
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sticky Board</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --yellow:#fff59d;--green:#a8e6a3;--pink:#f8bbd0;--blue:#90caf9;
+    --bg:#f5f0e8;--col-bg:#e8e3da;--shadow:0 2px 8px rgba(0,0,0,.12);
+    --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  html{font-size:15px}
+  body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#333}
+
+  /* Header */
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:1rem 1.5rem;background:#fff;box-shadow:var(--shadow);
+    position:sticky;top:0;z-index:100;
+  }
+  header h1{font-size:1.4rem;font-weight:700;letter-spacing:-.5px}
+  header h1 span{color:#e57373}
+  .header-actions{display:flex;gap:.5rem}
+  .btn{
+    border:none;padding:.45rem .9rem;border-radius:6px;cursor:pointer;
+    font-size:.85rem;font-weight:600;transition:all .15s;font-family:var(--font);
+  }
+  .btn-primary{background:#5c6bc0;color:#fff}
+  .btn-primary:hover{background:#3f51b5}
+  .btn-reset{background:transparent;color:#999;border:1px solid #ccc}
+  .btn-reset:hover{background:#fce4ec;color:#e57373;border-color:#e57373}
+
+  /* Board */
+  #board{
+    display:flex;gap:1.2rem;padding:1.2rem;
+    overflow-x:auto;align-items:flex-start;min-height:calc(100vh - 60px);
+  }
+
+  /* Column */
+  .column{
+    min-width:260px;max-width:300px;flex-shrink:0;
+    background:var(--col-bg);border-radius:12px;
+    padding:.8rem;box-shadow:var(--shadow);
+  }
+  .column.drag-over{outline:2px dashed #5c6bc0;outline-offset:2px}
+  .col-header{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:.6rem;padding:0 .2rem;
+  }
+  .col-title{
+    font-size:1rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    border:none;background:transparent;outline:none;flex:1;
+    padding:4px 6px;border-radius:4px;cursor:text;
+  }
+  .col-title:focus{background:rgba(255,255,255,.6)}
+  .col-actions{display:flex;gap:.3rem;opacity:0;transition:opacity .15s}
+  .col-header:hover .col-actions{opacity:1}
+  .col-count{
+    font-size:.7rem;background:rgba(0,0,0,.1);border-radius:10px;
+    padding:1px 7px;margin-left:4px;font-weight:600;
+  }
+  .add-note-btn{
+    width:100%;padding:.5rem;border:2px dashed rgba(0,0,0,.15);
+    border-radius:8px;background:transparent;cursor:pointer;
+    font-size:.8rem;color:#777;transition:all .15s;font-family:var(--font);
+  }
+  .add-note-btn:hover{border-color:#5c6bc0;color:#5c6bc0;background:rgba(92,107,194,.05)}
+
+  /* Note */
+  .note{
+    border-radius:6px;padding:.6rem .7rem;margin-bottom:.5rem;
+    box-shadow:0 1px 4px rgba(0,0,0,.1);cursor:grab;
+    transition:transform .15s,box-shadow .15s;position:relative;
+  }
+  .note:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.15)}
+  .note.dragging{opacity:.4;transform:rotate(2deg)}
+  .note-header{display:flex;align-items:flex-start;justify-content:space-between;gap:.3rem}
+  .note-title{
+    font-size:.85rem;font-weight:600;flex:1;
+    border:none;background:transparent;outline:none;
+    cursor:text;padding:2px 4px;border-radius:3px;resize:none;
+    font-family:var(--font);line-height:1.3;
+  }
+  .note-title:focus{background:rgba(255,255,255,.5)}
+  .note-actions{display:flex;gap:.15rem;opacity:0;transition:opacity .15s;flex-shrink:0}
+  .note:hover .note-actions{opacity:1}
+  .icon-btn{
+    width:22px;height:22px;border:none;background:rgba(0,0,0,.08);
+    border-radius:4px;cursor:pointer;display:flex;align-items:center;
+    justify-content:center;font-size:.7rem;transition:background .15s;
+    color:#555;
+  }
+  .icon-btn:hover{background:rgba(0,0,0,.18)}
+
+  /* Color Dots */
+  .color-picker{display:flex;gap:3px;margin-top:4px}
+  .color-dot{
+    width:14px;height:14px;border-radius:50%;border:2px solid transparent;
+    cursor:pointer;transition:border-color .15s;
+  }
+  .color-dot:hover,.color-dot.active{border-color:rgba(0,0,0,.4)}
+
+  /* Sub Items */
+  .sub-items{margin-top:.4rem;padding-left:.2rem}
+  .sub-item{
+    display:flex;align-items:center;gap:.3rem;
+    font-size:.75rem;padding:2px 0;color:#555;
+  }
+  .sub-item-dot{width:4px;height:4px;border-radius:50%;background:#999;flex-shrink:0}
+  .sub-item-text{
+    border:none;background:transparent;outline:none;flex:1;
+    font-size:.75rem;font-family:var(--font);padding:1px 3px;border-radius:3px;color:#555;
+  }
+  .sub-item-text:focus{background:rgba(255,255,255,.5)}
+  .sub-item .icon-btn{width:16px;height:16px;font-size:.6rem;opacity:0}
+  .sub-item:hover .icon-btn{opacity:1}
+  .add-sub-btn{
+    border:none;background:transparent;cursor:pointer;
+    font-size:.7rem;color:#999;padding:2px 4px;margin-top:2px;
+    font-family:var(--font);transition:color .15s;
+  }
+  .add-sub-btn:hover{color:#5c6bc0}
+
+  /* Assignee */
+  .note-assignee{
+    display:flex;align-items:center;gap:5px;margin-top:5px;
+    cursor:pointer;padding:2px 0;
+  }
+  .assignee-icon{
+    width:20px;height:20px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;flex-shrink:0;
+  }
+  .assignee-icon svg{width:12px;height:12px}
+  .assignee-icon.empty{background:rgba(0,0,0,.08);color:#999}
+  .assignee-icon.filled{background:#5c6bc0;color:#fff;font-size:.6rem;font-weight:700;letter-spacing:-.5px}
+  .assignee-name{
+    font-size:.7rem;color:#777;border:none;background:transparent;
+    outline:none;font-family:var(--font);padding:1px 3px;border-radius:3px;
+    width:100%;
+  }
+  .assignee-name:focus{background:rgba(255,255,255,.5)}
+  .assignee-name::placeholder{color:#aaa;font-style:italic}
+
+  /* Add Column */
+  .add-column{
+    min-width:260px;flex-shrink:0;display:flex;align-items:flex-start;
+    justify-content:center;padding-top:2rem;
+  }
+  .add-col-btn{
+    padding:.7rem 1.2rem;border:2px dashed rgba(0,0,0,.15);
+    border-radius:12px;background:transparent;cursor:pointer;
+    font-size:.85rem;color:#777;font-weight:600;transition:all .15s;
+    font-family:var(--font);
+  }
+  .add-col-btn:hover{border-color:#5c6bc0;color:#5c6bc0}
+
+  @media(max-width:600px){
+    #board{padding:.8rem;gap:.8rem}
+    .column{min-width:220px}
+    header{padding:.8rem 1rem}
+    header h1{font-size:1.1rem}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sticky <span>Board</span></h1>
+  <div class="header-actions">
+    <button class="btn btn-primary" id="btn-add-col">+ New Column</button>
+    <button class="btn btn-reset" id="btn-reset">Reset</button>
+  </div>
+</header>
+
+<div id="board"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── Helpers ────────────────────────────────
+  var COLORS = ['#fff59d','#a8e6a3','#f8bbd0','#90caf9'];
+  var STORAGE_KEY = 'sticky-board-data';
+
+  function uid() {
+    return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+  }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function(k) {
+        if (k === 'className') node.className = attrs[k];
+        else if (k === 'textContent') node.textContent = attrs[k];
+        else if (k.startsWith('data-')) node.setAttribute(k, attrs[k]);
+        else if (k === 'style') node.style.cssText = attrs[k];
+        else if (k === 'draggable') node.draggable = attrs[k];
+        else if (k === 'value') node.value = attrs[k];
+        else if (k === 'title') node.title = attrs[k];
+        else if (k === 'type') node.type = attrs[k];
+        else node.setAttribute(k, attrs[k]);
+      });
+    }
+    if (children) {
+      children.forEach(function(c) {
+        if (c) node.appendChild(c);
+      });
+    }
+    return node;
+  }
+
+  // ── Default Data ───────────────────────────
+  function getDefaultData() {
+    return { columns: [
+      { id:uid(), title:'To Do', color:'#fff59d', notes:[
+        {id:uid(),title:'Drag notes between columns',color:'#fff59d',subItems:[],assignee:''},
+        {id:uid(),title:'Click any text to edit it',color:'#fff59d',subItems:[],assignee:''},
+      ]},
+      { id:uid(), title:'In Progress', color:'#90caf9', notes:[
+        {id:uid(),title:'Use the color dots to categorize',color:'#90caf9',subItems:['Sub-items break a note down'],assignee:''},
+      ]},
+      { id:uid(), title:'Done', color:'#a8e6a3', notes:[
+        {id:uid(),title:'Everything auto-saves',color:'#a8e6a3',subItems:[],assignee:''},
+      ]},
+    ]};
+  }
+
+  // ── State ──────────────────────────────────
+  var state;
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        state = JSON.parse(raw);
+        // Migrate: add assignee field to notes that don't have it
+        state.columns.forEach(function(col) {
+          col.notes.forEach(function(note) {
+            if (typeof note.assignee === 'undefined') note.assignee = '';
+          });
+        });
+        saveState();
+        return;
+      }
+    } catch(e) { /* ignore */ }
+    state = getDefaultData();
+    saveState();
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function findCol(colId) {
+    return state.columns.find(function(c) { return c.id === colId; });
+  }
+
+  function findNote(colId, noteId) {
+    var col = findCol(colId);
+    return col ? col.notes.find(function(n) { return n.id === noteId; }) : null;
+  }
+
+  // ── Build DOM safely ───────────────────────
+  function buildColorDot(color, noteColor, colId, noteId) {
+    var dot = el('span', {
+      className: 'color-dot' + (color === noteColor ? ' active' : ''),
+      style: 'background:' + color,
+      'data-action': 'set-color',
+      'data-col-id': colId,
+      'data-note-id': noteId,
+      'data-color': color
+    });
+    return dot;
+  }
+
+  function buildSubItem(text, colId, noteId, idx) {
+    var dot = el('span', { className: 'sub-item-dot' });
+    var input = el('input', {
+      className: 'sub-item-text',
+      value: text,
+      'data-action': 'edit-sub',
+      'data-col-id': colId,
+      'data-note-id': noteId,
+      'data-sub-idx': String(idx)
+    });
+    var delBtn = el('button', {
+      className: 'icon-btn',
+      'data-action': 'delete-sub',
+      'data-col-id': colId,
+      'data-note-id': noteId,
+      'data-sub-idx': String(idx),
+      textContent: '×'
+    });
+    return el('div', { className: 'sub-item' }, [dot, input, delBtn]);
+  }
+
+  function buildNote(colId, note) {
+    // Title input
+    var titleInput = el('input', {
+      className: 'note-title',
+      value: note.title,
+      'data-action': 'edit-note-title',
+      'data-col-id': colId,
+      'data-note-id': note.id
+    });
+    // Delete button
+    var delBtn = el('button', {
+      className: 'icon-btn',
+      'data-action': 'delete-note',
+      'data-col-id': colId,
+      'data-note-id': note.id,
+      title: 'Delete',
+      textContent: '×'
+    });
+    var actionsDiv = el('div', { className: 'note-actions' }, [delBtn]);
+    var headerDiv = el('div', { className: 'note-header' }, [titleInput, actionsDiv]);
+
+    // Color picker
+    var colorDots = COLORS.map(function(c) {
+      return buildColorDot(c, note.color, colId, note.id);
+    });
+    var colorPicker = el('div', { className: 'color-picker' }, colorDots);
+
+    // Assignee
+    var assigneeIcon;
+    var assigneeName = (note.assignee || '').trim();
+    if (assigneeName) {
+      var initials = assigneeName.split(/\s+/).map(function(w) { return w[0]; }).join('').toUpperCase().slice(0,2);
+      assigneeIcon = el('span', { className: 'assignee-icon filled', textContent: initials });
+    } else {
+      assigneeIcon = el('span', { className: 'assignee-icon empty' });
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2');
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '12'); circle.setAttribute('cy', '8'); circle.setAttribute('r', '4');
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M4 21v-1a6 6 0 0 1 12 0v1');
+      svg.appendChild(circle); svg.appendChild(path);
+      assigneeIcon.appendChild(svg);
+    }
+    var assigneeInput = el('input', {
+      className: 'assignee-name',
+      value: note.assignee || '',
+      'data-action': 'edit-assignee',
+      'data-col-id': colId,
+      'data-note-id': note.id,
+      placeholder: 'Assign...'
+    });
+    var assigneeRow = el('div', { className: 'note-assignee' }, [assigneeIcon, assigneeInput]);
+
+    // Sub items
+    var subItemEls = note.subItems.map(function(s, i) {
+      return buildSubItem(s, colId, note.id, i);
+    });
+    var subsDiv = el('div', { className: 'sub-items' }, subItemEls);
+
+    // Add sub button
+    var addSubBtn = el('button', {
+      className: 'add-sub-btn',
+      'data-action': 'add-sub',
+      'data-col-id': colId,
+      'data-note-id': note.id,
+      textContent: '+ Sub-item'
+    });
+
+    var noteDiv = el('div', {
+      className: 'note',
+      style: 'background:' + note.color,
+      draggable: true,
+      'data-col-id': colId,
+      'data-note-id': note.id
+    }, [headerDiv, colorPicker, assigneeRow, subsDiv, addSubBtn]);
+
+    return noteDiv;
+  }
+
+  function buildColumn(col) {
+    // Header
+    var titleInput = el('input', {
+      className: 'col-title',
+      value: col.title,
+      'data-action': 'edit-col-title',
+      'data-col-id': col.id
+    });
+    var countSpan = el('span', { className: 'col-count', textContent: String(col.notes.length) });
+    var delColBtn = el('button', {
+      className: 'icon-btn',
+      'data-action': 'delete-col',
+      'data-col-id': col.id,
+      title: 'Delete column',
+      textContent: '×'
+    });
+    var colActions = el('div', { className: 'col-actions' }, [delColBtn]);
+    var colHeader = el('div', { className: 'col-header' }, [titleInput, countSpan, colActions]);
+
+    // Notes container
+    var noteEls = col.notes.map(function(n) { return buildNote(col.id, n); });
+    var notesContainer = el('div', {
+      className: 'notes-container',
+      'data-col-id': col.id
+    }, noteEls);
+
+    // Drag events on notes container
+    notesContainer.addEventListener('dragover', onDragOver);
+    notesContainer.addEventListener('dragleave', onDragLeave);
+    notesContainer.addEventListener('drop', onDrop);
+
+    // Add note button
+    var addNoteBtn = el('button', {
+      className: 'add-note-btn',
+      'data-action': 'add-note',
+      'data-col-id': col.id,
+      textContent: '+ New Note'
+    });
+
+    return el('div', {
+      className: 'column',
+      'data-col-id': col.id
+    }, [colHeader, notesContainer, addNoteBtn]);
+  }
+
+  // ── Render ─────────────────────────────────
+  function render() {
+    var board = document.getElementById('board');
+    board.textContent = ''; // clear safely
+
+    state.columns.forEach(function(col) {
+      board.appendChild(buildColumn(col));
+    });
+
+    // Add-column placeholder
+    var addColBtn = el('button', {
+      className: 'add-col-btn',
+      textContent: '+ New Column'
+    });
+    addColBtn.addEventListener('click', addColumn);
+    var addColDiv = el('div', { className: 'add-column' }, [addColBtn]);
+    board.appendChild(addColDiv);
+  }
+
+  // ── CRUD ───────────────────────────────────
+  function addColumn() {
+    state.columns.push({ id:uid(), title:'New Column', color:'#fff59d', notes:[] });
+    saveState(); render();
+  }
+
+  function deleteColumn(colId) {
+    var col = findCol(colId);
+    if (!col) return;
+    if (col.notes.length > 0 && !confirm('Delete column "' + col.title + '" with ' + col.notes.length + ' notes?')) return;
+    state.columns = state.columns.filter(function(c) { return c.id !== colId; });
+    saveState(); render();
+  }
+
+  function addNote(colId) {
+    var col = findCol(colId);
+    if (!col) return;
+    col.notes.push({ id:uid(), title:'New Note', color:col.color || '#fff59d', subItems:[], assignee:'' });
+    saveState(); render();
+    var notes = document.querySelectorAll('.note[data-col-id="' + colId + '"]');
+    var last = notes[notes.length - 1];
+    if (last) { var inp = last.querySelector('.note-title'); inp.focus(); inp.select(); }
+  }
+
+  function deleteNote(colId, noteId) {
+    var col = findCol(colId);
+    if (!col) return;
+    col.notes = col.notes.filter(function(n) { return n.id !== noteId; });
+    saveState(); render();
+  }
+
+  function addSubItem(colId, noteId) {
+    var note = findNote(colId, noteId);
+    if (!note) return;
+    note.subItems.push('');
+    saveState(); render();
+    var noteEl = document.querySelector('.note[data-note-id="' + noteId + '"]');
+    if (noteEl) {
+      var inputs = noteEl.querySelectorAll('.sub-item-text');
+      var last = inputs[inputs.length - 1];
+      if (last) last.focus();
+    }
+  }
+
+  function deleteSubItem(colId, noteId, idx) {
+    var note = findNote(colId, noteId);
+    if (!note) return;
+    note.subItems.splice(idx, 1);
+    saveState(); render();
+  }
+
+  function resetBoard() {
+    if (!confirm('Reset the board completely? All changes will be lost.')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    state = getDefaultData();
+    saveState(); render();
+  }
+
+  // ── Event Delegation ───────────────────────
+  document.addEventListener('click', function(e) {
+    var t = e.target;
+    var action = t.getAttribute('data-action');
+    if (!action) return;
+    var colId = t.getAttribute('data-col-id');
+    var noteId = t.getAttribute('data-note-id');
+    var subIdx = t.getAttribute('data-sub-idx');
+    var color = t.getAttribute('data-color');
+
+    switch(action) {
+      case 'add-note': addNote(colId); break;
+      case 'delete-note': deleteNote(colId, noteId); break;
+      case 'delete-col': deleteColumn(colId); break;
+      case 'add-sub': addSubItem(colId, noteId); break;
+      case 'delete-sub': deleteSubItem(colId, noteId, parseInt(subIdx)); break;
+      case 'set-color':
+        var n = findNote(colId, noteId);
+        if (n) { n.color = color; saveState(); render(); }
+        break;
+    }
+  });
+
+  // Inline editing
+  function handleEdit(e) {
+    var t = e.target;
+    var action = t.getAttribute('data-action');
+    if (!action) return;
+    var colId = t.getAttribute('data-col-id');
+    var noteId = t.getAttribute('data-note-id');
+    var subIdx = t.getAttribute('data-sub-idx');
+    var val = t.value.trim();
+
+    switch(action) {
+      case 'edit-col-title':
+        var col = findCol(colId);
+        if (col && val) { col.title = val; saveState(); }
+        break;
+      case 'edit-note-title':
+        var note = findNote(colId, noteId);
+        if (note) { note.title = val || 'New Note'; saveState(); }
+        break;
+      case 'edit-sub':
+        var note2 = findNote(colId, noteId);
+        if (note2) { note2.subItems[parseInt(subIdx)] = val; saveState(); }
+        break;
+      case 'edit-assignee':
+        var note3 = findNote(colId, noteId);
+        if (note3) {
+          note3.assignee = t.value.trim();
+          saveState();
+          if (e.type === 'focusout') render();
+        }
+        break;
+    }
+  }
+
+  document.addEventListener('change', handleEdit);
+  document.addEventListener('focusout', handleEdit);
+
+  // ── Drag & Drop ────────────────────────────
+  var dragData = null;
+
+  document.addEventListener('dragstart', function(e) {
+    var noteEl = e.target.closest('.note');
+    if (!noteEl) return;
+    dragData = {
+      colId: noteEl.getAttribute('data-col-id'),
+      noteId: noteEl.getAttribute('data-note-id')
+    };
+    noteEl.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  });
+
+  document.addEventListener('dragend', function(e) {
+    var noteEl = e.target.closest('.note');
+    if (noteEl) noteEl.classList.remove('dragging');
+    document.querySelectorAll('.column').forEach(function(c) {
+      c.classList.remove('drag-over');
+    });
+    dragData = null;
+  });
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    this.closest('.column').classList.add('drag-over');
+  }
+
+  function onDragLeave() {
+    this.closest('.column').classList.remove('drag-over');
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    this.closest('.column').classList.remove('drag-over');
+    if (!dragData) return;
+    var targetColId = this.getAttribute('data-col-id');
+    var sourceCol = findCol(dragData.colId);
+    var targetCol = findCol(targetColId);
+    if (!sourceCol || !targetCol) return;
+
+    var noteIdx = sourceCol.notes.findIndex(function(n) { return n.id === dragData.noteId; });
+    if (noteIdx === -1) return;
+    var movedNote = sourceCol.notes.splice(noteIdx, 1)[0];
+
+    // Find drop position
+    var noteEls = this.querySelectorAll('.note:not(.dragging)');
+    var insertIdx = targetCol.notes.length;
+    for (var i = 0; i < noteEls.length; i++) {
+      var rect = noteEls[i].getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        insertIdx = i;
+        break;
+      }
+    }
+    targetCol.notes.splice(insertIdx, 0, movedNote);
+    saveState(); render();
+  }
+
+  // ── Header Buttons ─────────────────────────
+  document.getElementById('btn-add-col').addEventListener('click', addColumn);
+  document.getElementById('btn-reset').addEventListener('click', resetBoard);
+
+  // ── Init ───────────────────────────────────
+  loadState();
+  render();
+
+})();
+</script>
+
+</body>
+</html>
