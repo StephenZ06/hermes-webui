@@ -23,7 +23,14 @@ def _iter_profile_homes():
     homes = [_DEFAULT_HERMES_HOME]
     root = _profiles_root()
     if root.is_dir():
-        homes.extend(sorted(p for p in root.iterdir() if p.is_dir()))
+        # config.yaml is the marker of a real profile -- without this check,
+        # ticking (and thus continuously refreshing gateway_state.json in)
+        # an orphaned directory left behind by a deleted profile makes it
+        # look perpetually "alive" and never lets it disappear from the
+        # profile list on its own.
+        homes.extend(
+            sorted(p for p in root.iterdir() if p.is_dir() and (p / "config.yaml").exists())
+        )
     return homes
 
 

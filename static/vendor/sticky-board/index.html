@@ -197,19 +197,6 @@ window.__STICKY_THEME_VARS__ = [
   }
   .add-sub-btn:hover{color:var(--accent)}
 
-  /* Add Column */
-  .add-column{
-    min-width:260px;flex-shrink:0;display:flex;align-items:flex-start;
-    justify-content:center;padding-top:.8rem;
-  }
-  .add-col-btn{
-    padding:.7rem 1.2rem;border:2px dashed var(--border);
-    border-radius:12px;background:transparent;cursor:pointer;
-    font-size:.85rem;color:var(--muted);font-weight:600;transition:all .15s;
-    font-family:var(--font-ui);
-  }
-  .add-col-btn:hover{border-color:var(--accent);color:var(--accent)}
-
   @media(max-width:600px){
     html{font-size:14px}
     header{padding:.7rem .8rem;flex-wrap:wrap;gap:.5rem}
@@ -220,7 +207,6 @@ window.__STICKY_THEME_VARS__ = [
        hunting across a wide horizontal strip. */
     #board{padding:.6rem;gap:.6rem;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
     .column{min-width:84vw;max-width:84vw;scroll-snap-align:start}
-    .add-column{min-width:84vw;padding-top:.6rem}
     .color-picker-panel{width:calc(100vw - 2.4rem);max-width:320px;min-width:0}
     .color-dot.color-dot-lg{width:38px;height:38px}
   }
@@ -541,15 +527,6 @@ window.__STICKY_THEME_VARS__ = [
     state.columns.forEach(function(col) {
       board.appendChild(buildColumn(col));
     });
-
-    // Add-column placeholder
-    var addColBtn = el('button', {
-      className: 'add-col-btn',
-      textContent: '+ New Column'
-    });
-    addColBtn.addEventListener('click', addColumn);
-    var addColDiv = el('div', { className: 'add-column' }, [addColBtn]);
-    board.appendChild(addColDiv);
   }
 
   // ── CRUD ───────────────────────────────────

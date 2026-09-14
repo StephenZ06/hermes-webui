@@ -25,18 +25,42 @@ async function loadNotesPanel() {
     _notesProjects = _notesProjects || [];
     _notesBoards = _notesBoards || [];
   }
-  _renderNotesProjectFolders();
-  _renderNotesBoardsList();
   _restoreOrSelectStickyBoard();
+}
+
+// "All boards" means the general pool (no project_id) -- a board linked to
+// a project only shows up under that project's own folder filter, never in
+// both places at once.
+function _filteredNotesBoards() {
+  return _notesActiveProjectFilter === null
+    ? _notesBoards.filter(b => !b.project_id)
+    : _notesBoards.filter(b => b.project_id === _notesActiveProjectFilter);
+}
+
+function _setNotesProjectFilter(projectId) {
+  _notesActiveProjectFilter = projectId;
+  _renderNotesProjectFolders();
+  const filtered = _filteredNotesBoards();
+  // Switching folders must never leave the previous folder's board showing
+  // just because the new folder happens to have none of its own -- always
+  // land on a board that's actually IN the new filter (or the empty state).
+  if (!filtered.some(b => b.id === _notesActiveBoardId)) {
+    selectStickyBoard(filtered.length ? filtered[0].id : null);
+  } else {
+    _renderNotesBoardsList();
+  }
 }
 
 function _restoreOrSelectStickyBoard() {
   let target = null;
   try { target = localStorage.getItem(NOTES_LAST_BOARD_KEY); } catch (e) { /* ignore */ }
-  if (!target || !_notesBoards.some(b => b.id === target)) {
-    target = _notesBoards.length ? _notesBoards[0].id : null;
-  }
-  selectStickyBoard(target);
+  const board = target ? _notesBoards.find(b => b.id === target) : null;
+  // Restore into whichever folder the last-open board actually belongs to,
+  // so the active filter chip and the shown board never disagree.
+  _notesActiveProjectFilter = board ? (board.project_id || null) : null;
+  _renderNotesProjectFolders();
+  const filtered = _filteredNotesBoards();
+  selectStickyBoard(board ? board.id : (filtered.length ? filtered[0].id : null));
 }
 
 function _notesProjectById(projectId) {
@@ -54,7 +78,7 @@ function _renderNotesProjectFolders() {
   const allChip = document.createElement('span');
   allChip.className = 'project-chip project-folder-row' + (_notesActiveProjectFilter === null ? ' active' : '');
   allChip.textContent = 'All boards';
-  allChip.onclick = () => { _notesActiveProjectFilter = null; _renderNotesProjectFolders(); _renderNotesBoardsList(); };
+  allChip.onclick = () => _setNotesProjectFilter(null);
   bar.appendChild(allChip);
 
   for (const p of _notesProjects) {
@@ -75,7 +99,7 @@ function _renderNotesProjectFolders() {
     countSpan.className = 'project-folder-count';
     countSpan.textContent = String(count);
     chip.appendChild(countSpan);
-    chip.onclick = () => { _notesActiveProjectFilter = p.project_id; _renderNotesProjectFolders(); _renderNotesBoardsList(); };
+    chip.onclick = () => _setNotesProjectFilter(p.project_id);
     bar.appendChild(chip);
   }
   container.appendChild(bar);
@@ -86,9 +110,7 @@ function _renderNotesBoardsList() {
   const list = $('notesBoardsList');
   if (!list) return;
   list.innerHTML = '';
-  const boards = _notesActiveProjectFilter === null
-    ? _notesBoards
-    : _notesBoards.filter(b => b.project_id === _notesActiveProjectFilter);
+  const boards = _filteredNotesBoards();
 
   if (!boards.length) {
     const empty = document.createElement('div');
@@ -261,7 +283,12 @@ async function _moveStickyBoardToProject(board, projectId) {
     const res = await api('/api/sticky_boards/set_project', { method: 'POST', body: JSON.stringify({ id: board.id, project_id: projectId }) });
     if (res && res.board) board.project_id = res.board.project_id;
     _renderNotesProjectFolders();
-    _renderNotesBoardsList();
+    const filtered = _filteredNotesBoards();
+    if (!filtered.some(b => b.id === _notesActiveBoardId)) {
+      selectStickyBoard(filtered.length ? filtered[0].id : null);
+    } else {
+      _renderNotesBoardsList();
+    }
   } catch (e) {
     console.error('moveStickyBoardToProject failed', e);
     showToast('Failed to move board');
@@ -277,7 +304,7 @@ async function _deleteStickyBoard(board) {
     _renderNotesProjectFolders();
     _renderNotesBoardsList();
     if (_notesActiveBoardId === board.id) {
-      const remaining = _notesActiveProjectFilter === null ? _notesBoards : _notesBoards.filter(b => b.project_id === _notesActiveProjectFilter);
+      const remaining = _filteredNotesBoards();
       selectStickyBoard(remaining.length ? remaining[0].id : null);
     }
   } catch (e) {
