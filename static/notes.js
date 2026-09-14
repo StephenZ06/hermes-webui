@@ -157,6 +157,8 @@ function _buildStickyBoardRow(board) {
   return row;
 }
 
+let _stickyBoardFrameLoaded = false;
+
 function selectStickyBoard(boardId) {
   _notesActiveBoardId = boardId;
   try {
@@ -164,11 +166,22 @@ function selectStickyBoard(boardId) {
   } catch (e) { /* ignore */ }
   _renderNotesBoardsList();
   const frame = $('stickyBoardFrame');
-  if (frame) {
-    frame.src = boardId
-      ? 'static/vendor/sticky-board/index.html?board=' + encodeURIComponent(boardId)
-      : 'static/vendor/sticky-board/index.html';
+  if (!frame) return;
+  if (_stickyBoardFrameLoaded && frame.contentWindow) {
+    // Already loaded -- swap the shown board in place instead of
+    // reassigning src, which would reload the whole iframe document (a
+    // fresh network request and a visible flash) for what should be an
+    // instant switch.
+    frame.contentWindow.postMessage({ type: 'sticky-board:select', boardId: boardId }, location.origin);
+    return;
   }
+  if (!frame.dataset.loadListenerAttached) {
+    frame.dataset.loadListenerAttached = '1';
+    frame.addEventListener('load', () => { _stickyBoardFrameLoaded = true; });
+  }
+  frame.src = boardId
+    ? 'static/vendor/sticky-board/index.html?board=' + encodeURIComponent(boardId)
+    : 'static/vendor/sticky-board/index.html';
 }
 
 // ── Create / rename / delete / move-to-project ──

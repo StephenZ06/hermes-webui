@@ -415,18 +415,17 @@ def _file_signature(path: Path) -> tuple[int, int] | None:
         return None
 
 
-def _persistent_state_snapshot(profile_home: str | None) -> dict:
-    """Capture lightweight memory/skill file signatures for save toasts."""
-    if not profile_home:
-        return {"memory": {}, "skills": {}}
-    root = Path(profile_home)
+def _persistent_state_memory_snapshot(root: Path) -> dict:
     memory = {}
     for key, parts in _PERSISTENT_MEMORY_FILES:
         sig = _file_signature(root.joinpath(*parts))
         if sig is not None:
             memory[key] = sig
+    return memory
+
+
+def _persistent_state_skills_snapshot(skills_dir: Path) -> dict:
     skills = {}
-    skills_dir = root / "skills"
     try:
         for skill_md in skills_dir.rglob("SKILL.md"):
             try:
@@ -438,6 +437,65 @@ def _persistent_state_snapshot(profile_home: str | None) -> dict:
                 skills[rel] = sig
     except OSError:
         pass
+    return skills
+
+
+def _skills_tree_light_probe(skills_dir: Path) -> int:
+    """Cheap aggregate mtime probe over a skills tree: directory mtimes only,
+    no per-SKILL.md stat.
+
+    Used to short-circuit _persistent_state_skills_snapshot()'s full rglob +
+    per-file stat pass at turn-end when nothing changed during the turn --
+    that pass runs once per completed turn per profile (before AND after),
+    and a profile with ~100 skills pays ~100 stat() calls plus a directory
+    walk for each one even when nothing was touched, which is the common
+    case for most turns. A directory's own mtime already changes on any
+    create/delete/rename of a SKILL.md beneath it (the exact edits this
+    snapshot cares about), so this is sufficient to detect "nothing changed"
+    without reading any file's own mtime.
+    """
+    max_ns = 0
+    if not skills_dir.is_dir():
+        return max_ns
+    try:
+        for root, _dirnames, _filenames in os.walk(skills_dir):
+            try:
+                max_ns = max(max_ns, Path(root).stat().st_mtime_ns)
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return max_ns
+
+
+def _persistent_state_snapshot(profile_home: str | None) -> dict:
+    """Capture lightweight memory/skill file signatures for save toasts."""
+    if not profile_home:
+        return {"memory": {}, "skills": {}}
+    root = Path(profile_home)
+    return {
+        "memory": _persistent_state_memory_snapshot(root),
+        "skills": _persistent_state_skills_snapshot(root / "skills"),
+    }
+
+
+def _persistent_state_snapshot_after(profile_home: str | None, before: dict | None, skills_probe_before: int) -> dict:
+    """Like _persistent_state_snapshot(), but skips the expensive skills
+    rglob+stat pass when the cheap directory-mtime probe shows the skills
+    tree is unchanged since `skills_probe_before` was captured -- the
+    resulting per-file signature map must then be identical to `before`'s,
+    so it's reused as-is. Memory files are always re-stat'd fresh (3 fixed
+    paths, not worth probing separately).
+    """
+    if not profile_home:
+        return {"memory": {}, "skills": {}}
+    root = Path(profile_home)
+    memory = _persistent_state_memory_snapshot(root)
+    skills_dir = root / "skills"
+    if _skills_tree_light_probe(skills_dir) == skills_probe_before:
+        skills = (before or {}).get("skills") or {}
+    else:
+        skills = _persistent_state_skills_snapshot(skills_dir)
     return {"memory": memory, "skills": skills}
 
 
@@ -10894,6 +10952,9 @@ def _run_agent_streaming(
                 _agent_msg_text = "\n\n".join([*_process_notifications, msg_text]).strip()
             user_message = _build_native_multimodal_message(workspace_ctx, _agent_msg_text, attachments, workspace, cfg=_cfg, active_provider=(resolved_provider or ""), active_model=(resolved_model or ""), requested_provider=(_session_requested_provider or ""))
             _persistent_state_before = _persistent_state_snapshot(_profile_home)
+            _skills_probe_before = (
+                _skills_tree_light_probe(Path(_profile_home) / "skills") if _profile_home else 0
+            )
             _run_conversation_kwargs = _build_run_conversation_kwargs(
                 agent.run_conversation,
                 user_message=user_message,
@@ -12134,7 +12195,9 @@ def _run_agent_streaming(
                     try:
                         _persistent_changes = _persistent_state_changes(
                             _persistent_state_before,
-                            _persistent_state_snapshot(_profile_home),
+                            _persistent_state_snapshot_after(
+                                _profile_home, _persistent_state_before, _skills_probe_before
+                            ),
                         )
                         if _persistent_changes.get("memory_saved"):
                             put("state_saved", {

@@ -107,7 +107,7 @@ from api.helpers import (
     _build_csp_report_only_policy,
     _CLIENT_DISCONNECT_ERRORS,
 )
-from api.profiles import set_request_profile, clear_request_profile
+from api.profiles import set_request_profile, clear_request_profile, profile_cookie_still_valid
 from api.routes import handle_delete, handle_get, handle_patch, handle_post, handle_put, apply_cors_preflight_headers
 from api.startup import auto_install_agent_deps, fix_credential_permissions
 from api.updates import WEBUI_VERSION
@@ -374,6 +374,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
+        if cookie_profile and not profile_cookie_still_valid(cookie_profile):
+            cookie_profile = None
         if cookie_profile:
             set_request_profile(cookie_profile)
         try:
@@ -399,6 +401,8 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_write(self, route_func) -> None:
         self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
+        if cookie_profile and not profile_cookie_still_valid(cookie_profile):
+            cookie_profile = None
         if cookie_profile:
             set_request_profile(cookie_profile)
         try:

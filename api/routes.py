@@ -14560,10 +14560,18 @@ def handle_get(handler, parsed) -> bool:
                     w["mount_status"] = mount_status(w)
         # Every workspace reports online/offline, not just remote ones: a local
         # bind mount that vanished is just as unusable as a dropped SSHFS
-        # mount, and the pickers show one status dot for both.
+        # mount, and the pickers show one status dot for both. Remote entries
+        # already have a fresh mount_status above (each call stats the
+        # mountpoint and shells out to `mountpoint -q` -- not free, and a
+        # stale/unresponsive FUSE endpoint can make that stat genuinely slow)
+        # -- reuse it instead of making workspace_availability() redo the
+        # exact same two checks a second time.
         from api.workspace import workspace_availability
         for w in wss:
-            w["availability"] = workspace_availability(w)
+            if w.get("kind") == "remote":
+                w["availability"] = "online" if w.get("mount_status") == "connected" else "offline"
+            else:
+                w["availability"] = workspace_availability(w)
         return j(
             handler,
             {

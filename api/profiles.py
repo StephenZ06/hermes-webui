@@ -526,6 +526,88 @@ def _resolve_profile_home_for_name(name: str) -> Path:
     return _resolve_named_profile_home(name)
 
 
+_DELETED_PROFILES_FILE_NAME = "deleted_profiles.json"
+_deleted_profile_names_cache: set[str] | None = None
+_deleted_profile_names_lock = threading.RLock()
+
+
+def _deleted_profiles_file() -> Path:
+    from api.config import STATE_DIR
+    return STATE_DIR / _DELETED_PROFILES_FILE_NAME
+
+
+def _load_deleted_profile_names() -> set[str]:
+    global _deleted_profile_names_cache
+    with _deleted_profile_names_lock:
+        if _deleted_profile_names_cache is not None:
+            return _deleted_profile_names_cache
+        try:
+            raw = _deleted_profiles_file().read_text(encoding="utf-8")
+            names = set(json.loads(raw))
+        except Exception:
+            names = set()
+        _deleted_profile_names_cache = names
+        return names
+
+
+def _mark_profile_deleted(name: str) -> None:
+    """Tombstone *name* so a stale hermes_profile cookie stops resurrecting it.
+
+    Deleting a profile (delete_profile_api) already switches away from it if
+    it was the active one, but that only updates the process-global default --
+    a `hermes_profile` cookie still sitting in a browser overrides that per
+    request (get_active_profile_name() prefers the thread-local cookie value),
+    so the deleted profile would otherwise keep showing up in the top bar and
+    composer forever, even after a hard refresh.
+
+    Filesystem existence (directory or config.yaml) is NOT a usable signal
+    here: named profiles are legitimately used (e.g. via /api/session/new)
+    before their directory/config.yaml is ever created, so "missing" doesn't
+    reliably mean "deleted". A tombstone recorded at the one moment we know
+    for certain -- the actual delete call -- avoids that ambiguity entirely.
+    This only covers deletion through this webui process (not an out-of-band
+    `hermes profile delete` CLI call elsewhere), but that's the path the
+    in-app "delete profile" UI actually uses.
+    """
+    global _deleted_profile_names_cache
+    with _deleted_profile_names_lock:
+        names = set(_load_deleted_profile_names())
+        names.add(name)
+        _deleted_profile_names_cache = names
+        try:
+            _deleted_profiles_file().parent.mkdir(parents=True, exist_ok=True)
+            _deleted_profiles_file().write_text(json.dumps(sorted(names)), encoding="utf-8")
+        except Exception:
+            logger.warning("Failed to persist deleted-profile tombstone for %r", name, exc_info=True)
+
+
+def _unmark_profile_deleted(name: str) -> None:
+    """Clear a tombstone if a profile of the same name is created again."""
+    global _deleted_profile_names_cache
+    with _deleted_profile_names_lock:
+        names = set(_load_deleted_profile_names())
+        if name not in names:
+            return
+        names.discard(name)
+        _deleted_profile_names_cache = names
+        try:
+            _deleted_profiles_file().write_text(json.dumps(sorted(names)), encoding="utf-8")
+        except Exception:
+            logger.warning("Failed to clear deleted-profile tombstone for %r", name, exc_info=True)
+
+
+def profile_cookie_still_valid(name: str) -> bool:
+    """True if *name* is safe to treat as the active profile for a request.
+
+    Used ONLY to validate an incoming request's `hermes_profile` cookie
+    before trusting it as the per-request active profile -- checks the
+    delete-time tombstone (see _mark_profile_deleted), not filesystem state.
+    """
+    if not name or _is_root_profile(name):
+        return True
+    return name not in _load_deleted_profile_names()
+
+
 def get_active_hermes_home() -> Path:
     """Return the HERMES_HOME path for the currently active profile.
 
@@ -2753,6 +2835,7 @@ def create_profile_api(name: str, clone_from: str = None,
     if _is_isolated_profile_mode():
         raise PermissionError("Profile creation is not allowed in isolated profile mode.")
     _validate_profile_name(name)
+    _unmark_profile_deleted(name)
     # Defense-in-depth: validate clone_from here too, even though routes.py
     # also validates it. Any caller that bypasses the HTTP layer gets protection.
     if clone_from is not None and not _is_root_profile(clone_from):
@@ -2959,4 +3042,5 @@ def delete_profile_api(name: str) -> dict:
     _SKILLS_STATS_CACHE.clear()
     _invalidate_list_profiles_cache()
     _invalidate_root_profile_cache()
+    _mark_profile_deleted(name)
     return {'ok': True, 'name': name}

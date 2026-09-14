@@ -216,7 +216,7 @@ window.__STICKY_THEME_VARS__ = [
 
 <header>
   <h1 id="board-title">Sticky <span>Board</span></h1>
-  <div class="header-actions" id="header-actions">
+  <div class="header-actions" id="header-actions" style="visibility:hidden">
     <button class="btn btn-primary" id="btn-add-col">+ New Column</button>
   </div>
 </header>
@@ -825,6 +825,19 @@ window.__STICKY_THEME_VARS__ = [
 
   // ── Header Buttons ─────────────────────────
   document.getElementById('btn-add-col').addEventListener('click', addColumn);
+
+  // Switching boards from the Notes sidebar used to reassign this iframe's
+  // `src`, which reloads the whole document (fresh network request, blank
+  // flash while it re-parses) for what should be an in-place swap -- since
+  // this page never navigates away on its own, the sidebar now only does
+  // that for the very first mount and posts a message for every switch
+  // after that.
+  window.addEventListener('message', function(e) {
+    if (e.origin !== location.origin) return;
+    if (!e.data || e.data.type !== 'sticky-board:select') return;
+    BOARD_ID = e.data.boardId || null;
+    loadState().then(render);
+  });
 
   // ── Init ───────────────────────────────────
   syncThemeFromParent();
