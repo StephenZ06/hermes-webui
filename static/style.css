@@ -5551,7 +5551,23 @@ main.main > #mainPlugin{display:none;}
    Vendored static/vendor/sticky-board (MIT), embedded whole via iframe --
    it owns its own header/controls, so #mainNotes is just a frame. */
 #mainNotes{padding:0;}
-.sticky-board-frame{flex:1;width:100%;height:100%;border:none;background:#f5f0e8;}
+.sticky-board-frame{flex:1;width:100%;height:100%;border:none;background:var(--bg);}
+
+/* ── Notes sidebar: boards list (project-folder rows above reuse the Chat
+   sidebar's .project-chip/.project-folder-* classes as-is) ── */
+.notes-boards-heading{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--muted);padding:8px 12px 4px;}
+.notes-boards-empty{font-size:12px;color:var(--muted);padding:8px 12px;}
+.sticky-board-row{display:flex;align-items:center;gap:6px;padding:6px 10px;margin:0 4px;border-radius:6px;cursor:pointer;}
+.sticky-board-row:hover{background:var(--hover-bg,rgba(255,255,255,.06));}
+.sticky-board-row.active{background:var(--accent-bg);color:var(--accent-text);}
+.sticky-board-row .color-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.sticky-board-row-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
+.sticky-board-kebab{opacity:0;}
+.sticky-board-row:hover .sticky-board-kebab,
+.sticky-board-row:focus-within .sticky-board-kebab{opacity:1;}
+.sticky-board-rename-input{font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid var(--accent-bg);background:var(--surface);color:var(--text);outline:none;flex:1;min-width:0;font-family:inherit;}
+.sticky-board-delete-item{color:var(--danger,#e05);border-top:1px solid var(--border2);margin-top:2px;padding-top:6px;}
+.sticky-board-delete-item:hover{background:var(--danger,#e05);color:#fff;}
 /* ── Async delegation batch deliveries ──
    A background fan-out's consolidated results arrive as a user-role row whose
    text is the model's evidence, not reading material. Collapsed to one line,

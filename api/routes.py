@@ -14491,10 +14491,10 @@ def handle_get(handler, parsed) -> bool:
         finally:
             diag.finish()
 
-    if parsed.path == "/api/sticky_board":
-        from api.sticky_board import load_board
+    if parsed.path == "/api/sticky_boards":
+        from api.sticky_board import load_boards
 
-        return j(handler, {"board": load_board()})
+        return j(handler, {"boards": load_boards()})
 
     if parsed.path == "/api/projects":
         # ── Profile scoping (#1614) ────────────────────────────────────────
@@ -18308,18 +18308,65 @@ def handle_post(handler, parsed) -> bool:
         merged_count = _reassign_project_sessions(source_ids, target_id)
         return j(handler, {"ok": True, "project": target, "merged_sessions": merged_count})
 
-    # ── Sticky board save (POST) ──
-    if parsed.path == "/api/sticky_board":
-        from api.sticky_board import save_board
+    # ── Sticky boards CRUD (POST) ──
+    if parsed.path == "/api/sticky_boards/create":
+        from api.sticky_board import create_board
 
         try:
-            require(body, "board")
+            require(body, "name")
         except ValueError as e:
             return bad(handler, str(e))
-        board = body["board"]
-        if not isinstance(board, dict) or not isinstance(board.get("columns"), list):
-            return bad(handler, "board must be an object with a columns list")
-        save_board(board)
+        board = create_board(str(body["name"]), body.get("project_id") or None)
+        return j(handler, {"ok": True, "board": board})
+
+    if parsed.path == "/api/sticky_boards/rename":
+        from api.sticky_board import rename_board
+
+        try:
+            require(body, "id", "name")
+        except ValueError as e:
+            return bad(handler, str(e))
+        board = rename_board(str(body["id"]), str(body["name"]))
+        if board is None:
+            return bad(handler, "Board not found", 404)
+        return j(handler, {"ok": True, "board": board})
+
+    if parsed.path == "/api/sticky_boards/delete":
+        from api.sticky_board import delete_board
+
+        try:
+            require(body, "id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        if not delete_board(str(body["id"])):
+            return bad(handler, "Board not found", 404)
+        return j(handler, {"ok": True})
+
+    if parsed.path == "/api/sticky_boards/set_project":
+        from api.sticky_board import set_board_project
+
+        try:
+            require(body, "id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        board = set_board_project(str(body["id"]), body.get("project_id") or None)
+        if board is None:
+            return bad(handler, "Board not found", 404)
+        return j(handler, {"ok": True, "board": board})
+
+    if parsed.path == "/api/sticky_boards/save":
+        from api.sticky_board import save_board_columns
+
+        try:
+            require(body, "id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        columns = body.get("columns")
+        if not isinstance(columns, list):
+            return bad(handler, "columns must be a list")
+        board = save_board_columns(str(body["id"]), columns)
+        if board is None:
+            return bad(handler, "Board not found", 404)
         return j(handler, {"ok": True})
 
     # ── Session import from JSON (POST) ──

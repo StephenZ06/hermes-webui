@@ -1320,6 +1320,63 @@ removed, the `ollama` container and its model-weights volume torn down
 hermes profile deleted. LM Studio (`local` profile) is the only local-model
 path now.
 
+## 2026-09-14: Notes rebuilt on a vendored board, then grew into multi-board + project linking
+
+The hand-rolled Notes implementation from 2026-09-13 was replaced outright
+with a vendored third-party board
+(`static/vendor/sticky-board/`, MIT, see its `PROVENANCE.md` for the full
+modification list) embedded via iframe, then iterated hard over one long
+session: theme sync (skin/dark-light, matching hermes-webui's own tokens,
+including a synchronous head-script fix for a white flash on hard refresh),
+`--font-ui` instead of a hardcoded font, black note text (notes stay pastel
+regardless of app theme), assignee feature removed, Enter/Backspace/arrow-key
+checklist-style sub-item editing (with a real event-ordering bug fixed along
+the way -- see the fix commit for the render()-triggered-blur race), and the
+color picker moved off the note face into a modal.
+
+It then grew into a materially bigger feature per explicit request: **multiple
+named boards**, each optionally **linked to a Project folder** (the same
+Projects the Chat sidebar's project-folder rows use --
+`api/models.py#load_projects`, not the separate WORKSPACES.yaml registry).
+Storage: `api/sticky_board.py`, `STATE_DIR/sticky_boards.json`, unscoped by
+hermes-agent profile (STATE_DIR already isn't profile-specific), so a link
+holds regardless of active profile -- satisfies "connected throughout ALL
+profiles" with no extra work.
+
+**The interesting part:** a linked board's content is mirrored into that
+project's `AGENTS.md` (delimited by a per-board HTML-comment marker, replaced
+in place on every save/rename, removed on delete/unlink) so the project's
+chats can see it -- no hermes-agent changes needed, because
+`api/routes.py`'s `_project_context_candidates()` already confirmed AGENTS.md
+at a project's workspace root is the first file hermes-agent looks for and
+injects. This was the one part of the ask with real architectural risk (does
+that ingestion path actually exist?), so it got verified against a **real**
+project before trusting it: linked a test board to "Triple S" (workspace
+`/workspace/MiniPC-Main/Business/Triple_S/Triple_S_POS`, an existing,
+substantial hand-written `AGENTS.md`), confirmed the section appended
+without touching a single existing character, then confirmed deleting the
+board removed the section cleanly and restored the file byte-for-byte.
+
+New sidebar (`static/notes.js`): project-folder filter chips reusing the
+Chat sidebar's own `.project-chip`/`.project-folder-*` classes (research
+via a fork confirmed the exact classes/markup before writing this, rather
+than guessing), a boards list below with inline rename (mirrors
+`sessions.js`'s `_startProjectRename` pattern exactly) and a kebab menu for
+move-to-project/delete (mirrors `_showProjectPicker`'s floating-picker
+pattern). Board switching changes the iframe's `src` (`?board=<id>`) rather
+than any in-page message-passing.
+
+Mobile: the board's own `@media(max-width:600px)` now scroll-snaps columns
+to near-full-width instead of a horizontal strip; color-picker modal narrows
+to fit. The rest of the Notes panel rides the app's existing generic
+mobile-drawer sidebar mechanism (same as every other panel).
+
+16 backend tests (`tests/test_sticky_board.py`) cover CRUD, the migration
+path from the old single-board file, and every AGENTS.md sync case
+(unlinked, no workspace_path, blocked path, resave-in-place not duplicated,
+two boards on one project getting separate sections, reassignment moving
+the section between workspaces). Full suite green throughout.
+
 ## Next actions
 
 1. **Observe a real rollover.** The one unverified claim. Needs a long session.

@@ -409,18 +409,27 @@
       <div class="panel-head-sub" data-i18n="workspace_desc">Add and switch workspaces for your sessions.</div>
       <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
-    <!-- Sticky notes panel: vendored static/vendor/sticky-board (MIT, see
-         PROVENANCE.md there), embedded via iframe in #mainNotes. Unrelated
-         to chat sessions, Kanban tasks, or Memory; this sidebar pane is just
-         the description -- the board has its own header/controls inside the
-         iframe. Data lives in that iframe's own localStorage (per-browser,
-         not server-synced), matching the upstream project's zero-server
-         design. -->
+    <!-- Sticky notes panel: multiple boards (api/sticky_board.py), each
+         optionally linked to a Project folder (the same Projects used by
+         the Chat sidebar's project-folder rows -- reuses those exact
+         classes for a matching look, just without nested sessions). The
+         board itself is the vendored static/vendor/sticky-board (MIT, see
+         PROVENANCE.md there), embedded via iframe in #mainNotes and
+         switched by changing its src's ?board= query param. All logic for
+         this panel lives in static/notes.js. -->
     <div class="panel-view" id="panelNotes">
       <div class="panel-head">
         <span>Notes</span>
+        <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="createStickyBoard()" data-tooltip="New board" aria-label="New board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        </div>
       </div>
-      <div class="panel-head-sub">A drag-and-drop sticky note board — columns, colors, sub-items. Saved in this browser only.</div>
+      <div class="panel-head-sub">Link a board to a project folder to make it available to that project's chats.</div>
+      <div class="sidebar-divider" aria-hidden="true"></div>
+      <div id="notesProjectFolders"></div>
+      <div class="sidebar-divider" aria-hidden="true"></div>
+      <div class="notes-boards-heading">BOARDS</div>
+      <div id="notesBoardsList" style="flex:1;overflow-y:auto"></div>
     </div>
     <!-- Profiles panel -->
     <div class="panel-view" id="panelProfiles">
@@ -2144,7 +2153,9 @@
 <script src="static/commands.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
-<script src="static/panels.js?v=__WEBUI_VERSION__" defer></script><script src="static/vendor/motion/13.1.1/motion.min.js" defer></script>
+<script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/notes.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/vendor/motion/13.1.1/motion.min.js" defer></script>
 <script src="static/motion-ui.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vendor/d3-force/3.0.0/d3-timer.min.js" defer></script>
 <script src="static/vendor/d3-force/3.0.0/d3-dispatch.min.js" defer></script>

@@ -67,8 +67,10 @@ window.__STICKY_THEME_VARS__ = [
   }
   .btn-primary{background:var(--accent);color:var(--primary-fg)}
   .btn-primary:hover{background:var(--accent-hover)}
-  .btn-reset{background:transparent;color:var(--muted);border:1px solid var(--border)}
-  .btn-reset:hover{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
+
+  .empty-state{
+    padding:3rem 1.5rem;text-align:center;color:var(--muted);font-size:.9rem;
+  }
 
   /* Board */
   #board{
@@ -209,24 +211,32 @@ window.__STICKY_THEME_VARS__ = [
   .add-col-btn:hover{border-color:var(--accent);color:var(--accent)}
 
   @media(max-width:600px){
-    #board{padding:.8rem;gap:.8rem}
-    .column{min-width:220px}
-    header{padding:.8rem 1rem}
-    header h1{font-size:1.1rem}
+    html{font-size:14px}
+    header{padding:.7rem .8rem;flex-wrap:wrap;gap:.5rem}
+    header h1{font-size:1.05rem}
+    .btn{padding:.4rem .7rem;font-size:.8rem}
+    /* One column (nearly) fills the screen and scroll-snaps into place --
+       swiping between columns reads like paging through cards rather than
+       hunting across a wide horizontal strip. */
+    #board{padding:.6rem;gap:.6rem;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+    .column{min-width:84vw;max-width:84vw;scroll-snap-align:start}
+    .add-column{min-width:84vw;padding-top:.6rem}
+    .color-picker-panel{width:calc(100vw - 2.4rem);max-width:320px;min-width:0}
+    .color-dot.color-dot-lg{width:38px;height:38px}
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Sticky <span>Board</span></h1>
-  <div class="header-actions">
+  <h1 id="board-title">Sticky <span>Board</span></h1>
+  <div class="header-actions" id="header-actions">
     <button class="btn btn-primary" id="btn-add-col">+ New Column</button>
-    <button class="btn btn-reset" id="btn-reset">Reset</button>
   </div>
 </header>
 
 <div id="board"></div>
+<div id="empty-state" class="empty-state" hidden>Select or create a board from the Notes sidebar.</div>
 
 <script>
 (function() {
@@ -272,7 +282,7 @@ window.__STICKY_THEME_VARS__ = [
 
   // ── Helpers ────────────────────────────────
   var COLORS = ['#fff59d','#a8e6a3','#f8bbd0','#90caf9'];
-  var STORAGE_KEY = 'sticky-board-data';
+  var BOARD_ID = new URLSearchParams(location.search).get('board');
 
   function uid() {
     return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
@@ -301,56 +311,51 @@ window.__STICKY_THEME_VARS__ = [
     return node;
   }
 
-  // ── Default Data ───────────────────────────
-  function getDefaultData() {
-    return { columns: [
-      { id:uid(), title:'To Do', color:'#fff59d', notes:[
-        {id:uid(),title:'Drag notes between columns',color:'#fff59d',subItems:[]},
-        {id:uid(),title:'Click any text to edit it',color:'#fff59d',subItems:[]},
-      ]},
-      { id:uid(), title:'In Progress', color:'#90caf9', notes:[
-        {id:uid(),title:'Use the color dots to categorize',color:'#90caf9',subItems:['Sub-items break a note down']},
-      ]},
-      { id:uid(), title:'Done', color:'#a8e6a3', notes:[
-        {id:uid(),title:'Everything auto-saves',color:'#a8e6a3',subItems:[]},
-      ]},
-    ]};
+  // ── State ──────────────────────────────────
+  // A board (id, name, project_id, columns) is a server-managed entity now
+  // -- created/renamed/deleted/linked-to-a-project from the Notes sidebar
+  // (static/notes.js), not from this page. This page only ever renders and
+  // edits the ONE board named in its own ?board=<id> query param (the
+  // sidebar changes which board is shown by changing this iframe's src).
+  var state = null; // { id, name, project_id, columns }
+  var boardMissing = false;
+
+  function showEmptyState(show) {
+    var boardEl = document.getElementById('board');
+    var emptyEl = document.getElementById('empty-state');
+    var headerActions = document.getElementById('header-actions');
+    if (boardEl) boardEl.hidden = show;
+    if (emptyEl) emptyEl.hidden = !show;
+    if (headerActions) headerActions.style.visibility = show ? 'hidden' : '';
   }
 
-  // ── State ──────────────────────────────────
-  var state;
-
-  // Persisted server-side (api/sticky_board.py, STATE_DIR/sticky_board.json)
-  // so the board is shared across every browser/device open on this
-  // hermes-webui instance, not just the one that created it.
+  // Persisted server-side (api/sticky_board.py, STATE_DIR/sticky_boards.json)
+  // so a board is shared across every browser/device open on this hermes-webui
+  // instance, not just the one that created it -- and, if linked to a project
+  // folder, mirrored into that project's AGENTS.md for chats to see.
   function loadState() {
-    return fetch('/api/sticky_board').then(function(res) { return res.json(); }).then(function(data) {
-      if (data && data.board && Array.isArray(data.board.columns)) {
-        state = data.board;
+    if (!BOARD_ID) {
+      boardMissing = true;
+      showEmptyState(true);
+      return Promise.resolve();
+    }
+    return fetch('/api/sticky_boards').then(function(res) { return res.json(); }).then(function(data) {
+      var boards = (data && Array.isArray(data.boards)) ? data.boards : [];
+      var found = boards.find(function(b) { return b.id === BOARD_ID; });
+      if (!found) {
+        boardMissing = true;
+        showEmptyState(true);
         return;
       }
-      // Nothing saved server-side yet -- migrate this browser's old
-      // localStorage copy (pre-server-storage versions of this page) so it
-      // isn't silently lost, otherwise seed the starter board.
-      var raw = null;
-      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-      try {
-        state = raw ? JSON.parse(raw) : getDefaultData();
-      } catch (e) {
-        state = getDefaultData();
-      }
-      saveState();
+      state = found;
+      if (!Array.isArray(state.columns)) state.columns = [];
+      var titleEl = document.getElementById('board-title');
+      if (titleEl) titleEl.textContent = state.name || 'Sticky Board';
+      showEmptyState(false);
     }).catch(function(e) {
-      // Server unreachable -- degrade to whatever this browser has cached
-      // rather than showing a blank board.
-      console.error('sticky-board: could not load from server, falling back to localStorage', e);
-      var raw = null;
-      try { raw = localStorage.getItem(STORAGE_KEY); } catch (e2) { /* ignore */ }
-      try {
-        state = raw ? JSON.parse(raw) : getDefaultData();
-      } catch (e2) {
-        state = getDefaultData();
-      }
+      console.error('sticky-board: could not load from server', e);
+      boardMissing = true;
+      showEmptyState(true);
     });
   }
 
@@ -369,13 +374,13 @@ window.__STICKY_THEME_VARS__ = [
   }
 
   function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+    if (!state) return;
     var headers = csrfHeaders();
     headers['Content-Type'] = 'application/json';
-    fetch('/api/sticky_board', {
+    fetch('/api/sticky_boards/save', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ board: state })
+      body: JSON.stringify({ id: state.id, columns: state.columns })
     }).catch(function(e) {
       console.error('sticky-board: save to server failed', e);
     });
@@ -529,6 +534,7 @@ window.__STICKY_THEME_VARS__ = [
 
   // ── Render ─────────────────────────────────
   function render() {
+    if (!state) return;
     var board = document.getElementById('board');
     board.textContent = ''; // clear safely
 
@@ -548,6 +554,7 @@ window.__STICKY_THEME_VARS__ = [
 
   // ── CRUD ───────────────────────────────────
   function addColumn() {
+    if (!state) return;
     state.columns.push({ id:uid(), title:'New Column', color:'#fff59d', notes:[] });
     saveState(); render();
   }
@@ -609,13 +616,6 @@ window.__STICKY_THEME_VARS__ = [
     var note = findNote(colId, noteId);
     if (!note) return;
     note.subItems.splice(idx, 1);
-    saveState(); render();
-  }
-
-  function resetBoard() {
-    if (!confirm('Reset the board completely? All changes will be lost.')) return;
-    localStorage.removeItem(STORAGE_KEY);
-    state = getDefaultData();
     saveState(); render();
   }
 
@@ -848,7 +848,6 @@ window.__STICKY_THEME_VARS__ = [
 
   // ── Header Buttons ─────────────────────────
   document.getElementById('btn-add-col').addEventListener('click', addColumn);
-  document.getElementById('btn-reset').addEventListener('click', resetBoard);
 
   // ── Init ───────────────────────────────────
   syncThemeFromParent();
