@@ -269,6 +269,118 @@ def bootstrap() -> dict[str, Any]:
     return result
 
 
+def _legacy_note_text(note: object) -> str:
+    if isinstance(note, dict):
+        return _clean_text(note.get("title") or note.get("text"), field="Title", maximum=TITLE_MAX_CHARS)
+    return _clean_text(note, field="Title", maximum=TITLE_MAX_CHARS)
+
+
+def _legacy_status(column_id: object) -> str:
+    value = _clean_text(column_id, field="Column", maximum=64).lower()
+    return {"general": "backlog", "in-progress": "in_progress", "completed": "done"}.get(value, "triage")
+
+
+def migrate_sticky_boards() -> dict[str, Any]:
+    """Copy legacy notes into Work Hub once, retaining the source identity.
+
+    The legacy file remains entirely untouched so users can export or recover
+    it. A later retry only creates source records that do not already exist.
+    """
+    source = Path(STATE_DIR) / "sticky_boards.json"
+    with _STATE_LOCK:
+        state = load_state()
+        migration = state["migration"]
+        previous_migration_status = migration.get("status")
+        warnings: list[str] = []
+        if not source.exists():
+            return {"created": 0, "warnings": []}
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+            boards = payload.get("boards") if isinstance(payload, dict) else None
+            if not isinstance(boards, list):
+                raise ValueError("boards must be a list")
+        except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            warning = "Legacy sticky-board data could not be read; it was not changed."
+            if warning not in migration["warnings"]:
+                migration["warnings"].append(warning)
+                state["revision"] += 1
+                save_state(state)
+            return {"created": 0, "warnings": [warning]}
+
+        known_sources = {
+            (str(row.get("legacy_source", {}).get("board_id") or ""), str(row.get("legacy_source", {}).get("note_id") or ""))
+            for row in state["work_items"] if isinstance(row.get("legacy_source"), dict)
+        }
+        created = 0
+        now = time.time()
+        for board in boards:
+            if not isinstance(board, dict):
+                warnings.append("Skipped an invalid legacy board.")
+                continue
+            board_id = _clean_text(board.get("id"), field="Board", maximum=128)
+            project_id = _clean_text(board.get("project_id"), field="Project", maximum=128) or None
+            for column in board.get("columns") or []:
+                if not isinstance(column, dict):
+                    warnings.append(f"Skipped an invalid column on board {board_id or 'unknown'}.")
+                    continue
+                column_id = column.get("id")
+                status = _legacy_status(column_id)
+                if status == "triage" and _clean_text(column_id, field="Column", maximum=64):
+                    warnings.append(f"Mapped legacy column '{column_id}' to Triage.")
+                for note in column.get("notes") or []:
+                    if not isinstance(note, dict):
+                        warnings.append(f"Skipped an invalid note on board {board_id or 'unknown'}.")
+                        continue
+                    note_id = _clean_text(note.get("id"), field="Note", maximum=128)
+                    source_key = (board_id, note_id)
+                    if not note_id or source_key in known_sources:
+                        continue
+                    title = _legacy_note_text(note)
+                    if not title:
+                        warnings.append(f"Skipped an untitled note on board {board_id or 'unknown'}.")
+                        continue
+                    parent_id = uuid.uuid4().hex
+                    parent = {
+                        "id": parent_id, "title": title, "description": "", "status": status,
+                        "priority": "none", "project_id": project_id, "created_at": now, "updated_at": now,
+                        "legacy_source": {"board_id": board_id, "note_id": note_id},
+                    }
+                    state["work_items"].append(parent)
+                    _record_activity(state, parent_id, "migrated", {"board_id": board_id, "note_id": note_id})
+                    known_sources.add(source_key)
+                    created += 1
+                    for offset, subitem in enumerate(note.get("subItems") or []):
+                        sub_title = _legacy_note_text(subitem)
+                        if not sub_title:
+                            continue
+                        sub_source_id = _clean_text(
+                            subitem.get("id") if isinstance(subitem, dict) else f"{note_id}:sub:{offset}",
+                            field="Note", maximum=128,
+                        )
+                        sub_key = (board_id, sub_source_id)
+                        if sub_key in known_sources:
+                            continue
+                        child = {
+                            "id": uuid.uuid4().hex, "title": sub_title, "description": "", "status": status,
+                            "priority": "none", "project_id": project_id, "parent_id": parent_id,
+                            "created_at": now, "updated_at": now,
+                            "legacy_source": {"board_id": board_id, "note_id": sub_source_id},
+                        }
+                        state["work_items"].append(child)
+                        _record_activity(state, child["id"], "migrated", {"board_id": board_id, "note_id": sub_source_id})
+                        known_sources.add(sub_key)
+                        created += 1
+        for warning in warnings:
+            if warning not in migration["warnings"]:
+                migration["warnings"].append(warning)
+        migration["status"] = "complete"
+        migration["sources"] = [str(source)]
+        if created or warnings or previous_migration_status != "complete":
+            state["revision"] += 1
+            save_state(state)
+        return {"created": created, "warnings": warnings, "revision": state["revision"]}
+
+
 def render_task_context(project_id: str | None) -> str:
     """Render bounded, active work as untrusted reference data for one chat."""
     with _STATE_LOCK:
@@ -279,6 +391,8 @@ def render_task_context(project_id: str | None) -> str:
         if row.get("status") not in {"done", "cancelled"}
         and ((row.get("project_id") or "") == requested)
     ]
+    if not items:
+        return ""
     scope = f"project linked to this chat ({requested})" if requested else "general work"
     lines = [
         "## Work Hub task context",
