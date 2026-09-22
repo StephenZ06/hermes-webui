@@ -1,6 +1,6 @@
 /* Work Hub: vanilla-JS client for the local state, using curated mx-icons SVGs. */
 (() => {
-  const store = { items: [], projects: [], statuses: [], revision: 0, stale: false, activeScope: 'all', activeView: 'board', selectedItemId: null, search: '' };
+  const store = { items: [], projects: [], profiles: [], statuses: [], revision: 0, stale: false, activeScope: 'all', activeView: 'board', selectedItemId: null, search: '' };
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -11,7 +11,7 @@
     const root = el('workHub'); if (!root) return;
     try {
       const data = await request('/api/work_hub/bootstrap');
-      store.items = data.items || []; store.projects = data.projects || []; store.statuses = data.statuses || []; store.revision = data.revision || 0; store.stale = false;
+      store.items = data.items || []; store.projects = data.projects || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
     render();
   }
@@ -42,10 +42,13 @@
     const panel = el('workHubInspector'); if (!panel) return;
     const item = store.items.find(row => row.id === store.selectedItemId);
     if (!item) { panel.innerHTML = `<div class="work-hub-inspector-empty">${icon('work')}<p>Select a work item to see details.</p></div>`; return; }
-    panel.innerHTML = `<div class="work-hub-inspector-head"><span>WORK ITEM</span><button id="workHubClose" aria-label="Close details">${icon('close')}</button></div><h2></h2><label>Status<select id="workHubStatus">${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label><label>Description<textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps"></textarea></label><button id="workHubSave" class="work-hub-save">Save changes</button>`;
+    const currentSessionId = typeof S !== 'undefined' && S.session ? S.session.session_id : null;
+    panel.innerHTML = `<div class="work-hub-inspector-head"><span>WORK ITEM</span><button id="workHubClose" aria-label="Close details">${icon('close')}</button></div><h2></h2><label>Status<select id="workHubStatus">${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label><label>Hermes agent<select id="workHubAgent"><option value="">Unassigned</option>${store.profiles.map(p => `<option value="${esc(p.name)}" ${p.name === item.agent_profile ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Description<textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps"></textarea></label>${currentSessionId ? '<button id="workHubLinkChat" class="work-hub-link">Link current chat</button>' : ''}<button id="workHubSave" class="work-hub-save">Save changes</button>`;
     panel.querySelector('h2').textContent = item.title; panel.querySelector('#workHubDescription').value = item.description || '';
     el('workHubClose').onclick = () => { store.selectedItemId = null; renderInspector(); };
-    el('workHubSave').onclick = () => updateItem(item.id, { status: el('workHubStatus').value, description: el('workHubDescription').value });
+    const linkChat = el('workHubLinkChat');
+    if (linkChat) linkChat.onclick = () => updateItem(item.id, { linked_session_ids: [...new Set([...(item.linked_session_ids || []), currentSessionId])] });
+    el('workHubSave').onclick = () => updateItem(item.id, { status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, description: el('workHubDescription').value });
   }
   function bind() {
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });

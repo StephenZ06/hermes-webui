@@ -234,6 +234,26 @@ Before opening a change for review, confirm:
 - Secrets, private paths, local-only workflows, and personal notes stay out of
   tracked docs and examples.
 
+## Work Hub state and execution boundary
+
+The primary Notes panel is the Work Hub. `api/work_hub.py` is its only state
+writer and persists shared, versioned data in `STATE_DIR/work_hub.json` using
+an atomic replacement. Work Hub items may reference existing projects, Hermes
+profiles, and chat sessions, but those registries remain their respective
+authorities. Missing projects or profiles are displayed as unavailable rather
+than silently deleting historical work.
+
+On first bootstrap, Work Hub migrates legacy `sticky_boards.json` content
+idempotently and never modifies or deletes that source file. It also never
+writes a project workspace's `AGENTS.md`; new task context is injected only for
+the active chat turn. Legacy board context remains a fallback while the relevant
+Work Hub scope has no active items.
+
+Office is authoritative for observed agent runtime activity. Office events may
+be appended to a linked Work Hub item as `office_execution` activity, but must
+not alter the item’s planned status. A planned assignment is not proof that an
+agent is executing.
+
 ## Future evolution
 
 This index is not intended to make the first contract set final. Future PRs may

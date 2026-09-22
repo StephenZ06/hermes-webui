@@ -45,3 +45,10 @@ def test_work_hub_post_bodies_use_the_shared_json_api_contract():
 
     assert "body: JSON.stringify({ item:" in script
     assert "body: JSON.stringify({ item_id:" in script
+
+
+def test_work_hub_exposes_current_chat_link_action():
+    script = read("static/work-hub.js")
+
+    assert "Link current chat" in script
+    assert "linked_session_ids" in script

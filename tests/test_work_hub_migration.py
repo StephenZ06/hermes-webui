@@ -60,3 +60,29 @@ def test_empty_legacy_file_records_completed_migration(monkeypatch, tmp_path):
     work_hub.migrate_sticky_boards()
 
     assert work_hub.load_state()["migration"]["status"] == "complete"
+
+
+def test_bootstrap_migrates_legacy_notes_before_returning_items(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "project-a", "name": "A"}])
+    (tmp_path / "sticky_boards.json").write_text(json.dumps({"boards": [FIXTURE_BOARD]}), encoding="utf-8")
+
+    result = work_hub.bootstrap()
+
+    assert any(item["title"] == "matching task" for item in result["items"])
+
+
+def test_repeated_migration_does_not_churn_revision_for_known_warnings(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    (tmp_path / "sticky_boards.json").write_text(json.dumps({"boards": [{
+        "id": "legacy", "columns": [{"id": "custom", "notes": []}],
+    }]}), encoding="utf-8")
+
+    first = work_hub.migrate_sticky_boards()
+    second = work_hub.migrate_sticky_boards()
+
+    assert second["revision"] == first["revision"]

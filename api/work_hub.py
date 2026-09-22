@@ -151,6 +151,32 @@ def _validate_status(status: object) -> str:
     return value
 
 
+def _validate_agent_profile(value: object) -> str | None:
+    name = _clean_text(value, field="Agent profile", maximum=128)
+    if not name:
+        return None
+    from api.profiles import list_profiles_api
+
+    if not any(str(profile.get("name") or "") == name for profile in list_profiles_api()):
+        raise WorkHubError("Agent profile not found", 404)
+    return name
+
+
+def _validate_linked_sessions(value: object) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(row, str) for row in value):
+        raise WorkHubError("Linked sessions must be a list")
+    from api.models import get_session
+
+    linked = []
+    for session_id in value:
+        session_id = _clean_text(session_id, field="Session", maximum=256, required=True)
+        if not get_session(session_id):
+            raise WorkHubError("Session not found", 404)
+        if session_id not in linked:
+            linked.append(session_id)
+    return linked
+
+
 def _expect_revision(state: dict[str, Any], expected_revision: int | None, *, creating: bool = False) -> None:
     if creating and expected_revision is None:
         return
@@ -210,7 +236,7 @@ def create_item(payload: dict[str, Any], expected_revision: int | None = None) -
 def update_item(item_id: str, payload: dict[str, Any], expected_revision: int) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise WorkHubError("Work item update must be an object")
-    allowed = {"title", "description", "status", "priority", "project_id"}
+    allowed = {"title", "description", "status", "priority", "project_id", "agent_profile", "linked_session_ids"}
     unknown = set(payload) - allowed
     if unknown:
         raise WorkHubError("Unsupported work item field")
@@ -229,6 +255,10 @@ def update_item(item_id: str, payload: dict[str, Any], expected_revision: int) -
             changed["priority"] = _clean_text(payload["priority"], field="Priority", maximum=32).lower()
         if "project_id" in payload:
             changed["project_id"] = _validate_project(payload["project_id"])
+        if "agent_profile" in payload:
+            changed["agent_profile"] = _validate_agent_profile(payload["agent_profile"])
+        if "linked_session_ids" in payload:
+            changed["linked_session_ids"] = _validate_linked_sessions(payload["linked_session_ids"])
         actual = {key: value for key, value in changed.items() if item.get(key) != value}
         if actual:
             item.update(actual)
@@ -241,6 +271,67 @@ def update_item(item_id: str, payload: dict[str, Any], expected_revision: int) -
 
 def move_item(item_id: str, status: str, expected_revision: int) -> dict[str, Any]:
     return update_item(item_id, {"status": status}, expected_revision)
+
+
+def present_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Attach safe display metadata without rewriting a historical assignment."""
+    result = dict(item)
+    agent_name = str(item.get("agent_profile") or "")
+    profiles = []
+    try:
+        from api.profiles import list_profiles_api
+
+        profiles = list_profiles_api()
+    except Exception:
+        profiles = []
+    profile = next((row for row in profiles if str(row.get("name") or "") == agent_name), None)
+    result["agent"] = {
+        "name": agent_name or None,
+        "availability": "available" if profile else "unavailable",
+        "provider": profile.get("provider") if profile else None,
+    }
+    return result
+
+
+def record_office_activity(item_id: str, event: dict[str, Any]) -> dict[str, Any]:
+    """Project observed Office execution without changing planned task state."""
+    if not isinstance(event, dict):
+        raise WorkHubError("Office event must be an object")
+    with _STATE_LOCK:
+        state = load_state()
+        _item_by_id(state, item_id)
+        details = {"state": _clean_text(event.get("state"), field="Office state", maximum=64, required=True)}
+        _record_activity(state, item_id, "office_execution", details)
+        state["revision"] += 1
+        save_state(state)
+        return {"activity": dict(state["activities"][-1]), "revision": state["revision"]}
+
+
+_PLANNING_COLLECTIONS = {"cycles", "modules", "pages", "views"}
+
+
+def create_planning_entity(collection: str, payload: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+    """Create a local planning entity using the same revision contract as items."""
+    if collection not in _PLANNING_COLLECTIONS:
+        raise WorkHubError("Planning entity type is invalid")
+    if not isinstance(payload, dict):
+        raise WorkHubError("Planning entity must be an object")
+    with _STATE_LOCK:
+        state = load_state()
+        _expect_revision(state, expected_revision, creating=True)
+        name = _clean_text(payload.get("name") or payload.get("title"), field="Name", maximum=TITLE_MAX_CHARS, required=True)
+        project_id = _validate_project(payload.get("project_id"))
+        now = time.time()
+        entity = {"id": uuid.uuid4().hex, "name": name, "project_id": project_id, "created_at": now, "updated_at": now}
+        if collection == "pages":
+            entity["content"] = _clean_text(payload.get("content"), field="Content", maximum=DESCRIPTION_MAX_CHARS)
+        if collection == "views":
+            entity["layout"] = _clean_text(payload.get("layout") or "board", field="Layout", maximum=32)
+            entity["filters"] = payload.get("filters") if isinstance(payload.get("filters"), dict) else {}
+        state[collection].append(entity)
+        state["revision"] += 1
+        save_state(state)
+        return {"entity": dict(entity), "revision": state["revision"]}
 
 
 def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -259,10 +350,15 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def bootstrap() -> dict[str, Any]:
     from api.models import load_projects
+    from api.profiles import list_profiles_api
 
+    # First visible Work Hub load is the migration boundary. It is idempotent
+    # and never writes the legacy board file or any project workspace file.
+    migrate_sticky_boards()
     result = list_items()
     result.update({
         "projects": load_projects(),
+        "profiles": [{"name": row.get("name"), "provider": row.get("provider")} for row in list_profiles_api()],
         "statuses": [{"id": status, "label": STATUS_LABELS[status]} for status in STATUS_ORDER],
         "views": load_state()["views"],
     })
@@ -370,12 +466,14 @@ def migrate_sticky_boards() -> dict[str, Any]:
                         _record_activity(state, child["id"], "migrated", {"board_id": board_id, "note_id": sub_source_id})
                         known_sources.add(sub_key)
                         created += 1
+        added_warning = False
         for warning in warnings:
             if warning not in migration["warnings"]:
                 migration["warnings"].append(warning)
+                added_warning = True
         migration["status"] = "complete"
         migration["sources"] = [str(source)]
-        if created or warnings or previous_migration_status != "complete":
+        if created or added_warning or previous_migration_status != "complete":
             state["revision"] += 1
             save_state(state)
         return {"created": created, "warnings": warnings, "revision": state["revision"]}
