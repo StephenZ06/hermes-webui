@@ -52,3 +52,23 @@ def test_work_hub_exposes_current_chat_link_action():
 
     assert "Link current chat" in script
     assert "linked_session_ids" in script
+
+
+def test_all_work_scope_does_not_exclude_project_items_or_clear_missing_agent():
+    script = read("static/work-hub.js")
+
+    assert "store.activeScope === 'all' ? true" in script
+    assert "Unavailable: ${esc(item.agent_profile)}" in script
+
+
+def test_work_hub_refresh_does_not_overwrite_a_newer_local_revision():
+    script = read("static/work-hub.js")
+
+    assert "if ((data.revision || 0) < store.revision) return;" in script
+
+
+def test_work_hub_search_replaces_results_and_rebinds_item_actions():
+    script = read("static/work-hub.js")
+
+    assert "canvas.innerHTML = '';" in script
+    assert "renderCanvas(scopedItems()); bind();" in script

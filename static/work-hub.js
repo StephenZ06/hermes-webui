@@ -4,13 +4,14 @@
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const scopedItems = () => store.items.filter(item => (store.activeScope === 'all' || store.activeScope === 'inbox' ? !item.project_id : item.project_id === store.activeScope) && (!store.search || item.title.toLowerCase().includes(store.search)));
+  const scopedItems = () => store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : item.project_id === store.activeScope) && (!store.search || item.title.toLowerCase().includes(store.search)));
 
   async function request(path, options) { return api(path, options); }
   async function loadWorkHubPanel() {
     const root = el('workHub'); if (!root) return;
     try {
       const data = await request('/api/work_hub/bootstrap');
+      if ((data.revision || 0) < store.revision) return;
       store.items = data.items || []; store.projects = data.projects || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
     render();
@@ -29,6 +30,7 @@
   }
   function renderCanvas(items) {
     const canvas = el('workHubCanvas'); if (!canvas) return;
+    canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
       items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row'; row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${esc(item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
@@ -43,7 +45,8 @@
     const item = store.items.find(row => row.id === store.selectedItemId);
     if (!item) { panel.innerHTML = `<div class="work-hub-inspector-empty">${icon('work')}<p>Select a work item to see details.</p></div>`; return; }
     const currentSessionId = typeof S !== 'undefined' && S.session ? S.session.session_id : null;
-    panel.innerHTML = `<div class="work-hub-inspector-head"><span>WORK ITEM</span><button id="workHubClose" aria-label="Close details">${icon('close')}</button></div><h2></h2><label>Status<select id="workHubStatus">${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label><label>Hermes agent<select id="workHubAgent"><option value="">Unassigned</option>${store.profiles.map(p => `<option value="${esc(p.name)}" ${p.name === item.agent_profile ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Description<textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps"></textarea></label>${currentSessionId ? '<button id="workHubLinkChat" class="work-hub-link">Link current chat</button>' : ''}<button id="workHubSave" class="work-hub-save">Save changes</button>`;
+    const missingAgent = item.agent_profile && !store.profiles.some(profile => profile.name === item.agent_profile);
+    panel.innerHTML = `<div class="work-hub-inspector-head"><span>WORK ITEM</span><button id="workHubClose" aria-label="Close details">${icon('close')}</button></div><h2></h2><label>Status<select id="workHubStatus">${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label><label>Hermes agent<select id="workHubAgent"><option value="">Unassigned</option>${missingAgent ? `<option value="${esc(item.agent_profile)}" selected>Unavailable: ${esc(item.agent_profile)}</option>` : ''}${store.profiles.map(p => `<option value="${esc(p.name)}" ${p.name === item.agent_profile ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Description<textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps"></textarea></label>${currentSessionId ? '<button id="workHubLinkChat" class="work-hub-link">Link current chat</button>' : ''}<button id="workHubSave" class="work-hub-save">Save changes</button>`;
     panel.querySelector('h2').textContent = item.title; panel.querySelector('#workHubDescription').value = item.description || '';
     el('workHubClose').onclick = () => { store.selectedItemId = null; renderInspector(); };
     const linkChat = el('workHubLinkChat');
@@ -54,7 +57,7 @@
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
     document.querySelectorAll('[data-item-id]').forEach(button => button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); });
-    const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); };
+    const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); bind(); };
     const create = el('workHubCreate'); if (create) create.onclick = createItem;
   }
   async function createItem() { const title = window.prompt('Work item title'); if (!title || !title.trim()) return; try { const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: { title, project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, expected_revision: store.revision }) }); store.items.push(result.item); store.revision = result.revision; store.selectedItemId = result.item.id; document.dispatchEvent(new CustomEvent('work-hub-changed')); render(); } catch (error) { store.stale = true; render(); } }

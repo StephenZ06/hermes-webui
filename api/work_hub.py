@@ -72,10 +72,15 @@ def _normalise_state(value: object) -> dict[str, Any]:
     for key in state:
         if key in value:
             state[key] = value[key]
-    if not isinstance(state["revision"], int) or state["revision"] < 0:
+    if isinstance(state["revision"], bool) or not isinstance(state["revision"], int) or state["revision"] < 0:
         raise WorkHubError("Work Hub state has an invalid revision; restore it from a backup.", 503)
-    if not isinstance(state["work_items"], list):
+    collection_keys = ("work_items", "views", "cycles", "modules", "pages", "comments", "activities")
+    if any(not isinstance(state[key], list) for key in collection_keys):
         raise WorkHubError("Work Hub state has invalid work items; restore it from a backup.", 503)
+    if any(not isinstance(item, dict) for item in state["work_items"]) or not isinstance(state["migration"], dict):
+        raise WorkHubError("Work Hub state has invalid work items; restore it from a backup.", 503)
+    if not isinstance(state["migration"].get("warnings", []), list) or not isinstance(state["migration"].get("sources", []), list):
+        raise WorkHubError("Work Hub state has invalid migration data; restore it from a backup.", 503)
     return state
 
 
@@ -367,8 +372,12 @@ def bootstrap() -> dict[str, Any]:
 
 def _legacy_note_text(note: object) -> str:
     if isinstance(note, dict):
-        return _clean_text(note.get("title") or note.get("text"), field="Title", maximum=TITLE_MAX_CHARS)
-    return _clean_text(note, field="Title", maximum=TITLE_MAX_CHARS)
+        value = note.get("title") or note.get("text")
+    else:
+        value = note
+    # Legacy data predates the Work Hub input limit. Preserve it safely by
+    # truncating during import instead of making the entire first-load fail.
+    return _clean_text(value, field="Title", maximum=TITLE_MAX_CHARS * 100)[:TITLE_MAX_CHARS]
 
 
 def _legacy_status(column_id: object) -> str:

@@ -86,3 +86,17 @@ def test_repeated_migration_does_not_churn_revision_for_known_warnings(monkeypat
     second = work_hub.migrate_sticky_boards()
 
     assert second["revision"] == first["revision"]
+
+
+def test_migration_preserves_oversized_legacy_title_without_failing_bootstrap(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    title = "x" * 241
+    (tmp_path / "sticky_boards.json").write_text(json.dumps({"boards": [{
+        "id": "legacy", "columns": [{"id": "general", "notes": [{"id": "long", "title": title}]}],
+    }]}), encoding="utf-8")
+
+    result = work_hub.bootstrap()
+
+    assert result["items"][0]["title"] == "x" * 240

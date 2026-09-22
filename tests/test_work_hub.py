@@ -44,3 +44,16 @@ def test_update_rejects_unknown_status_without_writing(monkeypatch, tmp_path):
         work_hub.move_item(created["item"]["id"], "surprise", created["revision"])
 
     assert work_hub.get_item(created["item"]["id"])["status"] == "backlog"
+
+
+def test_malformed_state_is_rejected_before_any_mutation(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    (tmp_path / "work_hub.json").write_text(
+        '{"schema_version": 1, "revision": true, "work_items": [null], "migration": null}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(work_hub.WorkHubError, match="invalid revision"):
+        work_hub.load_state()
