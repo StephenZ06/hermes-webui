@@ -2033,6 +2033,23 @@ async function loadSession(sid){
     return loadSession(continuationSid,{...opts,skipLineageResolve:true,skipContinuationResolve:true,force:true,_preloadNotified:true});
   }
   S.session=data.session;
+  // Scope the visible Notes pane to the accepted session immediately. The
+  // deferred board fetch below still updates its data, but a project switch
+  // must never leave the previous project's board visible while messages load.
+  if(typeof renderWorkspaceNotesPaneForSession==='function'){
+    renderWorkspaceNotesPaneForSession({
+      sessionId: sid,
+    });
+  }
+  // Notes context is independent of the file-tree/git refresh. Start its
+  // session-owned data request as soon as metadata is accepted so a slow or
+  // failed workspace load cannot leave the prior project's boards on screen.
+  if(typeof refreshWorkspaceNotesPane==='function'){
+    const notes=refreshWorkspaceNotesPane({
+      sessionId: sid,
+    });
+    if(notes&&typeof notes.catch==='function') notes.catch(()=>{});
+  }
   if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(data.session);
   if(typeof _clearEmptyComposerModelOverride==='function') _clearEmptyComposerModelOverride();
   // Loading a real existing session abandons any pre-session toolset override

@@ -20,6 +20,7 @@ export const IDLE_BEHAVIOURS = [
   { pose: 'sip', ms: 2000 },
   { pose: 'stretch', ms: 2200 },
   { pose: 'glance', ms: 1500 },
+  { pose: 'coffee', ms: 2400 },
 ];
 
 /**
@@ -28,6 +29,18 @@ export const IDLE_BEHAVIOURS = [
  */
 export const IDLE_MIN_GAP_MS = 9000;
 export const IDLE_GAP_JITTER_MS = 14000;
+export const QUIET_WORKER_SLEEP_MS = 10000;
+
+/**
+ * A worker is only "quiet" after real tool activity has gone silent. Some
+ * delegated profiles expose lifecycle state but no per-tool events; treating
+ * those workers as asleep would contradict the running status Hermes gave us.
+ */
+export function shouldSleepWhileRunning(worker, nowMs) {
+  if (!worker || worker.status !== 'running' || worker.pose !== 'work') return false;
+  const lastToolAt = Number(worker.lastToolAt || 0);
+  return lastToolAt > 0 && nowMs - lastToolAt > QUIET_WORKER_SLEEP_MS;
+}
 
 function rearm(state, nowMs, rand) {
   state.idlePose = null;

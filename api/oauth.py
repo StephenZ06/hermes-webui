@@ -36,6 +36,8 @@ CODEX_TOKEN_URL = f"{CODEX_ISSUER}/oauth/token"
 CODEX_REDIRECT_URI = f"{CODEX_ISSUER}/deviceauth/callback"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_FLOW_MAX_WAIT_SECONDS = 15 * 60
+CODEX_USER_CODE_MAX_ATTEMPTS = 3
+CODEX_USER_CODE_RETRY_SECONDS = 1
 
 _ALLOWED_ONBOARDING_OAUTH_PROVIDERS = {"openai-codex", "anthropic", "claude", "claude-code"}
 _ANTHROPIC_PROVIDER_ALIASES = {"anthropic", "claude", "claude-code"}
@@ -548,8 +550,29 @@ def _json_request(url: str, payload: dict[str, Any], *, form: bool = False) -> d
 
 
 def _request_codex_user_code() -> dict[str, Any]:
-    """Request a new device-auth user code and device_auth_id from the Codex endpoint."""
-    return _json_request(CODEX_USER_CODE_URL, {"client_id": CODEX_CLIENT_ID})
+    """Request a new device-auth user code and device_auth_id from the Codex endpoint.
+
+    The device-code endpoint occasionally responds with Cloudflare's transient
+    530 status. Retrying here keeps a short upstream outage from immediately
+    failing a user-initiated reconnect, while preserving all other HTTP errors.
+    """
+    for attempt in range(CODEX_USER_CODE_MAX_ATTEMPTS):
+        try:
+            return _json_request(CODEX_USER_CODE_URL, {"client_id": CODEX_CLIENT_ID})
+        except urllib.error.HTTPError as exc:
+            is_last_attempt = attempt == CODEX_USER_CODE_MAX_ATTEMPTS - 1
+            if exc.code != 530 or is_last_attempt:
+                if exc.code == 530:
+                    raise RuntimeError(
+                        "Codex sign-in is temporarily unavailable (HTTP 530). Please try again shortly."
+                    ) from exc
+                raise
+            logger.warning(
+                "Codex device-code endpoint returned HTTP 530; retrying (%s/%s)",
+                attempt + 1,
+                CODEX_USER_CODE_MAX_ATTEMPTS,
+            )
+            time.sleep(CODEX_USER_CODE_RETRY_SECONDS * (attempt + 1))
 
 
 def _poll_codex_authorization(device_auth_id: str, user_code: str) -> dict[str, Any] | None:
@@ -792,6 +815,8 @@ def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
 
         try:
             device = _request_codex_user_code()
+        except RuntimeError:
+            raise
         except Exception as exc:
             raise RuntimeError(f"Failed to start Codex OAuth: {exc}") from exc
 

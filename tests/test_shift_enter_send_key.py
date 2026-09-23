@@ -32,7 +32,7 @@ def test_settings_expose_shift_enter_send_key_option():
 def test_shift_enter_mode_sends_only_with_shift_enter():
     handler = _listener_body()
     shift_branch = handler.split("if(window._sendKey==='shift+enter')", 1)[1]
-    shift_branch = shift_branch.split("} else if(window._sendKey==='ctrl+enter'||_mobileDefault)", 1)[0]
+    shift_branch = shift_branch.split("} else if(window._sendKey==='ctrl+enter')", 1)[0]
     assert "if(e.shiftKey){e.preventDefault();send();}" in shift_branch
     assert "if(!e.shiftKey){e.preventDefault();send();}" not in shift_branch
 
@@ -41,7 +41,7 @@ def test_shift_enter_mode_leaves_plain_enter_to_textarea_when_autocomplete_open(
     handler = _listener_body()
     dropdown_enter = handler[
         handler.index("if(e.key==='Enter'&&!e.shiftKey)") :
-        handler.index("// Send key: respect user preference.")
+        handler.index("// Send key: respect the user's explicit preference on every device.")
     ]
     assert "if(window._sendKey==='shift+enter')" in dropdown_enter
     guarded = dropdown_enter.split("if(window._sendKey==='shift+enter')", 1)[1].split("e.preventDefault();", 1)[0]
@@ -52,3 +52,10 @@ def test_existing_enter_and_ctrl_enter_modes_stay_available():
     handler = _listener_body()
     assert "if(!e.shiftKey){e.preventDefault();send();}" in handler
     assert "if(isNumpadEnter||e.ctrlKey||e.metaKey){e.preventDefault();send();}" in handler
+
+
+def test_enter_mode_is_not_overridden_to_newline_on_touch_devices():
+    """A user who selected Enter to send must get that behavior everywhere."""
+    handler = _listener_body()
+    assert "else if(window._sendKey==='ctrl+enter'){" in handler
+    assert "||_mobileDefault" not in handler

@@ -19,6 +19,7 @@ let _kanbanBoardMenuOpen = false;
 // dropdown that lets a user pick it manually.
 let kanbanWorkflowTemplateFilter = '';
 let _kanbanFilterMenuOpen = false;
+let _kanbanAutomationMenuOpen = false;
 let _kanbanIsDispatching = false;
 let _kanbanSuppressCardClickUntil = 0;
 // SSE event stream — replaces the 30s polling cadence with a long-lived
@@ -4949,6 +4950,52 @@ function _kanbanCloseFilterMenuOnOutside(ev){
 
 function _kanbanFilterMenuEsc(ev){
   if (ev.key === 'Escape') closeKanbanFilterMenu();
+}
+
+// Automation overflow menu — collapses Office view / Crews / dispatcher
+// preview+run behind one button so they don't compete with the board
+// switcher + view toggle for attention (they're agent-automation machinery,
+// not day-to-day task management). The four controls inside keep their
+// original ids/onclick handlers unchanged, just relocated here — clicking
+// one runs its normal handler and leaves the menu open, same as clicking a
+// control inside the Filter popover above.
+function toggleKanbanAutomationMenu(ev){
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('kanbanAutomationMenu');
+  const toggle = document.getElementById('btnKanbanAutomationMenu');
+  if (!menu || !toggle) return;
+  if (_kanbanAutomationMenuOpen) { closeKanbanAutomationMenu(); return; }
+  _kanbanAutomationMenuOpen = true;
+  menu.hidden = false;
+  toggle.setAttribute('aria-expanded', 'true');
+  document.addEventListener('keydown', _kanbanAutomationMenuEsc);
+  setTimeout(() => {
+    document.addEventListener('click', _kanbanCloseAutomationMenuOnOutside, {once: true, capture: true});
+  }, 0);
+}
+
+function closeKanbanAutomationMenu(){
+  _kanbanAutomationMenuOpen = false;
+  const menu = document.getElementById('kanbanAutomationMenu');
+  const toggle = document.getElementById('btnKanbanAutomationMenu');
+  if (menu) menu.hidden = true;
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('keydown', _kanbanAutomationMenuEsc);
+}
+
+function _kanbanCloseAutomationMenuOnOutside(ev){
+  const wrap = document.getElementById('kanbanAutomationWrap');
+  if (!wrap || !wrap.contains(ev.target)) {
+    closeKanbanAutomationMenu();
+  } else {
+    setTimeout(() => {
+      document.addEventListener('click', _kanbanCloseAutomationMenuOnOutside, {once: true, capture: true});
+    }, 0);
+  }
+}
+
+function _kanbanAutomationMenuEsc(ev){
+  if (ev.key === 'Escape') closeKanbanAutomationMenu();
 }
 
 // Active-filter indicator on the Filter button — shown whenever any control

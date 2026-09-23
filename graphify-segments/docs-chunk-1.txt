@@ -1,0 +1,20 @@
+/home/z014/Apps/hermes-webui/.github/FUNDING.yml
+/home/z014/Apps/hermes-webui/.github/workflows/browser-smoke.yml
+/home/z014/Apps/hermes-webui/.github/workflows/conversation-lifecycle.yml
+/home/z014/Apps/hermes-webui/.github/workflows/docker-smoke.yml
+/home/z014/Apps/hermes-webui/.github/workflows/docs-ci.yml
+/home/z014/Apps/hermes-webui/.github/workflows/native-windows-startup.yml
+/home/z014/Apps/hermes-webui/.github/workflows/release.yml
+/home/z014/Apps/hermes-webui/.github/workflows/tests.yml
+/home/z014/Apps/hermes-webui/AGENTS.md
+/home/z014/Apps/hermes-webui/ARCHITECTURE.md
+/home/z014/Apps/hermes-webui/Agent Canvas FounderOS Migration.md
+/home/z014/Apps/hermes-webui/BUGS.md
+/home/z014/Apps/hermes-webui/CHANGELOG.md
+/home/z014/Apps/hermes-webui/CONTRIBUTING.md
+/home/z014/Apps/hermes-webui/CONTRIBUTORS.md
+/home/z014/Apps/hermes-webui/DESIGN.md
+/home/z014/Apps/hermes-webui/README.md
+/home/z014/Apps/hermes-webui/ROADMAP.md
+/home/z014/Apps/hermes-webui/SPRINTS.md
+/home/z014/Apps/hermes-webui/TESTING.md

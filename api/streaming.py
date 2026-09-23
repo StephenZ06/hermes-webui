@@ -1074,6 +1074,18 @@ def _webui_ephemeral_system_prompt(
     bound_project_prompt = _bound_project_prompt(session)
     if bound_project_prompt:
         parts.append(bound_project_prompt)
+    # Notes change independently of a session's transcript, so they belong in
+    # this per-turn ephemeral layer rather than in AGENTS.md or msg[0]. The
+    # helper applies the same scope as the Workspace Notes panel: an assigned
+    # project sees only its boards; a general chat sees the general-board view.
+    try:
+        from api.sticky_board import render_task_context
+        task_prompt = render_task_context(getattr(session, "project_id", None))
+    except Exception:
+        logger.debug("Unable to load sticky-board task context", exc_info=True)
+        task_prompt = ""
+    if task_prompt:
+        parts.append(task_prompt)
     surface_prompt = _webui_surface_context_prompt(surface_context)
     if surface_prompt:
         parts.append(surface_prompt)
@@ -1690,6 +1702,12 @@ def _classify_provider_error(
             'label': 'Rate limit reached',
             'type': 'rate_limit',
             'hint': 'Rate limit reached. The fallback model (if configured) was also exhausted. Try again in a moment.',
+        }
+    if 'invalidated oauth token' in _err_lower:
+        return {
+            'label': 'Codex sign-in expired',
+            'type': 'codex_oauth_reauth_required',
+            'hint': 'Your Codex sign-in was revoked. Select Reconnect Codex to sign in again, then the message will be retried.',
         }
     if _is_auth:
         return {
@@ -12711,7 +12729,11 @@ def _run_agent_streaming(
         )
 
         # The user hint still points to Settings / `hermes model` from _classify_provider_error().
-        if _exc_is_quota:
+        if _classification['type'] == 'codex_oauth_reauth_required':
+            _exc_label, _exc_type, _exc_hint = (
+                _classification['label'], _classification['type'], _classification['hint'],
+            )
+        elif _exc_is_quota:
             _exc_label, _exc_type, _exc_hint = (
                 _classification['label'], _classification['type'], _classification['hint'],
             )

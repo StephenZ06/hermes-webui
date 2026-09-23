@@ -2082,6 +2082,8 @@ def _build_profile_rows_fast() -> list | None:
         except Exception:
             gateway_running = False
         enabled_count, total_count = _get_profile_skills_stats(home)
+        meta = _profile_meta_fields(home)
+        name = _profile_row_name(name, is_default, meta)
         return {
             'name': name,
             'path': str(home),
@@ -2091,7 +2093,7 @@ def _build_profile_rows_fast() -> list | None:
             'model': model,
             'provider': provider,
             'has_env': (home / '.env').exists(),
-            **_profile_meta_fields(home),
+            **meta,
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
@@ -2102,8 +2104,8 @@ def _build_profile_rows_fast() -> list | None:
     rows: list = []
     default_home = _get_default_hermes_home()
     if default_home.is_dir():
-        # Upstream hardcodes the base home's display name to "default" even when
-        # the directory is literally ".hermes" — match that exactly.
+        # The root profile keeps its canonical ``default`` identity internally,
+        # but may expose a human-facing name from profile.yaml.
         rows.append(_row(default_home, 'default', True))
 
     profiles_root = _get_profiles_root()
@@ -2152,8 +2154,10 @@ def list_profiles_api() -> list:
                     same_home = False
                 if p.name == active and same_home:
                     enabled_count, total_count = _get_profile_skills_stats(p.path)
+                    meta = _profile_meta_fields(p.path)
+                    name = _profile_row_name(p.name, p.is_default, meta)
                     return [{
-                        'name': p.name,
+                        'name': name,
                         'path': str(p.path),
                         'is_default': p.is_default,
                         'is_active': True,  # Always true in isolated mode
@@ -2161,7 +2165,7 @@ def list_profiles_api() -> list:
                         'model': p.model,
                         'provider': p.provider,
                         'has_env': p.has_env,
-                        **_profile_meta_fields(p.path),
+                        **meta,
                         'skill_count': enabled_count,
                         'enabled_skills': enabled_count,
                         'total_skills': total_count,
@@ -2172,8 +2176,10 @@ def list_profiles_api() -> list:
             pass
         # Fallback: construct profile dict with actual active name and hermes_home path
         enabled_count, total_count = _get_profile_skills_stats(hermes_home)
+        meta = _profile_meta_fields(hermes_home)
+        name = _profile_row_name(active, active == 'default', meta)
         return [{
-            'name': active,
+            'name': name,
             'path': str(hermes_home),
             'is_default': active == 'default',
             'is_active': True,
@@ -2181,7 +2187,7 @@ def list_profiles_api() -> list:
             'model': None,
             'provider': None,
             'has_env': (hermes_home / '.env').exists(),
-            **_profile_meta_fields(hermes_home),
+            **meta,
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
@@ -2221,16 +2227,18 @@ def list_profiles_api() -> list:
         result = []
         for p in infos:
             enabled_count, total_count = _get_profile_skills_stats(p.path)
+            meta = _profile_meta_fields(p.path)
+            name = _profile_row_name(p.name, p.is_default, meta)
             result.append({
-                'name': p.name,
+                'name': name,
                 'path': str(p.path),
                 'is_default': p.is_default,
-                'is_active': p.name == active,
+                'is_active': _profile_row_is_active(name, p.is_default, active),
                 'gateway_running': p.gateway_running,
                 'model': p.model,
                 'provider': p.provider,
                 'has_env': p.has_env,
-                **_profile_meta_fields(p.path),
+                **meta,
                 'skill_count': enabled_count,
                 'enabled_skills': enabled_count,
                 'total_skills': total_count,
@@ -2240,7 +2248,7 @@ def list_profiles_api() -> list:
         return result
 
     active = get_active_profile_name()
-    return [{**p, 'is_active': p['name'] == active} for p in rows]
+    return [{**p, 'is_active': _profile_row_is_active(p['name'], p['is_default'], active)} for p in rows]
 
 
 def _profile_meta_fields(profile_path: Path) -> dict:
@@ -2270,7 +2278,8 @@ def _profile_meta_fields(profile_path: Path) -> dict:
     if not isinstance(data, dict):
         data = {}
     description = data.get('description')
-    return {
+    display_name = data.get('display_name')
+    fields = {
         # Only an explicit boolean ``visible: false`` hides a profile; the
         # string "false", 0, and a missing key all leave it visible.
         'visible': data.get('visible') is not False,
@@ -2280,13 +2289,32 @@ def _profile_meta_fields(profile_path: Path) -> dict:
         # description at all for a consumer matching on prose.
         'description': description.strip() if isinstance(description, str) else '',
     }
+    # A root profile remains canonically ``default`` on disk. The optional
+    # display name is consumed while building its API row, so it never leaks as
+    # an unrelated public response field.
+    if isinstance(display_name, str) and display_name.strip():
+        fields['_display_name'] = display_name.strip()
+    return fields
+
+
+def _profile_row_name(name: str, is_default: bool, meta: dict) -> str:
+    """Consume the optional root display name while preserving its identity."""
+    display_name = meta.pop('_display_name', '')
+    return display_name if is_default and display_name else name
+
+
+def _profile_row_is_active(name: str, is_default: bool, active: str) -> bool:
+    """Match the root profile whether runtime state uses its id or label."""
+    return name == active or (is_default and active in ('', 'default'))
 
 
 def _default_profile_dict() -> dict:
     """Fallback profile dict when hermes_cli is not importable."""
     enabled_count, compatible_count = _get_profile_skills_stats(_DEFAULT_HERMES_HOME)
+    meta = _profile_meta_fields(_DEFAULT_HERMES_HOME)
+    name = _profile_row_name('default', True, meta)
     return {
-        'name': 'default',
+        'name': name,
         'path': str(_DEFAULT_HERMES_HOME),
         'is_default': True,
         'is_active': True,
@@ -2297,7 +2325,7 @@ def _default_profile_dict() -> dict:
         # This fallback returns the default profile as the ONLY row, so its
         # meta-derived visibility is deliberately overridden: honouring a
         # ``visible: false`` here would leave the switcher with nothing at all.
-        **{**_profile_meta_fields(_DEFAULT_HERMES_HOME), 'visible': True},
+        **{**meta, 'visible': True},
         'skill_count': enabled_count,
         'enabled_skills': enabled_count,
         'total_skills': compatible_count,

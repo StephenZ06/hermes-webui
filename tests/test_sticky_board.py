@@ -204,6 +204,38 @@ class TestRoutesWiring:
             ('"/api/sticky_boards/delete"', "from api.sticky_board import delete_board"),
             ('"/api/sticky_boards/set_project"', "from api.sticky_board import set_board_project"),
             ('"/api/sticky_boards/save"', "from api.sticky_board import save_board_columns"),
+            ('"/api/sticky_boards/move_note"', "from api.sticky_board import move_note"),
         ]:
             assert path in src, f"missing route {path}"
             assert fn in src, f"missing import for {path}"
+
+
+class TestMoveNote:
+    def test_move_note_between_columns(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sticky_board, "BOARDS_FILE", tmp_path / "sticky_boards.json")
+        board = sticky_board.create_board("Workflow")
+        board["columns"] = [
+            {"id": "general", "title": "General", "notes": [{"id": "n1", "title": "Task"}]},
+            {"id": "in-progress", "title": "In-Progress", "notes": []},
+            {"id": "completed", "title": "Completed", "notes": []},
+        ]
+        sticky_board.save_board_columns(board["id"], board["columns"])
+
+        result = sticky_board.move_note(board["id"], "n1", "in-progress")
+        assert result is not None
+        col_ids = {c["id"]: [n["id"] for n in c["notes"]] for c in result["columns"]}
+        assert "n1" not in col_ids["general"]
+        assert "n1" in col_ids["in-progress"]
+
+    def test_move_note_rejects_unknown_column(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sticky_board, "BOARDS_FILE", tmp_path / "sticky_boards.json")
+        board = sticky_board.create_board("Workflow")
+        board["columns"] = [
+            {"id": "general", "title": "General", "notes": [{"id": "n1", "title": "Task"}]},
+        ]
+        sticky_board.save_board_columns(board["id"], board["columns"])
+        assert sticky_board.move_note(board["id"], "n1", "unknown") is None
+
+    def test_move_note_missing_board_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sticky_board, "BOARDS_FILE", tmp_path / "sticky_boards.json")
+        assert sticky_board.move_note("ghost", "n1", "in-progress") is None

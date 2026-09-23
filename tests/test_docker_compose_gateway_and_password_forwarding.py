@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 MULTI = ("docker-compose.two-container.yml", "docker-compose.three-container.yml")
 ALL = ("docker-compose.yml",) + MULTI
+LOCAL_GATEWAY_OVERRIDE = REPO / "docker-compose.gateway.override.yml"
 
 
 # ── 1: gateway API server forwarding (multi-container only) ────────────────
@@ -57,6 +58,16 @@ def test_webui_service_forwards_gateway_api_key():
             f"{fn}: WebUI must forward HERMES_WEBUI_GATEWAY_API_KEY from the "
             "same API_SERVER_KEY so the gateway health probe authenticates."
         )
+
+
+def test_local_gateway_override_uses_the_agent_gateway_without_a_secret():
+    """The local bridge must route chat through the gateway without storing its key again."""
+    src = LOCAL_GATEWAY_OVERRIDE.read_text(encoding="utf-8")
+
+    assert "HERMES_WEBUI_CHAT_BACKEND: gateway" in src
+    assert "HERMES_WEBUI_GATEWAY_BASE_URL: http://host.docker.internal:8642" in src
+    assert "host.docker.internal:host-gateway" in src
+    assert "HERMES_WEBUI_GATEWAY_API_KEY" not in src
 
 
 # ── 2: HERMES_WEBUI_PASSWORD forwarding (all compose files) ────────────────

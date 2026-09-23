@@ -20,15 +20,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
-  makePod, makeDesk, makeChair, makePerson, makeNameplate, makeFloorTitle,
-  makePlant, makePodGlow, makeWhiteboard,
-  makeWalkway, makeConnector, marchOutline,
-  setOutlineActive, advanceDashFade, isDashActive, drawNameplate, drawScreen,
+  makePod, makeDesk, makeChair, makePerson, makeNameplate,
+  makePlant, makeWhiteboard, makeChatBubble,
+  makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
+  drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
 } from './builders.js';
 import {
   createWanderer, createArrival, advanceArrival, arrivalSettle,
 } from './motion.js';
+import { shouldSleepWhileRunning } from './idle.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
 // office is authored against this so a desk keeps the same on-screen size
@@ -39,11 +40,15 @@ const FRUSTUM_HALF_HEIGHT = 42;
 const ISO_DIRECTION = new THREE.Vector3(1, 0.92, 1).normalize();
 const CAMERA_DISTANCE = 220;
 const GROUND_SIZE = 400;
-const KEY_LIGHT_INTENSITY = 1.6;
-const FILL_LIGHT_INTENSITY = 0.55;
+const KEY_LIGHT_INTENSITY = 2.25;
+const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
 // pure black — cheap depth cue, no shadow cost (this one never casts).
-const RIM_LIGHT_INTENSITY = 0.45;
+const RIM_LIGHT_INTENSITY = 0.68;
+// A downward spotlight on the conductor adds a controlled highlight to the
+// centre of the floor and deepens the contrast between lit platforms and
+// shadowed undersides.
+const SPOT_LIGHT_INTENSITY = 1.1;
 // Bloom only exists to make a working pod's glow (builders.js's
 // makePodGlow, pushed past normal 0-1 colour range on purpose) actually
 // bloom — everything else in the scene sits well under 1.0 in linear space,
@@ -64,7 +69,6 @@ const LOD_NEAR_ZOOM = 0.9;
 // Wheel zoom bounds, as a multiple of whatever the auto-framed zoom is.
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 3.2;
-
 // Breathing room left around the office when the camera frames it.
 const FRAME_MARGIN = 1.15;
 // Extra world units of headroom for the parts that stand up off the floor —
@@ -82,54 +86,58 @@ const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
 // plus this much slab. Both are needed to find where a walkway should stop.
 const CONDUCTOR_SLAB = CONDUCTOR_RADIUS * 1.4;
 const POD_SLAB_PADDING = 3;
-// World units per second the dashes travel. Slow enough to read as "in
-// progress" rather than as an alarm.
-const OUTLINE_SPEED = 2.4;
-// The bridge's charge runs faster than a platform's edge: it is travelling
-// somewhere rather than circling, and matching speeds made the two read as one
-// continuous line where they meet.
-const CONNECTOR_SPEED_RATIO = 1.8;
-// How far behind its chair a subagent starts when it spawns. Far enough to
-// read as arriving, close enough to be seated before its first tool call.
-const ARRIVAL_DISTANCE = 9;
-// How far to one side the walk-in starts — out in the aisle between desk
-// columns, so the figure clears the monitor and chair of the row behind it
-// instead of walking through them.
-const ARRIVAL_LATERAL = 5;
-
+// Keep every platform, including The Floor, at this shared elevation. Besides
+// aligning the scene's connected decks, this gives the Floor the same visible
+// platform thickness as departments, subagents, and the conductor.
+const RAISED_PLATFORM_Y = 0.52;
+// Department, Subagents, and Conductor share the platform elevation.
+const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y;
+// Standard bridges sit visibly below the raised platform tops. The Floor's
+// own ramp/deck route remains governed by floorBridgeRoute().
+const LEVEL_BRIDGE_Y = -0.45;
+// The endpoint calculation follows a bridge's centreline, but each deck is
+// much wider. Tucking it by half that width keeps the entire squared end cap
+// beneath rounded platform rims — not just its middle — at diagonal routes.
+const BRIDGE_DECK_PLATFORM_OVERLAP = BRIDGE_DECK_WIDTH / 2;
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
 // chrome still comes from the app's theme tokens as usual.
 const PALETTES = {
   light: {
     ground: '#f2efe8', grid: '#d8d3c8',
-    podTop: '#ffffff', podSide: '#e4dfd4',
+    podTop: '#ffffff', podSide: '#e4dfd4', platformBase: '#000000',
     deskTop: '#c9a227', deskLeg: '#8b8b93',
     chair: '#5f6672',
     shirt: '#6b8fb5', skin: '#e8b98e', hair: '#3b2b1d', trousers: '#3e4048',
-    screenBezel: '#2c2c34', screenBg: '#14141c',
+    screenBezel: '#2c2c34', screenBg: '#14141c', screenActiveBg: '#f7f7fb',
     screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
     plateBg: 'rgba(255,255,255,0.92)', plateText: '#151414', plateAccent: '#1e9070',
     conductor: '#2b3245',
     floorTitle: '#8d8d95', floorTitleStroke: 'rgba(20,18,14,0.55)',
-    pot: '#b07a52', plant: '#5f8a5f', walkway: '#eae5da',
+    pot: '#b07a52', plant: '#5f8a5f', walkway: '#d2cbc0', bridgeDeck: '#090a0c', bridgeBeam: '#020304',
+    floorBridgeDeck: '#090a0c', floorBridgeBeam: '#020304',
     outlineIdle: '#a8a294', outlineActive: '#1e9070', connector: '#9a9490',
     board: '#fbfaf6', hemiSky: '#f4f1ea', hemiGround: '#c9c2ae', rim: '#cfe0f7',
+    mousePad: '#1a1a24', keyboard: '#24242e', keyboardKey: '#9a9aa8', mouse: '#c9c9d6',
+    bubbleBg: 'rgba(20,20,30,0.88)', bubbleStroke: 'rgba(180,180,200,0.55)', bubbleText: '#f2f2f7',
   },
   dark: {
-    ground: '#1b1b2b', grid: '#2b2b40',
-    podTop: '#24243a', podSide: '#1a1a2a',
-    deskTop: '#8a6d1f', deskLeg: '#4a4a58',
-    chair: '#3a3f4b',
+    ground: '#0a0c14', grid: '#1a2133',
+    podTop: '#0d172b', podSide: '#0a101e', platformBase: '#000000',
+    deskTop: '#a05f1a', deskLeg: '#4a4a58',
+    chair: '#2a2f3a',
     shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20', trousers: '#2b2d36',
-    screenBezel: '#0e0e14', screenBg: '#0a0a12',
+    screenBezel: '#0e0e14', screenBg: '#0a0a12', screenActiveBg: '#f0f0f7',
     screenText: '#5adeb7', screenTextBright: '#b9f5e2',
-    plateBg: 'rgba(20,20,37,0.92)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
-    conductor: '#8fd3f4',
+    plateBg: 'rgba(15,23,42,0.88)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
+    conductor: '#e2e8f0',
     floorTitle: '#c9c9da', floorTitleStroke: 'rgba(6,6,12,0.6)',
-    pot: '#7a5236', plant: '#3f5f45', walkway: '#202032',
+    pot: '#7a5236', plant: '#3f5f45', walkway: '#111827', bridgeDeck: '#090a0c', bridgeBeam: '#020304',
+    floorBridgeDeck: '#090a0c', floorBridgeBeam: '#020304',
     outlineIdle: '#575775', outlineActive: '#5adeb7', connector: '#41415e',
-    board: '#2a2a38', hemiSky: '#39456b', hemiGround: '#0e0e18', rim: '#3f5f8f',
+    board: '#34364a', hemiSky: '#4a5d84', hemiGround: '#0a0c14', rim: '#6d94c9',
+    mousePad: '#12121a', keyboard: '#1e1e28', keyboardKey: '#8a8a98', mouse: '#b8b8c6',
+    bubbleBg: 'rgba(12,12,18,0.9)', bubbleStroke: 'rgba(140,140,170,0.5)', bubbleText: '#f2f2f7',
   },
 };
 
@@ -168,6 +176,7 @@ export function createOfficeScene(canvas, options) {
   // fragment cost for no visible gain and is the single easiest way to make
   // this panel drop frames.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   // PCFSoftShadowMap is deprecated as of r185 and silently falls back to
   // PCFShadowMap with a console warning; ask for what we actually get.
@@ -209,13 +218,15 @@ export function createOfficeScene(canvas, options) {
   const keyLight = new THREE.DirectionalLight(0xffffff, KEY_LIGHT_INTENSITY);
   keyLight.position.set(60, 120, 40);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(1024, 1024);
+  keyLight.shadow.mapSize.set(2048, 2048);
   keyLight.shadow.camera.near = 1;
-  keyLight.shadow.camera.far = 400;
-  keyLight.shadow.camera.left = -140;
-  keyLight.shadow.camera.right = 140;
-  keyLight.shadow.camera.top = 140;
-  keyLight.shadow.camera.bottom = -140;
+  keyLight.shadow.camera.far = 500;
+  keyLight.shadow.camera.left = -180;
+  keyLight.shadow.camera.right = 180;
+  keyLight.shadow.camera.top = 180;
+  keyLight.shadow.camera.bottom = -180;
+  keyLight.shadow.bias = -0.0003;
+  keyLight.shadow.normalBias = 0.02;
   scene.add(keyLight);
 
   // A low rim light from behind/opposite the key light so a pod's far side
@@ -223,6 +234,18 @@ export function createOfficeScene(canvas, options) {
   const rimLight = new THREE.DirectionalLight(palette.rim, RIM_LIGHT_INTENSITY);
   rimLight.position.set(-70, 50, -60);
   scene.add(rimLight);
+
+  // A soft spotlight pulls the eye to the conductor and gives the glossy
+  // platforms a controlled specular highlight. It does not cast shadows — the
+  // key light already owns the shadow map — so it adds no extra render pass.
+  const spotLight = new THREE.SpotLight(palette.hemiSky, SPOT_LIGHT_INTENSITY);
+  spotLight.position.set(0, 90, 0);
+  spotLight.target.position.set(0, 0, 0);
+  spotLight.angle = Math.PI / 5;
+  spotLight.penumbra = 0.5;
+  spotLight.distance = 250;
+  scene.add(spotLight);
+  scene.add(spotLight.target);
 
   // ---- post-processing ---------------------------------------------------
   // Routing the render through a composer moves it off the canvas' own
@@ -248,11 +271,11 @@ export function createOfficeScene(canvas, options) {
     new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
-  // Bloom is a soft, blurred effect -- rendering its five-level mip chain at
-  // full device pixel ratio (up to 2x, see the renderer's own setPixelRatio
-  // above) buys no visible sharpness and was the single biggest new cost this
-  // pass added. Capped to 1x regardless of the renderer's own ratio.
-  composer.setPixelRatio(1);
+  // Bloom is a soft, blurred effect, but rendering the whole composer at 1x
+  // on a high-DPR display makes every edge look blurry once the camera zooms
+  // in. Use the same capped ratio as the renderer (up to 2x) so MSAA + bloom
+  // stay sharp without the uncapped cost of a 3x phone.
+  composer.setPixelRatio(renderer.getPixelRatio());
 
   // ---- ground -----------------------------------------------------------
   // A fixed-size floor shows its own edge -- a hard border against the
@@ -284,7 +307,7 @@ export function createOfficeScene(canvas, options) {
     gridHelper.position.y = 0.02;
     if (gridHelper.material) {
       gridHelper.material.transparent = true;
-      gridHelper.material.opacity = 0.45;
+      gridHelper.material.opacity = 1;
     }
     return { mesh, geometry, material, gridHelper };
   }
@@ -335,17 +358,18 @@ export function createOfficeScene(canvas, options) {
   installGround(groundHalfSize);
 
   // ---- office contents --------------------------------------------------
-  // Everything that represents delegation state hangs off one group, so a
-  // theme change or a reset can drop it wholesale and rebuild.
+  // Outlet-specific furniture (pods, walkways, seats) lives in `office`; the
+  // shared conductor plinth lives in `backdrop` so it stays visible while the
+  // floor swaps between Projects and Business.
   let office = new THREE.Group();
   scene.add(office);
+  let backdrop = new THREE.Group();
+  scene.add(backdrop);
 
   /** cluster -> {group, width, depth} */
   let pods = new Map();
   /** cluster -> walkway slab joining that pod to the middle of the office */
   let walkways = new Map();
-  /** cluster -> the line showing that pod is attached to the conductor */
-  let connectors = new Map();
   /** deskId -> {group, person, plate, screen, workerId, pose, tint} */
   let seats = new Map();
   let conductor = null;
@@ -355,6 +379,7 @@ export function createOfficeScene(canvas, options) {
   function ensureConductor() {
     if (conductor) return conductor;
     const group = new THREE.Group();
+    group.position.y = CONDUCTOR_PLATFORM_Y;
     // A tap on the plinth frames it, the same as a tap on any pod.
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
@@ -370,16 +395,8 @@ export function createOfficeScene(canvas, options) {
     // a walking figure reads as activity, and the office does not imply work
     // Hermes has not reported.
     group.userData.wanderer = createWanderer({ radius: CONDUCTOR_RADIUS * 0.42 });
-    // Its name is painted on the plinth, the way the Business floor names a
-    // department — a floating nameplate over the one figure at the centre read
-    // as a label on a person rather than on the space.
-    const sign = makeFloorTitle('Conductor', CONDUCTOR_SLAB * 0.82, palette, { fit: true });
-    if (sign) {
-      sign.position.z = CONDUCTOR_SLAB / 2 - sign.geometry.parameters.height / 2 - 0.8;
-      group.add(sign);
-    }
     group.userData.person = person;
-    office.add(group);
+    backdrop.add(group);
     conductor = group;
     return conductor;
   }
@@ -398,20 +415,6 @@ export function createOfficeScene(canvas, options) {
     // A tap on the slab (not on a worker) frames this pod.
     group.userData.podCluster = cluster;
 
-    // Signage, only where there is a real name to paint. The catch-all pods
-    // ("Subagents", "The Floor") keep the original fixed size; the named ones
-    // (departments, profiles) auto-fit larger so a short name is not dwarfed.
-    const plainSign = label === 'Subagents' || label === 'The Floor';
-    const title = plainSign
-      ? makeFloorTitle(label, slabWidth * 0.8, palette)
-      : makeFloorTitle(label, slabWidth * 0.88, palette, { fit: true });
-    if (title) {
-      title.position.z = plainSign
-        ? slabDepth / 2 - 1.6
-        : slabDepth / 2 - title.geometry.parameters.height / 2 - 0.8;
-      group.add(title);
-    }
-
     // One plant, on the corner facing away from the sign (the sign sits on
     // the +z side above), plus a whiteboard on a third corner. Scenery
     // carries no state, so it can never mislead anyone about what Hermes is
@@ -420,49 +423,73 @@ export function createOfficeScene(canvas, options) {
     const plant = makePlant(palette);
     plant.position.set(-(slabWidth / 2 - 1.1), 0.6, -(slabDepth / 2 - 1.1));
     group.add(plant);
-    const whiteboard = makeWhiteboard(palette);
-    whiteboard.position.set(slabWidth / 2 - 1.1, 0, -(slabDepth / 2 - 1.1));
-    group.add(whiteboard);
-
-    // A soft coloured wash, only visible while the pod is doing real work --
-    // toggled in syncOffice, pulsed in the render loop. Starts invisible.
-    const glow = makePodGlow(slabWidth, slabDepth, color);
-    group.add(glow);
+    // The Floor's far edge is occupied by desks, so this decorative board
+    // clips against the slab rim there. Other pods retain their whiteboard.
+    if (label !== 'The Floor') {
+      const whiteboard = makeWhiteboard(palette);
+      whiteboard.position.set(slabWidth / 2 - 1.1, 0, -(slabDepth / 2 - 1.1));
+      group.add(whiteboard);
+    }
 
     office.add(group);
     pod = {
       group, width, depth, label, color, active: false,
-      glowMaterial: glow.material,
     };
     pods.set(cluster, pod);
     return pod;
   }
 
-  /**
-   * The line saying a pod is attached to the conductor.
-   *
-   * Drawn between the same two platform edges the walkway spans, just above
-   * it, so the two cues agree rather than crossing each other.
-   */
-  function ensureConnector(cluster, pod, span) {
-    let line = connectors.get(cluster);
-    // Rebuilt only when the geometry actually moves. Recreating it on every
-    // sync would reset the line's live state and restart its fade, so a busy
-    // run would show a bridge perpetually switching on and never lit.
-    const key = span ? `${span.angle.toFixed(4)}|${span.start.toFixed(3)}|${span.end.toFixed(3)}` : '';
-    if (line && line.userData.spanKey === key) return;
-    if (line) { office.remove(line); disposeTree(line); connectors.delete(cluster); }
-    if (!span) return;
-    const from = { x: Math.sin(span.angle) * span.start, z: Math.cos(span.angle) * span.start };
-    const to = { x: Math.sin(span.angle) * span.end, z: Math.cos(span.angle) * span.end };
-    line = makeConnector(from.x, from.z, to.x, to.z, palette);
-    line.userData.spanKey = key;
-    office.add(line);
-    connectors.set(cluster, line);
-    // A pod that is already working when its bridge is (re)built lights up
-    // with it rather than waiting for the next state change.
-    const record = pods.get(cluster);
-    if (record && record.active) setOutlineActive(line, true);
+  function eachActivityChevron(bridge, fn, root = bridge) {
+    if (!bridge) return;
+    if (bridge.userData && bridge.userData.activityChevrons) {
+      bridge.userData.activityChevrons.forEach((chevron, index, chevrons) => fn(chevron, index, chevrons.length, root));
+    }
+    bridge.children.forEach(child => eachActivityChevron(child, fn, root));
+  }
+
+  function setBridgeActive(bridge, active) {
+    if (!bridge) return;
+    eachActivityChevron(bridge, chevron => { chevron.userData.active = active; });
+  }
+
+  function advanceBridgeFade(bridge, dtMs, elapsed) {
+    if (!bridge) return;
+    let arrivalWave = 0;
+    eachActivityChevron(bridge, (chevron, index, count, root) => {
+      const singlePacket = root.userData.singleChevronFlow;
+      const activeIndex = Math.floor(elapsed * 5.4) % Math.max(1, count);
+      const flowMarkerCount = Math.min(count, root.userData.flowMarkerCount || 1);
+      const markerSpacing = Math.max(1, Math.floor(count / flowMarkerCount));
+      const flowOffset = (index - activeIndex + count) % Math.max(1, count);
+      const isFlowMarker = flowOffset % markerSpacing === 0
+        && flowOffset / markerSpacing < flowMarkerCount;
+      const wave = chevron.userData.active
+        ? (singlePacket ? (isFlowMarker ? 1 : 0) : Math.max(0, Math.sin(elapsed * 9 + chevron.position.z * 4)))
+        : 0;
+      // A running route has one travelling lit marker, not a permanently
+      // illuminated row. Between wave crests each triangle returns to idle.
+      const target = 0.72 + wave * 0.28;
+      chevron.material.opacity += (target - chevron.material.opacity) * Math.min(1, dtMs * 0.012);
+      chevron.material.emissive.set(wave > 0.02 ? chevron.userData.activeColor : '#0b1220');
+      chevron.material.emissiveIntensity = wave * 2;
+      const pulse = chevron.userData.active ? 1 + wave * 0.28 : 1;
+      chevron.scale.set(pulse, pulse, 1);
+      // Local +Z points from the conductor to the destination.  When the
+      // travelling packet reaches the final marker, its platform's lower
+      // coloured delivery layer receives the same pulse.
+      if (chevron.userData.active && index === count - 1) arrivalWave = Math.max(arrivalWave, wave);
+    });
+    return arrivalWave;
+  }
+
+  function advanceDeliveryGlow(record, arrivalWave, dtMs) {
+    const layer = record && record.group && record.group.userData.deliveryLayer;
+    const material = layer && layer.material;
+    if (!material || !material.emissive) return;
+    record.deliveryGlow = (record.deliveryGlow || 0)
+      + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
+    const idleIntensity = layer.userData.idleEmissiveIntensity || 0;
+    material.emissiveIntensity = idleIntensity + record.deliveryGlow * 1.45;
   }
 
   /**
@@ -475,19 +502,191 @@ export function createOfficeScene(canvas, options) {
       x: pod.x, z: pod.z,
       halfWidth: (pod.width + POD_SLAB_PADDING) / 2,
       halfDepth: (pod.depth + POD_SLAB_PADDING) / 2,
-    }, CONDUCTOR_SLAB / 2);
+    }, CONDUCTOR_SLAB / 2, {
+      // The deck enters beneath both rounded platform rims, closing the
+      // visible gap. Its raised rails stop on the exposed bridge surface.
+      overlap: BRIDGE_DECK_PLATFORM_OVERLAP,
+      hubRadius: CONDUCTOR_SLAB * 0.12,
+      podRadius: Math.min(
+        pod.width + POD_SLAB_PADDING,
+        pod.depth + POD_SLAB_PADDING,
+      ) * 0.12,
+    });
     if (!span) {
       if (walk) { office.remove(walk); disposeTree(walk); walkways.delete(cluster); }
       return null;
     }
     if (walk) { office.remove(walk); disposeTree(walk); }
-    walk = makeWalkway(span.length, palette);
-    const mid = span.start + span.length / 2;
-    walk.position.set(Math.sin(span.angle) * mid, 0.04, Math.cos(span.angle) * mid);
-    walk.rotation.y = span.angle;
+    if (cluster === 'floor') {
+      walk = new THREE.Group();
+      // The Floor span is a lower-level structure. Draw every part before
+      // the pods so Marketing's nearer platform reliably occludes it.
+      walk.renderOrder = -1;
+      const bridgePalette = floorBridgePalette();
+      const floorColor = '#3b82f6';
+      floorBridgeRoute(span, pod).forEach(segment => placeBridgeSegment(
+        walk, segment, bridgePalette, floorColor, true,
+      ));
+      walk.userData.singleChevronFlow = true;
+      // A broader packet gives the long Floor route enough visible motion
+      // without turning every deck segment into an active indicator.
+      walk.userData.flowMarkerCount = 3;
+    } else {
+      const podRecord = pods.get(cluster);
+      const railColor = podRecord && podRecord.color ? podRecord.color : null;
+      walk = makeWalkway(span.length, palette, railColor);
+      const mid = span.start + span.length / 2;
+      walk.position.set(Math.sin(span.angle) * mid, LEVEL_BRIDGE_Y, Math.cos(span.angle) * mid);
+      walk.rotation.y = span.angle;
+      walk.userData.singleChevronFlow = true;
+    }
     office.add(walk);
     walkways.set(cluster, walk);
     return span;
+  }
+
+  function floorBridgePalette() {
+    return {
+      ...palette,
+      bridgeDeck: palette.floorBridgeDeck,
+      bridgeBeam: palette.floorBridgeBeam,
+    };
+  }
+
+  function floorBridgeRoute(span, pod) {
+    // The Floor is physically below the office pods. Its bridge exits through
+    // the conductor's underside, slopes down once, then stays on one direct
+    // lower deck to the floor slab. That clears every pod instead of turning
+    // into an L-shaped surface in the middle of the office.
+    // This is deliberately the screen-facing bottom edge of the conductor,
+    // not its radial edge toward The Floor. It makes the first ramp leg read
+    // as descending out of the plinth before the long diagonal begins.
+    const exit = { x: 0, z: CONDUCTOR_SLAB / 2 - 0.6 };
+    const length = Math.hypot(pod.x - exit.x, pod.z - exit.z) || 1;
+    const rampLength = Math.min(6.4, length * 0.18);
+    // A fixed 120-degree first leg gives the visible drop its intended
+    // steeper diagonal before the second, straight span goes to The Floor.
+    const FLOOR_RAMP_ANGLE = 120 * Math.PI / 180;
+    const rampEnd = {
+      x: exit.x + Math.sin(FLOOR_RAMP_ANGLE) * rampLength,
+      z: exit.z + Math.cos(FLOOR_RAMP_ANGLE) * rampLength,
+    };
+    // Retract the Floor ramp as one physical unit: its deck edge and rails
+    // begin together, two units clear of the conductor platform.
+    const FLOOR_CONDUCTOR_TRIM = 3;
+    const rampStart = {
+      x: exit.x + Math.sin(FLOOR_RAMP_ANGLE) * FLOOR_CONDUCTOR_TRIM,
+      z: exit.z + Math.cos(FLOOR_RAMP_ANGLE) * FLOOR_CONDUCTOR_TRIM,
+    };
+    // Meet the midpoint of the facing Floor edge, never a corner or a desk
+    // inside the platform. The approach direction selects the facing side.
+    const destination = floorBridgeEntryPoint(rampEnd, pod);
+    return [
+      // This stays visibly below the pod tops while remaining above the
+      // scene ground, so it is a physical lower deck rather than disappearing.
+      {
+        from: rampStart, to: rampEnd, fromTopY: 0.46, toTopY: 0.18,
+      },
+      {
+        from: rampEnd, to: destination, fromTopY: 0.18, toTopY: 0.18,
+      },
+    ];
+  }
+
+  function floorBridgeEntryPoint(from, pod) {
+    const halfWidth = (pod.width + POD_SLAB_PADDING) / 2;
+    const halfDepth = (pod.depth + POD_SLAB_PADDING) / 2;
+    const dx = from.x - pod.x;
+    const dz = from.z - pod.z;
+    if (Math.abs(dx) / halfWidth >= Math.abs(dz) / halfDepth) {
+      return { x: pod.x + (dx >= 0 ? halfWidth : -halfWidth), z: pod.z };
+    }
+    return { x: pod.x, z: pod.z + (dz >= 0 ? halfDepth : -halfDepth) };
+  }
+
+  function placeBridgeSegment(parent, segment, segmentPalette = palette, railColor, isFloor = false) {
+    const dx = segment.to.x - segment.from.x;
+    const dz = segment.to.z - segment.from.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.01) return;
+    const startCenterY = segment.fromTopY - 0.17;
+    const endCenterY = segment.toTopY - 0.17;
+    const direction = new THREE.Vector3(dx, endCenterY - startCenterY, dz).normalize();
+    const options = isFloor
+      ? {
+        railColor,
+        railTrimStart: segment.railTrimStart || 0,
+        railTrimEnd: segment.railTrimEnd || 0,
+        segmentColor: segmentPalette.bridgeDeck,
+        beamColor: segmentPalette.bridgeBeam,
+      }
+      : { railColor };
+    const deck = makeBridgeSegment(Math.hypot(length, endCenterY - startCenterY), segmentPalette, options);
+    deck.position.set(
+      (segment.from.x + segment.to.x) / 2,
+      (startCenterY + endCenterY) / 2,
+      (segment.from.z + segment.to.z) / 2,
+    );
+    deck.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+    deck.traverse(part => { part.renderOrder = parent.renderOrder; });
+    parent.add(deck);
+  }
+
+  function maxDistanceInsidePod(x, z, dx, dz, pod, margin = 0.65) {
+    if (!pod) return 0;
+    const minX = pod.x - (pod.width + POD_SLAB_PADDING) / 2;
+    const maxX = pod.x + (pod.width + POD_SLAB_PADDING) / 2;
+    const minZ = pod.z - (pod.depth + POD_SLAB_PADDING) / 2;
+    const maxZ = pod.z + (pod.depth + POD_SLAB_PADDING) / 2;
+    const distances = [];
+    if (dx > 1e-6) distances.push((maxX - x) / dx);
+    if (dx < -1e-6) distances.push((minX - x) / dx);
+    if (dz > 1e-6) distances.push((maxZ - z) / dz);
+    if (dz < -1e-6) distances.push((minZ - z) / dz);
+    return Math.max(0, Math.min(...distances.filter(distance => distance >= 0)) - margin);
+  }
+
+  function seatArrivalSeed(deskId) {
+    let value = 2166136261;
+    for (const char of String(deskId || '')) {
+      value ^= char.charCodeAt(0);
+      value = Math.imul(value, 16777619);
+    }
+    return (value >>> 0) / 4294967296;
+  }
+
+  function configureSeatArrival(seat, spot, pod) {
+    if (seat.arrivalConfigured) return;
+    seat.arrivalConfigured = true;
+    const seed = seatArrivalSeed(seat.group.userData.deskId);
+    const heading = { x: Math.sin(spot.rotationY), z: Math.cos(spot.rotationY) };
+    const sideways = { x: Math.cos(spot.rotationY), z: -Math.sin(spot.rotationY) };
+    const seated = { x: spot.x + heading.x * 1.9, z: spot.z + heading.z * 1.9 };
+    const sideSign = seed < 0.5 ? -1 : 1;
+    const sideRoom = maxDistanceInsidePod(seated.x, seated.z,
+      sideways.x * sideSign, sideways.z * sideSign, pod);
+    const lateral = sideSign * Math.min(1.4, sideRoom, 0.45 + seed * 1.1);
+    const start = {
+      x: seated.x + sideways.x * lateral,
+      z: seated.z + sideways.z * lateral,
+    };
+    const forwardRoom = maxDistanceInsidePod(start.x, start.z, heading.x, heading.z, pod);
+    const distance = Math.min(3.1, forwardRoom, 1.1 + seed * 1.6);
+    if (distance < 0.35) {
+      seat.arrival = createArrival(0);
+      seat.arrival.done = true;
+      return;
+    }
+    seat.arrival = createArrival(distance, undefined, lateral);
+    seat.person.position.set(lateral, 0, 1.9 + distance);
+  }
+
+  function shouldShowNameplate(seat) {
+    return lod === 'near' && !!seat.workerId && focusedId === seat.workerId;
+  }
+
+  function syncNameplateVisibility() {
+    seats.forEach(seat => { seat.plate.visible = shouldShowNameplate(seat); });
   }
 
   function ensureSeat(deskId, tintIndex) {
@@ -506,23 +705,24 @@ export function createOfficeScene(canvas, options) {
     // its back to the monitor.
     person.rotation.y = Math.PI;
     group.add(person);
-    // A desk only ever appears because a subagent just spawned, so every seat
-    // starts with its occupant walking in — from the aisle to one side, sides
-    // alternating so a pod does not fill from one direction.
-    const side = (tintIndex % 2 === 0) ? 1 : -1;
-    const arrival = createArrival(ARRIVAL_DISTANCE, undefined, side * ARRIVAL_LATERAL);
-    person.position.set(arrival.lateral, 0, 1.9 + arrival.offset);
     const plate = makeNameplate(palette, '');
     plate.position.set(0, 5.0, 0);
     group.add(plate);
+
+    const bubble = makeChatBubble(palette);
+    group.add(bubble);
+
     // Marks the whole subtree as belonging to a worker so a raycast hit on
     // any child resolves back to one id.
     group.userData.deskId = deskId;
-    plate.visible = (lod === 'near');
+    plate.visible = false;
     office.add(group);
     seat = {
-      group, person, plate, screen: desk.userData.screen, arrival,
+      group, person, plate, screen: desk.userData.screen, arrival: null, bubble,
+      arrivalConfigured: false,
       workerId: null, pose: 'idle', label: '', status: '', toolKey: '',
+      mood: '', moodUntil: 0, moodIcon: '', lastToolAt: 0, celebrateUntil: 0,
+      screenSeed: Math.floor(Math.random() * 10000),
     };
     seats.set(deskId, seat);
     return seat;
@@ -549,12 +749,6 @@ export function createOfficeScene(canvas, options) {
       disposeTree(walk);
       walkways.delete(cluster);
     }
-    const line = connectors.get(cluster);
-    if (line) {
-      office.remove(line);
-      disposeTree(line);
-      connectors.delete(cluster);
-    }
   }
 
   function screenLines(worker) {
@@ -571,6 +765,24 @@ export function createOfficeScene(canvas, options) {
     return lines;
   }
 
+  function updateSeatMood(seat, mood, nowMs) {
+    if (!seat.bubble) return;
+    const icon = mood ? (MOOD_ICONS[mood] || '') : '';
+    if (mood && mood !== seat.mood) {
+      seat.mood = mood;
+      seat.moodIcon = icon;
+      seat.moodUntil = nowMs + 3200;
+      drawChatBubble(seat.bubble, palette, icon);
+      seat.bubble.visible = true;
+      seat.bubble.scale.set(0.01, 0.01, 0.01);
+    }
+    if (nowMs >= seat.moodUntil && seat.moodUntil > 0) {
+      seat.mood = '';
+      seat.moodUntil = 0;
+      seat.bubble.visible = false;
+    }
+  }
+
   /**
    * Reconcile the floor to a state snapshot from the adapter.
    * Idempotent: calling it twice with the same state changes nothing.
@@ -581,21 +793,18 @@ export function createOfficeScene(canvas, options) {
     ensureConductor();
 
     const layout = computeLayout(state.desks || []);
+    const podsByCluster = new Map(layout.pods.map(pod => [pod.cluster, pod]));
     const workersById = new Map((state.workers || []).map(w => [w.id, w]));
     const liveClusters = new Set();
     const liveDesks = new Set();
 
     layout.pods.forEach(pod => {
       liveClusters.add(pod.cluster);
-      // The pod holding the conductor's own direct children is "Subagents";
-      // Business pods carry a department name; everything else (a nested
-      // subagent's own children) has no name worth painting.
       const podLabel = pod.label
         || (pod.cluster === '__conductor__' ? 'Subagents' : '');
       const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null);
-      record.group.position.set(pod.x, 0, pod.z);
+      record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
-      ensureConnector(pod.cluster, pod, span);
     });
 
     (state.desks || []).forEach(desk => {
@@ -605,11 +814,30 @@ export function createOfficeScene(canvas, options) {
       const seat = ensureSeat(desk.id, desk.index);
       seat.group.position.set(spot.x, 0.6, spot.z);
       seat.group.rotation.y = spot.rotationY;
+      configureSeatArrival(seat, spot, podsByCluster.get(desk.cluster));
 
       const worker = desk.workerId ? workersById.get(desk.workerId) : null;
       seat.workerId = worker ? worker.id : null;
       seat.group.userData.workerId = seat.workerId;
-      seat.pose = worker ? worker.pose : 'idle';
+
+      // Resolve the pose the figure should render. The adapter's pose is the
+      // baseline; we layer on sleep (running but quiet), celebration (just
+      // completed) and frustration (error/failure) for richer animation.
+      let pose = worker ? worker.pose : 'idle';
+      const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (worker) {
+        if (shouldSleepWhileRunning(worker, nowMs)) pose = 'sleep';
+        if (worker.status === 'completed') {
+          if (!seat.celebrateUntil) seat.celebrateUntil = nowMs + 2200;
+          if (nowMs < seat.celebrateUntil) pose = 'celebrate';
+        } else {
+          seat.celebrateUntil = 0;
+        }
+        if ((worker.status === 'failed' || worker.status === 'error' || worker.status === 'timeout') && pose !== 'celebrate') {
+          pose = 'frustrated';
+        }
+      }
+      seat.pose = pose;
 
       // Projects desks are anonymous until someone sits at them; Business
       // desks are named by the roster before anyone does. The floor sign
@@ -624,14 +852,30 @@ export function createOfficeScene(canvas, options) {
         seat.status = status;
         drawNameplate(seat.plate, palette, label, status);
       }
-      seat.plate.visible = (lod === 'near') && !!worker;
+      seat.plate.visible = shouldShowNameplate(seat);
+
+      // Choose the mood icon and, when it changes, show the bubble briefly.
+      let mood = '';
+      if (worker) {
+        if (pose === 'sleep') mood = 'sleep';
+        else if (pose === 'celebrate') mood = 'done';
+        else if (pose === 'frustrated') mood = 'error';
+        else if (worker.pose === 'tool') mood = 'tool';
+        else mood = 'work';
+      }
+      updateSeatMood(seat, mood, nowMs);
+
       // Screens are canvas uploads; only repaint when the text changed.
       const toolKey = worker
-        ? `${worker.status}|${worker.tool ? worker.tool.name + worker.tool.preview : ''}|${worker.summary}`
+        ? `${worker.status}|${worker.tool ? worker.tool.name + worker.tool.preview : ''}|${worker.summary}|${pose}`
         : 'empty';
       if (toolKey !== seat.toolKey) {
         seat.toolKey = toolKey;
-        drawScreen(seat.screen, palette, screenLines(worker));
+        if (worker && worker.status === 'running' && (pose === 'work' || pose === 'tool' || pose === 'sleep')) {
+          drawActiveScreen(seat.screen, palette, nowMs / 1000, seat.screenSeed);
+        } else {
+          drawScreen(seat.screen, palette, screenLines(worker));
+        }
       }
     });
 
@@ -649,17 +893,119 @@ export function createOfficeScene(canvas, options) {
     });
     pods.forEach((record, cluster) => {
       record.active = liveClustersWithWork.has(cluster);
-      const link = connectors.get(cluster);
-      // The bridge carries the same charge as the pod it feeds.
-      if (link) setOutlineActive(link, record.active);
+      // The two edge rails carry the same activity state as the pod they feed.
+      const bridge = walkways.get(cluster);
+      if (bridge) setBridgeActive(bridge, record.active);
     });
 
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
-    // The glow (above) carries the orchestrating cue now; the status is
-    // still tracked because the pacing logic in the render loop reads it.
     conductor.userData.status = conductorStatus;
 
     frameOffice(layout.center, layout.radius);
+  }
+
+  // ---- outlet transition --------------------------------------------------
+  // When Projects <-> Business switches, fade the outlet-specific furniture
+  // in/out while leaving the shared ground/conductor visible. This keeps the
+  // scene from flashing to the webapp background colour behind the canvas.
+  const OUTLET_FADE_MS = 1200;
+  let outletTransition = {
+    active: false,
+    startK: 1,
+    endK: 1,
+    startMs: 0,
+  };
+
+  function currentContentOpacity() {
+    if (!outletTransition.active) return 1;
+    const raw = (performance.now() - outletTransition.startMs) / OUTLET_FADE_MS;
+    const t = Math.min(1, Math.max(0, raw));
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    return outletTransition.startK + (outletTransition.endK - outletTransition.startK) * ease;
+  }
+
+  function snapshotContentOpacity() {
+    office.traverse(obj => {
+      if (!obj.material) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const clones = materials.map(m => {
+        if (m.userData.baseOpacity !== undefined) return m;
+        const clone = m.clone();
+        clone.userData.baseOpacity = m.opacity;
+        clone.userData.baseTransparent = m.transparent;
+        clone.userData.originalMaterial = m;
+        return clone;
+      });
+      obj.material = Array.isArray(obj.material) ? clones : clones[0];
+    });
+  }
+
+  function applyContentOpacity(k) {
+    const fullOpaque = k >= 0.998;
+    const fullTransparent = k <= 0.002;
+    office.traverse(obj => {
+      if (!obj.material) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach(m => {
+        if (m.userData.baseOpacity === undefined) {
+          m.userData.baseOpacity = m.opacity;
+          m.userData.baseTransparent = m.transparent;
+        }
+        const base = m.userData.baseOpacity;
+        if (fullOpaque) {
+          m.opacity = base;
+          if (m.userData.baseTransparent !== undefined) m.transparent = m.userData.baseTransparent;
+        } else if (fullTransparent) {
+          m.opacity = 0;
+          m.transparent = true;
+        } else {
+          m.transparent = true;
+          m.opacity = base * k;
+        }
+      });
+    });
+  }
+
+  function restoreContentOpacity() {
+    office.traverse(obj => {
+      if (!obj.material) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach(m => {
+        if (m.userData.baseOpacity !== undefined) {
+          m.opacity = m.userData.baseOpacity;
+          m.transparent = m.userData.baseTransparent;
+        }
+      });
+    });
+  }
+
+  function setOutletTransition(fadingOut) {
+    snapshotContentOpacity();
+    const now = performance.now();
+    // If a fade is already running, pick up from the current visual position
+    // rather than snapping to 0/1, but always head toward the new target.
+    const currentK = outletTransition.active
+      ? Math.min(1, Math.max(0, (now - outletTransition.startMs) / OUTLET_FADE_MS))
+      : (fadingOut ? 1 : 0);
+    outletTransition.startMs = now;
+    outletTransition.startK = currentK;
+    outletTransition.endK = fadingOut ? 0 : 1;
+    outletTransition.active = true;
+    applyContentOpacity(currentK);
+  }
+
+  function advanceOutletTransition(now) {
+    if (!outletTransition.active) return;
+    const raw = (now - outletTransition.startMs) / OUTLET_FADE_MS;
+    const t = Math.min(1, Math.max(0, raw));
+    // ease-in-out for a smoother, more consistent feel
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const k = outletTransition.startK + (outletTransition.endK - outletTransition.startK) * ease;
+    applyContentOpacity(k);
+    if (t >= 1) {
+      outletTransition.active = false;
+      restoreContentOpacity();
+    }
   }
 
   /**
@@ -755,6 +1101,7 @@ export function createOfficeScene(canvas, options) {
     if (!seat) return false;
     focusedId = workerId;
     manualZoom = false;
+    syncNameplateVisibility();
     const shift = panelShift(FOCUS_ZOOM);
     startTween({
       x: seat.group.position.x + SCREEN_RIGHT.x * shift,
@@ -782,16 +1129,18 @@ export function createOfficeScene(canvas, options) {
     }
     focusedId = null;
     manualZoom = true;
+    syncNameplateVisibility();
     const zoom = clampZoom(zoomForRadius(lastWidth, lastHeight, span * 0.62));
     startTween({ x: pos.x, z: pos.z, zoom });
     return true;
   }
 
   /** Back to the whole floor. */
-  function resetView() {
+  function resetView(zoomMultiplier = 1) {
     focusedId = null;
     manualZoom = false;
-    startTween(overview);
+    syncNameplateVisibility();
+    startTween(Object.assign({}, overview, { zoom: overview.zoom * zoomMultiplier }));
   }
 
   function isFocused() {
@@ -807,7 +1156,7 @@ export function createOfficeScene(canvas, options) {
     const next = view.zoom >= LOD_NEAR_ZOOM ? 'near' : 'far';
     if (next === lod) return;
     lod = next;
-    seats.forEach(seat => { seat.plate.visible = (lod === 'near') && !!seat.workerId; });
+    syncNameplateVisibility();
   }
 
   /**
@@ -841,7 +1190,9 @@ export function createOfficeScene(canvas, options) {
    * has projected behind the camera.
    */
   function podScreenRect(cluster) {
-    const pod = pods.get(cluster);
+    const pod = cluster === '__conductor__' && conductor
+      ? { group: conductor }
+      : pods.get(cluster === '__subagents__' ? '__conductor__' : cluster);
     if (!pod || !canvas) return null;
     camera.updateMatrixWorld();
     _podScreenV.set(pod.group.position.x, 8, pod.group.position.z);
@@ -877,6 +1228,7 @@ export function createOfficeScene(canvas, options) {
     ambient.color.set(palette.hemiSky);
     ambient.groundColor.set(palette.hemiGround);
     rimLight.color.set(palette.rim);
+    spotLight.color.set(palette.hemiSky);
     // Materials are shared and keyed by colour, so a theme change means new
     // ones. Rebuilding the office group is cheaper and more honest than
     // hunting down every mesh that used the old palette.
@@ -887,16 +1239,17 @@ export function createOfficeScene(canvas, options) {
     seats.forEach(seat => disposeTree(seat.group));
     pods.forEach(pod => disposeTree(pod.group));
     walkways.forEach(walk => disposeTree(walk));
-    connectors.forEach(line => disposeTree(line));
     walkways = new Map();
-    connectors = new Map();
     if (conductor) disposeTree(conductor);
     scene.remove(office);
+    scene.remove(backdrop);
     seats = new Map();
     pods = new Map();
     conductor = null;
     office = new THREE.Group();
+    backdrop = new THREE.Group();
     scene.add(office);
+    scene.add(backdrop);
   }
 
   function rebuild() {
@@ -919,7 +1272,7 @@ export function createOfficeScene(canvas, options) {
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     camera.updateMatrixWorld();
     raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(office.children, true);
+    const hits = raycaster.intersectObjects(office.children.concat(backdrop.children), true);
     for (const hit of hits) {
       let node = hit.object;
       while (node) {
@@ -964,6 +1317,7 @@ export function createOfficeScene(canvas, options) {
     tween = null;
     focusedId = null;
     manualZoom = true;
+    syncNameplateVisibility();
   }
 
   // ---- gestures: mouse drag + wheel, one-finger pan, two-finger pinch ------
@@ -1135,17 +1489,6 @@ export function createOfficeScene(canvas, options) {
   let running = false;
   let lastFrameAt = 0;
 
-  /**
-   * Ease a pod/conductor glow's opacity toward its target (lit, pulsing
-   * gently, or off) rather than snapping -- the same reasoning as the
-   * outline's own dash fade.
-   */
-  function pulseGlow(material, active, t, dt) {
-    if (!material) return;
-    const target = active ? 0.16 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.4)) : 0;
-    material.opacity += (target - material.opacity) * Math.min(1, dt * 4);
-  }
-
   function frame(now) {
     if (!running) return;
     rafId = window.requestAnimationFrame(frame);
@@ -1156,28 +1499,16 @@ export function createOfficeScene(canvas, options) {
     lastFrameAt = t;
 
     if (tween) advanceTween(now || 0);
+    advanceOutletTransition(now || 0);
     const dtMs = dt * 1000;
 
     // The adapter owns no timer, so its time-dependent poses (a tool call
     // settling back to plain work) only advance because the scene asks.
     if (typeof config.onTick === 'function') config.onTick();
 
-    // The bridge's dashes travel only where something is running; the fade
-    // runs regardless — it is how a line comes up or goes quiet, and cutting
-    // it short mid-transition would leave a half-lit colour on screen.
-    const marchOffset = t * OUTLINE_SPEED;
-    pods.forEach(record => {
-      // The glow eases toward its target opacity rather than snapping, and
-      // gently pulses while active so a working pod reads as alive rather
-      // than a static coloured patch.
-      pulseGlow(record.glowMaterial, record.active, t, dt);
+    walkways.forEach((bridge, cluster) => {
+      advanceDeliveryGlow(pods.get(cluster), advanceBridgeFade(bridge, dtMs, t), dtMs);
     });
-    connectors.forEach(link => {
-      advanceDashFade(link, dtMs);
-      // Charge travels out from the conductor toward the pod.
-      if (isDashActive(link)) marchOutline(link, marchOffset * CONNECTOR_SPEED_RATIO);
-    });
-
     seats.forEach(seat => {
       // A subagent walks to its desk before it starts; only once seated does
       // its posture describe what Hermes says it is doing.
@@ -1201,6 +1532,22 @@ export function createOfficeScene(canvas, options) {
       poseWorker(seat.person, seat.pose, t, dt);
     });
 
+    // Keep active screens shimmering and chat bubbles popping.
+    seats.forEach(seat => {
+      if (seat.bubble && seat.bubble.visible) {
+        const elapsed = Math.min(1, ((t * 1000) - (seat.moodUntil - 3200)) / 250);
+        const k = easeOutCubic(elapsed);
+        // Bigger at close range so an action reads immediately, then clamped
+        // at overview scale to avoid a bubble becoming wider than its pod.
+        const bubbleScale = lod === 'far' ? 1.8 : 2.5;
+        seat.bubble.scale.set(bubbleScale * k, bubbleScale * 0.76 * k, 1);
+        seat.bubble.position.y = 3.12 + Math.sin(t * 3 + seat.screenSeed) * 0.08;
+      }
+      if (seat.workerId && seat.pose && (seat.pose === 'work' || seat.pose === 'tool' || seat.pose === 'sleep')) {
+        drawActiveScreen(seat.screen, palette, t, seat.screenSeed);
+      }
+    });
+
     if (conductor) {
       const person = conductor.userData.person;
       const wanderer = conductor.userData.wanderer;
@@ -1212,7 +1559,7 @@ export function createOfficeScene(canvas, options) {
         const seated = wanderer.moveTo(0, 0, dtMs);
         person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
         if (seated) {
-          poseWorker(person, 'work', t, dt);
+          poseWorker(person, 'orchestrate', t, dt);
         } else {
           person.rotation.y = wanderer.state.heading;
           poseWalking(person, wanderer.state.phase, 1);
@@ -1286,6 +1633,6 @@ export function createOfficeScene(canvas, options) {
   return {
     start, stop, resize, dispose, isRunning, applyTheme, syncOffice,
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
-    podScreenRect, scene,
+    podScreenRect, scene, setOutletTransition,
   };
 }

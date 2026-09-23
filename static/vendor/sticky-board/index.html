@@ -72,6 +72,29 @@ window.__STICKY_THEME_VARS__ = [
     padding:3rem 1.5rem;text-align:center;color:var(--muted);font-size:.9rem;
   }
 
+  /* Undo banner */
+  .undo-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:1rem;
+    padding:.6rem 1rem;background:var(--accent);color:var(--primary-fg);
+    position:sticky;top:60px;z-index:90;font-size:.85rem;
+  }
+  .undo-banner[hidden]{display:none;}
+  .undo-banner .btn{background:rgba(255,255,255,.2);color:var(--primary-fg);}
+  .undo-banner .btn:hover{background:rgba(255,255,255,.3);}
+
+  /* Header search + toggle */
+  .header-actions{display:flex;align-items:center;gap:.5rem}
+  .board-search{
+    appearance:none;-webkit-appearance:none;border:1px solid var(--border2);border-radius:6px;
+    background:var(--bg);color:var(--text);font-size:.8rem;padding:.35rem .6rem;
+    outline:none;min-width:140px;width:180px;font-family:var(--font-ui);
+  }
+  .board-search:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg);}
+  .board-search::placeholder{color:var(--muted);}
+  .btn-toggle{opacity:.7;background:transparent;color:var(--text);border:1px solid var(--border2);}
+  .btn-toggle:hover{opacity:1;background:var(--surface-subtle);}
+  .btn-toggle.active{opacity:1;background:var(--accent);color:var(--primary-fg);border-color:var(--accent);}
+
   /* Board */
   #board{
     display:flex;gap:1.2rem;padding:1.2rem;
@@ -80,11 +103,12 @@ window.__STICKY_THEME_VARS__ = [
 
   /* Column */
   .column{
-    min-width:260px;max-width:300px;flex-shrink:0;
+    min-width:320px;max-width:380px;flex-shrink:0;
     background:var(--surface);border-radius:12px;
     padding:.8rem;box-shadow:var(--shadow);
   }
   .column.drag-over{outline:2px dashed var(--accent);outline-offset:2px}
+  .notes-container{min-height:60px}
   .col-header{
     display:flex;align-items:center;justify-content:space-between;
     margin-bottom:.6rem;padding:0 .2rem;
@@ -217,9 +241,14 @@ window.__STICKY_THEME_VARS__ = [
 <header>
   <h1 id="board-title">Sticky <span>Board</span></h1>
   <div class="header-actions" id="header-actions" style="visibility:hidden">
-    <button class="btn btn-primary" id="btn-add-col">+ New Column</button>
+    <input type="search" id="note-search" class="board-search" placeholder="Search notes..." aria-label="Search notes">
   </div>
 </header>
+
+<div id="undo-banner" class="undo-banner" hidden>
+  <span id="undo-message"></span>
+  <button class="btn" id="btn-undo" type="button">Undo</button>
+</div>
 
 <div id="board"></div>
 <div id="empty-state" class="empty-state" hidden>Select or create a board from the Notes sidebar.</div>
@@ -305,6 +334,46 @@ window.__STICKY_THEME_VARS__ = [
   // sidebar changes which board is shown by changing this iframe's src).
   var state = null; // { id, name, project_id, columns }
   var boardMissing = false;
+  var _noteSearchTerm = '';
+  var _undoAction = null;
+  var _undoTimer = null;
+
+  // Pre-defined workflow columns. Boards are normalised to exactly these
+  // three columns on load; extra legacy columns have their notes merged into
+  // General so no data is lost.
+  var RESERVED_COLS = [
+    { id: 'general', title: 'General' },
+    { id: 'in-progress', title: 'In-Progress' },
+    { id: 'completed', title: 'Completed' }
+  ];
+
+  function ensureReservedColumns(board) {
+    if (!board) return;
+    var columns = board.columns || (board.columns = []);
+    var byId = {};
+    columns.forEach(function(c) { byId[c.id] = c; });
+    // Merge any non-reserved columns into General in their original order.
+    var general = byId['general'];
+    if (!general) {
+      general = { id: 'general', title: 'General', notes: [] };
+      columns.push(general);
+    }
+    var reordered = [];
+    RESERVED_COLS.forEach(function(rc) {
+      var existing = byId[rc.id];
+      if (existing) {
+        reordered.push(existing);
+      } else {
+        reordered.push({ id: rc.id, title: rc.title, notes: [] });
+      }
+    });
+    columns.forEach(function(c) {
+      if (!RESERVED_COLS.some(function(rc) { return rc.id === c.id; })) {
+        general.notes = general.notes.concat(c.notes || []);
+      }
+    });
+    board.columns = reordered;
+  }
 
   function showEmptyState(show) {
     var boardEl = document.getElementById('board');
@@ -335,6 +404,7 @@ window.__STICKY_THEME_VARS__ = [
       }
       state = found;
       if (!Array.isArray(state.columns)) state.columns = [];
+      ensureReservedColumns(state);
       var titleEl = document.getElementById('board-title');
       if (titleEl) titleEl.textContent = state.name || 'Sticky Board';
       showEmptyState(false);
@@ -361,12 +431,23 @@ window.__STICKY_THEME_VARS__ = [
 
   function saveState() {
     if (!state) return;
+    // Capture the payload before the request starts. The user may keep typing
+    // while it is in flight; the parent must receive the snapshot the server
+    // actually acknowledged, not a later unsaved in-memory mutation.
+    var columnsSnapshot = JSON.parse(JSON.stringify(state.columns));
     var headers = csrfHeaders();
     headers['Content-Type'] = 'application/json';
     fetch('/api/sticky_boards/save', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ id: state.id, columns: state.columns })
+      body: JSON.stringify({ id: state.id, columns: columnsSnapshot })
+    }).then(function(response) {
+      if (!response.ok) throw new Error('Sticky board save failed');
+      try {
+        if (window.parent) {
+          window.parent.postMessage({ type: 'sticky-board:saved', boardId: state.id, columns: columnsSnapshot }, location.origin);
+        }
+      } catch (e) { /* ignore */ }
     }).catch(function(e) {
       console.error('sticky-board: save to server failed', e);
     });
@@ -379,6 +460,58 @@ window.__STICKY_THEME_VARS__ = [
   function findNote(colId, noteId) {
     var col = findCol(colId);
     return col ? col.notes.find(function(n) { return n.id === noteId; }) : null;
+  }
+
+  // Themed confirmation from the parent app; falls back to the browser's
+  // native dialog when the page is loaded outside the iframe.
+  async function appConfirm(opts) {
+    try {
+      var confirmFn = window.parent && window.parent.showConfirmDialog;
+      if (confirmFn) return await confirmFn(opts);
+    } catch (e) { /* ignore */ }
+    var msg = (opts.title ? opts.title + '\n\n' : '') + (opts.message || '');
+    return confirm(msg);
+  }
+
+  function showParentToast(msg, type) {
+    try {
+      var toastFn = window.parent && window.parent.showToast;
+      if (toastFn) toastFn(msg, 2500, type);
+    } catch (e) { /* ignore */ }
+  }
+
+  // ── Undo banner ────────────────────────────
+  function showUndo(message, action) {
+    _undoAction = action;
+    clearTimeout(_undoTimer);
+    var banner = document.getElementById('undo-banner');
+    var msgEl = document.getElementById('undo-message');
+    if (banner && msgEl) {
+      msgEl.textContent = message;
+      banner.hidden = false;
+    }
+    _undoTimer = setTimeout(clearUndo, 6000);
+  }
+
+  function clearUndo() {
+    _undoAction = null;
+    clearTimeout(_undoTimer);
+    var banner = document.getElementById('undo-banner');
+    if (banner) banner.hidden = true;
+  }
+
+  function undo() {
+    if (!_undoAction) return;
+    var action = _undoAction;
+    clearUndo();
+    if (action.kind === 'column') {
+      state.columns.splice(action.index, 0, action.col);
+    } else if (action.kind === 'note') {
+      var col = findCol(action.colId);
+      if (col) col.notes.splice(action.index, 0, action.note);
+    }
+    saveState(); render();
+    showParentToast('Undo successful', 'success');
   }
 
   // ── Build DOM safely ───────────────────────
@@ -467,13 +600,23 @@ window.__STICKY_THEME_VARS__ = [
       style: 'background:' + note.color,
       draggable: true,
       'data-col-id': colId,
-      'data-note-id': note.id
+      'data-note-id': note.id,
+      tabindex: '0'
     }, [headerDiv, subsDiv, addSubBtn]);
 
     return noteDiv;
   }
 
   function buildColumn(col) {
+    // Filter by search term for display; keep the user's manual order otherwise.
+    var term = _noteSearchTerm.toLowerCase();
+    var visibleNotes = col.notes.filter(function(n) {
+      if (!term) return true;
+      var hay = (n.title || '') + ' ' + (n.subItems || []).join(' ');
+      return hay.toLowerCase().indexOf(term) !== -1;
+    });
+    var isReserved = RESERVED_COLS.some(function(rc) { return rc.id === col.id; });
+
     // Header
     var titleInput = el('input', {
       className: 'col-title',
@@ -481,19 +624,23 @@ window.__STICKY_THEME_VARS__ = [
       'data-action': 'edit-col-title',
       'data-col-id': col.id
     });
+    if (isReserved) titleInput.readOnly = true;
     var countSpan = el('span', { className: 'col-count', textContent: String(col.notes.length) });
-    var delColBtn = el('button', {
-      className: 'icon-btn',
-      'data-action': 'delete-col',
-      'data-col-id': col.id,
-      title: 'Delete column',
-      textContent: '×'
-    });
-    var colActions = el('div', { className: 'col-actions' }, [delColBtn]);
-    var colHeader = el('div', { className: 'col-header' }, [titleInput, countSpan, colActions]);
+    var colHeaderChildren = [titleInput, countSpan];
+    if (!isReserved) {
+      var delColBtn = el('button', {
+        className: 'icon-btn',
+        'data-action': 'delete-col',
+        'data-col-id': col.id,
+        title: 'Delete column',
+        textContent: '×'
+      });
+      colHeaderChildren.push(el('div', { className: 'col-actions' }, [delColBtn]));
+    }
+    var colHeader = el('div', { className: 'col-header' }, colHeaderChildren);
 
     // Notes container
-    var noteEls = col.notes.map(function(n) { return buildNote(col.id, n); });
+    var noteEls = visibleNotes.map(function(n) { return buildNote(col.id, n); });
     var notesContainer = el('div', {
       className: 'notes-container',
       'data-col-id': col.id
@@ -536,12 +683,25 @@ window.__STICKY_THEME_VARS__ = [
     saveState(); render();
   }
 
-  function deleteColumn(colId) {
+  async function deleteColumn(colId) {
     var col = findCol(colId);
     if (!col) return;
-    if (col.notes.length > 0 && !confirm('Delete column "' + col.title + '" with ' + col.notes.length + ' notes?')) return;
-    state.columns = state.columns.filter(function(c) { return c.id !== colId; });
+    var noteCount = col.notes.length;
+    if (noteCount > 0) {
+      var ok = await appConfirm({
+        title: 'Delete column?',
+        message: 'Delete column "' + col.title + '" with ' + noteCount + ' note' + (noteCount === 1 ? '' : 's') + '? This cannot be undone.',
+        confirmLabel: 'Delete',
+        danger: true,
+        focusCancel: true
+      });
+      if (!ok) return;
+    }
+    var colIndex = state.columns.indexOf(col);
+    var snapshot = JSON.parse(JSON.stringify(col));
+    state.columns = state.columns.filter(function(c) { return c.id !== colId });
     saveState(); render();
+    showUndo('Column "' + snapshot.title + '" deleted', { kind: 'column', col: snapshot, index: colIndex });
   }
 
   function addNote(colId) {
@@ -554,11 +714,73 @@ window.__STICKY_THEME_VARS__ = [
     if (last) { var inp = last.querySelector('.note-title'); inp.focus(); inp.select(); }
   }
 
-  function deleteNote(colId, noteId) {
+  async function deleteNote(colId, noteId) {
     var col = findCol(colId);
     if (!col) return;
+    var note = col.notes.find(function(n) { return n.id === noteId; });
+    if (!note) return;
+    var ok = await appConfirm({
+      title: 'Delete note?',
+      message: 'Delete note "' + (note.title || 'New Note') + '"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+      focusCancel: true
+    });
+    if (!ok) return;
+    var noteIndex = col.notes.indexOf(note);
+    var snapshot = JSON.parse(JSON.stringify(note));
     col.notes = col.notes.filter(function(n) { return n.id !== noteId; });
     saveState(); render();
+    showUndo('Note deleted', { kind: 'note', note: snapshot, colId: colId, index: noteIndex });
+  }
+
+  // Move a note to a different column with a smooth visual animation.
+  function moveNoteToColumn(noteId, targetColId, opts) {
+    opts = opts || {};
+    var sourceCol = null, note = null, sourceIdx = -1;
+    (state.columns || []).forEach(function(col) {
+      col.notes.forEach(function(n, idx) {
+        if (n.id === noteId && !sourceCol) {
+          sourceCol = col; note = n; sourceIdx = idx;
+        }
+      });
+    });
+    if (!sourceCol || sourceCol.id === targetColId) return false;
+    var targetCol = findCol(targetColId);
+    if (!targetCol) return false;
+
+    var noteEl = document.querySelector('.note[data-note-id="' + noteId + '"]');
+    var fromRect = noteEl ? noteEl.getBoundingClientRect() : null;
+
+    sourceCol.notes.splice(sourceIdx, 1);
+    if (opts.prepend) {
+      targetCol.notes.unshift(note);
+    } else {
+      targetCol.notes.push(note);
+    }
+    saveState(); render();
+
+    if (fromRect) {
+      var newEl = document.querySelector('.note[data-note-id="' + noteId + '"]');
+      var toRect = newEl ? newEl.getBoundingClientRect() : null;
+      if (toRect) {
+        var ghost = noteEl.cloneNode(true);
+        ghost.style.position = 'fixed';
+        ghost.style.left = fromRect.left + 'px';
+        ghost.style.top = fromRect.top + 'px';
+        ghost.style.width = fromRect.width + 'px';
+        ghost.style.height = fromRect.height + 'px';
+        ghost.style.margin = '0';
+        ghost.style.zIndex = '1000';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.transition = 'transform 0.35s cubic-bezier(.2,.8,.2,1), opacity 0.35s';
+        document.body.appendChild(ghost);
+        ghost.getBoundingClientRect();
+        ghost.style.transform = 'translate(' + (toRect.left - fromRect.left) + 'px,' + (toRect.top - fromRect.top) + 'px)';
+        setTimeout(function() { ghost.remove(); }, 360);
+      }
+    }
+    return true;
   }
 
   function addSubItem(colId, noteId) {
@@ -652,6 +874,10 @@ window.__STICKY_THEME_VARS__ = [
     switch(action) {
       case 'add-note': addNote(colId); break;
       case 'delete-note': deleteNote(colId, noteId); break;
+      case 'toggle-done':
+        var tdNote = findNote(colId, noteId);
+        if (tdNote) { tdNote.done = !tdNote.done; saveState(); render(); }
+        break;
       case 'delete-col': deleteColumn(colId); break;
       case 'add-sub': addSubItem(colId, noteId); break;
       case 'delete-sub': deleteSubItem(colId, noteId, parseInt(subIdx)); break;
@@ -678,7 +904,7 @@ window.__STICKY_THEME_VARS__ = [
     switch(action) {
       case 'edit-col-title':
         var col = findCol(colId);
-        if (col && val) { col.title = val; saveState(); }
+        if (col && val && !RESERVED_COLS.some(function(rc) { return rc.id === col.id; })) { col.title = val; saveState(); }
         break;
       case 'edit-note-title':
         var note = findNote(colId, noteId);
@@ -721,7 +947,23 @@ window.__STICKY_THEME_VARS__ = [
 
   document.addEventListener('keydown', function(e) {
     var t = e.target;
-    if (!t.classList || !t.classList.contains('sub-item-text')) return;
+    if (!t.classList) return;
+    // Enter saves inline title edits; Escape reverts them.
+    if (t.classList.contains('col-title') || t.classList.contains('note-title')) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        t.blur();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        t.value = t.defaultValue;
+        t.blur();
+        return;
+      }
+      return;
+    }
+    if (!t.classList.contains('sub-item-text')) return;
     var colId = t.getAttribute('data-col-id');
     var noteId = t.getAttribute('data-note-id');
     var idx = parseInt(t.getAttribute('data-sub-idx'), 10);
@@ -824,7 +1066,104 @@ window.__STICKY_THEME_VARS__ = [
   }
 
   // ── Header Buttons ─────────────────────────
-  document.getElementById('btn-add-col').addEventListener('click', addColumn);
+  var noteSearchInput = document.getElementById('note-search');
+  if (noteSearchInput) {
+    noteSearchInput.addEventListener('input', function(e) {
+      _noteSearchTerm = e.target.value || '';
+      render();
+    });
+  }
+
+  var undoBtn = document.getElementById('btn-undo');
+  if (undoBtn) undoBtn.addEventListener('click', undo);
+
+  // ── Keyboard shortcuts ─────────────────────
+  // Arrow keys move between note/column titles; Ctrl/Cmd+Enter adds a note
+  // to the focused column; Delete removes a focused note/column.
+  function colForInput(input) {
+    var colId = input.getAttribute('data-col-id');
+    return colId ? findCol(colId) : null;
+  }
+
+  function noteTitleInputsForCol(colId) {
+    var colEl = document.querySelector('.column[data-col-id="' + colId + '"]');
+    return colEl ? Array.from(colEl.querySelectorAll('.note-title')) : [];
+  }
+
+  function focusNoteTitle(colId, noteId) {
+    var inputs = noteTitleInputsForCol(colId);
+    var t = inputs.find(function(inp) { return inp.getAttribute('data-note-id') === noteId; });
+    if (!t && inputs.length) t = inputs[0];
+    if (t) { t.focus(); t.select(); }
+  }
+
+  function focusColumnTitle(index) {
+    var cols = document.querySelectorAll('.column');
+    var c = cols[Math.max(0, Math.min(index, cols.length - 1))];
+    if (c) { var t = c.querySelector('.col-title'); if (t) { t.focus(); t.select(); } }
+  }
+
+  document.addEventListener('keydown', function(e) {
+    var t = e.target;
+    if (!t || !t.classList) return;
+    var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    var mod = isMac ? e.metaKey : e.ctrlKey;
+
+    // Ctrl/Cmd+Enter: add a new note to the relevant column.
+    if (mod && e.key === 'Enter') {
+      var colId = t.getAttribute('data-col-id');
+      if (colId) {
+        e.preventDefault();
+        addNote(colId);
+        return;
+      }
+    }
+
+    // Note title navigation
+    if (t.classList.contains('note-title')) {
+      var noteColId = t.getAttribute('data-col-id');
+      var noteId = t.getAttribute('data-note-id');
+      var inputs = noteTitleInputsForCol(noteColId);
+      var pos = inputs.indexOf(t);
+      var allCols = Array.from(document.querySelectorAll('.column'));
+      var colEl = t.closest('.column');
+      var colIdx = colEl ? allCols.indexOf(colEl) : -1;
+
+      if (e.key === 'ArrowUp' && pos > 0) {
+        e.preventDefault(); inputs[pos - 1].focus(); inputs[pos - 1].select();
+      } else if (e.key === 'ArrowDown' && pos < inputs.length - 1) {
+        e.preventDefault(); inputs[pos + 1].focus(); inputs[pos + 1].select();
+      } else if (e.key === 'ArrowLeft' && colIdx > 0) {
+        e.preventDefault();
+        var prevInputs = noteTitleInputsForCol(allCols[colIdx - 1].getAttribute('data-col-id'));
+        var pt = prevInputs[Math.min(pos, prevInputs.length - 1)];
+        if (pt) { pt.focus(); pt.select(); }
+      } else if (e.key === 'ArrowRight' && colIdx < allCols.length - 1) {
+        e.preventDefault();
+        var nextInputs = noteTitleInputsForCol(allCols[colIdx + 1].getAttribute('data-col-id'));
+        var nt = nextInputs[Math.min(pos, nextInputs.length - 1)];
+        if (nt) { nt.focus(); nt.select(); }
+      } else if (e.key === 'Delete') {
+        e.preventDefault(); deleteNote(noteColId, noteId);
+      }
+      return;
+    }
+
+    // Column title navigation + delete
+    if (t.classList.contains('col-title')) {
+      var colId = t.getAttribute('data-col-id');
+      var cols2 = state.columns;
+      var idx = cols2.findIndex(function(c) { return c.id === colId; });
+      if (e.key === 'ArrowLeft' && idx > 0) {
+        e.preventDefault(); focusColumnTitle(idx - 1);
+      } else if (e.key === 'ArrowRight' && idx < cols2.length - 1) {
+        e.preventDefault(); focusColumnTitle(idx + 1);
+      } else if (e.key === 'Delete') {
+        e.preventDefault(); deleteColumn(colId);
+      }
+      return;
+    }
+  });
 
   // Switching boards from the Notes sidebar used to reassign this iframe's
   // `src`, which reloads the whole document (fresh network request, blank
@@ -834,9 +1173,13 @@ window.__STICKY_THEME_VARS__ = [
   // after that.
   window.addEventListener('message', function(e) {
     if (e.origin !== location.origin) return;
-    if (!e.data || e.data.type !== 'sticky-board:select') return;
-    BOARD_ID = e.data.boardId || null;
-    loadState().then(render);
+    if (!e.data) return;
+    if (e.data.type === 'sticky-board:select') {
+      BOARD_ID = e.data.boardId || null;
+      loadState().then(render);
+    } else if (e.data.type === 'sticky-board:move-note') {
+      moveNoteToColumn(e.data.noteId, e.data.targetColId, { prepend: e.data.prepend });
+    }
   });
 
   // ── Init ───────────────────────────────────

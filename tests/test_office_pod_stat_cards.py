@@ -37,8 +37,11 @@ def test_office_card_specs_has_a_branch_for_each_outlet():
     body = _function_body(OFFICE_INDEX_SRC, "officeCardSpecs")
     assert "_outlet === 'business'" in body
     assert "_roster.departments.map" in body
-    # The Projects branch invents no name, but does derive a stable colour.
-    assert "name: null, color: colorForProjectsCluster(key)" in body
+    # Projects has no department names, but its stable landmark does:
+    # the central conductor platform carries a Conductor card.
+    assert "{ key: '__conductor__', name: 'Conductor'" in body
+    assert "key: '__conductor__'" in body
+    assert "colorForProjectsCluster(key)" in body
 
 
 def test_projects_cards_are_derived_from_the_live_desks_not_a_standing_list():
@@ -54,6 +57,13 @@ def test_reposition_no_longer_gates_on_the_business_outlet():
         "repositioning must run for whichever outlet currently has cards up, "
         "not just Business"
     )
+
+
+def test_overview_cards_stay_anchored_instead_of_hiding_or_detaching():
+    body = _function_body(OFFICE_INDEX_SRC, "repositionDepartmentCards")
+    assert "MIN_CARD_ZOOM" not in OFFICE_INDEX_SRC
+    assert "const candidates" not in body
+    assert "placement = { x, y, bounds" in body
 
 
 def test_a_card_without_a_colour_clears_any_previous_one():

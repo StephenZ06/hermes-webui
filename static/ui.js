@@ -8973,14 +8973,32 @@ function _finishAppDialog(result, restoreFocus=true){
   const confirmBtn=$('appDialogConfirm');
   const resolve=APP_DIALOG.resolve;
   const lastFocus=APP_DIALOG.lastFocus;
+  let focusRestored=false;
   APP_DIALOG.resolve=null;
   APP_DIALOG.kind=null;
   APP_DIALOG.lastFocus=null;
-  if(overlay){_animateAppDialogOut(overlay,dialog);overlay.setAttribute('aria-hidden','true');}
+  if(overlay){
+    // Move focus before hiding the overlay from assistive technology. Hiding
+    // first leaves a focused descendant under aria-hidden and triggers an
+    // accessibility violation in Chromium.
+    if(overlay.contains(document.activeElement)){
+      if(restoreFocus&&lastFocus&&lastFocus.isConnected&&typeof lastFocus.focus==='function'){
+        try{lastFocus.focus();focusRestored=true;}catch(_){ }
+      }
+      if(!focusRestored){
+        try{document.activeElement.blur();}catch(_){ }
+      }
+    }
+    overlay.setAttribute('inert','');
+    overlay.setAttribute('aria-hidden','true');
+    _animateAppDialogOut(overlay,dialog);
+  }
   if(dialog) dialog.setAttribute('role','dialog');
   if(input){input.value='';input.style.display='none';input.placeholder='';}
   if(confirmBtn){confirmBtn.classList.remove('danger');confirmBtn.textContent=t('dialog_confirm_btn');}
-  if(restoreFocus&&lastFocus&&typeof lastFocus.focus==='function'){setTimeout(()=>lastFocus.focus(),0);}
+  if(restoreFocus&&!focusRestored&&lastFocus&&lastFocus.isConnected&&typeof lastFocus.focus==='function'){
+    setTimeout(()=>lastFocus.focus(),0);
+  }
   if(resolve) resolve(result);
 }
 
@@ -9063,7 +9081,7 @@ function showConfirmDialog(opts={}){
     confirmBtn.classList.toggle('danger',!!opts.danger);
   }
   if(dialog) dialog.setAttribute('role',opts.danger?'alertdialog':'dialog');
-  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
+  if(overlay){overlay.removeAttribute('inert');overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
   return new Promise(resolve=>{
     APP_DIALOG.resolve=resolve;
     setTimeout(()=>((opts.focusCancel?cancelBtn:confirmBtn)||confirmBtn||cancelBtn).focus(),0);
@@ -9099,7 +9117,7 @@ function showPromptDialog(opts={}){
     confirmBtn.classList.toggle('danger',!!opts.danger);
   }
   if(dialog) dialog.setAttribute('role',opts.danger?'alertdialog':'dialog');
-  if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
+  if(overlay){overlay.removeAttribute('inert');overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');_animateAppDialogIn(overlay,dialog);}
   return new Promise(resolve=>{
     APP_DIALOG.resolve=resolve;
     setTimeout(()=>{

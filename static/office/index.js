@@ -28,7 +28,7 @@
 import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
-import { buildRoster, businessView, departmentFor } from './roster.js';
+import { buildRoster, businessView, businessWorkerIds } from './roster.js';
 import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
@@ -64,7 +64,6 @@ const SIDEBAR_REFRESH_MS = 15000;
 let _container = null;
 let _canvas = null;
 let _scene = null;
-let _detailEl = null;
 let _pillEl = null;
 let _hintEl = null;
 let _summaryEl = null;
@@ -85,6 +84,9 @@ let _tasksFilter = 'all';
 let _lastTaskStatusWorkers = [];
 let _tasksEl = null;
 let _tasksCollapseBtnEl = null;
+let _tasksCountEl = null;
+let _lastTaskStatusDoneCount = null;
+let _taskCompletionTimer = null;
 let _tasksCollapsed = readTasksCollapsed();
 let _resizeObserver = null;
 let _themeObserver = null;
@@ -94,12 +96,21 @@ let _pollTimer = null;
 let _sidebarTimer = null;
 let _syncQueued = false;
 let _selectedId = null;
+let _taskStatusDisclosureAnimating = false;
+let _taskStatusDisclosureTimer = null;
+let _tasksCollapseAnimating = false;
+let _tasksCollapseTimer = null;
 let _spawnPaused = false;
 let _gatewayEnabled = true;
 let _outlet = readOutlet();
 let _roster = buildRoster([]);
 let _rosterLoaded = false;
 let _outletBtnEls = {};
+let _labelsVisible = true;
+// Department cards live in screen space, unlike the WebGL pods below them.
+// In adaptive mode they shrink with a zoomed-out office so their visual weight
+// stays proportional to the platform they describe.
+let _labelsAdaptive = true;
 
 // 'live' tracks the running session. 'history' shows a frozen office rebuilt
 // from state.db for a finished chat picked in the sidebar — it gets its own
@@ -107,6 +118,8 @@ let _outletBtnEls = {};
 let _viewMode = 'live';
 let _historyAdapter = null;
 let _historyParents = [];
+let _officeProjects = [];
+const _expandedProjectIds = new Set();
 // session id -> the name its last delegation gave it
 const _liveSummaries = new Map();
 let _historyParentId = null;
@@ -114,6 +127,9 @@ let _historyParentId = null;
 // no news does not rebuild it out from under the reader.
 let _historySignature = '';
 let _sessionQuery = '';
+// Read-only, ephemeral scheduler rows. They never enter the delegation
+// adapter, session history, or persisted office state.
+let _scheduledTasks = [];
 
 const STATUS_LABEL = {
   running: 'Running', completed: 'Completed', failed: 'Failed',
@@ -229,13 +245,11 @@ function request(path, opts) {
 /**
  * The Projects floor, with business-classified work held back for the
  * Business floor instead of appearing on both. A worker's own goal decides
- * it -- the same `departmentFor()` businessView() itself uses to seat a
- * desk, so "would this land in a department" is answered identically on
- * both floors and a run can never be business-classified on one and not
- * the other. Every descendant of a business-classified worker is hidden
- * with it, even one whose own goal reads as generic ("read this file") --
- * it exists because business work delegated it, so it's part of that same
- * branch, not re-classified independently.
+ * it -- the same `businessWorkerIds()` businessView() itself uses to seat a
+ * desk, so the office route is answered identically on both floors. Every
+ * descendant of a business-classified worker is hidden with it, even one
+ * whose own goal reads as coding ("implement a landing page") -- it exists
+ * because business work delegated it, so it stays in that same branch.
  *
  * Outlet-independent state -- the sidebar's live indicator, the detail
  * panel, and the Task Status column -- is untouched; this only reshapes
@@ -243,13 +257,16 @@ function request(path, opts) {
  */
 function projectsFloorView(state) {
   const workers = state.workers || [];
-  const hidden = new Set();
-  workers.forEach(worker => {
-    if (!departmentFor(worker.goal || worker.label || '')) return;
-    hidden.add(worker.id);
-    descendantsOf(worker.id, workers).forEach(d => hidden.add(d.id));
-  });
-  const desks = (state.desks || []).filter(desk => !desk.workerId || !hidden.has(desk.workerId));
+  const hidden = businessWorkerIds(workers);
+  const desks = (state.desks || []).map(desk => {
+    // Projects has no standing departments, so the conductor's own pod is just
+    // another anonymous cluster unless we explicitly label it. Business already
+    // gets "Conductor" from the card and the floor sign; Projects should too.
+    if (desk.cluster === '__conductor__') {
+      return Object.assign({}, desk, { clusterLabel: desk.clusterLabel || 'Conductor' });
+    }
+    return desk;
+  }).filter(desk => !desk.workerId || !hidden.has(desk.workerId));
   return Object.assign({}, state, { desks });
 }
 
@@ -265,20 +282,35 @@ function scheduleSync() {
     _syncQueued = false;
     if (!_scene) return;
     const state = activeAdapter().getState();
-    // Business is a desk-assignment policy, not a second engine: it rewrites
-    // `desks` into roster seats and hands the scene the same shape Projects
-    // does, so neither the layout nor the scene knows which outlet is up.
-    const view = _outlet === 'business' ? businessView(state, _roster) : projectsFloorView(state);
+    const scheduledState = (_viewMode === 'live' && _outlet === 'business')
+      ? scheduledTaskState(state) : state;
+    const view = _outlet === 'business' ? businessView(scheduledState, _roster) : projectsFloorView(state);
     _scene.syncOffice(view);
-    renderPill(state);
-    renderDetail(state);
-    renderSummary(state);
-    renderDepartmentCards(view, state);
-    renderTaskStatusPanel(state);
+    renderPill(scheduledState);
+    renderSummary(scheduledState);
+    renderDepartmentCards(view, scheduledState);
+    if (!_taskStatusDisclosureAnimating && !_tasksCollapseAnimating) renderTaskStatusPanel(scheduledState);
+    else renderTaskStatusPanel(scheduledState, { skipListUpdate: true });
     if (_outletFadePending) {
       _outletFadePending = false;
       revealAfterOutletFade();
     }
+  });
+}
+
+function scheduledTaskState(state) {
+  const scheduledWorkers = _scheduledTasks.map(task => ({
+    id: `scheduled:${task.profile}:${task.job_id}`,
+    parentId: '__conductor__',
+    label: 'Scheduled Task',
+    goal: task.name,
+    status: task.status || 'running',
+    spawnedAt: Date.parse(task.started_at) || Date.now(),
+    scheduledTask: true,
+    scheduledMode: task.mode,
+  }));
+  return Object.assign({}, state, {
+    workers: (state.workers || []).concat(scheduledWorkers),
   });
 }
 
@@ -289,8 +321,8 @@ function scheduleSync() {
 // frame, so the whole cross-fade is invisible: add-then-remove within the
 // same frame or two is a well-known case of a CSS transition never being
 // observed at all, not just a short one. Matches the CSS transition's own
-// .22s duration.
-const OUTLET_FADE_MIN_MS = 220;
+// .32s duration.
+const OUTLET_FADE_MIN_MS = 0;
 
 /**
  * Reveal the floor once BOTH scheduleSync has actually finished (so a slow
@@ -305,12 +337,15 @@ function revealAfterOutletFade() {
   const elapsed = performance.now() - _outletFadeStartedAt;
   const remaining = OUTLET_FADE_MIN_MS - elapsed;
   const reveal = () => {
-    // One more frame so the just-synced floor has actually painted before
-    // the fade reveals it -- removing the class in the same callback that
-    // just ran scheduleSync's work would sometimes reveal the previous
-    // frame's half-drawn state instead.
+    if (_scene && typeof _scene.setOutletTransition === 'function') {
+      _scene.setOutletTransition(false);
+    }
     window.requestAnimationFrame(() => {
       if (_canvas) _canvas.classList.remove('is-switching-outlet');
+      if (_deptCardsEl) {
+        _deptCardsEl.classList.remove('is-fading-out');
+        _deptCardsEl.classList.add('is-fading-in');
+      }
     });
   };
   if (remaining > 0) window.setTimeout(reveal, remaining);
@@ -339,18 +374,47 @@ const _TERMINAL_STATUSES = new Set([
  * always appends it as a 7th standing entry) -- uncoloured, matching the
  * pod tint.
  */
-function officeCardSpecs(view) {
+function officeCardSpecs(view, state) {
   if (_outlet === 'business') {
     if (!_roster || !Array.isArray(_roster.departments)) return null;
-    return _roster.departments.map(dept => ({ key: dept.key, name: dept.name, color: dept.color }));
+    // The conductor is a platform, not a desk worker, but it should use the
+    // same overview card as the named Business departments. This gives the
+    // central hub a readable identity at the zoom where floor text is tiny.
+    return [
+      { key: '__conductor__', name: 'Conductor', color: '#7187be' },
+      ..._roster.departments.map(dept => ({ key: dept.key, name: dept.name, color: dept.color })),
+    ];
   }
   // Projects: one card per pod actually on the floor right now -- pods come
   // and go with the live delegation tree, there is no standing list to draw
   // an empty one from the way Business always has all six.
   const clusters = new Set();
   (view.desks || []).forEach(desk => { if (desk.cluster) clusters.add(desk.cluster); });
-  if (!clusters.size) return null;
-  return Array.from(clusters).map(key => ({ key, name: null, color: colorForProjectsCluster(key) }));
+
+  // Use the model reported by the live workers as each card's title. A nested
+  // pod's cluster key is its parent subagent id; the conductor cluster holds
+  // the direct subagents. Fall back to the current chat's configured model
+  // (subagents usually share it) and then to the generic "Subagents" label.
+  const sessionModel = (typeof window !== 'undefined' && window.S && window.S.session && window.S.session.model) || null;
+  const workers = (state && state.workers) || [];
+  function modelForCluster(cluster) {
+    const inCluster = workers.filter(w => {
+      if (cluster === '__conductor__') return true;
+      return w.parentId === cluster || w.id === cluster;
+    });
+    const withModel = inCluster.find(w => w.model);
+    return withModel ? withModel.model : sessionModel;
+  }
+
+  const projectPods = Array.from(clusters)
+    .filter(key => key !== '__conductor__')
+    .map(key => ({ key, name: null, title: modelForCluster(key), color: colorForProjectsCluster(key) }));
+  // The central conductor platform always keeps a label, even when the floor is
+  // empty and no live subagent pods are currently spawned.
+  return [
+    { key: '__conductor__', name: 'Conductor', color: '#7187be' },
+    ...projectPods,
+  ];
 }
 
 /**
@@ -362,7 +426,7 @@ function officeCardSpecs(view) {
  */
 function renderDepartmentCards(view, state) {
   if (!_deptCardsEl) return;
-  const specs = officeCardSpecs(view);
+  const specs = officeCardSpecs(view, state);
   if (!specs) {
     if (_deptCardEls.size) { _deptCardsEl.innerHTML = ''; _deptCardEls.clear(); }
     return;
@@ -377,7 +441,7 @@ function renderDepartmentCards(view, state) {
   const seen = new Set();
   specs.forEach(spec => {
     seen.add(spec.key);
-    const desks = desksByCluster.get(spec.key) || [];
+    const desks = desksByCluster.get(spec.deskCluster || spec.key) || [];
     let active = 0;
     let done = 0;
     desks.forEach(desk => {
@@ -396,8 +460,12 @@ function renderDepartmentCards(view, state) {
     }
     if (spec.color) el.style.setProperty('--office-dept-color', spec.color);
     else el.style.removeProperty('--office-dept-color');
+    // Keep the central Conductor card visually above the surrounding pod
+    // cards so a subagent label never floats on top of it.
+    el.style.zIndex = spec.key === '__conductor__' ? '100' : '1';
+    const cardName = spec.title || spec.name;
     el.innerHTML = `
-      ${spec.name ? `<div class="office-dept-card-name">${esc(spec.name)}</div>` : ''}
+      ${spec.title ? `<div class="office-dept-card-name">${esc(spec.title)}</div>` : (spec.name ? `<div class="office-dept-card-name">${esc(spec.name)}</div>` : '')}
       <div class="office-dept-card-count">${desks.length}<span>agent${desks.length === 1 ? '' : 's'}</span></div>
       <div class="office-dept-card-stats">
         <span class="office-dept-card-stat"><strong>${active}</strong>active</span>
@@ -425,16 +493,60 @@ function renderDepartmentCards(view, state) {
  * there is nothing to reposition, which is whenever the current outlet has
  * no cards up.
  */
+function cardBounds(x, y, width, height) {
+  return {
+    left: x - width / 2,
+    top: y - height,
+    right: x + width / 2,
+    bottom: y,
+  };
+}
+
 function repositionDepartmentCards() {
   if (!_deptCardEls.size) return;
   if (!_scene || typeof _scene.podScreenRect !== 'function') return;
+  const stageWidth = _deptCardsEl.clientWidth;
+  const stageHeight = _deptCardsEl.clientHeight;
+  const sceneZoom = _scene.getView().zoom;
+  const scale = _labelsAdaptive ? Math.max(0.65, Math.min(1, sceneZoom)) : 1;
   _deptCardEls.forEach((el, cluster) => {
     const rect = _scene.podScreenRect(cluster);
-    if (!rect) { el.style.display = 'none'; return; }
+    if (!rect || !_labelsVisible) { el.style.display = 'none'; return; }
     el.style.display = '';
-    el.style.left = rect.x + 'px';
-    el.style.top = rect.y + 'px';
+    el.style.transform = `translate(-50%, -100%) scale(${scale})`;
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    const x = Math.max(width / 2 + 8, Math.min(stageWidth - width / 2 - 8, rect.x));
+    const y = Math.max(height + 8, Math.min(stageHeight - 8, rect.y));
+    const placement = { x, y, bounds: cardBounds(x, y, width, height) };
+    el.style.left = placement.x + 'px';
+    el.style.top = placement.y + 'px';
   });
+}
+
+function renderPlatformLabelScaleButton() {
+  const button = _container && _container.querySelector('#officeLabelScaleBtn');
+  if (!button) return;
+  button.setAttribute('aria-pressed', String(_labelsAdaptive));
+  button.setAttribute('aria-label', _labelsAdaptive
+    ? 'Use fixed platform label size'
+    : 'Use adaptive platform label size');
+  button.title = _labelsAdaptive
+    ? 'Use fixed platform label size'
+    : 'Use adaptive platform label size';
+}
+
+function togglePlatformLabelScale() {
+  _labelsAdaptive = !_labelsAdaptive;
+  renderPlatformLabelScaleButton();
+  repositionDepartmentCards();
+}
+
+function togglePlatformLabels() {
+  _labelsVisible = !_labelsVisible;
+  const button = _container && _container.querySelector('#officeLabelsBtn');
+  if (button) button.setAttribute('aria-pressed', String(_labelsVisible));
+  repositionDepartmentCards();
 }
 
 // ── Task Status panel ──
@@ -462,7 +574,6 @@ const TASK_STATUS_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'running', label: 'Running' },
   { key: 'done', label: 'Done' },
-  { key: 'stopped', label: 'Stopped' },
 ];
 
 /** Pure so tests/test_office_task_status.py can drive it without a DOM. */
@@ -475,24 +586,64 @@ function taskStatusCounts(workers) {
   return counts;
 }
 
+/** The count badge is a concise whole-office health signal. Running work
+ * wins over a completed total, so one active task cannot look settled. */
+function taskStatusBadgeState(workers) {
+  const counts = taskStatusCounts(workers);
+  let tone = 'neutral';
+  if (counts.running > 0) tone = 'running';
+  else if (counts.all > 0 && counts.done === counts.all) tone = 'complete';
+  return { total: counts.all, tone, done: counts.done };
+}
+
 /**
- * The Task Status column collapses to a slim strip -- the filters and list
- * stay in the DOM (so a collapse never has to rebuild them), only their
- * visibility follows the state. Remembered per-browser so reclaiming the
- * canvas' width sticks across visits.
+ * The Task Status card collapses to its compact label row -- the filters and
+ * list stay in the DOM (so a collapse never has to rebuild them), only their
+ * visibility follows the state. Remembered per-browser so the chosen view
+ * persists across Office visits.
  */
 function renderTasksCollapse() {
   if (!_tasksEl || !_tasksCollapseBtnEl) return;
   _tasksEl.classList.toggle('is-collapsed', _tasksCollapsed);
   _tasksCollapseBtnEl.setAttribute('aria-expanded', String(!_tasksCollapsed));
-  _tasksCollapseBtnEl.textContent = _tasksCollapsed ? '‹' : '›';
+  _tasksCollapseBtnEl.setAttribute('aria-label', _tasksCollapsed ? 'Expand Task Status' : 'Collapse Task Status');
   _tasksCollapseBtnEl.title = _tasksCollapsed ? 'Show Task Status' : 'Collapse Task Status';
 }
 
 function toggleTasksCollapsed() {
-  _tasksCollapsed = !_tasksCollapsed;
+  if (_tasksCollapseTimer) clearTimeout(_tasksCollapseTimer);
+  const body = document.getElementById('officeTasksBody');
+  const collapsing = !_tasksCollapsed;
+  _tasksCollapsed = collapsing;
   writeTasksCollapsed(_tasksCollapsed);
   renderTasksCollapse();
+  if (body) {
+    const from = body.getBoundingClientRect().height;
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    body.style.maxHeight = `${from}px`;
+    if (body._tasksBodyAnimation) {
+      body._tasksBodyAnimation.cancel();
+      body._tasksBodyAnimation = null;
+    }
+    if (reduced) {
+      body.style.maxHeight = collapsing ? '0px' : '';
+    } else {
+      const to = collapsing ? 0 : body.scrollHeight;
+      body._tasksBodyAnimation = body.animate(
+        [{ maxHeight: `${from}px` }, { maxHeight: `${to}px` }],
+        { duration: 420, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards' }
+      );
+      body._tasksBodyAnimation.onfinish = () => {
+        body.style.maxHeight = collapsing ? '0px' : '';
+        body._tasksBodyAnimation = null;
+      };
+    }
+  }
+  _tasksCollapseAnimating = true;
+  _tasksCollapseTimer = setTimeout(() => {
+    _tasksCollapseAnimating = false;
+    _tasksCollapseTimer = null;
+  }, 460);
 }
 
 function renderTaskStatusFilters() {
@@ -538,24 +689,135 @@ function renderTaskStatusList(workers) {
   // Most recently spawned first -- what just started is what someone opening
   // this panel most likely wants to see.
   const ordered = rows.slice().sort((a, b) => (b.spawnedAt || 0) - (a.spawnedAt || 0));
-  _tasksListEl.innerHTML = ordered.map(w => `
-    <button type="button" class="office-tasks-row" data-worker-id="${esc(w.id)}">
+  _tasksListEl.innerHTML = ordered.map(w => {
+    const selected = w.id === _selectedId;
+    return `<div class="office-tasks-row${selected ? ' is-selected' : ''}" data-worker-id="${esc(w.id)}">
+    <button type="button" class="office-tasks-row-select" aria-expanded="${selected}">
       <span class="office-tasks-row-status status-${esc(taskStatusBucket(w.status))}" aria-hidden="true"></span>
       <span class="office-tasks-row-body">
-        <span class="office-tasks-row-goal">${esc(w.goal || w.label || 'Subagent')}</span>
+        <span class="office-tasks-row-goal">${esc(w.scheduledTask ? 'Scheduled Task' : (w.goal || w.label || 'Subagent'))}</span>
         <span class="office-tasks-row-meta">${esc(w.status || '')}${taskStatusAge(w) ? ' · ' + esc(taskStatusAge(w)) : ''}</span>
       </span>
-    </button>`).join('');
+    </button>
+    <div class="office-tasks-row-detail"${selected ? '' : ' inert'}>
+      <div class="office-tasks-row-detail-inner">${taskStatusDetailHtml(w, _lastTaskStatusWorkers)}</div>
+    </div>
+  </div>`;
+  }).join('');
   _tasksListEl.querySelectorAll('.office-tasks-row').forEach(row => {
-    row.onclick = () => {
+    const focusRow = () => {
+      selectTask(row.dataset.workerId, false);
       if (_scene && typeof _scene.focusOnWorker === 'function') _scene.focusOnWorker(row.dataset.workerId);
     };
+    // Keep the row itself keyboard/test-script friendly while the nested
+    // button remains the real pointer target for the compact summary.
+    row.onclick = event => { if (event.target === row) focusRow(); };
+    const select = row.querySelector('.office-tasks-row-select');
+    if (select) select.onclick = focusRow;
+    const close = row.querySelector('.office-tasks-row-detail-close');
+    if (close) close.onclick = () => clearTaskSelection();
+    const worker = _lastTaskStatusWorkers.find(w => w.id === row.dataset.workerId);
+    const open = row.querySelector('[data-action="open-session"]');
+    if (open && worker) open.onclick = () => openWorkerSession(worker);
+    const interrupt = row.querySelector('[data-action="interrupt"]');
+    if (interrupt && worker) interrupt.onclick = () => interruptWorker(worker.id);
+    const branch = row.querySelector('[data-action="interrupt-branch"]');
+    if (branch && worker) {
+      const descendants = descendantsOf(worker.id, _lastTaskStatusWorkers)
+        .filter(w => !TERMINAL.has(w.status)).map(w => w.id);
+      branch.onclick = () => interruptBranch(worker.id, descendants);
+    }
   });
 }
 
-function renderTaskStatusPanel(state) {
+function syncTaskStatusDisclosure() {
+  if (!_tasksListEl) return false;
+  let changed = false;
+  _tasksListEl.querySelectorAll('.office-tasks-row').forEach(row => {
+    const selected = row.dataset.workerId === _selectedId;
+    if (row.classList.contains('is-selected') === selected) return;
+    changed = true;
+    row.classList.toggle('is-selected', selected);
+    const button = row.querySelector('.office-tasks-row-select');
+    if (button) button.setAttribute('aria-expanded', selected ? 'true' : 'false');
+    const detail = row.querySelector('.office-tasks-row-detail');
+    if (detail) detail.inert = !selected;
+  });
+  if (!changed) return false;
+  _taskStatusDisclosureAnimating = true;
+  if (_taskStatusDisclosureTimer) clearTimeout(_taskStatusDisclosureTimer);
+  _taskStatusDisclosureTimer = setTimeout(() => {
+    _taskStatusDisclosureTimer = null;
+    _taskStatusDisclosureAnimating = false;
+    scheduleSync();
+  }, 300);
+  return true;
+}
+
+function selectTask(id, focus) {
+  if (_selectedId === id) {
+    // A second click is a disclosure toggle, not a request to leave the desk.
+    // Keep the camera where it is and only collapse the inline task details.
+    _selectedId = null;
+    syncTaskStatusDisclosure();
+    scheduleSync();
+    return;
+  }
+  const worker = _lastTaskStatusWorkers.find(w => w.id === id)
+    || (activeAdapter().getState().workers || []).find(w => w.id === id);
+  if (!worker) return;
+  _selectedId = id;
+  if (_tasksFilter !== 'all' && taskStatusBucket(worker.status) !== _tasksFilter) {
+    _tasksFilter = 'all';
+    renderTaskStatusFilters();
+    renderTaskStatusList(_lastTaskStatusWorkers);
+  }
+  if (_tasksCollapsed) {
+    _tasksCollapsed = false;
+    writeTasksCollapsed(false);
+    renderTasksCollapse();
+  }
+  if (focus && _scene && typeof _scene.focusOnWorker === 'function') {
+    _scene.focusOnWorker(id);
+  }
+  syncTaskStatusDisclosure();
+  scheduleSync();
+}
+
+function clearTaskSelection() {
+  _selectedId = null;
+  syncTaskStatusDisclosure();
+  if (_scene) _scene.resetView();
+  scheduleSync();
+}
+
+function renderTaskStatusBadge(workers) {
+  if (!_tasksCountEl) return;
+  const badge = taskStatusBadgeState(workers);
+  const justCompleted = _lastTaskStatusDoneCount !== null
+    && badge.done > _lastTaskStatusDoneCount;
+  _lastTaskStatusDoneCount = badge.done;
+  _tasksCountEl.textContent = String(badge.total);
+  _tasksCountEl.classList.toggle('is-running', badge.tone === 'running');
+  _tasksCountEl.classList.toggle('is-complete', badge.tone === 'complete');
+  if (!justCompleted) return;
+  if (_taskCompletionTimer) clearTimeout(_taskCompletionTimer);
+  _tasksCountEl.classList.remove('is-completion-flash');
+  void _tasksCountEl.offsetWidth;
+  _tasksCountEl.classList.add('is-completion-flash');
+  _taskCompletionTimer = setTimeout(() => {
+    if (_tasksCountEl) _tasksCountEl.classList.remove('is-completion-flash');
+    _taskCompletionTimer = null;
+  }, 2400);
+}
+
+function renderTaskStatusPanel(state, opts) {
+  const options = opts || {};
+  const workers = state.workers || [];
+  renderTaskStatusBadge(workers);
+  if (options.skipListUpdate) return;
   renderTaskStatusFilters();
-  renderTaskStatusList(state.workers || []);
+  renderTaskStatusList(workers);
 }
 
 function renderPill(state) {
@@ -624,10 +886,14 @@ let _outletFadeStartedAt = 0;
  */
 function animateOutletSwitch() {
   if (!_canvas) return;
-  _canvas.classList.add('is-switching-outlet');
+  if (_scene && typeof _scene.setOutletTransition === 'function') {
+    _scene.setOutletTransition(true);
+  }
+  if (_deptCardsEl) {
+    _deptCardsEl.classList.remove('is-fading-in');
+    _deptCardsEl.classList.add('is-fading-out');
+  }
   _outletFadeStartedAt = performance.now();
-  // setOutlet() calls scheduleSync() right after this; that's what actually
-  // clears the flag once the new floor is drawn (see scheduleSync() below).
   _outletFadePending = true;
 }
 
@@ -683,21 +949,12 @@ function renderSummary(state) {
 
 function renderPauseButton() {
   if (!_pauseBtnEl) return;
-  _pauseBtnEl.textContent = _spawnPaused ? 'Resume spawning' : 'Pause spawning';
-  _pauseBtnEl.classList.toggle('is-paused', _spawnPaused);
-  _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
+  _pauseBtnEl.textContent = 'View live';
+  _pauseBtnEl.classList.remove('is-paused');
+  _pauseBtnEl.hidden = false;
 }
 
-function renderDetail(state) {
-  if (!_detailEl) return;
-  const worker = _selectedId
-    ? (state.workers || []).find(w => w.id === _selectedId)
-    : null;
-  if (!worker) {
-    _detailEl.hidden = true;
-    _detailEl.innerHTML = '';
-    return;
-  }
+function taskStatusDetailHtml(worker, workers) {
   const rows = [];
   const row = (label, value) => rows.push(
     `<div class="office-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`,
@@ -741,7 +998,7 @@ function renderDetail(state) {
   // something that already finished; there is nothing there to stop.
   const canInterrupt = _viewMode === 'live' && !TERMINAL.has(worker.status);
   const liveDescendants = canInterrupt
-    ? descendantsOf(worker.id, state.workers || []).filter(w => !TERMINAL.has(w.status))
+    ? descendantsOf(worker.id, workers || []).filter(w => !TERMINAL.has(w.status))
     : [];
   const actions = [];
   if (canInterrupt) {
@@ -754,11 +1011,10 @@ function renderDetail(state) {
     actions.push('<button type="button" class="office-detail-action" data-action="open-session">Open conversation</button>');
   }
 
-  _detailEl.hidden = false;
-  _detailEl.innerHTML = `
-    <div class="office-detail-head">
+  return `
+    <div class="office-tasks-row-detail-head">
       <span class="office-detail-title">${esc(worker.label)}</span>
-      <button type="button" class="office-detail-close" aria-label="Close">×</button>
+      <button type="button" class="office-tasks-row-detail-close" aria-label="Close task details">×</button>
     </div>
     ${rows.join('')}
     ${worker.goal ? `<div class="office-detail-block"><div class="office-detail-label">Goal</div><div class="office-detail-goal">${esc(worker.goal)}</div></div>` : ''}
@@ -768,24 +1024,6 @@ function renderDetail(state) {
     ${files}
     ${actions.length ? `<div class="office-detail-actions">${actions.join('')}</div>` : ''}
   `;
-  const close = _detailEl.querySelector('.office-detail-close');
-  if (close) {
-    close.onclick = () => {
-      _selectedId = null;
-      // Closing the panel and leaving the camera buried in one desk would
-      // strand the user zoomed in with nothing selected.
-      if (_scene) _scene.resetView();
-      scheduleSync();
-    };
-  }
-  const open = _detailEl.querySelector('[data-action="open-session"]');
-  if (open) open.onclick = () => openWorkerSession(worker);
-  const interrupt = _detailEl.querySelector('[data-action="interrupt"]');
-  if (interrupt) interrupt.onclick = () => interruptWorker(worker.id);
-  const branch = _detailEl.querySelector('[data-action="interrupt-branch"]');
-  if (branch) {
-    branch.onclick = () => interruptBranch(worker.id, liveDescendants.map(w => w.id));
-  }
 }
 
 /**
@@ -849,6 +1087,14 @@ async function reconcile() {
     const data = await request('/api/subagents/active', { timeoutToast: false });
     if (!data) return;
     _adapter.applySnapshot(data);
+    if (_viewMode === 'live' && _outlet === 'business') {
+      try {
+        const scheduled = await request('/api/office/scheduled-tasks', { timeoutToast: false });
+        _scheduledTasks = Array.isArray(scheduled && scheduled.tasks) ? scheduled.tasks : [];
+      } catch (_scheduledError) {
+        // Do not erase the last valid snapshot because one read failed.
+      }
+    }
     // Pausing spawns is a gateway-process control: the in-process deployment
     // answers POST /api/subagents/pause with 409. Offering a button that can
     // only ever error is worse than not offering it.
@@ -926,7 +1172,7 @@ function showHistory(parentSessionId) {
   // The camera was framed on — possibly zoomed into a desk of — a different
   // run. Carrying that over would leave it pointed at a worker that no longer
   // exists, on a floor the user has never seen.
-  if (_scene) _scene.resetView();
+  if (_scene) _scene.resetView(_outlet === 'business' ? 1.15 : 1);
   renderSessionList();
   scheduleSync();
 }
@@ -1053,7 +1299,9 @@ function sidebarEntries() {
 function renderSessionList() {
   const list = document.getElementById('officeSessionList');
   if (!list) return;
-  const entries = sidebarEntries();
+  // Project-scoped runs belong in the Project Folders section above. Keep
+  // this history list for unfiled chats so a run is never duplicated.
+  const entries = sidebarEntries().filter(parent => !parent.project_id);
   const query = _sessionQuery.trim().toLowerCase();
   const visible = query
     ? entries.filter(p => String(p.title || '').toLowerCase().includes(query))
@@ -1095,6 +1343,46 @@ function renderSessionList() {
   });
 }
 
+function renderProjectFolders(projects, parents) {
+  const host = document.getElementById('officeProjectFolders');
+  if (!host) return;
+  const list = Array.isArray(projects) ? projects : [];
+  if (!list.length) { host.innerHTML = ''; return; }
+  host.innerHTML = `<div class="office-project-folders-title"><svg class="office-project-folders-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span></div>
+    <div class="project-folder-list">${list.map(project => {
+      const rows = (parents || []).filter(parent => parent.project_id === project.project_id);
+      const expanded = _expandedProjectIds.has(project.project_id);
+      const taskRows = rows.length ? rows.map(parent => {
+        const count = Array.isArray(parent.children) ? parent.children.length : 0;
+        return `<button type="button" class="office-session-row" data-parent-id="${esc(parent.parent_session_id)}">
+          <span class="office-session-text"><span class="office-session-title">${esc(parent.title || 'Untitled chat')}</span>
+          <span class="office-session-meta">${count} delegated task${count === 1 ? '' : 's'}</span></span></button>`;
+      }).join('') : '<div class="project-folder-empty">No delegated tasks yet.</div>';
+      return `<button type="button" class="project-chip office-project-folder" data-project-id="${esc(project.project_id)}">
+        <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span>
+        <span class="project-folder-name">${esc(project.name)}</span><span class="project-folder-count">${rows.length}</span></button>
+        <div class="project-folder-sessions${expanded ? ' expanded' : ''}"><div class="project-folder-sessions-inner">${taskRows}</div></div>`;
+    }).join('')}</div>`;
+  host.querySelectorAll('.office-project-folder').forEach(row => {
+    row.onclick = () => {
+      const id = row.dataset.projectId;
+      const expanded = !_expandedProjectIds.has(id);
+      if (expanded) _expandedProjectIds.add(id);
+      else _expandedProjectIds.delete(id);
+      // Retain this DOM node while it moves between its grid rows. Rebuilding
+      // the folder list makes the final state appear instantly instead of
+      // using the same smooth collapse transition as the Chat sidebar.
+      const sessions = row.nextElementSibling;
+      const chevron = row.querySelector('.project-folder-chevron');
+      if (sessions) sessions.classList.toggle('expanded', expanded);
+      if (chevron) chevron.classList.toggle('expanded', expanded);
+    };
+  });
+  host.querySelectorAll('.office-session-row').forEach(row => {
+    row.onclick = () => showHistory(row.dataset.parentId);
+  });
+}
+
 /**
  * Fill the office panel's sidebar with the chats that ever delegated.
  * Called by switchPanel(), mirroring Agent Canvas.
@@ -1102,12 +1390,21 @@ function renderSessionList() {
 async function renderSidebar() {
   renderSessionList();
   try {
-    const data = await request('/api/agent-canvas/sessions', { timeoutToast: false });
-    _historyParents = (data && Array.isArray(data.parents)) ? data.parents : [];
-  } catch (_err) {
-    _historyParents = [];
-  }
+    const [sessionsResult, projectsResult] = await Promise.allSettled([
+      request('/api/agent-canvas/sessions', { timeoutToast: false }),
+      request('/api/projects', { timeoutToast: false }),
+    ]);
+    if (sessionsResult.status === 'fulfilled') {
+      const data = sessionsResult.value;
+      _historyParents = (data && Array.isArray(data.parents)) ? data.parents : _historyParents;
+    }
+    if (projectsResult.status === 'fulfilled') {
+      const projects = projectsResult.value;
+      _officeProjects = (projects && Array.isArray(projects.projects)) ? projects.projects : _officeProjects;
+    }
+  } catch (_err) { /* retain the last successful sidebar data */ }
   refreshHistory();
+  renderProjectFolders(_officeProjects, _historyParents);
   renderSessionList();
 }
 
@@ -1171,35 +1468,42 @@ function mount(container) {
     <div class="office-header">
       <span class="office-pill" id="officePill">IDLE</span>
       <span class="office-hint" id="officeHint">Hermes' real delegation tree, live. Click a worker for detail.</span>
+      <button type="button" class="office-header-btn office-labels-btn" id="officeLabelScaleBtn" aria-label="Use fixed platform label size" aria-pressed="true" title="Use fixed platform label size"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5M8 8l2.5-2.5L13 8M10.5 5.5V11"/></svg></button>
+      <button type="button" class="office-header-btn office-labels-btn" id="officeLabelsBtn" aria-label="Toggle platform labels" aria-pressed="true" title="Toggle platform labels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
       <span class="office-outlet" role="group" aria-label="Floor plan">
         <button type="button" class="office-outlet-btn" data-outlet="projects">Projects</button>
         <button type="button" class="office-outlet-btn" data-outlet="business">Business</button>
       </span>
       <button type="button" class="office-header-btn" id="officeBackBtn" hidden>Back to live</button>
-      <button type="button" class="office-header-btn" id="officePauseBtn">Pause spawning</button>
+      <button type="button" class="office-header-btn" id="officePauseBtn">View live</button>
     </div>
     <div class="office-body">
       <div class="office-stage">
-        <canvas class="office-canvas" id="officeCanvas" role="img"
+        <canvas class="office-canvas is-mounting" id="officeCanvas" role="img"
                 aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
         <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>
-        <div class="office-detail" id="officeDetail" hidden></div>
         <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
-      </div>
-      <div class="office-tasks" id="officeTasks">
-        <div class="office-tasks-head">
-          <div class="office-tasks-head-row">
-            <span class="office-tasks-title">Task Status</span>
-            <button type="button" class="office-tasks-collapse-btn" id="officeTasksCollapseBtn"
-                    aria-expanded="true" aria-controls="officeTasksFilters officeTasksList">›</button>
+        <div class="office-tasks" id="officeTasks">
+          <div class="office-tasks-head">
+            <button type="button" class="office-tasks-toggle" id="officeTasksCollapseBtn"
+                    aria-label="Collapse Task Status" aria-expanded="true" aria-controls="officeTasksBody">
+              <span class="office-tasks-title-group">
+                <svg class="office-tasks-title-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
+                <span class="office-tasks-title">TASK STATUS</span>
+              </span>
+              <span class="office-tasks-count" id="officeTasksCount">0</span>
+            </button>
           </div>
-          <div class="office-tasks-filters" id="officeTasksFilters" role="tablist" aria-label="Filter by status"></div>
+          <div class="office-tasks-body" id="officeTasksBody">
+            <div class="office-tasks-body-inner">
+              <div class="office-tasks-filters" id="officeTasksFilters" role="tablist" aria-label="Filter by status"></div>
+              <div class="office-tasks-list" id="officeTasksList"></div>
+            </div>
+          </div>
         </div>
-        <div class="office-tasks-list" id="officeTasksList"></div>
       </div>
     </div>`;
   _canvas = container.querySelector('#officeCanvas');
-  _detailEl = container.querySelector('#officeDetail');
   _pillEl = container.querySelector('#officePill');
   _hintEl = container.querySelector('#officeHint');
   _summaryEl = container.querySelector('#officeSummary');
@@ -1207,7 +1511,13 @@ function mount(container) {
   _deptCardEls.clear();
   _tasksEl = container.querySelector('#officeTasks');
   _tasksCollapseBtnEl = container.querySelector('#officeTasksCollapseBtn');
+  _tasksCountEl = container.querySelector('#officeTasksCount');
   _tasksCollapseBtnEl.onclick = toggleTasksCollapsed;
+  _tasksEl.onclick = event => {
+    if (event.target.closest('#officeTasksCollapseBtn')) return;
+    if (event.target.closest('.office-tasks-body')) return;
+    toggleTasksCollapsed();
+  };
   renderTasksCollapse();
   _tasksFiltersEl = container.querySelector('#officeTasksFilters');
   _tasksListEl = container.querySelector('#officeTasksList');
@@ -1218,7 +1528,10 @@ function mount(container) {
   _lastSummary = '';
   _pauseBtnEl = container.querySelector('#officePauseBtn');
   _backBtnEl = container.querySelector('#officeBackBtn');
-  _pauseBtnEl.onclick = toggleSpawnPaused;
+  _pauseBtnEl.onclick = returnToLive;
+  container.querySelector('#officeLabelScaleBtn').onclick = togglePlatformLabelScale;
+  container.querySelector('#officeLabelsBtn').onclick = togglePlatformLabels;
+  renderPlatformLabelScaleButton();
   _backBtnEl.onclick = returnToLive;
   _outletBtnEls = {};
   container.querySelectorAll('.office-outlet-btn').forEach(btn => {
@@ -1231,21 +1544,17 @@ function mount(container) {
 
   try {
     _scene = createOfficeScene(_canvas, {
-      onSelect: id => { _selectedId = id; scheduleSync(); },
+      onSelect: id => id ? selectTask(id, false) : clearTaskSelection(),
       onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
-      // The detail panel owns the right edge of the stage; the camera slides
-      // a focused desk clear of it rather than flying to a spot the panel
-      // then covers.
-      // Measured when the panel is up; otherwise derived from the same rule
-      // its CSS uses. A click focuses before the panel has rendered, so
-      // asking a hidden element for its width would always answer 0 and the
-      // camera would fly to a spot the panel then covers.
+      // The expanded Task Status panel owns the right edge of the stage, so
+      // keep a focused desk clear of it. A collapsed status strip needs no
+      // inset and an inline task detail never creates a second overlay.
       panelInset: () => {
-        if (!_detailEl) return 0;
-        const measured = _detailEl.getBoundingClientRect().width;
+        if (!_tasksEl || _tasksCollapsed) return 0;
+        const measured = _tasksEl.getBoundingClientRect().width;
         if (measured) return measured + 28;
         const stage = _canvas ? _canvas.getBoundingClientRect().width : 0;
-        return stage ? Math.min(320, stage - 28) + 28 : 0;
+        return stage ? Math.min(280, stage - 28) + 28 : 0;
       },
     });
   } catch (err) {
@@ -1300,6 +1609,11 @@ function mount(container) {
   _scene.syncOffice(activeAdapter().getState());
   _scene.start();
   scheduleSync();
+  // Remove the mount-in opacity class after the first frame is painted so the
+  // canvas fades in smoothly instead of appearing already fully opaque.
+  requestAnimationFrame(() => {
+    if (_canvas) _canvas.classList.remove('is-mounting');
+  });
 }
 
 /**
@@ -1319,7 +1633,6 @@ function unmount() {
   if (_container) _container.innerHTML = '';
   _container = null;
   _canvas = null;
-  _detailEl = null;
   _pillEl = null;
   _hintEl = null;
   _summaryEl = null;
@@ -1331,6 +1644,16 @@ function unmount() {
   _outletFadePending = false;
   _tasksEl = null;
   _tasksCollapseBtnEl = null;
+  _tasksCountEl = null;
+  _lastTaskStatusDoneCount = null;
+  if (_taskCompletionTimer) clearTimeout(_taskCompletionTimer);
+  _taskCompletionTimer = null;
+  if (_taskStatusDisclosureTimer) clearTimeout(_taskStatusDisclosureTimer);
+  _taskStatusDisclosureTimer = null;
+  _taskStatusDisclosureAnimating = false;
+  if (_tasksCollapseTimer) clearTimeout(_tasksCollapseTimer);
+  _tasksCollapseTimer = null;
+  _tasksCollapseAnimating = false;
   _tasksFiltersEl = null;
   _tasksListEl = null;
   _tasksFilter = 'all';

@@ -1,0 +1,14 @@
+/home/z014/Apps/hermes-webui/docs/ui-ux/two-stage-proposal.html
+/home/z014/Apps/hermes-webui/docs/why-hermes.md
+/home/z014/Apps/hermes-webui/docs/workspace-git.md
+/home/z014/Apps/hermes-webui/docs/wsl-autostart.md
+/home/z014/Apps/hermes-webui/requirements-dev.txt
+/home/z014/Apps/hermes-webui/requirements.txt
+/home/z014/Apps/hermes-webui/static/index.html
+/home/z014/Apps/hermes-webui/static/share.html
+/home/z014/Apps/hermes-webui/static/vendor/motion/13.1.1/LICENSE.md
+/home/z014/Apps/hermes-webui/static/vendor/sticky-board/PROVENANCE.md
+/home/z014/Apps/hermes-webui/static/vendor/sticky-board/index.html
+/home/z014/Apps/hermes-webui/static/vendor/three/0.185.1/LICENSE.md
+/home/z014/Apps/hermes-webui/tests/fixtures/webui-PR-TARGET-5884-REPRO.md
+/home/z014/Apps/hermes-webui/tests/test_mobile_scroll_jank.html

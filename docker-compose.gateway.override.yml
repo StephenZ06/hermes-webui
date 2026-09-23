@@ -1,0 +1,10 @@
+# Local deployment overlay: route browser chat through the already-authenticated
+# Hermes Agent gateway. The gateway credential stays in the base deployment
+# configuration; do not add it to this file.
+services:
+  hermes-webui:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HERMES_WEBUI_CHAT_BACKEND: gateway
+      HERMES_WEBUI_GATEWAY_BASE_URL: http://host.docker.internal:8642

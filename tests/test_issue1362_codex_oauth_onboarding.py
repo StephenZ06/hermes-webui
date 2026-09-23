@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,28 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 UI_JS = REPO / "static" / "ui.js"
 NODE = shutil.which("node")
+
+
+def test_codex_user_code_retries_a_transient_origin_error(monkeypatch):
+    """A short-lived upstream 530 should not immediately break reconnect."""
+    import api.oauth as oauth
+
+    attempts = []
+
+    def request_user_code(url, payload, *, form=False):
+        attempts.append((url, payload, form))
+        if len(attempts) == 1:
+            raise urllib.error.HTTPError(url, 530, "origin error", None, None)
+        return {"device_auth_id": "device", "user_code": "ABCD-EFGH"}
+
+    monkeypatch.setattr(oauth, "_json_request", request_user_code)
+    monkeypatch.setattr(oauth.time, "sleep", lambda _seconds: None)
+
+    assert oauth._request_codex_user_code() == {
+        "device_auth_id": "device",
+        "user_code": "ABCD-EFGH",
+    }
+    assert len(attempts) == 2
 
 
 def test_onboarding_codex_oauth_routes_use_post_start_cancel_and_get_poll():

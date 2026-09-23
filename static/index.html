@@ -429,6 +429,7 @@
       <div id="notesProjectFolders"></div>
       <div class="sidebar-divider" aria-hidden="true"></div>
       <div class="notes-boards-heading">BOARDS</div>
+      <input type="search" id="notesBoardSearch" class="notes-board-search" placeholder="Search boards..." aria-label="Search boards">
       <div id="notesBoardsList" style="flex:1;overflow-y:auto"></div>
     </div>
     <!-- Profiles panel -->
@@ -1058,10 +1059,30 @@
         <div class="main-view-actions">
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanCreateBoard" onclick="openKanbanCreateBoard()" data-tooltip="New board" data-i18n-title="kanban_new_board" aria-label="New board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="17.5" y1="14" x2="17.5" y2="21"/><line x1="14" y1="17.5" x2="21" y2="17.5"/></svg></button>
           <button class="panel-head-btn kanban-view-toggle has-tooltip has-tooltip--bottom" id="btnKanbanViewToggle" type="button" onclick="toggleKanbanViewMode()" aria-pressed="false" data-tooltip="Consolidated view" data-i18n-title="kanban_view_consolidated" data-i18n-aria-label="kanban_view_consolidated" aria-label="Consolidated view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 10h18"/></svg></button>
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanOfficeView" type="button" onclick="toggleKanbanOfficeView()" aria-pressed="false" data-tooltip="Office view — live workers" data-i18n-title="kanban_office_view" data-i18n-aria-label="kanban_office_view" aria-label="Office view — live workers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanCrews" type="button" onclick="openKanbanCrews()" data-tooltip="Crews" data-i18n-title="kanban_crews" data-i18n-aria-label="kanban_crews" aria-label="Crews"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom kanban-nudge-dispatch-btn" id="btnKanbanPreviewDispatcher" onclick="nudgeKanbanDispatcher()" data-tooltip="Preview dispatcher (dry-run)" data-i18n-title="kanban_nudge_dispatcher" aria-label="Preview dispatcher (dry-run)">▶</button>
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom kanban-run-dispatch-btn" id="btnKanbanRunDispatcher" onclick="runKanbanDispatcher()" data-tooltip="Run dispatcher — claim Ready tasks" data-i18n-title="kanban_run_dispatcher" aria-label="Run dispatcher"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></button>
+          <!-- Automation overflow menu: Office view (live workers), Crews,
+               and the dispatcher preview/run controls used to be five
+               separate always-visible buttons here. They're agent-automation
+               machinery, not day-to-day task management, so they're grouped
+               behind one menu now -- everything below stays fully available,
+               just not competing with the board switcher + view toggle for
+               attention. Mirrors the kanban-filter popover's toggle/menu/
+               outside-click/Escape conventions (panels.js). -->
+          <div class="kanban-automation-wrap" id="kanbanAutomationWrap" style="position:relative;display:inline-block">
+            <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="btnKanbanAutomationMenu" type="button" onclick="toggleKanbanAutomationMenu(event)" aria-haspopup="menu" aria-expanded="false" data-tooltip="Automation" aria-label="Automation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+            <!-- Original ids/classes/onclick handlers preserved exactly
+                 (several tests assert these strings verbatim) -- only the
+                 wrapping container and an added text label (harmless extra
+                 inner content the old icon-only buttons didn't have) are
+                 new, so this stays a relocation, not a rewrite, of each
+                 control. -->
+            <div class="kanban-automation-menu" id="kanbanAutomationMenu" role="menu" hidden>
+              <button class="kanban-automation-menu-item" id="btnKanbanOfficeView" type="button" onclick="toggleKanbanOfficeView()" role="menuitem" aria-pressed="false" data-i18n-title="kanban_office_view" aria-label="Office view — live workers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="kanban-automation-menu-item-label" data-i18n="kanban_office_view">Office view — live workers</span></button>
+              <button class="kanban-automation-menu-item" id="btnKanbanCrews" type="button" onclick="openKanbanCrews()" role="menuitem" data-i18n-title="kanban_crews" aria-label="Crews"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="kanban-automation-menu-item-label" data-i18n="kanban_crews">Crews</span></button>
+              <div class="kanban-automation-menu-divider" role="separator"></div>
+              <button class="kanban-automation-menu-item kanban-nudge-dispatch-btn" id="btnKanbanPreviewDispatcher" type="button" onclick="nudgeKanbanDispatcher()" role="menuitem" data-i18n-title="kanban_nudge_dispatcher" aria-label="Preview dispatcher (dry-run)">▶<span class="kanban-automation-menu-item-label" data-i18n="kanban_nudge_dispatcher">Preview dispatcher (dry-run)</span></button>
+              <button class="kanban-automation-menu-item kanban-run-dispatch-btn" id="btnKanbanRunDispatcher" type="button" onclick="runKanbanDispatcher()" role="menuitem" data-i18n-title="kanban_run_dispatcher" aria-label="Run dispatcher"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg><span class="kanban-automation-menu-item-label" data-i18n="kanban_run_dispatcher">Run dispatcher — claim Ready tasks</span></button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="kanban-task-preview" id="kanbanTaskPreview" style="display:none"></div>
@@ -1967,7 +1988,7 @@
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false" data-i18n="workspace_artifacts_tab">Artifacts</button>
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
       <button class="workspace-panel-tab" id="workspaceOfficeTab" type="button" onclick="switchWorkspacePanelTab('office')" role="tab" aria-selected="false" data-i18n="tab_office">Office</button>
-      <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false" data-i18n="tab_tasks">Tasks</button>
+      <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false">Notes</button>
       <button class="workspace-panel-tab" id="workspacePreviewTab" type="button" onclick="switchWorkspacePanelTab('preview')" role="tab" aria-selected="false" data-i18n="workspace_preview_tab">Preview</button>
     </div>
     <!-- Project workspace binder: replaces the Files/Artifacts/Todos body while
@@ -2008,8 +2029,13 @@
          there is no separate fetch or connection here. Opening a task
          switches to the full Kanban panel first (its detail view lives
          there, not in a global overlay). -->
-    <div class="workspace-plane-pane" id="workspacePlanePane" hidden>
-      <div class="kanban-list" id="workspacePlaneList"></div>
+    <div class="workspace-plane-pane workspace-notes-pane" id="workspacePlanePane" hidden>
+      <div class="workspace-notes-context" id="workspaceNotesContext"></div>
+      <div class="workspace-notes-boards-wrap">
+        <input type="search" id="workspaceNotesBoardSearch" class="workspace-notes-search" placeholder="Search boards..." aria-label="Search boards">
+        <div id="workspaceNotesBoardsList"></div>
+      </div>
+      <div class="workspace-notes-preview" id="workspaceNotesBoardPreview"></div>
     </div>
     <!-- Live preview pane (docs/rfcs/chat-split-view-panes.md, Slice 4): an
          iframe onto a URL the user types -- a dev server or app the agent
@@ -2153,7 +2179,6 @@
 <script src="static/commands.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
-<script src="static/performance.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/notes.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vendor/motion/13.1.1/motion.min.js" defer></script>

@@ -1,7 +1,7 @@
 """The app-wide loading placeholder is an indeterminate progress bar (was a
-spinning ring), it paints an opaque ground so it stands in front of a panel
-rather than letting stale content bleed through, and the panels that fetch on
-switch drop it in synchronously before awaiting."""
+spinning ring), it paints a translucent ground so it stands in front of a
+panel without fully blocking stale content behind it, and the panels that
+fetch on switch drop it in synchronously before awaiting."""
 import pathlib
 
 REPO = pathlib.Path(__file__).parent.parent
@@ -25,9 +25,9 @@ def test_the_placeholder_is_a_bar_not_a_ring():
     assert "loading-spinner-spin" not in CSS
 
 
-def test_the_placeholder_covers_what_is_behind_it():
-    assert "background:var(--bg)" in _rule(".loading-spinner-wrap{")
-    assert "background:var(--bg)" in _rule(".loading-spinner-wrap--overlay{")
+def test_the_placeholder_dims_what_is_behind_it():
+    assert "color-mix(in srgb,var(--bg)" in _rule(".loading-spinner-wrap{")
+    assert "color-mix(in srgb,var(--bg)" in _rule(".loading-spinner-wrap--overlay{")
 
 
 def test_reduced_motion_is_respected():

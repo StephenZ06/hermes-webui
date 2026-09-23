@@ -2917,18 +2917,6 @@ let _imeComposing=false;
 })();
 function _isImeEnter(e){return e.isComposing||e.keyCode===229||_imeComposing;}
 window._isImeEnter=_isImeEnter;
-// #3076: a touch-primary device (`pointer:coarse`) can still have a
-// physical keyboard attached (Android tablet + Bluetooth keyboard,
-// detachable Surface in tablet mode, iPad + Magic Keyboard). When that
-// happens we should NOT force the mobile newline-on-Enter override
-// because Shift+Enter / Ctrl+Enter come from real keys and the user
-// expects desktop semantics. `matchMedia('(any-pointer:fine)')` is true
-// whenever ANY available pointing device is fine-grained — which is the
-// strongest signal browsers expose for "there is a real keyboard /
-// trackpad in the picture too". Skip the mobile default in that case.
-function _hasFinePointerCoexisting(){
-  try{ return matchMedia('(any-pointer:fine)').matches; }catch(_){ return false; }
-}
 function _isNumpadEnter(e){
   return e.key==='Enter'&&(e.code==='NumpadEnter'||e.location===KeyboardEvent.DOM_KEY_LOCATION_NUMPAD);
 }
@@ -2951,26 +2939,13 @@ $('msg').addEventListener('keydown',e=>{
       return;
     }
   }
-  // Send key: respect user preference.
-  // On touch-primary devices (coarse pointer, no fine pointer co-existing),
-  // default to Enter = newline regardless of whether the visual viewport has
-  // shrunk. The viewport-shrink heuristic (_isVirtualKeyboardLikelyOpen) was
-  // unreliable on iOS Safari and some Android browsers where the keyboard
-  // doesn't consistently reduce vv.height by >120px. The pointer media query
-  // pair is a sufficient and more reliable signal for "software keyboard only".
-  // Hardware keyboards on tablets are covered by _hasFinePointerCoexisting.
-  // The 'ctrl+enter' and 'shift+enter' settings also use this behavior
-  // (plain Enter = newline).
-  // Users can override in Settings by explicitly choosing 'enter' mode.
+  // Send key: respect the user's explicit preference on every device.
   if(e.key==='Enter'){
     if(_isImeEnter(e)){return;}
     const isNumpadEnter=_isNumpadEnter(e);
-    const _mobileDefault=matchMedia('(pointer:coarse)').matches
-      &&!_hasFinePointerCoexisting()
-      &&window._sendKey==='enter';
     if(window._sendKey==='shift+enter'){
       if(e.shiftKey){e.preventDefault();send();}
-    } else if(window._sendKey==='ctrl+enter'||_mobileDefault){
+    } else if(window._sendKey==='ctrl+enter'){
       if(isNumpadEnter||e.ctrlKey||e.metaKey){e.preventDefault();send();}
     } else {
       if(!e.shiftKey){e.preventDefault();send();}

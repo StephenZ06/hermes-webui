@@ -32,35 +32,34 @@
  */
 export const DEPARTMENTS = [
   {
-    key: 'marketing', name: 'Marketing', color: '#e0527d',
+    key: 'marketing', name: 'Marketing', color: '#ec4899',
     keywords: ['marketing', 'content', 'brand', 'campaign', 'social', 'newsletter',
       'ads', 'ad ', 'seo', 'copy', 'blog', 'video', 'design', 'graphic'],
   },
   {
-    key: 'emails', name: 'Emails', color: '#4fae5e',
+    key: 'emails', name: 'Emails', color: '#10b981',
     keywords: ['email', 'inbox', 'mail', 'reply', 'correspondence', 'outreach',
       'follow up', 'follow-up'],
   },
   {
-    key: 'sales', name: 'Sales', color: '#e0a934',
+    key: 'sales', name: 'Sales', color: '#f59e0b',
     keywords: ['sales', 'lead', 'prospect', 'pipeline', 'deal', 'proposal',
       'quote', 'crm', 'customer'],
   },
   {
-    key: 'operations', name: 'Operations', color: '#9457c7',
+    key: 'operations', name: 'Operations', color: '#8b5cf6',
     keywords: ['operation', 'ops', 'process', 'compliance', 'legal', 'policy',
       'admin', 'intel', 'research', 'report', 'dashboard'],
   },
   {
-    key: 'finance', name: 'Finance', color: '#2f9e8f',
+    key: 'finance', name: 'Finance', color: '#06b6d4',
     keywords: ['finance', 'invoice', 'billing', 'payment', 'account', 'budget',
       'payroll', 'cost', 'reconcil', 'tax'],
   },
   {
-    key: 'delivery', name: 'Delivery', color: '#3f7fd4',
-    keywords: ['delivery', 'deliver', 'project', 'qa', 'quality', 'test',
-      'onboard', 'support', 'ship', 'release', 'engineer', 'build', 'code',
-      'implement', 'fix', 'refactor', 'debug'],
+    key: 'delivery', name: 'Delivery', color: '#3b82f6',
+    keywords: ['delivery', 'deliver', 'qa', 'quality', 'test', 'onboard',
+      'support', 'ship', 'release'],
   },
 ];
 
@@ -88,6 +87,24 @@ function normalise(text) {
   return String(text == null ? '' : text).toLowerCase().replace(/[_\-/]+/g, ' ');
 }
 
+// Concrete engineering signals take priority over the broad wording shared
+// by personal and business work. Vague words such as "build" and "project"
+// are intentionally absent: they cannot reliably choose an office alone.
+const CODING_KEYWORDS = [
+  'code', 'coding', 'software', 'program', 'repository', ' repo ', 'commit',
+  'pull request', 'frontend', 'backend', 'api', 'database', 'react',
+  'javascript', 'typescript', 'python', 'html', 'css', 'debug', 'refactor',
+  'bug', 'unit test', 'test suite', 'regression test', 'web app', 'website',
+  'deploy', 'implementation', 'implement', 'fix ',
+];
+
+// A business task can be valid without naming one of the six departments. It
+// then belongs on The Floor, rather than appearing as a Projects task.
+const BUSINESS_CONTEXT_KEYWORDS = [
+  'business', 'company', 'client', 'customer', 'vendor', 'stakeholder',
+  'offsite', 'meeting', 'strategy', 'roadmap', 'team', 'revenue',
+];
+
 /**
  * Best-matching department for a piece of text, or null.
  *
@@ -111,6 +128,40 @@ export function departmentFor(text) {
     }
   }
   return best;
+}
+
+/** The shared visual-routing guideline for the two Office outlets. */
+export function officeFor(text) {
+  const hay = normalise(text);
+  if (!hay.trim()) return 'projects';
+  if (CODING_KEYWORDS.some(keyword => hay.includes(keyword))) return 'projects';
+  if (departmentFor(hay)) return 'business';
+  if (BUSINESS_CONTEXT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'business';
+  return 'projects';
+}
+
+/**
+ * Business-owned worker ids, including descendants of a business root. The
+ * fixed-point walk works with replayed events where a child can arrive first.
+ */
+export function businessWorkerIds(workers) {
+  const list = Array.isArray(workers) ? workers : [];
+  const business = new Set(list
+    .filter(worker => officeFor(worker && (worker.goal || worker.label || '')) === 'business')
+    .map(worker => worker.id)
+    .filter(Boolean));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    list.forEach(worker => {
+      if (worker && worker.id && worker.parentId && business.has(worker.parentId)
+        && !business.has(worker.id)) {
+        business.add(worker.id);
+        changed = true;
+      }
+    });
+  }
+  return business;
 }
 
 function titleCase(name) {
@@ -187,6 +238,7 @@ export function buildRoster(personalities) {
 export function businessView(state, roster) {
   const source = state || {};
   const workers = Array.isArray(source.workers) ? source.workers : [];
+  const businessIds = businessWorkerIds(workers);
   const departments = (roster && roster.departments) ? roster.departments : buildRoster([]).departments;
 
   // Seats in floor order, each still free.
@@ -226,7 +278,7 @@ export function businessView(state, roster) {
 
   // Running workers are seated first so a busy department shows its live work
   // rather than whichever subagent happened to spawn first.
-  const ordered = workers.slice().sort((a, b) => {
+  const ordered = workers.filter(worker => businessIds.has(worker.id)).sort((a, b) => {
     const aLive = a.status === 'running' ? 0 : 1;
     const bLive = b.status === 'running' ? 0 : 1;
     if (aLive !== bLive) return aLive - bLive;

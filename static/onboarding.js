@@ -650,6 +650,32 @@ function _renderCodexOAuthTerminal(status,message){
     </div>`;
 }
 
+function openCodexOAuthReconnect(){
+  if($('codexOAuthReconnectDialog')) return;
+  const overlay=document.createElement('div');
+  overlay.id='codexOAuthReconnectDialog';
+  overlay.className='app-dialog-overlay';
+  overlay.style.display='flex';
+  overlay.setAttribute('role','dialog');
+  overlay.setAttribute('aria-modal','true');
+  overlay.setAttribute('aria-label','Reconnect Codex');
+  overlay.innerHTML=`<div class="app-dialog"><div class="app-dialog-header"><div class="app-dialog-title">Reconnect Codex</div><button class="app-dialog-close" type="button" aria-label="Close">×</button></div><div class="app-dialog-desc">Complete the sign-in in your browser, then this chat will retry automatically.</div><div id="codexOAuthFlow" style="margin-top:12px"></div></div>`;
+  const onSuccess=()=>{
+    overlay.remove();
+    if(typeof cmdRetry==='function') cmdRetry();
+  };
+  const close=()=>{
+    window.removeEventListener('hermes:codex-oauth-success',onSuccess);
+    if(_codexOAuthFlowId) cancelCodexOAuth();
+    overlay.remove();
+  };
+  overlay.addEventListener('click',event=>{if(event.target===overlay)close();});
+  overlay.querySelector('.app-dialog-close').addEventListener('click',close);
+  window.addEventListener('hermes:codex-oauth-success',onSuccess,{once:true});
+  document.body.appendChild(overlay);
+  startCodexOAuth();
+}
+
 async function _pollCodexOAuth(){
   const flowId=_codexOAuthFlowId;
   if(!flowId)return;
@@ -666,6 +692,7 @@ async function _pollCodexOAuth(){
     if(status==='success'){
       _renderCodexOAuthTerminal('success','Credentials saved to the Hermes credential pool. Refreshing provider status…');
       showToast(t('oauth_codex_success'));
+      window.dispatchEvent(new CustomEvent('hermes:codex-oauth-success'));
       try{await loadOnboardingWizard();}catch(e){}
     }else if(status==='expired'){
       _renderCodexOAuthTerminal('expired','The code expired. Start a new login flow to try again.');

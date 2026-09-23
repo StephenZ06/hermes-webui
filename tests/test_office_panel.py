@@ -32,6 +32,61 @@ ESLINT_CONFIG = (REPO / "eslint.runtime-guard.config.mjs").read_text(encoding="u
 THREE_PATH = "static/vendor/three/0.185.1/three.module.min.js"
 
 
+def test_office_sidebar_restores_project_folders_above_delegated_chat_history():
+    folders_at = INDEX_HTML.index('id="officeProjectFolders"')
+    history_at = INDEX_HTML.index('id="officeSessionList"')
+    assert folders_at < history_at
+    assert "function renderProjectFolders(projects, parents)" in OFFICE_INDEX_JS
+    assert "parent.project_id === project.project_id" in OFFICE_INDEX_JS
+    assert "No delegated tasks yet." in OFFICE_INDEX_JS
+    assert 'class="project-folder-sessions-inner"' in OFFICE_INDEX_JS
+    assert "row.nextElementSibling" in OFFICE_INDEX_JS
+    assert "sessions.classList.toggle('expanded', expanded)" in OFFICE_INDEX_JS
+    # The heading sits in its own balanced row, with enough lower spacing to
+    # match the surrounding section rhythm before the first project chip.
+    assert ".office-project-folders{flex:0 0 auto;border-bottom:1px solid var(--border);padding:4px 8px 8px" in CSS
+    assert ".office-project-folders-title{display:flex;align-items:center;gap:6px;padding:0 14px 10px" in CSS
+    assert "officeLabelsBtn" in OFFICE_INDEX_JS
+    assert "togglePlatformLabels" in OFFICE_INDEX_JS
+
+
+def test_office_workspace_section_matches_the_chat_sidebar_hierarchy():
+    """Office folders use the same labelled, compact section language as Chat."""
+    assert 'office-project-folders-title-icon' in OFFICE_INDEX_JS
+    assert '<span>WORKSPACES</span>' in OFFICE_INDEX_JS
+    assert ".office-project-folders-title{display:flex;align-items:center;gap:6px;padding:0 14px 10px" in CSS
+    assert ".office-project-folders .project-folder-list{padding:0;gap:2px;}" in CSS
+    assert ".office-project-folders .project-folder-sessions{margin:0 0 2px;}" in CSS
+
+
+def test_office_filter_uses_a_compact_vertical_inset():
+    """The Office filter has the same horizontal inset with less empty vertical chrome."""
+    assert ".panel-view#panelOffice .sidebar-search{padding:6px 8px;}" in CSS
+
+
+def test_empty_chat_landing_does_not_define_a_logo_glow():
+    """The landing surface stays solid behind the mark and welcome heading."""
+    assert "--logo-glow:" not in CSS
+    assert ".empty-state{background:radial-gradient(" not in CSS
+
+
+def test_office_platform_labels_can_switch_between_adaptive_and_fixed_scale():
+    # Cards are screen-space DOM overlays, so their scale must explicitly use
+    # the scene zoom rather than accidentally reading as larger than a pod at
+    # far camera zoom. The adjacent header control exposes a fixed-size mode.
+    assert "let _labelsAdaptive = true;" in OFFICE_INDEX_JS
+    assert 'id="officeLabelScaleBtn"' in OFFICE_INDEX_JS
+    assert "togglePlatformLabelScale" in OFFICE_INDEX_JS
+    assert "_scene.getView().zoom" in OFFICE_INDEX_JS
+    assert "el.style.transform = `translate(-50%, -100%) scale(${scale})`;" in OFFICE_INDEX_JS
+
+
+def test_task_status_collapses_with_a_transition_instead_of_removing_content():
+    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+    assert ".office-tasks.is-collapsed .office-tasks-body{pointer-events:none;}" in CSS
+    assert "display:none" not in CSS[CSS.index(".office-tasks-body{"):CSS.index(".office-tasks-body-inner{")]
+
+
 # ── vendored three.js ────────────────────────────────────────────────────────
 
 def test_three_is_vendored_at_the_pinned_version():
@@ -315,26 +370,46 @@ def test_the_scene_pans_zooms_and_frames_a_pod():
 
 # ── floor signage and seated figures ────────────────────────────────────────
 
-def test_the_conductor_is_named_on_the_floor_not_on_a_nameplate():
-    # A floating plate over the one figure at the centre read as a label on a
-    # person; painted on the plinth it reads as the name of the space, matching
-    # the Business floor.
-    assert "makeFloorTitle('Conductor'" in OFFICE_SCENE_JS
-    assert "makeNameplate(palette, 'Conductor')" not in OFFICE_SCENE_JS
-    assert "conductor.userData.plate" not in OFFICE_SCENE_JS
+def test_the_conductor_has_only_the_floating_status_card_not_legacy_scene_labels():
+    # The shared floating card is now the conductor's label. A floor title and
+    # old nameplate duplicate it at overview zoom, so neither belongs on the
+    # three-dimensional conductor group.
+    at = OFFICE_SCENE_JS.index("function ensureConductor()")
+    body = OFFICE_SCENE_JS[at:OFFICE_SCENE_JS.index("\n  function ensurePod", at)]
+    assert "makeFloorTitle('Conductor'" not in body
+    assert "makeNameplate(palette, 'Conductor')" not in body
+    assert "userData.plate" not in body
 
 
-def test_the_conductors_own_pod_is_labelled_subagents():
-    assert "'Subagents'" in OFFICE_SCENE_JS
-    assert "__conductor__" in OFFICE_SCENE_JS
+def test_conductor_uses_the_same_floating_card_system_as_business_departments():
+    # Finance/Operations are DOM cards positioned from a pod screen rect, not
+    # the small 3D nameplate used by desk workers. The conductor needs that
+    # same card treatment for a consistent overview.
+    assert "{ key: '__conductor__', name: 'Conductor'" in OFFICE_INDEX_JS
 
 
-def test_the_catch_all_pod_signs_keep_the_original_size():
-    # "Subagents" and "The Floor" sit on large slabs and were fine at the fixed
-    # size; only the named pods (departments, profiles) and the conductor
-    # auto-fit larger.
-    assert "label === 'Subagents' || label === 'The Floor'" in OFFICE_SCENE_JS
-    assert "makeFloorTitle('Conductor', CONDUCTOR_SLAB * 0.82, palette, { fit: true })" in OFFICE_SCENE_JS
+def test_conductor_card_has_a_scene_anchor_like_an_ordinary_pod_card():
+    at = OFFICE_SCENE_JS.index("function podScreenRect(cluster)")
+    body = OFFICE_SCENE_JS[at:OFFICE_SCENE_JS.index("\n  function applyCamera", at)]
+    assert "cluster === '__conductor__'" in body
+    assert "conductor.group" not in body
+
+
+def test_the_conductors_own_pod_is_labelled_conductor():
+    # Projects uses the central conductor platform itself and should label it
+    # Conductor, just like Business, instead of giving it a separate "Subagents"
+    # overlay.
+    assert "key: '__conductor__'" in OFFICE_INDEX_JS
+    assert "name: 'Conductor'" in OFFICE_INDEX_JS
+    # podScreenRect still routes the conductor cluster to the shared conductor.
+    assert "cluster === '__conductor__' && conductor" in OFFICE_SCENE_JS
+
+
+def test_platform_identity_lives_in_floating_cards_not_scene_text():
+    # Platform names remain readable at overview scale in the DOM cards; no
+    # flat label should compete with desks or bridge geometry in the scene.
+    assert "name: 'Conductor'" in OFFICE_INDEX_JS
+    assert "makeFloorTitle" not in OFFICE_SCENE_JS
 
 
 def test_a_seated_figure_faces_its_monitor():

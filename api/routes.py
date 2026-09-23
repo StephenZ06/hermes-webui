@@ -18377,6 +18377,18 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, "Board not found", 404)
         return j(handler, {"ok": True})
 
+    if parsed.path == "/api/sticky_boards/move_note":
+        from api.sticky_board import move_note
+
+        try:
+            require(body, "board_id", "note_id", "target_column_id")
+        except ValueError as e:
+            return bad(handler, str(e))
+        board = move_note(str(body["board_id"]), str(body["note_id"]), str(body["target_column_id"]), bool(body.get("prepend")))
+        if board is None:
+            return bad(handler, "Board or target column not found", 404)
+        return j(handler, {"ok": True, "board": board})
+
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":
         return _handle_session_import(handler, body)

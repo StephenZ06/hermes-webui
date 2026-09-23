@@ -63,6 +63,7 @@ services:
       # Required: bind address and port
       - HERMES_WEBUI_HOST=0.0.0.0
       - HERMES_WEBUI_PORT=8787
+      - HERMES_WEBUI_GATEWAY_API_KEY=e1882d20595f90be0bba91f6acbc73af1a522bf3b820208433d21b08dd6dfa68
       # Where to store sessions, workspaces, and other state (default: ~/.hermes/webui)
       - HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
       # Keep the Hugging Face model cache inside the mounted .hermes volume so a

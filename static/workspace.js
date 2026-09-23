@@ -469,39 +469,14 @@ registerChatPane({
 // detail view (loadKanbanTask()) renders into #kanbanTaskPreview, which lives
 // inside the Kanban panel's own DOM and is invisible while any other panel is
 // showing.
-async function _openKanbanTaskFromPlanePane(taskId){
-  if(typeof switchPanel === 'function') await switchPanel('kanban');
-  if(typeof loadKanbanTask === 'function') loadKanbanTask(taskId);
-}
-
-/** Called from _kanbanRenderBoard()'s additive branch (static/panels.js) so
- * this pane stays in sync with every path that already refreshes the board:
- * loadKanban's initial load, its poll/SSE-driven refresh, filterKanban, the
- * lane-view toggle. Cheap no-op when the pane isn't the visible tab. */
-function _renderWorkspacePlanePane(){
-  const pane = $('workspacePlanePane');
-  if(!pane || pane.hidden) return;
-  if(typeof _kanbanVisibleTasks !== 'function' || typeof _kanbanRenderSidebar !== 'function') return;
-  _kanbanRenderSidebar(_kanbanVisibleTasks(), 'workspacePlaneList', {openTask: '_openKanbanTaskFromPlanePane'});
-}
-
 registerChatPane({
   id: 'plane',
   mount: () => {
-    // loadKanban() also resolves/refreshes the active board and starts the
-    // shared poll/SSE connection if it isn't already running -- both are
-    // idempotent (see loadKanbanBoards()/_kanbanStartPolling() in panels.js),
-    // so this is safe whether or not the full Kanban panel is also live.
-    if(typeof loadKanban === 'function') loadKanban(false);
+    if(typeof refreshWorkspaceNotesPane === 'function') refreshWorkspaceNotesPane();
   },
   unmount: () => {
-    // Leave the shared connection running if the full Kanban panel (a
-    // completely independent consumer of the same board/poll state) is still
-    // showing -- mirrors switchPanel()'s own `prevPanel === 'kanban' &&
-    // nextPanel !== 'kanban'` guard in static/panels.js.
-    if(typeof _currentPanel === 'undefined' || _currentPanel !== 'kanban'){
-      if(typeof _kanbanStopPolling === 'function') _kanbanStopPolling();
-    }
+    // Nothing to tear down -- the Notes iframe lives in the main panel and
+    // the workspace view is a read-only mirror of the same data.
   },
 });
 

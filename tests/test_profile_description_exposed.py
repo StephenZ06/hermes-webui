@@ -128,6 +128,35 @@ def test_fast_path_exposes_profile_description(monkeypatch, tmp_path):
     assert set(made) <= set(by_name)
 
 
+def test_fast_path_uses_root_profile_display_name_and_keeps_it_active(monkeypatch, tmp_path):
+    """A renamed root profile is shown by its stored label, not ``default``."""
+    import api.profiles as profiles
+
+    default_home = tmp_path / "default-home"
+    default_home.mkdir()
+    (default_home / "profile.yaml").write_text(
+        "display_name: conductor\n", encoding="utf-8"
+    )
+
+    upstream = types.ModuleType("hermes_cli.profiles")
+    upstream._get_default_hermes_home = lambda: default_home
+    upstream._get_profiles_root = lambda: tmp_path / "profiles"
+    upstream._read_config_model = lambda _home: (None, None)
+    upstream._check_gateway_running = lambda _home: False
+    upstream._PROFILE_ID_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9_-]*$")
+    monkeypatch.setitem(sys.modules, "hermes_cli", types.ModuleType("hermes_cli"))
+    monkeypatch.setitem(sys.modules, "hermes_cli.profiles", upstream)
+    monkeypatch.setattr(profiles, "_get_profile_skills_stats", lambda _path: (0, 0))
+    monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
+
+    rows = profiles.list_profiles_api()
+
+    assert len(rows) == 1
+    assert rows[0]["name"] == "conductor"
+    assert rows[0]["is_default"] is True
+    assert rows[0]["is_active"] is True
+
+
 def test_default_profile_fallback_has_a_description_key(monkeypatch):
     """The hermes_cli-unavailable fallback dict keeps the row shape."""
     import api.profiles as profiles

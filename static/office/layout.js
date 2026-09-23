@@ -89,28 +89,64 @@ export function slabEdgeDistance(halfWidth, halfDepth, dirX, dirZ) {
 }
 
 /**
+ * Distance from the centre of a rounded rectangular slab to its real visible
+ * perimeter along a direction. Bridges use this rather than the square
+ * bounding-box distance so their edge rails can end exactly at a platform
+ * instead of being buried beneath it to hide a corner overlap.
+ */
+export function roundedSlabEdgeDistance(halfWidth, halfDepth, radius, dirX, dirZ) {
+  const length = Math.hypot(dirX, dirZ);
+  if (!(length > 1e-9)) return Math.max(halfWidth, halfDepth);
+  const x = Math.abs(dirX / length);
+  const z = Math.abs(dirZ / length);
+  const r = Math.min(Math.max(0, radius || 0), halfWidth, halfDepth);
+  if (!(r > 1e-9)) return slabEdgeDistance(halfWidth, halfDepth, x, z);
+
+  const innerX = halfWidth - r;
+  const innerZ = halfDepth - r;
+  const atX = x > 1e-9 ? halfWidth / x : Infinity;
+  if (atX * z <= innerZ + 1e-9) return atX;
+  const atZ = z > 1e-9 ? halfDepth / z : Infinity;
+  if (atZ * x <= innerX + 1e-9) return atZ;
+
+  // The ray reaches a quarter-circle corner. Solve |t * direction - centre|
+  // = radius for the outward intersection.
+  const dot = x * innerX + z * innerZ;
+  const discriminant = Math.max(0, dot * dot - (innerX * innerX + innerZ * innerZ - r * r));
+  return dot + Math.sqrt(discriminant);
+}
+
+/**
  * The walkway joining a pod to the hub in the middle of the office.
  *
  * Returns where the slab starts and ends measured from the origin, so it can
- * be tucked slightly *under* both platforms rather than stopping at their
- * edges — a walkway that stops exactly on an edge still shows a hairline seam
- * where the two meet, and one that stops short of it reads as a broken bridge.
+ * tuck a short distance beneath both platforms. The bridge deck stays below
+ * their top surface, so that hidden overlap reads as a seamless connection
+ * rather than a slab cutting across either platform.
  *
  * @returns {{start:number, end:number, length:number, angle:number}|null}
  *   null when the pod is so close that no walkway would be visible.
  */
 export function walkwaySpan(pod, hubHalfExtent, options) {
-  const config = Object.assign({ overlap: 0.6, minLength: 1 }, options || {});
+  // Callers opt into overlap only when their deck is deliberately placed under
+  // a platform rim. Generic spans remain exact so special routes, including
+  // the lower Floor bridge, preserve their independent geometry.
+  const config = Object.assign({
+    overlap: 0, minLength: 1, hubRadius: 0, podRadius: 0,
+  }, options || {});
   const distance = Math.hypot(pod.x, pod.z);
   if (!(distance > 0)) return null;
   const dirX = pod.x / distance;
   const dirZ = pod.z / distance;
 
-  const hubEdge = slabEdgeDistance(hubHalfExtent, hubHalfExtent, dirX, dirZ);
-  const podEdge = slabEdgeDistance(pod.halfWidth, pod.halfDepth, dirX, dirZ);
+  const hubEdge = roundedSlabEdgeDistance(
+    hubHalfExtent, hubHalfExtent, config.hubRadius, dirX, dirZ,
+  );
+  const podEdge = roundedSlabEdgeDistance(
+    pod.halfWidth, pod.halfDepth, config.podRadius, dirX, dirZ,
+  );
 
-  // Overlap both ends so the walkway disappears under each platform instead
-  // of butting against it.
+  // Continue beneath both platform rims.
   const start = Math.max(0, hubEdge - config.overlap);
   const end = distance - podEdge + config.overlap;
   const length = end - start;

@@ -6,6 +6,7 @@ import queue
 import sys
 import types
 from unittest import mock
+from pathlib import Path
 
 import pytest
 
@@ -163,6 +164,30 @@ def _auth_failure_error_payload():
             "message": "Your authentication token has been invalidated. Please try signing in again.",
         }
     }
+
+
+def test_invalidated_codex_oauth_token_requires_reconnect():
+    """A revoked Codex OAuth token must not be presented as a generic API-key error."""
+    result = streaming._classify_provider_error(
+        "HTTP 401: Encountered invalidated oauth token for user, failing request"
+    )
+
+    assert result["type"] == "codex_oauth_reauth_required"
+    assert result["label"] == "Codex sign-in expired"
+    assert "Reconnect Codex" in result["hint"]
+
+
+def test_codex_reauth_error_opens_oauth_and_retries_after_success():
+    """The chat error must expose the existing safe OAuth device-login recovery."""
+    root = Path(__file__).resolve().parents[1]
+    messages_js = (root / "static" / "messages.js").read_text(encoding="utf-8")
+    onboarding_js = (root / "static" / "onboarding.js").read_text(encoding="utf-8")
+
+    assert "codex_oauth_reauth_required" in messages_js
+    assert "openCodexOAuthReconnect" in messages_js
+    assert "function openCodexOAuthReconnect" in onboarding_js
+    assert "hermes:codex-oauth-success" in onboarding_js
+    assert "cmdRetry" in onboarding_js
 
 
 def _build_auth_failure_agent(*, token_text: str | None, success_text: str = "Recovered auth reply"):

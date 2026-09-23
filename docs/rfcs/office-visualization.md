@@ -345,13 +345,18 @@ somewhere to sit the subagents it actually spawned.
 - Every department always has at least one desk, so an idle office reads as a
   company rather than an empty room. A desk with nobody at it shows its roster
   name; the scene prefers `desk.seatLabel` when a seat is free.
-- Workers are seated by matching their goal against department keywords,
-  scored rather than first-match ("invoice reminder email" mentions both
-  Finance and Emails; the department with more evidence wins). Running workers
-  are seated before finished ones, so a busy department shows live work.
-- Nothing unrecognised is forced into a department — it goes to The Floor,
-  where it is visibly unfiled. And a full office grows rather than dropping a
-  worker Hermes really is running.
+- A shared visual-routing guideline keeps personal and coding work on
+  **Projects**, and business-context work on **Business**. Coding language
+  takes precedence over broad department words; business work is seated by
+  matching its goal against department keywords, scored rather than
+  first-match ("invoice reminder email" mentions both Finance and Emails; the
+  department with more evidence wins). Running workers are seated before
+  finished ones, so a busy department shows live work.
+- Business work that names no standing department goes to **The Floor**, where
+  it is visibly unfiled. Personal or otherwise unclassified work stays on
+  Projects. Descendants retain their business parent's route, so one
+  delegation branch never splits across both views. A full Business office
+  grows rather than dropping a worker Hermes really is running.
 - The choice persists in `localStorage['hermes-webui-office-mode']`, read
   through a try/catch because blocked site data throws on access rather than
   returning null.
@@ -362,11 +367,12 @@ This phase was planned to wait for a department-scoped agent library. It does
 not, because it can degrade honestly without one: `/api/personalities` carries
 a persona's name and description and nothing else, so departments are inferred
 from the persona's own words. That inference is the only part of the Business
-outlet that is a guess, it is contained in one function
-(`roster.js#departmentFor`), and anything it cannot place is shown on The
-Floor rather than filed somewhere convenient. When a real agent library lands
-with a department field, `buildRoster` reads it and the keyword pass is
-deleted. See `docs/HERMES_STUDIO_PARITY_PLAN.md`.
+outlet that is a guess is contained in the pure `roster.js` routing helpers:
+`officeFor()` decides the outlet, while `departmentFor()` decides a Business
+department. Business-context overflow is shown on The Floor rather than filed
+somewhere convenient. When a real agent library lands with a department and
+work-type field, `buildRoster` reads them and the keyword pass is deleted. See
+`docs/HERMES_STUDIO_PARITY_PLAN.md`.
 
 Verified in headless Chromium: four subagents across three departments seat
 correctly with the unmatched one on The Floor, empty roster desks show their

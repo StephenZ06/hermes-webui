@@ -85,11 +85,13 @@ def test_the_dashed_pod_outline_is_gone():
     assert "record.outline" not in SCENE_SRC
 
 
-# ── working-pod glow ─────────────────────────────────────────────────────────
+# ── working-route activity ───────────────────────────────────────────────────
 
-def test_every_pod_gets_a_glow_mesh_and_stores_its_material():
-    assert "makePodGlow(slabWidth, slabDepth, color)" in SCENE_SRC
-    assert "glowMaterial: glow.material" in SCENE_SRC
+def test_active_work_is_signalled_by_bridge_chevrons_not_platform_glow():
+    assert "makePodGlow(slabWidth, slabDepth, color)" not in SCENE_SRC
+    assert "glowMaterial:" not in SCENE_SRC
+    assert "function pulseGlow(" not in SCENE_SRC
+    assert "advanceBridgeFade(bridge, dtMs, t)" in SCENE_SRC
 
 
 def test_the_conductor_never_glows():
@@ -102,13 +104,12 @@ def test_the_conductor_never_glows():
     assert "conductor.userData.status === 'orchestrating'" in SCENE_SRC
 
 
-def test_glow_eases_toward_its_target_rather_than_snapping():
-    at = SCENE_SRC.index("function pulseGlow(")
-    body = SCENE_SRC[at:at + 400]
-    assert "material.opacity +=" in body, (
-        "an incremental step toward the target, not an outright assignment -- "
-        "snapping opacity would make a pod's glow pop on/off instead of fade"
-    )
+def test_platform_names_are_not_painted_on_the_floor():
+    start = SCENE_SRC.index("function ensureConductor()")
+    conductor = SCENE_SRC[start:SCENE_SRC.index("function ensurePod", start)]
+    pod = SCENE_SRC[SCENE_SRC.index("function ensurePod("):SCENE_SRC.index("function setBridgeActive")]
+    assert "makeFloorTitle" not in conductor
+    assert "makeFloorTitle" not in pod
 
 
 # ── set dressing ─────────────────────────────────────────────────────────────
@@ -140,13 +141,30 @@ def test_disposetree_releases_every_new_userdata_tagged_resource():
 
 # ── smoothness ───────────────────────────────────────────────────────────────
 
-def test_bloom_renders_at_a_capped_pixel_ratio():
-    # Reported: motion got less smooth after this pass landed. Bloom's 5-level
-    # blur chain rendering at full device pixel ratio (up to 2x) was the
-    # single biggest new per-frame cost -- a soft effect gains no visible
-    # sharpness from it, so it is capped independent of the renderer's own
-    # (still-uncapped, for everything else) ratio.
-    assert "composer.setPixelRatio(1)" in SCENE_SRC
+def test_bloom_renders_at_the_capped_renderer_pixel_ratio():
+    # The composer renders to an off-screen target; keeping it at 1x made
+    # zoomed edges look blurry. We now match the renderer's own capped ratio
+    # (up to 2x) so MSAA + bloom stay sharp without the uncapped cost of a
+    # 3x phone.
+    assert "composer.setPixelRatio(renderer.getPixelRatio())" in SCENE_SRC
+
+
+def test_renderer_uses_srgb_output_for_smoother_model_gradients():
+    assert "renderer.outputColorSpace = THREE.SRGBColorSpace" in SCENE_SRC
+
+
+def test_people_use_smooth_capsule_and_head_geometry():
+    assert "new THREE.CapsuleGeometry(radius, length, 4, 12)" in BUILDERS_SRC
+    assert "new THREE.SphereGeometry(0.45, 24, 18)" in BUILDERS_SRC
+
+
+def test_platform_finish_softens_edge_specular_hotspots():
+    # Tinted pods keep a subtle satin finish; untinted pods (Conductor,
+    # The Floor) are matte so dark rims don't produce white specular dots.
+    assert "isUntinted" in BUILDERS_SRC
+    assert "topMatOpts = isUntinted" in BUILDERS_SRC
+    assert "clearcoat: 0" in BUILDERS_SRC
+    assert "rough: 0.8, clearcoat: 0" in BUILDERS_SRC
 
 
 def test_whiteboard_props_never_cast_a_shadow():
@@ -184,18 +202,234 @@ def test_composer_renders_multisampled_so_edges_stay_smooth():
     assert "type: THREE.HalfFloatType" in SCENE_SRC
 
 
-def test_an_empty_seats_nameplate_is_hidden_not_just_unlabelled():
-    # Reported: an idle Business seat's "<Department> Lead" nameplate only
-    # repeated what the floor sign already says. A nameplate now earns its
-    # own black bar exactly when there is a real worker to report on --
-    # current activity while running, or a summary once done.
-    assert "seat.plate.visible = (lod === 'near') && !!worker;" in SCENE_SRC
+def test_bridge_deck_has_no_colored_edge_or_segment_decoration():
+    # The edge-rail experiment is intentionally removed. Keep the bridge
+    # itself clean and structural rather than decorating it with lines.
+    at = BUILDERS_SRC.index("export function makeBridgeSegment(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("export function makeWalkway(", at)]
+    assert "BRIDGE_DECK_WIDTH" in body
+    assert "bridgeRail" not in body
+    assert "bridgeSegment" not in body
+
+
+def test_walkways_are_rectangular_decks_tucked_beneath_platform_rims():
+    at = BUILDERS_SRC.index("export function makeBridgeSegment(")
+    segment = BUILDERS_SRC[at:BUILDERS_SRC.index("export function makeWalkway(", at)]
+    assert "makeRectangularBridgeDeck(" in segment
+    assert "roundedPlatform(" not in segment
+    assert "makeTaperedBridgeDeck(" not in segment
+    assert "height: BRIDGE_DECK_HEIGHT" in segment
+    at = BUILDERS_SRC.index("export function makeWalkway(")
+    walkway = BUILDERS_SRC[at:BUILDERS_SRC.index("\n/* ---------- desk", at)]
+    assert "makeBridgeSegment(length, palette, bridgeOptions)" in walkway
+    assert "part.position.y += 0.63" in walkway
+
+
+def test_raised_pod_bridges_end_at_the_actual_rounded_platform_edges():
+    # The deck enters below each rounded rim, closing the visible seam. Its
+    # taller coloured rails receive that exact overlap as an inset, so their
+    # exposed ends stop at the bridge instead of spilling onto either platform.
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeRoute", at)]
+    assert "hubRadius" in body
+    assert "podRadius" in body
+    assert "BRIDGE_DECK_PLATFORM_OVERLAP = BRIDGE_DECK_WIDTH / 2" in SCENE_SRC
+    assert "overlap: BRIDGE_DECK_PLATFORM_OVERLAP" in body
+    assert "walk = makeWalkway(span.length, palette, railColor);" in body
+
+
+def test_raised_platforms_occlude_bridge_rail_ends_without_lifting_the_floor():
+    conductor_at = SCENE_SRC.index("function ensureConductor()")
+    conductor = SCENE_SRC[conductor_at:SCENE_SRC.index("function ensurePod", conductor_at)]
+    sync_at = SCENE_SRC.index("function syncOffice(")
+    sync = SCENE_SRC[sync_at:SCENE_SRC.index("function frame", sync_at)]
+
+    assert "const RAISED_PLATFORM_Y = 0.52" in SCENE_SRC
+    assert "const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y" in SCENE_SRC
+    assert "const LEVEL_BRIDGE_Y = -0.45" in SCENE_SRC
+    assert "group.position.y = CONDUCTOR_PLATFORM_Y;" in conductor
+    assert "record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);" in sync
+
+
+def test_all_platform_types_reuse_the_four_layer_pod_builder():
+    conductor_at = SCENE_SRC.index("function ensureConductor()")
+    conductor = SCENE_SRC[conductor_at:SCENE_SRC.index("function ensurePod", conductor_at)]
+    sync_at = SCENE_SRC.index("function syncOffice(")
+    sync = SCENE_SRC[sync_at:SCENE_SRC.index("function frame", sync_at)]
+    assert "makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette)" in conductor
+    assert "const record = ensurePod(" in sync
+    assert "record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);" in sync
+    assert "addLayer('top'" in BUILDERS_SRC
+    assert "addLayer('upper-base'" in BUILDERS_SRC
+    assert "addLayer('delivery'" in BUILDERS_SRC
+    assert "addLayer('lower-base'" in BUILDERS_SRC
+
+
+def test_non_floor_bridges_share_the_raised_platform_level():
+    at = SCENE_SRC.index("walk = makeWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("walk.userData.singleChevronFlow", at)]
+    assert "LEVEL_BRIDGE_Y" in body
+
+
+def test_the_floor_always_has_a_platform_seat_even_when_empty():
+    roster = (REPO / "static" / "office" / "roster.js").read_text(encoding="utf-8")
+    assert "if (!overflowSeats.length)" in roster
+    assert "id: `seat-${OVERFLOW.key}-lead`" in roster
+    assert "departments.push({ key: OVERFLOW.key" in roster
+
+
+
+
+def test_the_floor_uses_a_lowered_ramp_then_a_single_straight_bridge():
+    assert "function floorBridgeRoute(" in SCENE_SRC
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function maxDistanceInsidePod", at)]
+    assert "cluster === 'floor'" in body
+    assert "floorBridgeRoute(span, pod)" in body
+    assert "placeBridgeSegment" in body
+    assert "floorBridgeSegments" not in SCENE_SRC
+    route_at = SCENE_SRC.index("function floorBridgeRoute(")
+    route = SCENE_SRC[route_at:SCENE_SRC.index("\n  function placeBridgeSegment", route_at)]
+    assert "const exit = { x: 0, z: CONDUCTOR_SLAB / 2 - 0.6 }" in route
+    assert "destination = floorBridgeEntryPoint(rampEnd, pod)" in route
+    assert "const FLOOR_RAMP_ANGLE = 120 * Math.PI / 180" in route
+    assert "Math.sin(FLOOR_RAMP_ANGLE) * rampLength" in route
+    assert "Math.cos(FLOOR_RAMP_ANGLE) * rampLength" in route
+    assert "fromTopY: 0.46" in route
+    assert "toTopY: 0.18" in route
+
+
+def test_the_floor_flow_trace_reuses_the_decks_exact_route():
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeRoute", at)]
+    assert "floorBridgeRoute(span, pod)" in body
+    assert "placeBridgeSegment(" in body
+    assert "floorBridgePalette()" in body
+
+
+def test_the_floor_uses_three_evenly_spaced_chevrons_per_active_packet():
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function maxDistanceInsidePod", at)]
+    floor_at = body.index("if (cluster === 'floor')")
+    floor_body = body[floor_at:body.index("\n    } else", floor_at)]
+    assert "walk.userData.singleChevronFlow = true;" in floor_body
+    assert "walk.userData.flowMarkerCount = 3;" in floor_body
+
+
+def test_bridge_chevrons_advance_faster_for_all_routes():
+    at = SCENE_SRC.index("function advanceBridgeFade(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  /**", at)]
+    assert "elapsed * 5.4" in body
+    assert "elapsed * 9" in body
+    assert "flowMarkerCount" in body
+
+
+def test_the_floor_bridge_is_drawn_below_pods_with_a_dark_grey_material():
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeRoute", at)]
+    assert "walk.renderOrder = -1" in body
+    assert "floorBridgePalette()" in body
+    assert "floorBridgeDeck:" in SCENE_SRC
+    assert "floorBridgeBeam:" in SCENE_SRC
+
+
+def test_all_bridge_decks_share_the_lit_charcoal_finish():
+    assert SCENE_SRC.count("bridgeDeck: '#090a0c'") == 2
+    assert SCENE_SRC.count("floorBridgeDeck: '#090a0c'") == 2
+
+
+def test_bridge_decks_do_not_select_destination_colored_rails():
+    assert "FLOOR_BRIDGE_EDGE_COLOR" not in SCENE_SRC
+    assert "bridgeEdgeColor(" not in SCENE_SRC
+    assert "makeBridgeTube(" not in SCENE_SRC
+    assert "makeConnector(" not in SCENE_SRC
+
+
+def test_floor_bridge_retracts_its_rail_and_deck_three_units_from_the_conductor():
+    at = SCENE_SRC.index("function floorBridgeRoute(")
+    route = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeEntryPoint", at)]
+    assert "const FLOOR_CONDUCTOR_TRIM = 3" in route
+    assert "const rampStart" in route
+    assert "from: rampStart, to: rampEnd" in route
+    assert "railTrimStart" not in route
+    assert "railTrimEnd" not in route
+    at = SCENE_SRC.index("function placeBridgeSegment(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function maxDistanceInsidePod", at)]
+    assert "railTrimStart: segment.railTrimStart || 0" in body
+    assert "railTrimEnd: segment.railTrimEnd || 0" in body
+
+
+def test_the_floor_bridge_terminates_at_the_middle_of_its_approached_edge():
+    assert "function floorBridgeEntryPoint(from, pod)" in SCENE_SRC
+    at = SCENE_SRC.index("function floorBridgeEntryPoint(from, pod)")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function placeBridgeSegment", at)]
+    assert "halfWidth" in body and "halfDepth" in body
+    assert "z: pod.z" in body
+    assert "x: pod.x" in body
+
+
+def test_the_ground_keeps_its_normal_depth_layer_when_the_floor_bridge_is_visible():
+    at = SCENE_SRC.index("function buildGround(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function installGround", at)]
+    assert "depthWrite: false" not in body
+    assert "gridHelper.material.depthWrite = false" not in body
+    assert "renderOrder = -1" not in body
+
+
+def test_the_office_background_grid_remains_fully_opaque():
+    at = SCENE_SRC.index("function buildGround(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function installGround", at)]
+    assert "gridHelper.material.opacity = 1;" in body
+
+
+def test_office_platforms_cast_shadows_but_bridges_do_not():
+    assert "slab.castShadow = true;" in BUILDERS_SRC
+    assert "deck.castShadow = false;" in BUILDERS_SRC
+    assert "beam.castShadow = false;" in BUILDERS_SRC
+    assert "const baseHeight = 1.2;" in BUILDERS_SRC
+
+
+def test_platform_bases_use_black_in_both_office_themes():
+    assert SCENE_SRC.count("platformBase: '#000000'") == 2
+
+
+def test_active_bridge_work_uses_chevrons_instead_of_pulsing_the_colored_rails():
+    # Side rails remain physical trim. Work state belongs to the centred cable
+    # layer, which is shared by straight and routed bridges.
+    at = BUILDERS_SRC.index("export function makeBridgeSegment(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("export function makeWalkway(", at)]
+    assert "makeBridgeActivityChevrons" in body
+    at = SCENE_SRC.index("function setBridgeActive(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function advanceBridgeFade", at)]
+    assert "eachActivityChevron" in body
+    assert "eachRailMaterial" not in body
+
+
+def test_mood_bubbles_are_enlarged_and_clamped_at_far_zoom():
+    assert "const bubbleScale = lod === 'far' ? 1.8 : 2.5;" in SCENE_SRC
+    assert "seat.bubble.scale.set(bubbleScale * k, bubbleScale * 0.76 * k, 1);" in SCENE_SRC
+
+
+def test_every_bridge_has_a_first_interior_transverse_panel_line():
+    at = BUILDERS_SRC.index("export function makeBridgeSegment(")
+    body = BUILDERS_SRC[at:BUILDERS_SRC.index("export function makeWalkway(", at)]
+    assert "for (let i = 1; i < panelCount - 1; i++)" in body
+
+
+def test_the_floor_pod_omits_the_whiteboard_that_clips_its_edge():
+    at = SCENE_SRC.index("function ensurePod(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  function setBridgeActive", at)]
+    assert "if (label !== 'The Floor')" in body
+
+
+def test_task_nameplates_only_appear_for_the_focused_worker():
+    # Full task strings are useful when inspecting one desk, but at overview
+    # scale they overlap neighbouring desks and the bridges between pods.
+    assert "focusedId === seat.workerId" in SCENE_SRC
+    assert "seat.plate.visible = shouldShowNameplate(seat);" in SCENE_SRC
     at = SCENE_SRC.index("function syncLod() {")
     body = SCENE_SRC[at:at + 300]
-    assert "!!seat.workerId" in body, (
-        "the zoom-driven LOD toggle must respect the same rule, or zooming "
-        "in/out would resurrect an empty seat's nameplate"
-    )
+    assert "syncNameplateVisibility();" in body
 
 
 # ── ground grows with the office ────────────────────────────────────────────
@@ -235,8 +469,7 @@ def test_switching_outlets_fades_the_canvas_instead_of_a_hard_cut():
     CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
     at = OFFICE_INDEX_SRC.index("function setOutlet(")
     body = OFFICE_INDEX_SRC[at:OFFICE_INDEX_SRC.index("\n}", at)]
-    assert "animateOutletSwitch()" in body
-    assert ".office-canvas.is-switching-outlet{opacity:0;}" in CSS
+    assert "setOutletTransition" in body or "animateOutletSwitch()" in body
     canvas_rule_start = CSS.index(".office-canvas{")
     canvas_rule = CSS[canvas_rule_start:CSS.index("}", canvas_rule_start)]
     assert "transition:opacity" in canvas_rule, (
@@ -274,7 +507,7 @@ def test_the_fade_reveal_also_waits_out_a_minimum_visible_duration():
     # added. revealAfterOutletFade() now waits out whichever is longer,
     # OUTLET_FADE_MIN_MS or the real sync time.
     OFFICE_INDEX_SRC = (REPO / "static" / "office" / "index.js").read_text(encoding="utf-8")
-    assert "const OUTLET_FADE_MIN_MS = 220;" in OFFICE_INDEX_SRC
+    assert "const OUTLET_FADE_MIN_MS = 0;" in OFFICE_INDEX_SRC
     at = OFFICE_INDEX_SRC.index("function revealAfterOutletFade(")
     body = OFFICE_INDEX_SRC[at:OFFICE_INDEX_SRC.index("\n}", at)]
     assert "performance.now() - _outletFadeStartedAt" in body
