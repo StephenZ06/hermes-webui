@@ -11928,6 +11928,139 @@ def _handle_llm_wiki_status(handler, parsed) -> bool:
     return True
 
 
+# Profile-scoped short-term cache for NeuralWatt quota fetches. The quota
+# endpoint is rate-limited; this prevents the sidebar widget from hammering it
+# on every poll/profile switch while still refreshing every few seconds.
+_NEURALWATT_USAGE_CACHE_TTL_SECONDS = 15.0
+_neuralwatt_usage_snapshot_cache: dict[str, tuple[float, object]] = {}
+_neuralwatt_usage_snapshot_cache_lock = threading.Lock()
+
+
+def _load_profile_env_file(profile_home: Path) -> dict[str, str]:
+    """Read key=value pairs from a profile's .env file."""
+    values: dict[str, str] = {}
+    env_path = Path(profile_home) / ".env"
+    if not env_path.exists():
+        return values
+    try:
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    except Exception:
+        return {}
+    return values
+
+
+def _resolve_env_value(name: str, env_file: dict[str, str]) -> str | None:
+    """Resolve an env var from the profile .env first, then the process env."""
+    value = env_file.get(name)
+    if value:
+        return value
+    value = os.environ.get(name)
+    if value:
+        return value
+    return None
+
+
+def _expand_config_api_key(raw: object, env_file: dict[str, str]) -> str | None:
+    """Return a literal API key, or resolve ${VAR} from env."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if text.startswith("${") and text.endswith("}"):
+        return _resolve_env_value(text[2:-1].strip(), env_file)
+    return text
+
+
+def _find_custom_provider_key_env(provider: str, base_url: str | None, cfg: dict) -> str | None:
+    """Find the key_env for a named custom provider matching provider/base_url."""
+    from api.config import _custom_provider_slug_from_name
+
+    target = str(provider or "").strip().lower()
+    target_base = str(base_url or "").strip().lower().rstrip("/")
+    entries = cfg.get("custom_providers") if isinstance(cfg, dict) else None
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        slug = _custom_provider_slug_from_name(entry.get("name"))
+        entry_base = str(entry.get("base_url") or "").strip().lower().rstrip("/")
+        if slug == target or entry_base == target_base:
+            key_env = str(entry.get("key_env") or "").strip()
+            if key_env:
+                return key_env
+    return None
+
+
+def _resolve_neuralwatt_api_key(
+    model_cfg: dict,
+    provider: str,
+    base_url: str | None,
+    cfg: dict,
+    profile_home: Path,
+) -> str | None:
+    """Resolve a NeuralWatt API key for the profile, from most to least specific.
+
+    Profile-local credentials win over process-global credentials so a server
+    that has a global NEURALWATT_API_KEY still uses a legacy HERMES_API_KEY
+    stored in the profile's own .env when that is all the profile has.
+    """
+    env_file = _load_profile_env_file(profile_home)
+    # 1. literal or ${VAR} api_key in config.yaml model section (env_file first)
+    key = _expand_config_api_key(model_cfg.get("api_key"), env_file)
+    # 2. named custom provider's key_env (env_file first, then process)
+    if not key:
+        key_env = _find_custom_provider_key_env(provider, base_url, cfg)
+        if key_env:
+            key = env_file.get(key_env) or os.environ.get(key_env)
+    # 3. provider-specific NeuralWatt key from the profile .env
+    if not key:
+        key = env_file.get("NEURALWATT_API_KEY")
+    # 4. legacy generic Hermes key from the profile .env
+    if not key:
+        key = env_file.get("HERMES_API_KEY")
+    # 5. provider-specific NeuralWatt key from the process env
+    if not key:
+        key = os.environ.get("NEURALWATT_API_KEY")
+    # 6. legacy generic Hermes key from the process env
+    if not key:
+        key = os.environ.get("HERMES_API_KEY")
+    return key
+
+
+def _prune_neuralwatt_usage_cache(now: float) -> None:
+    expired = [
+        key
+        for key, (ts, _) in _neuralwatt_usage_snapshot_cache.items()
+        if now - ts > _NEURALWATT_USAGE_CACHE_TTL_SECONDS
+    ]
+    for key in expired:
+        _neuralwatt_usage_snapshot_cache.pop(key, None)
+
+
+def _render_account_usage_response(handler, snapshot) -> None:
+    """Serialize an AccountUsageSnapshot (or compatible namespace) to JSON."""
+    windows = []
+    for window in getattr(snapshot, "windows", ()) or ():
+        reset_at = getattr(window, "reset_at", None)
+        windows.append({
+            "label": getattr(window, "label", None),
+            "used_percent": getattr(window, "used_percent", None),
+            "reset_at": reset_at.isoformat() if reset_at else None,
+            "detail": getattr(window, "detail", None),
+        })
+    j(handler, {
+        "available": bool(windows) and not getattr(snapshot, "unavailable_reason", None),
+        "provider": getattr(snapshot, "provider", ""),
+        "plan": getattr(snapshot, "plan", None),
+        "windows": windows,
+    })
+
+
 def _handle_account_usage(handler, parsed) -> bool:
     """Return the active profile's subscription usage window(s) (e.g. Codex
     weekly rate-limit percent + reset time) for the Chat sidebar usage widget.
@@ -11942,11 +12075,14 @@ def _handle_account_usage(handler, parsed) -> bool:
     """
     import yaml
 
+    from api import account_usage as _webui_account_usage
     from api.profiles import (
         cron_profile_context_for_home,
         get_active_profile_name,
         get_hermes_home_for_profile,
+        normalized_profile_provider,
     )
+    from api.providers import _SELF_HOSTED_PROVIDER_IDS
 
     query = parse_qs(parsed.query)
     profile_name = str(query.get("profile", [""])[0] or "").strip() or get_active_profile_name()
@@ -11963,53 +12099,131 @@ def _handle_account_usage(handler, parsed) -> bool:
         j(handler, {"available": False})
         return True
 
-    model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
-    provider = str((model_cfg or {}).get("provider") or "").strip()
-    base_url = str((model_cfg or {}).get("base_url") or "").strip() or None
-    if not provider:
+    model_cfg = cfg.get("model") if isinstance(cfg, dict) else {}
+    if not isinstance(model_cfg, dict):
+        model_cfg = {}
+    provider_raw = str(model_cfg.get("provider") or "").strip()
+    base_url = str(model_cfg.get("base_url") or "").strip() or None
+    if not provider_raw:
         j(handler, {"available": False})
         return True
 
-    snapshot = None
+    effective_provider = provider_raw
     try:
         from agent.account_usage import fetch_account_usage
         with cron_profile_context_for_home(profile_home):
-            snapshot = fetch_account_usage(provider, base_url=base_url, api_key=None)
-            # hermes-agent's own fetch_account_usage() only knows a handful
-            # of providers with a real percent-based usage API of their own
-            # (Codex, Anthropic, OpenRouter). A flat-namespace Hermes-hosted
-            # reseller like opencode-go has no such API -- only a local pool
-            # of interchangeable keys -- so fall back to a percent
-            # synthesized from that pool's own exhausted/available ratio
-            # (see api/providers.py's account_usage_from_pool) rather than
-            # showing nothing for it.
-            if snapshot is None or not snapshot.available:
+            resolved_runtime: dict[str, Any] | None = None
+            runtime_provider: str | None = None
+            runtime_api_key: str | None = None
+            if provider_raw.lower() in ("auto", "") or provider_raw.lower().startswith("custom:"):
+                try:
+                    from hermes_cli.runtime_provider import resolve_runtime_provider
+                    resolved_runtime = resolve_runtime_provider(
+                        requested=provider_raw,
+                        explicit_base_url=base_url,
+                    )
+                except Exception:
+                    resolved_runtime = None
+                if isinstance(resolved_runtime, dict):
+                    runtime_provider = str(resolved_runtime.get("provider") or "").strip() or None
+                    runtime_api_key = str(resolved_runtime.get("api_key") or "").strip() or None
+
+            effective_provider = (
+                normalized_profile_provider(runtime_provider or provider_raw, base_url)
+                or runtime_provider
+                or provider_raw
+            )
+
+            # Local / self-hosted servers report no subscription quota. Return
+            # early for them so neither the generic agent fetch nor the
+            # credential-pool fallback can synthesize a meaningless "Capacity"
+            # window that would paint a usage card for a local profile.
+            if effective_provider in _SELF_HOSTED_PROVIDER_IDS:
+                j(handler, {
+                    "available": False,
+                    "provider": effective_provider,
+                    "local": True,
+                })
+                return True
+
+            # NeuralWatt path: the agent's generic fetch_account_usage does not
+            # know custom NeuralWatt endpoints, so use the WebUI quota helper.
+            if effective_provider == "neuralwatt":
+                api_key = runtime_api_key
+                if not api_key:
+                    api_key = _resolve_neuralwatt_api_key(
+                        model_cfg, provider_raw, base_url, cfg, profile_home
+                    )
+                nw_base = base_url or ""
+                cache_key = (
+                    f"{profile_home}:{nw_base}:"
+                    f"{hashlib.sha256((api_key or '').encode('utf-8')).hexdigest()}"
+                )
+                now = time.monotonic()
+                snapshot = None
+                with _neuralwatt_usage_snapshot_cache_lock:
+                    cached = _neuralwatt_usage_snapshot_cache.get(cache_key)
+                    if cached and now - cached[0] <= _NEURALWATT_USAGE_CACHE_TTL_SECONDS:
+                        snapshot = cached[1]
+                    else:
+                        try:
+                            snapshot = _webui_account_usage.fetch_neuralwatt_account_usage(
+                                nw_base, api_key
+                            )
+                        except _webui_account_usage.NeuralWattQuotaRateLimited:
+                            j(handler, {
+                                "available": False,
+                                "provider": "neuralwatt",
+                                "rate_limited": True,
+                            })
+                            return True
+                        if snapshot is not None:
+                            _neuralwatt_usage_snapshot_cache[cache_key] = (now, snapshot)
+                            _prune_neuralwatt_usage_cache(now)
+                if snapshot is not None and getattr(snapshot, "available", False):
+                    _render_account_usage_response(handler, snapshot)
+                    return True
+                j(handler, {"available": False, "provider": "neuralwatt"})
+                return True
+
+            # Codex path: prefer the read-only Codex CLI desktop token account.
+            if effective_provider == "openai-codex":
+                try:
+                    from hermes_cli.auth_codex import _import_codex_cli_tokens
+                    tokens = _import_codex_cli_tokens()
+                    if tokens:
+                        desktop_snapshot = _webui_account_usage.fetch_codex_cli_account_usage(tokens)
+                        if desktop_snapshot is not None and getattr(desktop_snapshot, "available", False):
+                            _render_account_usage_response(handler, desktop_snapshot)
+                            return True
+                except Exception:
+                    logger.debug(
+                        "Codex desktop usage fetch failed for %r", profile_name, exc_info=True
+                    )
+
+            # Generic agent path for providers with a native usage API.
+            snapshot = fetch_account_usage(
+                effective_provider,
+                base_url=base_url,
+                api_key=runtime_api_key or _expand_config_api_key(
+                    model_cfg.get("api_key"), _load_profile_env_file(profile_home)
+                ),
+            )
+            # Flat-namespace Hermes-hosted resellers have no native usage API;
+            # fall back to a percent synthesized from the credential pool.
+            if snapshot is None or not getattr(snapshot, "available", False):
                 from api.providers import account_usage_from_pool
-                pool_snapshot = account_usage_from_pool(provider)
+                pool_snapshot = account_usage_from_pool(effective_provider)
                 if pool_snapshot is not None:
                     snapshot = pool_snapshot
     except Exception:
         logger.debug("account usage fetch failed for profile %r", profile_name, exc_info=True)
 
-    if snapshot is None or not snapshot.available:
-        j(handler, {"available": False, "provider": provider})
+    if snapshot is None or not getattr(snapshot, "available", False):
+        j(handler, {"available": False, "provider": effective_provider})
         return True
 
-    windows = [
-        {
-            "label": w.label,
-            "used_percent": w.used_percent,
-            "reset_at": w.reset_at.isoformat() if w.reset_at else None,
-            "detail": w.detail,
-        }
-        for w in snapshot.windows
-    ]
-    j(handler, {
-        "available": True,
-        "provider": snapshot.provider,
-        "plan": snapshot.plan,
-        "windows": windows,
-    })
+    _render_account_usage_response(handler, snapshot)
     return True
 
 
@@ -13755,6 +13969,13 @@ def handle_get(handler, parsed) -> bool:
 
         return serve_extension_static(handler, parsed)
 
+    if parsed.path.startswith("/graphify-projects/"):
+        from api.graphify_static import graphify_static_fallback
+
+        result = graphify_static_fallback(None, handler, parsed)
+        if result is not None:
+            return result
+
     if parsed.path.startswith("/static/"):
         return _serve_static(handler, parsed)
 
@@ -14609,8 +14830,69 @@ def handle_get(handler, parsed) -> bool:
             },
         )
 
+    if parsed.path == "/api/office/scheduled-tasks":
+        from api.gateway_chat import gateway_subagents_request
+        from api.profiles import get_active_hermes_home, get_active_profile_name
+        from api.scheduled_tasks import load_scheduled_tasks
+
+        profile_name = get_active_profile_name() or ""
+        if not profile_name:
+            return j(handler, {"tasks": []})
+        try:
+            gateway_data = gateway_subagents_request("GET", "/api/scheduled-tasks") or {}
+        except Exception:
+            gateway_data = {}
+        gateway_tasks = gateway_data.get("tasks", []) if isinstance(gateway_data, dict) else []
+        try:
+            local_tasks = load_scheduled_tasks(get_active_hermes_home(), profile_name)
+        except Exception:
+            local_tasks = []
+        seen = set()
+        tasks = []
+        for task in gateway_tasks + local_tasks:
+            if not isinstance(task, dict):
+                continue
+            job_id = task.get("job_id")
+            if not job_id or job_id in seen:
+                continue
+            seen.add(job_id)
+            tasks.append(task)
+        return j(handler, {"tasks": tasks})
+
     if parsed.path == "/api/sessions/search":
         return _handle_sessions_search(handler, parsed)
+
+    # ── Work Hub (GET) ────────────────────────────────────────────────────
+    if parsed.path == "/api/work_hub/bootstrap":
+        from api import work_hub
+
+        try:
+            return j(handler, work_hub.bootstrap())
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/items":
+        from api import work_hub
+
+        query_values = parse_qs(parsed.query or "")
+        query = {
+            key: values[0]
+            for key, values in query_values.items()
+            if key in {"project_id", "status"} and values
+        }
+        try:
+            return j(handler, work_hub.list_items(query))
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/plan":
+        from api import goal_planner
+
+        query_values = parse_qs(parsed.query or "")
+        goal = query_values.get("goal", [""])[0].strip()
+        if not goal:
+            return bad(handler, "goal is required", 400)
+        return j(handler, goal_planner.plan_goal(goal))
 
     if parsed.path == "/api/list":
         return _handle_list_dir(handler, parsed)
@@ -17427,6 +17709,64 @@ def handle_post(handler, parsed) -> bool:
     # ── Workspace management (POST) ──
     if parsed.path == "/api/workspaces/add":
         return _handle_workspace_add(handler, body)
+
+    # ── Work Hub (POST) ───────────────────────────────────────────────────
+    if parsed.path == "/api/work_hub/items/create":
+        from api import work_hub
+
+        try:
+            payload = body.get("item") if isinstance(body, dict) else None
+            result = work_hub.create_item(payload, body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/items/update":
+        from api import work_hub
+
+        try:
+            item_id = str(body.get("item_id") or "") if isinstance(body, dict) else ""
+            payload = body.get("item") if isinstance(body, dict) else None
+            result = work_hub.update_item(item_id, payload, body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/items/move":
+        from api import work_hub
+
+        try:
+            item_id = str(body.get("item_id") or "") if isinstance(body, dict) else ""
+            status = body.get("status") if isinstance(body, dict) else None
+            result = work_hub.move_item(item_id, status, body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/plan/create":
+        from api import goal_planner, work_hub
+
+        goal = body.get("goal") if isinstance(body, dict) else None
+        project_id = body.get("project_id") if isinstance(body, dict) else None
+        if not isinstance(goal, str) or not goal.strip():
+            return bad(handler, "goal is required", 400)
+        try:
+            plan = goal_planner.plan_goal(goal)
+            created = []
+            for step in plan.get("steps", []):
+                result = work_hub.create_item(
+                    {
+                        "title": step["title"],
+                        "description": step["description"],
+                        "status": "backlog",
+                        "project_id": project_id,
+                    },
+                    expected_revision=None,
+                )
+                created.append(result["item"])
+            return j(handler, {"ok": True, "plan": plan, "items": created})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
 
     if parsed.path == "/api/workspaces/remove":
         return _handle_workspace_remove(handler, body)
@@ -22773,6 +23113,7 @@ def _handle_live_models(handler, parsed):
             if _ep:
                 try:
                     import urllib.request
+
                     _providers_cfg = cfg.get("providers") or {}
                     _prov = _providers_cfg.get(provider, {}) if isinstance(_providers_cfg, dict) else {}
                     # Only use a provider-scoped key.  A top-level model.api_key
@@ -22800,6 +23141,39 @@ def _handle_live_models(handler, parsed):
                 except Exception as _fetch_err:
                     logger.debug("Live fetch from %s failed: %s", provider, _fetch_err)
                     # Fall through to static list below
+
+            # LM Studio is local and not in the generic _OPENAI_COMPAT_ENDPOINTS
+            # map, but it uses a standard OpenAI-compat /v1/models endpoint. Probe
+            # the configured base URL directly so Settings → Providers model
+            # discovery works even when hermes_cli returns nothing.
+            if not ids and provider == "lmstudio":
+                try:
+                    from api.config import _get_effective_provider_cfg, _get_provider_base_url
+
+                    _lm_base = _get_provider_base_url("lmstudio", root_fallback=True)
+                    if _lm_base:
+                        _lm_cfg = _get_effective_provider_cfg("lmstudio")
+                        _lm_key = str(_lm_cfg.get("api_key") or "").strip()
+                        if not _lm_key:
+                            _model_cfg = cfg.get("model", {})
+                            if isinstance(_model_cfg, dict):
+                                _active_provider = _resolve_provider_alias(
+                                    (_model_cfg.get("provider") or "").strip().lower()
+                                )
+                                if _active_provider == "lmstudio":
+                                    _lm_key = str(_model_cfg.get("api_key") or "").strip()
+                        import urllib.request
+
+                        _req = urllib.request.Request(
+                            f"{_lm_base}/models",
+                            headers={"Authorization": f"Bearer {_lm_key}"} if _lm_key else {},
+                        )
+                        with urllib.request.urlopen(_req, timeout=8) as _resp:
+                            _body = json.loads(_resp.read())
+                        ids = [m.get("id", "") for m in _body.get("data", []) if m.get("id")]
+                        logger.debug("Live-fetched %d models from LM Studio /v1/models", len(ids))
+                except Exception as _fetch_err:
+                    logger.debug("Live fetch from LM Studio failed: %s", _fetch_err)
 
         # Static fallback — only reached when live fetch also failed.
         if not ids:
