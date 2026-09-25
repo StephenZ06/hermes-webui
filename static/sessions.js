@@ -8366,7 +8366,16 @@ function renderSessionListFromCache(){
     wrapper.appendChild(body);
     list.appendChild(wrapper);
     if(animateDateGroup&&g.label===animateDateGroup&&!isGroupCollapsed){
-      _applyDateGroupCollapsedState(body,false,true);
+      // The body was just appended; give the browser one frame to paint the
+      // freshly rendered rows before setting the collapsed pre-state and
+      // transitioning back out. Without the frame, the browser coalesces the
+      // append and the class changes into a single style recalculation and
+      // the grid-template-rows transition never runs.
+      if(typeof requestAnimationFrame==='function'){
+        requestAnimationFrame(()=>_applyDateGroupCollapsedState(body,false,true));
+      }else{
+        _applyDateGroupCollapsedState(body,false,true);
+      }
     }
   }
   if(virtualAnchorScrollTop!==null){

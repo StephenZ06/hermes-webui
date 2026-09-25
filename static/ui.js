@@ -2165,7 +2165,14 @@ function _fadeAccountUsageWidget(callback){
   widget.classList.add('is-fading');
   setTimeout(()=>{
     callback();
-    widget.classList.remove('is-fading');
+    // The callback may have just unhidden the widget (local → hosted profile).
+    // Paint the new content at opacity:0 first so removing the class on the
+    // next frame produces a real fade-in instead of an instant paint.
+    if(typeof requestAnimationFrame==='function'){
+      requestAnimationFrame(()=>widget.classList.remove('is-fading'));
+    }else{
+      widget.classList.remove('is-fading');
+    }
   },250);
 }
 
