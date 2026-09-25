@@ -46,7 +46,14 @@ manual-run ledger entries for the active profile. Fixed a stale `updated_at`
 test value in `tests/test_office_scheduled_tasks.py` so the ledger-age check
 passes with the current date.
 
-Validation: `tests/test_chat_sidebar_usage_card.py` (12),
+**Profile Page cross-profile model picker:** Added `/api/models/cross_profile`
+that aggregates provider/model groups from every profile's `config.yaml` (and
+the root profile) without live probes. The profile create/edit form now uses
+this endpoint, so any provider configured anywhere is selectable when creating a
+new profile. Added `tests/test_cross_profile_models_endpoint.py`.
+
+Validation now includes `tests/test_cross_profile_models_endpoint.py` (1),
+`tests/test_issue3947_tasks_cross_profile_visibility.py` (11),
 `tests/test_profile_aware_usage_card.py` (6),
 `tests/test_workspace_saved_subdirectory_trust.py` (9),
 `tests/test_sidebar_date_group_animation.py` (6) green; `npm run lint:runtime`
