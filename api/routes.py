@@ -1718,6 +1718,8 @@ def _cron_jobs_cross_profile(active_profile: str) -> tuple[list[dict], list[dict
                 active_jobs.append(row)
             else:
                 other_jobs.append(row)
+    active_ids = {job.get("id") for job in active_jobs if job.get("id")}
+    other_jobs = [job for job in other_jobs if job.get("id") not in active_ids]
     return active_jobs, other_jobs
 
 

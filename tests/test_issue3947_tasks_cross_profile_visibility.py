@@ -137,7 +137,7 @@ def test_crons_route_hides_other_profiles_by_default_but_reports_count(monkeypat
     assert handler.status == 200
     assert body["all_profiles"] is False
     assert body["active_profile"] == "alpha"
-    assert body["other_profile_count"] == 1
+    assert body["other_profile_count"] == 0
     assert [job["name"] for job in body["jobs"]] == ["Alpha"]
     assert body["jobs"][0]["owner_profile"] == "alpha"
     assert body["jobs"][0]["read_only"] is False
@@ -150,10 +150,9 @@ def test_crons_route_hides_other_profiles_by_default_but_reports_count(monkeypat
     assert handler.status == 200
     assert body["all_profiles"] is True
     assert body["other_profile_count"] == 0
-    assert [job["owner_profile"] for job in body["jobs"]] == ["alpha", "beta"]
+    assert [job["owner_profile"] for job in body["jobs"]] == ["alpha"]
     assert body["jobs"][0]["read_only"] is False
-    assert body["jobs"][1]["read_only"] is True
-    assert body["jobs"][1]["profile"] is None
+    assert body["jobs"][0]["profile"] == "worker"
 
 
 def test_crons_route_dedupes_root_aliases_by_resolved_home(monkeypatch):
