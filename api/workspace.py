@@ -31,12 +31,18 @@ _ESCAPE_AUTH_LOCK = threading.Lock()
 _ESCAPE_AUTH_TOKENS: dict[str, dict[str, str | int | float]] = {}
 
 from api.config import (
-    WORKSPACES_FILE as _GLOBAL_WS_FILE,
     LAST_WORKSPACE_FILE as _GLOBAL_LW_FILE,
     DEFAULT_WORKSPACE as _BOOT_DEFAULT_WORKSPACE,
     MAX_FILE_BYTES, IMAGE_EXTS, MD_EXTS
 )
 from api.subprocess_utils import windows_hide_flags
+
+# Workspaces are intentionally shared across profiles. The global file lives
+# under the base Hermes home (e.g. ~/.hermes/webui/workspaces.json), not under
+# a profile-specific state dir, so an external path only needs to be added
+# once in the Spaces UI and every profile switch works.
+from api.profiles import _DEFAULT_HERMES_HOME
+_GLOBAL_WS_FILE = _DEFAULT_HERMES_HOME / "webui" / "workspaces.json"
 
 
 # ── Profile-aware path resolution ───────────────────────────────────────────
@@ -360,6 +366,49 @@ def _migrate_global_workspaces() -> list:
         return []
 
 
+def _migrate_profile_workspaces_to_global() -> list:
+    """One-time import of per-profile workspaces into the global list.
+
+    Previously each profile kept its own ``workspaces.json``.  Now the list is
+    shared across profiles so users do not have to re-add the same external
+    paths (e.g. Windows Obsidian vaults, Docker volumes) for every profile.
+    Per-profile files are merged once and left in place as backups; the global
+    file becomes authoritative.
+    """
+    if _GLOBAL_WS_FILE.exists():
+        return []
+    merged: dict[str, str] = {}
+    # Start from any legacy global entries that may still exist.
+    for entry in _migrate_global_workspaces():
+        path = entry.get("path")
+        if path:
+            merged[path] = entry.get("name") or "Workspace"
+    # Merge every profile-local workspaces.json we can find.
+    try:
+        from api.profiles import _DEFAULT_HERMES_HOME, list_profiles_api
+        profiles_dir = _DEFAULT_HERMES_HOME / "profiles"
+        if profiles_dir.is_dir():
+            for profile_dir in profiles_dir.iterdir():
+                local_ws = profile_dir / "webui_state" / "workspaces.json"
+                if local_ws.exists():
+                    try:
+                        raw = json.loads(local_ws.read_text(encoding='utf-8'))
+                        for entry in raw if isinstance(raw, list) else []:
+                            path = entry.get("path") if isinstance(entry, dict) else None
+                            if path:
+                                merged.setdefault(path, entry.get("name") or "Workspace")
+                    except Exception:
+                        logger.debug("Failed to read profile-local workspaces from %s", local_ws)
+    except Exception:
+        logger.debug("Failed to enumerate profiles for workspace migration", exc_info=True)
+    if merged:
+        cleaned = _clean_workspace_list([{"path": p, "name": n} for p, n in merged.items()])
+        _GLOBAL_WS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _GLOBAL_WS_FILE.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding='utf-8')
+        return cleaned
+    return []
+
+
 # Guards the read-modify-write sequence used to idempotently add a single
 # entry to the saved-workspace list (see add_workspace_entry_if_missing).
 # load_workspaces()/save_workspaces() on their own are not atomic with
@@ -372,9 +421,8 @@ def add_workspace_entry_if_missing(path: str, name: str) -> None:
     """Atomically append {'path': path, 'name': name} to the saved workspace
     list unless an entry with the same path already exists.
 
-    Wraps the load -> check -> append -> save sequence in a process-wide lock
-    so concurrent callers (e.g. two sessions binding to different projects at
-    the same time) cannot race and clobber each other's addition.
+    The workspace list is global across profiles, so adding a path here makes it
+    trusted for every profile switch.
     """
     with _WORKSPACES_FILE_LOCK:
         wss = load_workspaces()
@@ -384,42 +432,40 @@ def add_workspace_entry_if_missing(path: str, name: str) -> None:
 
 
 def load_workspaces() -> list:
-    ws_file = _workspaces_file()
-    if ws_file.exists():
+    """Return the global saved workspace list.
+
+    Workspaces are shared across profiles.  On first run, per-profile workspace
+    files are merged into ``{STATE_DIR}/workspaces.json``; after that the global
+    file is the source of truth.
+    """
+    if _GLOBAL_WS_FILE.exists():
         try:
-            raw = json.loads(ws_file.read_text(encoding='utf-8'))
+            raw = json.loads(_GLOBAL_WS_FILE.read_text(encoding='utf-8'))
             cleaned = _clean_workspace_list(raw)
             if len(cleaned) != len(raw):
                 # Persist the cleaned version so stale entries don't keep reappearing
                 try:
-                    ws_file.write_text(
+                    _GLOBAL_WS_FILE.write_text(
                         json.dumps(cleaned, ensure_ascii=False, indent=2), encoding='utf-8'
                     )
                 except Exception:
                     logger.debug("Failed to persist cleaned workspace list")
             return cleaned or [{'path': _profile_default_workspace(), 'name': 'Home'}]
         except Exception:
-            logger.debug("Failed to load workspaces from %s", ws_file)
-    # No profile-local file yet.
-    # For the DEFAULT profile: migrate from the legacy global file (one-time cleanup).
-    # For NAMED profiles: always start clean with just their own workspace.
-    try:
-        from api.profiles import get_active_profile_name
-        is_default = get_active_profile_name() in ('default', None)
-    except ImportError:
-        is_default = True
-    if is_default:
-        migrated = _migrate_global_workspaces()
-        if migrated:
-            return migrated
+            logger.debug("Failed to load workspaces from %s", _GLOBAL_WS_FILE)
+
+    migrated = _migrate_profile_workspaces_to_global()
+    if migrated:
+        return migrated
+
     # Fresh start: single entry from the profile's configured workspace, labeled "Home"
     return [{'path': _profile_default_workspace(), 'name': 'Home'}]
 
 
 def save_workspaces(workspaces: list) -> None:
-    ws_file = _workspaces_file()
-    ws_file.parent.mkdir(parents=True, exist_ok=True)
-    ws_file.write_text(json.dumps(workspaces, ensure_ascii=False, indent=2), encoding='utf-8')
+    """Persist the workspace list globally so all profiles share it."""
+    _GLOBAL_WS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _GLOBAL_WS_FILE.write_text(json.dumps(workspaces, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
 def get_profile_default_workspace() -> str:
@@ -753,6 +799,32 @@ def _trusted_workspace_roots() -> list[Path]:
     return roots
 
 
+def _candidate_under_trusted_roots(candidate: Path) -> bool:
+    """Return True if *candidate* is equal to or under a trusted non-home root.
+
+    Only the boot-time default workspace and saved workspaces are considered.
+    The user home is deliberately excluded: a missing home subdirectory should
+    still trigger the stale-workspace recovery flow. Missing subdirectories of
+    a saved/boot root are allowed because the agent or project tooling creates
+    them on demand; the check is a subpath test (`relative_to`) so a lookalike
+    sibling is still rejected.
+    """
+    home = _home_path()
+    for root in _trusted_workspace_roots():
+        # Skip the user home root itself; missing home subdirectories should be
+        # recovered, not auto-trusted.
+        if root == home:
+            continue
+        if candidate == root:
+            return True
+        try:
+            candidate.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def workspace_availability(entry: dict) -> str:
     """'online' or 'offline' for a saved workspace entry.
 
@@ -947,7 +1019,12 @@ def resolve_trusted_workspace(path: str | Path | None = None) -> Path:
         # update the workspace hint even though this WebUI host cannot stat
         # the target-side path.
         if remote_candidate is None:
-            raise ValueError(access_error)
+            # A missing subdirectory of a trusted root may be created later by
+            # the agent or project tooling. Allow those paths; keep rejecting on
+            # real access problems (permission denied, not a directory, etc.).
+            if ("does not exist" not in access_error or
+                not _candidate_under_trusted_roots(candidate)):
+                raise ValueError(access_error)
 
     if remote_candidate is not None:
         return remote_candidate
@@ -965,12 +1042,28 @@ def resolve_trusted_workspace(path: str | Path | None = None) -> Path:
     if _is_blocked_workspace_path(candidate, path):
         raise ValueError(f"Path points to a system directory: {candidate}")
 
-    # (B) Trusted if already in the saved workspace list — covers non-home installs
+    # (B) Trusted if equal to or under a saved workspace root — covers non-home
+    #     installs. A saved workspace is a root, not a single addressable
+    #     directory, so its descendants are trusted the same way the user home
+    #     (A) and the boot default (C) already trust their own subtrees. The
+    #     test is `relative_to`, not string prefix, so a lookalike sibling
+    #     (…/MiniPC-Main-Backup vs …/MiniPC-Main) is still rejected.
     try:
-        saved = load_workspaces()
-        saved_paths = {_resolve_path(w["path"]) for w in saved if w.get("path")}
-        if candidate in saved_paths:
-            return candidate
+        for entry in load_workspaces():
+            raw = entry.get("path")
+            if not raw:
+                continue
+            root = _resolve_path(raw)
+            # A saved "/" would trust everything not already blocked; skip it.
+            if root == Path("/"):
+                continue
+            if candidate == root:
+                return candidate
+            try:
+                candidate.relative_to(root)
+                return candidate
+            except ValueError:
+                continue
     except Exception:
         pass
 

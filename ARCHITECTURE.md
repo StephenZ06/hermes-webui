@@ -699,8 +699,33 @@ Default toolset list (hardcoded fallback):
     browser, clarify, code_execution, cronjob, delegation, file,
     image_gen, memory, session_search, skills, terminal, todo, tts, vision, web
 
-The web UI always runs with the full CLI toolset. There is no per-session toolset
-restriction from the UI yet (see ROADMAP.md Wave 4 for the plan).
+#### Per-session optional-tool policy
+
+`Session.tool_policy` is the durable requested-policy owner; it is nullable so
+existing sessions keep their historical `enabled_toolsets` behavior. The valid
+requested values are `minimal`, `inherit-profile`, and `explicit`. The resolved
+list remains `Session.enabled_toolsets`: it is `[]` only for enforceable
+Minimal, `None` for Profile tools, and a non-empty explicit list otherwise.
+
+`api.routes._start_run()` is the execution boundary. It resolves the active
+session profile's toolsets exactly once, passes that exact list in
+`StartRunRequest.toolsets` and metadata, and passes it to the legacy streaming
+worker. Background child sessions inherit and resolve their own policy before
+their worker starts. `api.tool_policy.runtime_empty_toolsets_are_restrictive()`
+proves the installed Agent maps `enabled_toolsets=[]` to no optional tools; on
+an unavailable or incompatible runtime, Minimal is rejected instead of falling
+back to inherited/global tools.
+
+### Browser interaction ownership
+
+`static/performance.js` owns in-memory `HermesPerformance` tickets and timing
+marks. Tickets are scoped by surface and full identity, while a per-surface
+generation invalidates a prior asynchronous panel intent. `panels.js` commits
+the visible selection first, marks it usable, then stops stale post-await work.
+Profile switching retains its own `_profileSwitchGeneration`; `MotionUI` owns
+named animation interruption so superseded navigation/profile transitions do
+not compete for the same rendered surface. None of these values are persisted
+or shared across browser clients.
 
 ---
 
@@ -1697,8 +1722,19 @@ Permissive: blocks only non-existent, non-directory, and system root paths. The 
 consciously registering an external path (e.g. `/mnt/d/Projects` in WSL), so we trust intent.
 
 **`resolve_trusted_workspace(path)`** — used for actual file read/write operations inside
-an existing workspace. Strict: path must be under home, in the saved workspace list, or under
-`BOOT_DEFAULT_WORKSPACE`. Prevents path traversal and unauthorized file access.
+an existing workspace. Strict: path must be equal to or under home, equal to or under a
+saved workspace root, or equal to or under `BOOT_DEFAULT_WORKSPACE`. Prevents path traversal
+and unauthorized file access. A missing subdirectory of a saved workspace root or the boot
+default is allowed — the agent or project tooling may create it on demand — but the user
+home is deliberately excluded so stale-workspace recovery can still repair a missing home
+subdirectory.
+
+All three tests are subpath (`relative_to`) checks against a *root*, never string-prefix or
+exact-set matching, for two reasons. A saved workspace is registered as a root, so its
+subdirectories must be usable without registering each one (`/mnt/c/…/MiniPC-Main` covers
+`/mnt/c/…/MiniPC-Main/Business/Triple_S/Triple_S_POS`). And a prefix test would wrongly accept
+a lookalike sibling such as `/mnt/c/…/MiniPC-Main-Backup`. A saved `"/"` entry is skipped —
+blanket trust would defeat the check.
 
 The distinction matters because add uses permissive validation to avoid the circular
 dependency: you cannot get a path into the saved list if you need the saved list to add it.

@@ -5,7 +5,7 @@
 // legacy reverse-scan over S.messages — that keeps new clients working
 // against old servers (Phase 1 may not yet be deployed everywhere).
 // See api/todo_state.py for the wire contract.
-const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default',activeProfileIsDefault:true,showHiddenWorkspaceFiles:false,todos:[],todoStateMeta:null,_pendingSessionToolsets:null};
+const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default',activeProfileIsDefault:true,showHiddenWorkspaceFiles:false,todos:[],todoStateMeta:null,_pendingSessionToolsets:null,_pendingSessionToolPolicy:null};
 
 function assistantDisplayName(){
   if(S.activeProfile&&S.activeProfile!=='default') return S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
@@ -1988,47 +1988,227 @@ if(document.readyState==='complete'){
 // which is unnecessary to refresh more often than every few minutes.
 const ACCOUNT_USAGE_TTL_MS=10*60*1000;
 let _accountUsageTimer=null;
-async function loadAccountUsage(){
+const _accountUsageRefreshInFlight=new Map();
+let _accountUsageRequestGeneration=0;
+let _accountUsageData=null;
+let _accountUsageWindow='session';
+let _accountUsageWindowAnimationTimer=null;
+let _accountUsageWindowBarAnimationFrame=null;
+let _lastAccountUsageProvider;
+const ACCOUNT_USAGE_BATTERY_CELL_COUNT=10;
+
+function _renderAccountUsageBattery(remainingPercent){
+  const battery=$('chatUsageWidgetBattery');
+  if(!battery) return;
+  const remaining=Math.max(0,Math.min(100,Number(remainingPercent)||0));
+  const filledCells=Math.round((remaining/100)*ACCOUNT_USAGE_BATTERY_CELL_COUNT);
+  battery.dataset.level=remaining<=5?'danger':(remaining<=20?'warn':'normal');
+  battery.setAttribute('aria-label',`${Math.round(remaining)}% remaining`);
+  battery.querySelectorAll('.chat-usage-widget-battery-cell').forEach((cell,index)=>{
+    cell.classList.toggle('is-filled',index<filledCells);
+  });
+}
+
+function _accountUsageWindowKey(window){
+  const label=String(window&&window.label||'').toLowerCase();
+  if(/week/.test(label)) return 'weekly';
+  if(/session|hour|five|5\s*h/.test(label)) return 'session';
+  return 'other';
+}
+
+function selectAccountUsageWindow(windowKey){
+  if(windowKey!=='weekly'&&windowKey!=='session') return;
+  if(windowKey===_accountUsageWindow) return;
+  const stage=$('chatUsageWidgetWindowStage');
+  const content=$('chatUsageWidgetWindowContent');
+  const labelStage=$('chatUsageWidgetLabelStage');
+  const label=$('chatUsageWidgetLabel');
+  const fill=$('chatUsageWidgetBarFill');
+  const previousBarWidth=fill&&fill.style.width;
+  let outgoing=null;
+  let outgoingLabel=null;
+  if(_accountUsageData&&stage&&content){
+    stage.querySelectorAll('.is-outgoing').forEach(el=>el.remove());
+    outgoing=content.cloneNode(true);
+    outgoing.removeAttribute('id');
+    outgoing.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
+    outgoing.setAttribute('aria-hidden','true');
+    outgoing.classList.remove('is-incoming');
+    outgoing.classList.add('is-outgoing');
+    stage.appendChild(outgoing);
+  }
+  if(_accountUsageData&&labelStage&&label){
+    outgoingLabel=label.cloneNode(true);
+    outgoingLabel.removeAttribute('id');
+    outgoingLabel.classList.add('is-outgoing');
+    labelStage.appendChild(outgoingLabel);
+  }
+  _accountUsageWindow=windowKey;
+  if(_accountUsageData){
+    _renderAccountUsage(_accountUsageData);
+    if(fill&&previousBarWidth&&fill.style.width!==previousBarWidth){
+      const targetBarWidth=fill.style.width;
+      if(_accountUsageWindowBarAnimationFrame!==null&&typeof cancelAnimationFrame==='function') cancelAnimationFrame(_accountUsageWindowBarAnimationFrame);
+      fill.style.transition='none';
+      fill.style.width=previousBarWidth;
+      void fill.offsetWidth;
+      const animateBar=()=>{
+        _accountUsageWindowBarAnimationFrame=null;
+        fill.style.transition='';
+        fill.style.width=targetBarWidth;
+      };
+      if(typeof requestAnimationFrame==='function') _accountUsageWindowBarAnimationFrame=requestAnimationFrame(animateBar);
+      else animateBar();
+    }
+    if(!content||!outgoing) return;
+    content.classList.remove('is-incoming');
+    void content.offsetWidth;
+    content.classList.add('is-incoming');
+    if(label){
+      label.classList.remove('is-incoming');
+      void label.offsetWidth;
+      label.classList.add('is-incoming');
+    }
+    if(_accountUsageWindowAnimationTimer) clearTimeout(_accountUsageWindowAnimationTimer);
+    _accountUsageWindowAnimationTimer=setTimeout(()=>{
+      _accountUsageWindowAnimationTimer=null;
+      outgoing.remove();
+      if(outgoingLabel) outgoingLabel.remove();
+      content.classList.remove('is-incoming');
+      if(label) label.classList.remove('is-incoming');
+    },360);
+  }
+}
+
+function _renderAccountUsageImpl(data){
   const widget=$('chatUsageWidget');
   if(!widget) return;
-  let data;
-  try{
-    data=await api('/api/account_usage');
-  }catch(e){
+  // A local / self-hosted profile has no subscription quota; the server marks
+  // those responses `local`, and nothing may paint a window for them.
+  if(data&&data.local){widget.hidden=true;return;}
+  const isNeuralwatt=String(data&&data.provider||'').toLowerCase()==='neuralwatt';
+  if(data&&data.rate_limited&&isNeuralwatt){
+    widget.hidden=false;
+    const label=$('chatUsageWidgetLabel');
+    if(label) label.textContent='MONTHLY USAGE';
+    const toggle=$('chatUsageWidgetWindowToggle');
+    if(toggle) toggle.hidden=true;
+    const plan=$('chatUsageWidgetPlan');
+    if(plan){plan.textContent='NeuralWatt Basic';plan.hidden=false;}
+    const pctEl=$('chatUsageWidgetPercent');
+    if(pctEl) pctEl.textContent=t('provider_quota_unavailable');
+    _renderAccountUsageBattery(0);
+    const resetEl=$('chatUsageWidgetReset');
+    if(resetEl) resetEl.textContent='';
+    const detailEl=$('chatUsageWidgetDetail');
+    if(detailEl) detailEl.hidden=true;
+    return;
+  }
+  const windows=data&&data.available&&Array.isArray(data.windows)?data.windows.filter(w=>w&&w.used_percent!=null):[];
+  const selectable=windows.filter(w=>['weekly','session'].includes(_accountUsageWindowKey(w)));
+  const selected=windows.find(w=>_accountUsageWindowKey(w)===_accountUsageWindow)
+    || windows.find(w=>_accountUsageWindowKey(w)==='weekly')
+    || windows.find(w=>w.detail)
+    || windows[0];
+  if(!selected){
     widget.hidden=true;
     return;
   }
-  // Prefer a window carrying a $ detail (e.g. OpenCode Go's monthly-spend
-  // estimate, since that provider's own usage API is percent-only and has
-  // no separate dollar field to key off) over the generic weekly-or-first
-  // pick used for percent-only providers like Codex.
-  const weekly=(data&&data.available&&Array.isArray(data.windows))
-    ? data.windows.find(w=>w.detail)||data.windows.find(w=>/week/i.test(w.label||''))||data.windows[0]
-    : null;
-  if(!weekly||weekly.used_percent==null){
-    widget.hidden=true;
-    return;
-  }
+  const selectedKey=_accountUsageWindowKey(selected);
+  _accountUsageWindow=selectedKey==='other'?_accountUsageWindow:selectedKey;
   widget.hidden=false;
-  const used=Math.max(0,Math.min(100,Number(weekly.used_percent)||0));
+  const used=Math.max(0,Math.min(100,Number(selected.used_percent)||0));
   const remaining=Math.round(100-used);
   const label=$('chatUsageWidgetLabel');
-  if(label) label.textContent=weekly.label?`${weekly.label} usage`:t('chat_usage_weekly');
+  if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':(selected.label?`${selected.label} usage`:t('chat_usage_weekly'));
   const pctEl=$('chatUsageWidgetPercent');
-  if(pctEl) pctEl.textContent=remaining+'% ' + t('chat_usage_remaining');
-  const fill=$('chatUsageWidgetBarFill');
-  if(fill){
-    fill.style.width=used+'%';
-    fill.classList.toggle('chat-usage-widget-bar-fill--warn',used>=80&&used<95);
-    fill.classList.toggle('chat-usage-widget-bar-fill--danger',used>=95);
+  if(pctEl) pctEl.textContent=remaining+'% '+t('chat_usage_remaining');
+  _renderAccountUsageBattery(remaining);
+  const toggle=$('chatUsageWidgetWindowToggle');
+  if(toggle){
+    toggle.hidden=isNeuralwatt||selectable.length<2;
+    toggle.dataset.activeWindow=_accountUsageWindow;
+    toggle.querySelectorAll('[data-usage-window]').forEach(button=>{
+      const key=button.dataset.usageWindow;
+      const available=selectable.some(w=>_accountUsageWindowKey(w)===key);
+      button.hidden=!available;
+      button.classList.toggle('active',key===_accountUsageWindow);
+      button.setAttribute('aria-pressed',key===_accountUsageWindow?'true':'false');
+    });
+  }
+  const plan=$('chatUsageWidgetPlan');
+  if(plan){
+    const provider=String(data&&data.provider||'').toLowerCase();
+    plan.textContent=provider==='neuralwatt'?'NeuralWatt Basic':(data&&data.plan||((provider==='openai-codex'||selectable.length>1)?'ChatGPT Pro':''));
+    plan.hidden=!plan.textContent;
   }
   const resetEl=$('chatUsageWidgetReset');
-  if(resetEl) resetEl.textContent=_formatAccountUsageReset(weekly.reset_at);
+  if(resetEl) resetEl.textContent=_formatAccountUsageReset(selected.reset_at);
   const detailEl=$('chatUsageWidgetDetail');
   if(detailEl){
-    detailEl.hidden=!weekly.detail;
-    detailEl.textContent=weekly.detail||'';
+    detailEl.hidden=!selected.detail;
+    detailEl.textContent=selected.detail||'';
   }
+}
+
+function _fadeAccountUsageWidget(callback){
+  const widget=$('chatUsageWidget');
+  if(!widget){
+    callback();
+    return;
+  }
+  const reduceMotion=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduceMotion){
+    callback();
+    return;
+  }
+  widget.classList.add('is-fading');
+  setTimeout(()=>{
+    callback();
+    widget.classList.remove('is-fading');
+  },250);
+}
+
+function _renderAccountUsage(data){
+  const widget=$('chatUsageWidget');
+  if(!widget) return;
+  const provider=String(data&&data.provider||'').toLowerCase();
+  const providerChanged=_lastAccountUsageProvider!==undefined && provider!==_lastAccountUsageProvider;
+  _lastAccountUsageProvider=provider;
+  if(providerChanged && !widget.hidden){
+    _fadeAccountUsageWidget(()=>_renderAccountUsageImpl(data));
+  }else{
+    _renderAccountUsageImpl(data);
+  }
+}
+
+async function loadAccountUsage(profile, options={}){
+  const widget=$('chatUsageWidget');
+  if(!widget) return;
+  const profileName=String(profile||((typeof S!=='undefined'&&S&&S.activeProfile)||'default'));
+  const requestGeneration=++_accountUsageRequestGeneration;
+  let data;
+  try{
+    const refresh=options&&options.refresh===true?'&refresh=1':'';
+    data=await api(`/api/account_usage?profile=${encodeURIComponent(profileName)}${refresh}`,{cache:options&&options.refresh?'no-store':undefined});
+  }catch(e){
+    if(requestGeneration!==_accountUsageRequestGeneration) return;
+    widget.hidden=true;
+    return;
+  }
+  // A profile switch can finish while this provider request is in flight.
+  // Never paint the previous profile's quota over the newly selected profile.
+  if(requestGeneration!==_accountUsageRequestGeneration) return;
+  _accountUsageData=data;
+  _renderAccountUsage(data);
+}
+function refreshAccountUsageAfterTerminalTurn(profile){
+  const profileName=String(profile||((typeof S!=='undefined'&&S&&S.activeProfile)||'default'));
+  if(_accountUsageRefreshInFlight.has(profileName)) return _accountUsageRefreshInFlight.get(profileName);
+  const refresh=Promise.resolve(loadAccountUsage(profileName,{refresh:true}));
+  _accountUsageRefreshInFlight.set(profileName,refresh);
+  refresh.finally(()=>_accountUsageRefreshInFlight.delete(profileName));
+  return refresh;
 }
 function _formatAccountUsageReset(resetAtIso){
   if(!resetAtIso) return '';
@@ -5497,10 +5677,12 @@ document.addEventListener('click',function(e){
 
 // ── Session toolsets chip (#493) ───────────────────────────────────────────
 let _currentSessionToolsets = null; // null = active profile defaults, array = custom list
+let _currentSessionToolPolicy = null;
 let _toolsetsCatalog = null;
 
-function _applyToolsetsChip(toolsets) {
+function _applyToolsetsChip(toolsets, toolPolicy) {
   _currentSessionToolsets = toolsets;
+  _currentSessionToolPolicy = toolPolicy || null;
   const wrap = $('composerToolsetsWrap');
   const label = $('composerToolsetsLabel');
   const chip = $('composerToolsetsChip');
@@ -5513,19 +5695,25 @@ function _applyToolsetsChip(toolsets) {
   // tracked so /api/session/toolsets continues to work for cron/scripted
   // callers regardless of UI visibility. (#1431)
   wrap.style.display = '';
-  const hasCustom = Array.isArray(toolsets) && toolsets.length > 0;
-  const isStaged = hasCustom
+  const hasCustom = toolPolicy === 'explicit' && Array.isArray(toolsets) && toolsets.length > 0;
+  const isMinimal = toolPolicy === 'minimal';
+  const isStaged = (hasCustom || isMinimal)
     && typeof S !== 'undefined'
     && S
     && !S.session
-    && Array.isArray(S._pendingSessionToolsets);
-  if (hasCustom) {
+    && (Array.isArray(S._pendingSessionToolsets) || S._pendingSessionToolPolicy);
+  if (isMinimal) {
+    const stagedSuffix = isStaged ? ' (staged)' : '';
+    label.textContent = 'Minimal' + stagedSuffix;
+    chip.classList.add('has-custom');
+    chip.title = t('session_toolsets') + ': Minimal' + stagedSuffix;
+  } else if (hasCustom) {
     const stagedSuffix = isStaged ? ' (staged)' : '';
     label.textContent = toolsets.join(', ') + stagedSuffix;
     chip.classList.add('has-custom');
     chip.title = t('session_toolsets') + ': ' + toolsets.join(', ') + stagedSuffix;
   } else {
-    label.textContent = t('session_toolsets_profile_defaults');
+    label.textContent = 'Profile tools';
     chip.classList.remove('has-custom');
     chip.title = t('session_toolsets') + ': ' + t('session_toolsets_profile_defaults');
   }
@@ -5536,10 +5724,10 @@ function _syncToolsetsChip() {
     const stagedToolsets = (typeof S !== 'undefined' && S && Array.isArray(S._pendingSessionToolsets))
       ? S._pendingSessionToolsets
       : null;
-    _applyToolsetsChip(stagedToolsets);
+    _applyToolsetsChip(stagedToolsets, S && S._pendingSessionToolPolicy);
     return;
   }
-  _applyToolsetsChip(S.session.enabled_toolsets || null);
+  _applyToolsetsChip(S.session.enabled_toolsets || null, S.session.tool_policy || null);
 }
 
 function syncToolsetsChip() {
@@ -5610,10 +5798,13 @@ function _renderToolsetsPresetSections(opts) {
   if (!section || !state || !input) return;
   const selected = _toolsetsInputList(input);
   const selectedSet = new Set(selected);
-  const hasCustom = selected.length > 0;
-  state.textContent = hasCustom
-    ? '🔧 ' + selected.join(', ')
-    : '👤 ' + t('session_toolsets_profile_defaults');
+  const toolPolicy = _currentSessionToolPolicy || 'inherit-profile';
+  const hasCustom = toolPolicy === 'explicit' && selected.length > 0;
+  state.textContent = toolPolicy === 'minimal'
+    ? '◌ Minimal — no optional tools'
+    : hasCustom
+      ? '🔧 ' + selected.join(', ')
+      : '👤 Profile tools';
 
   section.innerHTML = '';
   const defaultsBtn = document.createElement('button');
@@ -5622,6 +5813,14 @@ function _renderToolsetsPresetSections(opts) {
   defaultsBtn.className = 'toolsets-action-btn toolsets-clear-btn';
   defaultsBtn.textContent = t('session_toolsets_use_profile_defaults');
   section.appendChild(defaultsBtn);
+
+  const minimalBtn = document.createElement('button');
+  minimalBtn.type = 'button';
+  minimalBtn.id = 'toolsetsMinimalBtn';
+  minimalBtn.className = 'toolsets-action-btn toolsets-minimal-btn';
+  minimalBtn.textContent = 'Minimal';
+  minimalBtn.setAttribute('aria-pressed', String(toolPolicy === 'minimal'));
+  section.appendChild(minimalBtn);
 
   _appendToolsetsLabel(section, t('session_toolsets_configured_servers'));
   if (_toolsetsCatalog === null) {
@@ -5669,7 +5868,8 @@ function _populateToolsetsDropdown() {
   // Escape key handler for toolsets input
   input.onkeydown = function(e) { if(e.key === 'Escape') closeToolsetsDropdown(); };
   input.oninput = function() { _renderToolsetsPresetSections({ state, input }); };
-  const hasCustom = Array.isArray(_currentSessionToolsets) && _currentSessionToolsets.length > 0;
+  const hasCustom = _currentSessionToolPolicy === 'explicit'
+    && Array.isArray(_currentSessionToolsets) && _currentSessionToolsets.length > 0;
   if (hasCustom) {
     input.value = _currentSessionToolsets.join(', ');
   } else {
@@ -5732,12 +5932,15 @@ function closeToolsetsDropdown() {
   if (chip) chip.classList.remove('active');
 }
 
-function _applySessionToolsets(toolsets) {
+function _applySessionToolsets(toolsets, toolPolicy) {
   if (typeof S === 'undefined' || !S) return;
   if (!S.session) {
     S._pendingSessionToolsets = toolsets;
-    _applyToolsetsChip(toolsets);
-    if (Array.isArray(toolsets) && toolsets.length) {
+    S._pendingSessionToolPolicy = toolPolicy || null;
+    _applyToolsetsChip(toolsets, toolPolicy);
+    if (toolPolicy === 'minimal') {
+      showToast('◌ Minimal tools staged for the next conversation');
+    } else if (Array.isArray(toolsets) && toolsets.length) {
       showToast('🔧 ' + t('session_toolsets_applied') + ': ' + toolsets.join(', '));
     } else {
       showToast('🌍 ' + t('session_toolsets_cleared'));
@@ -5747,19 +5950,29 @@ function _applySessionToolsets(toolsets) {
   const sid = S.session.session_id;
   api('/api/session/toolsets', {
     method: 'POST',
-    body: JSON.stringify({ session_id: sid, toolsets: toolsets })
+    body: JSON.stringify({ session_id: sid, toolsets: toolsets, tool_policy: toolPolicy || null })
   })
     .then(function(r) {
       if (r && r.ok) {
         S.session.enabled_toolsets = r.enabled_toolsets || null;
-        _applyToolsetsChip(r.enabled_toolsets || null);
-        if (r.enabled_toolsets && r.enabled_toolsets.length) {
+        S.session.tool_policy = r.tool_policy || null;
+        _applyToolsetsChip(r.enabled_toolsets || null, r.tool_policy || null);
+        if (r.tool_policy === 'minimal') {
+          showToast('◌ Minimal tools enabled');
+        } else if (r.enabled_toolsets && r.enabled_toolsets.length) {
           showToast('🔧 ' + t('session_toolsets_applied') + ': ' + r.enabled_toolsets.join(', '));
         } else {
           showToast('🌍 ' + t('session_toolsets_cleared'));
         }
       } else {
-        showToast(t('session_toolsets_failed') + (r && r.error ? r.error : 'Unknown error'), 3000, 'error');
+        const unavailable = r && r.code === 'minimal_toolset_not_supported';
+        showToast(
+          unavailable
+            ? 'Minimal tools are unavailable for this Agent runtime.'
+            : t('session_toolsets_failed') + (r && r.error ? r.error : 'Unknown error'),
+          3000,
+          'error'
+        );
       }
     })
     .catch(function(err) {
@@ -5775,7 +5988,12 @@ document.addEventListener('click', function(e) {
   ) closeToolsetsDropdown();
   // Active profile defaults button
   if (e.target.closest('#toolsetsProfileDefaultsBtn')) {
-    _applySessionToolsets(null);
+    _applySessionToolsets(null, 'inherit-profile');
+    closeToolsetsDropdown();
+    return;
+  }
+  if (e.target.closest('#toolsetsMinimalBtn')) {
+    _applySessionToolsets([], 'minimal');
     closeToolsetsDropdown();
     return;
   }
@@ -5793,12 +6011,12 @@ document.addEventListener('click', function(e) {
       showToast(t('session_toolsets_desc'), 2000);
       return;
     }
-    _applySessionToolsets(toolsets);
+    _applySessionToolsets(toolsets, 'explicit');
     closeToolsetsDropdown();
   }
   // Clear button
   if (e.target.closest('#toolsetsClearBtn')) {
-    _applySessionToolsets(null);
+    _applySessionToolsets(null, 'inherit-profile');
     closeToolsetsDropdown();
   }
 });
@@ -7962,7 +8180,7 @@ function renderMd(raw){
     t=t.replace(/\x00G(\d+)\x00/g,(_,i)=>_img_stash[+i]);
     // Escape any plain text that isn't already wrapped in a tag we produced
     // by escaping bare < > that are not part of our own tags
-    const SAFE_INLINE=/^<\/?(strong|em|del|code|a|img)([\s>]|$)/i;
+    const SAFE_INLINE=/^<\/?(strong|em|del|u|code|a|img)([\s>]|$)/i;
     t=t.replace(/<\/?[a-z][^>]*>/gi,tag=>SAFE_INLINE.test(tag)?tag:esc(tag));
     return t;
   }
@@ -8109,7 +8327,7 @@ function renderMd(raw){
   // small set of attributes generated by this markdown pipeline.
   // Reference only — documents the allowed tag set. Superseded by _tag() allowlists.
   // Tests verify this list is complete; _tag() enforces it.
-  const SAFE_TAGS=/^<\/?(?:strong|em|del|code|pre|h[1-6]|ul|ol|li|table|thead|tbody|tr|th|td|hr|blockquote|p|br|a|div|span|img)([\s>]|$)/i;
+  const SAFE_TAGS=/^<\/?(?:strong|em|del|u|code|pre|h[1-6]|ul|ol|li|table|thead|tbody|tr|th|td|hr|blockquote|p|br|a|div|span|img)([\s>]|$)/i;
   function _safeAttrValue(v){
     return String(v||'').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&').trim();
   }
@@ -8210,7 +8428,7 @@ function renderMd(raw){
     const closing=!!m[1];
     const name=m[2].toLowerCase();
     const rawAttrs=m[3]||'';
-    const plain=['strong','em','del','pre','h1','h2','h3','h4','h5','h6','ul','ol','table','thead','tbody','tr','th','td','blockquote','p','br','hr'];
+    const plain=['strong','em','del','u','pre','h1','h2','h3','h4','h5','h6','ul','ol','table','thead','tbody','tr','th','td','blockquote','p','br','hr'];
     if(closing) return plain.includes(name)||['a','div','span','li','code'].includes(name)?`</${name}>`:'';
     if(name==='code'){
       const a=_attrs(rawAttrs);
@@ -21917,7 +22135,7 @@ async function promptNewFile(targetDir = S.currentDir || '.'){
       // System-minted session (#6022): explicit worktree:false — creating a
       // file from a blank page must not inherit the config worktree default.
       const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({workspace:ws,worktree:false})});
-      if(r&&r.session){S._pendingSessionToolsets=null;S.session=r.session;if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(r.session);S.messages=[];syncTopbar();renderMessages();await renderSessionList();}
+      if(r&&r.session){S._pendingSessionToolsets=null;S._pendingSessionToolPolicy=null;S.session=r.session;if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(r.session);S.messages=[];syncTopbar();renderMessages();await renderSessionList();}
     }catch(e){setStatus(t('create_failed')+e.message);return;}
   }
   if(!S.session)return;
@@ -21950,7 +22168,7 @@ async function promptNewFolder(targetDir = S.currentDir || '.'){
       // System-minted session (#6022): explicit worktree:false — creating a
       // folder from a blank page must not inherit the config worktree default.
       const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({workspace:ws,worktree:false})});
-      if(r&&r.session){S._pendingSessionToolsets=null;S.session=r.session;if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(r.session);S.messages=[];syncTopbar();renderMessages();await renderSessionList();}
+      if(r&&r.session){S._pendingSessionToolsets=null;S._pendingSessionToolPolicy=null;S.session=r.session;if(typeof _adoptRegenerationRevision==='function') _adoptRegenerationRevision(r.session);S.messages=[];syncTopbar();renderMessages();await renderSessionList();}
     }catch(e){setStatus(t('folder_create_failed')+e.message);return;}
   }
   if(!S.session)return;

@@ -1,5 +1,34 @@
 # Project status — hermes-webui
 
+## 2026-09-25 follow-up: usage-card fade + missing-path workspace trust
+
+Two more user asks landed:
+
+1. **Usage-card fade on profile switch (`static/ui.js`, `static/style.css`).**
+   `_renderAccountUsage` now tracks the last rendered provider and triggers a
+   short opacity fade-out/in (250 ms, `prefers-reduced-motion` guarded) when the
+   provider changes. The fade also works when the widget was previously hidden
+   (e.g. local → Codex/NeuralWatt). Source-structure tests added to
+   `tests/test_chat_sidebar_usage_card.py`.
+
+2. **Workspace trust now accepts missing subdirectories of saved/boot roots
+   (`api/workspace.py`, `tests/test_workspace_saved_subdirectory_trust.py`).**
+   The previous subpath fix only worked when the subdirectory already existed.
+   Paths like `/workspace/MiniPC-Main/Business/SaaS/Temani` (boot default) or a
+   missing saved-root descendant now pass; the user home is deliberately excluded
+   so stale-workspace recovery still repairs missing home subdirectories.
+   Negative tests for outside-root missing paths and lookalike siblings kept.
+
+3. **Date-group expand animation now runs after DOM insertion** (`static/sessions.js`).
+   The expand path was applying the `grid-template-rows` transition while the
+   group body was still in a document fragment, so the browser often coalesced
+   the change and the animation did not run. The collapse path (body already in
+   the DOM) was unaffected.
+
+Validation: `tests/test_chat_sidebar_usage_card.py` (12), `tests/test_profile_aware_usage_card.py` (6), `tests/test_workspace_saved_subdirectory_trust.py` (9), `tests/test_sidebar_date_group_animation.py` (6) green; `npm run lint:runtime` clean. Six pre-existing failures remain (git badge, load_workspaces global file, subpath raw URLs, remote workspace reachability) — they predate this change.
+
+---
+
 Last updated: 2026-09-13. Written as a session handoff; read this before
 starting work on delegation, context cost, or anything in the agent checkout.
 
@@ -1376,6 +1405,72 @@ path from the old single-board file, and every AGENTS.md sync case
 (unlinked, no workspace_path, blocked path, resave-in-place not duplicated,
 two boards on one project getting separate sections, reassignment moving
 the section between workspaces). Full suite green throughout.
+
+## 2026-09-25: three reported fixes (chat-page usage card, workspace trust, date-group motion)
+
+Three unrelated user reports, each landed with a red-before/green-after regression test.
+
+1. **Profile-aware usage card (`api/routes.py`, `static/ui.js`).** The card was already
+   profile-scoped on the wire (`?profile=` → that profile's `config.yaml`), and the Codex /
+   NeuralWatt branches already worked. The real gap: a local profile fell through to the
+   generic agent fetch and then `api.providers.account_usage_from_pool()`, which could
+   synthesize a meaningless "Capacity" window for LM Studio/Ollama. `_handle_account_usage`
+   now returns early for `api.providers._SELF_HOSTED_PROVIDER_IDS` with
+   `{"available": false, "provider": …, "local": true}`, and `_renderAccountUsage` hides the
+   widget on that `local` marker. Verified against the live profile set: `hehe`, `testw`,
+   `lmtest3` are `provider=lmstudio`; `cron-jobs`/`relaxed-chat` normalize to `neuralwatt`
+   via `normalized_profile_provider`; the default profile is `openai-codex`.
+
+2. **Workspace trust now accepts subdirectories of a saved workspace (`api/workspace.py`).**
+   Reported failure: a new conversation in
+   `/mnt/c/…/MiniPC-Main/Business/Triple_S/Triple_S_POS` was rejected although
+   `/mnt/c/…/MiniPC-Main` was saved. Cause: check (B) in `resolve_trusted_workspace` used
+   exact set membership (`candidate in saved_paths`) while the home (A) and boot-default (C)
+   checks both used `relative_to`. Now all three are subpath tests against a root; a saved
+   `"/"` entry is skipped. Lookalike siblings (`…/MiniPC-Main-Backup`), `..` traversal, and
+   parents are still rejected — pinned by `tests/test_workspace_saved_subdirectory_trust.py`.
+
+3. **Date-group expand/collapse animates (`static/sessions.js`, `static/style.css`).**
+   TODAY / THIS WEEK / LAST WEEK / OLDER collapsed via instant `display:none`. They now use
+   the same `grid-template-rows 0fr↔1fr` transition `.project-folder-sessions` already uses
+   (new `.session-date-inner` wrapper; `.18s cubic-bezier(.2,.8,.2,1)`; reduced-motion
+   guarded). Two ordering facts drive the implementation, both pinned by
+   `tests/test_sidebar_date_group_animation.py`: a collapsed group renders no rows, so
+   *expanding* must re-render first and grow the fresh node from 0; *collapsing* must
+   animate the live node and commit the re-render on `transitionend` (a re-render first
+   would drop the rows and pop). The expand hint travels through
+   `_pendingDateGroupAnimationLabel` rather than a parameter because the zero-arg
+   `renderSessionListFromCache()` signature is anchored on by several static tests, and a
+   `opts={}` default also breaks `_function_block`'s brace-matcher (`tests/
+   test_sidebar_session_partition.py`).
+
+### Validation
+
+- New: `tests/test_profile_aware_usage_card.py` (6), `tests/test_workspace_saved_subdirectory_trust.py` (6),
+  `tests/test_sidebar_date_group_animation.py` (6, node harness for the animation helper).
+- Neighbors green: usage (125), workspace (127 + the new 6), sidebar/session list (370).
+- `npm run lint:runtime` clean. `scripts/ruff_lint.py` has no findings in any touched line.
+
+### Pre-existing failures left alone (not from this work)
+
+The tree carries uncommitted WIP, so three red tests predate this change. Each was proven
+pre-existing by reverting only the relevant edit:
+
+- `tests/test_workspace_inaccessible_paths.py::test_load_workspaces_preserves_unavailable_entries_on_disk`
+  — patches the now-vestigial `_workspaces_file`, but `load_workspaces()` reads
+  `_GLOBAL_WS_FILE` (the global-workspaces WIP).
+- `tests/test_office_sidebar_live.py::test_opening_another_run_resets_the_camera` — asserts
+  `_scene.resetView()` while `static/office/index.js` (unmodified vs HEAD) calls
+  `_scene.resetView(_outlet === …)`.
+- `tests/test_project_folder_row_responsiveness.py::test_folder_row_has_a_press_state_and_a_matched_chevron_curve`
+  — `STYLE_CSS.index(".project-folder-sessions{")` now hits
+  `.office-project-folders .project-folder-sessions{…}` at `style.css:5733` first.
+
+One stale assertion was corrected rather than left red, because it pins a literal in the
+handler this work edits: `tests/test_opencode_go_usage_widget.py::test_pool_fallback_is_wired_inside_the_native_fetch_attempt`
+pinned `account_usage_from_pool(provider)` and the old exact guard string; the WIP had
+renamed the call to `effective_provider` and made the guard `getattr`-tolerant. It now pins
+the invariant (an availability guard precedes the call) instead of the literals.
 
 ## Next actions
 

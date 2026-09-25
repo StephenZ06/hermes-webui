@@ -1450,6 +1450,7 @@ async function newSession(flash, options={}){
     }
     // Forward a pre-session toolset override only from the empty composer (#4490).
     if(!S.session && Array.isArray(S._pendingSessionToolsets)) reqBody.enabled_toolsets=S._pendingSessionToolsets;
+    if(!S.session && S._pendingSessionToolPolicy) reqBody.tool_policy=S._pendingSessionToolPolicy;
     const modelSelForNew=$('modelSelect');
     const explicitModelOverride=(typeof _readEmptyComposerModelOverride==='function')
       ? _readEmptyComposerModelOverride()
@@ -1527,6 +1528,7 @@ async function newSession(flash, options={}){
     // branch (#agent-canvas final review, item 3).
     if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
     S._pendingSessionToolsets=null;
+    S._pendingSessionToolPolicy=null;
     if(_sessionSourceFilter==='cli') _sessionSourceFilter='webui';
     if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
     if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
@@ -1680,7 +1682,7 @@ async function _switchProfileForSessionLoad(profile){
     S.activeProfileIsDefault=!!data.is_default;
     // See the matching call in panels.js's switchToProfile() for why this is
     // needed — the usage widget otherwise never refetches on profile switch.
-    if(typeof loadAccountUsage==='function') loadAccountUsage();
+    if(typeof loadAccountUsage==='function') loadAccountUsage(S.activeProfile);
     if(typeof _resetCronUnreadForProfileSwitch==='function'){
       _resetCronUnreadForProfileSwitch();
     }
@@ -2055,6 +2057,7 @@ async function loadSession(sid){
   // Loading a real existing session abandons any pre-session toolset override
   // staged on the empty composer before any deferred refresh work runs.
   S._pendingSessionToolsets=null;
+  S._pendingSessionToolPolicy=null;
   if(typeof populateModelDropdown==='function'){
     const modelRefreshSid=sid;
     const isActiveModelRefreshSession=()=>!!(S.session&&S.session.session_id===modelRefreshSid);
@@ -2370,6 +2373,11 @@ async function loadSession(sid){
     // (and all its `attachLiveStream(sid, activeStreamId, ...)` calls) keeps it.
     activeStreamId = activeStreamId || ((S.activeStreamId && S.session && S.session.session_id===sid) ? S.activeStreamId : null);
 
+    // The session payload and its messages are now authoritative. Clear the
+    // loading guard before renderMessages so a valid empty General chat does
+    // not preserve the previous overlay indefinitely after a hard refresh.
+    if (_isCurrentLoad()) _loadingSessionId = null;
+
     if(activeStreamId){
       S.busy=true;
       S.activeStreamId=activeStreamId;
@@ -2441,9 +2449,6 @@ async function loadSession(sid){
   if (_draft && (typeof _restoreComposerDraft === 'function')) {
     _restoreComposerDraft(_draft, sid, {preserveActiveInput:!!opts.preserveActiveInput || (currentSid===sid&&forceReload)});
   }
-
-  // Clear the in-flight session marker now that this load has completed (#1060).
-  if (_isCurrentLoad()) _loadingSessionId = null;
 
   // Re-acknowledge the visit after the async message-load gap. A deferred
   // sidebar /api/sessions poll can land while _ensureMessagesLoaded is in
@@ -4152,6 +4157,39 @@ function _sessionPrefersReducedMotion(){
   }catch(_){
     return false;
   }
+}
+
+// One-shot hint consumed by the next renderSessionListFromCache(): names the
+// date group whose body should animate open (see _applyDateGroupCollapsedState).
+let _pendingDateGroupAnimationLabel=null;
+
+// Collapse/expand a date group's body with the grid-template-rows transition
+// (see .session-date-body in style.css). `body` must already hold the content
+// for the PRE-toggle state -- the caller arranges that, because a collapsed
+// date group does not render its rows at all:
+//   * collapsing: the live node still holds its rows, so shrink it in place
+//     and only commit the re-render once the animation lands;
+//   * expanding:  rows do not exist yet, so re-render first (with the
+//     `animateDateGroup` hint) and grow the fresh node from 0.
+// Animating always sets the pre-state, forces a style flush, then moves to the
+// target -- without that flush the browser coalesces both changes and nothing
+// animates.
+function _applyDateGroupCollapsedState(body, collapsed, animate){
+  const inner=body.firstElementChild;
+  const hasInner=Boolean(inner&&inner.classList&&inner.classList.contains('session-date-inner'));
+  if(hasInner) inner.inert=collapsed;
+  if(!animate||_sessionPrefersReducedMotion()){
+    body.classList.toggle('no-transition',true);
+    body.classList.toggle('is-collapsed',collapsed);
+    void body.offsetHeight;
+    body.classList.toggle('no-transition',false);
+    return;
+  }
+  body.classList.add('no-transition');
+  body.classList.toggle('is-collapsed',!collapsed);
+  void body.offsetHeight;
+  body.classList.remove('no-transition');
+  body.classList.toggle('is-collapsed',collapsed);
 }
 
 function _makeSessionSwipeAffordance(side, icon, label){
@@ -7859,6 +7897,13 @@ function renderSessionListFromCache(){
   // all call this while the fixed-position menu is open; rebuilding the row DOM
   // here removes the anchor and makes the menu feel unclickable.
   if(_sessionActionMenu) return;
+  // A date-group expand has to grow its freshly built rows from 0. The public
+  // zero-arg signature is relied on widely (including by the test suite), so
+  // this one-shot hint travels through module state instead of a parameter.
+  // Read-and-clear, and only past the guards, so a skipped render keeps the
+  // hint and it never leaks into an unrelated render.
+  const animateDateGroup=_pendingDateGroupAnimationLabel;
+  _pendingDateGroupAnimationLabel=null;
   closeSessionActionMenu();
   // Purge stale INFLIGHT entries for sessions the server confirms are NOT
   // streaming. This runs on every list refresh to prevent memory leaks from
@@ -7966,6 +8011,12 @@ function renderSessionListFromCache(){
       }
     }
   }
+  const workspacesSection=document.createElement('section');
+  workspacesSection.className='chat-sidebar-section chat-sidebar-section--workspaces';
+  const workspacesHeading=document.createElement('div');
+  workspacesHeading.className='chat-sidebar-section-heading';
+  workspacesHeading.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span>';
+  workspacesSection.appendChild(workspacesHeading);
   if(_allProjects.length>0){
     const bar=document.createElement('div');
     bar.className='project-folder-list';
@@ -8128,8 +8179,16 @@ function renderSessionListFromCache(){
       nested.appendChild(nestedInner);
       bar.appendChild(nested);
     }
-    list.appendChild(bar);
+    workspacesSection.appendChild(bar);
   }
+  list.appendChild(workspacesSection);
+  const conversationsSection=document.createElement('section');
+  conversationsSection.className='chat-sidebar-section chat-sidebar-section--conversations';
+  const conversationsHeading=document.createElement('div');
+  conversationsHeading.className='chat-sidebar-section-heading';
+  conversationsHeading.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a7.2 7.2 0 0 1-7.5 7 8.6 8.6 0 0 1-3.2-.62L4 19.5l1.45-4.05A6.8 6.8 0 0 1 5 13a7.2 7.2 0 0 1 7.5-7A7.2 7.2 0 0 1 20 11.5Z"/></svg><span>CONVERSATIONS</span>';
+  conversationsSection.appendChild(conversationsHeading);
+  list.appendChild(conversationsSection);
   // Show/hide archived toggle if there are archived sessions. Archived rows
   // are fetched on demand so large histories do not bloat every sidebar poll.
   if(archivedCount>0||_showArchived){
@@ -8252,30 +8311,63 @@ function renderSessionListFromCache(){
     const body=document.createElement('div');
     body.className='session-date-body';
     const isGroupCollapsed=Boolean(_groupCollapsed[g.label]);
-    if(isGroupCollapsed){body.style.display='none';caret.classList.add('collapsed');}
+    if(isGroupCollapsed){body.classList.add('is-collapsed');caret.classList.add('collapsed');}
+    let dateGroupAnimating=false;
     hdr.onclick=()=>{
-      const isCollapsed=body.style.display==='none';
-      body.style.display=isCollapsed?'':'none';
-      caret.classList.toggle('collapsed',!isCollapsed);
-      _groupCollapsed[g.label]=!isCollapsed;
-      _saveCollapsed();
-      renderSessionListFromCache();
+      if(dateGroupAnimating) return;
+      if(Boolean(_groupCollapsed[g.label])){
+        // Expanding: a collapsed group renders no rows, so rebuild first and
+        // let the render grow the fresh body from 0 (animateDateGroup hint).
+        _groupCollapsed[g.label]=false;
+        _saveCollapsed();
+        caret.classList.remove('collapsed');
+        _pendingDateGroupAnimationLabel=g.label;
+        renderSessionListFromCache();
+        return;
+      }
+      // Collapsing: the live body still holds its rows, so shrink it in place
+      // and commit the state + re-render only once the animation has landed
+      // (re-rendering first would drop the rows and pop instead of animating).
+      dateGroupAnimating=true;
+      caret.classList.add('collapsed');
+      _applyDateGroupCollapsedState(body,true,true);
+      let settled=false;
+      const commit=()=>{
+        if(settled) return;
+        settled=true;
+        _groupCollapsed[g.label]=true;
+        _saveCollapsed();
+        renderSessionListFromCache();
+      };
+      if(_sessionPrefersReducedMotion()){commit();return;}
+      body.addEventListener('transitionend',(e)=>{
+        if(e.target===body&&e.propertyName==='grid-template-rows') commit();
+      },{once:true});
+      // Fallback for a transition that never reports back (hidden ancestor,
+      // interrupted transition, batched-away change).
+      setTimeout(commit,260);
     };
     wrapper.appendChild(hdr);
+    const inner=document.createElement('div');
+    inner.className='session-date-inner';
     let groupTopPad=0;
     let groupBottomPad=0;
     for(const s of g.items){
       if(isGroupCollapsed) continue;
       const rowIndex=globalSessionRowIndex++;
       const inWindow=!virtualWindow.virtualized||(rowIndex>=virtualWindow.start&&rowIndex<virtualWindow.end);
-      if(inWindow){ body.appendChild(_renderOneSession(s, Boolean(g.isPinned))); }
+      if(inWindow){ inner.appendChild(_renderOneSession(s, Boolean(g.isPinned))); }
       else if(rowIndex<virtualWindow.start){ groupTopPad+=virtualWindow.itemHeight; }
       else { groupBottomPad+=virtualWindow.itemHeight; }
     }
-    if(groupTopPad>0){ body.insertBefore(_sessionVirtualSpacer(groupTopPad,'before'), body.firstChild); }
-    if(groupBottomPad>0){ body.appendChild(_sessionVirtualSpacer(groupBottomPad,'after')); }
+    if(groupTopPad>0){ inner.insertBefore(_sessionVirtualSpacer(groupTopPad,'before'), inner.firstChild); }
+    if(groupBottomPad>0){ inner.appendChild(_sessionVirtualSpacer(groupBottomPad,'after')); }
+    body.appendChild(inner);
     wrapper.appendChild(body);
     list.appendChild(wrapper);
+    if(animateDateGroup&&g.label===animateDateGroup&&!isGroupCollapsed){
+      _applyDateGroupCollapsedState(body,false,true);
+    }
   }
   if(virtualAnchorScrollTop!==null){
     list.scrollTop=virtualAnchorScrollTop;
