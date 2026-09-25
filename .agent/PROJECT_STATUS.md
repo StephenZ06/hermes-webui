@@ -39,6 +39,13 @@ Also added `docs/CHAT_SIDEBAR_ANIMATIONS.md` — an implementation guide for
 other models covering the root causes (coalescing, detached DOM, hidden-element
 fade, SW caching, reduced-motion) and the exact patterns used.
 
+**Office 404 fix:** `static/office/index.js` was calling
+`/api/office/scheduled-tasks`, but no route existed in `api/routes.py`. Added
+the route in `api/routes.py` to merge gateway scheduled tasks with local
+manual-run ledger entries for the active profile. Fixed a stale `updated_at`
+test value in `tests/test_office_scheduled_tasks.py` so the ledger-age check
+passes with the current date.
+
 Validation: `tests/test_chat_sidebar_usage_card.py` (12),
 `tests/test_profile_aware_usage_card.py` (6),
 `tests/test_workspace_saved_subdirectory_trust.py` (9),
