@@ -2,7 +2,8 @@
 
 ## 2026-09-25 follow-up: usage-card fade + missing-path workspace trust
 
-Two more user asks landed:
+Two more user asks landed, then a third round to make the animations actually
+visible:
 
 1. **Usage-card fade on profile switch (`static/ui.js`, `static/style.css`).**
    `_renderAccountUsage` now tracks the last rendered provider and triggers a
@@ -19,13 +20,37 @@ Two more user asks landed:
    so stale-workspace recovery still repairs missing home subdirectories.
    Negative tests for outside-root missing paths and lookalike siblings kept.
 
-3. **Date-group expand animation now runs after DOM insertion** (`static/sessions.js`).
-   The expand path was applying the `grid-template-rows` transition while the
-   group body was still in a document fragment, so the browser often coalesced
-   the change and the animation did not run. The collapse path (body already in
-   the DOM) was unaffected.
+3. **Date-group expand/collapse animation now runs after DOM insertion and a
+   paint frame (`static/sessions.js`).** The first attempt called the animation
+   helper while the group body was still a document fragment; even after moving
+   it to post-append, the browser coalesced the freshly-created element's
+   pre-state and target-state class changes into one style recalculation, so no
+   transition ran. The expand call is now wrapped in `requestAnimationFrame`,
+   giving the browser one frame to paint the new body before the
+   `grid-template-rows` transition is driven. The collapse path was already
+   correct because it animates a live, already-painted node.
 
-Validation: `tests/test_chat_sidebar_usage_card.py` (12), `tests/test_profile_aware_usage_card.py` (6), `tests/test_workspace_saved_subdirectory_trust.py` (9), `tests/test_sidebar_date_group_animation.py` (6) green; `npm run lint:runtime` clean. Six pre-existing failures remain (git badge, load_workspaces global file, subpath raw URLs, remote workspace reachability) — they predate this change.
+4. **Usage-card fade now paints the intermediate frame too** (`static/ui.js`).
+   The `is-fading` class is removed inside a `requestAnimationFrame` after the
+   content callback, so when the widget was previously hidden (local profile)
+   the browser sees `opacity:0` first and then transitions to `opacity:1`.
+
+Also added `docs/CHAT_SIDEBAR_ANIMATIONS.md` — an implementation guide for
+other models covering the root causes (coalescing, detached DOM, hidden-element
+fade, SW caching, reduced-motion) and the exact patterns used.
+
+Validation: `tests/test_chat_sidebar_usage_card.py` (12),
+`tests/test_profile_aware_usage_card.py` (6),
+`tests/test_workspace_saved_subdirectory_trust.py` (9),
+`tests/test_sidebar_date_group_animation.py` (6) green; `npm run lint:runtime`
+clean. Six pre-existing failures remain (git badge, load_workspaces global
+file, subpath raw URLs, remote workspace reachability) — they predate this
+change.
+
+**Cache note:** the PWA service worker keys static files by `WEBUI_VERSION`.
+Without a commit the version token stayed identical, so the browser kept
+serving the old JS/CSS. Committed at `980b7cd34` and `b1f0f6830` to bust the
+cache.
 
 ---
 
