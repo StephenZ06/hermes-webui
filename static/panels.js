@@ -51,6 +51,8 @@ let _cronOtherProfileCount = 0;
 let _currentWorkspaceDetail = null; // { path, name, is_default }
 let _workspaceMode = 'empty'; // 'empty' | 'read' | 'create' | 'edit'
 let _workspacePreFormDetail = null;
+let _workspacePanelRefreshTimer = null;
+const WORKSPACE_PANEL_REFRESH_MS = 15000;
 let _currentProfileDetail = null; // full profile object
 let _profileMode = 'empty'; // 'empty' | 'read' | 'create'
 let _profilePreFormDetail = null;
@@ -483,6 +485,7 @@ async function switchPanel(name, opts = {}) {
     }
   }
   _currentPanel = nextPanel;
+  if (typeof _syncWorkspacesPanelAutoRefresh === 'function') _syncWorkspacesPanelAutoRefresh();
   // Mobile drawer visibility: a rail/tab click on a phone should surface the
   // panel synchronously, NOT after the panel's async data load. If the re-open
   // stayed at the bottom of this function, a form opened from inside the drawer
@@ -511,20 +514,26 @@ async function switchPanel(name, opts = {}) {
       mainEl.classList.toggle('showing-' + p, nextPanel === p);
     });
   }
+  const HermesPerformance = window.HermesPerformance;
+  const panelTicket = HermesPerformance ? HermesPerformance.begin('panel', nextPanel) : null;
+  if (panelTicket) HermesPerformance.mark(panelTicket, 'usable');
+  const panelTicketIsCurrent = () => !panelTicket || HermesPerformance.isCurrent(panelTicket);
   // Lazy-load panel data
-  if (nextPanel === 'tasks') await loadCrons();
-  if (nextPanel === 'kanban') await loadKanban();
-  if (nextPanel === 'skills') await loadSkills();
-  if (nextPanel === 'agents') await loadAgentDefinitions();
-  if (nextPanel === 'memory') await loadMemory();
-  if (nextPanel === 'knowledge') await loadKnowledgeItems();
-  if (nextPanel === 'workspaces') await loadWorkspacesPanel();
-  if (nextPanel === 'notes') await loadNotesPanel();
-  if (nextPanel === 'profiles') await loadProfilesPanel();
+  if (nextPanel === 'tasks') { await loadCrons(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'kanban') { await loadKanban(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'skills') { await loadSkills(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'agents') { await loadAgentDefinitions(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'memory') { await loadMemory(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'knowledge') { await loadKnowledgeItems(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'workspaces') { await loadWorkspacesPanel(); if (!panelTicketIsCurrent()) return false; }
+  // Keep `notes` as the persisted panel key, but render the replacement Work
+  // Hub. The old Notes script stays loaded only for its legacy workspace pane.
+  if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'profiles') { await loadProfilesPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'todos') loadTodos();
-  if (nextPanel === 'insights') await loadInsights();
-  if (nextPanel === 'logs') await loadLogs();
-  if (nextPanel === 'audit') await loadAuditTrail();
+  if (nextPanel === 'insights') { await loadInsights(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'logs') { await loadLogs(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'audit') { await loadAuditTrail(); if (!panelTicketIsCurrent()) return false; }
   // static/office/index.js is an ES module, so window.HermesOffice may not
   // exist yet on a very early switch — the guard is load-order tolerance, not
   // a feature flag.
@@ -1947,7 +1956,10 @@ async function _populateCronFormModelSelect(selectedModel, selectedProvider, dis
   sel.disabled = true;
   sel.innerHTML = `<option value="">${esc(t('cron_model_use_default') || 'Default (use profile/system default)')}</option>`;
   try {
-    const data = await api('/api/models');
+    const profileCatalog = editProfile && editProfile.name
+      ? `/api/models?profile=${encodeURIComponent(editProfile.name)}`
+      : '/api/models';
+    const data = await api(profileCatalog);
     const groups = (Array.isArray(data && data.groups) && data.groups.length) ? data.groups : [];
     for (const g of groups) {
       const og = document.createElement('optgroup');
@@ -7516,7 +7528,17 @@ async function loadWorkspaceList(){
     syncWorkspaceDisplays();
     if(typeof syncTerminalButton==='function') syncTerminalButton();
     return data;
-  }catch(e){ return {workspaces:[], last:''}; }
+  }catch(e){
+    // A remote SSHFS status check can time out while the target is down. Keep
+    // the last successful list so the Spaces panel does not turn that transient
+    // failure into an apparently empty account.
+    return {
+      workspaces: Array.isArray(_workspaceList) ? _workspaceList : [],
+      last: '',
+      workspace_list_stale: true,
+      workspace_list_error: (e && e.message) || 'Could not refresh Spaces.',
+    };
+  }
 }
 
 function _setWorkspaceDropdownOpenState(dd,open){
@@ -7804,15 +7826,32 @@ window.addEventListener('resize',()=>{
   if(dd&&dd.classList.contains('open')) _positionComposerWsDropdown();
 });
 
+function _syncWorkspacesPanelAutoRefresh(){
+  if(_workspacePanelRefreshTimer){
+    clearInterval(_workspacePanelRefreshTimer);
+    _workspacePanelRefreshTimer=null;
+  }
+  if(_currentPanel !== 'workspaces' || (typeof document !== 'undefined' && document.hidden)) return;
+  _workspacePanelRefreshTimer=setInterval(()=>{
+    if(_currentPanel === 'workspaces' && !(typeof document !== 'undefined' && document.hidden)) loadWorkspacesPanel();
+  }, WORKSPACE_PANEL_REFRESH_MS);
+}
+
+if(typeof document !== 'undefined') document.addEventListener('visibilitychange',()=>{
+  _syncWorkspacesPanelAutoRefresh();
+  if(!document.hidden && _currentPanel === 'workspaces') loadWorkspacesPanel();
+});
+
 async function loadWorkspacesPanel(){
   const panel=$('workspacesPanel');
   if(!panel)return;
   if(!_workspaceList || !_workspaceList.length) _panelLoading(panel);
   const data=await loadWorkspaceList();
-  renderWorkspacesPanel(data.workspaces);
+  renderWorkspacesPanel(data.workspaces, {stale:!!data.workspace_list_stale, error:data.workspace_list_error});
+  _syncWorkspacesPanelAutoRefresh();
 }
 
-function renderWorkspacesPanel(workspaces){
+function renderWorkspacesPanel(workspaces, opts={}){
   const panel=$('workspacesPanel');
   panel.innerHTML='';
   const activePath = S.session ? S.session.workspace : '';
@@ -7830,7 +7869,10 @@ function renderWorkspacesPanel(workspaces){
     const wsOnline = typeof w.availability === 'string'
       ? w.availability === 'online'
       : (w.kind === 'remote' ? w.mount_status === 'connected' : true);
-    const remoteDot = `<span class="ws-conn-dot ws-conn-dot-${wsOnline ? 'online' : 'offline'}" title="${wsOnline ? 'Online' : 'Offline'}"></span>`;
+    const statusTitle = w.kind === 'remote'
+      ? (wsOnline ? 'Local mount active' : 'Local mount unavailable')
+      : (wsOnline ? 'Available' : 'Unavailable');
+    const remoteDot = `<span class="ws-conn-dot ws-conn-dot-${wsOnline ? 'online' : 'offline'}" title="${statusTitle}"></span>`;
     row.innerHTML=`
       <span class="ws-drag-handle" title="${esc(t('workspace_drag_hint'))}">${li('grip-vertical',12)}</span>
       <div class="ws-row-info">
@@ -7899,6 +7941,13 @@ function renderWorkspacesPanel(workspaces){
   hint.style.cssText='font-size:11px;color:var(--muted);padding:8px 0';
   hint.textContent=t('workspace_paths_validated_hint');
   panel.appendChild(hint);
+  if(opts.stale){
+    const stale=document.createElement('div');
+    stale.className='ws-list-stale';
+    stale.setAttribute('role','status');
+    stale.textContent=`Showing last known Spaces — refresh failed: ${opts.error||'please try again.'}`;
+    panel.appendChild(stale);
+  }
   // Re-render detail if we have one cached and we're not in a form
   if (_currentWorkspaceDetail && _workspaceMode !== 'create' && _workspaceMode !== 'edit') {
     const refreshed = workspaces.find(w => w.path === _currentWorkspaceDetail.path);
@@ -7922,11 +7971,12 @@ function _renderWorkspaceDetail(ws){
     : `<span class="detail-badge">Inactive</span>`;
   const defaultBadge = isDefault ? ` <span class="detail-badge">${esc(t('profile_default_label'))}</span>` : '';
   const isRemote = ws.kind === 'remote';
+  const mountConnected = ws.mount_status === 'connected';
   const connBadge = isRemote
-    ? `<span class="ws-conn-badge ws-conn-${esc(ws.mount_status || 'disconnected')}"><span class="ws-conn-dot"></span>${esc((ws.mount_status || 'disconnected').replace(/^./, c => c.toUpperCase()))}</span>`
+    ? `<span class="ws-conn-badge ws-conn-${esc(ws.mount_status || 'disconnected')}"><span class="ws-conn-dot"></span>${mountConnected ? 'Mounted' : 'Unmounted'}</span>`
     : '';
   const remoteRows = isRemote ? `
-        <div class="detail-row"><div class="detail-row-label">Connection</div><div class="detail-row-value">${connBadge}</div></div>
+        <div class="detail-row"><div class="detail-row-label">Mount status</div><div class="detail-row-value">${connBadge}</div></div>
         <div class="detail-row"><div class="detail-row-label">Host</div><div class="detail-row-value"><code>${esc((ws.remote && ws.remote.host) || '')}</code></div></div>
         <div class="detail-row"><div class="detail-row-label">Remote path</div><div class="detail-row-value"><code>${esc((ws.remote && ws.remote.remote_path) || '')}</code></div></div>` : '';
   body.innerHTML = `
@@ -8302,7 +8352,7 @@ async function promptWorkspacePath(){
       // System-minted session (#6022): worktree:false is explicit so a config
       // worktree default can't leak a worktree from a workspace prompt.
       const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({workspace:ws,worktree:false})});
-      if(r&&r.session){S._pendingSessionToolsets=null;S.session=r.session;S.messages=[];if(typeof syncTopbar==='function')syncTopbar();if(typeof renderMessages==='function')renderMessages();if(typeof renderSessionList==='function')await renderSessionList();}
+      if(r&&r.session){S._pendingSessionToolsets=null;S._pendingSessionToolPolicy=null;S.session=r.session;S.messages=[];if(typeof syncTopbar==='function')syncTopbar();if(typeof renderMessages==='function')renderMessages();if(typeof renderSessionList==='function')await renderSessionList();}
     }catch(e){showToast(t('workspace_switch_failed')+e.message);return;}
     if(!S.session)return;
   }
@@ -8340,7 +8390,7 @@ async function switchToWorkspace(path,name){
       // System-minted session (#6022): explicit worktree:false — a workspace
       // switch from a blank page is not deliberate New Chat intent.
       const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({workspace:ws,worktree:false})});
-      if(r&&r.session){S._pendingSessionToolsets=null;S.session=r.session;S.messages=[];if(typeof syncTopbar==='function')syncTopbar();if(typeof renderMessages==='function')renderMessages();if(typeof renderSessionList==='function')await renderSessionList();}
+      if(r&&r.session){S._pendingSessionToolsets=null;S._pendingSessionToolPolicy=null;S.session=r.session;S.messages=[];if(typeof syncTopbar==='function')syncTopbar();if(typeof renderMessages==='function')renderMessages();if(typeof renderSessionList==='function')await renderSessionList();}
     }catch(e){if(typeof setStatus==='function')setStatus(t('switch_failed')+e.message);return;}
     if(!S.session)return;
   }
@@ -8408,6 +8458,7 @@ async function switchToWorkspace(path,name){
     // Clear the one-shot flag so a subsequent newSession() inherits this choice instead.
     S._profileSwitchWorkspace=null;
     S._pendingSessionToolsets=null;
+    S._pendingSessionToolPolicy=null;
     syncTopbar();
     if(
       restoreComposerFocusTarget&&
@@ -8934,6 +8985,7 @@ async function switchToProfile(name) {
   // nothing. (#4662 Opus gate)
   if (name && name === S.activeProfile) return true;
   S._pendingSessionToolsets=null;
+  S._pendingSessionToolPolicy=null;
   // Profile switches are per-client cookie/TLS scoped, so a running stream in
   // the current session can safely continue while this tab moves to another
   // profile. The in-flight session stays attached to its original profile.
@@ -8947,6 +8999,9 @@ async function switchToProfile(name) {
   const _titlebarLabel = $('titlebarProfileLabel');
   const _prevProfileName = S.activeProfile || 'default';
   const _switchGen = ++_profileSwitchGeneration;
+  const HermesPerformance = window.HermesPerformance;
+  const profileTicket = HermesPerformance ? HermesPerformance.begin('profile', name) : null;
+  if (window.MotionUI && typeof window.MotionUI.interrupt === 'function') window.MotionUI.interrupt('profile-switch');
   const _openingExistingSidebarSession = !!(typeof _profileSwitchOpeningExistingSession !== 'undefined' && _profileSwitchOpeningExistingSession);
   if (_chip) { _chip.classList.add('switching'); _chip.disabled = true; }
   if (_titlebarBtn) { _titlebarBtn.classList.add('switching'); _titlebarBtn.disabled = true; }
@@ -9021,7 +9076,7 @@ async function switchToProfile(name) {
     // load — without this it silently kept showing the FIRST-loaded profile's
     // usage data forever, including on profiles using a provider with no
     // usage API at all (should just hide).
-    if (typeof loadAccountUsage === 'function') loadAccountUsage();
+    if (typeof loadAccountUsage === 'function') loadAccountUsage(S.activeProfile);
     if (typeof _resetCronUnreadForProfileSwitch === 'function') {
       _resetCronUnreadForProfileSwitch();
     }
@@ -9049,6 +9104,7 @@ async function switchToProfile(name) {
     // Update composer placeholder and title bar while the core profile-switch
     // state is still close to the profile API response.
     if (typeof applyBotName === 'function') applyBotName();
+    if (profileTicket) HermesPerformance.mark(profileTicket, 'usable');
 
     // ── Model + Workspace ──────────────────────────────────────────────────
     // Apply the profile defaults returned by /api/profile/switch immediately.
@@ -9336,8 +9392,24 @@ async function _populateProfileFormModelSelect(editProfile){
   if (!sel) return;
   sel.innerHTML = `<option value="">${esc(t('profile_model_use_default') || 'Use active profile default')}</option>`;
   try {
-    const data = await api('/api/models');
-    const groups = (Array.isArray(data && data.groups) && data.groups.length) ? data.groups : [];
+    // Use cross_profile models so the picker can show providers configured in
+    // any profile, not just the active one.
+    const data = await api('/api/models/cross_profile');
+  const groups = (Array.isArray(data && data.groups) && data.groups.length) ? [...data.groups] : [];
+    // Provider discovery intentionally excludes credentials that have not
+    // been configured yet.  Profile creation is where a NeuralWatt key is
+    // first supplied, so retain its curated choices on that initial setup.
+    if (!groups.some(g => g && g.provider_id === 'neuralwatt')) {
+      groups.push({
+        provider: 'NeuralWatt Basic',
+        provider_id: 'neuralwatt',
+        models: [
+          { id: 'glm-5.3', label: 'GLM-5.3' },
+          { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+          { id: 'kimi-k3', label: 'Kimi K3' },
+        ],
+      });
+    }
     for (const g of groups) {
       const og = document.createElement('optgroup');
       og.label = g.provider || g.provider_id || 'Configured';
@@ -9351,6 +9423,19 @@ async function _populateProfileFormModelSelect(editProfile){
       }
       if (og.children.length) sel.appendChild(og);
     }
+    sel.onchange = () => {
+      const baseEl = $('profileFormBaseUrl');
+      const selected = sel.value || '';
+      const state = typeof _modelStateForSelect === 'function'
+        ? _modelStateForSelect(sel, selected) : null;
+      if (state && baseEl && !baseEl.value.trim()) {
+        if (state.model_provider === 'neuralwatt') {
+          baseEl.value = 'https://api.neuralwatt.com/v1';
+        } else if (state.model_provider === 'lmstudio') {
+          baseEl.value = (window._lmStudioConfiguredBaseUrl || 'http://localhost:1234/v1');
+        }
+      }
+    };
     if (editProfile && editProfile.model && typeof _applyModelToDropdown === 'function') {
       // Editing an existing (possibly inactive) profile: preselect ITS
       // model/provider, not the active profile's default_model.

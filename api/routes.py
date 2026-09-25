@@ -13813,6 +13813,10 @@ def handle_get(handler, parsed) -> bool:
             if diag:
                 diag.finish()
 
+    if parsed.path == "/api/models/cross_profile":
+        from api.config import get_available_models_across_profiles
+        return j(handler, get_available_models_across_profiles())
+
     if parsed.path == "/api/models/live":
         from api.profiles import profile_env_for_active_request
         with profile_env_for_active_request("/api/models/live", logger_override=logger):

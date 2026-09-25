@@ -400,6 +400,7 @@ def _get_config_path() -> Path:
 
 _WEBUI_SESSION_SAVE_MODES = {"deferred", "eager"}
 _DEFAULT_WEBUI_SESSION_SAVE_MODE = "deferred"
+_DEFAULT_PROFILE_PERSONALITY = "caveman"
 _DEFAULT_EXPERIMENTAL_CONFIG = {
     # Dormant first slice for the unified SessionDB migration. Runtime WebUI
     # session call sites must continue using the existing JSON paths unless a
@@ -428,6 +429,10 @@ _DEFAULT_AGENT_PERSONALITIES = {
 
 def _apply_config_defaults(config_data: dict) -> None:
     """Populate documented default-only config keys in-place."""
+    # Apply the universal startup personality at the profile-config boundary so
+    # old, new, and sparse profile configs resolve consistently without
+    # rewriting user files on every read.
+    config_data["personality"] = _DEFAULT_PROFILE_PERSONALITY
     agent_cfg = config_data.get("agent")
     if not isinstance(agent_cfg, dict):
         agent_cfg = {}
@@ -1207,6 +1212,7 @@ _PROVIDER_DISPLAY = {
     "nvidia": "NVIDIA NIM",
     "xiaomi": "Xiaomi",
     "bedrock": "AWS Bedrock",
+    "neuralwatt": "NeuralWatt Basic",
 }
 
 # Provider alias → canonical slug.  Users configure providers using the
@@ -1385,24 +1391,50 @@ def _custom_provider_entries(config_obj: dict | None = None) -> list[dict]:
 
 
 def _configured_model_ids(raw_models: object) -> list[str]:
-    """Return ordered model IDs from supported config allowlist shapes."""
-    if isinstance(raw_models, dict):
-        candidates = (key for key in raw_models if isinstance(key, str))
-    elif isinstance(raw_models, list):
-        candidates = raw_models
-    else:
+    """Return ordered model IDs from supported config allowlist shapes.
+
+    Treats a dict of dicts as ``model_id -> settings``.  A key whose value is a
+    dict of *settings* (non-dict leaves) is itself the model ID; the next level
+    of dict keys becomes the model ID only when the leaf value is an empty dict
+    or a scalar/list.  This preserves configs that write ``model: {ctx: 4096}``
+    without turning settings keys into model names.
+    """
+    def _is_settings(node: object) -> bool:
+        if not isinstance(node, dict):
+            return False
+        # all values are non-dict => leaf settings
+        return all(not isinstance(v, dict) for v in node.values())
+
+    def _walk(value: object, prefix: tuple[str, ...] = ()) -> list[str]:
+        if isinstance(value, dict):
+            ids: list[str] = []
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    continue
+                if _is_settings(child):
+                    ids.append(".".join(prefix + (key,)))
+                else:
+                    ids.extend(_walk(child, prefix + (key,)))
+            return ids
         return []
 
-    model_ids: list[str] = []
-    for item in candidates:
-        if isinstance(item, dict):
-            candidate = item.get("id") or item.get("model") or item.get("name")
-        else:
-            candidate = item
-        model_id = str(candidate or "").strip()
-        if model_id and model_id not in model_ids:
-            model_ids.append(model_id)
-    return model_ids
+    if isinstance(raw_models, dict):
+        return _walk(raw_models)
+    elif isinstance(raw_models, list):
+        model_ids: list[str] = []
+        for item in raw_models:
+            if isinstance(item, str):
+                model_id = str(item).strip()
+                if model_id and model_id not in model_ids:
+                    model_ids.append(model_id)
+            elif isinstance(item, dict):
+                candidate = item.get("id") or item.get("model") or item.get("name")
+                model_id = str(candidate or "").strip()
+                if model_id and model_id not in model_ids:
+                    model_ids.append(model_id)
+        return model_ids
+    else:
+        return []
 
 
 def _configured_model_options(raw_models: object) -> list[dict[str, str]]:
@@ -1751,6 +1783,14 @@ _PROVIDER_MODELS = {
         {"id": "glm-4.7", "label": "GLM-4.7"},
         {"id": "glm-4.5", "label": "GLM-4.5"},
         {"id": "glm-4.5-flash", "label": "GLM-4.5 Flash"},
+    ],
+    # NeuralWatt's Basic subscription uses an OpenAI-compatible endpoint.
+    # This concise list is also used by the profile creator before an API key
+    # exists, when provider discovery quite correctly omits unconfigured keys.
+    "neuralwatt": [
+        {"id": "glm-5.3", "label": "GLM-5.3"},
+        {"id": "kimi-k2.7-code", "label": "Kimi K2.7 Code"},
+        {"id": "kimi-k3", "label": "Kimi K3"},
     ],
     "kimi-coding": [
         {"id": "moonshot-v1-8k", "label": "Moonshot v1 8k"},
@@ -2586,12 +2626,60 @@ def _parse_provider_qualified_model_id(model_id: str) -> tuple[str, str] | None:
     return bare_model, provider_hint
 
 
+def _get_root_providers_cfg() -> dict:
+    """Return the ``providers`` section from the default/root config.yaml.
+
+    This lets route-bearing providers configured at ``~/.hermes/config.yaml``
+    (e.g. a self-hosted LM Studio endpoint) remain visible in the model picker
+    for profiles that do not explicitly override them. The active profile
+    always wins when it has the same provider key.
+    """
+    try:
+        root_path = _DEFAULT_HERMES_HOME / "config.yaml"
+        # Don't duplicate the active profile's own providers when the active
+        # profile *is* the default/root profile (HERMES_HOME == _DEFAULT_HERMES_HOME).
+        try:
+            from api.profiles import get_active_hermes_home as _gah
+
+            active_home = Path(_gah()).expanduser().resolve()
+        except Exception:
+            active_home = Path(_get_config_path()).parent.expanduser().resolve()
+        if root_path.parent.expanduser().resolve() == active_home:
+            return {}
+        raw = _load_yaml_config_file_raw(root_path)
+        if not isinstance(raw, dict):
+            return {}
+        providers = raw.get("providers")
+        if not isinstance(providers, dict):
+            return {}
+        # Pin to unscoped process env so root config expansion is deterministic.
+        _prev_block = getattr(_thread_ctx, "block_process_env_fallback", False)
+        _prev_env = getattr(_thread_ctx, "env", None)
+        try:
+            _thread_ctx.block_process_env_fallback = False
+            _thread_ctx.env = {}
+            expanded = _expand_env_vars(providers)
+        finally:
+            _thread_ctx.block_process_env_fallback = _prev_block
+            if _prev_env is None:
+                try:
+                    del _thread_ctx.env
+                except AttributeError:
+                    pass
+            else:
+                _thread_ctx.env = _prev_env
+        return expanded if isinstance(expanded, dict) else {}
+    except Exception:
+        return {}
+
+
 def _get_provider_base_url(provider_id):
     """Look up the configured base_url for a provider (e.g. lmstudio).
 
-    Checks two locations, in order:
-      1. ``cfg["providers"][<provider_id>]["base_url"]`` — the explicit
-         per-provider override.
+    Checks, in order:
+      1. ``cfg["providers"][<provider_id>]["base_url"]`` / ``api`` /
+         ``api_host`` — the explicit per-provider override. ``api`` is the
+         key Settings → Providers writes for LM Studio-style providers.
       2. ``cfg["model"]["base_url"]`` — falls back here when
          ``cfg["model"]["provider"] == provider_id``. This is the historical
          shape (the model block carries both the active provider AND the
@@ -2600,16 +2688,18 @@ def _get_provider_base_url(provider_id):
     Returns the URL stripped of trailing ``/`` if configured, otherwise None.
     """
     prov_cfg = _get_provider_cfg(provider_id)
-    explicit = (prov_cfg.get("base_url") or "").strip().rstrip("/")
-    if explicit:
-        return explicit
+    for key in ("base_url", "api", "api_host"):
+        explicit = (prov_cfg.get(key) or "").strip().rstrip("/")
+        if explicit:
+            return explicit
     model_cfg = cfg.get("model", {}) or {}
     if isinstance(model_cfg, dict):
         model_provider = str(model_cfg.get("provider") or "").strip().lower()
         if model_provider == str(provider_id).strip().lower():
-            model_base = (model_cfg.get("base_url") or "").strip().rstrip("/")
-            if model_base:
-                return model_base
+            for key in ("base_url", "api", "api_host"):
+                model_base = (model_cfg.get(key) or "").strip().rstrip("/")
+                if model_base:
+                    return model_base
     return None
 
 
@@ -2618,9 +2708,61 @@ def _get_providers_cfg() -> dict:
     return providers_cfg if isinstance(providers_cfg, dict) else {}
 
 
+def _get_effective_provider_cfg(provider_id) -> dict:
+    """Active-profile provider config, falling back to the default/root profile.
+
+    Use this in paths that intentionally want to surface machine-level
+    self-hosted endpoints (e.g. model picker) without requiring every profile
+    to duplicate the provider block. The plain ``_get_provider_cfg`` stays
+    active-profile-only so callers that query "is this provider explicitly
+    configured here?" aren't surprised by root fallback.
+    """
+    active = _get_provider_cfg(provider_id)
+    if active:
+        return active
+    root_cfg = _get_root_providers_cfg()
+    root_provider_cfg = root_cfg.get(provider_id, {})
+    if isinstance(root_provider_cfg, dict):
+        return root_provider_cfg
+    return {}
+
+
 def _get_provider_cfg(provider_id) -> dict:
     provider_cfg = _get_providers_cfg().get(provider_id, {})
     return provider_cfg if isinstance(provider_cfg, dict) else {}
+
+
+def _get_provider_base_url(provider_id, *, root_fallback: bool = False):
+    """Look up the configured base_url for a provider (e.g. lmstudio).
+
+    Checks, in order:
+      1. ``cfg["providers"][<provider_id>]["base_url"]`` / ``api`` /
+         ``api_host`` — the explicit per-provider override. ``api`` is the
+         key Settings → Providers writes for LM Studio-style providers.
+      2. ``cfg["model"]["base_url"]`` — falls back here when
+         ``cfg["model"]["provider"] == provider_id``. This is the historical
+         shape (the model block carries both the active provider AND the
+         base URL for that provider in a single record).
+
+    Pass ``root_fallback=True`` to also consider the default/root profile's
+    provider config when the active profile has no such entry.
+
+    Returns the URL stripped of trailing ``/`` if configured, otherwise None.
+    """
+    prov_cfg = _get_effective_provider_cfg(provider_id) if root_fallback else _get_provider_cfg(provider_id)
+    for key in ("base_url", "api", "api_host"):
+        explicit = (prov_cfg.get(key) or "").strip().rstrip("/")
+        if explicit:
+            return explicit
+    model_cfg = cfg.get("model", {}) or {}
+    if isinstance(model_cfg, dict):
+        model_provider = str(model_cfg.get("provider") or "").strip().lower()
+        if model_provider == str(provider_id).strip().lower():
+            for key in ("base_url", "api", "api_host"):
+                model_base = (model_cfg.get(key) or "").strip().rstrip("/")
+                if model_base:
+                    return model_base
+    return None
 
 
 class AmbiguousCustomProviderError(ValueError):
@@ -3249,6 +3391,30 @@ def resolve_custom_provider_connection(provider_id: str) -> tuple[str | None, st
         fallback_key = _resolve_key(model_cfg.get("api_key"), model_cfg.get("key_env"), pid)
 
     if fallback_key or fallback_base:
+        if not fallback_key:
+            # Last-resort credential fallback for lightweight profiles that only
+            # set model.provider = custom:<slug> + model.base_url without a
+            # custom_providers entry. We try, in order:
+            #   1. A NeuralWatt-specific env var (for the common api-nw slug).
+            #   2. The POSIX-safe env var derived from the provider id.
+            #   3. The generic Hermes API key.
+            _neuralwatt_hosts = {"api.neuralwatt.com", "neuralwatt.com"}
+            try:
+                from urllib.parse import urlsplit
+
+                _fb_host = urlsplit(str(fallback_base or "").lower()).hostname
+            except Exception:
+                _fb_host = None
+            if _fb_host in _neuralwatt_hosts:
+                _env_val = _thread_local_env_value("NEURALWATT_API_KEY").strip() or ""
+                if _env_val:
+                    return _env_val, fallback_base or None
+            _provider_hint_key = _lookup_custom_api_key_env(pid)
+            if _provider_hint_key:
+                return _provider_hint_key, fallback_base or None
+            _generic_key = _thread_local_env_value("HERMES_API_KEY").strip() or ""
+            if _generic_key:
+                return _generic_key, fallback_base or None
         return fallback_key, fallback_base or None
 
     return None, None
@@ -5973,7 +6139,13 @@ def _current_webui_version() -> str | None:
 # guarantees that even if a future release accidentally reuses the same
 # WebUI version string (or a debug build doesn't have a version), a structural
 # change still invalidates the cache.
-_MODELS_CACHE_SCHEMA_VERSION = 3
+#
+# History:
+#   4 — root/default profile providers are now inherited by named profiles in
+#       the model picker, and the provider base_url lookup accepts "api" /
+#       "api_host" keys. Old caches built before this behavior miss those
+#       providers, so invalidate them on first boot. (#lmstudio-model-picker)
+_MODELS_CACHE_SCHEMA_VERSION = 4
 
 
 _models_cache_path = STATE_DIR / "models_cache.json"
@@ -6033,6 +6205,29 @@ def _get_auth_store_path() -> Path:
         return _gah() / "auth.json"
     except ImportError:
         return _DEFAULT_HERMES_HOME / "auth.json"
+
+
+def _models_cache_file_content_fingerprint(path: Path) -> dict:
+    """Return a deterministic hash of a small config file's contents.
+
+    Unlike _models_cache_file_fingerprint(), this changes when the file is
+    edited even if its mtime/size accidentally stay the same (e.g. edits
+    round-tripped by YAML tooling). Use it for files that are small enough
+    to read on every cache decision and that do not churn on a timer.
+    """
+    p = Path(path).expanduser()
+    fp: dict = {"path": str(p)}
+    try:
+        p.stat()
+    except OSError:
+        fp["missing"] = True
+        return fp
+    try:
+        raw = p.read_bytes()
+        fp["sha256"] = hashlib.sha256(raw).hexdigest()
+    except OSError:
+        fp["sha256"] = "unreadable"
+    return fp
 
 
 def _models_cache_file_fingerprint(path: Path) -> dict:
@@ -6207,9 +6402,15 @@ def _models_cache_source_fingerprint() -> dict:
     one of those rewrites (RCA t_16551f61). config.yaml keeps the cheap
     mtime/size fingerprint because it is only rewritten on deliberate user
     edits (which can change anything) and does not churn on a timer.
+
+    The default/root profile config uses a content hash so that edits to
+    machine-level providers (e.g. a self-hosted LM Studio endpoint added in
+    ~/.hermes/config.yaml) invalidate every named profile's cache, not just
+    the root/default profile's cache.
     """
     return {
         "config_yaml": _models_cache_file_fingerprint(_get_config_path()),
+        "root_config_yaml": _models_cache_file_content_fingerprint(_DEFAULT_HERMES_HOME / "config.yaml"),
         "auth_json": _auth_store_semantic_fingerprint(_get_auth_store_path()),
         "catalog": _models_cache_catalog_fingerprint(),
     }
@@ -7186,6 +7387,15 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
         # The same applies to mixed-case ids like ``OpenCode-Go`` and to
         # legitimate aliases like ``z-ai`` → ``zai``.
         _cfg_providers = _get_providers_cfg()
+        # Merge route-bearing providers from the default/root profile so
+        # machine-level self-hosted endpoints (LM Studio, Ollama, etc.) show
+        # up in new profiles that have not explicitly overridden them. Active
+        # profile entries always win.
+        _root_providers = _get_root_providers_cfg()
+        if _root_providers and isinstance(_cfg_providers, dict):
+            _merged_cfg_providers = copy.deepcopy(_root_providers)
+            _merged_cfg_providers.update(_cfg_providers)
+            _cfg_providers = _merged_cfg_providers
         # Map canonical provider IDs back to raw config keys so the
         # generic-provider branch can preserve mixed-case/underscore
         # provider_cfg values (#2245).
@@ -7470,6 +7680,12 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
                 if isinstance(providers_cfg, dict):
                     for provider_key in filter(None, [active_provider, "custom"]):
                         provider_cfg = providers_cfg.get(provider_key, {})
+                        # Also use the effective/root config for the API key
+                        # so a provider configured in the default profile (e.g.
+                        # LM Studio) can be probed without duplicating the key
+                        # in every named profile.
+                        if not provider_cfg and provider_key:
+                            provider_cfg = _get_effective_provider_cfg(provider_key)
                         if isinstance(provider_cfg, dict):
                             api_key = (provider_cfg.get("api_key") or "").strip()
                             if api_key:
@@ -8018,8 +8234,8 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
                         # `cfg["providers"]["lmstudio"]["base_url"]` or
                         # `cfg["model"]["base_url"]` (via _get_provider_base_url),
                         # so the historical model-block config shape still works.
-                        lm_cfg = _get_provider_cfg("lmstudio")
-                        lm_base_url = _get_provider_base_url("lmstudio") or ""
+                        lm_cfg = _get_effective_provider_cfg("lmstudio")
+                        lm_base_url = _get_provider_base_url("lmstudio", root_fallback=True) or ""
                         lm_api_key = str(lm_cfg.get("api_key") or "").strip()
                         if lm_base_url:
                             headers = {"User-Agent": "OpenAI/Python 1.0"}
@@ -8039,6 +8255,25 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
                             except Exception:
                                 logger.debug("LM Studio /models fetch failed at %s", endpoint)
 
+                    # Final fallback: the provider's configured model list. This
+                    # keeps LM Studio selectable when the local server is not
+                    # reachable from the WebUI process (e.g. Windows firewall
+                    # or WSL network isolation) but the user has already set
+                    # up `providers.lmstudio.models`.
+                    if not raw_models:
+                        _raw_lm_key = _canonical_to_raw_provider_key.get(pid, pid)
+                        _lm_provider_cfg = _get_effective_provider_cfg(_raw_lm_key)
+                        if isinstance(_lm_provider_cfg, dict):
+                            _lm_configured = _lm_provider_cfg.get("models")
+                            if isinstance(_lm_configured, dict):
+                                raw_models = _configured_model_options(_lm_configured)
+                            elif isinstance(_lm_configured, list):
+                                raw_models = _configured_model_options(_lm_configured)
+                            if not raw_models:
+                                _lm_default = str(_lm_provider_cfg.get("default_model") or "").strip()
+                                if _lm_default:
+                                    raw_models = [{"id": _lm_default, "label": _lm_default}]
+
                     if raw_models:
                         _append_picker_group(provider_name, pid, raw_models)
                 elif (
@@ -8053,7 +8288,7 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
                     # (#2245).  Fall back to the canonical pid for providers
                     # that appear in _PROVIDER_MODELS but not in cfg.
                     _raw_key = _canonical_to_raw_provider_key.get(pid, pid)
-                    provider_cfg = _get_provider_cfg(_raw_key)
+                    provider_cfg = _get_effective_provider_cfg(_raw_key)
                     raw_models = []
 
                     # User-configured model allowlists are explicit local
@@ -8793,6 +9028,127 @@ def get_available_models_for_session_visit() -> dict:
         _mark("prefer_cache_fallback")
         _maybe_log_slow_stages(_logger, _stagelog, _slow_threshold_ms, "models.session_visit")
         return get_available_models(prefer_cache=True)
+
+
+def get_available_models_across_profiles() -> dict:
+    """Return model groups aggregated from every profile's provider config.
+
+    Unlike the normal /api/models, this does not perform live provider probes,
+    and it deliberately ignores the current profile scope. It is used by the
+    profile creation/editing form so a user can pick any model from any
+    provider that has been configured anywhere in the local Hermes install.
+    """
+    groups: list[dict] = []
+    seen_provider_models: dict[str, set[str]] = {}
+    seen_groups: dict[str, dict] = {}
+
+    def _add_model(provider_id: str, model_id: str, label: str = "") -> None:
+        if not provider_id or not model_id:
+            return
+        canonical = _canonicalise_provider_id(provider_id) or provider_id
+        if canonical not in seen_provider_models:
+            seen_provider_models[canonical] = set()
+        if model_id in seen_provider_models[canonical]:
+            return
+        seen_provider_models[canonical].add(model_id)
+        if canonical not in seen_groups:
+            display = _effective_provider_display_name(canonical, _PROVIDER_DISPLAY)
+            seen_groups[canonical] = {
+                "provider": display,
+                "provider_id": canonical,
+                "models": [],
+            }
+        seen_groups[canonical]["models"].append({
+            "id": model_id,
+            "label": label or _get_label_for_model(model_id, []),
+        })
+
+    try:
+        from api.profiles import list_profiles_api, get_hermes_home_for_profile
+        profiles = list_profiles_api()
+    except Exception:
+        profiles = []
+
+    profile_names = {"default"}
+    for row in profiles:
+        if isinstance(row, dict) and row.get("name"):
+            profile_names.add(str(row["name"]))
+
+    for profile_name in profile_names:
+        try:
+            home = get_hermes_home_for_profile(profile_name)
+            config_path = home / "config.yaml"
+            if not config_path.exists():
+                continue
+            raw = _load_yaml_config_file_raw(config_path)
+            if not isinstance(raw, dict):
+                continue
+            providers_cfg = raw.get("providers") or {}
+            if not isinstance(providers_cfg, dict):
+                continue
+            for provider_key, provider_cfg in providers_cfg.items():
+                canonical = _canonicalise_provider_id(provider_key)
+                if not canonical:
+                    continue
+                if isinstance(provider_cfg, dict):
+                    models_cfg = provider_cfg.get("models")
+                    for model_id in _configured_model_ids(models_cfg):
+                        _add_model(canonical, model_id)
+                    # Also add the profile's default model if it belongs to this provider.
+                    model_cfg = raw.get("model") or {}
+                    if isinstance(model_cfg, dict):
+                        default_model = str(model_cfg.get("default") or model_cfg.get("model") or "").strip()
+                        default_provider = str(model_cfg.get("provider") or "").strip()
+                        if default_model and default_provider and _canonicalise_provider_id(default_provider) == canonical:
+                            _add_model(canonical, default_model)
+                # If no explicit models, still include known static models for the provider.
+                if canonical in _PROVIDER_MODELS and not seen_provider_models.get(canonical):
+                    for model_id in _PROVIDER_MODELS[canonical]:
+                        _add_model(canonical, model_id)
+        except Exception:
+            logger.debug("Failed to load cross-profile models for %s", profile_name, exc_info=True)
+
+    # Also scan the root/default Hermes home explicitly, because list_profiles_api
+    # may not include it as a separate row in some configurations.
+    try:
+        root_providers = _get_root_providers_cfg()
+        if isinstance(root_providers, dict):
+            for provider_key, provider_cfg in root_providers.items():
+                canonical = _canonicalise_provider_id(provider_key)
+                if not canonical:
+                    continue
+                if isinstance(provider_cfg, dict):
+                    models_cfg = provider_cfg.get("models")
+                    for model_id in _configured_model_ids(models_cfg):
+                        _add_model(canonical, model_id)
+    except Exception:
+        logger.debug("Failed to load root providers for cross-profile models", exc_info=True)
+
+    # Include known providers that have a key configured anywhere.
+    for provider_id in set(_PROVIDER_MODELS) | set(_PROVIDER_DISPLAY):
+        canonical = _canonicalise_provider_id(provider_id)
+        if not canonical:
+            continue
+        if canonical in seen_provider_models:
+            continue
+        # Try to detect if any profile has a key for this provider. This is
+        # best-effort and avoids leaking secrets; we only check the current
+        # profile's credential pool and env, plus the root profile.
+        try:
+            if _provider_has_key(canonical):
+                for model_id in _PROVIDER_MODELS.get(canonical, []):
+                    _add_model(canonical, model_id)
+        except Exception:
+            pass
+
+    groups = sorted(seen_groups.values(), key=lambda g: g["provider"].lower())
+    return {
+        "active_provider": None,
+        "default_model": "",
+        "configured_model_badges": {},
+        "groups": groups,
+        "aliases": {},
+    }
 
 
 def _maybe_log_slow_stages(
