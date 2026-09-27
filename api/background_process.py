@@ -1812,6 +1812,14 @@ def start_drain_thread() -> bool:
             # Recovery is best-effort. A corrupt checkpoint or transient I/O
             # error must not disable notifications for newly spawned tasks.
             logger.warning("background process recovery failed", exc_info=True)
+        try:
+            from api.workflow_runner import recover_workflow_runners
+
+            recover_workflow_runners()
+        except Exception:
+            # Workflow state is durable and will retry on the next process start
+            # or explicit resume; never block ordinary notification draining.
+            logger.warning("work-hub workflow recovery failed", exc_info=True)
         _DRAIN_STOP.clear()
         _DRAIN_THREAD = threading.Thread(
             target=_drain_loop,

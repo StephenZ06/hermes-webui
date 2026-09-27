@@ -14891,6 +14891,18 @@ def handle_get(handler, parsed) -> bool:
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 
+    _WORK_HUB_WORKFLOW_PREFIX = "/api/work_hub/workflows/"
+    if parsed.path.startswith(_WORK_HUB_WORKFLOW_PREFIX):
+        from api import work_hub
+
+        workflow_id = unquote(parsed.path[len(_WORK_HUB_WORKFLOW_PREFIX):]).strip("/")
+        if not workflow_id or "/" in workflow_id:
+            return bad(handler, "Workflow not found", 404)
+        workflow = work_hub.get_workflow_run(workflow_id)
+        if workflow is None:
+            return bad(handler, "Workflow not found", 404)
+        return j(handler, {"workflow": workflow, "revision": work_hub.load_state()["revision"]})
+
     if parsed.path == "/api/work_hub/plan":
         from api import goal_planner
 
@@ -17749,6 +17761,56 @@ def handle_post(handler, parsed) -> bool:
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 
+    if parsed.path == "/api/work_hub/items/delete":
+        from api import work_hub
+
+        try:
+            item_id = str(body.get("item_id") or "") if isinstance(body, dict) else ""
+            result = work_hub.delete_item(item_id, body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/workflows/start":
+        from api import work_hub
+        from api.workflow_runner import start_workflow_runner
+
+        try:
+            if not isinstance(body, dict):
+                raise work_hub.WorkHubError("Workflow payload is required")
+            topology = str(body.get("topology") or "sequential").strip().lower()
+            if topology != "sequential":
+                raise work_hub.WorkHubError("Only sequential workflows are supported")
+            result = work_hub.create_workflow_run(
+                body.get("project_id"),
+                body.get("goal"),
+                body.get("item_ids"),
+                body.get("expected_revision"),
+            )
+            start_workflow_runner(result["workflow"]["id"])
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    _WORK_HUB_WORKFLOW_ACTION_PREFIX = "/api/work_hub/workflows/"
+    if parsed.path.startswith(_WORK_HUB_WORKFLOW_ACTION_PREFIX) and parsed.path.endswith(("/pause", "/resume")):
+        from api import work_hub
+        from api.workflow_runner import SessionWorkflowRuntime, WorkflowRunner, start_workflow_runner
+
+        suffix = "/pause" if parsed.path.endswith("/pause") else "/resume"
+        workflow_id = unquote(parsed.path[len(_WORK_HUB_WORKFLOW_ACTION_PREFIX):-len(suffix)]).strip("/")
+        try:
+            if not workflow_id or "/" in workflow_id:
+                raise work_hub.WorkHubError("Workflow not found", 404)
+            if suffix == "/pause":
+                workflow = WorkflowRunner(SessionWorkflowRuntime()).request_pause(workflow_id)
+            else:
+                workflow = work_hub.resume_workflow_run(workflow_id, body.get("expected_revision"))
+                start_workflow_runner(workflow_id)
+            return j(handler, {"ok": True, "workflow": workflow, "revision": work_hub.load_state()["revision"]})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
     if parsed.path == "/api/work_hub/plan/create":
         from api import goal_planner, work_hub
 
@@ -17771,6 +17833,44 @@ def handle_post(handler, parsed) -> bool:
                 )
                 created.append(result["item"])
             return j(handler, {"ok": True, "plan": plan, "items": created})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/plan/ai":
+        from api import goal_planner, work_hub
+        from api.config import load_settings
+
+        goal = body.get("goal") if isinstance(body, dict) else None
+        project_id = body.get("project_id") if isinstance(body, dict) else None
+        preview = bool(body.get("preview")) if isinstance(body, dict) else False
+        if not isinstance(goal, str) or not goal.strip():
+            return bad(handler, "goal is required", 400)
+        try:
+            settings = load_settings()
+            model_id = settings.get("work_hub_plan_model")
+            plan = goal_planner.plan_goal_with_ai(goal, model_id)
+            if preview:
+                return j(handler, {"ok": True, "plan": plan})
+            valid_statuses = set(work_hub.STATUS_ORDER)
+            created = []
+            revision = work_hub.load_state()["revision"]
+            for step in plan.get("steps", []):
+                status = step.get("status", "backlog")
+                if status not in valid_statuses:
+                    status = "backlog"
+                result = work_hub.create_item(
+                    {
+                        "title": step["title"],
+                        "description": step["description"],
+                        "status": status,
+                        "priority": step.get("priority", "none"),
+                        "project_id": project_id,
+                    },
+                    expected_revision=None,
+                )
+                created.append(result["item"])
+                revision = result["revision"]
+            return j(handler, {"ok": True, "plan": plan, "items": created, "revision": revision})
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 

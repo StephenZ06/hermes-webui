@@ -22,6 +22,47 @@ def test_work_hub_uses_native_panel_and_curated_mx_icons():
     assert "react" not in script.lower()
 
 
+def test_work_hub_owns_the_main_notes_surface_not_the_sidebar_panel():
+    page = read("static/index.html")
+    main_notes = page.split('<div id="mainNotes"', 1)[1].split('</div>', 1)[0]
+    sidebar_notes = page.split('<div class="panel-view" id="panelNotes">', 1)[1].split('<!-- Profiles panel -->', 1)[0]
+
+    assert 'id="workHub"' in main_notes
+    assert 'stickyBoardFrame' not in main_notes
+    assert 'id="workHub"' not in sidebar_notes
+
+
+def test_work_hub_scope_navigation_lives_in_the_notes_sidebar_only():
+    page = read("static/index.html")
+    script = read("static/work-hub.js")
+    sidebar_notes = page.split('<div class="panel-view" id="panelNotes">', 1)[1].split('<!-- Profiles panel -->', 1)[0]
+
+    assert 'id="workHubSidebar"' in sidebar_notes
+    assert 'renderWorkHubNavigation' in script
+    assert '<aside class="work-hub-nav">' not in script
+    assert 'grid-template-columns:' in read("static/style.css") and 'var(--wh-inspector-width)' in read("static/style.css")
+
+
+def test_work_hub_board_uses_the_notes_surface_without_an_outer_card():
+    css = read("static/style.css")
+    root_rule = css.split("#workHub {", 1)[1].split("}", 1)[0]
+    outer_rule = css.split(".work-hub {", 1)[1].split("}", 1)[0]
+
+    assert "padding: 0" in root_rule
+    assert " border: " not in outer_rule
+    assert "border-radius" not in outer_rule
+
+
+def test_work_hub_uses_hermes_theme_tokens_not_blue_fallback_palette():
+    css = read("static/style.css")
+    work_hub_css = css.split('/* ── Work Hub', 1)[1].split('/* ── Touch responsiveness', 1)[0]
+
+    for token in ("var(--bg)", "var(--surface)", "var(--text)", "var(--muted)", "var(--border)"):
+        assert token in work_hub_css
+    for fallback in ("--bg-primary", "--text-primary", "--text-secondary", "#0d1424", "#edf3ff"):
+        assert fallback not in work_hub_css
+
+
 def test_work_hub_has_reduced_motion_and_narrow_drawer_rules():
     css = read("static/style.css")
 
@@ -72,3 +113,39 @@ def test_work_hub_search_replaces_results_and_rebinds_item_actions():
 
     assert "canvas.innerHTML = '';" in script
     assert "renderCanvas(scopedItems()); bind();" in script
+
+
+def test_new_item_opens_right_inspector_with_editable_title():
+    script = read("static/work-hub.js")
+    css = read("static/style.css")
+
+    assert 'id="workHubTitle"' in script
+    assert "title: el('workHubTitle').value" in script
+
+    inspector_rule = css.split(".work-hub-inspector {", 1)[1].split("}", 1)[0]
+    assert "grid-column: 2" in inspector_rule
+    assert "grid-row: 1" in inspector_rule
+
+
+def test_work_hub_updates_revision_after_delete():
+    script = read("static/work-hub.js")
+
+    delete_body = script.split("async function deleteItem", 1)[1].split("async function createItem", 1)[0]
+    assert "const result = await request('/api/work_hub/items/delete'" in delete_body
+    assert "store.revision = result.revision" in delete_body
+
+
+def test_narrow_work_hub_uses_css_inspector_width():
+    script = read("static/work-hub.js")
+
+    assert "window.matchMedia('(max-width: 620px)').matches" in script
+
+
+def test_goal_planner_can_launch_its_created_project_items_as_a_workflow():
+    script = read("static/work-hub.js")
+
+    assert 'id="goalPlannerRun"' in script
+    assert '"/api/work_hub/workflows/start"' in script
+    assert "item_ids: createdItems.map(item => item.id)" in script
+    assert "createdRevision = created.revision" in script
+    assert "expected_revision: createdRevision" in script

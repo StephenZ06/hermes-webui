@@ -42,6 +42,12 @@ def test_kanban_visible_when_show_kanban_true():
     ) is False
 
 
+def test_workflow_workers_are_always_hidden_from_default_sidebar():
+    assert _hide_from_default_sidebar(
+        {'source_tag': 'work_hub_workflow', 'session_id': 'workflow_worker_1'}
+    ) is True
+
+
 def test_kanban_hidden_with_explicit_false():
     assert _hide_from_default_sidebar({'source_tag': 'kanban', 'session_id': 'kanban_worker_1'}, show_kanban=False) is True
 
@@ -271,4 +277,3 @@ def test_kanban_source_filter_passed_to_dedupe():
         "source_filter must be forwarded to _dedupe_cli_sidebar_sessions_for_api "
         "so an explicit kanban filter can override the hide"
     )
-

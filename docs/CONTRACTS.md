@@ -23,6 +23,22 @@ contributor guidance; it does not change runtime behavior or CI gates.
 
 ## Runtime, durability, and state contracts
 
+### Interaction and optional-tool ownership
+
+- `static/performance.js` owns browser-local interaction tickets and timing
+  marks. `panels.js` may mutate a panel after an await only when its ticket is
+  current; profile cache identity remains profile-scoped.
+- `Session.tool_policy` owns the requested optional-tool policy. `None` means
+  legacy behavior, while `minimal`, `inherit-profile`, and `explicit` are the
+  only accepted new values. `enabled_toolsets` records the resolved override.
+- `api.routes._start_run()` owns resolution and must pass the same exact list to
+  both `StartRunRequest` and legacy streaming. A detached/background child must
+  resolve its own inherited policy before executing.
+- `api.tool_policy.runtime_empty_toolsets_are_restrictive()` is the Agent
+  enforcement boundary. If `[]` cannot be proven restrictive in the installed
+  runtime, the API reports `minimal_toolset_not_supported`; it must never call
+  the agent with a broadened fallback while representing the policy as Minimal.
+
 - [`docs/rfcs/webui-run-state-consistency-contract.md`](rfcs/webui-run-state-consistency-contract.md):
   proposed consistency rules for current WebUI streaming, recovery, replay,
   model-context reconstruction, compression, UI scene/cache, and sidebar metadata
@@ -237,11 +253,13 @@ Before opening a change for review, confirm:
 ## Work Hub state and execution boundary
 
 The primary Notes panel is the Work Hub. `api/work_hub.py` is its only state
-writer and persists shared, versioned data in `STATE_DIR/work_hub.json` using
-an atomic replacement. Work Hub items may reference existing projects, Hermes
-profiles, and chat sessions, but those registries remain their respective
-authorities. Missing projects or profiles are displayed as unavailable rather
-than silently deleting historical work.
+writer and persists shared, versioned data in `STATE_DIR/work_hub.db`. Its
+SQLite transactions atomically update items, activity, revision, and workflow
+state; a legacy `work_hub.json` is imported once when no database exists. Work
+Hub items may reference existing projects, Hermes profiles, and chat sessions,
+but those registries remain their respective authorities. Missing projects or
+profiles are displayed as unavailable rather than silently deleting historical
+work.
 
 On first bootstrap, Work Hub migrates legacy `sticky_boards.json` content
 idempotently and never modifies or deletes that source file. It also never
@@ -253,6 +271,13 @@ Office is authoritative for observed agent runtime activity. Office events may
 be appended to a linked Work Hub item as `office_execution` activity, but must
 not alter the item’s planned status. A planned assignment is not proof that an
 agent is executing.
+
+Sequential workflow runs are durable Work Hub records. Work Hub owns requested
+order, claimed step, worker identity, result summaries, and recovery state;
+hidden project-bound worker sessions own execution. A worker identity is stored
+before its turn starts. Unverifiable worker state pauses and blocks the item;
+it never marks work done or retries automatically. Items with workflow history
+are retained so run history remains referentially intact.
 
 ## Future evolution
 
