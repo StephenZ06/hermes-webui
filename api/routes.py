@@ -17748,6 +17748,14 @@ def handle_post(handler, parsed) -> bool:
         return _handle_workspace_add(handler, body)
 
     # ── Work Hub (POST) ───────────────────────────────────────────────────
+    if parsed.path == "/api/work_hub/folders/create":
+        from api import work_hub
+        try:
+            result = work_hub.create_folder(body.get("folder"), body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
     if parsed.path == "/api/work_hub/items/create":
         from api import work_hub
 

@@ -230,15 +230,16 @@ def test_work_hub_closes_an_open_workspace_panel_on_entry():
     assert "if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();" in panels
 
 
-def test_work_hub_projects_are_live_board_tiles_with_a_shared_create_action():
+def test_work_hub_folders_are_isolated_board_tiles_with_a_create_action():
     script = read("static/work-hub.js")
 
     assert "function createWorkHubProject()" in script
-    assert "'/api/projects/create'" in script
+    assert "'/api/work_hub/folders/create'" in script
+    assert "'/api/projects/create'" not in script
     assert "work-hub-project-tile" in script
     assert "item.status !== 'cancelled'" in script
-    assert "b.dataset.scope = project.project_id" in script
-    assert "project-sessions-changed" in script
+    assert "board.folder_id === project.id" in script
+    assert "New Project Folder" in script
 
 
 def test_work_hub_project_tiles_have_a_narrow_skin_safe_layout():

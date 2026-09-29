@@ -22,6 +22,31 @@ def test_create_item_persists_revision_and_rejects_unknown_project(monkeypatch, 
         work_hub.create_item({"title": "Bad", "project_id": "missing"}, 1)
 
 
+def test_work_hub_folder_bootstrap_does_not_read_chat_projects(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: pytest.fail("Work Hub must not read Chat projects"))
+
+    created = work_hub.create_folder({"name": "Launch"}, None)
+
+    assert created["folder"]["name"] == "Launch"
+    assert work_hub.bootstrap()["folders"] == [created["folder"]]
+
+
+def test_bootstrap_moves_legacy_boards_into_an_isolated_imported_folder(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: pytest.fail("must not read Chat"))
+    work_hub.create_board({"name": "Legacy"}, None)
+
+    data = work_hub.bootstrap()
+
+    assert data["folders"][0]["name"] == "Imported boards"
+    assert data["boards"][0]["folder_id"] == data["folders"][0]["id"]
+
+
 def test_create_items_is_atomic(monkeypatch, tmp_path):
     from api import work_hub
 

@@ -808,6 +808,22 @@ registerChatPane({
 });
 
 let _activeChatPaneId = 'files';
+let _workspaceLiveRefreshTimer = null;
+let _workspaceLiveSignature = null;
+
+function _stopWorkspaceLiveRefresh(){ if(_workspaceLiveRefreshTimer){ clearInterval(_workspaceLiveRefreshTimer); _workspaceLiveRefreshTimer=null; } }
+function _startWorkspaceLiveRefresh(){
+  _stopWorkspaceLiveRefresh();
+  _workspaceLiveRefreshTimer=setInterval(async()=>{
+    if(!S.session) return;
+    try{
+      const data=await api(_workspaceRouteForPath(S.currentDir||'.','list'));
+      if(!S.session) return;
+      if(_workspaceLiveSignature && data.signature && data.signature!==_workspaceLiveSignature) loadDir(S.currentDir||'.',{refreshExpanded:true,preservePreview:true});
+      _workspaceLiveSignature=data.signature||_workspaceLiveSignature;
+    }catch(e){}
+  },2500);
+}
 
 function setWorkspaceFilePreviewState(active){
   const enabled = !!active;
@@ -842,6 +858,7 @@ function switchRightPanelPane(id){
   }
   _activeChatPaneId = nextId;
   _workspacePanelActiveTab = nextId;
+  _startWorkspaceLiveRefresh();
   if(nextId === 'files') setWorkspaceFilePreviewState(false);
   _setWorkspacePanelTabDataset();
 
@@ -1249,6 +1266,7 @@ async function loadDir(path, opts={}){
       if(typeof syncTerminalButton==='function')syncTerminalButton();
       showToast(t('workspace_recovered_notice',S.session.workspace),5000,'warning');
     }
+    _workspaceLiveSignature=data.signature||null;
     S.entries=data.entries||[];renderBreadcrumb();renderFileTree();
     if((!path || path === '.') && _workspacePanelActiveTab === 'graph') _scheduleWorkspaceGraphRefresh();
     // #2673 — refresh Artifacts tab when its source data (the file tree) updates.

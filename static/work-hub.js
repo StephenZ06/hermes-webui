@@ -4,11 +4,11 @@
   let currentInspectorWidth = (() => { const raw = localStorage.getItem('workHubInspectorWidth'); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
-  const store = { items: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
+  const store = { items: [], folders: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const scopedItems = () => store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : item.project_id === store.activeScope) && (!store.activeBoardId || item.board_id === store.activeBoardId) && (!store.search || item.title.toLowerCase().includes(store.search)));
+  const scopedItems = () => { const folderBoardIds = store.activeFolderId ? new Set(store.boards.filter(board => board.folder_id === store.activeFolderId).map(board => board.id)) : null; return store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : folderBoardIds ? folderBoardIds.has(item.board_id) : item.project_id === store.activeScope) && (!store.activeBoardId || item.board_id === store.activeBoardId) && (!store.search || item.title.toLowerCase().includes(store.search))); };
 
   async function request(path, options) { return api(path, options); }
   async function loadWorkHubPanel() {
@@ -16,7 +16,7 @@
     try {
       const data = await request('/api/work_hub/bootstrap');
       if ((data.revision || 0) < store.revision) return;
-      store.items = data.items || []; store.projects = data.projects || []; store.boards = data.boards || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
+      store.items = data.items || []; store.folders = data.folders || []; store.boards = data.boards || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
     render();
   }
@@ -40,10 +40,10 @@
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
     sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span><button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="Create project" title="Create project">${icon('plus')}</button></div><div id="workHubProjects" class="work-hub-projects" style="flex:1;min-height:0;overflow:auto;"></div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
     const projectList = el('workHubProjects');
-    store.projects.forEach(project => {
-      const count = store.items.filter(item => item.project_id === project.project_id && item.status !== 'cancelled').length;
-      const expanded = !!store.expandedProjects[project.project_id]; const boards = store.boards.filter(board => board.project_id === project.project_id);
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'work-hub-project-tile' + (store.activeScope === project.project_id ? ' active' : ''); b.dataset.scope = project.project_id; b.dataset.projectToggle = project.project_id;
+    store.folders.forEach(project => {
+      const boards = store.boards.filter(board => board.folder_id === project.id); const boardIds = new Set(boards.map(board => board.id)); const count = store.items.filter(item => boardIds.has(item.board_id) && item.status !== 'cancelled').length;
+      const expanded = !!store.expandedProjects[project.id];
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'work-hub-project-tile' + (store.activeFolderId === project.id ? ' active' : ''); b.dataset.scope = project.id; b.dataset.projectToggle = project.id;
       b.innerHTML = `<span class="work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="work-hub-project-color" aria-hidden="true"></span><span class="work-hub-project-name"></span><span class="work-hub-project-count" aria-label="${count} work items">${count}</span>`;
       b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
       b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
@@ -59,18 +59,14 @@
     if (!name || !name.trim()) return;
     const colors = ['#7c8cff', '#5fbf9f', '#d5a75f', '#c07ac5', '#d77070'];
     try {
-      const result = await request('/api/projects/create', { method: 'POST', body: JSON.stringify({ name: name.trim(), color: colors[store.projects.length % colors.length] }) });
-      if (!result.project) throw new Error('Project was not created');
-      store.projects.push(result.project);
-      store.activeScope = result.project.project_id;
-      document.dispatchEvent(new CustomEvent('project-sessions-changed'));
-      render();
+      const result = await request('/api/work_hub/folders/create', { method: 'POST', body: JSON.stringify({ folder: { name: name.trim(), color: colors[store.folders.length % colors.length] }, expected_revision: store.revision }) });
+      store.activeFolderId = result.folder.id; store.expandedProjects[result.folder.id] = true; await loadWorkHubPanel();
     } catch (error) {
       store.stale = true; render();
       if (typeof showToast === 'function') showToast(`Project create failed: ${error.message || error}`);
     }
   }
-  async function createWorkHubBoard() { const projectId = store.activeScope === 'all' || store.activeScope === 'inbox' ? null : store.activeScope; const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeBoardId = result.board.id; await loadWorkHubPanel(); } catch (error) { store.stale = true; render(); } }
+  async function createWorkHubBoard() { if (!store.activeFolderId) { if (typeof showToast === 'function') showToast('Select a project folder before creating a board.'); return; } const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), folder_id: store.activeFolderId }, expected_revision: store.revision }) }); store.activeBoardId = result.board.id; await loadWorkHubPanel(); } catch (error) { store.stale = true; render(); } }
   async function deleteWorkHubBoard(boardId) { if (!await showConfirmDialog({ title: 'Delete board', message: 'Its work items move to the default board. The project workspace stays intact.', confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); } catch (error) { store.stale = true; render(); } }
   function renderCanvas(items) {
     const canvas = el('workHubCanvas'); if (!canvas) return;
@@ -118,10 +114,10 @@
   }
   function bind() {
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { const projectId = button.dataset.projectToggle; store.expandedProjects[projectId] = !store.expandedProjects[projectId]; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; render(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { const projectId = button.dataset.projectToggle; store.expandedProjects[projectId] = !store.expandedProjects[projectId]; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
-    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project workspace</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; };
+    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New Project Folder</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; };
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });

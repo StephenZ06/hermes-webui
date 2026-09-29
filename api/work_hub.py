@@ -94,6 +94,15 @@ CREATE TABLE IF NOT EXISTS planning_entities (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS work_hub_folders (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_planning_entities_collection
     ON planning_entities(collection);
 
@@ -395,9 +404,61 @@ def _validate_project(project_id: object) -> str | None:
     return value or None
 
 
+def _folder_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {"id": row["id"], "name": row["name"], "color": row["color"], "sort_order": row["sort_order"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+
+def list_folders() -> list[dict[str, Any]]:
+    with _STATE_LOCK:
+        with _connect() as conn:
+            return [_folder_from_row(row) for row in conn.execute("SELECT * FROM work_hub_folders ORDER BY sort_order, created_at, id")]
+
+
+def create_folder(payload: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise WorkHubError("Folder must be an object")
+    with _STATE_LOCK:
+        with _connect() as conn:
+            with conn:
+                _expect_revision(conn, expected_revision, creating=True)
+                name = _clean_text(payload.get("name"), field="Folder name", maximum=TITLE_MAX_CHARS, required=True)
+                color = _clean_text(payload.get("color"), field="Folder color", maximum=32)
+                now = time.time()
+                order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_hub_folders").fetchone()[0]
+                folder = {"id": uuid.uuid4().hex, "name": name, "color": color, "sort_order": order, "created_at": now, "updated_at": now}
+                conn.execute("INSERT INTO work_hub_folders(id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (folder["id"], name, color, order, now, now))
+                return {"folder": folder, "revision": _bump_revision(conn)}
+
+
+def _migrate_legacy_boards_to_folder() -> None:
+    """Give pre-folder boards one durable Work Hub home without touching Chat."""
+    with _STATE_LOCK:
+        with _connect() as conn:
+            with conn:
+                legacy = []
+                for row in conn.execute("SELECT * FROM planning_entities WHERE collection = 'views'"):
+                    content = _decode_json(row["content"], {})
+                    if content.get("kind") == "work_hub_board" and not content.get("folder_id"):
+                        legacy.append((row, content))
+                if not legacy:
+                    return
+                folder = conn.execute("SELECT * FROM work_hub_folders WHERE name = ?", ("Imported boards",)).fetchone()
+                now = time.time()
+                if folder is None:
+                    folder_id = uuid.uuid4().hex
+                    order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_hub_folders").fetchone()[0]
+                    conn.execute("INSERT INTO work_hub_folders(id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?)", (folder_id, "Imported boards", order, now, now))
+                else:
+                    folder_id = folder["id"]
+                for row, content in legacy:
+                    content["folder_id"] = folder_id
+                    conn.execute("UPDATE planning_entities SET content = ?, updated_at = ? WHERE id = ?", (_encode_json(content), now, row["id"]))
+                _bump_revision(conn)
+
+
 def _board_from_row(row: sqlite3.Row) -> dict[str, Any]:
     content = _decode_json(row["content"], {})
-    return {"id": row["id"], "name": row["name"], "project_id": row["project_id"], "default": bool(content.get("default")), "created_at": row["created_at"], "updated_at": row["updated_at"]}
+    return {"id": row["id"], "name": row["name"], "project_id": row["project_id"], "folder_id": content.get("folder_id"), "default": bool(content.get("default")), "created_at": row["created_at"], "updated_at": row["updated_at"]}
 
 
 def _default_board(conn: sqlite3.Connection, project_id: str | None) -> dict[str, Any]:
@@ -430,10 +491,19 @@ def create_board(payload: dict[str, Any], expected_revision: int | None = None) 
         with _connect() as conn:
             with conn:
                 _expect_revision(conn, expected_revision, creating=True)
-                project_id = _validate_project(payload.get("project_id"))
+                folder_id = _clean_text(payload.get("folder_id"), field="Folder", maximum=128)
+                if folder_id:
+                    if conn.execute("SELECT 1 FROM work_hub_folders WHERE id = ?", (folder_id,)).fetchone() is None:
+                        raise WorkHubError("Folder not found", 404)
+                    project_id = None
+                else:
+                    project_id = _validate_project(payload.get("project_id"))
                 name = _clean_text(payload.get("name"), field="Board name", maximum=TITLE_MAX_CHARS, required=True)
-                now = time.time(); board = {"id": uuid.uuid4().hex, "name": name, "project_id": project_id, "default": False, "created_at": now, "updated_at": now}
-                conn.execute("INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)", (board["id"], name, project_id, _encode_json({"kind": "work_hub_board", "default": False}), now, now))
+                now = time.time(); board = {"id": uuid.uuid4().hex, "name": name, "project_id": project_id, "folder_id": folder_id or None, "default": False, "created_at": now, "updated_at": now}
+                content = {"kind": "work_hub_board", "default": False}
+                if folder_id:
+                    content["folder_id"] = folder_id
+                conn.execute("INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)", (board["id"], name, project_id, _encode_json(content), now, now))
                 return {"board": board, "revision": _bump_revision(conn)}
 
 
@@ -1158,13 +1228,13 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def bootstrap() -> dict[str, Any]:
-    from api.models import load_projects
     from api.profiles import list_profiles_api
 
     migrate_sticky_boards()
+    _migrate_legacy_boards_to_folder()
     result = list_items()
     result.update({
-        "projects": load_projects(),
+        "folders": list_folders(),
         "profiles": [{"name": row.get("name"), "provider": row.get("provider")} for row in list_profiles_api()],
         "statuses": [{"id": status, "label": STATUS_LABELS[status]} for status in STATUS_ORDER],
         "workflows": [get_workflow_run(row["id"]) for row in list_workflow_runs()],
