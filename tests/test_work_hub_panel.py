@@ -260,6 +260,18 @@ def test_work_hub_project_tiles_have_a_narrow_skin_safe_layout():
     assert "@media (max-width: 620px)" in css
 
 
+def test_work_hub_workspace_folders_reuse_chat_hierarchy_for_nested_boards():
+    script = read("static/work-hub.js")
+    css = read("static/style.css")
+
+    assert "project-folder-list work-hub-projects" in script
+    assert "project-chip project-folder-row work-hub-project-tile" in script
+    assert "project-folder-sessions work-hub-project-boards" in script
+    assert "project-folder-sessions-inner work-hub-project-boards-inner" in script
+    project_row_rule = css.split(".work-hub-project-tile{", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns:16px 8px minmax(0,1fr) auto" in project_row_rule
+
+
 def test_workspace_graph_is_a_files_adjacent_tab_with_safe_empty_and_error_states():
     page = read("static/index.html")
     workspace = read("static/workspace.js")
@@ -303,10 +315,12 @@ def test_work_hub_board_selection_keeps_its_folder_scope_and_folder_toggle_is_ac
 def test_work_hub_collapsed_board_lists_have_no_intrinsic_row_height():
     css = read("static/style.css")
 
-    boards_rule = css.split(".work-hub-project-boards{", 1)[1].split("}", 1)[0]
-    children_rule = css.split(".work-hub-project-boards>*{", 1)[1].split("}", 1)[0]
-    assert "overflow:hidden" in boards_rule
-    assert "min-height:0" in children_rule
+    chat_workspace_css = css.split("/* Projects folder list", 1)[1]
+    boards_rule = chat_workspace_css.split(".project-folder-sessions{", 1)[1].split("}", 1)[0]
+    inner_rule = chat_workspace_css.split(".project-folder-sessions-inner{", 1)[1].split("}", 1)[0]
+    assert "grid-template-rows:0fr" in boards_rule
+    assert "overflow:hidden" in inner_rule
+    assert "min-height:0" in inner_rule
 
 
 def test_graph_tab_is_icon_only_and_hides_files_surface():
