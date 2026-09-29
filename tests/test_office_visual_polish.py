@@ -51,6 +51,13 @@ def test_composer_is_resized_and_disposed_alongside_the_renderer():
     )
 
 
+def test_overview_zoom_uses_the_actual_viewport_size_for_consistent_framing():
+    at = SCENE_SRC.index("function zoomForRadius(")
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  // ---- camera motion", at)]
+    assert "viewportCoverage" in body
+    assert "Math.min(width, height)" in body
+
+
 def test_tone_mapping_is_set_so_the_hdr_glow_rolls_off_instead_of_clipping():
     assert "renderer.toneMapping = THREE.ACESFilmicToneMapping" in SCENE_SRC
 

@@ -100,3 +100,26 @@ def test_migration_preserves_oversized_legacy_title_without_failing_bootstrap(mo
     result = work_hub.bootstrap()
 
     assert result["items"][0]["title"] == "x" * 240
+
+
+def test_legacy_board_folder_upgrade_preserves_each_legacy_project(monkeypatch, tmp_path):
+    """Legacy project boards become isolated Work Hub folders, not one import bucket."""
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    with work_hub._connect() as conn:
+        now = 1.0
+        for board_id, project_id in (("board-a", "project-a"), ("board-b", "project-b")):
+            conn.execute(
+                "INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', 'Default', ?, ?, 'board', '{}', ?, ?)",
+                (board_id, project_id, work_hub._encode_json({"kind": "work_hub_board", "default": True}), now, now),
+            )
+        conn.commit()
+
+    work_hub._migrate_legacy_boards_to_folder()
+
+    folders = {folder["name"]: folder["id"] for folder in work_hub.list_folders()}
+    boards = {board["project_id"]: board for board in work_hub.bootstrap()["boards"]}
+    assert set(folders) == {"Imported project project-a", "Imported project project-b"}
+    assert boards["project-a"]["folder_id"] == folders["Imported project project-a"]
+    assert boards["project-b"]["folder_id"] == folders["Imported project project-b"]

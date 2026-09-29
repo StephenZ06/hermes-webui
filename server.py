@@ -329,7 +329,10 @@ class Handler(BaseHTTPRequestHandler):
     def end_headers(self) -> None:
         extra_connect_src = getattr(self, "_csp_extra_connect_src", None)
         extra_frame_src = getattr(self, "_csp_extra_frame_src", None)
-        self.send_header("Content-Security-Policy-Report-Only", self.csp_report_only_policy(extra_connect_src, extra_frame_src))
+        report_only_policy = getattr(self, "_csp_report_only_policy", None)
+        if report_only_policy is None:
+            report_only_policy = self.csp_report_only_policy(extra_connect_src, extra_frame_src)
+        self.send_header("Content-Security-Policy-Report-Only", report_only_policy)
         self.send_header("Report-To", self._CSP_REPORT_TO)
         super().end_headers()
 

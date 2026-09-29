@@ -211,6 +211,16 @@ def test_workspace_work_hub_mirror_replaces_legacy_notes_board_preview():
     assert "window.openWorkHubItem" in work_hub
 
 
+def test_workspace_work_hub_mirror_uses_the_active_chat_project_boards_and_expands_tasks():
+    work_hub = read("static/work-hub.js")
+
+    assert "const boardIds = new Set((data.boards || []).filter(board => board.project_id === projectId).map(board => board.id));" in work_hub
+    assert "boardIds.has(item.board_id)" in work_hub
+    assert "workspaceExpandedItems" in work_hub
+    assert "workspace-work-hub-details" in work_hub
+    assert "Open in Work Hub" in work_hub
+
+
 def test_composer_does_not_offer_workspace_panel_toggle():
     page = read("static/index.html")
 
@@ -281,6 +291,24 @@ def test_work_hub_uses_nested_boards_and_a_real_filter_icon():
     assert "filter:" in icons
 
 
+def test_work_hub_board_selection_keeps_its_folder_scope_and_folder_toggle_is_accessible():
+    script = read("static/work-hub.js")
+
+    assert "b.setAttribute('aria-expanded', String(expanded))" in script
+    assert "data-folder-id=\"${esc(project.id)}\"" in script
+    assert "store.activeFolderId = button.dataset.folderId" in script
+    assert "child.inert" not in script
+
+
+def test_work_hub_collapsed_board_lists_have_no_intrinsic_row_height():
+    css = read("static/style.css")
+
+    boards_rule = css.split(".work-hub-project-boards{", 1)[1].split("}", 1)[0]
+    children_rule = css.split(".work-hub-project-boards>*{", 1)[1].split("}", 1)[0]
+    assert "overflow:hidden" in boards_rule
+    assert "min-height:0" in children_rule
+
+
 def test_graph_tab_is_icon_only_and_hides_files_surface():
     page = read("static/index.html")
     workspace = read("static/workspace.js")
@@ -297,7 +325,7 @@ def test_graph_tab_has_the_same_exclusive_pane_css_contract_as_other_tabs():
 
     assert '.rightpanel[data-active-tab="graph"] .breadcrumb-bar,.rightpanel[data-active-tab="graph"] .file-tree,.rightpanel[data-active-tab="graph"] #wsEmptyState,.rightpanel[data-active-tab="graph"] .workspace-artifacts{display:none!important;}' in css
     assert '.rightpanel:not([data-active-tab="graph"]) .workspace-graph-pane{display:none!important;}' in css
-    assert '.rightpanel:has(#workspaceGraphTab.active) .preview-area{display:flex!important;}' in css
+    assert '.rightpanel:has(#workspaceGraphTab.active) .preview-area.visible{display:flex!important;}' in css
 
 
 def test_graph_tab_reuses_the_proven_html_preview_frame_without_file_chrome():
@@ -308,7 +336,7 @@ def test_graph_tab_reuses_the_proven_html_preview_frame_without_file_chrome():
     assert "showPreview('html')" in workspace
     assert "$('previewHtmlIframe')" in workspace
     assert "_graphPreviewUrl(project.graph, tokens)" in workspace
-    assert '.rightpanel[data-active-tab="graph"] .preview-area{display:flex!important;}' in css
+    assert '.rightpanel[data-active-tab="graph"] .preview-area.visible{display:flex!important;}' in css
 
 
 def test_graph_view_passes_theme_before_load_and_has_a_compact_loading_state():
@@ -318,10 +346,12 @@ def test_graph_view_passes_theme_before_load_and_has_a_compact_loading_state():
 
     assert "hermes_graph_theme" in workspace
     assert "workspace-graph-loading" in workspace
+    assert "workspace-graph-loading-pending" in workspace
     assert "event.data.type !== 'hermes-graph-ready'" in workspace
     assert "iframe.src = 'about:blank';" not in workspace.split("function _openWorkspaceGraphPreview()", 1)[1].split("function _renderWorkspaceGraphPane()", 1)[0]
     assert ".workspace-graph-empty .sm-btn{flex:none;width:auto;min-height:30px;" in css
     assert "@media(prefers-reduced-motion:reduce){.workspace-graph-loading" in css
+    assert ".preview-area.workspace-graph-loading-pending #previewHtmlIframe{opacity:0;}" in css
 
 
 def test_graph_view_refreshes_after_workspace_mutations_and_navigation():
@@ -333,6 +363,21 @@ def test_graph_view_refreshes_after_workspace_mutations_and_navigation():
     assert "_scheduleWorkspaceGraphRefresh();" in workspace
     assert "_workspaceGraphMapPromise = null" in workspace
     assert '.rightpanel[data-active-tab="graph"] .preview-path{display:none!important;}' in css
+
+
+def test_workspace_graph_empty_state_does_not_share_height_with_the_file_preview():
+    css = read("static/style.css")
+    workspace = read("static/workspace.js")
+
+    assert '.rightpanel[data-active-tab="graph"] .preview-area.visible{display:flex!important;}' in css
+    assert "if(preview) preview.hidden = true;" in workspace
+
+
+def test_workspace_live_refresh_does_not_repeat_the_optional_git_badge_probe():
+    workspace = read("static/workspace.js")
+
+    assert "preservePreview:true,refreshGit:false" in workspace
+    assert "opts.refreshGit!==false" in workspace
 
 
 def test_files_use_an_exclusive_preview_state_instead_of_a_tree_preview_split():

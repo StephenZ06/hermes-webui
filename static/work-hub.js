@@ -5,6 +5,7 @@
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
   const store = { items: [], folders: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
+  const workspaceExpandedItems = new Set();
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -43,13 +44,13 @@
     store.folders.forEach(project => {
       const boards = store.boards.filter(board => board.folder_id === project.id); const boardIds = new Set(boards.map(board => board.id)); const count = store.items.filter(item => boardIds.has(item.board_id) && item.status !== 'cancelled').length;
       const expanded = !!store.expandedProjects[project.id];
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'work-hub-project-tile' + (store.activeFolderId === project.id ? ' active' : ''); b.dataset.scope = project.id; b.dataset.projectToggle = project.id;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'work-hub-project-tile' + (store.activeFolderId === project.id ? ' active' : ''); b.dataset.scope = project.id; b.dataset.projectToggle = project.id; b.setAttribute('aria-expanded', String(expanded)); b.setAttribute('aria-controls', `workHubFolderBoards-${project.id}`);
       b.innerHTML = `<span class="work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="work-hub-project-color" aria-hidden="true"></span><span class="work-hub-project-name"></span><span class="work-hub-project-count" aria-label="${count} work items">${count}</span>`;
       b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
       b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
       projectList.appendChild(b);
-      const child = document.createElement('div'); child.className = 'work-hub-project-boards' + (expanded ? ' expanded' : ''); child.inert = !expanded;
-      boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}">${icon('board')}<span>${esc(board.name)}</span></button>${board.default ? '' : `<button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`}`; child.appendChild(row); });
+      const child = document.createElement('div'); child.id = `workHubFolderBoards-${project.id}`; child.className = 'work-hub-project-boards' + (expanded ? ' expanded' : '');
+      boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}" data-folder-id="${esc(project.id)}">${icon('board')}<span>${esc(board.name)}</span></button>${board.default ? '' : `<button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`}`; child.appendChild(row); });
       projectList.appendChild(child);
     });
   }
@@ -115,7 +116,7 @@
   function bind() {
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { const projectId = button.dataset.projectToggle; store.expandedProjects[projectId] = !store.expandedProjects[projectId]; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; render(); });
-    document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
+    document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New Project Folder</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; };
     const planGoal = el('workHubPlanGoal');
@@ -217,20 +218,26 @@
     list.innerHTML = '<div class="workspace-work-hub-loading">Loading work…</div>';
     try {
       const data = await request('/api/work_hub/bootstrap');
-      const project = (data.projects || []).find(row => row.project_id === projectId);
-      const items = (data.items || []).filter(item => projectId ? item.project_id === projectId : !item.project_id)
+      const boardIds = new Set((data.boards || []).filter(board => board.project_id === projectId).map(board => board.id));
+      const items = (data.items || []).filter(item => projectId ? boardIds.has(item.board_id) : !item.project_id)
         .filter(item => item.status !== 'cancelled');
-      if (scope) scope.textContent = project ? project.name || 'Current project work' : 'Inbox work';
+      if (scope) scope.textContent = projectId ? 'Current project board work' : 'Inbox work';
       list.innerHTML = '';
       if (!items.length) {
         list.innerHTML = '<div class="workspace-work-hub-empty">No work items in this scope.</div>';
       } else {
         items.forEach(item => {
-          const row = document.createElement('button'); row.type = 'button'; row.className = 'workspace-work-hub-item';
-          row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><span class="workspace-work-hub-item-copy"><strong></strong><small>${esc((item.status || '').replace('_', ' '))}</small></span>`;
-          row.querySelector('strong').textContent = item.title;
-          row.onclick = () => openWorkHubItem(item.id, projectId);
-          list.appendChild(row);
+          const expanded = workspaceExpandedItems.has(item.id);
+          const card = document.createElement('article'); card.className = 'workspace-work-hub-item' + (expanded ? ' expanded' : '');
+          const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'workspace-work-hub-item-toggle'; toggle.setAttribute('aria-expanded', String(expanded));
+          toggle.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><span class="workspace-work-hub-item-copy"><strong></strong><small>${esc((item.status || '').replace('_', ' '))}</small></span><span class="workspace-work-hub-item-chevron" aria-hidden="true">▸</span>`;
+          toggle.querySelector('strong').textContent = item.title;
+          const details = document.createElement('div'); details.className = 'workspace-work-hub-details'; details.hidden = !expanded;
+          const description = document.createElement('p'); description.textContent = item.description || 'No description added.'; details.appendChild(description);
+          const meta = document.createElement('small'); meta.textContent = `Priority: ${item.priority || 'none'}`; details.appendChild(meta);
+          const openItem = document.createElement('button'); openItem.type = 'button'; openItem.className = 'workspace-work-hub-item-open'; openItem.textContent = 'Open in Work Hub'; openItem.onclick = () => openWorkHubItem(item.id, projectId); details.appendChild(openItem);
+          toggle.onclick = () => { if (workspaceExpandedItems.has(item.id)) workspaceExpandedItems.delete(item.id); else workspaceExpandedItems.add(item.id); renderWorkspaceWorkHub(); };
+          card.append(toggle, details); list.appendChild(card);
         });
       }
       const open = el('workspaceWorkHubOpen');
@@ -242,6 +249,7 @@
   window.loadWorkHubPanel = loadWorkHubPanel; window.refreshWorkHubForProject = refreshWorkHubForProject;
   window.openWorkHubItem = openWorkHubItem; window.renderWorkspaceWorkHub = renderWorkspaceWorkHub;
   document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel(); });
+  document.addEventListener('work-hub-changed', () => { if (el('workspaceWorkHubList')) renderWorkspaceWorkHub(); });
   window.addEventListener('focus', () => { if (el('workHub')) loadWorkHubPanel(); });
 })();
 

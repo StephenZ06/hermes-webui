@@ -123,6 +123,18 @@ def test_report_only_csp_headers_still_point_to_collector(monkeypatch):
     assert "report-to csp-endpoint" in headers["Content-Security-Policy-Report-Only"]
 
 
+def test_end_headers_honors_a_route_specific_report_only_policy(monkeypatch):
+    sent_headers = []
+    handler = Handler.__new__(Handler)
+    handler._csp_report_only_policy = "default-src 'self'; frame-ancestors 'self'"
+    handler.send_header = lambda key, value: sent_headers.append((key, value))
+    monkeypatch.setattr(BaseHTTPRequestHandler, "end_headers", lambda self: None)
+
+    Handler.end_headers(handler)
+
+    assert dict(sent_headers)["Content-Security-Policy-Report-Only"] == handler._csp_report_only_policy
+
+
 def test_end_headers_reuses_cached_extra_connect_validation(monkeypatch, caplog):
     monkeypatch.setenv(
         "HERMES_WEBUI_CSP_CONNECT_EXTRA",

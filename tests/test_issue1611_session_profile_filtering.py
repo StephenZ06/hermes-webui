@@ -415,6 +415,24 @@ def test_get_session_rejects_metadata_only_session_from_inactive_profile():
                                       leak_msg="foreign-profile metadata must not be returned")
 
 
+def test_profile_probe_returns_only_a_successful_profile_handoff_signal():
+    """Boot may switch profiles without first creating a browser-visible 409."""
+    import api.routes as routes
+
+    captured = {}
+    parsed = urlparse("/api/session?session_id=foreign_001&messages=0&resolve_model=0&profile_probe=1")
+    with patch("api.routes._get_active_profile_name", return_value="default"), \
+         patch("api.routes.get_session", return_value=_ProfileScopedSession()), \
+         patch("api.routes._clear_stale_stream_state", return_value=False), \
+         patch("api.routes.j", side_effect=lambda _h, data, status=200, **_k: captured.update(data=data, status=status)):
+        routes.handle_get(SimpleNamespace(headers={"Cookie": "hermes_profile=default"}), parsed)
+
+    assert captured == {
+        "data": {"profile_mismatch": True, "session_id": "foreign_001", "profile": "other"},
+        "status": 200,
+    }
+
+
 def test_get_session_rejects_cookieless_session_from_inactive_profile():
     """Cookieless requests must still enforce the active-profile boundary."""
     import api.routes as routes

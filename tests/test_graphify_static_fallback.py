@@ -33,7 +33,7 @@ def test_graphify_static_fallback_serves_file(tmp_path):
 
 def test_graphify_static_fallback_serves_interactive_graph_html_as_html(tmp_path):
     from api import config
-    from api.graphify_static import graphify_static_fallback
+    from api.graphify_static import _GRAPHIFY_CSP, _GRAPHIFY_CSP_REPORT_ONLY, graphify_static_fallback
 
     original = config.REPO_ROOT
     config.REPO_ROOT = tmp_path
@@ -49,6 +49,9 @@ def test_graphify_static_fallback_serves_interactive_graph_html_as_html(tmp_path
         assert graphify_static_fallback(None, handler, parsed) is True
         handler.send_header.assert_any_call("Content-Type", "text/html; charset=utf-8")
         handler.send_header.assert_any_call("Cache-Control", "no-store")
+        handler.send_header.assert_any_call("Content-Security-Policy", _GRAPHIFY_CSP)
+        assert handler._csp_report_only_policy == _GRAPHIFY_CSP_REPORT_ONLY
+        assert "connect-src 'self' https://unpkg.com" in _GRAPHIFY_CSP
         written = handler.wfile.write.call_args[0][0]
         assert b"hermes-graph-theme" in written
         assert b"graph-sidebar-toggle" in written
@@ -90,10 +93,35 @@ def test_graphify_html_bridge_applies_initial_theme_and_section_controls(tmp_pat
         assert b"transition:right .2s" in written
         assert b"right:12px!important;top:12px!important" in written
         assert b"#search-wrap{padding-right:51px!important}" in written
-        assert b"flex-basis .24s cubic-bezier(.22,1,.36,1)" in written
+        assert b"flex-basis .36s cubic-bezier(.22,1,.36,1)" in written
+        assert b"@media(prefers-reduced-motion:reduce){#sidebar{transition:none!important}}" in written
         assert b"flex:0 0 var(--hermes-sidebar-width)!important" in written
         assert b"#search{height:31px!important;min-height:31px!important" in written
         assert b"width:31px!important;height:31px!important;display:grid!important" in written
+    finally:
+        config.REPO_ROOT = original
+
+
+def test_graphify_html_bridge_disables_vis_network_improved_layout(tmp_path):
+    from api import config
+    from api.graphify_static import graphify_static_fallback
+
+    original = config.REPO_ROOT
+    config.REPO_ROOT = tmp_path
+    try:
+        graph_root = tmp_path / "graphify-out" / "projects" / "demo"
+        graph_root.mkdir(parents=True)
+        (graph_root / "graph.html").write_text(
+            "<head></head><body><script>const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, { physics: {} });</script></body>",
+            encoding="utf-8",
+        )
+        handler = MagicMock()
+        parsed = MagicMock()
+        parsed.path = "/graphify-projects/demo/graph.html"
+
+        assert graphify_static_fallback(None, handler, parsed) is True
+        written = handler.wfile.write.call_args[0][0]
+        assert b"layout: { improvedLayout: false }" in written
     finally:
         config.REPO_ROOT = original
 

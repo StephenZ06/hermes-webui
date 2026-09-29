@@ -275,6 +275,12 @@ def test_task_status_keeps_its_full_width_and_uses_polished_live_badge_states():
     assert ".office-tasks-count.is-running" in CSS
     assert "animation:office-task-count-pulse" in CSS
     assert ".office-tasks-count.is-complete" in CSS
+
+
+def test_task_status_collapse_has_a_css_geometry_fallback_for_all_browsers():
+    assert ".office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;max-height:0;}" in CSS
+    assert "--office-tasks-body-height" in CSS
+    assert "body.style.setProperty('--office-tasks-body-height'" in OFFICE_SRC
     assert ".office-tasks-count.is-completion-flash" in CSS
 
 

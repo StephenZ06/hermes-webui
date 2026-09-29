@@ -68,13 +68,15 @@ async function api(path,opts={}){
           // Parse JSON error body and surface the human-readable message,
           // rather than showing raw JSON like {"error":"Profile 'x' does not exist."}
           let message=text;
-          try{const j=JSON.parse(text);message=j.error||j.message||text;}catch(e){}
+          let errorCode='';
+          try{const j=JSON.parse(text);message=j.error||j.message||text;errorCode=typeof j.code==='string'?j.code:'';}catch(e){}
           // Attach the raw HTTP context so callers can branch on status (404 stale-session
           // cleanup, 401 redirect, 503 retry, etc.) without re-parsing the message string.
           const err=new Error(message);
           err.status=res.status;
           err.statusText=res.statusText;
           err.body=text;
+          err.code=errorCode;
           throw err;
         }
         const ct=res.headers.get('content-type')||'';
@@ -347,6 +349,7 @@ function _setWorkspaceGraphLoading(loading){
     overlay.innerHTML = '<span class="workspace-graph-spinner" aria-hidden="true"></span><span>Loading graph…</span>';
     preview.appendChild(overlay);
   }
+  preview.classList.toggle('workspace-graph-loading-pending', !!loading);
   if(overlay) overlay.classList.toggle('is-visible', !!loading);
 }
 
@@ -819,7 +822,7 @@ function _startWorkspaceLiveRefresh(){
     try{
       const data=await api(_workspaceRouteForPath(S.currentDir||'.','list'));
       if(!S.session) return;
-      if(_workspaceLiveSignature && data.signature && data.signature!==_workspaceLiveSignature) loadDir(S.currentDir||'.',{refreshExpanded:true,preservePreview:true});
+      if(_workspaceLiveSignature && data.signature && data.signature!==_workspaceLiveSignature) loadDir(S.currentDir||'.',{refreshExpanded:true,preservePreview:true,refreshGit:false});
       _workspaceLiveSignature=data.signature||_workspaceLiveSignature;
     }catch(e){}
   },2500);
@@ -1297,7 +1300,8 @@ async function loadDir(path, opts={}){
       await refreshOpenPreviewIfMutated();
     }
     // Fetch git info for workspace root (non-blocking)
-    if(!path||path==='.'){ _refreshGitBadge(); if(typeof renderBoundProjectControl==='function') renderBoundProjectControl(); if(typeof renderProjectFolderBinding==='function') renderProjectFolderBinding(); }
+    if((!path||path==='.') && opts.refreshGit!==false){ _refreshGitBadge(); }
+    if(!path||path==='.'){ if(typeof renderBoundProjectControl==='function') renderBoundProjectControl(); if(typeof renderProjectFolderBinding==='function') renderProjectFolderBinding(); }
   }catch(e){
     const grant = _workspaceEscapeGrantForPath(path);
     if(grant && e && e.status===403){

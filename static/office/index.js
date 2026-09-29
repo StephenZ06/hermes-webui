@@ -602,8 +602,17 @@ function taskStatusBadgeState(workers) {
  * visibility follows the state. Remembered per-browser so the chosen view
  * persists across Office visits.
  */
+function syncTaskStatusBodyHeight() {
+  const body = document.getElementById('officeTasksBody');
+  if (body) body.style.setProperty('--office-tasks-body-height', `${body.scrollHeight}px`);
+}
+
 function renderTasksCollapse() {
   if (!_tasksEl || !_tasksCollapseBtnEl) return;
+  // Keep the expanded end-point equal to the content's actual height. CSS
+  // owns the transition so this remains smooth in browsers where a Web
+  // Animations API max-height animation is coalesced or suppressed.
+  syncTaskStatusBodyHeight();
   _tasksEl.classList.toggle('is-collapsed', _tasksCollapsed);
   _tasksCollapseBtnEl.setAttribute('aria-expanded', String(!_tasksCollapsed));
   _tasksCollapseBtnEl.setAttribute('aria-label', _tasksCollapsed ? 'Expand Task Status' : 'Collapse Task Status');
@@ -612,33 +621,10 @@ function renderTasksCollapse() {
 
 function toggleTasksCollapsed() {
   if (_tasksCollapseTimer) clearTimeout(_tasksCollapseTimer);
-  const body = document.getElementById('officeTasksBody');
   const collapsing = !_tasksCollapsed;
   _tasksCollapsed = collapsing;
   writeTasksCollapsed(_tasksCollapsed);
   renderTasksCollapse();
-  if (body) {
-    const from = body.getBoundingClientRect().height;
-    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    body.style.maxHeight = `${from}px`;
-    if (body._tasksBodyAnimation) {
-      body._tasksBodyAnimation.cancel();
-      body._tasksBodyAnimation = null;
-    }
-    if (reduced) {
-      body.style.maxHeight = collapsing ? '0px' : '';
-    } else {
-      const to = collapsing ? 0 : body.scrollHeight;
-      body._tasksBodyAnimation = body.animate(
-        [{ maxHeight: `${from}px` }, { maxHeight: `${to}px` }],
-        { duration: 420, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards' }
-      );
-      body._tasksBodyAnimation.onfinish = () => {
-        body.style.maxHeight = collapsing ? '0px' : '';
-        body._tasksBodyAnimation = null;
-      };
-    }
-  }
   _tasksCollapseAnimating = true;
   _tasksCollapseTimer = setTimeout(() => {
     _tasksCollapseAnimating = false;
@@ -818,6 +804,7 @@ function renderTaskStatusPanel(state, opts) {
   if (options.skipListUpdate) return;
   renderTaskStatusFilters();
   renderTaskStatusList(workers);
+  if (!_tasksCollapsed) syncTaskStatusBodyHeight();
 }
 
 function renderPill(state) {
@@ -1172,7 +1159,7 @@ function showHistory(parentSessionId) {
   // The camera was framed on — possibly zoomed into a desk of — a different
   // run. Carrying that over would leave it pointed at a worker that no longer
   // exists, on a floor the user has never seen.
-  if (_scene) _scene.resetView(_outlet === 'business' ? 1.15 : 1);
+  if (_scene) _scene.resetView();
   renderSessionList();
   scheduleSync();
 }
@@ -1403,15 +1390,10 @@ async function renderSidebar() {
     }
     if (projectsResult.status === 'fulfilled') {
       const payload = projectsResult.value || {};
-      const activeProfile = payload.active_profile || '';
       const allProjects = (payload.projects && Array.isArray(payload.projects)) ? payload.projects : [];
-      _officeProjects = activeProfile
-        ? allProjects.filter(p => !p.profile || p.profile === activeProfile)
-        : allProjects;
-      if (!_officeProjects.length && allProjects.length) {
-        // If filtering removed everything, fall back to the full list.
-        _officeProjects = allProjects;
-      }
+      // Folder visibility is navigation state, not delegation state. Keep
+      // every project visible even with no conversations or another profile.
+      _officeProjects = allProjects;
     } else if (projectsResult.status === 'rejected') {
       console.warn('[office] /api/projects failed:', projectsResult.reason);
     }

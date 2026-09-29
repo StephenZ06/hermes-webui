@@ -112,3 +112,16 @@ def test_root_archived_saved_session_clears_stale_localstorage_pointer():
     assert clear_pos > guard_pos, "archived saved session must clear stale localStorage pointer"
     assert clear_pos < render_pos, "stale pointer should be cleared before the sidebar-only return"
     assert render_pos < load_pos, "archived saved session must return before loadSession(saved)"
+
+
+def test_profile_mismatched_saved_session_switches_before_detail_load():
+    block = _boot_saved_session_block()
+    mismatch_pos = block.find("savedSidebarOnlyState&&savedSidebarOnlyState.profileMismatch")
+    load_pos = block.find("await loadSession(saved, {preserveActiveInput:true})")
+    assert "profile_probe=1" in BOOT_JS
+    assert "await _switchProfileForSessionLoad(savedSidebarOnlyState.profile);" in BOOT_JS
+    assert "skipProfileResolve:true" in BOOT_JS
+    assert mismatch_pos >= 0
+    assert mismatch_pos < load_pos
+    workspace = (REPO / "static" / "workspace.js").read_text(encoding="utf-8").replace(" ", "")
+    assert "err.code=errorCode;" in workspace

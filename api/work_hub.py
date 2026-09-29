@@ -431,28 +431,47 @@ def create_folder(payload: dict[str, Any], expected_revision: int | None = None)
 
 
 def _migrate_legacy_boards_to_folder() -> None:
-    """Give pre-folder boards one durable Work Hub home without touching Chat."""
+    """Give legacy boards durable, isolated Work Hub homes without touching Chat."""
     with _STATE_LOCK:
         with _connect() as conn:
             with conn:
-                legacy = []
+                imported = conn.execute(
+                    "SELECT id FROM work_hub_folders WHERE name = ? ORDER BY sort_order, created_at, id LIMIT 1",
+                    ("Imported boards",),
+                ).fetchone()
+                imported_id = imported["id"] if imported else None
+                legacy: dict[str | None, list[tuple[sqlite3.Row, dict[str, Any]]]] = {}
                 for row in conn.execute("SELECT * FROM planning_entities WHERE collection = 'views'"):
                     content = _decode_json(row["content"], {})
-                    if content.get("kind") == "work_hub_board" and not content.get("folder_id"):
-                        legacy.append((row, content))
+                    if content.get("kind") != "work_hub_board":
+                        continue
+                    # Earlier versions put every legacy project board in one
+                    # generic folder.  Recover the preserved project id so
+                    # every project becomes its own native Work Hub folder.
+                    if not content.get("folder_id") or (row["project_id"] and content.get("folder_id") == imported_id):
+                        legacy.setdefault(row["project_id"], []).append((row, content))
                 if not legacy:
                     return
-                folder = conn.execute("SELECT * FROM work_hub_folders WHERE name = ?", ("Imported boards",)).fetchone()
                 now = time.time()
-                if folder is None:
-                    folder_id = uuid.uuid4().hex
-                    order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_hub_folders").fetchone()[0]
-                    conn.execute("INSERT INTO work_hub_folders(id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?)", (folder_id, "Imported boards", order, now, now))
-                else:
-                    folder_id = folder["id"]
-                for row, content in legacy:
-                    content["folder_id"] = folder_id
-                    conn.execute("UPDATE planning_entities SET content = ?, updated_at = ? WHERE id = ?", (_encode_json(content), now, row["id"]))
+                order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM work_hub_folders").fetchone()[0]
+                for project_id, boards in legacy.items():
+                    if project_id:
+                        # The original project id is the only legacy metadata
+                        # owned by Work Hub.  Do not look up Chat projects here:
+                        # Work Hub folders must stay independent of Chat state.
+                        name = f"Imported project {project_id}"
+                        folder_id = uuid.uuid4().hex
+                        conn.execute("INSERT INTO work_hub_folders(id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?)", (folder_id, name, order, now, now))
+                        order += 1
+                    elif imported_id:
+                        folder_id = imported_id
+                    else:
+                        folder_id = uuid.uuid4().hex
+                        conn.execute("INSERT INTO work_hub_folders(id, name, color, sort_order, created_at, updated_at) VALUES (?, ?, '', ?, ?, ?)", (folder_id, "Imported boards", order, now, now))
+                        order += 1
+                    for row, content in boards:
+                        content["folder_id"] = folder_id
+                        conn.execute("UPDATE planning_entities SET content = ?, updated_at = ? WHERE id = ?", (_encode_json(content), now, row["id"]))
                 _bump_revision(conn)
 
 
@@ -462,9 +481,10 @@ def _board_from_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _default_board(conn: sqlite3.Connection, project_id: str | None) -> dict[str, Any]:
-    row = conn.execute("SELECT * FROM planning_entities WHERE collection = 'views' AND project_id IS ? AND content = ?", (project_id, _encode_json({"kind": "work_hub_board", "default": True}))).fetchone()
-    if row:
-        return _board_from_row(row)
+    for row in conn.execute("SELECT * FROM planning_entities WHERE collection = 'views' AND project_id IS ?", (project_id,)):
+        content = _decode_json(row["content"], {})
+        if content.get("kind") == "work_hub_board" and content.get("default"):
+            return _board_from_row(row)
     now = time.time()
     board = {"id": uuid.uuid4().hex, "name": "Default", "project_id": project_id, "default": True, "created_at": now, "updated_at": now}
     conn.execute("INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)", (board["id"], board["name"], project_id, _encode_json({"kind": "work_hub_board", "default": True}), now, now))

@@ -1037,9 +1037,15 @@ export function createOfficeScene(canvas, options) {
     const aspect = height > 0 ? width / height : 1;
     const halfWidth = FRUSTUM_HALF_HEIGHT * aspect;
     if (!(radius > 0)) return 1;
+    // A fit calculated only from the world frustum makes the same office look
+    // needlessly tiny on a large monitor and overfills a compact laptop view.
+    // Let the available CSS-pixel viewport make a small, bounded adjustment
+    // after the geometric fit, so every device gets the same visual density.
+    const shortEdge = Math.max(1, Math.min(width, height));
+    const viewportCoverage = Math.min(1.1, Math.max(0.92, shortEdge / 840));
     // Fit the floor in both axes: its full radius across, its foreshortened
     // radius (plus standing headroom) down. Whichever is tighter wins.
-    return Math.min(
+    return viewportCoverage * Math.min(
       2.2,
       halfWidth / radius,
       FRUSTUM_HALF_HEIGHT / (radius * ISO_VERTICAL_SCALE + FRAME_HEADROOM),

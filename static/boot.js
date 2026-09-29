@@ -111,12 +111,18 @@ async function _savedSessionShouldStaySidebarOnly(sid){
 async function _savedSessionSidebarOnlyState(sid){
   if(!sid) return false;
   try{
-    const data = await api(`/api/session?session_id=${encodeURIComponent(sid)}&messages=0&resolve_model=0`);
+    const data = await api(`/api/session?session_id=${encodeURIComponent(sid)}&messages=0&resolve_model=0&profile_probe=1`);
+    if(data&&data.profile_mismatch&&data.profile){
+      return {profileMismatch:true,profile:String(data.profile)};
+    }
     const session = data&&data.session;
     const archived = !!(session&&session.archived);
     const running = !!(session&&(session.active_stream_id||session.pending_user_message));
     return {sidebarOnly:archived||running, archived};
   }catch(e){
+    if(e&&e.status===409&&e.code==='session_profile_mismatch'){
+      return {profileMismatch:true};
+    }
     return null;
   }
 }
@@ -4375,6 +4381,20 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
         syncTopbar();syncWorkspacePanelState();
         $('msgInner').innerHTML='';$('emptyState').style.display='';
         await renderSessionList();await _finalizeComposerPrefillOnBoot(prefillIntent);if(typeof startGatewaySSE==='function')startGatewaySSE();
+        return;
+      }
+      if(savedSidebarOnlyState&&savedSidebarOnlyState.profileMismatch){
+        try{
+          await _switchProfileForSessionLoad(savedSidebarOnlyState.profile);
+          await loadSession(saved,{preserveActiveInput:true,skipProfileResolve:true});
+        }catch(_){
+          try{localStorage.removeItem('hermes-webui-session');}catch(_){}
+          S.session=null; S.messages=[]; S.activeStreamId=null; S.busy=false;
+          S._bootReady=true;
+          syncTopbar();syncWorkspacePanelState();
+          $('msgInner').innerHTML='';$('emptyState').style.display='';
+          await renderSessionList();await _finalizeComposerPrefillOnBoot(prefillIntent);if(typeof startGatewaySSE==='function')startGatewaySSE();
+        }
         return;
       }
       if(_rootPrefillNeedsFreshComposer(urlSession, savedLocal, prefillIntent)){

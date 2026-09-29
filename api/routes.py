@@ -14039,6 +14039,10 @@ def handle_get(handler, parsed) -> bool:
         load_messages = query.get("messages", ["1"])[0] != "0"
         resolve_model_default = "1" if load_messages else "0"
         resolve_model = query.get("resolve_model", [resolve_model_default])[0] != "0"
+        # A root-page restore checks only whether a locally saved session needs
+        # a profile handoff.  Return that minimal routing signal as a success so
+        # the browser does not log an expected 409 before it switches profiles.
+        profile_probe = query.get("profile_probe", ["0"])[0] == "1"
         # ?msg_limit=N returns a tail window containing the last N visible
         # transcript rows. Hidden tool-result rows do not consume the budget;
         # they are included only when they sit inside the selected window and
@@ -14073,6 +14077,12 @@ def handle_get(handler, parsed) -> bool:
                     # Valid session owned by a KNOWN other profile: 409 so the
                     # client can offer to switch to it (#5419).
                     if _diag: _diag.finish()
+                    if profile_probe and not load_messages and not resolve_model:
+                        return j(handler, {
+                            "profile_mismatch": True,
+                            "session_id": sid,
+                            "profile": _session_profile,
+                        })
                     return j(handler, {
                         "error": "Session belongs to a different profile",
                         "code": "session_profile_mismatch",
@@ -14527,12 +14537,19 @@ def handle_get(handler, parsed) -> bool:
                 if _session_profile:
                     # Valid CLI/foreign session owned by a KNOWN other profile:
                     # 409 so the client can offer to switch to it (#5419).
-                    return j(handler, {
+                    mismatch = {
                         "error": "Session belongs to a different profile",
                         "code": "session_profile_mismatch",
                         "session_id": sid,
                         "profile": _session_profile,
-                    }, status=409)
+                    }
+                    if profile_probe and not load_messages and not resolve_model:
+                        return j(handler, {
+                            "profile_mismatch": True,
+                            "session_id": sid,
+                            "profile": _session_profile,
+                        })
+                    return j(handler, mismatch, status=409)
                 # Missing session (cli_meta={} -> profile=None): keep the 404
                 # self-heal path. _profiles_match coerces None->'default', so a
                 # truly-missing session under a non-default active profile would
@@ -15009,7 +15026,10 @@ def handle_get(handler, parsed) -> bool:
         try:
             status = git_status(Path(s.workspace))
         except GitWorkspaceError as e:
-            return _git_bad(handler, e)
+            # The badge is supplementary UI.  A workspace may be on a slow or
+            # unavailable filesystem, so a failed status probe must not turn
+            # every ordinary workspace refresh into a client-visible 400.
+            return j(handler, {"git": None})
         totals = status.get("totals") or {}
         info = None if not status.get("is_git") else {
             "branch": status.get("branch"),

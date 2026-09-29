@@ -59,6 +59,17 @@ def test_office_workspace_section_matches_the_chat_sidebar_hierarchy():
     assert ".office-project-folders .project-folder-sessions{margin:0 0 2px;}" in CSS
 
 
+def test_office_sidebar_includes_empty_project_folders_across_profiles():
+    sidebar_at = OFFICE_INDEX_JS.index("async function renderSidebar()")
+    sidebar = OFFICE_INDEX_JS[sidebar_at:OFFICE_INDEX_JS.index("// ---- mount", sidebar_at)]
+    assert "_officeProjects = allProjects;" in sidebar
+    assert "allProjects.filter(p => !p.profile || p.profile === activeProfile)" not in sidebar
+
+
+def test_sidebar_action_cards_inherit_the_sidebar_background():
+    assert ".hermes-cli-card{flex:0 0 auto;margin:6px 8px 8px;padding:8px;border-radius:8px;background:var(--sidebar);" in CSS
+
+
 def test_office_filter_uses_a_compact_vertical_inset():
     """The Office filter has the same horizontal inset with less empty vertical chrome."""
     assert ".panel-view#panelOffice .sidebar-search{padding:6px 8px;}" in CSS
