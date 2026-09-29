@@ -86,6 +86,13 @@ CI also runs this suite on Python `3.11`, `3.12`, and `3.13`.
 
 If your change affects browser behavior, also run the relevant manual checks from [TESTING.md](TESTING.md).
 
+When verifying a UI change against the Docker deployment, source-tree tests are
+not evidence that the browser is running that source. Rebuild and recreate the
+service first (`docker compose up -d --build hermes-webui`), wait for its
+health check, then confirm the served static asset contains the expected
+marker. This catches the common case where `/app` in the running image is an
+older build than the checkout being edited.
+
 ### 3. Clear PR Description
 
 There is currently no PR template in this repo, so include the important sections yourself:

@@ -943,6 +943,7 @@ WebUI progress guidance:
 - Do not reveal hidden reasoning, chain-of-thought, private scratchpads, secrets, raw logs, or long tool output.
 - Password, API-key, token, and secret fields are automatically redacted by the system. Treat masked values as intentional redaction, not placeholder text or user input errors, and do not tell the user a stored credential is wrong based on a masked value alone.
 - Final visible assistant replies must be clear, user-facing, and in the user's language, not private planning notes.
+- Response formatting: use readable Markdown whenever it helps scanning. For substantive answers, use a short descriptive heading, bold key outcomes, lists for several points, and block quotes only for material the user should notice. Use <u>…</u> sparingly for a critical phrase. Do not force decorative formatting onto a one-line reply, and do not use raw HTML except this underline tag.
 - Do not include terse planning fragments or scratchpad shorthand in visible assistant text. Avoid fragments like "Need script", "Need check logs", "Need inspect email", or "maybe invite"; either omit them or rewrite them as clear user-facing progress.
 - For direct answers or very short tasks, skip progress updates and answer normally.
 """.strip()
@@ -1074,15 +1075,20 @@ def _webui_ephemeral_system_prompt(
     bound_project_prompt = _bound_project_prompt(session)
     if bound_project_prompt:
         parts.append(bound_project_prompt)
-    # Notes change independently of a session's transcript, so they belong in
-    # this per-turn ephemeral layer rather than in AGENTS.md or msg[0]. The
-    # helper applies the same scope as the Workspace Notes panel: an assigned
-    # project sees only its boards; a general chat sees the general-board view.
+    # Work Hub changes independently of a session's transcript, so it belongs
+    # in this per-turn ephemeral layer rather than in AGENTS.md or msg[0].
+    # During migration the old sticky-board context remains a safe fallback
+    # when the relevant Work Hub scope has no active items yet.
     try:
-        from api.sticky_board import render_task_context
-        task_prompt = render_task_context(getattr(session, "project_id", None))
+        from api.work_hub import render_task_context as render_work_hub_task_context
+
+        task_prompt = render_work_hub_task_context(getattr(session, "project_id", None))
+        if not task_prompt:
+            from api.sticky_board import render_task_context as render_sticky_context
+
+            task_prompt = render_sticky_context(getattr(session, "project_id", None))
     except Exception:
-        logger.debug("Unable to load sticky-board task context", exc_info=True)
+        logger.debug("Unable to load Work Hub task context", exc_info=True)
         task_prompt = ""
     if task_prompt:
         parts.append(task_prompt)
@@ -1797,6 +1803,31 @@ _SYNTHETIC_CONTROL_MESSAGE_FLAGS = (
     "_pre_verify_synthetic",
 )
 
+# Hermes Agent can persist this continuation pair without its ephemeral marker.
+# It is an internal retry loop, not two user-visible turns: hide both its interim
+# assistant acknowledgement and its synthetic user nudge. Keep this exact and
+# structural (the prior row must be ``finish_reason=incomplete``) so normal user
+# messages are never discarded. (#5334)
+_UNMARKED_CONTINUATION_NUDGES = frozenset({
+    "[System: Continue now. Execute the required tool calls and only send your final answer "
+    "after completing the task.]",
+    "[System: Your previous message ended the turn with a fragment that is not a usable answer. "
+    "If the task is unfinished, continue it and then give the complete answer. If that fragment "
+    "WAS your complete answer, send it again exactly as before.]",
+})
+
+
+def _is_unmarked_continuation_pair(interim, nudge) -> bool:
+    """Return True only for Agent's persisted interim-answer/continuation pair."""
+    return (
+        isinstance(interim, dict)
+        and interim.get('role') == 'assistant'
+        and interim.get('finish_reason') == 'incomplete'
+        and isinstance(nudge, dict)
+        and nudge.get('role') == 'user'
+        and _message_text(nudge.get('content', '')) in _UNMARKED_CONTINUATION_NUDGES
+    )
+
 
 def _is_synthetic_control_message(message) -> bool:
     """Return True for an Agent-internal synthetic scaffolding turn flagged by marker."""
@@ -1811,11 +1842,18 @@ def _drop_synthetic_control_messages(messages):
     Honors the structured ``_verification_stop_synthetic`` / ``_pre_verify_synthetic``
     markers the agent already sets, rather than string-matching the nudge copy.
     """
-    return [
-        msg
-        for msg in list(messages or [])
-        if not _is_synthetic_control_message(msg)
-    ]
+    cleaned = []
+    rows = list(messages or [])
+    index = 0
+    while index < len(rows):
+        message = rows[index]
+        if index + 1 < len(rows) and _is_unmarked_continuation_pair(message, rows[index + 1]):
+            index += 2
+            continue
+        if not _is_synthetic_control_message(message):
+            cleaned.append(message)
+        index += 1
+    return cleaned
 
 
 def _clean_synthetic_control_messages_with_provenance(messages):
@@ -8888,6 +8926,7 @@ def _run_agent_streaming(
     model_provider=None,
     goal_related=False,
     moa_config=None,
+    resolved_toolsets=None,
 ):
     """Run agent in background thread, writing SSE events to STREAMS[stream_id].
 
@@ -10337,24 +10376,29 @@ def _run_agent_streaming(
             from api.config import _resolve_cli_toolsets
             _toolsets = _resolve_cli_toolsets(_cfg)
 
-            # Per-session toolset override (#493): if the session has
-            # enabled_toolsets set, use that instead of the global config.
-            try:
-                from api.models import Session, SESSION_DIR
-                _session_path = SESSION_DIR / f"{session_id}.json"
-                if _session_path.exists():
-                    _session_meta = Session.load_metadata_only(session_id)
-                    # load_metadata_only returns a Session INSTANCE, not a dict.
-                    # The previous .get('enabled_toolsets') raised AttributeError
-                    # which was swallowed by the bare except below — the entire
-                    # per-session toolset override silently no-op'd. Use
-                    # getattr() to read the attribute correctly.
-                    # (Opus pre-release advisor finding for v0.50.257.)
-                    _override = getattr(_session_meta, 'enabled_toolsets', None) if _session_meta else None
-                    if _override:
-                        _toolsets = _override
-            except Exception as _ts_err:
-                print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
+            # The route resolves policy before creating this worker. Preserve
+            # its exact list across the async handoff, rather than re-reading
+            # mutable session state. The fallback remains for direct internal
+            # callers that predate the route-level policy boundary.
+            if resolved_toolsets is not None:
+                _toolsets = list(resolved_toolsets)
+            else:
+                try:
+                    from api.models import Session, SESSION_DIR
+                    _session_path = SESSION_DIR / f"{session_id}.json"
+                    if _session_path.exists():
+                        _session_meta = Session.load_metadata_only(session_id)
+                        # load_metadata_only returns a Session INSTANCE, not a dict.
+                        # The previous .get('enabled_toolsets') raised AttributeError
+                        # which was swallowed by the bare except below — the entire
+                        # per-session toolset override silently no-op'd. Use
+                        # getattr() to read the attribute correctly.
+                        # (Opus pre-release advisor finding for v0.50.257.)
+                        _override = getattr(_session_meta, 'enabled_toolsets', None) if _session_meta else None
+                        if _override is not None:
+                            _toolsets = _override
+                except Exception as _ts_err:
+                    print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
 
             # Fallback model chain from profile config (e.g. for rate-limit or
             # provider recovery). Match Hermes CLI/gateway semantics:

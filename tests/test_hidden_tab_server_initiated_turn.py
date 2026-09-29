@@ -96,6 +96,14 @@ def test_hidden_poll_hits_session_status_and_attaches_as_replay():
     assert "_attachServerInitiatedStream(sid, streamId, true)" in body
 
 
+def test_hidden_poll_stops_after_the_session_is_gone():
+    """A restarted server can retire a previously selected session id."""
+    start = MESSAGES_JS.find("function _startHiddenActiveStreamPoll(sid)")
+    body = MESSAGES_JS[start:start + 2400]
+    assert "r.status === 404" in body
+    assert "_stopHiddenActiveStreamPoll()" in body
+
+
 def test_hidden_poll_started_on_both_hidden_paths():
     """The poll must start on BOTH ways a tab ends up hidden with a session.
 

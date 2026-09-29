@@ -224,10 +224,14 @@ class TestHandleAccountUsageWiring(unittest.TestCase):
         body = src[start:src.index("\ndef ", start + 10)]
         assert "from agent.account_usage import fetch_account_usage" in body
         assert "from api.providers import account_usage_from_pool" in body
-        assert "account_usage_from_pool(provider)" in body
+        assert "account_usage_from_pool(effective_provider)" in body
         # The fallback must only fire when the native fetch came up empty,
         # not unconditionally override a real Codex/Anthropic/OpenRouter
-        # window.
-        fallback_at = body.index("account_usage_from_pool(provider)")
-        guard_at = body.rindex("if snapshot is None or not snapshot.available:", 0, fallback_at)
+        # window. Pin the invariant (a guard on snapshot availability precedes
+        # the call) rather than the guard's exact expression, which the
+        # handler has since made getattr-tolerant.
+        fallback_at = body.index("account_usage_from_pool(effective_provider)")
+        guard_at = body.rindex("if snapshot is None or not", 0, fallback_at)
         assert fallback_at > guard_at
+        guard_line = body[guard_at : body.index("\n", guard_at)]
+        assert "available" in guard_line

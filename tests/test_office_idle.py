@@ -129,11 +129,11 @@ def test_the_gap_is_jittered_so_a_pod_does_not_move_in_unison(driver):
 
 
 def test_a_glance_picks_a_side(driver):
-    # The glance index is 3 of 4; 0.9 selects it, and the next draw picks a
-    # direction so figures do not all look the same way.
-    out = run(driver, [work(0), work(60_000)], random=[0.9])
-    if out["played"][1] == "glance":
-        assert out["state"]["glanceDir"] in (0.85, -0.85)
+  # The glance index is 4 of 5; 0.75 selects it, and the next draw picks a
+  # direction so figures do not all look the same way.
+  out = run(driver, [work(0), work(60_000)], random=[0.75])
+  if out["played"][1] == 'glance':
+    assert out["state"]["glanceDir"] in (0.85, -0.85)
 
 
 # ── boundaries ───────────────────────────────────────────────────────────────

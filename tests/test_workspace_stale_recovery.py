@@ -53,6 +53,22 @@ def test_implicit_workspace_recovery_keeps_fallback_lazy(monkeypatch, tmp_path):
     assert recovered is False
 
 
+def test_implicit_workspace_recovery_repairs_missing_saved_root_descendant(monkeypatch, tmp_path):
+    saved_root = tmp_path / "saved-root"
+    saved_root.mkdir()
+    fallback = saved_root / "fallback"
+    fallback.mkdir()
+    stale = saved_root / "removed-project"
+
+    monkeypatch.setattr(workspace, "_home_path", lambda: tmp_path / "other-home")
+    monkeypatch.setattr(workspace, "load_workspaces", lambda: [{"path": str(saved_root)}])
+
+    resolved, recovered = workspace.resolve_implicit_workspace_with_recovery(stale, str(fallback))
+
+    assert resolved == fallback.resolve()
+    assert recovered is True
+
+
 def test_resolve_chat_workspace_with_recovery_repairs_missing_implicit_workspace(monkeypatch, tmp_path):
     fallback = tmp_path / "fallback"
     fallback.mkdir()

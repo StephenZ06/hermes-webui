@@ -26,7 +26,6 @@
 <script>(function(){try{var t=localStorage.getItem('hermes-theme')||'dark';if(t==='system')t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';var c=t==='dark'?'#141425':'#FAF7F0';document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){m.setAttribute('content',c);m.removeAttribute('media');});}catch(e){}})()</script>
 <script>(function(){try{document.documentElement.dataset.workspacePanel=localStorage.getItem('hermes-webui-workspace-panel')==='open'?'open':'closed';}catch(e){document.documentElement.dataset.workspacePanel='closed';}})()</script>
 <script>(function(){try{if(localStorage.getItem('hermes-webui-sidebar-collapsed')==='1')document.documentElement.dataset.sidebarCollapsed='1';}catch(e){}})()</script>
-<link rel="preload" href="static/pwa-startup.js?v=__WEBUI_VERSION__" as="script">
 <script src="static/pwa-startup.js?v=__WEBUI_VERSION__"></script>
 <script>window.__HERMES_CONFIG__={maxUploadBytes:__MAX_UPLOAD_BYTES__,csrfToken:__CSRF_TOKEN_JSON__};</script>
 <script>window.__HERMES_WEBUI_BUNDLE_VERSION__='__WEBUI_VERSION__';</script>
@@ -188,7 +187,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills" data-i18n-title="tab_skills" aria-label="Skills"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
     <div class="rail-divider" data-after-panel="skills" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces" aria-label="Spaces"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
-    <button class="rail-btn nav-tab has-tooltip" data-panel="notes" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Sticky notes" aria-label="Sticky notes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="notes" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Work Hub" aria-label="Work Hub"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
     <div class="rail-divider" data-after-panel="notes" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights" aria-label="Insights"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs" aria-label="Logs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
@@ -214,7 +213,7 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="skills" data-label="Skills" onclick="switchPanel('skills',{fromRailClick:true})" data-tooltip="Skills" data-i18n-title="tab_skills"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></button>
       <div class="sidebar-nav-divider" data-after-panel="skills" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="workspaces" data-label="Spaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
-      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="notes" data-label="Notes" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Sticky notes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="notes" data-label="Work Hub" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Work Hub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
       <div class="sidebar-nav-divider" data-after-panel="notes" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="insights" data-label="Insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="logs" data-label="Logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
@@ -239,16 +238,28 @@
         </div>
       </div>
       <div class="chat-usage-widget" id="chatUsageWidget" hidden>
-        <div class="chat-usage-widget-row">
-          <span class="chat-usage-widget-label" id="chatUsageWidgetLabel" data-i18n="chat_usage_weekly">Weekly usage</span>
-          <span class="chat-usage-widget-percent" id="chatUsageWidgetPercent"></span>
+        <div class="chat-usage-widget-row chat-usage-widget-title-row">
+          <span class="chat-usage-widget-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.66 3.13 3 7 3s7-1.34 7-3V5"/><path d="M5 12v7c0 1.66 3.13 3 7 3s7-1.34 7-3v-7"/></svg><span class="chat-usage-widget-label-stage" id="chatUsageWidgetLabelStage"><span class="chat-usage-widget-label-text" id="chatUsageWidgetLabel" data-i18n="chat_usage_weekly">Weekly usage</span></span></span>
+          <div class="chat-usage-widget-window-toggle" id="chatUsageWidgetWindowToggle" role="group" aria-label="Usage window" hidden>
+            <button type="button" data-usage-window="session" aria-pressed="false" onclick="selectAccountUsageWindow('session')">5 hours</button>
+            <button type="button" data-usage-window="weekly" aria-pressed="true" onclick="selectAccountUsageWindow('weekly')">Weekly</button>
+          </div>
         </div>
-        <div class="chat-usage-widget-bar"><div class="chat-usage-widget-bar-fill" id="chatUsageWidgetBarFill"></div></div>
-        <div class="chat-usage-widget-reset" id="chatUsageWidgetReset"></div>
-        <div class="chat-usage-widget-detail" id="chatUsageWidgetDetail" hidden></div>
+        <div class="chat-usage-widget-window-stage" id="chatUsageWidgetWindowStage">
+          <div class="chat-usage-widget-window-content" id="chatUsageWidgetWindowContent">
+            <div class="chat-usage-widget-battery" id="chatUsageWidgetBattery" role="img" aria-label="Usage meter">
+              <span class="chat-usage-widget-battery-cell" style="--usage-battery-index:0"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:1"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:2"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:3"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:4"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:5"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:6"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:7"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:8"></span><span class="chat-usage-widget-battery-cell" style="--usage-battery-index:9"></span>
+            </div>
+            <div class="chat-usage-widget-meta">
+              <span class="chat-usage-widget-plan" id="chatUsageWidgetPlan"></span>
+              <span class="chat-usage-widget-percent" id="chatUsageWidgetPercent"></span>
+            </div>
+            <div class="chat-usage-widget-reset"><span id="chatUsageWidgetReset"></span></div>
+            <div class="chat-usage-widget-detail" id="chatUsageWidgetDetail" hidden></div>
+          </div>
+        </div>
       </div>
       <div class="session-search sidebar-search"><div class="session-search-field"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="sessionSearch" type="search" placeholder="Filter conversations..." data-i18n-placeholder="filter_conversations" oninput="filterSessions()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"><button type="button" id="sessionSearchClear" class="session-search-clear has-tooltip has-tooltip--bottom-right" aria-label="Clear conversation filter" data-tooltip="Clear conversation filter" onclick="clearSessionSearch()" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
-      <div class="sidebar-divider" aria-hidden="true"></div>
       <div class="session-list" id="sessionList"></div>
       <div class="hermes-cli-card">
         <div class="hermes-cli-card-label">
@@ -388,6 +399,7 @@
       <div class="panel-head-sub">Chats that delegated to subagents — replay any of them on the floor. Hermes still owns every spawn, tool call and result; this only draws them.</div>
       <div class="sidebar-divider" aria-hidden="true"></div>
       <div class="session-search sidebar-search"><div class="session-search-field"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="officeSearch" type="search" placeholder="Filter conversations..." data-i18n-placeholder="filter_conversations" oninput="filterOfficeSessions()" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore="true" data-form-type="other"><button type="button" id="officeSearchClear" class="session-search-clear has-tooltip has-tooltip--bottom-right" aria-label="Clear conversation filter" data-tooltip="Clear conversation filter" onclick="clearOfficeSearch()" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>
+      <div class="office-project-folders" id="officeProjectFolders"></div>
       <div class="office-sidebar-list" id="officeSessionList"></div>
       <div class="hermes-cli-card">
         <div class="hermes-cli-card-label">
@@ -409,28 +421,13 @@
       <div class="panel-head-sub" data-i18n="workspace_desc">Add and switch workspaces for your sessions.</div>
       <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
     </div>
-    <!-- Sticky notes panel: multiple boards (api/sticky_board.py), each
-         optionally linked to a Project folder (the same Projects used by
-         the Chat sidebar's project-folder rows -- reuses those exact
-         classes for a matching look, just without nested sessions). The
-         board itself is the vendored static/vendor/sticky-board (MIT, see
-         PROVENANCE.md there), embedded via iframe in #mainNotes and
-         switched by changing its src's ?board= query param. All logic for
-         this panel lives in static/notes.js. -->
+    <!-- `panelNotes` remains the compatibility identity for saved panel state;
+         the visible product is the local Work Hub. -->
     <div class="panel-view" id="panelNotes">
       <div class="panel-head">
-        <span>Notes</span>
-        <div class="panel-head-actions">
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="createStickyBoard()" data-tooltip="New board" aria-label="New board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        </div>
+        <span>Work Hub</span>
       </div>
-      <div class="panel-head-sub">Link a board to a project folder to make it available to that project's chats.</div>
-      <div class="sidebar-divider" aria-hidden="true"></div>
-      <div id="notesProjectFolders"></div>
-      <div class="sidebar-divider" aria-hidden="true"></div>
-      <div class="notes-boards-heading">BOARDS</div>
-      <input type="search" id="notesBoardSearch" class="notes-board-search" placeholder="Search boards..." aria-label="Search boards">
-      <div id="notesBoardsList" style="flex:1;overflow-y:auto"></div>
+      <div id="workHubSidebar" aria-label="Work Hub navigation"></div>
     </div>
     <!-- Profiles panel -->
     <div class="panel-view" id="panelProfiles">
@@ -810,9 +807,6 @@
             </div>
             <div class="composer-ws-wrap">
               <div class="composer-workspace-group ws-chip" id="composerWorkspaceGroup" role="group" aria-label="Workspace controls">
-                <button class="composer-workspace-files-btn" id="btnWorkspacePanelToggle" type="button" onclick="toggleWorkspacePanel()" title="Show workspace panel" aria-pressed="false" aria-label="Show workspace panel">
-                  <span class="composer-workspace-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-                </button>
                 <button class="composer-workspace-chip" id="composerWorkspaceChip" type="button" onclick="toggleComposerWsDropdown()" title="Switch workspace" aria-label="Switch workspace" aria-haspopup="true" aria-expanded="false" aria-controls="composerWsDropdown" disabled>
                   <span class="composer-workspace-label" id="composerWorkspaceLabel"></span>
                   <span class="composer-workspace-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
@@ -946,7 +940,7 @@
             </div>
             <div class="toolsets-dropdown-actions">
               <button type="button" class="toolsets-action-btn toolsets-apply-btn" id="toolsetsApplyBtn">Apply</button>
-              <button type="button" class="toolsets-action-btn toolsets-clear-btn" id="toolsetsClearBtn">Clear (global)</button>
+              <button type="button" class="toolsets-action-btn toolsets-clear-btn" id="toolsetsClearBtn">Profile tools</button>
             </div>
           </div>
           <div class="model-dropdown" id="composerModelDropdown"></div>
@@ -1130,7 +1124,7 @@
       </div>
     </div>
     <div id="mainNotes" class="main-view">
-      <iframe id="stickyBoardFrame" class="sticky-board-frame" src="static/vendor/sticky-board/index.html" title="Sticky Board" loading="lazy"></iframe>
+      <div id="workHub" aria-live="polite"></div>
     </div>
     <div id="mainInsights" class="main-view">
       <div class="main-view-header">
@@ -1420,6 +1414,11 @@
                 <button type="button" id="btnResetAuxModels" class="settings-btn" style="font-size:12px;padding:4px 12px;border-radius:6px" data-i18n="settings_btn_reset_aux_models">Reset all to auto</button>
                 <button type="button" id="btnApplyAuxModels" class="settings-btn" style="font-size:12px;padding:4px 12px;border-radius:6px;display:none" data-i18n="settings_btn_apply_aux_models">Apply changes</button>
               </div>
+            </div>
+            <div class="settings-field">
+              <label for="settingsWorkHubPlanModel" data-i18n="settings_label_work_hub_plan_model">Work Hub planning model</label>
+              <select id="settingsWorkHubPlanModel" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px"></select>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_work_hub_plan_model">Model used to turn raw notes into structured work items when using Plan goal. "Auto" uses the current profile's default model.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -1985,10 +1984,11 @@
     </div>
     <div class="workspace-panel-tabs" role="tablist" aria-label="Workspace panel views" data-i18n-aria-label="workspace_panel_views">
       <button class="workspace-panel-tab active" id="workspaceFilesTab" type="button" onclick="switchWorkspacePanelTab('files')" role="tab" aria-selected="true" data-i18n="workspace_files_tab">Files</button>
+      <button class="workspace-panel-tab workspace-graph-tab" id="workspaceGraphTab" type="button" onclick="switchWorkspacePanelTab('graph')" role="tab" aria-selected="false" aria-label="View code graph" title="View code graph"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
       <button class="workspace-panel-tab" id="workspaceArtifactsTab" type="button" onclick="switchWorkspacePanelTab('artifacts')" role="tab" aria-selected="false" data-i18n="workspace_artifacts_tab">Artifacts</button>
       <button class="workspace-panel-tab" id="workspaceTodosTab" type="button" onclick="switchWorkspacePanelTab('todos')" role="tab" aria-selected="false" hidden data-i18n="tab_todos">Todos</button>
       <button class="workspace-panel-tab" id="workspaceOfficeTab" type="button" onclick="switchWorkspacePanelTab('office')" role="tab" aria-selected="false" data-i18n="tab_office">Office</button>
-      <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false">Notes</button>
+      <button class="workspace-panel-tab" id="workspacePlaneTab" type="button" onclick="switchWorkspacePanelTab('plane')" role="tab" aria-selected="false">Work Hub</button>
       <button class="workspace-panel-tab" id="workspacePreviewTab" type="button" onclick="switchWorkspacePanelTab('preview')" role="tab" aria-selected="false" data-i18n="workspace_preview_tab">Preview</button>
     </div>
     <!-- Project workspace binder: replaces the Files/Artifacts/Todos body while
@@ -2023,19 +2023,12 @@
          while this pane is showing reclaims the scene there and leaves this
          container empty until it is reactivated. -->
     <div class="office-wrap workspace-office-pane" id="workspaceOfficePane" hidden></div>
-    <!-- Plane (Kanban tasks) pane (docs/rfcs/chat-split-view-panes.md,
-         Slice 3): a read-only task list reusing the Kanban panel's own
-         sidebar row renderer (_kanbanRenderSidebar) and live data/polling --
-         there is no separate fetch or connection here. Opening a task
-         switches to the full Kanban panel first (its detail view lives
-         there, not in a global overlay). -->
-    <div class="workspace-plane-pane workspace-notes-pane" id="workspacePlanePane" hidden>
-      <div class="workspace-notes-context" id="workspaceNotesContext"></div>
-      <div class="workspace-notes-boards-wrap">
-        <input type="search" id="workspaceNotesBoardSearch" class="workspace-notes-search" placeholder="Search boards..." aria-label="Search boards">
-        <div id="workspaceNotesBoardsList"></div>
+    <div class="workspace-plane-pane workspace-work-hub-pane" id="workspacePlanePane" hidden>
+      <div class="workspace-work-hub-head">
+        <div><div class="workspace-work-hub-title">Work Hub</div><div class="workspace-work-hub-sub" id="workspaceWorkHubScope">Current project work</div></div>
+        <button type="button" class="workspace-work-hub-open" id="workspaceWorkHubOpen">Open</button>
       </div>
-      <div class="workspace-notes-preview" id="workspaceNotesBoardPreview"></div>
+      <div class="workspace-work-hub-list" id="workspaceWorkHubList" aria-live="polite"></div>
     </div>
     <!-- Live preview pane (docs/rfcs/chat-split-view-panes.md, Slice 4): an
          iframe onto a URL the user types -- a dev server or app the agent
@@ -2066,6 +2059,7 @@
         <div class="livepreview-blocked" id="workspaceLivePreviewBlocked" hidden></div>
       </div>
     </div>
+    <div class="workspace-graph-pane" id="workspaceGraphPane" hidden aria-live="polite"></div>
     <div id="wsEmptyState" style="display:none;flex:1;align-items:center;justify-content:center;padding:24px 16px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6"></div>
     <div class="preview-area" id="previewArea">
       <div class="preview-path" id="previewPath">
@@ -2179,7 +2173,11 @@
 <script src="static/commands.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/messages.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/performance.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/vendor/mx-icons/work-hub-icons.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/work-hub.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/goal-planner.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/notes.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vendor/motion/13.1.1/motion.min.js" defer></script>
 <script src="static/motion-ui.js?v=__WEBUI_VERSION__" defer></script>

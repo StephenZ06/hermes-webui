@@ -1098,7 +1098,19 @@ def resolve_implicit_workspace_with_recovery(
     the workspace trust boundary.
     """
     try:
-        return resolve_trusted_workspace(candidate), False
+        resolved = resolve_trusted_workspace(candidate)
+        # ``resolve_trusted_workspace`` intentionally permits a missing child
+        # below a saved root: agents may create it later.  A session's implicit
+        # workspace is different—its file browser needs a real directory now.
+        # Treat its absence as stale and use the trusted fallback.
+        try:
+            resolved.stat()
+        except FileNotFoundError:
+            fallback_value = fallback() if callable(fallback) else fallback
+            return resolve_trusted_workspace(fallback_value), True
+        if not resolved.is_dir():
+            raise ValueError(f"Workspace is not a directory: {resolved}")
+        return resolved, False
     except ValueError as original_error:
         if candidate in (None, ""):
             raise original_error from None

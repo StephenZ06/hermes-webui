@@ -115,3 +115,22 @@ def test_every_agent_setup_site_arms_the_hook():
         "every agent-construction site that attaches the rollover hook must "
         "also arm the project-lifecycle hook"
     )
+
+
+def test_every_project_mutation_arms_the_hook_before_state_changes():
+    """Project CRUD must leave the lifecycle workflow armed for the next turn."""
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parent.parent / "api/routes.py").read_text(
+        encoding="utf-8"
+    )
+    start = src.index("    # ── Project CRUD (POST) ──")
+    mutation_paths = (
+        "/api/projects/create",
+        "/api/projects/rename",
+        "/api/projects/set_workspace",
+        "/api/projects/delete",
+        "/api/projects/merge",
+    )
+    assert all(path in src for path in mutation_paths)
+    assert src.count("_arm_project_lifecycle_for_mutation()") >= len(mutation_paths) + 1

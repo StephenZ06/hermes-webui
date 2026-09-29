@@ -10775,6 +10775,7 @@ from api.workspace import (
     _workspace_blocked_roots,
 )
 from api.upload import (
+    parse_multipart,
     handle_upload,
     handle_upload_extract,
     handle_transcribe,
@@ -15932,6 +15933,24 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/workspace/upload":
         return handle_workspace_upload(handler)
 
+    if parsed.path == "/api/work_hub/plan/uploads":
+        from api.goal_planner_sources import SourceError, store_upload
+
+        try:
+            fields, files = parse_multipart(
+                handler.rfile,
+                handler.headers.get("Content-Type", ""),
+                handler.headers.get("Content-Length", ""),
+            )
+            _unused = fields
+            filename, raw = files.get("file", ("", b""))
+            owner_id = str(get_active_profile_name() or "default")
+            return j(handler, {"ok": True, "upload": store_upload(owner_id, filename, raw)})
+        except SourceError as exc:
+            return bad(handler, str(exc), 400)
+        except ValueError as exc:
+            return bad(handler, str(exc), 400)
+
     if parsed.path == "/api/transcribe":
         return handle_transcribe(handler)
 
@@ -17771,6 +17790,22 @@ def handle_post(handler, parsed) -> bool:
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 
+    if parsed.path == "/api/work_hub/boards/create":
+        from api import work_hub
+        try:
+            result = work_hub.create_board(body.get("board"), body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
+    if parsed.path == "/api/work_hub/boards/delete":
+        from api import work_hub
+        try:
+            result = work_hub.delete_board(str(body.get("board_id") or ""), body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
     if parsed.path == "/api/work_hub/workflows/start":
         from api import work_hub
         from api.workflow_runner import start_workflow_runner
@@ -17836,41 +17871,48 @@ def handle_post(handler, parsed) -> bool:
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 
+    if parsed.path == "/api/work_hub/plan/uploads/discard":
+        from api.goal_planner_sources import discard_uploads
+
+        tokens = body.get("upload_tokens", []) if isinstance(body, dict) else []
+        discard_uploads(str(get_active_profile_name() or "default"), tokens)
+        return j(handler, {"ok": True})
+
     if parsed.path == "/api/work_hub/plan/ai":
         from api import goal_planner, work_hub
-        from api.config import load_settings
+        from api.goal_planner_sources import SourceError, consume_uploads
 
         goal = body.get("goal") if isinstance(body, dict) else None
         project_id = body.get("project_id") if isinstance(body, dict) else None
-        preview = bool(body.get("preview")) if isinstance(body, dict) else False
+        upload_tokens = body.get("upload_tokens", []) if isinstance(body, dict) else []
         if not isinstance(goal, str) or not goal.strip():
             return bad(handler, "goal is required", 400)
         try:
             settings = load_settings()
-            model_id = settings.get("work_hub_plan_model")
-            plan = goal_planner.plan_goal_with_ai(goal, model_id)
-            if preview:
-                return j(handler, {"ok": True, "plan": plan})
-            valid_statuses = set(work_hub.STATUS_ORDER)
-            created = []
-            revision = work_hub.load_state()["revision"]
-            for step in plan.get("steps", []):
-                status = step.get("status", "backlog")
-                if status not in valid_statuses:
-                    status = "backlog"
-                result = work_hub.create_item(
-                    {
-                        "title": step["title"],
-                        "description": step["description"],
-                        "status": status,
-                        "priority": step.get("priority", "none"),
-                        "project_id": project_id,
-                    },
-                    expected_revision=None,
-                )
-                created.append(result["item"])
-                revision = result["revision"]
-            return j(handler, {"ok": True, "plan": plan, "items": created, "revision": revision})
+            # The Settings control labels an empty value as Auto.  Its contract
+            # is to use this profile's effective Hermes default model.
+            model_id = settings.get("work_hub_plan_model") or settings.get("default_model")
+            owner_id = str(get_active_profile_name() or "default")
+            sources = consume_uploads(owner_id, upload_tokens)
+            plan = goal_planner.plan_goal_with_ai(goal, model_id, sources)
+            return j(handler, {"ok": True, "plan": plan})
+        except (work_hub.WorkHubError, goal_planner.PlanError, SourceError) as exc:
+            return bad(handler, str(exc), getattr(exc, "status", 400))
+
+    if parsed.path == "/api/work_hub/plan/save":
+        from api import work_hub
+
+        project_id = body.get("project_id") if isinstance(body, dict) else None
+        steps = body.get("steps") if isinstance(body, dict) else None
+        if not isinstance(steps, list) or not steps or not all(isinstance(step, dict) for step in steps):
+            return bad(handler, "planned work items are required", 400)
+        try:
+            created = work_hub.create_items([
+                {"title": step.get("title"), "description": step.get("description"), "status": "backlog",
+                 "priority": step.get("priority", "none"), "project_id": project_id}
+                for step in steps
+            ])
+            return j(handler, {"ok": True, **created})
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 

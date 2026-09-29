@@ -32,14 +32,17 @@ NODE = shutil.which("node")
 pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 
 _DRIVER = r"""
+const builders = await import(process.argv[2]);
 const { makeSlabOutline, marchOutline, setOutlineActive, advanceDashFade,
-  isDashActive, makeConnector } = await import(process.argv[2]);
+  isDashActive, makeConnector, material } = builders;
 
 const palette = {
   outlineIdle: '#111111', outlineActive: '#00ff00', connector: '#222222',
+  bridgeDeck: '#090a0c', bridgeBeam: '#020304',
 };
 const input = JSON.parse(process.argv[3] || '{}');
 const out = {};
+out.unlitMaterialHasMetalness = Object.hasOwn(material('#111111', { unlit: true }), 'metalness');
 
 const line = makeSlabOutline(input.width || 10, input.depth || 6, palette);
 const attr = line.geometry.getAttribute('lineDistance');
@@ -96,6 +99,107 @@ advanceDashFade(connector, 5000);
 out.connectorActiveAfter = isDashActive(connector);
 out.connectorLitColor = connector.material.color.getHexString();
 out.connectorLitOpacity = connector.material.opacity;
+
+const floorRoute = builders.makeRouteConnector ? builders.makeRouteConnector([
+  { from: { x: 1, z: 2 }, to: { x: 5, z: 6 }, fromTopY: 0.46, toTopY: 0.18 },
+  { from: { x: 5, z: 6 }, to: { x: 30, z: 40 }, fromTopY: 0.18, toTopY: 0.18 },
+], palette) : { userData: { dashedLines: [] } };
+out.floorRouteLineCount = floorRoute.userData.dashedLines.length;
+out.floorRoutePoints = floorRoute.userData.dashedLines.map(line =>
+  Array.from(line.geometry.getAttribute('position').array));
+
+const bridge = builders.makeBridgeSegment(12, palette, {
+  railTrimStart: 1,
+  railTrimEnd: 1,
+});
+const bridgeDeck = bridge.children[0];
+const bridgeBeam = bridge.children[1];
+out.bridgeDeckColor = bridgeDeck.material.color.getHexString();
+out.bridgeDeckMaterialType = bridgeDeck.material.type;
+const bridgePoints = Array.from(bridgeDeck.geometry.getAttribute('position').array)
+  .reduce((points, value, index, values) => {
+    if (index % 3 === 0) points.push({ x: value, z: values[index + 2] });
+    return points;
+  }, []);
+const zMin = Math.min(...bridgePoints.map(point => point.z));
+const zMax = Math.max(...bridgePoints.map(point => point.z));
+const capWidth = (z) => {
+  const cap = bridgePoints.filter(point => Math.abs(point.z - z) < 0.001);
+  return Math.max(...cap.map(point => point.x)) - Math.min(...cap.map(point => point.x));
+};
+out.bridgeEndWidths = [capWidth(zMin), capWidth(zMax)];
+out.bridgeMaximumWidth = Math.max(...bridgePoints.map(point => point.x))
+  - Math.min(...bridgePoints.map(point => point.x));
+bridgeBeam.geometry.computeBoundingBox();
+out.bridgeBeamWidth = bridgeBeam.geometry.boundingBox.max.x - bridgeBeam.geometry.boundingBox.min.x;
+const bridgeRails = bridge.children.filter(child => child.userData && child.userData.bridgeRail);
+out.bridgeRailCount = bridgeRails.length;
+out.bridgeRailXs = bridgeRails.map(rail => rail.position.x).sort((a, b) => a - b);
+out.bridgeRailColors = bridgeRails.map(rail => rail.material.color.getHexString()).sort();
+out.bridgeRailMaterialTypes = bridgeRails.map(rail => rail.material.type);
+out.bridgeRailLengths = bridgeRails.map(rail => {
+  rail.geometry.computeBoundingBox();
+  return rail.geometry.boundingBox.max.z - rail.geometry.boundingBox.min.z;
+});
+out.bridgeRailTops = bridgeRails.map(rail => {
+  rail.geometry.computeBoundingBox();
+  return rail.position.y + rail.geometry.boundingBox.max.y;
+});
+const asymmetricalBridge = builders.makeBridgeSegment(12, palette, {
+  railTrimStart: 1,
+  railTrimEnd: 0,
+});
+out.asymmetricalRailCenters = asymmetricalBridge.children
+  .filter(child => child.userData && child.userData.bridgeRail)
+  .map(rail => rail.position.z);
+const trimmedBridge = builders.makeBridgeSegment(12, palette, {
+  railColor: '#ff00ff', railTrimStart: 0.6, railTrimEnd: 0.6,
+});
+const trimmedRails = trimmedBridge.children
+  .filter(child => child.material && child.material.color
+    && child.material.color.getHexString() === 'ff00ff');
+out.trimmedRailLengths = trimmedRails.map(rail => {
+  rail.geometry.computeBoundingBox();
+  return rail.geometry.boundingBox.max.z - rail.geometry.boundingBox.min.z;
+});
+out.trimmedRailCenters = trimmedRails.map(rail => rail.position.z);
+const fullLengthBridge = builders.makeBridgeSegment(12, palette, {
+  railColor: '#00ffff',
+});
+const fullLengthRails = fullLengthBridge.children
+  .filter(child => child.material && child.material.color
+    && child.material.color.getHexString() === '00ffff');
+out.fullLengthRailLengths = fullLengthRails.map(rail => {
+  rail.geometry.computeBoundingBox();
+  return rail.geometry.boundingBox.max.z - rail.geometry.boundingBox.min.z;
+});
+const cableGroup = bridge.children.find(child => child.userData && child.userData.activityChevrons);
+const cableLines = cableGroup ? cableGroup.userData.activityChevrons : [];
+out.activityCableCount = cableLines.length;
+out.activityChevronZs = cableLines.map(line => line.position.z);
+out.activityCableActiveBefore = cableLines.map(line => !!line.userData.active);
+cableLines.forEach(line => { line.userData.active = true; });
+out.activityCableActiveAfter = cableLines.map(line => !!line.userData.active);
+const bridgeSegments = bridge.children.filter(child => child.userData && child.userData.bridgeSegment);
+out.bridgeSegmentCount = bridgeSegments.length;
+out.bridgeSegmentZs = bridgeSegments.map(segment => segment.position.z);
+out.bridgeSegmentColors = bridgeSegments.map(segment => segment.material.color.getHexString());
+out.bridgeSegmentTops = bridgeSegments.map(segment => {
+  segment.geometry.computeBoundingBox();
+  return segment.position.y + segment.geometry.boundingBox.max.y;
+});
+out.bridgePanelZs = bridge.children
+  .filter(child => child.userData && child.userData.bridgePanel)
+  .map(panel => panel.position.z);
+const walkway = builders.makeWalkway(12, palette);
+const walkwayDeck = walkway.children[0];
+walkwayDeck.geometry.computeBoundingBox();
+out.walkwayDeckTop = walkwayDeck.position.y + walkwayDeck.geometry.boundingBox.max.y;
+const pod = builders.makePod(10, 6, palette);
+out.platformSlabMaterialType = pod.children[0].material.type;
+out.platformLayerMaterialTypes = pod.children
+  .filter(child => child.userData && child.userData.platformLayer)
+  .map(child => child.material.type);
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -268,10 +372,19 @@ def test_the_bridge_dashes_are_finer_than_a_platform_edge(result):
     assert result["connectorDashSize"] < result["outlineDashSize"]
 
 
+def test_a_standard_bridge_charge_sits_above_the_shared_platform_surface(result):
+    # The current sits visibly above the 0.6-high platform surface, rather
+    # than being lost in the dark bridge deck from the isometric camera.
+    points = result["connectorPoints"]
+    assert points[1] == pytest.approx(0.66)
+    assert points[4] == pytest.approx(0.66)
+
+
 def test_the_connector_lights_up_like_an_outline(result):
     assert result["connectorActiveBefore"] is False
     assert result["connectorActiveAfter"] is True
     assert result["connectorLitColor"] == "00ff00"
+    assert result["connectorLitOpacity"] == pytest.approx(1.0)
 
 
 def test_an_idle_bridge_is_invisible_and_fades_in(result):
@@ -283,10 +396,91 @@ def test_an_idle_bridge_is_invisible_and_fades_in(result):
     assert 0 < result["connectorOpacityMidFade"] < result["connectorLitOpacity"]
 
 
+def test_a_floor_charge_follows_each_ramp_and_deck_segment_in_3d(result):
+    assert result["floorRouteLineCount"] == 2
+    ramp, deck = result["floorRoutePoints"]
+    # The charge sits just above the deck surface: the first segment slopes
+    # down, then the second keeps that lower elevation all the way to Floor.
+    assert ramp[1] > ramp[4]
+    assert deck[1] == pytest.approx(deck[4])
+    assert ramp[4] == pytest.approx(deck[1])
+
+
+def test_a_bridge_keeps_a_rectangular_full_width_deck(result):
+    # The user wants the original straight-edged bridge silhouette. Its hidden
+    # under-rim placement, rather than a tapered cap, is what prevents visible
+    # clipping at the platform connection.
+    # Square end caps are required: a rounded cap leaves a visibly incomplete
+    # connection where the bridge meets the conductor platform.
+    assert result["bridgeEndWidths"] == pytest.approx([3.6, 3.6])
+    assert result["bridgeMaximumWidth"] == pytest.approx(3.6)
+    assert result["bridgeBeamWidth"] == pytest.approx(3.12)
+
+
+def test_bridge_reverts_to_the_clean_unadorned_deck(result):
+    # Revert the coloured outer rails and transverse decoration entirely. The
+    # bridge remains a dimensional structural deck, with no visual line layer
+    # that can clash with a rounded platform edge.
+    assert result["bridgeRailCount"] == 0
+    assert result["bridgeSegmentCount"] == 0
+
+
+def test_bridge_activity_chevrons_are_hidden_until_work_starts_then_march(result):
+    assert result["activityCableCount"] >= 3
+    assert result["activityChevronZs"] == pytest.approx([-4.5, -2, 0, 2, 4.5])
+    assert not any(result["activityCableActiveBefore"])
+    assert all(result["activityCableActiveAfter"])
+
+
+def test_only_the_two_platform_bases_use_unlit_materials(result):
+    assert result["platformSlabMaterialType"] != "MeshBasicMaterial"
+    assert result["platformLayerMaterialTypes"] == [
+        "MeshPhysicalMaterial", "MeshStandardMaterial",
+        "MeshPhysicalMaterial", "MeshStandardMaterial",
+    ]
+
+
+def test_unlit_materials_do_not_receive_standard_material_properties(result):
+    assert result["unlitMaterialHasMetalness"] is False
+
+
+def test_bridge_restores_the_first_interior_divider_without_drawing_on_platforms(result):
+    # The first interior divider closes the initial deck rectangle at the
+    # conductor side; the terminal divider stays omitted at the far platform.
+    assert result["bridgePanelZs"] == pytest.approx([-3, -1, 1, 3])
+
+
+def test_colored_rails_are_trimmed_clear_of_the_platform_rims(result):
+    """The deck can continue beneath a platform, but its rails cannot."""
+    # Each 0.6-unit rim trim leaves a 10.8-unit visible rail, centred on the
+    # full 12-unit deck.
+    assert result["trimmedRailLengths"] == pytest.approx([10.8, 10.8])
+    assert result["trimmedRailCenters"] == pytest.approx([0, 0])
+
+
+def test_colored_rails_cover_the_full_untrimmed_bridge_edge(result):
+    assert result["fullLengthRailLengths"] == pytest.approx([12, 12])
+
+
+def test_the_bridge_top_keeps_a_lit_dimensional_charcoal_finish(result):
+    # A basic material ignores office lighting and reads as a flat black cutout.
+    # Bridge decks should retain the same dark charcoal tone, but respond to
+    # light so their top and structural beam remain visually distinguishable.
+    assert result["bridgeDeckMaterialType"] == "MeshPhysicalMaterial"
+    assert result["bridgeDeckColor"] == "090a0c"
+
+
+def test_a_walkway_deck_sits_just_below_the_platform_surface(result):
+    # Raised platforms finish at y=0.82. The deck top at 0.8 reaches the
+    # visible rim while remaining below the platform's top face.
+    assert result["walkwayDeckTop"] == pytest.approx(0.8)
+
+
 # ── wiring ───────────────────────────────────────────────────────────────────
 
 def test_the_bridge_lights_with_the_pod_it_feeds():
-    assert "if (link) setOutlineActive(link, record.active)" in SCENE_SRC
+    assert "const bridge = walkways.get(cluster)" in SCENE_SRC
+    assert "if (bridge) setBridgeActive(bridge, record.active)" in SCENE_SRC
 
 
 # The dashed outline around a pod's own edge was reported as visibly
@@ -299,15 +493,11 @@ def test_the_bridge_lights_with_the_pod_it_feeds():
 # bridges still use; it's simply unused by scene.js today.
 
 
-def test_a_connector_is_not_rebuilt_unless_it_moves():
-    # Recreating it every sync would reset its live state and restart its
-    # fade, so a busy run would show a bridge perpetually switching on.
-    assert "line.userData.spanKey === key" in SCENE_SRC
-
-
-def test_the_connector_follows_the_same_span_as_the_walkway():
-    # Two cues drawn between different points would visibly disagree.
-    assert "ensureConnector(pod.cluster, pod, span)" in SCENE_SRC
+def test_bridge_lighting_is_not_a_separate_center_connector():
+    # Rails are mounted on the same bridge group as the deck; a separate
+    # connector can drift out of alignment when a Floor segment is pitched.
+    assert "let connectors = new Map()" not in SCENE_SRC
+    assert "ensureConnector(" not in SCENE_SRC
 
 
 def test_outlines_and_connectors_are_disposed():

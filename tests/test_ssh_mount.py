@@ -181,6 +181,56 @@ def test_mount_status_reflects_mountpoint_check(tmp_path, monkeypatch):
     assert mount_status(entry) == "disconnected"
 
 
+def test_remote_reachability_uses_a_short_read_only_ssh_probe(tmp_path, monkeypatch):
+    """The reachability indicator verifies RP5, not the local SSHFS mount."""
+    entry = _entry(tmp_path / "pi5")
+    calls = []
+
+    def fake_run(cmd, capture_output, timeout):
+        calls.append((cmd, capture_output, timeout))
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert ssh_mount.remote_reachability(entry) == "reachable"
+    assert len(calls) == 1
+    cmd, capture_output, timeout = calls[0]
+    assert cmd[0] == "ssh"
+    assert cmd[-1] == "true"
+    assert "BatchMode=yes" in cmd
+    assert "IdentitiesOnly=yes" in cmd
+    assert "StrictHostKeyChecking=yes" in cmd
+    assert f"ConnectTimeout={ssh_mount.REMOTE_REACHABILITY_TIMEOUT_S}" in cmd
+    assert capture_output is True
+    assert timeout == ssh_mount.REMOTE_REACHABILITY_TIMEOUT_S + 1
+
+
+def test_remote_reachability_fails_closed_without_exposing_ssh_errors(tmp_path, monkeypatch):
+    entry = _entry(tmp_path / "pi5")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, capture_output, timeout: subprocess.CompletedProcess(
+            cmd, 255, stdout=b"", stderr=b"connect to host private-rp5 failed",
+        ),
+    )
+
+    assert ssh_mount.remote_reachability(entry) == "unreachable"
+
+
+def test_remote_reachability_fails_closed_on_a_bounded_probe_timeout(tmp_path, monkeypatch):
+    entry = _entry(tmp_path / "pi5")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, capture_output, timeout: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(cmd, timeout)
+        ),
+    )
+
+    assert ssh_mount.remote_reachability(entry) == "unreachable"
+
+
 def test_reconnect_all_on_boot_never_raises(tmp_path, monkeypatch):
     local_entry = {"path": str(tmp_path / "local"), "name": "Home"}
     ok_entry = _entry(tmp_path / "ok")

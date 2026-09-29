@@ -229,6 +229,15 @@ def test_arrival_is_driven_before_the_working_pose():
     assert body.index("return;") < body.index("poseWorker") if "poseWorker" in body else True
 
 
+def test_walk_in_start_positions_are_kept_inside_their_own_pod():
+    # A fixed nine-unit spawn offset was outside a one-row pod, so workers
+    # visibly floated over the main floor before reaching their desk. Arrival
+    # setup must use each seat's actual pod bounds before it starts walking.
+    assert "function configureSeatArrival(" in SCENE_SRC
+    assert "maxDistanceInsidePod(" in SCENE_SRC
+    assert "layout.pods" in SCENE_SRC
+
+
 def test_motion_stays_free_of_the_renderer():
     for forbidden in ("document.", "window.", "fetch(", "from 'three'"):
         assert forbidden not in MOTION_SRC, (

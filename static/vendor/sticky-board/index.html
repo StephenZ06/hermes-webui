@@ -142,10 +142,10 @@ window.__STICKY_THEME_VARS__ = [
   .note.dragging{opacity:.4;transform:rotate(2deg)}
   .note-header{display:flex;align-items:flex-start;justify-content:space-between;gap:.3rem}
   .note-title{
-    font-size:.85rem;font-weight:600;flex:1;color:#000;
+    font-size:.85rem;font-weight:600;flex:1;min-width:0;width:100%;color:#000;
     border:none;background:transparent;outline:none;
-    cursor:text;padding:2px 4px;border-radius:3px;resize:none;
-    font-family:var(--font-ui);line-height:1.3;
+    cursor:text;padding:2px 4px;border-radius:3px;resize:none;overflow:hidden;
+    font-family:var(--font-ui);line-height:1.3;white-space:pre-wrap;overflow-wrap:anywhere;
   }
   .note-title:focus{background:rgba(255,255,255,.5)}
   .note-actions{display:flex;gap:.15rem;opacity:0;transition:opacity .15s;flex-shrink:0}
@@ -203,13 +203,14 @@ window.__STICKY_THEME_VARS__ = [
   /* Sub Items */
   .sub-items{margin-top:.4rem;padding-left:.2rem}
   .sub-item{
-    display:flex;align-items:center;gap:.3rem;
+    display:flex;align-items:flex-start;gap:.3rem;
     font-size:.75rem;padding:2px 0;color:#000;
   }
   .sub-item-dot{width:4px;height:4px;border-radius:50%;background:#999;flex-shrink:0}
   .sub-item-text{
-    border:none;background:transparent;outline:none;flex:1;
-    font-size:.75rem;font-family:var(--font-ui);padding:1px 3px;border-radius:3px;color:#000;
+    border:none;background:transparent;outline:none;flex:1;min-width:0;width:100%;resize:none;overflow:hidden;
+    font-size:.75rem;font-family:var(--font-ui);padding:1px 3px;border-radius:3px;color:#000;line-height:1.3;
+    white-space:pre-wrap;overflow-wrap:anywhere;
   }
   .sub-item-text:focus{background:rgba(255,255,255,.5)}
   .sub-item .icon-btn{width:16px;height:16px;font-size:.6rem;opacity:0}
@@ -527,16 +528,24 @@ window.__STICKY_THEME_VARS__ = [
     return dot;
   }
 
+  function autoGrowTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  }
+
   function buildSubItem(text, colId, noteId, idx) {
     var dot = el('span', { className: 'sub-item-dot' });
-    var input = el('input', {
+    var input = el('textarea', {
       className: 'sub-item-text',
       value: text,
+      rows: '1',
       'data-action': 'edit-sub',
       'data-col-id': colId,
       'data-note-id': noteId,
       'data-sub-idx': String(idx)
     });
+    input.addEventListener('input', function() { autoGrowTextarea(input); });
+    requestAnimationFrame(function() { autoGrowTextarea(input); });
     var delBtn = el('button', {
       className: 'icon-btn',
       'data-action': 'delete-sub',
@@ -549,14 +558,17 @@ window.__STICKY_THEME_VARS__ = [
   }
 
   function buildNote(colId, note) {
-    // Title input
-    var titleInput = el('input', {
+    // Title textarea
+    var titleInput = el('textarea', {
       className: 'note-title',
       value: note.title,
+      rows: '1',
       'data-action': 'edit-note-title',
       'data-col-id': colId,
       'data-note-id': note.id
     });
+    titleInput.addEventListener('input', function() { autoGrowTextarea(titleInput); });
+    requestAnimationFrame(function() { autoGrowTextarea(titleInput); });
     // Color trigger -- shows the note's current color, opens the color
     // picker modal to change it (moved off the note's front on request;
     // it used to be four dots shown inline on every note).
@@ -948,9 +960,9 @@ window.__STICKY_THEME_VARS__ = [
   document.addEventListener('keydown', function(e) {
     var t = e.target;
     if (!t.classList) return;
-    // Enter saves inline title edits; Escape reverts them.
+    // Enter saves inline title edits; Shift+Enter deliberately adds a line.
     if (t.classList.contains('col-title') || t.classList.contains('note-title')) {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         t.blur();
         return;
@@ -968,7 +980,9 @@ window.__STICKY_THEME_VARS__ = [
     var noteId = t.getAttribute('data-note-id');
     var idx = parseInt(t.getAttribute('data-sub-idx'), 10);
 
-    if (e.key === 'Enter') {
+    // Keep Enter's existing "next sub-item" behavior while allowing a
+    // pasted/intentional multiline sub-item through Shift+Enter.
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       var note = findNote(colId, noteId);
       if (note) note.subItems[idx] = t.value.trim();

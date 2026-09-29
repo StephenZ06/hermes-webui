@@ -58,3 +58,15 @@ def test_shared_chat_prompt_includes_current_sessions_task_context(monkeypatch):
     )
 
     assert "TASK_CONTEXT_FOR=project-x" in prompt
+
+
+def test_shared_chat_prompt_prefers_work_hub_then_falls_back_to_legacy(monkeypatch):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "render_task_context", lambda project_id: "WORK_HUB_CONTEXT")
+    monkeypatch.setattr(sticky_board, "render_task_context", lambda project_id: "LEGACY_CONTEXT")
+
+    prompt = _webui_ephemeral_system_prompt(None, session=SimpleNamespace(project_id="project-x"))
+
+    assert "WORK_HUB_CONTEXT" in prompt
+    assert "LEGACY_CONTEXT" not in prompt

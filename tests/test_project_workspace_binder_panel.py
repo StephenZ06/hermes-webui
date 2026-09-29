@@ -232,6 +232,7 @@ import pytest
 NODE = shutil.which("node")
 
 _PURE_HELPERS = (
+    "_workspacePathIdentity",
     "_projectBindStripSlash",
     "_projectBindParent",
     "_projectBindLeaf",
@@ -271,6 +272,12 @@ def _run_helpers(expression: str, roots):
 
 @pytest.mark.skipif(NODE is None, reason="node not on PATH")
 class TestBinderPathHelpers:
+    def test_workspace_identity_treats_equivalent_paths_as_equal(self):
+        assert _run_helpers(
+            "_workspacePathIdentity(' /workspace/MiniPC-Main//Business/SaaS/Temani/. ') === _workspacePathIdentity('/workspace/MiniPC-Main/Business/SaaS/Temani/')",
+            [],
+        ) is True
+
     def test_leaf_and_parent_of_a_nested_path(self):
         assert _run_helpers("_projectBindLeaf('/home/u/Apps/webui')", []) == "webui"
         assert _run_helpers("_projectBindParent('/home/u/Apps/webui')", []) == "/home/u/Apps"
@@ -370,3 +377,20 @@ class TestProjectFolderBindingIndicator:
 
     def test_binder_takes_over_the_panel_without_the_indicator(self):
         assert ".rightpanel.project-bind-mode .project-folder-binding" in STYLE_CSS
+
+
+class TestWorkspacePanelProjectSelection:
+    def test_top_project_control_shows_the_chat_projects_workspace(self):
+        fn = WORKSPACE_JS[WORKSPACE_JS.index("async function renderBoundProjectControl"):]
+        fn = fn[: fn.index("\n// Shared bind/unbind call")]
+        assert "_projectFolderList()" in fn
+        assert "session.project_id" in fn
+        assert "sidebarProject.workspace_path" in fn
+        assert "sidebarProjectOptionValue" in fn
+        assert "const label=sidebarProjectWorkspace" in fn
+
+    def test_project_control_renders_before_workspace_file_listing(self):
+        panels = (REPO_ROOT / "static" / "panels.js").read_text(encoding="utf-8")
+        sync = panels[panels.index("function syncWorkspaceDisplays()"):]
+        sync = sync[: sync.index("\nasync function loadWorkspaceList")]
+        assert "renderBoundProjectControl" in sync

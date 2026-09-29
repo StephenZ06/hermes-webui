@@ -32,11 +32,12 @@ services:
 #      - "8787:8787"
     volumes:
       # Mount your Hermes home directory into the container.
-      # The default (${HOME}/.hermes) works on both macOS (/Users/<you>/.hermes)
-      # and Linux (/home/<you>/.hermes) — no change needed for standard installs.
-      # Only set HERMES_HOME explicitly if your .hermes lives somewhere non-standard.
-      # macOS note: set UID and GID below to match your user ID (run `id -u` and `id -g`).
-      - ${HERMES_HOME:-${HOME}/.hermes}:/home/hermeswebui/.hermes
+      - ${HOME}/.hermes:/home/hermeswebui/.hermes
+      # Hermes agent source: required by single-container mode for agent Python modules
+      - ${HOME}/.hermes/hermes-agent:/home/hermeswebui/.hermes/hermes-agent:ro
+      # Codex desktop auth is read only. This lets every Codex profile show the
+      # same subscription account usage without copying credentials into profile state.
+      - ${HOME}/.codex/auth.json:/run/secrets/auth.json:ro
       # Your workspace directory shown on first launch (adapt if yours is different, the container will use the mounted /workspace)
       - ${HERMES_WORKSPACE:-${HOME}/workspace}:/workspace
       # Windows PC (MiniPC-Main), reachable directly via WSL2's own C: passthrough —
@@ -63,6 +64,10 @@ services:
       # Required: bind address and port
       - HERMES_WEBUI_HOST=0.0.0.0
       - HERMES_WEBUI_PORT=8787
+      # Only the read-only Codex auth file is mounted at this directory.
+      - CODEX_HOME=/run/secrets
+      # Make sure the container sees the real hermes home, not a profile subdir.
+      - HERMES_HOME=/home/hermeswebui/.hermes
       - HERMES_WEBUI_GATEWAY_API_KEY=e1882d20595f90be0bba91f6acbc73af1a522bf3b820208433d21b08dd6dfa68
       # Where to store sessions, workspaces, and other state (default: ~/.hermes/webui)
       - HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui

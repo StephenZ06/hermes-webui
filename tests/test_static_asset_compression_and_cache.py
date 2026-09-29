@@ -135,6 +135,29 @@ def test_empty_fingerprint_value_gets_short_cache(isolated_static):
     assert h.header("Cache-Control") == "public, max-age=300"
 
 
+def test_unversioned_es_module_revalidates_after_a_deployment(isolated_static):
+    """Module descendants do not inherit their parent's query fingerprint."""
+    from api import routes
+
+    (isolated_static / "office").mkdir()
+    _make_static_file(isolated_static, "office/builders.js", b"export const pod = 1;")
+    h = _serve(routes, "/static/office/builders.js")
+    assert h.header("Cache-Control") == "no-cache"
+
+
+def test_unknown_fingerprint_never_gets_immutable_cache(isolated_static):
+    """`unknown` is a placeholder, not a deployment fingerprint.
+
+    Docker source builds can lack `.git`; if that fallback is treated as
+    immutable, every rebuild keeps the same URL and clients stay stale.
+    """
+    from api import routes
+    _make_static_file(isolated_static, "ui.js", b"x" * 2000)
+
+    h = _serve(routes, "/static/ui.js", query="v=unknown")
+    assert h.header("Cache-Control") == "public, max-age=300"
+
+
 def test_unfingerprinted_url_gets_short_cache(isolated_static):
     from api import routes
     _make_static_file(isolated_static, "ui.js", b"x" * 2000)

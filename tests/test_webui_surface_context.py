@@ -38,6 +38,8 @@ def test_webui_ephemeral_prompt_includes_browser_surface_context():
     assert "Need script" in prompt
     assert "Need inspect email" in prompt
     assert "clear user-facing progress" in prompt
+    assert "Response formatting" in prompt
+    assert "<u>…</u>" in prompt
 
 
 def test_webui_ephemeral_prompt_skips_empty_surface_fields():

@@ -457,6 +457,9 @@ async function switchPanel(name, opts = {}) {
     }
   }
   if (!opts.bypassSettingsGuard && !_beforePanelSwitch(nextPanel)) return false;
+  // Work Hub owns the full main surface. Do not carry the chat workspace
+  // browser into it when navigating from another panel.
+  if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   // Close any long-lived Kanban SSE stream when leaving the kanban panel
   // so we don't keep a stale connection open in the background.
@@ -7518,6 +7521,12 @@ function syncWorkspaceDisplays(){
     mobileAction.setAttribute('aria-expanded',composerExpanded?'true':'false');
     mobileAction.classList.toggle('active',composerExpanded);
   }
+  // Project context is independent of file-tree loading. Render it here so
+  // the top Project selector shows a chat's already-assigned workspace even
+  // when /api/list is delayed or unavailable.
+  if(S.session&&typeof renderBoundProjectControl==='function'){
+    Promise.resolve(renderBoundProjectControl()).catch(()=>{});
+  }
 }
 
 async function loadWorkspaceList(){
@@ -10952,6 +10961,8 @@ function _preferencesPayloadFromUi(){
   const payload={};
   const sendKeySel=$('settingsSendKey');
   if(sendKeySel) payload.send_key=sendKeySel.value;
+  const workHubPlanModelSel=$('settingsWorkHubPlanModel');
+  if(workHubPlanModelSel) payload.work_hub_plan_model=workHubPlanModelSel.value||'';
   const hiddenFoldersInput=$('settingsHiddenFolders');
   if(hiddenFoldersInput) payload.workspace_hidden_folders=_parseHiddenFoldersInput(hiddenFoldersInput.value);
   const langSel=$('settingsLanguage');
@@ -11667,6 +11678,25 @@ async function loadSettingsPanel(){
       _syncSettingsMaxTokensPlaceholder(maxTokensField,settings.max_tokens_fallback);
       maxTokensField.dataset.initialValue=maxTokensField.value;
       maxTokensField.addEventListener('input',_markSettingsDirty,{once:false});
+    }
+    const workHubPlanModelSel=$('settingsWorkHubPlanModel');
+    if(workHubPlanModelSel){
+      workHubPlanModelSel.innerHTML='<option value="">Auto (use default model)</option>';
+      try{
+        const whModels=await api('/api/models');
+        for(const g of ((whModels||{}).groups||[])){
+          const og=document.createElement('optgroup');
+          og.label=g.provider;
+          for(const m of [...(g.models||[]),...(g.extra_models||[])]){
+            const opt=document.createElement('option');
+            opt.value=m.id;opt.textContent=m.label;
+            og.appendChild(opt);
+          }
+          if(og.children.length) workHubPlanModelSel.appendChild(og);
+        }
+      }catch(e){ console.warn('[settings] failed to load work hub plan models', e); }
+      workHubPlanModelSel.value=settings.work_hub_plan_model||'';
+      workHubPlanModelSel.addEventListener('change',_schedulePreferencesAutosave,{once:false});
     }
     // Ambient provider quota chip toggle — default off; only shows at ≥1400px viewport
     // when enabled (see style.css @media (max-width:1399.98px) rule).

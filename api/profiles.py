@@ -499,6 +499,30 @@ def clear_request_profile() -> None:
     _tls.profile = None
 
 
+@contextmanager
+def profile_catalog_scope(profile_name: str, purpose: str = "profile model catalog"):
+    """Read a named profile's catalog without switching the user's profile.
+
+    The profile editor can inspect a profile other than the browser's active
+    one. Its model discovery and credentials must therefore use the edited
+    profile only for the duration of this read.
+    """
+    name = str(profile_name or "").strip().lower()
+    if not name:
+        raise ValueError("profile is required")
+    if not _is_root_profile(name):
+        _validate_profile_name(name)
+        if not get_hermes_home_for_profile(name).is_dir():
+            raise ValueError(f"Profile '{name}' does not exist.")
+    previous = getattr(_tls, "profile", None)
+    _tls.profile = name
+    try:
+        with profile_env_for_active_request_readonly(purpose):
+            yield
+    finally:
+        _tls.profile = previous
+
+
 def _resolve_profile_home_for_name(name: str) -> Path:
     """Resolve a logical profile name to its Hermes home path.
 
@@ -2034,6 +2058,21 @@ _LIST_PROFILES_CACHE_TTL = 4.0  # seconds. The perf(session-load-latency) pass b
 _LIST_PROFILES_CACHE_LOCK = threading.Lock()
 
 
+def normalized_profile_provider(provider: object, base_url: object = None) -> str | None:
+    """Return the stable public provider label for a profile row.
+
+    NeuralWatt profiles created before the native provider was added were
+    stored as ``custom`` with the NeuralWatt endpoint.  The endpoint is the
+    authoritative discriminator; unrelated custom endpoints remain custom.
+    """
+    value = str(provider or "").strip()
+    endpoint = str(base_url or "").strip().lower()
+    if (value.lower() in {"custom", "custom:neuralwatt", "neural-watt"}
+            or value.lower().startswith("custom:")) and "neuralwatt" in endpoint:
+        return "neuralwatt"
+    return value or None
+
+
 def _invalidate_list_profiles_cache() -> None:
     """Drop the cached profile list (call after create/delete/switch)."""
     global _LIST_PROFILES_CACHE
@@ -2084,6 +2123,7 @@ def _build_profile_rows_fast() -> list | None:
         enabled_count, total_count = _get_profile_skills_stats(home)
         meta = _profile_meta_fields(home)
         name = _profile_row_name(name, is_default, meta)
+        base_url = _read_profile_base_url(home)
         return {
             'name': name,
             'path': str(home),
@@ -2091,14 +2131,14 @@ def _build_profile_rows_fast() -> list | None:
             'is_active': False,  # filled in by caller (cheap, varies per request)
             'gateway_running': gateway_running,
             'model': model,
-            'provider': provider,
+            'provider': normalized_profile_provider(provider, base_url),
             'has_env': (home / '.env').exists(),
             **meta,
             'skill_count': enabled_count,
             'enabled_skills': enabled_count,
             'total_skills': total_count,
             'reasoning_effort': _read_profile_reasoning_effort(home),
-            'base_url': _read_profile_base_url(home),
+            'base_url': base_url,
         }
 
     rows: list = []
@@ -2163,7 +2203,7 @@ def list_profiles_api() -> list:
                         'is_active': True,  # Always true in isolated mode
                         'gateway_running': p.gateway_running,
                         'model': p.model,
-                        'provider': p.provider,
+                        'provider': normalized_profile_provider(p.provider, _read_profile_base_url(p.path)),
                         'has_env': p.has_env,
                         **meta,
                         'skill_count': enabled_count,
@@ -2236,7 +2276,7 @@ def list_profiles_api() -> list:
                 'is_active': _profile_row_is_active(name, p.is_default, active),
                 'gateway_running': p.gateway_running,
                 'model': p.model,
-                'provider': p.provider,
+                'provider': normalized_profile_provider(p.provider, _read_profile_base_url(p.path)),
                 'has_env': p.has_env,
                 **meta,
                 'skill_count': enabled_count,
@@ -2415,14 +2455,61 @@ _PROVIDER_ENV_MAP: dict[str, str] = {
     "cerebras": "CEREBRAS_API_KEY",
     "github-copilot": "COPILOT_GITHUB_TOKEN",
     "nous": "NOUS_API_KEY",
+    "neuralwatt": "NEURALWATT_API_KEY",
 }
 
+_NEURALWATT_BASE_URL = "https://api.neuralwatt.com/v1"
 
-def _resolve_env_var_for_provider(provider: Optional[str]) -> Optional[str]:
-    """Return the .env variable name for *provider*, or the generic fallback."""
+
+def _lmstudio_base_url_from_config() -> Optional[str]:
+    """Return the configured LM Studio endpoint, preferring active profile then root."""
+    try:
+        from api.config import _get_provider_base_url
+
+        return _get_provider_base_url("lmstudio", root_fallback=True)
+    except Exception:
+        logger.debug("Could not resolve LM Studio base URL from config", exc_info=True)
+    return None
+
+
+def _resolve_env_var_for_provider(
+    provider: Optional[str], profile_dir: Optional[Path] = None
+) -> Optional[str]:
+    """Return the environment variable used by a provider in this profile.
+
+    Named custom providers own their key variable in ``custom_providers``.
+    Resolving it here lets Profile editing update API-NW rather than write an
+    unused generic key.
+    """
     if not provider:
         return None
-    return _PROVIDER_ENV_MAP.get(str(provider).strip().lower())
+    provider_id = str(provider).strip().lower()
+    known_env_var = _PROVIDER_ENV_MAP.get(provider_id)
+    if known_env_var:
+        return known_env_var
+    if not provider_id.startswith("custom:") or profile_dir is None:
+        return None
+    try:
+        config_path = Path(profile_dir) / "config.yaml"
+        config_data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        custom_providers = config_data.get("custom_providers", []) if isinstance(config_data, dict) else []
+        from api.config import _custom_provider_slug_from_name
+
+        for entry in custom_providers if isinstance(custom_providers, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            if _custom_provider_slug_from_name(entry.get("name")) != provider_id:
+                continue
+            key_env = str(entry.get("key_env") or "").strip()
+            if re.fullmatch(r"[A-Z_][A-Z0-9_]*", key_env):
+                return key_env
+        model_cfg = config_data.get("model") if isinstance(config_data, dict) else {}
+        base_url = model_cfg.get("base_url") if isinstance(model_cfg, dict) else None
+        if normalized_profile_provider(provider_id, base_url) == "neuralwatt":
+            return _PROVIDER_ENV_MAP["neuralwatt"]
+    except Exception:
+        logger.debug("Failed to resolve custom provider key variable for %s", provider_id)
+    return None
 
 
 def _upsert_dotenv_line(env_path: Path, key: str, value: str) -> None:
@@ -2473,7 +2560,7 @@ def _write_api_key_to_dotenv(
     env var (e.g. ``KIMI_API_KEY``); otherwise it falls back to a generic
     ``HERMES_API_KEY`` that the user can rename later.
     """
-    env_var = _resolve_env_var_for_provider(model_provider)
+    env_var = _resolve_env_var_for_provider(model_provider, profile_dir)
     if not env_var:
         env_var = "HERMES_API_KEY"
         logger.info(
@@ -2621,6 +2708,26 @@ def _profile_model_selection_exists(
     return bool(model_seen)
 
 
+def _is_unconfigured_profile_provider_model(
+    default_model: Optional[str], model_provider: Optional[str]
+) -> bool:
+    """Allow the deliberate new-profile catalog before its key is configured.
+
+    ``/api/models`` only advertises providers with credentials.  A profile
+    creator needs to pick NeuralWatt *before* saving its first credential, so
+    accept only the small, server-owned NeuralWatt catalog on that cold path.
+    """
+    if not default_model or str(model_provider or "").strip().lower() != "neuralwatt":
+        return False
+    from api.config import _PROVIDER_MODELS
+
+    return any(
+        str(model.get("id") or "") == default_model
+        for model in _PROVIDER_MODELS.get("neuralwatt", [])
+        if isinstance(model, dict)
+    )
+
+
 def _get_available_models_for_profile_validation() -> dict:
     from api.config import get_available_models
 
@@ -2641,6 +2748,8 @@ def _validate_profile_model_selection(
         else _get_available_models_for_profile_validation()
     )
     if _profile_model_selection_exists(catalog, default_model, model_provider):
+        return
+    if _is_unconfigured_profile_provider_model(default_model, model_provider):
         return
     if default_model and model_provider:
         raise ValueError(
@@ -2869,6 +2978,10 @@ def create_profile_api(name: str, clone_from: str = None,
     if clone_from is not None and not _is_root_profile(clone_from):
         _validate_profile_name(clone_from)
     default_model, model_provider = _split_webui_provider_model_value(default_model, model_provider)
+    if model_provider == "neuralwatt" and not base_url:
+        base_url = _NEURALWATT_BASE_URL
+    if model_provider == "lmstudio" and not base_url:
+        base_url = _lmstudio_base_url_from_config()
     _validate_profile_model_selection(default_model, model_provider)
     reasoning_effort = _validate_profile_reasoning_effort(reasoning_effort)
 
@@ -3003,8 +3116,10 @@ def update_profile_api(name: str,
     if profile_path is None or not profile_path.is_dir():
         raise ValueError(f"Profile '{name}' does not exist.")
 
-    if base_url:
-        _write_endpoint_to_config(profile_path, base_url=base_url)
+    if base_url or (model_provider == "lmstudio"):
+        effective_base_url = base_url if base_url else _lmstudio_base_url_from_config()
+        if effective_base_url:
+            _write_endpoint_to_config(profile_path, base_url=effective_base_url)
     if api_key:
         _write_api_key_to_dotenv(
             profile_path,

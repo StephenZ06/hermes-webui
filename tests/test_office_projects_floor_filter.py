@@ -28,8 +28,9 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 
 _DRIVER = r"""
 import { readFileSync } from 'node:fs';
-const { departmentFor } = await import(process.argv[2]);
+const { departmentFor, businessWorkerIds } = await import(process.argv[2]);
 globalThis.departmentFor = departmentFor;
+globalThis.businessWorkerIds = businessWorkerIds;
 
 const src = readFileSync(process.argv[3], 'utf8');
 function lift(name) {
@@ -87,10 +88,7 @@ def test_a_business_classified_worker_is_dropped_from_the_projects_floor(driver)
     assert out["desks"] == []
 
 
-def test_an_unclassifiable_task_stays_on_the_projects_floor(driver):
-    # Matches none of the six departments' keywords -- departmentFor()
-    # answers null, same as it would for roster.js's own "The Floor"
-    # overflow on the Business side.
+def test_a_personal_task_stays_on_the_projects_floor(driver):
     state = {
         "workers": [worker("w1", "write a short poem about the ocean")],
         "desks": [desk("d1", "w1")],
@@ -98,6 +96,15 @@ def test_an_unclassifiable_task_stays_on_the_projects_floor(driver):
     out = run(driver, state)
     assert len(out["desks"]) == 1
     assert out["desks"][0]["id"] == "d1"
+
+
+def test_a_coding_task_stays_on_the_projects_floor(driver):
+    state = {
+        "workers": [worker("w1", "debug the React checkout API")],
+        "desks": [desk("d1", "w1")],
+    }
+    out = run(driver, state)
+    assert [desk_["id"] for desk_ in out["desks"]] == ["d1"]
 
 
 def test_descendants_of_a_business_worker_are_hidden_too(driver):

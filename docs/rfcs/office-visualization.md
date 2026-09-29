@@ -1106,3 +1106,16 @@ extended to assert the business-classified demo worker has no seat on
 Projects (both on first load and after switching back to it) while
 actually being seated for real on Business; full office suite and full
 suite both green.
+
+### Follow-up: inline Task Status details
+
+Selecting a worker from its floor label or Task Status row no longer opens a
+second floating detail card over the right edge of the Office. The selected
+row expands in the existing Task Status panel and retains the same status,
+duration, goal, activity, file, interrupt, and conversation controls. A
+selection hidden by the current filter switches the panel back to **All**;
+selecting a task also expands a collapsed panel. The inline disclosure uses
+height, opacity, and position transitions, with reduced-motion preferences
+disabling those transitions.
+Clicking the selected row again collapses only that inline disclosure; the
+floor camera remains focused on the same desk.

@@ -8,5 +8,8 @@
   },
   "devDependencies": {
     "eslint": "^10.4.0"
+  },
+  "dependencies": {
+    "mx-icons": "^1.1.1"
   }
 }

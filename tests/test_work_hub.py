@@ -22,6 +22,51 @@ def test_create_item_persists_revision_and_rejects_unknown_project(monkeypatch, 
         work_hub.create_item({"title": "Bad", "project_id": "missing"}, 1)
 
 
+def test_create_items_is_atomic(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [])
+    with pytest.raises(work_hub.WorkHubError, match="Title is required"):
+        work_hub.create_items([{"title": "First"}, {"title": ""}])
+    assert work_hub.load_state()["work_items"] == []
+
+
+def test_project_items_receive_a_default_board_and_can_use_new_boards(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "alpha"}])
+
+    first = work_hub.create_item({"title": "Existing", "project_id": "alpha"}, None)
+    default_board = first["item"]["board_id"]
+    created_board = work_hub.create_board({"name": "Frontend", "project_id": "alpha"}, first["revision"])
+    second = work_hub.create_item({"title": "UI", "project_id": "alpha", "board_id": created_board["board"]["id"]}, created_board["revision"])
+
+    assert default_board
+    assert second["item"]["board_id"] == created_board["board"]["id"]
+    assert {board["name"] for board in work_hub.bootstrap()["boards"]} >= {"Default", "Frontend"}
+
+
+def test_board_cannot_cross_project_or_delete_default_and_delete_rehomes_items(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "alpha"}, {"project_id": "beta"}])
+    alpha = work_hub.create_item({"title": "Alpha", "project_id": "alpha"}, None)
+    alpha_default = alpha["item"]["board_id"]
+    beta_board = work_hub.create_board({"name": "Beta", "project_id": "beta"}, alpha["revision"])
+    with pytest.raises(work_hub.WorkHubError, match="Board does not belong"):
+        work_hub.create_item({"title": "Wrong", "project_id": "alpha", "board_id": beta_board["board"]["id"]}, beta_board["revision"])
+    board = work_hub.create_board({"name": "Delivery", "project_id": "alpha"}, beta_board["revision"])
+    item = work_hub.create_item({"title": "Ship", "project_id": "alpha", "board_id": board["board"]["id"]}, board["revision"])
+    with pytest.raises(work_hub.WorkHubError, match="default board"):
+        work_hub.delete_board(alpha_default, item["revision"])
+    deleted = work_hub.delete_board(board["board"]["id"], item["revision"])
+    assert deleted["revision"] > item["revision"]
+    assert work_hub.get_item(item["item"]["id"])["board_id"] == alpha_default
+
+
 def test_stale_revision_does_not_mutate_item(monkeypatch, tmp_path):
     from api import work_hub
 

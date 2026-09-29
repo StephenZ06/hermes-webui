@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS work_items (
     status TEXT NOT NULL DEFAULT 'backlog',
     priority TEXT NOT NULL DEFAULT 'none',
     project_id TEXT,
+    board_id TEXT,
     agent_profile TEXT,
     linked_session_ids TEXT NOT NULL DEFAULT '[]',
     parent_id TEXT,
@@ -166,6 +167,10 @@ _MIGRATION_STATUS_DEFAULT = {"status": "pending", "sources": [], "warnings": []}
 
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(_CREATE_SCHEMA)
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(work_items)")}
+    if "board_id" not in columns:
+        conn.execute("ALTER TABLE work_items ADD COLUMN board_id TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_work_items_board_id ON work_items(board_id)")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
 
@@ -233,6 +238,7 @@ def _row_to_item(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "title": row["title"],
         "description": row["description"],
+        "board_id": row["board_id"] if "board_id" in row.keys() else None,
         "status": row["status"],
         "priority": row["priority"],
         "project_id": row["project_id"],
@@ -389,6 +395,67 @@ def _validate_project(project_id: object) -> str | None:
     return value or None
 
 
+def _board_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    content = _decode_json(row["content"], {})
+    return {"id": row["id"], "name": row["name"], "project_id": row["project_id"], "default": bool(content.get("default")), "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+
+def _default_board(conn: sqlite3.Connection, project_id: str | None) -> dict[str, Any]:
+    row = conn.execute("SELECT * FROM planning_entities WHERE collection = 'views' AND project_id IS ? AND content = ?", (project_id, _encode_json({"kind": "work_hub_board", "default": True}))).fetchone()
+    if row:
+        return _board_from_row(row)
+    now = time.time()
+    board = {"id": uuid.uuid4().hex, "name": "Default", "project_id": project_id, "default": True, "created_at": now, "updated_at": now}
+    conn.execute("INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)", (board["id"], board["name"], project_id, _encode_json({"kind": "work_hub_board", "default": True}), now, now))
+    return board
+
+
+def _validate_board(conn: sqlite3.Connection, board_id: object, project_id: str | None) -> str:
+    value = _clean_text(board_id, field="Board", maximum=128)
+    if not value:
+        return _default_board(conn, project_id)["id"]
+    row = conn.execute("SELECT * FROM planning_entities WHERE id = ? AND collection = 'views'", (value,)).fetchone()
+    if row is None:
+        raise WorkHubError("Board not found", 404)
+    content = _decode_json(row["content"], {})
+    if content.get("kind") != "work_hub_board" or row["project_id"] != project_id:
+        raise WorkHubError("Board does not belong to this project", 400)
+    return value
+
+
+def create_board(payload: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise WorkHubError("Board must be an object")
+    with _STATE_LOCK:
+        with _connect() as conn:
+            with conn:
+                _expect_revision(conn, expected_revision, creating=True)
+                project_id = _validate_project(payload.get("project_id"))
+                name = _clean_text(payload.get("name"), field="Board name", maximum=TITLE_MAX_CHARS, required=True)
+                now = time.time(); board = {"id": uuid.uuid4().hex, "name": name, "project_id": project_id, "default": False, "created_at": now, "updated_at": now}
+                conn.execute("INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)", (board["id"], name, project_id, _encode_json({"kind": "work_hub_board", "default": False}), now, now))
+                return {"board": board, "revision": _bump_revision(conn)}
+
+
+def delete_board(board_id: str, expected_revision: int) -> dict[str, Any]:
+    with _STATE_LOCK:
+        with _connect() as conn:
+            with conn:
+                _expect_revision(conn, expected_revision)
+                row = conn.execute("SELECT * FROM planning_entities WHERE id = ? AND collection = 'views'", (board_id,)).fetchone()
+                if row is None:
+                    raise WorkHubError("Board not found", 404)
+                content = _decode_json(row["content"], {})
+                if content.get("kind") != "work_hub_board":
+                    raise WorkHubError("Board not found", 404)
+                if content.get("default"):
+                    raise WorkHubError("The default board cannot be deleted", 409)
+                default = _default_board(conn, row["project_id"])
+                conn.execute("UPDATE work_items SET board_id = ?, updated_at = ? WHERE board_id = ?", (default["id"], time.time(), board_id))
+                conn.execute("DELETE FROM planning_entities WHERE id = ?", (board_id,))
+                return {"revision": _bump_revision(conn)}
+
+
 def _validate_status(status: object) -> str:
     value = _clean_text(status or "backlog", field="Status", maximum=32).lower()
     if value not in STATUS_ORDER:
@@ -415,7 +482,11 @@ def _validate_linked_sessions(value: object) -> list[str]:
     linked = []
     for session_id in value:
         session_id = _clean_text(session_id, field="Session", maximum=256, required=True)
-        if not get_session(session_id):
+        try:
+            session = get_session(session_id)
+        except KeyError:
+            session = None
+        if not session:
             raise WorkHubError("Session not found", 404)
         if session_id not in linked:
             linked.append(session_id)
@@ -521,21 +592,49 @@ def create_item(payload: dict[str, Any], expected_revision: int | None = None) -
                     "created_at": now,
                     "updated_at": now,
                 }
+                item["board_id"] = _validate_board(conn, payload.get("board_id"), item["project_id"])
                 conn.execute(
                     """
                     INSERT INTO work_items(
-                        id, title, description, status, priority, project_id,
+                        id, title, description, status, priority, project_id, board_id,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         item["id"], item["title"], item["description"], item["status"],
-                        item["priority"], item["project_id"], item["created_at"], item["updated_at"],
+                        item["priority"], item["project_id"], item["board_id"], item["created_at"], item["updated_at"],
                     ),
                 )
                 _record_activity(conn, item_id, "created", {"status": item["status"]})
                 revision = _bump_revision(conn)
                 return {"item": dict(item), "revision": revision}
+
+
+def create_items(payloads: list[dict[str, Any]], expected_revision: int | None = None) -> dict[str, Any]:
+    """Create a group of work items in one transaction and revision."""
+    if not isinstance(payloads, list) or not payloads:
+        raise WorkHubError("Work items must be a non-empty list")
+    with _STATE_LOCK:
+        _maybe_migrate_from_json()
+        with _connect() as conn:
+            with conn:
+                _expect_revision(conn, expected_revision, creating=True)
+                now = time.time()
+                items = []
+                for payload in payloads:
+                    if not isinstance(payload, dict):
+                        raise WorkHubError("Work item must be an object")
+                    items.append({"id": uuid.uuid4().hex, "title": _clean_text(payload.get("title"), field="Title", maximum=TITLE_MAX_CHARS, required=True),
+                                  "description": _clean_text(payload.get("description"), field="Description", maximum=DESCRIPTION_MAX_CHARS),
+                                  "status": _validate_status(payload.get("status")), "priority": _clean_text(payload.get("priority") or "none", field="Priority", maximum=32).lower(),
+                                  "project_id": _validate_project(payload.get("project_id")), "created_at": now, "updated_at": now})
+                    items[-1]["board_id"] = _validate_board(conn, payload.get("board_id"), items[-1]["project_id"])
+                for item in items:
+                    conn.execute("INSERT INTO work_items(id, title, description, status, priority, project_id, board_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                 (item["id"], item["title"], item["description"], item["status"], item["priority"], item["project_id"], item["board_id"], item["created_at"], item["updated_at"]))
+                    _record_activity(conn, item["id"], "created", {"status": item["status"]})
+                revision = _bump_revision(conn)
+                return {"items": items, "revision": revision}
 
 
 def _assert_item_not_in_active_workflow(conn: sqlite3.Connection, item_id: str) -> None:
@@ -580,10 +679,17 @@ def update_item(item_id: str, payload: dict[str, Any], expected_revision: int) -
                 if "linked_session_ids" in payload:
                     changed["linked_session_ids"] = _validate_linked_sessions(payload["linked_session_ids"])
 
-                actual = {key: value for key, value in changed.items() if row.get(key) != value}
+                actual = {
+                    key: value
+                    for key, value in changed.items()
+                    if (_decode_json(row.get(key), []) if key == "linked_session_ids" else row.get(key)) != value
+                }
                 if actual:
                     set_clause = ", ".join(f"{key} = ?" for key in actual)
-                    params = list(actual.values())
+                    params = [
+                        _encode_json(value) if key == "linked_session_ids" else value
+                        for key, value in actual.items()
+                    ]
                     params.append(time.time())
                     params.append(item_id)
                     conn.execute(f"UPDATE work_items SET {set_clause}, updated_at = ? WHERE id = ?", params)
@@ -1029,6 +1135,11 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
     with _STATE_LOCK:
         _maybe_migrate_from_json()
         with _connect() as conn:
+            with conn:
+                missing = conn.execute("SELECT DISTINCT project_id FROM work_items WHERE board_id IS NULL").fetchall()
+                for row in missing:
+                    default = _default_board(conn, row["project_id"])
+                    conn.execute("UPDATE work_items SET board_id = ? WHERE board_id IS NULL AND project_id IS ?", (default["id"], row["project_id"]))
             project_id = _clean_text(query.get("project_id"), field="Project", maximum=128)
             status = _clean_text(query.get("status"), field="Status", maximum=32).lower()
             sql = "SELECT * FROM work_items"
@@ -1059,6 +1170,14 @@ def bootstrap() -> dict[str, Any]:
         "workflows": [get_workflow_run(row["id"]) for row in list_workflow_runs()],
         "views": load_state()["views"],
     })
+    with _STATE_LOCK:
+        with _connect() as conn:
+            boards = []
+            for row in conn.execute("SELECT * FROM planning_entities WHERE collection = 'views'"):
+                content = _decode_json(row["content"], {})
+                if content.get("kind") == "work_hub_board":
+                    boards.append(_board_from_row(row))
+            result["boards"] = boards
     return result
 
 

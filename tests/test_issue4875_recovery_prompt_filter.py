@@ -75,3 +75,35 @@ def test_false_positives_not_filtered(src, name):
 @pytest.mark.parametrize(("src", "name"), _PARAMS)
 def test_backend_recovery_string_filtered(src, name):
     assert _eval_filter(src, name, ["The live worker stopped before this run finished."]) == [True]
+
+
+def test_unmarked_continuation_pair_is_hidden_with_its_interim_reply():
+    start = MESSAGES_JS.index("function _streamRecoveryControlMessageText")
+    end = MESSAGES_JS.index("  function _replaceMarkerOnlyAssistantWithStreamError", start)
+    script = (
+        "function msgContent(m){return (m&&m.content)||'';}\n"
+        + MESSAGES_JS[start:end]
+        + "\nconst rows=JSON.parse(process.argv[1]);\n"
+        + "process.stdout.write(JSON.stringify(_filterRecoveryControlMessages(rows)));\n"
+    )
+    rows = [
+        {"role": "user", "content": "Which workspace are we working on?"},
+        {
+            "role": "assistant",
+            "content": "Working in: /workspace/Temani",
+            "finish_reason": "incomplete",
+        },
+        {
+            "role": "user",
+            "content": (
+                "[System: Continue now. Execute the required tool calls and only send your final answer "
+                "after completing the task.]"
+            ),
+        },
+        {"role": "assistant", "content": "Working in /workspace/Temani."},
+    ]
+    result = subprocess.run(
+        [NODE, "-e", script, json.dumps(rows)],
+        check=True, capture_output=True, text=True, timeout=15,
+    )
+    assert json.loads(result.stdout) == [rows[0], rows[3]]

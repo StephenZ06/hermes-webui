@@ -175,6 +175,33 @@ def test_workspace_note_summary_is_the_full_row_click_target():
     assert "padding:6px 8px" in rule
 
 
+def test_long_workspace_note_subitems_wrap_without_being_clipped():
+    at = CSS.index(".workspace-notes-subtask{")
+    rule = CSS[at:CSS.index("}", at)]
+    assert "white-space:pre-wrap" in rule
+    assert "overflow-wrap:anywhere" in rule
+
+
+def test_sticky_board_note_text_controls_are_multiline_and_auto_grow():
+    """Pasted notes must show their complete text instead of an input's one-line viewport."""
+    iframe = (REPO / "static" / "vendor" / "sticky-board" / "index.html").read_text(encoding="utf-8")
+
+    assert "function autoGrowTextarea(textarea)" in iframe
+    assert "var input = el('textarea', {" in iframe
+    assert "var titleInput = el('textarea', {" in iframe
+    assert "autoGrowTextarea(input);" in iframe
+    assert "autoGrowTextarea(titleInput);" in iframe
+    assert ".note-title{\n" in iframe
+    assert "white-space:pre-wrap;overflow-wrap:anywhere;" in iframe
+
+
+def test_sticky_board_multiline_controls_keep_existing_enter_shortcuts():
+    iframe = (REPO / "static" / "vendor" / "sticky-board" / "index.html").read_text(encoding="utf-8")
+    keydown = iframe[iframe.index("document.addEventListener('keydown'"):iframe.index("// ── Drag & Drop")]
+
+    assert keydown.count("if (e.key === 'Enter' && !e.shiftKey)") == 2
+
+
 def test_workspace_notes_reads_the_app_session_not_a_window_property():
     """`S` is a global lexical const, so it is not exposed as `window.S`."""
     session_helpers = _function_block(

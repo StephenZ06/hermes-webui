@@ -4,11 +4,11 @@
   let currentInspectorWidth = (() => { const raw = localStorage.getItem('workHubInspectorWidth'); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
-  const store = { items: [], projects: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeView: 'board', selectedItemId: null, search: '' };
+  const store = { items: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const scopedItems = () => store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : item.project_id === store.activeScope) && (!store.search || item.title.toLowerCase().includes(store.search)));
+  const scopedItems = () => store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : item.project_id === store.activeScope) && (!store.activeBoardId || item.board_id === store.activeBoardId) && (!store.search || item.title.toLowerCase().includes(store.search)));
 
   async function request(path, options) { return api(path, options); }
   async function loadWorkHubPanel() {
@@ -16,7 +16,7 @@
     try {
       const data = await request('/api/work_hub/bootstrap');
       if ((data.revision || 0) < store.revision) return;
-      store.items = data.items || []; store.projects = data.projects || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
+      store.items = data.items || []; store.projects = data.projects || []; store.boards = data.boards || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
     render();
   }
@@ -30,7 +30,7 @@
       ? 220
       : Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_INSPECTOR_WIDTH, currentInspectorWidth));
     wrap.style.setProperty('--wh-inspector-width', inspectorWidth + 'px');
-    wrap.innerHTML = `<section class="work-hub-canvas"><div class="work-hub-toolbar"><div class="work-hub-view-switch"><button class="${store.activeView === 'board' ? 'active' : ''}" data-view="board">${icon('board')} Board</button><button class="${store.activeView === 'list' ? 'active' : ''}" data-view="list">${icon('list')} List</button></div><label class="work-hub-search">${icon('search')}<input id="workHubSearch" type="search" placeholder="Search work" value="${esc(store.search)}"></label><button class="work-hub-create" id="workHubCreate">${icon('plus')} New item</button></div><div class="work-hub-live" role="status">${store.stale ? 'Showing saved data — retrying…' : `${items.length} work item${items.length === 1 ? '' : 's'}`}</div><div id="workHubCanvas"></div></section><div class="work-hub-resizer"></div><aside class="work-hub-inspector" id="workHubInspector" aria-label="Work item details"></aside>`;
+    wrap.innerHTML = `<section class="work-hub-canvas"><div class="work-hub-toolbar"><div class="work-hub-view-switch"><button class="${store.activeView === 'board' ? 'active' : ''}" data-view="board">${icon('board')} Board</button><button class="${store.activeView === 'list' ? 'active' : ''}" data-view="list">${icon('list')} List</button></div><label class="work-hub-search">${icon('search')}<input id="workHubSearch" type="search" placeholder="Search work" value="${esc(store.search)}"></label><button class="work-hub-create work-hub-icon-button" id="workHubCreate" aria-label="New item" title="New item">${icon('plus')}</button></div><div class="work-hub-live" role="status">${store.stale ? 'Showing saved data — retrying…' : `${items.length} work item${items.length === 1 ? '' : 's'}`}</div><div id="workHubCanvas"></div></section><div class="work-hub-resizer"></div><aside class="work-hub-inspector" id="workHubInspector" aria-label="Work item details"></aside>`;
     root.appendChild(wrap);
     initResizer(wrap);
     renderWorkHubNavigation();
@@ -38,10 +38,40 @@
   }
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
-    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label">PROJECTS</div><div id="workHubProjects" style="flex:1;min-height:0;overflow:auto;"></div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
+    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span><button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="Create project" title="Create project">${icon('plus')}</button></div><div id="workHubProjects" class="work-hub-projects" style="flex:1;min-height:0;overflow:auto;"></div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
     const projectList = el('workHubProjects');
-    store.projects.forEach(project => { const b = document.createElement('button'); b.className = 'work-hub-scope' + (store.activeScope === project.project_id ? ' active' : ''); b.dataset.scope = project.project_id; b.innerHTML = `${icon('folder')}<span></span>`; b.querySelector('span').textContent = project.name || 'Untitled project'; projectList.appendChild(b); });
+    store.projects.forEach(project => {
+      const count = store.items.filter(item => item.project_id === project.project_id && item.status !== 'cancelled').length;
+      const expanded = !!store.expandedProjects[project.project_id]; const boards = store.boards.filter(board => board.project_id === project.project_id);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'work-hub-project-tile' + (store.activeScope === project.project_id ? ' active' : ''); b.dataset.scope = project.project_id; b.dataset.projectToggle = project.project_id;
+      b.innerHTML = `<span class="work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="work-hub-project-color" aria-hidden="true"></span><span class="work-hub-project-name"></span><span class="work-hub-project-count" aria-label="${count} work items">${count}</span>`;
+      b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
+      b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
+      projectList.appendChild(b);
+      const child = document.createElement('div'); child.className = 'work-hub-project-boards' + (expanded ? ' expanded' : ''); child.inert = !expanded;
+      boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}">${icon('board')}<span>${esc(board.name)}</span></button>${board.default ? '' : `<button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`}`; child.appendChild(row); });
+      projectList.appendChild(child);
+    });
   }
+
+  async function createWorkHubProject() {
+    const name = await showPromptDialog({ title: 'New project', message: 'Name the project workspace.', placeholder: 'Project name', confirmLabel: 'Create' });
+    if (!name || !name.trim()) return;
+    const colors = ['#7c8cff', '#5fbf9f', '#d5a75f', '#c07ac5', '#d77070'];
+    try {
+      const result = await request('/api/projects/create', { method: 'POST', body: JSON.stringify({ name: name.trim(), color: colors[store.projects.length % colors.length] }) });
+      if (!result.project) throw new Error('Project was not created');
+      store.projects.push(result.project);
+      store.activeScope = result.project.project_id;
+      document.dispatchEvent(new CustomEvent('project-sessions-changed'));
+      render();
+    } catch (error) {
+      store.stale = true; render();
+      if (typeof showToast === 'function') showToast(`Project create failed: ${error.message || error}`);
+    }
+  }
+  async function createWorkHubBoard() { const projectId = store.activeScope === 'all' || store.activeScope === 'inbox' ? null : store.activeScope; const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeBoardId = result.board.id; await loadWorkHubPanel(); } catch (error) { store.stale = true; render(); } }
+  async function deleteWorkHubBoard(boardId) { if (!await showConfirmDialog({ title: 'Delete board', message: 'Its work items move to the default board. The project workspace stays intact.', confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); } catch (error) { store.stale = true; render(); } }
   function renderCanvas(items) {
     const canvas = el('workHubCanvas'); if (!canvas) return;
     canvas.innerHTML = '';
@@ -52,7 +82,17 @@
     }
     const boardWrap = document.createElement('div'); boardWrap.className = 'work-hub-board-wrap';
     const board = document.createElement('div'); board.className = 'work-hub-board';
-    store.statuses.forEach(status => { const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id; column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${items.filter(x => x.status === status.id).length}</small></header><div class="work-hub-cards"></div>`; const cards = column.querySelector('.work-hub-cards'); items.filter(x => x.status === status.id).forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card'; card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); }); board.appendChild(column); });
+    store.statuses.forEach(status => {
+      const filter = store.boardFilters[status.id] || {};
+      const columnItems = items.filter(item => item.status === status.id && (!filter.priority || item.priority === filter.priority) && (!filter.query || item.title.toLowerCase().includes(filter.query)));
+      const priorityOption = value => `<option value="${value}" ${filter.priority === value ? 'selected' : ''}>${value[0].toUpperCase() + value.slice(1)}</option>`;
+      const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="search" placeholder="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}"><option value="">All priorities</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select></div>` : '';
+      const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id;
+      column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small><button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
+      const cards = column.querySelector('.work-hub-cards');
+      columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card'; card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+      board.appendChild(column);
+    });
     boardWrap.appendChild(board);
     canvas.appendChild(boardWrap);
     initDragAndDrop(board);
@@ -78,12 +118,19 @@
   }
   function bind() {
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { const projectId = button.dataset.projectToggle; store.expandedProjects[projectId] = !store.expandedProjects[projectId]; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; render(); });
+    document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
+    document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
+    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project workspace</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; };
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
     document.querySelectorAll('[data-item-id]').forEach(button => button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); });
     const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); bind(); };
     const create = el('workHubCreate'); if (create) create.onclick = createItem;
+    document.querySelectorAll('[data-board-filter]').forEach(button => button.onclick = () => { store.boardFilterOpen = store.boardFilterOpen === button.dataset.boardFilter ? null : button.dataset.boardFilter; renderCanvas(scopedItems()); bind(); });
+    document.querySelectorAll('[data-board-filter-query]').forEach(input => input.oninput = () => { const status = input.dataset.boardFilterQuery; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), query: input.value.toLowerCase() }; renderCanvas(scopedItems()); bind(); });
+    document.querySelectorAll('[data-board-filter-priority]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterPriority; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), priority: select.value }; renderCanvas(scopedItems()); bind(); });
   }
   function initDragAndDrop(board) {
     if (!board) return;
@@ -159,10 +206,50 @@
       document.addEventListener('mouseup', onUp);
     });
   }
+  async function openWorkHubItem(itemId, projectId) {
+    store.activeScope = projectId || 'inbox';
+    store.selectedItemId = itemId || null;
+    if (typeof window.switchPanel === 'function') await window.switchPanel('notes');
+    else await loadWorkHubPanel();
+    render();
+  }
+  async function renderWorkspaceWorkHub() {
+    const list = el('workspaceWorkHubList'); if (!list) return;
+    const scope = el('workspaceWorkHubScope');
+    const session = typeof S !== 'undefined' ? S.session : null;
+    const projectId = session && session.project_id ? session.project_id : null;
+    list.innerHTML = '<div class="workspace-work-hub-loading">Loading work…</div>';
+    try {
+      const data = await request('/api/work_hub/bootstrap');
+      const project = (data.projects || []).find(row => row.project_id === projectId);
+      const items = (data.items || []).filter(item => projectId ? item.project_id === projectId : !item.project_id)
+        .filter(item => item.status !== 'cancelled');
+      if (scope) scope.textContent = project ? project.name || 'Current project work' : 'Inbox work';
+      list.innerHTML = '';
+      if (!items.length) {
+        list.innerHTML = '<div class="workspace-work-hub-empty">No work items in this scope.</div>';
+      } else {
+        items.forEach(item => {
+          const row = document.createElement('button'); row.type = 'button'; row.className = 'workspace-work-hub-item';
+          row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><span class="workspace-work-hub-item-copy"><strong></strong><small>${esc((item.status || '').replace('_', ' '))}</small></span>`;
+          row.querySelector('strong').textContent = item.title;
+          row.onclick = () => openWorkHubItem(item.id, projectId);
+          list.appendChild(row);
+        });
+      }
+      const open = el('workspaceWorkHubOpen');
+      if (open) open.onclick = () => openWorkHubItem(null, projectId);
+    } catch (error) {
+      list.innerHTML = '<div class="workspace-work-hub-empty">Work Hub is unavailable right now.</div>';
+    }
+  }
   window.loadWorkHubPanel = loadWorkHubPanel; window.refreshWorkHubForProject = refreshWorkHubForProject;
+  window.openWorkHubItem = openWorkHubItem; window.renderWorkspaceWorkHub = renderWorkspaceWorkHub;
+  document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel(); });
+  window.addEventListener('focus', () => { if (el('workHub')) loadWorkHubPanel(); });
 })();
 
-/* Goal Planner dialog UI (vanilla JS, depends on window.GoalPlanner in static/goal-planner.js). */
+/* Goal Planner dialog UI. */
 (function(){
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -170,20 +257,21 @@
   let currentOptions = {};
   let createdItems = [];
   let createdRevision = null;
+  let uploadTokens = [];
 
   async function fetchProjects() { try { const data = await api('/api/projects?all_profiles=1'); return (data.projects || []).filter(p => p && p.project_id); } catch (e) { return []; } }
 
-  function closeDialog() { const o = document.querySelector('.goal-planner-overlay'); if (o) o.remove(); currentPlan = null; createdItems = []; createdRevision = null; }
+  function closeDialog() { const tokens = uploadTokens; uploadTokens = []; if (tokens.length) api('/api/work_hub/plan/uploads/discard', { method: 'POST', body: JSON.stringify({ upload_tokens: tokens }), timeoutToast: false }).catch(() => {}); const o = document.querySelector('.goal-planner-overlay'); if (o) o.remove(); currentPlan = null; createdItems = []; createdRevision = null; }
 
   function renderPlanSteps(plan) {
-    if (!plan || !plan.steps || !plan.steps.length) return `<div class="goal-planner-empty">Enter a goal above and click Plan to see A* generated steps.</div>`;
+    if (!plan || !plan.steps || !plan.steps.length) return `<div class="goal-planner-empty">Add notes or source files, then Plan creates a smart draft for you to save.</div>`;
     const meta = plan.meta || {};
     return `<div class="goal-planner-meta"><span class="tag">${esc(meta.domain)}</span><span>${esc(meta.action)}</span></div><div class="goal-planner-steps">${plan.steps.map(s => `<div class="goal-planner-step"><div class="goal-planner-step-id">${esc(s.id)}</div><div class="goal-planner-step-body"><div class="goal-planner-step-title">${esc(s.title)}</div><div class="goal-planner-step-desc">${esc(s.description)}</div></div></div>`).join('')}</div>`;
   }
 
   function buildDialog(projectId, projects) {
     const active = projects.find(p => p.project_id === projectId);
-    return `<div class="goal-planner-overlay"><div class="goal-planner-dialog" role="dialog" aria-labelledby="goalPlannerTitle"><div class="goal-planner-head"><h3 id="goalPlannerTitle">${icon('sparkles')} Plan goal</h3><button id="goalPlannerClose" aria-label="Close">${icon('close')}</button></div><div class="goal-planner-body"><div class="goal-planner-field"><textarea id="goalPlannerInput" placeholder="Paste notes, a rough task list, or a draft plan and the AI will turn it into structured work items"></textarea><button id="goalPlannerBtn" type="button">Plan</button></div><div id="goalPlannerProjectSelect" style="margin-bottom:12px">${renderProjectSelect(active, projects)}</div><div id="goalPlannerResult">${renderPlanSteps(null)}</div></div><div class="goal-planner-actions"><button id="goalPlannerCancel">Cancel</button><button id="goalPlannerCreate" class="primary" disabled>Create work items</button><button id="goalPlannerRun" class="primary" disabled>Run as workflow</button></div></div></div>`;
+    return `<div class="goal-planner-overlay"><div class="goal-planner-dialog" role="dialog" aria-labelledby="goalPlannerTitle"><div class="goal-planner-head"><h3 id="goalPlannerTitle">${icon('sparkles')} Plan goal</h3><button id="goalPlannerClose" aria-label="Close">${icon('close')}</button></div><div class="goal-planner-body"><div class="goal-planner-field"><div class="goal-planner-dropzone" id="goalPlannerDropzone"><textarea id="goalPlannerInput" placeholder=" "></textarea><span class="goal-planner-dropzone-hint">Create, Paste, or Attach notes to be turned into a structured item</span><input id="goalPlannerFiles" type="file" accept=".txt,.md,.markdown,.docx,.pdf" multiple hidden><div id="goalPlannerUploads" class="goal-planner-uploads"></div></div><button id="goalPlannerBtn" type="button" aria-label="Plan work items" title="Plan work items" class="goal-planner-button-icon">${icon('sparkles')}</button></div><div id="goalPlannerProjectSelect" style="margin-bottom:12px">${renderProjectSelect(active, projects)}</div><div id="goalPlannerResult">${renderPlanSteps(null)}</div></div><div class="goal-planner-actions"><button id="goalPlannerCancel">Cancel</button><button id="goalPlannerSave" class="primary goal-planner-button-icon" disabled aria-label="Save work items" title="Save work items">${icon('check')}</button></div></div></div>`;
   }
 
   function renderProjectSelect(active, projects) {
@@ -196,47 +284,42 @@
     document.getElementById('goalPlannerOverlayClick') && (document.getElementById('goalPlannerOverlayClick').onclick = closeDialog);
     const scopeBtn = document.getElementById('goalPlannerScopeBtn');
     if (scopeBtn) scopeBtn.onclick = () => cycleScope(scopeBtn, projects);
+    const dropzone = document.getElementById('goalPlannerDropzone');
+    const fileInput = document.getElementById('goalPlannerFiles');
+    const uploads = document.getElementById('goalPlannerUploads');
+    const renderUploads = () => { uploads.innerHTML = uploadTokens.map(upload => `<button type="button" class="goal-planner-upload" data-token="${esc(upload.token)}">${esc(upload.name)} <span aria-hidden="true">×</span></button>`).join(''); uploads.querySelectorAll('[data-token]').forEach(button => button.onclick = () => { uploadTokens = uploadTokens.filter(upload => upload.token !== button.dataset.token); renderUploads(); }); };
+    const addFiles = async files => { for (const file of Array.from(files || [])) { const form = new FormData(); form.append('file', file); const data = await api('/api/work_hub/plan/uploads', { method: 'POST', body: form, headers: {} }); uploadTokens.push(data.upload); renderUploads(); } };
+    dropzone.onclick = event => { if (event.target === dropzone || event.target.classList.contains('goal-planner-dropzone-hint')) fileInput.click(); };
+    fileInput.onchange = () => addFiles(fileInput.files).catch(error => { document.getElementById('goalPlannerResult').innerHTML = `<div class="goal-planner-empty" style="color:var(--error)">${esc(error.message)}</div>`; });
+    ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('is-dragging'); }));
+    ['dragleave', 'drop'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.remove('is-dragging'); }));
+    dropzone.addEventListener('drop', event => addFiles(event.dataTransfer.files).catch(error => { document.getElementById('goalPlannerResult').innerHTML = `<div class="goal-planner-empty" style="color:var(--error)">${esc(error.message)}</div>`; }));
     document.getElementById('goalPlannerBtn').onclick = async () => {
       const input = document.getElementById('goalPlannerInput');
-      const goal = input.value.trim(); if (!goal) return;
-      const btn = document.getElementById('goalPlannerBtn'); btn.disabled = true; btn.textContent = 'Planning…';
+      const goal = input.value.trim(); if (!goal && !uploadTokens.length) return;
+      const btn = document.getElementById('goalPlannerBtn'); btn.disabled = true; btn.classList.add('goal-planner-is-planning'); btn.innerHTML = icon('loader');
       try {
-        const data = await api('/api/work_hub/plan/ai', { method: 'POST', body: JSON.stringify({ goal, project_id: currentOptions.projectId || null, preview: true }) });
+        const data = await api('/api/work_hub/plan/ai', { method: 'POST', body: JSON.stringify({ goal: goal || 'Create work items from the attached sources.', project_id: currentOptions.projectId || null, upload_tokens: uploadTokens.map(upload => upload.token) }) });
         currentPlan = data && data.plan || null;
         if (!currentPlan) throw new Error('No plan returned');
+        uploadTokens = [];
         document.getElementById('goalPlannerResult').innerHTML = renderPlanSteps(currentPlan);
-        document.getElementById('goalPlannerCreate').disabled = false;
+        document.getElementById('goalPlannerSave').disabled = false;
       } catch (e) {
         document.getElementById('goalPlannerResult').innerHTML = `<div class="goal-planner-empty" style="color:var(--error)">Failed to plan: ${esc(e.message)}</div>`;
-      } finally { btn.disabled = false; btn.textContent = 'Plan'; }
+      } finally { btn.disabled = false; btn.classList.remove('goal-planner-is-planning'); btn.innerHTML = icon('sparkles'); }
     };
-    document.getElementById('goalPlannerCreate').onclick = async () => {
-      if (!currentPlan) return;
-      const btn = document.getElementById('goalPlannerCreate'); btn.disabled = true; btn.textContent = 'Creating…';
+    document.getElementById('goalPlannerSave').onclick = async () => {
+      if (!currentPlan || !Array.isArray(currentPlan.steps) || !currentPlan.steps.length) return;
+      const btn = document.getElementById('goalPlannerSave'); btn.disabled = true; btn.classList.add('goal-planner-is-planning'); btn.innerHTML = icon('loader');
       try {
-        const payload = { goal: currentPlan.goal, project_id: currentOptions.projectId || null };
-        console.log('[work-hub plan ai create] sending payload', payload);
-        const created = await api('/api/work_hub/plan/ai', { method: 'POST', body: JSON.stringify(payload) });
-        createdItems = Array.isArray(created.items) ? created.items : [];
-        createdRevision = created.revision;
-        btn.textContent = 'Created';
-        document.getElementById('goalPlannerRun').disabled = !currentOptions.projectId || !createdItems.length;
-        if (typeof onCreated === 'function') onCreated(created);
-      } catch (e) {
-        console.error('[work-hub plan ai create] failed', e.status, e.body, e.message);
-        btn.disabled = false; btn.textContent = 'Create work items';
-        document.getElementById('goalPlannerResult').insertAdjacentHTML('afterbegin', `<div class="goal-planner-empty" style="color:var(--error);margin-bottom:8px">${esc(e.message)}</div>`);
-      }
-    };
-    document.getElementById('goalPlannerRun').onclick = async () => {
-      if (!currentOptions.projectId || !createdItems.length || !currentPlan) return;
-      const btn = document.getElementById('goalPlannerRun'); btn.disabled = true; btn.textContent = 'Starting…';
-      try {
-        await api("/api/work_hub/workflows/start", { method: 'POST', body: JSON.stringify({ project_id: currentOptions.projectId, goal: currentPlan.goal, item_ids: createdItems.map(item => item.id), expected_revision: createdRevision, topology: 'sequential' }) });
-        if (typeof onCreated === 'function') onCreated();
+        const data = await api('/api/work_hub/plan/save', { method: 'POST', body: JSON.stringify({ project_id: currentOptions.projectId || null, steps: currentPlan.steps }) });
+        createdItems = Array.isArray(data.items) ? data.items : [];
+        createdRevision = data.revision;
+        if (typeof onCreated === 'function') onCreated(data);
         closeDialog();
       } catch (e) {
-        btn.disabled = false; btn.textContent = 'Run as workflow';
+        btn.disabled = false; btn.classList.remove('goal-planner-is-planning'); btn.innerHTML = icon('check');
         document.getElementById('goalPlannerResult').insertAdjacentHTML('afterbegin', `<div class="goal-planner-empty" style="color:var(--error);margin-bottom:8px">${esc(e.message)}</div>`);
       }
     };

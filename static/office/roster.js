@@ -147,7 +147,7 @@ export function officeFor(text) {
 export function businessWorkerIds(workers) {
   const list = Array.isArray(workers) ? workers : [];
   const business = new Set(list
-    .filter(worker => officeFor(worker && (worker.goal || worker.label || '')) === 'business')
+    .filter(worker => worker && (worker.scheduledTask || officeFor(worker.goal || worker.label || '') === 'business'))
     .map(worker => worker.id)
     .filter(Boolean));
   let changed = true;
@@ -221,6 +221,18 @@ export function buildRoster(personalities) {
     return { key: dept.key, name: dept.name, color: dept.color, seats };
   });
 
+  // Keep The Floor as a real room even when no task currently overflows into
+  // it. This guarantees its platform is rendered with the same four-layer
+  // stack as every department instead of disappearing when it is empty.
+  if (!overflowSeats.length) {
+    overflowSeats.push({
+      id: `seat-${OVERFLOW.key}-lead`,
+      department: OVERFLOW.key,
+      label: OVERFLOW.name,
+      persona: null,
+      placeholder: true,
+    });
+  }
   departments.push({ key: OVERFLOW.key, name: OVERFLOW.name, seats: overflowSeats });
   return { departments };
 }
@@ -286,7 +298,9 @@ export function businessView(state, roster) {
   });
 
   ordered.forEach(worker => {
-    const dept = departmentFor(worker.goal || worker.label || '');
+    // Scheduler work is intentionally shown on THE FLOOR. Its name is not a
+    // department assignment, even when it happens to contain one.
+    const dept = worker.scheduledTask ? null : departmentFor(worker.goal || worker.label || '');
     let desk = dept ? takeFreeSeat(dept.key) : null;
     if (!desk) desk = takeFreeSeat(OVERFLOW.key);
     if (!desk) {

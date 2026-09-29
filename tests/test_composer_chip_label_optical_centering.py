@@ -93,3 +93,38 @@ def test_labels_still_clip_for_their_ellipsis():
         "the workspace label is expected to clip — the choice of under-edge "
         "in the text-box rule depends on it"
     )
+
+
+def test_footer_chip_content_uses_a_shared_icon_text_centerline():
+    """Every visible composer label must share the icon's compact line box."""
+    required = (
+        ".composer-profile-label",
+        ".composer-workspace-label",
+        ".composer-model-label",
+        ".composer-reasoning-label",
+        ".composer-toolsets-label",
+    )
+    rule_start = CSS.index(".composer-profile-label,\n  .composer-workspace-label,\n  .composer-model-label,\n  .composer-reasoning-label,\n  .composer-toolsets-label{")
+    rule = CSS[rule_start:CSS.index("}", rule_start) + 1]
+    for selector in required:
+        assert selector in rule, f"{selector} must share the footer icon/text centerline"
+    assert "transform:translateY(-1px)" in rule, (
+        "flex centres the label's line box, not its visible glyphs; shift the "
+        "shared labels one pixel upward to align their ink with the SVG icons"
+    )
+
+
+def test_workspace_label_is_optically_centered_in_its_split_button():
+    """Long workspace names should not visually drift toward the chevron."""
+    match = re.search(r"\.composer-workspace-chip\{display:inline-flex;([^}]*)}", CSS)
+    assert match, "workspace chip CSS rule missing"
+    rule = match.group(1)
+    assert "justify-content:center" in rule
+    assert "padding:8px 14px 8px 8px" in rule
+
+
+def test_workspace_split_button_keeps_its_divider_visible_when_idle():
+    """The files icon and workspace picker remain visibly separated at rest."""
+    match = re.search(r"\.composer-workspace-chip\{display:inline-flex;([^}]*)}", CSS)
+    assert match, "workspace chip CSS rule missing"
+    assert "border-left:1px solid var(--border2)" in match.group(1)

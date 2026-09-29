@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 MOUNT_TIMEOUT_S = 15
 UNMOUNT_TIMEOUT_S = 10
 STATUS_TIMEOUT_S = 5
+# Spaces refreshes every 15 seconds while visible. Keep the independent remote
+# reachability probe short enough that a powered-off host cannot monopolize that
+# refresh cycle (or the server's request workers).
+REMOTE_REACHABILITY_TIMEOUT_S = 2
 
 
 class SshMountError(Exception):
@@ -142,6 +146,42 @@ def _remote_cfg(entry: dict) -> dict:
             f"Incomplete remote config for workspace '{entry.get('name') or entry.get('path')}'"
         )
     return {"host": host, "remote_path": remote_path, "key_path": key_path}
+
+
+def remote_reachability(entry: dict) -> str:
+    """Return ``reachable`` only when the configured SSH target accepts a probe.
+
+    This is deliberately separate from :func:`mount_status`: an SSHFS mount can
+    remain locally mounted while its host is powered off. The command performs
+    no remote mutation (``true`` only), is non-interactive, refuses unknown host
+    keys instead of accepting them, and suppresses its output so key/host error
+    details never reach the browser. Any uncertainty is ``unreachable``.
+    """
+    try:
+        cfg = _remote_cfg(entry)
+    except SshMountError:
+        return "unreachable"
+    cmd = [
+        "ssh",
+        "-i", cfg["key_path"],
+        "-o", "BatchMode=yes",
+        "-o", "IdentitiesOnly=yes",
+        "-o", "StrictHostKeyChecking=yes",
+        "-o", "ConnectionAttempts=1",
+        "-o", f"ConnectTimeout={REMOTE_REACHABILITY_TIMEOUT_S}",
+        "-o", "LogLevel=ERROR",
+        cfg["host"],
+        "true",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=REMOTE_REACHABILITY_TIMEOUT_S + 1,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return "unreachable"
+    return "reachable" if proc.returncode == 0 else "unreachable"
 
 
 def mount_remote(entry: dict) -> None:

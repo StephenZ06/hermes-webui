@@ -1347,9 +1347,8 @@ function renderProjectFolders(projects, parents) {
   const host = document.getElementById('officeProjectFolders');
   if (!host) return;
   const list = Array.isArray(projects) ? projects : [];
-  if (!list.length) { host.innerHTML = ''; return; }
   host.innerHTML = `<div class="office-project-folders-title"><svg class="office-project-folders-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span></div>
-    <div class="project-folder-list">${list.map(project => {
+    <div class="project-folder-list">${list.length ? list.map(project => {
       const rows = (parents || []).filter(parent => parent.project_id === project.project_id);
       const expanded = _expandedProjectIds.has(project.project_id);
       const taskRows = rows.length ? rows.map(parent => {
@@ -1362,7 +1361,7 @@ function renderProjectFolders(projects, parents) {
         <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span>
         <span class="project-folder-name">${esc(project.name)}</span><span class="project-folder-count">${rows.length}</span></button>
         <div class="project-folder-sessions${expanded ? ' expanded' : ''}"><div class="project-folder-sessions-inner">${taskRows}</div></div>`;
-    }).join('')}</div>`;
+    }).join('') : '<div class="project-folder-empty">No projects configured.</div>'}</div>`;
   host.querySelectorAll('.office-project-folder').forEach(row => {
     row.onclick = () => {
       const id = row.dataset.projectId;
@@ -1388,21 +1387,37 @@ function renderProjectFolders(projects, parents) {
  * Called by switchPanel(), mirroring Agent Canvas.
  */
 async function renderSidebar() {
+  // Render what we already know immediately, then refresh from network.
+  renderProjectFolders(_officeProjects, _historyParents);
   renderSessionList();
   try {
     const [sessionsResult, projectsResult] = await Promise.allSettled([
       request('/api/agent-canvas/sessions', { timeoutToast: false }),
-      request('/api/projects', { timeoutToast: false }),
+      request('/api/projects?all_profiles=1', { timeoutToast: false }),
     ]);
     if (sessionsResult.status === 'fulfilled') {
       const data = sessionsResult.value;
       _historyParents = (data && Array.isArray(data.parents)) ? data.parents : _historyParents;
+    } else if (sessionsResult.status === 'rejected') {
+      console.warn('[office] agent-canvas/sessions failed:', sessionsResult.reason);
     }
     if (projectsResult.status === 'fulfilled') {
-      const projects = projectsResult.value;
-      _officeProjects = (projects && Array.isArray(projects.projects)) ? projects.projects : _officeProjects;
+      const payload = projectsResult.value || {};
+      const activeProfile = payload.active_profile || '';
+      const allProjects = (payload.projects && Array.isArray(payload.projects)) ? payload.projects : [];
+      _officeProjects = activeProfile
+        ? allProjects.filter(p => !p.profile || p.profile === activeProfile)
+        : allProjects;
+      if (!_officeProjects.length && allProjects.length) {
+        // If filtering removed everything, fall back to the full list.
+        _officeProjects = allProjects;
+      }
+    } else if (projectsResult.status === 'rejected') {
+      console.warn('[office] /api/projects failed:', projectsResult.reason);
     }
-  } catch (_err) { /* retain the last successful sidebar data */ }
+  } catch (_err) {
+    console.warn('[office] renderSidebar network error:', _err);
+  }
   refreshHistory();
   renderProjectFolders(_officeProjects, _historyParents);
   renderSessionList();
@@ -1605,6 +1620,10 @@ function mount(container) {
   // panel through the stored listing.
   _sidebarTimer = setInterval(() => { renderSidebar(); }, SIDEBAR_REFRESH_MS);
 
+  // Render cached/dummy sidebar immediately so project folders show up before
+  // the first background poll completes.
+  renderSidebar();
+
   _scene.resize();
   _scene.syncOffice(activeAdapter().getState());
   _scene.start();
@@ -1731,3 +1750,17 @@ window.HermesOffice = {
   onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
   adapter: _adapter,
 };
+
+// If the Office panel was switched to before this ES module finished loading,
+// panels.js skipped calling renderSidebar. Re-render now if the panel is active.
+if (typeof document !== 'undefined') {
+  try {
+    const officeWrap = document.getElementById('officeWrap');
+    const officePanel = document.getElementById('mainOffice');
+    const isActive = officePanel && !officePanel.classList.contains('hidden')
+      && officeWrap && officeWrap.children.length > 0;
+    if (isActive) {
+      renderSidebar();
+    }
+  } catch (_err) { /* no-op */ }
+}

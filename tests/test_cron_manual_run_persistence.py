@@ -44,6 +44,35 @@ def test_manual_cron_run_saves_output_delivers_and_marks_job(monkeypatch):
     assert routes._is_cron_running("job123") == (False, 0.0)
 
 
+def test_manual_cron_run_publishes_a_completed_task_for_the_business_office(monkeypatch, tmp_path):
+    """Manual runs must reach the Office projection, not only cron history."""
+    import api.routes as routes
+    from api.scheduled_tasks import load_scheduled_tasks
+
+    calls = []
+    _install_cron_fakes(monkeypatch, calls)
+    monkeypatch.setattr(
+        routes,
+        "_run_cron_job_in_profile_subprocess",
+        lambda job, execution_profile_home: (True, "manual output", "done", None),
+    )
+
+    routes._mark_cron_running("floor-job")
+    routes._run_cron_tracked(
+        {"id": "floor-job", "name": "Refresh report", "no_agent": True, "profile": "business"},
+        profile_home=tmp_path,
+        execution_profile_home=tmp_path,
+    )
+
+    tasks = load_scheduled_tasks(tmp_path, "business")
+    assert len(tasks) == 1
+    assert tasks[0]["job_id"] == "floor-job"
+    assert tasks[0]["name"] == "Refresh report"
+    assert tasks[0]["mode"] == "script"
+    assert tasks[0]["profile"] == "business"
+    assert tasks[0]["status"] == "completed"
+
+
 def test_manual_cron_run_marks_empty_response_as_failure_without_delivery(monkeypatch):
     import api.routes as routes
 

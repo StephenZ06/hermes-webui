@@ -19,6 +19,37 @@ def test_linked_session_must_exist_and_unavailable_profile_is_safe(monkeypatch, 
     assert shown["agent"]["availability"] == "unavailable"
 
 
+def test_linked_session_lookup_key_error_is_a_request_safe_not_found(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [])
+    monkeypatch.setattr("api.models.get_session", lambda session_id: (_ for _ in ()).throw(KeyError(session_id)))
+    item = work_hub.create_item({"title": "Link a chat"}, None)
+
+    with pytest.raises(work_hub.WorkHubError, match="Session not found") as error:
+        work_hub.update_item(item["item"]["id"], {"linked_session_ids": ["vanished-session"]}, item["revision"])
+
+    assert error.value.status == 404
+
+
+def test_linking_an_existing_chat_persists_session_ids_as_json(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [])
+    monkeypatch.setattr("api.models.get_session", lambda session_id: object())
+    item = work_hub.create_item({"title": "Link a chat"}, None)
+
+    result = work_hub.update_item(
+        item["item"]["id"],
+        {"linked_session_ids": ["913c86f63425"]},
+        item["revision"],
+    )
+
+    assert result["item"]["linked_session_ids"] == ["913c86f63425"]
+
+
 def test_office_event_adds_activity_without_changing_planned_status(monkeypatch, tmp_path):
     from api import work_hub
 

@@ -84,6 +84,7 @@ _PROVIDERS_CACHE_TTL_SECONDS = 30.0
 _ACCOUNT_USAGE_CACHE_MAX_ENTRIES = 64
 _ACCOUNT_USAGE_WORKER_IDLE_SECONDS = 5 * 60
 _ACCOUNT_USAGE_PROVIDERS = frozenset({"openai-codex", "anthropic"})
+_RETIRED_PROVIDER_IDS = frozenset({"opencode-go"})
 
 # Upper bound on simultaneous profile-isolated quota probe subprocesses.
 # Each probe runs a Python child for up to 35 s; capping concurrency prevents
@@ -2610,6 +2611,10 @@ def get_providers() -> dict[str, Any]:
     cache_key = _providers_cache_key(cfg)
     cached = _get_cached_providers(cache_key)
     if cached is not None:
+        cached["providers"] = [
+            row for row in cached.get("providers", [])
+            if row.get("id") not in _RETIRED_PROVIDER_IDS
+        ]
         return cached
 
     providers = []
@@ -2619,6 +2624,7 @@ def get_providers() -> dict[str, Any]:
 
     # Add OAuth providers even if not in _PROVIDER_DISPLAY
     known_ids.update(_OAUTH_PROVIDERS)
+    known_ids.difference_update(_RETIRED_PROVIDER_IDS)
 
     for pid in sorted(known_ids):
         display_name = effective_provider_display_name(pid, _PROVIDER_DISPLAY)

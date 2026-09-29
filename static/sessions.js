@@ -4009,6 +4009,7 @@ let _showArchived = false;  // toggle to show archived sessions
 let _sessionSelectMode = false;  // batch select mode
 const _selectedSessions = new Set();  // selected session IDs
 let _allProjects = [];  // cached project list
+let _workHubProjectsSignature = '';
 // Sentinel value for the _activeProject state when filtering to sessions
 // that have no project_id assigned. Distinct from real project IDs so the
 // equality check below can branch cleanly on it. The literal string is
@@ -5668,6 +5669,11 @@ function _applySessionListPayload(sessData, projData, opts){
   _syncSessionAttentionSoundState(_allSessions);
   _pruneLineageReportCacheToVisibleSessions(_allSessions);
   _allProjects = projData.projects||[];
+  const nextWorkHubProjectsSignature = JSON.stringify(_allProjects.map(project => [project.project_id, project.name, project.color, project.workspace_path || null]));
+  if(nextWorkHubProjectsSignature !== _workHubProjectsSignature){
+    _workHubProjectsSignature = nextWorkHubProjectsSignature;
+    document.dispatchEvent(new CustomEvent('project-sessions-changed'));
+  }
   // Capture the recovering-from-error state BEFORE clearing it: the error banner
   // DOM was rendered outside the signature path, so if this payload heals with
   // rows identical to the last render, the identical-signature skip below would

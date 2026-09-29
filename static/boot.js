@@ -2552,17 +2552,34 @@ async function _createNewConversation(project_id){
 // Reuses the same .project-picker/.project-picker-item UI as _showProjectPicker
 // (sessions.js) for visual consistency, but creates a session directly via
 // _createNewConversation(project_id) instead of moving an existing one.
+let _allProjectsAllProfiles = []; // unfiltered project cache for the new-chat picker
+
+async function _refreshAllProjectsAllProfiles(){
+  try{
+    const data = await api('/api/projects?all_profiles=1', { timeoutToast: false });
+    if(data && Array.isArray(data.projects)){
+      _allProjectsAllProfiles = data.projects;
+      return _allProjectsAllProfiles;
+    }
+  }catch(_err){ /* fall through */ }
+  return _allProjectsAllProfiles;
+}
+
+// Warm the unfiltered project cache on boot so the new-chat picker is
+// immediately responsive; the sidebar cache is profile-scoped, so it may hide
+// projects that belong to other profiles.
+_refreshAllProjectsAllProfiles();
+
 function _createNewConversationWithPicker(anchorEl){
-  const sessionProfile=S.activeProfile||'default';
-  const visibleProjects=(typeof _allProjects!=='undefined'?_allProjects:[]).filter(p=>{
-    const projProfile=p&&p.profile;
-    if(!sessionProfile||!projProfile) return true;
-    if(projProfile===sessionProfile) return true;
-    if(projProfile==='default'||sessionProfile==='default') return true;
-    return false;
-  });
+  // Prefer the all-profiles cache so every project the user owns is reachable
+  // from the new-chat menu. Fall back to the profile-scoped sidebar cache.
+  const visibleProjects = _allProjectsAllProfiles.length
+    ? _allProjectsAllProfiles
+    : (typeof _allProjects !== 'undefined' ? _allProjects : []);
   if(!visibleProjects.length){_createNewConversation();return;}
-  _showNewChatDestinationPicker(anchorEl,visibleProjects);
+  _showNewChatDestinationPicker(anchorEl, visibleProjects);
+  // Refresh in the background so newly-created projects appear next time.
+  _refreshAllProjectsAllProfiles();
 }
 function _showNewChatDestinationPicker(anchorEl,visibleProjects){
   document.querySelectorAll('.project-picker').forEach(p=>p.remove());

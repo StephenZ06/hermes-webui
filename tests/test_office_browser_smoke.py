@@ -87,14 +87,15 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         }""")
         pg.screenshot(path=str(tmp_path / "office-projects.png"))
 
-        # Projects pods get a floating stat card too -- generic (no name, no
-        # colour, since a Projects pod is just "whoever's parent spawned it",
-        # not a named department). demo-1 seats under the conductor's own
-        # pod; demo-3 seats under a pod of its own (demo-1's children).
+        # Projects shows separate, anchored cards for the Conductor and its
+        # direct-child Subagents platform; a nested subagent pod stays generic.
+        # demo-1 seats on the Subagents platform while demo-3 gets a pod of
+        # its own (demo-1's child).
         # demo-2's goal ("write the regression tests") reads as Delivery
         # business work, so it's held back from the Projects floor entirely
         # (see projectsFloorView() in index.js) -- it isn't a third pod here.
         projects_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
+          name: (el.querySelector('.office-dept-card-name') || {}).textContent || '',
           hasName: !!el.querySelector('.office-dept-card-name'),
           hasColor: !!el.style.getPropertyValue('--office-dept-color'),
           left: el.style.left, top: el.style.top,
@@ -127,6 +128,10 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
           name: el.querySelector('.office-dept-card-name')?.textContent,
           left: el.style.left, top: el.style.top,
           hasColor: !!el.style.getPropertyValue('--office-dept-color'),
+          rect: (() => {
+            const r = el.getBoundingClientRect();
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+          })(),
         }))""")
 
         # Task Status panel: whole-office, so it must show the same 3 demo
@@ -271,25 +276,25 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     for name in ("Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery"):
         assert by_name[name]["hasColor"], f"{name}'s card carries no floor colour"
     assert not by_name["The Floor"]["hasColor"], "the overflow is not a department and stays uncoloured"
+    for i, card in enumerate(dept_cards):
+        for other in dept_cards[i + 1:]:
+            a, b = card["rect"], other["rect"]
+            overlaps = (a["left"] < b["right"] and a["right"] > b["left"]
+                        and a["top"] < b["bottom"] and a["bottom"] > b["top"])
+            assert not overlaps, (
+                f"{card['name']} and {other['name']} cards overlap on the Business floor"
+            )
 
-    # Projects pods (both when the panel first opens on the default outlet,
-    # and again after switching back to it) get the same floating cards --
-    # unnamed (a pod has no department to name), but still coloured, since the
-    # floor itself is now tinted per pod and the card should match its floor.
-    assert len(projects_cards) == 2, (
-        "demo-1 alone seats under the conductor's own pod (demo-2 is held "
-        "back as business-classified work), demo-3 under a pod of its own "
-        "-- 2 pods, 2 cards"
-    )
+    # Projects cards remain distinct after switching outlets: Conductor is
+    # anchored to the central platform, Subagents to its own platform, and
+    # nested project pods keep their deliberately generic card.
+    assert len(projects_cards) == 3, "Conductor, Subagents, and demo-3 each need one card"
+    assert {card["name"] for card in projects_cards if card["hasName"]} == {"Conductor", "Subagents"}
     for card in projects_cards:
-        assert not card["hasName"], "a Projects card must not invent a department name"
         assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
         assert card["left"] and card["top"], "a Projects card was never positioned over its pod"
 
-    assert len(cards_after_leaving_business) == 2, (
-        "the cards are Business-only in NAME, not existence -- leaving "
-        "Business must replace them with Projects' own unnamed cards, not zero"
-    )
+    assert len(cards_after_leaving_business) == 3, "returning to Projects must restore all three project cards"
     for card in cards_after_leaving_business:
         assert not card["hasName"], "Business's named cards must not linger over the Projects floor"
         assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
@@ -327,3 +332,45 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     assert collapse_toggle["expandedWidth"] == collapse_toggle["before"], (
         "expanding again must give the canvas back exactly the width it had before"
     )
+
+
+def test_business_cards_do_not_overlap(base_url):
+    """Perspective-compressed Business pods still need individually readable cards."""
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=[
+            "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+        ])
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        page.goto(base_url, wait_until="load")
+        page.wait_for_timeout(2500)
+        page.evaluate('''() => {
+          const kill = sel => document.querySelectorAll(sel).forEach(el => el.remove());
+          kill('#onboardingOverlay');
+          kill('.onboarding-overlay, .tour-overlay, .tour-popover, [class*="coachmark"]');
+          document.querySelectorAll('[role="dialog"]').forEach(el => el.remove());
+          window.switchPanel('office');
+        }''')
+        page.wait_for_timeout(1200)
+        page.evaluate("""() => {
+          const office = window.HermesOffice;
+          office.onSpawn({subagent_id:'card-1', goal:'plan campaign', depth:1});
+          office.onSpawn({subagent_id:'card-2', goal:'answer customer emails', depth:1});
+          office.onSpawn({subagent_id:'card-3', goal:'close a sales lead', depth:1});
+          document.querySelector('[data-outlet="business"]').click();
+        }""")
+        page.wait_for_timeout(1500)
+        cards = page.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => {
+          const r = el.getBoundingClientRect();
+          return { name: el.querySelector('.office-dept-card-name')?.textContent,
+            left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        })""")
+        browser.close()
+
+    assert len(cards) == 8, "Conductor, six departments, and The Floor each keep a card"
+    for i, card in enumerate(cards):
+        for other in cards[i + 1:]:
+            overlaps = (card["left"] < other["right"] and card["right"] > other["left"]
+                        and card["top"] < other["bottom"] and card["bottom"] > other["top"])
+            assert not overlaps, f"{card['name']} and {other['name']} overlap"

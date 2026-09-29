@@ -175,8 +175,8 @@ class TestPWARoutes:
         idx = src.find('"/sw.js"')
         assert idx != -1, "routes.py must handle /sw.js"
         block = src[idx:idx + 1200]
-        assert "quote(WEBUI_VERSION, safe=\"\")" in block, (
-            "sw.js route must URL-encode the injected cache version so unusual git tags "
+        assert "quote(_static_asset_version_token(), safe=\"\")" in block, (
+            "sw.js route must URL-encode the injected cache fingerprint so unusual git tags "
             "cannot break the JavaScript string literal"
         )
 
@@ -361,8 +361,8 @@ class TestIndexHtmlIntegration:
                 idx = src.find('parsed.path.startswith("/session/")')
             assert idx != -1, "routes.py must handle /, /index.html, and /session/<id>"
             block = src[idx:idx + 800]
-        assert "quote(WEBUI_VERSION, safe=\"\")" in block, (
-            "the app-shell render must URL-encode the cache-busting version token before "
+        assert "quote(_static_asset_version_token(), safe=\"\")" in block, (
+            "the app-shell render must URL-encode the cache-busting fingerprint before "
             "injecting it into script src attributes and service worker registration"
         )
 

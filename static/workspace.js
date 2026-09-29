@@ -237,6 +237,187 @@ function _clearWorkspaceEscapeGrant(path){
   if(root && grants[root]) delete grants[root];
 }
 
+// ── Graphify integration: workspace-project code graphs ──────────────────
+let _workspaceGraphMap = null;
+let _workspaceGraphMapPromise = null;
+let _workspaceGraphLoadError = false;
+let _workspaceGraphRefreshTimer = null;
+
+function _scheduleWorkspaceGraphRefresh(){
+  if(_workspacePanelActiveTab !== 'graph') return;
+  clearTimeout(_workspaceGraphRefreshTimer);
+  _workspaceGraphRefreshTimer = setTimeout(() => {
+    _workspaceGraphMapPromise = null;
+    _workspaceGraphLoadError = false;
+    _loadWorkspaceGraphMap().then(_renderWorkspaceGraphPane);
+  }, 350);
+}
+
+function _loadWorkspaceGraphMap(){
+  if(_workspaceGraphMapPromise) return _workspaceGraphMapPromise;
+  _workspaceGraphMapPromise = fetch('/graphify-projects/workspace-graph-map.json',{credentials:'include'})
+    .then(r => r.ok ? r.json() : null)
+    .then(data => { _workspaceGraphLoadError = false; _workspaceGraphMap = data || {}; return _workspaceGraphMap; })
+    .catch(() => { _workspaceGraphLoadError = true; _workspaceGraphMap = {}; return _workspaceGraphMap; })
+    .finally(() => { _updateWorkspaceGraphButton(); });
+  return _workspaceGraphMapPromise;
+}
+
+function _normalizeGraphPath(p){
+  if(!p || p === '.') return '';
+  return String(p).replace(/\\/g,'/').replace(/\/{2,}/g,'/').replace(/\/$/,'');
+}
+
+function _resolveCurrentGraphDir(){
+  const ws = (S.session && S.session.workspace) || '';
+  const rel = (S.currentDir === undefined || S.currentDir === null || S.currentDir === '.') ? '' : S.currentDir;
+  let full = '';
+  if(_normalizeGraphPath(ws) && _normalizeGraphPath(rel)){
+    full = _normalizeGraphPath(ws) + '/' + _normalizeGraphPath(rel);
+  }else{
+    full = _normalizeGraphPath(ws) || _normalizeGraphPath(rel);
+  }
+  full = full.replace(/^~\//,'').replace(/^(?:\.\/)+/,'');
+
+  // Strip known storage roots/symlinks so either the MiniPC-Main root or the
+  // Obsidian-Vault/MiniPC-Main symlinked layout resolves to the same project key.
+  const prefixes = [
+    '/mnt/c/Users/Z014/Documents/',
+    'C:/Users/Z014/Documents/',
+    'c:/Users/Z014/Documents/',
+    '/home/z014/',
+  ];
+  for(const prefix of prefixes){
+    if(full.toLowerCase().startsWith(prefix.toLowerCase())){
+      full = full.slice(prefix.length);
+      break;
+    }
+  }
+
+  // Strip Obsidian-Vault wrapper if present, then MiniPC-Main parent root.
+  if(/^Obsidian-Vault\//i.test(full)) full = full.slice('Obsidian-Vault/'.length);
+  if(/^MiniPC-Main\//i.test(full)) full = full.slice('MiniPC-Main/'.length);
+
+  return full;
+}
+
+function _graphProjectForCurrentDir(){
+  if(!_workspaceGraphMap || !_workspaceGraphMap.projects) return null;
+  const dir = _resolveCurrentGraphDir();
+  if(!dir) return null;
+  for(const key of Object.keys(_workspaceGraphMap.projects)){
+    const normKey = _normalizeGraphPath(key);
+    if(!normKey) continue;
+    if(dir === normKey || dir.startsWith(`${normKey}/`)) return _workspaceGraphMap.projects[key];
+  }
+  return null;
+}
+
+// Use the exact iframe used by Files for HTML documents. Graphify's graph.html
+// is a self-contained interactive document, so this avoids a second, subtly
+// different iframe lifecycle for the same file type.
+function _workspaceGraphThemeTokens(){
+  const style = getComputedStyle(document.documentElement);
+  const tokens = {};
+  [['bg','--bg'],['sidebar','--sidebar'],['surface','--surface'],['border','--border'],['text','--text'],['muted','--muted'],['hover','--hover-bg'],['accent','--accent'],['font-ui','--font-ui']].forEach(([name, token]) => { tokens[name] = style.getPropertyValue(token).trim(); });
+  return tokens;
+}
+
+function _graphPreviewUrl(graphPath, tokens){
+  const separator = String(graphPath).includes('?') ? '&' : '?';
+  return `${graphPath}${separator}view=${Date.now()}&hermes_graph_theme=${encodeURIComponent(JSON.stringify(tokens || _workspaceGraphThemeTokens()))}`;
+}
+
+function _sendWorkspaceGraphTheme(){
+  const frame = $('previewHtmlIframe');
+  if(!frame || !frame.contentWindow) return;
+  frame.contentWindow.postMessage({type:'hermes-graph-theme', tokens:_workspaceGraphThemeTokens()}, '*');
+}
+
+function _setWorkspaceGraphLoading(loading){
+  const preview = $('previewArea');
+  if(!preview) return;
+  let overlay = $('workspaceGraphLoading');
+  if(loading && !overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'workspaceGraphLoading';
+    overlay.className = 'workspace-graph-loading';
+    overlay.setAttribute('role','status');
+    overlay.setAttribute('aria-label','Loading workspace graph');
+    overlay.innerHTML = '<span class="workspace-graph-spinner" aria-hidden="true"></span><span>Loading graph…</span>';
+    preview.appendChild(overlay);
+  }
+  if(overlay) overlay.classList.toggle('is-visible', !!loading);
+}
+
+window.addEventListener('message', event => {
+  const frame = $('previewHtmlIframe');
+  if(!frame || event.source !== frame.contentWindow || !event.data || event.data.type !== 'hermes-graph-ready') return;
+  requestAnimationFrame(() => requestAnimationFrame(() => _setWorkspaceGraphLoading(false)));
+});
+
+function _openWorkspaceGraphPreview(){
+  const project = _graphProjectForCurrentDir();
+  if(!project || !project.graph) return false;
+  const pane = $('workspaceGraphPane');
+  if(pane) pane.hidden = true;
+  const preview = $('previewArea');
+  if(preview){
+    preview.hidden = false;
+    preview.classList.add('visible');
+  }
+  const path = $('previewPathText');
+  if(path) path.textContent = project.name || 'Workspace graph';
+  showPreview('html');
+  const open = $('btnOpenInBrowser');
+  if(open) open.style.display = 'none';
+  const iframe = $('previewHtmlIframe');
+  if(iframe){
+    const tokens = _workspaceGraphThemeTokens();
+    _setWorkspaceGraphLoading(true);
+    iframe.onload = () => {
+      _sendWorkspaceGraphTheme();
+    };
+    iframe.src = _graphPreviewUrl(project.graph, tokens);
+  }
+  return true;
+}
+
+function _renderWorkspaceGraphPane(){
+  const pane = $('workspaceGraphPane');
+  if(!pane) return;
+  const project = _graphProjectForCurrentDir();
+  if(project && project.graph && !_workspaceGraphLoadError){
+    _openWorkspaceGraphPreview();
+    return;
+  }
+  const preview = $('previewArea');
+  if(preview) preview.hidden = true;
+  pane.hidden = false;
+  if(_workspaceGraphLoadError){
+    pane.innerHTML = `<div class="workspace-graph-empty"><strong>Unable to load this workspace graph.</strong><span>Files remain available while Graph View reconnects.</span><button type="button" class="sm-btn" id="workspaceGraphRefresh">Retry</button></div>`;
+  }else{
+    pane.innerHTML = `<div class="workspace-graph-empty"><strong>No graph is available for this workspace yet.</strong><span>Run Graphify for the current project, then refresh this view.</span><button type="button" class="sm-btn" id="workspaceGraphRefresh">Refresh</button></div>`;
+  }
+  const refresh = $('workspaceGraphRefresh');
+  if(refresh) refresh.onclick = () => { _workspaceGraphMapPromise = null; _workspaceGraphLoadError = false; pane.innerHTML = '<div class="workspace-graph-empty">Refreshing graph…</div>'; _loadWorkspaceGraphMap().then(_renderWorkspaceGraphPane); };
+}
+
+function _updateWorkspaceGraphButton(){
+  if(_workspacePanelActiveTab === 'graph') _renderWorkspaceGraphPane();
+}
+
+(function _wrapRenderBreadcrumbForGraph(){
+  const orig = window.renderBreadcrumb;
+  window.renderBreadcrumb = function(){
+    if(typeof orig === 'function') orig();
+    _updateWorkspaceGraphButton();
+  };
+})();
+
+_loadWorkspaceGraphMap();
+
+
 function _workspacePathIsReadOnly(path){
   return !!_workspaceEscapeGrantForPath(path || S.currentDir || '.');
 }
@@ -453,30 +634,17 @@ registerChatPane({
   },
 });
 
-// ── Plane pane (docs/rfcs/chat-split-view-panes.md, Slice 3) ──
-//
-// A read-only task list docked beside the chat. There is no per-chat
-// "bound project -> board" link in this codebase -- Kanban boards
-// (api/kanban_bridge.py) are a per-browser/global preference (localStorage
-// hint -> server 'current' -> 'default', see loadKanbanBoards() in
-// static/panels.js) entirely independent of the WebUI Projects concept the
-// RFC assumed. This pane shows the SAME board the full Kanban panel would,
-// live: it reuses loadKanban()'s fetch/poll/SSE machinery and
-// _kanbanRenderSidebar()'s row renderer unchanged, rather than opening a
-// second connection or duplicating the board-resolution logic.
-//
-// Opening a task from here switches to the full Kanban panel first: the task
-// detail view (loadKanbanTask()) renders into #kanbanTaskPreview, which lives
-// inside the Kanban panel's own DOM and is invisible while any other panel is
-// showing.
+// ── Work Hub pane ─────────────────────────────────────────────────────────
+// A compact live mirror of the current chat's project-scoped Work Hub items.
+// The full Work Hub remains the editing surface; choosing a row opens that
+// exact item there instead of maintaining another competing inspector.
 registerChatPane({
   id: 'plane',
   mount: () => {
-    if(typeof refreshWorkspaceNotesPane === 'function') refreshWorkspaceNotesPane();
+    if(typeof renderWorkspaceWorkHub === 'function') renderWorkspaceWorkHub();
   },
   unmount: () => {
-    // Nothing to tear down -- the Notes iframe lives in the main panel and
-    // the workspace view is a read-only mirror of the same data.
+    // The full Work Hub owns editing and durable state.
   },
 });
 
@@ -608,6 +776,17 @@ function openWorkspaceLivePreviewInTab(){
 }
 
 registerChatPane({
+  id: 'graph',
+  mount: () => {
+    _loadWorkspaceGraphMap().then(_renderWorkspaceGraphPane);
+  },
+  unmount: () => {
+    const pane = $('workspaceGraphPane'); if(pane) pane.hidden = true;
+    const frame = $('previewHtmlIframe'); if(frame) frame.src = 'about:blank';
+  },
+});
+
+registerChatPane({
   id: 'preview',
   mount: () => {
     _restoreWorkspaceLivePreviewUrl();
@@ -630,6 +809,19 @@ registerChatPane({
 
 let _activeChatPaneId = 'files';
 
+function setWorkspaceFilePreviewState(active){
+  const enabled = !!active;
+  const panel = document.querySelector('.rightpanel');
+  if(panel) panel.dataset.filePreview = enabled ? 'true' : 'false';
+  const preview = $('previewArea');
+  if(preview){
+    preview.hidden = !enabled;
+    preview.classList.toggle('visible', enabled);
+  }
+  const tree = $('fileTree');
+  if(tree) tree.style.display = '';
+}
+
 /**
  * Switch the right panel's active pane: unmount the outgoing pane (if it
  * defines one), flip the tab strip + .rightpanel[data-active-tab] (CSS owns
@@ -650,12 +842,13 @@ function switchRightPanelPane(id){
   }
   _activeChatPaneId = nextId;
   _workspacePanelActiveTab = nextId;
+  if(nextId === 'files') setWorkspaceFilePreviewState(false);
   _setWorkspacePanelTabDataset();
 
   // Built-in tab buttons keep their existing ids; a pane registered under a
   // different id gets no tab-strip wiring yet -- that's a later slice
   // (render the strip from the registry instead of these hardcoded buttons).
-  ['files','artifacts','todos','office','plane','preview'].forEach(known=>{
+  ['files','graph','artifacts','todos','office','plane','preview'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -671,6 +864,14 @@ function switchRightPanelPane(id){
   if(planePane) planePane.hidden = nextId !== 'plane';
   const livePreviewPane = $('workspaceLivePreviewPane');
   if(livePreviewPane) livePreviewPane.hidden = nextId !== 'preview';
+  const previewArea = $('previewArea');
+  if(previewArea) previewArea.hidden = nextId !== 'files';
+  const emptyState = $('wsEmptyState');
+  if(emptyState) emptyState.hidden = nextId !== 'files';
+  const fileTree = $('fileTree');
+  if(fileTree) fileTree.hidden = nextId !== 'files';
+  const breadcrumb = $('breadcrumbBar');
+  if(breadcrumb) breadcrumb.hidden = nextId !== 'files';
 
   const next = getChatPane(nextId);
   if(next && typeof next.mount === 'function'){
@@ -782,10 +983,12 @@ function resetTurnWorkspaceMutations(){
 }
 
 function noteWorkspaceMutationsFromToolCall(tc){
+  let changed = false;
   for(const a of _artifactCandidatesFromToolCall(tc)){
     const path=_normalizeArtifactPath(a.path);
-    if(path) _turnMutatedPreviewPaths.add(path);
+    if(path){ _turnMutatedPreviewPaths.add(path); changed = true; }
   }
+  if(changed) _scheduleWorkspaceGraphRefresh();
 }
 
 function noteWorkspaceMutationsFromToolCalls(toolCalls){
@@ -1047,6 +1250,7 @@ async function loadDir(path, opts={}){
       showToast(t('workspace_recovered_notice',S.session.workspace),5000,'warning');
     }
     S.entries=data.entries||[];renderBreadcrumb();renderFileTree();
+    if((!path || path === '.') && _workspacePanelActiveTab === 'graph') _scheduleWorkspaceGraphRefresh();
     // #2673 — refresh Artifacts tab when its source data (the file tree) updates.
     if(typeof renderSessionArtifacts==='function') renderSessionArtifacts();
     // Pre-fetch contents of restored expanded dirs so they render without a second click
@@ -1150,13 +1354,28 @@ async function renderBoundProjectControl(){
   const select=$('boundProjectSelect');
   if(!row||!select||!S.session)return;
   const sessionId=S.session.session_id;
-  const projects=await _fetchProjectRegistry();
+  const [projects,sidebarProjects]=await Promise.all([_fetchProjectRegistry(),_projectFolderList()]);
   if(!S.session||S.session.session_id!==sessionId)return; // session switched mid-fetch
 
-  if(!projects.length){ row.hidden=true; return; }
+  const sidebarProject=(sidebarProjects||[]).find(project=>project&&project.project_id===S.session.project_id);
+  const sidebarProjectWorkspace=sidebarProject&&sidebarProject.workspace_path||'';
+  const sidebarProjectOptionValue=sidebarProjectWorkspace
+    ? `__sidebar_project__:${sidebarProject.project_id}`
+    : '';
+  if(!projects.length&&!sidebarProjectWorkspace){ row.hidden=true; return; }
   row.hidden=false;
   const boundKey=S.session.bound_project_key||'';
-  const options=['<option value="">'+t('bound_project_unbound','Unbound')+'</option>'];
+  const options=[];
+  // The Project folders shown in Chat map to sidebar Projects, whose workspace
+  // binding is distinct from WORKSPACES.yaml's agent-project registry. Surface
+  // that real workspace in the top Project control rather than leaving it
+  // blank or misleadingly saying "Unbound".
+  if(sidebarProjectWorkspace){
+    const label=sidebarProjectWorkspace;
+    options.push(`<option value="${_escHtml(sidebarProjectOptionValue)}">${_escHtml(label)}</option>`);
+  }else{
+    options.push('<option value="">'+t('bound_project_unbound','Unbound')+'</option>');
+  }
   for(const p of projects){
     const label=p.available?p.name:`${p.name} (${p.unavailable_reason||t('bound_project_unavailable','unavailable')})`;
     options.push(`<option value="${_escHtml(p.key)}" ${(!p.available&&p.key!==boundKey)?'disabled':''}>${_escHtml(label)}</option>`);
@@ -1174,7 +1393,7 @@ async function renderBoundProjectControl(){
     options.push(`<option value="${_escHtml(boundKey)}" disabled>${_escHtml(missingLabel)}</option>`);
   }
   select.innerHTML=options.join('');
-  select.value=boundKey;
+  select.value=sidebarProjectOptionValue||boundKey;
 }
 
 // Shared bind/unbind call used by both the workspace-panel select and the
@@ -1191,6 +1410,7 @@ async function _bindProjectAndRefresh(projectKey){
       const r=await api('/api/session/new',{method:'POST',body:JSON.stringify({worktree:false})});
       if(r&&r.session){
         S._pendingSessionToolsets=null;
+        S._pendingSessionToolPolicy=null;
         S.session=r.session;
         S.messages=[];
         if(typeof syncTopbar==='function') syncTopbar();
@@ -1262,6 +1482,7 @@ function renderBoundProjectDropdownSection(dd, projects, boundKey){
 
 async function onBoundProjectSelectChange(selectEl){
   if(!S.session)return;
+  if(String(selectEl.value||'').startsWith('__sidebar_project__:')) return;
   const previousKey=S.session.bound_project_key||'';
   selectEl.disabled=true;
   const ok=await _bindProjectAndRefresh(selectEl.value||null);
@@ -1554,8 +1775,7 @@ async function openFile(path, opts={}){
   _previewPreviewKind = '';
 
   $('previewPathText').textContent=path;
-  $('previewArea').classList.add('visible');
-  $('fileTree').style.display='none';
+  setWorkspaceFilePreviewState(true);
 
   _previewCurrentPath = path;
   renderFileBreadcrumb(path);
@@ -2429,6 +2649,18 @@ function _projectBindSpaceIcon(){
 
 let _projectFolderBindingCache = null;
 
+function _workspacePathIdentity(path){
+  const raw = String(path || '').trim().replace(/\\/g, '/');
+  const absolute = raw.startsWith('/');
+  const parts = [];
+  for(const part of raw.split('/')){
+    if(!part || part === '.') continue;
+    if(part === '..') { if(parts.length) parts.pop(); continue; }
+    parts.push(part);
+  }
+  return (absolute ? '/' : '') + parts.join('/');
+}
+
 async function _projectFolderList(){
   // The sidebar owns the canonical list; fall back to the API when the panel
   // renders before the sidebar has populated it.
@@ -2460,8 +2692,7 @@ async function renderProjectFolderBinding(){
   const useBtn = $('projectFolderBindingUse');
   const bound = proj.workspace_path || '';
   const current = session.workspace || '';
-  const strip = p => String(p || '').replace(/\/+$/, '');
-  const mismatch = !!bound && strip(bound) !== strip(current);
+  const mismatch = !!bound && _workspacePathIdentity(bound) !== _workspacePathIdentity(current);
 
   row.hidden = false;
   row.classList.toggle('is-bound', !!bound);

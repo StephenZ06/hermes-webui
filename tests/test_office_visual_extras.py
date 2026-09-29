@@ -28,12 +28,13 @@ _DRIVER = r"""
 function fakeCanvas() {
   const noop = () => {};
   return {
-    width: 0, height: 0,
+    width: 256, height: 160,
     getContext: () => ({
       strokeStyle: '', globalAlpha: 1, lineWidth: 1, fillStyle: '', font: '',
       textAlign: '', textBaseline: '', lineJoin: '',
-      beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop,
-      fillText: noop, strokeText: noop,
+      beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop, fill: noop,
+      closePath: noop, quadraticCurveTo: noop, arc: noop,
+      fillText: noop, strokeText: noop, clearRect: noop, fillRect: noop,
       measureText: () => ({ width: 8 }),
     }),
   };
@@ -41,17 +42,33 @@ function fakeCanvas() {
 globalThis.document = { createElement: () => fakeCanvas() };
 
 const {
-  makePodGlow, makeWhiteboard, makeFloorTitle, disposeTree,
+  makePodGlow, makeWhiteboard, makeFloorTitle, makeDesk, makeChatBubble,
+  drawChatBubble, drawActiveScreen, disposeTree,
 } = await import(process.argv[2]);
 
 const palette = {
-  board: '#fbfaf6', deskLeg: '#8b8b93',
+  board: '#fbfaf6', deskLeg: '#8b8b93', deskTop: '#c9a227',
+  screenBezel: '#2c2c34', screenBg: '#14141c', screenActiveBg: '#f7f7fb',
+  screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
+  mousePad: '#1a1a24', keyboard: '#24242e', keyboardKey: '#9a9aa8', mouse: '#c9c9d6',
+  bubbleBg: 'rgba(20,20,30,0.88)', bubbleStroke: 'rgba(180,180,200,0.55)', bubbleText: '#f2f2f7',
   floorTitle: '#8d8d95', floorTitleStroke: 'rgba(0,0,0,0.5)',
 };
 
 const glow = makePodGlow(10, 6, '#3f7fd4');
 const board = makeWhiteboard(palette);
 const title = makeFloorTitle('Sales', 20, palette);
+const desk = makeDesk(palette);
+const bubble = makeChatBubble(palette);
+drawChatBubble(bubble, palette, 'Zzz');
+const screen = desk.userData.screen;
+let activeScreenOk = false;
+try {
+  drawActiveScreen(screen, palette, 1.5, 42);
+  activeScreenOk = true;
+} catch (_err) {
+  activeScreenOk = false;
+}
 
 const out = {
   glow: {
@@ -62,6 +79,11 @@ const out = {
     // high-pass filter actually catches it -- see builders.js's own comment.
     colorMax: Math.max(glow.material.color.r, glow.material.color.g, glow.material.color.b),
     hasDisposeTag: !!glow.userData.podGlow,
+    bounds: (() => {
+      glow.geometry.computeBoundingBox();
+      const box = glow.geometry.boundingBox;
+      return { width: box.max.x - box.min.x, depth: box.max.y - box.min.y };
+    })(),
   },
   board: {
     isGroup: !!board.isGroup,
@@ -72,11 +94,25 @@ const out = {
     hasMap: !!title.material.map,
     hasDisposeTag: !!title.userData.floorTitle,
   },
+  desk: {
+    isGroup: !!desk.isGroup,
+    hasScreen: !!desk.userData.screen,
+    childCount: desk.children.length,
+  },
+  bubble: {
+    isSprite: !!bubble.isSprite,
+    hasDisposeTag: !!bubble.userData.bubble,
+    icon: bubble.userData.bubble.icon,
+  },
+  activeScreen: {
+    ok: activeScreenOk,
+  },
 };
 
 disposeTree(glow);
 disposeTree(board);
 disposeTree(title);
+disposeTree(desk);
 
 process.stdout.write(JSON.stringify(out));
 """
@@ -124,6 +160,12 @@ def test_pod_glow_starts_invisible_and_additive_and_hdr(driver):
     assert out["hasDisposeTag"]
 
 
+def test_pod_glow_stays_inside_the_platform_footprint(driver):
+    glow = run(driver)["glow"]
+    assert glow["bounds"]["width"] < 10
+    assert glow["bounds"]["depth"] < 6
+
+
 def test_whiteboard_is_a_small_group_of_shadowless_parts(driver):
     out = run(driver)["board"]
     assert out["isGroup"]
@@ -138,3 +180,24 @@ def test_floor_title_still_builds_a_disposable_textured_plane(driver):
     out = run(driver)["title"]
     assert out["hasMap"]
     assert out["hasDisposeTag"]
+
+
+def test_desk_has_a_screen_and_peripherals(driver):
+    out = run(driver)["desk"]
+    assert out["isGroup"]
+    assert out["hasScreen"]
+    assert out["childCount"] >= 7, (
+        "desk should include top, legs, screen, stand, keyboard, mouse pad and mouse"
+    )
+
+
+def test_chat_bubble_is_a_sprite_with_a_disposable_tag(driver):
+    out = run(driver)["bubble"]
+    assert out["isSprite"]
+    assert out["hasDisposeTag"]
+    assert out["icon"] == 'Zzz'
+
+
+def test_active_screen_draws_without_throwing(driver):
+    out = run(driver)["activeScreen"]
+    assert out["ok"]

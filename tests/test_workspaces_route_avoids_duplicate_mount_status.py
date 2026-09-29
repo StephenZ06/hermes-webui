@@ -58,6 +58,7 @@ def test_remote_workspace_mount_status_checked_once(monkeypatch):
     monkeypatch.setattr(routes, "get_last_workspace", lambda: None)
     monkeypatch.setattr(routes, "get_config", lambda: {})
     monkeypatch.setattr("api.ssh_mount.mount_status", fake_mount_status)
+    monkeypatch.setattr("api.ssh_mount.remote_reachability", lambda entry: "reachable")
 
     handler = _RouteHandler()
     routes.handle_get(handler, urlsplit("/api/workspaces"))
@@ -65,10 +66,11 @@ def test_remote_workspace_mount_status_checked_once(monkeypatch):
 
     assert calls == ["/workspace/remote/rp5"], "mount_status() must be checked exactly once per remote entry"
     assert payload["workspaces"][0]["mount_status"] == "connected"
+    assert payload["workspaces"][0]["remote_reachability"] == "reachable"
     assert payload["workspaces"][0]["availability"] == "online"
 
 
-def test_disconnected_remote_workspace_reports_offline(monkeypatch):
+def test_reachable_signal_marks_a_locally_mounted_but_offline_rp5_offline(monkeypatch):
     import api.routes as routes
 
     monkeypatch.setattr(
@@ -78,13 +80,17 @@ def test_disconnected_remote_workspace_reports_offline(monkeypatch):
     )
     monkeypatch.setattr(routes, "get_last_workspace", lambda: None)
     monkeypatch.setattr(routes, "get_config", lambda: {})
-    monkeypatch.setattr("api.ssh_mount.mount_status", lambda entry: "disconnected")
+    # SSHFS may remain mounted while the RP5 itself is powered off. The list
+    # dot must use the independent probe rather than incorrectly staying green.
+    monkeypatch.setattr("api.ssh_mount.mount_status", lambda entry: "connected")
+    monkeypatch.setattr("api.ssh_mount.remote_reachability", lambda entry: "unreachable")
 
     handler = _RouteHandler()
     routes.handle_get(handler, urlsplit("/api/workspaces"))
     payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
 
-    assert payload["workspaces"][0]["mount_status"] == "disconnected"
+    assert payload["workspaces"][0]["mount_status"] == "connected"
+    assert payload["workspaces"][0]["remote_reachability"] == "unreachable"
     assert payload["workspaces"][0]["availability"] == "offline"
 
 

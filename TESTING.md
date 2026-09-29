@@ -658,6 +658,25 @@ FAIL: No banner shown, page crashes, banner appears on normal reloads with no in
 
 ## Section 10: Multi-Session and Concurrent Behavior
 
+### Performance and tool-policy regression command
+
+Run the focused fast-path and capability suite with:
+
+```bash
+./scripts/test.sh tests/test_client_performance_primitives.py tests/test_panel_switch_generation.py tests/test_profile_switch_fast_path.py tests/test_motion_budget.py tests/test_tool_policy.py tests/test_tool_policy_runtime_contract.py tests/test_tool_policy_composer.py -q
+```
+
+Manual checks:
+
+1. Rapidly switch a panel A → B → A. Only the final panel may update after
+   delayed loading completes.
+2. Keep two browser tabs on different profiles, change each profile and switch
+   them repeatedly. Session/catalog/quota data must not cross profiles.
+3. In the composer toolset menu, select Minimal, Profile tools, and an explicit
+   toolset list. Reload and branch/duplicate the session; the selected policy
+   must remain correct. If the runtime cannot enforce an empty tool list, the
+   UI must report Minimal as unavailable and leave the prior policy unchanged.
+
 ### T10.1: Switch Sessions While Response Is Loading
 SETUP: Active session, agent running (thinking dots visible from a previous message).
 STEPS:

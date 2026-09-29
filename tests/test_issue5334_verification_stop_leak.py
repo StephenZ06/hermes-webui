@@ -29,6 +29,11 @@ VERIFICATION_STOP_NUDGE = (
     "Run the relevant verification command now.]"
 )
 
+CODEX_ACK_CONTINUATION_NUDGE = (
+    "[System: Continue now. Execute the required tool calls and only send your final answer "
+    "after completing the task.]"
+)
+
 
 # --------------------------------------------------------------------------- #
 # Marker classifier + drop helper
@@ -77,6 +82,34 @@ def test_drop_synthetic_control_messages_filters_only_flagged_rows():
         not m.get("_verification_stop_synthetic") and not m.get("_pre_verify_synthetic")
         for m in cleaned
     )
+
+
+def test_unmarked_codex_ack_continuation_pair_never_appears_in_transcript():
+    """The Agent's persisted ack/nudge pair is internal, even without markers."""
+    previous_display = [{"role": "user", "content": "Inspect this workspace."}]
+    previous_context = list(previous_display)
+    result_messages = [
+        *previous_display,
+        {
+            "role": "assistant",
+            "content": "Working in:\n\n/workspace/Temani",
+            "finish_reason": "incomplete",
+        },
+        {"role": "user", "content": CODEX_ACK_CONTINUATION_NUDGE},
+        {"role": "assistant", "content": "Workspace is /workspace/Temani."},
+    ]
+
+    merged = streaming._merge_display_messages_after_agent_result(
+        previous_display,
+        previous_context,
+        result_messages,
+        "Inspect this workspace.",
+    )
+
+    assert [message.get("content") for message in merged] == [
+        "Inspect this workspace.",
+        "Workspace is /workspace/Temani.",
+    ]
 
 
 # --------------------------------------------------------------------------- #

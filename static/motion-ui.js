@@ -32,6 +32,34 @@
   // Same decelerating curve the sidebar and workspace panel slides use, so
   // JS-driven and CSS-driven motion in the same view read as one system.
   const EASE = [0.22, 1, 0.36, 1];
+  const namedAnimations = new Map();
+
+  function interrupt(name){
+    const running = namedAnimations.get(name);
+    if(!running) return;
+    namedAnimations.delete(name);
+    running.controls.forEach(control => {
+      try{ if(control && typeof control.cancel === 'function') control.cancel(); }catch(_){}
+    });
+    try{ running.cleanup(); }catch(_){}
+  }
+
+  function track(name, controls, cleanup){
+    interrupt(name);
+    const running = { controls, cleanup };
+    namedAnimations.set(name, running);
+    Promise.all(controls.map(control => {
+      try{ return control.finished; }catch(_){ return Promise.resolve(); }
+    })).then(() => {
+      if(namedAnimations.get(name) !== running) return;
+      namedAnimations.delete(name);
+      cleanup();
+    }, () => {
+      if(namedAnimations.get(name) !== running) return;
+      namedAnimations.delete(name);
+      cleanup();
+    });
+  }
 
   let _reduceMql = null;
   function prefersReducedMotion(){
@@ -320,6 +348,7 @@
   // side: 'left' for the sidebar, 'right' for the workspace panel  // which way the panel leaves the viewport.
   function slidePanel(panel, apply, opts){
     const options = opts || {};
+    const motionName = options.name || 'panel-slide';
     const side = options.side === 'right' ? 'right' : 'left';
     const main = options.main || document.querySelector('.main');
     if(typeof apply !== 'function') return;
@@ -371,9 +400,7 @@
       unpinPanel(panel);
       main.style.transform = '';
     };
-    Promise.all(running.map(a => {
-      try{ return a.finished; }catch(_){ return Promise.resolve(); }
-    })).then(settle, settle);
+    track(motionName, running, settle);
   }
 
   window.MotionUI = {
@@ -384,6 +411,7 @@
     lift,
     listChange,
     slidePanel,
+    interrupt,
     DUR,
     EASE,
   };

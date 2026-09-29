@@ -129,6 +129,30 @@ def test_git_status_non_git_workspace(tmp_path):
     assert git_status(ws) == {"is_git": False}
 
 
+def test_git_info_badge_degrades_a_workspace_git_error_to_no_badge(monkeypatch, tmp_path):
+    """A failed optional badge probe must not become a browser-visible 400."""
+    from api import routes
+    from api.workspace_git import GitWorkspaceError
+    from urllib.parse import urlparse
+
+    session = types.SimpleNamespace(session_id="badge-session", workspace=str(tmp_path))
+    monkeypatch.setattr(routes, "get_session", lambda sid, **kwargs: session)
+
+    import api.workspace_git as workspace_git
+
+    monkeypatch.setattr(
+        workspace_git,
+        "git_status",
+        lambda workspace: (_ for _ in ()).throw(GitWorkspaceError("Git command timed out", "timeout")),
+    )
+
+    handler = _CaptureHandler()
+    routes.handle_get(handler, urlparse("/api/git-info?session_id=badge-session"))
+
+    assert handler.status == 200
+    assert handler.payload() == {"git": None}
+
+
 def test_git_status_handles_staged_unstaged_untracked_deleted_and_renamed(tmp_path):
     from api.workspace_git import git_status
 

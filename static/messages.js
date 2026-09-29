@@ -2331,9 +2331,22 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     const text=String(typeof msgContent==='function'?msgContent(m):(m.content||''));
     return _streamRecoveryControlMessageText(text);
   }
+  const _unmarkedContinuationNudges=new Set([
+    '[System: Continue now. Execute the required tool calls and only send your final answer after completing the task.]',
+    '[System: Your previous message ended the turn with a fragment that is not a usable answer. If the task is unfinished, continue it and then give the complete answer. If that fragment WAS your complete answer, send it again exactly as before.]',
+  ]);
+  function _isUnmarkedContinuationPair(interim,nudge){
+    return !!(interim&&interim.role==='assistant'&&interim.finish_reason==='incomplete'&&
+      nudge&&nudge.role==='user'&&_unmarkedContinuationNudges.has(String(typeof msgContent==='function'?msgContent(nudge):(nudge.content||'')).trim()));
+  }
   function _filterRecoveryControlMessages(messages){
     if(!Array.isArray(messages)) return [];
-    return messages.filter((m)=>!_streamRecoveryControlMessage(m));
+    const visible=[];
+    for(let index=0;index<messages.length;index++){
+      if(_isUnmarkedContinuationPair(messages[index],messages[index+1])){index++;continue;}
+      if(!_streamRecoveryControlMessage(messages[index])) visible.push(messages[index]);
+    }
+    return visible;
   }
   function _replaceMarkerOnlyAssistantWithStreamError(messages){
     if(!Array.isArray(messages)) return false;
@@ -6182,6 +6195,11 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
 
     source.addEventListener('done',e=>{
       if(_streamFinalized) return;
+      // The account endpoint is profile-scoped; refresh only once per terminal
+      // turn so the weekly gauge reflects work that just consumed quota.
+      if(typeof refreshAccountUsageAfterTerminalTurn==='function'){
+        refreshAccountUsageAfterTerminalTurn(S.activeProfile);
+      }
       _clearStreamEndRecovery();
       if(_bailOutOfTerminalEventsFromStaleStream(source)) return;
       // Set _streamFinalized IMMEDIATELY — before any fade delay. Without this,
@@ -8137,7 +8155,15 @@ function _startHiddenActiveStreamPoll(sid) {
     if (S.activeStreamId) return; // already rendering; wait it out
     try {
       fetch(_apiUrl('api/session/status?session_id=' + encodeURIComponent(sid)), {credentials: 'same-origin'})
-        .then(r => r.ok ? r.json() : null)
+        .then(r => {
+          // A server restart can retire the previously selected session. Stop
+          // this background-only poll rather than issuing a 404 every interval.
+          if (r.status === 404) {
+            if (_sessionStreamHiddenPollSid === sid) _stopHiddenActiveStreamPoll();
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        })
         .then(d => {
           if (!d || _sessionStreamHiddenPollSid !== sid) return;
           const streamId = d.active_stream_id;
@@ -9195,22 +9221,52 @@ function _completionNotificationPreviewText(lastAssistantMessage, options){
   return normalized.length>100?`${normalized.slice(0,100)}…`:normalized;
 }
 
-function playNotificationSound(){
-  if(!window._soundEnabled) return;
-  try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
-    osc.type='sine';osc.frequency.setValueAtTime(660,ctx.currentTime);
-    osc.frequency.setValueAtTime(880,ctx.currentTime+0.1);
-    gain.gain.setValueAtTime(0.3,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);
-    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.3);
-    osc.onended=()=>ctx.close();
-  }catch(e){console.warn('Notification sound failed:',e);}
+function _ensureAudioContext(){
+  if(!window._hermesAudioCtx){
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx) return null;
+    window._hermesAudioCtx=new Ctx();
+  }
+  if(window._hermesAudioCtx && window._hermesAudioCtx.state==='suspended'){
+    window._hermesAudioCtx.resume().catch(()=>{});
+  }
+  return window._hermesAudioCtx;
+}
+(function _bindAudioGestureUnlock(){
+  if(typeof document==='undefined') return;
+  const unlock=()=>{
+    const ctx=window._hermesAudioCtx;
+    if(ctx && ctx.state==='suspended') ctx.resume().catch(()=>{});
+  };
+  document.addEventListener('pointerdown',unlock,{once:true});
+  document.addEventListener('keydown',unlock,{once:true});
+})();
+function _playTone(frequencies,duration,type,vol){
+  const ctx=_ensureAudioContext();
+  if(!ctx) return;
+  const now=ctx.currentTime;
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  osc.connect(gain);gain.connect(ctx.destination);
+  osc.type=type||'sine';
+  if(Array.isArray(frequencies) && frequencies.length>1){
+    osc.frequency.setValueAtTime(frequencies[0],now);
+    for(let i=1;i<frequencies.length;i++){
+      const t=now+(duration*(i/(frequencies.length-1)));
+      osc.frequency.setValueAtTime(frequencies[i],t);
+    }
+  } else {
+    osc.frequency.setValueAtTime(frequencies[0]||frequencies||440,now);
+  }
+  gain.gain.setValueAtTime(vol||0.3,now);
+  gain.gain.exponentialRampToValueAtTime(0.001,now+duration);
+  osc.start(now);osc.stop(now+duration);
 }
 
+function playNotificationSound(){
+  if(!window._soundEnabled) return;
+  _playTone([660,880],0.3,'sine',0.3);
+}
 
 function _attentionSoundKey(sid,kind,count){
   const safeSid=String(sid||'');
@@ -9234,18 +9290,7 @@ function playAttentionSound(key){
     seen.set(dedupeKey,nowMs);
   }
   window._lastAttentionSoundAt=nowMs;
-  try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
-    osc.type='sine';osc.frequency.setValueAtTime(880,ctx.currentTime);
-    osc.frequency.setValueAtTime(660,ctx.currentTime+0.075);
-    gain.gain.setValueAtTime(0.24,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.24);
-    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.24);
-    osc.onended=()=>ctx.close();
-  }catch(e){console.warn('Attention sound failed:',e);}
+  _playTone([880,660],0.24,'sine',0.24);
 }
 
 // Sound notification system (Priority 3) — three additional synthesized chime
@@ -9257,39 +9302,12 @@ function playAttentionSound(key){
 
 function playFailureSound(){
   if(!window._soundEnabled) return;
-  try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
-    // Descending two-tone — audibly distinct from playNotificationSound's
-    // ascending 660->880 and playAttentionSound's 880->660 pair via a lower
-    // base register (440->330) and a longer, softer decay.
-    osc.type='sine';osc.frequency.setValueAtTime(440,ctx.currentTime);
-    osc.frequency.setValueAtTime(330,ctx.currentTime+0.14);
-    gain.gain.setValueAtTime(0.26,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.36);
-    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.36);
-    osc.onended=()=>ctx.close();
-  }catch(e){console.warn('Failure sound failed:',e);}
+  _playTone([440,330],0.36,'sine',0.26);
 }
 
 function playAgentSpawnedSound(){
   if(!window._soundEnabled) return;
-  try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);gain.connect(ctx.destination);
-    // Single short ascending blip — a lighter, one-shot cue (no second
-    // frequency step) so it reads as "something started," not "something
-    // finished."
-    osc.type='sine';osc.frequency.setValueAtTime(520,ctx.currentTime);
-    gain.gain.setValueAtTime(0.2,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.16);
-    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.16);
-    osc.onended=()=>ctx.close();
-  }catch(e){console.warn('Agent-spawned sound failed:',e);}
+  _playTone([520],0.16,'sine',0.2);
 }
 
 // Per-stream dedupe set for the thinking tick — a long multi-chunk
@@ -9314,17 +9332,17 @@ function playThinkingTickSound(streamId){
     window._thinkingTickStreams.add(key);
   }
   try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=_ensureAudioContext();
+    if(!ctx) return;
     const osc=ctx.createOscillator();
     const gain=ctx.createGain();
     osc.connect(gain);gain.connect(ctx.destination);
-    // A single soft tick, not a repeating metronome — deliberately quiet
+    // A single soft tick, not a repeating metronome -- deliberately quiet
     // (low gain, very short) so it reads as ambient, not alarming.
     osc.type='sine';osc.frequency.setValueAtTime(740,ctx.currentTime);
     gain.gain.setValueAtTime(0.1,ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.09);
     osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.09);
-    osc.onended=()=>ctx.close();
   }catch(e){console.warn('Thinking-tick sound failed:',e);}
 }
 

@@ -28,7 +28,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 _DRIVER = r"""
-const { computeLayout, walkwaySpan, slabEdgeDistance, colorForProjectsCluster } = await import(process.argv[2]);
+const { computeLayout, walkwaySpan, slabEdgeDistance, roundedSlabEdgeDistance, colorForProjectsCluster } = await import(process.argv[2]);
 const input = JSON.parse(process.argv[3] || '{}');
 if (input && input.colorForCluster !== undefined) {
   process.stdout.write(JSON.stringify({ derivedColor: colorForProjectsCluster(input.colorForCluster) }));
@@ -39,6 +39,10 @@ if (input && input.colorForCluster !== undefined) {
     span: input.pod ? walkwaySpan(input.pod, input.hubHalf, input.options) : null,
     edge: input.edge
       ? slabEdgeDistance(input.edge.hw, input.edge.hd, input.edge.dx, input.edge.dz)
+      : null,
+    rounded: input.rounded
+      ? roundedSlabEdgeDistance(input.rounded.hw, input.rounded.hd, input.rounded.radius,
+          input.rounded.dx, input.rounded.dz)
       : null,
   }));
 }
@@ -355,24 +359,46 @@ def test_a_square_slab_reaches_further_on_the_diagonal(driver):
     assert diagonal == pytest.approx(5 * 2 ** 0.5)
 
 
+def test_a_rounded_slab_reports_its_actual_corner_edge(driver):
+    # The platform surface is rounded. Its diagonal edge lies before the
+    # square bounding box, and bridges must terminate there instead of being
+    # concealed under the platform and forcing their rails to be trimmed.
+    edge = geom(driver, rounded={
+        "hw": 5, "hd": 5, "radius": 1,
+        "dx": 2 ** -0.5, "dz": 2 ** -0.5,
+    })["rounded"]
+    assert edge == pytest.approx(4 * 2 ** 0.5 + 1)
+
+
 @pytest.mark.parametrize("angle_deg", [0, 30, 45, 60, 90, 135, 200, 315])
 def test_a_walkway_spans_exactly_between_the_two_platforms(driver, angle_deg):
-    # It must not stop short (a broken bridge) and must not stop dead on the
-    # edge (a hairline seam) — it tucks slightly under both.
+    # The deck sits just beneath each platform's surface, so its rectangular
+    # end can extend into the platform body without its corners appearing on
+    # top of the conductor or pod. That concealed overlap removes a visible
+    # seam while preserving a clean, connected bridge.
     hub_half, pod_half_w, pod_half_d, distance = 7.7, 15.0, 5.5, 48.0
     a = math.radians(angle_deg)
     pod = {"x": math.sin(a) * distance, "z": math.cos(a) * distance,
            "halfWidth": pod_half_w, "halfDepth": pod_half_d}
-    out = geom(driver, pod=pod, hubHalf=hub_half)["span"]
+    out = geom(driver, pod=pod, hubHalf=hub_half, options={"overlap": 0.65})["span"]
 
     dx, dz = pod["x"] / distance, pod["z"] / distance
     hub_edge = geom(driver, edge={"hw": hub_half, "hd": hub_half, "dx": dx, "dz": dz})["edge"]
     pod_edge = geom(driver, edge={"hw": pod_half_w, "hd": pod_half_d, "dx": dx, "dz": dz})["edge"]
 
-    overlap = 0.6
-    assert out["start"] == pytest.approx(hub_edge - overlap), "starts under the conductor"
-    assert out["end"] == pytest.approx(distance - pod_edge + overlap), "ends under the pod"
+    overlap = 0.65
+    assert out["start"] == pytest.approx(hub_edge - overlap), "enters beneath the conductor rim"
+    assert out["end"] == pytest.approx(distance - pod_edge + overlap), "enters beneath the pod rim"
     assert out["length"] == pytest.approx(out["end"] - out["start"])
+
+
+def test_a_generic_walkway_span_keeps_its_unmodified_edge_measurement(driver):
+    # The lower Floor route has its own geometry; it must not inherit the
+    # concealed overlap that only makes sense for the raised pod bridges.
+    pod = {"x": 0, "z": 48, "halfWidth": 15, "halfDepth": 5.5}
+    out = geom(driver, pod=pod, hubHalf=7.7)["span"]
+    assert out["start"] == pytest.approx(7.7)
+    assert out["end"] == pytest.approx(42.5)
 
 
 def test_no_walkway_when_the_platforms_already_touch(driver):

@@ -41,13 +41,15 @@ function lift(name) {
 
 const terminalMatch = src.match(/const _TERMINAL_STATUSES = new Set\(\[([^\]]*)\]\);/s);
 const body = `const _TERMINAL_STATUSES = new Set([${terminalMatch[1]}]);\n`
-  + lift('taskStatusBucket') + '\n' + lift('taskStatusCounts');
+  + lift('taskStatusBucket') + '\n' + lift('taskStatusCounts') + '\n'
+  + lift('taskStatusBadgeState');
 
-const api = new Function(body + '\nreturn { taskStatusBucket, taskStatusCounts };')();
+const api = new Function(body + '\nreturn { taskStatusBucket, taskStatusCounts, taskStatusBadgeState };')();
 const input = JSON.parse(process.argv[3] || '{}');
 process.stdout.write(JSON.stringify({
   bucket: input.status !== undefined ? api.taskStatusBucket(input.status) : null,
   counts: input.workers !== undefined ? api.taskStatusCounts(input.workers) : null,
+  badge: input.workers !== undefined ? api.taskStatusBadgeState(input.workers) : null,
 }));
 """
 
@@ -116,14 +118,30 @@ def test_an_empty_office_counts_to_zero(driver):
     assert out["counts"] == {"all": 0, "running": 0, "done": 0, "stopped": 0, "other": 0}
 
 
+def test_task_badge_is_neutral_without_active_or_completed_work(driver):
+    assert run(driver, workers=[])["badge"] == {"total": 0, "tone": "neutral", "done": 0}
+
+
+def test_task_badge_pulses_while_any_task_is_running(driver):
+    assert run(driver, workers=[worker("active", "running"), worker("done", "completed")])["badge"] == {
+        "total": 2, "tone": "running", "done": 1,
+    }
+
+
+def test_task_badge_is_green_when_every_tracked_task_is_done(driver):
+    assert run(driver, workers=[worker("one", "completed"), worker("two", "completed")])["badge"] == {
+        "total": 2, "tone": "complete", "done": 2,
+    }
+
+
 # ── wiring ───────────────────────────────────────────────────────────────────
 
-def test_the_panel_is_rendered_from_raw_adapter_state_not_the_outlet_view():
-    # A subagent is the same real subagent whichever floor plan draws it --
-    # this must not need businessView()'s desk transform to work.
-    at = OFFICE_SRC.index("renderSummary(state);")
+def test_the_panel_uses_scheduled_state_before_the_business_view_transform():
+    # Scheduled work is added to the raw state before the desk-only business
+    # projection, so the panel sees it without depending on roster seating.
+    at = OFFICE_SRC.index("renderSummary(scheduledState);")
     window = OFFICE_SRC[at:at + 200]
-    assert "renderTaskStatusPanel(state);" in window
+    assert "renderTaskStatusPanel(scheduledState);" in window
 
 
 def test_clicking_a_task_focuses_its_worker_on_the_floor():
@@ -132,30 +150,102 @@ def test_clicking_a_task_focuses_its_worker_on_the_floor():
     assert "_scene.focusOnWorker(row.dataset.workerId)" in body
 
 
+def test_selected_task_details_expand_inside_task_status_not_in_a_second_card():
+    # A worker can be selected from either its floor label or its status row.
+    # Its inspectable facts must stay with that row instead of opening another
+    # right-edge card over the Task Status panel.
+    assert "office-tasks-row-detail" in OFFICE_SRC
+    assert "office-tasks-row-detail" in CSS
+    assert '<div class="office-detail"' not in OFFICE_SRC
+    assert ".office-detail{" not in CSS
+
+
+def test_clicking_the_selected_task_row_toggles_its_inline_details_closed():
+    at = OFFICE_SRC.index("function selectTask(")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\nfunction ", at + 10)]
+    assert "if (_selectedId === id)" in body
+    assert "_selectedId = null;" in body
+    assert "scheduleSync();" in body
+
+
+def test_expanded_task_details_use_compact_type_without_shrinking_task_rows():
+    assert ".office-tasks-row-detail{min-height:0;overflow:hidden;font-size:11px;" in CSS
+    assert ".office-tasks-row-detail .office-detail-title{font-size:12px;" in CSS
+    assert ".office-tasks-row-goal{font-size:12px;" in CSS
+
+
+def test_task_status_and_inline_details_keep_layout_boxes_for_smooth_transitions():
+    assert "office-tasks-row-detail\"${selected ? '' : ' hidden'}" not in OFFICE_SRC
+    assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);" in CSS
+    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+
+
+def test_task_selection_keeps_detail_dom_in_place_for_the_grid_transition():
+    at = OFFICE_SRC.index("function renderTaskStatusList(")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\nfunction ", at + 10)]
+    assert "${taskStatusDetailHtml(w, _lastTaskStatusWorkers)}" in body
+    assert "function syncTaskStatusDisclosure()" in OFFICE_SRC
+    assert "syncTaskStatusDisclosure();" in OFFICE_SRC
+    assert "_taskStatusDisclosureAnimating" in OFFICE_SRC
+    assert "renderTaskStatusPanel(scheduledState" in OFFICE_SRC
+
+
+def test_scheduled_rows_identify_their_task_type_in_task_status():
+    at = OFFICE_SRC.index("function renderTaskStatusList(")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\nfunction ", at + 10)]
+    assert "w.scheduledTask ? 'Scheduled Task'" in body
+
+
 def test_unmount_clears_the_panel_state():
     at = OFFICE_SRC.index("function unmount()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at)]
     assert "_tasksFiltersEl = null;" in body
     assert "_tasksListEl = null;" in body
     assert "_lastTaskStatusWorkers = [];" in body
+    assert "if (_taskStatusDisclosureTimer) clearTimeout(_taskStatusDisclosureTimer);" in body
 
 
-def test_the_panel_sits_beside_the_stage_not_over_it():
+def test_the_panel_is_a_floating_stage_card_with_equal_expanded_insets():
     assert ".office-tasks{" in CSS
     assert ".office-body{" in CSS
+    assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);" in CSS
+    assert "<div class=\"office-stage\">" in OFFICE_SRC
+    stage_at = OFFICE_SRC.index('<div class="office-stage">')
+    tasks_at = OFFICE_SRC.index('<div class="office-tasks"')
+    body_at = OFFICE_SRC.index('<div class="office-tasks-body"')
+    body_end = OFFICE_SRC.index('</div>\n    </div>`;', stage_at)
+    assert stage_at < tasks_at < body_at < body_end
     # Hidden rather than squeezed on a phone -- the isometric floor needs the
-    # room, and a shrunken 3rd column would be unreadable either way.
+    # room, and a floating card would otherwise cover it.
     assert "@media (max-width:640px){.office-tasks{display:none;}}" in CSS
 
 
 # ── collapsible ──────────────────────────────────────────────────────────────
 
-def test_the_collapse_button_is_wired_in_mount_and_toggles_state():
+def test_task_status_header_is_the_clickable_toggle_with_a_live_total_badge():
+    assert "class=\"office-tasks-toggle\" id=\"officeTasksCollapseBtn\"" in OFFICE_SRC
+    assert "id=\"officeTasksCount\"" in OFFICE_SRC
+    assert ">TASK STATUS</span>" in OFFICE_SRC
+    assert "class=\"office-tasks-title-group\"" in OFFICE_SRC
+    assert "class=\"office-tasks-title-icon\"" in OFFICE_SRC
     assert "_tasksCollapseBtnEl.onclick = toggleTasksCollapsed;" in OFFICE_SRC
     at = OFFICE_SRC.index("function toggleTasksCollapsed()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
-    assert "_tasksCollapsed = !_tasksCollapsed;" in body
+    assert "const collapsing = !_tasksCollapsed;" in body
+    assert "_tasksCollapsed = collapsing;" in body
     assert "writeTasksCollapsed(_tasksCollapsed);" in body
+    assert "_tasksEl.onclick" in OFFICE_SRC
+    assert "renderTaskStatusBadge(workers);" in OFFICE_SRC
+    assert "_tasksCollapseBtnEl.textContent" not in OFFICE_SRC
+
+
+def test_task_status_uses_only_the_all_running_and_done_filters():
+    at = OFFICE_SRC.index("const TASK_STATUS_FILTERS = [")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("];", at)]
+    assert "{ key: 'all', label: 'All' }" in body
+    assert "{ key: 'running', label: 'Running' }" in body
+    assert "{ key: 'done', label: 'Done' }" in body
+    assert "stopped" not in body
 
 
 def test_the_collapsed_state_is_remembered_across_visits():
@@ -174,8 +264,27 @@ def test_filters_and_list_stay_in_the_dom_while_collapsed():
     at = OFFICE_SRC.index("function renderTasksCollapse()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
     assert "classList.toggle('is-collapsed', _tasksCollapsed)" in body
-    assert "office-tasks.is-collapsed .office-tasks-filters" in CSS
-    assert "office-tasks.is-collapsed .office-tasks-list" in CSS
+    assert ".office-tasks.is-collapsed .office-tasks-body" in CSS
+    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+    assert ".office-tasks.is-collapsed{top:14px;right:14px;height:40px;width:min(280px,calc(100% - 28px));" not in CSS
+
+
+def test_task_status_keeps_its_full_width_and_uses_polished_live_badge_states():
+    assert ".office-tasks.is-collapsed .office-tasks-body{pointer-events:none;}" in CSS
+    assert ".office-tasks-toggle{position:relative;display:flex;" in CSS
+    assert ".office-tasks-count.is-running" in CSS
+    assert "animation:office-task-count-pulse" in CSS
+    assert ".office-tasks-count.is-complete" in CSS
+    assert ".office-tasks-count.is-completion-flash" in CSS
+
+
+def test_expanded_task_status_header_keeps_equal_visual_space_above_and_below_its_title():
+    assert ".office-tasks-head{flex:0 0 auto;padding:12px 14px 8px;" in CSS
+
+
+def test_task_status_icon_and_title_are_centred_as_one_group():
+    assert ".office-tasks-title-group{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;" in CSS
+    assert ".office-tasks-title-icon{width:14px;height:14px;" in CSS
 
 
 def test_unmount_clears_the_collapse_button_reference():

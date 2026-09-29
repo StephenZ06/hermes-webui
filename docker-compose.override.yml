@@ -8,3 +8,4 @@ services:
     environment:
       HERMES_WEBUI_CHAT_BACKEND: gateway
       HERMES_WEBUI_GATEWAY_BASE_URL: http://host.docker.internal:8642
+      HERMES_WEBUI_ONBOARDING_OPEN: 1
