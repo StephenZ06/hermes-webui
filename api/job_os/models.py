@@ -13,6 +13,10 @@ class JobValidationError(ValueError):
 class DuplicateJobError(ValueError):
     """Raised when a canonical URL or source identifier already exists."""
 
+    def __init__(self, message: str, existing_id: str | None = None) -> None:
+        super().__init__(message)
+        self.existing_id = existing_id
+
 
 class JobStatus(str, Enum):
     DISCOVERED = "discovered"

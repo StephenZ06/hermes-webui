@@ -104,7 +104,7 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None) -> JobRecor
         duplicate = _find_duplicate(connection, job)
         if duplicate is not None:
             connection.rollback()
-            raise DuplicateJobError("A matching job already exists")
+            raise DuplicateJobError("A matching job already exists", duplicate["id"])
         now = int(time.time())
         record_id = str(uuid.uuid4())
         connection.execute(
