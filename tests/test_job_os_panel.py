@@ -27,3 +27,15 @@ def test_jobs_panel_loads_its_lifecycle_modules_and_mx_icon():
         assert asset in html
     assert "window.JobOS.mount" in panels
     assert "jobs" in icons
+
+
+def test_jobs_panel_supports_profile_scoped_pipeline_filter_routes():
+    """Dashboard metrics lead to a bookmarkable status-filtered pipeline."""
+    index = (ROOT / "static" / "job-os" / "index.js").read_text(encoding="utf-8")
+    renderer = (ROOT / "static" / "job-os" / "render.js").read_text(encoding="utf-8")
+
+    assert "applyRoute" in index
+    assert "#jobs/" in index
+    assert "statusFilter" in index
+    assert "data-job-id" in index
+    assert "job-os-filter-label" in renderer

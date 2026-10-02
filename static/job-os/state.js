@@ -4,6 +4,7 @@
     dashboard: null,
     jobs: [],
     activeView: 'dashboard',
+    statusFilter: null,
     selectedJobId: null,
   };
 }());

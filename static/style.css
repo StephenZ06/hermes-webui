@@ -5729,6 +5729,7 @@ main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 .job-os-metrics button{font-size:28px;font-weight:700;cursor:pointer;}.job-os-metrics span{display:block;margin-top:5px;font-size:12px;font-weight:500;color:var(--muted);}
 .job-os-import p,.job-os-page p,.job-os-empty{color:var(--muted);}.job-os-import form{display:grid;gap:10px;max-width:640px;}.job-os-import label{display:grid;gap:5px;color:var(--muted);font-size:12px;}.job-os-import input{min-width:0;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);padding:9px 10px;}
 .job-os-list{display:grid;gap:8px;}.job-os-job-card{display:grid;gap:3px;width:100%;border:1px solid var(--border2);border-radius:10px;background:transparent;color:var(--text);padding:11px;text-align:left;cursor:pointer;}.job-os-job-card span,.job-os-job-card small{color:var(--muted);}.job-os-error{color:var(--danger,#f07878);min-height:1.2em;}.job-os-sidebar-copy{padding:12px;color:var(--muted);font-size:12px;line-height:1.5;}
+.job-os-filter-label{color:var(--accent);font-size:.6em;font-weight:600;text-transform:capitalize;}
 @media(max-width:640px){#mainJobs{padding:16px 12px;}.job-os-header{align-items:flex-start;}.job-os-metrics{grid-template-columns:1fr;}.job-os-status{font-size:11px;}}
 /* The Office is a whole-screen view with its own right-hand column (Task
    Status) -- the chat-only Files/Artifacts/Todos/Canvas/Live/Plane workspace
