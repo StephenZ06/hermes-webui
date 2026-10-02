@@ -234,6 +234,13 @@ If an AI assistant is helping with install, reinstall, bootstrap, provider setup
 - Directory tree with expand/collapse (single-click toggles, double-click navigates)
 - Breadcrumb navigation with clickable path segments
 - Preview text, code, Markdown (rendered), and images inline
+
+### Jobs workspace (Foundation)
+
+- A profile-scoped Job OS workspace for keeping a researched job pipeline in one place
+- Dashboard counters for imported jobs, active work, and jobs awaiting attention
+- Manual job import with canonical-URL duplicate protection and lifecycle history
+- A responsive foundation layout for Dashboard, Scout, Pipeline, Resume Studio, and Applications; automated scouting, CV tailoring, and applying are deliberately later slices
 - Chat links using `workspace://path/to/file` open files in the right-side preview pane
 - Edit, create, delete, and rename files; create folders
 - Binary file download (auto-detected from server)

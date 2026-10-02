@@ -15,6 +15,44 @@
 
 ---
 
+## Job OS Foundation
+
+The Jobs workspace stores its data under the active Hermes profile. Use isolated
+state for manual checks so a test import cannot affect a real profile, session,
+or cron schedule:
+
+```bash
+HERMES_HOME=/tmp/hermes-job-os-preview-home \
+HERMES_WEBUI_STATE_DIR=/tmp/hermes-job-os-preview-state \
+HERMES_WEBUI_PORT=8789 \
+python3 bootstrap.py --no-browser
+```
+
+Open `http://127.0.0.1:8789`, confirm `GET /health` returns `{"status":"ok"}`,
+then verify the following:
+
+1. Open **Jobs** from both the desktop rail and the mobile navigation. Confirm
+   the Dashboard, Scout, Pipeline, Resume Studio, and Applications sections
+   remain usable at desktop, narrow, and phone widths.
+2. In **Scout**, manually import a job with a title, company, and URL. Confirm
+   it appears in the pipeline and the dashboard total changes. Import the same
+   canonical URL again and confirm the duplicate is rejected without creating a
+   second record.
+3. Open the job, move it through an allowed lifecycle transition, and confirm
+   its status and event history update. Select a dashboard status metric, copy
+   the resulting `#jobs/pipeline?status=...` URL, and confirm it resolves to
+   the active profile's filtered records only.
+4. Switch to a second profile, import a different test job, then return to the
+   first. Each dashboard and job list must show only that profile's jobs.
+5. Capture desktop, narrow, and phone screenshots. Check that no profile name
+   or dashboard response is carried across the profile-switch scene.
+
+To roll back the visible workspace, hide the Jobs capability or return to a
+build before this feature. Do not delete the profile's `webui_state/job_os`
+directory: it is the durable job-pipeline data and can be re-enabled later.
+
+---
+
 ## Static JS runtime lint (brick-class regression guard)
 
 Some JS bugs throw a `TypeError`/`ReferenceError` only when a specific function

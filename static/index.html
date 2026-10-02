@@ -188,6 +188,7 @@
     <div class="rail-divider" data-after-panel="skills" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces" aria-label="Spaces"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="notes" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Work Hub" aria-label="Work Hub"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="jobs" onclick="switchPanel('jobs',{fromRailClick:true})" data-tooltip="Jobs" aria-label="Jobs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v15H4z"/><path d="M8 5V3h8v2M8 10h8M8 14h5"/></svg></button>
     <div class="rail-divider" data-after-panel="notes" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights" aria-label="Insights"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs" aria-label="Logs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
@@ -214,6 +215,7 @@
       <div class="sidebar-nav-divider" data-after-panel="skills" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="workspaces" data-label="Spaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="notes" data-label="Work Hub" onclick="switchPanel('notes',{fromRailClick:true})" data-tooltip="Work Hub"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3H3v18h13l5-5V3z"/><path d="M16 21v-5h5"/></svg></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="jobs" data-label="Jobs" onclick="switchPanel('jobs',{fromRailClick:true})" data-tooltip="Jobs" aria-label="Jobs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v15H4z"/><path d="M8 5V3h8v2M8 10h8M8 14h5"/></svg></button>
       <div class="sidebar-nav-divider" data-after-panel="notes" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="insights" data-label="Insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="logs" data-label="Logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M8 9h2"/></svg></button>
@@ -428,6 +430,11 @@
         <span>Work Hub</span>
       </div>
       <div id="workHubSidebar" aria-label="Work Hub navigation"></div>
+    </div>
+    <div class="panel-view" id="panelJobs">
+      <div class="panel-head"><span>Jobs</span></div>
+      <div class="panel-head-sub">Research, tailor, and track your applications.</div>
+      <div class="job-os-sidebar-copy">Your career workspace is profile-specific.</div>
     </div>
     <!-- Profiles panel -->
     <div class="panel-view" id="panelProfiles">
@@ -1126,6 +1133,7 @@
     <div id="mainNotes" class="main-view">
       <div id="workHub" aria-live="polite"></div>
     </div>
+    <div id="mainJobs" class="main-view"><div id="jobOsRoot" aria-live="polite"></div></div>
     <div id="mainInsights" class="main-view">
       <div class="main-view-header">
         <div class="main-view-title" data-i18n="insights_title">Usage Analytics</div>
@@ -2176,6 +2184,10 @@
 <script src="static/performance.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vendor/mx-icons/work-hub-icons.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/job-os/state.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/job-os/api.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/job-os/render.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/job-os/index.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/work-hub.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/goal-planner.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/notes.js?v=__WEBUI_VERSION__" defer></script>

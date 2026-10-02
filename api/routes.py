@@ -13671,6 +13671,11 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
         return True
 
+    if parsed.path.startswith("/api/job-os/"):
+        from api.job_os.api import handle_job_os_get
+
+        return handle_job_os_get(handler, parsed)
+
     # ── Insights / knowledge status ──
     if parsed.path == "/api/insights":
         return _handle_insights(handler, parsed)
@@ -15999,6 +16004,11 @@ def handle_post(handler, parsed) -> bool:
         if diag:
             diag.finish()
         return True
+
+    if parsed.path.startswith("/api/job-os/"):
+        from api.job_os.api import handle_job_os_post
+
+        return handle_job_os_post(handler, parsed, body)
 
     if parsed.path == "/api/escape/authorize":
         return _handle_escape_authorize(handler, parsed, body)
@@ -19251,6 +19261,10 @@ def handle_patch(handler, parsed) -> bool:
     body = read_body(handler)
     if not _guard_request_session_visibility(handler, parsed, body=body, method="PATCH"):
         return True
+    if parsed.path.startswith("/api/job-os/"):
+        from api.job_os.api import handle_job_os_patch
+
+        return handle_job_os_patch(handler, parsed, body)
     if parsed.path.startswith("/api/mcp/servers/"):
         name = parsed.path[len("/api/mcp/servers/"):]
         return _handle_mcp_server_toggle(handler, name, body)
