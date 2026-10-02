@@ -24,4 +24,3 @@ def job_os_state_dir() -> Path:
 def job_os_db_path() -> Path:
     """Return the active profile's canonical Job OS SQLite database path."""
     return job_os_state_dir() / "job_os.db"
-
