@@ -58,7 +58,19 @@ def _migration_1(connection: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS: tuple[tuple[int, object], ...] = ((1, _migration_1),)
+def _migration_2(connection: sqlite3.Connection) -> None:
+    connection.execute("ALTER TABLE jobs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0")
+    connection.execute("ALTER TABLE jobs ADD COLUMN idempotency_key TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS jobs_idempotency_key_unique
+        ON jobs (idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+        """
+    )
+
+
+MIGRATIONS = ((1, _migration_1), (2, _migration_2))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:
@@ -89,4 +101,3 @@ def migrate_job_os(connection: sqlite3.Connection) -> None:
     except Exception:
         connection.rollback()
         raise
-

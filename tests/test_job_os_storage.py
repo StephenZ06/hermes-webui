@@ -49,16 +49,16 @@ def test_job_os_migrations_are_idempotent(tmp_path, monkeypatch):
 
     first = job_db.connect_job_os()
     try:
-        first_version = first.execute("SELECT version FROM schema_meta").fetchone()[0]
+        first_version = first.execute("SELECT MAX(version) FROM schema_meta").fetchone()[0]
         assert first.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     finally:
         first.close()
 
     second = job_db.connect_job_os()
     try:
-        second_version = second.execute("SELECT version FROM schema_meta").fetchone()[0]
+        second_version = second.execute("SELECT MAX(version) FROM schema_meta").fetchone()[0]
         assert second_version == first_version
-        assert second.execute("SELECT COUNT(*) FROM schema_meta").fetchone()[0] == 1
+        assert second.execute("SELECT COUNT(*) FROM schema_meta").fetchone()[0] == second_version
     finally:
         second.close()
 
