@@ -87,7 +87,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -487,6 +487,9 @@ async function switchPanel(name, opts = {}) {
       window.HermesOffice.unmount();
     }
   }
+  if (prevPanel === 'jobs' && nextPanel !== 'jobs' && window.JobOS && typeof window.JobOS.unmount === 'function') {
+    window.JobOS.unmount();
+  }
   _currentPanel = nextPanel;
   if (typeof _syncWorkspacesPanelAutoRefresh === 'function') _syncWorkspacesPanelAutoRefresh();
   // Mobile drawer visibility: a rail/tab click on a phone should surface the
@@ -532,6 +535,7 @@ async function switchPanel(name, opts = {}) {
   // Keep `notes` as the persisted panel key, but render the replacement Work
   // Hub. The old Notes script stays loaded only for its legacy workspace pane.
   if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }
+  if (nextPanel === 'jobs' && window.JobOS && typeof window.JobOS.mount === 'function') { window.JobOS.mount(); }
   if (nextPanel === 'profiles') { await loadProfilesPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') { await loadInsights(); if (!panelTicketIsCurrent()) return false; }
@@ -9197,6 +9201,10 @@ async function switchToProfile(name) {
     // Keep the all-profiles sidebar scope sticky across profile switches. It is
     // a navigation preference shared by the browser session, not a per-profile flag.
     if (typeof animateNextSessionListRefresh === 'function') animateNextSessionListRefresh();
+    if (window.JobOS && typeof window.JobOS.refresh === 'function') {
+      window.JobOSState.selectedJobId = null;
+      window.JobOS.refresh();
+    }
 
     if (sessionInProgress && _openingExistingSidebarSession) {
       // The caller will immediately load the clicked session after this profile

@@ -5695,7 +5695,8 @@ main.main > #mainInsights,
 main.main > #mainLogs,
 main.main > #mainOffice{display:none;}
 main.main > #mainNotes{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office):not(.showing-notes) > #mainChat{display:flex;}
+main.main > #mainJobs{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office):not(.showing-notes):not(.showing-jobs) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-agents > #mainAgents{display:flex;}
@@ -5709,6 +5710,26 @@ main.main.showing-logs > #mainLogs{display:flex;}
 main.main.showing-plugin > #mainPlugin{display:flex;}
 main.main.showing-office > #mainOffice{display:flex;}
 main.main.showing-notes > #mainNotes{display:flex;}
+main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
+
+/* ── Job OS foundation ── */
+#mainJobs{background:var(--bg);padding:clamp(16px,3vw,36px);}
+#jobOsRoot{width:min(1120px,100%);margin:0 auto;}
+.job-os-shell{display:grid;gap:18px;min-width:0;}
+.job-os-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+.job-os-header h1,.job-os-content h2{margin:0;color:var(--text);}
+.job-os-kicker{margin:0 0 6px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.13em;}
+.job-os-status{border:1px solid var(--border2);border-radius:999px;padding:6px 10px;color:var(--accent);font-size:12px;}
+.job-os-tabs{display:flex;gap:8px;overflow:auto;padding-bottom:2px;}
+.job-os-tabs button{white-space:nowrap;border:1px solid var(--border2);border-radius:9px;background:var(--card);color:var(--muted);padding:8px 12px;cursor:pointer;}
+.job-os-tabs button.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,var(--card));}
+.job-os-content{display:grid;gap:16px;}
+.job-os-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.job-os-metrics button,.job-os-import,.job-os-list,.job-os-page{border:1px solid var(--border2);border-radius:14px;background:var(--card);padding:18px;text-align:left;color:var(--text);}
+.job-os-metrics button{font-size:28px;font-weight:700;cursor:pointer;}.job-os-metrics span{display:block;margin-top:5px;font-size:12px;font-weight:500;color:var(--muted);}
+.job-os-import p,.job-os-page p,.job-os-empty{color:var(--muted);}.job-os-import form{display:grid;gap:10px;max-width:640px;}.job-os-import label{display:grid;gap:5px;color:var(--muted);font-size:12px;}.job-os-import input{min-width:0;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);padding:9px 10px;}
+.job-os-list{display:grid;gap:8px;}.job-os-job-card{display:grid;gap:3px;width:100%;border:1px solid var(--border2);border-radius:10px;background:transparent;color:var(--text);padding:11px;text-align:left;cursor:pointer;}.job-os-job-card span,.job-os-job-card small{color:var(--muted);}.job-os-error{color:var(--danger,#f07878);min-height:1.2em;}.job-os-sidebar-copy{padding:12px;color:var(--muted);font-size:12px;line-height:1.5;}
+@media(max-width:640px){#mainJobs{padding:16px 12px;}.job-os-header{align-items:flex-start;}.job-os-metrics{grid-template-columns:1fr;}.job-os-status{font-size:11px;}}
 /* The Office is a whole-screen view with its own right-hand column (Task
    Status) -- the chat-only Files/Artifacts/Todos/Canvas/Live/Plane workspace
    panel is unrelated to it and, being a sibling of <main> rather than a
