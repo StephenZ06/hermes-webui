@@ -61,7 +61,7 @@ from api.session_events import (
 )
 from api.gateway_restart import restart_active_profile_gateway
 from api.shares import create_or_refresh_share, load_share, revoke_share
-from api.route_table import NOT_HANDLED, Exact, Prefix, RouteTable
+from api.route_table import NOT_HANDLED, Exact, Param, Prefix, RouteTable
 
 logger = logging.getLogger(__name__)
 
@@ -13431,2203 +13431,14 @@ def handle_get(handler, parsed) -> bool:
     if proxy_result is not False:
         return proxy_result
 
-    if parsed.path.startswith("/session/static/"):
-        # Strip the leading "/session" so _serve_static() sees a path that
-        # starts with "/static/" (its required prefix). _serve_static enforces
-        # its own path-traversal sandbox via Path.resolve()+relative_to().
-        stripped = parsed._replace(path=parsed.path[len("/session"):])
-        return _serve_static(handler, stripped)
-
-    # Firefox Android resolves <link rel="manifest"> against the page URL
-    # before the dynamic <base href> script runs when installing from
-    # /session/<id>, producing requests like /session/manifest.json.
-    # Without this guard the catch-all below returns index.html instead of
-    # the manifest, and Firefox falls back to a generated letter icon.
-    # See #2226.
-    if parsed.path in ("/session/manifest.json", "/session/manifest.webmanifest"):
-        return _serve_manifest(handler)
-
-    if parsed.path in ("/", "/index.html") or parsed.path.startswith("/session/"):
-        try:
-            from api.extensions import inject_extension_tags
-
-            csrf_token = ""
-            try:
-                from api.auth import csrf_token_for_session, is_auth_enabled, parse_cookie, verify_session
-
-                if is_auth_enabled():
-                    cookie_val = parse_cookie(handler)
-                    if not cookie_val:
-                        cookie_val = getattr(handler, "_trusted_auth_session_cookie_value", None)
-                    if cookie_val and verify_session(cookie_val):
-                        csrf_token = csrf_token_for_session(cookie_val) or ""
-            except Exception:
-                csrf_token = ""
-
-            # The disk read + process-constant token substitutions are cached;
-            # only the per-session CSRF token and per-request extension tags are
-            # applied here (see _render_index_shell_base).
-            html = _render_index_shell_base().replace(
-                "__CSRF_TOKEN_JSON__", json.dumps(csrf_token)
-            )
-            return t(
-                handler,
-                inject_extension_tags(html),
-                content_type="text/html; charset=utf-8",
-            )
-        except Exception as exc:
-            return _serve_shell_unavailable(handler, exc)
-
-    if parsed.path == "/share" or parsed.path.startswith("/share/"):
-        share_path = (Path(__file__).parent.parent / "static" / "share.html").resolve()
-        return t(
-            handler,
-            share_path.read_text(encoding="utf-8"),
-            content_type="text/html; charset=utf-8",
-            extra_headers={
-                "X-Robots-Tag": "noindex, nofollow",
-            },
-        )
-
-    if parsed.path == "/login":
-        _settings = load_settings()
-        _bn = _html.escape(_settings.get("bot_name") or "Hermes")
-        _lang = _settings.get("language", "en")
-        _login_strings = _LOGIN_LOCALE[
-            _resolve_login_locale_key(_lang)
-        ]
-        from urllib.parse import quote
-        from api.updates import WEBUI_VERSION
-        version_token = quote(WEBUI_VERSION, safe="")
-        _page = (
-            _LOGIN_PAGE_HTML.replace("{{BOT_NAME}}", _bn)
-            .replace("{{WEBUI_VERSION}}", version_token)
-            .replace("{{LANG}}", _html.escape(_login_strings["lang"]))
-            .replace("{{LOGIN_TITLE}}", _html.escape(_login_strings["title"]))
-            .replace("{{LOGIN_SUBTITLE}}", _html.escape(_login_strings["subtitle"]))
-            .replace(
-                "{{LOGIN_PLACEHOLDER}}", _html.escape(_login_strings["placeholder"])
-            )
-            .replace("{{LOGIN_BTN}}", _html.escape(_login_strings["btn"]))
-            .replace("{{LOGIN_INVALID_PW}}", _html.escape(_login_strings["invalid_pw"]))
-            .replace(
-                "{{LOGIN_CONN_FAILED}}", _html.escape(_login_strings["conn_failed"])
-            )
-            .replace("{{OIDC_LOGIN_HTML}}", _oidc_login_html(parsed))
-        )
-        return t(handler, _page, content_type="text/html; charset=utf-8")
-
-    if parsed.path == "/api/auth/oidc/start":
-        from api.auth_oidc import OIDCAuthError, OIDCConfigError, build_authorization_redirect
-
-        next_path = _safe_login_redirect_path(
-            parse_qs(parsed.query or "").get("next", [""])[0]
-        )
-        try:
-            location = build_authorization_redirect(
-                _request_base_url(handler), next_path
-            )
-        except OIDCConfigError as exc:
-            return j(handler, {"error": str(exc)}, status=404)
-        except OIDCAuthError as exc:
-            return j(handler, {"error": str(exc)}, status=exc.status_code)
-        handler.send_response(302)
-        handler.send_header("Location", location)
-        handler.send_header("Cache-Control", "no-store")
-        handler.send_header("Content-Length", "0")
-        _security_headers(handler)
-        handler.end_headers()
-        return True
-
-    if parsed.path == "/api/auth/oidc/callback":
-        from api.auth import create_session, set_auth_cookie
-        from api.auth_oidc import OIDCAuthError, OIDCConfigError, complete_authorization_code_flow
-
-        query = parse_qs(parsed.query or "")
-        error = str(query.get("error", [""])[0] or "").strip()
-        if error:
-            description = str(query.get("error_description", [""])[0] or "").strip()
-            return j(handler, {"error": description or error}, status=401)
-        state = str(query.get("state", [""])[0] or "").strip()
-        code = str(query.get("code", [""])[0] or "").strip()
-        if not state or not code:
-            return j(handler, {"error": "Missing OIDC callback state or code"}, status=400)
-        try:
-            result = complete_authorization_code_flow(
-                _request_base_url(handler), state, code
-            )
-        except OIDCConfigError as exc:
-            return j(handler, {"error": str(exc)}, status=404)
-        except OIDCAuthError as exc:
-            return j(handler, {"error": str(exc)}, status=exc.status_code)
-        cookie_val = create_session()
-        handler.send_response(302)
-        handler.send_header(
-            "Location",
-            _safe_login_redirect_path(result.get("next_path")),
-        )
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        set_auth_cookie(handler, cookie_val)
-        handler.send_header("Content-Length", "0")
-        handler.end_headers()
-        return True
-
-    if parsed.path == "/api/auth/status":
-        from api.auth import (
-            _passkey_feature_flag_enabled,
-            ensure_trusted_auth_session,
-            get_password_hash,
-            is_auth_enabled,
-            is_oidc_auth_enabled,
-            is_trusted_auth_enabled,
-        )
-        from api.passkeys import registered_credentials
-
-        logged_in = False
-        session_info = None
-        auth_enabled = is_auth_enabled()
-        oidc_enabled = is_oidc_auth_enabled()
-        if auth_enabled:
-            session_info = ensure_trusted_auth_session(handler)
-            logged_in = bool(session_info)
-        passkey_flag = _passkey_feature_flag_enabled()
-        passkeys = registered_credentials() if passkey_flag else []
-        password_auth_enabled = get_password_hash() is not None
-        payload = {
-            "auth_enabled": auth_enabled,
-            "logged_in": logged_in,
-            "oidc_enabled": oidc_enabled,
-            "password_auth_enabled": password_auth_enabled,
-            "passwordless_enabled": bool(passkeys) and not password_auth_enabled,
-            "passkeys_enabled": bool(passkeys),
-            "passkeys_count": len(passkeys),
-            "passkey_feature_flag": passkey_flag,
-            "auth_disabled_acknowledged": bool(load_settings().get("auth_disabled_acknowledged")) if not auth_enabled else False,
-        }
-        if is_trusted_auth_enabled() or (session_info and session_info.get("auth_type") == "trusted"):
-            payload["trusted_auth_enabled"] = True
-        if session_info and session_info.get("auth_type") == "trusted":
-            payload["auth_type"] = session_info.get("auth_type")
-            payload["user"] = session_info.get("username")
-            payload["bound_profile"] = session_info.get("bound_profile")
-        return j(handler, payload)
-
-    if parsed.path.startswith("/api/share/"):
-        token = parsed.path[len("/api/share/"):].strip()
-        share = load_share(token)
-        if not share:
-            return bad(handler, "Shared conversation not found", 404)
-        return j(
-            handler,
-            {"share": share},
-            extra_headers={
-                "Cache-Control": "no-store",
-                "X-Robots-Tag": "noindex, nofollow",
-            },
-        )
-
-    if parsed.path in ("/manifest.json", "/manifest.webmanifest"):
-        return _serve_manifest(handler)
-
-    if parsed.path == "/sw.js":
-        static_root = api_config.get_static_root()
-        sw_path = (static_root / "sw.js").resolve()
-        if sw_path.exists():
-            # Inject the current git-derived version as the cache name so the
-            # service worker cache busts automatically on every new deploy.
-            from urllib.parse import quote
-            from api.updates import WEBUI_VERSION
-            version_token = quote(WEBUI_VERSION, safe="")
-            text = sw_path.read_text(encoding="utf-8").replace(
-                "__WEBUI_VERSION__", version_token
-            )
-            data = text.encode("utf-8")
-            handler.send_response(200)
-            handler.send_header("Content-Type", "application/javascript; charset=utf-8")
-            handler.send_header("Cache-Control", "no-store")
-            handler.send_header("Service-Worker-Allowed", "/")
-            handler.send_header("Content-Length", str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-            return True
-        return j(handler, {"error": "not found"}, status=404)
-
-    if parsed.path == "/favicon.ico":
-        static_root = api_config.get_static_root()
-        ico_path = (static_root / "favicon.ico").resolve()
-        if ico_path.exists() and ico_path.is_file():
-            data = ico_path.read_bytes()
-            handler.send_response(200)
-            handler.send_header("Content-Type", "image/x-icon")
-            handler.send_header("Content-Length", str(len(data)))
-            handler.send_header("Cache-Control", "public, max-age=86400")
-            handler.end_headers()
-            handler.wfile.write(data)
-        else:
-            handler.send_response(204)
-            handler.end_headers()
-        return True
+    if (route_result := _GET_PUBLIC.dispatch(parsed.path, handler, parsed)) is not NOT_HANDLED:
+        return route_result
 
     if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
         return True
 
-    if parsed.path.startswith("/api/job-os/"):
-        from api.job_os.api import handle_job_os_get
-
-        return handle_job_os_get(handler, parsed)
-
-    # ── Insights / knowledge status ──
-    if parsed.path == "/api/insights":
-        return _handle_insights(handler, parsed)
-    if parsed.path == "/api/account_usage":
-        return _handle_account_usage(handler, parsed)
-    if parsed.path == "/api/project-os/dashboard":
-        return _handle_project_os_dashboard(handler, parsed)
-
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_get
-
-        # Only treat an explicit False as "no route matched". None means the
-        # bridge already sent a response via bad()/j() — emitting our own 404
-        # on top of that produces concatenated JSON bodies on the wire.
-        result = handle_kanban_get(handler, parsed)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "GET")
-        return True
-    if parsed.path == "/api/wiki/status":
-        return _handle_llm_wiki_status(handler, parsed)
-    if parsed.path == "/api/wiki/browse":
-        wiki_root, _, _ = _llm_wiki_resolve_path()
-        if not wiki_root or not os.path.isdir(wiki_root):
-            return bad(handler, "Wiki not configured or directory not found", status=404)
-        allowlisted_entries = _llm_wiki_allowlisted_entries(Path(wiki_root))
-        pages = []
-        for rel_path, (fp, identity) in sorted(allowlisted_entries.items(), key=lambda item: item[0].lower()):
-            try:
-                st = fp.stat()
-            except OSError:
-                continue
-            if (st.st_dev, st.st_ino) != identity:
-                continue
-            pages.append({"name": Path(rel_path).name, "path": rel_path, "size": st.st_size, "mtime": int(st.st_mtime)})
-        return j(handler, {"pages": pages})
-    if parsed.path == "/api/wiki/page":
-        wiki_root, _, _ = _llm_wiki_resolve_path()
-        page_path = parse_qs(parsed.query or "").get("path", [""])[0]
-        if not wiki_root or not page_path:
-            return bad(handler, "Wiki not configured or path not provided", status=400)
-        if "\\" in page_path:
-            return bad(handler, "Invalid path", status=400)
-        # Reject a real `..` path SEGMENT (or absolute path), not the bare
-        # substring — a legitimate listed filename like `v1..v2.md` contains
-        # ".." without being traversal. Containment + the resolved-allowlist
-        # membership check below are the actual security boundary.
-        requested_key = page_path.replace("\\", "/")
-        _page_parts = requested_key.split("/")
-        if os.path.isabs(page_path) or any(part == ".." for part in _page_parts):
-            return bad(handler, "Invalid path", status=400)
-        if any(part in ("", ".") for part in _page_parts):
-            return bad(handler, "Invalid path", status=400)
-        full_path = Path(os.path.join(wiki_root, page_path))
-        if not _skill_path_within(Path(wiki_root), full_path):
-            return bad(handler, "Invalid path", status=400)
-        try:
-            wiki_real = Path(wiki_root).resolve()
-        except OSError:
-            return bad(handler, "Page not found", status=404)
-        # Only serve files the browse/list path would surface (same allowlist:
-        # *.md under the wiki page-dirs, no dotfiles, forbidden-roots guard).
-        # Without this the read endpoint could return ANY file inside the wiki
-        # root (e.g. .env / .git/config / non-.md), since containment alone
-        # doesn't constrain which files are readable (Opus review finding).
-        # Capture each allowlisted page's STABLE IDENTITY (st_dev, st_ino) so the
-        # post-open fstat below can detect a file/parent-dir swapped in after the
-        # allowlist check (TOCTOU write-race, Codex finding) — a pathname re-open
-        # alone can't, since O_NOFOLLOW only guards the final component, not a
-        # swapped parent directory.
-        allowed_identity = _llm_wiki_allowlisted_entries(wiki_real)
-        try:
-            resolved_target = full_path.resolve()
-        except OSError:
-            return bad(handler, "Page not found", status=404)
-        requested_entry = allowed_identity.get(requested_key)
-        if requested_entry is None:
-            return bad(handler, "Page not found", status=404)
-        allowlisted_target, allowlisted_identity = requested_entry
-        if resolved_target != allowlisted_target:
-            return bad(handler, "Page not found", status=404)
-        # Read the ALREADY-RESOLVED, allowlisted real path with O_NOFOLLOW so a
-        # symlink swapped in for the final component between the allowlist check
-        # and the read is refused rather than followed. Then fstat the open fd
-        # and require its (st_dev, st_ino) to match the identity captured during
-        # allowlisting — this closes a parent-directory swap that O_NOFOLLOW
-        # would otherwise follow. Any mismatch / vanished / swapped page returns
-        # a clean 404, never a 500.
-        try:
-            fd = os.open(str(resolved_target), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-            try:
-                st_open = os.fstat(fd)
-                if (st_open.st_dev, st_open.st_ino) != allowlisted_identity:
-                    return bad(handler, "Page not found", status=404)
-                raw = os.read(fd, _LLM_WIKI_MAX_PAGE_BYTES + 1)
-            finally:
-                os.close(fd)
-            if len(raw) > _LLM_WIKI_MAX_PAGE_BYTES:
-                raw = raw[:_LLM_WIKI_MAX_PAGE_BYTES]
-            content = raw.decode("utf-8", errors="replace")
-        except (FileNotFoundError, IsADirectoryError):
-            return bad(handler, "Page not found", status=404)
-        except OSError:
-            # ELOOP (symlink swapped in under O_NOFOLLOW) or any other read
-            # failure → clean 404, never a 500.
-            return bad(handler, "Could not read page", status=404)
-        return j(handler, {"content": content, "path": page_path})
-    if parsed.path == "/api/logs":
-        return _handle_logs(handler, parsed)
-
-    if parsed.path == "/health":
-        return _handle_health(handler, parsed)
-
-    if parsed.path == "/api/health/agent":
-        payload = build_agent_health_payload()
-        payload["gateway_chat"] = gateway_chat_config_status()
-        j(handler, payload)
-        return True
-
-    if parsed.path == "/api/system/health":
-        j(handler, build_system_health_payload())
-        return True
-
-    if parsed.path == "/api/models":
-        # Profile-scoping for non-default profiles (#3957) is handled INSIDE
-        # get_available_models() — it binds the active profile's env + TLS on
-        # the detached rebuild worker (and the legacy synchronous rebuild),
-        # which the request-thread wrapper could not reach. See
-        # api.config.get_available_models cold path + profile_scope_for_detached_worker.
-        freshness = parse_qs(parsed.query or "").get("freshness", [""])[0].strip().lower()
-        diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-        try:
-            diag.stage(f"enter:freshness={freshness or 'default'}") if diag else None
-            if freshness == "session_visit":
-                result = get_available_models_for_session_visit()
-                diag.stage("response_serialize") if diag else None
-                return j(handler, result)
-            if freshness:
-                return bad(handler, f"unknown models freshness: {freshness}", status=400)
-            return j(handler, get_available_models())
-        finally:
-            if diag:
-                diag.finish()
-
-    if parsed.path == "/api/models/cross_profile":
-        from api.config import get_available_models_across_profiles
-        return j(handler, get_available_models_across_profiles())
-
-    if parsed.path == "/api/models/live":
-        from api.profiles import profile_env_for_active_request
-        with profile_env_for_active_request("/api/models/live", logger_override=logger):
-            return _handle_live_models(handler, parsed)
-
-    # ── Auxiliary models (GET/POST) ──
-    if parsed.path == "/api/model/auxiliary":
-        from api.config import get_auxiliary_models
-        return j(handler, get_auxiliary_models())
-
-    if parsed.path == "/api/dashboard/status":
-        from api import dashboard_probe
-
-        j(handler, dashboard_probe.get_dashboard_status())
-        return True
-
-    if parsed.path == "/api/dashboard/config":
-        from api import dashboard_probe
-
-        try:
-            j(handler, dashboard_probe.get_dashboard_config())
-        except ValueError as exc:
-            bad(handler, str(exc), status=400)
-        return True
-
-    # ── Providers (GET) ──
-    if parsed.path == "/api/providers":
-        # Apply the active per-request profile's env so provider auth probes
-        # resolve against that profile's credentials, not the process-default
-        # profile's (#3957). Without this, get_auth_status() probes on a
-        # non-default profile resolve the wrong/empty creds and can stall past
-        # the 30s frontend timeout. No-op for the default profile.
-        from api.profiles import profile_env_for_active_request_readonly
-        with profile_env_for_active_request_readonly("/api/providers", logger_override=logger):
-            return j(handler, get_providers())
-
-    # ── Plugins/hooks visibility (read-only, no callback/source internals) ──
-    if parsed.path == "/api/plugins":
-        return _handle_plugins(handler, parsed)
-    if parsed.path == "/api/provider/quota":
-        query = parse_qs(parsed.query)
-        provider_id = (query.get("provider", [""])[0] or None)
-        refresh = (query.get("refresh", [""])[0] or "").strip().lower() in {"1", "true", "yes", "on"}
-        # Bind the active request's profile env (matches /api/providers and
-        # /api/models/live). #4365 added a credential_pool.load_pool() path in
-        # get_provider_quota for all pooled providers; without this wrapper that
-        # read/write runs under the process-default profile, so a multi-profile
-        # client would see (and seed) the default profile's pool instead of its
-        # own (#4247/#4067 profile-isolation class).
-        from api.profiles import profile_env_for_active_request_readonly
-        with profile_env_for_active_request_readonly("/api/provider/quota", logger_override=logger):
-            return j(handler, get_provider_quota(provider_id, refresh=refresh))
-
-    if parsed.path == "/api/provider/cost-history":
-        query = parse_qs(parsed.query)
-        provider_id = (query.get("provider", [""])[0] or None)
-        days_raw = (query.get("days", ["7"])[0] or "7").strip()
-        try:
-            days = max(1, min(int(days_raw), 365))
-        except (ValueError, TypeError):
-            days = 7
-        return j(handler, get_provider_cost_history(provider_id, days))
-
-    if parsed.path == "/api/settings":
-        settings = load_settings()
-        settings["persisted_speech_keys"] = persisted_speech_settings_keys()
-        # Never expose the stored password hash to clients
-        settings.pop("password_hash", None)
-        settings.setdefault("max_tokens", None)
-        settings.setdefault("max_tokens_effective", None)
-        settings.setdefault("max_tokens_fallback", None)
-        try:
-            from api.config import get_max_tokens_status
-            settings.update(get_max_tokens_status())
-        except Exception:
-            settings["max_tokens"] = None
-            settings["max_tokens_effective"] = None
-            settings["max_tokens_fallback"] = None
-        # Surface env-var precedence so the UI can disable the password field
-        # instead of silently no-oping the save (#1560). The setting takes
-        # precedence in api.auth.get_password_hash(), but until now the UI
-        # had no way to know — see issue #1139 / #1560.
-        settings["password_env_var"] = bool(
-            os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
-        )
-        # Auth-state fields for frontend safety badge / confirmation flows
-        from api.auth import get_password_hash, is_auth_enabled
-        settings["auth_enabled"] = is_auth_enabled()
-        settings["password_auth_enabled"] = get_password_hash() is not None
-        try:
-            from api.auth import _passkey_feature_flag_enabled as _pffe
-            from api.passkeys import registered_credentials as _rc
-            if _pffe():
-                settings["passkeys_enabled"] = bool(_rc())
-                settings["passwordless_enabled"] = bool(_rc()) and not settings["password_auth_enabled"]
-            else:
-                settings["passkeys_enabled"] = False
-                settings["passwordless_enabled"] = False
-        except Exception:
-            pass
-        # Inject the running version so the UI badge stays in sync with git tags
-        # without any manual release step.
-        try:
-            from api.updates import AGENT_VERSION, WEBUI_VERSION
-            settings["webui_version"] = WEBUI_VERSION
-            settings["agent_version"] = AGENT_VERSION
-        except Exception:
-            pass
-        # Channel-scoped display badge — SEPARATE from webui_version (which is
-        # load-bearing for asset cache-busting / SW cache / skew detection and
-        # must stay channel-neutral). update_channel_version is display-only.
-        try:
-            from api.updates import channel_version_badge, _read_update_channel
-            channel = _read_update_channel()
-            settings["update_channel"] = channel
-            settings["update_channel_version"] = channel_version_badge(channel)
-        except Exception:
-            pass
-        return j(handler, settings)
-
-    if parsed.path == "/api/transcribe/capability":
-        return handle_transcribe_capability(handler)
-
-    if parsed.path == "/api/reasoning":
-        # Current reasoning config (shared source of truth with the CLI —
-        # reads display.show_reasoning and agent.reasoning_effort from
-        # the active profile's config.yaml).
-        query = parse_qs(parsed.query)
-        model_id = (query.get("model", [""])[0] or "").strip() or None
-        provider_id = (query.get("provider", [""])[0] or "").strip() or None
-        base_url = (query.get("base_url", [""])[0] or "").strip() or None
-        return j(
-            handler,
-            get_reasoning_status(
-                model_id=model_id,
-                provider_id=provider_id,
-                base_url=base_url,
-            ),
-        )
-
-    if parsed.path == "/api/onboarding/status":
-        return j(handler, get_onboarding_status())
-
-    if parsed.path == "/api/extensions/status":
-        from api.extensions import get_extension_status
-
-        return j(handler, get_extension_status())
-
-    if parsed.path == "/api/extensions/registry":
-        from api.extensions import get_extension_registry
-
-        return j(handler, get_extension_registry())
-
-    if parsed.path.startswith("/extensions/"):
-        from api.extensions import serve_extension_static
-
-        return serve_extension_static(handler, parsed)
-
-    if parsed.path.startswith("/graphify-projects/"):
-        from api.graphify_static import graphify_static_fallback
-
-        result = graphify_static_fallback(None, handler, parsed)
-        if result is not None:
-            return result
-
-    if parsed.path.startswith("/static/"):
-        return _serve_static(handler, parsed)
-
-
-    if parsed.path == "/api/session/worktree/status":
-        query = parse_qs(parsed.query)
-        sid = query.get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "session_id is required", status=400)
-        try:
-            s = get_session(sid, metadata_only=True)
-        except KeyError:
-            return bad(handler, "Session not found", status=404)
-        try:
-            from api.worktrees import worktree_status_for_session
-
-            return j(handler, {"status": worktree_status_for_session(s)})
-        except ValueError as exc:
-            return bad(handler, str(exc), status=400)
-        except Exception as exc:
-            logger.exception("failed to read worktree status for session %s", sid)
-            return bad(handler, _sanitize_error(exc), status=500)
-
-    if parsed.path == "/api/session/compress/status":
-        query = parse_qs(parsed.query)
-        _handle_session_compress_status(handler, query.get("session_id", [""])[0])
-        return True
-
-    if parsed.path == "/api/session":
-        import time as _time
-        _t0 = _time.monotonic()
-        _debug_slow = os.environ.get("HERMES_DEBUG_SLOW", "")
-        # perf(webui/session-load-latency) tier2c: per-stage breakdown via
-        # RequestDiagnostics. maybe_start() returns None for paths not in
-        # the allowlist, in which case the existing _tN-driven [SLOW] log
-        # is the only signal — same as before.
-        _diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-        # perf(webui/session-load-latency) tier2c-followup: every early-return
-        # in this handler calls `_diag.finish()` before returning so the
-        # watchdog's _watchdog_pending dict stays bounded to in-flight requests.
-        # Greptile flagged this in PR review — finish() unregisters the
-        # pending watchdog entry; without it the entry stays for the full
-        # 5s slow-request timeout and emits a spurious "Slow WebUI request
-        # still running" log. Idempotent — finish() no-ops if already called.
-        query = parse_qs(parsed.query)
-        sid = query.get("session_id", [""])[0]
-        if not sid:
-            if _diag: _diag.finish()
-            return j(handler, {"error": "session_id is required"}, status=400)
-        # ?messages=0 skips the message payload for fast session switching.
-        # The frontend uses this when switching conversations in the sidebar
-        # (only needs metadata). The full message array is loaded lazily
-        # via ?messages=1 when the message panel opens.
-        load_messages = query.get("messages", ["1"])[0] != "0"
-        resolve_model_default = "1" if load_messages else "0"
-        resolve_model = query.get("resolve_model", [resolve_model_default])[0] != "0"
-        # A root-page restore checks only whether a locally saved session needs
-        # a profile handoff.  Return that minimal routing signal as a success so
-        # the browser does not log an expected 409 before it switches profiles.
-        profile_probe = query.get("profile_probe", ["0"])[0] == "1"
-        # ?msg_limit=N returns a tail window containing the last N visible
-        # transcript rows. Hidden tool-result rows do not consume the budget;
-        # they are included only when they sit inside the selected window and
-        # are bounded before serialization. Older rows load on-demand.
-        # Clamp to _MAX_MSG_LIMIT so an oversized request (e.g. msg_limit=9999
-        # from an outline jump, or a hostile value) can't force an unbounded
-        # payload; the existing _messages_truncated signal covers the clamped
-        # case (the client sees there are more rows than returned). Parsing +
-        # clamping live in _parse_msg_limit so the expression has direct test
-        # coverage; None means the bare no-msg_limit path (full transcript).
-        msg_limit = _parse_msg_limit(query.get("msg_limit", [None])[0])
-        # ?msg_before=N — 0-based index into the full message array.
-        # Returns messages before this index (for scroll-to-top lazy loading).
-        # Combined with msg_limit for paging.
-        _msg_before = query.get("msg_before", [None])[0]
-        try:
-            msg_before = int(_msg_before) if _msg_before else None
-        except (ValueError, TypeError):
-            msg_before = None
-        # ?expand_renderable=1 is retained for compatibility with older
-        # frontends. msg_limit now counts visible transcript rows by default, so
-        # the flag no longer changes the server-side pagination semantics.
-        _expand_renderable = query.get("expand_renderable", [None])[0]
-        expand_renderable = str(_expand_renderable).strip() in ("1", "true", "True")
-        try:
-            _t1 = _time.monotonic()
-            if _diag: _diag.stage("t1_after_get_session_check")
-            s = get_session(sid, metadata_only=(not load_messages))
-            _session_profile = getattr(s, 'profile', None) or None
-            if not _session_visible_to_active_profile(_session_profile, handler):
-                if _session_profile:
-                    # Valid session owned by a KNOWN other profile: 409 so the
-                    # client can offer to switch to it (#5419).
-                    if _diag: _diag.finish()
-                    if profile_probe and not load_messages and not resolve_model:
-                        return j(handler, {
-                            "profile_mismatch": True,
-                            "session_id": sid,
-                            "profile": _session_profile,
-                        })
-                    return j(handler, {
-                        "error": "Session belongs to a different profile",
-                        "code": "session_profile_mismatch",
-                        "session_id": sid,
-                        "profile": _session_profile,
-                    }, status=409)
-                # Unknown/legacy None-profile sidecar: keep the original 404 so
-                # the frontend's self-heal (clear stale URL + localStorage) still
-                # fires. _profiles_match coerces None->'default', so a truly
-                # missing/legacy session under a non-default active profile would
-                # otherwise emit a useless 409 with profile=null.
-                if _diag: _diag.finish()
-                return bad(handler, "Session not found", 404)
-            original_stream_id = getattr(s, "active_stream_id", None)
-            _clear_stale_stream_state(s)
-            cli_meta = _lookup_cli_session_metadata(sid) if _session_requires_cli_metadata_lookup(s) else {}
-            is_messaging_session = _is_messaging_session_record(s) or _is_messaging_session_record(cli_meta)
-            cli_messages = []
-            state_db_messages = []
-            metadata_summary = None
-            limited_sidecar_messages = None
-            state_db_since_timestamp = None
-            # Set by the limited-display path when the memoized merge can be
-            # reused without loading the state.db rows; must exist for every
-            # branch below, including the ones that never probe the cache.
-            _display_cache_hit = None
-            _display_state_db_signature = None
-            if is_messaging_session:
-                cli_messages = get_cli_session_messages(sid)
-            elif load_messages:
-                if msg_limit is not None:
-                    (
-                        state_db_since_timestamp,
-                        limited_sidecar_messages,
-                    ) = _state_db_since_timestamp_for_limited_display(
-                        s,
-                        msg_limit,
-                        msg_before=msg_before,
-                    )
-                _state_db_reader_kwargs = {"profile": _session_profile}
-                if state_db_since_timestamp is not None:
-                    _state_db_reader_kwargs["since_timestamp"] = state_db_since_timestamp
-                # Apply the display-path row backstop ONLY on provably-safe
-                # reads where no truncation_boundary prefix is required for the
-                # merge — see _state_db_backstop_limit_for_display. Compressed
-                # sessions and msg_before paging need their full prefix rows for
-                # correct reconciliation, so those stay uncapped.
-                _backstop = _state_db_backstop_limit_for_display(s, msg_before)
-                if _backstop is not None:
-                    _state_db_reader_kwargs["limit"] = _backstop
-                # perf: on the limited-display path the state.db rows are only
-                # consumed by the memoized merge below. Now that the cache key
-                # is a bounded SQL signature rather than a fingerprint OF these
-                # rows, a hit no longer needs them -- and materialising tens of
-                # thousands of dicts was the dominant remaining cost (~2.3s on a
-                # 36k-row session) even when the merge itself was served from
-                # cache. Probe the cache first and skip the load on a hit.
-                #
-                # Deliberately narrow: only when msg_limit is set (the merge
-                # helper below is the sole consumer) and only for inactive
-                # sessions, matching the cache's own validity rule. Any miss
-                # falls through to the normal full load, so this can only skip
-                # work that would have produced an identical merged result.
-                _display_cache_hit = None
-                if (
-                    msg_limit is not None
-                    and not getattr(s, "active_stream_id", None)
-                    and not getattr(s, "pending_user_message", None)
-                ):
-                    _display_cache_hit = _display_merge_cached_messages(
-                        s,
-                        limited_sidecar_messages,
-                        msg_before=msg_before,
-                    )
-                if _display_cache_hit is not None:
-                    state_db_messages = []
-                else:
-                    if (
-                        msg_limit is not None
-                        and not getattr(s, "active_stream_id", None)
-                        and not getattr(s, "pending_user_message", None)
-                    ):
-                        (
-                            state_db_messages,
-                            _display_state_db_signature,
-                        ) = _load_state_db_messages_with_stable_signature(
-                            sid,
-                            _session_profile,
-                            _state_db_reader_kwargs,
-                        )
-                    else:
-                        state_db_messages = get_state_db_session_messages(
-                            sid,
-                            **_state_db_reader_kwargs,
-                        )
-            elif not is_messaging_session:
-                # Metadata-only callers still need the same append-only
-                # reconciliation contract as full loads so stale/replayed
-                # state.db rows do not make sidebar polling think the
-                # transcript is always newer. Helper threads profile= to
-                # honor #2827's TLS-vs-thread fix.
-                metadata_summary = _metadata_only_message_summary(sid, profile=_session_profile)
-            _t2 = _time.monotonic()
-            if _diag: _diag.stage("t2_after_state_db_load")
-            effective_model = (
-                _resolve_effective_session_model_for_display(s)
-                if resolve_model
-                else None
-            )
-            effective_provider = (
-                _resolve_effective_session_model_provider_for_display(s)
-                if resolve_model
-                else None
-            )
-            _t3 = _time.monotonic()
-            if _diag: _diag.stage("t3_after_model_resolve")
-            if load_messages:
-                if is_messaging_session and cli_messages:
-                    # Recovery/aggregate sidecars can intentionally contain a
-                    # longer visible conversation than the single state.db
-                    # segment for this messaging session id. Prefer the longer
-                    # sidecar so repaired WebUI history is not hidden behind the
-                    # canonical per-segment transcript. When both sources carry
-                    # different slices of the same stitched conversation, merge
-                    # them chronologically and dedupe exact repeats.
-                    _all_msgs = _merged_session_messages_for_display(s, cli_messages)
-                elif msg_limit is not None:
-                    if _display_cache_hit is not None:
-                        _all_msgs = _display_cache_hit
-                    else:
-                        _all_msgs = _limited_webui_messages_for_display_with_sidecar(
-                            s,
-                            limited_sidecar_messages,
-                            state_db_messages,
-                            state_db_signature=_display_state_db_signature,
-                            msg_before=msg_before,
-                        )
-                else:
-                    _all_msgs = merge_session_messages_append_only(
-                        _webui_sidecar_lineage_messages_for_display(s),
-                        state_db_messages,
-                        truncation_watermark=getattr(s, "truncation_watermark", None),
-                        truncation_boundary=getattr(s, "truncation_boundary", None),
-                    )
-                    _all_msgs = _merged_webui_lineage_messages_for_display(s, _all_msgs)
-            else:
-                if is_messaging_session and cli_messages:
-                    _all_msgs = _merged_session_messages_for_display(s, cli_messages)
-                else:
-                    if metadata_summary is None:
-                        metadata_summary = _message_summary(getattr(s, "messages", []) or [])
-                    _summary_message_count = metadata_summary["message_count"]
-                    _summary_last_message_at = metadata_summary["last_message_at"]
-                    _all_msgs = []
-            if not load_messages:
-                if metadata_summary is None:
-                    metadata_summary = _message_summary(_all_msgs)
-                    _summary_message_count = metadata_summary["message_count"]
-                    _summary_last_message_at = metadata_summary["last_message_at"]
-                if _summary_message_count == 0:
-                    # Legacy session with no loaded sidecar and no state.db summary —
-                    # fall back to the persisted metadata count from session JSON.
-                    # See PR #2605 (LumenYoung): without this, the metadata poll
-                    # returns 0 and the active-session external-refresh signal
-                    # never trips on legacy sessions.
-                    try:
-                        metadata_count = getattr(s, "_metadata_message_count", None)
-                        if metadata_count is not None:
-                            _summary_message_count = max(0, int(metadata_count))
-                    except (TypeError, ValueError):
-                        pass
-            else:
-                _summary_message_count = None
-                _summary_last_message_at = None
-            if load_messages:
-                _truncated_msgs, _messages_offset = _message_window_for_display(
-                    _all_msgs,
-                    msg_limit=msg_limit,
-                    msg_before=msg_before,
-                    expand_renderable=expand_renderable,
-                )
-                if msg_limit is not None:
-                    _truncated_msgs = _messages_for_limited_payload(_truncated_msgs)
-                _truncated_msgs = _hydrate_anchor_activity_scenes(
-                    _truncated_msgs,
-                    getattr(s, "anchor_activity_scenes", None),
-                    message_offset=_messages_offset,
-                    tool_calls=getattr(s, "tool_calls", None),
-                )
-            else:
-                _truncated_msgs = []
-                _messages_offset = 0
-            # Index of the first returned message in the full message array.
-            # Frontend uses this as cursor for scroll-to-top paging.
-            _windowed_messages = (
-                load_messages
-                and msg_limit is not None
-                and (msg_before is not None or len(_truncated_msgs) < len(_all_msgs))
-            )
-            # Resolve effective context_length with model-metadata fallback so
-            # older sessions (pre-#1318) that have context_length=0 persisted
-            # still render a meaningful indicator on load.  Mirrors the
-            # SSE-path fallback in api/streaming.py:2333-2342.  Fixes #1436.
-            #
-            # #1896: pass config_context_length, provider, and custom_providers
-            # so explicit config overrides win over the 256K default fallback.
-            # Without these, an old session loaded after a user upgraded to a
-            # 1M-context model with `model.context_length: 1048576` in
-            # config.yaml gets a 256K window in the initial UI indicator and
-            # /api/session/get response — the same wrong-window display this
-            # fix addresses on the streaming side.
-            _persisted_cl = getattr(s, "context_length", 0) or 0
-            _threshold_tokens = getattr(s, "threshold_tokens", 0) or 0
-            if (not _persisted_cl) or resolve_model:
-                _stored_model_for_lookup = getattr(s, "model", "") or ""
-                _stored_provider_for_lookup = getattr(s, "model_provider", None) or ""
-                _model_for_lookup = (
-                    effective_model or _stored_model_for_lookup
-                ).strip()
-                (
-                    _model_for_lookup,
-                    _provider_for_lookup,
-                    _base_url_for_lookup,
-                    _api_key_for_lookup,
-                ) = _session_context_length_lookup_state(
-                    _model_for_lookup,
-                    effective_provider or getattr(s, "model_provider", None) or "",
-                )
-                _fb_cl = _resolve_context_length_for_session_model(
-                    _model_for_lookup,
-                    _provider_for_lookup,
-                    base_url=_base_url_for_lookup,
-                    api_key=_api_key_for_lookup,
-                )
-                _model_changed_for_context = not _session_model_identity_matches(
-                    _stored_model_for_lookup,
-                    _stored_provider_for_lookup,
-                    _model_for_lookup,
-                    _provider_for_lookup,
-                )
-                if _should_accept_session_context_length_refresh(
-                    _persisted_cl,
-                    _fb_cl,
-                    model_changed=_model_changed_for_context,
-                ):
-                    if _persisted_cl and _fb_cl != _persisted_cl:
-                        # The old threshold belongs to the old window. Hiding it
-                        # is less useful than keeping the same compression ratio
-                        # against the freshly resolved context length.
-                        _threshold_tokens = _rescale_threshold_tokens_for_context_window(
-                            _threshold_tokens,
-                            _persisted_cl,
-                            _fb_cl,
-                        )
-                    _persisted_cl = _fb_cl
-            _session_tool_calls = getattr(s, "tool_calls", []) if load_messages else []
-            # Always include session-level tool_calls so the browser can merge
-            # them with per-message tool_calls for messages that lack the
-            # per-message variant (older messages whose tool_calls live only
-            # in the session-level list).  The browser-side
-            # _syncToolCallsForLoadedMessages handles deduplication by tid.
-            if _windowed_messages:
-                _session_tool_calls = _tool_calls_for_message_window(
-                    _session_tool_calls,
-                    _messages_offset,
-                    len(_truncated_msgs),
-                )
-            _merged_message_count = _summary_message_count if _summary_message_count is not None else len(_all_msgs)
-            _merged_last_message_at = _summary_last_message_at if _summary_last_message_at is not None else 0
-            if _summary_last_message_at is None and _all_msgs:
-                try:
-                    _merged_last_message_at = max(
-                        float((m or {}).get("timestamp") or 0)
-                        for m in _all_msgs
-                        if isinstance(m, dict)
-                    )
-                except (TypeError, ValueError):
-                    _merged_last_message_at = 0
-            active_stream_ids = _active_stream_ids()
-            try:
-                compact_session = s.compact(
-                    include_runtime=True,
-                    active_stream_ids=active_stream_ids,
-                )
-            except TypeError:
-                compact_session = s.compact()
-            raw = compact_session | {
-                "messages": _truncated_msgs,
-                "message_count": _merged_message_count,
-                "tool_calls": _session_tool_calls,
-                "active_stream_id": getattr(s, "active_stream_id", None),
-                "pending_user_message": getattr(s, "pending_user_message", None),
-                "pending_attachments": getattr(s, "pending_attachments", []) if load_messages else [],
-                "pending_started_at": getattr(s, "pending_started_at", None),
-                "pending_user_source": getattr(s, "pending_user_source", None),
-                "context_length": _persisted_cl,
-                "threshold_tokens": _threshold_tokens,
-                "last_prompt_tokens": getattr(s, "last_prompt_tokens", 0) or 0,
-            }
-            if original_stream_id:
-                try:
-                    journal = find_run_summary(original_stream_id)
-                except Exception:
-                    journal = None
-                if journal:
-                    journal_active = bool(original_stream_id in active_stream_ids)
-                    raw["runtime_journal"] = _run_journal_status_payload(
-                        journal,
-                        active=journal_active,
-                    )
-                    if journal_active and (not load_messages or msg_limit is None):
-                        try:
-                            snapshot = _run_journal_live_snapshot(original_stream_id, handler=handler)
-                        except Exception:
-                            logger.debug(
-                                "Failed to build runtime journal snapshot for %s",
-                                original_stream_id,
-                                exc_info=True,
-                            )
-                            snapshot = None
-                        if snapshot:
-                            raw["runtime_journal_snapshot"] = _runtime_journal_snapshot_for_session_payload(snapshot)
-                            raw["pending_attachments"] = getattr(s, "pending_attachments", []) or []
-            # Cold-load: derive the latest settled todo snapshot from the full
-            # merged transcript, not the truncated display window. This keeps
-            # the Todos panel correct after refresh even when the latest todo
-            # tool result is outside msg_limit, and treats an explicit empty
-            # todo list as the current state instead of falling through to an
-            # older non-empty write.
-            if load_messages and _all_msgs:
-                attach_todo_state(raw, _all_msgs)
-            if _merged_last_message_at:
-                raw["last_message_at"] = max(
-                    float(raw.get("last_message_at") or 0),
-                    _merged_last_message_at,
-                )
-                raw["updated_at"] = max(
-                    float(raw.get("updated_at") or 0),
-                    _merged_last_message_at,
-                )
-            # #2980: surface the visible continuation for a hidden pre-compression
-            # snapshot so a mobile reload mid-compression can recover to it.
-            continuation_sid = _pre_compression_continuation_session_id(s)
-            if continuation_sid:
-                raw["continuation_session_id"] = continuation_sid
-            if cli_meta and _session_source_is_webui(cli_meta):
-                raw = _reconcile_session_detail_source_flags(raw, cli_meta)
-            elif cli_meta and _is_messaging_session_record(cli_meta):
-                raw = _merge_cli_sidebar_metadata(raw, cli_meta)
-                # ``message_count`` in /api/session is the display coordinate
-                # space used for pagination and the header badge. Messaging
-                # state.db metadata can include raw duplicate transport rows that
-                # _merged_session_messages_for_display() intentionally dedupes;
-                # keep the raw count available as ``actual_message_count`` but
-                # do not let it make the frontend expect phantom messages.
-                raw["message_count"] = _merged_message_count
-            # Signal to the frontend that older messages were omitted. The
-            # message window cursor already reflects visible-row pagination and
-            # avoids false positives when raw hidden tool rows exceed msg_limit.
-            _truncated = load_messages and msg_limit is not None and _messages_offset > 0
-            raw["_messages_truncated"] = _truncated
-            raw["_messages_offset"] = _messages_offset
-            raw["_msg_limit_max"] = _MAX_MSG_LIMIT
-            _t4 = _time.monotonic()
-            if _diag: _diag.stage("t4_after_compact_and_merge")
-            if effective_model:
-                raw["model"] = effective_model
-            if effective_provider:
-                raw["model_provider"] = effective_provider
-            # A subagent child (#5307) is view-only regardless of what a stale
-            # sidecar stored: coerce the serialized flags so the browser never
-            # treats an existing subagent sidecar as writable / CLI-classified.
-            if (
-                (str(raw.get("source_tag") or raw.get("raw_source") or raw.get("session_source") or "").strip().lower() == "subagent")
-                or _is_subagent_child_session_id(sid)
-            ):
-                raw["is_cli_session"] = False
-                raw["read_only"] = True
-            imported_turn_marker = any(
-                isinstance(row, dict) and row.get("_active_turn_token")
-                for row in _all_msgs
-            )
-            if (
-                not raw.get("read_only")
-                and not _truncated
-                and (not raw.get("is_cli_session") or imported_turn_marker)
-            ):
-                from api.session_ops import regeneration_authority, regeneration_state
-                canonical_state = regeneration_state(s)
-                revision = regeneration_authority(
-                    s,
-                    rows=canonical_state[0],
-                    context=canonical_state[1],
-                    full_transcript=True,
-                    canonical_state=canonical_state,
-                )
-                if revision:
-                    raw["regeneration_revision"] = revision
-            redact = redact_session_data(raw)
-            _t5 = _time.monotonic()
-            if _diag: _diag.stage("t5_after_redact")
-            resp = j(handler, {"session": redact})
-            _t6 = _time.monotonic()
-            if _diag: _diag.stage("t6_after_json_write")
-            _total_ms = (_t6 - _t0) * 1000
-            # Always log when slow (>2s) so we don't need HERMES_DEBUG_SLOW env var
-            # to diagnose latency regressions. Opt-in env var still forces
-            # logging on every request for development.
-            if _debug_slow or _total_ms >= 2000:
-                # perf(webui/session-load-latency) tier2c: route the [SLOW] line
-                # through handler._safe_webui_print() rather than logger.warning().
-                # The WebUI process starts the root logger without any handler, so
-                # logger.warning() calls are silently dropped (the [SLOW] line
-                # previously worked only on PIDs that happened to have a logger
-                # handler set up by an earlier run; today the line is invisible).
-                # _safe_webui_print writes to the systemd journal socket directly,
-                # same as the per-request ms line — which is why THAT line keeps
-                # working.
-                handler._safe_webui_print(
-                    "[SLOW] session_id=%s get_session=%.1fms model_resolve=%.1fms "
-                    "compact=%.1fms redact=%.1fms json_write=%.1fms total=%.1fms" % (
-                        sid,
-                        (_t2-_t1)*1000, (_t3-_t2)*1000, (_t4-_t3)*1000,
-                        (_t5-_t4)*1000, (_t6-_t5)*1000, _total_ms,
-                    )
-                )
-            if _diag: _diag.finish()
-            return resp
-        except KeyError:
-            # perf(webui/session-load-latency) tier2c-followup: fire
-            # _diag.finish() in the exception branch too. Greptile flagged
-            # this in PR review — finish() unregisters the pending watchdog
-            # entry; without it the entry stays for the full 5s slow-request
-            # timeout and emits a spurious "Slow WebUI request still
-            # running" log. Idempotent — finish() no-ops if already called.
-            if _diag: _diag.finish()
-            # No WebUI sidecar. Delegate to the shared foreign-session
-            # synthesizer so GET and POST have symmetric writeable/read-only
-            # behaviour for CLI/TUI/Desktop sessions. The helper enforces the
-            # #2782 deleted-WebUI-session 404 contract (via
-            # _session_index_marks_was_webui) and the #4911 source ownership
-            # gate (via _is_claimable_cli_source) so the two endpoints can't
-            # drift on foreign-session semantics.
-            cli_meta = _lookup_cli_session_metadata(sid)
-            _session_profile = (cli_meta or {}).get("profile") or None
-            # Claude Code rows are profile-less by construction (they come from
-            # ~/.claude/projects, not from any profile's state.db), so the gate
-            # below would 404 every one of them under a named active profile
-            # even though /api/sessions happily lists them. Exempt them.
-            _profile_agnostic = _is_profile_agnostic_foreign_session(cli_meta)
-            if not _profile_agnostic and not _session_visible_to_active_profile(_session_profile, handler):
-                if _session_profile:
-                    # Valid CLI/foreign session owned by a KNOWN other profile:
-                    # 409 so the client can offer to switch to it (#5419).
-                    mismatch = {
-                        "error": "Session belongs to a different profile",
-                        "code": "session_profile_mismatch",
-                        "session_id": sid,
-                        "profile": _session_profile,
-                    }
-                    if profile_probe and not load_messages and not resolve_model:
-                        return j(handler, {
-                            "profile_mismatch": True,
-                            "session_id": sid,
-                            "profile": _session_profile,
-                        })
-                    return j(handler, mismatch, status=409)
-                # Missing session (cli_meta={} -> profile=None): keep the 404
-                # self-heal path. _profiles_match coerces None->'default', so a
-                # truly-missing session under a non-default active profile would
-                # otherwise emit a useless 409 with profile=null and skip the
-                # frontend self-heal + spin the SSE reconnect against a dead sid.
-                return bad(handler, "Session not found", 404)
-            synth, reason = _claim_or_synthesize_cli_session(sid, cli_meta=cli_meta or {})
-            if reason == "was_webui":
-                # Deleted WebUI session: 404 so the client self-heals
-                # (clears stale /session/<id> URL and localStorage, #2782).
-                return bad(handler, "Session not found", 404)
-            if synth is None:
-                # 'no_foreign_state' / 'invalid_sid' — nothing to render.
-                return bad(handler, "Session not found", 404)
-            # Build the legacy dict response from the synthesized Session so
-            # the wire shape stays byte-equivalent to the previous inline
-            # synthesis (the frontend has been reading these exact keys).
-            msgs = list(synth.messages or [])
-            sess = {
-                "session_id": synth.session_id,
-                "title": synth.title,
-                "workspace": synth.workspace,
-                "model": synth.model,
-                "message_count": len(msgs),
-                "created_at": synth.created_at,
-                "updated_at": synth.updated_at,
-                "last_message_at": (
-                    (cli_meta or {}).get("last_message_at")
-                    or (cli_meta or {}).get("updated_at", 0)
-                    or ((msgs or [{}])[-1].get("timestamp", 0))
-                ),
-                "pinned": bool(getattr(synth, "pinned", False)),
-                "archived": bool(getattr(synth, "archived", False)),
-                "project_id": getattr(synth, "project_id", None),
-                "profile": synth.profile,
-                # Read is_cli_session from the synthesized Session, not a
-                # hardcoded True: delegated subagent children (#5307) are
-                # recovered read-only with is_cli_session=False so they don't
-                # pass the frontend _isExternalSession poll-skip / active-refresh
-                # gates (#3603). Every other synthesized foreign session keeps
-                # is_cli_session=True so its source badge renders.
-                "is_cli_session": bool(getattr(synth, "is_cli_session", False)),
-                "source_tag": synth.source_tag,
-                "raw_source": synth.raw_source,
-                "session_source": synth.session_source,
-                "source_label": synth.source_label,
-                # Greptile #4911 follow-up: read read_only from the
-                # synthesized Session, NOT from cli_meta directly.
-                # The helper sets synth.read_only=True for BOTH
-                # explicit read_only=True cli_meta AND source-refused
-                # sessions (messaging / claude_code / external_agent).
-                # cli_meta.get("read_only") is only populated for the
-                # explicit case, so reading it from there causes the
-                # frontend to render the composer for source-refused
-                # sessions and the user only discovers the block at
-                # POST time with a confusing 403.
-                "read_only": bool(getattr(synth, "read_only", False)),
-                "messages": msgs,
-                "tool_calls": [],
-            }
-            attach_todo_state(sess, msgs)
-            sess = _merge_cli_sidebar_metadata(sess, cli_meta)
-            return j(handler, {"session": public_session_projection(sess)})
-
-    if parsed.path == "/api/session/lineage/report":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "session_id required", 400)
-        report = read_session_lineage_report(_active_state_db_path(), sid)
-        if not report.get("found"):
-            return bad(handler, "Session not found", 404)
-        return j(handler, report)
-
-    if parsed.path == "/api/session/recovery/audit":
-        from api.session_recovery import audit_session_recovery
-        return j(handler, audit_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path()))
-
-    if parsed.path == "/api/session/status":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        try:
-            from api.session_ops import session_status
-            _clear_stale_stream_state(get_session(sid, metadata_only=True))
-            return j(handler, session_status(sid))
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-
-    if parsed.path == "/api/session/yolo":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        return j(handler, {"yolo_enabled": is_session_yolo_enabled(sid)})
-
-    if parsed.path == "/api/session/usage":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        try:
-            from api.session_ops import session_usage
-            return j(handler, session_usage(sid))
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-
-    if parsed.path == "/api/background/status":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        from api.background import get_results
-        return j(handler, {"results": get_results(sid)})
-
-    if parsed.path == "/api/sessions":
-        diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-        try:
-            from api import profiles as profiles_api
-
-            diag.stage("load_settings")
-            settings = load_settings()
-            show_cli_sessions = bool(settings.get("show_cli_sessions"))
-            show_claude_code_sessions = bool(settings.get("show_claude_code_sessions"))
-            show_previous_messaging_sessions = bool(
-                settings.get("show_previous_messaging_sessions")
-            )
-            show_cron_sessions = bool(settings.get("show_cron_sessions"))
-            show_webhook_sessions = bool(settings.get("show_webhook_sessions"))
-            show_kanban_sessions = bool(settings.get("show_kanban_sessions"))
-            agent_session_source_filter = settings.get("agent_session_source_filter")
-            active_profile = profiles_api.get_active_profile_name()
-            all_profiles = _all_profiles_enabled(parsed)
-            include_archived = _query_flag(parsed, "include_archived")
-            exclude_hidden = _query_flag(parsed, "exclude_hidden")
-            archived_limit = _query_positive_int(parsed, "archived_limit", default=None, maximum=2000)
-            archived_offset = _query_positive_int(parsed, "archived_offset", default=0, maximum=200000)
-            sidebar_source = parse_qs(parsed.query).get("sidebar_source", [""])[0].strip().lower() or None
-            if sidebar_source not in ("webui", "cli"):
-                sidebar_source = None
-            # /api/sessions is the default sidebar contract, so keep the route-owned
-            # visible-row filter in the shared cache builder for both cache hits and misses.
-            key = _session_list_cache_key(
-                active_profile=active_profile,
-                all_profiles=all_profiles,
-                show_cli_sessions=show_cli_sessions,
-                show_claude_code_sessions=show_claude_code_sessions,
-                show_previous_messaging_sessions=show_previous_messaging_sessions,
-                show_cron_sessions=show_cron_sessions,
-                include_archived=include_archived,
-                exclude_hidden=exclude_hidden,
-                visible_only=True,
-                show_webhook_sessions=show_webhook_sessions,
-                show_kanban_sessions=show_kanban_sessions,
-                source_filter=agent_session_source_filter,
-                sidebar_source=sidebar_source,
-                archived_limit=archived_limit,
-                archived_offset=archived_offset,
-            )
-            # Keep the visible /api/sessions contract unchanged even though the
-            # heavy lifting now lives in the cache builder: profile scoping via
-            # `_profiles_match(s.get("profile"), active_profile)` still happens
-            # before `_keep_latest_messaging_session_per_source(`.
-            payload = _get_cached_session_list_payload(
-                key=key,
-                builder=lambda: _build_session_list_cache_payload(
-                    active_profile=active_profile,
-                    all_profiles=all_profiles,
-                    show_cli_sessions=show_cli_sessions,
-                    show_claude_code_sessions=show_claude_code_sessions,
-                    show_previous_messaging_sessions=show_previous_messaging_sessions,
-                    show_cron_sessions=show_cron_sessions,
-                    include_archived=include_archived,
-                    exclude_hidden=exclude_hidden,
-                    visible_only=True,
-                    show_webhook_sessions=show_webhook_sessions,
-                    show_kanban_sessions=show_kanban_sessions,
-                    source_filter=agent_session_source_filter,
-                    sidebar_source=sidebar_source,
-                    archived_limit=archived_limit,
-                    archived_offset=archived_offset,
-                    diag=diag,
-                ),
-                diag=diag,
-            )
-            diag.stage("response_write")
-            return j(handler, _session_list_payload_to_response(payload), pretty=False)
-        finally:
-            diag.finish()
-
-    if parsed.path == "/api/sticky_boards":
-        from api.sticky_board import load_boards
-
-        return j(handler, {"boards": load_boards()})
-
-    if parsed.path == "/api/projects":
-        # ── Profile scoping (#1614) ────────────────────────────────────────
-        # Default: filter to the active profile. ?all_profiles=1 returns the
-        # aggregate list so settings/admin UIs can still see everything.
-        from api import profiles as profiles_api
-
-        active_profile = profiles_api.get_active_profile_name()
-        all_projects = load_projects()
-        isolated_profile_mode = _is_isolated_profile_mode()
-        all_profiles = _all_profiles_enabled(parsed)
-        if all_profiles:
-            scoped = all_projects
-            other_profile_count = 0
-        else:
-            scoped = [p for p in all_projects
-                      if _profiles_match(p.get("profile"), active_profile)]
-            other_profile_count = 0 if isolated_profile_mode else len(all_projects) - len(scoped)
-        return j(handler, {
-            "projects": scoped,
-            "all_profiles": all_profiles,
-            "active_profile": active_profile,
-            "other_profile_count": other_profile_count,
-        })
-
-    if parsed.path == "/api/prompts":
-        return j(handler, {"prompts": _load_saved_prompts()})
-
-    if parsed.path == "/api/agent-definitions":
-        from api import agent_definitions
-        return j(handler, agent_definitions.list_definitions())
-
-    if parsed.path == "/api/crews":
-        from api import crews
-        return j(handler, crews.list_crews())
-
-    if parsed.path == "/api/crews/cost":
-        from api import crews
-        from api.kanban_bridge import _conn, _kb, _resolve_board, _task_dict
-
-        board = _resolve_board(parsed)
-        try:
-            with _conn(board=board) as conn:
-                tasks = _kb().list_tasks(conn, include_archived=True)
-                task_dicts = [_task_dict(t) for t in tasks]
-        except Exception:
-            logger.exception("Failed to load tasks for crew cost estimate")
-            return j(handler, {"costs": {}, "is_approximate": True})
-        return j(handler, {
-            "costs": crews.estimate_crew_costs(task_dicts),
-            "is_approximate": True,
-        })
-
-    if parsed.path == "/api/session/export":
-        return _handle_session_export(handler, parsed)
-
-    if parsed.path == "/api/workspaces":
-        wss = load_workspaces()
-        if any(w.get("kind") == "remote" for w in wss):
-            from api.ssh_mount import mount_status
-            for w in wss:
-                if w.get("kind") == "remote":
-                    w["mount_status"] = mount_status(w)
-        # Every workspace reports online/offline, not just remote ones: a local
-        # bind mount that vanished is just as unusable as a dropped SSHFS
-        # mount, and the pickers show one status dot for both. Remote entries
-        # already have a fresh mount_status above (each call stats the
-        # mountpoint and shells out to `mountpoint -q` -- not free, and a
-        # stale/unresponsive FUSE endpoint can make that stat genuinely slow)
-        # -- reuse it instead of making workspace_availability() redo the
-        # exact same two checks a second time.
-        from api.workspace import workspace_availability
-        for w in wss:
-            if w.get("kind") == "remote":
-                w["availability"] = "online" if w.get("mount_status") == "connected" else "offline"
-            else:
-                w["availability"] = workspace_availability(w)
-        return j(
-            handler,
-            {
-                "workspaces": wss,
-                "last": get_last_workspace(),
-                "terminal_remote_backend": _terminal_remote_backend_enabled(),
-            },
-        )
-
-    if parsed.path == "/api/workspaces/registry":
-        from api.project_registry import list_registry_projects
-
-        return j(handler, {"projects": list_registry_projects()})
-
-    if parsed.path == "/api/workspaces/suggest":
-        qs = parse_qs(parsed.query)
-        prefix = qs.get("prefix", [""])[0]
-        # The composer's path autocomplete wants a short list, but the project
-        # workspace binder browses a directory a level at a time and needs the
-        # whole listing. Callers opt into a bigger page via ?limit=; the default
-        # stays at list_workspace_suggestions()'s own 12 so autocomplete is
-        # unchanged, and the ceiling keeps a huge directory from being rendered
-        # into the panel in one go.
-        try:
-            limit = int(qs.get("limit", ["12"])[0])
-        except (TypeError, ValueError):
-            limit = 12
-        limit = max(1, min(limit, 500))
-        return j(
-            handler,
-            {
-                "suggestions": list_workspace_suggestions(prefix, limit=limit),
-                "prefix": prefix,
-                "limit": limit,
-            },
-        )
-
-    if parsed.path == "/api/office/integrations":
-        from api.office_integrations import list_office_integrations
-        j(handler, list_office_integrations())
-        return
-
-    if parsed.path == "/api/office/scheduled-tasks":
-        from api.gateway_chat import gateway_subagents_request
-        from api.profiles import get_active_hermes_home, get_active_profile_name
-        from api.scheduled_tasks import load_scheduled_tasks
-
-        profile_name = get_active_profile_name() or ""
-        if not profile_name:
-            return j(handler, {"tasks": []})
-        try:
-            gateway_data = gateway_subagents_request("GET", "/api/scheduled-tasks") or {}
-        except Exception:
-            gateway_data = {}
-        gateway_tasks = gateway_data.get("tasks", []) if isinstance(gateway_data, dict) else []
-        try:
-            local_tasks = load_scheduled_tasks(get_active_hermes_home(), profile_name)
-        except Exception:
-            local_tasks = []
-        seen = set()
-        tasks = []
-        for task in gateway_tasks + local_tasks:
-            if not isinstance(task, dict):
-                continue
-            job_id = task.get("job_id")
-            if not job_id or job_id in seen:
-                continue
-            seen.add(job_id)
-            tasks.append(task)
-        return j(handler, {"tasks": tasks})
-
-    if parsed.path == "/api/sessions/search":
-        return _handle_sessions_search(handler, parsed)
-
-    # ── Work Hub (GET) ────────────────────────────────────────────────────
-    if parsed.path == "/api/work_hub/bootstrap":
-        from api import work_hub
-
-        try:
-            return j(handler, work_hub.bootstrap())
-        except work_hub.WorkHubError as exc:
-            return bad(handler, str(exc), exc.status)
-
-    if parsed.path == "/api/work_hub/items":
-        from api import work_hub
-
-        query_values = parse_qs(parsed.query or "")
-        query = {
-            key: values[0]
-            for key, values in query_values.items()
-            if key in {"project_id", "status"} and values
-        }
-        try:
-            return j(handler, work_hub.list_items(query))
-        except work_hub.WorkHubError as exc:
-            return bad(handler, str(exc), exc.status)
-
-    _WORK_HUB_WORKFLOW_PREFIX = "/api/work_hub/workflows/"
-    if parsed.path.startswith(_WORK_HUB_WORKFLOW_PREFIX):
-        from api import work_hub
-
-        workflow_id = unquote(parsed.path[len(_WORK_HUB_WORKFLOW_PREFIX):]).strip("/")
-        if not workflow_id or "/" in workflow_id:
-            return bad(handler, "Workflow not found", 404)
-        workflow = work_hub.get_workflow_run(workflow_id)
-        if workflow is None:
-            return bad(handler, "Workflow not found", 404)
-        return j(handler, {"workflow": workflow, "revision": work_hub.load_state()["revision"]})
-
-    if parsed.path == "/api/work_hub/plan":
-        from api import goal_planner
-
-        query_values = parse_qs(parsed.query or "")
-        goal = query_values.get("goal", [""])[0].strip()
-        if not goal:
-            return bad(handler, "goal is required", 400)
-        return j(handler, goal_planner.plan_goal(goal))
-
-    if parsed.path == "/api/list":
-        return _handle_list_dir(handler, parsed)
-
-    if parsed.path == "/api/escape/list":
-        return _handle_escape_list_dir(handler, parsed)
-
-    if parsed.path == "/api/git/status":
-        return _handle_git_status(handler, parsed)
-
-    if parsed.path == "/api/subagents/active":
-        from api.gateway_chat import (
-            GatewaySubagentControlError,
-            gateway_subagents_request,
-            webui_gateway_chat_enabled,
-        )
-        if not webui_gateway_chat_enabled():
-            # In-process (single-container) chat never runs the separate
-            # gateway process this endpoint normally proxies to, so it used
-            # to unconditionally return an empty list here — Agent Canvas's
-            # reconcile() poll was a permanent no-op for this deployment
-            # shape, and the tree could only ever change via SSE events on
-            # the turn's own stream. A fire-and-forget subagent (still
-            # flushing on a daemon thread after the parent turn's stream
-            # already finalized — see delegate_tool.py's child_session_db
-            # ownership comment) then had no way to ever report completion,
-            # and card duration text never ticked between SSE events either.
-            # tools.delegate_tool's in-process registry is the same data
-            # the gateway process itself reads for this endpoint, so expose
-            # it directly instead of going through a nonexistent HTTP hop.
-            try:
-                from tools.delegate_tool import list_active_subagents
-
-                active = list_active_subagents()
-            except Exception:
-                logger.debug("subagents/active: in-process registry read failed", exc_info=True)
-                active = []
-            return j(handler, {"active": active, "spawn_paused": False, "gateway_enabled": False})
-        try:
-            data = gateway_subagents_request("GET", "/v1/subagents/active")
-        except GatewaySubagentControlError as e:
-            return j(handler, {"active": [], "spawn_paused": False, "gateway_enabled": True, "error": str(e)}, status=502)
-        return j(handler, {
-            "active": data.get("active") or [],
-            "spawn_paused": bool(data.get("spawn_paused")),
-            "gateway_enabled": True,
-        })
-
-    if parsed.path == "/api/agent-canvas/sessions":
-        try:
-            return j(handler, {"parents": _agent_canvas_parents()})
-        except Exception as e:
-            logger.debug("GET /api/agent-canvas/sessions failed", exc_info=True)
-            return j(handler, {"parents": [], "error": str(e)}, status=502)
-
-    if parsed.path == "/api/git/branches":
-        return _handle_git_branches(handler, parsed)
-
-    if parsed.path == "/api/git/diff":
-        return _handle_git_diff(handler, parsed)
-
-    if parsed.path == "/api/personalities":
-        # Read personalities from config.yaml agent.personalities section
-        # (matches hermes-agent CLI behavior, not filesystem SOUL.md approach)
-        from api.config import reload_config as _reload_cfg
-
-        _reload_cfg()  # pick up config.yaml changes without server restart
-        from api.config import get_config as _get_cfg
-
-        _cfg = _get_cfg()
-        agent_cfg = _cfg.get("agent", {})
-        raw_personalities = agent_cfg.get("personalities", {})
-        personalities = []
-        if isinstance(raw_personalities, dict):
-            for name, value in raw_personalities.items():
-                desc = ""
-                if isinstance(value, dict):
-                    desc = value.get("description", "")
-                elif isinstance(value, str):
-                    desc = value[:80] + ("..." if len(value) > 80 else "")
-                personalities.append({"name": name, "description": desc})
-        return j(handler, {"personalities": personalities})
-
-    if parsed.path == "/api/git-info":
-        qs = parse_qs(parsed.query)
-        sid = qs.get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "session_id required")
-        try:
-            s = get_session(sid)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        from api.workspace_git import GitWorkspaceError, git_status
-
-        try:
-            status = git_status(Path(s.workspace))
-        except GitWorkspaceError as e:
-            # The badge is supplementary UI.  A workspace may be on a slow or
-            # unavailable filesystem, so a failed status probe must not turn
-            # every ordinary workspace refresh into a client-visible 400.
-            return j(handler, {"git": None})
-        totals = status.get("totals") or {}
-        info = None if not status.get("is_git") else {
-            "branch": status.get("branch"),
-            "dirty": totals.get("changed", 0),
-            "modified": (totals.get("staged", 0) or 0) + (totals.get("unstaged", 0) or 0),
-            "untracked": totals.get("untracked", 0),
-            "ahead": status.get("ahead", 0),
-            "behind": status.get("behind", 0),
-            "is_git": True,
-        }
-        return j(handler, {"git": info})
-
-    if parsed.path == "/api/commands":
-        from api.commands import list_commands
-        return j(handler, {"commands": list_commands()})
-
-    if parsed.path == "/api/commands/bundles":
-        from api.commands import list_command_bundles
-        return j(handler, {"bundles": list_command_bundles()})
-
-    if parsed.path == "/api/commands/moa/resolve":
-        from api.commands import resolve_moa_config
-        try:
-            return j(handler, resolve_moa_config())
-        except RuntimeError as e:
-            return bad(handler, str(e), 503)
-
-    if parsed.path == "/api/updates/check":
-        settings = load_settings()
-        if not settings.get("check_for_updates", True):
-            return j(handler, {"disabled": True})
-        include_agent_updates = not bool(settings.get("ignore_agent_updates"))
-        qs = parse_qs(parsed.query)
-        # ?simulate=1 returns fake behind counts for UI testing (localhost only)
-        if (
-            qs.get("simulate", ["0"])[0] == "1"
-            and handler.client_address[0] == "127.0.0.1"
-        ):
-            return j(
-                handler,
-                {
-                    "webui": {
-                        "name": "webui",
-                        "behind": 3,
-                        "current_sha": "abc1234",
-                        "latest_sha": "def5678",
-                        "branch": "master",
-                        "repo_url": "https://github.com/nesquena/hermes-webui",
-                        "compare_url": "https://github.com/nesquena/hermes-webui/compare/abc1234...def5678",
-                    },
-                    "agent": {
-                        "name": "agent",
-                        "behind": 1 if include_agent_updates else 0,
-                        "ignored": not include_agent_updates,
-                        "current_sha": "aaa0001",
-                        "latest_sha": "bbb0002",
-                        "branch": "master",
-                        "repo_url": "https://github.com/NousResearch/hermes-agent",
-                        "compare_url": "https://github.com/NousResearch/hermes-agent/compare/aaa0001...bbb0002",
-                    },
-                    "checked_at": 0,
-                },
-            )
-        from api.updates import cached_update_status
-
-        return j(handler, cached_update_status(include_agent=include_agent_updates))
-
-    if parsed.path == "/api/chat/stream/status":
-        stream_id = parse_qs(parsed.query).get("stream_id", [""])[0]
-        if not _stream_id_visible_to_request_profile(handler, stream_id):
-            return True
-        active = stream_id in STREAMS
-        payload = {"active": active, "stream_id": stream_id, "replay_available": False}
-        try:
-            journal = find_run_summary(stream_id) if stream_id else None
-        except Exception:
-            journal = None
-        if journal:
-            payload["replay_available"] = True
-            payload["journal"] = _run_journal_status_payload(journal, active=active)
-        return j(handler, payload)
-
-    if parsed.path == "/api/chat/cancel":
-        stream_id = parse_qs(parsed.query).get("stream_id", [""])[0]
-        if not stream_id:
-            return bad(handler, "stream_id required")
-        if not _stream_id_visible_to_request_profile(handler, stream_id):
-            return True
-        gateway_stop_blocked = False
-        try:
-            from api.gateway_chat import (
-                GATEWAY_RUN_ID_WAIT_TIMEOUT,
-                stop_gateway_run,
-                wait_for_gateway_run_id,
-            )
-
-            structured_gateway, run_id = wait_for_gateway_run_id(stream_id, GATEWAY_RUN_ID_WAIT_TIMEOUT)
-            if not run_id and structured_gateway:
-                gateway_stop_blocked = True
-            if run_id:
-                if stop_gateway_run(run_id):
-                    owner_sid = stream_owner_session_id(stream_id)
-                    if owner_sid:
-                        retire_gateway_pending_mirror(owner_sid, run_id=run_id)
-                else:
-                    gateway_stop_blocked = True
-        except Exception:
-            logger.debug("Failed to stop gateway run during chat cancellation", exc_info=True)
-            gateway_stop_blocked = True
-        if gateway_stop_blocked:
-            return j(
-                handler,
-                {
-                    "ok": False,
-                    "cancelled": False,
-                    "stream_id": stream_id,
-                    "error": "Gateway stop failed",
-                },
-                status=502,
-            )
-
-        from api.runtime_adapter import LegacyJournalRuntimeAdapter, runtime_adapter_enabled
-
-        if runtime_adapter_enabled():
-            adapter = LegacyJournalRuntimeAdapter(cancel_delegate=cancel_stream)
-            cancelled = adapter.cancel_run(stream_id).accepted
-        else:
-            cancelled = cancel_stream(stream_id)
-        return j(handler, {"ok": True, "cancelled": cancelled, "stream_id": stream_id})
-
-    if parsed.path == "/api/chat/stream":
-        return _handle_sse_stream(handler, parsed)
-
-    if parsed.path == "/api/terminal/output":
-        return _handle_terminal_output(handler, parsed)
-
-    if parsed.path == '/api/sessions/gateway/stream':
-        return _handle_gateway_sse_stream(handler, parsed)
-
-    if parsed.path == '/api/sessions/events':
-        return _handle_session_events_stream(handler)
-
-    session_events_session_id = _session_events_path_session_id(parsed.path)
-    if session_events_session_id is not None:
-        return _handle_session_sse_stream_for_session(handler, parsed, session_events_session_id)
-
-    if parsed.path == "/api/media":
-        return _handle_media(handler, parsed)
-
-    if parsed.path == "/api/file/raw":
-        return _handle_file_raw(handler, parsed)
-
-    if parsed.path == "/api/escape/file/raw":
-        return _handle_escape_file_raw(handler, parsed)
-
-    if parsed.path == "/api/folder/download":
-        return _handle_folder_download(handler, parsed)
-
-    if parsed.path == "/api/file":
-        return _handle_file_read(handler, parsed)
-
-    if parsed.path == "/api/escape/file/read":
-        return _handle_escape_file_read(handler, parsed)
-
-    if parsed.path == "/api/approval/pending":
-        return _handle_approval_pending(handler, parsed)
-
-    if parsed.path == "/api/approval/stream":
-        return _handle_approval_sse_stream(handler, parsed)
-
-    if parsed.path == "/api/approval/inject_test":
-        # Loopback-only: used by automated tests; blocked from any remote client
-        if handler.client_address[0] != "127.0.0.1":
-            return j(handler, {"error": "not found"}, status=404)
-        return _handle_approval_inject(handler, parsed)
-
-    if parsed.path == "/api/clarify/pending":
-        return _handle_clarify_pending(handler, parsed)
-
-    if parsed.path == "/api/clarify/stream":
-        return _handle_clarify_sse_stream(handler, parsed)
-
-    if parsed.path == "/api/session/stream":
-        return _handle_session_sse_stream(handler, parsed)
-
-    if parsed.path == "/api/clarify/inject_test":
-        # Loopback-only: used by automated tests; blocked from any remote client
-        if handler.client_address[0] != "127.0.0.1":
-            return j(handler, {"error": "not found"}, status=404)
-        return _handle_clarify_inject(handler, parsed)
-
-    if parsed.path == "/api/onboarding/oauth/poll":
-        qs = parse_qs(parsed.query)
-        flow_id = qs.get("flow_id", [""])[0]
-        try:
-            return j(
-                handler,
-                poll_onboarding_oauth_flow(flow_id),
-                extra_headers={"Cache-Control": "no-store"},
-            )
-        except ValueError as e:
-            return bad(handler, str(e))
-        except KeyError as e:
-            return bad(handler, str(e), 404)
-
-    # ── Cron API (GET) ──
-    # Cron reads are active-profile-scoped by default. The list route now
-    # aggregates per visible profile home so the UI can surface hidden-row
-    # counts and, when opted in, read-only foreign rows.
-    if parsed.path == "/api/crons":
-        # #4768: in split-container / minimal Docker deployments the WebUI image may
-        # not ship the agent's `cron` package on its import path. Degrade gracefully
-        # (empty list + cron_unavailable flag) instead of 500ing the whole Task tab.
-        # Only treat a genuinely-absent cron package as "unavailable"; a
-        # ModuleNotFoundError whose missing module is an internal dependency of an
-        # existing cron/jobs.py is a real bug and must still surface.
-        _ensure_agent_cron_import_path()
-        active_profile = _get_active_profile_name() or "default"
-        try:
-            active_jobs, other_jobs = _cron_jobs_cross_profile(active_profile)
-        except ModuleNotFoundError as exc:
-            if exc.name in ("cron", "cron.jobs"):
-                return j(handler, {"jobs": [], "cron_unavailable": True})
-            raise
-        all_profiles = _all_profiles_enabled(parsed)
-        jobs = active_jobs + other_jobs if all_profiles else active_jobs
-        hidden_other_count = 0 if all_profiles else len(other_jobs)
-        return j(handler, {
-            "jobs": jobs,
-            "all_profiles": all_profiles,
-            "active_profile": active_profile,
-            "other_profile_count": hidden_other_count,
-        })
-
-    if parsed.path == "/api/crons/output":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_output(handler, parsed)
-
-    if parsed.path == "/api/crons/history":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_history(handler, parsed)
-
-    if parsed.path == "/api/crons/delegation":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_delegation(handler, parsed)
-
-    if parsed.path == "/api/crons/run":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_run_detail(handler, parsed)
-
-    if parsed.path == "/api/crons/recent":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_recent(handler, parsed)
-
-    if parsed.path == "/api/crons/status":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            return _handle_cron_status(handler, parsed)
-
-    if parsed.path == "/api/crons/delivery-options":
-        from api.profiles import cron_profile_context
-
-        with cron_profile_context():
-            _ensure_agent_cron_import_path()
-            return _handle_cron_delivery_options(handler)
-
-    # ── Skills API (GET) ──
-    if parsed.path == "/api/skills":
-        qs = parse_qs(parsed.query)
-        category = qs.get("category", [None])[0]
-        data = _skills_list_from_dir(_active_skills_dir(), category=category)
-        return j(handler, {"skills": data.get("skills", [])})
-
-    if parsed.path == "/api/skills/usage":
-        from api.skill_usage import read_skill_usage
-        raw = read_skill_usage(_active_skills_dir())
-        # Pass through agent's format as-is; defensive coercion for fields
-        usage = {}
-        if isinstance(raw, dict):
-            for k, v in raw.items():
-                if not isinstance(v, dict):
-                    usage[k] = {"use_count": 0, "view_count": 0, "patch_count": 0}
-                    continue
-                usage[k] = {
-                    "use_count": (int(v["use_count"]) if v.get("use_count") is not None else 0),
-                    "view_count": (int(v["view_count"]) if v.get("view_count") is not None else 0),
-                    "patch_count": (int(v["patch_count"]) if v.get("patch_count") is not None else 0),
-                }
-                # Preserve agent's metadata (timestamps, state, etc.)
-                for meta_key in v:
-                    if meta_key not in usage[k]:
-                        usage[k][meta_key] = v[meta_key]
-        skills_data = _skills_list_from_dir(_active_skills_dir()).get("skills", [])
-        skill_names = sorted({s["name"] for s in skills_data})
-        total = sum(
-            e.get("use_count", 0) + e.get("view_count", 0) + e.get("patch_count", 0)
-            for e in usage.values()
-        )
-        unique = sum(
-            1 for e in usage.values()
-            if e.get("use_count", 0) > 0 or e.get("view_count", 0) > 0 or e.get("patch_count", 0) > 0
-        )
-        return j(handler, {
-            "usage": usage,
-            "skill_names": skill_names,
-            "total_invocations": total,
-            "unique_skills_used": unique,
-        })
-
-    if parsed.path == "/api/skills/content":
-        qs = parse_qs(parsed.query)
-        name = qs.get("name", [""])[0]
-        if not name:
-            return j(handler, {"error": "name required"}, status=400)
-        file_path = qs.get("file", [""])[0]
-        if file_path:
-            # Serve a linked file from the skill directory
-            import re as _re
-
-            if _re.search(r"[*?\[\]]", name):
-                return bad(handler, "Invalid skill name", 400)
-            skills_dir = _active_skills_dir()
-            skill_dir, _skill_md = _find_skill_in_dirs(
-                name, _active_skill_search_dirs(skills_dir)
-            )
-            if not skill_dir:
-                return bad(handler, "Skill not found", 404)
-            target = (skill_dir / file_path).resolve()
-            try:
-                target.relative_to(skill_dir.resolve())
-            except ValueError:
-                return bad(handler, "Invalid file path", 400)
-            if not target.exists() or not target.is_file():
-                return bad(handler, "File not found", 404)
-            return j(
-                handler,
-                {"content": target.read_text(encoding="utf-8"), "path": file_path},
-            )
-        data = _skill_view_from_active_dir(name)
-        if not isinstance(data.get("linked_files"), dict):
-            data["linked_files"] = {}
-        return j(handler, data)
-
-    if parsed.path == "/api/skills/scan":
-        # Static-analysis security scan for an already-installed skill (v1
-        # scope: scan-only, no marketplace/install path — see
-        # docs/HERMES_STUDIO_PARITY_PLAN.md, Security scanner section).
-        qs = parse_qs(parsed.query)
-        name = qs.get("name", [""])[0]
-        if not name:
-            return bad(handler, "name is required", 400)
-        skills_dir = _active_skills_dir()
-        skill_dir, _skill_md = _find_skill_in_dirs(name, _active_skill_search_dirs(skills_dir))
-        if not skill_dir:
-            return bad(handler, "Skill not found", 404)
-        try:
-            from api.skills_hub_bridge import scan_installed_skill
-
-            return j(handler, scan_installed_skill(skill_dir))
-        except ImportError:
-            return bad(
-                handler,
-                "Security scanner unavailable (hermes-agent source not mounted)",
-                501,
-            )
-        except Exception as exc:
-            logger.exception("Skill scan failed for %s", name)
-            return bad(handler, _sanitize_error(exc), 500)
-
-    # ── Memory API (GET) ──
-    if parsed.path == "/api/memory":
-        return _handle_memory_read(handler, parsed)
-
-    # ── Audit trail (GET) ──
-    if parsed.path == "/api/audit":
-        return _handle_audit_trail_read(handler, parsed)
-
-    # ── Knowledge Browser API (GET, read-only) ──
-    # See docs/HERMES_STUDIO_PARITY_PLAN.md, "Knowledge Browser".
-    if parsed.path == "/api/knowledge/list":
-        from api import knowledge_browser
-        return j(handler, knowledge_browser.list_items())
-
-    if parsed.path == "/api/knowledge/read":
-        from api import knowledge_browser
-        query = parse_qs(parsed.query)
-        item_id = (query.get("id", [""])[0] or "").strip()
-        item = knowledge_browser.read_item(item_id) if item_id else None
-        if item is None:
-            return bad(handler, "Knowledge item not found", 404)
-        return j(handler, {"item": item})
-
-    if parsed.path == "/api/knowledge/search":
-        from api import knowledge_browser
-        query = parse_qs(parsed.query)
-        q = (query.get("q", [""])[0] or "").strip()
-        if not q:
-            return bad(handler, "q is required")
-        return j(handler, knowledge_browser.search_items(q))
-
-    # ── Profile API (GET) ──
-    if parsed.path == "/api/profiles":
-        from api import profiles as profiles_api
-        diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
-        try:
-            diag.stage("list_profiles_api") if diag else None
-            profiles_payload = profiles_api.list_profiles_api()
-            diag.stage("active_profile_lookup") if diag else None
-            active = profiles_api.get_active_profile_name()
-            diag.stage("isolated_mode_check") if diag else None
-            return j(
-                handler,
-                {
-                    "profiles": profiles_payload,
-                    "active": active,
-                    "single_profile_mode": _is_isolated_profile_mode(),
-                },
-            )
-        finally:
-            if diag:
-                diag.finish()
-
-    if parsed.path == "/api/profiles/approval_modes":
-        from api import profiles as profiles_api
-        rows = []
-        for p in profiles_api.list_profiles_api():
-            name = p.get("name")
-            path = p.get("path")
-            if not name or not path:
-                continue
-            rows.append({
-                "name": name,
-                "mode": profiles_api._read_profile_approval_mode(Path(path)),
-            })
-        return j(handler, {"profiles": rows})
-
-    if parsed.path == "/api/profile/active":
-        from api import profiles as profiles_api
-
-        active_profile_name = profiles_api.get_active_profile_name()
-        # Resolve the ACTIVE PROFILE's configured workspace so a cold boot with a
-        # profile cookie shows the right composer workspace chip on a blank
-        # new-chat page (#5169). Use get_profile_default_workspace() (NOT
-        # get_last_workspace) so a named profile without its own last_workspace.txt
-        # resolves to its config.yaml workspace/terminal.cwd rather than leaking the
-        # GLOBAL last-workspace file (the #5169 regression Codex flagged). It is
-        # profile-scoped via the per-request hermes_profile cookie set in server.py.
-        # Fail open: a resolution error must never 500 this boot-critical endpoint.
-        try:
-            _profile_default_workspace = get_profile_default_workspace()
-        except Exception:
-            logger.debug("Failed to resolve profile default workspace for /api/profile/active", exc_info=True)
-            _profile_default_workspace = None
-        return j(
-            handler,
-            {
-                "name": active_profile_name,
-                "path": str(profiles_api.get_active_hermes_home()),
-                "is_default": profiles_api._is_root_profile(active_profile_name),
-                "default_workspace": _profile_default_workspace,
-            },
-        )
-
-    # ── Gateway Status (GET) ──
-    if parsed.path == "/api/gateway/status":
-        return j(handler, _gateway_status_payload())
-
-    # ── MCP Servers (GET) ──
-    if parsed.path == "/api/mcp/servers":
-        return _handle_mcp_servers_list(handler)
-
-    # ── MCP Tools (GET) ──
-    if parsed.path == "/api/mcp/tools":
-        return _handle_mcp_tools_list(handler)
-
-    if parsed.path == "/api/notes/sources":
-        return _handle_notes_sources_list(handler)
-    if parsed.path == "/api/notes/search":
-        return _handle_notes_search(handler, parsed)
-    if parsed.path == "/api/notes/item":
-        return _handle_notes_item(handler, parsed)
-
-    # ── Checkpoints / Rollback (GET) ──
-    if parsed.path == "/api/rollback/list":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        if not workspace:
-            return bad(handler, "workspace query parameter is required")
-        try:
-            from api.rollback import list_checkpoints
-            return j(handler, list_checkpoints(workspace))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/list failed")
-            return bad(handler, str(e), status=500)
-
-    if parsed.path == "/api/rollback/diff":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        checkpoint = qs.get("checkpoint", [""])[0]
-        if not workspace or not checkpoint:
-            return bad(handler, "workspace and checkpoint query parameters are required")
-        try:
-            from api.rollback import get_checkpoint_diff
-            return j(handler, get_checkpoint_diff(workspace, checkpoint))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/diff failed")
-            return bad(handler, str(e), status=500)
-
-    # ── Plugin shared assets (e.g. /plugins/plugin.css) ──
-    # Restricted to shared plugin assets only — no cross-plugin file access.
-    if parsed.path.startswith("/plugins/"):
-        from api.plugins import _get_plugin_base
-        plugin_base = _get_plugin_base()
-        rel = parsed.path[len("/plugins/"):]
-        allowed = {"plugin.css"}
-        if rel not in allowed:
-            return False  # 404
-        safe = (plugin_base / rel).resolve()
-        try:
-            safe.relative_to(plugin_base.resolve())
-        except ValueError:
-            return False  # path traversal — 404
-        if safe.is_file():
-            import os as _os
-            data = safe.read_bytes()
-            ext = _os.path.splitext(rel.lower())[1]
-            ct = {
-                ".css": "text/css; charset=utf-8",
-                ".js": "application/javascript; charset=utf-8",
-                ".json": "application/json; charset=utf-8",
-                ".png": "image/png",
-                ".svg": "image/svg+xml",
-            }.get(ext, "application/octet-stream")
-            handler.send_response(200)
-            handler.send_header("Content-Type", ct)
-            handler.send_header("Content-Length", str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-            return True
-
-    # ── Plugin static assets ──
-    if parsed.path.startswith("/dashboard-plugins/"):
-        parts = parsed.path.split("/", 3)
-        if len(parts) >= 3:
-            plugin_name = parts[2]
-            rel_path = parts[3] if len(parts) > 3 else ""
-            # Server-side enable-gate: a plugin disabled in Settings must have its
-            # entire URL surface shut off, not merely hidden in the UI.
-            if not _dashboard_plugin_enabled(plugin_name):
-                return False  # 404 — disabled plugins serve nothing
-            from api.plugins import serve_plugin_static
-            result = serve_plugin_static(plugin_name, rel_path)
-            if result:
-                data, content_type = result
-                handler.send_response(200)
-                handler.send_header("Content-Type", content_type)
-                # Defense-in-depth: plugin-controlled assets are served from the
-                # WebUI's own origin. Sandbox them (null origin) so a plugin's
-                # .html/.svg can't run privileged same-origin script if navigated
-                # to directly (the in-panel iframe sandbox doesn't cover direct
-                # navigation). nosniff prevents content-type confusion.
-                handler.send_header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups")
-                handler.send_header("X-Content-Type-Options", "nosniff")
-                handler.send_header("Content-Length", str(len(data)))
-                handler.end_headers()
-                handler.wfile.write(data)
-                return True
+    if (route_result := _GET_ROUTES.dispatch(parsed.path, handler, parsed)) is not NOT_HANDLED:
+        return route_result
 
     # ── Plugin pages (HTML shell) ──
     from api.plugins import PLUGIN_MANIFESTS, _PLUGIN_STATIC_ROOTS
@@ -15694,6 +13505,2519 @@ def handle_get(handler, parsed) -> bool:
                     return True
 
     return False  # 404
+
+
+# ── GET routes (_GET_PUBLIC) ─────────────────────────────────────────────────
+# handle_get dispatches these in declaration order, ahead of the session-visibility guard:
+# these routes are public.
+# See api/route_table.py for the dispatch rules.
+
+
+def _route_get_session_static_prefix(handler, parsed):
+    # Strip the leading "/session" so _serve_static() sees a path that
+    # starts with "/static/" (its required prefix). _serve_static enforces
+    # its own path-traversal sandbox via Path.resolve()+relative_to().
+    stripped = parsed._replace(path=parsed.path[len("/session"):])
+    return _serve_static(handler, stripped)
+
+
+# Firefox Android resolves <link rel="manifest"> against the page URL
+# before the dynamic <base href> script runs when installing from
+# /session/<id>, producing requests like /session/manifest.json.
+# Without this guard the catch-all below returns index.html instead of
+# the manifest, and Firefox falls back to a generated letter icon.
+# See #2226.
+def _route_get_session_manifest_json(handler, parsed):
+    return _serve_manifest(handler)
+
+
+def _route_get_root(handler, parsed):
+    try:
+        from api.extensions import inject_extension_tags
+
+        csrf_token = ""
+        try:
+            from api.auth import csrf_token_for_session, is_auth_enabled, parse_cookie, verify_session
+
+            if is_auth_enabled():
+                cookie_val = parse_cookie(handler)
+                if not cookie_val:
+                    cookie_val = getattr(handler, "_trusted_auth_session_cookie_value", None)
+                if cookie_val and verify_session(cookie_val):
+                    csrf_token = csrf_token_for_session(cookie_val) or ""
+        except Exception:
+            csrf_token = ""
+
+        # The disk read + process-constant token substitutions are cached;
+        # only the per-session CSRF token and per-request extension tags are
+        # applied here (see _render_index_shell_base).
+        html = _render_index_shell_base().replace(
+            "__CSRF_TOKEN_JSON__", json.dumps(csrf_token)
+        )
+        return t(
+            handler,
+            inject_extension_tags(html),
+            content_type="text/html; charset=utf-8",
+        )
+    except Exception as exc:
+        return _serve_shell_unavailable(handler, exc)
+
+
+def _route_get_share(handler, parsed):
+    share_path = (Path(__file__).parent.parent / "static" / "share.html").resolve()
+    return t(
+        handler,
+        share_path.read_text(encoding="utf-8"),
+        content_type="text/html; charset=utf-8",
+        extra_headers={
+            "X-Robots-Tag": "noindex, nofollow",
+        },
+    )
+
+
+def _route_get_login(handler, parsed):
+    _settings = load_settings()
+    _bn = _html.escape(_settings.get("bot_name") or "Hermes")
+    _lang = _settings.get("language", "en")
+    _login_strings = _LOGIN_LOCALE[
+        _resolve_login_locale_key(_lang)
+    ]
+    from urllib.parse import quote
+    from api.updates import WEBUI_VERSION
+    version_token = quote(WEBUI_VERSION, safe="")
+    _page = (
+        _LOGIN_PAGE_HTML.replace("{{BOT_NAME}}", _bn)
+        .replace("{{WEBUI_VERSION}}", version_token)
+        .replace("{{LANG}}", _html.escape(_login_strings["lang"]))
+        .replace("{{LOGIN_TITLE}}", _html.escape(_login_strings["title"]))
+        .replace("{{LOGIN_SUBTITLE}}", _html.escape(_login_strings["subtitle"]))
+        .replace(
+            "{{LOGIN_PLACEHOLDER}}", _html.escape(_login_strings["placeholder"])
+        )
+        .replace("{{LOGIN_BTN}}", _html.escape(_login_strings["btn"]))
+        .replace("{{LOGIN_INVALID_PW}}", _html.escape(_login_strings["invalid_pw"]))
+        .replace(
+            "{{LOGIN_CONN_FAILED}}", _html.escape(_login_strings["conn_failed"])
+        )
+        .replace("{{OIDC_LOGIN_HTML}}", _oidc_login_html(parsed))
+    )
+    return t(handler, _page, content_type="text/html; charset=utf-8")
+
+
+def _route_get_api_auth_oidc_start(handler, parsed):
+    from api.auth_oidc import OIDCAuthError, OIDCConfigError, build_authorization_redirect
+
+    next_path = _safe_login_redirect_path(
+        parse_qs(parsed.query or "").get("next", [""])[0]
+    )
+    try:
+        location = build_authorization_redirect(
+            _request_base_url(handler), next_path
+        )
+    except OIDCConfigError as exc:
+        return j(handler, {"error": str(exc)}, status=404)
+    except OIDCAuthError as exc:
+        return j(handler, {"error": str(exc)}, status=exc.status_code)
+    handler.send_response(302)
+    handler.send_header("Location", location)
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Content-Length", "0")
+    _security_headers(handler)
+    handler.end_headers()
+    return True
+
+
+def _route_get_api_auth_oidc_callback(handler, parsed):
+    from api.auth import create_session, set_auth_cookie
+    from api.auth_oidc import OIDCAuthError, OIDCConfigError, complete_authorization_code_flow
+
+    query = parse_qs(parsed.query or "")
+    error = str(query.get("error", [""])[0] or "").strip()
+    if error:
+        description = str(query.get("error_description", [""])[0] or "").strip()
+        return j(handler, {"error": description or error}, status=401)
+    state = str(query.get("state", [""])[0] or "").strip()
+    code = str(query.get("code", [""])[0] or "").strip()
+    if not state or not code:
+        return j(handler, {"error": "Missing OIDC callback state or code"}, status=400)
+    try:
+        result = complete_authorization_code_flow(
+            _request_base_url(handler), state, code
+        )
+    except OIDCConfigError as exc:
+        return j(handler, {"error": str(exc)}, status=404)
+    except OIDCAuthError as exc:
+        return j(handler, {"error": str(exc)}, status=exc.status_code)
+    cookie_val = create_session()
+    handler.send_response(302)
+    handler.send_header(
+        "Location",
+        _safe_login_redirect_path(result.get("next_path")),
+    )
+    handler.send_header("Cache-Control", "no-store")
+    _security_headers(handler)
+    set_auth_cookie(handler, cookie_val)
+    handler.send_header("Content-Length", "0")
+    handler.end_headers()
+    return True
+
+
+def _route_get_api_auth_status(handler, parsed):
+    from api.auth import (
+        _passkey_feature_flag_enabled,
+        ensure_trusted_auth_session,
+        get_password_hash,
+        is_auth_enabled,
+        is_oidc_auth_enabled,
+        is_trusted_auth_enabled,
+    )
+    from api.passkeys import registered_credentials
+
+    logged_in = False
+    session_info = None
+    auth_enabled = is_auth_enabled()
+    oidc_enabled = is_oidc_auth_enabled()
+    if auth_enabled:
+        session_info = ensure_trusted_auth_session(handler)
+        logged_in = bool(session_info)
+    passkey_flag = _passkey_feature_flag_enabled()
+    passkeys = registered_credentials() if passkey_flag else []
+    password_auth_enabled = get_password_hash() is not None
+    payload = {
+        "auth_enabled": auth_enabled,
+        "logged_in": logged_in,
+        "oidc_enabled": oidc_enabled,
+        "password_auth_enabled": password_auth_enabled,
+        "passwordless_enabled": bool(passkeys) and not password_auth_enabled,
+        "passkeys_enabled": bool(passkeys),
+        "passkeys_count": len(passkeys),
+        "passkey_feature_flag": passkey_flag,
+        "auth_disabled_acknowledged": bool(load_settings().get("auth_disabled_acknowledged")) if not auth_enabled else False,
+    }
+    if is_trusted_auth_enabled() or (session_info and session_info.get("auth_type") == "trusted"):
+        payload["trusted_auth_enabled"] = True
+    if session_info and session_info.get("auth_type") == "trusted":
+        payload["auth_type"] = session_info.get("auth_type")
+        payload["user"] = session_info.get("username")
+        payload["bound_profile"] = session_info.get("bound_profile")
+    return j(handler, payload)
+
+
+def _route_get_api_share_prefix(handler, parsed):
+    token = parsed.path[len("/api/share/"):].strip()
+    share = load_share(token)
+    if not share:
+        return bad(handler, "Shared conversation not found", 404)
+    return j(
+        handler,
+        {"share": share},
+        extra_headers={
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex, nofollow",
+        },
+    )
+
+
+def _route_get_manifest_json(handler, parsed):
+    return _serve_manifest(handler)
+
+
+def _route_get_sw_js(handler, parsed):
+    static_root = api_config.get_static_root()
+    sw_path = (static_root / "sw.js").resolve()
+    if sw_path.exists():
+        # Inject the current git-derived version as the cache name so the
+        # service worker cache busts automatically on every new deploy.
+        from urllib.parse import quote
+        from api.updates import WEBUI_VERSION
+        version_token = quote(WEBUI_VERSION, safe="")
+        text = sw_path.read_text(encoding="utf-8").replace(
+            "__WEBUI_VERSION__", version_token
+        )
+        data = text.encode("utf-8")
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/javascript; charset=utf-8")
+        handler.send_header("Cache-Control", "no-store")
+        handler.send_header("Service-Worker-Allowed", "/")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+        return True
+    return j(handler, {"error": "not found"}, status=404)
+
+
+def _route_get_favicon_ico(handler, parsed):
+    static_root = api_config.get_static_root()
+    ico_path = (static_root / "favicon.ico").resolve()
+    if ico_path.exists() and ico_path.is_file():
+        data = ico_path.read_bytes()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "image/x-icon")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.send_header("Cache-Control", "public, max-age=86400")
+        handler.end_headers()
+        handler.wfile.write(data)
+    else:
+        handler.send_response(204)
+        handler.end_headers()
+    return True
+
+
+_GET_PUBLIC = RouteTable(
+    (
+        (Prefix("/session/static/"), _route_get_session_static_prefix),
+        (Exact("/session/manifest.json", "/session/manifest.webmanifest"), _route_get_session_manifest_json),
+        ((Exact("/", "/index.html"), Prefix("/session/")), _route_get_root),
+        ((Exact("/share"), Prefix("/share/")), _route_get_share),
+        (Exact("/login"), _route_get_login),
+        (Exact("/api/auth/oidc/start"), _route_get_api_auth_oidc_start),
+        (Exact("/api/auth/oidc/callback"), _route_get_api_auth_oidc_callback),
+        (Exact("/api/auth/status"), _route_get_api_auth_status),
+        (Prefix("/api/share/"), _route_get_api_share_prefix),
+        (Exact("/manifest.json", "/manifest.webmanifest"), _route_get_manifest_json),
+        (Exact("/sw.js"), _route_get_sw_js),
+        (Exact("/favicon.ico"), _route_get_favicon_ico),
+    )
+)
+
+
+# ── GET routes (_GET_ROUTES) ─────────────────────────────────────────────────
+# handle_get dispatches these in declaration order.
+# See api/route_table.py for the dispatch rules.
+
+
+_WORK_HUB_WORKFLOW_PREFIX = "/api/work_hub/workflows/"
+
+
+def _session_events_path_session_id(path: str | None) -> str | None:
+    path = str(path or "")
+    parts = path.strip("/").split("/")
+    if len(parts) != 4:
+        return None
+    if parts[0] != "api" or parts[1] != "sessions" or parts[3] != "events":
+        return None
+    sid = str(parts[2] or "").strip()
+    return sid or None
+
+
+def _route_get_api_job_os_prefix(handler, parsed):
+    from api.job_os.api import handle_job_os_get
+
+    return handle_job_os_get(handler, parsed)
+
+
+# ── Insights / knowledge status ──
+def _route_get_api_insights(handler, parsed):
+    return _handle_insights(handler, parsed)
+
+
+def _route_get_api_account_usage(handler, parsed):
+    return _handle_account_usage(handler, parsed)
+
+
+def _route_get_api_project_os_dashboard(handler, parsed):
+    return _handle_project_os_dashboard(handler, parsed)
+
+
+def _route_get_api_kanban_prefix(handler, parsed):
+    from api.kanban_bridge import handle_kanban_get
+
+    # Only treat an explicit False as "no route matched". None means the
+    # bridge already sent a response via bad()/j() — emitting our own 404
+    # on top of that produces concatenated JSON bodies on the wire.
+    result = handle_kanban_get(handler, parsed)
+    if result is False:
+        return _kanban_unknown_endpoint(handler, parsed, "GET")
+    return True
+
+
+def _route_get_api_wiki_status(handler, parsed):
+    return _handle_llm_wiki_status(handler, parsed)
+
+
+def _route_get_api_wiki_browse(handler, parsed):
+    wiki_root, _, _ = _llm_wiki_resolve_path()
+    if not wiki_root or not os.path.isdir(wiki_root):
+        return bad(handler, "Wiki not configured or directory not found", status=404)
+    allowlisted_entries = _llm_wiki_allowlisted_entries(Path(wiki_root))
+    pages = []
+    for rel_path, (fp, identity) in sorted(allowlisted_entries.items(), key=lambda item: item[0].lower()):
+        try:
+            st = fp.stat()
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) != identity:
+            continue
+        pages.append({"name": Path(rel_path).name, "path": rel_path, "size": st.st_size, "mtime": int(st.st_mtime)})
+    return j(handler, {"pages": pages})
+
+
+def _route_get_api_wiki_page(handler, parsed):
+    wiki_root, _, _ = _llm_wiki_resolve_path()
+    page_path = parse_qs(parsed.query or "").get("path", [""])[0]
+    if not wiki_root or not page_path:
+        return bad(handler, "Wiki not configured or path not provided", status=400)
+    if "\\" in page_path:
+        return bad(handler, "Invalid path", status=400)
+    # Reject a real `..` path SEGMENT (or absolute path), not the bare
+    # substring — a legitimate listed filename like `v1..v2.md` contains
+    # ".." without being traversal. Containment + the resolved-allowlist
+    # membership check below are the actual security boundary.
+    requested_key = page_path.replace("\\", "/")
+    _page_parts = requested_key.split("/")
+    if os.path.isabs(page_path) or any(part == ".." for part in _page_parts):
+        return bad(handler, "Invalid path", status=400)
+    if any(part in ("", ".") for part in _page_parts):
+        return bad(handler, "Invalid path", status=400)
+    full_path = Path(os.path.join(wiki_root, page_path))
+    if not _skill_path_within(Path(wiki_root), full_path):
+        return bad(handler, "Invalid path", status=400)
+    try:
+        wiki_real = Path(wiki_root).resolve()
+    except OSError:
+        return bad(handler, "Page not found", status=404)
+    # Only serve files the browse/list path would surface (same allowlist:
+    # *.md under the wiki page-dirs, no dotfiles, forbidden-roots guard).
+    # Without this the read endpoint could return ANY file inside the wiki
+    # root (e.g. .env / .git/config / non-.md), since containment alone
+    # doesn't constrain which files are readable (Opus review finding).
+    # Capture each allowlisted page's STABLE IDENTITY (st_dev, st_ino) so the
+    # post-open fstat below can detect a file/parent-dir swapped in after the
+    # allowlist check (TOCTOU write-race, Codex finding) — a pathname re-open
+    # alone can't, since O_NOFOLLOW only guards the final component, not a
+    # swapped parent directory.
+    allowed_identity = _llm_wiki_allowlisted_entries(wiki_real)
+    try:
+        resolved_target = full_path.resolve()
+    except OSError:
+        return bad(handler, "Page not found", status=404)
+    requested_entry = allowed_identity.get(requested_key)
+    if requested_entry is None:
+        return bad(handler, "Page not found", status=404)
+    allowlisted_target, allowlisted_identity = requested_entry
+    if resolved_target != allowlisted_target:
+        return bad(handler, "Page not found", status=404)
+    # Read the ALREADY-RESOLVED, allowlisted real path with O_NOFOLLOW so a
+    # symlink swapped in for the final component between the allowlist check
+    # and the read is refused rather than followed. Then fstat the open fd
+    # and require its (st_dev, st_ino) to match the identity captured during
+    # allowlisting — this closes a parent-directory swap that O_NOFOLLOW
+    # would otherwise follow. Any mismatch / vanished / swapped page returns
+    # a clean 404, never a 500.
+    try:
+        fd = os.open(str(resolved_target), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            st_open = os.fstat(fd)
+            if (st_open.st_dev, st_open.st_ino) != allowlisted_identity:
+                return bad(handler, "Page not found", status=404)
+            raw = os.read(fd, _LLM_WIKI_MAX_PAGE_BYTES + 1)
+        finally:
+            os.close(fd)
+        if len(raw) > _LLM_WIKI_MAX_PAGE_BYTES:
+            raw = raw[:_LLM_WIKI_MAX_PAGE_BYTES]
+        content = raw.decode("utf-8", errors="replace")
+    except (FileNotFoundError, IsADirectoryError):
+        return bad(handler, "Page not found", status=404)
+    except OSError:
+        # ELOOP (symlink swapped in under O_NOFOLLOW) or any other read
+        # failure → clean 404, never a 500.
+        return bad(handler, "Could not read page", status=404)
+    return j(handler, {"content": content, "path": page_path})
+
+
+def _route_get_api_logs(handler, parsed):
+    return _handle_logs(handler, parsed)
+
+
+def _route_get_health(handler, parsed):
+    return _handle_health(handler, parsed)
+
+
+def _route_get_api_health_agent(handler, parsed):
+    payload = build_agent_health_payload()
+    payload["gateway_chat"] = gateway_chat_config_status()
+    j(handler, payload)
+    return True
+
+
+def _route_get_api_system_health(handler, parsed):
+    j(handler, build_system_health_payload())
+    return True
+
+
+def _route_get_api_models(handler, parsed):
+    # Profile-scoping for non-default profiles (#3957) is handled INSIDE
+    # get_available_models() — it binds the active profile's env + TLS on
+    # the detached rebuild worker (and the legacy synchronous rebuild),
+    # which the request-thread wrapper could not reach. See
+    # api.config.get_available_models cold path + profile_scope_for_detached_worker.
+    freshness = parse_qs(parsed.query or "").get("freshness", [""])[0].strip().lower()
+    diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    try:
+        diag.stage(f"enter:freshness={freshness or 'default'}") if diag else None
+        if freshness == "session_visit":
+            result = get_available_models_for_session_visit()
+            diag.stage("response_serialize") if diag else None
+            return j(handler, result)
+        if freshness:
+            return bad(handler, f"unknown models freshness: {freshness}", status=400)
+        return j(handler, get_available_models())
+    finally:
+        if diag:
+            diag.finish()
+
+
+def _route_get_api_models_cross_profile(handler, parsed):
+    from api.config import get_available_models_across_profiles
+    return j(handler, get_available_models_across_profiles())
+
+
+def _route_get_api_models_live(handler, parsed):
+    from api.profiles import profile_env_for_active_request
+    with profile_env_for_active_request("/api/models/live", logger_override=logger):
+        return _handle_live_models(handler, parsed)
+
+
+# ── Auxiliary models (GET/POST) ──
+def _route_get_api_model_auxiliary(handler, parsed):
+    from api.config import get_auxiliary_models
+    return j(handler, get_auxiliary_models())
+
+
+def _route_get_api_dashboard_status(handler, parsed):
+    from api import dashboard_probe
+
+    j(handler, dashboard_probe.get_dashboard_status())
+    return True
+
+
+def _route_get_api_dashboard_config(handler, parsed):
+    from api import dashboard_probe
+
+    try:
+        j(handler, dashboard_probe.get_dashboard_config())
+    except ValueError as exc:
+        bad(handler, str(exc), status=400)
+    return True
+
+
+# ── Providers (GET) ──
+def _route_get_api_providers(handler, parsed):
+    # Apply the active per-request profile's env so provider auth probes
+    # resolve against that profile's credentials, not the process-default
+    # profile's (#3957). Without this, get_auth_status() probes on a
+    # non-default profile resolve the wrong/empty creds and can stall past
+    # the 30s frontend timeout. No-op for the default profile.
+    from api.profiles import profile_env_for_active_request_readonly
+    with profile_env_for_active_request_readonly("/api/providers", logger_override=logger):
+        return j(handler, get_providers())
+
+
+# ── Plugins/hooks visibility (read-only, no callback/source internals) ──
+def _route_get_api_plugins(handler, parsed):
+    return _handle_plugins(handler, parsed)
+
+
+def _route_get_api_provider_quota(handler, parsed):
+    query = parse_qs(parsed.query)
+    provider_id = (query.get("provider", [""])[0] or None)
+    refresh = (query.get("refresh", [""])[0] or "").strip().lower() in {"1", "true", "yes", "on"}
+    # Bind the active request's profile env (matches /api/providers and
+    # /api/models/live). #4365 added a credential_pool.load_pool() path in
+    # get_provider_quota for all pooled providers; without this wrapper that
+    # read/write runs under the process-default profile, so a multi-profile
+    # client would see (and seed) the default profile's pool instead of its
+    # own (#4247/#4067 profile-isolation class).
+    from api.profiles import profile_env_for_active_request_readonly
+    with profile_env_for_active_request_readonly("/api/provider/quota", logger_override=logger):
+        return j(handler, get_provider_quota(provider_id, refresh=refresh))
+
+
+def _route_get_api_provider_cost_history(handler, parsed):
+    query = parse_qs(parsed.query)
+    provider_id = (query.get("provider", [""])[0] or None)
+    days_raw = (query.get("days", ["7"])[0] or "7").strip()
+    try:
+        days = max(1, min(int(days_raw), 365))
+    except (ValueError, TypeError):
+        days = 7
+    return j(handler, get_provider_cost_history(provider_id, days))
+
+
+def _route_get_api_settings(handler, parsed):
+    settings = load_settings()
+    settings["persisted_speech_keys"] = persisted_speech_settings_keys()
+    # Never expose the stored password hash to clients
+    settings.pop("password_hash", None)
+    settings.setdefault("max_tokens", None)
+    settings.setdefault("max_tokens_effective", None)
+    settings.setdefault("max_tokens_fallback", None)
+    try:
+        from api.config import get_max_tokens_status
+        settings.update(get_max_tokens_status())
+    except Exception:
+        settings["max_tokens"] = None
+        settings["max_tokens_effective"] = None
+        settings["max_tokens_fallback"] = None
+    # Surface env-var precedence so the UI can disable the password field
+    # instead of silently no-oping the save (#1560). The setting takes
+    # precedence in api.auth.get_password_hash(), but until now the UI
+    # had no way to know — see issue #1139 / #1560.
+    settings["password_env_var"] = bool(
+        os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
+    )
+    # Auth-state fields for frontend safety badge / confirmation flows
+    from api.auth import get_password_hash, is_auth_enabled
+    settings["auth_enabled"] = is_auth_enabled()
+    settings["password_auth_enabled"] = get_password_hash() is not None
+    try:
+        from api.auth import _passkey_feature_flag_enabled as _pffe
+        from api.passkeys import registered_credentials as _rc
+        if _pffe():
+            settings["passkeys_enabled"] = bool(_rc())
+            settings["passwordless_enabled"] = bool(_rc()) and not settings["password_auth_enabled"]
+        else:
+            settings["passkeys_enabled"] = False
+            settings["passwordless_enabled"] = False
+    except Exception:
+        pass
+    # Inject the running version so the UI badge stays in sync with git tags
+    # without any manual release step.
+    try:
+        from api.updates import AGENT_VERSION, WEBUI_VERSION
+        settings["webui_version"] = WEBUI_VERSION
+        settings["agent_version"] = AGENT_VERSION
+    except Exception:
+        pass
+    # Channel-scoped display badge — SEPARATE from webui_version (which is
+    # load-bearing for asset cache-busting / SW cache / skew detection and
+    # must stay channel-neutral). update_channel_version is display-only.
+    try:
+        from api.updates import channel_version_badge, _read_update_channel
+        channel = _read_update_channel()
+        settings["update_channel"] = channel
+        settings["update_channel_version"] = channel_version_badge(channel)
+    except Exception:
+        pass
+    return j(handler, settings)
+
+
+def _route_get_api_transcribe_capability(handler, parsed):
+    return handle_transcribe_capability(handler)
+
+
+def _route_get_api_reasoning(handler, parsed):
+    # Current reasoning config (shared source of truth with the CLI —
+    # reads display.show_reasoning and agent.reasoning_effort from
+    # the active profile's config.yaml).
+    query = parse_qs(parsed.query)
+    model_id = (query.get("model", [""])[0] or "").strip() or None
+    provider_id = (query.get("provider", [""])[0] or "").strip() or None
+    base_url = (query.get("base_url", [""])[0] or "").strip() or None
+    return j(
+        handler,
+        get_reasoning_status(
+            model_id=model_id,
+            provider_id=provider_id,
+            base_url=base_url,
+        ),
+    )
+
+
+def _route_get_api_onboarding_status(handler, parsed):
+    return j(handler, get_onboarding_status())
+
+
+def _route_get_api_extensions_status(handler, parsed):
+    from api.extensions import get_extension_status
+
+    return j(handler, get_extension_status())
+
+
+def _route_get_api_extensions_registry(handler, parsed):
+    from api.extensions import get_extension_registry
+
+    return j(handler, get_extension_registry())
+
+
+def _route_get_extensions_prefix(handler, parsed):
+    from api.extensions import serve_extension_static
+
+    return serve_extension_static(handler, parsed)
+
+
+def _route_get_graphify_projects_prefix(handler, parsed):
+    from api.graphify_static import graphify_static_fallback
+
+    result = graphify_static_fallback(None, handler, parsed)
+    if result is not None:
+        return result
+    return NOT_HANDLED
+
+
+def _route_get_static_prefix(handler, parsed):
+    return _serve_static(handler, parsed)
+
+
+def _route_get_api_session_worktree_status(handler, parsed):
+    query = parse_qs(parsed.query)
+    sid = query.get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id is required", status=400)
+    try:
+        s = get_session(sid, metadata_only=True)
+    except KeyError:
+        return bad(handler, "Session not found", status=404)
+    try:
+        from api.worktrees import worktree_status_for_session
+
+        return j(handler, {"status": worktree_status_for_session(s)})
+    except ValueError as exc:
+        return bad(handler, str(exc), status=400)
+    except Exception as exc:
+        logger.exception("failed to read worktree status for session %s", sid)
+        return bad(handler, _sanitize_error(exc), status=500)
+
+
+def _route_get_api_session_compress_status(handler, parsed):
+    query = parse_qs(parsed.query)
+    _handle_session_compress_status(handler, query.get("session_id", [""])[0])
+    return True
+
+
+def _route_get_api_session(handler, parsed):
+    import time as _time
+    _t0 = _time.monotonic()
+    _debug_slow = os.environ.get("HERMES_DEBUG_SLOW", "")
+    # perf(webui/session-load-latency) tier2c: per-stage breakdown via
+    # RequestDiagnostics. maybe_start() returns None for paths not in
+    # the allowlist, in which case the existing _tN-driven [SLOW] log
+    # is the only signal — same as before.
+    _diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    # perf(webui/session-load-latency) tier2c-followup: every early-return
+    # in this handler calls `_diag.finish()` before returning so the
+    # watchdog's _watchdog_pending dict stays bounded to in-flight requests.
+    # Greptile flagged this in PR review — finish() unregisters the
+    # pending watchdog entry; without it the entry stays for the full
+    # 5s slow-request timeout and emits a spurious "Slow WebUI request
+    # still running" log. Idempotent — finish() no-ops if already called.
+    query = parse_qs(parsed.query)
+    sid = query.get("session_id", [""])[0]
+    if not sid:
+        if _diag: _diag.finish()
+        return j(handler, {"error": "session_id is required"}, status=400)
+    # ?messages=0 skips the message payload for fast session switching.
+    # The frontend uses this when switching conversations in the sidebar
+    # (only needs metadata). The full message array is loaded lazily
+    # via ?messages=1 when the message panel opens.
+    load_messages = query.get("messages", ["1"])[0] != "0"
+    resolve_model_default = "1" if load_messages else "0"
+    resolve_model = query.get("resolve_model", [resolve_model_default])[0] != "0"
+    # A root-page restore checks only whether a locally saved session needs
+    # a profile handoff.  Return that minimal routing signal as a success so
+    # the browser does not log an expected 409 before it switches profiles.
+    profile_probe = query.get("profile_probe", ["0"])[0] == "1"
+    # ?msg_limit=N returns a tail window containing the last N visible
+    # transcript rows. Hidden tool-result rows do not consume the budget;
+    # they are included only when they sit inside the selected window and
+    # are bounded before serialization. Older rows load on-demand.
+    # Clamp to _MAX_MSG_LIMIT so an oversized request (e.g. msg_limit=9999
+    # from an outline jump, or a hostile value) can't force an unbounded
+    # payload; the existing _messages_truncated signal covers the clamped
+    # case (the client sees there are more rows than returned). Parsing +
+    # clamping live in _parse_msg_limit so the expression has direct test
+    # coverage; None means the bare no-msg_limit path (full transcript).
+    msg_limit = _parse_msg_limit(query.get("msg_limit", [None])[0])
+    # ?msg_before=N — 0-based index into the full message array.
+    # Returns messages before this index (for scroll-to-top lazy loading).
+    # Combined with msg_limit for paging.
+    _msg_before = query.get("msg_before", [None])[0]
+    try:
+        msg_before = int(_msg_before) if _msg_before else None
+    except (ValueError, TypeError):
+        msg_before = None
+    # ?expand_renderable=1 is retained for compatibility with older
+    # frontends. msg_limit now counts visible transcript rows by default, so
+    # the flag no longer changes the server-side pagination semantics.
+    _expand_renderable = query.get("expand_renderable", [None])[0]
+    expand_renderable = str(_expand_renderable).strip() in ("1", "true", "True")
+    try:
+        _t1 = _time.monotonic()
+        if _diag: _diag.stage("t1_after_get_session_check")
+        s = get_session(sid, metadata_only=(not load_messages))
+        _session_profile = getattr(s, 'profile', None) or None
+        if not _session_visible_to_active_profile(_session_profile, handler):
+            if _session_profile:
+                # Valid session owned by a KNOWN other profile: 409 so the
+                # client can offer to switch to it (#5419).
+                if _diag: _diag.finish()
+                if profile_probe and not load_messages and not resolve_model:
+                    return j(handler, {
+                        "profile_mismatch": True,
+                        "session_id": sid,
+                        "profile": _session_profile,
+                    })
+                return j(handler, {
+                    "error": "Session belongs to a different profile",
+                    "code": "session_profile_mismatch",
+                    "session_id": sid,
+                    "profile": _session_profile,
+                }, status=409)
+            # Unknown/legacy None-profile sidecar: keep the original 404 so
+            # the frontend's self-heal (clear stale URL + localStorage) still
+            # fires. _profiles_match coerces None->'default', so a truly
+            # missing/legacy session under a non-default active profile would
+            # otherwise emit a useless 409 with profile=null.
+            if _diag: _diag.finish()
+            return bad(handler, "Session not found", 404)
+        original_stream_id = getattr(s, "active_stream_id", None)
+        _clear_stale_stream_state(s)
+        cli_meta = _lookup_cli_session_metadata(sid) if _session_requires_cli_metadata_lookup(s) else {}
+        is_messaging_session = _is_messaging_session_record(s) or _is_messaging_session_record(cli_meta)
+        cli_messages = []
+        state_db_messages = []
+        metadata_summary = None
+        limited_sidecar_messages = None
+        state_db_since_timestamp = None
+        # Set by the limited-display path when the memoized merge can be
+        # reused without loading the state.db rows; must exist for every
+        # branch below, including the ones that never probe the cache.
+        _display_cache_hit = None
+        _display_state_db_signature = None
+        if is_messaging_session:
+            cli_messages = get_cli_session_messages(sid)
+        elif load_messages:
+            if msg_limit is not None:
+                (
+                    state_db_since_timestamp,
+                    limited_sidecar_messages,
+                ) = _state_db_since_timestamp_for_limited_display(
+                    s,
+                    msg_limit,
+                    msg_before=msg_before,
+                )
+            _state_db_reader_kwargs = {"profile": _session_profile}
+            if state_db_since_timestamp is not None:
+                _state_db_reader_kwargs["since_timestamp"] = state_db_since_timestamp
+            # Apply the display-path row backstop ONLY on provably-safe
+            # reads where no truncation_boundary prefix is required for the
+            # merge — see _state_db_backstop_limit_for_display. Compressed
+            # sessions and msg_before paging need their full prefix rows for
+            # correct reconciliation, so those stay uncapped.
+            _backstop = _state_db_backstop_limit_for_display(s, msg_before)
+            if _backstop is not None:
+                _state_db_reader_kwargs["limit"] = _backstop
+            # perf: on the limited-display path the state.db rows are only
+            # consumed by the memoized merge below. Now that the cache key
+            # is a bounded SQL signature rather than a fingerprint OF these
+            # rows, a hit no longer needs them -- and materialising tens of
+            # thousands of dicts was the dominant remaining cost (~2.3s on a
+            # 36k-row session) even when the merge itself was served from
+            # cache. Probe the cache first and skip the load on a hit.
+            #
+            # Deliberately narrow: only when msg_limit is set (the merge
+            # helper below is the sole consumer) and only for inactive
+            # sessions, matching the cache's own validity rule. Any miss
+            # falls through to the normal full load, so this can only skip
+            # work that would have produced an identical merged result.
+            _display_cache_hit = None
+            if (
+                msg_limit is not None
+                and not getattr(s, "active_stream_id", None)
+                and not getattr(s, "pending_user_message", None)
+            ):
+                _display_cache_hit = _display_merge_cached_messages(
+                    s,
+                    limited_sidecar_messages,
+                    msg_before=msg_before,
+                )
+            if _display_cache_hit is not None:
+                state_db_messages = []
+            else:
+                if (
+                    msg_limit is not None
+                    and not getattr(s, "active_stream_id", None)
+                    and not getattr(s, "pending_user_message", None)
+                ):
+                    (
+                        state_db_messages,
+                        _display_state_db_signature,
+                    ) = _load_state_db_messages_with_stable_signature(
+                        sid,
+                        _session_profile,
+                        _state_db_reader_kwargs,
+                    )
+                else:
+                    state_db_messages = get_state_db_session_messages(
+                        sid,
+                        **_state_db_reader_kwargs,
+                    )
+        elif not is_messaging_session:
+            # Metadata-only callers still need the same append-only
+            # reconciliation contract as full loads so stale/replayed
+            # state.db rows do not make sidebar polling think the
+            # transcript is always newer. Helper threads profile= to
+            # honor #2827's TLS-vs-thread fix.
+            metadata_summary = _metadata_only_message_summary(sid, profile=_session_profile)
+        _t2 = _time.monotonic()
+        if _diag: _diag.stage("t2_after_state_db_load")
+        effective_model = (
+            _resolve_effective_session_model_for_display(s)
+            if resolve_model
+            else None
+        )
+        effective_provider = (
+            _resolve_effective_session_model_provider_for_display(s)
+            if resolve_model
+            else None
+        )
+        _t3 = _time.monotonic()
+        if _diag: _diag.stage("t3_after_model_resolve")
+        if load_messages:
+            if is_messaging_session and cli_messages:
+                # Recovery/aggregate sidecars can intentionally contain a
+                # longer visible conversation than the single state.db
+                # segment for this messaging session id. Prefer the longer
+                # sidecar so repaired WebUI history is not hidden behind the
+                # canonical per-segment transcript. When both sources carry
+                # different slices of the same stitched conversation, merge
+                # them chronologically and dedupe exact repeats.
+                _all_msgs = _merged_session_messages_for_display(s, cli_messages)
+            elif msg_limit is not None:
+                if _display_cache_hit is not None:
+                    _all_msgs = _display_cache_hit
+                else:
+                    _all_msgs = _limited_webui_messages_for_display_with_sidecar(
+                        s,
+                        limited_sidecar_messages,
+                        state_db_messages,
+                        state_db_signature=_display_state_db_signature,
+                        msg_before=msg_before,
+                    )
+            else:
+                _all_msgs = merge_session_messages_append_only(
+                    _webui_sidecar_lineage_messages_for_display(s),
+                    state_db_messages,
+                    truncation_watermark=getattr(s, "truncation_watermark", None),
+                    truncation_boundary=getattr(s, "truncation_boundary", None),
+                )
+                _all_msgs = _merged_webui_lineage_messages_for_display(s, _all_msgs)
+        else:
+            if is_messaging_session and cli_messages:
+                _all_msgs = _merged_session_messages_for_display(s, cli_messages)
+            else:
+                if metadata_summary is None:
+                    metadata_summary = _message_summary(getattr(s, "messages", []) or [])
+                _summary_message_count = metadata_summary["message_count"]
+                _summary_last_message_at = metadata_summary["last_message_at"]
+                _all_msgs = []
+        if not load_messages:
+            if metadata_summary is None:
+                metadata_summary = _message_summary(_all_msgs)
+                _summary_message_count = metadata_summary["message_count"]
+                _summary_last_message_at = metadata_summary["last_message_at"]
+            if _summary_message_count == 0:
+                # Legacy session with no loaded sidecar and no state.db summary —
+                # fall back to the persisted metadata count from session JSON.
+                # See PR #2605 (LumenYoung): without this, the metadata poll
+                # returns 0 and the active-session external-refresh signal
+                # never trips on legacy sessions.
+                try:
+                    metadata_count = getattr(s, "_metadata_message_count", None)
+                    if metadata_count is not None:
+                        _summary_message_count = max(0, int(metadata_count))
+                except (TypeError, ValueError):
+                    pass
+        else:
+            _summary_message_count = None
+            _summary_last_message_at = None
+        if load_messages:
+            _truncated_msgs, _messages_offset = _message_window_for_display(
+                _all_msgs,
+                msg_limit=msg_limit,
+                msg_before=msg_before,
+                expand_renderable=expand_renderable,
+            )
+            if msg_limit is not None:
+                _truncated_msgs = _messages_for_limited_payload(_truncated_msgs)
+            _truncated_msgs = _hydrate_anchor_activity_scenes(
+                _truncated_msgs,
+                getattr(s, "anchor_activity_scenes", None),
+                message_offset=_messages_offset,
+                tool_calls=getattr(s, "tool_calls", None),
+            )
+        else:
+            _truncated_msgs = []
+            _messages_offset = 0
+        # Index of the first returned message in the full message array.
+        # Frontend uses this as cursor for scroll-to-top paging.
+        _windowed_messages = (
+            load_messages
+            and msg_limit is not None
+            and (msg_before is not None or len(_truncated_msgs) < len(_all_msgs))
+        )
+        # Resolve effective context_length with model-metadata fallback so
+        # older sessions (pre-#1318) that have context_length=0 persisted
+        # still render a meaningful indicator on load.  Mirrors the
+        # SSE-path fallback in api/streaming.py:2333-2342.  Fixes #1436.
+        #
+        # #1896: pass config_context_length, provider, and custom_providers
+        # so explicit config overrides win over the 256K default fallback.
+        # Without these, an old session loaded after a user upgraded to a
+        # 1M-context model with `model.context_length: 1048576` in
+        # config.yaml gets a 256K window in the initial UI indicator and
+        # /api/session/get response — the same wrong-window display this
+        # fix addresses on the streaming side.
+        _persisted_cl = getattr(s, "context_length", 0) or 0
+        _threshold_tokens = getattr(s, "threshold_tokens", 0) or 0
+        if (not _persisted_cl) or resolve_model:
+            _stored_model_for_lookup = getattr(s, "model", "") or ""
+            _stored_provider_for_lookup = getattr(s, "model_provider", None) or ""
+            _model_for_lookup = (
+                effective_model or _stored_model_for_lookup
+            ).strip()
+            (
+                _model_for_lookup,
+                _provider_for_lookup,
+                _base_url_for_lookup,
+                _api_key_for_lookup,
+            ) = _session_context_length_lookup_state(
+                _model_for_lookup,
+                effective_provider or getattr(s, "model_provider", None) or "",
+            )
+            _fb_cl = _resolve_context_length_for_session_model(
+                _model_for_lookup,
+                _provider_for_lookup,
+                base_url=_base_url_for_lookup,
+                api_key=_api_key_for_lookup,
+            )
+            _model_changed_for_context = not _session_model_identity_matches(
+                _stored_model_for_lookup,
+                _stored_provider_for_lookup,
+                _model_for_lookup,
+                _provider_for_lookup,
+            )
+            if _should_accept_session_context_length_refresh(
+                _persisted_cl,
+                _fb_cl,
+                model_changed=_model_changed_for_context,
+            ):
+                if _persisted_cl and _fb_cl != _persisted_cl:
+                    # The old threshold belongs to the old window. Hiding it
+                    # is less useful than keeping the same compression ratio
+                    # against the freshly resolved context length.
+                    _threshold_tokens = _rescale_threshold_tokens_for_context_window(
+                        _threshold_tokens,
+                        _persisted_cl,
+                        _fb_cl,
+                    )
+                _persisted_cl = _fb_cl
+        _session_tool_calls = getattr(s, "tool_calls", []) if load_messages else []
+        # Always include session-level tool_calls so the browser can merge
+        # them with per-message tool_calls for messages that lack the
+        # per-message variant (older messages whose tool_calls live only
+        # in the session-level list).  The browser-side
+        # _syncToolCallsForLoadedMessages handles deduplication by tid.
+        if _windowed_messages:
+            _session_tool_calls = _tool_calls_for_message_window(
+                _session_tool_calls,
+                _messages_offset,
+                len(_truncated_msgs),
+            )
+        _merged_message_count = _summary_message_count if _summary_message_count is not None else len(_all_msgs)
+        _merged_last_message_at = _summary_last_message_at if _summary_last_message_at is not None else 0
+        if _summary_last_message_at is None and _all_msgs:
+            try:
+                _merged_last_message_at = max(
+                    float((m or {}).get("timestamp") or 0)
+                    for m in _all_msgs
+                    if isinstance(m, dict)
+                )
+            except (TypeError, ValueError):
+                _merged_last_message_at = 0
+        active_stream_ids = _active_stream_ids()
+        try:
+            compact_session = s.compact(
+                include_runtime=True,
+                active_stream_ids=active_stream_ids,
+            )
+        except TypeError:
+            compact_session = s.compact()
+        raw = compact_session | {
+            "messages": _truncated_msgs,
+            "message_count": _merged_message_count,
+            "tool_calls": _session_tool_calls,
+            "active_stream_id": getattr(s, "active_stream_id", None),
+            "pending_user_message": getattr(s, "pending_user_message", None),
+            "pending_attachments": getattr(s, "pending_attachments", []) if load_messages else [],
+            "pending_started_at": getattr(s, "pending_started_at", None),
+            "pending_user_source": getattr(s, "pending_user_source", None),
+            "context_length": _persisted_cl,
+            "threshold_tokens": _threshold_tokens,
+            "last_prompt_tokens": getattr(s, "last_prompt_tokens", 0) or 0,
+        }
+        if original_stream_id:
+            try:
+                journal = find_run_summary(original_stream_id)
+            except Exception:
+                journal = None
+            if journal:
+                journal_active = bool(original_stream_id in active_stream_ids)
+                raw["runtime_journal"] = _run_journal_status_payload(
+                    journal,
+                    active=journal_active,
+                )
+                if journal_active and (not load_messages or msg_limit is None):
+                    try:
+                        snapshot = _run_journal_live_snapshot(original_stream_id, handler=handler)
+                    except Exception:
+                        logger.debug(
+                            "Failed to build runtime journal snapshot for %s",
+                            original_stream_id,
+                            exc_info=True,
+                        )
+                        snapshot = None
+                    if snapshot:
+                        raw["runtime_journal_snapshot"] = _runtime_journal_snapshot_for_session_payload(snapshot)
+                        raw["pending_attachments"] = getattr(s, "pending_attachments", []) or []
+        # Cold-load: derive the latest settled todo snapshot from the full
+        # merged transcript, not the truncated display window. This keeps
+        # the Todos panel correct after refresh even when the latest todo
+        # tool result is outside msg_limit, and treats an explicit empty
+        # todo list as the current state instead of falling through to an
+        # older non-empty write.
+        if load_messages and _all_msgs:
+            attach_todo_state(raw, _all_msgs)
+        if _merged_last_message_at:
+            raw["last_message_at"] = max(
+                float(raw.get("last_message_at") or 0),
+                _merged_last_message_at,
+            )
+            raw["updated_at"] = max(
+                float(raw.get("updated_at") or 0),
+                _merged_last_message_at,
+            )
+        # #2980: surface the visible continuation for a hidden pre-compression
+        # snapshot so a mobile reload mid-compression can recover to it.
+        continuation_sid = _pre_compression_continuation_session_id(s)
+        if continuation_sid:
+            raw["continuation_session_id"] = continuation_sid
+        if cli_meta and _session_source_is_webui(cli_meta):
+            raw = _reconcile_session_detail_source_flags(raw, cli_meta)
+        elif cli_meta and _is_messaging_session_record(cli_meta):
+            raw = _merge_cli_sidebar_metadata(raw, cli_meta)
+            # ``message_count`` in /api/session is the display coordinate
+            # space used for pagination and the header badge. Messaging
+            # state.db metadata can include raw duplicate transport rows that
+            # _merged_session_messages_for_display() intentionally dedupes;
+            # keep the raw count available as ``actual_message_count`` but
+            # do not let it make the frontend expect phantom messages.
+            raw["message_count"] = _merged_message_count
+        # Signal to the frontend that older messages were omitted. The
+        # message window cursor already reflects visible-row pagination and
+        # avoids false positives when raw hidden tool rows exceed msg_limit.
+        _truncated = load_messages and msg_limit is not None and _messages_offset > 0
+        raw["_messages_truncated"] = _truncated
+        raw["_messages_offset"] = _messages_offset
+        raw["_msg_limit_max"] = _MAX_MSG_LIMIT
+        _t4 = _time.monotonic()
+        if _diag: _diag.stage("t4_after_compact_and_merge")
+        if effective_model:
+            raw["model"] = effective_model
+        if effective_provider:
+            raw["model_provider"] = effective_provider
+        # A subagent child (#5307) is view-only regardless of what a stale
+        # sidecar stored: coerce the serialized flags so the browser never
+        # treats an existing subagent sidecar as writable / CLI-classified.
+        if (
+            (str(raw.get("source_tag") or raw.get("raw_source") or raw.get("session_source") or "").strip().lower() == "subagent")
+            or _is_subagent_child_session_id(sid)
+        ):
+            raw["is_cli_session"] = False
+            raw["read_only"] = True
+        imported_turn_marker = any(
+            isinstance(row, dict) and row.get("_active_turn_token")
+            for row in _all_msgs
+        )
+        if (
+            not raw.get("read_only")
+            and not _truncated
+            and (not raw.get("is_cli_session") or imported_turn_marker)
+        ):
+            from api.session_ops import regeneration_authority, regeneration_state
+            canonical_state = regeneration_state(s)
+            revision = regeneration_authority(
+                s,
+                rows=canonical_state[0],
+                context=canonical_state[1],
+                full_transcript=True,
+                canonical_state=canonical_state,
+            )
+            if revision:
+                raw["regeneration_revision"] = revision
+        redact = redact_session_data(raw)
+        _t5 = _time.monotonic()
+        if _diag: _diag.stage("t5_after_redact")
+        resp = j(handler, {"session": redact})
+        _t6 = _time.monotonic()
+        if _diag: _diag.stage("t6_after_json_write")
+        _total_ms = (_t6 - _t0) * 1000
+        # Always log when slow (>2s) so we don't need HERMES_DEBUG_SLOW env var
+        # to diagnose latency regressions. Opt-in env var still forces
+        # logging on every request for development.
+        if _debug_slow or _total_ms >= 2000:
+            # perf(webui/session-load-latency) tier2c: route the [SLOW] line
+            # through handler._safe_webui_print() rather than logger.warning().
+            # The WebUI process starts the root logger without any handler, so
+            # logger.warning() calls are silently dropped (the [SLOW] line
+            # previously worked only on PIDs that happened to have a logger
+            # handler set up by an earlier run; today the line is invisible).
+            # _safe_webui_print writes to the systemd journal socket directly,
+            # same as the per-request ms line — which is why THAT line keeps
+            # working.
+            handler._safe_webui_print(
+                "[SLOW] session_id=%s get_session=%.1fms model_resolve=%.1fms "
+                "compact=%.1fms redact=%.1fms json_write=%.1fms total=%.1fms" % (
+                    sid,
+                    (_t2-_t1)*1000, (_t3-_t2)*1000, (_t4-_t3)*1000,
+                    (_t5-_t4)*1000, (_t6-_t5)*1000, _total_ms,
+                )
+            )
+        if _diag: _diag.finish()
+        return resp
+    except KeyError:
+        # perf(webui/session-load-latency) tier2c-followup: fire
+        # _diag.finish() in the exception branch too. Greptile flagged
+        # this in PR review — finish() unregisters the pending watchdog
+        # entry; without it the entry stays for the full 5s slow-request
+        # timeout and emits a spurious "Slow WebUI request still
+        # running" log. Idempotent — finish() no-ops if already called.
+        if _diag: _diag.finish()
+        # No WebUI sidecar. Delegate to the shared foreign-session
+        # synthesizer so GET and POST have symmetric writeable/read-only
+        # behaviour for CLI/TUI/Desktop sessions. The helper enforces the
+        # #2782 deleted-WebUI-session 404 contract (via
+        # _session_index_marks_was_webui) and the #4911 source ownership
+        # gate (via _is_claimable_cli_source) so the two endpoints can't
+        # drift on foreign-session semantics.
+        cli_meta = _lookup_cli_session_metadata(sid)
+        _session_profile = (cli_meta or {}).get("profile") or None
+        # Claude Code rows are profile-less by construction (they come from
+        # ~/.claude/projects, not from any profile's state.db), so the gate
+        # below would 404 every one of them under a named active profile
+        # even though /api/sessions happily lists them. Exempt them.
+        _profile_agnostic = _is_profile_agnostic_foreign_session(cli_meta)
+        if not _profile_agnostic and not _session_visible_to_active_profile(_session_profile, handler):
+            if _session_profile:
+                # Valid CLI/foreign session owned by a KNOWN other profile:
+                # 409 so the client can offer to switch to it (#5419).
+                mismatch = {
+                    "error": "Session belongs to a different profile",
+                    "code": "session_profile_mismatch",
+                    "session_id": sid,
+                    "profile": _session_profile,
+                }
+                if profile_probe and not load_messages and not resolve_model:
+                    return j(handler, {
+                        "profile_mismatch": True,
+                        "session_id": sid,
+                        "profile": _session_profile,
+                    })
+                return j(handler, mismatch, status=409)
+            # Missing session (cli_meta={} -> profile=None): keep the 404
+            # self-heal path. _profiles_match coerces None->'default', so a
+            # truly-missing session under a non-default active profile would
+            # otherwise emit a useless 409 with profile=null and skip the
+            # frontend self-heal + spin the SSE reconnect against a dead sid.
+            return bad(handler, "Session not found", 404)
+        synth, reason = _claim_or_synthesize_cli_session(sid, cli_meta=cli_meta or {})
+        if reason == "was_webui":
+            # Deleted WebUI session: 404 so the client self-heals
+            # (clears stale /session/<id> URL and localStorage, #2782).
+            return bad(handler, "Session not found", 404)
+        if synth is None:
+            # 'no_foreign_state' / 'invalid_sid' — nothing to render.
+            return bad(handler, "Session not found", 404)
+        # Build the legacy dict response from the synthesized Session so
+        # the wire shape stays byte-equivalent to the previous inline
+        # synthesis (the frontend has been reading these exact keys).
+        msgs = list(synth.messages or [])
+        sess = {
+            "session_id": synth.session_id,
+            "title": synth.title,
+            "workspace": synth.workspace,
+            "model": synth.model,
+            "message_count": len(msgs),
+            "created_at": synth.created_at,
+            "updated_at": synth.updated_at,
+            "last_message_at": (
+                (cli_meta or {}).get("last_message_at")
+                or (cli_meta or {}).get("updated_at", 0)
+                or ((msgs or [{}])[-1].get("timestamp", 0))
+            ),
+            "pinned": bool(getattr(synth, "pinned", False)),
+            "archived": bool(getattr(synth, "archived", False)),
+            "project_id": getattr(synth, "project_id", None),
+            "profile": synth.profile,
+            # Read is_cli_session from the synthesized Session, not a
+            # hardcoded True: delegated subagent children (#5307) are
+            # recovered read-only with is_cli_session=False so they don't
+            # pass the frontend _isExternalSession poll-skip / active-refresh
+            # gates (#3603). Every other synthesized foreign session keeps
+            # is_cli_session=True so its source badge renders.
+            "is_cli_session": bool(getattr(synth, "is_cli_session", False)),
+            "source_tag": synth.source_tag,
+            "raw_source": synth.raw_source,
+            "session_source": synth.session_source,
+            "source_label": synth.source_label,
+            # Greptile #4911 follow-up: read read_only from the
+            # synthesized Session, NOT from cli_meta directly.
+            # The helper sets synth.read_only=True for BOTH
+            # explicit read_only=True cli_meta AND source-refused
+            # sessions (messaging / claude_code / external_agent).
+            # cli_meta.get("read_only") is only populated for the
+            # explicit case, so reading it from there causes the
+            # frontend to render the composer for source-refused
+            # sessions and the user only discovers the block at
+            # POST time with a confusing 403.
+            "read_only": bool(getattr(synth, "read_only", False)),
+            "messages": msgs,
+            "tool_calls": [],
+        }
+        attach_todo_state(sess, msgs)
+        sess = _merge_cli_sidebar_metadata(sess, cli_meta)
+        return j(handler, {"session": public_session_projection(sess)})
+
+
+def _route_get_api_session_lineage_report(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id required", 400)
+    report = read_session_lineage_report(_active_state_db_path(), sid)
+    if not report.get("found"):
+        return bad(handler, "Session not found", 404)
+    return j(handler, report)
+
+
+def _route_get_api_session_recovery_audit(handler, parsed):
+    from api.session_recovery import audit_session_recovery
+    return j(handler, audit_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path()))
+
+
+def _route_get_api_session_status(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "Missing session_id")
+    try:
+        from api.session_ops import session_status
+        _clear_stale_stream_state(get_session(sid, metadata_only=True))
+        return j(handler, session_status(sid))
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+
+
+def _route_get_api_session_yolo(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "Missing session_id")
+    return j(handler, {"yolo_enabled": is_session_yolo_enabled(sid)})
+
+
+def _route_get_api_session_usage(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "Missing session_id")
+    try:
+        from api.session_ops import session_usage
+        return j(handler, session_usage(sid))
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+
+
+def _route_get_api_background_status(handler, parsed):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "Missing session_id")
+    from api.background import get_results
+    return j(handler, {"results": get_results(sid)})
+
+
+def _route_get_api_sessions(handler, parsed):
+    diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    try:
+        from api import profiles as profiles_api
+
+        diag.stage("load_settings")
+        settings = load_settings()
+        show_cli_sessions = bool(settings.get("show_cli_sessions"))
+        show_claude_code_sessions = bool(settings.get("show_claude_code_sessions"))
+        show_previous_messaging_sessions = bool(
+            settings.get("show_previous_messaging_sessions")
+        )
+        show_cron_sessions = bool(settings.get("show_cron_sessions"))
+        show_webhook_sessions = bool(settings.get("show_webhook_sessions"))
+        show_kanban_sessions = bool(settings.get("show_kanban_sessions"))
+        agent_session_source_filter = settings.get("agent_session_source_filter")
+        active_profile = profiles_api.get_active_profile_name()
+        all_profiles = _all_profiles_enabled(parsed)
+        include_archived = _query_flag(parsed, "include_archived")
+        exclude_hidden = _query_flag(parsed, "exclude_hidden")
+        archived_limit = _query_positive_int(parsed, "archived_limit", default=None, maximum=2000)
+        archived_offset = _query_positive_int(parsed, "archived_offset", default=0, maximum=200000)
+        sidebar_source = parse_qs(parsed.query).get("sidebar_source", [""])[0].strip().lower() or None
+        if sidebar_source not in ("webui", "cli"):
+            sidebar_source = None
+        # /api/sessions is the default sidebar contract, so keep the route-owned
+        # visible-row filter in the shared cache builder for both cache hits and misses.
+        key = _session_list_cache_key(
+            active_profile=active_profile,
+            all_profiles=all_profiles,
+            show_cli_sessions=show_cli_sessions,
+            show_claude_code_sessions=show_claude_code_sessions,
+            show_previous_messaging_sessions=show_previous_messaging_sessions,
+            show_cron_sessions=show_cron_sessions,
+            include_archived=include_archived,
+            exclude_hidden=exclude_hidden,
+            visible_only=True,
+            show_webhook_sessions=show_webhook_sessions,
+            show_kanban_sessions=show_kanban_sessions,
+            source_filter=agent_session_source_filter,
+            sidebar_source=sidebar_source,
+            archived_limit=archived_limit,
+            archived_offset=archived_offset,
+        )
+        # Keep the visible /api/sessions contract unchanged even though the
+        # heavy lifting now lives in the cache builder: profile scoping via
+        # `_profiles_match(s.get("profile"), active_profile)` still happens
+        # before `_keep_latest_messaging_session_per_source(`.
+        payload = _get_cached_session_list_payload(
+            key=key,
+            builder=lambda: _build_session_list_cache_payload(
+                active_profile=active_profile,
+                all_profiles=all_profiles,
+                show_cli_sessions=show_cli_sessions,
+                show_claude_code_sessions=show_claude_code_sessions,
+                show_previous_messaging_sessions=show_previous_messaging_sessions,
+                show_cron_sessions=show_cron_sessions,
+                include_archived=include_archived,
+                exclude_hidden=exclude_hidden,
+                visible_only=True,
+                show_webhook_sessions=show_webhook_sessions,
+                show_kanban_sessions=show_kanban_sessions,
+                source_filter=agent_session_source_filter,
+                sidebar_source=sidebar_source,
+                archived_limit=archived_limit,
+                archived_offset=archived_offset,
+                diag=diag,
+            ),
+            diag=diag,
+        )
+        diag.stage("response_write")
+        return j(handler, _session_list_payload_to_response(payload), pretty=False)
+    finally:
+        diag.finish()
+
+
+def _route_get_api_sticky_boards(handler, parsed):
+    from api.sticky_board import load_boards
+
+    return j(handler, {"boards": load_boards()})
+
+
+def _route_get_api_projects(handler, parsed):
+    # ── Profile scoping (#1614) ────────────────────────────────────────
+    # Default: filter to the active profile. ?all_profiles=1 returns the
+    # aggregate list so settings/admin UIs can still see everything.
+    from api import profiles as profiles_api
+
+    active_profile = profiles_api.get_active_profile_name()
+    all_projects = load_projects()
+    isolated_profile_mode = _is_isolated_profile_mode()
+    all_profiles = _all_profiles_enabled(parsed)
+    if all_profiles:
+        scoped = all_projects
+        other_profile_count = 0
+    else:
+        scoped = [p for p in all_projects
+                  if _profiles_match(p.get("profile"), active_profile)]
+        other_profile_count = 0 if isolated_profile_mode else len(all_projects) - len(scoped)
+    return j(handler, {
+        "projects": scoped,
+        "all_profiles": all_profiles,
+        "active_profile": active_profile,
+        "other_profile_count": other_profile_count,
+    })
+
+
+def _route_get_api_prompts(handler, parsed):
+    return j(handler, {"prompts": _load_saved_prompts()})
+
+
+def _route_get_api_agent_definitions(handler, parsed):
+    from api import agent_definitions
+    return j(handler, agent_definitions.list_definitions())
+
+
+def _route_get_api_crews(handler, parsed):
+    from api import crews
+    return j(handler, crews.list_crews())
+
+
+def _route_get_api_crews_cost(handler, parsed):
+    from api import crews
+    from api.kanban_bridge import _conn, _kb, _resolve_board, _task_dict
+
+    board = _resolve_board(parsed)
+    try:
+        with _conn(board=board) as conn:
+            tasks = _kb().list_tasks(conn, include_archived=True)
+            task_dicts = [_task_dict(t) for t in tasks]
+    except Exception:
+        logger.exception("Failed to load tasks for crew cost estimate")
+        return j(handler, {"costs": {}, "is_approximate": True})
+    return j(handler, {
+        "costs": crews.estimate_crew_costs(task_dicts),
+        "is_approximate": True,
+    })
+
+
+def _route_get_api_session_export(handler, parsed):
+    return _handle_session_export(handler, parsed)
+
+
+def _route_get_api_workspaces(handler, parsed):
+    wss = load_workspaces()
+    if any(w.get("kind") == "remote" for w in wss):
+        from api.ssh_mount import mount_status
+        for w in wss:
+            if w.get("kind") == "remote":
+                w["mount_status"] = mount_status(w)
+    # Every workspace reports online/offline, not just remote ones: a local
+    # bind mount that vanished is just as unusable as a dropped SSHFS
+    # mount, and the pickers show one status dot for both. Remote entries
+    # already have a fresh mount_status above (each call stats the
+    # mountpoint and shells out to `mountpoint -q` -- not free, and a
+    # stale/unresponsive FUSE endpoint can make that stat genuinely slow)
+    # -- reuse it instead of making workspace_availability() redo the
+    # exact same two checks a second time.
+    from api.workspace import workspace_availability
+    for w in wss:
+        if w.get("kind") == "remote":
+            w["availability"] = "online" if w.get("mount_status") == "connected" else "offline"
+        else:
+            w["availability"] = workspace_availability(w)
+    return j(
+        handler,
+        {
+            "workspaces": wss,
+            "last": get_last_workspace(),
+            "terminal_remote_backend": _terminal_remote_backend_enabled(),
+        },
+    )
+
+
+def _route_get_api_workspaces_registry(handler, parsed):
+    from api.project_registry import list_registry_projects
+
+    return j(handler, {"projects": list_registry_projects()})
+
+
+def _route_get_api_workspaces_suggest(handler, parsed):
+    qs = parse_qs(parsed.query)
+    prefix = qs.get("prefix", [""])[0]
+    # The composer's path autocomplete wants a short list, but the project
+    # workspace binder browses a directory a level at a time and needs the
+    # whole listing. Callers opt into a bigger page via ?limit=; the default
+    # stays at list_workspace_suggestions()'s own 12 so autocomplete is
+    # unchanged, and the ceiling keeps a huge directory from being rendered
+    # into the panel in one go.
+    try:
+        limit = int(qs.get("limit", ["12"])[0])
+    except (TypeError, ValueError):
+        limit = 12
+    limit = max(1, min(limit, 500))
+    return j(
+        handler,
+        {
+            "suggestions": list_workspace_suggestions(prefix, limit=limit),
+            "prefix": prefix,
+            "limit": limit,
+        },
+    )
+
+
+def _route_get_api_office_integrations(handler, parsed):
+    from api.office_integrations import list_office_integrations
+    j(handler, list_office_integrations())
+    return
+
+
+def _route_get_api_office_scheduled_tasks(handler, parsed):
+    from api.gateway_chat import gateway_subagents_request
+    from api.profiles import get_active_hermes_home, get_active_profile_name
+    from api.scheduled_tasks import load_scheduled_tasks
+
+    profile_name = get_active_profile_name() or ""
+    if not profile_name:
+        return j(handler, {"tasks": []})
+    try:
+        gateway_data = gateway_subagents_request("GET", "/api/scheduled-tasks") or {}
+    except Exception:
+        gateway_data = {}
+    gateway_tasks = gateway_data.get("tasks", []) if isinstance(gateway_data, dict) else []
+    try:
+        local_tasks = load_scheduled_tasks(get_active_hermes_home(), profile_name)
+    except Exception:
+        local_tasks = []
+    seen = set()
+    tasks = []
+    for task in gateway_tasks + local_tasks:
+        if not isinstance(task, dict):
+            continue
+        job_id = task.get("job_id")
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        tasks.append(task)
+    return j(handler, {"tasks": tasks})
+
+
+def _route_get_api_sessions_search(handler, parsed):
+    return _handle_sessions_search(handler, parsed)
+
+
+# ── Work Hub (GET) ────────────────────────────────────────────────────
+def _route_get_api_work_hub_bootstrap(handler, parsed):
+    from api import work_hub
+
+    try:
+        return j(handler, work_hub.bootstrap())
+    except work_hub.WorkHubError as exc:
+        return bad(handler, str(exc), exc.status)
+
+
+def _route_get_api_work_hub_items(handler, parsed):
+    from api import work_hub
+
+    query_values = parse_qs(parsed.query or "")
+    query = {
+        key: values[0]
+        for key, values in query_values.items()
+        if key in {"project_id", "status"} and values
+    }
+    try:
+        return j(handler, work_hub.list_items(query))
+    except work_hub.WorkHubError as exc:
+        return bad(handler, str(exc), exc.status)
+
+
+def _route_get_api_work_hub_workflows_prefix(handler, parsed):
+    from api import work_hub
+
+    workflow_id = unquote(parsed.path[len(_WORK_HUB_WORKFLOW_PREFIX):]).strip("/")
+    if not workflow_id or "/" in workflow_id:
+        return bad(handler, "Workflow not found", 404)
+    workflow = work_hub.get_workflow_run(workflow_id)
+    if workflow is None:
+        return bad(handler, "Workflow not found", 404)
+    return j(handler, {"workflow": workflow, "revision": work_hub.load_state()["revision"]})
+
+
+def _route_get_api_work_hub_plan(handler, parsed):
+    from api import goal_planner
+
+    query_values = parse_qs(parsed.query or "")
+    goal = query_values.get("goal", [""])[0].strip()
+    if not goal:
+        return bad(handler, "goal is required", 400)
+    return j(handler, goal_planner.plan_goal(goal))
+
+
+def _route_get_api_list(handler, parsed):
+    return _handle_list_dir(handler, parsed)
+
+
+def _route_get_api_escape_list(handler, parsed):
+    return _handle_escape_list_dir(handler, parsed)
+
+
+def _route_get_api_git_status(handler, parsed):
+    return _handle_git_status(handler, parsed)
+
+
+def _route_get_api_subagents_active(handler, parsed):
+    from api.gateway_chat import (
+        GatewaySubagentControlError,
+        gateway_subagents_request,
+        webui_gateway_chat_enabled,
+    )
+    if not webui_gateway_chat_enabled():
+        # In-process (single-container) chat never runs the separate
+        # gateway process this endpoint normally proxies to, so it used
+        # to unconditionally return an empty list here — Agent Canvas's
+        # reconcile() poll was a permanent no-op for this deployment
+        # shape, and the tree could only ever change via SSE events on
+        # the turn's own stream. A fire-and-forget subagent (still
+        # flushing on a daemon thread after the parent turn's stream
+        # already finalized — see delegate_tool.py's child_session_db
+        # ownership comment) then had no way to ever report completion,
+        # and card duration text never ticked between SSE events either.
+        # tools.delegate_tool's in-process registry is the same data
+        # the gateway process itself reads for this endpoint, so expose
+        # it directly instead of going through a nonexistent HTTP hop.
+        try:
+            from tools.delegate_tool import list_active_subagents
+
+            active = list_active_subagents()
+        except Exception:
+            logger.debug("subagents/active: in-process registry read failed", exc_info=True)
+            active = []
+        return j(handler, {"active": active, "spawn_paused": False, "gateway_enabled": False})
+    try:
+        data = gateway_subagents_request("GET", "/v1/subagents/active")
+    except GatewaySubagentControlError as e:
+        return j(handler, {"active": [], "spawn_paused": False, "gateway_enabled": True, "error": str(e)}, status=502)
+    return j(handler, {
+        "active": data.get("active") or [],
+        "spawn_paused": bool(data.get("spawn_paused")),
+        "gateway_enabled": True,
+    })
+
+
+def _route_get_api_agent_canvas_sessions(handler, parsed):
+    try:
+        return j(handler, {"parents": _agent_canvas_parents()})
+    except Exception as e:
+        logger.debug("GET /api/agent-canvas/sessions failed", exc_info=True)
+        return j(handler, {"parents": [], "error": str(e)}, status=502)
+
+
+def _route_get_api_git_branches(handler, parsed):
+    return _handle_git_branches(handler, parsed)
+
+
+def _route_get_api_git_diff(handler, parsed):
+    return _handle_git_diff(handler, parsed)
+
+
+def _route_get_api_personalities(handler, parsed):
+    # Read personalities from config.yaml agent.personalities section
+    # (matches hermes-agent CLI behavior, not filesystem SOUL.md approach)
+    from api.config import reload_config as _reload_cfg
+
+    _reload_cfg()  # pick up config.yaml changes without server restart
+    from api.config import get_config as _get_cfg
+
+    _cfg = _get_cfg()
+    agent_cfg = _cfg.get("agent", {})
+    raw_personalities = agent_cfg.get("personalities", {})
+    personalities = []
+    if isinstance(raw_personalities, dict):
+        for name, value in raw_personalities.items():
+            desc = ""
+            if isinstance(value, dict):
+                desc = value.get("description", "")
+            elif isinstance(value, str):
+                desc = value[:80] + ("..." if len(value) > 80 else "")
+            personalities.append({"name": name, "description": desc})
+    return j(handler, {"personalities": personalities})
+
+
+def _route_get_api_git_info(handler, parsed):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad(handler, "session_id required")
+    try:
+        s = get_session(sid)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+    from api.workspace_git import GitWorkspaceError, git_status
+
+    try:
+        status = git_status(Path(s.workspace))
+    except GitWorkspaceError as e:
+        # The badge is supplementary UI.  A workspace may be on a slow or
+        # unavailable filesystem, so a failed status probe must not turn
+        # every ordinary workspace refresh into a client-visible 400.
+        return j(handler, {"git": None})
+    totals = status.get("totals") or {}
+    info = None if not status.get("is_git") else {
+        "branch": status.get("branch"),
+        "dirty": totals.get("changed", 0),
+        "modified": (totals.get("staged", 0) or 0) + (totals.get("unstaged", 0) or 0),
+        "untracked": totals.get("untracked", 0),
+        "ahead": status.get("ahead", 0),
+        "behind": status.get("behind", 0),
+        "is_git": True,
+    }
+    return j(handler, {"git": info})
+
+
+def _route_get_api_commands(handler, parsed):
+    from api.commands import list_commands
+    return j(handler, {"commands": list_commands()})
+
+
+def _route_get_api_commands_bundles(handler, parsed):
+    from api.commands import list_command_bundles
+    return j(handler, {"bundles": list_command_bundles()})
+
+
+def _route_get_api_commands_moa_resolve(handler, parsed):
+    from api.commands import resolve_moa_config
+    try:
+        return j(handler, resolve_moa_config())
+    except RuntimeError as e:
+        return bad(handler, str(e), 503)
+
+
+def _route_get_api_updates_check(handler, parsed):
+    settings = load_settings()
+    if not settings.get("check_for_updates", True):
+        return j(handler, {"disabled": True})
+    include_agent_updates = not bool(settings.get("ignore_agent_updates"))
+    qs = parse_qs(parsed.query)
+    # ?simulate=1 returns fake behind counts for UI testing (localhost only)
+    if (
+        qs.get("simulate", ["0"])[0] == "1"
+        and handler.client_address[0] == "127.0.0.1"
+    ):
+        return j(
+            handler,
+            {
+                "webui": {
+                    "name": "webui",
+                    "behind": 3,
+                    "current_sha": "abc1234",
+                    "latest_sha": "def5678",
+                    "branch": "master",
+                    "repo_url": "https://github.com/nesquena/hermes-webui",
+                    "compare_url": "https://github.com/nesquena/hermes-webui/compare/abc1234...def5678",
+                },
+                "agent": {
+                    "name": "agent",
+                    "behind": 1 if include_agent_updates else 0,
+                    "ignored": not include_agent_updates,
+                    "current_sha": "aaa0001",
+                    "latest_sha": "bbb0002",
+                    "branch": "master",
+                    "repo_url": "https://github.com/NousResearch/hermes-agent",
+                    "compare_url": "https://github.com/NousResearch/hermes-agent/compare/aaa0001...bbb0002",
+                },
+                "checked_at": 0,
+            },
+        )
+    from api.updates import cached_update_status
+
+    return j(handler, cached_update_status(include_agent=include_agent_updates))
+
+
+def _route_get_api_chat_stream_status(handler, parsed):
+    stream_id = parse_qs(parsed.query).get("stream_id", [""])[0]
+    if not _stream_id_visible_to_request_profile(handler, stream_id):
+        return True
+    active = stream_id in STREAMS
+    payload = {"active": active, "stream_id": stream_id, "replay_available": False}
+    try:
+        journal = find_run_summary(stream_id) if stream_id else None
+    except Exception:
+        journal = None
+    if journal:
+        payload["replay_available"] = True
+        payload["journal"] = _run_journal_status_payload(journal, active=active)
+    return j(handler, payload)
+
+
+def _route_get_api_chat_cancel(handler, parsed):
+    stream_id = parse_qs(parsed.query).get("stream_id", [""])[0]
+    if not stream_id:
+        return bad(handler, "stream_id required")
+    if not _stream_id_visible_to_request_profile(handler, stream_id):
+        return True
+    gateway_stop_blocked = False
+    try:
+        from api.gateway_chat import (
+            GATEWAY_RUN_ID_WAIT_TIMEOUT,
+            stop_gateway_run,
+            wait_for_gateway_run_id,
+        )
+
+        structured_gateway, run_id = wait_for_gateway_run_id(stream_id, GATEWAY_RUN_ID_WAIT_TIMEOUT)
+        if not run_id and structured_gateway:
+            gateway_stop_blocked = True
+        if run_id:
+            if stop_gateway_run(run_id):
+                owner_sid = stream_owner_session_id(stream_id)
+                if owner_sid:
+                    retire_gateway_pending_mirror(owner_sid, run_id=run_id)
+            else:
+                gateway_stop_blocked = True
+    except Exception:
+        logger.debug("Failed to stop gateway run during chat cancellation", exc_info=True)
+        gateway_stop_blocked = True
+    if gateway_stop_blocked:
+        return j(
+            handler,
+            {
+                "ok": False,
+                "cancelled": False,
+                "stream_id": stream_id,
+                "error": "Gateway stop failed",
+            },
+            status=502,
+        )
+
+    from api.runtime_adapter import LegacyJournalRuntimeAdapter, runtime_adapter_enabled
+
+    if runtime_adapter_enabled():
+        adapter = LegacyJournalRuntimeAdapter(cancel_delegate=cancel_stream)
+        cancelled = adapter.cancel_run(stream_id).accepted
+    else:
+        cancelled = cancel_stream(stream_id)
+    return j(handler, {"ok": True, "cancelled": cancelled, "stream_id": stream_id})
+
+
+def _route_get_api_chat_stream(handler, parsed):
+    return _handle_sse_stream(handler, parsed)
+
+
+def _route_get_api_terminal_output(handler, parsed):
+    return _handle_terminal_output(handler, parsed)
+
+
+def _route_get_api_sessions_gateway_stream(handler, parsed):
+    return _handle_gateway_sse_stream(handler, parsed)
+
+
+def _route_get_api_sessions_events(handler, parsed):
+    return _handle_session_events_stream(handler)
+
+
+def _route_get_session_events_path_session_id(handler, parsed):
+    session_events_session_id = _session_events_path_session_id(parsed.path)
+    if session_events_session_id is not None:
+        return _handle_session_sse_stream_for_session(handler, parsed, session_events_session_id)
+    return NOT_HANDLED
+
+
+def _route_get_api_media(handler, parsed):
+    return _handle_media(handler, parsed)
+
+
+def _route_get_api_file_raw(handler, parsed):
+    return _handle_file_raw(handler, parsed)
+
+
+def _route_get_api_escape_file_raw(handler, parsed):
+    return _handle_escape_file_raw(handler, parsed)
+
+
+def _route_get_api_folder_download(handler, parsed):
+    return _handle_folder_download(handler, parsed)
+
+
+def _route_get_api_file(handler, parsed):
+    return _handle_file_read(handler, parsed)
+
+
+def _route_get_api_escape_file_read(handler, parsed):
+    return _handle_escape_file_read(handler, parsed)
+
+
+def _route_get_api_approval_pending(handler, parsed):
+    return _handle_approval_pending(handler, parsed)
+
+
+def _route_get_api_approval_stream(handler, parsed):
+    return _handle_approval_sse_stream(handler, parsed)
+
+
+def _route_get_api_approval_inject_test(handler, parsed):
+    # Loopback-only: used by automated tests; blocked from any remote client
+    if handler.client_address[0] != "127.0.0.1":
+        return j(handler, {"error": "not found"}, status=404)
+    return _handle_approval_inject(handler, parsed)
+
+
+def _route_get_api_clarify_pending(handler, parsed):
+    return _handle_clarify_pending(handler, parsed)
+
+
+def _route_get_api_clarify_stream(handler, parsed):
+    return _handle_clarify_sse_stream(handler, parsed)
+
+
+def _route_get_api_session_stream(handler, parsed):
+    return _handle_session_sse_stream(handler, parsed)
+
+
+def _route_get_api_clarify_inject_test(handler, parsed):
+    # Loopback-only: used by automated tests; blocked from any remote client
+    if handler.client_address[0] != "127.0.0.1":
+        return j(handler, {"error": "not found"}, status=404)
+    return _handle_clarify_inject(handler, parsed)
+
+
+def _route_get_api_onboarding_oauth_poll(handler, parsed):
+    qs = parse_qs(parsed.query)
+    flow_id = qs.get("flow_id", [""])[0]
+    try:
+        return j(
+            handler,
+            poll_onboarding_oauth_flow(flow_id),
+            extra_headers={"Cache-Control": "no-store"},
+        )
+    except ValueError as e:
+        return bad(handler, str(e))
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+
+
+# ── Cron API (GET) ──
+# Cron reads are active-profile-scoped by default. The list route now
+# aggregates per visible profile home so the UI can surface hidden-row
+# counts and, when opted in, read-only foreign rows.
+def _route_get_api_crons(handler, parsed):
+    # #4768: in split-container / minimal Docker deployments the WebUI image may
+    # not ship the agent's `cron` package on its import path. Degrade gracefully
+    # (empty list + cron_unavailable flag) instead of 500ing the whole Task tab.
+    # Only treat a genuinely-absent cron package as "unavailable"; a
+    # ModuleNotFoundError whose missing module is an internal dependency of an
+    # existing cron/jobs.py is a real bug and must still surface.
+    _ensure_agent_cron_import_path()
+    active_profile = _get_active_profile_name() or "default"
+    try:
+        active_jobs, other_jobs = _cron_jobs_cross_profile(active_profile)
+    except ModuleNotFoundError as exc:
+        if exc.name in ("cron", "cron.jobs"):
+            return j(handler, {"jobs": [], "cron_unavailable": True})
+        raise
+    all_profiles = _all_profiles_enabled(parsed)
+    jobs = active_jobs + other_jobs if all_profiles else active_jobs
+    hidden_other_count = 0 if all_profiles else len(other_jobs)
+    return j(handler, {
+        "jobs": jobs,
+        "all_profiles": all_profiles,
+        "active_profile": active_profile,
+        "other_profile_count": hidden_other_count,
+    })
+
+
+def _route_get_api_crons_output(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_output(handler, parsed)
+
+
+def _route_get_api_crons_history(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_history(handler, parsed)
+
+
+def _route_get_api_crons_delegation(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_delegation(handler, parsed)
+
+
+def _route_get_api_crons_run(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_run_detail(handler, parsed)
+
+
+def _route_get_api_crons_recent(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_recent(handler, parsed)
+
+
+def _route_get_api_crons_status(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        return _handle_cron_status(handler, parsed)
+
+
+def _route_get_api_crons_delivery_options(handler, parsed):
+    from api.profiles import cron_profile_context
+
+    with cron_profile_context():
+        _ensure_agent_cron_import_path()
+        return _handle_cron_delivery_options(handler)
+
+
+# ── Skills API (GET) ──
+def _route_get_api_skills(handler, parsed):
+    qs = parse_qs(parsed.query)
+    category = qs.get("category", [None])[0]
+    data = _skills_list_from_dir(_active_skills_dir(), category=category)
+    return j(handler, {"skills": data.get("skills", [])})
+
+
+def _route_get_api_skills_usage(handler, parsed):
+    from api.skill_usage import read_skill_usage
+    raw = read_skill_usage(_active_skills_dir())
+    # Pass through agent's format as-is; defensive coercion for fields
+    usage = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if not isinstance(v, dict):
+                usage[k] = {"use_count": 0, "view_count": 0, "patch_count": 0}
+                continue
+            usage[k] = {
+                "use_count": (int(v["use_count"]) if v.get("use_count") is not None else 0),
+                "view_count": (int(v["view_count"]) if v.get("view_count") is not None else 0),
+                "patch_count": (int(v["patch_count"]) if v.get("patch_count") is not None else 0),
+            }
+            # Preserve agent's metadata (timestamps, state, etc.)
+            for meta_key in v:
+                if meta_key not in usage[k]:
+                    usage[k][meta_key] = v[meta_key]
+    skills_data = _skills_list_from_dir(_active_skills_dir()).get("skills", [])
+    skill_names = sorted({s["name"] for s in skills_data})
+    total = sum(
+        e.get("use_count", 0) + e.get("view_count", 0) + e.get("patch_count", 0)
+        for e in usage.values()
+    )
+    unique = sum(
+        1 for e in usage.values()
+        if e.get("use_count", 0) > 0 or e.get("view_count", 0) > 0 or e.get("patch_count", 0) > 0
+    )
+    return j(handler, {
+        "usage": usage,
+        "skill_names": skill_names,
+        "total_invocations": total,
+        "unique_skills_used": unique,
+    })
+
+
+def _route_get_api_skills_content(handler, parsed):
+    qs = parse_qs(parsed.query)
+    name = qs.get("name", [""])[0]
+    if not name:
+        return j(handler, {"error": "name required"}, status=400)
+    file_path = qs.get("file", [""])[0]
+    if file_path:
+        # Serve a linked file from the skill directory
+        import re as _re
+
+        if _re.search(r"[*?\[\]]", name):
+            return bad(handler, "Invalid skill name", 400)
+        skills_dir = _active_skills_dir()
+        skill_dir, _skill_md = _find_skill_in_dirs(
+            name, _active_skill_search_dirs(skills_dir)
+        )
+        if not skill_dir:
+            return bad(handler, "Skill not found", 404)
+        target = (skill_dir / file_path).resolve()
+        try:
+            target.relative_to(skill_dir.resolve())
+        except ValueError:
+            return bad(handler, "Invalid file path", 400)
+        if not target.exists() or not target.is_file():
+            return bad(handler, "File not found", 404)
+        return j(
+            handler,
+            {"content": target.read_text(encoding="utf-8"), "path": file_path},
+        )
+    data = _skill_view_from_active_dir(name)
+    if not isinstance(data.get("linked_files"), dict):
+        data["linked_files"] = {}
+    return j(handler, data)
+
+
+def _route_get_api_skills_scan(handler, parsed):
+    # Static-analysis security scan for an already-installed skill (v1
+    # scope: scan-only, no marketplace/install path — see
+    # docs/HERMES_STUDIO_PARITY_PLAN.md, Security scanner section).
+    qs = parse_qs(parsed.query)
+    name = qs.get("name", [""])[0]
+    if not name:
+        return bad(handler, "name is required", 400)
+    skills_dir = _active_skills_dir()
+    skill_dir, _skill_md = _find_skill_in_dirs(name, _active_skill_search_dirs(skills_dir))
+    if not skill_dir:
+        return bad(handler, "Skill not found", 404)
+    try:
+        from api.skills_hub_bridge import scan_installed_skill
+
+        return j(handler, scan_installed_skill(skill_dir))
+    except ImportError:
+        return bad(
+            handler,
+            "Security scanner unavailable (hermes-agent source not mounted)",
+            501,
+        )
+    except Exception as exc:
+        logger.exception("Skill scan failed for %s", name)
+        return bad(handler, _sanitize_error(exc), 500)
+
+
+# ── Memory API (GET) ──
+def _route_get_api_memory(handler, parsed):
+    return _handle_memory_read(handler, parsed)
+
+
+# ── Audit trail (GET) ──
+def _route_get_api_audit(handler, parsed):
+    return _handle_audit_trail_read(handler, parsed)
+
+
+# ── Knowledge Browser API (GET, read-only) ──
+# See docs/HERMES_STUDIO_PARITY_PLAN.md, "Knowledge Browser".
+def _route_get_api_knowledge_list(handler, parsed):
+    from api import knowledge_browser
+    return j(handler, knowledge_browser.list_items())
+
+
+def _route_get_api_knowledge_read(handler, parsed):
+    from api import knowledge_browser
+    query = parse_qs(parsed.query)
+    item_id = (query.get("id", [""])[0] or "").strip()
+    item = knowledge_browser.read_item(item_id) if item_id else None
+    if item is None:
+        return bad(handler, "Knowledge item not found", 404)
+    return j(handler, {"item": item})
+
+
+def _route_get_api_knowledge_search(handler, parsed):
+    from api import knowledge_browser
+    query = parse_qs(parsed.query)
+    q = (query.get("q", [""])[0] or "").strip()
+    if not q:
+        return bad(handler, "q is required")
+    return j(handler, knowledge_browser.search_items(q))
+
+
+# ── Profile API (GET) ──
+def _route_get_api_profiles(handler, parsed):
+    from api import profiles as profiles_api
+    diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
+    try:
+        diag.stage("list_profiles_api") if diag else None
+        profiles_payload = profiles_api.list_profiles_api()
+        diag.stage("active_profile_lookup") if diag else None
+        active = profiles_api.get_active_profile_name()
+        diag.stage("isolated_mode_check") if diag else None
+        return j(
+            handler,
+            {
+                "profiles": profiles_payload,
+                "active": active,
+                "single_profile_mode": _is_isolated_profile_mode(),
+            },
+        )
+    finally:
+        if diag:
+            diag.finish()
+
+
+def _route_get_api_profiles_approval_modes(handler, parsed):
+    from api import profiles as profiles_api
+    rows = []
+    for p in profiles_api.list_profiles_api():
+        name = p.get("name")
+        path = p.get("path")
+        if not name or not path:
+            continue
+        rows.append({
+            "name": name,
+            "mode": profiles_api._read_profile_approval_mode(Path(path)),
+        })
+    return j(handler, {"profiles": rows})
+
+
+def _route_get_api_profile_active(handler, parsed):
+    from api import profiles as profiles_api
+
+    active_profile_name = profiles_api.get_active_profile_name()
+    # Resolve the ACTIVE PROFILE's configured workspace so a cold boot with a
+    # profile cookie shows the right composer workspace chip on a blank
+    # new-chat page (#5169). Use get_profile_default_workspace() (NOT
+    # get_last_workspace) so a named profile without its own last_workspace.txt
+    # resolves to its config.yaml workspace/terminal.cwd rather than leaking the
+    # GLOBAL last-workspace file (the #5169 regression Codex flagged). It is
+    # profile-scoped via the per-request hermes_profile cookie set in server.py.
+    # Fail open: a resolution error must never 500 this boot-critical endpoint.
+    try:
+        _profile_default_workspace = get_profile_default_workspace()
+    except Exception:
+        logger.debug("Failed to resolve profile default workspace for /api/profile/active", exc_info=True)
+        _profile_default_workspace = None
+    return j(
+        handler,
+        {
+            "name": active_profile_name,
+            "path": str(profiles_api.get_active_hermes_home()),
+            "is_default": profiles_api._is_root_profile(active_profile_name),
+            "default_workspace": _profile_default_workspace,
+        },
+    )
+
+
+# ── Gateway Status (GET) ──
+def _route_get_api_gateway_status(handler, parsed):
+    return j(handler, _gateway_status_payload())
+
+
+# ── MCP Servers (GET) ──
+def _route_get_api_mcp_servers(handler, parsed):
+    return _handle_mcp_servers_list(handler)
+
+
+# ── MCP Tools (GET) ──
+def _route_get_api_mcp_tools(handler, parsed):
+    return _handle_mcp_tools_list(handler)
+
+
+def _route_get_api_notes_sources(handler, parsed):
+    return _handle_notes_sources_list(handler)
+
+
+def _route_get_api_notes_search(handler, parsed):
+    return _handle_notes_search(handler, parsed)
+
+
+def _route_get_api_notes_item(handler, parsed):
+    return _handle_notes_item(handler, parsed)
+
+
+# ── Checkpoints / Rollback (GET) ──
+def _route_get_api_rollback_list(handler, parsed):
+    qs = parse_qs(parsed.query)
+    workspace = qs.get("workspace", [""])[0]
+    if not workspace:
+        return bad(handler, "workspace query parameter is required")
+    try:
+        from api.rollback import list_checkpoints
+        return j(handler, list_checkpoints(workspace))
+    except ValueError as e:
+        return bad(handler, str(e))
+    except Exception as e:
+        logger.exception("rollback/list failed")
+        return bad(handler, str(e), status=500)
+
+
+def _route_get_api_rollback_diff(handler, parsed):
+    qs = parse_qs(parsed.query)
+    workspace = qs.get("workspace", [""])[0]
+    checkpoint = qs.get("checkpoint", [""])[0]
+    if not workspace or not checkpoint:
+        return bad(handler, "workspace and checkpoint query parameters are required")
+    try:
+        from api.rollback import get_checkpoint_diff
+        return j(handler, get_checkpoint_diff(workspace, checkpoint))
+    except ValueError as e:
+        return bad(handler, str(e))
+    except Exception as e:
+        logger.exception("rollback/diff failed")
+        return bad(handler, str(e), status=500)
+
+
+# ── Plugin shared assets (e.g. /plugins/plugin.css) ──
+# Restricted to shared plugin assets only — no cross-plugin file access.
+def _route_get_plugins_prefix(handler, parsed):
+    from api.plugins import _get_plugin_base
+    plugin_base = _get_plugin_base()
+    rel = parsed.path[len("/plugins/"):]
+    allowed = {"plugin.css"}
+    if rel not in allowed:
+        return False  # 404
+    safe = (plugin_base / rel).resolve()
+    try:
+        safe.relative_to(plugin_base.resolve())
+    except ValueError:
+        return False  # path traversal — 404
+    if safe.is_file():
+        import os as _os
+        data = safe.read_bytes()
+        ext = _os.path.splitext(rel.lower())[1]
+        ct = {
+            ".css": "text/css; charset=utf-8",
+            ".js": "application/javascript; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
+            ".png": "image/png",
+            ".svg": "image/svg+xml",
+        }.get(ext, "application/octet-stream")
+        handler.send_response(200)
+        handler.send_header("Content-Type", ct)
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+        return True
+    return NOT_HANDLED
+
+
+# ── Plugin static assets ──
+def _route_get_dashboard_plugins_prefix(handler, parsed):
+    parts = parsed.path.split("/", 3)
+    if len(parts) >= 3:
+        plugin_name = parts[2]
+        rel_path = parts[3] if len(parts) > 3 else ""
+        # Server-side enable-gate: a plugin disabled in Settings must have its
+        # entire URL surface shut off, not merely hidden in the UI.
+        if not _dashboard_plugin_enabled(plugin_name):
+            return False  # 404 — disabled plugins serve nothing
+        from api.plugins import serve_plugin_static
+        result = serve_plugin_static(plugin_name, rel_path)
+        if result:
+            data, content_type = result
+            handler.send_response(200)
+            handler.send_header("Content-Type", content_type)
+            # Defense-in-depth: plugin-controlled assets are served from the
+            # WebUI's own origin. Sandbox them (null origin) so a plugin's
+            # .html/.svg can't run privileged same-origin script if navigated
+            # to directly (the in-panel iframe sandbox doesn't cover direct
+            # navigation). nosniff prevents content-type confusion.
+            handler.send_header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups")
+            handler.send_header("X-Content-Type-Options", "nosniff")
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
+            return True
+    return NOT_HANDLED
+
+
+_GET_ROUTES = RouteTable(
+    (
+        (Prefix("/api/job-os/"), _route_get_api_job_os_prefix),
+        (Exact("/api/insights"), _route_get_api_insights),
+        (Exact("/api/account_usage"), _route_get_api_account_usage),
+        (Exact("/api/project-os/dashboard"), _route_get_api_project_os_dashboard),
+        (Prefix("/api/kanban/"), _route_get_api_kanban_prefix),
+        (Exact("/api/wiki/status"), _route_get_api_wiki_status),
+        (Exact("/api/wiki/browse"), _route_get_api_wiki_browse),
+        (Exact("/api/wiki/page"), _route_get_api_wiki_page),
+        (Exact("/api/logs"), _route_get_api_logs),
+        (Exact("/health"), _route_get_health),
+        (Exact("/api/health/agent"), _route_get_api_health_agent),
+        (Exact("/api/system/health"), _route_get_api_system_health),
+        (Exact("/api/models"), _route_get_api_models),
+        (Exact("/api/models/cross_profile"), _route_get_api_models_cross_profile),
+        (Exact("/api/models/live"), _route_get_api_models_live),
+        (Exact("/api/model/auxiliary"), _route_get_api_model_auxiliary),
+        (Exact("/api/dashboard/status"), _route_get_api_dashboard_status),
+        (Exact("/api/dashboard/config"), _route_get_api_dashboard_config),
+        (Exact("/api/providers"), _route_get_api_providers),
+        (Exact("/api/plugins"), _route_get_api_plugins),
+        (Exact("/api/provider/quota"), _route_get_api_provider_quota),
+        (Exact("/api/provider/cost-history"), _route_get_api_provider_cost_history),
+        (Exact("/api/settings"), _route_get_api_settings),
+        (Exact("/api/transcribe/capability"), _route_get_api_transcribe_capability),
+        (Exact("/api/reasoning"), _route_get_api_reasoning),
+        (Exact("/api/onboarding/status"), _route_get_api_onboarding_status),
+        (Exact("/api/extensions/status"), _route_get_api_extensions_status),
+        (Exact("/api/extensions/registry"), _route_get_api_extensions_registry),
+        (Prefix("/extensions/"), _route_get_extensions_prefix),
+        (Prefix("/graphify-projects/"), _route_get_graphify_projects_prefix),
+        (Prefix("/static/"), _route_get_static_prefix),
+        (Exact("/api/session/worktree/status"), _route_get_api_session_worktree_status),
+        (Exact("/api/session/compress/status"), _route_get_api_session_compress_status),
+        (Exact("/api/session"), _route_get_api_session),
+        (Exact("/api/session/lineage/report"), _route_get_api_session_lineage_report),
+        (Exact("/api/session/recovery/audit"), _route_get_api_session_recovery_audit),
+        (Exact("/api/session/status"), _route_get_api_session_status),
+        (Exact("/api/session/yolo"), _route_get_api_session_yolo),
+        (Exact("/api/session/usage"), _route_get_api_session_usage),
+        (Exact("/api/background/status"), _route_get_api_background_status),
+        (Exact("/api/sessions"), _route_get_api_sessions),
+        (Exact("/api/sticky_boards"), _route_get_api_sticky_boards),
+        (Exact("/api/projects"), _route_get_api_projects),
+        (Exact("/api/prompts"), _route_get_api_prompts),
+        (Exact("/api/agent-definitions"), _route_get_api_agent_definitions),
+        (Exact("/api/crews"), _route_get_api_crews),
+        (Exact("/api/crews/cost"), _route_get_api_crews_cost),
+        (Exact("/api/session/export"), _route_get_api_session_export),
+        (Exact("/api/workspaces"), _route_get_api_workspaces),
+        (Exact("/api/workspaces/registry"), _route_get_api_workspaces_registry),
+        (Exact("/api/workspaces/suggest"), _route_get_api_workspaces_suggest),
+        (Exact("/api/office/integrations"), _route_get_api_office_integrations),
+        (Exact("/api/office/scheduled-tasks"), _route_get_api_office_scheduled_tasks),
+        (Exact("/api/sessions/search"), _route_get_api_sessions_search),
+        (Exact("/api/work_hub/bootstrap"), _route_get_api_work_hub_bootstrap),
+        (Exact("/api/work_hub/items"), _route_get_api_work_hub_items),
+        (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
+        (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
+        (Exact("/api/list"), _route_get_api_list),
+        (Exact("/api/escape/list"), _route_get_api_escape_list),
+        (Exact("/api/git/status"), _route_get_api_git_status),
+        (Exact("/api/subagents/active"), _route_get_api_subagents_active),
+        (Exact("/api/agent-canvas/sessions"), _route_get_api_agent_canvas_sessions),
+        (Exact("/api/git/branches"), _route_get_api_git_branches),
+        (Exact("/api/git/diff"), _route_get_api_git_diff),
+        (Exact("/api/personalities"), _route_get_api_personalities),
+        (Exact("/api/git-info"), _route_get_api_git_info),
+        (Exact("/api/commands"), _route_get_api_commands),
+        (Exact("/api/commands/bundles"), _route_get_api_commands_bundles),
+        (Exact("/api/commands/moa/resolve"), _route_get_api_commands_moa_resolve),
+        (Exact("/api/updates/check"), _route_get_api_updates_check),
+        (Exact("/api/chat/stream/status"), _route_get_api_chat_stream_status),
+        (Exact("/api/chat/cancel"), _route_get_api_chat_cancel),
+        (Exact("/api/chat/stream"), _route_get_api_chat_stream),
+        (Exact("/api/terminal/output"), _route_get_api_terminal_output),
+        (Exact("/api/sessions/gateway/stream"), _route_get_api_sessions_gateway_stream),
+        (Exact("/api/sessions/events"), _route_get_api_sessions_events),
+        (Param(_session_events_path_session_id), _route_get_session_events_path_session_id),
+        (Exact("/api/media"), _route_get_api_media),
+        (Exact("/api/file/raw"), _route_get_api_file_raw),
+        (Exact("/api/escape/file/raw"), _route_get_api_escape_file_raw),
+        (Exact("/api/folder/download"), _route_get_api_folder_download),
+        (Exact("/api/file"), _route_get_api_file),
+        (Exact("/api/escape/file/read"), _route_get_api_escape_file_read),
+        (Exact("/api/approval/pending"), _route_get_api_approval_pending),
+        (Exact("/api/approval/stream"), _route_get_api_approval_stream),
+        (Exact("/api/approval/inject_test"), _route_get_api_approval_inject_test),
+        (Exact("/api/clarify/pending"), _route_get_api_clarify_pending),
+        (Exact("/api/clarify/stream"), _route_get_api_clarify_stream),
+        (Exact("/api/session/stream"), _route_get_api_session_stream),
+        (Exact("/api/clarify/inject_test"), _route_get_api_clarify_inject_test),
+        (Exact("/api/onboarding/oauth/poll"), _route_get_api_onboarding_oauth_poll),
+        (Exact("/api/crons"), _route_get_api_crons),
+        (Exact("/api/crons/output"), _route_get_api_crons_output),
+        (Exact("/api/crons/history"), _route_get_api_crons_history),
+        (Exact("/api/crons/delegation"), _route_get_api_crons_delegation),
+        (Exact("/api/crons/run"), _route_get_api_crons_run),
+        (Exact("/api/crons/recent"), _route_get_api_crons_recent),
+        (Exact("/api/crons/status"), _route_get_api_crons_status),
+        (Exact("/api/crons/delivery-options"), _route_get_api_crons_delivery_options),
+        (Exact("/api/skills"), _route_get_api_skills),
+        (Exact("/api/skills/usage"), _route_get_api_skills_usage),
+        (Exact("/api/skills/content"), _route_get_api_skills_content),
+        (Exact("/api/skills/scan"), _route_get_api_skills_scan),
+        (Exact("/api/memory"), _route_get_api_memory),
+        (Exact("/api/audit"), _route_get_api_audit),
+        (Exact("/api/knowledge/list"), _route_get_api_knowledge_list),
+        (Exact("/api/knowledge/read"), _route_get_api_knowledge_read),
+        (Exact("/api/knowledge/search"), _route_get_api_knowledge_search),
+        (Exact("/api/profiles"), _route_get_api_profiles),
+        (Exact("/api/profiles/approval_modes"), _route_get_api_profiles_approval_modes),
+        (Exact("/api/profile/active"), _route_get_api_profile_active),
+        (Exact("/api/gateway/status"), _route_get_api_gateway_status),
+        (Exact("/api/mcp/servers"), _route_get_api_mcp_servers),
+        (Exact("/api/mcp/tools"), _route_get_api_mcp_tools),
+        (Exact("/api/notes/sources"), _route_get_api_notes_sources),
+        (Exact("/api/notes/search"), _route_get_api_notes_search),
+        (Exact("/api/notes/item"), _route_get_api_notes_item),
+        (Exact("/api/rollback/list"), _route_get_api_rollback_list),
+        (Exact("/api/rollback/diff"), _route_get_api_rollback_diff),
+        (Prefix("/plugins/"), _route_get_plugins_prefix),
+        (Prefix("/dashboard-plugins/"), _route_get_dashboard_plugins_prefix),
+    )
+)
+
 
 
 # ── POST auth helpers
@@ -19965,17 +20289,6 @@ def _sse_with_id(handler, event, data, event_id=None):
     if event_id:
         handler.wfile.write(f"id: {event_id}\n".encode("utf-8"))
     _sse(handler, event, data)
-
-
-def _session_events_path_session_id(path: str | None) -> str | None:
-    path = str(path or "")
-    parts = path.strip("/").split("/")
-    if len(parts) != 4:
-        return None
-    if parts[0] != "api" or parts[1] != "sessions" or parts[3] != "events":
-        return None
-    sid = str(parts[2] or "").strip()
-    return sid or None
 
 
 def _session_events_resume_event_id(handler, parsed) -> str | None:
