@@ -1,8 +1,8 @@
 from pathlib import Path
-import re
 
 import api.config as cfg
 import yaml
+from tests.route_chain_inventory import route_source
 
 
 def read(path):
@@ -60,14 +60,8 @@ def test_ui_posts_reasoning_context_with_effort():
 
 
 def test_reasoning_post_route_threads_model_context():
-    src = read("api/routes.py")
-    match = re.search(
-        r"if parsed\.path == \"/api/reasoning\":(.*?)return bad\(handler, \"reasoning: must supply 'display' or 'effort'\"\)",
-        src,
-        re.DOTALL,
-    )
-    assert match, "The /api/reasoning POST route block must exist"
-    body = match.group(1)
+    body = route_source("POST", "/api/reasoning")
+    assert "reasoning: must supply 'display' or 'effort'" in body
     assert 'body.get("model")' in body
     assert 'body.get("provider")' in body
     assert 'set_reasoning_effort(' in body

@@ -18,6 +18,7 @@ import types
 import urllib.request
 import urllib.error
 import pytest
+from tests.route_chain_inventory import route_source
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
@@ -505,9 +506,7 @@ def _create_session_with_credentials() -> str:
 
 def test_api_session_redacts_messages():
     """GET /api/session route must call redact_session_data() before returning."""
-    import inspect
-    import api.routes as routes
-    src = inspect.getsource(routes.handle_get)
+    src = route_source("GET", "/api/session")
     # Verify redact_session_data is applied to the session payload
     assert "redact_session_data" in src, (
         "api/routes.py handle_get must call redact_session_data() on /api/session response"

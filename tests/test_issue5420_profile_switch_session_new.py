@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import ast
-import inspect
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import api.routes as routes
+from tests.route_chain_inventory import dispatch_source
 
 
 def _post_session_new(body: dict, monkeypatch):
@@ -37,8 +37,12 @@ def _post_session_new(body: dict, monkeypatch):
 
 
 def test_handle_post_does_not_shadow_get_active_profile_name():
-    """handle_post must not re-import get_active_profile_name locally (#5420)."""
-    src = inspect.getsource(routes.handle_post)
+    """POST dispatch must not re-import get_active_profile_name locally (#5420).
+
+    Checks handle_post and every POST route it dispatches to.
+    """
+    src = dispatch_source("POST")
+    assert "def handle_post(" in src
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "api.profiles":

@@ -6,10 +6,10 @@ Covers:
 """
 
 import json
-import re
 from pathlib import Path
 
 from api.skill_usage import read_skill_usage
+from tests.route_chain_inventory import route_source
 
 _ROUTES = Path(__file__).resolve().parent.parent / "api" / "routes.py"
 
@@ -65,10 +65,7 @@ class TestApiSkillsUsageRoute:
 
     def test_route_returns_usage_structure(self):
         """The route response shape includes usage/skill_names/total_invocations."""
-        src = _ROUTES.read_text(encoding="utf-8")
         # Find the /api/skills/usage handler block and check for key fields
-        block_match = re.search(r'if parsed\.path == "/api/skills/usage":.*?(?=\n    if parsed|$)', src, re.DOTALL)
-        assert block_match, "Missing /api/skills/usage handler block"
-        block = block_match.group()
+        block = route_source("GET", "/api/skills/usage")
         assert '"usage"' in block and '"skill_names"' in block, "Missing usage or skill_names in response"
         assert '"total_invocations"' in block and '"unique_skills_used"' in block, "Missing total_invocations or unique_skills_used"

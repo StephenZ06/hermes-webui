@@ -22,6 +22,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.route_chain_inventory import route_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -150,15 +151,8 @@ def test_chat_start_no_longer_bare_404_on_keyerror():
 
 def test_get_session_route_uses_shared_synthesiser():
     """The GET KeyError path must also delegate to the same helper."""
-    src = ROUTES_PY.read_text(encoding="utf-8")
-    # Find the /api/session GET block (not /api/sessions).
-    block = re.search(
-        r'if parsed\.path == "/api/session":.*?return j\(handler, \{"session": public_session_projection\(sess\)\}\)',
-        src,
-        re.DOTALL,
-    )
-    assert block, "could not locate /api/session GET block"
-    text = block.group(0)
+    text = route_source("GET", "/api/session")
+    assert 'return j(handler, {"session": public_session_projection(sess)})' in text
     assert "_claim_or_synthesize_cli_session" in text, (
         "GET /api/session must also delegate to the shared synthesiser so "
         "the two endpoints cannot drift on foreign-session semantics"
@@ -184,13 +178,7 @@ def test_get_session_preserves_cli_read_only_flag():
     The fix: read from synth.read_only, which the helper correctly
     sets to True for BOTH the explicit AND the source-refused
     refusal paths."""
-    block = re.search(
-        r'if parsed\.path == "/api/session":.*?return j\(handler, \{"session": public_session_projection\(sess\)\}\)\)?',
-        ROUTES_PY.read_text(encoding="utf-8"),
-        re.DOTALL,
-    )
-    assert block, "could not locate /api/session GET block"
-    text = block.group(0)
+    text = route_source("GET", "/api/session")
     # Must read read_only from the synthesized Session.
     assert "synth.read_only" in text, (
         "GET /api/session must read read_only from the synthesized "

@@ -500,6 +500,36 @@ def route_source(method: str, path: str, source: str | None = None) -> str:
     return textwrap.dedent("".join(lines[first : claim.end]))
 
 
+def dispatch_source(method: str, source: str | None = None) -> str:
+    """Source of all code that dispatches ``method``.
+
+    The ``handle_*`` function itself plus every route unit it dispatches to:
+    in the legacy form the units sit inside the handler; in the table form
+    they are separate functions, appended here as dedented bodies.  Use it
+    for assertions about the method's dispatch code as a whole ("no route
+    imports X locally") that must not pass vacuously once routes leave the
+    handler.  The result parses as a module.
+    """
+    text = source if source is not None else ROUTES_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    handler_name = next(name for name, m in HANDLER_FUNCTIONS.items() if m == method)
+    handler = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == handler_name)
+    lines = text.splitlines(keepends=True)
+    parts = ["".join(lines[handler.lineno - 1 : handler.end_lineno])]
+    seen: set[tuple[int, int]] = set()
+    for claim in build_inventory(text):
+        if claim.method != method or claim.kind == "middleware":
+            continue
+        span = (claim.start, claim.end)
+        inside_handler = handler.lineno <= claim.start <= (handler.end_lineno or handler.lineno)
+        if span in seen or inside_handler:
+            continue
+        seen.add(span)
+        first = _header_end(lines, claim.start - 1) + 1
+        parts.append(textwrap.dedent("".join(lines[first : claim.end])))
+    return "\n".join(parts)
+
+
 def route_order(method: str, source: str | None = None) -> list[str]:
     """Ordered ``"kind pattern"`` entries for one method, middleware included."""
     return snapshot_entries(build_inventory(source))[method]

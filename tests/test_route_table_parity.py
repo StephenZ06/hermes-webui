@@ -14,6 +14,7 @@ of the live order).  Removing or reordering one does: regenerate with
 
 from __future__ import annotations
 
+import ast
 import json
 import textwrap
 
@@ -23,6 +24,7 @@ from tests.route_chain_inventory import (
     HANDLER_FUNCTIONS,
     SNAPSHOT_PATH,
     build_inventory,
+    dispatch_source,
     route_order,
     route_source,
     snapshot_entries,
@@ -248,6 +250,15 @@ def test_route_source_follows_dispatch_order_for_overlapping_matchers():
     # "/session/x" is claimed by the shell's prefix; nothing earlier matches it.
     assert "serve_shell" in route_source("GET", "/session/x", _CHAIN_SOURCE)
     assert "serve_shell" in route_source("GET", "/session/x", _TABLE_SOURCE)
+
+
+def test_dispatch_source_covers_route_bodies_in_either_form():
+    for source in (_CHAIN_SOURCE, _TABLE_SOURCE):
+        text = dispatch_source("GET", source)
+        assert "def handle_get(" in text
+        assert "data = load()" in text  # a route body
+        assert "_handle_session(handler, parsed, sid)" in text  # the parametric route
+        ast.parse(text)
 
 
 def test_route_order_lists_middleware_in_place():

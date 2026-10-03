@@ -12,30 +12,21 @@ These are static-analysis tests (source inspection) matching the
 conventions of the existing test suite.
 """
 import re
+from tests.route_chain_inventory import route_source
 
 
 def _extract_duplicate_block():
     """Extract the duplicate handler block from routes.py."""
     with open('api/routes.py') as f:
         src = f.read()
-    match = re.search(
-        r'parsed\.path == "/api/session/duplicate"(.*?)(?=\n    if parsed\.path|$)',
-        src, re.DOTALL
-    )
-    assert match, "Could not find /api/session/duplicate handler block"
-    return match.group(1), src
+    return route_source("POST", "/api/session/duplicate"), src
 
 
 def _extract_branch_block():
     """Extract the branch handler block from routes.py."""
     with open('api/routes.py') as f:
         src = f.read()
-    match = re.search(
-        r'parsed\.path == "/api/session/branch"(.*?)(?=\n    if parsed\.path|$)',
-        src, re.DOTALL
-    )
-    assert match, "Could not find /api/session/branch handler block"
-    return match.group(1), src
+    return route_source("POST", "/api/session/branch"), src
 
 
 def _find_session_ctor(block, var_name='copied_session'):

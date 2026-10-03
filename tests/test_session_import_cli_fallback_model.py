@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 from urllib.parse import urlparse
+from tests.route_chain_inventory import route_source
 
 REPO = Path(__file__).resolve().parents[1]
 ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
@@ -388,9 +390,9 @@ def test_sessions_endpoint_suppresses_duplicate_webui_state_projection(monkeypat
 
 def test_messaging_session_loader_prefers_longer_sidecar_transcript():
     """Pin the /api/session invariant that repaired sidecars can be longer than state.db segments."""
-    handler = _extract_handler("handle_get")
-    old = "if is_messaging_session and cli_messages:\n                    _all_msgs = cli_messages"
-    assert old not in handler
+    handler = route_source("GET", "/api/session")
+    # The old shortcut took the state.db transcript whenever one existed.
+    assert re.search(r"if is_messaging_session and cli_messages:\n\s*_all_msgs = cli_messages", handler) is None
     assert "_all_msgs = _merged_session_messages_for_display(s, cli_messages)" in handler
     src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
     assert "sidecar_messages = _webui_sidecar_lineage_messages_for_display(session)" in src

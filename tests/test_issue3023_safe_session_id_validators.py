@@ -55,9 +55,7 @@ def test_is_safe_session_id_rejects_whitespace_and_control_chars():
 
 def test_session_delete_validator_accepts_hyphenated_ids():
     """``/api/session/delete`` validator path must accept hyphens (#3023)."""
-    import inspect
-    import api.routes as routes
-    src = inspect.getsource(routes.handle_post if hasattr(routes, "handle_post") else routes)
+    src = route_source("POST", "/api/session/delete")
     # Should call the shared helper, not the old magic-string check
     assert "is_safe_session_id" in src
     assert "'0123456789abcdefghijklmnopqrstuvwxyz_'" not in src
