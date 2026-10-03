@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from tests.route_chain_inventory import route_claim
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 SESSIONS_JS = (REPO_ROOT / "static" / "sessions.js").read_text(encoding="utf-8")
@@ -62,7 +63,7 @@ def test_long_lived_stream_urls_resolve_against_document_base():
 
 
 def test_session_url_route_serves_index_and_base_href_handles_session_path():
-    assert 'parsed.path.startswith("/session/")' in ROUTES_PY
+    assert route_claim("GET", "/session/abc123").kind == "prefix"
     assert "marker='/session/'" in INDEX_HTML
     assert "path.slice(0,i+1)" in INDEX_HTML
 

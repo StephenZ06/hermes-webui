@@ -4,6 +4,7 @@ Sprint 19 Tests: auth/login, security headers, request size limit.
 import json, urllib.error, urllib.request
 
 from tests._pytest_port import BASE
+from tests.route_chain_inventory import route_source
 
 
 def get(path, headers=None):
@@ -73,10 +74,7 @@ def test_login_page_cache_busts_login_script():
 
 def test_login_route_injects_webui_version_for_login_script():
     """The /login route should replace the login.js version placeholder."""
-    from pathlib import Path
-
-    src = Path(__file__).resolve().parents[1].joinpath("api", "routes.py").read_text(encoding="utf-8")
-    login_block = src[src.find('if parsed.path == "/login"'):src.find('if parsed.path == "/api/auth/status"')]
+    login_block = route_source("GET", "/login")
     assert "WEBUI_VERSION" in login_block
     assert "{{WEBUI_VERSION}}" in login_block
 

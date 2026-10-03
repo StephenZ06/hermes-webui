@@ -26,6 +26,7 @@ in the wider suite).
 """
 from pathlib import Path
 import re
+from tests.route_chain_inventory import has_route
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -76,7 +77,7 @@ class TestCopyFilePathMenuItem:
     def test_endpoint_handler_present(self):
         """Server-side endpoint must exist and route through the dispatcher."""
         src = ROUTES.read_text(encoding="utf-8")
-        assert 'parsed.path == "/api/file/path"' in src
+        assert has_route("POST", "/api/file/path")
         assert "def _handle_file_path(handler, body):" in src
         # Must use safe_resolve to prevent path traversal.
         # Find the handler body and check.

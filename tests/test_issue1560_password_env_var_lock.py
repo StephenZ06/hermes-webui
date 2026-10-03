@@ -15,6 +15,7 @@ import os
 import pathlib
 import urllib.error
 import urllib.request
+from tests.route_chain_inventory import route_source
 
 REPO = pathlib.Path(__file__).parent.parent
 
@@ -28,12 +29,7 @@ def _read(rel_path):
 
 def test_get_settings_surfaces_password_env_var_flag():
     """GET /api/settings handler must include `password_env_var: bool(env)`."""
-    src = _read('api/routes.py')
-    # Locate the GET /api/settings block (by handler comment + path string)
-    start = src.index('if parsed.path == "/api/settings":')
-    # Block ends at next top-level `if parsed.path == ...` or `if parsed.path.startswith`
-    end = src.index('if parsed.path', start + 50)
-    block = src[start:end]
+    block = route_source("GET", "/api/settings")
 
     assert 'password_env_var' in block, \
         'GET /api/settings must expose password_env_var so UI can disable the field'

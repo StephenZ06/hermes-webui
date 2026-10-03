@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.route_chain_inventory import route_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,9 +36,7 @@ def _extract_function(source: str, name: str) -> str:
 
 
 def test_recent_handler_reuses_dispatcher_cron_context_without_nesting():
-    dispatch_start = ROUTES_PY.index('if parsed.path == "/api/crons/recent":')
-    dispatch_end = ROUTES_PY.index('if parsed.path == "/api/crons/status":', dispatch_start)
-    dispatch = ROUTES_PY[dispatch_start:dispatch_end]
+    dispatch = route_source("GET", "/api/crons/recent")
     handler_start = ROUTES_PY.index("def _handle_cron_recent(")
     handler_end = ROUTES_PY.index("\ndef ", handler_start + 1)
     handler = ROUTES_PY[handler_start:handler_end]

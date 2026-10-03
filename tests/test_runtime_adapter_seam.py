@@ -3,6 +3,7 @@ import io
 import queue
 
 from tests.conftest import requires_agent_modules
+from tests.route_chain_inventory import route_source
 
 
 def test_runtime_adapter_interface_and_legacy_journal_methods_exist():
@@ -255,15 +256,12 @@ def test_legacy_journal_adapter_queue_and_goal_return_bounded_statuses():
 
 
 def test_chat_cancel_route_uses_adapter_only_when_flag_enabled():
-    routes = importlib.import_module("api.routes")
-    src = (routes.Path(__file__).parent.parent / "api" / "routes.py").read_text(encoding="utf-8")
-    cancel_idx = src.index('if parsed.path == "/api/chat/cancel":')
-    cancel_body = src[cancel_idx:src.index('if parsed.path == "/api/chat/stream":', cancel_idx)]
+    cancel_body = route_source("GET", "/api/chat/cancel")
 
     assert "runtime_adapter_enabled()" in cancel_body
     assert "LegacyJournalRuntimeAdapter(cancel_delegate=cancel_stream)" in cancel_body
     assert "adapter.cancel_run(stream_id).accepted" in cancel_body
-    assert "else:\n            cancelled = cancel_stream(stream_id)" in cancel_body
+    assert "else:\n    cancelled = cancel_stream(stream_id)" in cancel_body
     assert "HERMES_WEBUI_RUNTIME_ADAPTER" not in cancel_body, "route should use runtime_adapter_enabled(), not inline env checks"
 
 

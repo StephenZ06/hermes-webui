@@ -1,5 +1,6 @@
 import queue
 from pathlib import Path
+from tests.route_chain_inventory import has_route
 
 
 ROUTES = Path("api/routes.py").read_text(encoding="utf-8")
@@ -11,7 +12,7 @@ def test_session_events_endpoint_and_bus_are_defined():
     assert "_SESSION_EVENTS_SUBSCRIBERS" in SESSION_EVENTS
     assert "def publish_session_list_changed" in SESSION_EVENTS
     assert "def _handle_session_events_stream" in ROUTES
-    assert "parsed.path == '/api/sessions/events'" in ROUTES
+    assert has_route("GET", "/api/sessions/events")
     assert "Content-Type', 'text/event-stream; charset=utf-8'" in ROUTES
 
 

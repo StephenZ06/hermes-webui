@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
+from tests.route_chain_inventory import route_source
 
 ROUTES = Path(__file__).resolve().parent.parent / "api" / "routes.py"
 UI_JS = Path(__file__).resolve().parent.parent / "static" / "ui.js"
@@ -374,9 +375,7 @@ class TestIssue1436SourceMarkers:
         # The session load path can call a helper, but the lazy import must
         # remain in routes.py so WebUI still works with older/missing agent
         # bundles by swallowing metadata-resolution failures.
-        start = src.find('if parsed.path == "/api/session":')
-        end = src.find('if parsed.path == "/api/projects":', start)
-        block = src[start:end]
+        block = route_source("GET", "/api/session")
         assert "_resolve_context_length_for_session_model" in block, (
             "GET /api/session load-path block must resolve model context "
             "metadata for the context_length fallback (#1436)"
@@ -388,12 +387,7 @@ class TestIssue1436SourceMarkers:
 
     def test_routes_load_path_marks_fix_with_issue_number(self):
         """Comment must reference #1436 so future maintainers find this trail."""
-        src = ROUTES.read_text(encoding="utf-8")
-        # Find the load-path block (between "if parsed.path == \"/api/session\":"
-        # and the next `if parsed.path` after it).
-        start = src.find('if parsed.path == "/api/session":')
-        end = src.find('if parsed.path == "/api/projects":', start)
-        block = src[start:end]
+        block = route_source("GET", "/api/session")
         assert "#1436" in block, (
             "GET /api/session load-path block must reference #1436 in a comment"
         )

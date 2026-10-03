@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 import api.profiles as profiles
+from tests.route_chain_inventory import route_source
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -31,9 +32,7 @@ def test_profile_create_payload_preserves_provider_context():
 
 
 def test_profile_create_route_passes_model_fields_to_profile_api():
-    route_start = ROUTES_PY.find('if parsed.path == "/api/profile/create":')
-    assert route_start != -1
-    route_body = ROUTES_PY[route_start : ROUTES_PY.find('if parsed.path == "/api/profile/delete":', route_start)]
+    route_body = route_source("POST", "/api/profile/create")
     assert 'default_model = body.get("default_model"' in route_body
     assert 'model_provider = body.get("model_provider"' in route_body
     assert "default_model=default_model" in route_body

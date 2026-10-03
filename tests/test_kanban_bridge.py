@@ -17,6 +17,7 @@ import time
 import types
 from dataclasses import dataclass
 from types import SimpleNamespace
+from tests.route_chain_inventory import route_claim, route_source
 
 
 @dataclass
@@ -487,15 +488,13 @@ def test_kanban_events_payload_matches_polling_shape(monkeypatch):
 
 
 def test_routes_dispatches_api_kanban_get_to_bridge():
-    src = open("api/routes.py", encoding="utf-8").read()
-    assert 'parsed.path.startswith("/api/kanban/")' in src
-    assert "handle_kanban_get(handler, parsed)" in src
+    assert route_claim("GET", "/api/kanban/tasks").kind == "prefix"
+    assert "handle_kanban_get(handler, parsed)" in route_source("GET", "/api/kanban/tasks")
 
 
 def test_routes_dispatches_api_kanban_post_to_bridge():
-    src = open("api/routes.py", encoding="utf-8").read()
-    assert 'parsed.path.startswith("/api/kanban/")' in src
-    assert "handle_kanban_post(handler, parsed, body)" in src
+    assert route_claim("POST", "/api/kanban/tasks").kind == "prefix"
+    assert "handle_kanban_post(handler, parsed, body)" in route_source("POST", "/api/kanban/tasks")
 
 
 
@@ -536,15 +535,15 @@ def test_kanban_only_mine_bulk_dispatch_and_block_unblock(monkeypatch):
 
 
 def test_routes_dispatches_canonical_kanban_patch_and_delete_verbs():
-    src = open("api/routes.py", encoding="utf-8").read()
     server = open("server.py", encoding="utf-8").read()
     assert "def do_PATCH" in server
     assert "def do_DELETE" in server
     assert "self._handle_write(handle_patch)" in server
     assert "self._handle_write(handle_delete)" in server
-    assert 'parsed.path.startswith("/api/kanban/")' in src
-    assert "handle_kanban_patch(handler, parsed, body)" in src
-    assert "handle_kanban_delete(handler, parsed, body)" in src
+    assert route_claim("PATCH", "/api/kanban/tasks").kind == "prefix"
+    assert route_claim("DELETE", "/api/kanban/tasks").kind == "prefix"
+    assert "handle_kanban_patch(handler, parsed, body)" in route_source("PATCH", "/api/kanban/tasks")
+    assert "handle_kanban_delete(handler, parsed, body)" in route_source("DELETE", "/api/kanban/tasks")
 
 
 def test_patch_status_running_is_rejected_to_protect_dispatcher_contract(monkeypatch):

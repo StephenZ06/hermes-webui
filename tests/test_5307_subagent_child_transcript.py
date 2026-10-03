@@ -23,6 +23,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from tests.route_chain_inventory import route_source
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUTES_PY = ROOT / "api" / "routes.py"
@@ -364,9 +365,7 @@ def test_mutation_routes_guard_subagent_source_in_source():
     # each mutation route body must call the guard
     for route in ("/api/session/delete", "/api/session/clear",
                   "/api/session/truncate", "/api/session/pin"):
-        idx = src.index(f'parsed.path == "{route}"')
-        nxt = src.index('parsed.path == "/api/session', idx + 10)
-        block = src[idx:nxt]
+        block = route_source("POST", route)
         assert "_session_is_subagent_view_only(" in block, (
             f"{route} must guard against subagent children before mutating"
         )

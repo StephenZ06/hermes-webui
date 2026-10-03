@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import threading
 from pathlib import Path
+from tests.route_chain_inventory import route_source
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -346,12 +347,7 @@ def test_lru_eviction_commits_outside_cache_lock():
 def test_clear_session_evicts_outside_session_lock():
     """Clearing a session must not hold the per-session mutation lock while
     evicting its cached agent, because eviction can run provider commit I/O."""
-    import api.routes as routes_mod
-    src = Path(routes_mod.__file__).read_text(encoding="utf-8")
-
-    route_start = src.index('if parsed.path == "/api/session/clear"')
-    route_end = src.index('if parsed.path == "/api/session/truncate"', route_start)
-    route_block = src[route_start:route_end]
+    route_block = route_source("POST", "/api/session/clear")
 
     lock_start = route_block.index("with _get_session_agent_lock(sid):")
     lock_end = route_block.index("# Evict cached agent outside the per-session lock", lock_start)

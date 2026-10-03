@@ -12,6 +12,7 @@ Covers:
 
 import pathlib
 import re
+from tests.route_chain_inventory import has_route
 
 REPO = pathlib.Path(__file__).parent.parent
 
@@ -443,7 +444,7 @@ class TestReasoningRoutes:
 
     def test_get_api_reasoning_route_exists(self):
         src = read('api/routes.py')
-        assert 'parsed.path == "/api/reasoning"' in src, (
+        assert has_route("GET", "/api/reasoning"), (
             "GET /api/reasoning route must exist"
         )
         assert 'get_reasoning_status' in src, (

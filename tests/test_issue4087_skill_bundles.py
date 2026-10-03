@@ -7,6 +7,7 @@ from types import ModuleType
 import pytest
 
 import api.commands as commands
+from tests.route_chain_inventory import has_route
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,8 +34,8 @@ def _install_fake_skill_bundles(monkeypatch, *, bundles=None, resolver=None, bui
 
 
 def test_bundle_routes_are_wired_through_dedicated_endpoints():
-    assert 'if parsed.path == "/api/commands/bundles":' in ROUTES_PY
-    assert 'if parsed.path == "/api/commands/bundles/resolve":' in ROUTES_PY
+    assert has_route("GET", "/api/commands/bundles")
+    assert has_route("POST", "/api/commands/bundles/resolve")
     assert 'return j(handler, {"bundles": list_command_bundles()})' in ROUTES_PY
     assert 'return j(handler, resolve_bundle_command(command))' in ROUTES_PY
 

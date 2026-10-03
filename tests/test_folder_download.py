@@ -3,6 +3,7 @@ elsewhere in the hermes-webui test suite (see tests/test_issue1867_upload_size_p
 """
 
 from pathlib import Path
+from tests.route_chain_inventory import has_route
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUTES_PY = ROOT / "api" / "routes.py"
@@ -19,7 +20,7 @@ def test_folder_download_handler_defined():
 
 def test_folder_download_dispatch_registered():
     src = ROUTES_PY.read_text(encoding="utf-8")
-    assert 'parsed.path == "/api/folder/download"' in src
+    assert has_route("GET", "/api/folder/download")
     assert "_handle_folder_download(handler, parsed)" in src
 
 

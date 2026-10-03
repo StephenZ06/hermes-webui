@@ -1,5 +1,6 @@
 """Tests for #3402 part A — move files/folders within the workspace tree."""
 import re
+from tests.route_chain_inventory import has_route
 
 
 def _src(name: str) -> str:
@@ -12,7 +13,7 @@ ROUTES = open("api/routes.py", encoding="utf-8").read()
 
 class TestIssue3402WorkspaceTreeMoveApi:
     def test_file_move_route_registered(self):
-        assert 'parsed.path == "/api/file/move"' in ROUTES
+        assert has_route("POST", "/api/file/move")
         assert "return _handle_file_move(handler, body)" in ROUTES
 
     def test_file_move_handler_requires_dest_dir(self):

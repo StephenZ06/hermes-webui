@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.route_chain_inventory import has_route
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMANDS_JS = (REPO_ROOT / "static" / "commands.js").read_text(encoding="utf-8")
@@ -569,7 +570,7 @@ def test_goal_endpoint_adapter_error_payload_still_controls_http_status(monkeypa
 
 
 def test_routes_register_goal_endpoint_and_kickoff_stream():
-    assert 'if parsed.path == "/api/goal"' in ROUTES_PY
+    assert has_route("POST", "/api/goal")
     assert "return _handle_goal_command(handler, body)" in ROUTES_PY
     assert "goal_command_payload" in ROUTES_PY
     assert "kickoff_prompt" in ROUTES_PY

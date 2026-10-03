@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 import urllib.parse
+from tests.route_chain_inventory import route_source
 REPO_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
 from tests._pytest_port import BASE
@@ -344,32 +345,14 @@ def test_deleted_session_does_not_appear_in_list(cleanup_test_sessions):
 
 def test_server_delete_prunes_session_index(cleanup_test_sessions):
     """session/delete should prune the deleted row without discarding the index."""
-    src = (REPO_ROOT / "server.py").read_text()
-    routes_src = (REPO_ROOT / "api" / "routes.py").read_text() if (REPO_ROOT / "api" / "routes.py").exists() else ""
-    # Find the delete handler in either file
-    for label, text in [("server.py", src), ("api/routes.py", routes_src)]:
-        # Accept both single-quote and double-quote style (formatting varies by contributor)
-        delete_idx = max(
-            text.find("if parsed.path == '/api/session/delete':"),
-            text.find('if parsed.path == "/api/session/delete":'),
-        )
-        if delete_idx >= 0:
-            delete_block = text[delete_idx:delete_idx+2400]
-            assert "prune_session_from_index(sid)" in delete_block, \
-                f"{label} session/delete must prune SESSION_INDEX_FILE"
-            return
-    assert False, "session/delete handler not found in server.py or api/routes.py"
+    delete_block = route_source("POST", "/api/session/delete")
+    assert "prune_session_from_index(sid)" in delete_block, \
+        "session/delete must prune SESSION_INDEX_FILE"
 
 
 def test_server_delete_removes_session_bak_snapshot(cleanup_test_sessions):
     """session/delete must remove sidecar backups so deleted sessions stay deleted."""
-    routes_src = (REPO_ROOT / "api" / "routes.py").read_text()
-    delete_idx = max(
-        routes_src.find("if parsed.path == '/api/session/delete':"),
-        routes_src.find('if parsed.path == "/api/session/delete":'),
-    )
-    assert delete_idx >= 0, "session/delete handler not found in api/routes.py"
-    delete_block = routes_src[delete_idx:delete_idx+2400]
+    delete_block = route_source("POST", "/api/session/delete")
     assert "with_suffix('.json.bak').unlink" in delete_block or 'with_suffix(".json.bak").unlink' in delete_block, \
         "session/delete must unlink <sid>.json.bak to avoid later orphan-backup recovery"
 
@@ -641,10 +624,7 @@ def test_chat_start_persists_pending_turn_metadata_for_reload_recovery(cleanup_t
 
 def test_session_detail_uses_runtime_streaming_state(cleanup_test_sessions):
     """GET /api/session must agree with /api/sessions on live stream ownership."""
-    routes_src = (REPO_ROOT / "api/routes.py").read_text()
-    session_route = routes_src.split('if parsed.path == "/api/session":', 1)[1].split(
-        'if parsed.path == "/api/session/lineage/report":', 1
-    )[0]
+    session_route = route_source("GET", "/api/session")
     assert "active_stream_ids = _active_stream_ids()" in session_route
     assert "s.compact(" in session_route
     assert "include_runtime=True" in session_route

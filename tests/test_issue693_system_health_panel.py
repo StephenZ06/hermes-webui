@@ -14,6 +14,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.parse import urlparse
+from tests.route_chain_inventory import has_route
 
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
@@ -220,7 +221,7 @@ def test_system_health_cpu_second_procfs_read_fallback_does_not_sleep_twice(monk
 
 
 def test_system_health_route_registered_and_auth_gated(monkeypatch):
-    assert 'parsed.path == "/api/system/health"' in ROUTES_PY
+    assert has_route("GET", "/api/system/health")
     assert "build_system_health_payload()" in ROUTES_PY
     assert '"/api/system/health"' not in AUTH_PY, "system metrics must not be public"
 

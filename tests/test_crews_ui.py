@@ -21,6 +21,7 @@ import re
 import subprocess
 import textwrap
 from pathlib import Path
+from tests.route_chain_inventory import route_claim, route_source
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -167,15 +168,13 @@ def test_routes_wired():
     assert '"/api/crews/delete"' in ROUTES_PY
     assert '"/api/crews/duplicate"' in ROUTES_PY
     assert "_CREWS_DISPATCH_PREFIX" in ROUTES_PY
-    assert "endswith(\"/dispatch\")" in ROUTES_PY
+    assert route_claim("POST", "/api/crews/c1/dispatch").kind == "prefix_suffix"
 
 
 def test_dispatch_route_never_calls_dispatch_once():
     """Same regression as the frontend guard, pinned server-side: the request
     handler for /api/crews/*/dispatch must never touch the dispatcher."""
-    idx = ROUTES_PY.index("_CREWS_DISPATCH_PREFIX = \"/api/crews/\"")
-    end = ROUTES_PY.index("\n    if parsed.path == \"/api/agent-definitions/apply\"", idx)
-    body = ROUTES_PY[idx:end]
+    body = route_source("POST", "/api/crews/c1/dispatch")
     # Check for actual call syntax, not just the substring -- an explanatory
     # comment in this block legitimately references dispatch_once by name to
     # document why it is deliberately NOT called here.

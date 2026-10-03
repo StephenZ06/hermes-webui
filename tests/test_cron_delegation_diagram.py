@@ -7,6 +7,7 @@ job detail page draws that with ``AgentCanvas.renderStaticTree``.
 import sqlite3
 import sys
 from pathlib import Path
+from tests.route_chain_inventory import has_route
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -162,7 +163,7 @@ def test_scan_limit_bounds_how_many_runs_are_read(tmp_path):
 
 def test_delegation_route_is_registered_and_validates_job_id():
     src = read("api/routes.py")
-    assert 'if parsed.path == "/api/crons/delegation":' in src
+    assert has_route("GET", "/api/crons/delegation")
     assert "def _handle_cron_delegation(handler, parsed):" in src
     assert 'return j(handler, {"error": "invalid job_id"}, status=400)' in src
     assert "scan_limit = min(500, max(100, limit * 10))" in src

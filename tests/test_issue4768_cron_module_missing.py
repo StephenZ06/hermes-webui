@@ -8,17 +8,15 @@ guard, so a ``ModuleNotFoundError`` bubbled up as a 500 and broke the whole tab.
 The fix degrades gracefully: an empty job list with a ``cron_unavailable`` flag.
 """
 import pathlib
+from tests.route_chain_inventory import route_source
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 ROUTES = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
 
 
 def _api_crons_branch() -> str:
-    """Return the source of the `if parsed.path == "/api/crons":` GET branch."""
-    marker = ROUTES.index('if parsed.path == "/api/crons":')
-    # Stop at the next sibling branch so we only inspect this handler.
-    nxt = ROUTES.index('if parsed.path == "/api/crons/output":', marker)
-    return ROUTES[marker:nxt]
+    """Return the source of the GET /api/crons handler."""
+    return route_source("GET", "/api/crons")
 
 
 def _cross_profile_helper() -> str:
@@ -45,7 +43,7 @@ def test_api_crons_guards_missing_cron_module():
         "dependency ImportError of an existing cron/jobs.py must still surface."
     )
     # ...and re-raises everything else (a real cron bug is not swallowed).
-    assert "\n            raise" in branch
+    assert "raise" in [line.strip() for line in branch.splitlines()]
     # The try in the branch guards the cron helper call.
     assert "try:" in branch
 

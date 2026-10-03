@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import types
+from tests.route_chain_inventory import has_route
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 
@@ -188,7 +189,7 @@ def test_agent_health_payload_unknown_when_gateway_is_not_configured(monkeypatch
 
 
 def test_agent_health_route_is_registered_with_tri_state_payload_shape():
-    assert 'parsed.path == "/api/health/agent"' in ROUTES_PY
+    assert has_route("GET", "/api/health/agent")
     assert "build_agent_health_payload()" in ROUTES_PY
     assert "gateway_chat_config_status()" in ROUTES_PY
     assert 'payload["gateway_chat"]' in ROUTES_PY

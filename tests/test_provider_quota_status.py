@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import api.config as config
 import api.profiles as profiles
+from tests.route_chain_inventory import has_route
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -1210,7 +1211,7 @@ def test_openai_api_key_detection_falls_through_after_codex_jwt_config_value(mon
 def test_provider_quota_route_is_registered():
     """The backend must expose a route for the UI to poll quota status."""
     routes = (ROOT / "api" / "routes.py").read_text(encoding="utf-8")
-    assert 'parsed.path == "/api/provider/quota"' in routes
+    assert has_route("GET", "/api/provider/quota")
     assert 'query.get("refresh", [""])' in routes
     assert "get_provider_quota(provider_id, refresh=refresh)" in routes
 

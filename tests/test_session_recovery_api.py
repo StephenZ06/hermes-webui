@@ -1,6 +1,7 @@
 import json
 
 from api.session_recovery import audit_session_recovery, repair_safe_session_recovery
+from tests.route_chain_inventory import has_route
 
 
 def _write_session(session_dir, sid, messages=1):
@@ -80,7 +81,7 @@ def test_recovery_audit_routes_are_registered():
 
     src = Path("api/routes.py").read_text(encoding="utf-8")
 
-    assert 'parsed.path == "/api/session/recovery/audit"' in src
-    assert 'parsed.path == "/api/session/recovery/repair-safe"' in src
+    assert has_route("GET", "/api/session/recovery/audit")
+    assert has_route("POST", "/api/session/recovery/repair-safe")
     assert "audit_session_recovery" in src
     assert "repair_safe_session_recovery" in src
