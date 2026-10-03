@@ -31,6 +31,7 @@ import socket as _socket
 from collections import defaultdict, deque, OrderedDict
 from pathlib import Path
 from contextlib import closing
+from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
