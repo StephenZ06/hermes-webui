@@ -26,6 +26,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from tests.route_chain_inventory import route_source
 
 
 # ── ensure_cron_project: per-profile ─────────────────────────────────────
@@ -232,14 +233,8 @@ def test_profile_field_on_project_dict_default_create(monkeypatch):
     instead we pin the file-level invariant: the create handler now stamps
     `profile` on the created dict.
     """
-    from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
-
     # The create handler must now include get_active_profile_name() for the new dict
-    create_idx = src.find('"/api/projects/create"')
-    assert create_idx > 0
-    next_handler_idx = src.find('"/api/projects/rename"', create_idx)
-    create_block = src[create_idx:next_handler_idx]
+    create_block = route_source("POST", "/api/projects/create")
     # The create handler must stamp the profile from a (validated) body value or
     # the active profile. #3331 follow-up: the raw body value is now validated
     # via _PROFILE_ID_RE before stamping, so the expression reads `_requested_profile`.
@@ -258,13 +253,7 @@ def test_project_rename_allows_cross_profile():
     longer gated by the creating profile; any profile can rename it.
     Supersedes the old #1614 per-profile-ownership guard on this route.
     """
-    from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
-
-    rename_idx = src.find('"/api/projects/rename"')
-    assert rename_idx > 0
-    next_idx = src.find('"/api/projects/delete"', rename_idx)
-    rename_block = src[rename_idx:next_idx]
+    rename_block = route_source("POST", "/api/projects/rename")
     assert '_profiles_match(proj.get("profile"), active_profile)' not in rename_block, (
         "Rename must NOT gate on the creating profile -- projects are shared now"
     )
@@ -272,12 +261,7 @@ def test_project_rename_allows_cross_profile():
 
 def test_project_delete_allows_cross_profile():
     """Same as rename: delete is no longer gated by the creating profile."""
-    from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
-
-    delete_idx = src.find('"/api/projects/delete"')
-    assert delete_idx > 0
-    delete_block = src[delete_idx:delete_idx + 1500]
+    delete_block = route_source("POST", "/api/projects/delete")
     assert '_profiles_match(proj.get("profile"), active_profile)' not in delete_block, (
         "Delete must NOT gate on the creating profile -- projects are shared now"
     )
@@ -288,12 +272,7 @@ def test_session_move_allows_any_profile_project():
     project (folders are visible everywhere now), so the route only needs
     to confirm the target project_id exists -- not who created it.
     """
-    from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
-
-    move_idx = src.find('"/api/session/move"')
-    assert move_idx > 0
-    move_block = src[move_idx:move_idx + 2000]
+    move_block = route_source("POST", "/api/session/move")
     assert '_profiles_match(target.get("profile"), _session_profile)' not in move_block, (
         "session/move must not gate on project ownership -- projects are shared now"
     )

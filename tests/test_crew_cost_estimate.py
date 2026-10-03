@@ -14,6 +14,7 @@ import pytest
 
 from api import crews as crews_mod
 from api import models as models_mod
+from tests.route_chain_inventory import route_source
 
 SESSIONS_SCHEMA = """
 CREATE TABLE sessions (
@@ -151,12 +152,8 @@ def test_route_wiring_present_and_labeled_approximate():
     the UI" requirement from the plan doc -- checked at the source-string
     level since the endpoint needs a real/faked hermes_cli mount to invoke
     over HTTP, same constraint as the dispatch tests above."""
-    with open("api/routes.py", encoding="utf-8") as f:
-        src = f.read()
-    assert '"/api/crews/cost"' in src
-    idx = src.index('"/api/crews/cost"')
     # is_approximate: True must appear in both the success and the
     # exception-fallback branch of this handler.
-    snippet = src[idx:idx + 900]
+    snippet = route_source("GET", "/api/crews/cost")
     assert snippet.count("is_approximate") >= 2
     assert 'estimate_crew_costs' in snippet

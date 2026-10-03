@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 import pytest
+from tests.route_chain_inventory import route_source
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -34,10 +35,7 @@ def test_bridge_module_shape():
 
 
 def test_route_wired_and_defensive():
-    routes = read("api/routes.py")
-    assert '"/api/skills/scan"' in routes
-    idx = routes.index('"/api/skills/scan"')
-    block = routes[idx: idx + 1200]
+    block = route_source("GET", "/api/skills/scan")
     assert "_find_skill_in_dirs(name, _active_skill_search_dirs(skills_dir))" in block
     assert 'return bad(handler, "Skill not found", 404)' in block
     assert "from api.skills_hub_bridge import scan_installed_skill" in block

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import api.models as models
 import api.routes as routes
+from tests.route_chain_inventory import route_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -210,9 +211,7 @@ def test_generated_title_persist_reloads_latest_session_before_saving(tmp_path, 
 
 
 def test_regenerate_endpoint_only_blocks_read_only_imported_sessions():
-    endpoint_idx = ROUTES_PY.index('"/api/session/title/regenerate"')
-    next_endpoint_idx = ROUTES_PY.index('"/api/personality/set"', endpoint_idx)
-    block = ROUTES_PY[endpoint_idx:next_endpoint_idx]
+    block = route_source("POST", "/api/session/title/regenerate")
     assert "_get_or_materialize_session(sid)" in block
     assert "except PermissionError:" in block
 

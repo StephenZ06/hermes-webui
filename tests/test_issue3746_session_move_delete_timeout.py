@@ -17,6 +17,7 @@ B) /api/projects/delete unlinked every assigned session with a full
 """
 import threading
 from pathlib import Path
+from tests.route_chain_inventory import route_source
 
 ROUTES_SRC = (Path(__file__).parent.parent / "api" / "routes.py").read_text(encoding="utf-8")
 
@@ -51,10 +52,7 @@ class TestBoundedLockAcquire:
 # ── A) Structural: the move handler uses a bounded acquire + 503, not a bare `with` ──
 
 def _move_block():
-    idx = ROUTES_SRC.find('"/api/session/move"')
-    assert idx > 0, "session/move handler not found"
-    end = ROUTES_SRC.find('"/api/projects/create"', idx)
-    return ROUTES_SRC[idx:end]
+    return route_source("POST", "/api/session/move")
 
 
 def test_move_uses_bounded_lock_acquire():
@@ -93,10 +91,7 @@ def test_move_releases_lock_in_finally():
 # These tests now pin the HELPER's source block; delete just calls it.
 
 def _delete_block():
-    idx = ROUTES_SRC.find('"/api/projects/delete"')
-    assert idx > 0, "projects/delete handler not found"
-    end = ROUTES_SRC.find('"/api/projects/merge"', idx)
-    return ROUTES_SRC[idx:end]
+    return route_source("POST", "/api/projects/delete")
 
 
 def _reassign_helper_block():

@@ -9,6 +9,7 @@ and applied it consistently across the five known call sites.
 """
 
 from api.models import is_safe_session_id
+from tests.route_chain_inventory import route_source
 
 
 def test_is_safe_session_id_accepts_hyphenated_gateway_ids():
@@ -64,12 +65,8 @@ def test_session_delete_validator_accepts_hyphenated_ids():
 
 def test_session_worktree_remove_validator_accepts_hyphenated_ids():
     """``/api/session/worktree/remove`` validator path must accept hyphens (#3023)."""
-    routes_src = open("api/routes.py", encoding="utf-8").read()
     # The worktree-remove block must use the shared helper
-    block_start = routes_src.find('/api/session/worktree/remove')
-    block_end = routes_src.find('/api/session/delete', block_start)
-    assert block_start != -1 and block_end != -1
-    block = routes_src[block_start:block_end]
+    block = route_source("POST", "/api/session/worktree/remove")
     assert "is_safe_session_id" in block
     assert "'0123456789abcdefghijklmnopqrstuvwxyz_'" not in block
 

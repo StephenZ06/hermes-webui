@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import api.streaming as streaming
+from tests.route_chain_inventory import route_source
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSIONS_JS = (ROOT / "static" / "sessions.js").read_text(encoding="utf-8")
@@ -50,9 +51,7 @@ def test_regenerate_title_i18n_and_changelog_entries_exist():
 
 
 def test_regenerate_endpoint_persists_generated_title_without_reordering_sidebar():
-    endpoint_idx = ROUTES_PY.index('"/api/session/title/regenerate"')
-    next_endpoint_idx = ROUTES_PY.index('"/api/personality/set"', endpoint_idx)
-    block = ROUTES_PY[endpoint_idx:next_endpoint_idx]
+    block = route_source("POST", "/api/session/title/regenerate")
     assert "generate_session_title_for_session" in block
     assert '_persist_generated_session_title(s, next_title, event_reason="session_title_regenerate")' in block
     assert "Read-only imported sessions cannot regenerate titles" in block
@@ -71,8 +70,7 @@ def test_regenerate_helper_persists_generated_title_and_publishes_sidebar_refres
 
 def test_regenerate_endpoint_syncs_title_to_state_db_when_enabled():
     helper_idx = ROUTES_PY.index("def _sync_session_title_to_insights")
-    endpoint_idx = ROUTES_PY.index('"/api/session/title/regenerate"')
-    helper_block = ROUTES_PY[helper_idx:endpoint_idx]
+    helper_block = ROUTES_PY[helper_idx:ROUTES_PY.index("\ndef ", helper_idx + 1)]
     assert 'load_settings().get("sync_to_insights")' in helper_block
     assert "sync_session_usage" in helper_block
     assert "title=session.title" in helper_block

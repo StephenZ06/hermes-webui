@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
+from tests.route_chain_inventory import route_source
 
 
 def read(path: str) -> str:
@@ -409,8 +410,7 @@ class TestPluginAssetIsolationHardening:
         # Plugin-controlled assets are served same-origin; the response MUST carry
         # the sandbox CSP (null origin) + nosniff so a plugin .html/.svg can't run
         # privileged same-origin script on direct navigation.
-        routes = read("api/routes.py")
-        seg = routes[routes.find('"/dashboard-plugins/"'):routes.find("# ── Plugin pages")]
+        seg = route_source("GET", "/dashboard-plugins/example/dist/index.js")
         assert "Content-Security-Policy" in seg
         assert "sandbox allow-scripts" in seg
         assert "X-Content-Type-Options" in seg and "nosniff" in seg
@@ -419,7 +419,7 @@ class TestPluginAssetIsolationHardening:
         # Both the asset route and the page route must 404 a disabled plugin —
         # "disabled" cannot be UI-only.
         routes = read("api/routes.py")
-        asset_seg = routes[routes.find('"/dashboard-plugins/"'):routes.find("# ── Plugin pages")]
+        asset_seg = route_source("GET", "/dashboard-plugins/example/dist/index.js")
         page_seg = routes[routes.find("# ── Plugin pages"):routes.find("# ── Plugin pages") + 2000]
         assert "_dashboard_plugin_enabled" in asset_seg
         assert "_dashboard_plugin_enabled" in page_seg

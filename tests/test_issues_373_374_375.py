@@ -7,6 +7,7 @@ Tests for issues #373, #374, and #375.
 """
 import pathlib
 import re
+from tests.route_chain_inventory import has_route
 
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
@@ -224,12 +225,8 @@ class TestLiveModelFetching:
 
     def test_live_models_endpoint_wired_in_routes(self):
         """The /api/models/live path must be handled in handle_get()."""
-        # Find handle_get and check our route appears inside it
-        handle_get_pos = ROUTES_PY.find("def handle_get(")
-        live_route_pos = ROUTES_PY.find('"/api/models/live"')
-        assert handle_get_pos != -1 and live_route_pos != -1
-        assert live_route_pos > handle_get_pos, (
-            "/api/models/live must be inside handle_get() (#375)"
+        assert has_route("GET", "/api/models/live"), (
+            "/api/models/live must be dispatched by handle_get() (#375)"
         )
 
 

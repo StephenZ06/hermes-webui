@@ -11,6 +11,7 @@ Covers:
 import json
 import re
 from pathlib import Path
+from tests.route_chain_inventory import route_source
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -140,9 +141,7 @@ class TestPWARoutes:
     def test_manifest_route_serves_correct_content_type(self):
         src = ROUTES.read_text(encoding="utf-8")
         # The handler block for /manifest.json
-        idx = src.find('"/manifest.json"')
-        assert idx != -1, "routes.py must handle /manifest.json"
-        block = src[idx:idx + 800]
+        block = route_source("GET", "/manifest.json")
         # After the #2226 refactor, the root route delegates to _serve_manifest().
         # Verify the helper exists and sets the correct Content-Type.
         assert "_serve_manifest" in block, (
@@ -159,10 +158,7 @@ class TestPWARoutes:
         )
 
     def test_sw_route_injects_cache_version(self):
-        src = ROUTES.read_text(encoding="utf-8")
-        idx = src.find('"/sw.js"')
-        assert idx != -1, "routes.py must handle /sw.js"
-        block = src[idx:idx + 1000]
+        block = route_source("GET", "/sw.js")
         assert "__WEBUI_VERSION__" in block, (
             "sw.js route must replace __WEBUI_VERSION__ with the current WEBUI_VERSION"
         )
@@ -171,19 +167,14 @@ class TestPWARoutes:
         )
 
     def test_sw_route_url_encodes_cache_version(self):
-        src = ROUTES.read_text(encoding="utf-8")
-        idx = src.find('"/sw.js"')
-        assert idx != -1, "routes.py must handle /sw.js"
-        block = src[idx:idx + 1200]
+        block = route_source("GET", "/sw.js")
         assert "quote(_static_asset_version_token(), safe=\"\")" in block, (
             "sw.js route must URL-encode the injected cache fingerprint so unusual git tags "
             "cannot break the JavaScript string literal"
         )
 
     def test_sw_route_sets_service_worker_allowed(self):
-        src = ROUTES.read_text(encoding="utf-8")
-        idx = src.find('"/sw.js"')
-        block = src[idx:idx + 1000]
+        block = route_source("GET", "/sw.js")
         assert "Service-Worker-Allowed" in block, (
             "sw.js route must set Service-Worker-Allowed header so the SW can control "
             "the expected scope"

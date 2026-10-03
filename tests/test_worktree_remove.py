@@ -1,13 +1,13 @@
 """Tests for the worktree remove functionality (Issue #2057 Slice 2)."""
 
 from types import SimpleNamespace
-from pathlib import Path
 
 import pytest
 
 import api.models as models
 import api.routes as routes
 import api.worktrees as worktrees
+from tests.route_chain_inventory import has_route
 
 
 def _capture_post(monkeypatch, body):
@@ -407,7 +407,7 @@ def test_remove_missing_session_returns_404(tmp_path, monkeypatch):
 
 
 def test_post_router_does_not_expose_read_only_worktree_or_compress_status():
-    src = Path("api/routes.py").read_text(encoding="utf-8")
-    post_body = src[src.index("def handle_post"):src.index('if parsed.path == "/api/session/worktree/remove"')]
-    assert '"/api/session/worktree/status"' not in post_body
-    assert '"/api/session/compress/status"' not in post_body
+    assert not has_route("POST", "/api/session/worktree/status")
+    assert not has_route("POST", "/api/session/compress/status")
+    assert has_route("GET", "/api/session/worktree/status")
+    assert has_route("GET", "/api/session/compress/status")

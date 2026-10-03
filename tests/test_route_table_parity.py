@@ -73,18 +73,33 @@ def test_middleware_phases_unchanged(method, snapshot, live):
     assert actual == expected
 
 
-def test_routes_ahead_of_get_visibility_guard_are_exactly_the_public_set(snapshot, live):
-    """A GET route dispatched before the session-visibility guard is public.
+def _guard_cases():
+    snapshot = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    for method in METHODS:
+        seen = set()
+        for entry in snapshot[method]:
+            if entry.startswith("middleware ") and not entry.startswith("middleware for ") and entry not in seen:
+                seen.add(entry)
+                yield pytest.param(method, entry, id=f"{method}-{entry[len('middleware '):]}")
 
-    Share pages, login, OIDC and the PWA shell are deliberately there.  Any
-    other route landing ahead of the guard would skip the per-profile session
-    visibility check, so the set is pinned exactly.
+
+@pytest.mark.parametrize("method, guard", list(_guard_cases()))
+def test_routes_ahead_of_each_guard_are_pinned(method, guard, snapshot, live):
+    """Which side of a guard a route sits on is part of its contract.
+
+    A GET route ahead of the session-visibility guard is public (share pages,
+    login, OIDC, the PWA shell).  POST routes ahead of the CSRF gate accept
+    token-less requests; those ahead of the body read stream the body
+    themselves and also skip the visibility guard.  A route moving across a
+    guard -- or a new route landing ahead of one -- changes who can reach it,
+    so the set ahead of every guard is pinned exactly.
     """
 
-    def public(entries: list[str]) -> list[str]:
-        return [e for e in entries[: entries.index(VISIBILITY_GUARD)] if not e.startswith("middleware ")]
+    def ahead(entries: list[str]) -> list[str]:
+        return [e for e in entries[: entries.index(guard)] if not e.startswith("middleware ")]
 
-    assert public(live["GET"]) == public(snapshot["GET"])
+    assert guard in live[method], f"{method} guard {guard!r} is gone"
+    assert ahead(live[method]) == ahead(snapshot[method])
 
 
 @pytest.mark.parametrize("method", METHODS)

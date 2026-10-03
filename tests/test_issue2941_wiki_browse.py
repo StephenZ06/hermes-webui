@@ -13,6 +13,7 @@ import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
+from tests.route_chain_inventory import route_source
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -55,7 +56,7 @@ def test_wiki_page_path_traversal_rejection():
     # Traversal is rejected by a real `..` path SEGMENT check (not the bare
     # substring, which would also reject a legit filename like `v1..v2.md`).
     assert 'part == ".."' in src, "Segment-based path-traversal check not found in wiki page handler"
-    assert "_skill_path_within" in src.split("/api/wiki/page")[1].split("/api/")[0], (
+    assert "_skill_path_within" in route_source("GET", "/api/wiki/page"), (
         "Symlink-safe _skill_path_within guard not found in /api/wiki/page handler"
     )
 
