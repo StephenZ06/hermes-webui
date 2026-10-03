@@ -467,7 +467,7 @@ def test_live_stream_terminal_paths_use_original_stream_owner_identity():
 
     start_dispatch = attach_body.index("_dispatchExtensionTurnLifecycle('turn:start',activeSid,streamId")
     dead_reconnect_return = attach_body.index("_scheduleAnchorRegistryCleanup(120000);")
-    event_source_attach = attach_body.index("_wireSSE(new EventSource", start_dispatch)
+    event_source_attach = attach_body.index("_openChatStream(replayParams);", start_dispatch)
     assert dead_reconnect_return < start_dispatch < event_source_attach
     assert "_dispatchExtensionTurnLifecycle('turn:complete',activeSid,streamId" in done
     assert "_dispatchExtensionTurnLifecycle(_extensionErrorType,activeSid,streamId" in application_error

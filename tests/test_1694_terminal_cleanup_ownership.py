@@ -179,7 +179,10 @@ def test_active_reconnect_uses_run_journal_replay_cursor():
     assert active_status_idx != -1, "active reconnect branch not found"
     assert replay_status_idx != -1, "replay reconnect branch not found"
     active_block = body[active_status_idx:replay_status_idx]
-    assert "${_runJournalReplayParams()}" in active_block
+    # Reconnects reopen through the single _openChatStream() connect point
+    # with the run-journal replay cursor.
+    assert "_openChatStream(_runJournalReplayParams())" in active_block
+    assert "${replayParams}" in _function_body("_openChatStream")
     assert "after_seq" in _function_body("_runJournalReplayParams")
     assert "after_event_id" in _function_body("_runJournalReplayParams")
 

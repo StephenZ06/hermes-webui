@@ -2673,7 +2673,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           const st=await api(`/api/chat/stream/status?stream_id=${encodeURIComponent(streamId)}`);
           if(st.active){
             setComposerStatus('Reconnected',1000);
-            _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${_runJournalReplayParams()}`,document.baseURI||location.href).href,{withCredentials:true}));
+            _openChatStream(_runJournalReplayParams());
             return;
           }
         }
@@ -5756,6 +5756,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     return true;
   }
 
+  // The one way this turn (re)opens its chat stream: the first attach, the
+  // deferred-error re-attach and the reconnect/replay probes all go through
+  // here, so the URL, credentials and replay cursor cannot drift per path.
+  // ``replayParams`` is '' for a fresh attach or _runJournalReplayParams().
+  function _openChatStream(replayParams){
+    _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${replayParams}`,document.baseURI||location.href).href,{withCredentials:true}));
+  }
   function _wireSSE(source){
     const existingLive=LIVE_STREAMS[activeSid];
     if(existingLive&&existingLive.source&&existingLive.source!==source){
@@ -6863,12 +6870,12 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
             const st=await api(`/api/chat/stream/status?stream_id=${encodeURIComponent(streamId)}`);
             if(st&&st.active){
               setComposerStatus('Reconnected',1000);
-              _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${_runJournalReplayParams()}`,document.baseURI||location.href).href,{withCredentials:true}));
+              _openChatStream(_runJournalReplayParams());
               return;
             }
             if(st&&st.replay_available){
               setComposerStatus('Restoring stream…');
-              _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${_runJournalReplayParams()}`,document.baseURI||location.href).href,{withCredentials:true}));
+              _openChatStream(_runJournalReplayParams());
               return;
             }
           }catch(_){
@@ -7311,7 +7318,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     _dispatchExtensionTurnLifecycle('turn:start',activeSid,streamId,{
       startedAt:_extensionTurnStartedAt,
     });
-    _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${replayParams}`,document.baseURI||location.href).href,{withCredentials:true}));
+    _openChatStream(replayParams);
   })();
 
 }
