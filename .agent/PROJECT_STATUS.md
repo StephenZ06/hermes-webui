@@ -63,6 +63,19 @@ never listed keyed providers; `7d980cccf` ruff F821). The rest:
   workspace path/URL tests -- each needs a keep-or-update decision.
 `master` is 1157 commits behind `origin/master` (fetched 2026-10-03).
 
+**Upstream-behaviour pass (same day):** 85 -> 50 deterministic failures.
+Real fixes: `40c0272b0` (root config read from the OS home instead of the
+resolved base home -- tests were reading the real ~/.hermes/config.yaml;
+catalog-entry and dict-key normalization bugs), `7f7541ba3` (#5364
+KeyError), `d3a9719a3` (`/api/models?profile=` ignored, so the profile
+editor showed the active profile's models). Test-only repairs, behaviour
+verified first: `cd6defa2f`, `3492464a2` (Node harnesses; shared
+`tests/js_source_extract.py` now handles `opts={}` defaults and has
+`top_level_functions()`), `e81dde414`. Left for a decision: toolset tests
+(#3100, #4490) pinned to the pre-`tool_policy` API; `NeuralWatt Basic`
+display rename; tests whose code `722c5ec42` never committed; stale UI
+source-text tests (office, sounds, switchPanel, sidebar CSS, Plane pane).
+
 **Next:** decide per group above (restore code, update test, or delete); decide on committing
 `icons/` (a tracked test depends on it) and moving `job-ops/` out of the
 repo; optional `api/routes.py` module split now that routes are functions.
