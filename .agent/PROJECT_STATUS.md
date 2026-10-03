@@ -42,7 +42,28 @@ container `hermes-webui-hermes-webui-1` no longer exists.
 ~30 model/provider-catalog and account-usage tests fail identically before and
 after. A clean-run failure list is still to be triaged.
 
-**Next:** triage the remaining baseline failures; decide on committing
+**Failure triage (2026-10-03).** A clean run (TMPDIR unset) fails 122 tests:
+29 Playwright kanban/mobile layout tests that flip between identical runs,
+8 that pass in isolation (order-dependent), and 84 deterministic failures
+that all fail identically on `4b78b6ed5` (before the route refactor). Of the
+84, two were real product bugs, now fixed (`eff259bf0` cross-profile picker
+never listed keyed providers; `7d980cccf` ruff F821). The rest:
+- tests changed in `722c5ec42` ("save current workspace changes") whose code
+  side was never committed -- e.g. `_static_asset_version_token`,
+  `_profile_toolsets_for_session`, `remote_reachability` exist in no ref or
+  stash and not upstream;
+- source-text tests left stale by deliberate fork UI changes (sound
+  synthesis, switchPanel lazy loads, sidebar/office/composer markup, the
+  removed Plane pane, moved loadSession markers for #5060);
+- node harnesses missing newer helpers (#5224 needs
+  `_isUnmarkedContinuationPair`);
+- upstream behaviour tests the fork's model-catalog code now diverges from
+  (#1426, #3691, #1240, custom-provider dict, NeuralWatt label), plus
+  #5364, sprint15 project delete (fork limits deletes to Work Hub), and the
+  workspace path/URL tests -- each needs a keep-or-update decision.
+`master` is 1157 commits behind `origin/master` (fetched 2026-10-03).
+
+**Next:** decide per group above (restore code, update test, or delete); decide on committing
 `icons/` (a tracked test depends on it) and moving `job-ops/` out of the
 repo; optional `api/routes.py` module split now that routes are functions.
 
