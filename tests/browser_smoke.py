@@ -40,6 +40,10 @@ import time
 import urllib.request
 import urllib.error
 
+from _chromium_launch import install_cpu_compositing_default  # noqa: E402
+
+install_cpu_compositing_default()
+
 PORT = int(os.getenv("SMOKE_PORT", "8796"))
 BASE = f"http://127.0.0.1:{PORT}"
 

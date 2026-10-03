@@ -24,6 +24,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from _chromium_launch import install_cpu_compositing_default  # noqa: E402
+
+install_cpu_compositing_default()
+
 
 PROMPT = "Exercise the public conversation lifecycle gate."
 REASONING_TEXT = "Checking the persistent assistant turn."

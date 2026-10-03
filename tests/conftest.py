@@ -144,42 +144,10 @@ os.environ['TMPDIR'] = _tempfile.gettempdir()
 os.environ['HERMES_WEBUI_SKIP_REPO_DOTENV'] = '1'
 
 
-# Headless Chromium on a host without a usable GPU composites through SwiftShader
-# (a CPU-emulated Vulkan device). There, a full-viewport backdrop-filter plus a
-# large blurred shadow -- the first-run onboarding overlay the test server shows
-# -- takes over a minute per animated frame, so Playwright's rAF-based waits and
-# hover/click actionability checks time out although the page is ready.
-# --disable-gpu with --disable-software-rasterizer drops to plain CPU
-# compositing, which renders the same page in well under a second. Patched once
-# here so the suite's many separate launch sites need no per-file flags. A launch
-# that explicitly selects a GL backend (the WebGL Office scene tests pass
-# --use-gl/--use-angle) keeps the GPU process it asked for.
-_CHROMIUM_CPU_COMPOSITING_ARGS = ("--disable-gpu", "--disable-software-rasterizer")
+# Default headless Chromium to CPU compositing (see tests/_chromium_launch.py).
+from tests._chromium_launch import install_cpu_compositing_default
 
-
-def _install_chromium_launch_defaults():
-    try:
-        from playwright.sync_api._generated import BrowserType
-    except Exception:
-        return
-    original = BrowserType.launch
-    if getattr(original, "_hermes_launch_defaults", False):
-        return
-
-    def launch(self, **kwargs):
-        if getattr(self, "name", "") == "chromium":
-            args = list(kwargs.get("args") or [])
-            wants_gl = any(str(a).startswith(("--use-gl=", "--use-angle=")) for a in args)
-            if not wants_gl:
-                args.extend(flag for flag in _CHROMIUM_CPU_COMPOSITING_ARGS if flag not in args)
-            kwargs["args"] = args
-        return original(self, **kwargs)
-
-    launch._hermes_launch_defaults = True
-    BrowserType.launch = launch
-
-
-_install_chromium_launch_defaults()
+install_cpu_compositing_default()
 _TEST_STATE_ROOT = pathlib.Path(
     os.getenv('HERMES_WEBUI_TEST_STATE_ROOT', _tempfile.gettempdir())
 ) / 'hermes-webui-tests'

@@ -42,6 +42,10 @@ import time
 import urllib.error
 import urllib.request
 
+from _chromium_launch import install_cpu_compositing_default  # noqa: E402
+
+install_cpu_compositing_default()
+
 
 PORT = int(os.environ.get("EDGE_SWIPE_PORT", "8794"))
 BASE = f"http://127.0.0.1:{PORT}"
