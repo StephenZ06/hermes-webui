@@ -49,3 +49,29 @@ def test_temp_dir_is_pinned_outside_the_test_state_dir():
     env = dict(os.environ)
     assert apply_scratch_tmp_env(env) is False
     assert env["TMPDIR"] == pinned
+
+
+def test_importing_bootstrap_does_not_load_the_repo_dotenv(tmp_path):
+    """bootstrap.py loads REPO_ROOT/.env into os.environ at import time.
+
+    Several tests import (or re-import) bootstrap, so a developer's real .env --
+    HERMES_HOME, provider API keys -- leaked into the pytest process and stayed
+    there, overriding the isolated TEST_STATE_DIR. conftest must switch the
+    import-time load off for the whole run.
+    """
+    import os
+    import shutil
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[1]
+    shutil.copy(repo / "bootstrap.py", tmp_path / "bootstrap.py")
+    (tmp_path / ".env").write_text("HERMES_WEBUI_TEST_DOTENV_LEAK=leaked\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k != "HERMES_WEBUI_TEST_DOTENV_LEAK"}
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import os, bootstrap; print(os.environ.get('HERMES_WEBUI_TEST_DOTENV_LEAK', ''))"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""

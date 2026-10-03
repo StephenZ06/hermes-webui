@@ -138,6 +138,10 @@ if os.environ.get('HERMES_SCRATCH_DIR'):
     os.environ.pop('HERMES_SCRATCH_DIR')
     _tempfile.tempdir = None
 os.environ['TMPDIR'] = _tempfile.gettempdir()
+# bootstrap.py loads REPO_ROOT/.env into os.environ when imported; several tests
+# import it, which leaked a developer's real HERMES_HOME and API keys into this
+# process for the rest of the run. Switch the import-time load off.
+os.environ['HERMES_WEBUI_SKIP_REPO_DOTENV'] = '1'
 _TEST_STATE_ROOT = pathlib.Path(
     os.getenv('HERMES_WEBUI_TEST_STATE_ROOT', _tempfile.gettempdir())
 ) / 'hermes-webui-tests'

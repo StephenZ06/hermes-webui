@@ -71,7 +71,11 @@ def _load_repo_dotenv() -> None:
 # Side effect: loads REPO_ROOT/.env into os.environ on import.
 # Must run before DEFAULT_HOST / DEFAULT_PORT so os.getenv() picks up
 # values from .env even when bootstrap.py is invoked directly (not via start.sh).
-_load_repo_dotenv()
+# HERMES_WEBUI_SKIP_REPO_DOTENV=1 turns the import-time load off: the test suite
+# sets it so importing bootstrap cannot pull a developer's real .env (HERMES_HOME,
+# provider keys) into the isolated pytest process.
+if os.getenv("HERMES_WEBUI_SKIP_REPO_DOTENV", "").strip() != "1":
+    _load_repo_dotenv()
 
 DEFAULT_HOST = os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("HERMES_WEBUI_PORT", "8787"))
