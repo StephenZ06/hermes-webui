@@ -18729,6 +18729,12 @@ def _route_post_api_gateway_restart(handler, parsed, body, diag):
 
 
 # ── Profile API (POST) ──
+def _profile_storage_unavailable(handler, action: str) -> bool:
+    """503 for a filesystem failure in profile storage, without leaking paths."""
+    logger.warning("Profile %s failed: profile storage unavailable", action, exc_info=True)
+    return j(handler, {"error": "Profile storage is temporarily unavailable. Please try again."}, status=503)
+
+
 def _route_post_api_profile_switch(handler, parsed, body, diag):
     name = body.get("name", "").strip()
     if not name:
@@ -18817,6 +18823,8 @@ def _route_post_api_profile_create(handler, parsed, body, diag):
         return bad(handler, _sanitize_error(e), 403)
     except (ValueError, FileExistsError, RuntimeError) as e:
         return bad(handler, str(e))
+    except OSError:
+        return _profile_storage_unavailable(handler, "create")
 
 
 def _route_post_api_profile_update(handler, parsed, body, diag):
@@ -18853,6 +18861,8 @@ def _route_post_api_profile_update(handler, parsed, body, diag):
         return bad(handler, _sanitize_error(e), 403)
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         return bad(handler, str(e))
+    except OSError:
+        return _profile_storage_unavailable(handler, "update")
 
 
 def _route_post_api_profile_delete(handler, parsed, body, diag):
@@ -18871,6 +18881,8 @@ def _route_post_api_profile_delete(handler, parsed, body, diag):
         return bad(handler, _sanitize_error(e))
     except RuntimeError as e:
         return bad(handler, str(e), 409)
+    except OSError:
+        return _profile_storage_unavailable(handler, "delete")
 
 
 # ── Settings (POST) ──
