@@ -1419,7 +1419,13 @@ def _configured_model_ids(raw_models: object) -> list[str]:
         return []
 
     if isinstance(raw_models, dict):
-        return _walk(raw_models)
+        # Same normalization as the list shape: strip, drop empties, dedupe.
+        model_ids: list[str] = []
+        for candidate in _walk(raw_models):
+            model_id = candidate.strip()
+            if model_id and model_id not in model_ids:
+                model_ids.append(model_id)
+        return model_ids
     elif isinstance(raw_models, list):
         model_ids: list[str] = []
         for item in raw_models:
@@ -2626,6 +2632,21 @@ def _parse_provider_qualified_model_id(model_id: str) -> tuple[str, str] | None:
     return bare_model, provider_hint
 
 
+def _base_hermes_home() -> Path:
+    """The base (root) Hermes home, as api.profiles resolves it.
+
+    Honors HERMES_BASE_HOME / HERMES_HOME like the rest of the profile code;
+    this module's own _DEFAULT_HERMES_HOME is always the OS default and is only
+    right as a last-resort fallback.
+    """
+    try:
+        from api.profiles import _DEFAULT_HERMES_HOME as _base
+
+        return Path(_base)
+    except ImportError:
+        return _DEFAULT_HERMES_HOME
+
+
 def _get_root_providers_cfg() -> dict:
     """Return the ``providers`` section from the default/root config.yaml.
 
@@ -2635,7 +2656,7 @@ def _get_root_providers_cfg() -> dict:
     always wins when it has the same provider key.
     """
     try:
-        root_path = _DEFAULT_HERMES_HOME / "config.yaml"
+        root_path = _base_hermes_home() / "config.yaml"
         # Don't duplicate the active profile's own providers when the active
         # profile *is* the default/root profile (HERMES_HOME == _DEFAULT_HERMES_HOME).
         try:
@@ -6410,7 +6431,7 @@ def _models_cache_source_fingerprint() -> dict:
     """
     return {
         "config_yaml": _models_cache_file_fingerprint(_get_config_path()),
-        "root_config_yaml": _models_cache_file_content_fingerprint(_DEFAULT_HERMES_HOME / "config.yaml"),
+        "root_config_yaml": _models_cache_file_content_fingerprint(_base_hermes_home() / "config.yaml"),
         "auth_json": _auth_store_semantic_fingerprint(_get_auth_store_path()),
         "catalog": _models_cache_catalog_fingerprint(),
     }
@@ -9063,6 +9084,14 @@ def get_available_models_across_profiles() -> dict:
             "label": label or _get_label_for_model(model_id, []),
         })
 
+    def _add_catalog_models(canonical: str) -> None:
+        # Static catalog entries are {"id", "label"} dicts, not bare ids.
+        for entry in _PROVIDER_MODELS.get(canonical, []):
+            if isinstance(entry, dict):
+                _add_model(canonical, str(entry.get("id") or ""), str(entry.get("label") or ""))
+            else:
+                _add_model(canonical, str(entry or ""))
+
     try:
         from api.profiles import list_profiles_api, get_hermes_home_for_profile
         profiles = list_profiles_api()
@@ -9103,8 +9132,7 @@ def get_available_models_across_profiles() -> dict:
                             _add_model(canonical, default_model)
                 # If no explicit models, still include known static models for the provider.
                 if canonical in _PROVIDER_MODELS and not seen_provider_models.get(canonical):
-                    for model_id in _PROVIDER_MODELS[canonical]:
-                        _add_model(canonical, model_id)
+                    _add_catalog_models(canonical)
         except Exception:
             logger.debug("Failed to load cross-profile models for %s", profile_name, exc_info=True)
 
@@ -9138,12 +9166,7 @@ def get_available_models_across_profiles() -> dict:
             from api.providers import _provider_has_key
 
             if _provider_has_key(canonical):
-                # Catalog entries are {"id", "label"} dicts.
-                for entry in _PROVIDER_MODELS.get(canonical, []):
-                    if isinstance(entry, dict):
-                        _add_model(canonical, str(entry.get("id") or ""), str(entry.get("label") or ""))
-                    else:
-                        _add_model(canonical, str(entry or ""))
+                _add_catalog_models(canonical)
         except Exception:
             logger.debug("Failed to add keyed provider %s to cross-profile models", canonical, exc_info=True)
 

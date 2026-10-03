@@ -93,3 +93,52 @@ def test_cross_profile_models_include_known_providers_that_have_a_key(monkeypatc
 
     assert keyed in groups
     assert groups[keyed]
+
+
+def test_root_providers_come_from_the_resolved_base_home_not_the_os_home(monkeypatch, tmp_path):
+    """The root config is the one under the resolved base home (HERMES_BASE_HOME).
+
+    _get_root_providers_cfg() read Path.home()/.hermes/config.yaml directly, so
+    a run with HERMES_BASE_HOME pointed elsewhere -- every test run -- read the
+    real user's root providers.
+    """
+    from api import config as config_mod
+    from api import profiles as profiles_mod
+
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "config.yaml").write_text(
+        "providers:\n  lmstudio:\n    models:\n      - base-home-model\n", encoding="utf-8"
+    )
+    active = tmp_path / "base" / "profiles" / "work"
+    active.mkdir(parents=True)
+    monkeypatch.setattr(profiles_mod, "_DEFAULT_HERMES_HOME", base)
+    monkeypatch.setattr(profiles_mod, "get_active_hermes_home", lambda: active)
+
+    providers = config_mod._get_root_providers_cfg()
+
+    assert providers == {"lmstudio": {"models": ["base-home-model"]}}
+
+
+def test_profile_without_explicit_models_gets_its_static_catalog(monkeypatch, tmp_path):
+    """A configured provider with no `models:` list falls back to its catalog.
+
+    The fallback passed whole {"id", "label"} catalog entries as model ids; the
+    resulting TypeError was swallowed and dropped the rest of that profile.
+    """
+    from api import config as config_mod
+    from api import profiles as profiles_mod
+
+    provider = next(pid for pid, models in config_mod._PROVIDER_MODELS.items() if models)
+    home = tmp_path / "alpha"
+    home.mkdir()
+    (home / "config.yaml").write_text(f"providers:\n  {provider}:\n    api_key: k\n", encoding="utf-8")
+    monkeypatch.setattr(profiles_mod, "list_profiles_api", lambda: [{"name": "alpha", "path": str(home)}])
+    monkeypatch.setattr(profiles_mod, "get_hermes_home_for_profile", lambda name: home)
+    monkeypatch.setattr(config_mod, "_get_root_providers_cfg", lambda: {})
+
+    body = config_mod.get_available_models_across_profiles()
+    groups = {g["provider_id"]: [m["id"] for m in g["models"]] for g in body["groups"]}
+
+    expected = [m["id"] for m in config_mod._PROVIDER_MODELS[provider]]
+    assert groups.get(config_mod._canonicalise_provider_id(provider) or provider) == expected
