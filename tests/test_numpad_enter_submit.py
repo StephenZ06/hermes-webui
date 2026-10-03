@@ -13,7 +13,9 @@ def test_boot_defines_numpad_enter_helper():
 
 
 def test_ctrl_enter_mode_allows_numpad_enter_to_submit():
-    ctrl_branch = BOOT_JS.split("if(window._sendKey==='ctrl+enter'||_mobileDefault){", 1)[1]
+    # This fork honours the explicit send-key preference on every device (no
+    # touch-device default), so the ctrl+enter branch is an else-if.
+    ctrl_branch = BOOT_JS.split("else if(window._sendKey==='ctrl+enter'){", 1)[1]
     ctrl_branch = ctrl_branch.split("} else {", 1)[0]
     assert "isNumpadEnter" in ctrl_branch
     assert "if(isNumpadEnter||e.ctrlKey||e.metaKey){e.preventDefault();send();}" in ctrl_branch

@@ -32,7 +32,9 @@ def _function_block(source: str, marker: str) -> str:
 
 def _draft_restore_block() -> str:
     start_marker = "// Restore server-persisted composer draft (synced across clients + survives refresh)."
-    end_marker = "// Clear the in-flight session marker now that this load has completed (#1060)."
+    # The draft restore is followed by the post-load re-acknowledge; the #1060
+    # in-flight marker clear that used to sit here now runs before renderMessages.
+    end_marker = "// Re-acknowledge the visit after the async message-load gap."
     start = SESSIONS_JS.index(start_marker)
     end = SESSIONS_JS.index(end_marker, start)
     return SESSIONS_JS[start:end]

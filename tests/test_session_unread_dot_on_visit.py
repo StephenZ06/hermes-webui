@@ -68,8 +68,9 @@ def test_load_session_acknowledges_visit_before_and_after_message_load():
     block = _load_session_block()
     # Metadata-arrival acknowledgment.
     first_ack = block.find("_acknowledgeSessionVisit(\n    S.session.session_id,")
-    loading_clear = block.find("if (_isCurrentLoad()) _loadingSessionId = null;\n\n  // Re-acknowledge")
-    second_ack = block.find("_acknowledgeSessionVisit(", loading_clear)
+    reack = block.find("// Re-acknowledge the visit after the async message-load gap")
+    loading_clear = block.rfind("if (_isCurrentLoad()) _loadingSessionId = null;", 0, reack)
+    second_ack = block.find("_acknowledgeSessionVisit(", reack)
 
     assert first_ack != -1, "loadSession must acknowledge the visit when metadata arrives"
     assert loading_clear != -1, "loadSession must clear the in-flight marker before the final acknowledge"
@@ -86,9 +87,10 @@ def test_post_load_reack_is_guarded_by_active_view():
     # correctly marked unread — an UNCONDITIONAL post-load ack would wrongly
     # clear that hidden-tab-completion marker.
     block = _load_session_block()
-    loading_clear = block.find("if (_isCurrentLoad()) _loadingSessionId = null;\n\n  // Re-acknowledge")
-    guard = block.find("_isSessionActivelyViewedForList(sid)", loading_clear)
-    second_ack = block.find("_acknowledgeSessionVisit(", loading_clear)
+    reack = block.find("// Re-acknowledge the visit after the async message-load gap")
+    assert reack != -1, "post-load re-acknowledge block not found"
+    guard = block.find("_isSessionActivelyViewedForList(sid)", reack)
+    second_ack = block.find("_acknowledgeSessionVisit(", reack)
     assert guard != -1 and guard < second_ack, (
         "the post-load re-acknowledge must be guarded by "
         "_isSessionActivelyViewedForList(sid) so a hidden-tab completion stays unread"
