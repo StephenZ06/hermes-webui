@@ -125,6 +125,19 @@ TEST_BASE      = f"http://127.0.0.1:{TEST_PORT}"
 # profile home). We now anchor the default under the OS temp dir, in a dedicated
 # `hermes-webui-tests/` namespace, fully outside any production tree.
 import tempfile as _tempfile
+# Pin the temp dir before anything imports hermes-agent. Its hermes_bootstrap
+# points TMPDIR at $HERMES_HOME/cache/scratch unless a temp var is already set
+# (one it exported itself, marked by HERMES_SCRATCH_DIR, does not count). Here
+# HERMES_HOME is TEST_STATE_DIR, which test_server wipes before boot, so the
+# redirected temp dir -- and the server log opened under it -- vanished and
+# every server-backed test errored at setup.
+if os.environ.get('HERMES_SCRATCH_DIR'):
+    for _tmp_var in ('TMPDIR', 'TMP', 'TEMP'):
+        if os.environ.get(_tmp_var) == os.environ['HERMES_SCRATCH_DIR']:
+            os.environ.pop(_tmp_var)
+    os.environ.pop('HERMES_SCRATCH_DIR')
+    _tempfile.tempdir = None
+os.environ['TMPDIR'] = _tempfile.gettempdir()
 _TEST_STATE_ROOT = pathlib.Path(
     os.getenv('HERMES_WEBUI_TEST_STATE_ROOT', _tempfile.gettempdir())
 ) / 'hermes-webui-tests'
