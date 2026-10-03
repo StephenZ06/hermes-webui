@@ -39,7 +39,13 @@ import unittest
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 UI_JS = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
-MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+# The streaming-markdown helpers live in stream_markdown.js, loaded just
+# before messages.js; read them as the browser does.
+MESSAGES_JS = (
+    (REPO_ROOT / "static" / "stream_markdown.js").read_text(encoding="utf-8")
+    + "\n"
+    + (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+)
 NODE = shutil.which("node")
 
 
@@ -472,9 +478,10 @@ class TestSmdMediaInStream(unittest.TestCase):
         self.assertIn("function _smdBindParserIdentity", MESSAGES_JS)
         self.assertIn("renderer.data.parser=parser", MESSAGES_JS)
         self.assertIn("el.__smdParser=parser", MESSAGES_JS)
+        new_parser_at = MESSAGES_JS.index("function _smdNewParser")
         smd_new = MESSAGES_JS[
-            MESSAGES_JS.index("function _smdNewParser"):
-            MESSAGES_JS.index("function _smdRendererWithoutUnderscoreEmphasis")
+            new_parser_at:
+            MESSAGES_JS.index("function ", new_parser_at + len("function _smdNewParser"))
         ].replace(" ", "")
         self.assertIn("_smdBindParserIdentity(renderer,_smdParser,el)", smd_new)
         anchor = MESSAGES_JS[

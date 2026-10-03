@@ -10,7 +10,13 @@ import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 UI_JS = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
-MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+# The streaming-markdown helpers live in stream_markdown.js, loaded just
+# before messages.js; read them as the browser does.
+MESSAGES_JS = (
+    (REPO_ROOT / "static" / "stream_markdown.js").read_text(encoding="utf-8")
+    + "\n"
+    + (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+)
 NODE = shutil.which("node")
 
 pytestmark = pytest.mark.skipif(NODE is None, reason="node not on PATH")

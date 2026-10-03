@@ -22,7 +22,9 @@ def _node_contract_cases() -> dict[str, object]:
     script = r"""
 const fs = require('fs');
 const ui = fs.readFileSync('static/ui.js', 'utf8');
-const messages = fs.readFileSync('static/messages.js', 'utf8');
+// The streaming-markdown helpers live in stream_markdown.js (loaded before
+// messages.js); search both, as the browser loads them.
+const messages = fs.readFileSync('static/stream_markdown.js', 'utf8') + '\n' + fs.readFileSync('static/messages.js', 'utf8');
 function fn(source, name) {
   const marker = 'function ' + name + '(';
   const start = source.indexOf(marker);

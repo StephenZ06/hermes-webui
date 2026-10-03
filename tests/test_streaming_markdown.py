@@ -25,7 +25,13 @@ import json
 import subprocess
 
 REPO = pathlib.Path(__file__).parent.parent
-MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
+# The streaming-markdown helpers live in stream_markdown.js, loaded just
+# before messages.js; read them as the browser does.
+MESSAGES_JS = (
+    (REPO / "static" / "stream_markdown.js").read_text(encoding="utf-8")
+    + "\n"
+    + (REPO / "static" / "messages.js").read_text(encoding="utf-8")
+)
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
 INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 
