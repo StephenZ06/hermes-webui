@@ -65,3 +65,37 @@ def end_sse_headers(handler):
         handler.wfile = _ChunkedSSEWriter(handler.wfile)
     else:
         handler.end_headers()
+
+
+def begin_sse_response(handler, *, long_lived=False):
+    """Start an SSE response: status, the shared header set, then headers end.
+
+    Every event-stream endpoint uses this so the framing contract cannot drift
+    per handler. Two kinds of stream exist on purpose:
+
+    - Bounded streams (one run, a terminal session, a pending-approval feed)
+      send ``Connection: close``: under HTTP/1.1 (#2836) a body with no
+      Content-Length and (by default) no chunked framing only ends at FIN.
+    - Long-lived streams (``long_lived=True``: session list, gateway sessions,
+      per-session events, the run journal) must NOT: browsers treat the header
+      as "this EventSource is finished" and reconnect instantly, which
+      thrashed the session list about once a second (#3103). The server still
+      closes the socket when the stream ends.
+    """
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("X-Accel-Buffering", "no")
+    if not long_lived:
+        handler.send_header("Connection", "close")
+    end_sse_headers(handler)
+
+
+def write_sse_comment(handler, text):
+    """Write and flush one SSE comment frame (``: text``), e.g. a heartbeat.
+
+    Comment frames keep proxies and the client watchdog alive; clients ignore
+    their content.
+    """
+    handler.wfile.write(f": {text}\n\n".encode("utf-8"))
+    handler.wfile.flush()

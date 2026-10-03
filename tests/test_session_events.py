@@ -21,7 +21,8 @@ def test_session_events_endpoint_and_bus_are_defined():
     assert "def publish_session_list_changed" in SESSION_EVENTS
     assert "def _handle_session_events_stream" in ROUTES
     assert has_route("GET", "/api/sessions/events")
-    assert "Content-Type', 'text/event-stream; charset=utf-8'" in ROUTES
+    # Long-lived stream: shared SSE start without Connection: close (#3103).
+    assert "begin_sse_response(handler, long_lived=True)" in ROUTES
 
 
 def test_session_events_publish_for_minimal_sidebar_mutations():

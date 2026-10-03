@@ -26,16 +26,18 @@ def _handler_body(name: str) -> str:
 
 
 def _emits_connection_close(body: str) -> bool:
-    """True if the handler actually CALLS send_header to emit Connection: close
-    (ignores mentions in comments)."""
-    return bool(
-        re.search(r"send_header\(\s*['\"]Connection['\"]\s*,\s*['\"]close['\"]", body)
-    )
+    """True if the handler emits Connection: close (ignores comments): either a
+    direct send_header call, or begin_sse_response() without long_lived=True,
+    whose bounded-stream default sends it."""
+    code = "\n".join(line.split("#", 1)[0] for line in body.splitlines())
+    if re.search(r"send_header\(\s*['\"]Connection['\"]\s*,\s*['\"]close['\"]", code):
+        return True
+    return bool(re.search(r"begin_sse_response\(handler\)", code))
 
 
 def test_session_events_stream_does_not_emit_connection_close():
     body = _handler_body("_handle_session_events_stream")
-    assert "text/event-stream" in body, "sanity: this is the SSE handler"
+    assert "begin_sse_response(handler, long_lived=True)" in body, "sanity: this is the long-lived SSE handler"
     assert not _emits_connection_close(body), (
         "_handle_session_events_stream must not emit `Connection: close` — it triggers "
         "browser EventSource reconnect storms on this long-lived stream (#3103)"
@@ -44,7 +46,7 @@ def test_session_events_stream_does_not_emit_connection_close():
 
 def test_gateway_sse_stream_does_not_emit_connection_close():
     body = _handler_body("_handle_gateway_sse_stream")
-    assert "text/event-stream" in body, "sanity: this is the SSE handler"
+    assert "begin_sse_response(handler, long_lived=True)" in body, "sanity: this is the long-lived SSE handler"
     assert not _emits_connection_close(body), (
         "_handle_gateway_sse_stream must not emit `Connection: close` — it triggers "
         "browser EventSource reconnect storms on this long-lived stream (#3103)"

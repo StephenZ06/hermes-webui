@@ -71,7 +71,11 @@ class TestSSEStaticAnalysis:
 
     def test_sse_content_type(self):
         """SSE handler must set text/event-stream content type."""
-        assert "text/event-stream" in ROUTES_SRC, \
+        # Every SSE endpoint starts through api.sse_chunked.begin_sse_response.
+        from pathlib import Path
+        helper = (Path(__file__).resolve().parents[1] / "api" / "sse_chunked.py").read_text(encoding="utf-8")
+        assert "begin_sse_response(handler)" in ROUTES_SRC
+        assert '"Content-Type", "text/event-stream; charset=utf-8"' in helper, \
             "SSE handler must set Content-Type to text/event-stream"
 
     def test_sse_keepalive(self):
