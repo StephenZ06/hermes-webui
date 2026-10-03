@@ -74,7 +74,7 @@ def test_apply_toolsets_stages_without_session_and_skips_post():
     assert "S._pendingSessionToolsets=toolsets" in compact
     pre_session_branch = apply_body[: apply_body.index("const sid = S.session.session_id;")]
     assert "api('/api/session/toolsets'" not in pre_session_branch
-    assert "_applyToolsetsChip(toolsets)" in pre_session_branch
+    assert "_applyToolsetsChip(toolsets, toolPolicy)" in pre_session_branch
 
 
 def test_staged_toolsets_are_visibly_marked_on_chip():
@@ -120,7 +120,10 @@ def test_load_existing_session_clears_staged_toolsets():
     compact = body.replace(" ", "")
     assign = compact.index("S.session=data.session")
     # The clear must accompany the real-session assignment, not only the create path.
-    assert "S._pendingSessionToolsets=null" in compact[assign : assign + 400]
+    # It is cleared on that success path before the transcript load, not on
+    # a later path (the block between them grew with the Notes refresh).
+    messages = compact.index("_ensureMessagesLoaded(", assign)
+    assert "S._pendingSessionToolsets=null" in compact[assign:messages]
 
 
 def test_workspace_and_profile_switches_clear_pending_toolsets():

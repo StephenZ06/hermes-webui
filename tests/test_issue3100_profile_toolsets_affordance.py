@@ -49,6 +49,9 @@ def test_null_state_is_labeled_as_active_profile_defaults():
 
     assert "null = active profile defaults" in UI_JS
     assert "session_toolsets_profile_defaults" in apply_chip
+    # The compact chip label is translated too, never hard-coded English.
+    assert "t('session_toolsets_profile_tools')" in apply_chip
+    assert "'Profile tools'" not in apply_chip
     assert "session_toolsets_global" not in apply_chip
     assert "session_toolsets_profile_defaults" in render_sections
     assert "Global (default)" not in I18N_JS
@@ -62,7 +65,9 @@ def test_profile_default_action_saves_null_override():
     assert "toolsetsProfileDefaultsBtn" in UI_JS
     assert "session_toolsets_use_profile_defaults" in UI_JS
     assert "if (e.target.closest('#toolsetsProfileDefaultsBtn'))" in click_block
-    assert "_applySessionToolsets(null);" in click_block
+    # tool_policy contract (docs/CONTRACTS.md): profile defaults are an
+    # explicit 'inherit-profile' policy with no override list.
+    assert "_applySessionToolsets(null, 'inherit-profile');" in click_block
     assert "static/index.html" not in UI_JS
     assert "toolsetsProfileDefaultsBtn" not in INDEX_HTML
 
@@ -78,13 +83,14 @@ def test_custom_checkbox_and_manual_selection_reuse_existing_apply_path():
     assert "checkbox.value = name" in render_sections
     assert "input.value = checked.concat(manual).join(', ')" in change_block
     assert "const toolsets = raw.split(',').map(s => s.trim()).filter(Boolean);" in apply_block
-    assert "_applySessionToolsets(toolsets);" in apply_block
+    assert "_applySessionToolsets(toolsets, 'explicit');" in apply_block
 
 
 def test_toolsets_affordance_i18n_keys_exist_in_locale_blocks():
     keys = [
         "session_toolsets_profile_defaults",
         "session_toolsets_use_profile_defaults",
+        "session_toolsets_profile_tools",
         "session_toolsets_configured_servers",
         "session_toolsets_loading_servers",
         "session_toolsets_no_configured_servers",

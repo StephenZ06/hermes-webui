@@ -5720,7 +5720,7 @@ function _applyToolsetsChip(toolsets, toolPolicy) {
     chip.classList.add('has-custom');
     chip.title = t('session_toolsets') + ': ' + toolsets.join(', ') + stagedSuffix;
   } else {
-    label.textContent = 'Profile tools';
+    label.textContent = t('session_toolsets_profile_tools');
     chip.classList.remove('has-custom');
     chip.title = t('session_toolsets') + ': ' + t('session_toolsets_profile_defaults');
   }
@@ -5811,7 +5811,7 @@ function _renderToolsetsPresetSections(opts) {
     ? '◌ Minimal — no optional tools'
     : hasCustom
       ? '🔧 ' + selected.join(', ')
-      : '👤 Profile tools';
+      : '👤 ' + t('session_toolsets_profile_defaults');
 
   section.innerHTML = '';
   const defaultsBtn = document.createElement('button');
