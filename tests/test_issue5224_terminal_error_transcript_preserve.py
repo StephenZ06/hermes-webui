@@ -58,6 +58,7 @@ function installRuntimeHelpers() {
     "_isMarkerOnlyAssistantMessage",
     "_streamRecoveryControlMessageText",
     "_streamRecoveryControlMessage",
+    "_isUnmarkedContinuationPair",
     "_filterRecoveryControlMessages",
     "_replaceMarkerOnlyAssistantWithStreamError",
     "_messageIdentityKey",

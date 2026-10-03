@@ -13,6 +13,7 @@ import pytest
 
 from api.routes import _project_os_workspace_read
 from tests._pytest_port import BASE
+from tests.js_source_extract import top_level_functions
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -71,7 +72,8 @@ def _workspace_escape_helper_block() -> str:
     assert start >= 0, "escape grant helper block start not found in static/workspace.js"
     end = src.find("let _workspacePanelActiveTab = 'files';", start)
     assert end >= 0, "escape grant helper block end not found in static/workspace.js"
-    return src[start:end]
+    # Only the declarations: the range also holds top-level browser wiring.
+    return top_level_functions(src[start:end])
 
 
 def _run_node(js: str) -> dict:

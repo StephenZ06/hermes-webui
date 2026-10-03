@@ -58,6 +58,15 @@ let _wsTreeGen=0;
 function bumpWorkspaceTreeGen(){{_wsTreeGen+=1;return _wsTreeGen;}}
 function _restoreExpandedDirs(){{events.push(['restore',S.session.workspace]);}}
 function _workspaceRouteForPath(){{return '';}}
+// Panel wiring loadDir also touches; irrelevant to recovery.
+function _workspaceEscapeGrantForPath(){{return null;}}
+function _clearWorkspaceEscapeGrant(){{}}
+let _workspacePanelActiveTab='files';
+function _scheduleWorkspaceGraphRefresh(){{}}
+function renderBoundProjectControl(){{}}
+function renderProjectFolderBinding(){{}}
+function refreshOpenPreviewIfMutated(){{}}
+async function showConfirmDialog(){{return false;}}
 async function api(){{return {{entries:[{{name:'a'}}],workspace:'/fallback-a',workspace_recovered:true}};}}
 function renderBreadcrumb(){{events.push(['breadcrumb',S.session.workspace]);}}
 function renderFileTree(){{events.push(['tree',S.session.workspace]);}}

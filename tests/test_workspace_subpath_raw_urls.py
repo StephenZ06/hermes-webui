@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.js_source_extract import top_level_functions
+
 ROOT = Path(__file__).parent.parent
 WORKSPACE_JS = ROOT / "static" / "workspace.js"
 NODE = shutil.which("node")
@@ -44,7 +46,8 @@ def _route_helper_block() -> str:
     assert start >= 0, "route helper block start not found in static/workspace.js"
     end = src.find("async function authorizeWorkspaceEscapeNavigation(", start)
     assert end >= 0, "route helper block end not found in static/workspace.js"
-    return src[start:end]
+    # Only the declarations: the range also holds top-level browser wiring.
+    return top_level_functions(src[start:end])
 
 
 class TestWorkspaceSubpathRawUrls:
