@@ -61,3 +61,18 @@ def test_legacy_per_profile_workspaces_are_merged_into_global(tmp_path, monkeypa
     assert "/mnt/c/Users/Z014/Documents/Obsidian-Vault" in paths
     assert "/workspace" in paths
     assert (tmp_path / "workspaces.json").exists()
+
+
+def test_global_workspace_files_live_in_the_configured_state_dir():
+    """Shared across profiles, but still under HERMES_WEBUI_STATE_DIR.
+
+    STATE_DIR is process-global (not per profile), so it already gives every
+    profile one list; deriving the path from the base Hermes home instead
+    ignored HERMES_WEBUI_STATE_DIR and split saved workspaces and
+    last_workspace.txt away from the rest of the WebUI state.
+    """
+    import api.config as config
+    import api.workspace as ws
+
+    assert ws._GLOBAL_WS_FILE == config.STATE_DIR / "workspaces.json"
+    assert ws._profile_state_dir() == config.STATE_DIR

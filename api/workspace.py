@@ -38,11 +38,12 @@ from api.config import (
 from api.subprocess_utils import windows_hide_flags
 
 # Workspaces are intentionally shared across profiles. The global file lives
-# under the base Hermes home (e.g. ~/.hermes/webui/workspaces.json), not under
-# a profile-specific state dir, so an external path only needs to be added
-# once in the Spaces UI and every profile switch works.
-from api.profiles import _DEFAULT_HERMES_HOME
-_GLOBAL_WS_FILE = _DEFAULT_HERMES_HOME / "webui" / "workspaces.json"
+# in the WebUI STATE_DIR (default ~/.hermes/webui/workspaces.json; honours
+# HERMES_WEBUI_STATE_DIR), which is process-global rather than per profile,
+# so an external path only needs to be added once in the Spaces UI and every
+# profile switch works.
+from api.config import STATE_DIR as _STATE_DIR
+_GLOBAL_WS_FILE = _STATE_DIR / "workspaces.json"
 
 
 # ── Profile-aware path resolution ───────────────────────────────────────────
