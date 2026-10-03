@@ -9135,11 +9135,17 @@ def get_available_models_across_profiles() -> dict:
         # best-effort and avoids leaking secrets; we only check the current
         # profile's credential pool and env, plus the root profile.
         try:
+            from api.providers import _provider_has_key
+
             if _provider_has_key(canonical):
-                for model_id in _PROVIDER_MODELS.get(canonical, []):
-                    _add_model(canonical, model_id)
+                # Catalog entries are {"id", "label"} dicts.
+                for entry in _PROVIDER_MODELS.get(canonical, []):
+                    if isinstance(entry, dict):
+                        _add_model(canonical, str(entry.get("id") or ""), str(entry.get("label") or ""))
+                    else:
+                        _add_model(canonical, str(entry or ""))
         except Exception:
-            pass
+            logger.debug("Failed to add keyed provider %s to cross-profile models", canonical, exc_info=True)
 
     groups = sorted(seen_groups.values(), key=lambda g: g["provider"].lower())
     return {
