@@ -30,9 +30,13 @@ def test_page_navigation_icons_are_replaced_in_desktop_and_mobile():
         source = REPO / "icons" / source_name
         deployed = REPO / "static" / asset_name
         assert INDEX.count(f'class="{class_name}"') == 2
-        assert source.is_file()
         assert deployed.is_file()
-        assert hashlib.sha256(deployed.read_bytes()).digest() == hashlib.sha256(source.read_bytes()).digest()
+        # icons/ is the local, untracked design-source folder. When it is
+        # present, the shipped copy must match it; a clean checkout or CI
+        # verifies the shipped assets and their wiring only.
+        if source.parent.is_dir():
+            assert source.is_file(), f"{source_name} missing from the icons/ source folder"
+            assert hashlib.sha256(deployed.read_bytes()).digest() == hashlib.sha256(source.read_bytes()).digest()
         assert f'mask-image:url("{asset_name}")' in CSS
         assert f'-webkit-mask-image:url("{asset_name}")' in CSS
         assert f"'./static/{asset_name}'," in SERVICE_WORKER

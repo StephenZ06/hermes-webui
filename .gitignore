@@ -86,3 +86,14 @@ docs/ui-ux/review-shots/
 attachments/
 .superpowers/
 .worktrees/
+
+# Local design-source art for the bundled nav icons (shipped copies live in
+# static/; tests/test_page_navigation_icons.py checks them against this folder
+# only when it exists)
+/icons/
+
+# Separate repositories that must not be nested in this checkout
+/job-ops/
+
+# Windows "downloaded from the internet" markers copied in from NTFS
+*:Zone.Identifier
