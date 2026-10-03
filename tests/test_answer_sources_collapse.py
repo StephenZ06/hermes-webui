@@ -65,10 +65,14 @@ def test_sources_tail_folds_in_the_browser(base_url):
         "- [Example three](https://example.com/c)\n"
     )
     with sync_playwright() as p:
-        b = p.chromium.launch(args=["--use-gl=swiftshader"])
+        # No WebGL needed: let the suite's CPU-compositing default apply, and
+        # wait for boot rather than a fixed delay.
+        b = p.chromium.launch()
         pg = b.new_page(viewport={"width": 1200, "height": 900})
         pg.goto(base_url, wait_until="load")
-        pg.wait_for_timeout(2500)
+        pg.wait_for_function(
+            "() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000
+        )
         pg.evaluate('() => document.querySelectorAll(\'#onboardingOverlay,[role="dialog"]\').forEach(e => e.remove())')
         out = pg.evaluate(
             """(answer) => {

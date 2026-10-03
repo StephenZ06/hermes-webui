@@ -169,26 +169,42 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         collapse_toggle = pg.evaluate("""async () => {
           // The floating card's disclosure animates independently of the
           // canvas; wait for the body geometry rather than guessing a delay.
+          // Generous ceiling: under SwiftShader WebGL frames are slow, so a
+          // .26s transition can take seconds of wall time to finish.
           const settled = async (isDone, timeoutMs) => {
             const start = performance.now();
             let last = null;
             while (performance.now() - start < timeoutMs) {
               const h = body.getBoundingClientRect().height;
-              if (isDone(h) && h === last) return h;
+              if (isDone(h) && h === last && !card.getAnimations({ subtree: true }).length) return h;
               last = h;
               await new Promise(r => setTimeout(r, 30));
             }
             return body.getBoundingClientRect().height;
           };
           const body = document.getElementById('officeTasksBody');
+          // resetView() above closes the selected row's inline details. Wait
+          // until no CSS transition is running inside the card (frame-rate
+          // independent -- a quiet height can just mean a slow frame), or
+          // "before" is a mid-animation height.
+          const card = document.getElementById('officeTasks');
+          const idle = async (timeoutMs) => {
+            const start = performance.now();
+            while (performance.now() - start < timeoutMs) {
+              if (!card.getAnimations({ subtree: true }).length) return true;
+              await new Promise(r => setTimeout(r, 30));
+            }
+            return false;
+          };
+          await idle(15000);
           const before = body.getBoundingClientRect().height;
           const btn = document.getElementById('officeTasksCollapseBtn');
           btn.click();
-          const collapsedHeight = await settled(h => h < before, 2000);
+          const collapsedHeight = await settled(h => h < before, 10000);
           const collapsedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
           const stored = localStorage.getItem('hermes-webui-office-tasks-collapsed');
           btn.click();
-          const expandedHeight = await settled(h => h >= before, 2000);
+          const expandedHeight = await settled(h => h >= before, 10000);
           const expandedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
           return { before, collapsedClass, collapsedHeight, stored, expandedClass, expandedHeight };
         }""")
@@ -255,11 +271,12 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     # always appends the overflow as a 7th standing entry (the same "a
     # visible overflow is the honest answer" reasoning as everything else on
     # this floor), so it gets a card too. Uncoloured: only a real department
-    # tints its floor.
-    assert len(dept_cards) == 7, "every standing department (plus the overflow) gets a card"
+    # tints its floor. The central conductor platform has its own overview
+    # card too (officeCardSpecs puts it first; test_office_pod_stat_cards).
+    assert len(dept_cards) == 8, "the conductor, every standing department and the overflow get a card"
     by_name = {c["name"]: c for c in dept_cards}
     assert set(by_name) == {
-        "Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery", "The Floor",
+        "Conductor", "Marketing", "Emails", "Sales", "Operations", "Finance", "Delivery", "The Floor",
     }
     for card in dept_cards:
         assert card["left"] and card["top"], (
@@ -322,7 +339,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     assert collapse_toggle["stored"] == "1", "the collapsed state must be remembered across visits"
     assert not collapse_toggle["expandedClass"], "clicking again must expand it back"
     assert collapse_toggle["expandedHeight"] == collapse_toggle["before"], (
-        "expanding again must restore the Task Status body to its prior height"
+        f"expanding again must restore the Task Status body to its prior height: {collapse_toggle}"
     )
 
 
