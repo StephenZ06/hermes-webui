@@ -1,4 +1,4 @@
-"""Verdigris skin registration and emerald/bronze palette affordances."""
+"""Workspace skin registration and dark, graphite workbench affordances."""
 
 from pathlib import Path
 
@@ -10,23 +10,23 @@ INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 I18N_JS = (REPO / "static" / "i18n.js").read_text(encoding="utf-8")
 
 
-def test_verdigris_skin_is_registered_in_all_files():
-    assert "{name:'Verdigris'" in BOOT_JS
+def test_workspace_skin_preserves_the_verdigris_preference_key():
+    assert "{name:'Workspace', value:'verdigris'" in BOOT_JS
     assert "'verdigris':1" in INDEX_HTML
     assert '"verdigris"' in CONFIG_PY
 
 
-def test_verdigris_dark_palette_is_emerald():
+def test_workspace_dark_palette_is_graphite():
     assert ':root.dark[data-skin="verdigris"]' in CSS
-    assert "--bg:#0F1714" in CSS
-    assert "--sidebar:#121D18" in CSS
-    assert "--border:#22342C" in CSS
+    assert "--bg:#101412" in CSS
+    assert "--sidebar:#161B18" in CSS
+    assert "--border:#2C3530" in CSS
 
 
-def test_verdigris_accent_is_bronze():
-    assert "--accent:#C89A5A" in CSS
-    assert "--accent-hover:#D6AE74" in CSS
-    assert "--focus-ring:rgba(200,154,90,.30)" in CSS
+def test_workspace_accent_is_muted_mint():
+    assert "--accent:#78C7A3" in CSS
+    assert "--accent-hover:#92D5B6" in CSS
+    assert "--focus-ring:rgba(120,199,163,.28)" in CSS
 
 
 def test_verdigris_has_no_light_variant():

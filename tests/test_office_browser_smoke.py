@@ -65,7 +65,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         pg.evaluate("""() => {
           const O = window.HermesOffice;
           O.onSpawn({subagent_id:'demo-1', goal:'audit the delegation path', model:'opus', depth:1});
-          O.onSpawn({subagent_id:'demo-2', goal:'write the regression tests', depth:1});
+          O.onSpawn({subagent_id:'demo-2', goal:'reconcile the monthly invoice', depth:1});
           O.onSpawn({subagent_id:'demo-3', parent_id:'demo-1', goal:'inspect the routes configuration file', depth:2});
           O.onToolActivity({subagent_id:'demo-2', tool:'Read', preview:'tests/test_office.py'});
           O.onComplete({subagent_id:'demo-3', status:'ok', duration_seconds:6.5, summary:'found the branch'});
@@ -87,13 +87,9 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         }""")
         pg.screenshot(path=str(tmp_path / "office-projects.png"))
 
-        # Projects shows separate, anchored cards for the Conductor and its
-        # direct-child Subagents platform; a nested subagent pod stays generic.
-        # demo-1 seats on the Subagents platform while demo-3 gets a pod of
-        # its own (demo-1's child).
-        # demo-2's goal ("write the regression tests") reads as Delivery
-        # business work, so it's held back from the Projects floor entirely
-        # (see projectsFloorView() in index.js) -- it isn't a third pod here.
+        # Projects is a permanent workstream office: the Conductor and all
+        # four named floors remain visible, while the invoice delegate stays
+        # exclusively on Business.
         projects_cards = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
           name: (el.querySelector('.office-dept-card-name') || {}).textContent || '',
           hasName: !!el.querySelector('.office-dept-card-name'),
@@ -144,8 +140,7 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
 
         pg.evaluate("() => document.querySelector('[data-outlet=\\\"projects\\\"]').click()")
         pg.wait_for_timeout(500)
-        # Leaving Business must drop its named/coloured cards, not merely
-        # leave zero cards -- Projects has its own (generic) ones now.
+        # Leaving Business restores the named, coloured Projects floors.
         cards_after_leaving_business = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
           hasName: !!el.querySelector('.office-dept-card-name'),
           hasColor: !!el.style.getPropertyValue('--office-dept-color'),
@@ -172,33 +167,30 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         # Collapsing the Task Status column frees canvas width and remembers
         # its state; expanding again gives the width back.
         collapse_toggle = pg.evaluate("""async () => {
-          // The column's flex-basis animates over 180ms (see .office-tasks'
-          // own transition); poll for the canvas width to actually settle
-          // rather than guessing a fixed delay, which flaked under load
-          // elsewhere in this same test (measured: 600ms was not always
-          // enough once composer/MSAA rendering was also busy).
+          // The floating card's disclosure animates independently of the
+          // canvas; wait for the body geometry rather than guessing a delay.
           const settled = async (isDone, timeoutMs) => {
             const start = performance.now();
             let last = null;
             while (performance.now() - start < timeoutMs) {
-              const w = canvas.getBoundingClientRect().width;
-              if (isDone(w) && w === last) return w;
-              last = w;
+              const h = body.getBoundingClientRect().height;
+              if (isDone(h) && h === last) return h;
+              last = h;
               await new Promise(r => setTimeout(r, 30));
             }
-            return canvas.getBoundingClientRect().width;
+            return body.getBoundingClientRect().height;
           };
-          const canvas = document.querySelector('.office-canvas');
-          const before = canvas.getBoundingClientRect().width;
+          const body = document.getElementById('officeTasksBody');
+          const before = body.getBoundingClientRect().height;
           const btn = document.getElementById('officeTasksCollapseBtn');
           btn.click();
-          const collapsedWidth = await settled(w => w > before, 2000);
+          const collapsedHeight = await settled(h => h < before, 2000);
           const collapsedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
           const stored = localStorage.getItem('hermes-webui-office-tasks-collapsed');
           btn.click();
-          const expandedWidth = await settled(w => w <= before, 2000);
+          const expandedHeight = await settled(h => h >= before, 2000);
           const expandedClass = document.getElementById('officeTasks').classList.contains('is-collapsed');
-          return { before, collapsedClass, collapsedWidth, stored, expandedClass, expandedWidth };
+          return { before, collapsedClass, collapsedHeight, stored, expandedClass, expandedHeight };
         }""")
 
         pg.evaluate("() => window.switchPanel('chat')")
@@ -242,8 +234,8 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         "the scene reports each figure's rendered pose — an idle behaviour "
         "plays over plain work and is otherwise invisible from outside"
     )
-    # demo-2 is business-classified (Delivery, via "regression tests") and
-    # so has no seat on the Projects floor at all -- see projectsFloorView().
+    # demo-2 is business-classified (Finance, via "invoice") and so has no
+    # seat on the Projects floor at all.
     assert set(camera["overview"]["poses"]) == {"demo-1", "demo-3"}
     assert camera["back"]["focusedId"] is None
     assert abs(camera["back"]["zoom"] - camera["overview"]["zoom"]) < 1e-6, (
@@ -285,22 +277,22 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
                 f"{card['name']} and {other['name']} cards overlap on the Business floor"
             )
 
-    # Projects cards remain distinct after switching outlets: Conductor is
-    # anchored to the central platform, Subagents to its own platform, and
-    # nested project pods keep their deliberately generic card.
-    assert len(projects_cards) == 3, "Conductor, Subagents, and demo-3 each need one card"
-    assert {card["name"] for card in projects_cards if card["hasName"]} == {"Conductor", "Subagents"}
+    # Projects cards are permanent named workstreams around the Conductor.
+    assert len(projects_cards) == 5, "Conductor and four Projects workstreams each need one card"
+    assert {card["name"] for card in projects_cards if card["hasName"]} == {
+        "Conductor", "General", "Research", "Coding", "Documents",
+    }
     for card in projects_cards:
         assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
         assert card["left"] and card["top"], "a Projects card was never positioned over its pod"
 
-    assert len(cards_after_leaving_business) == 3, "returning to Projects must restore all three project cards"
+    assert len(cards_after_leaving_business) == 5, "returning to Projects must restore the four workstream cards"
     for card in cards_after_leaving_business:
-        assert not card["hasName"], "Business's named cards must not linger over the Projects floor"
-        assert card["hasColor"], "a Projects card must match its pod's derived floor colour"
+        assert card["hasName"], "a Projects workstream card needs its named floor"
+        assert card["hasColor"], "a Projects card must match its semantic floor colour"
 
-    # demo-2 ("write the regression tests") is business-classified as
-    # Delivery: held off the Projects floor entirely (both times it's shown,
+    # demo-2 ("reconcile the monthly invoice") is business-classified as
+    # Finance: held off the Projects floor entirely (both times it's shown,
     # not just on first load), but actually seated for real on Business --
     # not merely dropped everywhere.
     assert "demo-2" in business_poses, "a business-classified worker must actually be seated on Business"
@@ -324,13 +316,13 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
     )
 
     assert collapse_toggle["collapsedClass"], "the collapse button must add is-collapsed"
-    assert collapse_toggle["collapsedWidth"] > collapse_toggle["before"], (
-        "collapsing the column must actually free canvas width, not just relabel the button"
+    assert collapse_toggle["collapsedHeight"] < collapse_toggle["before"], (
+        "collapsing must close the actual Task Status body, not merely relabel the button"
     )
     assert collapse_toggle["stored"] == "1", "the collapsed state must be remembered across visits"
     assert not collapse_toggle["expandedClass"], "clicking again must expand it back"
-    assert collapse_toggle["expandedWidth"] == collapse_toggle["before"], (
-        "expanding again must give the canvas back exactly the width it had before"
+    assert collapse_toggle["expandedHeight"] == collapse_toggle["before"], (
+        "expanding again must restore the Task Status body to its prior height"
     )
 
 

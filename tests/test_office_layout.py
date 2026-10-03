@@ -242,6 +242,26 @@ def test_a_pod_is_only_coloured_when_its_desks_carry_a_colour(driver):
     assert overflow["pods"][0]["color"] is None
 
 
+def test_the_four_projects_workstream_pods_hold_stable_cardinal_positions(driver):
+    records = [
+        {"id": key, "index": index, "cluster": key, "projectFloor": True,
+         "clusterLabel": label, "clusterColor": color}
+        for index, (key, label, color) in enumerate([
+            ("general", "General", "#94a3b8"),
+            ("research", "Research", "#8b5cf6"),
+            ("coding", "Coding", "#3b82f6"),
+            ("documents", "Documents", "#14b8a6"),
+        ])
+    ]
+    pods = {pod["cluster"]: pod for pod in layout(driver, records)["pods"]}
+    assert pods["general"]["x"] == pytest.approx(-25.5) and pods["general"]["z"] == pytest.approx(0)
+    assert pods["research"]["x"] == pytest.approx(0) and pods["research"]["z"] == pytest.approx(-25.5)
+    assert pods["coding"]["x"] == pytest.approx(25.5) and pods["coding"]["z"] == pytest.approx(0)
+    assert pods["documents"]["x"] == pytest.approx(0) and pods["documents"]["z"] == pytest.approx(25.5)
+    assert {pod["label"] for pod in pods.values()} == {"General", "Research", "Coding", "Documents"}
+    assert {pod["color"] for pod in pods.values()} == {"#94a3b8", "#8b5cf6", "#3b82f6", "#14b8a6"}
+
+
 # ── stability ────────────────────────────────────────────────────────────────
 
 def test_adding_a_subagent_does_not_move_the_existing_office(driver):

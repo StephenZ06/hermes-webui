@@ -931,17 +931,177 @@ function _syncSidebarAria(){
   if(active)active.setAttribute('aria-expanded',!_isSidebarCollapsed());
 }
 
-// Routes a panel's collapse/expand through MotionUI.slidePanel when it is
-// available, and just performs the state change when it is not. Keeping this in
-// one place means the fallback path is identical for both panels.
-function _slidePanelIfPossible(panel,side,apply){
+// The optional Motion bundle provides the preferred FLIP implementation. It is
+// deliberately optional, though: an offline cache miss or a failed vendor load
+// must not send a live Office scene back through a CSS `width` transition.
+// Width changes re-layout the entire flex row on every animation frame, which
+// is especially visible while the office renderer is also drawing. This native
+// Web Animations fallback performs the same one-layout FLIP sequence using
+// transform-only keyframes, so it is compositor-driven in every supported
+// Chromium/WebView even without the optional bundle.
+let _nativePanelSlide=null;
+
+function _notifyOfficePanelLayoutMotion(active){
   try{
-    if(window.MotionUI&&typeof window.MotionUI.slidePanel==='function'){
-      window.MotionUI.slidePanel(panel,apply,{side:side});
+    const office=window.HermesOffice;
+    const method=active?'pauseForLayoutMotion':'resumeAfterLayoutMotion';
+    if(office&&typeof office[method]==='function') office[method]();
+  }catch(_){}
+}
+
+function _slidePanelWithNativeAnimation(panel,side,apply,opts){
+  const options=opts||{};
+  let lifecycleStarted=false;
+  const begin=function(){
+    if(lifecycleStarted)return;
+    lifecycleStarted=true;
+    try{if(typeof options.onStart==='function')options.onStart();}catch(_){}
+  };
+  const finish=function(){
+    if(!lifecycleStarted)return;
+    lifecycleStarted=false;
+    try{if(typeof options.onComplete==='function')options.onComplete();}catch(_){}
+  };
+  if(!panel||typeof apply!=='function'||typeof panel.animate!=='function'){
+    apply();
+    return;
+  }
+  try{
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      apply();
       return;
     }
   }catch(_){}
-  apply();
+
+  const main=document.querySelector('.main');
+  if(!main){apply();return;}
+
+  // A quick second toggle starts from the already-committed layout state. The
+  // previous transform is cleared before measuring so two animations never
+  // fight over the same inline properties.
+  if(_nativePanelSlide&&typeof _nativePanelSlide.cleanup==='function'){
+    _nativePanelSlide.cleanup();
+  }
+
+  const panelProps=['transition','position','left','top','width','height',
+    'opacity','z-index','transform','will-change'];
+  const mainProps=['transform','will-change'];
+  const savedPanel={};
+  const savedMain={};
+  panelProps.forEach(function(prop){
+    savedPanel[prop]=[panel.style.getPropertyValue(prop),panel.style.getPropertyPriority(prop)];
+  });
+  mainProps.forEach(function(prop){
+    savedMain[prop]=[main.style.getPropertyValue(prop),main.style.getPropertyPriority(prop)];
+  });
+  const restore=function(el,props,saved){
+    props.forEach(function(prop){
+      const value=saved[prop][0];
+      const priority=saved[prop][1];
+      if(value)el.style.setProperty(prop,value,priority);
+      else el.style.removeProperty(prop);
+    });
+  };
+
+  let panelBefore,mainBefore,panelAfter,mainAfter;
+  try{
+    panelBefore=panel.getBoundingClientRect();
+    mainBefore=main.getBoundingClientRect();
+    begin();
+    // Prevent the CSS width/opacity transition from starting when the class is
+    // committed. The geometry is therefore final after this one layout read.
+    panel.style.setProperty('transition','none','important');
+    apply();
+    panelAfter=panel.getBoundingClientRect();
+    mainAfter=main.getBoundingClientRect();
+  }catch(_){
+    restore(panel,panelProps,savedPanel);
+    restore(main,mainProps,savedMain);
+    finish();
+    return;
+  }
+
+  const expanding=panelAfter.width>panelBefore.width;
+  const rect=expanding?panelAfter:panelBefore;
+  if(Math.abs(panelAfter.width-panelBefore.width)<1||rect.width<1){
+    restore(panel,panelProps,savedPanel);
+    restore(main,mainProps,savedMain);
+    finish();
+    return;
+  }
+
+  const offscreen=side==='right'?rect.width:-rect.width;
+  const panelFrom=expanding?offscreen:0;
+  const panelTo=expanding?0:offscreen;
+  const mainFrom=mainBefore.left-mainAfter.left;
+  // The collapsed selector owns width:0!important, so the temporary visual
+  // panel needs equally-specific pins while its transform carries it away.
+  panel.style.setProperty('position','fixed','important');
+  panel.style.setProperty('left',rect.left+'px','important');
+  panel.style.setProperty('top',rect.top+'px','important');
+  panel.style.setProperty('width',rect.width+'px','important');
+  panel.style.setProperty('height',rect.height+'px','important');
+  panel.style.setProperty('opacity','1','important');
+  panel.style.setProperty('z-index','6','important');
+  panel.style.setProperty('will-change','transform');
+  panel.style.setProperty('transform','translateX('+panelTo+'px)','important');
+  main.style.setProperty('will-change','transform');
+  main.style.transform='translateX(0px)';
+
+  const current={cleanup:null};
+  let cleaned=false;
+  const cleanup=function(){
+    if(cleaned)return;
+    cleaned=true;
+    try{current.animations.forEach(function(animation){animation.cancel();});}catch(_){}
+    restore(panel,panelProps,savedPanel);
+    restore(main,mainProps,savedMain);
+    finish();
+    if(_nativePanelSlide===current)_nativePanelSlide=null;
+  };
+  current.cleanup=cleanup;
+  _nativePanelSlide=current;
+
+  try{
+    const timing={duration:240,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'};
+    current.animations=[panel.animate([
+      {transform:'translateX('+panelFrom+'px)'},
+      {transform:'translateX('+panelTo+'px)'}
+    ],timing)];
+    if(Math.abs(mainFrom)>.5){
+      current.animations.push(main.animate([
+        {transform:'translateX('+mainFrom+'px)'},
+        {transform:'translateX(0px)'}
+      ],timing));
+    }
+    Promise.all(current.animations.map(function(animation){
+      return animation.finished.catch(function(){return undefined;});
+    })).then(cleanup,cleanup);
+  }catch(_){
+    cleanup();
+  }
+}
+
+// Routes a panel's collapse/expand through MotionUI.slidePanel when it is
+// available. The native FLIP fallback keeps the behavior and performance
+// contract intact when that optional runtime is absent.
+function _slidePanelIfPossible(panel,side,apply){
+  const lifecycle={
+    onStart:function(){_notifyOfficePanelLayoutMotion(true);},
+    onComplete:function(){_notifyOfficePanelLayoutMotion(false);}
+  };
+  try{
+    const motionUi=window.MotionUI;
+    // motion-ui.js can be present while its optional Motion vendor did not
+    // initialise. Calling slidePanel in that state falls back to CSS width;
+    // use the native compositor path below instead.
+    const runtimeReady=!motionUi||typeof motionUi.enabled!=='function'||motionUi.enabled();
+    if(motionUi&&typeof motionUi.slidePanel==='function'&&runtimeReady){
+      motionUi.slidePanel(panel,apply,{side:side,onStart:lifecycle.onStart,onComplete:lifecycle.onComplete});
+      return;
+    }
+  }catch(_){}
+  _slidePanelWithNativeAnimation(panel,side,apply,lifecycle);
 }
 
 function toggleSidebar(forceState){
@@ -3291,7 +3451,9 @@ const _SKINS=[
   {name:'Neon Paint', value:'neon-paint', colors:['#FF2D95','#00E5FF','#FFB800']},
   {name:'Geist Contrast', value:'geist-contrast', colors:['#000000','#ffffff','#FFF175']},
   {name:'Zeus',     colors:['#FFD700','#FFBF00','#1A1A00']},
-  {name:'Verdigris', value:'verdigris', colors:['#C89A5A','#0F1714','#22342C']},
+  {name:'Workspace', value:'verdigris', colors:['#78C7A3','#161B18','#EDF3EF']},
+  {name:'Neumorphic', value:'neumorphic', colors:['#9B6CFF','#F06AB4','#45C6F5']},
+  {name:'Teal Neumorphic', value:'teal-neumorphic', colors:['#29C7B8','#4BD4C7','#7EE7DC']},
 ];
 const _VALID_THEMES=new Set((_THEMES||[]).map(t=>t.value));
 const _VALID_SKINS=new Set((_SKINS||[]).map(s=>(s.value||s.name).toLowerCase()));

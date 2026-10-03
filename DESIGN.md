@@ -1,19 +1,19 @@
 ---
 version: alpha
-name: Hermes Calm Console
-description: "A restrained agent control surface: conversational content first, tool traces as quiet metadata, minimal chrome."
+name: Hermes Workspace
+description: "A graphite agent workbench: conversational content first, calm mint wayfinding, and quiet operational surfaces."
 colors:
-  primary: "#EAE0D5"
-  secondary: "#C6AC8F"
-  tertiary: "#C6AC8F"
-  neutral: "#0A0908"
-  surface: "#22333B"
-  surfaceSubtle: "#11100E"
-  borderSubtle: "#3B4A50"
-  ink: "#0A0908"
-  success: "#86C08B"
-  warning: "#E0B15D"
-  error: "#F87171"
+  primary: "#EDF3EF"
+  secondary: "#A9B4AD"
+  tertiary: "#78C7A3"
+  neutral: "#101412"
+  surface: "#1A211D"
+  surfaceSubtle: "#121815"
+  borderSubtle: "#2C3530"
+  ink: "#101412"
+  success: "#8DDBB5"
+  warning: "#E8C16C"
+  error: "#F08080"
 typography:
   body-md:
     fontFamily: "Georgia, Times New Roman, serif"
@@ -95,17 +95,18 @@ components:
 
 ## Overview
 
-Hermes WebUI should feel like a calm developer console, not a demo page assembled from colorful cards. The primary artifact is the conversation. Tool calls, thinking traces, context compaction records, token usage, and runtime status are useful, but they are transcript metadata and should sit below the visual priority of user and assistant prose.
+Hermes WebUI should feel like a calm developer workbench, not a demo page assembled from colorful cards. The primary artifact is the conversation. Tool calls, thinking traces, context compaction records, token usage, and runtime status are useful, but they are transcript metadata and should sit below the visual priority of user and assistant prose.
 
-The desired direction is Linear/Vercel precision with a little Claude-style conversational warmth: quiet surfaces, clear spacing, restrained accent use, and progressive disclosure for debugging detail.
+The desired direction is Linear/Vercel precision with a calm graphite foundation and restrained mint wayfinding: quiet surfaces, clear spacing, semantic accent use, and progressive disclosure for debugging detail.
 
 ## Colors
 
-- **Primary (#EAE0D5):** main text on dark surfaces. The warm parchment should feel readable and grounded, not like bright white terminal text.
-- **Secondary/Tertiary (#C6AC8F):** metadata and restrained accent. Use sparingly for active state, focus, user bubbles, and quiet emphasis.
-- **Neutral (#0A0908):** app background and ink. This gives the WebUI depth without returning to the previous navy/gold theme.
-- **Surface (#22333B):** panels, sidebar, and stronger interactive surfaces. It should carry the structure while the conversation remains primary.
-- **Light surfaces (#EAE0D5 / #F4EEE7):** light mode uses the palette's parchment as the field and a slightly lifted derived surface for panels.
+- **Primary (#EDF3EF):** main text on dark surfaces. It stays crisp without looking like terminal-white glare.
+- **Secondary (#A9B4AD):** metadata, timestamps, and secondary controls. It reads as intentionally quiet rather than disabled.
+- **Tertiary (#78C7A3):** the one non-semantic accent. Reserve it for selection, focus, and primary actions.
+- **Neutral (#101412):** the app canvas and ink. This gives the workbench depth without reverting to navy or gold.
+- **Surface (#1A211D):** panels, sidebar, and interactive surfaces. It carries structure while the conversation remains primary.
+- **Surface subtle (#121815):** code, inputs, and recessed operational detail.
 - **Semantic colors:** success/warning/error/info are state colors only, not decorative palette choices.
 
 ## Typography

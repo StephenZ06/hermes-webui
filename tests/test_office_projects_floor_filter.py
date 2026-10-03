@@ -28,9 +28,10 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is required")
 
 _DRIVER = r"""
 import { readFileSync } from 'node:fs';
-const { departmentFor, businessWorkerIds } = await import(process.argv[2]);
+const { departmentFor, businessWorkerIds, projectsView } = await import(process.argv[2]);
 globalThis.departmentFor = departmentFor;
 globalThis.businessWorkerIds = businessWorkerIds;
+globalThis.projectsView = projectsView;
 
 const src = readFileSync(process.argv[3], 'utf8');
 function lift(name) {
@@ -85,7 +86,7 @@ def test_a_business_classified_worker_is_dropped_from_the_projects_floor(driver)
         "desks": [desk("d1", "w1")],
     }
     out = run(driver, state)
-    assert out["desks"] == []
+    assert not [desk_ for desk_ in out["desks"] if desk_["workerId"]]
 
 
 def test_a_personal_task_stays_on_the_projects_floor(driver):
@@ -94,8 +95,8 @@ def test_a_personal_task_stays_on_the_projects_floor(driver):
         "desks": [desk("d1", "w1")],
     }
     out = run(driver, state)
-    assert len(out["desks"]) == 1
-    assert out["desks"][0]["id"] == "d1"
+    seated = [desk_ for desk_ in out["desks"] if desk_["workerId"] == "w1"]
+    assert len(seated) == 1 and seated[0]["cluster"] == "general"
 
 
 def test_a_coding_task_stays_on_the_projects_floor(driver):
@@ -104,7 +105,8 @@ def test_a_coding_task_stays_on_the_projects_floor(driver):
         "desks": [desk("d1", "w1")],
     }
     out = run(driver, state)
-    assert [desk_["id"] for desk_ in out["desks"]] == ["d1"]
+    seated = [desk_ for desk_ in out["desks"] if desk_["workerId"] == "w1"]
+    assert len(seated) == 1 and seated[0]["cluster"] == "coding"
 
 
 def test_descendants_of_a_business_worker_are_hidden_too(driver):
@@ -118,7 +120,7 @@ def test_descendants_of_a_business_worker_are_hidden_too(driver):
         "desks": [desk("d-parent", "parent"), desk("d-child", "child", cluster="parent")],
     }
     out = run(driver, state)
-    assert out["desks"] == []
+    assert not [desk_ for desk_ in out["desks"] if desk_["workerId"]]
 
 
 def test_only_the_business_branch_is_hidden_not_unrelated_work(driver):
@@ -130,14 +132,15 @@ def test_only_the_business_branch_is_hidden_not_unrelated_work(driver):
         "desks": [desk("d-biz", "biz"), desk("d-other", "other")],
     }
     out = run(driver, state)
-    ids = {d["id"] for d in out["desks"]}
-    assert ids == {"d-other"}
+    ids = {d["workerId"] for d in out["desks"] if d["workerId"]}
+    assert ids == {"other"}
 
 
 def test_a_desk_with_no_worker_yet_is_kept_rather_than_guessed_at(driver):
     state = {"workers": [], "desks": [desk("d1", None)]}
     out = run(driver, state)
-    assert len(out["desks"]) == 1
+    assert len(out["desks"]) == 4
+    assert not [desk_ for desk_ in out["desks"] if desk_["workerId"]]
 
 
 def test_other_state_fields_pass_through_unchanged(driver):

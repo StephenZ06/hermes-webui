@@ -1119,3 +1119,39 @@ height, opacity, and position transitions, with reduced-motion preferences
 disabling those transitions.
 Clicking the selected row again collapses only that inline disclosure; the
 floor camera remains focused on the same desk.
+
+### Follow-up: permanent Projects workstream floors
+
+Projects Office now has a standing organisation of its own: General,
+Research, Coding, and Documents surround the central Conductor in fixed,
+connected positions. It uses the same floor cards, semantic colours, seat
+overflow behaviour, and expansion language as Business, while remaining a
+separate outlet with its own routing contract.
+
+Business-classified roots and their descendants remain Business-only. Other
+delegations resolve to the Projects workstream named by their root task, with
+Research taking precedence over Coding and Documents; descendants inherit the
+nearest known Projects ancestor so one delegation branch cannot split across
+floors. Unmatched or malformed work remains visible on General.
+
+The Task Status header is one semantic button rather than overlapping click
+surfaces. Its total is vertically aligned in the header, preserves its
+collapse state and keyboard behaviour, and temporarily shows the curated
+mx-icons sparkles glyph when new work completes instead of a literal tick.
+
+## Office Dashboard and Integrations
+
+Office retains one top-level panel and now owns three subviews: the Floor,
+Dashboard, and Integrations. Dashboard is a live projection of the same
+adapter state used by the floor and Task Status; it must scope all totals and
+floor cards to the selected Projects or Business outlet rather than combining
+both views.
+
+Integrations owns provider connection metadata and setup, while Dashboard only
+reports connection health. Gmail is the first Email-floor provider. This first
+surface does not connect an account automatically: Google OAuth configuration,
+explicit user consent, durable token handling, and Gmail API tools remain a
+separate security-sensitive implementation. Until then Gmail is fail-closed as
+disconnected, with search/read, summarize, and draft-reply listed as future
+approved capabilities; send requires explicit approval and archive/delete are
+not available.

@@ -51,6 +51,47 @@ def test_context_contains_only_active_items_for_requested_project(monkeypatch, t
     assert work_hub.render_task_context(None) == ""
 
 
+def test_context_groups_every_project_board_and_fails_closed_for_mismatched_items(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [
+        {"project_id": "project-a", "name": "A"}, {"project_id": "project-b", "name": "B"},
+    ])
+    first = work_hub.create_board({"name": "Planning", "project_id": "project-a"}, None)
+    second = work_hub.create_board({"name": "Delivery", "project_id": "project-a"}, first["revision"])
+    empty = work_hub.create_board({"name": "Empty board", "project_id": "project-a"}, second["revision"])
+    other = work_hub.create_board({"name": "Other project", "project_id": "project-b"}, empty["revision"])
+    current = other["revision"]
+    current = work_hub.create_item({"title": "Plan release", "project_id": "project-a", "board_id": first["board"]["id"], "status": "todo"}, current)["revision"]
+    current = work_hub.create_item({"title": "Ship release", "project_id": "project-a", "board_id": second["board"]["id"], "status": "todo"}, current)["revision"]
+    current = work_hub.create_item({"title": "Completed release", "project_id": "project-a", "board_id": second["board"]["id"], "status": "done"}, current)["revision"]
+    current = work_hub.create_item({"title": "Cancelled release", "project_id": "project-a", "board_id": second["board"]["id"], "status": "cancelled"}, current)["revision"]
+    work_hub.create_item({"title": "Other task", "project_id": "project-b", "board_id": other["board"]["id"], "status": "todo"}, current)
+    with work_hub._connect() as conn:
+        conn.execute(
+            "UPDATE work_items SET board_id = ? WHERE title = ?",
+            (other["board"]["id"], "Plan release"),
+        )
+        conn.execute(
+            "INSERT INTO planning_entities(id, collection, name, project_id, content, layout, filters, created_at, updated_at) VALUES (?, 'views', ?, ?, ?, 'board', '{}', ?, ?)",
+            ("malformed-view", "Malformed view", "project-a", work_hub._encode_json([]), 1.0, 1.0),
+        )
+        conn.commit()
+
+    context = work_hub.render_task_context("project-a")
+
+    assert "## Board: Planning" in context
+    assert "## Board: Delivery" in context
+    assert "## Board: Empty board" in context
+    assert "Plan release" not in context
+    assert "Ship release" in context
+    assert "Completed release" not in context
+    assert "Cancelled release" not in context
+    assert "Other project" not in context
+    assert "Other task" not in context
+
+
 def test_empty_legacy_file_records_completed_migration(monkeypatch, tmp_path):
     from api import work_hub
 

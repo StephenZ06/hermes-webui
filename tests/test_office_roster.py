@@ -35,11 +35,12 @@ pytestmark = pytest.mark.skipif(
 
 _DRIVER = r"""
 const rosterApi = await import(process.argv[2]);
-const { buildRoster, businessView, departmentFor, colorForDepartment } = rosterApi;
+const { buildRoster, businessView, projectsView, departmentFor, colorForDepartment } = rosterApi;
 const input = JSON.parse(process.argv[3] || '{}');
 
 const roster = buildRoster(input.personalities || []);
 const view = businessView(input.state || { workers: [] }, roster);
+const projects = projectsView ? projectsView(input.state || { workers: [] }) : { desks: [] };
 const matched = (input.probe || []).map(text => {
   const dept = departmentFor(text);
   return [text, dept ? dept.key : null];
@@ -51,7 +52,7 @@ const businessIds = rosterApi.businessWorkerIds
   : [];
 const colorLookup = (input.colorProbe || []).map(key => [key, colorForDepartment(key)]);
 
-process.stdout.write(JSON.stringify({ roster, view, matched, routed, businessIds, colorLookup }));
+process.stdout.write(JSON.stringify({ roster, view, projects, matched, routed, businessIds, colorLookup }));
 """
 
 
@@ -181,7 +182,7 @@ def test_scheduled_agent_and_script_jobs_are_seated_on_the_business_floor(driver
 
 def test_coding_and_personal_work_stay_out_of_the_business_office(driver):
     out = run(driver,
-              routeProbe=["debug the React checkout API", "plan a personal reading list"],
+              routeProbe=["debug the React checkout API", "research competitor pricing", "plan a personal reading list"],
               state={"workers": [
                   worker("code", "debug the React checkout API"),
                   worker("personal", "plan a personal reading list"),
@@ -189,6 +190,7 @@ def test_coding_and_personal_work_stay_out_of_the_business_office(driver):
               ]})
     assert dict(out["routed"]) == {
         "debug the React checkout API": "projects",
+        "research competitor pricing": "projects",
         "plan a personal reading list": "projects",
     }
     seated = {desk["workerId"] for desk in out["view"]["desks"] if desk["workerId"]}
@@ -227,6 +229,56 @@ def test_a_full_office_grows_rather_than_dropping_a_worker(driver):
     out = run(driver, state={"workers": workers})
     seated = {d["workerId"] for d in out["view"]["desks"] if d["workerId"]}
     assert seated == {w["id"] for w in workers}
+
+
+# ── Projects workstream floors ──────────────────────────────────────────────
+
+def test_projects_always_stands_the_four_named_workstream_floors(driver):
+    out = run(driver, state={"workers": []})
+    desks = desks_by_cluster(out["projects"])
+    assert list(desks) == ["general", "research", "coding", "documents"]
+    assert {desk["clusterLabel"] for desks_ in desks.values() for desk in desks_} == {
+        "General", "Research", "Coding", "Documents",
+    }
+    assert all(desk.get("clusterColor") for desks_ in desks.values() for desk in desks_)
+
+
+def test_projects_routes_direct_work_by_research_coding_documents_then_general(driver):
+    out = run(driver, state={"workers": [
+        worker("research", "research source comparisons for a new hobby"),
+        worker("code", "debug the checkout API regression"),
+        worker("docs", "format the quarterly document PDF"),
+        worker("general", "organise the upcoming trip"),
+    ]})
+    seated = {
+        desk["workerId"]: desk["cluster"]
+        for desk in out["projects"]["desks"] if desk.get("workerId")
+    }
+    assert seated == {
+        "research": "research", "code": "coding", "docs": "documents", "general": "general",
+    }
+
+
+def test_projects_children_inherit_their_nearest_projects_ancestor_floor(driver):
+    out = run(driver, state={"workers": [
+        worker("root", "research the local market"),
+        dict(worker("child", "write the code for a scraper"), parentId="root"),
+    ]})
+    seated = {
+        desk["workerId"]: desk["cluster"]
+        for desk in out["projects"]["desks"] if desk.get("workerId")
+    }
+    assert seated == {"root": "research", "child": "research"}
+
+
+def test_projects_keeps_business_branches_out_and_expands_their_own_floor(driver):
+    workers = [worker("business", "reconcile this month's invoice")]
+    workers.extend(worker(f"research-{index}", "research competitor pricing", spawned=index)
+                   for index in range(8))
+    out = run(driver, state={"workers": workers})
+    seated = [desk for desk in out["projects"]["desks"] if desk.get("workerId")]
+    assert {desk["workerId"] for desk in seated} == {f"research-{index}" for index in range(8)}
+    assert all(desk["cluster"] == "research" for desk in seated)
 
 
 def test_the_business_view_keeps_the_rest_of_the_state_untouched(driver):

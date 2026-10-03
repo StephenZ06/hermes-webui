@@ -28,7 +28,7 @@
 import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
-import { buildRoster, businessView, businessWorkerIds } from './roster.js';
+import { buildRoster, businessView, projectsView } from './roster.js';
 import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
@@ -107,6 +107,11 @@ let _roster = buildRoster([]);
 let _rosterLoaded = false;
 let _outletBtnEls = {};
 let _labelsVisible = true;
+// Office owns its subpages so the rail still has one Office destination. The
+// floor remains the default; Dashboard and Integrations are focused surfaces
+// inside the same themed shell, not unrelated top-level application panels.
+let _officeSubview = 'floor';
+let _preserveOfficeNavigationOnUnmount = false;
 // Department cards live in screen space, unlike the WebGL pods below them.
 // In adaptive mode they shrink with a zoomed-out office so their visual weight
 // stays proportional to the platform they describe.
@@ -119,7 +124,20 @@ let _viewMode = 'live';
 let _historyAdapter = null;
 let _historyParents = [];
 let _officeProjects = [];
+const _dashboardAttentionBySession = new Map();
 const _expandedProjectIds = new Set();
+const PROJECT_FOLDER_TRANSITION_MS = 240;
+let _projectFoldersSignature = '';
+let _projectFoldersAnimationUntil = 0;
+let _projectFoldersDeferredTimer = null;
+// The Office floor is a live WebGL + post-processing scene. A sidebar or
+// workspace-panel slide changes the available canvas geometry, so rendering
+// through that short layout transition competes for the exact same frame
+// budget as the UI animation. The shared panel-motion hook pauses the scene,
+// then redraws once at its final dimensions.
+let _layoutMotionPauseDepth = 0;
+let _resumeSceneAfterLayoutMotion = false;
+let _layoutMotionResumeRaf = 0;
 // session id -> the name its last delegation gave it
 const _liveSummaries = new Map();
 let _historyParentId = null;
@@ -173,6 +191,37 @@ function writeTasksCollapsed(collapsed) {
 
 function activeAdapter() {
   return (_viewMode === 'history' && _historyAdapter) ? _historyAdapter : _adapter;
+}
+
+function pauseForLayoutMotion() {
+  if (_layoutMotionResumeRaf) {
+    cancelAnimationFrame(_layoutMotionResumeRaf);
+    _layoutMotionResumeRaf = 0;
+  }
+  _layoutMotionPauseDepth += 1;
+  if (_layoutMotionPauseDepth !== 1 || !_scene) return;
+  _resumeSceneAfterLayoutMotion = _scene.isRunning();
+  if (_resumeSceneAfterLayoutMotion) _scene.stop();
+}
+
+function resumeAfterLayoutMotion() {
+  if (_layoutMotionPauseDepth < 1) return;
+  _layoutMotionPauseDepth -= 1;
+  if (_layoutMotionPauseDepth || !_scene) return;
+  const scene = _scene;
+  const shouldResume = _resumeSceneAfterLayoutMotion;
+  _resumeSceneAfterLayoutMotion = false;
+  // First let the final transform-free layout paint. Reallocating the WebGL
+  // renderer and bloom targets in the same frame as an animation's settle
+  // causes a small but visible hitch on lower-power GPUs.
+  _layoutMotionResumeRaf = requestAnimationFrame(() => {
+    _layoutMotionResumeRaf = requestAnimationFrame(() => {
+      _layoutMotionResumeRaf = 0;
+      if (_layoutMotionPauseDepth || _scene !== scene) return;
+      scene.resize();
+      if (shouldResume && !document.hidden) scene.start();
+    });
+  });
 }
 
 function esc(s) {
@@ -256,18 +305,7 @@ function request(path, opts) {
  * what `_scene.syncOffice()` and the floating stat cards draw.
  */
 function projectsFloorView(state) {
-  const workers = state.workers || [];
-  const hidden = businessWorkerIds(workers);
-  const desks = (state.desks || []).map(desk => {
-    // Projects has no standing departments, so the conductor's own pod is just
-    // another anonymous cluster unless we explicitly label it. Business already
-    // gets "Conductor" from the card and the floor sign; Projects should too.
-    if (desk.cluster === '__conductor__') {
-      return Object.assign({}, desk, { clusterLabel: desk.clusterLabel || 'Conductor' });
-    }
-    return desk;
-  }).filter(desk => !desk.workerId || !hidden.has(desk.workerId));
-  return Object.assign({}, state, { desks });
+  return projectsView(state);
 }
 
 /**
@@ -276,12 +314,16 @@ function projectsFloorView(state) {
  * per event would rebuild it a dozen times for one visual change.
  */
 function scheduleSync() {
-  if (_syncQueued || !_scene) return;
+  if (_syncQueued || (!_scene && _officeSubview !== 'dashboard')) return;
   _syncQueued = true;
   window.requestAnimationFrame(() => {
     _syncQueued = false;
-    if (!_scene) return;
+    if (!_scene && _officeSubview !== 'dashboard') return;
     const state = activeAdapter().getState();
+    if (_officeSubview === 'dashboard') {
+      renderOfficeDashboard(state);
+      return;
+    }
     const scheduledState = (_viewMode === 'live' && _outlet === 'business')
       ? scheduledTaskState(state) : state;
     const view = _outlet === 'business' ? businessView(scheduledState, _roster) : projectsFloorView(state);
@@ -307,6 +349,7 @@ function scheduledTaskState(state) {
     status: task.status || 'running',
     spawnedAt: Date.parse(task.started_at) || Date.now(),
     scheduledTask: true,
+    scheduledJobId: task.job_id,
     scheduledMode: task.mode,
   }));
   return Object.assign({}, state, {
@@ -363,12 +406,10 @@ const _TERMINAL_STATUSES = new Set([
 /**
  * Which pods get a floating stat card, and what to print on it -- the one
  * thing that differs between the outlets. Business has a fixed, named
- * roster; Projects has no fixed identity (a pod is just "whoever's parent
- * spawned this cluster"), so its cards carry no name -- but DO get a
- * colour, the same `colorForProjectsCluster()` derivation the floor itself
- * uses (layout.js's computeLayout), so a card's accent always matches the
- * floor it floats over. Returns null when there is nothing to show (the
- * caller clears any existing cards in that case).
+ * roster; Projects now has its own fixed workstream roster, so its cards use
+ * the explicit floor label and colour carried by the Projects view. Returns
+ * null when there is nothing to show (the caller clears any existing cards
+ * in that case).
  *
  * Business also includes "The Floor" overflow (roster.js's buildRoster
  * always appends it as a 7th standing entry) -- uncoloured, matching the
@@ -385,32 +426,19 @@ function officeCardSpecs(view, state) {
       ..._roster.departments.map(dept => ({ key: dept.key, name: dept.name, color: dept.color })),
     ];
   }
-  // Projects: one card per pod actually on the floor right now -- pods come
-  // and go with the live delegation tree, there is no standing list to draw
-  // an empty one from the way Business always has all six.
-  const clusters = new Set();
-  (view.desks || []).forEach(desk => { if (desk.cluster) clusters.add(desk.cluster); });
-
-  // Use the model reported by the live workers as each card's title. A nested
-  // pod's cluster key is its parent subagent id; the conductor cluster holds
-  // the direct subagents. Fall back to the current chat's configured model
-  // (subagents usually share it) and then to the generic "Subagents" label.
-  const sessionModel = (typeof window !== 'undefined' && window.S && window.S.session && window.S.session.model) || null;
-  const workers = (state && state.workers) || [];
-  function modelForCluster(cluster) {
-    const inCluster = workers.filter(w => {
-      if (cluster === '__conductor__') return true;
-      return w.parentId === cluster || w.id === cluster;
+  const projectPods = [];
+  const seen = new Set();
+  (view.desks || []).forEach(desk => {
+    if (!desk || !desk.cluster || seen.has(desk.cluster)) return;
+    seen.add(desk.cluster);
+    projectPods.push({
+      key: desk.cluster,
+      name: desk.clusterLabel || desk.cluster,
+      color: Object.prototype.hasOwnProperty.call(desk, 'clusterColor')
+        ? desk.clusterColor : colorForProjectsCluster(desk.cluster),
     });
-    const withModel = inCluster.find(w => w.model);
-    return withModel ? withModel.model : sessionModel;
-  }
-
-  const projectPods = Array.from(clusters)
-    .filter(key => key !== '__conductor__')
-    .map(key => ({ key, name: null, title: modelForCluster(key), color: colorForProjectsCluster(key) }));
-  // The central conductor platform always keeps a label, even when the floor is
-  // empty and no live subagent pods are currently spawned.
+  });
+  // The central conductor platform anchors the four permanent workstreams.
   return [
     { key: '__conductor__', name: 'Conductor', color: '#7187be' },
     ...projectPods,
@@ -596,24 +624,310 @@ function taskStatusBadgeState(workers) {
   return { total: counts.all, tone, done: counts.done };
 }
 
+/** A dashboard is a projection of the Office's existing truth, not a second
+ * task store. The selected outlet determines exactly which seated workers it
+ * can count, so Business and Projects never leak into one another. */
+function dashboardHistoryWorkers(mode) {
+  if (mode !== 'business' && mode !== 'projects') return [];
+  const seen = new Set();
+  return _historyParents.flatMap(parent => (Array.isArray(parent && parent.children) ? parent.children : [])
+    .map(child => {
+      const id = String(child && child.session_id || '');
+      if (!id || seen.has(id)) return null;
+      seen.add(id);
+      return {
+        id, parentId: String(child.parent_session_id || parent.parent_session_id || ''),
+        childSessionId: id, dashboardParentId: String(parent.parent_session_id || ''),
+        goal: child.title || parent.title || 'Delegated task', label: child.title || 'Delegated task',
+        status: child.status || 'completed', spawnedAt: Number(child.started_at || 0) * 1000,
+        endedAt: child.ended_at ? Number(child.ended_at) * 1000 : 0, historical: true,
+      };
+    }).filter(Boolean));
+}
+
+function officeDashboardModel(state, outlet) {
+  const source = state || {};
+  const mode = outlet === 'business' ? 'business' : 'projects';
+  const historicalWorkers = dashboardHistoryWorkers(mode);
+  const liveWorkers = Array.isArray(source.workers) ? source.workers : [];
+  const byId = new Map(historicalWorkers.map(worker => [worker.id, worker]));
+  liveWorkers.forEach(worker => { if (worker && worker.id) byId.set(worker.id, worker); });
+  const workers = Array.from(byId.values());
+  const selectedView = mode === 'business'
+    ? businessView({ workers }, _roster) : projectsFloorView({ workers });
+  const visibleIds = new Set((selectedView.desks || [])
+    .map(desk => desk && desk.workerId).filter(Boolean));
+  const scopedWorkers = workers.filter(worker => worker && visibleIds.has(worker.id));
+  const floorMap = new Map();
+  (selectedView.desks || []).forEach(desk => {
+    if (!desk || !desk.cluster) return;
+    if (!floorMap.has(desk.cluster)) {
+      floorMap.set(desk.cluster, {
+        key: desk.cluster, name: desk.clusterLabel || desk.cluster,
+        color: desk.clusterColor || colorForProjectsCluster(desk.cluster), workers: [],
+      });
+    }
+    const worker = scopedWorkers.find(item => item.id === desk.workerId);
+    if (worker) floorMap.get(desk.cluster).workers.push(worker);
+  });
+  const floors = Array.from(floorMap.values()).map(floor => {
+    const counts = taskStatusCounts(floor.workers);
+    return Object.assign(floor, { active: counts.running, completed: counts.done });
+  });
+  const counts = taskStatusCounts(scopedWorkers);
+  const liveScopedWorkers = scopedWorkers.filter(worker => !worker.historical);
+  const liveCounts = taskStatusCounts(liveScopedWorkers);
+  const attention = liveScopedWorkers.filter(worker => {
+    const bucket = taskStatusBucket(worker.status);
+    return bucket === 'stopped' || bucket === 'other';
+  });
+  const baselineAgents = mode === 'business' ? 21 : 4;
+  return {
+    mode, workers: scopedWorkers, floors, attention,
+    snapshot: { agents: Math.max(baselineAgents, liveScopedWorkers.length), active: liveCounts.running, completed: counts.done, attention: attention.length },
+    live: liveScopedWorkers.filter(worker => worker.status === 'running'),
+    recent: scopedWorkers.filter(worker => taskStatusBucket(worker.status) === 'done')
+      .sort((a, b) => (b.endedAt || b.spawnedAt || 0) - (a.endedAt || a.spawnedAt || 0)).slice(0, 6),
+  };
+}
+
+function dashboardAttentionItems(model) {
+  const queued = Array.from(_dashboardAttentionBySession.values()).filter(item => item && item.mode === model.mode);
+  return queued.map(item => Object.assign({}, item, {
+    worker: model.workers.find(worker => worker.childSessionId === item.sessionId
+      || worker.dashboardParentId === item.sessionId || worker.id === item.sessionId),
+  })).concat(model.attention.map(worker => ({ kind: 'status', worker })));
+}
+
+function scrollDashboardPanelIntoView(key) {
+  const panel = document.querySelector(`[data-dashboard-panel="${key}"]`);
+  if (!panel) return;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  panel.classList.remove('office-dashboard-panel-focus');
+  void panel.offsetWidth;
+  panel.classList.add('office-dashboard-panel-focus');
+  window.setTimeout(() => panel.classList.remove('office-dashboard-panel-focus'), 1450);
+}
+
+async function dashboardMetricAction(action, model) {
+  if (action === 'agents') {
+    transitionDashboardToFloor(model.mode);
+    return;
+  }
+  if (action === 'active') {
+    const scheduled = model.live.find(worker => worker.scheduledTask && worker.scheduledJobId);
+    if (scheduled) {
+      if (typeof window.switchPanel === 'function') await window.switchPanel('tasks');
+      if (typeof window.openCronDetail === 'function') window.openCronDetail(scheduled.scheduledJobId);
+      return;
+    }
+    const worker = model.live[0];
+    if (worker) {
+      openDashboardWorker(worker, model.mode);
+      return;
+    }
+    transitionDashboardToFloor(model.mode);
+    return;
+  }
+  if (action === 'completed') scrollDashboardPanelIntoView('completed');
+  if (action === 'attention') scrollDashboardPanelIntoView('attention');
+}
+
+function dashboardAttentionCard(item) {
+  if (item.kind === 'status') return dashboardWorkerRow(item.worker, 'is-attention');
+  const pending = item.pending || {};
+  const title = esc(pending.question || pending.command || pending.description || 'Decision required');
+  const choices = item.kind === 'clarify' && Array.isArray(pending.choices_offered) ? pending.choices_offered : [];
+  const controls = item.kind === 'approval'
+    ? ['once', 'session', 'always'].map(choice => `<button type="button" class="office-dashboard-attention-action" data-attention-choice="${choice}" data-attention-session="${esc(item.sessionId)}" data-attention-kind="approval" data-attention-id="${esc(pending.approval_id || '')}">${choice === 'once' ? 'Allow once' : choice === 'session' ? 'Allow this session' : 'Always allow'}</button>`).join('')
+    : choices.length
+      ? choices.map(choice => `<button type="button" class="office-dashboard-attention-action" data-attention-choice="${esc(choice)}" data-attention-session="${esc(item.sessionId)}" data-attention-kind="clarify" data-attention-id="${esc(pending.clarify_id || '')}">${esc(choice)}</button>`).join('')
+      : `<input class="office-dashboard-attention-input" data-attention-input="1" placeholder="Type a response"><button type="button" class="office-dashboard-attention-action" data-attention-choice="__input__" data-attention-session="${esc(item.sessionId)}" data-attention-kind="clarify" data-attention-id="${esc(pending.clarify_id || '')}">Send response</button>`;
+  return `<article class="office-dashboard-attention-card" role="button" tabindex="0" data-attention-focus="1" data-attention-session="${esc(item.sessionId)}"><div><span>${item.kind === 'approval' ? 'Permission required' : 'Answer needed'}</span><strong>${title}</strong></div><div class="office-dashboard-attention-actions">${controls}</div></article>`;
+}
+
+async function respondDashboardAttention(button) {
+  const kind = button.dataset.attentionKind;
+  const sessionId = button.dataset.attentionSession;
+  let value = button.dataset.attentionChoice || '';
+  if (value === '__input__') value = String(button.closest('.office-dashboard-attention-card')?.querySelector('[data-attention-input]')?.value || '').trim();
+  if (!sessionId || !value) return;
+  button.disabled = true;
+  try {
+    const body = kind === 'approval'
+      ? { session_id: sessionId, choice: value, approval_id: button.dataset.attentionId || '' }
+      : { session_id: sessionId, response: value, clarify_id: button.dataset.attentionId || '' };
+    const result = await request(kind === 'approval' ? '/api/approval/respond' : '/api/clarify/respond', {
+      method: 'POST', body: JSON.stringify(body), timeoutToast: false,
+    });
+    if (!result || !result.ok) throw new Error('Response was not accepted');
+    _dashboardAttentionBySession.delete(sessionId);
+    scheduleSync();
+  } catch (err) {
+    button.disabled = false;
+    toast(err && err.message ? err.message : 'Could not send the response');
+  }
+}
+
+function dashboardWorkerRow(worker, tone) {
+  const label = esc(worker.goal || worker.label || 'Subagent');
+  return `<button type="button" class="office-dashboard-worker" data-dashboard-worker-id="${esc(worker.id)}">
+    <span class="office-dashboard-worker-dot ${tone}" aria-hidden="true"></span><span>${label}</span>
+    <small>${esc(worker.status || '')}</small></button>`;
+}
+
+function dashboardPrefersReducedMotion() {
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** Leave the dashboard deliberately, then let the destination floor animate in. */
+function transitionDashboardToFloor(outlet, after) {
+  const reveal = () => {
+    setOfficeSubview('floor');
+    if (outlet === 'business') setOutlet('business');
+    const container = document.getElementById('officeWrap');
+    if (container && !dashboardPrefersReducedMotion()) {
+      container.classList.add('office-dashboard-floor-enter');
+      window.setTimeout(() => container.classList.remove('office-dashboard-floor-enter'), 360);
+    }
+    window.requestAnimationFrame(() => { if (typeof after === 'function') after(); });
+  };
+  const dashboard = document.querySelector('.office-subview');
+  if (!dashboard || dashboardPrefersReducedMotion()) {
+    reveal();
+    return;
+  }
+  dashboard.classList.add('office-dashboard-transitioning');
+  window.setTimeout(reveal, 180);
+}
+
+function openDashboardWorker(worker, outlet) {
+  if (!worker) {
+    transitionDashboardToFloor(outlet);
+    return;
+  }
+  transitionDashboardToFloor(outlet, () => {
+    if (worker.historical && worker.dashboardParentId) {
+      showHistory(worker.dashboardParentId);
+      if (outlet === 'business') setOutlet('business');
+    }
+    selectTask(worker.id, true);
+  });
+}
+
+function openDashboardAttention(item, model) {
+  openDashboardWorker(item && item.worker, model.mode);
+}
+
+function renderOfficeDashboard(state) {
+  const host = document.getElementById('officeDashboardContent');
+  if (!host) return;
+  const dashboardState = _outlet === 'business' ? scheduledTaskState(state) : state;
+  const model = officeDashboardModel(dashboardState, _outlet);
+  const modeLabel = model.mode === 'business' ? 'Business Office' : 'Projects Office';
+  const metrics = [
+    ['agents', 'Agents', model.snapshot.agents, 'People currently seated on this floor'],
+    ['active', 'Active work', model.snapshot.active, 'Tasks in progress'],
+    ['completed', 'Completed', model.snapshot.completed, 'Finished tasks'],
+    ['attention', 'Needs attention', model.snapshot.attention, 'Stopped or unknown work'],
+  ];
+  const rows = (items, tone, empty) => items.length
+    ? items.map(worker => dashboardWorkerRow(worker, tone)).join('')
+    : `<div class="office-dashboard-empty">${empty}</div>`;
+  const attentionItems = dashboardAttentionItems(model);
+  host.innerHTML = `<div class="office-dashboard-toolbar"><span>${modeLabel}</span><div class="office-outlet" role="group" aria-label="Dashboard outlet">
+    <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
+    <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
+  </div></div>
+  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><span>${label}</span><strong>${value}</strong><small>${detail}</small></button>`).join('')}</section>
+  <section class="office-dashboard-grid"><article class="office-dashboard-panel office-dashboard-distribution"><div class="office-dashboard-panel-head"><h2>Work distribution</h2><span>${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}</span></div>${model.floors.length ? `<div class="office-dashboard-floor-list">${model.floors.map(floor => `<div class="office-dashboard-floor"><span class="office-dashboard-floor-dot" style="background:${esc(floor.color || 'var(--accent)')}"></span><span><strong>${esc(floor.name)}</strong><small>${floor.workers.length} assigned</small></span><small>${floor.active} active · ${floor.completed} done</small></div>`).join('')}</div>` : '<div class="office-dashboard-empty">No delegated work in this office yet.</div>'}</article>
+  <article class="office-dashboard-panel"><div class="office-dashboard-panel-head"><h2>Live delegation</h2><span>${model.live.length} active</span></div>${rows(model.live, 'is-live', 'No active delegation right now.')}</article>
+  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention"><div class="office-dashboard-panel-head"><h2>Attention required</h2><span>${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}</span></div>${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : '<div class="office-dashboard-empty">Everything is on track.</div>'}</article>
+  <article class="office-dashboard-panel" data-dashboard-panel="completed"><div class="office-dashboard-panel-head"><h2>Recent completions</h2><span>${model.recent.length} shown</span></div>${rows(model.recent, 'is-done', 'Completed work will appear here.')}</article>
+  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${officeIcon('settings', 'Integrations')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor.</small></span><span aria-hidden="true">›</span></button></section>`;
+  host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
+    button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
+  });
+  host.querySelectorAll('[data-dashboard-worker-id]').forEach(button => {
+    button.onclick = () => openDashboardWorker(model.workers.find(worker => worker.id === button.dataset.dashboardWorkerId), model.mode);
+  });
+  host.querySelectorAll('[data-dashboard-metric-action]').forEach(button => {
+    button.onclick = () => dashboardMetricAction(button.dataset.dashboardMetricAction, model);
+  });
+  host.querySelectorAll('[data-attention-choice]').forEach(button => {
+    button.onclick = (event) => { event.stopPropagation(); respondDashboardAttention(button); };
+  });
+  host.querySelectorAll('[data-attention-input]').forEach(input => {
+    input.onclick = (event) => event.stopPropagation();
+  });
+  host.querySelectorAll('[data-attention-focus]').forEach(card => {
+    const open = () => openDashboardAttention(
+      attentionItems.find(item => item.sessionId === card.dataset.attentionSession), model,
+    );
+    card.onclick = open;
+    card.onkeydown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open();
+      }
+    };
+  });
+}
+
+function defaultOfficeIntegrations() {
+  return [{ provider: 'gmail', floor: 'emails', status: 'disconnected',
+    capabilities: ['search_read', 'summarize', 'draft_reply'], send_requires_approval: true }];
+}
+
+function renderOfficeIntegrations(payload) {
+  const host = document.getElementById('officeIntegrationsContent');
+  if (!host) return;
+  const integrations = payload && Array.isArray(payload.integrations)
+    ? payload.integrations : defaultOfficeIntegrations();
+  const gmail = integrations.find(item => item && item.provider === 'gmail') || defaultOfficeIntegrations()[0];
+  const connected = gmail.status === 'connected';
+  host.innerHTML = `<div class="office-integrations-intro"><span>BUSINESS OFFICE</span><p>Connections are assigned to a floor and expose only the capabilities you approve.</p></div>
+  <section class="office-integrations-grid"><article class="office-integration-card"><div class="office-integration-card-head"><span class="office-integration-provider-icon">${officeIcon('inbox', 'Gmail')}</span><span><h2>Gmail</h2><p>Email floor</p></span><span class="office-integration-status ${connected ? 'is-connected' : ''}">${connected ? 'Connected' : 'Not connected'}</span></div>
+    <p class="office-integration-copy">Search, summarize, and draft replies for the Email floor. Sending will always require your approval.</p>
+    <div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Google OAuth setup is required before an account can be connected">Google OAuth setup required</button><button type="button" class="office-integration-settings" disabled aria-label="Configure Gmail integration" title="Gmail configuration will be available after OAuth setup">${officeIcon('settings', 'Configure Gmail integration')}</button></div></article>
+  ${[['Marketing', 'Choose a platform when you are ready to connect campaign or social tools.', 'Choose marketing platform'], ['Operations', 'Calendar and operations providers will be configured here.', 'Choose operations provider'], ['Documents', 'Document storage providers will be configured here.', 'Choose document provider']].map(([name, copy, action]) => `<article class="office-integration-card is-future"><div class="office-integration-card-head"><span class="office-integration-provider-icon">${officeIcon('settings')}</span><span><h2>${name}</h2><p>Future integration</p></span></div><p class="office-integration-copy">${copy}</p><div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Provider setup will be available in a future update">${action}</button><button type="button" class="office-integration-settings" disabled aria-label="Configure ${name} integration" title="Configuration will be available after a provider is selected">${officeIcon('settings', `Configure ${name} integration`)}</button></div></article>`).join('')}</section>`;
+}
+
+function loadOfficeIntegrations() {
+  renderOfficeIntegrations({ integrations: defaultOfficeIntegrations() });
+  request('/api/office/integrations', { timeoutToast: false })
+    .then(renderOfficeIntegrations)
+    .catch(() => renderOfficeIntegrations({ integrations: defaultOfficeIntegrations() }));
+}
+
 /**
  * The Task Status card collapses to its compact label row -- the filters and
  * list stay in the DOM (so a collapse never has to rebuild them), only their
  * visibility follows the state. Remembered per-browser so the chosen view
  * persists across Office visits.
  */
-function syncTaskStatusBodyHeight() {
-  const body = document.getElementById('officeTasksBody');
-  if (body) body.style.setProperty('--office-tasks-body-height', `${body.scrollHeight}px`);
-}
+// A Task Status disclosure is a compact operational control, not a slow page
+// transition. Its CSS owns one grid disclosure; this duration also
+// gates live refreshes so a repaint cannot disturb that single motion.
+const TASK_STATUS_TRANSITION_MS = 480;
 
 function renderTasksCollapse() {
   if (!_tasksEl || !_tasksCollapseBtnEl) return;
-  // Keep the expanded end-point equal to the content's actual height. CSS
-  // owns the transition so this remains smooth in browsers where a Web
-  // Animations API max-height animation is coalesced or suppressed.
-  syncTaskStatusBodyHeight();
-  _tasksEl.classList.toggle('is-collapsed', _tasksCollapsed);
+  const body = document.getElementById('officeTasksBody');
+  // Keep a committed 0fr state for one frame before opening. Grid calculates
+  // the natural content height itself, so the list never receives a changing
+  // inline height on every animation frame.
+  const opening = !_tasksCollapsed && _tasksEl.classList.contains('is-collapsed');
+  if (opening && body) {
+    void body.offsetHeight;
+    window.requestAnimationFrame(() => {
+      if (!_tasksEl || _tasksCollapsed) return;
+      _tasksEl.classList.remove('is-collapsed');
+    });
+  } else {
+    _tasksEl.classList.toggle('is-collapsed', _tasksCollapsed);
+  }
   _tasksCollapseBtnEl.setAttribute('aria-expanded', String(!_tasksCollapsed));
   _tasksCollapseBtnEl.setAttribute('aria-label', _tasksCollapsed ? 'Expand Task Status' : 'Collapse Task Status');
   _tasksCollapseBtnEl.title = _tasksCollapsed ? 'Show Task Status' : 'Collapse Task Status';
@@ -629,7 +943,8 @@ function toggleTasksCollapsed() {
   _tasksCollapseTimer = setTimeout(() => {
     _tasksCollapseAnimating = false;
     _tasksCollapseTimer = null;
-  }, 460);
+    scheduleSync();
+  }, TASK_STATUS_TRANSITION_MS);
 }
 
 function renderTaskStatusFilters() {
@@ -783,6 +1098,7 @@ function renderTaskStatusBadge(workers) {
   const justCompleted = _lastTaskStatusDoneCount !== null
     && badge.done > _lastTaskStatusDoneCount;
   _lastTaskStatusDoneCount = badge.done;
+  _tasksCountEl.dataset.count = String(badge.total);
   _tasksCountEl.textContent = String(badge.total);
   _tasksCountEl.classList.toggle('is-running', badge.tone === 'running');
   _tasksCountEl.classList.toggle('is-complete', badge.tone === 'complete');
@@ -790,9 +1106,15 @@ function renderTaskStatusBadge(workers) {
   if (_taskCompletionTimer) clearTimeout(_taskCompletionTimer);
   _tasksCountEl.classList.remove('is-completion-flash');
   void _tasksCountEl.offsetWidth;
+  _tasksCountEl.innerHTML = typeof window.WorkHubIcons === 'function'
+    ? window.WorkHubIcons('sparkles', 'Task completed')
+    : '<span aria-label="Task completed">✦</span>';
   _tasksCountEl.classList.add('is-completion-flash');
   _taskCompletionTimer = setTimeout(() => {
-    if (_tasksCountEl) _tasksCountEl.classList.remove('is-completion-flash');
+    if (_tasksCountEl) {
+      _tasksCountEl.classList.remove('is-completion-flash');
+      _tasksCountEl.textContent = _tasksCountEl.dataset.count || '0';
+    }
     _taskCompletionTimer = null;
   }, 2400);
 }
@@ -804,7 +1126,6 @@ function renderTaskStatusPanel(state, opts) {
   if (options.skipListUpdate) return;
   renderTaskStatusFilters();
   renderTaskStatusList(workers);
-  if (!_tasksCollapsed) syncTaskStatusBodyHeight();
 }
 
 function renderPill(state) {
@@ -847,6 +1168,82 @@ function setOutlet(mode) {
   if (next === 'business') loadRoster();
   animateOutletSwitch();
   scheduleSync();
+}
+
+function officeIcon(name, label) {
+  return typeof window.WorkHubIcons === 'function'
+    ? window.WorkHubIcons(name, label)
+    : '';
+}
+
+function renderOfficeNavigation() {
+  const nav = document.getElementById('officePageNav');
+  if (!nav) return;
+  const pages = [
+    ['dashboard', '/static/office-dashboard-tool.png', 'Dashboard', 'Office overview'],
+    ['integrations', '/static/office-integrations-tool.png', 'Integrations', 'Connected accounts'],
+  ];
+  pages.forEach(([key, iconSrc, label, detail]) => {
+    const button = nav.querySelector(`[data-office-subview="${key}"]`);
+    if (!button) return;
+    button.classList.toggle('is-active', _officeSubview === key);
+    button.setAttribute('aria-current', _officeSubview === key ? 'page' : 'false');
+    button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="${iconSrc}" alt="" aria-hidden="true"></span><span class="office-page-nav-copy"><strong>${label}</strong><small>${detail}</small></span><span class="office-page-nav-arrow" aria-hidden="true">›</span>`;
+  });
+}
+
+function resetOfficeToDefault({ render = false } = {}) {
+  const shouldRenderFloor = render && _officeSubview !== 'floor';
+  _officeSubview = 'floor';
+  _outlet = 'projects';
+  _viewMode = 'live';
+  _historyAdapter = null;
+  _historyParentId = null;
+  _historySignature = '';
+  _selectedId = null;
+  writeOutlet(_outlet);
+  renderOfficeNavigation();
+  renderOutletSwitch();
+  if (shouldRenderFloor) {
+    const container = document.getElementById('officeWrap');
+    if (container) renderOfficeSubview(container);
+  }
+}
+
+function renderOfficeSubview(container) {
+  if (!container) return;
+  if (_officeSubview === 'floor') {
+    mount(container);
+    return;
+  }
+  if (_container) {
+    _preserveOfficeNavigationOnUnmount = true;
+    unmount();
+  }
+  const isDashboard = _officeSubview === 'dashboard';
+  const title = isDashboard ? 'Office Dashboard' : 'Office Integrations';
+  const eyebrow = isDashboard ? 'OFFICE OVERVIEW' : 'CONNECTED WORKSPACE';
+  const description = isDashboard
+    ? 'A live view of delegation, workload, and what needs attention.'
+    : 'Manage the accounts and capabilities available to Business Office floors.';
+  container.innerHTML = `<section class="office-subview office-${_officeSubview}" aria-labelledby="officeSubviewTitle">
+    <div class="office-subview-head">
+      <div><div class="office-subview-eyebrow">${eyebrow}</div><h1 id="officeSubviewTitle">${title}</h1><p>${description}</p></div>
+      <button type="button" class="office-subview-back" aria-label="Return to the Office floor" title="Return to the Office floor" onclick="officeSetSubview('floor')">${officeIcon('arrow-left', 'Return to the Office floor')}</button>
+    </div>
+    ${isDashboard ? '<div id="officeDashboardContent"></div>' : '<div id="officeIntegrationsContent"></div>'}
+  </section>`;
+  if (isDashboard) renderOfficeDashboard(activeAdapter().getState());
+  else loadOfficeIntegrations();
+}
+
+function setOfficeSubview(name) {
+  const next = name === 'dashboard' || name === 'integrations' ? name : 'floor';
+  if (next === 'floor') resetOfficeToDefault();
+  else _officeSubview = next;
+  renderOfficeNavigation();
+  const container = document.getElementById('officeWrap');
+  if (container) renderOfficeSubview(container);
 }
 
 // Set while a fade-out is waiting on the *next* scheduleSync to actually
@@ -1152,6 +1549,7 @@ function refreshHistory() {
 function showHistory(parentSessionId) {
   const parent = _historyParents.find(p => p.parent_session_id === parentSessionId);
   if (!parent) return;
+  resetOfficeToDefault({ render: true });
   buildHistoryOffice(parent);
   _viewMode = 'history';
   _historyParentId = parentSessionId;
@@ -1166,6 +1564,7 @@ function showHistory(parentSessionId) {
 
 /** Leave the frozen view and track the running session again. */
 function returnToLive() {
+  resetOfficeToDefault({ render: true });
   _viewMode = 'live';
   _historyAdapter = null;
   _historyParentId = null;
@@ -1333,8 +1732,32 @@ function renderSessionList() {
 function renderProjectFolders(projects, parents) {
   const host = document.getElementById('officeProjectFolders');
   if (!host) return;
+  // Keep the existing filter node and its handlers while placing it in the
+  // workspace context, between the labelled divider and the folder rows.
+  const searchWrap = document.getElementById('officeSearch')?.closest('.session-search');
   const list = Array.isArray(projects) ? projects : [];
-  host.innerHTML = `<div class="office-project-folders-title"><svg class="office-project-folders-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span></div>
+  const signature = JSON.stringify(list.map(project => ({
+    id: project.project_id,
+    name: project.name,
+    color: project.color,
+    rows: (parents || []).filter(parent => parent.project_id === project.project_id).map(parent => ({
+      id: parent.parent_session_id,
+      title: parent.title,
+      children: Array.isArray(parent.children) ? parent.children.length : 0,
+    })),
+  })));
+  if (signature === _projectFoldersSignature) return;
+  const delay = _projectFoldersAnimationUntil - performance.now();
+  if (delay > 0) {
+    if (_projectFoldersDeferredTimer) clearTimeout(_projectFoldersDeferredTimer);
+    _projectFoldersDeferredTimer = setTimeout(() => {
+      _projectFoldersDeferredTimer = null;
+      renderProjectFolders(_officeProjects, _historyParents);
+    }, delay);
+    return;
+  }
+  _projectFoldersSignature = signature;
+  host.innerHTML = `<div class="office-project-folders-title"><span>WORKSPACES</span></div>
     <div class="project-folder-list">${list.length ? list.map(project => {
       const rows = (parents || []).filter(parent => parent.project_id === project.project_id);
       const expanded = _expandedProjectIds.has(project.project_id);
@@ -1344,17 +1767,19 @@ function renderProjectFolders(projects, parents) {
           <span class="office-session-text"><span class="office-session-title">${esc(parent.title || 'Untitled chat')}</span>
           <span class="office-session-meta">${count} delegated task${count === 1 ? '' : 's'}</span></span></button>`;
       }).join('') : '<div class="project-folder-empty">No delegated tasks yet.</div>';
-      return `<button type="button" class="project-chip office-project-folder" data-project-id="${esc(project.project_id)}">
+      return `<button type="button" class="project-chip project-folder-row office-project-folder" data-project-id="${esc(project.project_id)}">
         <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span>
         <span class="project-folder-name">${esc(project.name)}</span><span class="project-folder-count">${rows.length}</span></button>
         <div class="project-folder-sessions${expanded ? ' expanded' : ''}"><div class="project-folder-sessions-inner">${taskRows}</div></div>`;
     }).join('') : '<div class="project-folder-empty">No projects configured.</div>'}</div>`;
+  if (searchWrap) host.insertBefore(searchWrap, host.querySelector('.project-folder-list'));
   host.querySelectorAll('.office-project-folder').forEach(row => {
     row.onclick = () => {
       const id = row.dataset.projectId;
       const expanded = !_expandedProjectIds.has(id);
       if (expanded) _expandedProjectIds.add(id);
       else _expandedProjectIds.delete(id);
+      _projectFoldersAnimationUntil = performance.now() + PROJECT_FOLDER_TRANSITION_MS;
       // Retain this DOM node while it moves between its grid rows. Rebuilding
       // the folder list makes the final state appear instantly instead of
       // using the same smooth collapse transition as the Chat sidebar.
@@ -1403,6 +1828,29 @@ async function renderSidebar() {
   refreshHistory();
   renderProjectFolders(_officeProjects, _historyParents);
   renderSessionList();
+  if (_officeSubview === 'dashboard') scheduleSync();
+  loadDashboardAttention();
+}
+
+async function loadDashboardAttention() {
+  const parents = _historyParents.slice(0, 60);
+  const results = await Promise.all(parents.map(async parent => {
+    const sessionId = String(parent && parent.parent_session_id || '');
+    if (!sessionId) return null;
+    const [approval, clarify] = await Promise.all([
+      request(`/api/approval/pending?session_id=${encodeURIComponent(sessionId)}`, { timeoutToast: false }).catch(() => null),
+      request(`/api/clarify/pending?session_id=${encodeURIComponent(sessionId)}`, { timeoutToast: false }).catch(() => null),
+    ]);
+    const goal = (Array.isArray(parent.children) && parent.children[0] && parent.children[0].title) || parent.title || '';
+    const mode = businessView({ workers: [{ id: sessionId, goal, label: goal, status: 'completed' }] }, _roster)
+      .desks.some(desk => desk.workerId === sessionId) ? 'business' : 'projects';
+    if (approval && approval.pending) return { sessionId, mode, kind: 'approval', pending: approval.pending };
+    if (clarify && clarify.pending) return { sessionId, mode, kind: 'clarify', pending: clarify.pending };
+    return null;
+  }));
+  _dashboardAttentionBySession.clear();
+  results.filter(Boolean).forEach(item => _dashboardAttentionBySession.set(item.sessionId, item));
+  if (_officeSubview === 'dashboard') scheduleSync();
 }
 
 // ---- mount / unmount ----------------------------------------------------
@@ -1432,6 +1880,10 @@ function teardownObservers() {
     clearInterval(_sidebarTimer);
     _sidebarTimer = null;
   }
+  if (_projectFoldersDeferredTimer) {
+    clearTimeout(_projectFoldersDeferredTimer);
+    _projectFoldersDeferredTimer = null;
+  }
 }
 
 function renderUnsupported(container) {
@@ -1449,6 +1901,11 @@ function renderUnsupported(container) {
  */
 function mount(container) {
   if (!container) return;
+  if (_officeSubview !== 'floor') {
+    renderOfficeNavigation();
+    renderOfficeSubview(container);
+    return;
+  }
   if (_container === container && _scene) {
     // Same panel re-entered: the scene is intact, just start drawing again
     // and re-measure, since the container's size while hidden was 0x0.
@@ -1509,12 +1966,7 @@ function mount(container) {
   _tasksEl = container.querySelector('#officeTasks');
   _tasksCollapseBtnEl = container.querySelector('#officeTasksCollapseBtn');
   _tasksCountEl = container.querySelector('#officeTasksCount');
-  _tasksCollapseBtnEl.onclick = toggleTasksCollapsed;
-  _tasksEl.onclick = event => {
-    if (event.target.closest('#officeTasksCollapseBtn')) return;
-    if (event.target.closest('.office-tasks-body')) return;
-    toggleTasksCollapsed();
-  };
+  _tasksCollapseBtnEl.addEventListener('click', toggleTasksCollapsed);
   renderTasksCollapse();
   _tasksFiltersEl = container.querySelector('#officeTasksFilters');
   _tasksListEl = container.querySelector('#officeTasksList');
@@ -1570,7 +2022,9 @@ function mount(container) {
   });
 
   if (typeof ResizeObserver === 'function') {
-    _resizeObserver = new ResizeObserver(() => { if (_scene) _scene.resize(); });
+    _resizeObserver = new ResizeObserver(() => {
+      if (_scene && !_layoutMotionPauseDepth) _scene.resize();
+    });
     _resizeObserver.observe(container);
   }
 
@@ -1589,7 +2043,7 @@ function mount(container) {
   _visibilityHandler = () => {
     if (!_scene) return;
     if (document.hidden) _scene.stop();
-    else _scene.start();
+    else if (!_layoutMotionPauseDepth) _scene.start();
   };
   document.addEventListener('visibilitychange', _visibilityHandler);
 
@@ -1626,11 +2080,16 @@ function mount(container) {
  * session. Office *state* is untouched: the run is still going.
  */
 function unmount() {
+  const reset = !_preserveOfficeNavigationOnUnmount;
+  _preserveOfficeNavigationOnUnmount = false;
+  if (reset) resetOfficeToDefault();
   teardownObservers();
   if (_scene) {
     try { _scene.dispose(); } catch (_err) { /* context already lost */ }
     _scene = null;
   }
+  if (_layoutMotionResumeRaf) cancelAnimationFrame(_layoutMotionResumeRaf);
+  _layoutMotionResumeRaf = 0;
   if (_container) _container.innerHTML = '';
   _container = null;
   _canvas = null;
@@ -1659,6 +2118,8 @@ function unmount() {
   _tasksListEl = null;
   _tasksFilter = 'all';
   _lastTaskStatusWorkers = [];
+  _layoutMotionPauseDepth = 0;
+  _resumeSceneAfterLayoutMotion = false;
 }
 
 /** True while the scene exists and its render loop is running. Used by tests. */
@@ -1710,6 +2171,7 @@ function clearOfficeSearch() {
 
 window.filterOfficeSessions = filterOfficeSessions;
 window.clearOfficeSearch = clearOfficeSearch;
+window.officeSetSubview = setOfficeSubview;
 
 // Small global wrapper so the "View live" button on the office sidebar card
 // can be a plain onclick="" attribute like every other sidebar card in this
@@ -1727,8 +2189,9 @@ window.officeReturnToLive = function officeReturnToLive() {
 };
 
 window.HermesOffice = {
-  mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet,
+  mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet, setOfficeSubview,
   getView, focusWorker, resetView,
+  pauseForLayoutMotion, resumeAfterLayoutMotion,
   onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
   adapter: _adapter,
 };
@@ -1737,6 +2200,7 @@ window.HermesOffice = {
 // panels.js skipped calling renderSidebar. Re-render now if the panel is active.
 if (typeof document !== 'undefined') {
   try {
+    renderOfficeNavigation();
     const officeWrap = document.getElementById('officeWrap');
     const officePanel = document.getElementById('mainOffice');
     const isActive = officePanel && !officePanel.classList.contains('hidden')

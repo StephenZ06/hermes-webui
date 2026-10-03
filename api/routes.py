@@ -14859,6 +14859,11 @@ def handle_get(handler, parsed) -> bool:
             },
         )
 
+    if parsed.path == "/api/office/integrations":
+        from api.office_integrations import list_office_integrations
+        j(handler, list_office_integrations())
+        return
+
     if parsed.path == "/api/office/scheduled-tasks":
         from api.gateway_chat import gateway_subagents_request
         from api.profiles import get_active_hermes_home, get_active_profile_name
@@ -17844,6 +17849,16 @@ def handle_post(handler, parsed) -> bool:
         except work_hub.WorkHubError as exc:
             return bad(handler, str(exc), exc.status)
 
+    if parsed.path == "/api/work_hub/boards/rename":
+        from api import work_hub
+        try:
+            board_id = str(body.get("board_id") or "") if isinstance(body, dict) else ""
+            payload = body.get("board") if isinstance(body, dict) else None
+            result = work_hub.rename_board(board_id, payload, body.get("expected_revision"))
+            return j(handler, {"ok": True, **result})
+        except work_hub.WorkHubError as exc:
+            return bad(handler, str(exc), exc.status)
+
     if parsed.path == "/api/work_hub/workflows/start":
         from api import work_hub
         from api.workflow_runner import start_workflow_runner
@@ -18700,6 +18715,8 @@ def handle_post(handler, parsed) -> bool:
             "profile": _requested_profile or get_active_profile_name() or 'default',
             "created_at": time.time(),
         }
+        if body.get("work_hub_managed") is True:
+            proj["work_hub_managed"] = True
         projects.append(proj)
         save_projects(projects)
         return j(handler, {"ok": True, "project": proj})
@@ -18794,6 +18811,8 @@ def handle_post(handler, parsed) -> bool:
         )
         if not proj:
             return bad(handler, "Project not found", 404)
+        if not proj.get("work_hub_managed"):
+            return bad(handler, "Only Work Hub projects can be deleted", 403)
         projects = [p for p in projects if p["project_id"] != body["project_id"]]
         save_projects(projects)
         # Unassign all sessions that belonged to this project.

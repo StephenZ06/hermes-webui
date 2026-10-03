@@ -7951,6 +7951,9 @@ function renderSessionListFromCache(){
   const cliSessionTabCount=_sessionSourceTabCount('cli', renderedWebuiSessionCount, renderedCliSessionCount);
   _syncSidebarExpansionForActiveSession(sessions, activeSidForSidebar);
   const list=$('sessionList');
+  // The workspace search belongs to the workspace group. Detach it before
+  // rebuilding the list so its input state and listeners survive re-renders.
+  const sessionSearchWrap=$('sessionSearch')?.closest('.session-search');
   const animateRefresh=_sessionListRefreshAnimationPending;
   _sessionListRefreshAnimationPending=false;
   const enterAllAnimatedRows=animateRefresh&&_sessionListEnterAllAnimationPending;
@@ -8023,6 +8026,7 @@ function renderSessionListFromCache(){
   workspacesHeading.className='chat-sidebar-section-heading';
   workspacesHeading.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span>';
   workspacesSection.appendChild(workspacesHeading);
+  if(sessionSearchWrap) workspacesSection.appendChild(sessionSearchWrap);
   if(_allProjects.length>0){
     const bar=document.createElement('div');
     bar.className='project-folder-list';

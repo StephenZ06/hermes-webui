@@ -64,6 +64,29 @@ export const DEPARTMENTS = [
 ];
 
 /**
+ * The permanent Projects Office workstreams. Unlike a temporary parent-agent
+ * cluster, these represent the kind of work being delegated, so their names,
+ * colour and floor position remain recognisable before anyone is seated.
+ */
+export const PROJECT_FLOORS = [
+  { key: 'general', name: 'General', color: '#94a3b8' },
+  { key: 'research', name: 'Research', color: '#8b5cf6' },
+  { key: 'coding', name: 'Coding', color: '#3b82f6' },
+  { key: 'documents', name: 'Documents', color: '#14b8a6' },
+];
+
+const PROJECT_FLOOR_BY_KEY = new Map(PROJECT_FLOORS.map(floor => [floor.key, floor]));
+
+const PROJECT_RESEARCH_KEYWORDS = [
+  'research', 'investigat', 'source comparison', 'literature', 'discovery',
+  'fact finding', 'fact-finding', 'analyse', 'analyze', 'analysis',
+];
+const PROJECT_DOCUMENT_KEYWORDS = [
+  'document', ' pdf', 'spreadsheet', 'slide', 'presentation', 'template',
+  'format', 'convert', 'word file', 'docx',
+];
+
+/**
  * Where a subagent goes when nothing matches. A visible overflow is the
  * honest answer: forcing an unrecognised worker into a department would make
  * the floor plan lie about what Hermes is doing.
@@ -135,9 +158,28 @@ export function officeFor(text) {
   const hay = normalise(text);
   if (!hay.trim()) return 'projects';
   if (CODING_KEYWORDS.some(keyword => hay.includes(keyword))) return 'projects';
+  // Research is a first-class Projects workstream unless the wording also
+  // identifies it as company work. This prevents generic investigations from
+  // being swept into Business Operations solely because both use the word.
+  if (PROJECT_RESEARCH_KEYWORDS.some(keyword => hay.includes(keyword))
+    && !BUSINESS_CONTEXT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'projects';
   if (departmentFor(hay)) return 'business';
   if (BUSINESS_CONTEXT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'business';
   return 'projects';
+}
+
+/**
+ * Classify a direct, non-Business Projects task. This intentionally has a
+ * fixed priority: explicit research owns mixed research/coding work, coding
+ * owns ordinary implementation, documents owns the remaining document work,
+ * and General is the honest fallback for everything else.
+ */
+export function projectFloorFor(text) {
+  const hay = normalise(text);
+  if (PROJECT_RESEARCH_KEYWORDS.some(keyword => hay.includes(keyword))) return 'research';
+  if (CODING_KEYWORDS.some(keyword => hay.includes(keyword))) return 'coding';
+  if (PROJECT_DOCUMENT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'documents';
+  return 'general';
 }
 
 /**
@@ -162,6 +204,74 @@ export function businessWorkerIds(workers) {
     });
   }
   return business;
+}
+
+/**
+ * Adapter-shaped view for Projects Office. The existing scene and layout see
+ * four permanent labelled pods, while real workers take seats on the floor
+ * chosen by their root workstream. A child inherits its closest known
+ * Projects ancestor so one delegation branch never jumps across floors.
+ */
+export function projectsView(state) {
+  const source = state || {};
+  const workers = Array.isArray(source.workers) ? source.workers : [];
+  const businessIds = businessWorkerIds(workers);
+  const workerById = new Map(workers.filter(worker => worker && worker.id).map(worker => [worker.id, worker]));
+  const resolved = new Map();
+
+  const floorForWorker = (worker, trail) => {
+    if (!worker || !worker.id) return 'general';
+    if (resolved.has(worker.id)) return resolved.get(worker.id);
+    const seen = trail || new Set();
+    if (seen.has(worker.id)) return projectFloorFor(worker.goal || worker.label || '');
+    seen.add(worker.id);
+    const parent = worker.parentId ? workerById.get(worker.parentId) : null;
+    const floor = parent && !businessIds.has(parent.id)
+      ? floorForWorker(parent, seen)
+      : projectFloorFor(worker.goal || worker.label || '');
+    seen.delete(worker.id);
+    resolved.set(worker.id, floor);
+    return floor;
+  };
+
+  const desks = [];
+  const freeSeats = new Map();
+  PROJECT_FLOORS.forEach(floor => {
+    const desk = {
+      id: `seat-project-${floor.key}-lead`, index: desks.length, workerId: null,
+      cluster: floor.key, seatLabel: `${floor.name} Lead`,
+      clusterLabel: floor.name, clusterColor: floor.color, projectFloor: true,
+    };
+    desks.push(desk);
+    freeSeats.set(floor.key, [desk]);
+  });
+
+  const visibleWorkers = workers
+    .filter(worker => worker && worker.id && !businessIds.has(worker.id))
+    .slice()
+    .sort((a, b) => {
+      const aLive = a.status === 'running' ? 0 : 1;
+      const bLive = b.status === 'running' ? 0 : 1;
+      return aLive - bLive || (a.spawnedAt || 0) - (b.spawnedAt || 0);
+    });
+
+  visibleWorkers.forEach(worker => {
+    const floorKey = floorForWorker(worker);
+    const floor = PROJECT_FLOOR_BY_KEY.get(floorKey) || PROJECT_FLOOR_BY_KEY.get('general');
+    let desk = (freeSeats.get(floor.key) || []).find(candidate => candidate.workerId === null);
+    if (!desk) {
+      desk = {
+        id: `seat-project-${floor.key}-extra-${worker.id}`, index: desks.length, workerId: null,
+        cluster: floor.key, seatLabel: floor.name,
+        clusterLabel: floor.name, clusterColor: floor.color, projectFloor: true,
+      };
+      desks.push(desk);
+      freeSeats.get(floor.key).push(desk);
+    }
+    desk.workerId = worker.id;
+  });
+
+  return Object.assign({}, source, { desks });
 }
 
 function titleCase(name) {

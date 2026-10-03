@@ -177,7 +177,7 @@ def test_expanded_task_details_use_compact_type_without_shrinking_task_rows():
 def test_task_status_and_inline_details_keep_layout_boxes_for_smooth_transitions():
     assert "office-tasks-row-detail\"${selected ? '' : ' hidden'}" not in OFFICE_SRC
     assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);" in CSS
-    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+    assert ".office-tasks-body{display:grid;grid-template-rows:minmax(0,1fr);" in CSS
 
 
 def test_task_selection_keeps_detail_dom_in_place_for_the_grid_transition():
@@ -228,15 +228,23 @@ def test_task_status_header_is_the_clickable_toggle_with_a_live_total_badge():
     assert ">TASK STATUS</span>" in OFFICE_SRC
     assert "class=\"office-tasks-title-group\"" in OFFICE_SRC
     assert "class=\"office-tasks-title-icon\"" in OFFICE_SRC
-    assert "_tasksCollapseBtnEl.onclick = toggleTasksCollapsed;" in OFFICE_SRC
+    assert "_tasksCollapseBtnEl.addEventListener('click', toggleTasksCollapsed);" in OFFICE_SRC
+    assert "_tasksEl.onclick" not in OFFICE_SRC
     at = OFFICE_SRC.index("function toggleTasksCollapsed()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
     assert "const collapsing = !_tasksCollapsed;" in body
     assert "_tasksCollapsed = collapsing;" in body
     assert "writeTasksCollapsed(_tasksCollapsed);" in body
-    assert "_tasksEl.onclick" in OFFICE_SRC
     assert "renderTaskStatusBadge(workers);" in OFFICE_SRC
     assert "_tasksCollapseBtnEl.textContent" not in OFFICE_SRC
+
+
+def test_task_status_refresh_lock_matches_the_full_unfold_transition():
+    assert "const TASK_STATUS_TRANSITION_MS = 480;" in OFFICE_SRC
+    at = OFFICE_SRC.index("function toggleTasksCollapsed()")
+    body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at) + 2]
+    assert "}, TASK_STATUS_TRANSITION_MS);" in body
+    assert "scheduleSync();" in body
 
 
 def test_task_status_uses_only_the_all_running_and_done_filters():
@@ -265,32 +273,78 @@ def test_filters_and_list_stay_in_the_dom_while_collapsed():
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}", at)]
     assert "classList.toggle('is-collapsed', _tasksCollapsed)" in body
     assert ".office-tasks.is-collapsed .office-tasks-body" in CSS
-    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+    assert ".office-tasks-body{display:grid;grid-template-rows:minmax(0,1fr);" in CSS
     assert ".office-tasks.is-collapsed{top:14px;right:14px;height:40px;width:min(280px,calc(100% - 28px));" not in CSS
 
 
 def test_task_status_keeps_its_full_width_and_uses_polished_live_badge_states():
     assert ".office-tasks.is-collapsed .office-tasks-body{pointer-events:none;}" in CSS
-    assert ".office-tasks-toggle{position:relative;display:flex;" in CSS
+    assert ".office-tasks-toggle{position:relative;display:grid;" in CSS
     assert ".office-tasks-count.is-running" in CSS
     assert "animation:office-task-count-pulse" in CSS
     assert ".office-tasks-count.is-complete" in CSS
 
 
 def test_task_status_collapse_has_a_css_geometry_fallback_for_all_browsers():
-    assert ".office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;max-height:0;}" in CSS
-    assert "--office-tasks-body-height" in CSS
-    assert "body.style.setProperty('--office-tasks-body-height'" in OFFICE_SRC
+    assert ".office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;transition-duration:.26s;}" in CSS
     assert ".office-tasks-count.is-completion-flash" in CSS
+    assert "window.WorkHubIcons('sparkles', 'Task completed')" in OFFICE_SRC
+    assert "content:'✓'" not in CSS
+
+
+def test_expanding_task_status_preserves_a_committed_grid_start_frame():
+    collapse = OFFICE_SRC[OFFICE_SRC.index("function renderTasksCollapse()") : OFFICE_SRC.index("\nfunction ", OFFICE_SRC.index("function renderTasksCollapse()") + 10)]
+    assert "void body.offsetHeight;" in collapse
+    assert "window.requestAnimationFrame(() =>" in collapse
 
 
 def test_expanded_task_status_header_keeps_equal_visual_space_above_and_below_its_title():
-    assert ".office-tasks-head{flex:0 0 auto;padding:12px 14px 8px;" in CSS
+    assert ".office-tasks-head{flex:0 0 auto;padding:8px 12px;" in CSS
 
 
 def test_task_status_icon_and_title_are_centred_as_one_group():
-    assert ".office-tasks-title-group{position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;" in CSS
+    assert ".office-tasks-toggle{position:relative;display:grid;grid-template-columns:minmax(20px,1fr) auto minmax(20px,1fr);align-items:center;" in CSS
+    assert ".office-tasks-title-group{grid-column:2;display:flex;align-items:center;justify-content:center;" in CSS
+    assert ".office-tasks-count{grid-column:3;justify-self:end;" in CSS
     assert ".office-tasks-title-icon{width:14px;height:14px;" in CSS
+
+
+def test_task_status_uses_a_coordinated_disclosure_and_content_fade():
+    # The Task Status card should feel like a compact sibling of the Chat
+    # project folders, rather than a separate static drawer.
+    assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);min-height:36px;width:min(264px,calc(100% - 28px));" in CSS
+    assert ".office-tasks-head{flex:0 0 auto;padding:8px 12px;" in CSS
+    assert ".office-tasks-toggle{position:relative;display:grid;grid-template-columns:minmax(20px,1fr) auto minmax(20px,1fr);align-items:center;width:100%;min-height:20px;" in CSS
+    assert ".office-tasks-count{grid-column:3;justify-self:end;align-self:center;transform:translateY(-1px);" in CSS
+    assert "transition:grid-template-rows .48s cubic-bezier(.2,.8,.2,1);" in CSS
+    assert ".office-tasks-body-inner{min-height:0;display:flex;flex-direction:column;overflow:hidden;opacity:1;transition:opacity .34s cubic-bezier(.2,.8,.2,1) .1s;}" in CSS
+    assert ".office-tasks.is-collapsed .office-tasks-body-inner{opacity:0;transition-delay:0s;}" in CSS
+    collapse_at = OFFICE_SRC.index("function renderTasksCollapse()")
+    collapse = OFFICE_SRC[collapse_at:OFFICE_SRC.index("\nfunction ", collapse_at + 10)]
+    assert "void body.offsetHeight;" in collapse
+    assert "window.requestAnimationFrame(() =>" in collapse
+    assert "_tasksEl.classList.remove('is-collapsed');" in collapse
+
+
+def test_task_status_disclosure_uses_one_stable_geometry_transition():
+    """A disclosure must not retarget its geometry after it has begun opening."""
+    assert "transition:grid-template-rows .48s cubic-bezier(.2,.8,.2,1);" in CSS
+    assert "grid-template-rows 1s" not in CSS
+    collapse_at = OFFICE_SRC.index("function renderTasksCollapse()")
+    collapse = OFFICE_SRC[collapse_at:OFFICE_SRC.index("\nfunction ", collapse_at + 10)]
+    assert "window.requestAnimationFrame(syncTaskStatusBodyHeight)" not in collapse
+
+
+def test_task_status_collapse_finishes_faster_than_its_unfold():
+    """Closing a compact status panel should acknowledge intent immediately."""
+    assert ".office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;transition-duration:.26s;}" in CSS
+
+
+def test_task_status_uses_the_chat_style_grid_disclosure_without_height_measurement():
+    """A scrolling task list must not animate a measured height every frame."""
+    assert ".office-tasks-body{display:grid;grid-template-rows:minmax(0,1fr);min-height:0;max-height:calc(100vh - 100px);transition:grid-template-rows .48s cubic-bezier(.2,.8,.2,1);cursor:auto;}" in CSS
+    assert ".office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;transition-duration:.26s;}" in CSS
+    assert "function syncTaskStatusBodyHeight()" not in OFFICE_SRC
 
 
 def test_unmount_clears_the_collapse_button_reference():

@@ -42,21 +42,25 @@ def test_office_sidebar_restores_project_folders_above_delegated_chat_history():
     assert 'class="project-folder-sessions-inner"' in OFFICE_INDEX_JS
     assert "row.nextElementSibling" in OFFICE_INDEX_JS
     assert "sessions.classList.toggle('expanded', expanded)" in OFFICE_INDEX_JS
-    # The heading sits in its own balanced row, with enough lower spacing to
-    # match the surrounding section rhythm before the first project chip.
-    assert ".office-project-folders{flex:0 0 auto;border-bottom:1px solid var(--border);padding:4px 8px 8px" in CSS
-    assert ".office-project-folders-title{display:flex;align-items:center;gap:6px;padding:0 14px 10px" in CSS
+    # The heading sits in its own labelled divider, with matching whitespace
+    # before and after the line before the first project chip.
+    assert ".office-project-folders{flex:0 0 auto;padding:0 8px;" in CSS
+    assert ".office-project-folders-title{margin:20px 0;" in CSS
     assert "officeLabelsBtn" in OFFICE_INDEX_JS
     assert "togglePlatformLabels" in OFFICE_INDEX_JS
 
 
 def test_office_workspace_section_matches_the_chat_sidebar_hierarchy():
-    """Office folders use the same labelled, compact section language as Chat."""
-    assert 'office-project-folders-title-icon' in OFFICE_INDEX_JS
+    """Office folders use the same labelled divider language as adjacent sections."""
+    assert "officeIcon('workspace-heading')" not in OFFICE_INDEX_JS
     assert '<span>WORKSPACES</span>' in OFFICE_INDEX_JS
-    assert ".office-project-folders-title{display:flex;align-items:center;gap:6px;padding:0 14px 10px" in CSS
-    assert ".office-project-folders .project-folder-list{padding:0;gap:2px;}" in CSS
+    assert ".office-sidebar-section-title,.office-project-folders-title{display:flex;align-items:center;gap:10px;" in CSS
+    assert ".office-sidebar-section-title::before,.office-sidebar-section-title::after,.office-project-folders-title::before,.office-project-folders-title::after{content:\"\";height:1px;flex:1;background:var(--border);}" in CSS
+    assert ".office-project-folders .project-folder-list{padding:0;gap:3px;}" in CSS
+    assert ".project-folder-list .project-chip{width:100%;box-sizing:border-box;border-radius:8px;" in CSS
+    assert 'class="project-chip project-folder-row office-project-folder"' in OFFICE_INDEX_JS
     assert ".office-project-folders .project-folder-sessions{margin:0 0 2px;}" in CSS
+    assert "host.insertBefore(searchWrap, host.querySelector('.project-folder-list'))" in OFFICE_INDEX_JS
 
 
 def test_office_sidebar_includes_empty_project_folders_across_profiles():
@@ -72,7 +76,10 @@ def test_sidebar_action_cards_inherit_the_sidebar_background():
 
 def test_office_filter_uses_a_compact_vertical_inset():
     """The Office filter has the same horizontal inset with less empty vertical chrome."""
-    assert ".panel-view#panelOffice .sidebar-search{padding:6px 8px;}" in CSS
+    assert ".panel-view#panelOffice .sidebar-search{padding:0 8px 6px;}" in CSS
+    assert ".panel-view#panelOffice .office-project-folders .sidebar-search{padding:0 0 10px;}" in CSS
+    assert ".office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;" in CSS
+    assert ".office-history-title{margin:16px 8px 8px;}" in CSS
 
 
 def test_empty_chat_landing_does_not_define_a_logo_glow():
@@ -93,9 +100,37 @@ def test_office_platform_labels_can_switch_between_adaptive_and_fixed_scale():
 
 
 def test_task_status_collapses_with_a_transition_instead_of_removing_content():
-    assert ".office-tasks-body{display:grid;grid-template-rows:1fr;" in CSS
+    assert ".office-tasks-body{display:grid;grid-template-rows:minmax(0,1fr);" in CSS
     assert ".office-tasks.is-collapsed .office-tasks-body{pointer-events:none;}" in CSS
     assert "display:none" not in CSS[CSS.index(".office-tasks-body{"):CSS.index(".office-tasks-body-inner{")]
+
+
+def test_office_sidebar_titles_are_icon_free_labelled_dividers_with_smooth_folder_motion():
+    """Office headings are balanced dividers rather than a mismatched icon set."""
+    assert 'id="officeToolsTitleIcon"' not in INDEX_HTML
+    assert 'id="officeHistoryTitleIcon"' not in INDEX_HTML
+    assert ".office-project-folders .project-folder-sessions{\n  will-change:grid-template-rows;" not in CSS
+    assert ".office-project-folders .project-folder-sessions-inner{opacity:0;" not in CSS
+    assert "transition:grid-template-rows .16s cubic-bezier(.2,.8,.2,1),margin .16s cubic-bezier(.2,.8,.2,1);" in CSS
+    assert ".office-sidebar-section-title{margin:20px 8px;" in CSS
+
+
+def test_office_folder_refreshes_do_not_replace_an_in_flight_disclosure():
+    assert "const PROJECT_FOLDER_TRANSITION_MS = 240;" in OFFICE_INDEX_JS
+    assert "let _projectFoldersSignature = '';" in OFFICE_INDEX_JS
+    at = OFFICE_INDEX_JS.index("function renderProjectFolders(")
+    body = OFFICE_INDEX_JS[at:OFFICE_INDEX_JS.index("\n/**", at)]
+    assert "if (signature === _projectFoldersSignature) return;" in body
+    assert "_projectFoldersAnimationUntil = performance.now() + PROJECT_FOLDER_TRANSITION_MS;" in body
+
+
+def test_office_tools_use_the_supplied_equal_sized_icon_assets():
+    assert "'/static/office-dashboard-tool.png'" in OFFICE_INDEX_JS
+    assert "'/static/office-integrations-tool.png'" in OFFICE_INDEX_JS
+    assert 'class="office-page-nav-image"' in OFFICE_INDEX_JS
+    assert ".office-page-nav-icon{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);}" in CSS
+    assert ".office-page-nav-image{display:block;width:17px;height:17px;object-fit:contain;}" in CSS
+    assert '[data-office-subview="integrations"] .office-page-nav-image{width:18px;height:18px;}' in CSS
 
 
 # ── vendored three.js ────────────────────────────────────────────────────────
@@ -362,6 +397,30 @@ def test_the_spoken_summary_is_not_deduped_across_a_remount():
 def test_render_loop_stops_when_the_tab_is_hidden():
     assert "visibilitychange" in OFFICE_INDEX_JS
     assert "document.hidden" in OFFICE_INDEX_JS
+
+
+def test_render_loop_pauses_during_shared_panel_layout_motion():
+    """The WebGL composer must not contend with a sidebar slide.
+
+    Office renders a post-processed 3D scene every frame. Pausing it for the
+    very short shared sidebar/workspace-panel transition prevents canvas
+    resize, label measurement, and GPU composition from stealing animation
+    frames; it resumes with one accurate resize at the end.
+    """
+    assert "function pauseForLayoutMotion" in OFFICE_INDEX_JS
+    assert "function resumeAfterLayoutMotion" in OFFICE_INDEX_JS
+    assert "_scene.stop()" in OFFICE_INDEX_JS
+    assert "_scene.resize()" in OFFICE_INDEX_JS
+    assert "_scene.start()" in OFFICE_INDEX_JS
+    assert "_layoutMotionResumeRaf = requestAnimationFrame" in OFFICE_INDEX_JS, (
+        "The final Office redraw must wait until the slide's settled frame has painted"
+    )
+
+    resize_observer_at = OFFICE_INDEX_JS.index("new ResizeObserver")
+    resize_observer = OFFICE_INDEX_JS[resize_observer_at:resize_observer_at + 220]
+    assert "!_layoutMotionPauseDepth" in resize_observer, (
+        "ResizeObserver must not repeatedly resize the WebGL composer while a panel slides"
+    )
 
 
 def test_the_scene_pans_zooms_and_frames_a_pod():

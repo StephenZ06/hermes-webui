@@ -351,6 +351,19 @@
     const motionName = options.name || 'panel-slide';
     const side = options.side === 'right' ? 'right' : 'left';
     const main = options.main || document.querySelector('.main');
+    const onStart = typeof options.onStart === 'function' ? options.onStart : null;
+    const onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
+    let lifecycleStarted = false;
+    const begin = () => {
+      if (lifecycleStarted) return;
+      lifecycleStarted = true;
+      try { if (onStart) onStart(); } catch (_) {}
+    };
+    const finish = () => {
+      if (!lifecycleStarted) return;
+      lifecycleStarted = false;
+      try { if (onComplete) onComplete(); } catch (_) {}
+    };
     if(typeof apply !== 'function') return;
     if(!panel || !main || !enabled()){ apply(); return; }
 
@@ -358,6 +371,7 @@
     try{
       panelBefore = panel.getBoundingClientRect();
       mainBefore = main.getBoundingClientRect();
+      begin();
       freezePanel(panel);
       apply(); // the one and only layout-invalidating step
       panelAfter = panel.getBoundingClientRect();
@@ -365,6 +379,7 @@
     }catch(_){
       try{ apply(); }catch(__){}
       try{ thawPanel(panel); }catch(__){}
+      finish();
       return;
     }
 
@@ -372,6 +387,7 @@
     const rect = expanding ? panelAfter : panelBefore;
     if(Math.abs(panelAfter.width - panelBefore.width) < 1 || rect.width < 1){
       thawPanel(panel);
+      finish();
       return; // nothing actually moved
     }
 
@@ -393,12 +409,14 @@
     }catch(_){
       unpinPanel(panel);
       main.style.transform = '';
+      finish();
       return;
     }
 
     const settle = () => {
       unpinPanel(panel);
       main.style.transform = '';
+      finish();
     };
     track(motionName, running, settle);
   }

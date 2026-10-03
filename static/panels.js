@@ -7950,10 +7950,6 @@ function renderWorkspacesPanel(workspaces, opts={}){
 
     panel.appendChild(row);
   }
-  const hint=document.createElement('div');
-  hint.style.cssText='font-size:11px;color:var(--muted);padding:8px 0';
-  hint.textContent=t('workspace_paths_validated_hint');
-  panel.appendChild(hint);
   if(opts.stale){
     const stale=document.createElement('div');
     stale.className='ws-list-stale';
@@ -8670,6 +8666,10 @@ async function loadProfilesPanel() {
         </div>`;
       explainer.onclick = () => _renderProfileConceptHelp(data.active || 'default');
       panel.appendChild(explainer);
+      const divider = document.createElement('div');
+      divider.className = 'profile-concept-divider';
+      divider.setAttribute('aria-hidden', 'true');
+      panel.appendChild(divider);
     }
 
     if (!data.profiles || !data.profiles.length) {
@@ -8727,13 +8727,13 @@ function _renderProfileConceptHelp(activeName){
   if (!title || !body) return;
   title.textContent = t('profile_concept_title');
   body.innerHTML = `
-    <div class="main-view-content">
-      <div class="detail-card">
+    <div class="main-view-content profile-concept-content">
+      <div class="detail-card profile-concept-card">
         <div class="detail-card-title">${esc(t('profile_concept_title'))}</div>
         <div class="detail-row"><div class="detail-row-label">${esc(t('tab_profiles'))}</div><div class="detail-row-value">${esc(t('profile_concept_desc_profiles'))}</div></div>
         <div class="detail-row"><div class="detail-row-label">${esc(t('tab_workspaces'))}</div><div class="detail-row-value">${esc(t('profile_concept_desc_workspaces'))}</div></div>
         <div class="detail-row"><div class="detail-row-label">${esc(t('profile_concept_label_together'))}</div><div class="detail-row-value">${esc(t('profile_concept_desc_together'))}</div></div>
-        <div class="detail-row" style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px"><div class="detail-row-label">${esc(t('profile_concept_label_example'))}</div><div class="detail-row-value">${esc(t('profile_concept_example'))}</div></div>
+        <div class="detail-row"><div class="detail-row-label">${esc(t('profile_concept_label_example'))}</div><div class="detail-row-value">${esc(t('profile_concept_example'))}</div></div>
       </div>
     </div>`;
   body.style.display = '';

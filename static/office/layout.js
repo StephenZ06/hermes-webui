@@ -33,6 +33,15 @@ const RING_BASE_CAPACITY = 6;
  */
 const MIN_POD_COLUMNS = 3;
 const MAX_POD_COLUMNS = 6;
+// Matches a one-seat Business pod's ring calculation: conductor clearance,
+// one pod half-width, and the shared walkway gap.
+const PROJECT_FLOOR_RADIUS = CONDUCTOR_RADIUS + SEAT_SPACING_X / 2 + POD_GAP;
+const PROJECT_FLOOR_SLOTS = Object.freeze({
+  general: { x: -PROJECT_FLOOR_RADIUS, z: 0 },
+  research: { x: 0, z: -PROJECT_FLOOR_RADIUS },
+  coding: { x: PROJECT_FLOOR_RADIUS, z: 0 },
+  documents: { x: 0, z: PROJECT_FLOOR_RADIUS },
+});
 
 function podGrid(seatCount) {
   const square = Math.ceil(Math.sqrt(Math.max(1, seatCount)));
@@ -214,6 +223,8 @@ export function computeLayout(desks, options) {
   // wide its own pods are.
   const clusters = Array.from(byCluster.entries());
   const sizes = clusters.map(([, seats]) => podSize(seats.length));
+  const fixedProjects = clusters.length === 4 && clusters.every(([cluster, clusterDesks]) =>
+    PROJECT_FLOOR_SLOTS[cluster] && clusterDesks.every(desk => desk && desk.projectFloor));
 
   // Widest pod *per ring*, not across the whole office. One large pod used to
   // push every ring outward, leaving small pods marooned in empty floor.
@@ -249,15 +260,18 @@ export function computeLayout(desks, options) {
   const seats = {};
 
   clusters.forEach(([cluster, clusterDesks], podIndex) => {
-    const { ring, indexInRing, capacity } = ringSlot(podIndex);
+    const { ring: dynamicRing, indexInRing: dynamicIndex, capacity } = ringSlot(podIndex);
+    const ring = fixedProjects ? 1 : dynamicRing;
+    const indexInRing = fixedProjects ? podIndex : dynamicIndex;
     const size = sizes[podIndex];
-    const ringRadius = radiusForRing(ring);
+    const ringRadius = fixedProjects ? PROJECT_FLOOR_RADIUS : radiusForRing(ring);
     // Odd rings start at angle 0, even rings are offset half a slot, so pods
     // on adjacent rings do not line up into radial corridors.
     const offset = (ring % 2 === 0) ? Math.PI / capacity : 0;
-    const angle = (2 * Math.PI * indexInRing) / capacity + offset;
-    const x = Math.cos(angle) * ringRadius;
-    const z = Math.sin(angle) * ringRadius;
+    const angle = (2 * Math.PI * dynamicIndex) / capacity + offset;
+    const fixedSlot = fixedProjects ? PROJECT_FLOOR_SLOTS[cluster] : null;
+    const x = fixedSlot ? fixedSlot.x : Math.cos(angle) * ringRadius;
+    const z = fixedSlot ? fixedSlot.z : Math.sin(angle) * ringRadius;
 
     // A Business desk always carries clusterColor explicitly -- a real
     // colour for a department, or a deliberate `null` for "The Floor"

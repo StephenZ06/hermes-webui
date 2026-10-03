@@ -176,6 +176,25 @@ class TestSidebarCollapseBootJS:
         assert "function _syncSidebarAria" in BOOT_JS, \
             "_syncSidebarAria function missing"
 
+    def test_panel_slide_has_native_waapi_fallback(self):
+        """A missing optional Motion bundle must not regress to width animation.
+
+        The fallback changes layout once, pins the panel, and lets the browser
+        compositor animate transforms through the native Web Animations API.
+        This is especially important for Office, where the live scene is more
+        expensive to lay out than a normal text-only sidebar.
+        """
+        assert "function _slidePanelWithNativeAnimation" in BOOT_JS, \
+            "Panel sliding needs a native WAAPI fallback when MotionUI is unavailable"
+        assert ".animate([" in BOOT_JS, \
+            "Native fallback must use Element.animate() rather than CSS width"
+        helper_idx = BOOT_JS.index("function _slidePanelIfPossible")
+        helper = BOOT_JS[helper_idx:helper_idx + 1200]
+        assert ".enabled()" in helper, \
+            "Helper must detect a MotionUI shell with its vendor runtime unavailable"
+        assert "_slidePanelWithNativeAnimation(panel,side,apply,lifecycle)" in helper, \
+            "_slidePanelIfPossible must use the native fallback instead of direct apply()"
+
     def test_aria_uses_active_rail_button(self):
         idx = BOOT_JS.index("function _syncSidebarAria")
         end = BOOT_JS.index("\nfunction ", idx + 1)

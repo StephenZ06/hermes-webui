@@ -214,11 +214,90 @@ def test_workspace_work_hub_mirror_replaces_legacy_notes_board_preview():
 def test_workspace_work_hub_mirror_uses_the_active_chat_project_boards_and_expands_tasks():
     work_hub = read("static/work-hub.js")
 
-    assert "const boardIds = new Set((data.boards || []).filter(board => board.project_id === projectId).map(board => board.id));" in work_hub
+    assert "const boards = (data.boards || []).filter(board => board.project_id === projectId);" in work_hub
+    assert "const boardIds = new Set(boards.map(board => board.id));" in work_hub
     assert "boardIds.has(item.board_id)" in work_hub
-    assert "workspaceExpandedItems" in work_hub
-    assert "workspace-work-hub-details" in work_hub
-    assert "Open in Work Hub" in work_hub
+    assert "workspaceExpandedBoards" in work_hub
+    assert "workspace-work-hub-tasks" in work_hub
+    assert "workspace-work-hub-board-open" in work_hub
+
+
+def test_workspace_work_hub_mirror_is_board_first_and_scope_aware():
+    work_hub = read("static/work-hub.js")
+    css = read("static/style.css")
+
+    assert "workspaceExpandedBoards" in work_hub
+    assert "workspace-work-hub-board" in work_hub
+    assert "workspace-work-hub-board-toggle" in work_hub
+    assert "No active tasks." in work_hub
+    assert "openWorkHubItem(null, projectId, board.id)" in work_hub
+    assert "project?.name || 'Project work'" in work_hub
+    assert ".workspace-work-hub-board" in css
+    assert ".workspace-work-hub-task" in css
+
+
+def test_workspace_work_hub_board_open_replaces_stale_project_scope():
+    script = read("static/work-hub.js")
+    instrumented = script.replace(
+        "\n})();\n\n/* Goal Planner dialog UI. */",
+        "\nwindow.__workHubStore = store; window.__openWorkHubItem = openWorkHubItem;\n})();\n\n/* Goal Planner dialog UI. */",
+        1,
+    )
+    runner = """
+const source = %s;
+global.localStorage = {getItem(){ return null; }, setItem(){}};
+global.window = {addEventListener(){}, matchMedia(){ return {matches:false}; }};
+global.document = {getElementById(){ return null; }, addEventListener(){}, querySelectorAll(){ return []; }};
+global.api = async () => ({});
+(async () => {
+  eval(source);
+  window.__workHubStore.activeFolderId = 'project-a';
+  await window.__openWorkHubItem(null, 'project-b', 'board-b');
+  if (window.__workHubStore.activeFolderId !== 'project-b' || window.__workHubStore.activeBoardId !== 'board-b') process.exit(1);
+})().catch(error => { console.error(error.stack); process.exit(1); });
+""" % repr(instrumented)
+    result = subprocess.run(["node", "-e", runner], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_work_hub_mutations_notify_the_open_workspace_panel_mirror():
+    """Board-level mutations must refresh the already mounted chat-side mirror."""
+    script = read("static/work-hub.js")
+
+    for start, end in (
+        ("async function createWorkHubProject", "function showWorkHubBoardProjectPicker"),
+        ("async function createWorkHubBoard", "async function renameWorkHubBoard"),
+        ("async function renameWorkHubBoard", "async function deleteWorkHubBoard"),
+        ("async function deleteWorkHubBoard", "function renderCanvas"),
+        ("async function changeWorkflow", "function initResizer"),
+    ):
+        mutation = script.split(start, 1)[1].split(end, 1)[0]
+        assert "notifyWorkHubChanged()" in mutation
+
+    instrumented = script.replace(
+        "\n})();\n\n/* Goal Planner dialog UI. */",
+        "\nwindow.__notifyWorkHubChanged = notifyWorkHubChanged;\n})();\n\n/* Goal Planner dialog UI. */",
+        1,
+    )
+    runner = """
+const source = %s;
+const events = [];
+global.localStorage = {getItem(){ return null; }, setItem(){}};
+global.CustomEvent = function(type){ this.type = type; };
+global.window = {addEventListener(){}, matchMedia(){ return {matches:false}; }};
+global.document = {
+  getElementById(){ return null; }, addEventListener(){}, querySelectorAll(){ return []; },
+  dispatchEvent(event){ events.push(event.type); },
+};
+global.api = async () => ({});
+eval(source);
+window.__notifyWorkHubChanged();
+if (events.join(',') !== 'work-hub-changed') process.exit(1);
+""" % repr(instrumented)
+    result = subprocess.run(["node", "-e", runner], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_composer_does_not_offer_workspace_panel_toggle():
@@ -240,16 +319,16 @@ def test_work_hub_closes_an_open_workspace_panel_on_entry():
     assert "if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();" in panels
 
 
-def test_work_hub_folders_are_isolated_board_tiles_with_a_create_action():
+def test_work_hub_project_tiles_use_chat_project_metadata_and_boards():
     script = read("static/work-hub.js")
 
-    assert "function createWorkHubProject()" in script
-    assert "'/api/work_hub/folders/create'" in script
-    assert "'/api/projects/create'" not in script
+    assert "store.projects = data.projects || []" in script
+    assert "store.projects.forEach(project =>" in script
+    assert "board.project_id === project.project_id" in script
     assert "work-hub-project-tile" in script
     assert "item.status !== 'cancelled'" in script
-    assert "board.folder_id === project.id" in script
-    assert "New Project Folder" in script
+    assert "project.name || 'Untitled project'" in script
+    assert "project.color || 'var(--accent)'" in script
 
 
 def test_work_hub_project_tiles_have_a_narrow_skin_safe_layout():
@@ -299,17 +378,48 @@ def test_work_hub_uses_nested_boards_and_a_real_filter_icon():
     assert "work-hub-project-boards" in script
     assert "createWorkHubBoard" in script
     assert "deleteWorkHubBoard" in script
+    assert "renameWorkHubBoard" in script
+    assert "data-rename-board" in script
+    assert "showWorkHubBoardProjectPicker" in script
+    assert "project-picker-item" in script
+    assert "icon('pencil')" in script
     assert "icon('filter')" in script
+
+
+def test_work_hub_board_rename_uses_themed_mx_icon_control():
+    script = read("static/work-hub.js")
+    css = read("static/style.css")
+    icons = read("static/vendor/mx-icons/work-hub-icons.js")
+
+    assert 'class="work-hub-board-rename"' in script
+    assert '>Rename<' not in script
+    assert "pencil:" in icons
+    assert ".work-hub-board-rename" in css
     assert "filter:" in icons
+
+
+def test_work_hub_board_project_picker_uses_chat_style_rows_not_native_buttons():
+    script = read("static/work-hub.js")
+    css = read("static/style.css")
+
+    assert "const item = document.createElement('div'); item.className = 'project-picker-item';" in script
+    assert "const item = document.createElement('button'); item.type = 'button'; item.className = 'project-picker-item';" not in script
+    assert "width:6px;height:6px;border-radius:50%;background:" in script
+    assert ";flex-shrink:0;" in script
+    assert ".project-picker-item{font-weight:600;" in css
+    assert ".project-folder-list .project-chip .color-dot{margin-right:4px;}" in css
+    assert ".work-hub-project-color{width:8px;height:8px;border-radius:50%;margin-right:4px;}" in css
 
 
 def test_work_hub_board_selection_keeps_its_folder_scope_and_folder_toggle_is_accessible():
     script = read("static/work-hub.js")
 
     assert "b.setAttribute('aria-expanded', String(expanded))" in script
-    assert "data-folder-id=\"${esc(project.id)}\"" in script
+    assert "data-folder-id=\"${esc(project.project_id)}\"" in script
     assert "store.activeFolderId = button.dataset.folderId" in script
     assert "child.inert" not in script
+    assert "boardsList.classList.toggle('expanded', expanded)" in script
+    assert "boardsList.inert = !expanded" in script
 
 
 def test_work_hub_collapsed_board_lists_have_no_intrinsic_row_height():

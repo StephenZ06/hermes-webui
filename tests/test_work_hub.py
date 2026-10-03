@@ -5,6 +5,18 @@ import json
 import pytest
 
 
+def test_work_hub_project_delete_is_limited_to_work_hub_managed_projects():
+    from pathlib import Path
+
+    routes = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text(encoding="utf-8")
+    start = routes.index('if parsed.path == "/api/projects/delete":')
+    end = routes.index('if parsed.path == "/api/projects/merge":', start)
+    delete_block = routes[start:end]
+
+    assert 'if not proj.get("work_hub_managed"):' in delete_block
+    assert 'return bad(handler, "Only Work Hub projects can be deleted", 403)' in delete_block
+
+
 def test_create_item_persists_revision_and_rejects_unknown_project(monkeypatch, tmp_path):
     from api import work_hub
 
@@ -22,23 +34,26 @@ def test_create_item_persists_revision_and_rejects_unknown_project(monkeypatch, 
         work_hub.create_item({"title": "Bad", "project_id": "missing"}, 1)
 
 
-def test_work_hub_folder_bootstrap_does_not_read_chat_projects(monkeypatch, tmp_path):
+def test_work_hub_bootstrap_exposes_chat_projects_for_workspace_navigation(monkeypatch, tmp_path):
     from api import work_hub
 
     monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
-    monkeypatch.setattr("api.models.load_projects", lambda: pytest.fail("Work Hub must not read Chat projects"))
+    projects = [
+        {"project_id": "launch", "name": "Launch plan", "color": "#5fbf9f"},
+        {"project_id": "website", "name": "Website refresh", "color": "#7c8cff"},
+    ]
+    monkeypatch.setattr("api.models.load_projects", lambda: projects)
 
-    created = work_hub.create_folder({"name": "Launch"}, None)
+    data = work_hub.bootstrap()
 
-    assert created["folder"]["name"] == "Launch"
-    assert work_hub.bootstrap()["folders"] == [created["folder"]]
+    assert data["projects"] == projects
 
 
-def test_bootstrap_moves_legacy_boards_into_an_isolated_imported_folder(monkeypatch, tmp_path):
+def test_bootstrap_keeps_unassigned_legacy_boards_in_the_imported_folder(monkeypatch, tmp_path):
     from api import work_hub
 
     monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
-    monkeypatch.setattr("api.models.load_projects", lambda: pytest.fail("must not read Chat"))
+    monkeypatch.setattr("api.models.load_projects", lambda: [])
     work_hub.create_board({"name": "Legacy"}, None)
 
     data = work_hub.bootstrap()
@@ -73,7 +88,7 @@ def test_project_items_receive_a_default_board_and_can_use_new_boards(monkeypatc
     assert {board["name"] for board in work_hub.bootstrap()["boards"]} >= {"Default", "Frontend"}
 
 
-def test_board_cannot_cross_project_or_delete_default_and_delete_rehomes_items(monkeypatch, tmp_path):
+def test_board_cannot_cross_projects_and_delete_promotes_or_resets_the_last_board(monkeypatch, tmp_path):
     from api import work_hub
 
     monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
@@ -85,11 +100,35 @@ def test_board_cannot_cross_project_or_delete_default_and_delete_rehomes_items(m
         work_hub.create_item({"title": "Wrong", "project_id": "alpha", "board_id": beta_board["board"]["id"]}, beta_board["revision"])
     board = work_hub.create_board({"name": "Delivery", "project_id": "alpha"}, beta_board["revision"])
     item = work_hub.create_item({"title": "Ship", "project_id": "alpha", "board_id": board["board"]["id"]}, board["revision"])
-    with pytest.raises(work_hub.WorkHubError, match="default board"):
-        work_hub.delete_board(alpha_default, item["revision"])
-    deleted = work_hub.delete_board(board["board"]["id"], item["revision"])
-    assert deleted["revision"] > item["revision"]
-    assert work_hub.get_item(item["item"]["id"])["board_id"] == alpha_default
+    deleted_default = work_hub.delete_board(alpha_default, item["revision"])
+    assert deleted_default["revision"] > item["revision"]
+    assert work_hub.get_item(alpha["item"]["id"]) is None
+    assert all(row["id"] != alpha_default for row in work_hub.bootstrap()["boards"])
+    promoted = next(row for row in work_hub.bootstrap()["boards"] if row["id"] == board["board"]["id"])
+    assert promoted["default"] is True
+    latest = work_hub.bootstrap()
+    reset = work_hub.delete_board(board["board"]["id"], latest["revision"])
+    assert reset["reset"] is True
+    assert work_hub.get_item(item["item"]["id"]) is None
+    assert any(row["id"] == board["board"]["id"] for row in work_hub.bootstrap()["boards"])
+
+
+def test_default_board_can_be_renamed_and_reset_without_removing_its_board(monkeypatch, tmp_path):
+    from api import work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda: [{"project_id": "alpha"}])
+    created = work_hub.create_item({"title": "Plan release", "project_id": "alpha"}, None)
+    board_id = created["item"]["board_id"]
+
+    renamed = work_hub.rename_board(board_id, {"name": "Release plan"}, created["revision"])
+
+    assert renamed["board"]["name"] == "Release plan"
+    data = work_hub.bootstrap()
+    assert next(board for board in data["boards"] if board["id"] == board_id)["name"] == "Release plan"
+    reset = work_hub.delete_board(board_id, data["revision"])
+    assert reset["revision"] > data["revision"]
+    assert next(board for board in work_hub.bootstrap()["boards"] if board["id"] == board_id)["name"] == "Release plan"
 
 
 def test_stale_revision_does_not_mutate_item(monkeypatch, tmp_path):
