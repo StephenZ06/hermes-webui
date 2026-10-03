@@ -13403,6 +13403,37 @@ _INDEX_SHELL_CACHE: dict = {}
 _INDEX_SHELL_CACHE_LOCK = threading.Lock()
 
 
+def _static_content_fingerprint(static_root) -> str:
+    """Fingerprint of every file under static/ (paths, sizes, mtimes)."""
+    import hashlib
+
+    digest = hashlib.sha1()
+    root = Path(static_root)
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        digest.update(f"{path.relative_to(root).as_posix()}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8"))
+    return "local-" + digest.hexdigest()[:12]
+
+
+def _static_asset_version_token() -> str:
+    """The cache-busting token substituted into static asset URLs.
+
+    Normally the git-derived WEBUI_VERSION. A source or Docker build without
+    .git reports "unknown", which would never change between deployments, so
+    it falls back to a fingerprint of the static files themselves -- an edit
+    to any asset (including ES modules imported by other modules) changes it.
+    """
+    from api.updates import WEBUI_VERSION
+
+    version = str(WEBUI_VERSION or "").strip()
+    if version and version != "unknown":
+        return version
+    return _static_content_fingerprint(api_config.get_static_root())
+
+
 def _render_index_shell_base() -> str:
     """Return static/index.html with the process-constant tokens substituted.
 
@@ -13410,18 +13441,16 @@ def _render_index_shell_base() -> str:
     extension-tag injection are intentionally NOT applied here — they vary per
     request and are applied by the caller against this base string.
     """
-    from api.updates import WEBUI_VERSION
+    from urllib.parse import quote
 
+    version_token = quote(_static_asset_version_token(), safe="")
     index_path = api_config.get_index_html_path()
     st = index_path.stat()
-    sig = (index_path, st.st_size, st.st_mtime_ns)
+    sig = (index_path, st.st_size, st.st_mtime_ns, version_token)
     with _INDEX_SHELL_CACHE_LOCK:
         cached = _INDEX_SHELL_CACHE.get("base")
         if cached and cached[0] == sig:
             return cached[1]
-    from urllib.parse import quote
-
-    version_token = quote(WEBUI_VERSION, safe="")
     base = (
         index_path.read_text(encoding="utf-8")
         .replace("__WEBUI_VERSION__", version_token)
@@ -13590,8 +13619,7 @@ def _route_get_login(handler, parsed):
         _resolve_login_locale_key(_lang)
     ]
     from urllib.parse import quote
-    from api.updates import WEBUI_VERSION
-    version_token = quote(WEBUI_VERSION, safe="")
+    version_token = quote(_static_asset_version_token(), safe="")
     _page = (
         _LOGIN_PAGE_HTML.replace("{{BOT_NAME}}", _bn)
         .replace("{{WEBUI_VERSION}}", version_token)
@@ -13733,11 +13761,10 @@ def _route_get_sw_js(handler, parsed):
     static_root = api_config.get_static_root()
     sw_path = (static_root / "sw.js").resolve()
     if sw_path.exists():
-        # Inject the current git-derived version as the cache name so the
-        # service worker cache busts automatically on every new deploy.
+        # Inject the current asset version as the cache name so the service
+        # worker cache busts automatically on every new deploy.
         from urllib.parse import quote
-        from api.updates import WEBUI_VERSION
-        version_token = quote(WEBUI_VERSION, safe="")
+        version_token = quote(_static_asset_version_token(), safe="")
         text = sw_path.read_text(encoding="utf-8").replace(
             "__WEBUI_VERSION__", version_token
         )
@@ -20338,11 +20365,22 @@ def _serve_static(handler, parsed):
     # SHELL_ASSETS list relies on the same convention. So a fingerprinted URL
     # is safe to cache aggressively: any redeploy changes the URL.
     version_values = parse_qs(parsed.query, keep_blank_values=True).get("v", [""])
-    has_fingerprint = bool(version_values[0])
-    cache_control = (
-        "public, max-age=31536000, immutable" if has_fingerprint
-        else "public, max-age=300"
+    # "unknown" is a placeholder (no .git), not a deployment fingerprint.
+    has_fingerprint = bool(version_values[0]) and version_values[0] != "unknown"
+    # An unversioned script below static/ is an ES module reached through an
+    # import; it never carries its parent's ?v=, so it must revalidate (ETag)
+    # or a deployment leaves old modules behind a new entry point.
+    is_module_descendant = (
+        not has_fingerprint
+        and "/" in rel
+        and static_file.suffix in (".js", ".mjs")
     )
+    if has_fingerprint:
+        cache_control = "public, max-age=31536000, immutable"
+    elif is_module_descendant:
+        cache_control = "no-cache"
+    else:
+        cache_control = "public, max-age=300"
 
     # 304 short-circuit on conditional GET.
     if handler.headers.get("If-None-Match") == etag:
