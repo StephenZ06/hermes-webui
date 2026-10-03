@@ -95,3 +95,23 @@ def test_legacy_neuralwatt_custom_profile_saves_to_the_neuralwatt_key(tmp_path):
     )
 
     assert profiles._resolve_env_var_for_provider("custom:api-nw", tmp_path) == "NEURALWATT_API_KEY"
+
+
+def test_models_route_rejects_an_unknown_catalog_profile(monkeypatch):
+    """An invalid or missing ?profile= is a 400, never a silent active-profile catalog."""
+    from api import routes
+
+    calls = []
+    monkeypatch.setattr(routes, "get_available_models", lambda: calls.append(1) or {"groups": []})
+    monkeypatch.setattr(
+        routes, "j", lambda _handler, payload, status=200: {"status": status, "payload": payload}
+    )
+
+    monkeypatch.setattr(
+        routes, "bad", lambda _handler, msg, status=400: {"status": status, "payload": {"error": msg}}
+    )
+
+    response = routes.handle_get(SimpleNamespace(), urlparse("/api/models?profile=does-not-exist-xyz"))
+
+    assert response["status"] == 400
+    assert calls == []

@@ -13952,7 +13952,11 @@ def _route_get_api_models(handler, parsed):
     # the detached rebuild worker (and the legacy synchronous rebuild),
     # which the request-thread wrapper could not reach. See
     # api.config.get_available_models cold path + profile_scope_for_detached_worker.
-    freshness = parse_qs(parsed.query or "").get("freshness", [""])[0].strip().lower()
+    query = parse_qs(parsed.query or "")
+    freshness = query.get("freshness", [""])[0].strip().lower()
+    # The profile editor reads the catalog of the profile being edited, which
+    # may not be the browser's active profile.
+    catalog_profile = query.get("profile", [""])[0].strip()
     diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger, print_fn=getattr(handler, '_safe_webui_print', None))
     try:
         diag.stage(f"enter:freshness={freshness or 'default'}") if diag else None
@@ -13962,6 +13966,17 @@ def _route_get_api_models(handler, parsed):
             return j(handler, result)
         if freshness:
             return bad(handler, f"unknown models freshness: {freshness}", status=400)
+        if catalog_profile:
+            from contextlib import ExitStack
+
+            from api.profiles import profile_catalog_scope
+
+            with ExitStack() as stack:
+                try:
+                    stack.enter_context(profile_catalog_scope(catalog_profile))
+                except ValueError as exc:
+                    return bad(handler, str(exc), status=400)
+                return j(handler, get_available_models())
         return j(handler, get_available_models())
     finally:
         if diag:
