@@ -1,11 +1,19 @@
 import queue
+import re
 from pathlib import Path
-from tests.route_chain_inventory import has_route
+from tests.route_chain_inventory import has_route, route_source
 
 
 ROUTES = Path("api/routes.py").read_text(encoding="utf-8")
 SESSION_EVENTS = Path("api/session_events.py").read_text(encoding="utf-8")
 PROFILES = Path("api/profiles.py").read_text(encoding="utf-8")
+
+
+def _route_contains(method, path, snippet):
+    """True if the route's own body contains ``snippet``, ignoring indentation."""
+    def flat(text):
+        return re.sub(r"\s+", " ", text)
+    return flat(snippet) in flat(route_source(method, path))
 
 
 def test_session_events_endpoint_and_bus_are_defined():
@@ -39,20 +47,20 @@ def test_session_events_publish_for_minimal_sidebar_mutations():
         else:
             assert f'"{reason}",' in ROUTES, reason
 
-    assert 'if worktree_info:\n            publish_session_list_changed(\n                "session_new",' in ROUTES
+    assert _route_contains("POST", "/api/session/new", 'if worktree_info:\n    publish_session_list_changed(\n        "session_new",')
     assert "was_hidden_empty_session = _is_hidden_empty_session(s)" in ROUTES
     assert 'if was_hidden_empty_session:\n        publish_session_list_changed(\n            "session_new",' in ROUTES
-    assert 'publish_session_list_changed(\n                "session_duplicate",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_rename",' in ROUTES
+    assert _route_contains("POST", "/api/session/duplicate", 'publish_session_list_changed(\n    "session_duplicate",')
+    assert _route_contains("POST", "/api/session/rename", 'publish_session_list_changed(\n    "session_rename",')
     assert '_persist_generated_session_title(s, next_title, event_reason="session_title_regenerate")' in ROUTES
     assert "session_id=sid" in ROUTES
     assert 'event_profile = getattr(get_session(sid, metadata_only=True), "profile", None)' in ROUTES
     assert "Failed to resolve profile for deleted session" in ROUTES
     assert '_publish_session_list_changed("session_delete", profile=event_profile)' in ROUTES
-    assert 'publish_session_list_changed(\n                "session_branch",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_pin",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_archive",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_move",' in ROUTES
+    assert _route_contains("POST", "/api/session/branch", 'publish_session_list_changed(\n    "session_branch",')
+    assert _route_contains("POST", "/api/session/pin", 'publish_session_list_changed(\n    "session_pin",')
+    assert _route_contains("POST", "/api/session/archive", 'publish_session_list_changed(\n    "session_archive",')
+    assert _route_contains("POST", "/api/session/move", 'publish_session_list_changed(\n    "session_move",')
     assert 'session_id=getattr(' in ROUTES
     assert 'publish_session_list_changed("chat_start")' not in ROUTES
     assert '_publish_session_list_changed("cron_complete",' in ROUTES

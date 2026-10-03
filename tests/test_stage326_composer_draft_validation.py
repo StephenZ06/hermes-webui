@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.route_chain_inventory import route_source
+
 # These tests directly call the handler logic by importing the routes module
 # and exercising the validation through a minimal mock handler. We don't need
 # a full HTTP server.
@@ -78,10 +80,10 @@ def test_draft_files_type_coerced_to_list():
 
 def test_draft_validation_appears_before_persist():
     """The validation must run BEFORE the lock acquire / save, not after."""
-    src = Path(__file__).parents[1].joinpath("api", "routes.py").read_text(encoding="utf-8")
+    src = route_source("POST", "/api/session/draft")
     # Anchor on the unique POST-validation comment marker.
     marker_idx = src.find("Stage-326 hardening (per Opus advisor)")
-    persist_idx = src.find("s.composer_draft = next_draft\n                # Draft persistence is not conversation activity")
+    persist_idx = src.find("s.composer_draft = next_draft")
     assert marker_idx != -1 and persist_idx != -1, (
         "could not locate validation marker or persist site"
     )

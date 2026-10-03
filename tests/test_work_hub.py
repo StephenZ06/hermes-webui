@@ -6,12 +6,9 @@ import pytest
 
 
 def test_work_hub_project_delete_is_limited_to_work_hub_managed_projects():
-    from pathlib import Path
+    from tests.route_chain_inventory import route_source
 
-    routes = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text(encoding="utf-8")
-    start = routes.index('if parsed.path == "/api/projects/delete":')
-    end = routes.index('if parsed.path == "/api/projects/merge":', start)
-    delete_block = routes[start:end]
+    delete_block = route_source("POST", "/api/projects/delete")
 
     assert 'if not proj.get("work_hub_managed"):' in delete_block
     assert 'return bad(handler, "Only Work Hub projects can be deleted", 403)' in delete_block
