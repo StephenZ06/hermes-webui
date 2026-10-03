@@ -33,8 +33,10 @@ def test_three_new_sound_functions_exist_and_are_gated():
 
 def test_failure_sound_uses_web_audio_oscillator_not_an_audio_file():
     body = _function_body(MESSAGES_JS, "function playFailureSound(")
-    assert "createOscillator" in body
+    # Synthesized through the shared tone helper, which builds an oscillator.
+    assert "_playTone(" in body
     assert "new Audio(" not in body
+    assert "createOscillator" in _function_body(MESSAGES_JS, "function _playTone(")
 
 
 def test_apperror_handler_plays_failure_sound_except_when_cancelled():

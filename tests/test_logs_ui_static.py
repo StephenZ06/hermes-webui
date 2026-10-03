@@ -102,7 +102,8 @@ def test_logs_panel_fetches_allowlisted_api_and_exposes_controls():
 def test_logs_autorefresh_runs_only_while_logs_tab_is_visible_and_enabled():
     start_fn = _function_body(PANELS, "_startLogsAutoRefresh")
     stop_fn = _function_body(PANELS, "_stopLogsAutoRefresh")
-    assert "if (nextPanel === 'logs') await loadLogs();" in PANELS
+    # Lazy-load on switch, then bail if a newer panel switch superseded this one.
+    assert "if (nextPanel === 'logs') { await loadLogs(); if (!panelTicketIsCurrent()) return false; }" in PANELS
     assert "_syncLogsAutoRefresh();" in PANELS
     assert "_logsAutoRefreshTimer" in PANELS
     assert "setInterval" in start_fn and "5000" in start_fn

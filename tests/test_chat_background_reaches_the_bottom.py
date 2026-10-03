@@ -7,6 +7,7 @@ where that element stops -- the shell's own colour shows through the remainder a
 a band.
 """
 
+import re
 from pathlib import Path
 
 
@@ -49,12 +50,14 @@ def test_no_skin_paints_an_opaque_surface_on_the_empty_state():
         "an opaque background on .empty-state stops at the empty state's own "
         "edge, leaving the rest of the scroller showing the shell colour"
     )
-    # Nothing else may reintroduce it either: the empty state's only background
-    # is the shared accent glow, which fades to transparent and so has no edge.
-    assert (
-        ".empty-state{background:radial-gradient(ellipse at 50% 20%,"
-        "var(--accent-bg) 0%,transparent 60%);}" in STYLE_CSS
-    )
+    # Nothing else may reintroduce it either: any background on the empty state
+    # must fade to transparent, so it has no edge. (The redesign dropped the
+    # accent glow entirely, which satisfies this trivially.)
+    css = re.sub(r"/\*.*?\*/", "", STYLE_CSS, flags=re.S)
+    for rule in re.findall(r"[^{}]*\.empty-state[^{}]*\{[^}]*\}", css):
+        declarations = rule[rule.index("{"):]
+        for background in re.findall(r"background(?:-color)?:([^;}]*)", declarations):
+            assert "transparent" in background, f"opaque empty-state background: {rule.strip()[:160]}"
 
 
 def test_the_chat_scroller_stays_transparent_over_the_view_background():

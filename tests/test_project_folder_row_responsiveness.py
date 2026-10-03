@@ -78,6 +78,8 @@ def test_folder_row_has_a_press_state_and_a_matched_chevron_curve():
     assert "cubic-bezier(.2,.8,.2,1)" in chevron, (
         "the chevron should turn on the same curve the session list expands with"
     )
-    sessions = STYLE_CSS[STYLE_CSS.index(".project-folder-sessions{"):]
+    # The unscoped base rule (a scoped override such as
+    # `.office-project-folders .project-folder-sessions{` may come earlier).
+    sessions = STYLE_CSS[STYLE_CSS.index("\n.project-folder-sessions{") + 1:]
     sessions = sessions[:sessions.index("}")]
     assert "cubic-bezier(.2,.8,.2,1)" in sessions

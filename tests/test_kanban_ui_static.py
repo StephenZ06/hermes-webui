@@ -55,7 +55,8 @@ def test_switch_panel_lazy_loads_kanban_and_toggles_main_view():
     assert "'kanban'" in main_view_panels.group(1)
     assert "MAIN_VIEW_PANELS.forEach(p => {" in PANELS
     assert "mainEl.classList.toggle('showing-' + p, nextPanel === p);" in PANELS
-    assert "if (nextPanel === 'kanban') await loadKanban();" in PANELS
+    # Lazy-load on switch, then bail if a newer panel switch superseded this one.
+    assert "if (nextPanel === 'kanban') { await loadKanban(); if (!panelTicketIsCurrent()) return false; }" in PANELS
     assert "if (_currentPanel === 'kanban') await loadKanban();" in PANELS
 
 

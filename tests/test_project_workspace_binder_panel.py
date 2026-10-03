@@ -365,8 +365,9 @@ class TestProjectFolderBindingIndicator:
 
     def test_indicator_is_rendered_with_the_workspace_root(self):
         assert "renderProjectFolderBinding()" in WORKSPACE_JS
-        root_render = WORKSPACE_JS[WORKSPACE_JS.index("if(!path||path==='.'){ _refreshGitBadge();"):]
-        assert "renderProjectFolderBinding" in root_render[:400]
+        # loadDir re-renders the binding controls whenever the root is listed.
+        root_render = WORKSPACE_JS[WORKSPACE_JS.index("if(!path||path==='.'){ if(typeof renderBoundProjectControl"):]
+        assert "renderProjectFolderBinding()" in root_render[: root_render.index("\n")]
 
     def test_project_list_falls_back_to_the_api(self):
         # The panel can render before the sidebar has populated _allProjects.

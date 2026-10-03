@@ -157,14 +157,18 @@ class TestWorkspacePanelStatefulLocalization:
 
     def test_stateful_toggle_buttons_do_not_carry_static_title_keys(self):
         """The show/hide tooltip belongs to syncWorkspacePanelUI(), not static DOM i18n."""
-        for element_id in ("btnWorkspacePanelToggle", "btnWorkspacePanelEdgeToggle"):
+        # The redesign dropped the top-bar toggle; the edge toggle is the control.
+        assert 'id="btnWorkspacePanelToggle"' not in INDEX_HTML
+        for element_id in ("btnWorkspacePanelEdgeToggle",):
             tag = _html_tag_by_id(element_id)
             assert 'data-i18n-title="workspace_panel_show"' not in tag
             assert 'data-i18n-title="workspace_panel_hide"' not in tag
 
     def test_stateful_toggle_buttons_do_not_carry_static_aria_keys(self):
         """The final accessible label should match the current show/hide action."""
-        for element_id in ("btnWorkspacePanelToggle", "btnWorkspacePanelEdgeToggle"):
+        # The redesign dropped the top-bar toggle; the edge toggle is the control.
+        assert 'id="btnWorkspacePanelToggle"' not in INDEX_HTML
+        for element_id in ("btnWorkspacePanelEdgeToggle",):
             tag = _html_tag_by_id(element_id)
             assert 'data-i18n-aria-label="workspace_panel_toggle"' not in tag
             assert 'data-i18n-aria-label="workspace_panel_show"' not in tag

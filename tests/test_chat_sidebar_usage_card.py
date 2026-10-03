@@ -1,4 +1,5 @@
 """Regression coverage for the Chat sidebar's usage card hierarchy."""
+import re
 from pathlib import Path
 
 
@@ -47,9 +48,15 @@ def test_sidebar_has_explicit_workspace_and_conversation_sections():
     assert ".chat-sidebar-section-heading" in CSS
     assert ".chat-usage-widget-window-toggle" in CSS
     assert ".chat-sidebar-section--workspaces .project-folder-list" in CSS
-    assert "--chat-sidebar-divider-space:10px;" in CSS
-    assert "padding-bottom:var(--chat-sidebar-divider-space);" in CSS
-    assert ".chat-sidebar-section--workspaces{padding-top:var(--chat-sidebar-section-heading-space);border-top:1px solid var(--border);}" in CSS
+    # Spacing tokens are scoped to the chat panel and consumed by the search row.
+    tokens = re.search(r"#panelChat\{([^}]*)\}", CSS)
+    assert tokens and re.search(r"--chat-sidebar-divider-space:\d+px;", tokens.group(1))
+    assert "#panelChat .sidebar-search{padding-bottom:var(--chat-sidebar-divider-space);}" in CSS
+    # Sections are separated by their headings: a label centred between hairlines.
+    for section in ("workspaces", "conversations"):
+        rule = f".chat-sidebar-section--{section} .chat-sidebar-section-heading::before"
+        assert rule in CSS, rule
+    assert '.chat-sidebar-section-heading::after{content:"";height:1px;flex:1;background:var(--border);}' in CSS
 
 
 def test_usage_window_switch_uses_shared_type_and_motion_tokens():
@@ -57,8 +64,7 @@ def test_usage_window_switch_uses_shared_type_and_motion_tokens():
     assert ".chat-usage-widget-window-content.is-incoming" in CSS
     assert "chatUsageWindowTextEnter" in CSS
     assert "is-incoming" in UI
-    assert "--chat-sidebar-section-heading-space:10px;" in CSS
-    assert ".chat-sidebar-section--conversations{margin:0 0 2px;padding-top:var(--chat-sidebar-section-heading-space);" in CSS
+    assert ".chat-sidebar-section--conversations{margin:0 0 2px;" in CSS
     assert ".chat-usage-widget-label-stage{position:relative;display:inline-flex;align-items:center;" in CSS
     assert "text-transform:uppercase" in CSS
     assert ".chat-usage-widget-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;" in CSS

@@ -41,14 +41,17 @@ def test_office_card_specs_has_a_branch_for_each_outlet():
     # the central conductor platform carries a Conductor card.
     assert "{ key: '__conductor__', name: 'Conductor'" in body
     assert "key: '__conductor__'" in body
-    assert "colorForProjectsCluster(key)" in body
+    # A desk may carry its cluster colour; otherwise fall back to the palette.
+    assert "colorForProjectsCluster(desk.cluster)" in body
 
 
 def test_projects_cards_are_derived_from_the_live_desks_not_a_standing_list():
     body = _function_body(OFFICE_INDEX_SRC, "officeCardSpecs")
-    at = body.index("// Projects:")
-    tail = body[at:]
-    assert "(view.desks || []).forEach" in tail
+    business = body.index("_outlet === 'business'")
+    projects = body[body.index("return [", business) + len("return ["):]
+    projects = projects[projects.index("}\n") :]  # past the Business branch
+    assert "(view.desks || []).forEach" in projects
+    assert "seen.has(desk.cluster)" in projects, "one card per live cluster"
 
 
 def test_reposition_no_longer_gates_on_the_business_outlet():

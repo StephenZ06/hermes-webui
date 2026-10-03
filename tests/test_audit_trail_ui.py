@@ -35,7 +35,8 @@ def test_panel_container_present_with_expected_children():
 def test_panel_registered_in_switch_dispatch():
     assert "audit: 'tab_audit'" in PANELS_JS
     assert "'audit'" in PANELS_JS[PANELS_JS.index("const MAIN_VIEW_PANELS"):PANELS_JS.index("\n", PANELS_JS.index("const MAIN_VIEW_PANELS"))]
-    assert "if (nextPanel === 'audit') await loadAuditTrail();" in PANELS_JS
+    # Lazy-load on switch, then bail if a newer panel switch superseded this one.
+    assert "if (nextPanel === 'audit') { await loadAuditTrail(); if (!panelTicketIsCurrent()) return false; }" in PANELS_JS
 
 
 def test_load_function_calls_the_right_endpoint():

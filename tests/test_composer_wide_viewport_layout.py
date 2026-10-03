@@ -81,7 +81,7 @@ def test_the_toolsets_wrapper_is_revealed_as_a_flex_wrapper_like_its_siblings():
     )
 
 
-def test_the_workspace_chip_markup_still_pairs_a_files_button_with_a_label():
+def test_the_workspace_chip_markup_is_one_switch_button_with_a_label():
     """Guards the assumption the alignment fix is written against.
 
     The workspace control is two buttons inside one bordered pill, which is why
@@ -89,9 +89,14 @@ def test_the_workspace_chip_markup_still_pairs_a_files_button_with_a_label():
     single button the shared wrapper rule still holds, but the `gap` on
     `.composer-ws-wrap` no longer has anything to space.
     """
-    assert 'class="composer-workspace-group ws-chip"' in INDEX_HTML
-    assert 'class="composer-workspace-files-btn"' in INDEX_HTML
-    assert 'class="composer-workspace-label" id="composerWorkspaceLabel"' in INDEX_HTML
+    # The redesign collapsed the pill to a single switch button (label +
+    # chevron); the separate Files button is gone, so the shared wrapper rule
+    # applies and the group's gap has a single child.
+    group_start = INDEX_HTML.index('class="composer-workspace-group ws-chip"')
+    group = INDEX_HTML[group_start:INDEX_HTML.index("</div>", group_start)]
+    assert 'class="composer-workspace-chip" id="composerWorkspaceChip"' in group
+    assert 'class="composer-workspace-label" id="composerWorkspaceLabel"' in group
+    assert 'class="composer-workspace-files-btn"' not in INDEX_HTML
 
 
 # ── Composer width on ultrawide displays ─────────────────────────────────────

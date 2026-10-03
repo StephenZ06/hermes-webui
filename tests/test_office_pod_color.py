@@ -146,12 +146,14 @@ def test_pod_has_four_flush_colored_and_black_layers(driver):
     # a repeated coloured-platform / black-base unit, not two accent strips.
     heights = [layer["top"] - layer["bottom"] for layer in bounds]
     assert heights == pytest.approx([1.2] * 4, abs=1e-6)
-    # Lower tiers have a restrained stepped footprint so the isometric view
-    # can show every equal-height layer instead of occluding it.
+    # One visible step below the top tier reveals the equal-height layers in
+    # the isometric view; below it the platform is a single stacked block, and
+    # the black footing is never narrower than the coloured delivery tier
+    # above it (a narrower footing leaves a dark gap along the bottom rim).
     widths = [layer["width"] for layer in bounds]
     depths = [layer["depth"] for layer in bounds]
-    assert widths[0] < widths[1] <= widths[3] < widths[2]
-    assert depths[0] < depths[1] <= depths[3] < depths[2]
+    assert widths[0] < widths[1] <= widths[2] <= widths[3]
+    assert depths[0] < depths[1] <= depths[2] <= depths[3]
     assert widths[1] - widths[0] >= 3
     assert depths[1] - depths[0] >= 3
     assert [layer["x"] for layer in bounds] == pytest.approx([0, 0, 0, 0])

@@ -155,16 +155,13 @@ def test_attention_events_use_distinct_sound_from_completion():
         assert "playNotificationSound();" not in body
     assert "playNotificationSound();" in done_body
     assert "playAttentionSound();" not in done_body
-    assert "osc.type='sine'" in attention_body
+    # Distinct from completion (660->880): a short, soft 880->660 sine via _playTone.
+    assert "_playTone([880,660],0.24,'sine',0.24);" in attention_body
     assert "window._lastAttentionSoundAt" in attention_body
     assert "nowMs-window._lastAttentionSoundAt<900" in attention_body
     assert "window._attentionSoundSeenKeys" in attention_body
     assert "seen.has(dedupeKey)" in attention_body
     assert "seen.set(dedupeKey,nowMs)" in attention_body
-    assert "osc.frequency.setValueAtTime(880,ctx.currentTime);" in attention_body
-    assert "osc.frequency.setValueAtTime(660,ctx.currentTime+0.075);" in attention_body
-    assert "gain.gain.setValueAtTime(0.24,ctx.currentTime);" in attention_body
-    assert "osc.stop(ctx.currentTime+0.24);" in attention_body
     assert "Notification sound failed" not in attention_body
 
 

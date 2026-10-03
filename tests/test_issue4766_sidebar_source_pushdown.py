@@ -507,6 +507,12 @@ global.ensureActiveSessionExternalRefreshPoll = () => {{}};
     {count_fn}
     {requested_source_fn}
     {exclude_hidden_fn}
+// _applySessionListPayload tracks the Work Hub projects list and announces
+// changes with a DOM event; give it the state and a no-op event target.
+var _workHubProjectsSignature = '';
+if (typeof globalThis.CustomEvent === 'undefined') globalThis.CustomEvent = class {{ constructor(type) {{ this.type = type; }} }};
+if (typeof globalThis.document === 'undefined') globalThis.document = {{}};
+if (typeof globalThis.document.dispatchEvent !== 'function') globalThis.document.dispatchEvent = () => true;
     {apply_fn}
 const sessions = [{{ session_id: 'webui-1' }}];
 _applySessionListPayload({{ sessions, other_profile_count: 0, archived_count: 0, active_profile: 'default' }}, {{ projects: [] }});

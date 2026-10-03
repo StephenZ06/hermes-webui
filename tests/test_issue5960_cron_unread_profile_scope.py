@@ -719,6 +719,12 @@ let _sessionActionMenu=null;
 let _allProjects=[];
 {helpers}
 {mark_poll}
+// _applySessionListPayload tracks the Work Hub projects list and announces
+// changes with a DOM event; give it the state and a no-op event target.
+var _workHubProjectsSignature = '';
+if (typeof globalThis.CustomEvent === 'undefined') globalThis.CustomEvent = class {{ constructor(type) {{ this.type = type; }} }};
+if (typeof globalThis.document === 'undefined') globalThis.document = {{}};
+if (typeof globalThis.document.dispatchEvent !== 'function') globalThis.document.dispatchEvent = () => true;
 {apply_fn}
 // Snapshot generation under profile A (request starts).
 const unreadGenAtStart=_cronPollGeneration;
@@ -841,6 +847,12 @@ let _sessionActionMenu=null;
 let _allProjects=[];
 {helpers}
 {mark_poll}
+// _applySessionListPayload tracks the Work Hub projects list and announces
+// changes with a DOM event; give it the state and a no-op event target.
+var _workHubProjectsSignature = '';
+if (typeof globalThis.CustomEvent === 'undefined') globalThis.CustomEvent = class {{ constructor(type) {{ this.type = type; }} }};
+if (typeof globalThis.document === 'undefined') globalThis.document = {{}};
+if (typeof globalThis.document.dispatchEvent !== 'function') globalThis.document.dispatchEvent = () => true;
 {apply_fn}
 _applySessionListPayload({{
   sessions:[{{

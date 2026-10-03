@@ -243,7 +243,8 @@ class TestProfileSessionListFlip:
     def test_profile_refresh_captures_before_render_and_plays_after_rows_exist(self):
         capture = self.JS.index("const flipBefore=animateRefresh?_captureSessionReflowPositions():null;")
         clear = self.JS.index("list.innerHTML='';", capture)
-        row_render = self.JS.index("body.appendChild(_renderOneSession", clear)
+        # Rows are appended to their date group's inner container.
+        row_render = self.JS.index("appendChild(_renderOneSession(", clear)
         play = self.JS.index("_playSessionRowsReflowFromPositions(reflowBefore,reflowTimeout,_sessionPrefersReducedMotion);", row_render)
 
         assert capture < clear < row_render < play

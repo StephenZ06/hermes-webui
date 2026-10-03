@@ -233,7 +233,7 @@ def test_session_selection_repaints_notes_before_transcript_loading_finishes():
     assert "projectId:" not in body[render_idx:messages_idx]
 
 
-def test_workspace_notes_tab_and_session_navigation_share_the_fetching_refresh_path():
+def test_workspace_notes_tab_and_session_navigation_both_fetch_fresh_data():
     mount = _function_block(
         WORKSPACE_JS,
         "registerChatPane({\n  id: 'plane'",
@@ -245,7 +245,15 @@ def test_workspace_notes_tab_and_session_navigation_share_the_fetching_refresh_p
         "\nfunction _isMessagingSession",
     )
 
-    assert "refreshWorkspaceNotesPane()" in mount
+    # The Plane tab is now the Work Hub view: mounting it re-renders through
+    # the Work Hub renderer, which fetches its own data rather than painting a
+    # cached list.
+    assert "renderWorkspaceWorkHub()" in mount
+    work_hub_js = (REPO / "static" / "work-hub.js").read_text(encoding="utf-8")
+    renderer = work_hub_js[work_hub_js.index("async function renderWorkspaceWorkHub()"):]
+    renderer = renderer[: renderer.index("\n  async function ", 1)]
+    assert "await request('/api/work_hub/bootstrap')" in renderer
+    # Session navigation still refreshes the notes pane for that session.
     assert "refreshWorkspaceNotesPane({" in load_session
     assert "sessionId: sid" in load_session
     assert "projectId:" not in load_session

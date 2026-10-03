@@ -5,6 +5,7 @@ than the active live SSE stream. The sidebar badge path must play the distinct
 attention sound when a session newly needs user input, without blasting sounds
 for already-existing badges on initial load.
 """
+import re
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
@@ -61,21 +62,37 @@ def test_attention_signature_tracks_kind_and_count_for_badge_changes():
     assert "return `${kind}:${Math.max(1,count||1)}`;" in signature_body
 
 
+_TONE_CALL = re.compile(r"_playTone\(\[([\d,\s]+)\],\s*([\d.]+),\s*'(\w+)',\s*([\d.]+)\)")
+
+
+def _tone_args(body: str) -> dict:
+    match = _TONE_CALL.search(body)
+    assert match, "sound must be played through _playTone(freqs, duration, type, volume)"
+    return {
+        "freqs": [int(f) for f in match.group(1).split(",")],
+        "duration": float(match.group(2)),
+        "type": match.group(3),
+        "volume": float(match.group(4)),
+    }
+
+
 def test_attention_sound_is_softer_short_reverse_of_completion_sound():
     attention_body = _function_body(MESSAGES_JS, "playAttentionSound")
     completion_body = _function_body(MESSAGES_JS, "playNotificationSound")
 
-    assert "osc.type='sine'" in attention_body
     assert "window._lastAttentionSoundAt" in attention_body
     assert "nowMs-window._lastAttentionSoundAt<900" in attention_body
     assert "window._attentionSoundSeenKeys" in attention_body
     assert "seen.has(dedupeKey)" in attention_body
     assert "seen.set(dedupeKey,nowMs)" in attention_body
     assert "300000" in attention_body
-    assert "osc.frequency.setValueAtTime(880,ctx.currentTime);" in attention_body
-    assert "osc.frequency.setValueAtTime(660,ctx.currentTime+0.075);" in attention_body
-    assert "gain.gain.setValueAtTime(0.24,ctx.currentTime);" in attention_body
-    assert "osc.stop(ctx.currentTime+0.24);" in attention_body
-    assert "osc.frequency.setValueAtTime(660,ctx.currentTime);" in completion_body
-    assert "osc.frequency.setValueAtTime(880,ctx.currentTime+0.1);" in completion_body
-    assert "osc.stop(ctx.currentTime+0.3);" in completion_body
+
+    # Both sounds are synthesized through the shared _playTone(freqs, duration,
+    # type, volume) helper; compare their parameters.
+    attention = _tone_args(attention_body)
+    completion = _tone_args(completion_body)
+    assert attention["type"] == completion["type"] == "sine"
+    assert attention["freqs"] == list(reversed(completion["freqs"])), "attention is the reverse sweep"
+    assert attention["freqs"][0] > attention["freqs"][-1], "attention sweeps down"
+    assert attention["duration"] < completion["duration"], "attention is shorter"
+    assert attention["volume"] < completion["volume"], "attention is softer"
