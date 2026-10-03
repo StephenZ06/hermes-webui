@@ -76,6 +76,13 @@ verified first: `cd6defa2f`, `3492464a2` (Node harnesses; shared
 display rename; tests whose code `722c5ec42` never committed; stale UI
 source-text tests (office, sounds, switchPanel, sidebar CSS, Plane pane).
 
+**UI test pass (same day):** `d0f98c7e8` adds the missing Work Hub
+planning-model i18n keys to all 15 locales (non-English strings need a
+native review); `2b4b1e3ec` updates ~30 stale UI source tests to the
+redesign. Full sharded run: 59 unique failures (from 122), the rest being
+the toolset/tool_policy tests, the `722c5ec42` never-committed group, the
+NeuralWatt label, and flaky Playwright layout/order-dependent tests.
+
 **Next:** decide per group above (restore code, update test, or delete); decide on committing
 `icons/` (a tracked test depends on it) and moving `job-ops/` out of the
 repo; optional `api/routes.py` module split now that routes are functions.
