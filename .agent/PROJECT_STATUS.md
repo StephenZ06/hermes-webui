@@ -1,5 +1,51 @@
 # Project status — hermes-webui
 
+## 2026-10-03: route-table dispatch complete; test-isolation fixes
+
+**Route tables.** Every `handle_<method>` in `api/routes.py` now dispatches
+through ordered `RouteTable`s (`api/route_table.py`) instead of an
+`if parsed.path ==` chain: `_GET_PUBLIC`/`_GET_ROUTES`, `_POST_PRE_CSRF`/
+`_POST_RAW_BODY`/`_POST_ROUTES`, `_PATCH_ROUTES`, `_DELETE_ROUTES`,
+`_PUT_ROUTES` (commits `06758eab8`..`7f73f96df`). Route bodies moved verbatim
+(AST-checked); `tests/test_route_table_parity.py` pins the 328-route order and
+guard placement against `tests/route_inventory_snapshot.json`. How to add a
+route: `ARCHITECTURE.md` section 11. Source-level tests must use
+`route_source()`/`has_route()`/`dispatch_source()` from
+`tests/route_chain_inventory.py`.
+
+**Test isolation fixes.**
+- `8667b04d0`: conftest pins `TMPDIR` before hermes-agent's
+  `hermes_bootstrap` can redirect it into `TEST_STATE_DIR/cache/scratch`
+  (which test_server wipes). Before this, a local run without an exported
+  `TMPDIR` errored ~16.5k tests at setup.
+- `bootstrap.py` no longer loads the repo `.env` at import when
+  `HERMES_WEBUI_SKIP_REPO_DOTENV=1`; conftest sets it. Previously importing
+  bootstrap leaked the developer's real `HERMES_HOME` and provider keys into
+  the pytest process for the rest of the run.
+
+**Audit (no change needed):** `_POST_RAW_BODY` routes skip the
+session-visibility guard by design; all still pass global auth + CSRF, have
+bounded bodies, and the three upload routes check session visibility
+themselves. Pre-existing: `/api/shutdown` and `/api/health/restart` have no
+gate beyond auth + CSRF (with no password set, anything that can reach the
+port can call them).
+
+**Deployment.** The live UI is a native process, transient unit
+`hermes-webui-codex-live.service`, running this checkout's `server.py` on
+`127.0.0.1:8787` (relayed on `:18788`). It loaded code at 2026-10-03 14:26, so
+the route-table commits are not live until it is restarted. The Docker
+container `hermes-webui-hermes-webui-1` no longer exists.
+
+**Known test noise (not from this work):** kanban modal layout tests
+(Playwright) fail on this machine with or without the refactor;
+`test_page_navigation_icons` needs the untracked `icons/` directory;
+~30 model/provider-catalog and account-usage tests fail identically before and
+after. A clean-run failure list is still to be triaged.
+
+**Next:** triage the remaining baseline failures; decide on committing
+`icons/` (a tracked test depends on it) and moving `job-ops/` out of the
+repo; optional `api/routes.py` module split now that routes are functions.
+
 ## 2026-09-25 follow-up: usage-card fade + missing-path workspace trust
 
 Two more user asks landed, then a third round to make the animations actually
