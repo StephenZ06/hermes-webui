@@ -119,18 +119,27 @@ def test_every_agent_setup_site_arms_the_hook():
 
 def test_every_project_mutation_arms_the_hook_before_state_changes():
     """Project CRUD must leave the lifecycle workflow armed for the next turn."""
-    import pathlib
+    from tests.route_chain_inventory import route_source
 
-    src = (pathlib.Path(__file__).resolve().parent.parent / "api/routes.py").read_text(
-        encoding="utf-8"
-    )
-    start = src.index("    # ── Project CRUD (POST) ──")
-    mutation_paths = (
+    for path in (
         "/api/projects/create",
         "/api/projects/rename",
         "/api/projects/set_workspace",
         "/api/projects/delete",
         "/api/projects/merge",
-    )
-    assert all(path in src for path in mutation_paths)
-    assert src.count("_arm_project_lifecycle_for_mutation()") >= len(mutation_paths) + 1
+    ):
+        body = route_source("POST", path)
+        assert body.lstrip().startswith("_arm_project_lifecycle_for_mutation()"), (
+            f"{path} must arm the project-lifecycle hook before changing state"
+        )
+
+
+def test_arming_for_a_mutation_never_breaks_the_request(monkeypatch):
+    import api.project_lifecycle_hook as plh
+    import api.routes as routes
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("plugin manager unavailable")
+
+    monkeypatch.setattr(plh, "ensure_project_lifecycle_hook", boom)
+    routes._arm_project_lifecycle_for_mutation()  # must not raise

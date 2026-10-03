@@ -19371,7 +19371,23 @@ def _route_post_api_session_move(handler, parsed, body, diag):
 
 
 # ── Project CRUD (POST) ──
+def _arm_project_lifecycle_for_mutation() -> None:
+    """Arm the project-lifecycle instruction before a project changes.
+
+    Project CRUD changes what the next agent turn should reconcile, so make
+    sure the pre_llm_call hook is registered. Best-effort: arming must never
+    fail the request.
+    """
+    try:
+        from api.project_lifecycle_hook import ensure_project_lifecycle_hook
+
+        ensure_project_lifecycle_hook()
+    except Exception:
+        logger.debug("project-lifecycle hook could not be armed for a project mutation", exc_info=True)
+
+
 def _route_post_api_projects_create(handler, parsed, body, diag):
+    _arm_project_lifecycle_for_mutation()
     try:
         require(body, "name")
     except ValueError as e:
@@ -19409,6 +19425,7 @@ def _route_post_api_projects_create(handler, parsed, body, diag):
 
 
 def _route_post_api_projects_rename(handler, parsed, body, diag):
+    _arm_project_lifecycle_for_mutation()
     try:
         require(body, "project_id", "name")
     except ValueError as e:
@@ -19435,6 +19452,7 @@ def _route_post_api_projects_rename(handler, parsed, body, diag):
 
 
 def _route_post_api_projects_set_workspace(handler, parsed, body, diag):
+    _arm_project_lifecycle_for_mutation()
     try:
         require(body, "project_id")
     except ValueError as e:
@@ -19491,6 +19509,7 @@ def _route_post_api_profiles_set_approval_mode(handler, parsed, body, diag):
 
 
 def _route_post_api_projects_delete(handler, parsed, body, diag):
+    _arm_project_lifecycle_for_mutation()
     try:
         require(body, "project_id")
     except ValueError as e:
@@ -19511,6 +19530,7 @@ def _route_post_api_projects_delete(handler, parsed, body, diag):
 
 
 def _route_post_api_projects_merge(handler, parsed, body, diag):
+    _arm_project_lifecycle_for_mutation()
     # One-time-use-per-cleanup consolidation: several profiles can each
     # independently create a same-idea project (e.g. "Triple S POS") before
     # projects became visible across profiles, leaving multiple project_ids
