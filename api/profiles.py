@@ -2288,7 +2288,7 @@ def list_profiles_api() -> list:
         return result
 
     active = get_active_profile_name()
-    return [{**p, 'is_active': _profile_row_is_active(p['name'], p['is_default'], active)} for p in rows]
+    return [{**p, 'is_active': _profile_row_is_active(p['name'], bool(p.get('is_default')), active)} for p in rows]
 
 
 def _profile_meta_fields(profile_path: Path) -> dict:
