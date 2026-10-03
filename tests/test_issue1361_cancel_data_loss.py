@@ -520,8 +520,9 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     lines = src.splitlines()
 
     helper_name = '_materialize_pending_user_turn_before_error('
+    # Pending-turn clears go through clear_pending_turn_fields() (api.models).
     clear_sites = [(i + 1, line) for i, line in enumerate(lines)
-                   if 'pending_user_message = None' in line]
+                   if 'clear_pending_turn_fields(' in line]
     assert len(clear_sites) >= 4, (
         f"Expected ≥4 sites that clear pending_user_message; found {len(clear_sites)}. "
         f"If api/streaming.py was refactored, re-audit this test."

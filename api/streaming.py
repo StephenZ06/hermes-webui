@@ -66,6 +66,7 @@ from api.turn_journal import append_turn_journal_event_for_stream
 from api.usage import prompt_cache_hit_percent
 from api.models import (
     StateDBSessionMessagesSnapshot,
+    clear_pending_turn_fields,
     _is_empty_partial_activity_message,
     _evict_sessions_over_cap,
     clear_process_wakeup_pause,
@@ -2442,11 +2443,7 @@ def _persist_cancelled_turn(session, *, message: str = 'Task cancelled.') -> Non
     not append a misleading provider no-response error after an explicit cancel.
     """
     _materialize_pending_user_turn_before_error(session)
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = []
-    session.pending_started_at = None
-    session.pending_user_source = None
+    clear_pending_turn_fields(session)
     if not _session_has_cancel_marker(session):
         agent_name = _preferred_agent_display_name_for_session(session)
         session.messages.append({
@@ -2461,11 +2458,7 @@ def _persist_cancelled_turn(session, *, message: str = 'Task cancelled.') -> Non
 
 def _cleanup_ephemeral_cancelled_turn(session) -> None:
     """Remove transient /btw session state after a cancel without saving it."""
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = []
-    session.pending_started_at = None
-    session.pending_user_source = None
+    clear_pending_turn_fields(session)
     try:
         import pathlib
         pathlib.Path(session.path).unlink(missing_ok=True)
@@ -5122,11 +5115,7 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
             saved_pending_attachments = list(getattr(s, 'pending_attachments', []) or [])
             saved_pending_started_at = getattr(s, 'pending_started_at', None)
             saved_pending_user_source = getattr(s, 'pending_user_source', None)
-            s.active_stream_id = None
-            s.pending_user_message = None
-            s.pending_attachments = []
-            s.pending_started_at = None
-            s.pending_user_source = None
+            clear_pending_turn_fields(s)
             try:
                 # skip_index=False so the snapshot appears in _index.json with
                 # the pre_compression_snapshot marker. The sidebar projection
@@ -5162,11 +5151,7 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
             # rows so this is latent today, but the contract should match the
             # primary branch above so future readers can trust snapshot files
             # to never contain live runtime state.
-            snapshot.active_stream_id = None
-            snapshot.pending_user_message = None
-            snapshot.pending_attachments = []
-            snapshot.pending_started_at = None
-            snapshot.pending_user_source = None
+            clear_pending_turn_fields(snapshot)
             snapshot.save(touch_updated_at=False, skip_index=False)
             logger.info(
                 "Marked pre-compression session %s as sidebar-hidden snapshot",
@@ -11703,11 +11688,7 @@ def _run_agent_streaming(
                             s,
                             active_turn_identity=_active_turn_identity,
                         )
-                        s.active_stream_id = None
-                        s.pending_user_message = None
-                        s.pending_attachments = []
-                        s.pending_started_at = None
-                        s.pending_user_source = None
+                        clear_pending_turn_fields(s)
                         try:
                             _snapshot_and_append_partial_on_error(
                                 s,
@@ -11915,11 +11896,7 @@ def _run_agent_streaming(
                     live_tool_calls=_live_tool_calls,
                 )
                 s.tool_calls = tool_calls
-                s.active_stream_id = None
-                s.pending_user_message = None
-                s.pending_attachments = []
-                s.pending_started_at = None
-                s.pending_user_source = None
+                clear_pending_turn_fields(s)
                 # Tag the matching user message with attachment filenames for display on reload
                 # Only tag a user message whose content relates to this turn's text
                 # (msg_text is the full message including the [Attached files: ...] suffix)
@@ -12938,11 +12915,7 @@ def _run_agent_streaming(
                                         s.messages,
                                         live_tool_calls=_live_tool_calls,
                                     )
-                                    s.active_stream_id = None
-                                    s.pending_user_message = None
-                                    s.pending_attachments = []
-                                    s.pending_started_at = None
-                                    s.pending_user_source = None
+                                    clear_pending_turn_fields(s)
                                     s.save()
                                     _done_session_payload = redact_session_data(
                                         _session_payload_with_full_messages(
@@ -13053,11 +13026,7 @@ def _run_agent_streaming(
                 # explicit identity is omitted, so repeated prompts remain
                 # fenced without weakening pending-turn durability.
                 _materialize_pending_user_turn_before_error(s)
-                s.active_stream_id = None
-                s.pending_user_message = None
-                s.pending_attachments = []
-                s.pending_started_at = None
-                s.pending_user_source = None
+                clear_pending_turn_fields(s)
                 try:
                     _snapshot_and_append_partial_on_error(
                         s,
@@ -13657,11 +13626,7 @@ def cancel_stream(stream_id: str) -> bool:
                         "Failed to recover pending user message on cancel for %s",
                         _cancel_session_id,
                     )
-                _cs.active_stream_id = None
-                _cs.pending_user_message = None
-                _cs.pending_attachments = []
-                _cs.pending_started_at = None
-                _cs.pending_user_source = None
+                clear_pending_turn_fields(_cs)
                 # Persist any partial assistant text that was streamed before cancel (#893).
                 # Preserving partial content means the user sees what the agent had
                 # produced rather than losing it entirely.  The marker is _partial=True

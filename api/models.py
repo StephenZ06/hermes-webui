@@ -1191,6 +1191,26 @@ def model_explicit_pick_signature(model, model_provider) -> str:
     return f"{_m}\x1f{_p}"
 
 
+def clear_pending_turn_fields(obj) -> None:
+    """Drop an object's in-flight turn marker as one unit.
+
+    ``active_stream_id`` and the four ``pending_*`` prompt fields describe one
+    running turn and must be cleared together, or a half-cleared turn can
+    replay a stale prompt or attachment list after its stream ended. Works on
+    real sessions and on lightweight session stubs: a ``pending_*`` field is
+    only written when the object already carries it.
+    """
+    obj.active_stream_id = None
+    if hasattr(obj, "pending_user_message"):
+        obj.pending_user_message = None
+    if hasattr(obj, "pending_attachments"):
+        obj.pending_attachments = []
+    if hasattr(obj, "pending_started_at"):
+        obj.pending_started_at = None
+    if hasattr(obj, "pending_user_source"):
+        obj.pending_user_source = None
+
+
 class Session:
     def __init__(self, session_id: str=None, title: str='Untitled',
                  workspace=str(DEFAULT_WORKSPACE), created_workspace=None,
@@ -1385,6 +1405,10 @@ class Session:
     @property
     def path(self):
         return SESSION_DIR / f'{self.session_id}.json'
+
+    def clear_pending_turn(self) -> None:
+        """Clear the in-flight turn marker (stream id and pending prompt)."""
+        clear_pending_turn_fields(self)
 
     def save(self, touch_updated_at: bool = True, skip_index: bool = False) -> None:
         if not is_safe_session_id(self.session_id):

@@ -35,7 +35,12 @@ from api.config import (
     update_active_run,
 )
 from api.helpers import _redact_text, redact_session_data
-from api.models import clear_process_wakeup_pause, get_session, merge_session_messages_append_only
+from api.models import (
+    clear_pending_turn_fields,
+    clear_process_wakeup_pause,
+    get_session,
+    merge_session_messages_append_only,
+)
 from api.run_journal import RunJournalWriter, bound_run_journal_snapshot_args
 
 logger = logging.getLogger(__name__)
@@ -983,11 +988,7 @@ def _settle_gateway_terminal_error(session_id, stream_id, workspace, model, mode
         )
         turn_duration = _terminal_turn_duration(session)
         _materialize_pending_user_turn_before_error(session)
-        session.active_stream_id = None
-        session.pending_user_message = None
-        session.pending_attachments = []
-        session.pending_started_at = None
-        session.pending_user_source = None
+        clear_pending_turn_fields(session)
         try:
             _snapshot_and_append_partial_on_error(session, stream_id)
         except Exception:
@@ -1034,11 +1035,7 @@ def _stream_writeback_is_current(session: Any, stream_id: str) -> bool:
 def _clear_gateway_pending_state(session: Any, stream_id: str) -> None:
     if not _stream_writeback_is_current(session, stream_id):
         return
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = None
-    session.pending_started_at = None
-    session.pending_user_source = None
+    clear_pending_turn_fields(session)
     session.save()
 
 
@@ -1534,11 +1531,7 @@ def _run_gateway_chat_streaming(
                         if latest_text == msg_norm:
                             display = display[:-1]
                 s.messages = display + [user_msg, assistant_msg]
-            s.active_stream_id = None
-            s.pending_user_message = None
-            s.pending_attachments = None
-            s.pending_started_at = None
-            s.pending_user_source = None
+            clear_pending_turn_fields(s)
             s.workspace = str(workspace)
             s.model = model
             s.model_provider = model_provider

@@ -3259,15 +3259,7 @@ def _clear_stale_stream_state(session) -> bool:
             # would briefly return the stale active_stream_id and the frontend
             # would attempt one ghost SSE reconnect before recovering).
             try:
-                original_stub.active_stream_id = None
-                if hasattr(original_stub, "pending_user_message"):
-                    original_stub.pending_user_message = None
-                if hasattr(original_stub, "pending_attachments"):
-                    original_stub.pending_attachments = []
-                if hasattr(original_stub, "pending_started_at"):
-                    original_stub.pending_started_at = None
-                if hasattr(original_stub, "pending_user_source"):
-                    original_stub.pending_user_source = None
+                clear_pending_turn_fields(original_stub)
             except Exception:
                 pass
             return False
@@ -3300,30 +3292,14 @@ def _clear_stale_stream_state(session) -> bool:
             if repaired:
                 if original_stub is not session:
                     try:
-                        original_stub.active_stream_id = None
-                        if hasattr(original_stub, "pending_user_message"):
-                            original_stub.pending_user_message = None
-                        if hasattr(original_stub, "pending_attachments"):
-                            original_stub.pending_attachments = []
-                        if hasattr(original_stub, "pending_started_at"):
-                            original_stub.pending_started_at = None
-                        if hasattr(original_stub, "pending_user_source"):
-                            original_stub.pending_user_source = None
+                        clear_pending_turn_fields(original_stub)
                     except Exception:
                         pass
                 return True
             if getattr(session, "active_stream_id", None) != stream_id:
                 return False
         _materialize_pending_user_turn_before_error(session)
-        session.active_stream_id = None
-        if hasattr(session, "pending_user_message"):
-            session.pending_user_message = None
-        if hasattr(session, "pending_attachments"):
-            session.pending_attachments = []
-        if hasattr(session, "pending_started_at"):
-            session.pending_started_at = None
-        if hasattr(session, "pending_user_source"):
-            session.pending_user_source = None
+        clear_pending_turn_fields(session)
         try:
             # Runtime cleanup is not user activity; do not bubble old sessions
             # to the top of the sidebar just because a stale stream flag was
@@ -3338,15 +3314,7 @@ def _clear_stale_stream_state(session) -> bool:
     # its in-memory active_stream_id matches what just got persisted.
     if original_stub is not session:
         try:
-            original_stub.active_stream_id = None
-            if hasattr(original_stub, "pending_user_message"):
-                original_stub.pending_user_message = None
-            if hasattr(original_stub, "pending_attachments"):
-                original_stub.pending_attachments = []
-            if hasattr(original_stub, "pending_started_at"):
-                original_stub.pending_started_at = None
-            if hasattr(original_stub, "pending_user_source"):
-                original_stub.pending_user_source = None
+            clear_pending_turn_fields(original_stub)
         except Exception:
             pass
     return True
@@ -10542,6 +10510,7 @@ def _keep_latest_messaging_session_per_source(
 
 from api.models import (
     Session,
+    clear_pending_turn_fields,
     get_session,
     get_session_for_scan,
     find_compression_recovery_session,
@@ -17934,11 +17903,7 @@ def _route_post_api_session_clear(handler, parsed, body, diag):
                 s.parent_session_id = None
                 s.compression_anchor_visible_idx = None
                 s.compression_anchor_message_key = None
-        s.active_stream_id = None
-        s.pending_user_message = None
-        s.pending_attachments = []
-        s.pending_started_at = None
-        s.pending_user_source = None
+        clear_pending_turn_fields(s)
         s.clear_generation = uuid.uuid4().hex if had_sidecar_messages else None
         # Reset the title via the rename helper so clearing a manually-named
         # session also clears manual_title/llm_title_generated — otherwise the
@@ -25079,7 +25044,9 @@ def _handle_btw(handler, body):
     """POST /api/btw — ephemeral side question using session context.
 
     Creates a temporary hidden session, streams the answer via SSE, then
-    discards the session. The parent session is not modified.
+    discards the session. The parent's conversation is not modified; a dead
+    stream marker on it is repaired exactly as chat/start and the session
+    read paths do (_clear_stale_stream_state).
     """
     try:
         require(body, "session_id")
@@ -25104,7 +25071,9 @@ def _handle_btw(handler, body):
         with STREAMS_LOCK:
             if current_stream_id in STREAMS:
                 return j(handler, {"error": "session already has an active stream"}, status=409)
-        s.active_stream_id = None
+        # Same repair as chat/start: materialize the dead turn's pending prompt
+        # and clear the whole marker, instead of dropping only the stream id.
+        _clear_stale_stream_state(s)
     # Create ephemeral hidden session inheriting context
     from api.models import new_session as _new_session
     model_provider = getattr(s, 'model_provider', None)
@@ -30100,11 +30069,7 @@ def _handle_session_compress(handler, body):
             compressed_copy = copy.deepcopy(compressed)
             _stamp_missing_message_timestamps(compressed_copy)
             s.context_messages = compressed_copy
-            s.active_stream_id = None
-            s.pending_user_message = None
-            s.pending_attachments = []
-            s.pending_started_at = None
-            s.pending_user_source = None
+            clear_pending_turn_fields(s)
             visible_after = visible_messages_for_anchor(s.messages, auto_compression=False)
             s.compression_anchor_visible_idx = max(0, len(visible_after) - 1) if visible_after else None
             s.compression_anchor_message_key = _anchor_message_key(visible_after[-1]) if visible_after else None

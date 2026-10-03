@@ -2588,7 +2588,7 @@ def test_gateway_success_path_checks_cancel_before_clearing_process_wakeup_pause
     src = Path(__file__).parent.parent.joinpath("api", "gateway_chat.py").read_text(encoding="utf-8")
     current_idx = src.index("if not _stream_writeback_is_current(s, stream_id):")
     early_cancel_idx = src.index("if cancel_event.is_set():", current_idx)
-    pending_clear_idx = src.index("s.pending_user_source = None")
+    pending_clear_idx = src.index("clear_pending_turn_fields(s)")
     pre_clear_comment_idx = src.index("# Recheck immediately before clearing", pending_clear_idx)
     final_cancel_idx = src.index("if cancel_event.is_set():", pre_clear_comment_idx)
     pause_clear_idx = src.index(
