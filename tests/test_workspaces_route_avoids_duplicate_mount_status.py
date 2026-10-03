@@ -110,3 +110,27 @@ def test_local_workspace_still_uses_workspace_availability(monkeypatch, tmp_path
     payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
 
     assert payload["workspaces"][0]["availability"] == "online"
+
+
+def test_disconnected_mount_skips_the_reachability_probe(monkeypatch):
+    """A dropped mount is offline regardless; don't spend the SSH probe timeout."""
+    import api.routes as routes
+
+    probes = []
+    monkeypatch.setattr(
+        routes,
+        "load_workspaces",
+        lambda: [{"path": "/workspace/remote/rp5", "name": "RP5", "kind": "remote"}],
+    )
+    monkeypatch.setattr(routes, "get_last_workspace", lambda: None)
+    monkeypatch.setattr(routes, "get_config", lambda: {})
+    monkeypatch.setattr("api.ssh_mount.mount_status", lambda entry: "disconnected")
+    monkeypatch.setattr("api.ssh_mount.remote_reachability", lambda entry: probes.append(entry) or "reachable")
+
+    handler = _RouteHandler()
+    routes.handle_get(handler, urlsplit("/api/workspaces"))
+    payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+
+    assert probes == []
+    assert payload["workspaces"][0]["remote_reachability"] == "unknown"
+    assert payload["workspaces"][0]["availability"] == "offline"

@@ -15037,10 +15037,17 @@ def _route_get_api_session_export(handler, parsed):
 def _route_get_api_workspaces(handler, parsed):
     wss = load_workspaces()
     if any(w.get("kind") == "remote" for w in wss):
-        from api.ssh_mount import mount_status
+        from api.ssh_mount import mount_status, remote_reachability
         for w in wss:
             if w.get("kind") == "remote":
                 w["mount_status"] = mount_status(w)
+                # SSHFS can stay mounted after the host powers off, so a
+                # connected mount is confirmed with an independent (short,
+                # read-only) SSH probe. A disconnected mount is offline either
+                # way; skip the probe rather than spend its timeout.
+                w["remote_reachability"] = (
+                    remote_reachability(w) if w["mount_status"] == "connected" else "unknown"
+                )
     # Every workspace reports online/offline, not just remote ones: a local
     # bind mount that vanished is just as unusable as a dropped SSHFS
     # mount, and the pickers show one status dot for both. Remote entries
@@ -15052,7 +15059,11 @@ def _route_get_api_workspaces(handler, parsed):
     from api.workspace import workspace_availability
     for w in wss:
         if w.get("kind") == "remote":
-            w["availability"] = "online" if w.get("mount_status") == "connected" else "offline"
+            w["availability"] = (
+                "online"
+                if w.get("mount_status") == "connected" and w.get("remote_reachability") == "reachable"
+                else "offline"
+            )
         else:
             w["availability"] = workspace_availability(w)
     return j(
