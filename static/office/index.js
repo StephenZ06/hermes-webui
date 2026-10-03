@@ -2142,6 +2142,9 @@ function getView() { return _scene ? _scene.getView() : null; }
 function focusWorker(id) {
   if (!_scene || !_scene.focusOnWorker(id)) return false;
   _selectedId = id;
+  // Keep the Task Status row disclosure in step with the selection, as
+  // selectTask()/clearTaskSelection() do; scheduleSync() may be gated.
+  syncTaskStatusDisclosure();
   scheduleSync();
   return true;
 }
@@ -2150,6 +2153,7 @@ function focusWorker(id) {
 function resetView() {
   if (_scene) _scene.resetView();
   _selectedId = null;
+  syncTaskStatusDisclosure();
   scheduleSync();
 }
 function getState() { return activeAdapter().getState(); }
