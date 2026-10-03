@@ -87,7 +87,16 @@ def _mock_model_discovery(monkeypatch, model_ids: list[str], resolved_ip: str) -
 
 
 def _groups_by_id() -> dict[str, dict]:
-    return {group["provider_id"]: group for group in config.get_available_models()["groups"]}
+    # Synchronous build (budget 0): a cold rebuild past the live-catalog budget
+    # serves the static catalog without the LM Studio discovery these tests
+    # stub (#3928), which made them depend on a warm cache from earlier tests.
+    config.invalidate_models_cache()
+    old_budget = config._LIVE_REBUILD_BUDGET_SECONDS
+    config._LIVE_REBUILD_BUDGET_SECONDS = 0
+    try:
+        return {group["provider_id"]: group for group in config.get_available_models()["groups"]}
+    finally:
+        config._LIVE_REBUILD_BUDGET_SECONDS = old_budget
 
 
 def test_provider_base_url_reads_api_key():

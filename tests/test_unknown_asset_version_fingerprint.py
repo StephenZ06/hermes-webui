@@ -1,8 +1,6 @@
 """A source/Docker build with no Git metadata must still bust static assets."""
 from pathlib import Path
 
-import api.config as api_config
-import api.updates as updates
 from api import routes
 
 
@@ -21,8 +19,11 @@ def test_unknown_runtime_version_uses_static_content_fingerprint(tmp_path, monke
     office_builder = office_root / "builders.js"
     office_builder.write_text("first-office-builder", encoding="utf-8")
 
-    monkeypatch.setattr(updates, "WEBUI_VERSION", "unknown")
-    monkeypatch.setattr(api_config, "get_static_root", lambda: static_root)
+    # Patch the modules the code under test reads at call time (by dotted
+    # path / via routes): another test may have reloaded api.updates, leaving
+    # this file's import-time references stale.
+    monkeypatch.setattr("api.updates.WEBUI_VERSION", "unknown")
+    monkeypatch.setattr(routes.api_config, "get_static_root", lambda: static_root)
 
     first = routes._static_asset_version_token()
     (static_root / "ui.js").write_text("changed-ui", encoding="utf-8")
