@@ -83,6 +83,24 @@ redesign. Full sharded run: 59 unique failures (from 122), the rest being
 the toolset/tool_policy tests, the `722c5ec42` never-committed group, the
 NeuralWatt label, and flaky Playwright layout/order-dependent tests.
 
+**Item 11 closed (2026-10-04).** Remaining groups resolved by implementing
+the never-committed 722c5ec42 code (tool_policy route enforcement, asset
+fingerprint, remote reachability, lifecycle arming, profile 503s, cron
+ledger), moving the global workspace file back under STATE_DIR, stopping the
+always-on launcher pulse, syncing Office Task Status disclosure on
+focus/reset, and fixing test order/timing dependencies. Headless Chromium
+here composites through SwiftShader and stalled frames for 50-100s under the
+onboarding overlay; tests/conftest.py now forces CPU compositing unless a
+launch selects a GL backend. Full sharded run: 0 failures (one transient
+wheel-build error in #2695 seen once, not reproducible).
+
+**Item 16:** job-ops moved to ~/Apps/job-ops (separate repo, history and
+1874 uncommitted entries intact); /icons/, /job-ops/ and *:Zone.Identifier
+ignored; the nav-icon test no longer needs the untracked icons/ folder.
+**Item 17:** job-ops import cycles removed (rxresume gets the project picker
+injected; JobHeader imports ScoreRing directly) -- left UNCOMMITTED in
+~/Apps/job-ops; graphify reports no cycles, affected vitest files pass.
+
 **Next:** decide per group above (restore code, update test, or delete); decide on committing
 `icons/` (a tracked test depends on it) and moving `job-ops/` out of the
 repo; optional `api/routes.py` module split now that routes are functions.
