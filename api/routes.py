@@ -63,6 +63,12 @@ from api.session_events import (
 from api.gateway_restart import restart_active_profile_gateway
 from api.shares import create_or_refresh_share, load_share, revoke_share
 from api.route_table import NOT_HANDLED, Exact, Param, Prefix, PrefixSuffix, RouteTable
+from api.tool_policy import (
+    MINIMAL_UNAVAILABLE,
+    resolve_tool_policy,
+    runtime_empty_toolsets_are_restrictive,
+    validate_tool_policy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16069,6 +16075,88 @@ def _validate_session_toolsets_shape(toolsets):
     return toolsets
 
 
+class ToolPolicyUnavailable(Exception):
+    """The requested tool policy cannot be enforced by the installed Agent."""
+
+    code = MINIMAL_UNAVAILABLE
+
+
+def _session_tool_policy_from_body(toolsets, tool_policy):
+    """Validate a requested (toolsets, tool_policy) pair for storage on a session.
+
+    Returns ``(enabled_toolsets, tool_policy)``. ``tool_policy=None`` keeps the
+    legacy contract (a non-empty list or null). Minimal is stored as an exact
+    ``[]`` only when the installed Agent treats ``[]`` as "no optional tools";
+    otherwise it raises ToolPolicyUnavailable rather than storing a policy the
+    runtime would silently broaden (docs/CONTRACTS.md).
+    """
+    policy = validate_tool_policy(tool_policy)
+    if policy == "minimal":
+        if toolsets not in (None, []):
+            raise ValueError("minimal tool policy takes no toolsets")
+        if not runtime_empty_toolsets_are_restrictive():
+            raise ToolPolicyUnavailable("Minimal tools are unavailable for this Agent runtime.")
+        return [], "minimal"
+    if policy == "inherit-profile":
+        if toolsets not in (None, []):
+            raise ValueError("inherit-profile tool policy takes no toolsets")
+        return None, "inherit-profile"
+    validated = _validate_session_toolsets_shape(toolsets)
+    if policy == "explicit" and validated is None:
+        raise ValueError("explicit tool policy requires at least one toolset")
+    return validated, policy
+
+
+def _profile_toolsets_for_session(s) -> list[str]:
+    """The optional toolsets the session's own profile configures."""
+    from api.config import _resolve_cli_toolsets
+
+    profile = str(getattr(s, "profile", None) or "").strip()
+    if not profile:
+        return list(_resolve_cli_toolsets(get_config()) or [])
+    from api.profiles import profile_catalog_scope
+
+    with profile_catalog_scope(profile, purpose="session tool policy"):
+        return list(_resolve_cli_toolsets(get_config()) or [])
+
+
+def _resolve_run_tool_policy(s, *, backend_is_gateway: bool):
+    """Resolve a session's tool policy for one run.
+
+    Returns ``(toolsets, policy, error)``. ``toolsets`` is the exact list both
+    execution paths must use, or None for legacy sessions without a policy
+    (streaming then applies its own legacy resolution). ``error`` is a
+    chat-start error dict when the policy cannot be honoured; the run must not
+    start in that case.
+    """
+    policy = getattr(s, "tool_policy", None)
+    if policy is None:
+        return None, None, None
+    if backend_is_gateway and policy != "inherit-profile":
+        return None, policy, {
+            "error": "The gateway chat backend cannot restrict tools per session.",
+            "code": "tool_policy_unsupported_backend",
+            "_status": 409,
+        }
+    try:
+        profile_toolsets = [] if policy == "minimal" else _profile_toolsets_for_session(s)
+        decision = resolve_tool_policy(
+            policy,
+            getattr(s, "enabled_toolsets", None),
+            profile_toolsets,
+            empty_means_restrictive=runtime_empty_toolsets_are_restrictive(),
+        )
+    except ValueError as exc:
+        return None, policy, {"error": str(exc), "code": "invalid_tool_policy", "_status": 400}
+    if not decision.enforced:
+        return None, policy, {
+            "error": "Minimal tools are unavailable for this Agent runtime.",
+            "code": decision.reason or MINIMAL_UNAVAILABLE,
+            "_status": 409,
+        }
+    return list(decision.toolsets), decision.requested, None
+
+
 def _resolve_new_session_workspace(body, visible_prev_session_id):
     """Resolve a new-session workspace, recovering only verified inheritance."""
     candidate = body.get("workspace")
@@ -16868,7 +16956,11 @@ def _route_post_api_session_new(handler, parsed, body, diag):
         body.get("model_provider"),
     )
     try:
-        enabled_toolsets = _validate_session_toolsets_shape(body.get("enabled_toolsets"))
+        enabled_toolsets, tool_policy = _session_tool_policy_from_body(
+            body.get("enabled_toolsets"), body.get("tool_policy")
+        )
+    except ToolPolicyUnavailable as e:
+        return j(handler, {"ok": False, "error": str(e), "code": e.code}, status=409)
     except ValueError as e:
         return bad(handler, str(e), status=400)
     # Use the profile sent by the client tab (if any) so that two tabs on
@@ -16935,6 +17027,7 @@ def _route_post_api_session_new(handler, parsed, body, diag):
         project_id=body.get("project_id") or None,
         worktree_info=worktree_info,
         enabled_toolsets=enabled_toolsets,
+        tool_policy=tool_policy,
     )
     if worktree_info:
         publish_session_list_changed(
@@ -17403,8 +17496,9 @@ def _route_post_api_personality_set(handler, parsed, body, diag):
 def _route_post_api_session_toolsets(handler, parsed, body, diag):
     """Set or clear per-session toolset override (#493).
 
-        POST body: { session_id, toolsets: [...] | null }
+        POST body: { session_id, toolsets: [...] | null, tool_policy?: ... }
         - toolsets: list of toolset names to restrict the session to, or null to clear.
+        - tool_policy: minimal | inherit-profile | explicit | null (legacy).
         """
     try:
         require(body, "session_id")
@@ -17413,9 +17507,10 @@ def _route_post_api_session_toolsets(handler, parsed, body, diag):
     sid = body["session_id"]
     if _session_is_subagent_view_only(sid):
         return bad(handler, "Subagent sessions are view-only and cannot be modified from WebUI", 400)
-    toolsets = body.get("toolsets")
     try:
-        toolsets = _validate_session_toolsets_shape(toolsets)
+        toolsets, tool_policy = _session_tool_policy_from_body(body.get("toolsets"), body.get("tool_policy"))
+    except ToolPolicyUnavailable as e:
+        return j(handler, {"ok": False, "error": str(e), "code": e.code}, status=409)
     except ValueError as e:
         return bad(handler, str(e), status=400)
     try:
@@ -17424,8 +17519,9 @@ def _route_post_api_session_toolsets(handler, parsed, body, diag):
         return bad(handler, "Session not found", 404)
     with _get_session_agent_lock(sid):
         s.enabled_toolsets = toolsets
+        s.tool_policy = tool_policy
         s.save()
-    return j(handler, {"ok": True, "enabled_toolsets": s.enabled_toolsets})
+    return j(handler, {"ok": True, "enabled_toolsets": s.enabled_toolsets, "tool_policy": s.tool_policy})
 
 
 def _route_post_api_session_draft(handler, parsed, body, diag):
@@ -25301,6 +25397,7 @@ def _start_regeneration_stream_locked(
     source: str,
     moa_config,
     backend_is_gateway: bool,
+    resolved_toolsets=None,
 ):
     """Commit a retained-row regeneration before releasing its real worker."""
     from api.session_ops import (
@@ -25347,6 +25444,8 @@ def _start_regeneration_stream_locked(
         worker_kwargs["regeneration"] = True
     if moa_config and not backend_is_gateway:
         worker_kwargs["moa_config"] = moa_config
+    if resolved_toolsets is not None and not backend_is_gateway:
+        worker_kwargs["resolved_toolsets"] = list(resolved_toolsets)
 
     def _gated_worker():
         release_worker.wait()
@@ -25663,8 +25762,14 @@ def _start_chat_stream_for_session(
     moa_config=None,
     external_runtime_owned: bool | None = None,
     regeneration=None,
+    resolved_toolsets=None,
 ):
-    """Persist pending state, register an SSE channel, and start an agent turn."""
+    """Persist pending state, register an SSE channel, and start an agent turn.
+
+    ``resolved_toolsets`` is the exact optional-toolset list _start_run()
+    resolved from the session's tool policy (None = legacy resolution in the
+    worker).
+    """
     if external_runtime_owned is None:
         external_runtime_owned = webui_gateway_chat_enabled(get_config())
     backend_is_gateway = bool(external_runtime_owned)
@@ -25744,6 +25849,7 @@ def _start_chat_stream_for_session(
                         source=source,
                         moa_config=moa_config,
                         backend_is_gateway=backend_is_gateway,
+                        resolved_toolsets=resolved_toolsets,
                     )
                 stream_id = uuid.uuid4().hex
                 diag.stage("save_pending_state") if diag else None
@@ -25810,6 +25916,8 @@ def _start_chat_stream_for_session(
     worker_kwargs = {"model_provider": model_provider, "goal_related": goal_related}
     if moa_config and not backend_is_gateway:
         worker_kwargs["moa_config"] = moa_config
+    if resolved_toolsets is not None and not backend_is_gateway:
+        worker_kwargs["resolved_toolsets"] = list(resolved_toolsets)
     if backend_is_gateway:
         from api.gateway_chat import _mark_gateway_run_starting
         _mark_gateway_run_starting(stream_id)
@@ -25940,6 +26048,19 @@ def _start_run(
         runtime_adapter_runner_enabled,
     )
 
+    # Resolve the session's tool policy once; both execution paths get the
+    # same exact list (docs/CONTRACTS.md, per-session optional-tool policy).
+    backend_is_gateway = (
+        bool(gateway_chat_enabled)
+        if gateway_chat_enabled is not None
+        else webui_gateway_chat_enabled(get_config())
+    )
+    resolved_toolsets, tool_policy, policy_error = _resolve_run_tool_policy(
+        s, backend_is_gateway=backend_is_gateway
+    )
+    if policy_error is not None:
+        return policy_error
+
     if runtime_adapter_enabled() or runtime_adapter_runner_enabled():
         if regeneration is not None and runtime_adapter_runner_enabled():
             return {"error": "Regeneration is not supported by the runner backend.", "code": "unsupported_regeneration_backend", "_status": 409}
@@ -25957,6 +26078,7 @@ def _start_run(
                 moa_config=moa_config,
                 external_runtime_owned=gateway_chat_enabled,
                 regeneration=regeneration,
+                resolved_toolsets=resolved_toolsets,
             )
 
         def _legacy_adapter_factory():
@@ -25969,6 +26091,12 @@ def _start_run(
             )
             if adapter is None:
                 raise NotImplementedError("runtime adapter selection returned no adapter")
+            request_fields = {"metadata": {"route": route}}
+            if resolved_toolsets is not None:
+                request_fields = {
+                    "toolsets": list(resolved_toolsets),
+                    "metadata": {"route": route, "tool_policy": tool_policy},
+                }
             result = adapter.start_run(
                 StartRunRequest(
                     session_id=s.session_id,
@@ -25979,7 +26107,7 @@ def _start_run(
                     provider=model_provider,
                     model=model,
                     source=source,
-                    metadata={"route": route},
+                    **request_fields,
                 )
             )
         except NotImplementedError as exc:
@@ -25999,6 +26127,7 @@ def _start_run(
         moa_config=moa_config,
         external_runtime_owned=gateway_chat_enabled,
         regeneration=regeneration,
+        resolved_toolsets=resolved_toolsets,
     )
 
 

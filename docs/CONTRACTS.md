@@ -38,6 +38,11 @@ contributor guidance; it does not change runtime behavior or CI gates.
   enforcement boundary. If `[]` cannot be proven restrictive in the installed
   runtime, the API reports `minimal_toolset_not_supported`; it must never call
   the agent with a broadened fallback while representing the policy as Minimal.
+  `/api/session/toolsets` and `/api/session/new` refuse an unenforceable
+  Minimal with `409 minimal_toolset_not_supported` before storing it, and
+  `_start_run()` refuses Minimal/explicit on the gateway chat backend
+  (`409 tool_policy_unsupported_backend`), which cannot restrict tools per
+  session.
 
 - [`docs/rfcs/webui-run-state-consistency-contract.md`](rfcs/webui-run-state-consistency-contract.md):
   proposed consistency rules for current WebUI streaming, recovery, replay,

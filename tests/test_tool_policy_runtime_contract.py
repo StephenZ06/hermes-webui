@@ -53,6 +53,9 @@ def test_start_run_forwards_the_resolved_policy_to_runner(monkeypatch):
     )
     monkeypatch.setenv("HERMES_WEBUI_RUNTIME_ADAPTER", "runner-local")
     monkeypatch.setattr(routes, "_runtime_runner_client_factory", lambda: runner)
+    # Forwarding contract only: the installed-Agent capability probe is
+    # covered in test_tool_policy.py and fails closed when no Agent is loaded.
+    monkeypatch.setattr(routes, "runtime_empty_toolsets_are_restrictive", lambda: True)
     monkeypatch.setattr(
         routes,
         "_profile_toolsets_for_session",
