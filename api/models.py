@@ -1953,6 +1953,18 @@ def clear_process_wakeup_pause(session, *, reason: str = '') -> bool:
     return True
 
 
+def restore_process_wakeup_pause(session, previous) -> None:
+    """Undo clear_process_wakeup_pause() with the pause captured before it.
+
+    Used when a run that cleared the pause is cancelled before its writeback
+    commits. Restores a copy (never the caller's dict) and drops the clear
+    reason that no longer applies.
+    """
+    session.process_wakeup_pause = dict(previous or {})
+    if hasattr(session, '_last_process_wakeup_pause_clear_reason'):
+        del session._last_process_wakeup_pause_clear_reason
+
+
 def clear_process_wakeup_pause_if_model_changed(session, *, model=None, provider=None) -> bool:
     """Reset a wakeup pause when the resolved model/provider lane changed."""
     pause = getattr(session, 'process_wakeup_pause', None)

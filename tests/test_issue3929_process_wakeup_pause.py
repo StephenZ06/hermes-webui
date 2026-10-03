@@ -2567,13 +2567,13 @@ def test_success_path_clears_process_wakeup_pause_after_late_cancel_checks():
     pause_clear_idx = src.index("clear_process_wakeup_pause(s, reason='run_completed')")
     post_clear_cancel_idx = src.index("if cancel_event.is_set():", pause_clear_idx)
     post_clear_restore_idx = src.index(
-        "s.process_wakeup_pause = dict(_process_wakeup_pause_before_clear)",
+        "restore_process_wakeup_pause(s, _process_wakeup_pause_before_clear)",
         post_clear_cancel_idx,
     )
     pause_save_idx = src.index('"process_wakeup_pause_clear_save"', post_clear_cancel_idx)
     post_save_cancel_idx = src.index("if cancel_event.is_set():", pause_save_idx)
     post_save_restore_idx = src.index(
-        "s.process_wakeup_pause = dict(_process_wakeup_pause_before_clear)",
+        "restore_process_wakeup_pause(s, _process_wakeup_pause_before_clear)",
         post_save_cancel_idx,
     )
     done_payload_idx = src.index('with _stream_writeback_stage(_writeback_timings, "done_payload")')

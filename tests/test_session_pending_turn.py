@@ -96,3 +96,28 @@ def test_btw_repairs_a_dead_stream_marker_through_the_shared_repair(monkeypatch)
         pass
 
     assert repaired == [parent]
+
+
+def test_restore_process_wakeup_pause_undoes_a_clear():
+    from api.models import clear_process_wakeup_pause, restore_process_wakeup_pause
+
+    previous = {"paused": True, "reason": "quota"}
+    session = SimpleNamespace(process_wakeup_pause=dict(previous))
+    assert clear_process_wakeup_pause(session, reason="run_completed")
+
+    restore_process_wakeup_pause(session, previous)
+
+    assert session.process_wakeup_pause == previous
+    assert session.process_wakeup_pause is not previous, "restored as a copy"
+    assert not hasattr(session, "_last_process_wakeup_pause_clear_reason"), "the clear was undone"
+
+
+def test_no_module_restores_the_wakeup_pause_by_hand():
+    offenders = []
+    for path in sorted((REPO / "api").glob("*.py")):
+        if path.name == "models.py":
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if ".process_wakeup_pause = dict(" in line:
+                offenders.append(f"{path.name}:{lineno}")
+    assert offenders == []

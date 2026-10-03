@@ -67,6 +67,7 @@ from api.usage import prompt_cache_hit_percent
 from api.models import (
     StateDBSessionMessagesSnapshot,
     clear_pending_turn_fields,
+    restore_process_wakeup_pause,
     _is_empty_partial_activity_message,
     _evict_sessions_over_cap,
     clear_process_wakeup_pause,
@@ -12314,7 +12315,7 @@ def _run_agent_streaming(
                 _process_wakeup_pause_before_clear = dict(getattr(s, 'process_wakeup_pause', {}) or {})
                 if clear_process_wakeup_pause(s, reason='run_completed'):
                     if cancel_event.is_set():
-                        s.process_wakeup_pause = dict(_process_wakeup_pause_before_clear)
+                        restore_process_wakeup_pause(s, _process_wakeup_pause_before_clear)
                         try:
                             s.save(touch_updated_at=False)
                         except Exception:
@@ -12337,7 +12338,7 @@ def _run_agent_streaming(
                     with _stream_writeback_stage(_writeback_timings, "process_wakeup_pause_clear_save"):
                         s.save(touch_updated_at=False)
                     if cancel_event.is_set():
-                        s.process_wakeup_pause = dict(_process_wakeup_pause_before_clear)
+                        restore_process_wakeup_pause(s, _process_wakeup_pause_before_clear)
                         try:
                             s.save(touch_updated_at=False)
                         except Exception:

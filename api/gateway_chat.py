@@ -39,6 +39,7 @@ from api.models import (
     clear_pending_turn_fields,
     clear_process_wakeup_pause,
     get_session,
+    restore_process_wakeup_pause,
     merge_session_messages_append_only,
 )
 from api.run_journal import RunJournalWriter, bound_run_journal_snapshot_args
@@ -1540,9 +1541,9 @@ def _run_gateway_chat_streaming(
                 if pending_source == "process_wakeup":
                     s.context_messages = previous_context
                     s.messages = previous_messages
-                    s.process_wakeup_pause = dict(previous_process_wakeup_pause)
+                    restore_process_wakeup_pause(s, previous_process_wakeup_pause)
                 elif previous_process_wakeup_pause:
-                    s.process_wakeup_pause = dict(previous_process_wakeup_pause)
+                    restore_process_wakeup_pause(s, previous_process_wakeup_pause)
                 else:
                     clear_process_wakeup_pause(s, reason="run_completed")
                 s.save()
