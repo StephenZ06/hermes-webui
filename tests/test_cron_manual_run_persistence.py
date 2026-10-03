@@ -162,3 +162,26 @@ def test_manual_cron_run_delivers_failure_notice(monkeypatch):
     assert "boom" in calls[1][2]
     assert calls[2] == ("mark", "job-failed", False, "boom", None)
     assert routes._is_cron_running("job-failed") == (False, 0.0)
+
+
+def test_failed_manual_cron_run_is_published_as_failed(monkeypatch, tmp_path):
+    import api.routes as routes
+    from api.scheduled_tasks import load_scheduled_tasks
+
+    calls = []
+    _install_cron_fakes(monkeypatch, calls)
+    monkeypatch.setattr(
+        routes,
+        "_run_cron_job_in_profile_subprocess",
+        lambda job, execution_profile_home: (False, "", "", "boom"),
+    )
+
+    routes._mark_cron_running("floor-job-fail")
+    routes._run_cron_tracked(
+        {"id": "floor-job-fail", "name": "Broken report", "profile": "business"},
+        profile_home=tmp_path,
+        execution_profile_home=tmp_path,
+    )
+
+    tasks = load_scheduled_tasks(tmp_path, "business")
+    assert [(t["job_id"], t["status"]) for t in tasks] == [("floor-job-fail", "failed")]

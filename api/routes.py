@@ -1919,6 +1919,29 @@ def _run_cron_tracked(
 
     job_id = job.get("id", "")
     execution_profile_home = execution_profile_home or profile_home
+    # The Office projects manual runs from the owning profile's scheduled-task
+    # ledger; publish to it best-effort (a ledger failure never breaks a run).
+    ledger_home = profile_home
+    if ledger_home is None:
+        try:
+            from api.profiles import get_active_hermes_home
+
+            ledger_home = get_active_hermes_home()
+        except Exception:
+            ledger_home = None
+    run_outcome = {"success": False}
+
+    def _publish_ledger(fn, *args, **kwargs):
+        if ledger_home is None:
+            return
+        try:
+            fn(ledger_home, *args, **kwargs)
+        except Exception:
+            logger.debug("Could not publish manual cron run %s to the task ledger", job_id, exc_info=True)
+
+    from api.scheduled_tasks import publish_scheduled_task_finished, publish_scheduled_task_started
+
+    _publish_ledger(publish_scheduled_task_started, job)
 
     def _with_cron_home(home, fn):
         if home is None:
@@ -1962,6 +1985,7 @@ def _run_cron_tracked(
             if _success and not final_response:
                 _success = False
                 _error = "Agent completed but produced empty response (model error, timeout, or misconfiguration)"
+            run_outcome["success"] = bool(_success)
 
             try:
                 mark_job_run(job_id, _success, _error, delivery_error=delivery_error)
@@ -1980,6 +2004,7 @@ def _run_cron_tracked(
         except Exception:
             logger.debug("Failed to mark manual cron run failure for %s", job_id)
     finally:
+        _publish_ledger(publish_scheduled_task_finished, job_id, success=run_outcome["success"])
         _mark_cron_done(job_id)
         _publish_session_list_changed("cron_complete", profile=event_profile)
 
