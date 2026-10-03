@@ -91,7 +91,8 @@ def test_neuralwatt_model_group_appears_with_models_in_config(monkeypatch, tmp_p
 
     groups = {group["provider_id"]: group for group in result["groups"]}
     assert "neuralwatt" in groups, f"neuralwatt missing from groups: {list(groups.keys())}"
-    assert groups["neuralwatt"]["provider"] == "Neuralwatt"
+    # This fork labels the provider by its subscription plan (see _PROVIDER_DISPLAY).
+    assert groups["neuralwatt"]["provider"] == "NeuralWatt Basic"
     model_ids = {model["id"] for model in groups["neuralwatt"]["models"]}
     assert "glm-5.2" in model_ids
     assert "glm-5.2-short" in model_ids
