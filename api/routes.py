@@ -61,6 +61,7 @@ from api.session_events import (
 )
 from api.gateway_restart import restart_active_profile_gateway
 from api.shares import create_or_refresh_share, load_share, revoke_share
+from api.route_table import NOT_HANDLED, Exact, Prefix, RouteTable
 
 logger = logging.getLogger(__name__)
 
@@ -19280,21 +19281,44 @@ def handle_patch(handler, parsed) -> bool:
     body = read_body(handler)
     if not _guard_request_session_visibility(handler, parsed, body=body, method="PATCH"):
         return True
-    if parsed.path.startswith("/api/job-os/"):
-        from api.job_os.api import handle_job_os_patch
-
-        return handle_job_os_patch(handler, parsed, body)
-    if parsed.path.startswith("/api/mcp/servers/"):
-        name = parsed.path[len("/api/mcp/servers/"):]
-        return _handle_mcp_server_toggle(handler, name, body)
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_patch
-
-        result = handle_kanban_patch(handler, parsed, body)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "PATCH")
-        return True
+    if (route_result := _PATCH_ROUTES.dispatch(parsed.path, handler, parsed, body)) is not NOT_HANDLED:
+        return route_result
     return False
+
+
+# ── PATCH routes (_PATCH_ROUTES) ─────────────────────────────────────────────
+# handle_patch dispatches these in declaration order.
+# See api/route_table.py for the dispatch rules.
+
+
+def _route_patch_api_job_os_prefix(handler, parsed, body):
+    from api.job_os.api import handle_job_os_patch
+
+    return handle_job_os_patch(handler, parsed, body)
+
+
+def _route_patch_api_mcp_servers_prefix(handler, parsed, body):
+    name = parsed.path[len("/api/mcp/servers/"):]
+    return _handle_mcp_server_toggle(handler, name, body)
+
+
+def _route_patch_api_kanban_prefix(handler, parsed, body):
+    from api.kanban_bridge import handle_kanban_patch
+
+    result = handle_kanban_patch(handler, parsed, body)
+    if result is False:
+        return _kanban_unknown_endpoint(handler, parsed, "PATCH")
+    return True
+
+
+_PATCH_ROUTES = RouteTable(
+    (
+        (Prefix("/api/job-os/"), _route_patch_api_job_os_prefix),
+        (Prefix("/api/mcp/servers/"), _route_patch_api_mcp_servers_prefix),
+        (Prefix("/api/kanban/"), _route_patch_api_kanban_prefix),
+    )
+)
+
 
 
 def handle_delete(handler, parsed) -> bool:
@@ -19312,25 +19336,47 @@ def handle_delete(handler, parsed) -> bool:
     body = read_body(handler)
     if not _guard_request_session_visibility(handler, parsed, body=body, method="DELETE"):
         return True
-    if parsed.path.startswith("/api/mcp/servers/"):
-        name = parsed.path[len("/api/mcp/servers/"):]
-        return _handle_mcp_server_delete(handler, name)
-    if parsed.path == "/api/prompts":
-        pid = str(body.get("id") or "").strip()
-        if not pid:
-            return bad(handler, "id is required")
-        prompts = [p for p in _load_saved_prompts() if p.get("id") != pid]
-        _save_saved_prompts(prompts)
-        return j(handler, {"ok": True})
-
-    if parsed.path.startswith("/api/kanban/"):
-        from api.kanban_bridge import handle_kanban_delete
-
-        result = handle_kanban_delete(handler, parsed, body)
-        if result is False:
-            return _kanban_unknown_endpoint(handler, parsed, "DELETE")
-        return True
+    if (route_result := _DELETE_ROUTES.dispatch(parsed.path, handler, parsed, body)) is not NOT_HANDLED:
+        return route_result
     return False
+
+
+# ── DELETE routes (_DELETE_ROUTES) ───────────────────────────────────────────
+# handle_delete dispatches these in declaration order.
+# See api/route_table.py for the dispatch rules.
+
+
+def _route_delete_api_mcp_servers_prefix(handler, parsed, body):
+    name = parsed.path[len("/api/mcp/servers/"):]
+    return _handle_mcp_server_delete(handler, name)
+
+
+def _route_delete_api_prompts(handler, parsed, body):
+    pid = str(body.get("id") or "").strip()
+    if not pid:
+        return bad(handler, "id is required")
+    prompts = [p for p in _load_saved_prompts() if p.get("id") != pid]
+    _save_saved_prompts(prompts)
+    return j(handler, {"ok": True})
+
+
+def _route_delete_api_kanban_prefix(handler, parsed, body):
+    from api.kanban_bridge import handle_kanban_delete
+
+    result = handle_kanban_delete(handler, parsed, body)
+    if result is False:
+        return _kanban_unknown_endpoint(handler, parsed, "DELETE")
+    return True
+
+
+_DELETE_ROUTES = RouteTable(
+    (
+        (Prefix("/api/mcp/servers/"), _route_delete_api_mcp_servers_prefix),
+        (Exact("/api/prompts"), _route_delete_api_prompts),
+        (Prefix("/api/kanban/"), _route_delete_api_kanban_prefix),
+    )
+)
+
 
 
 def handle_put(handler, parsed) -> bool:
@@ -19348,10 +19394,27 @@ def handle_put(handler, parsed) -> bool:
     body = read_body(handler)
     if not _guard_request_session_visibility(handler, parsed, body=body, method="PUT"):
         return True
-    if parsed.path.startswith("/api/mcp/servers/"):
-        name = parsed.path[len("/api/mcp/servers/"):]
-        return _handle_mcp_server_update(handler, name, body)
+    if (route_result := _PUT_ROUTES.dispatch(parsed.path, handler, parsed, body)) is not NOT_HANDLED:
+        return route_result
     return False
+
+
+# ── PUT routes (_PUT_ROUTES) ─────────────────────────────────────────────────
+# handle_put dispatches these in declaration order.
+# See api/route_table.py for the dispatch rules.
+
+
+def _route_put_api_mcp_servers_prefix(handler, parsed, body):
+    name = parsed.path[len("/api/mcp/servers/"):]
+    return _handle_mcp_server_update(handler, name, body)
+
+
+_PUT_ROUTES = RouteTable(
+    (
+        (Prefix("/api/mcp/servers/"), _route_put_api_mcp_servers_prefix),
+    )
+)
+
 
 # ── GET route helpers ─────────────────────────────────────────────────────────
 
