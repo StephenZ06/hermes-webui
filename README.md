@@ -618,7 +618,8 @@ api/
   models.py       Session model + CRUD + CLI/state.db bridge
   onboarding.py   First-run onboarding wizard, OAuth provider support
   profiles.py     Profile state management, hermes_cli wrapper
-  routes.py       All GET + POST route handlers (if/elif dispatch, no decorators)
+  routes.py       All HTTP route handlers, dispatched through ordered route tables
+  route_table.py  RouteTable dispatch (declaration-order matching, no framework)
   state_sync.py   /insights sync — message_count to state.db
   streaming.py    SSE engine, run_agent, cancellation, compression
   updates.py      Self-update check and release notes

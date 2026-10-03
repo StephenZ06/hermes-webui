@@ -63,7 +63,8 @@ actions. The topbar remains focused on conversation context and the workspace/fi
       models.py            Session model + CRUD, per-session profile tracking, CLI/state.db bridge
       profiles.py          Profile state management, hermes_cli wrapper
       onboarding.py        First-run onboarding status, real provider config writes, OAuth linking, readiness detection
-      routes.py            All GET + POST route handlers (if/elif dispatch, no decorators)
+      routes.py            All HTTP route handlers; handle_<method> dispatches through ordered RouteTables
+      route_table.py       RouteTable + matchers (Exact, Prefix, PrefixSuffix, Param) and NOT_HANDLED
       startup.py           Startup helpers: auto_install_agent_deps()
       state_sync.py        /insights sync — message_count to the agent's state.db
       streaming.py         SSE engine, run_agent, cancel, compression, HERMES_HOME save/restore
@@ -176,14 +177,32 @@ See Architecture Phase B for the fix.
 Python stdlib ThreadingHTTPServer (from http.server). Each HTTP request runs in its own
 thread. The Handler class subclasses BaseHTTPRequestHandler with two methods:
 
-    do_GET    Routes: /, /health, /api/session, /api/sessions, /api/list,
-                      /api/chat/stream, /api/file, /api/approval/pending,
-                      /api/session/worktree/status
-    do_POST   Routes: /api/upload, /api/session/new, /api/session/update,
-                      /api/session/delete, /api/chat/start, /api/chat,
-                      /api/approval/respond, /api/session/worktree/remove
+    do_GET / do_POST / do_PATCH / do_DELETE / do_PUT
+        -> api.routes.handle_get / handle_post / handle_patch / handle_delete / handle_put
 
-Routing is a flat if/elif chain inside each method. No routing framework.
+Each handle_<method> runs its guards as plain code (request diagnostics, the
+extension sidecar proxy, the CSRF gate, the body read, the session-visibility
+guard) and dispatches routes through ordered `RouteTable`s
+(`api/route_table.py`) placed between those guards. Which side of a guard a
+route sits on is part of its contract:
+
+    GET     _GET_PUBLIC     ahead of the session-visibility guard (public pages, auth, share, manifest)
+            _GET_ROUTES     everything else, then the plugin-page loop and 404
+    POST    _POST_PRE_CSRF  ahead of the CSRF gate (/api/csp-report, legacy ack alias)
+            _POST_RAW_BODY  after CSRF, before the body is read and before the
+                            session-visibility guard: routes that read the request
+                            stream themselves (uploads) or need no body
+            _POST_ROUTES    everything else, called with the parsed JSON body
+    PATCH   _PATCH_ROUTES
+    DELETE  _DELETE_ROUTES
+    PUT     _PUT_ROUTES
+
+Dispatch rules (see the `api/route_table.py` docstring): entries are tried in
+declaration order whatever their matcher kind, so an earlier prefix still wins
+over a later exact path; a route returning `NOT_HANDLED` lets later matches run;
+any other value, including `False` (404) and `None`, ends dispatch.
+`tests/test_route_table_parity.py` pins the route order and guard placement
+against `tests/route_inventory_snapshot.json`. No routing framework.
 
 Helper functions used by all handlers:
 
@@ -191,8 +210,8 @@ Helper functions used by all handlers:
     t(handler, payload, status=200, ct) Sends plain text or HTML response
     read_body(handler)                  Reads and JSON-parses the POST body
 
-CRITICAL ORDERING RULE in do_POST:
-The /api/upload check MUST appear BEFORE calling read_body(). read_body() calls
+CRITICAL ORDERING RULE in handle_post:
+Upload routes live in _POST_RAW_BODY, which runs BEFORE read_body(). read_body() calls
 handler.rfile.read() which consumes the HTTP body stream. The upload handler also
 needs rfile (to read the multipart payload). If read_body() runs first on a multipart
 request, the upload handler receives an empty body and the upload silently fails.
@@ -769,23 +788,24 @@ Split server.py into a proper package. Completed across Sprints 4-10.
 Current structure:
 
     <repo>/
-      server.py               Entry point + HTTP Handler dispatch (~446 lines)
+      server.py               Entry point + HTTP Handler dispatch (~760 lines)
       api/
         __init__.py
-        routes.py             All GET + POST route handlers (~9772 lines)
-        config.py             Configuration, constants, global state, model discovery (~4139 lines)
-        helpers.py            HTTP helpers: j(), bad(), require(), safe_resolve() (~302 lines)
-        models.py             Session model + CRUD (~1927 lines)
-        workspace.py          File ops, workspace management (~810 lines)
-        upload.py             Multipart parser, file upload handler (~284 lines)
-        streaming.py          SSE engine, run_agent, cancel support (~4420 lines)
+        routes.py             All HTTP route handlers + route tables (~32,300 lines)
+        route_table.py        Ordered route-table dispatch (~170 lines)
+        config.py             Configuration, constants, global state, model discovery (~10,800 lines)
+        helpers.py            HTTP helpers: j(), bad(), require(), safe_resolve() (~1,400 lines)
+        models.py             Session model + CRUD (~11,500 lines)
+        workspace.py          File ops, workspace management (~2,000 lines)
+        upload.py             Multipart parser, file upload handler (~800 lines)
+        streaming.py          SSE engine, run_agent, cancel support (~13,700 lines)
       static/
         index.html            HTML document (served from disk)
-        style.css             All CSS (~3767 lines)
+        style.css             All CSS (~9,400 lines)
         ui.js, workspace.js, sessions.js, messages.js, panels.js, commands.js, boot.js
       tests/
         conftest.py           Isolated test server/state fixtures
-        ~1,150 test files     ~11,500 tests collected
+        ~1,530 test files     ~16,700 tests collected
         test_regressions.py   Permanent regression gate
 
 Route extraction to api/routes.py completed in Sprint 11. server.py remains a
@@ -907,46 +927,58 @@ For scale beyond single-user casual use.
 
 ## 11. How To Add a New API Endpoint
 
-Follow this exact pattern. Review existing handlers in do_GET/do_POST for reference.
+Routes live in `api/routes.py` as module-level functions and are registered in
+the route table for their method and guard phase (see 4.1).
 
-### Backend (server.py -> future: api/handlers.py)
+### Backend (api/routes.py)
 
-GET endpoint:
+1. Write a function named `_route_<method>_<path_slug>`, next to its
+   neighbours. GET routes take `(handler, parsed)`; POST routes in
+   `_POST_ROUTES` take `(handler, parsed, body, diag)` (the JSON body is already
+   parsed); PATCH/DELETE/PUT routes take `(handler, parsed, body)`.
 
-    # Inside do_GET, before the 404 fallback line:
-    if parsed.path == '/api/your/endpoint':
-        qs = parse_qs(parsed.query)
-        param = qs.get('param', [''])[0]
-        if not param:
-            return j(self, {'error': 'param is required'}, status=400)
-        # do work
-        return j(self, {'result': value})
+       def _route_get_api_your_endpoint(handler, parsed):
+           qs = parse_qs(parsed.query)
+           param = qs.get("param", [""])[0]
+           if not param:
+               return bad(handler, "param is required")
+           return j(handler, {"result": value})
 
-POST endpoint (AFTER /api/upload check, body already parsed):
+       def _route_post_api_your_endpoint(handler, parsed, body, diag):
+           try:
+               require(body, "session_id")
+           except ValueError as e:
+               return bad(handler, str(e))
+           return j(handler, {"ok": True})
 
-    if parsed.path == '/api/your/endpoint':
-        value = body.get('field', '')
-        if not value:
-            return j(self, {'error': 'field is required'}, status=400)
-        # do work
-        return j(self, {'ok': True, 'data': result})
+2. Add an entry to the table, e.g.
+   `(Exact("/api/your/endpoint"), _route_post_api_your_endpoint)` in
+   `_POST_ROUTES`. Order matters only where matchers overlap: an earlier
+   `Prefix(...)` wins over a later `Exact(...)`. Pick the table by which guards
+   must run first -- a route that must be public goes in `_GET_PUBLIC`, a route
+   that reads the request stream itself goes in `_POST_RAW_BODY`.
+3. Return `True` (or the result of `j()`/`bad()`) once handled, `False` for 404,
+   or `NOT_HANDLED` to let later matching routes run.
+
+Adding a route needs no snapshot change: `tests/test_route_table_parity.py`
+only requires the pinned routes to stay in order. Removing or reordering a
+route, or moving it across a guard, is a contract change -- regenerate the
+snapshot deliberately and say why in the PR:
+
+    python tests/route_chain_inventory.py                    # summary per method
+    python tests/route_chain_inventory.py --write-snapshot   # rewrite tests/route_inventory_snapshot.json
+
+Source-level tests should locate a route through `tests/route_chain_inventory.py`
+(`route_source()`, `has_route()`, `dispatch_source()`), never by searching
+`routes.py` for a path literal or indentation; prefer behavioural tests where
+practical.
 
 Endpoint requiring a valid session:
 
-    sid = body.get('session_id', '')
     try:
-        s = get_session(sid)
+        s = get_session(body["session_id"])
     except KeyError:
-        return j(self, {'error': 'Session not found'}, status=404)
-
-Endpoint that calls Hermes Python modules:
-
-    # Example: calling cron.jobs
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from cron.jobs import list_jobs
-    jobs = list_jobs(include_disabled=True)
-    return j(self, {'jobs': jobs})
+        return bad(handler, "Session not found", 404)
 
 ### Frontend (6 static JS modules: ui.js, workspace.js, sessions.js, messages.js, panels.js, boot.js)
 
