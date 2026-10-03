@@ -143,6 +143,8 @@ def test_lmstudio_inherited_from_root_profile(tmp_path, monkeypatch):
     # Active profile has no providers; root config has LM Studio.
     root_home = tmp_path / "root_hermes"
     monkeypatch.setattr(config, "_DEFAULT_HERMES_HOME", root_home)
+    # The root config is read from the base home as api.profiles resolves it.
+    monkeypatch.setattr("api.profiles._DEFAULT_HERMES_HOME", root_home)
     _write_root_config(
         root_home,
         """
@@ -178,6 +180,8 @@ model:
 def test_active_profile_overrides_root_provider(tmp_path, monkeypatch):
     root_home = tmp_path / "root_hermes"
     monkeypatch.setattr(config, "_DEFAULT_HERMES_HOME", root_home)
+    # The root config is read from the base home as api.profiles resolves it.
+    monkeypatch.setattr("api.profiles._DEFAULT_HERMES_HOME", root_home)
     _write_root_config(
         root_home,
         """

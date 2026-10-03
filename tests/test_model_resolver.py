@@ -1059,8 +1059,15 @@ def test_warm_models_catalog_provenance_if_cold_publishes_from_disk_5979():
     })
     try:
         # Build + persist to disk, then simulate a cold memory cache (restart).
+        # Budget 0 = synchronous build: a cold rebuild past the live-catalog
+        # budget serves the static catalog without persisting it (#3928).
         config.invalidate_models_cache()
-        config.get_available_models()  # publishes to memory + disk
+        old_budget = config._LIVE_REBUILD_BUDGET_SECONDS
+        config._LIVE_REBUILD_BUDGET_SECONDS = 0
+        try:
+            config.get_available_models()  # publishes to memory + disk
+        finally:
+            config._LIVE_REBUILD_BUDGET_SECONDS = old_budget
         assert config._models_cache_provenance is not None
         # Simulate cold memory but valid disk cache (do NOT delete disk).
         config._available_models_cache = None
@@ -1404,11 +1411,22 @@ def _available_models_with_provider(provider):
     """Helper: temporarily set active_provider in config."""
     old_cfg = dict(config.cfg)
     config.cfg['model'] = {'provider': provider}
+    # In-memory cfg edits are invisible to the models cache (memory and disk
+    # snapshot); without this a warm cache from an earlier build wins and
+    # per-test stubs never run.
+    config.invalidate_models_cache()
+    # A cold rebuild past the live-catalog budget returns the static catalog
+    # and finishes out of band (#3928); budget 0 is the documented synchronous
+    # mode, so these assertions see the catalog their stubs produce.
+    old_budget = config._LIVE_REBUILD_BUDGET_SECONDS
+    config._LIVE_REBUILD_BUDGET_SECONDS = 0
     try:
         return config.get_available_models()
     finally:
+        config._LIVE_REBUILD_BUDGET_SECONDS = old_budget
         config.cfg.clear()
         config.cfg.update(old_cfg)
+        config.invalidate_models_cache()
 
 
 def test_non_default_provider_models_use_hint_prefix():
