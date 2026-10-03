@@ -5418,17 +5418,7 @@ def _get_or_materialize_session(sid: str, *, refresh_cli_messages: bool = False)
 
     # Preserve source metadata fields
     def _apply_source_meta(s):
-        s.is_cli_session = is_cli_session_row(cli_meta)
-        s.source_tag = cli_meta.get("source_tag")
-        s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-        s.session_source = cli_meta.get("session_source")
-        s.source_label = cli_meta.get("source_label")
-        s.user_id = cli_meta.get("user_id")
-        s.chat_id = cli_meta.get("chat_id")
-        s.chat_type = cli_meta.get("chat_type")
-        s.thread_id = cli_meta.get("thread_id")
-        s.session_key = cli_meta.get("session_key")
-        s.platform = cli_meta.get("platform")
+        apply_cli_source_identity(s, cli_meta)
 
     if _is_messaging_session_record(cli_meta):
         # Messaging sessions: lightweight Session with no messages (state.db is source of truth)
@@ -10510,6 +10500,7 @@ def _keep_latest_messaging_session_per_source(
 
 from api.models import (
     Session,
+    apply_cli_source_identity,
     clear_pending_turn_fields,
     get_session,
     get_session_for_scan,
@@ -19274,17 +19265,7 @@ def _route_post_api_session_archive(handler, parsed, body, diag):
                 created_at=cli_meta.get("created_at"),
                 updated_at=cli_meta.get("updated_at"),
             )
-            s.is_cli_session = is_cli_session_row(cli_meta)
-            s.source_tag = cli_meta.get("source_tag")
-            s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-            s.session_source = cli_meta.get("session_source")
-            s.source_label = cli_meta.get("source_label")
-            s.user_id = cli_meta.get("user_id")
-            s.chat_id = cli_meta.get("chat_id")
-            s.chat_type = cli_meta.get("chat_type")
-            s.thread_id = cli_meta.get("thread_id")
-            s.session_key = cli_meta.get("session_key")
-            s.platform = cli_meta.get("platform")
+            apply_cli_source_identity(s, cli_meta)
             s.save(touch_updated_at=False)
         else:
             msgs = get_cli_session_messages(sid)

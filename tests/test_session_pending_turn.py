@@ -121,3 +121,19 @@ def test_no_module_restores_the_wakeup_pause_by_hand():
             if ".process_wakeup_pause = dict(" in line:
                 offenders.append(f"{path.name}:{lineno}")
     assert offenders == []
+
+
+def test_apply_cli_source_identity_copies_the_full_row_identity(tmp_path):
+    from api.models import apply_cli_source_identity
+
+    row = {"source_tag": "telegram", "session_source": "messaging", "source_label": "Telegram",
+           "user_id": "u1", "chat_id": "c1", "chat_type": "dm", "thread_id": "t1",
+           "session_key": "k1", "platform": "telegram"}
+    session = Session(session_id="cli-identity", workspace=str(tmp_path))
+
+    apply_cli_source_identity(session, row)
+
+    assert (session.source_tag, session.raw_source, session.session_source, session.source_label) == (
+        "telegram", "telegram", "messaging", "Telegram")
+    assert (session.user_id, session.chat_id, session.chat_type) == ("u1", "c1", "dm")
+    assert (session.thread_id, session.session_key, session.platform) == ("t1", "k1", "telegram")

@@ -1953,6 +1953,25 @@ def clear_process_wakeup_pause(session, *, reason: str = '') -> bool:
     return True
 
 
+def apply_cli_source_identity(session, cli_meta) -> None:
+    """Copy an imported CLI/messaging row's source identity onto a session.
+
+    The identity fields travel together (where the conversation came from and
+    how to address it again); importers set them from one row in one place.
+    """
+    session.is_cli_session = is_cli_session_row(cli_meta)
+    session.source_tag = cli_meta.get("source_tag")
+    session.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
+    session.session_source = cli_meta.get("session_source")
+    session.source_label = cli_meta.get("source_label")
+    session.user_id = cli_meta.get("user_id")
+    session.chat_id = cli_meta.get("chat_id")
+    session.chat_type = cli_meta.get("chat_type")
+    session.thread_id = cli_meta.get("thread_id")
+    session.session_key = cli_meta.get("session_key")
+    session.platform = cli_meta.get("platform")
+
+
 def restore_process_wakeup_pause(session, previous) -> None:
     """Undo clear_process_wakeup_pause() with the pause captured before it.
 
