@@ -19,7 +19,8 @@ def test_load_workspaces_preserves_unavailable_entries_on_disk(tmp_path, monkeyp
         {"path": str(unavailable), "name": "Unavailable"},
     ]
     ws_file.write_text(json.dumps(raw), encoding="utf-8")
-    monkeypatch.setattr(workspace, "_workspaces_file", lambda: ws_file)
+    # Saved workspaces are global (shared across profiles).
+    monkeypatch.setattr(workspace, "_GLOBAL_WS_FILE", ws_file)
 
     loaded = workspace.load_workspaces()
 

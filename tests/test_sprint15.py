@@ -39,10 +39,12 @@ def _make_session_visible(sid):
     get(f"/api/chat/cancel?stream_id={urllib.parse.quote(d['stream_id'])}")
 
 
-def make_project(created_list, name="Test Project", color=None):
+def make_project(created_list, name="Test Project", color=None, work_hub_managed=False):
     body = {"name": name}
     if color:
         body["color"] = color
+    if work_hub_managed:
+        body["work_hub_managed"] = True
     d, status = post("/api/projects/create", body)
     assert status == 200
     pid = d["project"]["project_id"]
@@ -113,10 +115,14 @@ def test_rename_project():
 
 
 def test_delete_project():
-    """Deleting a project removes it from the list."""
+    """Deleting a project removes it from the list.
+
+    Only Work Hub-managed projects may be deleted through this endpoint (see
+    test_work_hub), so the test creates one.
+    """
     pids = []
     try:
-        pid, _ = make_project(pids, "Doomed")
+        pid, _ = make_project(pids, "Doomed", work_hub_managed=True)
         d, status = post("/api/projects/delete", {"project_id": pid})
         assert status == 200
         assert d["ok"] is True
@@ -132,7 +138,7 @@ def test_delete_project_unassigns_sessions():
     pids = []
     sids = []
     try:
-        pid, _ = make_project(pids, "Temp Project")
+        pid, _ = make_project(pids, "Temp Project", work_hub_managed=True)
         sid, _ = make_session(sids)
         # Assign session to project
         post("/api/session/move", {"session_id": sid, "project_id": pid})
