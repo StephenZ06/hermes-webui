@@ -1475,7 +1475,7 @@ export function createOfficeScene(canvas, options) {
   function resize() {
     const width = Math.max(1, canvas.clientWidth || 0);
     const height = Math.max(1, canvas.clientHeight || 0);
-    if (width === lastWidth && height === lastHeight) return;
+    if (width === lastWidth && height === lastHeight) return false;
     lastWidth = width;
     lastHeight = height;
     // updateStyle=false: the canvas is sized by CSS, and letting three.js
@@ -1487,8 +1487,19 @@ export function createOfficeScene(canvas, options) {
     overview.zoom = zoomForRadius(width, height, framedRadius);
     if (!focusedId && !manualZoom && !tween) applyView(overview);
     else applyCamera(width, height);
+    return true;
   }
   resize();
+
+  /**
+   * Resize and draw one still frame while the loop is stopped. A side-panel
+   * slide pauses the loop but commits the new layout up front; without this
+   * the stale drawing buffer is stretched over the new canvas box for the
+   * whole slide (resizing alone would blank it until the next render).
+   */
+  function renderNow() {
+    if (resize()) composer.render();
+  }
 
   // ---- render loop ------------------------------------------------------
   let rafId = 0;
@@ -1637,7 +1648,7 @@ export function createOfficeScene(canvas, options) {
   ensureConductor();
 
   return {
-    start, stop, resize, dispose, isRunning, applyTheme, syncOffice,
+    start, stop, resize, renderNow, dispose, isRunning, applyTheme, syncOffice,
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
     podScreenRect, scene, setOutletTransition,
   };

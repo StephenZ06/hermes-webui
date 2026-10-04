@@ -403,9 +403,11 @@ def test_render_loop_pauses_during_shared_panel_layout_motion():
     """The WebGL composer must not contend with a sidebar slide.
 
     Office renders a post-processed 3D scene every frame. Pausing it for the
-    very short shared sidebar/workspace-panel transition prevents canvas
-    resize, label measurement, and GPU composition from stealing animation
-    frames; it resumes with one accurate resize at the end.
+    very short shared sidebar/workspace-panel transition keeps per-frame GPU
+    composition from stealing animation frames. The slide commits its final
+    layout up front, so the paused scene redraws once at that size in the
+    first frame (behaviour: tests/test_office_layout_motion_browser.py) rather
+    than stretching a stale frame and snapping when the slide settles.
     """
     assert "function pauseForLayoutMotion" in OFFICE_INDEX_JS
     assert "function resumeAfterLayoutMotion" in OFFICE_INDEX_JS
@@ -417,9 +419,10 @@ def test_render_loop_pauses_during_shared_panel_layout_motion():
     )
 
     resize_observer_at = OFFICE_INDEX_JS.index("new ResizeObserver")
-    resize_observer = OFFICE_INDEX_JS[resize_observer_at:resize_observer_at + 220]
-    assert "!_layoutMotionPauseDepth" in resize_observer, (
-        "ResizeObserver must not repeatedly resize the WebGL composer while a panel slides"
+    resize_observer = OFFICE_INDEX_JS[resize_observer_at:resize_observer_at + 700]
+    assert "_scene.renderNow()" in resize_observer, (
+        "A resize must redraw in the same frame: a bare resize clears the canvas, "
+        "and a paused scene would otherwise stretch a stale frame"
     )
 
 

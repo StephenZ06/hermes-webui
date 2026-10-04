@@ -211,9 +211,9 @@ function resumeAfterLayoutMotion() {
   const scene = _scene;
   const shouldResume = _resumeSceneAfterLayoutMotion;
   _resumeSceneAfterLayoutMotion = false;
-  // First let the final transform-free layout paint. Reallocating the WebGL
-  // renderer and bloom targets in the same frame as an animation's settle
-  // causes a small but visible hitch on lower-power GPUs.
+  // The ResizeObserver already redrew at the committed size in the slide's
+  // first frame, so this resize is normally a no-op. Restarting still waits
+  // for the settled transform-free frame to paint first.
   _layoutMotionResumeRaf = requestAnimationFrame(() => {
     _layoutMotionResumeRaf = requestAnimationFrame(() => {
       _layoutMotionResumeRaf = 0;
@@ -2023,7 +2023,15 @@ function mount(container) {
 
   if (typeof ResizeObserver === 'function') {
     _resizeObserver = new ResizeObserver(() => {
-      if (_scene && !_layoutMotionPauseDepth) _scene.resize();
+      if (!_scene) return;
+      // Resizing clears the WebGL drawing buffer, and this callback runs after
+      // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
+      // expand settles while the loop is still waiting to restart. It also
+      // covers a panel slide, which pauses the loop but commits its final
+      // layout up front: drawing it now lets the floor and its cards travel
+      // with the slide instead of stretching a stale frame that snaps at the end.
+      _scene.renderNow();
+      repositionDepartmentCards();
     });
     _resizeObserver.observe(container);
   }
