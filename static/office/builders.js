@@ -1019,36 +1019,116 @@ function mulberry32(a) {
 
 /* ---------- cubicle ---------- */
 
-// Desk-local frame: the monitor sits at -z, the chair at +z (1.9), and a
-// subagent walks in from the open +z side (|x| <= 1.4, up to z ~5), so walls
-// only ever go behind the desk or beside it, never in front.
-const CUBICLE_HALF_WIDTH = 3.2;
-const CUBICLE_BACK_Z = -1.65;
-const CUBICLE_SIDE_FRONT_Z = 0.9;
-const CUBICLE_PANEL = 0.14;
-const CUBICLE_BACK_HEIGHT = 2.8;
-// A back wall the camera looks across stays below the monitor's sight line.
-const CUBICLE_BACK_LOW_HEIGHT = 1.3;
-const CUBICLE_SIDE_HEIGHT = 2.2;
-const CUBICLE_ACCENT_HEIGHT = 0.05;
+// Desk-local frame, measured from the floor the cubicle stands on: the
+// monitor sits at -z, the chair at +z (1.9), and a subagent walks in from +z
+// (|x| <= 1.4, from up to z ~5). Heights are proportioned to the desk as it
+// shows above the raised platform (desk top ~1.0 above that floor). The cubicle
+// encloses desk and chair on all four sides at one height, with an opening in
+// the front wall over that walk-in path.
+const CUBICLE_HALF_WIDTH = 3.1;
+const CUBICLE_BACK_Z = -1.75;
+const CUBICLE_FRONT_Z = 3.0;
+const CUBICLE_DOOR_HALF = 1.8;
+const CUBICLE_HEIGHT = 1.75;
+// Solid lower panel; frosted glass above it keeps the desk and its worker
+// visible over the near walls from the isometric camera.
+const CUBICLE_SOLID_HEIGHT = 0.9;
+const CUBICLE_POST = 0.12;
+const CUBICLE_RAIL = 0.08;
+const CUBICLE_PANEL = 0.07;
+const CUBICLE_ACCENT_HEIGHT = 0.03;
+const CUBICLE_RUG_MARGIN = 0.25;
 // Accent glow, as emissive intensity. Both stay well under the bloom pass'
 // threshold: a crisp coloured line, never a halo competing with the pods.
 export const CUBICLE_ACCENT_IDLE = 0.12;
 export const CUBICLE_ACCENT_ACTIVE = 0.55;
 
+/** The wall runs, as [x1, z1, x2, z2] in desk-local space. */
+function cubicleWallRuns() {
+  const w = CUBICLE_HALF_WIDTH;
+  const b = CUBICLE_BACK_Z;
+  const f = CUBICLE_FRONT_Z;
+  const d = CUBICLE_DOOR_HALF;
+  return [
+    [-w, b, w, b],   // back
+    [-w, b, -w, f],  // left
+    [w, b, w, f],    // right
+    [-w, f, -d, f],  // front, left of the opening
+    [d, f, w, f],    // front, right of the opening
+  ];
+}
+
 /**
- * Which walls a cubicle gets, from the camera's horizontal direction in the
- * desk's own frame (desks turn to face the conductor, so this differs per
- * pod). The side wall always goes on the side facing away from the camera;
- * the back wall is full height only when the camera is in front of the desk.
+ * Merge positioned parts into one non-indexed geometry (position + normal),
+ * so a whole cubicle costs one draw call per material instead of ~30.
  */
-export function cubicleWallPlan(cameraLocal) {
-  const cx = cameraLocal && Number.isFinite(cameraLocal.x) ? cameraLocal.x : 0;
-  const cz = cameraLocal && Number.isFinite(cameraLocal.z) ? cameraLocal.z : 1;
-  return {
-    backHeight: cz >= 0 ? CUBICLE_BACK_HEIGHT : CUBICLE_BACK_LOW_HEIGHT,
-    sideX: cx >= 0 ? -CUBICLE_HALF_WIDTH : CUBICLE_HALF_WIDTH,
-  };
+function mergeParts(parts) {
+  const positions = [];
+  const normals = [];
+  const normalMatrix = new THREE.Matrix3();
+  const v = new THREE.Vector3();
+  parts.forEach(({ geo, matrix }) => {
+    const g = geo.index ? geo.toNonIndexed() : geo;
+    const pos = g.getAttribute('position');
+    const nor = g.getAttribute('normal');
+    normalMatrix.getNormalMatrix(matrix);
+    for (let i = 0; i < pos.count; i += 1) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+      positions.push(v.x, v.y, v.z);
+      v.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize();
+      normals.push(v.x, v.y, v.z);
+    }
+    if (g !== geo) g.dispose();
+    geo.dispose();
+  });
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+  return merged;
+}
+
+/** A box part centred at (x, y, z), turned to run along its wall. */
+function cubiclePart(width, height, depth, x, y, z, angle) {
+  const m = new THREE.Matrix4().makeRotationY(angle || 0);
+  m.setPosition(x, y, z);
+  return { geo: new THREE.BoxGeometry(width, height, depth), matrix: m };
+}
+
+/** The four shared cubicle geometries: panels, frame, glass, accent. */
+function cubicleGeometries() {
+  return geometry('cubicle|v2', () => {
+    const panels = [];
+    const frame = [];
+    const glass = [];
+    const accent = [];
+    const posts = new Map();
+    const glassHeight = CUBICLE_HEIGHT - CUBICLE_SOLID_HEIGHT - CUBICLE_RAIL;
+    cubicleWallRuns().forEach(([x1, z1, x2, z2]) => {
+      const length = Math.hypot(x2 - x1, z2 - z1);
+      // Wall runs along x or z; Box width is its local x, so turn z-runs.
+      const angle = Math.abs(x2 - x1) > Math.abs(z2 - z1) ? 0 : Math.PI / 2;
+      const cx = (x1 + x2) / 2;
+      const cz = (z1 + z2) / 2;
+      const inner = Math.max(0.01, length - CUBICLE_POST);
+      panels.push(cubiclePart(inner, CUBICLE_SOLID_HEIGHT, CUBICLE_PANEL, cx, CUBICLE_SOLID_HEIGHT / 2, cz, angle));
+      frame.push(cubiclePart(inner, CUBICLE_RAIL, CUBICLE_POST * 0.8, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL / 2, cz, angle));
+      glass.push(cubiclePart(inner, glassHeight, 0.03, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL + glassHeight / 2, cz, angle));
+      frame.push(cubiclePart(length + CUBICLE_POST, CUBICLE_RAIL, CUBICLE_POST, cx, CUBICLE_HEIGHT - CUBICLE_RAIL / 2, cz, angle));
+      accent.push(cubiclePart(length + CUBICLE_POST, CUBICLE_ACCENT_HEIGHT, CUBICLE_POST + 0.01, cx, CUBICLE_HEIGHT + CUBICLE_ACCENT_HEIGHT / 2, cz, angle));
+      [[x1, z1], [x2, z2]].forEach(([x, z]) => posts.set(`${x}|${z}`, [x, z]));
+    });
+    posts.forEach(([x, z]) => {
+      frame.push(cubiclePart(CUBICLE_POST, CUBICLE_HEIGHT, CUBICLE_POST, x, CUBICLE_HEIGHT / 2, z, 0));
+    });
+    return {
+      panels: mergeParts(panels),
+      frame: mergeParts(frame),
+      glass: mergeParts(glass),
+      accent: mergeParts(accent),
+    };
+  });
 }
 
 function cubicleAccentMaterial(accent, active) {
@@ -1059,40 +1139,41 @@ function cubicleAccentMaterial(accent, active) {
 }
 
 /**
- * Two low partition walls around a desk -- neutral panels, each capped with
- * a thin strip in the platform's colour. `setCubicleActive` brightens the
- * strips while the desk's subagent works.
+ * A framed office cubicle around a desk: solid lower panels, frosted glass
+ * above, a thin rail in the platform's colour along the top, and a rug in a
+ * darker shade of the platform under it. `setCubicleActive` brightens the
+ * rail while the desk's subagent works.
  */
-export function makeCubicle(palette, accent, plan) {
-  const layout = plan || cubicleWallPlan(null);
+export function makeCubicle(palette, accent) {
   const group = new THREE.Group();
-  const panelColor = palette.cubicle || '#1b2130';
-  const accentColor = accent || palette.cubicleAccent || '#7c8aa5';
-  const strips = [];
+  const accentColor = accent || palette.cubicleAccent || '#8a96aa';
+  const geos = cubicleGeometries();
 
-  const backWidth = CUBICLE_HALF_WIDTH * 2;
-  const back = roundedPanel(backWidth, layout.backHeight, CUBICLE_PANEL, panelColor, 0.06);
-  back.position.set(0, layout.backHeight / 2, CUBICLE_BACK_Z);
-  group.add(back);
+  const panels = new THREE.Mesh(geos.panels, material(palette.cubiclePanel || '#9aa3b2', { rough: 0.9 }));
+  panels.castShadow = true;
+  panels.receiveShadow = true;
+  const frame = new THREE.Mesh(geos.frame, material(palette.cubicleFrame || '#4b5363', { rough: 0.55, metal: 0.25 }));
+  frame.castShadow = true;
+  frame.receiveShadow = true;
+  const glass = new THREE.Mesh(geos.glass, material(palette.cubicleGlass || '#dbe4f0', {
+    rough: 0.2, transparent: true, opacity: palette.cubicleGlassOpacity ?? 0.16,
+  }));
+  glass.renderOrder = 1;
+  const strip = new THREE.Mesh(geos.accent, cubicleAccentMaterial(accentColor, false));
+  [panels, frame, glass, strip].forEach(mesh => group.add(mesh));
 
-  const sideLength = CUBICLE_SIDE_FRONT_Z - CUBICLE_BACK_Z;
-  const side = roundedPanel(sideLength, CUBICLE_SIDE_HEIGHT, CUBICLE_PANEL, panelColor, 0.06);
-  side.rotation.y = Math.PI / 2;
-  side.position.set(layout.sideX, CUBICLE_SIDE_HEIGHT / 2, CUBICLE_BACK_Z + sideLength / 2);
-  group.add(side);
+  // A step darker than the platform's own top (the blend makePod paints), so
+  // it reads as carpet on that floor rather than a second colour.
+  const floorColor = accent && palette.podTop ? mixColor(palette.podTop, accent, 0.62) : (palette.podTop || accentColor);
+  const rugColor = mixColor(floorColor, palette.cubicleRugShade || '#000000', palette.cubicleRugMix ?? 0.35);
+  const rugWidth = CUBICLE_HALF_WIDTH * 2 + CUBICLE_RUG_MARGIN * 2;
+  const rugDepth = CUBICLE_FRONT_Z - CUBICLE_BACK_Z + CUBICLE_RUG_MARGIN * 2;
+  const rug = roundedSlab(rugWidth, 0.04, rugDepth, rugColor, 0.3);
+  rug.position.set(0, 0.02, (CUBICLE_BACK_Z + CUBICLE_FRONT_Z) / 2);
+  rug.castShadow = false;
+  group.add(rug);
 
-  const idle = cubicleAccentMaterial(accentColor, false);
-  const backStrip = box(backWidth, CUBICLE_ACCENT_HEIGHT, CUBICLE_PANEL + 0.02, idle);
-  backStrip.position.set(0, layout.backHeight + CUBICLE_ACCENT_HEIGHT / 2, CUBICLE_BACK_Z);
-  const sideStrip = box(CUBICLE_PANEL + 0.02, CUBICLE_ACCENT_HEIGHT, sideLength, idle);
-  sideStrip.position.set(layout.sideX, CUBICLE_SIDE_HEIGHT + CUBICLE_ACCENT_HEIGHT / 2, CUBICLE_BACK_Z + sideLength / 2);
-  [backStrip, sideStrip].forEach(strip => {
-    strip.castShadow = false;
-    strips.push(strip);
-    group.add(strip);
-  });
-
-  group.userData.cubicle = { accent: accentColor, active: false, strips };
+  group.userData.cubicle = { accent: accentColor, active: false, strips: [strip] };
   return group;
 }
 
