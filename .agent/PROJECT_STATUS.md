@@ -1,5 +1,33 @@
 # Project status — hermes-webui
 
+## 2026-10-04 (later): leftovers closed
+
+- Jobs (`db0b76250`): refreshes are numbered and only the newest renders, so a
+  slow filtered fetch can no longer land on a newer view. Import-form text
+  lives in `JobOSState.importDraft`, so a refresh no longer wipes it. The draft
+  clears after a successful save or a profile switch, and Save is disabled
+  while in flight.
+- Order-dependent tests (`efaf09b79`, `7c3ca3cec`). Three root causes, each
+  fixed at the source:
+  - The #3260 self-hosted POST tests wrote ollama/lmstudio into the shared
+    test-home config.yaml. They now restore it.
+  - Over-budget `models-catalog-rebuild` daemons outlived their test.
+    conftest now joins them.
+  - The pytest process shared `STATE_DIR/models_cache.json` with the test
+    server. It now uses `STATE_DIR/pytest-process/`.
+- Full sharded run on `7c3ca3cec`: 16,595 passed. The one failure was the
+  known-flaky #6906 kanban modal Playwright case, which passed 3/3 on rerun.
+- Still order-dependent, only in an ad hoc grouping of the models-cache test
+  files (it passes alone and in the full suite):
+  `test_issue2245_mixed_case_provider_models::test_mixed_case_provider_key_produces_configured_models`.
+- job-ops: item 17 committed there as `1584b13` (author `Hermes Agent`,
+  matching that fork's local commits). The other 13 content-changed files
+  and the repo-wide CRLF churn are untouched.
+- Worktrees: removed the merged `fix/work-hub-workspace-layout`. Kept:
+  - `agent-a5aa110d9780cb643`: 93 uncommitted files, needs an owner decision.
+  - `agent-ae8020dc8421e0db8`: one unmerged commit adding `scratch/` to
+    .gitignore.
+
 ## 2026-10-04: Phase 2 readiness review; Phase 3 UI changes
 
 **Readiness review (Phase 2).** Production-use assessment of the checkout after
