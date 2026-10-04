@@ -5681,6 +5681,19 @@ def _static_models_catalog_without_live_probes() -> dict:
         canonical_to_raw_provider_key: dict[str, str] = {}
         providers_cfg = _get_providers_cfg()
 
+        def _own_bare(provider_id: str | None, model_id: object) -> str:
+            # ``anthropic/claude-opus-4.6`` under the Anthropic group is the
+            # catalog's bare ``claude-opus-4.6`` (#147). Only the provider's own
+            # namespace (or an ``@provider:`` prefix) is stripped, so vendor
+            # paths like ``google/gemma`` on an aggregator stay distinct.
+            mid = str(model_id or "").strip()
+            if mid.startswith(f"@{provider_id}:"):
+                mid = mid[len(provider_id) + 2:]
+            head, sep, tail = mid.partition("/")
+            if sep and tail and _canonicalise_provider_id(head) == provider_id:
+                mid = tail
+            return mid.lower()
+
         def _append_model_id(provider_id: str | None, model_id: object) -> None:
             pid = _canonicalise_provider_id(provider_id)
             mid = str(model_id or "").strip()
@@ -5877,7 +5890,9 @@ def _static_models_catalog_without_live_probes() -> dict:
                     _fallback = getattr(_plugin_profile, "fallback_models", ()) or ()
                     raw_models = [{"id": str(mid), "label": str(mid)} for mid in _fallback]
             for model_id in configured_model_ids.get(pid, []):
-                if model_id and not any(m.get("id") == model_id for m in raw_models):
+                if model_id and not any(
+                    _own_bare(pid, m.get("id")) == _own_bare(pid, model_id) for m in raw_models
+                ):
                     raw_models.append(
                         {"id": model_id, "label": _get_label_for_model(model_id, groups)}
                     )
@@ -5897,11 +5912,11 @@ def _static_models_catalog_without_live_probes() -> dict:
 
         if default_model:
             all_model_ids = {
-                str(model.get("id") or "")
+                _own_bare(active_provider, model.get("id"))
                 for group in groups
                 for model in group.get("models", [])
             }
-            if default_model not in all_model_ids and f"@{active_provider}:{default_model}" not in all_model_ids:
+            if _own_bare(active_provider, default_model) not in all_model_ids:
                 label = _get_label_for_model(default_model, groups)
                 target_group = next(
                     (group for group in groups if group.get("provider_id") == active_provider),

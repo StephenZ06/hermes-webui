@@ -2090,3 +2090,21 @@ def test_streaming_explicitly_picked_computation_5979():
     s3 = models.Session(session_id='e2e3', model='x-ai/grok-composer-2.5-fast',
                         model_provider='custom:llm-proxy')
     assert _explicitly_picked(s3) is False
+
+
+def test_cold_picker_catalog_does_not_duplicate_a_provider_prefixed_default():
+    """The network-free cold catalog served before the live rebuild merged the
+    default as a configured id by exact match, so ``anthropic/claude-opus-4.6``
+    sat next to the catalog's bare ``claude-opus-4.6`` (#147, cold path)."""
+    import api.config as _cfg
+    old_cfg = dict(_cfg.cfg)
+    _cfg.cfg['model'] = {'provider': 'anthropic', 'default': 'anthropic/claude-opus-4.6'}
+    try:
+        result = _cfg._static_models_catalog_without_live_probes()
+        anthropic = [g for g in result['groups'] if g.get('provider_id') == 'anthropic']
+        assert anthropic, result['groups']
+        bare = [m['id'].split('/', 1)[-1] for m in anthropic[0]['models']]
+        assert bare.count('claude-opus-4.6') == 1, [m['id'] for m in anthropic[0]['models']]
+    finally:
+        _cfg.cfg.clear()
+        _cfg.cfg.update(old_cfg)
