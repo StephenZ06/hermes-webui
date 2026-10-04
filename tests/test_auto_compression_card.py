@@ -2,6 +2,7 @@ from pathlib import Path
 
 from api.compression_anchor import visible_messages_for_anchor
 from api.models import Session
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 from api.streaming import (
     _POST_COMPRESSION_TOOL_RESULT_SUMMARY_FLAG,
     _compressed_context_tool_result_summary,
@@ -23,7 +24,7 @@ def _read(relpath: str) -> str:
 
 
 def _compressed_listener_block() -> str:
-    src = _read("static/messages.js")
+    src = chat_js_source()
     start = src.find("source.addEventListener('compressed'")
     assert start != -1, "compressed SSE listener not found"
     end = src.find("source.addEventListener('metering'", start)
@@ -32,7 +33,7 @@ def _compressed_listener_block() -> str:
 
 
 def _compressing_listener_block() -> str:
-    src = _read("static/messages.js")
+    src = chat_js_source()
     start = src.find("source.addEventListener('compressing'")
     assert start != -1, "compressing SSE listener not found"
     end = src.find("source.addEventListener('compressed'", start)
@@ -527,7 +528,7 @@ def test_agent_compression_start_status_matches_real_emitters_only():
 
 
 def test_snapshot_anchor_hydration_does_not_invent_compressing_rows():
-    src = _read("static/messages.js")
+    src = chat_js_source()
     start = src.find("function _sourceEventTypeForSnapshotAnchorRow")
     assert start != -1, "snapshot anchor source helper not found"
     end = src.find("function _hydrateAnchorRegistryFromActivityScene", start)
@@ -574,7 +575,7 @@ def test_fallback_lifecycle_message_predicate_matches_agent_emitters():
 
 
 def test_auto_compression_completion_transition_is_preserved_after_running_listener():
-    src = _read("static/messages.js")
+    src = chat_js_source()
     compressing_idx = src.find("source.addEventListener('compressing'")
     compressed_idx = src.find("source.addEventListener('compressed'")
     assert compressing_idx != -1 and compressed_idx != -1
@@ -805,7 +806,7 @@ def test_auto_compression_live_repeated_starts_keep_only_current_running_row():
 
 
 def test_auto_compression_running_card_completes_on_followup_live_events():
-    src = _read("static/messages.js")
+    src = chat_js_source()
 
     assert "function _completeAutomaticCompressionOnLiveProgress" in src
     helper = src.split("function _completeAutomaticCompressionOnLiveProgress", 1)[1].split("source.addEventListener('token'", 1)[0]
@@ -846,7 +847,7 @@ def test_auto_compression_elapsed_update_is_not_visible_detail_churn():
 
 def test_auto_compression_sse_uses_transient_card_not_fake_message():
     """Auto compression must not inject display-only text into S.messages."""
-    src = _read("static/messages.js")
+    src = chat_js_source()
     block = _compressed_listener_block()
 
     assert "*[Context was auto-compressed to continue the conversation]*" not in src
@@ -968,7 +969,7 @@ def test_auto_compression_compressed_sse_does_not_show_persistent_completion_toa
 
 
 def test_auto_compression_card_survives_compression_session_rotation():
-    src = _read("static/messages.js")
+    src = chat_js_source()
 
     assert "window._compressionUi.sessionId===activeSid" in src
     assert "sessionId:d.session.session_id" in src

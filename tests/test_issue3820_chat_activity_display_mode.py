@@ -4,11 +4,12 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
 UI_JS = (ROOT / "static" / "ui.js").read_text(encoding="utf-8")
-MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 BOOT_JS = (ROOT / "static" / "boot.js").read_text(encoding="utf-8")
 PANELS_JS = (ROOT / "static" / "panels.js").read_text(encoding="utf-8")
 INDEX_HTML = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
@@ -479,7 +480,7 @@ def test_chat_activity_display_mode_plumbing_preserves_hide_all_activity():
 def test_chat_activity_display_mode_settled_worklog_suppression():
     script = f"""
 const fs = require('fs');
-const src = fs.readFileSync({json.dumps(str(ROOT / "static" / "messages.js"))}, 'utf8');
+const src = fs.readFileSync({json.dumps(str(chat_js_bundle_path()))}, 'utf8');
 {_EXTRACT_FUNC_JS}
 eval(extractFunc('_anchorSceneActiveMode'));
 eval(extractFunc('_anchorSceneRowDisplayHintForMode'));
@@ -767,7 +768,7 @@ def test_fade_text_effect_uses_dynamic_window_check():
     """The fade text effect must read window._fadeTextEffect dynamically
     on every call, and the Settings checkbox must update the live window flag
     immediately so the current session can start fading without a reload."""
-    MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+    MESSAGES_JS = chat_js_source()
     # Locate the helper and confirm it reads the live value.
     helper_start = MESSAGES_JS.index("function _shouldUseStreamFade(")
     helper_end = MESSAGES_JS.index("\n  function ", helper_start + 1)
@@ -1087,7 +1088,7 @@ def test_live_worklog_reason_mirror_is_gated_to_compact_mode():
     # Both live-render call sites still invoke the (now-gated) helper — the gate
     # lives in the helper, not at the call sites, so live rendering is unchanged
     # in compact mode.
-    MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+    MESSAGES_JS = chat_js_source()
     assert MESSAGES_JS.count("_syncLiveWorklogReasonsForAnchor(assistantRow") >= 2
 
     # The settled-render worklog-folding gate is also compact-only (regression

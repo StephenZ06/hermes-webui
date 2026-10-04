@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -196,7 +197,7 @@ def test_runtime_journal_malformed_envelope_run_id_falls_back_to_transport_curso
     NODE is None, reason="node is required for browser hydration regression coverage"
 )
 def test_browser_scene_hydration_prefers_stable_run_id_with_legacy_stream_fallback():
-    messages_path = ROOT / "static" / "messages.js"
+    messages_path = chat_js_bundle_path()
     script = f"""
 const fs=require('fs');
 const src=fs.readFileSync({json.dumps(str(messages_path))},'utf8');

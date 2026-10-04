@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_helpers_bundle_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ def _run_reasoning_scene(
     env = os.environ.copy()
     env.setdefault("ISSUE5720_UI_JS", str(ROOT / "static" / "ui.js"))
     env.setdefault("ISSUE5720_MESSAGES_JS", str(ROOT / "static" / "messages.js"))
+    env.setdefault("ISSUE5720_CHAT_HELPERS_JS", str(chat_helpers_bundle_path()))
     env.setdefault(
         "ISSUE5720_ANCHORS_JS",
         str(ROOT / "static" / "assistant_turn_anchors.js"),
@@ -532,6 +534,9 @@ const attachStart=messagesSrc.indexOf('function attachLiveStream(');
 const attachEnd=messagesSrc.indexOf('\nfunction transcript(){',attachStart);
 if(attachStart<0||attachEnd<0) throw new Error('attachLiveStream source boundary not found');
 eval(extractFunc(messagesSrc,'_dispatchExtensionTurnLifecycle'));
+// Top-level helpers that load before messages.js (stream_markdown.js,
+// anchor_scene.js), then the attachLiveStream closure itself.
+eval(fs.readFileSync(process.env.ISSUE5720_CHAT_HELPERS_JS, 'utf8'));
 eval(messagesSrc.slice(attachStart,attachEnd));
 attachLiveStream('sid-1','stream-1');
 const source=FakeEventSource.instances[0];

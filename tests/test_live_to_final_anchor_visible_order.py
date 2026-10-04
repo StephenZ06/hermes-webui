@@ -6,10 +6,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 UI_JS = (ROOT / "static" / "ui.js").read_text(encoding="utf-8")
 SESSIONS_JS = (ROOT / "static" / "sessions.js").read_text(encoding="utf-8")
 ROUTES_PY = (ROOT / "api" / "routes.py").read_text(encoding="utf-8")
@@ -102,7 +103,7 @@ function extractFunc(name){
 def _run_complete_anchor_settlement_case(active_mode):
     script = f"""
 const fs = require('fs');
-const src = fs.readFileSync({json.dumps(str(ROOT / "static" / "messages.js"))}, 'utf8');
+const src = fs.readFileSync({json.dumps(str(chat_js_bundle_path()))}, 'utf8');
 {_EXTRACT_FUNC_JS}
 const activeMode = {json.dumps(active_mode)};
 global.window = {{
@@ -366,7 +367,7 @@ def test_anchor_scene_projection_tracks_active_mode():
 def test_anchor_scene_active_mode_falls_back_when_primary_accessor_throws():
     script = f"""
 const fs = require('fs');
-const src = fs.readFileSync({json.dumps(str(ROOT / "static" / "messages.js"))}, 'utf8');
+const src = fs.readFileSync({json.dumps(str(chat_js_bundle_path()))}, 'utf8');
 {_EXTRACT_FUNC_JS}
 eval(extractFunc('_anchorSceneActiveMode'));
 global.window = {{
@@ -540,7 +541,7 @@ def test_anchor_scene_has_worklog_worthy_rows_rejects_prose_only_and_terminal_on
 
     script = f"""
 const fs = require('fs');
-const src = fs.readFileSync({json.dumps(str(ROOT / "static" / "messages.js"))}, 'utf8');
+const src = fs.readFileSync({json.dumps(str(chat_js_bundle_path()))}, 'utf8');
 {_EXTRACT_FUNC_JS}
 eval(extractFunc('_anchorSceneHasWorklogWorthyRows'));
 const proseOnly = {{activity_rows:[{{role:'prose'}}, {{role:'terminal', source_event_type:'done'}}]}};

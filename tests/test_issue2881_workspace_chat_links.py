@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 UI_JS = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
@@ -15,7 +16,7 @@ UI_JS = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
 MESSAGES_JS = (
     (REPO_ROOT / "static" / "stream_markdown.js").read_text(encoding="utf-8")
     + "\n"
-    + (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+    + chat_js_source()
 )
 NODE = shutil.which("node")
 

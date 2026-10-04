@@ -8,12 +8,13 @@ import subprocess
 import textwrap
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).parent.parent
 STATIC = ROOT / "static"
 EXTENSION_SETTINGS_JS = ROOT / "static" / "extension_settings.js"
-MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 INDEX_HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 UI_JS = (STATIC / "ui.js").read_text(encoding="utf-8")
 SUPPORT_SCRIPTS = [

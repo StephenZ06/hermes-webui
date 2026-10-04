@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,7 +144,7 @@ def _run_carry_forward_then_hydration(messages: list[dict]) -> dict:
 const fs = require('fs');
 const vm = require('vm');
 const uiSrc = fs.readFileSync({json.dumps(str(ROOT / 'static' / 'ui.js'))}, 'utf8');
-const messagesSrc = fs.readFileSync({json.dumps(str(ROOT / 'static' / 'messages.js'))}, 'utf8');
+const messagesSrc = fs.readFileSync({json.dumps(str(chat_js_bundle_path()))}, 'utf8');
 let src = uiSrc;
 {_EXTRACT_FUNC_JS}
 

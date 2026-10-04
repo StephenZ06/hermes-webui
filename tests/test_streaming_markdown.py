@@ -23,6 +23,7 @@ import pathlib
 import re
 import json
 import subprocess
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 REPO = pathlib.Path(__file__).parent.parent
 # The streaming-markdown helpers live in stream_markdown.js, loaded just
@@ -30,7 +31,7 @@ REPO = pathlib.Path(__file__).parent.parent
 MESSAGES_JS = (
     (REPO / "static" / "stream_markdown.js").read_text(encoding="utf-8")
     + "\n"
-    + (REPO / "static" / "messages.js").read_text(encoding="utf-8")
+    + chat_js_source()
 )
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
 INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")

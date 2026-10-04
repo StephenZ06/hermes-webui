@@ -22,9 +22,9 @@ def _node_contract_cases() -> dict[str, object]:
     script = r"""
 const fs = require('fs');
 const ui = fs.readFileSync('static/ui.js', 'utf8');
-// The streaming-markdown helpers live in stream_markdown.js (loaded before
-// messages.js); search both, as the browser loads them.
-const messages = fs.readFileSync('static/stream_markdown.js', 'utf8') + '\n' + fs.readFileSync('static/messages.js', 'utf8');
+// The chat scripts as index.html loads them (see tests/chat_bundle.py).
+const messages = ['static/stream_markdown.js', 'static/anchor_scene.js', 'static/messages.js']
+  .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 function fn(source, name) {
   const marker = 'function ' + name + '(';
   const start = source.indexOf(marker);

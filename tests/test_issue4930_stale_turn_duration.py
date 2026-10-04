@@ -18,9 +18,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
-MESSAGES_JS = REPO_ROOT / "static" / "messages.js"
+MESSAGES_JS = chat_js_bundle_path()
 NODE = shutil.which("node")
 
 pytestmark = pytest.mark.skipif(NODE is None, reason="node not on PATH")
@@ -29,7 +30,8 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node not on PATH")
 _DRIVER = r"""
 const fs = require('fs');
 const src = fs.readFileSync(process.argv[2], 'utf8');
-const m = src.match(/function _anchorSceneTurnDurationForSettlement\([^]*?\n  }/);
+// Top-level in static/anchor_scene.js: the body closes at column 0.
+const m = src.match(/function _anchorSceneTurnDurationForSettlement\([^]*?\n}/);
 if (!m) throw new Error('_anchorSceneTurnDurationForSettlement not found');
 const payload = JSON.parse(process.argv[3] || '{}');
 global.S = payload.S || null;

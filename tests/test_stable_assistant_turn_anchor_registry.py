@@ -5,10 +5,11 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 REPO = Path(__file__).resolve().parent.parent
 ANCHORS_JS = REPO / "static" / "assistant_turn_anchors.js"
-MESSAGES_JS = REPO / "static" / "messages.js"
+MESSAGES_JS = chat_js_bundle_path()
 UI_JS = REPO / "static" / "ui.js"
 SESSIONS_JS = REPO / "static" / "sessions.js"
 NODE = shutil.which("node")

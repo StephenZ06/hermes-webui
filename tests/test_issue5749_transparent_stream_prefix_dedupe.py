@@ -6,10 +6,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 UI_JS = (ROOT / "static" / "ui.js").read_text(encoding="utf-8")
 NODE = shutil.which("node")
 ISSUE5749_CAPTURED_SESSION = json.loads(

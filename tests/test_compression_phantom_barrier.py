@@ -12,12 +12,13 @@ import re
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 INDEX_HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 UI_JS = (STATIC / "ui.js").read_text(encoding="utf-8")
-MESSAGES_JS = (STATIC / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 SUPPORT_SCRIPTS = [
     (STATIC / name).read_text(encoding="utf-8")
     for name in ("i18n.js", "icons.js", "assistant_turn_anchors.js")

@@ -1,8 +1,9 @@
 from pathlib import Path
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MESSAGES_JS = (ROOT / "static" / "messages.js").read_text(encoding="utf-8")
+MESSAGES_JS = chat_js_source()
 
 
 def _function_body(src: str, name: str) -> str:

@@ -12,9 +12,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.chat_bundle import chat_js_bundle_path, chat_js_source
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
-MESSAGES_JS = REPO_ROOT / "static" / "messages.js"
+MESSAGES_JS = chat_js_bundle_path()
 NODE = shutil.which("node")
 
 pytestmark = pytest.mark.skipif(NODE is None, reason="node not on PATH")
