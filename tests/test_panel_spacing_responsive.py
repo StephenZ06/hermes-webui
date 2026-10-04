@@ -16,7 +16,9 @@ def test_navigation_dividers_use_the_shared_vertical_rhythm():
     assert 'class="office-panel-divider"' not in HTML
     assert "divider.className = 'profile-concept-divider'" in PANELS
     assert ".office-panel-divider{height:1px;margin:14px 8px;" in CSS
-    assert "#panelChat{--chat-sidebar-divider-space:14px;--chat-sidebar-section-heading-space:14px;" in CSS
+    # The filter box sits evenly between the WORKSPACES and CONVERSATIONS
+    # dividers (12px above and below).
+    assert "#panelChat{--chat-sidebar-divider-space:8px;--chat-sidebar-section-heading-space:14px;" in CSS
 
 
 def test_spaces_sidebar_omits_nonessential_intro_and_validation_copy():
@@ -53,7 +55,9 @@ def test_chat_conversations_heading_uses_the_same_centered_divider_pattern():
 
 
 def test_knowledge_rows_and_work_hub_folders_use_the_panel_width():
-    assert ".knowledge-item{margin-inline:4px;min-width:0;overflow:hidden;" in CSS
+    # width:auto, not 100%: with the 4px side margins a 100% row overflowed the
+    # list on the right; auto keeps both insets equal to the search box.
+    assert ".knowledge-item{width:auto;margin-inline:4px;min-width:0;overflow:hidden;" in CSS
     assert ".knowledge-item .skill-name{min-width:0;flex:1;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" in CSS
     assert "#workHubProjects.work-hub-projects{padding:0 0 10px;}" in CSS
 
@@ -81,7 +85,8 @@ def test_office_and_work_hub_use_the_shared_section_heading_pattern():
     assert 'style="flex:1;min-height:0;overflow:auto;"' not in WORK_HUB
     assert "${icon('dashboard')}<span>WORKSPACES</span>" not in WORK_HUB
     assert 'class="work-hub-scope-divider"' not in WORK_HUB
-    assert ".work-hub-projects-heading{position:relative;display:flex;align-items:center;gap:10px;margin:14px 0;" in CSS
+    # Tighter above the WORKSPACES divider than below it.
+    assert ".work-hub-projects-heading{position:relative;display:flex;align-items:center;gap:10px;margin:6px 0 14px;" in CSS
     assert ".work-hub-projects-heading::before,.work-hub-projects-heading::after{content:\"\";height:1px;flex:1;background:var(--border);}" in CSS
     assert ".work-hub-projects-heading::before{margin-left:0;}.work-hub-projects-heading::after{margin-right:0;}" in CSS
     assert ".work-hub-project-create-row{position:relative;display:flex;justify-content:center;padding:0 0 8px;}" in CSS

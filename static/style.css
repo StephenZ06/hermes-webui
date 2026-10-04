@@ -3716,7 +3716,7 @@
 .work-hub-plan-goal { width: auto; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; margin: 8px; padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 7px; color: var(--accent); background: transparent; font: inherit; font-size: 12px; font-weight: 700; line-height: 1; text-align: center; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; transition: background .18s ease, color .18s ease, transform .18s ease; }
 .work-hub-plan-goal:hover { background: var(--accent-bg); color: var(--accent-text); }
 .work-hub-nav-label { margin: 0 0 6px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
-.work-hub-projects-heading{position:relative;display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;}
+.work-hub-projects-heading{position:relative;display:flex;align-items:center;gap:10px;margin:6px 0 14px;color:var(--muted);font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;}
 .work-hub-projects-heading::before,.work-hub-projects-heading::after{content:"";height:1px;flex:1;background:var(--border);}
 .work-hub-projects-heading::before{margin-left:0;}.work-hub-projects-heading::after{margin-right:0;}
 .work-hub-projects-heading>span{flex:0 0 auto;text-align:center;}
@@ -6311,7 +6311,7 @@ main.main > #mainPlugin{display:none;}
 @keyframes chatUsageWindowTextEnter{from{opacity:0;}to{opacity:1;}}
 @keyframes chatUsageWindowTextExit{from{opacity:1;}to{opacity:0;}}
 .chat-usage-widget+.sidebar-search{padding-top:10px;}
-#panelChat{--chat-sidebar-divider-space:14px;--chat-sidebar-section-heading-space:14px;--chat-sidebar-card-type-size:11px;}
+#panelChat{--chat-sidebar-divider-space:8px;--chat-sidebar-section-heading-space:14px;--chat-sidebar-card-type-size:11px;}
 #panelChat .sidebar-search{padding-bottom:var(--chat-sidebar-divider-space);}
 .chat-sidebar-section{padding:0;}
 .chat-sidebar-section--workspaces{padding:0;border-top:0;}
@@ -8938,7 +8938,7 @@ main.main.showing-logs > #mainLogs{display:flex;}
 
 /* Cross-panel spacing and containment: keep narrow sidebars from letting
    long knowledge labels or desktop gutters distort the operating layout. */
-.knowledge-item{margin-inline:4px;min-width:0;overflow:hidden;padding-inline:10px;}
+.knowledge-item{width:auto;margin-inline:4px;min-width:0;overflow:hidden;padding-inline:10px;}
 .knowledge-item .skill-name{min-width:0;flex:1;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* This rule must follow the shared .project-folder-list padding so Work Hub
    folders share the All work row's exact horizontal frame. */
