@@ -5724,25 +5724,94 @@ main.main.showing-office > #mainOffice{display:flex;}
 main.main.showing-notes > #mainNotes{display:flex;}
 main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 
-/* ── Job OS foundation ── */
-#mainJobs{background:var(--bg);padding:clamp(16px,3vw,36px);}
-#jobOsRoot{width:min(1120px,100%);margin:0 auto;}
-.job-os-shell{display:grid;gap:18px;min-width:0;}
+/* ── Job OS ──
+   The side panel (#jobOsSidebar) owns section navigation and the pipeline
+   stage filters; the page fills the main view with one even 24px inset. */
+#mainJobs{background:var(--bg);padding:24px;box-sizing:border-box;}
+#jobOsRoot{width:100%;min-height:100%;display:flex;flex-direction:column;}
+.job-os-shell{flex:1;display:flex;flex-direction:column;gap:20px;min-width:0;}
+.job-os-content{flex:1;display:flex;flex-direction:column;gap:20px;min-width:0;min-height:0;}
 .job-os-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
-.job-os-header h1,.job-os-content h2{margin:0;color:var(--text);}
-.job-os-kicker{margin:0 0 6px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.13em;}
-.job-os-status{border:1px solid var(--border2);border-radius:999px;padding:6px 10px;color:var(--accent);font-size:12px;}
-.job-os-tabs{display:flex;gap:8px;overflow:auto;padding-bottom:2px;}
-.job-os-tabs button{white-space:nowrap;border:1px solid var(--border2);border-radius:9px;background:var(--card);color:var(--muted);padding:8px 12px;cursor:pointer;}
-.job-os-tabs button.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,var(--card));}
-.job-os-content{display:grid;gap:16px;}
-.job-os-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
-.job-os-metrics button,.job-os-import,.job-os-list,.job-os-page{border:1px solid var(--border2);border-radius:14px;background:var(--card);padding:18px;text-align:left;color:var(--text);}
-.job-os-metrics button{font-size:28px;font-weight:700;cursor:pointer;}.job-os-metrics span{display:block;margin-top:5px;font-size:12px;font-weight:500;color:var(--muted);}
-.job-os-import p,.job-os-page p,.job-os-empty{color:var(--muted);}.job-os-import form{display:grid;gap:10px;max-width:640px;}.job-os-import label{display:grid;gap:5px;color:var(--muted);font-size:12px;}.job-os-import input{min-width:0;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);padding:9px 10px;}
-.job-os-list{display:grid;gap:8px;}.job-os-job-card{display:grid;gap:3px;width:100%;border:1px solid var(--border2);border-radius:10px;background:transparent;color:var(--text);padding:11px;text-align:left;cursor:pointer;}.job-os-job-card span,.job-os-job-card small{color:var(--muted);}.job-os-error{color:var(--danger,#f07878);min-height:1.2em;}.job-os-sidebar-copy{padding:12px;color:var(--muted);font-size:12px;line-height:1.5;}
-.job-os-filter-label{color:var(--accent);font-size:.6em;font-weight:600;text-transform:capitalize;}
-@media(max-width:640px){#mainJobs{padding:16px 12px;}.job-os-header{align-items:flex-start;}.job-os-metrics{grid-template-columns:1fr;}.job-os-status{font-size:11px;}}
+.job-os-header h1{margin:0;color:var(--text);font-size:22px;font-weight:650;letter-spacing:-.01em;}
+.job-os-header p{margin:4px 0 0;color:var(--muted);font-size:13px;}
+.job-os-status{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;border:1px solid var(--border2);border-radius:999px;padding:5px 10px;color:var(--muted);font-size:12px;}
+.job-os-status::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--error,#f07878);}
+.job-os-status[data-ready="true"]::before{background:var(--success,#4ade80);}
+.job-os-tabs{display:none;}
+.job-os-card{display:flex;flex-direction:column;min-width:0;border:1px solid var(--border2);border-radius:14px;background:var(--card);padding:18px;color:var(--text);box-sizing:border-box;}
+.job-os-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.job-os-card h2,.job-os-card-head h2{margin:0;font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+.job-os-card-note{margin:0 0 14px;color:var(--muted);font-size:12.5px;line-height:1.5;}
+.job-os-count{border-radius:999px;background:var(--surface);color:var(--muted);font-size:11px;font-weight:600;padding:2px 8px;}
+.job-os-link{border:0;background:transparent;color:var(--accent-text,var(--accent));font:inherit;font-size:12px;font-weight:500;cursor:pointer;padding:4px 6px;border-radius:6px;}
+.job-os-link:hover{background:var(--accent-bg);}
+.job-os-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
+.job-os-metric{display:flex;align-items:center;gap:14px;min-width:0;border:1px solid var(--border2);border-radius:14px;background:var(--card);padding:16px 18px;color:var(--text);text-align:left;font:inherit;cursor:pointer;transition:border-color .15s,background .15s;}
+.job-os-metric:hover{border-color:var(--accent);}
+.job-os-metric-icon{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;border-radius:10px;background:var(--surface);color:var(--muted);}
+.job-os-metric-icon[data-metric="active"]{color:var(--accent);background:var(--accent-bg);}
+.job-os-metric-icon[data-metric="attention"]{color:var(--warning,#f5b84b);background:color-mix(in srgb,var(--warning,#f5b84b) 14%,transparent);}
+.job-os-metric-icon[data-metric="applied"]{color:var(--success,#4ade80);background:color-mix(in srgb,var(--success,#4ade80) 14%,transparent);}
+.job-os-metric-body{display:flex;flex-direction:column;min-width:0;}
+.job-os-metric-body strong{font-size:24px;font-weight:650;line-height:1.1;font-variant-numeric:tabular-nums;}
+.job-os-metric-body span{margin-top:3px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-os-columns{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);gap:20px;min-height:0;align-items:stretch;}
+.job-os-recent,.job-os-fill{flex:1;min-height:0;}
+.job-os-list{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;}
+.job-os-job-card{display:grid;grid-template-columns:36px minmax(0,1fr) auto 64px;align-items:center;gap:12px;width:100%;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--text);padding:9px 10px;text-align:left;font:inherit;cursor:pointer;transition:background .15s,border-color .15s;}
+.job-os-job-card:hover{background:var(--surface);border-color:var(--border2);}
+.job-os-job-avatar{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9px;background:var(--surface);border:1px solid var(--border2);color:var(--muted);font-size:14px;font-weight:650;}
+.job-os-job-main{display:flex;flex-direction:column;min-width:0;}
+.job-os-job-main strong{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-os-job-main span{margin-top:2px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-os-job-when{color:var(--muted);font-size:11.5px;text-align:right;white-space:nowrap;}
+.job-os-badge{--tone:var(--muted);display:inline-flex;align-items:center;border:1px solid color-mix(in srgb,var(--tone) 35%,transparent);background:color-mix(in srgb,var(--tone) 10%,transparent);color:var(--tone);border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;white-space:nowrap;}
+.job-os-badge[data-tone="info"],.job-os-dot[data-tone="info"]{--tone:var(--info,#60a5fa);}
+.job-os-badge[data-tone="accent"],.job-os-dot[data-tone="accent"]{--tone:var(--accent);}
+.job-os-badge[data-tone="warn"],.job-os-dot[data-tone="warn"]{--tone:var(--warning,#f5b84b);}
+.job-os-badge[data-tone="success"],.job-os-dot[data-tone="success"]{--tone:var(--success,#4ade80);}
+.job-os-badge[data-tone="neutral"],.job-os-dot[data-tone="neutral"]{--tone:var(--text);}
+.job-os-badge[data-tone="muted"]{opacity:.7;}
+.job-os-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:32px 16px;text-align:center;color:var(--muted);}
+.job-os-empty strong{color:var(--text);font-size:14px;}
+.job-os-empty p{margin:0;font-size:12.5px;max-width:360px;}
+.job-os-import form{display:flex;flex-direction:column;gap:12px;}
+.job-os-import label{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px;font-weight:500;}
+.job-os-import input{min-width:0;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg,var(--bg));color:var(--text);padding:9px 10px;font:inherit;font-size:13px;}
+.job-os-import input:focus{outline:none;border-color:var(--accent);}
+.job-os-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s,color .15s;}
+.job-os-btn:hover{border-color:var(--accent);color:var(--accent-text,var(--accent));}
+.job-os-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-contrast,#111);}
+.job-os-btn.primary:hover{filter:brightness(1.08);color:var(--accent-contrast,#111);}
+.job-os-placeholder{flex:1;align-items:center;justify-content:center;gap:8px;text-align:center;}
+.job-os-placeholder p{margin:0 0 10px;color:var(--muted);font-size:13px;max-width:380px;}
+.job-os-placeholder-icon{display:flex;align-items:center;justify-content:center;width:54px;height:54px;border-radius:14px;background:var(--accent-bg);color:var(--accent-text,var(--accent));margin-bottom:6px;}
+.job-os-error{color:var(--error,#f07878);min-height:1.2em;margin:0;font-size:12px;}
+.job-os-filter-label{color:var(--accent-text,var(--accent));}
+#jobOsSidebar{display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
+.job-os-side-nav{overflow:visible;}
+.job-os-side-count{margin-left:auto;color:var(--muted);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;}
+.side-menu-item.active .job-os-side-count{color:inherit;}
+.job-os-side-section{padding:6px 0 8px;border-top:1px solid var(--border);margin:4px 8px 0;}
+.job-os-side-heading{padding:10px 10px 6px;color:var(--muted);font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
+.job-os-side-stages{padding:0;overflow:visible;}
+.job-os-stage{font-weight:450;font-size:12.5px;padding:6px 10px;}
+.job-os-dot{--tone:var(--muted);width:8px;height:8px;border-radius:50%;background:var(--tone);flex-shrink:0;}
+.job-os-side-empty{margin:0;padding:4px 10px;color:var(--muted);font-size:12px;}
+@media(max-width:1100px){.job-os-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}.job-os-columns{grid-template-columns:1fr;}}
+@media(max-width:640px){
+  #mainJobs{padding:16px;}
+  .job-os-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
+  .job-os-tabs button{white-space:nowrap;border:1px solid var(--border2);border-radius:999px;background:var(--card);color:var(--muted);padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer;}
+  .job-os-tabs button.active{color:var(--accent-text,var(--text));border-color:var(--accent);background:var(--accent-bg);}
+  .job-os-metrics{gap:10px;}
+  .job-os-metric{padding:12px;gap:10px;}
+  .job-os-metric-icon{width:32px;height:32px;}
+  .job-os-metric-body strong{font-size:20px;}
+  .job-os-job-card{grid-template-columns:32px minmax(0,1fr) auto;}
+  .job-os-job-avatar{width:32px;height:32px;}
+  .job-os-job-when{display:none;}
+}
 /* The Office is a whole-screen view with its own right-hand column (Task
    Status) -- the chat-only Files/Artifacts/Todos/Canvas/Live/Plane workspace
    panel is unrelated to it and, being a sibling of <main> rather than a
@@ -5750,6 +5819,7 @@ main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 main.main.showing-office ~ .rightpanel,
 main.main.showing-office ~ #btnWorkspacePanelEdgeToggle{display:none!important;}
 main.main.showing-notes ~ #btnWorkspacePanelEdgeToggle{display:none!important;}
+main.main.showing-jobs ~ #btnWorkspacePanelEdgeToggle{display:none!important;}
 main.main > #mainPlugin{display:none;}
 #mainPlugin .main-view-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 #pluginPageContainer{flex:1;display:flex;flex-direction:column;min-height:0;}
