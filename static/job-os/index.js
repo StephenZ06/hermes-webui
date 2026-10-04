@@ -1,5 +1,9 @@
 (function () {
   let aborter = null;
+  // Each refresh takes a number; only the newest may render, so a slow
+  // earlier response (e.g. a filtered list) cannot land on a newer view.
+  let refreshSeq = 0;
+  const emptyDraft = () => ({title: '', canonical_url: '', company: ''});
   const root = () => document.getElementById('jobOsRoot');
   const sidebarRoot = () => document.getElementById('jobOsSidebar');
   function applyRoute() {
@@ -20,9 +24,11 @@
     const state = window.JobOSState;
     const target = root();
     if (!target) return;
+    const seq = ++refreshSeq;
     renderSidebar();
     try {
       const [capability, dashboard, jobs] = await Promise.all([window.JobOSApi.capability(), window.JobOSApi.dashboard(), window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null)]);
+      if (seq !== refreshSeq) return;
       state.capability = capability;
       state.dashboard = dashboard;
       state.jobs = jobs.jobs || [];
@@ -30,6 +36,7 @@
       renderSidebar();
       bind();
     } catch (error) {
+      if (seq !== refreshSeq) return;
       const message = document.createElement('p');
       message.className = 'job-os-error';
       message.textContent = String(error.message || 'Unable to load Job OS.');
@@ -57,10 +64,30 @@
     const side = sidebarRoot();
     if (side) side.addEventListener('click', onClick, {signal});
     const form = document.getElementById('job-os-import-form');
-    if (form) form.addEventListener('submit', async (event) => { event.preventDefault(); const error = document.getElementById('job-os-import-error'); error.textContent = ''; try { await window.JobOSApi.create(Object.fromEntries(new FormData(form))); await refresh(); } catch (err) { error.textContent = err.message || 'Unable to save this job.'; } }, {signal});
+    if (!form) return;
+    form.addEventListener('input', (event) => {
+      const name = event.target && event.target.name;
+      if (name && Object.prototype.hasOwnProperty.call(window.JobOSState.importDraft, name)) window.JobOSState.importDraft[name] = event.target.value;
+    }, {signal});
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const error = document.getElementById('job-os-import-error');
+      const submit = form.querySelector('button[type="submit"]');
+      error.textContent = '';
+      if (submit) submit.disabled = true;
+      try {
+        await window.JobOSApi.create(Object.fromEntries(new FormData(form)));
+        window.JobOSState.importDraft = emptyDraft();
+        await refresh();
+      } catch (err) {
+        error.textContent = err.message || 'Unable to save this job.';
+        if (submit) submit.disabled = false;
+      }
+    }, {signal});
   }
   function mount() { applyRoute(); refresh(); }
   function unmount() { if (aborter) aborter.abort(); aborter = null; }
   function openJob(jobId) { window.JobOSState.selectedJobId = jobId; window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = null; replaceRoute('pipeline'); refresh(); }
-  window.JobOS = {mount, refresh, unmount, openJob};
+  function resetDraft() { window.JobOSState.importDraft = emptyDraft(); }
+  window.JobOS = {mount, refresh, unmount, openJob, resetDraft};
 }());

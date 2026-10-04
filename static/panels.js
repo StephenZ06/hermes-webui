@@ -9203,6 +9203,8 @@ async function switchToProfile(name) {
     if (typeof animateNextSessionListRefresh === 'function') animateNextSessionListRefresh();
     if (window.JobOS && typeof window.JobOS.refresh === 'function') {
       window.JobOSState.selectedJobId = null;
+      // A half-typed import belongs to the profile it was typed in.
+      if (typeof window.JobOS.resetDraft === 'function') window.JobOS.resetDraft();
       window.JobOS.refresh();
     }
 

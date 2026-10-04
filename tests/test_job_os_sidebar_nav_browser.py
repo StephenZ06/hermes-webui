@@ -119,3 +119,43 @@ def test_job_lists_read_newest_first():
             assert titles["pipeline"][0] == "Job 13" and titles["pipeline"][-1] == "Job 0"
         finally:
             browser.close()
+
+
+def test_a_refresh_keeps_unsaved_import_form_input():
+    """Every refresh rebuilds the page; text typed into Import must survive it."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1280)
+        try:
+            page.wait_for_selector("#job-os-import-form", timeout=10000)
+            page.fill("#job-os-import-form input[name='title']", "Typed before refresh")
+            page.fill("#job-os-import-form input[name='company']", "Draft Co")
+            page.evaluate("() => window.JobOS.refresh()")
+            page.evaluate("() => new Promise(r => setTimeout(r, 300))")
+            assert page.input_value("#job-os-import-form input[name='title']") == "Typed before refresh"
+            assert page.input_value("#job-os-import-form input[name='company']") == "Draft Co"
+        finally:
+            browser.close()
+
+
+def test_a_slow_earlier_refresh_cannot_overwrite_a_newer_view():
+    """Filter, then Dashboard, while the filtered fetch is still in flight: the
+    late filtered response must not land on the dashboard."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    marker = uuid.uuid4().hex[:8]
+    _post("/api/job-os/jobs", {"title": f"Race role {marker}", "canonical_url": f"https://example.com/race-{marker}"})
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1280)
+        try:
+            page.evaluate("""() => {
+                const original = window.JobOSApi.jobs;
+                window.JobOSApi.jobs = (status) => status
+                    ? new Promise(resolve => setTimeout(() => resolve({jobs: []}), 800))
+                    : original(status);
+            }""")
+            page.evaluate("() => { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = 'offer'; window.JobOS.refresh(); window.JobOSState.activeView = 'dashboard'; window.JobOSState.statusFilter = null; window.JobOS.refresh(); }")
+            page.evaluate("() => new Promise(r => setTimeout(r, 1500))")
+            assert page.get_attribute("#jobOsRoot .job-os-shell", "data-view") == "dashboard"
+            assert page.eval_on_selector_all("#jobOsRoot .job-os-job-card", "els => els.length") > 0, "late empty filtered response replaced the dashboard list"
+        finally:
+            browser.close()
