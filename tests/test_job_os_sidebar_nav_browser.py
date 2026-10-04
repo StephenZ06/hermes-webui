@@ -70,10 +70,12 @@ def test_dashboard_import_saves_a_job_and_escapes_its_title():
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1280)
         try:
-            page.click("#jobOsSidebar [data-job-os-view='dashboard']")
+            page.wait_for_selector("#job-os-import-form", timeout=10000)
             page.fill("#job-os-import-form input[name='title']", title)
             page.fill("#job-os-import-form input[name='canonical_url']", f"https://example.com/import-{marker}")
             page.click("#job-os-import-form button[type='submit']")
+            page.wait_for_function("() => !document.querySelector('#job-os-import-form input[name=title]')?.value", polling=100, timeout=10000)
+            page.click("#jobOsSidebar [data-job-os-view='pipeline']")
             page.wait_for_function(
                 "(marker) => [...document.querySelectorAll('#jobOsRoot .job-os-job-card strong')].some(e => e.textContent.includes(marker))",
                 arg=marker, polling=100, timeout=10000,
@@ -92,5 +94,28 @@ def test_narrow_screen_keeps_an_in_page_section_switcher():
             page.click("#jobOsRoot .job-os-tabs [data-job-os-view='applications']")
             page.wait_for_function("() => location.hash === '#jobs/applications'", polling=100, timeout=10000)
             assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
+        finally:
+            browser.close()
+
+
+def test_job_lists_read_newest_first():
+    """The API lists jobs oldest first; Recent jobs and the pipeline must not
+    show the oldest twelve as 'recent'."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1280)
+        try:
+            titles = page.evaluate("""() => {
+                const jobs = Array.from({length: 14}, (_, i) => ({id: 'j' + i, title: 'Job ' + i, company: 'Co', status: 'discovered', created_at: 1000 + i, updated_at: 1000 + i}));
+                const host = document.createElement('div');
+                const render = (view) => {
+                    host.innerHTML = window.JobOSRender.shell({activeView: view, statusFilter: null, capability: {available: true}, dashboard: null, jobs});
+                    return [...host.querySelectorAll('.job-os-job-card strong')].map(e => e.textContent);
+                };
+                return {dashboard: render('dashboard'), pipeline: render('pipeline')};
+            }""")
+            assert titles["dashboard"][0] == "Job 13"
+            assert "Job 0" not in titles["dashboard"], "the oldest job is not 'recent'"
+            assert titles["pipeline"][0] == "Job 13" and titles["pipeline"][-1] == "Job 0"
         finally:
             browser.close()
