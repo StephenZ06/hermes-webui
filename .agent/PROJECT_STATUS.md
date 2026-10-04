@@ -24,7 +24,10 @@
   matching that fork's local commits). The other 13 content-changed files
   and the repo-wide CRLF churn are untouched.
 - Worktrees: removed the merged `fix/work-hub-workspace-layout`. Kept:
-  - `agent-a5aa110d9780cb643`: 93 uncommitted files, needs an owner decision.
+  - (`agent-a5aa110d9780cb643` was later removed. It held an Aug 10 draft of
+    the Hermes-Studio parity work on a partly rolled-back base, all of it in
+    master in later form. Backup, verified to restore the exact tree:
+    `.claude/backups/agent-a5aa110d9780cb643-2026-10-04/` (git-ignored).)
   - (`agent-ae8020dc8421e0db8` was later removed; its `scratch/` ignore rule
     was cherry-picked as `e25597882`.)
 
