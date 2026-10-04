@@ -148,7 +148,15 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         })""")
 
         pg.evaluate("() => document.querySelector('[data-outlet=\\\"projects\\\"]').click()")
-        pg.wait_for_timeout(500)
+        # The floor and its cards rebuild on the next frame; software WebGL
+        # frames here can take seconds, so wait for it instead of a fixed time.
+        try:
+            pg.wait_for_function(
+                "() => document.querySelectorAll('.office-dept-card').length === 5",
+                polling=100, timeout=30000,
+            )
+        except Exception:
+            pass  # the assertion below reports what is actually there
         # Leaving Business restores the named, coloured Projects floors.
         cards_after_leaving_business = pg.evaluate("""() => Array.from(document.querySelectorAll('.office-dept-card')).map(el => ({
           hasName: !!el.querySelector('.office-dept-card-name'),

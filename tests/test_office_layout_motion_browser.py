@@ -76,3 +76,39 @@ def test_sidebar_toggles_keep_the_office_drawing_buffer(base_url):
     for state in states:
         assert state["canvasWidth"] >= state["stageWidth"], f"the canvas must cover the stage: {state}"
         assert abs(state["centreOffset"]) <= 1, f"the floor must stay centred in the stage: {state}"
+
+
+def test_floor_updates_wait_for_the_slide_to_finish(base_url):
+    """A poll or delegation event landing mid-slide used to rebuild the floor,
+    its cards and the task panel inside the moving layer (the intermittent
+    stutter). Updates now queue until the slide settles, then apply once."""
+    pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        b = p.chromium.launch(args=[
+            "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+        ])
+        try:
+            pg = b.new_page(viewport={"width": 1400, "height": 900})
+            pg.goto(base_url, wait_until="load")
+            pg.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            pg.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            pg.evaluate("() => window.switchPanel('office')")
+            pg.wait_for_function("() => window.HermesOffice && window.HermesOffice.isRunning()", polling=100, timeout=60000)
+            during = pg.evaluate("""() => new Promise(resolve => {
+              const O = window.HermesOffice;
+              O.pauseForLayoutMotion();
+              O.onSpawn({subagent_id: 'mid-slide', goal: 'arrives during a slide', depth: 1, run_id: 'slide'});
+              requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                resolve('mid-slide' in O.getView().poses);
+              })));
+            })""")
+            pg.evaluate("() => window.HermesOffice.resumeAfterLayoutMotion()")
+            pg.wait_for_function("() => 'mid-slide' in window.HermesOffice.getView().poses", polling=100, timeout=60000)
+            after = pg.evaluate("() => 'mid-slide' in window.HermesOffice.getView().poses")
+        finally:
+            b.close()
+
+    assert during is False, "the floor was rebuilt mid-slide"
+    assert after is True, "the queued update must apply once the slide settles"

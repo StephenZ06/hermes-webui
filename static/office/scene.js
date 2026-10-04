@@ -1487,6 +1487,7 @@ export function createOfficeScene(canvas, options) {
     const visible = Math.max(1, Math.min(width, stageWidth || width));
     const bufferChanged = width !== lastWidth || height !== lastHeight;
     if (!bufferChanged && visible === viewWidth) return false;
+    const previousOverviewZoom = overview.zoom;
     viewWidth = visible;
     if (bufferChanged) {
       lastWidth = width;
@@ -1499,7 +1500,12 @@ export function createOfficeScene(canvas, options) {
     // The framed zoom fits the floor into what is visible. A camera the user
     // is driving keeps its own zoom.
     overview.zoom = zoomForRadius(viewWidth, height, framedRadius);
-    if (!focusedId && !manualZoom && !tween) applyView(overview);
+    const following = !focusedId && !manualZoom && !tween;
+    // A sidebar slide changes only the visible width. When that leaves the
+    // picture as it was (same buffer, and the framed zoom is height-limited
+    // or the camera is the user's), there is nothing to redraw.
+    if (!bufferChanged && (!following || overview.zoom === previousOverviewZoom)) return false;
+    if (following) applyView(overview);
     else applyCamera(width, height);
     return true;
   }

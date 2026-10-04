@@ -215,6 +215,11 @@ function syncCanvasSpan() {
   stage.style.setProperty('--office-canvas-span', Math.round(span) + 'px');
 }
 
+function flushDeferredMotionWork() {
+  if (_syncDeferredForMotion) { _syncDeferredForMotion = false; scheduleSync(); }
+  if (_sidebarDeferredForMotion) { _sidebarDeferredForMotion = false; renderSidebar(); }
+}
+
 function pauseForLayoutMotion() {
   if (_layoutMotionResumeRaf) {
     cancelAnimationFrame(_layoutMotionResumeRaf);
@@ -229,13 +234,14 @@ function pauseForLayoutMotion() {
 function resumeAfterLayoutMotion() {
   if (_layoutMotionPauseDepth < 1) return;
   _layoutMotionPauseDepth -= 1;
-  if (_layoutMotionPauseDepth || !_scene) return;
+  if (_layoutMotionPauseDepth) return;
+  if (!_scene) { flushDeferredMotionWork(); return; }
   const scene = _scene;
   const shouldResume = _resumeSceneAfterLayoutMotion;
   _resumeSceneAfterLayoutMotion = false;
-  // The ResizeObserver already redrew at the committed size in the slide's
-  // first frame, so this resize is normally a no-op. Restarting still waits
-  // for the settled transform-free frame to paint first.
+  // The ResizeObserver already handled the visible-width change, so this
+  // resize is normally a no-op. Restarting, and the floor/sidebar updates
+  // queued during the slide, wait for the settled frame to paint first.
   _layoutMotionResumeRaf = requestAnimationFrame(() => {
     _layoutMotionResumeRaf = requestAnimationFrame(() => {
       _layoutMotionResumeRaf = 0;
@@ -243,6 +249,7 @@ function resumeAfterLayoutMotion() {
       syncCanvasSpan();
       scene.resize();
       if (shouldResume && !document.hidden) scene.start();
+      flushDeferredMotionWork();
     });
   });
 }
@@ -336,11 +343,20 @@ function projectsFloorView(state) {
  * of parallel spawns arrives as a burst of events; rebuilding the floor once
  * per event would rebuild it a dozen times for one visual change.
  */
+// Floor/card/task-panel and sidebar rebuilds requested while a side panel
+// slides. They would repaint inside the moving layer (the intermittent
+// stutter), so they wait and run once when the slide settles.
+let _syncDeferredForMotion = false;
+let _sidebarDeferredForMotion = false;
+
 function scheduleSync() {
+  if (_layoutMotionPauseDepth) { _syncDeferredForMotion = true; return; }
   if (_syncQueued || (!_scene && _officeSubview !== 'dashboard')) return;
   _syncQueued = true;
   window.requestAnimationFrame(() => {
     _syncQueued = false;
+    // Queued before a slide began: it would still rebuild mid-slide.
+    if (_layoutMotionPauseDepth) { _syncDeferredForMotion = true; return; }
     if (!_scene && _officeSubview !== 'dashboard') return;
     const state = activeAdapter().getState();
     if (_officeSubview === 'dashboard') {
@@ -2087,7 +2103,10 @@ function mount(container) {
   reconcile();
   // Runs started under another profile, or in another tab, only reach this
   // panel through the stored listing.
-  _sidebarTimer = setInterval(() => { renderSidebar(); }, SIDEBAR_REFRESH_MS);
+  _sidebarTimer = setInterval(() => {
+    if (_layoutMotionPauseDepth) { _sidebarDeferredForMotion = true; return; }
+    renderSidebar();
+  }, SIDEBAR_REFRESH_MS);
 
   // Render cached/dummy sidebar immediately so project folders show up before
   // the first background poll completes.
