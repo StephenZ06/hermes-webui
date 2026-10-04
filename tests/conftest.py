@@ -17,6 +17,7 @@ import json
 import inspect
 import multiprocessing
 import os
+import threading
 import pathlib
 import shutil
 import stat
@@ -1153,6 +1154,29 @@ def base_url():
 # provider/model detection.
 
 @pytest.fixture(autouse=True)
+def _pytest_process_models_cache_path():
+    """Keep the pytest process's /api/models disk cache off the test server's.
+
+    Both processes share STATE_DIR, so both wrote STATE_DIR/models_cache.json:
+    the server's catalog writes could replace a snapshot an in-process test had
+    just persisted, and the test's reload was then rejected by fingerprint.
+    Same filename (the default-profile name is a contract, #3957), separate
+    directory. Re-applied per test because some tests reload api.config.
+    """
+    try:
+        import api.config as config
+    except Exception:
+        yield
+        return
+    shared = config.STATE_DIR / "models_cache.json"
+    if config._models_cache_path == shared:
+        own_dir = config.STATE_DIR / "pytest-process"
+        own_dir.mkdir(parents=True, exist_ok=True)
+        config._models_cache_path = own_dir / "models_cache.json"
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _invalidate_models_cache_after_test():
     """Force the TTL cache to be cleared before and after every test.
 
@@ -1166,6 +1190,12 @@ def _invalidate_models_cache_after_test():
     except Exception:
         pass
     yield
+    # An over-budget bounded rebuild leaves its "models-catalog-rebuild" daemon
+    # running after get_available_models() returns. Left alone it holds the
+    # catalog lock and publishes into the NEXT test (the #5979 warm helper's
+    # non-blocking acquire then gave up). Let it finish before the next test.
+    for worker in [t for t in threading.enumerate() if t.name == "models-catalog-rebuild"]:
+        worker.join(timeout=15)
     try:
         from api.config import invalidate_models_cache
         invalidate_models_cache()

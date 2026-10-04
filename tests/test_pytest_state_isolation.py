@@ -75,3 +75,16 @@ def test_importing_bootstrap_does_not_load_the_repo_dotenv(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+def test_pytest_process_models_cache_is_not_the_test_servers_file():
+    """The test server shares STATE_DIR with the pytest process. When both used
+    STATE_DIR/models_cache.json, the server's own catalog writes replaced the
+    snapshot an in-process test had just persisted, and the test's disk-cache
+    reload was rejected by fingerprint (flaky #5979 warm-helper test)."""
+    import api.config as config
+
+    server_cache = config.STATE_DIR / "models_cache.json"
+    in_process = config._get_models_cache_path()
+    assert in_process != server_cache
+    assert in_process.name == "models_cache.json", "default-profile filename is a contract (#3957)"
