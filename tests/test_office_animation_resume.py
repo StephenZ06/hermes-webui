@@ -46,14 +46,15 @@ def test_office_reset_clears_the_floor_without_stopping_the_loop(base_url, tmp_p
         pg.on("console", lambda m: logs.append(f"{m.type}: {m.text}"))
         pg.on("pageerror", lambda e: logs.append(f"pageerror: {e}"))
         pg.goto(base_url, wait_until="load")
-        pg.wait_for_timeout(2500)
+        pg.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
         pg.evaluate('''() => {
           document.querySelectorAll('#onboardingOverlay, [role="dialog"]').forEach(el => el.remove());
         }''')
-        pg.wait_for_timeout(300)
 
         pg.evaluate("() => window.switchPanel('office')")
-        pg.wait_for_timeout(1200)
+        # Software WebGL here can take seconds per frame, and the floor only
+        # changes on frames, so every step waits for its state, never a fixed time.
+        pg.wait_for_function("() => window.HermesOffice && window.HermesOffice.isRunning()", polling=100, timeout=60000)
 
         # A live delegation: two running desks, connector lines marching.
         pg.evaluate("""() => {
@@ -62,7 +63,10 @@ def test_office_reset_clears_the_floor_without_stopping_the_loop(base_url, tmp_p
           O.onSpawn({subagent_id:'w2', goal:'do the other thing', depth:1, run_id:'runA'});
           O.onToolActivity({subagent_id:'w1', tool:'Read', preview:'x.py'});
         }""")
-        pg.wait_for_timeout(1500)
+        pg.wait_for_function(
+            "() => ['w1', 'w2'].every(id => id in window.HermesOffice.getView().poses)",
+            polling=100, timeout=60000,
+        )
 
         before = pg.evaluate("""() => ({
           workers: window.HermesOffice.getState().workers.map(w => w.id),
@@ -72,7 +76,10 @@ def test_office_reset_clears_the_floor_without_stopping_the_loop(base_url, tmp_p
 
         # What loadSession() now does on a cross-session switch.
         pg.evaluate("() => window.HermesOffice.reset()")
-        pg.wait_for_timeout(600)
+        pg.wait_for_function(
+            "() => !window.HermesOffice.getState().workers.length && !Object.keys(window.HermesOffice.getView().poses).length",
+            polling=100, timeout=60000,
+        )
 
         after = pg.evaluate("""() => ({
           workers: window.HermesOffice.getState().workers.map(w => w.id),
@@ -87,9 +94,16 @@ def test_office_reset_clears_the_floor_without_stopping_the_loop(base_url, tmp_p
         pg.evaluate("""() => {
           window.HermesOffice.onSpawn({subagent_id:'w3', goal:'new run', depth:1, run_id:'runB'});
         }""")
-        pg.wait_for_timeout(400)
         w3_running_seat = pg.evaluate("() => window.HermesOffice.getState().workers.map(w=>w.id)")
-        pg.wait_for_timeout(3500)
+        # Settling onto the desk is an arrival walk the render loop advances
+        # frame by frame: it only completes if the loop survived the reset.
+        try:
+            pg.wait_for_function(
+                "() => ['work', 'think', 'idle'].includes(window.HermesOffice.getView().poses.w3)",
+                polling=200, timeout=120000,
+            )
+        except Exception:
+            pass
         w3_end = pg.evaluate("() => window.HermesOffice.getView().poses.w3")
 
         b.close()
