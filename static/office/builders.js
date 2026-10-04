@@ -157,6 +157,24 @@ function box(w, h, d, color) {
   return mesh;
 }
 
+/**
+ * A box with softly rounded edges, lying flat (w across x, h up y, d along z).
+ * Furniture built from plain boxes read as blocky next to the rounded pod
+ * slabs; this reuses the same extrusion.
+ */
+function roundedSlab(w, h, d, color, radius) {
+  const r = radius ?? Math.min(w, d) * 0.08;
+  return roundedPlatform(w, d, h, color, { radius: r, bevel: Math.min(r, h * 0.45), bevelSegments: 2 });
+}
+
+/** The same, standing upright (w across x, h up y, t thick along z). */
+function roundedPanel(w, h, t, color, radius) {
+  const r = radius ?? Math.min(w, h) * 0.08;
+  const mesh = roundedPlatform(w, h, t, color, { radius: r, bevel: Math.min(r, t * 0.45), bevelSegments: 2 });
+  mesh.rotation.x = 0;
+  return mesh;
+}
+
 function cylinder(rTop, rBottom, h, segments, color) {
   const mesh = new THREE.Mesh(
     geometry(`cyl|${rTop}|${rBottom}|${h}|${segments}`,
@@ -835,12 +853,12 @@ export function makeWalkway(length, palette, railColor, options) {
 export function makeDesk(palette) {
   const group = new THREE.Group();
 
-  const top = box(4.4, 0.2, 2.4, palette.deskTop);
+  const top = roundedSlab(4.4, 0.2, 2.4, palette.deskTop, 0.14);
   top.position.y = 1.5;
   group.add(top);
 
   [-1.9, 1.9].forEach(x => {
-    const leg = box(0.25, 1.5, 2.0, palette.deskLeg);
+    const leg = roundedSlab(0.25, 1.5, 2.0, palette.deskLeg, 0.06);
     leg.position.set(x, 0.75, 0);
     group.add(leg);
   });
@@ -850,7 +868,7 @@ export function makeDesk(palette) {
   group.add(screen);
   group.userData.screen = screen.userData.screen;
 
-  const stand = cylinder(0.12, 0.2, 0.5, 8, palette.deskLeg);
+  const stand = cylinder(0.12, 0.2, 0.5, 16, palette.deskLeg);
   stand.position.set(0, 1.85, -0.7);
   group.add(stand);
 
@@ -874,7 +892,7 @@ export function makeDesk(palette) {
 
 function makeKeyboard(palette) {
   const group = new THREE.Group();
-  const board = box(2.2, 0.06, 0.85, palette.keyboard || '#24242e');
+  const board = roundedSlab(2.2, 0.06, 0.85, palette.keyboard || '#24242e', 0.08);
   board.position.y = 0.03;
   board.castShadow = false;
   group.add(board);
@@ -909,7 +927,7 @@ function makeMouse(palette) {
 function makeScreen(palette) {
   const group = new THREE.Group();
 
-  const bezel = box(2.9, 1.8, 0.12, palette.screenBezel);
+  const bezel = roundedPanel(2.9, 1.8, 0.12, palette.screenBezel, 0.12);
   group.add(bezel);
 
   const canvas = document.createElement('canvas');
@@ -1001,16 +1019,16 @@ function mulberry32(a) {
 
 export function makeChair(palette) {
   const group = new THREE.Group();
-  const seat = box(1.5, 0.2, 1.4, palette.chair);
+  const seat = roundedSlab(1.5, 0.2, 1.4, palette.chair, 0.2);
   seat.position.y = 1.0;
   group.add(seat);
-  const back = box(1.5, 1.2, 0.2, palette.chair);
+  const back = roundedPanel(1.5, 1.2, 0.2, palette.chair, 0.22);
   back.position.set(0, 1.6, 0.6);
   group.add(back);
-  const post = cylinder(0.12, 0.12, 1.0, 8, palette.deskLeg);
+  const post = cylinder(0.12, 0.12, 1.0, 16, palette.deskLeg);
   post.position.y = 0.5;
   group.add(post);
-  const foot = cylinder(0.7, 0.75, 0.12, 10, palette.deskLeg);
+  const foot = cylinder(0.7, 0.75, 0.12, 24, palette.deskLeg);
   foot.position.y = 0.06;
   group.add(foot);
   return group;

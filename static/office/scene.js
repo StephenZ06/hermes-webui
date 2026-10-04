@@ -227,7 +227,32 @@ export function createOfficeScene(canvas, options) {
   keyLight.shadow.camera.bottom = -180;
   keyLight.shadow.bias = -0.0003;
   keyLight.shadow.normalBias = 0.02;
+  // Softens the shadow edge (PCF sample spread, in shadow-map texels).
+  keyLight.shadow.radius = 2.5;
   scene.add(keyLight);
+  // The light aims at its target's world position; keep it in the scene so
+  // moving it with the framed office updates its matrix.
+  scene.add(keyLight.target);
+  const KEY_LIGHT_OFFSET = keyLight.position.clone();
+
+  /**
+   * Fit the shadow map to the office actually on the floor. A fixed 360-unit
+   * square spread 2048 texels so thin that desks and figures (about a unit
+   * across) cast stair-stepped shadows that shimmered as they moved; a frame
+   * around the office's own radius is several times sharper for the same map.
+   */
+  function fitShadowToOffice() {
+    const half = Math.min(180, Math.max(30, framedRadius * 1.25 + 8));
+    const cam = keyLight.shadow.camera;
+    cam.left = -half;
+    cam.right = half;
+    cam.top = half;
+    cam.bottom = -half;
+    cam.updateProjectionMatrix();
+    keyLight.target.position.set(framedCenter.x, 0, framedCenter.z);
+    keyLight.position.set(framedCenter.x + KEY_LIGHT_OFFSET.x, KEY_LIGHT_OFFSET.y, framedCenter.z + KEY_LIGHT_OFFSET.z);
+    keyLight.target.updateMatrixWorld();
+  }
 
   // A low rim light from behind/opposite the key light so a pod's far side
   // isn't flat black. Cheap: no shadow map, no extra render pass.
@@ -375,6 +400,7 @@ export function createOfficeScene(canvas, options) {
   let conductor = null;
   let lastState = null;
   let framedRadius = 0;
+  fitShadowToOffice();
 
   function ensureConductor() {
     if (conductor) return conductor;
@@ -1023,6 +1049,7 @@ export function createOfficeScene(canvas, options) {
     framedRadius = wanted;
     ensureGroundCovers(framedRadius);
     framedCenter = { x: next.x, z: next.z };
+    fitShadowToOffice();
     overview.x = framedCenter.x;
     overview.z = framedCenter.z;
     overview.zoom = zoomForRadius(viewWidth || lastWidth, lastHeight, framedRadius);
