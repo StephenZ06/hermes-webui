@@ -1,5 +1,64 @@
 # Project status — hermes-webui
 
+## 2026-10-04: Phase 2 readiness review; Phase 3 UI changes
+
+**Readiness review (Phase 2).** Production-use assessment of the checkout after
+`45eda7494`:
+
+- *Structure.* HTTP dispatch is table-driven for every method
+  (`api/route_table.py`, parity-pinned). Repeated state mutations now go
+  through single helpers: SSE response start (`begin_sse_response`, bounded
+  vs long-lived per #3103), pending-turn clear, wakeup-pause restore, CLI
+  source identity, chat-stream connect (`_openChatStream`). Pure chat helpers
+  moved out of `messages.js` into `stream_markdown.js` and `anchor_scene.js`.
+  The remaining structural debt is file size: `api/routes.py` is 32k lines,
+  `static/ui.js` 22k, `static/panels.js` 16k, `api/streaming.py` 14k. The
+  routes split (item 15) is deferred: the bodies are now plain functions, so
+  it can be done module by module with `tests/test_route_table_parity.py` as
+  the guard.
+- *Efficiency.* No hot-path regressions were found. Static assets are
+  fingerprinted even when the build version is unknown (`fa553c4ea`).
+  Long-lived SSE streams no longer force reconnect churn. The cold model
+  picker catalog stays network-free.
+- *Bugs fixed this phase.* `0ba8ae763`: the cold picker catalog listed a
+  provider-prefixed `model.default` beside its bare catalog twin (#147 on the
+  cold path; it only reproduced when the cold catalog served the request).
+  Earlier items are recorded below.
+- *Security notes (open, by design or low risk).* `/api/shutdown` and
+  `/api/health/restart` need only auth + CSRF; with no password, any local
+  process reaching the port can call them. The live unit binds
+  `127.0.0.1` with auth on, so this is acceptable for single-user use. Set a
+  password before exposing the port beyond loopback. The Job OS load-error
+  message is now set via `textContent` (it was interpolated into HTML).
+- *Test health.* Full sharded run on `45eda7494`: 16,591 passed, 1 failed. The failure was the new Job OS import test, which exposed that Recent jobs showed the oldest twelve (the API lists `created_at ASC`); fixed by sorting newest-first in the renderer. The test's own race was fixed too: typing before an in-flight refresh re-rendered the form. Low priority: a user typing in the first ~100ms after a nav click can still lose that input. `npm run lint:runtime` is clean. The
+  conversation-lifecycle, historical, smoke and edge-swipe browser gates
+  pass. Known order-dependent tests (pass in isolation, failed once in a
+  subset run): `test_provider_mismatch::test_at_provider_first_party_named_third_party_model_known_limitation`,
+  and the warm-helper provenance check in `tests/test_model_resolver.py`.
+- *Deferred.* Item 15 (routes module split) and item 18 (replace the
+  remaining source-text tests with behavioural ones). New UI work in this
+  phase ships with behavioural browser tests.
+
+**Phase 3 UI (`f192394af`, `45eda7494`).**
+- Chat: 12px above and below "Filter conversations".
+- Knowledge: rows align with the search box.
+- Work Hub: less space above WORKSPACES. A single-board project opens its
+  board on click, while a multi-board project expands. The chevron always
+  expands.
+- Jobs: the side panel holds section nav with counts plus pipeline-stage
+  filters (the description copy was removed). The page fills the view with
+  an even 24px inset, metric cards, and Recent jobs beside Import.
+  Applications lists submitted jobs. Phones keep an in-page section
+  switcher. Tests: `tests/test_work_hub_single_board_folder_browser.py`,
+  `tests/test_job_os_sidebar_nav_browser.py` (both fail on the pre-change
+  code).
+
+**Deployment.** The live UI is the user systemd unit
+`hermes-webui-native.service` (this checkout's `server.py` on
+`127.0.0.1:8787`, relayed on `:18788`). Restart it with
+`systemctl --user restart hermes-webui-native.service`, then confirm the
+`/sw.js` `CACHE_NAME` ends in `g<HEAD sha>`.
+
 ## 2026-10-03: route-table dispatch complete; test-isolation fixes
 
 **Route tables.** Every `handle_<method>` in `api/routes.py` now dispatches
