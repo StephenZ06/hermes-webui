@@ -1336,8 +1336,13 @@ def test_at_provider_first_party_named_third_party_model_known_limitation(monkey
     future change makes the classifier provider-aware, update this expectation to
     assert preservation instead.
     """
+    import api.config as config
     import api.routes as routes
 
+    # Precondition: ollama is NOT a configured provider (a configured one takes
+    # the @provider fast path and is kept). Pin it: other tests write providers
+    # into the shared test-home config.yaml, which the in-process cfg reloads.
+    monkeypatch.setitem(config.cfg, "providers", {"anthropic": {}})
     monkeypatch.setattr(
         routes,
         "get_available_models",

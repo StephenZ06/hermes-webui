@@ -159,7 +159,26 @@ def isolated_self_hosted_env(monkeypatch, tmp_path):
     config._cfg_mtime = old_mtime
 
 
-def test_post_self_hosted_provider_succeeds_for_ollama(isolated_self_hosted_env):
+@pytest.fixture
+def restore_server_provider_config():
+    """The two POST tests below go through the shared test server, which writes
+    the provider (and makes it active) in the shared test home. Left there, it
+    reached every later test that reads that config.yaml. Put it back."""
+    from tests.conftest import TEST_STATE_DIR
+
+    saved = {}
+    for name in ("config.yaml", ".env"):
+        path = TEST_STATE_DIR / name
+        saved[path] = path.read_bytes() if path.exists() else None
+    yield
+    for path, data in saved.items():
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(data)
+
+
+def test_post_self_hosted_provider_succeeds_for_ollama(isolated_self_hosted_env, restore_server_provider_config):
     _tmp_path, _fake_config_path = isolated_self_hosted_env
     body, status = _post("/api/providers/self-hosted", {
         "provider": "ollama",
@@ -171,7 +190,7 @@ def test_post_self_hosted_provider_succeeds_for_ollama(isolated_self_hosted_env)
     assert body["provider"] == "ollama"
 
 
-def test_post_self_hosted_provider_succeeds_for_lmstudio(isolated_self_hosted_env):
+def test_post_self_hosted_provider_succeeds_for_lmstudio(isolated_self_hosted_env, restore_server_provider_config):
     _tmp_path, _fake_config_path = isolated_self_hosted_env
     body, status = _post("/api/providers/self-hosted", {
         "provider": "lmstudio",
