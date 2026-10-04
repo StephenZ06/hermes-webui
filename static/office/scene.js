@@ -20,7 +20,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
-  makePod, makeDesk, makeChair, makePerson, makeNameplate,
+  makePod, makeDesk, makeChair, makeCubicle, cubicleWallPlan, setCubicleActive, makePerson, makeNameplate,
   makePlant, makeWhiteboard, makeChatBubble,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
@@ -108,6 +108,7 @@ const PALETTES = {
     podTop: '#ffffff', podSide: '#e4dfd4', platformBase: '#000000',
     deskTop: '#c9a227', deskLeg: '#8b8b93',
     chair: '#5f6672',
+    cubicle: '#c4c8cf',
     shirt: '#6b8fb5', skin: '#e8b98e', hair: '#3b2b1d', trousers: '#3e4048',
     screenBezel: '#2c2c34', screenBg: '#14141c', screenActiveBg: '#f7f7fb',
     screenText: '#8fb9a8', screenTextBright: '#d8f0e4',
@@ -126,6 +127,7 @@ const PALETTES = {
     podTop: '#0d172b', podSide: '#0a101e', platformBase: '#000000',
     deskTop: '#a05f1a', deskLeg: '#4a4a58',
     chair: '#2a2f3a',
+    cubicle: '#1b2130',
     shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20', trousers: '#2b2d36',
     screenBezel: '#0e0e14', screenBg: '#0a0a12', screenActiveBg: '#f0f0f7',
     screenText: '#5adeb7', screenTextBright: '#b9f5e2',
@@ -715,6 +717,29 @@ export function createOfficeScene(canvas, options) {
     seats.forEach(seat => { seat.plate.visible = shouldShowNameplate(seat); });
   }
 
+  /**
+   * (Re)build a desk's cubicle when its orientation or platform colour
+   * changes. Walls go on the sides facing away from the camera, worked out
+   * in the desk's own frame because desks turn to face the conductor.
+   */
+  function ensureCubicle(seat, rotationY, accent) {
+    const a = rotationY || 0;
+    const cam = { x: ISO_DIRECTION.x, z: ISO_DIRECTION.z };
+    const local = {
+      x: cam.x * Math.cos(a) - cam.z * Math.sin(a),
+      z: cam.x * Math.sin(a) + cam.z * Math.cos(a),
+    };
+    const plan = cubicleWallPlan(local);
+    const key = `${accent || ''}|${plan.backHeight}|${plan.sideX}`;
+    if (seat.cubicle && seat.cubicleKey === key) return;
+    const wasActive = !!(seat.cubicle && seat.cubicle.userData.cubicle.active);
+    if (seat.cubicle) seat.group.remove(seat.cubicle);
+    seat.cubicle = makeCubicle(palette, accent || null, plan);
+    seat.cubicleKey = key;
+    if (wasActive) setCubicleActive(seat.cubicle, true);
+    seat.group.add(seat.cubicle);
+  }
+
   function ensureSeat(deskId, tintIndex) {
     let seat = seats.get(deskId);
     if (seat) return seat;
@@ -840,6 +865,8 @@ export function createOfficeScene(canvas, options) {
       const seat = ensureSeat(desk.id, desk.index);
       seat.group.position.set(spot.x, 0.6, spot.z);
       seat.group.rotation.y = spot.rotationY;
+      const seatPod = podsByCluster.get(desk.cluster);
+      ensureCubicle(seat, spot.rotationY, seatPod && seatPod.color);
       configureSeatArrival(seat, spot, podsByCluster.get(desk.cluster));
 
       const worker = desk.workerId ? workersById.get(desk.workerId) : null;
@@ -864,6 +891,12 @@ export function createOfficeScene(canvas, options) {
         }
       }
       seat.pose = pose;
+      // The cubicle's accent strip lifts while its subagent is actually at
+      // work -- subtle on purpose: the pods and figures stay the focus.
+      if (seat.cubicle) {
+        setCubicleActive(seat.cubicle, !!worker && worker.status === 'running'
+          && (pose === 'work' || pose === 'tool' || pose === 'think'));
+      }
 
       // Projects desks are anonymous until someone sits at them; Business
       // desks are named by the roster before anyone does. The floor sign

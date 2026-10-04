@@ -1017,6 +1017,93 @@ function mulberry32(a) {
 
 /* ---------- chair ---------- */
 
+/* ---------- cubicle ---------- */
+
+// Desk-local frame: the monitor sits at -z, the chair at +z (1.9), and a
+// subagent walks in from the open +z side (|x| <= 1.4, up to z ~5), so walls
+// only ever go behind the desk or beside it, never in front.
+const CUBICLE_HALF_WIDTH = 3.2;
+const CUBICLE_BACK_Z = -1.65;
+const CUBICLE_SIDE_FRONT_Z = 0.9;
+const CUBICLE_PANEL = 0.14;
+const CUBICLE_BACK_HEIGHT = 2.8;
+// A back wall the camera looks across stays below the monitor's sight line.
+const CUBICLE_BACK_LOW_HEIGHT = 1.3;
+const CUBICLE_SIDE_HEIGHT = 2.2;
+const CUBICLE_ACCENT_HEIGHT = 0.05;
+// Accent glow, as emissive intensity. Both stay well under the bloom pass'
+// threshold: a crisp coloured line, never a halo competing with the pods.
+export const CUBICLE_ACCENT_IDLE = 0.12;
+export const CUBICLE_ACCENT_ACTIVE = 0.55;
+
+/**
+ * Which walls a cubicle gets, from the camera's horizontal direction in the
+ * desk's own frame (desks turn to face the conductor, so this differs per
+ * pod). The side wall always goes on the side facing away from the camera;
+ * the back wall is full height only when the camera is in front of the desk.
+ */
+export function cubicleWallPlan(cameraLocal) {
+  const cx = cameraLocal && Number.isFinite(cameraLocal.x) ? cameraLocal.x : 0;
+  const cz = cameraLocal && Number.isFinite(cameraLocal.z) ? cameraLocal.z : 1;
+  return {
+    backHeight: cz >= 0 ? CUBICLE_BACK_HEIGHT : CUBICLE_BACK_LOW_HEIGHT,
+    sideX: cx >= 0 ? -CUBICLE_HALF_WIDTH : CUBICLE_HALF_WIDTH,
+  };
+}
+
+function cubicleAccentMaterial(accent, active) {
+  return material(accent, {
+    rough: 0.5, emissive: accent,
+    ei: active ? CUBICLE_ACCENT_ACTIVE : CUBICLE_ACCENT_IDLE,
+  });
+}
+
+/**
+ * Two low partition walls around a desk -- neutral panels, each capped with
+ * a thin strip in the platform's colour. `setCubicleActive` brightens the
+ * strips while the desk's subagent works.
+ */
+export function makeCubicle(palette, accent, plan) {
+  const layout = plan || cubicleWallPlan(null);
+  const group = new THREE.Group();
+  const panelColor = palette.cubicle || '#1b2130';
+  const accentColor = accent || palette.cubicleAccent || '#7c8aa5';
+  const strips = [];
+
+  const backWidth = CUBICLE_HALF_WIDTH * 2;
+  const back = roundedPanel(backWidth, layout.backHeight, CUBICLE_PANEL, panelColor, 0.06);
+  back.position.set(0, layout.backHeight / 2, CUBICLE_BACK_Z);
+  group.add(back);
+
+  const sideLength = CUBICLE_SIDE_FRONT_Z - CUBICLE_BACK_Z;
+  const side = roundedPanel(sideLength, CUBICLE_SIDE_HEIGHT, CUBICLE_PANEL, panelColor, 0.06);
+  side.rotation.y = Math.PI / 2;
+  side.position.set(layout.sideX, CUBICLE_SIDE_HEIGHT / 2, CUBICLE_BACK_Z + sideLength / 2);
+  group.add(side);
+
+  const idle = cubicleAccentMaterial(accentColor, false);
+  const backStrip = box(backWidth, CUBICLE_ACCENT_HEIGHT, CUBICLE_PANEL + 0.02, idle);
+  backStrip.position.set(0, layout.backHeight + CUBICLE_ACCENT_HEIGHT / 2, CUBICLE_BACK_Z);
+  const sideStrip = box(CUBICLE_PANEL + 0.02, CUBICLE_ACCENT_HEIGHT, sideLength, idle);
+  sideStrip.position.set(layout.sideX, CUBICLE_SIDE_HEIGHT + CUBICLE_ACCENT_HEIGHT / 2, CUBICLE_BACK_Z + sideLength / 2);
+  [backStrip, sideStrip].forEach(strip => {
+    strip.castShadow = false;
+    strips.push(strip);
+    group.add(strip);
+  });
+
+  group.userData.cubicle = { accent: accentColor, active: false, strips };
+  return group;
+}
+
+export function setCubicleActive(cubicle, active) {
+  const state = cubicle && cubicle.userData && cubicle.userData.cubicle;
+  if (!state || state.active === !!active) return;
+  state.active = !!active;
+  const mat = cubicleAccentMaterial(state.accent, state.active);
+  state.strips.forEach(strip => { strip.material = mat; });
+}
+
 export function makeChair(palette) {
   const group = new THREE.Group();
   const seat = roundedSlab(1.5, 0.2, 1.4, palette.chair, 0.2);
