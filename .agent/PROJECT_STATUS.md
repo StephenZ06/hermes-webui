@@ -25,8 +25,8 @@
   and the repo-wide CRLF churn are untouched.
 - Worktrees: removed the merged `fix/work-hub-workspace-layout`. Kept:
   - `agent-a5aa110d9780cb643`: 93 uncommitted files, needs an owner decision.
-  - `agent-ae8020dc8421e0db8`: one unmerged commit adding `scratch/` to
-    .gitignore.
+  - (`agent-ae8020dc8421e0db8` was later removed; its `scratch/` ignore rule
+    was cherry-picked as `e25597882`.)
 
 ## 2026-10-04: Phase 2 readiness review; Phase 3 UI changes
 
