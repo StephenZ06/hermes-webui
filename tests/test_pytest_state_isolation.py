@@ -88,3 +88,27 @@ def test_pytest_process_models_cache_is_not_the_test_servers_file():
     in_process = config._get_models_cache_path()
     assert in_process != server_cache
     assert in_process.name == "models_cache.json", "default-profile filename is a contract (#3957)"
+
+
+_LEAKED_CFG_PATH = Path("/nonexistent/leaked-by-an-earlier-test/config.yaml")
+
+
+def test_a_test_that_leaves_a_stale_loaded_config_path():
+    """Half of a pair (pytest runs a file's tests in definition order).
+
+    Simulates the leak: a test loads config from a tmp path and its
+    monkeypatch of the path is undone, but api.config keeps _cfg_path."""
+    import api.config as config
+
+    config._cfg_path = _LEAKED_CFG_PATH
+    config.cfg["model"] = {"provider": "leaked-provider"}
+
+
+def test_the_next_test_starts_from_the_restored_config_state():
+    """Without conftest restoring it, get_available_models() would see the
+    path mismatch, reload from disk, and wipe this test's in-memory cfg patch
+    (the #2245 / #1426 order dependency)."""
+    import api.config as config
+
+    assert config._cfg_path != _LEAKED_CFG_PATH
+    assert (config.cfg.get("model") or {}).get("provider") != "leaked-provider"

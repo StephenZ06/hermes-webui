@@ -16,6 +16,7 @@ PATH DISCOVERY:
 import json
 import inspect
 import multiprocessing
+import copy
 import os
 import threading
 import pathlib
@@ -1152,6 +1153,41 @@ def base_url():
 # same process. Tests that modify cfg in-memory won't trigger the mtime path,
 # so the cache must be explicitly invalidated after each test that exercises
 # provider/model detection.
+
+@pytest.fixture(autouse=True)
+def _restore_config_cache_state():
+    """Put api.config's loaded-config state back after every test.
+
+    get_available_models() reloads config.yaml whenever the current config
+    path differs from ``_cfg_path`` (the path it last loaded). A test that
+    points _get_config_path() at a tmp file and triggers a load leaves
+    ``_cfg_path`` on that file after its monkeypatch is undone, so the next
+    test that patches ``cfg`` in memory (pinning only ``_cfg_mtime``) has its
+    patch wiped by a reload from disk -- e.g. #2245/#1426 came back with an
+    empty catalog after the xiaomi/codex provider-card tests.
+    """
+    try:
+        import api.config as config
+    except Exception:
+        yield
+        return
+    names = ("cfg", "_cfg_cache", "_cfg_path", "_cfg_mtime")
+    saved = {name: getattr(config, name, None) for name in names}
+    contents = {}
+    for name in ("cfg", "_cfg_cache"):
+        value = saved[name]
+        if isinstance(value, dict) and id(value) not in contents:
+            try:
+                contents[id(value)] = (value, copy.deepcopy(value))
+            except Exception:
+                pass
+    yield
+    for name, value in saved.items():
+        setattr(config, name, value)
+    for obj, snapshot in contents.values():
+        obj.clear()
+        obj.update(snapshot)
+
 
 @pytest.fixture(autouse=True)
 def _pytest_process_models_cache_path():
