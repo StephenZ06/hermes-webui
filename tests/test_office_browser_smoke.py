@@ -101,11 +101,20 @@ def test_office_panel_in_the_real_app(base_url, tmp_path):
         camera = pg.evaluate("""async () => {
           const O = window.HermesOffice;
           const overview = O.getView();
+          // Wait for each camera fly to finish rather than a fixed time:
+          // software WebGL frame rates vary, and the tween advances per frame.
+          const settle = async () => {
+            await new Promise(r => setTimeout(r, 100));
+            const t0 = performance.now();
+            while (O.getView().tweening && performance.now() - t0 < 30000) {
+              await new Promise(r => setTimeout(r, 100));
+            }
+          };
           O.focusWorker('demo-1');
-          await new Promise(r => setTimeout(r, 1200));
+          await settle();
           const focused = O.getView();
           O.resetView();
-          await new Promise(r => setTimeout(r, 1200));
+          await settle();
           return { overview, focused, back: O.getView() };
         }""")
 

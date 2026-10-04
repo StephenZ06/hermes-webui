@@ -1,11 +1,13 @@
-"""The Office floor stays undistorted while a side panel slides.
+"""A side-panel slide never resizes the Office's WebGL drawing buffer.
 
-A panel collapse/expand commits the new layout at once and slides the content
-with a transform (FLIP). The Office pauses its render loop for that slide, but
-it used to skip the resize too, so the stale drawing buffer was stretched over
-the new canvas box for the whole slide (~27% wider on a sidebar collapse) and
-the floor, framing and pod cards snapped into place only after it settled.
-The resize and one redraw now happen in the first frame of the slide.
+Resizing the buffer reallocates the canvas backbuffer and every bloom render
+target (renderer.setSize was effectively the whole cost of an Office sidebar
+toggle in a CPU profile). Done after the slide it was a hitch plus a stretched
+floor during it; done in the slide's first frame it delayed the slide.
+
+The canvas is now laid out as wide as the stage gets with the sidebar
+collapsed and centred in the clipping stage, so both sidebar states use the
+same buffer; only the visible framing changes.
 
 Opt-in like the other WebGL checks: HERMES_WEBUI_BROWSER_TESTS=1.
 """
@@ -25,11 +27,27 @@ pytestmark = [
     ),
 ]
 
+_SETTLED = "() => !document.getAnimations().some(a => a.playState === 'running')"
+_STATE = """() => {
+  const canvas = document.querySelector('.office-canvas');
+  const stage = document.querySelector('.office-stage');
+  const c = canvas.getBoundingClientRect();
+  const s = stage.getBoundingClientRect();
+  return {
+    buffer: [canvas.width, canvas.height],
+    stageWidth: Math.round(s.width),
+    canvasWidth: Math.round(c.width),
+    centreOffset: Math.round((c.left + c.width / 2) - (s.left + s.width / 2)),
+    collapsed: document.querySelector('.layout').classList.contains('sidebar-collapsed'),
+  };
+}"""
 
-def test_paused_office_redraws_at_the_new_size_when_a_panel_slides(base_url):
+
+def test_sidebar_toggles_keep_the_office_drawing_buffer(base_url):
     pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
+    states = []
     with sync_playwright() as p:
         b = p.chromium.launch(args=[
             "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
@@ -40,33 +58,21 @@ def test_paused_office_redraws_at_the_new_size_when_a_panel_slides(base_url):
             pg.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             pg.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             pg.evaluate("() => window.switchPanel('office')")
-            pg.wait_for_selector(".office-canvas", timeout=30000)
-            pg.wait_for_function("() => window.HermesOffice && window.HermesOffice.isRunning()", polling=100, timeout=30000)
-
-            result = pg.evaluate("""() => new Promise(resolve => {
-              const canvas = document.querySelector('.office-canvas');
-              const layout = document.querySelector('.layout');
-              const before = canvas.width;
-              const sidebar = document.querySelector('.sidebar');
-              // What the shared slide does: pause, suppress the CSS width
-              // transition, then commit the final layout in one step.
-              window.HermesOffice.pauseForLayoutMotion();
-              sidebar.style.setProperty('transition', 'none', 'important');
-              layout.classList.toggle('sidebar-collapsed');
-              requestAnimationFrame(() => requestAnimationFrame(() => {
-                const box = Math.round(canvas.clientWidth * Math.min(devicePixelRatio || 1, 2));
-                const out = {before, buffer: canvas.width, box, runningWhilePaused: window.HermesOffice.isRunning()};
-                window.HermesOffice.resumeAfterLayoutMotion();
-                layout.classList.toggle('sidebar-collapsed');
-                sidebar.style.removeProperty('transition');
-                resolve(out);
-              }));
-            })""")
+            pg.wait_for_function("() => window.HermesOffice && window.HermesOffice.isRunning()", polling=100, timeout=60000)
+            states.append(pg.evaluate(_STATE))
+            for _ in range(2):
+                pg.evaluate("() => toggleSidebar()")
+                pg.wait_for_function(_SETTLED, polling=100, timeout=60000)
+                pg.wait_for_function("() => window.HermesOffice.isRunning()", polling=100, timeout=60000)
+                states.append(pg.evaluate(_STATE))
         finally:
             b.close()
 
-    assert result["box"] != result["before"], f"the layout change must resize the canvas box: {result}"
-    assert abs(result["buffer"] - result["box"]) <= 1, (
-        f"the paused Office kept a stale drawing buffer stretched over the new box: {result}"
+    assert states[0]["collapsed"] != states[1]["collapsed"], states
+    assert states[0]["stageWidth"] != states[1]["stageWidth"], f"the toggle must change the stage: {states}"
+    assert len({tuple(s["buffer"]) for s in states}) == 1, (
+        f"a sidebar toggle reallocated the WebGL drawing buffer: {states}"
     )
-    assert result["runningWhilePaused"] is False, "the render loop stays paused for the slide"
+    for state in states:
+        assert state["canvasWidth"] >= state["stageWidth"], f"the canvas must cover the stage: {state}"
+        assert abs(state["centreOffset"]) <= 1, f"the floor must stay centred in the stage: {state}"

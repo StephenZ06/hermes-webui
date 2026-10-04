@@ -1025,7 +1025,7 @@ export function createOfficeScene(canvas, options) {
     framedCenter = { x: next.x, z: next.z };
     overview.x = framedCenter.x;
     overview.z = framedCenter.z;
-    overview.zoom = zoomForRadius(lastWidth, lastHeight, framedRadius);
+    overview.zoom = zoomForRadius(viewWidth || lastWidth, lastHeight, framedRadius);
     // A camera the user has taken control of — focused on a desk, or zoomed by
     // hand — must not be yanked back because another subagent spawned.
     if (focusedId || manualZoom) return;
@@ -1136,7 +1136,7 @@ export function createOfficeScene(canvas, options) {
     focusedId = null;
     manualZoom = true;
     syncNameplateVisibility();
-    const zoom = clampZoom(zoomForRadius(lastWidth, lastHeight, span * 0.62));
+    const zoom = clampZoom(zoomForRadius(viewWidth || lastWidth, lastHeight, span * 0.62));
     startTween({ x: pos.x, z: pos.z, zoom });
     return true;
   }
@@ -1204,10 +1204,13 @@ export function createOfficeScene(canvas, options) {
     _podScreenV.set(pod.group.position.x, 8, pod.group.position.z);
     _podScreenV.project(camera);
     if (_podScreenV.z > 1) return null;
+    // Relative to the stage, not the canvas: the canvas can be wider than the
+    // stage it is centred in (see resize()).
     const rect = canvas.getBoundingClientRect();
+    const stage = canvas.parentElement ? canvas.parentElement.getBoundingClientRect() : rect;
     return {
-      x: (_podScreenV.x + 1) / 2 * rect.width,
-      y: (1 - _podScreenV.y) / 2 * rect.height,
+      x: (_podScreenV.x + 1) / 2 * rect.width + (rect.left - stage.left),
+      y: (1 - _podScreenV.y) / 2 * rect.height + (rect.top - stage.top),
     };
   }
 
@@ -1465,6 +1468,11 @@ export function createOfficeScene(canvas, options) {
   // ---- sizing -----------------------------------------------------------
   let lastWidth = 0;
   let lastHeight = 0;
+  // The visible part of the canvas. The canvas is laid out as wide as the
+  // stage can get when a side panel collapses and centred in it (the overflow
+  // is clipped), so a panel slide changes only this, never the drawing buffer:
+  // reallocating the buffer and bloom targets was the slide's whole cost.
+  let viewWidth = 0;
 
   /**
    * Match the drawing buffer to the canvas' laid-out size. Called on every
@@ -1475,16 +1483,22 @@ export function createOfficeScene(canvas, options) {
   function resize() {
     const width = Math.max(1, canvas.clientWidth || 0);
     const height = Math.max(1, canvas.clientHeight || 0);
-    if (width === lastWidth && height === lastHeight) return false;
-    lastWidth = width;
-    lastHeight = height;
-    // updateStyle=false: the canvas is sized by CSS, and letting three.js
-    // write inline width/height styles would fight the flex layout.
-    renderer.setSize(width, height, false);
-    composer.setSize(width, height);
-    // The framed zoom depends on aspect ratio, so a resize re-derives it. A
-    // camera the user is driving keeps its own zoom.
-    overview.zoom = zoomForRadius(width, height, framedRadius);
+    const stageWidth = canvas.parentElement ? canvas.parentElement.clientWidth : width;
+    const visible = Math.max(1, Math.min(width, stageWidth || width));
+    const bufferChanged = width !== lastWidth || height !== lastHeight;
+    if (!bufferChanged && visible === viewWidth) return false;
+    viewWidth = visible;
+    if (bufferChanged) {
+      lastWidth = width;
+      lastHeight = height;
+      // updateStyle=false: the canvas is sized by CSS, and letting three.js
+      // write inline width/height styles would fight the flex layout.
+      renderer.setSize(width, height, false);
+      composer.setSize(width, height);
+    }
+    // The framed zoom fits the floor into what is visible. A camera the user
+    // is driving keeps its own zoom.
+    overview.zoom = zoomForRadius(viewWidth, height, framedRadius);
     if (!focusedId && !manualZoom && !tween) applyView(overview);
     else applyCamera(width, height);
     return true;

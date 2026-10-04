@@ -86,13 +86,22 @@ def test_desktop_pan_zoom_and_click(base_url):
             c.dispatchEvent(new PointerEvent('pointerdown', {pointerId:1, clientX:x, clientY:y, bubbles:true, pointerType:'mouse', button:0}));
             c.dispatchEvent(new PointerEvent('pointerup',   {pointerId:1, clientX:x, clientY:y, bubbles:true, pointerType:'mouse', button:0}));
           };
+          // Wait for each camera fly to finish rather than a fixed time:
+          // software WebGL frame rates vary, and the tween advances per frame.
+          const settle = async () => {
+            await new Promise(s => setTimeout(s, 100));
+            const t0 = performance.now();
+            while (O.getView().tweening && performance.now() - t0 < 30000) {
+              await new Promise(s => setTimeout(s, 100));
+            }
+          };
           for (let fy = 0.32; fy <= 0.80; fy += 0.08) {
             for (let fx = 0.28; fx <= 0.80; fx += 0.08) {
               O.resetView();
-              await new Promise(s => setTimeout(s, 950));
+              await settle();
               const before = O.getView();
               tap(r.left + r.width * fx, r.top + r.height * fy);
-              await new Promise(s => setTimeout(s, 950));
+              await settle();
               const now = O.getView();
               if (now.zoom > before.zoom + 0.12
                   || Math.hypot(now.x - before.x, now.z - before.z) > 3) {

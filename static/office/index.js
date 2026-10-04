@@ -193,6 +193,28 @@ function activeAdapter() {
   return (_viewMode === 'history' && _historyAdapter) ? _historyAdapter : _adapter;
 }
 
+/**
+ * Lay the canvas out as wide as the stage gets with the sidebar collapsed:
+ * the stage's width plus whatever the in-flow sidebar takes from the row
+ * (300px open, its 1px border collapsed). That sum is the same in both
+ * sidebar states, so a sidebar slide never resizes the drawing buffer (the
+ * stage clips and centres it). Measured only at rest -- mid-slide the
+ * sidebar is pinned out of flow.
+ */
+function syncCanvasSpan() {
+  const stage = _container && _container.querySelector('.office-stage');
+  if (!stage) return;
+  let span = stage.clientWidth;
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) {
+    const style = getComputedStyle(sidebar);
+    if (style.display !== 'none' && style.position !== 'fixed' && style.position !== 'absolute') {
+      span += sidebar.getBoundingClientRect().width;
+    }
+  }
+  stage.style.setProperty('--office-canvas-span', Math.round(span) + 'px');
+}
+
 function pauseForLayoutMotion() {
   if (_layoutMotionResumeRaf) {
     cancelAnimationFrame(_layoutMotionResumeRaf);
@@ -218,6 +240,7 @@ function resumeAfterLayoutMotion() {
     _layoutMotionResumeRaf = requestAnimationFrame(() => {
       _layoutMotionResumeRaf = 0;
       if (_layoutMotionPauseDepth || _scene !== scene) return;
+      syncCanvasSpan();
       scene.resize();
       if (shouldResume && !document.hidden) scene.start();
     });
@@ -1991,6 +2014,7 @@ function mount(container) {
   renderOutletSwitch();
   loadRoster();
 
+  syncCanvasSpan();
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => id ? selectTask(id, false) : clearTaskSelection(),
@@ -2024,6 +2048,7 @@ function mount(container) {
   if (typeof ResizeObserver === 'function') {
     _resizeObserver = new ResizeObserver(() => {
       if (!_scene) return;
+      if (!_layoutMotionPauseDepth) syncCanvasSpan();
       // Resizing clears the WebGL drawing buffer, and this callback runs after
       // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
       // expand settles while the loop is still waiting to restart. It also
