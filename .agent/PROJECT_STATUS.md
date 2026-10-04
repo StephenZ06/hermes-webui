@@ -1,5 +1,29 @@
 # Project status — hermes-webui
 
+## 2026-10-04 (evening): Office sidebar slide, remaining test order dependencies
+
+- Office sidebar toggle (`b4f554541`). A CPU profile of the toggle was
+  almost entirely `renderer.setSize`: the stage changed width, so the
+  canvas backbuffer and every bloom render target were reallocated.
+  - Fix: the canvas is laid out as wide as the stage gets with the sidebar
+    collapsed (`--office-canvas-span`), centred in the clipping
+    `.office-stage`. A toggle changes only the visible width; framing and
+    pod cards use the visible stage. After the fix, `setSize` no longer
+    appears in the toggle's profile.
+  - The ResizeObserver always redraws in the same frame (`scene.renderNow`,
+    `371fd323e`), since a bare resize clears the WebGL buffer.
+  - Not verified on a real GPU (headless here is SwiftShader).
+- Test order dependencies:
+  - `b7dc1934d`: conftest restores `api.config` cfg/_cfg_cache/_cfg_path/
+    _cfg_mtime after each test. A stale `_cfg_path` from tmp-config tests
+    made the next catalog call reload from disk and wipe in-memory cfg
+    patches (#2245, #1426).
+  - `e6717c98b`: the Office reset test waits for state instead of fixed
+    sleeps.
+- Full sharded run on `b7dc1934d`: the 8 failures seen there were CPU-load
+  timeouts (WebGL probes ran concurrently). Shards 0 and 2 re-run clean
+  without load.
+
 ## 2026-10-04 (later): leftovers closed
 
 - Jobs (`db0b76250`): refreshes are numbered and only the newest renders, so a
