@@ -15,6 +15,7 @@ import smtplib
 import socket
 import ssl
 from email.message import EmailMessage
+from email.utils import formataddr
 from typing import Callable
 
 from api.job_os.env import profile_env_value
@@ -24,6 +25,7 @@ PASSWORD_KEY = "JOB_OS_GMAIL_APP_PASSWORD"
 SMTP_HOST, SMTP_PORT = "smtp.gmail.com", 465
 IMAP_HOST, IMAP_PORT = "imap.gmail.com", 993
 TIMEOUT = 15
+SENDER_NAME = "Hermes Jobs"
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,}$")
 
 
@@ -114,7 +116,7 @@ def send_test(to_address: str | None = None, *, sender: Callable[[EmailMessage, 
     if not _EMAIL.match(recipient):
         raise GmailError("The 'Send to' address is not valid.")
     message = EmailMessage()
-    message["From"] = address
+    message["From"] = formataddr((SENDER_NAME, address))
     message["To"] = recipient
     message["Subject"] = "Hermes Jobs: test notification"
     message.set_content("This is a test from Hermes Jobs. New job matches and digests will arrive like this.")

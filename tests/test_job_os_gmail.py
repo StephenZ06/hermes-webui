@@ -81,8 +81,16 @@ def test_disconnect_removes_both_values(base):
 def test_test_email_goes_to_the_connected_account_by_default(base):
     gmail.connect("me@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
     sent = []
-    to = gmail.send_test(sender=lambda msg, a, p: sent.append((msg["To"], msg["Subject"], a)))
-    assert to == "me@gmail.com" and sent == [("me@gmail.com", "Hermes Jobs: test notification", "me@gmail.com")]
+    to = gmail.send_test(sender=lambda msg, a, p: sent.append((msg["To"], msg["Subject"], msg["From"], a)))
+    assert to == "me@gmail.com"
+    assert sent == [("me@gmail.com", "Hermes Jobs: test notification", "Hermes Jobs <me@gmail.com>", "me@gmail.com")]
+
+
+def test_test_email_goes_to_the_send_to_address_when_set(base):
+    gmail.connect("bot@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
+    sent = []
+    assert gmail.send_test("main@gmail.com", sender=lambda msg, a, p: sent.append((msg["From"], msg["To"]))) == "main@gmail.com"
+    assert sent == [("Hermes Jobs <bot@gmail.com>", "main@gmail.com")]
 
 
 def test_http_connect_never_returns_the_password(base, monkeypatch):
