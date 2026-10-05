@@ -70,7 +70,68 @@ def _migration_2(connection: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS = ((1, _migration_1), (2, _migration_2))
+def _migration_3(connection: sqlite3.Connection) -> None:
+    """Scout: posting details on jobs, saved searches and discovery runs."""
+    for column in (
+        "description TEXT NOT NULL DEFAULT ''",
+        "salary_text TEXT NOT NULL DEFAULT ''",
+        "employment_type TEXT NOT NULL DEFAULT ''",
+        "workplace TEXT NOT NULL DEFAULT ''",
+        "posted_at TEXT NOT NULL DEFAULT ''",
+        "search_id TEXT",
+        "run_id TEXT",
+    ):
+        connection.execute(f"ALTER TABLE jobs ADD COLUMN {column}")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS searches (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            keywords TEXT NOT NULL,
+            locations TEXT NOT NULL DEFAULT '',
+            sites TEXT NOT NULL DEFAULT '',
+            remote_only INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            revision INTEGER NOT NULL DEFAULT 0,
+            last_run_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS discovery_runs (
+            id TEXT PRIMARY KEY,
+            search_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            stage_detail TEXT NOT NULL DEFAULT '',
+            trigger TEXT NOT NULL DEFAULT 'manual',
+            revision INTEGER NOT NULL DEFAULT 0,
+            counts_json TEXT NOT NULL DEFAULT '{}',
+            errors_json TEXT NOT NULL DEFAULT '[]',
+            new_job_ids_json TEXT NOT NULL DEFAULT '[]',
+            idempotency_key TEXT,
+            owner_pid INTEGER,
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            started_at INTEGER,
+            finished_at INTEGER
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS discovery_runs_idempotency_unique
+        ON discovery_runs (idempotency_key) WHERE idempotency_key IS NOT NULL
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS discovery_runs_search_created ON discovery_runs (search_id, created_at)"
+    )
+
+
+MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

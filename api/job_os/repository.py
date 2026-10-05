@@ -72,6 +72,13 @@ def _record_from_row(row: sqlite3.Row) -> JobRecord:
         revision=row["revision"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        description=row["description"],
+        salary_text=row["salary_text"],
+        employment_type=row["employment_type"],
+        workplace=row["workplace"],
+        posted_at=row["posted_at"],
+        search_id=row["search_id"],
+        run_id=row["run_id"],
     )
 
 
@@ -88,8 +95,15 @@ def _find_duplicate(connection: sqlite3.Connection, job: JobInput) -> sqlite3.Ro
     ).fetchone()
 
 
-def create_job(job: JobInput, *, idempotency_key: str | None = None) -> JobRecord:
-    """Persist one normalized job or return the original idempotent creation."""
+def create_job(job: JobInput, *, idempotency_key: str | None = None,
+               status: JobStatus = JobStatus.DISCOVERED) -> JobRecord:
+    """Persist one normalized job or return the original idempotent creation.
+
+    ``status`` is the starting point: ``discovered`` for a bare link,
+    ``scraped`` when Scout already read the full posting.
+    """
+    if status not in (JobStatus.DISCOVERED, JobStatus.SCRAPED):
+        raise JobValidationError("A new job starts as discovered or scraped")
     key = str(idempotency_key or "").strip() or None
     connection = connect_job_os()
     try:
@@ -111,8 +125,10 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None) -> JobRecor
             """
             INSERT INTO jobs (
                 id, canonical_url, source, source_id, title, company, location,
-                status, revision, idempotency_key, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, revision, idempotency_key, created_at, updated_at,
+                description, salary_text, employment_type, workplace, posted_at,
+                search_id, run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record_id,
@@ -122,11 +138,18 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None) -> JobRecor
                 job.title,
                 job.company,
                 job.location,
-                JobStatus.DISCOVERED.value,
+                status.value,
                 0,
                 key,
                 now,
                 now,
+                job.description,
+                job.salary_text,
+                job.employment_type,
+                job.workplace,
+                job.posted_at,
+                job.search_id,
+                job.run_id,
             ),
         )
         connection.execute(

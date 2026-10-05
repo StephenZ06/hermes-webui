@@ -19,6 +19,13 @@ from urllib.parse import urlsplit
 from api.job_os.env import profile_env_value
 
 MAX_RESPONSE_BYTES = 64 * 1024
+MAX_PAGE_BYTES = 4 * 1024 * 1024
+SEARCH_TIMEOUT = 60.0
+SCRAPE_TIMEOUT = 90.0
+
+
+class FirecrawlError(RuntimeError):
+    """A bounded, secret-free description of a failed Firecrawl call."""
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,57 @@ class FirecrawlClient:
                 return response.status, response.read(MAX_RESPONSE_BYTES), response.headers.get("Content-Type", "")
         except urllib.error.HTTPError as error:
             return error.code, error.read(MAX_RESPONSE_BYTES) if error.fp else b"", error.headers.get("Content-Type", "")
+
+    def _post(self, path: str, payload: dict, *, timeout: float, limit: int) -> dict:
+        if not self.config.base_url:
+            raise FirecrawlError("Firecrawl is not configured")
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+        request = urllib.request.Request(self._url(path), data=json.dumps(payload).encode(), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - operator-configured URL
+                body = response.read(limit + 1)
+        except urllib.error.HTTPError as error:
+            raise FirecrawlError(f"Firecrawl returned HTTP {error.code}") from error
+        except (urllib.error.URLError, OSError, TimeoutError) as error:
+            raise FirecrawlError("Firecrawl did not answer") from error
+        if len(body) > limit:
+            raise FirecrawlError("Firecrawl response was too large")
+        try:
+            data = json.loads(body.decode("utf-8", "replace"))
+        except ValueError as error:
+            raise FirecrawlError("Firecrawl returned something that is not JSON") from error
+        if not isinstance(data, dict) or data.get("success") is False:
+            message = str((data or {}).get("error") or "request failed")[:160] if isinstance(data, dict) else "request failed"
+            raise FirecrawlError(f"Firecrawl: {message}")
+        return data
+
+    def search(self, query: str, *, limit: int = 10) -> list[dict]:
+        """Web search through Firecrawl: ``[{"url", "title", "description"}]``."""
+        data = self._post("/v1/search", {"query": query, "limit": max(1, min(int(limit), 50))},
+                          timeout=SEARCH_TIMEOUT, limit=MAX_RESPONSE_BYTES * 16)
+        results = data.get("data") if isinstance(data.get("data"), list) else []
+        out = []
+        for item in results:
+            if isinstance(item, dict) and isinstance(item.get("url"), str):
+                out.append({"url": item["url"], "title": str(item.get("title") or "")[:300],
+                            "description": str(item.get("description") or "")[:500]})
+        return out
+
+    def scrape(self, url: str, *, links: bool = False) -> dict:
+        """One page: ``{"html", "links", "title"}`` (raw HTML keeps JSON-LD)."""
+        formats = ["rawHtml"] + (["links"] if links else [])
+        data = self._post("/v1/scrape", {"url": url, "formats": formats, "timeout": int(SCRAPE_TIMEOUT * 1000) - 5000},
+                          timeout=SCRAPE_TIMEOUT, limit=MAX_PAGE_BYTES)
+        page = data.get("data") if isinstance(data.get("data"), dict) else {}
+        meta = page.get("metadata") if isinstance(page.get("metadata"), dict) else {}
+        return {
+            "html": str(page.get("rawHtml") or "")[:MAX_PAGE_BYTES],
+            "links": [link for link in (page.get("links") or []) if isinstance(link, str)][:500],
+            "title": str(meta.get("title") or "")[:300],
+            "status": meta.get("statusCode"),
+        }
 
     def health(self) -> dict:
         """Classify the service as ``not_configured``, ``offline``,

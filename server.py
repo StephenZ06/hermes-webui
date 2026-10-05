@@ -656,6 +656,14 @@ def main() -> None:
         print(f'[!!] WARNING: Gateway watcher failed to start: {e}', flush=True)
 
     try:
+        # Jobs Scout schedule (idle unless enabled in Jobs -> Settings).
+        from api.job_os.scheduler import start_scheduler
+
+        start_scheduler()
+    except Exception as e:
+        print(f'[!!] WARNING: Job OS scheduler failed to start: {e}', flush=True)
+
+    try:
         from api.background_process import start_drain_thread
         if start_drain_thread():
             print('[ok] bg_task_complete drain thread started', flush=True)

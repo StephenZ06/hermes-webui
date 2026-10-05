@@ -1,0 +1,181 @@
+"""Read a job posting from a page's schema.org ``JobPosting`` data.
+
+Almost every real posting page (Greenhouse, Lever, Ashby, Workable,
+SmartRecruiters, most company career sites) embeds a JSON-LD ``JobPosting``
+block for search engines. Reading it gives exact fields without an AI call;
+a page without one is treated as "not a single posting" (a search-results or
+listing page) and skipped. Page content is untrusted: it is only parsed into
+plain strings, never executed or interpreted as instructions.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import re
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+MAX_DESCRIPTION = 20000
+ATS_HOSTS = (
+    "boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
+    "apply.workable.com", "jobs.smartrecruiters.com",
+)
+_LD_JSON = re.compile(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", re.I | re.S)
+_JOB_PATH = re.compile(r"/(jobs?|careers?|positions?|openings?|vacanc(y|ies)|o)/[^/?#]*\d[^/?#]*", re.I)
+_EMPLOYMENT = {
+    "FULL_TIME": "Full time", "PART_TIME": "Part time", "CONTRACTOR": "Contract", "CONTRACT": "Contract",
+    "TEMPORARY": "Temporary", "INTERN": "Internship", "INTERNSHIP": "Internship", "PER_DIEM": "Per diem",
+    "VOLUNTEER": "Volunteer", "OTHER": "Other",
+}
+_UNITS = {"YEAR": "year", "MONTH": "month", "WEEK": "week", "DAY": "day", "HOUR": "hour"}
+
+
+def _types(node) -> set[str]:
+    raw = node.get("@type") if isinstance(node, dict) else None
+    values = raw if isinstance(raw, list) else [raw]
+    return {str(v) for v in values if v}
+
+
+def _walk(node):
+    if isinstance(node, list):
+        for item in node:
+            yield from _walk(item)
+    elif isinstance(node, dict):
+        yield node
+        for key in ("@graph", "mainEntity", "itemListElement"):
+            if key in node:
+                yield from _walk(node[key])
+
+
+def _text(value) -> str:
+    if isinstance(value, dict):
+        value = value.get("name") or value.get("@value") or ""
+    return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
+
+
+def _html_to_text(markup: str) -> str:
+    text = str(markup or "")
+    text = re.sub(r"(?i)<li[^>]*>", "\n• ", text)
+    text = re.sub(r"(?i)<br\s*/?>|</(p|div|h[1-6]|li|ul|ol|tr)>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    text = "\n".join(line for line in lines if line)
+    return text[:MAX_DESCRIPTION]
+
+
+def _location(posting: dict) -> str:
+    places = posting.get("jobLocation")
+    parts: list[str] = []
+    for place in places if isinstance(places, list) else [places]:
+        if not isinstance(place, dict):
+            continue
+        address = place.get("address") if isinstance(place.get("address"), dict) else {}
+        label = ", ".join(_text(address.get(k)) for k in ("addressLocality", "addressRegion", "addressCountry")
+                          if _text(address.get(k)))
+        label = label or _text(place.get("name"))
+        if label and label not in parts:
+            parts.append(label)
+    return "; ".join(parts[:3])
+
+
+def _salary(posting: dict) -> str:
+    salary = posting.get("baseSalary") or posting.get("estimatedSalary")
+    if isinstance(salary, list):
+        salary = salary[0] if salary else None
+    if not isinstance(salary, dict):
+        return ""
+    currency = _text(salary.get("currency"))
+    value = salary.get("value")
+    unit = ""
+    if isinstance(value, dict):
+        unit = _UNITS.get(str(value.get("unitText") or "").upper(), "")
+        low, high, single = value.get("minValue"), value.get("maxValue"), value.get("value")
+    else:
+        low = high = None
+        single = value
+    def fmt(n):
+        try:
+            number = float(n)
+        except (TypeError, ValueError):
+            return ""
+        return f"{number:,.0f}" if number >= 100 else f"{number:g}"
+    if fmt(low) and fmt(high) and fmt(low) != fmt(high):
+        amount = f"{fmt(low)}–{fmt(high)}"
+    else:
+        amount = fmt(low) or fmt(high) or fmt(single)
+    if not amount:
+        return ""
+    return " ".join(part for part in (currency, amount) if part) + (f" / {unit}" if unit else "")
+
+
+def _employment(posting: dict) -> str:
+    raw = posting.get("employmentType")
+    values = raw if isinstance(raw, list) else [raw]
+    labels = [_EMPLOYMENT.get(str(v).upper().replace("-", "_").replace(" ", "_"), _text(v)) for v in values if v]
+    return ", ".join(dict.fromkeys(label for label in labels if label))
+
+
+def extract_job_posting(page_html: str, url: str) -> dict | None:
+    """The posting's fields from ``page_html``, or None when it holds no JobPosting."""
+    for block in _LD_JSON.findall(page_html or ""):
+        try:
+            data = json.loads(html.unescape(block).strip())
+        except ValueError:
+            continue
+        for node in _walk(data):
+            if "JobPosting" not in _types(node):
+                continue
+            title = _text(node.get("title"))
+            if not title:
+                continue
+            org = node.get("hiringOrganization")
+            remote = str(node.get("jobLocationType") or "").upper() == "TELECOMMUTE"
+            location = _location(node)
+            if remote:
+                region = _text(node.get("applicantLocationRequirements"))
+                location = f"Remote ({region})" if region else (location or "Remote")
+            haystack = f"{title} {location}".lower()
+            workplace = "remote" if remote else "hybrid" if "hybrid" in haystack else (
+                "remote" if "remote" in haystack else "onsite" if location else "")
+            return {
+                "title": title[:240],
+                "company": _text(org)[:240],
+                "location": location[:240],
+                "salary_text": _salary(node)[:120],
+                "employment_type": _employment(node)[:80],
+                "workplace": workplace,
+                "posted_at": _text(node.get("datePosted"))[:40],
+                "description": _html_to_text(node.get("description") or ""),
+                "canonical_url": url,
+            }
+    return None
+
+
+def _strip_fragment(link: str) -> str:
+    parts = urlsplit(link)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
+
+
+def job_links_from_page(links: list[str], page_url: str, *, limit: int = 50) -> list[str]:
+    """Links on a careers page that look like single postings: on the page's own
+    host or an application-tracking site, with an id-like job path."""
+    page_host = (urlsplit(page_url).hostname or "").lower()
+    picked: list[str] = []
+    for raw in links or []:
+        link = _strip_fragment(urljoin(page_url, str(raw)))
+        parts = urlsplit(link)
+        host = (parts.hostname or "").lower()
+        if parts.scheme not in {"http", "https"} or link in picked:
+            continue
+        on_ats = any(host == ats or host.endswith("." + ats) for ats in ATS_HOSTS)
+        if not (on_ats or host == page_host):
+            continue
+        path = parts.path.rstrip("/")
+        if on_ats and path.count("/") >= 2:
+            picked.append(link)
+        elif _JOB_PATH.search(path):
+            picked.append(link)
+        if len(picked) >= limit:
+            break
+    return picked

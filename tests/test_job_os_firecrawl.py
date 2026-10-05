@@ -97,3 +97,60 @@ def test_base_url_must_be_http(home):
 def test_url_join_keeps_paths(home):
     cfg = firecrawl.FirecrawlConfig(base_url="http://h:1/firecrawl", api_key=None, source="env")
     assert FirecrawlClient(cfg)._url("/v1/search") == "http://h:1/firecrawl/v1/search"
+
+
+def _post_server(responses):
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            seen.append((self.path, json.loads(self.rfile.read(length) or b"{}"), self.headers.get("Authorization")))
+            status, body = responses[self.path]
+            data = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *_args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}", seen
+
+
+def test_search_and_scrape_shape_results_and_send_the_key(home):
+    server, url, seen = _post_server({
+        "/v1/search": (200, {"success": True, "data": [{"url": "https://jobs.lever.co/a/1", "title": "Eng"}, {"bad": 1}]}),
+        "/v1/scrape": (200, {"success": True, "data": {"rawHtml": "<html>x</html>", "links": ["https://a/1", 3],
+                                                       "metadata": {"title": "T", "statusCode": 200}}}),
+    })
+    try:
+        (home / ".env").write_text(f"FIRECRAWL_API_URL={url}\nFIRECRAWL_API_KEY=fc-keykeykeykey\n")
+        client = FirecrawlClient(resolve_firecrawl_config())
+        results = client.search("python remote", limit=200)
+        page = client.scrape("https://jobs.lever.co/a/1", links=True)
+    finally:
+        server.shutdown()
+    assert results == [{"url": "https://jobs.lever.co/a/1", "title": "Eng", "description": ""}]
+    assert page == {"html": "<html>x</html>", "links": ["https://a/1"], "title": "T", "status": 200}
+    assert seen[0][1]["limit"] == 50 and seen[1][1]["formats"] == ["rawHtml", "links"]
+    assert seen[0][2] == "Bearer fc-keykeykeykey"
+
+
+def test_failures_raise_without_secrets(home):
+    server, url, _ = _post_server({"/v1/search": (500, {"error": "boom"}), "/v1/scrape": (200, {"success": False, "error": "blocked"})})
+    try:
+        (home / ".env").write_text(f"FIRECRAWL_API_URL={url}\nFIRECRAWL_API_KEY=fc-keykeykeykey\n")
+        client = FirecrawlClient(resolve_firecrawl_config())
+        with pytest.raises(firecrawl.FirecrawlError) as one:
+            client.search("x")
+        with pytest.raises(firecrawl.FirecrawlError) as two:
+            client.scrape("https://x.test")
+    finally:
+        server.shutdown()
+    assert "500" in str(one.value) and "blocked" in str(two.value)
+    assert "fc-key" not in str(one.value) + str(two.value)
