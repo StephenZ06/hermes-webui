@@ -59,15 +59,39 @@ def test_deleting_a_work_hub_project_removes_its_boards_and_items():
     assert not any(i.get("project_id") == pid for i in state["items"]), "its work items must go with it"
 
 
-def test_a_project_not_created_in_the_work_hub_cannot_be_deleted_there():
-    project = _project(f"Chat project {uuid.uuid4().hex[:6]}", False)
+def _chat_in(project_id, title):
+    session = _call("/api/session/import", {"title": title, "messages": [
+        {"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"},
+    ]})[0]["session"]
+    _call("/api/session/move", {"session_id": session["session_id"], "project_id": project_id})
+    return session["session_id"]
+
+
+def test_a_chat_project_holding_chats_cannot_be_deleted_from_the_work_hub():
+    tag = uuid.uuid4().hex[:6]
+    project = _project(f"Chat project {tag}", False)
+    sid = _chat_in(project["project_id"], f"kept chat {tag}")
     try:
+        listed = {p["project_id"]: p for p in _call("/api/work_hub/bootstrap")[0]["projects"]}
         _, status = _call("/api/projects/delete", {"project_id": project["project_id"]})
         projects = _call("/api/projects")[0]["projects"]
+        assert listed[project["project_id"]]["deletable"] is False
         assert status == 403
         assert any(p["project_id"] == project["project_id"] for p in projects)
     finally:
-        pass  # left in place: the API refuses to delete it by design
+        _call("/api/session/delete", {"session_id": sid})
+
+
+def test_an_empty_project_without_the_work_hub_flag_can_be_deleted():
+    """Work Hub projects made before work_hub_managed existed carry no flag;
+    an empty one (no chats, no work items) is deletable -- nothing is lost."""
+    project = _project(f"legacy {uuid.uuid4().hex[:6]}", False)
+    listed = {p["project_id"]: p for p in _call("/api/work_hub/bootstrap")[0]["projects"]}
+    _, status = _call("/api/projects/delete", {"project_id": project["project_id"]})
+    projects = _call("/api/projects")[0]["projects"]
+    assert listed[project["project_id"]]["deletable"] is True
+    assert status == 200
+    assert not any(p["project_id"] == project["project_id"] for p in projects)
 
 
 def _page(pw, width=1440):
@@ -112,6 +136,8 @@ def test_the_work_hub_plus_menu_deletes_a_work_hub_project():
     tag = uuid.uuid4().hex[:6]
     wh = _project(f"WH removable {tag}", True)
     chat = _project(f"Chat keep {tag}", False)
+    kept_sid = _chat_in(chat["project_id"], f"menu chat {tag}")
+    legacy = _project(f"Legacy empty {tag}", False)
     with sync_api.sync_playwright() as pw:
         browser, page = _page(pw)
         try:
@@ -131,8 +157,11 @@ def test_the_work_hub_plus_menu_deletes_a_work_hub_project():
         finally:
             browser.close()
     projects = _call("/api/projects")[0]["projects"]
+    _call("/api/session/delete", {"session_id": kept_sid})
+    _call("/api/projects/delete", {"project_id": legacy["project_id"]})
     assert wh["name"] in options
-    assert chat["name"] not in options, "only Work Hub projects are offered for deletion"
+    assert legacy["name"] in options, "an empty unflagged project (pre-flag Work Hub project) is offered"
+    assert chat["name"] not in options, "a project holding chats is not offered for deletion"
     assert wh["name"] in dialog_text, "the confirmation names the project being deleted"
     assert not any(p["project_id"] == wh["project_id"] for p in projects)
 

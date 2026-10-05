@@ -580,6 +580,61 @@ def delete_board(board_id: str, expected_revision: int) -> dict[str, Any]:
                 return {"revision": _bump_revision(conn), "reset": reset}
 
 
+def _project_chat_counts() -> dict[str, int] | None:
+    """Chats filed under each project, from the session index. ``None`` when
+    the index cannot be read: callers then treat every project as having chats."""
+    from api.config import SESSION_INDEX_FILE
+
+    try:
+        if not SESSION_INDEX_FILE.exists():
+            return {}
+        index = json.loads(SESSION_INDEX_FILE.read_bytes())
+    except Exception:
+        return None
+    counts: dict[str, int] = {}
+    for entry in index if isinstance(index, list) else []:
+        project_id = entry.get("project_id") if isinstance(entry, dict) else None
+        if project_id:
+            counts[project_id] = counts.get(project_id, 0) + 1
+    return counts
+
+
+def _project_item_counts() -> dict[str, int]:
+    """Work items per project, counting items on a project's boards too."""
+    counts: dict[str, int] = {}
+    with _connect() as conn:
+        boards = {
+            row["id"]: row["project_id"] for row in conn.execute(
+                "SELECT id, project_id, content FROM planning_entities WHERE collection = 'views'"
+            )
+            if row["project_id"] and _decode_json(row["content"], {}).get("kind") == "work_hub_board"
+        }
+        for row in conn.execute("SELECT project_id, board_id FROM work_items"):
+            project_id = row["project_id"] or boards.get(row["board_id"])
+            if project_id:
+                counts[project_id] = counts.get(project_id, 0) + 1
+    return counts
+
+
+def deletable_project_ids(projects: list[dict[str, Any]]) -> set[str]:
+    """Projects the Work Hub may delete: ones it created (work_hub_managed),
+    and any project with no chats and no work items -- which also covers Work
+    Hub projects made before that flag existed, and loses nothing. A project
+    holding chats or work it did not create stays with the chat page."""
+    chats = _project_chat_counts()
+    items = _project_item_counts()
+    deletable = set()
+    for project in projects or []:
+        project_id = str(project.get("project_id") or "")
+        if not project_id:
+            continue
+        if project.get("work_hub_managed"):
+            deletable.add(project_id)
+        elif chats is not None and not chats.get(project_id) and not items.get(project_id):
+            deletable.add(project_id)
+    return deletable
+
+
 def delete_project_contents(project_id: str) -> dict[str, Any]:
     """Remove a project's Work Hub boards and work items (with their comments,
     activity and workflow steps), for deleting a Work Hub-managed project.
@@ -1346,6 +1401,11 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
             return {"items": items, "revision": _revision(conn)}
 
 
+def _projects_with_deletable(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deletable = deletable_project_ids(projects)
+    return [dict(project, deletable=str(project.get("project_id") or "") in deletable) for project in projects]
+
+
 def bootstrap() -> dict[str, Any]:
     from api.models import load_projects
     from api.profiles import list_profiles_api
@@ -1357,7 +1417,7 @@ def bootstrap() -> dict[str, Any]:
         "folders": list_folders(),
         # Chat owns project metadata.  Work Hub only consumes this registry for
         # workspace navigation; its boards and work items remain SQLite-owned.
-        "projects": load_projects(),
+        "projects": _projects_with_deletable(load_projects()),
         "profiles": [{"name": row.get("name"), "provider": row.get("provider")} for row in list_profiles_api()],
         "statuses": [{"id": status, "label": STATUS_LABELS[status]} for status in STATUS_ORDER],
         "workflows": [get_workflow_run(row["id"]) for row in list_workflow_runs()],

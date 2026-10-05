@@ -70,8 +70,9 @@
     }
   }
   async function deleteWorkHubProject(anchor) {
-    // Only projects created here can be deleted; the server refuses the rest.
-    const deletable = store.projects.filter(project => project && project.work_hub_managed);
+    // Projects created here, or empty ones (no chats, no work items); the
+    // server marks them `deletable` and refuses the rest.
+    const deletable = store.projects.filter(project => project && project.deletable);
     const projectId = await showWorkHubProjectPicker(anchor, deletable, 'There are no Work Hub projects to delete.');
     if (!projectId) return;
     const project = deletable.find(entry => entry.project_id === projectId);

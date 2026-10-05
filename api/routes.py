@@ -19503,11 +19503,12 @@ def _route_post_api_projects_delete(handler, parsed, body, diag):
     )
     if not proj:
         return bad(handler, "Project not found", 404)
-    if not proj.get("work_hub_managed"):
-        return bad(handler, "Only Work Hub projects can be deleted", 403)
     # Its boards and work items go with it. Done first: if an active workflow
     # refuses, the project row is still there rather than left board-less.
     from api import work_hub
+
+    if body["project_id"] not in work_hub.deletable_project_ids([proj]):
+        return bad(handler, "Only Work Hub projects, or projects with no chats or work items, can be deleted", 403)
 
     try:
         work_hub.delete_project_contents(body["project_id"])

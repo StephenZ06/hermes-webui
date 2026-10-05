@@ -10,8 +10,11 @@ def test_work_hub_project_delete_is_limited_to_work_hub_managed_projects():
 
     delete_block = route_source("POST", "/api/projects/delete")
 
-    assert 'if not proj.get("work_hub_managed"):' in delete_block
-    assert 'return bad(handler, "Only Work Hub projects can be deleted", 403)' in delete_block
+    # Work Hub projects, or empty projects (no chats, no work items) -- one
+    # rule shared with the bootstrap's `deletable` flag; behaviour in
+    # tests/test_work_hub_project_scope.py.
+    assert "work_hub.deletable_project_ids([proj])" in delete_block
+    assert '"Only Work Hub projects, or projects with no chats or work items, can be deleted", 403' in delete_block
 
 
 def test_create_item_persists_revision_and_rejects_unknown_project(monkeypatch, tmp_path):
@@ -43,7 +46,10 @@ def test_work_hub_bootstrap_exposes_chat_projects_for_workspace_navigation(monke
 
     data = work_hub.bootstrap()
 
-    assert data["projects"] == projects
+    # The chat registry passes through unchanged, plus the Work Hub's own
+    # `deletable` flag for its Delete project menu.
+    assert [{k: v for k, v in p.items() if k != "deletable"} for p in data["projects"]] == projects
+    assert all(isinstance(p["deletable"], bool) for p in data["projects"])
 
 
 def test_bootstrap_keeps_unassigned_legacy_boards_in_the_imported_folder(monkeypatch, tmp_path):
