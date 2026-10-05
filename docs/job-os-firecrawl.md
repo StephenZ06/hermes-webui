@@ -169,12 +169,14 @@ Health is read from `GET /` (`{"message": "Firecrawl API"}`) and
 
 ## Gmail (notifications)
 
-Add to the profile `.env`; the WebUI only checks that they exist:
-
-```
-JOB_OS_GMAIL_ADDRESS=you@gmail.com
-JOB_OS_GMAIL_APP_PASSWORD=<Google account → Security → App passwords>
-```
+Connect it in **Jobs → Settings → Connections**: Hermes checks the address
+and app password with a real Gmail login, then saves them as
+`HERMES_GMAIL_ADDRESS` / `HERMES_GMAIL_APP_PASSWORD` (in the shared secrets
+file when enabled, see `docs/shared-secrets.md`). One Gmail sends for every
+Hermes feature, each under its own name (`api/mailer.py`): *Hermes Jobs*,
+*Hermes Business*. A dedicated Gmail for Hermes works best; put your main
+address in Jobs → Settings → Notifications → *Send to*. The older
+`JOB_OS_GMAIL_*` names are still read.
 
 ## Operating it
 

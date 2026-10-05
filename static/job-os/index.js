@@ -214,8 +214,9 @@
     } else if (name === 'gmail-test') {
       if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Sending…'; }
       try {
-        const result = await window.JobOSApi.testGmail();
-        state.gmailMessage = {tone: 'ok', text: `Test email sent to ${result.sent_to}.`};
+        const contextEl = document.getElementById('job-os-gmail-test-context');
+        const result = await window.JobOSApi.testGmail('', contextEl ? contextEl.value : 'jobs');
+        state.gmailMessage = {tone: 'ok', text: `Test email from ${result.sender_name} sent to ${result.sent_to}.`};
       } catch (error) {
         state.gmailMessage = {tone: 'error', text: error.message || 'Unable to send the test email.'};
       }

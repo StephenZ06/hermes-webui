@@ -38,7 +38,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: state.get("isolated", False))
     monkeypatch.setattr(routes, "_check_csrf", lambda _h: True)
     monkeypatch.setattr(routes, "_guard_request_session_visibility", lambda *a, **k: True)
-    for key in ("FIRECRAWL_API_URL", "JOB_OS_GMAIL_ADDRESS", "JOB_OS_GMAIL_APP_PASSWORD"):
+    for key in ("FIRECRAWL_API_URL", "JOB_OS_GMAIL_ADDRESS", "JOB_OS_GMAIL_APP_PASSWORD", "HERMES_GMAIL_ADDRESS", "HERMES_GMAIL_APP_PASSWORD"):
         monkeypatch.delenv(key, raising=False)
     return state, tmp_path
 

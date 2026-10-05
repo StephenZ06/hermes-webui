@@ -106,8 +106,10 @@ def write_env_values(home: Path | str, updates: Mapping[str, str | None]) -> Non
     by_path: dict[Path, dict[str, str | None]] = {}
     for key, value in updates.items():
         if value is None:
-            by_path.setdefault(profile_env, {})[key] = None
-            if shared_env_enabled():
+            # Only touch files that hold the key: removing must not create files.
+            if key in parse_env_file(profile_env):
+                by_path.setdefault(profile_env, {})[key] = None
+            if shared_env_enabled() and key in parse_env_file(shared):
                 by_path.setdefault(shared, {})[key] = None
         else:
             by_path.setdefault(env_write_path(home, key), {})[key] = value

@@ -15,6 +15,6 @@
     firecrawlHealth: () => request('/api/job-os/firecrawl/health'),
     connectGmail: (address, appPassword) => request('/api/job-os/gmail', {method: 'POST', body: JSON.stringify({address, app_password: appPassword})}),
     disconnectGmail: () => request('/api/job-os/gmail/disconnect', {method: 'POST', body: '{}'}),
-    testGmail: (to) => request('/api/job-os/gmail/test', {method: 'POST', body: JSON.stringify({to: to || ''})}),
+    testGmail: (to, context) => request('/api/job-os/gmail/test', {method: 'POST', body: JSON.stringify({to: to || '', context: context || 'jobs'})}),
   };
 }());

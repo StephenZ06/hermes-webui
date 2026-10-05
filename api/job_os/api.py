@@ -95,6 +95,7 @@ def handle_job_os_get(handler, parsed) -> bool:
 
 
 def _handle_gmail_post(handler, path: str, body: dict) -> bool:
+    from api import mailer
     from api.job_os import gmail
 
     try:
@@ -104,9 +105,12 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
         elif path == f"{_PREFIX}/gmail/disconnect":
             j(handler, {"gmail": gmail.disconnect()})
         else:
-            sent_to = gmail.send_test(body.get("to") or load_settings()["notifications"]["to_address"])
-            j(handler, {"sent_to": sent_to})
+            context = str(body.get("context") or gmail.CONTEXT)
+            sent_to = gmail.send_test(body.get("to") or load_settings()["notifications"]["to_address"], context=context)
+            j(handler, {"sent_to": sent_to, "sender_name": mailer.sender_name(context)})
     except gmail.GmailError as error:
+        return _error(handler, str(error), 400)
+    except ValueError as error:  # unknown sender context
         return _error(handler, str(error), 400)
     return True
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import io
 import json
 from urllib.parse import urlparse
@@ -42,7 +44,13 @@ def base(tmp_path, monkeypatch):
     monkeypatch.setattr(routes, "_guard_request_session_visibility", lambda *a, **k: True)
     for key in (gmail.ADDRESS_KEY, gmail.PASSWORD_KEY):
         monkeypatch.delenv(key, raising=False)
-    return tmp_path, work
+    # The env writer also mirrors values into os.environ; never leak them.
+    keys = ("HERMES_GMAIL_ADDRESS", "HERMES_GMAIL_APP_PASSWORD", "JOB_OS_GMAIL_ADDRESS", "JOB_OS_GMAIL_APP_PASSWORD")
+    for key in keys:
+        monkeypatch.delenv(key, raising=False)
+    yield tmp_path, work
+    for key in keys:
+        os.environ.pop(key, None)
 
 
 def test_connect_verifies_then_writes_the_shared_file(base):
@@ -83,7 +91,7 @@ def test_test_email_goes_to_the_connected_account_by_default(base):
     sent = []
     to = gmail.send_test(sender=lambda msg, a, p: sent.append((msg["To"], msg["Subject"], msg["From"], a)))
     assert to == "me@gmail.com"
-    assert sent == [("me@gmail.com", "Hermes Jobs: test notification", "Hermes Jobs <me@gmail.com>", "me@gmail.com")]
+    assert sent == [("me@gmail.com", "Hermes Jobs: test email", "Hermes Jobs <me@gmail.com>", "me@gmail.com")]
 
 
 def test_test_email_goes_to_the_send_to_address_when_set(base):
@@ -112,3 +120,16 @@ def test_http_connect_maps_rejection_to_400(base, monkeypatch):
     h = _Handler(json.dumps({"address": "me@gmail.com", "app_password": "abcdefghijklmnop"}).encode())
     routes.handle_post(h, urlparse("/api/job-os/gmail"))
     assert h.status == 400 and "rejected" in json.loads(h.wfile.getvalue())["error"]
+
+
+def test_http_test_email_uses_the_requested_sender_name(base, monkeypatch):
+    gmail.connect("bot@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
+    sent = []
+    monkeypatch.setattr("api.mailer._smtp_send", lambda msg, a, p: sent.append(msg["From"]))
+    ok = _Handler(json.dumps({"to": "main@gmail.com", "context": "business"}).encode())
+    routes.handle_post(ok, urlparse("/api/job-os/gmail/test"))
+    assert ok.status == 200 and json.loads(ok.wfile.getvalue())["sender_name"] == "Hermes Business"
+    assert sent == ["Hermes Business <bot@gmail.com>"]
+    bad = _Handler(json.dumps({"context": "nope"}).encode())
+    routes.handle_post(bad, urlparse("/api/job-os/gmail/test"))
+    assert bad.status == 400
