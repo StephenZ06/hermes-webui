@@ -67,7 +67,19 @@ def test_workable_and_smartrecruiters():
     assert "Code" in job["description"] and "• Python" in job["description"]
 
 
+def test_lever_api_gives_the_real_workplace_and_pay():
+    fetch, _ = fetcher({f"https://api.lever.co/v0/postings/britecore/{U}": {
+        "text": "Senior Python Backend Engineer", "workplaceType": "remote", "createdAt": 1730922088673,
+        "categories": {"location": "Sao Paulo", "commitment": "Independent Contractor"},
+        "salaryRange": {"min": 5000, "max": 7000, "currency": "USD", "interval": "per-month-salary"},
+        "description": "<p>Fully remote</p>", "lists": [{"text": "Requirements", "content": "<li>Python</li>"}]}})
+    kind, job = ats_posting(f"https://jobs.lever.co/britecore/{U}", fetch, {})
+    assert kind == "posting" and (job["workplace"], job["salary_text"], job["posted_at"]) == ("remote", "USD 5,000–7,000 / month", "2024-11-06")
+    assert "Requirements\n• Python" in job["description"]
+    assert ats_posting(f"https://jobs.lever.co/britecore/{U.replace('a', 'f')}", fetch, {}) == ("closed", None)
+
+
 def test_other_sites_are_left_to_the_page_reader_and_apply_links_are_trimmed():
-    assert ats_posting(f"https://jobs.lever.co/acme/{U}", lambda u: pytest.fail("no API"), {}) == ("unsupported", None)
+    assert ats_posting("https://careers.acme.com/jobs/1", lambda u: pytest.fail("no API"), {}) == ("unsupported", None)
     assert canonical_posting_url(f"https://jobs.lever.co/acme/{U}/apply") == f"https://jobs.lever.co/acme/{U}"
     assert canonical_posting_url(f"https://jobs.ashbyhq.com/acme/{U}/application") == f"https://jobs.ashbyhq.com/acme/{U}"

@@ -56,6 +56,11 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: False)
+    # These tests cover Scout's run logic with page HTML; Lever's API reader has
+    # its own tests (test_job_os_ats_api.py), so Lever pages are read as pages here.
+    real_ats = scout.ats_posting
+    monkeypatch.setattr(scout, "ats_posting",
+                        lambda url, fetch, cache: ("unsupported", None) if "lever.co" in url else real_ats(url, fetch, cache))
     # Test hosts are treated as public; the URL policy has its own tests.
     monkeypatch.setattr(scout, "validate_external_job_url",
                         lambda url: (_ for _ in ()).throw(scout.UnsafeJobUrl("internal")) if "internal" in url else url)

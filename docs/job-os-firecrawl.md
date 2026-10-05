@@ -167,6 +167,26 @@ the same state.
 Health is read from `GET /` (`{"message": "Firecrawl API"}`) and
 `GET /v0/health/readiness`.
 
+## How Scout finds and reads postings
+
+- **Search.** Keyword queries (one per site and location, quota shared
+  across sites) go to the **Brave Search API** when `BRAVE_SEARCH_API_KEY` is
+  set, paced to 1 request/second; otherwise to Firecrawl's `/search`
+  (SearXNG). Self-hosted SearXNG gets rate-limited and CAPTCHA'd by its
+  upstream engines after a burst, so the Brave key is strongly recommended.
+- **Default sites:** Greenhouse, Lever, Ashby, Workable, SmartRecruiters.
+  A saved search can list its own domains (searched with `site:`) or
+  careers-page URLs (read for links to single postings).
+- **Reading.** Those five sites render postings in the browser, so Scout
+  reads their official public posting APIs (`ats_api.py`); any other site is
+  read through Firecrawl and parsed from its schema.org `JobPosting` JSON-LD
+  (`extract.py`). Board pages are skipped by URL shape; postings a site no
+  longer lists are counted as *closed*.
+- **Runs** are saved after every page (`scout.py`), can be cancelled between
+  pages, and a WebUI restart mid-run leaves them *interrupted*.
+- **Schedule:** Jobs → Settings → Scout schedule runs enabled searches every
+  N hours from inside the WebUI (`scheduler.py`); no AI tokens are used.
+
 ## Gmail (notifications)
 
 Connect it in **Jobs → Settings → Connections**: Hermes checks the address

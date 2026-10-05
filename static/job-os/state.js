@@ -20,6 +20,14 @@
     settingsSavedAt: 0,
     // Gmail form: whether the connected account is being replaced, and the
     // last result line. Credentials themselves are never stored here.
+    // Scout: saved searches, recent runs, the open search form, the job detail.
+    searches: [],
+    searchProvider: '',
+    schedule: null,
+    runs: [],
+    searchForm: null, // null = closed; {id?, name, keywords, locations, sites, remote_only}
+    searchError: '',
+    jobDetail: null,
     gmailEditing: false,
     gmailMessage: null,
   };

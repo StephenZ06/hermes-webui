@@ -28,18 +28,26 @@
     renderSidebar();
     try {
       const wantSettings = state.activeView === 'settings';
-      const [capability, dashboard, jobs, health, settings] = await Promise.all([
+      const wantScout = state.activeView === 'scout';
+      const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
         window.JobOSApi.firecrawlHealth().catch(() => null),
         wantSettings ? window.JobOSApi.settings() : Promise.resolve(null),
+        wantScout ? window.JobOSApi.searches() : Promise.resolve(null),
+        wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
+        wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
       state.dashboard = dashboard;
       state.jobs = jobs.jobs || [];
       state.firecrawl = health && health.firecrawl;
+      if (searches) { state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule; }
+      if (runs) state.runs = runs.runs || [];
+      state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -48,6 +56,8 @@
       }
       target.innerHTML = window.JobOSRender.shell(state);
       if (typeof window.animateCounts === 'function') window.animateCounts(target);
+      if (wantScout) afterScoutRender(target);
+      else stopScoutPolling();
       renderSidebar();
       bind();
     } catch (error) {
@@ -152,6 +162,7 @@
   }
   async function runAction(name, button) {
     const state = window.JobOSState;
+    if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -231,8 +242,106 @@
       refresh();
     }
   }
+  // ---- Scout -----------------------------------------------------------------
+  const ACTIVE = ['queued', 'searching', 'scraping'];
+  let pollTimer = null;
+  const seenFinds = new Set();
+  function stopScoutPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+  function afterScoutRender(target) {
+    // New finds glow in once; the radar keeps running while any run is active.
+    target.querySelectorAll('.scout-finds [data-job-id]').forEach((card) => {
+      if (!seenFinds.has(card.dataset.jobId)) { seenFinds.add(card.dataset.jobId); if (typeof window.markArrival === 'function') window.markArrival(card); }
+    });
+    const form = document.getElementById('job-os-search-form');
+    if (form) {
+      form.addEventListener('submit', (event) => { event.preventDefault(); saveSearchForm(form); });
+      const first = form.querySelector('input[name="keywords"]');
+      if (first && !first.value) first.focus();
+    }
+    const anyActive = (window.JobOSState.runs || []).some((run) => ACTIVE.includes(run.status));
+    if (anyActive && !pollTimer) pollTimer = setInterval(pollRuns, 1200);
+    if (!anyActive) stopScoutPolling();
+  }
+  async function pollRuns() {
+    const state = window.JobOSState;
+    if (state.activeView !== 'scout') { stopScoutPolling(); return; }
+    let data;
+    try { data = await window.JobOSApi.runs(20); } catch (_) { return; }
+    const before = new Map((state.runs || []).map((run) => [run.id, run]));
+    state.runs = data.runs || [];
+    let needsFullRender = false;
+    state.runs.forEach((run) => {
+      const old = before.get(run.id);
+      const panel = document.querySelector(`[data-run-panel="${CSS.escape(run.id)}"]`);
+      if (!old || !panel || ACTIVE.includes(old.status) !== ACTIVE.includes(run.status)) { if (old && ACTIVE.includes(old.status)) needsFullRender = true; return; }
+      if (old.revision !== run.revision) {
+        const body = panel.querySelector('.scout-run-body');
+        if (body) body.innerHTML = window.JobOSRender.runBody(run);
+        if (typeof window.animateCounts === 'function') window.animateCounts(panel);
+      }
+    });
+    if (needsFullRender || !state.runs.some((run) => ACTIVE.includes(run.status))) { stopScoutPolling(); refresh(); }
+  }
+  function formFromSearch(search) {
+    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords,
+      locations: (search.locations || []).join(', '), sites: (search.sites || []).join('\n'), remote_only: search.remote_only}
+      : {name: '', keywords: '', locations: '', sites: '', remote_only: false};
+  }
+  async function saveSearchForm(form) {
+    const state = window.JobOSState;
+    const data = new FormData(form);
+    const payload = {name: data.get('name') || '', keywords: data.get('keywords') || '', locations: data.get('locations') || '',
+      sites: data.get('sites') || '', remote_only: data.get('remote_only') === 'on'};
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    try {
+      if (state.searchForm && state.searchForm.id) await window.JobOSApi.updateSearch(state.searchForm.id, payload, state.searchForm.revision);
+      else await window.JobOSApi.createSearch(payload);
+      state.searchForm = null; state.searchError = '';
+      refresh();
+    } catch (error) {
+      state.searchError = error.message || 'Unable to save this search.';
+      state.searchForm = Object.assign({}, state.searchForm, payload);
+      const err = form.querySelector('.job-os-error');
+      if (err) err.textContent = state.searchError;
+      if (submit) submit.disabled = false;
+    }
+  }
+  async function scoutAction(name, el) {
+    const state = window.JobOSState;
+    const searchId = el && el.dataset.searchId;
+    const search = (state.searches || []).find((s) => s.id === searchId);
+    if (name === 'scout-new') { state.searchForm = formFromSearch(null); state.searchError = ''; refresh(); }
+    else if (name === 'scout-edit') { state.searchForm = formFromSearch(search); state.searchError = ''; refresh(); }
+    else if (name === 'scout-form-close') { state.searchForm = null; state.searchError = ''; refresh(); }
+    else if (name === 'scout-run') {
+      el.disabled = true; el.textContent = 'Starting…';
+      try { await window.JobOSApi.runSearch(searchId, `${searchId}:${Date.now()}`); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start Scout'); }
+      refresh();
+    } else if (name === 'scout-cancel') {
+      el.disabled = true; el.textContent = 'Cancelling…';
+      try { await window.JobOSApi.cancelRun(el.dataset.runId); } catch (_) { /* the next poll shows the real state */ }
+    } else if (name === 'scout-delete') {
+      const ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({title: 'Delete search', message: `Delete "${search ? search.name : 'this search'}"? Jobs it already found stay in your Pipeline.`, confirmLabel: 'Delete', danger: true})
+        : window.confirm('Delete this search?');
+      if (!ok) return;
+      const card = document.querySelector(`.scout-search[data-search-id="${CSS.escape(searchId)}"]`);
+      try {
+        await window.JobOSApi.deleteSearch(searchId);
+        if (typeof window.animateRemoval === 'function') await window.animateRemoval(card);
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not delete the search'); }
+      refresh();
+    } else if (name === 'scout-toggle') {
+      if (!search) return;
+      try { await window.JobOSApi.updateSearch(searchId, {enabled: el.checked}, search.revision); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update the search'); }
+      refresh();
+    } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
+  }
   function mount() { applyRoute(); refresh(); }
-  function unmount() { if (aborter) aborter.abort(); aborter = null; }
+  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); }
   function openJob(jobId) { window.JobOSState.selectedJobId = jobId; window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = null; replaceRoute('pipeline'); refresh(); }
   function resetDraft() { window.JobOSState.importDraft = emptyDraft(); }
   window.JobOS = {mount, refresh, unmount, openJob, resetDraft};

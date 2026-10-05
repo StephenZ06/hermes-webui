@@ -43,6 +43,13 @@ def _fields(url, *, title, company="", location="", salary="", employment="", wo
             "posted_at": _text(posted)[:40], "description": description, "canonical_url": url}
 
 
+def _company_from_slug(slug: str) -> str:
+    """Lever and Ashby only give the board slug; show ``acme-labs`` as ``Acme Labs``
+    (a slug that already has capitals is kept as written)."""
+    words = re.split(r"[-_]+", slug or "")
+    return " ".join(w.capitalize() if w.islower() else w for w in words if w)
+
+
 def _missing(error: Exception) -> bool:
     return "HTTP 404" in str(error)
 
@@ -101,7 +108,7 @@ def _ashby(parts, url, fetch, cache):
     workplace_type = str(job.get("workplaceType") or "").lower()
     comp = job.get("compensation") if isinstance(job.get("compensation"), dict) else {}
     employment = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", str(job.get("employmentType") or "")).capitalize()
-    fields = _fields(url, title=job.get("title"), company=board, location=job.get("location"),
+    fields = _fields(url, title=job.get("title"), company=_company_from_slug(board), location=job.get("location"),
                      salary=comp.get("compensationTierSummary") or "", employment=employment,
                      workplace=_workplace(remote=bool(job.get("isRemote")) or workplace_type == "remote",
                                           hybrid=workplace_type == "hybrid", text=str(job.get("location") or "")),
@@ -165,7 +172,49 @@ def _smartrecruiters(parts, url, fetch, cache):
     return ("posting", fields) if fields else ("closed", None)
 
 
+# ---- Lever -----------------------------------------------------------------------
+def _lever(parts, url, fetch, cache):
+    match = re.match(rf"^/([^/]+)/({_UUID})", parts.path, re.I)
+    if not match:
+        return "unsupported", None
+    api_host = "api.eu.lever.co" if (parts.hostname or "").lower() == "jobs.eu.lever.co" else "api.lever.co"
+    try:
+        data = fetch(f"https://{api_host}/v0/postings/{quote(match.group(1))}/{match.group(2)}?mode=json")
+    except Exception as error:
+        if _missing(error):
+            return "closed", None
+        raise
+    if not isinstance(data, dict) or not data.get("text"):
+        return "closed", None
+    categories = data.get("categories") if isinstance(data.get("categories"), dict) else {}
+    location = categories.get("location") or ", ".join(categories.get("allLocations") or [])
+    workplace_type = str(data.get("workplaceType") or "").lower()
+    salary = ""
+    rng = data.get("salaryRange") if isinstance(data.get("salaryRange"), dict) else None
+    if rng and rng.get("min") and rng.get("max"):
+        unit = {"per-year-salary": " / year", "per-month-salary": " / month", "per-hour-wage": " / hour"}.get(str(rng.get("interval")), "")
+        salary = f"{_text(rng.get('currency'))} {float(rng['min']):,.0f}–{float(rng['max']):,.0f}{unit}".strip()
+    body = [_html_to_text(data.get("description") or "")]
+    for block in data.get("lists") or []:
+        if isinstance(block, dict):
+            body.append(_text(block.get("text")) + "\n" + _html_to_text("<ul>" + str(block.get("content") or "") + "</ul>"))
+    body.append(_html_to_text(data.get("additional") or ""))
+    posted = ""
+    try:
+        import datetime as _dt
+        posted = _dt.datetime.fromtimestamp(int(data.get("createdAt")) / 1000, _dt.timezone.utc).date().isoformat()
+    except (TypeError, ValueError, OSError):
+        posted = ""
+    fields = _fields(url, title=data.get("text"), company=_company_from_slug(match.group(1)), location=location, salary=salary,
+                     employment=categories.get("commitment"),
+                     workplace=workplace_type if workplace_type in ("remote", "hybrid", "onsite") else _workplace(text=str(location)),
+                     posted=posted, description="\n\n".join(part for part in body if part)[:20000])
+    return ("posting", fields) if fields else ("closed", None)
+
+
 _ADAPTERS = {
+    "jobs.lever.co": _lever,
+    "jobs.eu.lever.co": _lever,
     **{host: _greenhouse for host in _GREENHOUSE_HOSTS},
     "jobs.ashbyhq.com": _ashby,
     "apply.workable.com": _workable,

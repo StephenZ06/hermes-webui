@@ -44,10 +44,18 @@
   const newestFirst = (jobs) => jobs.slice().sort((a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0) || (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
   const dashboardOf = (state) => state.dashboard || {total_jobs: 0, active_work: 0, needs_attention: 0, by_status: {}};
   const appliedCount = (byStatus) => APPLIED.reduce((sum, key) => sum + (byStatus[key] || 0), 0);
+  const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
+  function jobChips(job) {
+    const chips = [];
+    if (job.workplace) chips.push(`<span class="job-os-chip" data-kind="${esc(job.workplace)}">${esc(WORKPLACE[job.workplace] || job.workplace)}</span>`);
+    if (job.salary_text) chips.push(`<span class="job-os-chip" data-kind="pay">${esc(job.salary_text)}</span>`);
+    if (job.employment_type) chips.push(`<span class="job-os-chip">${esc(job.employment_type)}</span>`);
+    return chips.length ? `<span class="job-os-chips">${chips.join('')}</span>` : '';
+  }
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', job.location].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card" type="button" data-job-id="${esc(job.id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span><span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span></span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card" type="button" data-job-id="${esc(job.id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span><span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -166,6 +174,85 @@
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
     return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${scout}${notify}${auto}${resume}${bar}</form>`;
   }
+  // ---- Scout ------------------------------------------------------------
+  const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
+    cancelled: 'Cancelled', failed: 'Failed', interrupted: 'Interrupted'};
+  const ACTIVE_RUN = ['queued', 'searching', 'scraping'];
+  const latestRun = (state, searchId) => (state.runs || []).find((run) => run.search_id === searchId) || null;
+  function until(epoch) {
+    const s = Math.round(Number(epoch || 0) - Date.now() / 1000);
+    if (!epoch) return '';
+    if (s <= 60) return 'any minute';
+    if (s < 3600) return `in ${Math.round(s / 60)}m`;
+    return `in ${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+  }
+  // The run body is the only part repainted while polling, so the radar keeps spinning.
+  function runBody(run) {
+    const c = run.counts || {};
+    const active = ACTIVE_RUN.includes(run.status);
+    const stats = [['found', 'Found'], ['scraped', 'Read'], ['saved', 'New'], ['duplicates', 'Known'], ['closed', 'Closed']]
+      .map(([key, label]) => `<span class="scout-stat${key === 'saved' && c.saved ? ' is-new' : ''}"><strong data-count-key="scout-${esc(run.id)}-${key}">${Number(c[key] || 0)}</strong>${label}</span>`).join('');
+    const errors = c.errors ? `<span class="scout-stat is-error"><strong>${Number(c.errors)}</strong>Errors</span>` : '';
+    return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${errors}</div>`;
+  }
+  function runPanel(run) {
+    if (!run) return '';
+    const active = ACTIVE_RUN.includes(run.status);
+    return `<div class="scout-run${active ? ' is-active' : ''}" data-run-panel="${esc(run.id)}" data-status="${esc(run.status)}">${active ? '<span class="scout-radar" aria-hidden="true"><i></i><i></i><i></i></span>' : ''}<div class="scout-run-body" aria-live="polite">${runBody(run)}</div></div>`;
+  }
+  function searchCard(search, state) {
+    const run = latestRun(state, search.id);
+    const active = run && ACTIVE_RUN.includes(run.status);
+    const ready = state.firecrawl && state.firecrawl.state === 'healthy';
+    const where = [...(search.locations || []), search.remote_only ? 'Remote only' : ''].filter(Boolean);
+    const sites = (search.sites || []).length ? `${search.sites.length} site${search.sites.length === 1 ? '' : 's'}` : 'Default job sites';
+    const schedule = state.schedule && state.schedule.enabled && search.enabled && search.next_run_at ? `Next ${until(search.next_run_at)}` : '';
+    return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
+      <div class="scout-search-head"><div class="scout-search-title"><h3>${esc(search.name)}</h3><p>${esc(search.keywords)}</p></div>
+        <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
+      <div class="job-os-chips">${where.map((w) => `<span class="job-os-chip">${esc(w)}</span>`).join('')}<span class="job-os-chip" title="${esc((search.sites || []).join('\n'))}">${esc(sites)}</span>${search.last_run_at ? `<span class="job-os-chip muted">Last run ${esc(when(search.last_run_at))}</span>` : ''}${schedule ? `<span class="job-os-chip muted">${esc(schedule)}</span>` : ''}</div>
+      ${runPanel(run)}
+      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? '' : 'Firecrawl is not ready — see Settings'}">${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">Edit</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}">Delete</button></div>
+    </article>`;
+  }
+  function searchFormCard(form, state) {
+    if (!form) return '';
+    const editing = !!form.id;
+    return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><h2>${editing ? 'Edit search' : 'New search'}</h2></div>
+      <form id="job-os-search-form" novalidate><div class="job-os-grid">
+        <label class="job-os-field"><span>Keywords <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. python backend engineer" value="${esc(form.keywords)}"></label>
+        <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
+        <label class="job-os-field"><span>Locations</span><input name="locations" placeholder="Comma-separated, e.g. Berlin, London" value="${esc(form.locations)}"></label>
+      </div>
+      <label class="job-os-field"><span>Sites</span><textarea name="sites" rows="3" placeholder="One per line. A domain (lever.co) is searched; a careers-page URL is read for its job links. Empty = Greenhouse, Lever, Ashby, Workable, SmartRecruiters.">${esc(form.sites)}</textarea></label>
+      <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Skip postings that are not remote</small></span></label>
+      <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
+      <div class="job-os-actions"><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button></div></form></section>`;
+  }
+  function scoutView(state) {
+    const searches = state.searches || [];
+    const fc = state.firecrawl || {};
+    const provider = state.searchProvider === 'brave' ? 'Brave Search API' : 'Firecrawl search';
+    const sched = state.schedule && state.schedule.enabled ? `Scheduled every ${state.schedule.hours}h` : 'Schedule off';
+    const banner = fc.state && fc.state !== 'healthy'
+      ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Scout can't run until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
+    const recent = (state.runs || []).filter((run) => run.counts && run.counts.saved && !ACTIVE_RUN.includes(run.status)).slice(0, 1)[0];
+    const newIds = new Set(recent ? recent.new_job_ids : []);
+    const finds = (state.jobs || []).filter((job) => newIds.has(job.id));
+    return `${banner}<div class="scout-bar"><span class="job-os-chip muted">Search: ${esc(provider)}</span><button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
+      ${searchFormCard(state.searchForm, state)}
+      ${searches.length ? `<div class="scout-searches">${searches.map((s) => searchCard(s, state)).join('')}</div>`
+        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with keywords and, optionally, locations and sites. Scout finds postings on the common job sites and reads each one for title, company, pay and the full description.</p></section>')}
+      ${finds.length ? `<section class="job-os-card"><div class="job-os-card-head"><h2>Latest finds <span class="job-os-count">${finds.length}</span></h2><button type="button" class="job-os-link" data-job-os-filter="scraped">View in Pipeline</button></div><div class="job-os-list scout-finds">${finds.map(jobCard).join('')}</div></section>` : ''}`;
+  }
+  // ---- Job detail -------------------------------------------------------------
+  function jobDetail(job) {
+    if (!job) return '';
+    const meta = [job.company, job.location].filter(Boolean).map(esc).join(' · ');
+    return `<section class="job-os-card job-os-detail" id="job-os-detail"><div class="job-os-detail-head"><div><h2>${esc(job.title)}</h2><p>${meta}</p>${jobChips(job)}</div><div class="job-os-detail-side">${badge(job.status)}<button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details">×</button></div></div>
+      <div class="job-os-actions"><a class="job-os-btn primary" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">Open posting</a>${job.posted_at ? `<span class="job-os-chip muted">Posted ${esc(String(job.posted_at).slice(0, 10))}</span>` : ''}<span class="job-os-chip muted">${esc(job.source)}</span></div>
+      ${job.description ? `<div class="job-os-description">${esc(job.description)}</div>` : '<p class="job-os-card-note">No description was captured for this job.</p>'}</section>`;
+  }
   function shell(state) {
     const view = state.activeView;
     const dashboard = dashboardOf(state);
@@ -183,13 +270,14 @@
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
       body = `${header('Pipeline', filter ? `Jobs currently ${statusLabel(filter).toLowerCase()}.` : 'Every job in this profile, newest first.', state)}
+        ${jobDetail(state.jobDetail)}
         <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${jobs.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Clear filter</button>' : ''}</div>${jobList(jobs, 'No jobs here', filter ? 'No jobs match this status right now.' : 'Import a role from the dashboard to start your pipeline.')}</section>`;
     } else if (view === 'applications') {
       const applied = jobs.filter((job) => APPLIED.includes(job.status));
       body = `${header('Applications', 'Submitted applications and where each one stands.', state)}
         <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>Submitted <span class="job-os-count">${applied.length}</span></h2></div>${jobList(applied, 'No applications yet', 'Prepared applications, approvals, and outcomes will appear here once you apply.')}</section>`;
     } else if (view === 'scout') {
-      body = `${header('Scout', 'Find new roles that match your search.', state)}${placeholder('scout', 'Saved searches and Firecrawl discovery will appear here.')}`;
+      body = `${header('Scout', 'Saved searches find postings on job sites and read each one.', state)}${scoutView(state)}`;
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules, notifications and auto-apply for this profile.', state)}${settingsView(state)}`;
     } else {
@@ -213,5 +301,5 @@
     }).join('');
     return `<nav class="side-menu job-os-side-nav" aria-label="Job OS sections">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar};
+  window.JobOSRender = {shell, sidebar, runBody};
 }());
