@@ -191,6 +191,38 @@
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
     return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${applicant}${scout}${notify}${auto}${resume}${bar}</form>`;
   }
+  // ---- Applications board -------------------------------------------------------
+  const NEXT_OUTCOMES = {
+    submitted: [['screening', 'Screening'], ['rejected', 'Rejected'], ['no_response', 'No response'], ['withdrawn', 'Withdrawn']],
+    screening: [['interviewing', 'Interviewing'], ['rejected', 'Rejected'], ['no_response', 'No response'], ['withdrawn', 'Withdrawn']],
+    interviewing: [['offer', 'Offer'], ['rejected', 'Rejected'], ['no_response', 'No response'], ['withdrawn', 'Withdrawn']],
+    offer: [['offer_accepted', 'Accepted'], ['offer_declined', 'Declined'], ['withdrawn', 'Withdrawn']],
+  };
+  function boardCard(job, column) {
+    const applied = job.applied ? `<small class="board-meta">Applied ${esc(when(job.applied.at))}${job.applied.method === 'auto' ? ' · auto' : ''}</small>` : '';
+    const outcomes = NEXT_OUTCOMES[job.status];
+    const actions = [];
+    if (job.status === 'application_ready') actions.push(`<button type="button" class="job-os-btn primary small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">Apply</button>`);
+    if (job.status === 'resume_ready') actions.push(`<button type="button" class="job-os-btn small" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Review resume</button>`);
+    if (outcomes) actions.push(`<label class="board-outcome"><span class="sr-only">Update status</span><select data-job-os-change="board-outcome" data-job-id="${esc(job.id)}" data-revision="${Number(job.revision)}"><option value="">Update…</option>${outcomes.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>`);
+    return `<article class="board-card" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}">
+      <button type="button" class="board-card-main" data-job-id="${esc(job.id)}">${fitRing(job.analysis, 'small')}<span><strong>${esc(job.title)}</strong><small>${esc([job.company, job.location].filter(Boolean).join(' · '))}</small></span></button>
+      ${(job.attention || []).map((reason) => `<p class="board-attention">${esc(reason)}</p>`).join('')}
+      ${applied}${column === 'closed' || column === 'offers' ? badge(job.status) : ''}
+      ${actions.length ? `<div class="board-actions">${actions.join('')}</div>` : ''}</article>`;
+  }
+  function boardView(state) {
+    const board = state.board;
+    if (!board) return '<section class="job-os-card"><p class="job-os-card-note">Loading…</p></section>';
+    const total = board.columns.reduce((n, c) => n + c.jobs.length, 0);
+    if (!total) return '<section class="job-os-card job-os-empty"><strong>No applications yet</strong><p>Shortlist jobs in Pipeline and tailor a resume; they appear here, ready to send.</p></section>';
+    return `<div class="board" role="list">${board.columns.map((c) => `<section class="board-col" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="board-cards">${c.jobs.map((j) => boardCard(j, c.key)).join('') || '<p class="board-empty">—</p>'}</div></section>`).join('')}</div>`;
+  }
+  function funnelCard(funnel) {
+    if (!funnel || !funnel.length || !funnel[0].count) return '';
+    const max = Math.max(...funnel.map((s) => s.count), 1);
+    return `<section class="job-os-card funnel-card"><div class="job-os-card-head"><h2>Your funnel</h2></div><div class="funnel">${funnel.map((s, i) => `<div class="funnel-row"><span>${esc(s.label)}</span><div class="funnel-track"><i style="--w:${Math.max(2, Math.round(100 * s.count / max))}%;--i:${i}"></i></div><strong data-count-key="funnel-${esc(s.key)}">${s.count}</strong></div>`).join('')}</div></section>`;
+  }
   // ---- Pipeline toolbar ------------------------------------------------------
   function sortJobs(jobs, by) {
     if (by !== 'fit') return jobs;
@@ -377,7 +409,8 @@
     let body;
     if (view === 'dashboard') {
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
-        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-filter="awaiting_approval"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-view="applications"')}</section>
+        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="applications"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-view="applications"')}</section>
+        ${funnelCard(dashboard.funnel)}
         <div class="job-os-columns">
           <section class="job-os-card job-os-recent"><div class="job-os-card-head"><h2>Recent jobs</h2><button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button></div>${jobList(jobs.slice(0, 12), 'No jobs saved yet', 'Import a role to start tracking it through your pipeline.')}</section>
           <section class="job-os-card job-os-import"><div class="job-os-card-head"><h2>Import a job</h2></div><p class="job-os-card-note">Save a role manually now; Firecrawl discovery arrives in the next release.</p><form id="job-os-import-form"><label>Role title<input name="title" required maxlength="240" placeholder="e.g. Senior Frontend Engineer" value="${esc(draft.title)}"></label><label>Job URL<input name="canonical_url" type="url" required placeholder="https://" value="${esc(draft.canonical_url)}"></label><label>Company<input name="company" maxlength="240" placeholder="Optional" value="${esc(draft.company)}"></label><button class="job-os-btn primary" type="submit">${icon('import', 14)}Save job</button><p id="job-os-import-error" class="job-os-error" role="alert"></p></form></section>
@@ -389,9 +422,7 @@
         ${pipelineBar(state, jobs)}
         <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${jobs.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Clear filter</button>' : ''}</div>${jobList(sortJobs(jobs, state.sortBy), 'No jobs here', filter ? 'No jobs match this status right now.' : 'Run a Scout search or import a role to start your pipeline.')}</section>`;
     } else if (view === 'applications') {
-      const applied = jobs.filter((job) => APPLIED.includes(job.status));
-      body = `${header('Applications', 'Submitted applications and where each one stands.', state)}
-        <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>Submitted <span class="job-os-count">${applied.length}</span></h2></div>${jobList(applied, 'No applications yet', 'Prepared applications, approvals, and outcomes will appear here once you apply.')}</section>`;
+      body = `${header('Applications', 'Every application from ready-to-send to offer.', state)}${boardView(state)}`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find postings on job sites and read each one.', state)}${scoutView(state)}`;
     } else if (view === 'settings') {

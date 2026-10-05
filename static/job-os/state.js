@@ -38,6 +38,7 @@
     studioDocs: null,
     studioTab: 'resume',
     studioDraft: null,
+    board: null,
     gmailEditing: false,
     gmailMessage: null,
   };

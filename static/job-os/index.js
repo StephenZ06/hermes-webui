@@ -32,7 +32,8 @@
       const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs] = await Promise.all([
+      const wantBoard = state.activeView === 'applications';
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -44,6 +45,7 @@
         wantResume ? window.JobOSApi.resume().catch(() => null) : Promise.resolve(null),
         wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
+        wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -56,6 +58,7 @@
       if (resume) state.resume = resume.resume;
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
+      if (board) state.board = board;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -67,6 +70,7 @@
       if (wantScout) afterScoutRender(target);
       else stopScoutPolling();
       afterPipelineRender(target);
+      if (wantBoard) afterBoardRender(target);
       if (wantResume) bindResumeUpload();
       renderSidebar();
       bind();
@@ -83,6 +87,40 @@
   function showStatus(status) { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = status || null; replaceRoute('pipeline', window.JobOSState.statusFilter); refresh(); }
   // One delegated listener per container: the page and the side-panel nav
   // re-render on every refresh, so per-button listeners would be rebuilt anyway.
+  async function onChange(event) {
+    const el = event.target.closest('[data-job-os-change="board-outcome"]');
+    if (!el || !el.value) return;
+    el.disabled = true;
+    try { await window.JobOSApi.setStatus(el.dataset.jobId, el.value, Number(el.dataset.revision)); flash(el.dataset.jobId); }
+    catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update'); }
+    refresh();
+  }
+  // After a board move, the card glows in its new column.
+  let flashId = null;
+  function flash(jobId) { flashId = jobId; }
+  function afterBoardRender(target) {
+    if (!flashId) return;
+    const card = target.querySelector(`.board-card[data-board-job="${CSS.escape(flashId)}"]`);
+    if (card && typeof window.markArrival === 'function') window.markArrival(card);
+    flashId = null;
+  }
+  // Paper plane from the card to the Applied column.
+  function swoosh(fromEl) {
+    const to = document.querySelector('.board-col[data-col="applied"] header');
+    if (!fromEl || !to || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+    const a = fromEl.getBoundingClientRect(), b = to.getBoundingClientRect();
+    const plane = document.createElement('span');
+    plane.className = 'apply-plane';
+    plane.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>';
+    plane.style.left = `${a.left + a.width / 2}px`; plane.style.top = `${a.top + a.height / 2}px`;
+    document.body.appendChild(plane);
+    const anim = plane.animate([
+      {transform: 'translate(-50%,-50%) scale(.6) rotate(0deg)', opacity: 0},
+      {transform: 'translate(-50%,-50%) scale(1.1) rotate(-12deg)', opacity: 1, offset: .2},
+      {transform: `translate(calc(-50% + ${b.left + b.width / 2 - a.left - a.width / 2}px), calc(-50% + ${b.top + b.height / 2 - a.top - a.height / 2}px)) scale(.7) rotate(18deg)`, opacity: 0},
+    ], {duration: 700, easing: 'cubic-bezier(.3,.7,.2,1)'});
+    return anim.finished.catch(() => {}).then(() => plane.remove());
+  }
   function onClick(event) {
     const action = event.target.closest('[data-job-os-action]');
     if (action) { runAction(action.dataset.jobOsAction, action); return; }
@@ -90,6 +128,7 @@
     if (view) { showView(view.dataset.jobOsView); return; }
     const filter = event.target.closest('[data-job-os-filter]');
     if (filter) { showStatus(filter.dataset.jobOsFilter); return; }
+    if (event.target.closest('select, [data-job-os-change]')) return;
     const job = event.target.closest('[data-job-id]');
     if (job) openJob(job.dataset.jobId);
   }
@@ -98,6 +137,7 @@
     aborter = new AbortController();
     const signal = aborter.signal;
     root().addEventListener('click', onClick, {signal});
+    root().addEventListener('change', onChange, {signal});
     const side = sidebarRoot();
     if (side) side.addEventListener('click', onClick, {signal});
     const settingsForm = document.getElementById('job-os-settings-form');
@@ -173,7 +213,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'board-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -398,6 +438,23 @@
     }
     if (name === 'studio-retry') {
       try { await window.JobOSApi.tailor(state.studioJobId); } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not retry'); }
+      return refresh();
+    }
+    if (name === 'board-apply') {
+      const id = el.dataset.jobId;
+      window.open(el.dataset.url, '_blank', 'noopener');
+      const ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({title: 'Did you submit it?', message: 'The posting opened in a new tab. Once you have sent the application there, record it here.', confirmLabel: 'I applied', cancelLabel: 'Not yet'})
+        : window.confirm('Did you submit the application?');
+      if (!ok) return undefined;
+      try {
+        const card = el.closest('.board-card');
+        await window.JobOSApi.markApplied(id);
+        if (card) card.classList.add('is-sent');
+        await swoosh(card);
+        flash(id);
+        if (typeof window.showToast === 'function') window.showToast('Application recorded');
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not record it'); }
       return refresh();
     }
     if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }

@@ -67,6 +67,8 @@ def test_board_columns_attention_and_follow_up(store):
     assert cols["applied"] == [applied.id] and cols["interviewing"] == [interviewing.id]
     card = next(j for c in applications.board()["columns"] for j in c["jobs"] if j["id"] == applied.id)
     assert card["attention"] and "follow up" in card["attention"][0]
+    from api.job_os.dashboard import build_dashboard
+    assert build_dashboard()["needs_attention"] == 2  # the review card and the follow-up nudge
 
 
 def test_funnel_counts_progress(store):
