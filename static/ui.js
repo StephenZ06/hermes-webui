@@ -7,6 +7,11 @@
 // See api/todo_state.py for the wire contract.
 const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default',activeProfileIsDefault:true,showHiddenWorkspaceFiles:false,todos:[],todoStateMeta:null,_pendingSessionToolsets:null,_pendingSessionToolPolicy:null};
 
+// A project created in the Work Hub belongs to the Work Hub page only: the
+// chat sidebar, the new-chat picker and the Office sidebar leave it out.
+function isWorkHubOnlyProject(project){return !!(project&&project.work_hub_managed);}
+window.isWorkHubOnlyProject=isWorkHubOnlyProject;
+
 function assistantDisplayName(){
   if(S.activeProfile&&S.activeProfile!=='default') return S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
   return window._botName||'Hermes';

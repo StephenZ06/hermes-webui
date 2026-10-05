@@ -66,7 +66,10 @@ def test_office_workspace_section_matches_the_chat_sidebar_hierarchy():
 def test_office_sidebar_includes_empty_project_folders_across_profiles():
     sidebar_at = OFFICE_INDEX_JS.index("async function renderSidebar()")
     sidebar = OFFICE_INDEX_JS[sidebar_at:OFFICE_INDEX_JS.index("// ---- mount", sidebar_at)]
-    assert "_officeProjects = allProjects;" in sidebar
+    # Every profile's folders show (no profile filter); only Work Hub projects,
+    # which belong to the Work Hub page, are left out
+    # (behaviour: tests/test_work_hub_project_scope.py).
+    assert "_officeProjects = allProjects.filter(project => !workHubOnly(project));" in sidebar
     assert "allProjects.filter(p => !p.profile || p.profile === activeProfile)" not in sidebar
 
 

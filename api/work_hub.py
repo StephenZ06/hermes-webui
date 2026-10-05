@@ -580,6 +580,53 @@ def delete_board(board_id: str, expected_revision: int) -> dict[str, Any]:
                 return {"revision": _bump_revision(conn), "reset": reset}
 
 
+def delete_project_contents(project_id: str) -> dict[str, Any]:
+    """Remove a project's Work Hub boards and work items (with their comments,
+    activity and workflow steps), for deleting a Work Hub-managed project.
+
+    Called before the project row itself is removed: a board with a workflow
+    still pending/running/paused refuses (409) like ``delete_board`` does, and
+    the project then stays whole rather than losing its boards first.
+    """
+    project_id = _clean_text(project_id, field="Project", maximum=128, required=True)
+    with _STATE_LOCK:
+        with _connect() as conn:
+            with conn:
+                board_ids = [
+                    row["id"] for row in conn.execute(
+                        "SELECT id, content FROM planning_entities WHERE collection = 'views' AND project_id = ?",
+                        (project_id,),
+                    )
+                    if _decode_json(row["content"], {}).get("kind") == "work_hub_board"
+                ]
+                marks = ",".join("?" * len(board_ids)) or "NULL"
+                item_ids = [
+                    row["id"] for row in conn.execute(
+                        f"SELECT id FROM work_items WHERE project_id = ? OR board_id IN ({marks})",
+                        (project_id, *board_ids),
+                    )
+                ]
+                items = ",".join("?" * len(item_ids)) or "NULL"
+                active = conn.execute(
+                    f"""SELECT 1 FROM workflow_steps AS step
+                    JOIN workflow_runs AS run ON run.id = step.workflow_id
+                    WHERE (step.item_id IN ({items}) OR run.project_id = ?)
+                      AND run.status IN ('pending', 'running', 'paused')
+                    LIMIT 1""",
+                    (*item_ids, project_id),
+                ).fetchone()
+                if active is not None:
+                    raise WorkHubError("A project with an active workflow cannot be deleted", 409)
+                conn.execute(f"DELETE FROM comments WHERE item_id IN ({items})", item_ids)
+                conn.execute(f"DELETE FROM activities WHERE item_id IN ({items})", item_ids)
+                conn.execute(f"DELETE FROM workflow_steps WHERE item_id IN ({items})", item_ids)
+                conn.execute(f"DELETE FROM work_items WHERE id IN ({items})", item_ids)
+                conn.execute("DELETE FROM workflow_runs WHERE project_id = ?", (project_id,))
+                conn.execute("DELETE FROM workflow_runs WHERE id NOT IN (SELECT DISTINCT workflow_id FROM workflow_steps)")
+                conn.execute(f"DELETE FROM planning_entities WHERE id IN ({marks})", board_ids)
+                return {"revision": _bump_revision(conn), "boards": len(board_ids), "items": len(item_ids)}
+
+
 def rename_board(board_id: str, payload: dict[str, Any], expected_revision: int) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise WorkHubError("Board must be an object")

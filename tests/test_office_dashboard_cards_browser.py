@@ -54,7 +54,7 @@ def test_every_card_body_has_one_fixed_height_and_scrolls_past_it():
 
     assert len(projects) == 4
     assert len({p["h"] for p in projects}) == 1, f"all four cards share one body height: {projects}"
-    assert all(p["overflow"] == "auto" for p in projects)
+    assert all(p["overflow"] == "scroll" for p in projects), "every card keeps a visible scrollbar track"
     assert business["h"] == projects[0]["h"], "seven Business floors must not stretch the card"
     assert business["scrolls"] and business["rows"] == 7, business
     assert business["fullyVisible"] == 4, f"the body shows exactly four floors before scrolling: {business}"

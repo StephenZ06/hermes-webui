@@ -1911,8 +1911,11 @@ async function renderSidebar() {
       const payload = projectsResult.value || {};
       const allProjects = (payload.projects && Array.isArray(payload.projects)) ? payload.projects : [];
       // Folder visibility is navigation state, not delegation state. Keep
-      // every project visible even with no conversations or another profile.
-      _officeProjects = allProjects;
+      // every project visible even with no conversations or another profile --
+      // except Work Hub projects, which belong to the Work Hub page only.
+      const workHubOnly = typeof window.isWorkHubOnlyProject === 'function'
+        ? window.isWorkHubOnlyProject : (project => !!(project && project.work_hub_managed));
+      _officeProjects = allProjects.filter(project => !workHubOnly(project));
     } else if (projectsResult.status === 'rejected') {
       console.warn('[office] /api/projects failed:', projectsResult.reason);
     }

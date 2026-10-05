@@ -2739,9 +2739,10 @@ _refreshAllProjectsAllProfiles();
 function _createNewConversationWithPicker(anchorEl){
   // Prefer the all-profiles cache so every project the user owns is reachable
   // from the new-chat menu. Fall back to the profile-scoped sidebar cache.
-  const visibleProjects = _allProjectsAllProfiles.length
+  const visibleProjects = (_allProjectsAllProfiles.length
     ? _allProjectsAllProfiles
-    : (typeof _allProjects !== 'undefined' ? _allProjects : []);
+    : (typeof _allProjects !== 'undefined' ? _allProjects : []))
+    .filter(project => !isWorkHubOnlyProject(project));
   if(!visibleProjects.length){_createNewConversation();return;}
   _showNewChatDestinationPicker(anchorEl, visibleProjects);
   // Refresh in the background so newly-created projects appear next time.

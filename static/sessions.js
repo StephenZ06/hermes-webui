@@ -4521,6 +4521,7 @@ function _showBatchProjectPicker(){
     }catch(e){showToast('Move failed: '+(e.message||e));}
   };picker.appendChild(none);
   for(const p of(_allProjects||[])){
+    if(isWorkHubOnlyProject(p)) continue;
     const item=document.createElement('div');item.className='project-picker-item';
     if(p.color){const dot=document.createElement('span');dot.className='color-dot';
       dot.style.cssText='width:6px;height:6px;border-radius:50%;background:'+p.color+';flex-shrink:0;';item.appendChild(dot);}
@@ -8027,14 +8028,19 @@ function renderSessionListFromCache(){
   workspacesHeading.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span>';
   workspacesSection.appendChild(workspacesHeading);
   if(sessionSearchWrap) workspacesSection.appendChild(sessionSearchWrap);
-  if(_allProjects.length>0){
+  // Work Hub projects stay on the Work Hub page; a chat filed under one (or
+  // under a project that no longer exists) shows in the main list instead of
+  // disappearing with a folder that is not drawn here.
+  const sidebarProjects=_allProjects.filter(p=>!isWorkHubOnlyProject(p));
+  const sidebarProjectIds=new Set(sidebarProjects.map(p=>p.project_id));
+  if(sidebarProjects.length>0){
     const bar=document.createElement('div');
     bar.className='project-folder-list';
     // Project folders — vertical, collapsible rows (ChatGPT-style). Clicking
     // a folder row (or its chevron) toggles the nested session preview; the
     // flat/date-grouped list below always shows unfoldered sessions only, so
     // there's no separate "active project filter" state to reset here.
-    for(const p of _allProjects){
+    for(const p of sidebarProjects){
       const chip=document.createElement('span');
       chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');
       chip.dataset.projectId=p.project_id;
@@ -8223,7 +8229,7 @@ function renderSessionListFromCache(){
   // when expanded, see the auto-expand-for-active-session logic above) --
   // the flat/date-grouped list below is unfoldered sessions only, so "Today"
   // etc. reflect general conversations rather than duplicating project chats.
-  const mainListSessions=sessions.filter(s=>!s.project_id);
+  const mainListSessions=sessions.filter(s=>!s.project_id||!sidebarProjectIds.has(s.project_id));
   const orderedSessions=[...mainListSessions].sort(_sessionSidebarSortCompare);
   // Separate pinned from unpinned
   const pinned=orderedSessions.filter(s=>s.pinned);
@@ -9854,7 +9860,7 @@ function _showProjectPicker(session, anchorEl){
     return true;
   };
   for(const p of _allProjects){
-    if (_profileHidesProject(p.profile)) continue;
+    if (_profileHidesProject(p.profile) || isWorkHubOnlyProject(p)) continue;
     const item=document.createElement('div');
     item.className='project-picker-item'+(session.project_id===p.project_id?' active':'');
     if(p.color){
