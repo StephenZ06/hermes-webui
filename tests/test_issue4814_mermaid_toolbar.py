@@ -20,7 +20,7 @@ const fs = require('fs');
 
 const ui = fs.readFileSync(process.argv[2], 'utf8');
 const helperStart = ui.indexOf('const _MERMAID_VIEWER_MIN_SCALE');
-const helperEnd = ui.indexOf("document.addEventListener('click'");
+const helperEnd = ui.indexOf("document.addEventListener('click'", helperStart);
 if (helperStart < 0 || helperEnd < 0) {
   throw new Error('could not locate Mermaid viewer helpers');
 }
