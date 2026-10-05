@@ -33,6 +33,7 @@
       state.dashboard = dashboard;
       state.jobs = jobs.jobs || [];
       target.innerHTML = window.JobOSRender.shell(state);
+      if (typeof window.animateCounts === 'function') window.animateCounts(target);
       renderSidebar();
       bind();
     } catch (error) {

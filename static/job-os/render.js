@@ -63,7 +63,7 @@
     return `<nav class="job-os-tabs" aria-label="Job OS sections">${Object.keys(labels).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
   }
   function metric(name, value, label, target) {
-    return `<button type="button" class="job-os-metric" ${target}><span class="job-os-metric-icon" data-metric="${name}">${icon(name, 18)}</span><span class="job-os-metric-body"><strong>${esc(value)}</strong><span>${esc(label)}</span></span></button>`;
+    return `<button type="button" class="job-os-metric" ${target}><span class="job-os-metric-icon" data-metric="${name}">${icon(name, 18)}</span><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${esc(value)}</strong><span>${esc(label)}</span></span></button>`;
   }
   function placeholder(view, body) {
     return `<section class="job-os-card job-os-placeholder"><span class="job-os-placeholder-icon">${icon(view, 26)}</span><h2>${esc(labels[view])}</h2><p>${esc(body)}</p><button class="job-os-btn" type="button" data-job-os-view="dashboard">Back to dashboard</button></section>`;

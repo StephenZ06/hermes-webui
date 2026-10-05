@@ -108,6 +108,51 @@ function markArrival(el){
   el.addEventListener('animationend',()=>el.classList.remove('item-arrive'),{once:true});
   return el;
 }
+// Dashboard numbers roll to their new value. Cards re-render on every live
+// sync, so the last shown value is remembered per data-count-key and a number
+// only animates when it actually changes (from 0 on first view).
+const _countLastShown=new Map();
+function animateCounts(root){
+  if(!root)return;
+  root.querySelectorAll('[data-count-key]').forEach(el=>{
+    const key=el.dataset.countKey;
+    const to=Number(el.textContent);
+    if(!Number.isFinite(to)){_countLastShown.delete(key);return;}
+    const from=_countLastShown.has(key)?_countLastShown.get(key):0;
+    _countLastShown.set(key,to);
+    if(from===to||_listMotionReduced())return;
+    const start=performance.now(),dur=Math.min(900,350+Math.abs(to-from)*40);
+    el.textContent=String(from);
+    const step=now=>{
+      if(!el.isConnected)return;
+      const k=Math.min(1,(now-start)/dur),eased=1-Math.pow(1-k,3);
+      el.textContent=String(Math.round(from+(to-from)*eased));
+      if(k<1)requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+// Board drag and drop: a card-sized slot opens at the bottom of the column
+// under the pointer, and a dropped card settles into place.
+const _dragSlot={el:null};
+function showDragSlot(list,height){
+  if(!list)return;
+  let slot=_dragSlot.el;
+  if(!slot){slot=document.createElement('div');slot.className='drag-slot';slot.setAttribute('aria-hidden','true');_dragSlot.el=slot;}
+  slot.style.setProperty('--slot-height',Math.max(28,Math.round(height||40))+'px');
+  if(slot.parentElement!==list)list.appendChild(slot);
+}
+function hideDragSlot(){if(_dragSlot.el)_dragSlot.el.remove();}
+function markLanded(el){
+  if(!el||_listMotionReduced())return el;
+  el.classList.remove('card-landed');void el.offsetWidth;el.classList.add('card-landed');
+  el.addEventListener('animationend',()=>el.classList.remove('card-landed'),{once:true});
+  return el;
+}
+window.showDragSlot=showDragSlot;
+window.hideDragSlot=hideDragSlot;
+window.markLanded=markLanded;
+window.animateCounts=animateCounts;
 window.animateRemoval=animateRemoval;
 window.markArrival=markArrival;
 window.createDeleteMode=createDeleteMode;

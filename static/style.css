@@ -9582,3 +9582,23 @@ main.main > .main-view{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) bac
 .item-arrive{animation:item-arrive .9s cubic-bezier(.22,1,.36,1);}
 @keyframes item-arrive{0%{opacity:0;transform:translateY(-4px);box-shadow:inset 0 0 0 1px var(--accent),0 0 14px color-mix(in srgb,var(--accent) 35%,transparent);}25%{opacity:1;transform:none;}100%{box-shadow:inset 0 0 0 1px transparent,0 0 0 transparent;}}
 @media (prefers-reduced-motion:reduce){.item-arrive{animation:none;}}
+
+/* Insights: bars grow in on open/manual refresh (.insights-grow, added by
+   _growInsightsCharts) in a quick ripple; hovering one dims the rest. */
+.insights-grow .insights-bar-fill{transform-origin:left center;animation:insights-grow-x .7s cubic-bezier(.22,1,.36,1) backwards;animation-delay:calc(var(--i,0) * 18ms);}
+.insights-grow .insights-daily-stack>div{transform-origin:center bottom;animation:insights-grow-y .7s cubic-bezier(.22,1,.36,1) backwards;animation-delay:calc(var(--i,0) * 14ms);}
+@keyframes insights-grow-x{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+@keyframes insights-grow-y{from{transform:scaleY(0);}to{transform:scaleY(1);}}
+.insights-bar-row,.insights-daily-bar{transition:opacity .15s ease;}
+.insights-bars:hover .insights-bar-row:not(:hover),.insights-daily-token-chart:hover .insights-daily-bar:not(:hover){opacity:.5;}
+.insights-bar-row:hover .insights-bar-fill{filter:brightness(1.18);}
+.insights-daily-bar:hover .insights-daily-stack{box-shadow:0 0 0 1px var(--accent);}
+@media (prefers-reduced-motion:reduce){.insights-grow .insights-bar-fill,.insights-grow .insights-daily-stack>div{animation:none;}}
+
+/* Board drag and drop (showDragSlot / markLanded in ui.js). */
+.drag-slot{height:var(--slot-height,40px);flex-shrink:0;margin:4px 0;border:1.5px dashed color-mix(in srgb,var(--accent) 60%,transparent);border-radius:8px;background:color-mix(in srgb,var(--accent) 8%,transparent);animation:drag-slot-open .18s cubic-bezier(.22,1,.36,1);pointer-events:none;}
+@keyframes drag-slot-open{from{height:0;opacity:0;}to{height:var(--slot-height,40px);opacity:1;}}
+.kanban-card.dragging{opacity:.65;transform:rotate(2deg) scale(.98);box-shadow:0 4px 12px rgba(0,0,0,.15);}
+.card-landed{animation:card-landed .5s cubic-bezier(.34,1.56,.64,1);}
+@keyframes card-landed{0%{transform:scale(.94);box-shadow:0 0 0 2px var(--accent);}55%{transform:scale(1.03);}100%{transform:scale(1);box-shadow:0 0 0 0 transparent;}}
+@media (prefers-reduced-motion:reduce){.drag-slot,.card-landed{animation:none;}}

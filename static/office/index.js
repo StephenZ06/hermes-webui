@@ -933,7 +933,7 @@ function renderOfficeDashboard(state) {
     <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
     <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
   </div></div>
-  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><span>${label}</span><strong>${value}</strong><small>${detail}</small></button>`).join('')}</section>
+  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><span>${label}</span><strong data-count-key="office-${model.mode}-${action}">${value}</strong><small>${detail}</small></button>`).join('')}</section>
   <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
   <article class="office-dashboard-panel"><div class="office-dashboard-panel-head"><h2>Live delegation</h2><span>${model.live.length} active</span></div><div class="office-dashboard-panel-body">${rows(model.live, 'is-live', 'No active delegation right now.')}</div></article>
   <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention"><div class="office-dashboard-panel-head"><h2>Attention required</h2><span>${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}</span></div><div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : '<div class="office-dashboard-empty">Everything is on track.</div>'}</div></article>
@@ -943,6 +943,7 @@ function renderOfficeDashboard(state) {
     button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
   });
   bindDashboardDistribution(host, state);
+  if (typeof window.animateCounts === 'function') window.animateCounts(host);
   host.querySelectorAll('[data-dashboard-worker-id]').forEach(button => {
     button.onclick = () => openDashboardWorker(model.workers.find(worker => worker.id === button.dataset.dashboardWorkerId), model.mode);
   });

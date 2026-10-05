@@ -2740,8 +2740,17 @@ function _kanbanSuppressNextCardClick(){
   _kanbanSuppressCardClickUntil = Date.now() + 700;
 }
 
+let _kanbanDragHeight = 40;
+let _kanbanDragStatus = null;
 function dragKanbanTask(event, taskId){
   _kanbanSuppressNextCardClick();
+  const card = event && event.target && event.target.closest ? event.target.closest('.kanban-card') : null;
+  if (card) {
+    card.classList.add('dragging');
+    _kanbanDragHeight = card.offsetHeight;
+    const column = card.closest('.kanban-column');
+    _kanbanDragStatus = column ? column.dataset.kanbanStatus : null;
+  }
   if (!event.dataTransfer) return;
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('text/plain', taskId);
@@ -2749,6 +2758,8 @@ function dragKanbanTask(event, taskId){
 
 function finishKanbanDrag(event){
   if (event) _kanbanSuppressNextCardClick();
+  document.querySelectorAll('.kanban-card.dragging').forEach(card => card.classList.remove('dragging'));
+  if (typeof hideDragSlot === 'function') hideDragSlot();
 }
 
 function openKanbanCard(event, taskId){
@@ -2776,10 +2787,17 @@ function allowKanbanDrop(event){
   }
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  if (target && target.dataset && target.dataset.kanbanStatus !== _kanbanDragStatus && typeof showDragSlot === 'function') {
+    showDragSlot(target.querySelector('.kanban-column-body'), _kanbanDragHeight);
+  }
 }
 
 function clearKanbanDrop(event){
-  if (event && event.currentTarget) event.currentTarget.classList.remove('drop-target');
+  const column = event && event.currentTarget;
+  // Moving over a card inside the column also fires dragleave.
+  if (event && event.type === 'dragleave' && column && event.relatedTarget && column.contains(event.relatedTarget)) return;
+  if (column) column.classList.remove('drop-target');
+  if (typeof hideDragSlot === 'function') hideDragSlot();
 }
 
 async function dropKanbanTask(event, status){
@@ -2788,7 +2806,10 @@ async function dropKanbanTask(event, status){
   event.stopPropagation();
   clearKanbanDrop(event);
   const taskId = event.dataTransfer ? event.dataTransfer.getData('text/plain') : '';
-  if (taskId && status) await updateKanbanTask(taskId, {status}, {openDetail: false});
+  if (taskId && status) {
+    await updateKanbanTask(taskId, {status}, {openDetail: false});
+    if (typeof markLanded === 'function') markLanded(document.querySelector(`.kanban-card[data-kanban-task-id="${CSS.escape(taskId)}"]`));
+  }
   _kanbanSuppressNextCardClick();
 }
 
@@ -5593,6 +5614,18 @@ function _renderStaticModelHealthTable() {
   return `<details class="insights-card insights-model-health-card"><summary><span class="insights-card-title">${esc(t('insights_model_health_title'))}</span></summary><div class="insights-table insights-model-health-table"><div class="insights-table-head"><span>${esc(t('insights_model_name'))}</span><span>${esc(t('insights_model_health_provider'))}</span><span>${esc(t('insights_model_health_cost_per_m'))}</span><span>${esc(t('insights_model_health_replacement'))}</span></div>${rows}</div></details>`;
 }
 
+function _growInsightsCharts(box) {
+  if (!box) return;
+  box.querySelectorAll('.insights-bars, .insights-daily-token-chart').forEach(group => {
+    Array.from(group.children).forEach((row, i) => row.style.setProperty('--i', String(Math.min(i, 30))));
+  });
+  box.classList.remove('insights-grow');
+  void box.offsetWidth;
+  box.classList.add('insights-grow');
+  clearTimeout(box._growTimer);
+  box._growTimer = setTimeout(() => box.classList.remove('insights-grow'), 1600);
+}
+
 async function loadInsights(animate) {
   const box = $('insightsContent');
   const refreshBtn = $('insightsRefreshBtn');
@@ -5623,6 +5656,9 @@ async function loadInsights(animate) {
       api('/api/skills/usage').catch(() => ({usage:{}, skill_names:[], total_invocations:0, unique_skills_used:0})),
     ]);
     _renderInsights(data, box, wikiStatus, skillUsage);
+    // Bars grow in when Insights is opened or refreshed by hand -- not on the
+    // 15s auto-refresh (animate === false), which would replay it constantly.
+    if (animate !== false) _growInsightsCharts(box);
     box.querySelectorAll('details.insights-card').forEach(d => {
       if (_openCards.has(d.className)) d.open = true;
     });

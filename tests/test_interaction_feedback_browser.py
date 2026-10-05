@@ -139,3 +139,98 @@ def test_deleting_a_job_animates_its_own_row_away():
             except Exception:
                 pass
     assert removed == [name], removed
+
+
+def test_dashboard_numbers_roll_only_when_they_change():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            seen = page.evaluate("""() => new Promise(resolve => {
+              const host = document.createElement('div');
+              host.innerHTML = '<strong data-count-key="t-roll">12</strong>';
+              document.body.appendChild(host);
+              const el = host.firstChild;
+              const values = new Set();
+              animateCounts(host);
+              const sample = () => { values.add(el.textContent); };
+              const timer = setInterval(sample, 16);
+              setTimeout(() => {
+                clearInterval(timer);
+                const firstPass = [...values];
+                // Same value again (a live re-render): no animation.
+                host.innerHTML = '<strong data-count-key="t-roll">12</strong>';
+                animateCounts(host);
+                resolve({firstPass, final: el.textContent, rerender: host.firstChild.textContent});
+              }, 1200);
+            })""")
+        finally:
+            browser.close()
+    assert seen["final"] == "12"
+    assert len(seen["firstPass"]) > 3 and "0" in seen["firstPass"], "it counts up from 0 on first view"
+    assert seen["rerender"] == "12", "an unchanged number does not restart"
+
+
+def test_work_hub_drag_opens_a_slot_and_the_card_settles():
+    import json
+    import urllib.request
+    import uuid
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+
+    def call(path, body=None):
+        req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers={"Content-Type": "application/json", "Origin": BASE})
+        return json.loads(urllib.request.urlopen(req, timeout=20).read() or b"{}")
+
+    title = f"Drag me {uuid.uuid4().hex[:6]}"
+    rev = call("/api/work_hub/bootstrap")["revision"]
+    item = call("/api/work_hub/items/create", {"item": {"title": title, "status": "todo"}, "expected_revision": rev})["item"]
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            page.evaluate("async () => { await switchPanel('notes'); }")
+            page.wait_for_selector(f".work-hub-card[data-item-id='{item['id']}']", timeout=20000)
+            state = page.evaluate("""async (id) => {
+              const card = document.querySelector(`.work-hub-card[data-item-id="${id}"]`);
+              const from = card.closest('.work-hub-column');
+              const to = [...document.querySelectorAll('.work-hub-column')].find(c => c !== from);
+              const dt = new DataTransfer();
+              card.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+              from.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt}));
+              const slotInOwn = !!from.querySelector('.drag-slot');
+              to.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: dt}));
+              const slotInTarget = !!to.querySelector('.drag-slot');
+              to.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: dt}));
+              card.dispatchEvent(new DragEvent('dragend', {bubbles: true, dataTransfer: dt}));
+              const target = to.dataset.status;
+              await new Promise(r => setTimeout(r, 1500));
+              const moved = document.querySelector(`.work-hub-card[data-item-id="${id}"]`);
+              return {slotInOwn, slotInTarget, slotAfter: !!document.querySelector('.drag-slot'),
+                      target, landed: moved && (moved.classList.contains('card-landed') || getComputedStyle(moved).animationName === 'card-landed'),
+                      column: moved && moved.closest('.work-hub-column').dataset.status};
+            }""", item["id"])
+        finally:
+            browser.close()
+            call("/api/work_hub/items/delete", {"item_id": item["id"], "expected_revision": call("/api/work_hub/bootstrap")["revision"]})
+    assert not state["slotInOwn"], "no slot in the card's own column"
+    assert state["slotInTarget"], "a slot opens in the column under the pointer"
+    assert not state["slotAfter"], "the slot goes away on drop"
+    assert state["column"] == state["target"]
+
+
+def test_insights_bars_grow_on_open_but_not_on_auto_refresh():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            page.evaluate("async () => { await switchPanel('insights'); }")
+            page.wait_for_selector("#insightsContent .insights-card", timeout=20000)
+            opened = page.evaluate("() => document.getElementById('insightsContent').classList.contains('insights-grow')")
+            page.wait_for_function("() => !document.getElementById('insightsContent').classList.contains('insights-grow')", timeout=5000)
+            page.evaluate("async () => { await loadInsights(false); }")
+            refreshed = page.evaluate("() => document.getElementById('insightsContent').classList.contains('insights-grow')")
+        finally:
+            browser.close()
+    assert opened, "opening Insights grows the charts in"
+    assert not refreshed, "the 15s auto-refresh does not replay it"

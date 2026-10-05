@@ -199,30 +199,44 @@
   function initDragAndDrop(board) {
     if (!board) return;
     let draggedId = null;
+    let draggedHeight = 40;
+    let draggedStatus = null;
     board.querySelectorAll('.work-hub-card').forEach(card => {
       card.addEventListener('dragstart', (e) => {
         draggedId = card.dataset.itemId;
+        draggedHeight = card.offsetHeight;
+        draggedStatus = (store.items.find(i => i.id === draggedId) || {}).status || null;
         e.dataTransfer.setData('text/plain', draggedId);
         e.dataTransfer.effectAllowed = 'move';
         card.classList.add('dragging');
       });
-      card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
+      card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
     });
     board.querySelectorAll('.work-hub-column').forEach(column => {
       column.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         column.classList.add('drop-target');
+        // A slot opens where the card will land (not in its own column).
+        if (column.dataset.status !== draggedStatus) showDragSlot(column.querySelector('.work-hub-cards'), draggedHeight);
       });
-      column.addEventListener('dragleave', () => { column.classList.remove('drop-target'); });
-      column.addEventListener('drop', (e) => {
+      column.addEventListener('dragleave', (e) => {
+        // Moving over a card inside the column also fires dragleave.
+        if (e.relatedTarget && column.contains(e.relatedTarget)) return;
+        column.classList.remove('drop-target'); hideDragSlot();
+      });
+      column.addEventListener('drop', async (e) => {
         e.preventDefault();
         column.classList.remove('drop-target');
+        hideDragSlot();
         const itemId = e.dataTransfer.getData('text/plain');
         const status = column.dataset.status;
         if (!itemId || !status) return;
         const item = store.items.find(i => i.id === itemId);
-        if (item && item.status !== status) updateItem(itemId, { status });
+        if (item && item.status !== status) {
+          await updateItem(itemId, { status });
+          markLanded(document.querySelector(`.work-hub-card[data-item-id="${CSS.escape(itemId)}"]`));
+        }
       });
     });
   }
