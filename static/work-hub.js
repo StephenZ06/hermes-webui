@@ -158,6 +158,17 @@
     canvas.appendChild(boardWrap);
     initDragAndDrop(board);
   }
+  function workHubRelativeTime(epoch) {
+    const seconds = Number(epoch);
+    if (!Number.isFinite(seconds) || seconds <= 0) return '';
+    const ms = seconds > 1e12 ? seconds : seconds * 1000;
+    const diff = Math.max(0, (Date.now() - ms) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} d ago`;
+    return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
   function renderInspector() {
     const panel = el('workHubInspector'); if (!panel) return;
     const item = store.items.find(row => row.id === store.selectedItemId);
@@ -167,13 +178,47 @@
     const workflow = store.workflows.find(run => (run.steps || []).some(step => step.item_id === item.id && ['pending', 'running', 'paused'].includes(run.status)));
     const workflowControl = workflow ? `<div class="work-hub-workflow-state">Workflow: ${esc(workflow.status)}${workflow.pause_reason ? ` — ${esc(workflow.pause_reason)}` : ''}</div>${workflow.status === 'paused' ? '<button id="workHubResume" class="work-hub-save">Resume workflow</button>' : '<button id="workHubPause" class="work-hub-link">Pause workflow</button>'}` : '';
     const locked = !!workflow;
-    panel.innerHTML = `<div class="work-hub-inspector-head"><span>WORK ITEM</span><button id="workHubClose" aria-label="Close details">${icon('close')}</button></div>${workflowControl}<label>Title<input id="workHubTitle" type="text" maxlength="160" required ${locked ? 'disabled' : ''}></label><label>Status<select id="workHubStatus" ${locked ? 'disabled' : ''}>${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label><label>Hermes agent<select id="workHubAgent" ${locked ? 'disabled' : ''}><option value="">Unassigned</option>${missingAgent ? `<option value="${esc(item.agent_profile)}" selected>Unavailable: ${esc(item.agent_profile)}</option>` : ''}${store.profiles.map(p => `<option value="${esc(p.name)}" ${p.name === item.agent_profile ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Description<textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps" ${locked ? 'disabled' : ''}></textarea></label>${currentSessionId && !locked ? '<button id="workHubLinkChat" class="work-hub-link">Link current chat</button>' : ''}${locked ? '' : '<button id="workHubSave" class="work-hub-save">Save changes</button><button id="workHubDelete" class="work-hub-delete" type="button">Delete</button>'}`;
+    const priorities = ['high', 'medium', 'low', 'none'];
+    const itemPriority = priorities.includes(item.priority) ? item.priority : 'none';
+    const updated = workHubRelativeTime(item.updated_at || item.created_at);
+    const linkedCount = (item.linked_session_ids || []).length;
+    const linkedHere = !!(currentSessionId && (item.linked_session_ids || []).includes(currentSessionId));
+    // Layout: an editable title, a compact property list, the description, and
+    // a pinned footer whose Save only lights up once something has changed.
+    panel.innerHTML = `<div class="wh-insp">
+      <header class="wh-insp-head"><span class="wh-insp-kicker"><span class="work-hub-status status-${esc(item.status)}" id="workHubStatusDot"></span>Work item</span><button id="workHubClose" class="wh-insp-close" aria-label="Close details" title="Close">${icon('close')}</button></header>
+      ${workflowControl ? `<div class="wh-insp-workflow">${workflowControl}</div>` : ''}
+      <input id="workHubTitle" class="wh-insp-title" type="text" maxlength="160" required aria-label="Title" placeholder="Untitled work item" ${locked ? 'disabled' : ''}>
+      <dl class="wh-insp-props">
+        <div class="wh-insp-prop"><dt>Status</dt><dd><select id="workHubStatus" aria-label="Status" ${locked ? 'disabled' : ''}>${store.statuses.map(s => `<option value="${esc(s.id)}" ${s.id === item.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></dd></div>
+        <div class="wh-insp-prop"><dt>Hermes agent</dt><dd><select id="workHubAgent" aria-label="Hermes agent" ${locked ? 'disabled' : ''}><option value="">Unassigned</option>${missingAgent ? `<option value="${esc(item.agent_profile)}" selected>Unavailable: ${esc(item.agent_profile)}</option>` : ''}${store.profiles.map(p => `<option value="${esc(p.name)}" ${p.name === item.agent_profile ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></dd></div>
+        <div class="wh-insp-prop"><dt>Priority</dt><dd><select id="workHubPriority" aria-label="Priority" ${locked ? 'disabled' : ''}>${priorities.map(value => `<option value="${value}" ${value === itemPriority ? 'selected' : ''}>${value === 'none' ? 'None' : value[0].toUpperCase() + value.slice(1)}</option>`).join('')}</select></dd></div>
+        <div class="wh-insp-prop"><dt>Linked chats</dt><dd class="wh-insp-static"><span>${linkedCount ? `${linkedCount} chat${linkedCount === 1 ? '' : 's'}` : 'None'}</span>${currentSessionId && !locked && !linkedHere ? '<button id="workHubLinkChat" class="wh-insp-inline" type="button">Link current chat</button>' : ''}</dd></div>
+        ${updated ? `<div class="wh-insp-prop"><dt>Updated</dt><dd class="wh-insp-static">${esc(updated)}</dd></div>` : ''}
+      </dl>
+      <section class="wh-insp-section"><label class="wh-insp-section-label" for="workHubDescription">Description</label><textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps" ${locked ? 'disabled' : ''}></textarea></section>
+      ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" title="Delete work item">${icon('close')}<span>Delete</span></button><button id="workHubSave" class="work-hub-save" type="button" disabled>Save changes</button></footer>`}
+    </div>`;
     el('workHubTitle').value = item.title; panel.querySelector('#workHubDescription').value = item.description || '';
     el('workHubClose').onclick = () => { store.selectedItemId = null; renderInspector(); };
     const deleteButton = el('workHubDelete'); if (deleteButton) deleteButton.onclick = () => deleteItem(item.id);
     const linkChat = el('workHubLinkChat');
     if (linkChat) linkChat.onclick = () => updateItem(item.id, { linked_session_ids: [...new Set([...(item.linked_session_ids || []), currentSessionId])] });
-    const saveButton = el('workHubSave'); if (saveButton) saveButton.onclick = () => updateItem(item.id, { title: el('workHubTitle').value, status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, description: el('workHubDescription').value });
+    const saveButton = el('workHubSave');
+    const fields = ['workHubTitle', 'workHubStatus', 'workHubAgent', 'workHubPriority', 'workHubDescription'].map(el).filter(Boolean);
+    const original = { title: item.title || '', status: item.status, agent: item.agent_profile || '', priority: itemPriority, description: item.description || '' };
+    const isDirty = () => el('workHubTitle').value !== original.title || el('workHubStatus').value !== original.status
+      || el('workHubAgent').value !== original.agent || el('workHubPriority').value !== original.priority
+      || el('workHubDescription').value !== original.description;
+    const syncDirty = () => {
+      if (saveButton) saveButton.disabled = !isDirty() || !el('workHubTitle').value.trim();
+      const dot = el('workHubStatusDot'); if (dot) dot.className = `work-hub-status status-${el('workHubStatus').value}`;
+    };
+    fields.forEach(field => { field.addEventListener('input', syncDirty); field.addEventListener('change', syncDirty); });
+    const save = () => { if (!saveButton || saveButton.disabled) return; updateItem(item.id, { title: el('workHubTitle').value, status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }); };
+    if (saveButton) saveButton.onclick = save;
+    // Ctrl/Cmd+Enter saves from anywhere in the panel.
+    panel.onkeydown = event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); } };
     const pauseButton = el('workHubPause'); if (pauseButton) pauseButton.onclick = () => changeWorkflow(workflow.id, 'pause');
     const resumeButton = el('workHubResume'); if (resumeButton) resumeButton.onclick = () => changeWorkflow(workflow.id, 'resume');
   }
