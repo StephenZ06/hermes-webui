@@ -6408,7 +6408,7 @@ main.main > #mainPlugin{display:none;}
 .chat-usage-widget-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--chat-sidebar-card-type-size);color:var(--muted);margin-bottom:8px;}
 .chat-usage-widget-title-row{line-height:1;}
 .chat-usage-widget-label{display:inline-flex;align-items:center;gap:5px;line-height:16px;font-weight:600;color:var(--text);}
-.chat-usage-widget-label svg,.chat-usage-widget-mark{display:block;flex:0 0 14px;width:14px;height:14px;color:var(--accent);}
+.chat-usage-widget-label svg{display:block;flex:0 0 14px;width:14px;height:14px;color:var(--accent);}
 .chat-usage-widget-label-stage{position:relative;display:inline-flex;align-items:center;min-width:0;line-height:14px;white-space:nowrap;text-transform:uppercase;}
 .chat-usage-widget-label-text.is-incoming{animation:chatUsageWindowTextEnter .24s ease-out .12s both;}
 .chat-usage-widget-label-text.is-outgoing{position:absolute;inset:0;animation:chatUsageWindowTextExit .16s ease-in both;}
