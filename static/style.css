@@ -1541,7 +1541,10 @@
     .loading-spinner::after{animation-duration:2.4s;}
   }
   body{background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;}
-  .layout{display:flex;width:100%;flex:1 1 auto;min-height:0;}
+  /* overflow-x:clip (not hidden: no scroll container, overflow-y untouched)
+     keeps a sliding panel -- the closed workspace panel sits 14px past the
+     edge -- from making the whole page scroll sideways. */
+  .layout{display:flex;width:100%;flex:1 1 auto;min-height:0;overflow-x:clip;}
   .app-titlebar{display:flex;align-items:center;justify-content:center;height:38px;flex-shrink:0;background:var(--sidebar);border-bottom:1px solid var(--border);padding:0 12px;padding-top:var(--app-titlebar-safe-top);padding-left:max(12px,env(safe-area-inset-left,0));padding-right:max(12px,env(safe-area-inset-right,0));box-sizing:content-box;font-size:12px;color:var(--muted);user-select:none;-webkit-app-region:drag;position:relative;z-index:20;}
   .app-titlebar-left{display:flex;align-items:center;gap:4px;}
   .app-titlebar-inner{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;justify-content:center;}
@@ -3328,7 +3331,6 @@
        (NOT hidden) suppresses any horizontal overflow without coercing
        overflow-y into a scroll container — same #4856 lesson applied to .layout. */
     html.viewport-reflow .layout{transform:translateZ(0);}
-    .layout{overflow-x:clip;}
     /* Viewport-phone rules handle app chrome and touch sizing; they intentionally
        overlap the container compact rules for actual phones. */
     /* ── Sidebar: slide-in overlay instead of hidden ── */
@@ -9607,6 +9609,7 @@ main.main > .main-view{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) bac
 /* Work Hub item inspector: editable title, property list, description, and a
    footer pinned to the bottom. */
 .work-hub-inspector{padding:0;}
+
 .work-hub-inspector .wh-insp{display:flex;flex-direction:column;min-height:100%;padding:14px 14px 0;box-sizing:border-box;}
 .work-hub-inspector .wh-insp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .work-hub-inspector .wh-insp-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
