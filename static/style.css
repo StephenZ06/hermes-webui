@@ -5822,6 +5822,61 @@ main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 .job-os-placeholder p{margin:0 0 10px;color:var(--muted);font-size:13px;max-width:380px;}
 .job-os-placeholder-icon{display:flex;align-items:center;justify-content:center;width:54px;height:54px;border-radius:14px;background:var(--accent-bg);color:var(--accent-text,var(--accent));margin-bottom:6px;}
 .job-os-error{color:var(--error,#f07878);min-height:1.2em;margin:0;font-size:12px;}
+/* Jobs header status chip doubles as a link to Settings when it shows Firecrawl health. */
+button.job-os-status{font:inherit;font-size:12px;background:transparent;cursor:pointer;transition:border-color .16s ease,color .16s ease;}
+button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
+.job-os-status[data-fc-state="offline"]::before,.job-os-status[data-fc-state="not_configured"]::before{background:var(--warning,#f5b84b);}
+/* Jobs Settings */
+.job-os-settings{display:flex;flex-direction:column;gap:14px;padding-bottom:4px;}
+.job-os-settings-section{gap:12px;}
+.job-os-settings-section .job-os-card-head{margin-bottom:0;}
+.job-os-settings-section .job-os-card-note{margin:0;}
+.job-os-phase{border:1px solid var(--border2);border-radius:999px;padding:2px 8px;color:var(--muted);font-size:10.5px;font-weight:600;letter-spacing:.02em;}
+.job-os-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.job-os-field{display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--muted);font-size:12px;font-weight:500;}
+.job-os-field input,.job-os-field select{min-width:0;width:100%;box-sizing:border-box;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg,var(--bg));color:var(--text);padding:9px 10px;font:inherit;font-size:13px;transition:border-color .16s ease;}
+.job-os-field input,.job-os-field select{min-height:40px;}
+.job-os-field input:focus,.job-os-field select:focus{outline:none;border-color:var(--accent);}
+.job-os-field-input{display:flex;align-items:center;gap:8px;}
+.job-os-field-input em{flex-shrink:0;font-style:normal;color:var(--muted);font-size:12px;}
+.job-os-toggle{display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+.job-os-toggle input{position:absolute;opacity:0;width:1px;height:1px;}
+.job-os-toggle-track{position:relative;flex:0 0 34px;height:20px;margin-top:1px;border-radius:999px;background:var(--border2);transition:background .2s ease;}
+.job-os-toggle-track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text);transition:transform .22s cubic-bezier(.22,1,.36,1);}
+.job-os-toggle input:checked+.job-os-toggle-track{background:var(--accent);}
+.job-os-toggle input:checked+.job-os-toggle-track::after{transform:translateX(14px);background:var(--accent-contrast,#111);}
+.job-os-toggle input:focus-visible+.job-os-toggle-track{outline:2px solid var(--accent);outline-offset:2px;}
+.job-os-toggle-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.job-os-toggle-text strong{color:var(--text);font-size:13px;font-weight:600;}
+.job-os-toggle-text small{color:var(--muted);font-size:12px;line-height:1.4;}
+.job-os-conn{display:flex;flex-direction:column;gap:10px;align-items:flex-start;}
+.job-os-conn+.job-os-conn{padding-top:14px;border-top:1px solid var(--border);}
+.job-os-conn .job-os-field{align-self:stretch;}
+.job-os-conn-head{display:flex;align-items:center;gap:10px;}
+.job-os-conn code,.job-os-checklist code{font-size:12px;}
+.job-os-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:600;background:color-mix(in srgb,var(--warning,#f5b84b) 16%,transparent);color:var(--warning,#f5b84b);}
+.job-os-pill[data-ok="true"]{background:color-mix(in srgb,var(--success,#4ade80) 16%,transparent);color:var(--success,#4ade80);}
+.job-os-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;}
+.job-os-checklist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;}
+.job-os-checklist li{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;}
+.job-os-checklist li::before{content:"";width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border2);box-sizing:border-box;}
+.job-os-checklist li[data-ok="true"]::before{border-color:var(--success,#4ade80);background:var(--success,#4ade80);}
+.job-os-ats{display:flex;flex-wrap:wrap;gap:14px;margin:0;padding:0;border:0;}
+.job-os-ats legend{width:100%;margin-bottom:6px;padding:0;color:var(--muted);font-size:12px;font-weight:500;}
+.job-os-ats label{display:inline-flex;align-items:center;gap:6px;color:var(--text);font-size:13px;cursor:pointer;}
+.job-os-ats input{accent-color:var(--accent);}
+.job-os-savebar{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border2);border-radius:14px;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(8px);transition:border-color .2s ease,box-shadow .2s ease;}
+.job-os-savebar[data-dirty="true"]{border-color:var(--accent);box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 14%,transparent);}
+/* Only on screen while there is something to save (or a save error to read). */
+.job-os-savebar[data-dirty="false"]{opacity:0;transform:translateY(16px);pointer-events:none;visibility:hidden;transition:opacity .18s ease,transform .18s ease,visibility 0s linear .18s;}
+.job-os-savebar[data-dirty="true"]{opacity:1;transform:none;visibility:visible;transition:opacity .2s ease,transform .24s cubic-bezier(.22,1,.36,1),border-color .2s ease,box-shadow .2s ease;}
+.job-os-savebar .job-os-error{flex:1;min-height:0;}
+.job-os-savebar-note{color:var(--muted);font-size:12px;}
+.job-os-btn:disabled{opacity:.5;cursor:default;}
+.job-os-btn:disabled:hover{border-color:var(--border2);color:var(--text);}
+.job-os-btn.primary:disabled:hover{filter:none;color:var(--accent-contrast,#111);}
+@media (max-width:640px){.job-os-savebar{flex-wrap:wrap;}.job-os-savebar .job-os-error{flex-basis:100%;}}
+@media (prefers-reduced-motion:reduce){.job-os-toggle-track,.job-os-toggle-track::after,.job-os-savebar{transition:none;}}
 .job-os-filter-label{color:var(--accent-text,var(--accent));}
 #jobOsSidebar{display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
 .job-os-side-nav{overflow:visible;}

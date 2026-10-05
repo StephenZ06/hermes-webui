@@ -10,5 +10,8 @@
     dashboard: () => request('/api/job-os/dashboard'),
     jobs: (status) => request('/api/job-os/jobs' + (status ? '?status=' + encodeURIComponent(status) : '')),
     create: (job) => request('/api/job-os/jobs', {method: 'POST', body: JSON.stringify(job)}),
+    settings: () => request('/api/job-os/settings'),
+    saveSettings: (settings, expectedRevision) => request('/api/job-os/settings', {method: 'POST', body: JSON.stringify({settings, expected_revision: expectedRevision})}),
+    firecrawlHealth: () => request('/api/job-os/firecrawl/health'),
   };
 }());

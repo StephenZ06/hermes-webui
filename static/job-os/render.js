@@ -1,12 +1,13 @@
 (function () {
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
-  const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', applications: 'Applications'};
+  const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', applications: 'Applications', settings: 'Settings'};
   const icons = {
     dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
     scout: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/>',
     pipeline: '<path d="M4 6h16M7 12h10M10 18h4"/>',
     'resume-studio': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
     applications: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     total: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
     active: '<path d="M12 3v3M12 18v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M3 12h3M18 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/>',
     attention: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>',
@@ -53,9 +54,17 @@
       ? `<div class="job-os-list" role="list">${jobs.map(jobCard).join('')}</div>`
       : `<div class="job-os-empty"><strong>${esc(emptyTitle)}</strong><p>${esc(emptyBody)}</p></div>`;
   }
+  // Firecrawl health, as the server classified it (see api/job_os/firecrawl.py).
+  const FIRECRAWL_LABELS = {healthy: 'Firecrawl ready', offline: 'Firecrawl offline', incompatible: 'Firecrawl incompatible', not_configured: 'Firecrawl not set up'};
   function header(title, subtitle, state) {
     const ready = state.capability && state.capability.available;
-    return `<header class="job-os-header"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><span class="job-os-status" data-ready="${ready ? 'true' : 'false'}">${ready ? 'Ready' : 'Storage unavailable'}</span></header>`;
+    const fc = state.firecrawl;
+    const chip = !ready
+      ? '<span class="job-os-status" data-ready="false">Storage unavailable</span>'
+      : fc
+        ? `<button type="button" class="job-os-status" data-ready="${fc.state === 'healthy' ? 'true' : 'false'}" data-fc-state="${esc(fc.state)}" data-job-os-view="settings" title="${esc(fc.detail || '')}">${esc(FIRECRAWL_LABELS[fc.state] || 'Firecrawl unknown')}</button>`
+        : '<span class="job-os-status" data-ready="true">Ready</span>';
+    return `<header class="job-os-header"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div>${chip}</header>`;
   }
   // Narrow screens put the side panel in a drawer, so they keep a compact
   // section switcher in the page itself.
@@ -67,6 +76,75 @@
   }
   function placeholder(view, body) {
     return `<section class="job-os-card job-os-placeholder"><span class="job-os-placeholder-icon">${icon(view, 26)}</span><h2>${esc(labels[view])}</h2><p>${esc(body)}</p><button class="job-os-btn" type="button" data-job-os-view="dashboard">Back to dashboard</button></section>`;
+  }
+
+  // ---- Settings ----------------------------------------------------------
+  // Every input carries data-setting="section.key"; index.js serialises the
+  // form back into a partial settings object by that path.
+  const ATS = [['greenhouse', 'Greenhouse'], ['lever', 'Lever'], ['ashby', 'Ashby']];
+  const get = (obj, path) => path.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), obj);
+  function toggle(path, label, value, hint) {
+    return `<label class="job-os-toggle"><input type="checkbox" data-setting="${path}" ${value ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>${esc(label)}</strong>${hint ? `<small>${esc(hint)}</small>` : ''}</span></label>`;
+  }
+  function numberField(path, label, value, min, max, suffix) {
+    return `<label class="job-os-field"><span>${esc(label)}</span><span class="job-os-field-input"><input type="number" data-setting="${path}" value="${esc(value)}" min="${min}" max="${max}" step="1" inputmode="numeric">${suffix ? `<em>${esc(suffix)}</em>` : ''}</span></label>`;
+  }
+  function textField(path, label, value, placeholderText, type) {
+    return `<label class="job-os-field"><span>${esc(label)}</span><input type="${type || 'text'}" data-setting="${path}" value="${esc(value)}" placeholder="${esc(placeholderText || '')}" autocomplete="off" spellcheck="false"></label>`;
+  }
+  function selectField(path, label, value, options) {
+    return `<label class="job-os-field"><span>${esc(label)}</span><select data-setting="${path}">${options.map(([v, t]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+  }
+  function pill(ok, text) {
+    return `<span class="job-os-pill" data-ok="${ok ? 'true' : 'false'}">${esc(text)}</span>`;
+  }
+  function section(id, title, note, inner, phase) {
+    return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}"><div class="job-os-card-head"><h2>${esc(title)}</h2>${phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : ''}</div>${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
+  }
+  function settingsView(state) {
+    const s = state.settingsDraft || state.settings;
+    if (!s) return '<section class="job-os-card"><p class="job-os-card-note">Loading settings…</p></section>';
+    const status = state.settingsStatus || {};
+    const fc = status.firecrawl || state.firecrawl || {};
+    const gmail = status.gmail || {};
+    const gmailReady = gmail.address && gmail.app_password;
+    const dirty = !!state.settingsDirty;
+    const v = (path) => get(s, path);
+    const firecrawl = section('connections', 'Connections', '', `
+      <div class="job-os-conn">
+        <div class="job-os-conn-head"><strong>Firecrawl</strong>${pill(fc.state === 'healthy', FIRECRAWL_LABELS[fc.state] || 'Unknown')}</div>
+        <p class="job-os-card-note">${esc(fc.detail || '')}${fc.base_url ? ` Using <code>${esc(fc.base_url)}</code>${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from the profile .env)' : ''}.` : ''}${fc.latency_ms != null ? ` ${esc(fc.latency_ms)} ms.` : ''}</p>
+        ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from the profile .env', 'url')}
+        <button type="button" class="job-os-btn" data-job-os-action="test-firecrawl">Test connection</button>
+      </div>
+      <div class="job-os-conn">
+        <div class="job-os-conn-head"><strong>Gmail</strong>${pill(gmailReady, gmailReady ? 'Credentials found' : 'Not set up')}</div>
+        <p class="job-os-card-note">Add these two lines to this profile's <code>.env</code> (an App Password from your Google account → Security → App passwords). The WebUI only checks that they exist; it never shows or stores them.</p>
+        <ul class="job-os-checklist"><li data-ok="${gmail.address ? 'true' : 'false'}"><code>JOB_OS_GMAIL_ADDRESS</code></li><li data-ok="${gmail.app_password ? 'true' : 'false'}"><code>JOB_OS_GMAIL_APP_PASSWORD</code></li></ul>
+      </div>`);
+    const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
+      ${textField('ai.model', 'Model', v('ai.model'))}
+      ${textField('ai.provider', 'Provider', v('ai.provider'))}
+      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</div>`, 'Phase 2');
+    const scout = section('scout', 'Scout schedule', 'A scheduled job searches your saved searches on this interval.', `
+      ${toggle('scout.enabled', 'Run Scout automatically', v('scout.enabled'))}
+      <div class="job-os-grid">${numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>`, 'Phase 1');
+    const notify = section('notifications', 'Notifications', gmailReady ? '' : 'Set up Gmail above to turn email on.', `
+      ${toggle('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials')}
+      <div class="job-os-grid">${textField('notifications.to_address', 'Send to', v('notifications.to_address'), 'you@gmail.com', 'email')}</div>
+      ${toggle('notifications.notify_new_matches', 'New matches', v('notifications.notify_new_matches'), 'When Scout finds a job at or above the score below')}
+      <div class="job-os-grid">${numberField('notifications.min_fit_score', 'Minimum fit score', v('notifications.min_fit_score'), 0, 100, '/ 100')}</div>
+      ${toggle('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'))}
+      <div class="job-os-grid">${numberField('notifications.digest_hour', 'Digest hour', v('notifications.digest_hour'), 0, 23, ':00')}</div>
+      ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Reply TAILOR or APPLY to a job email to start that step')}`, 'Phase 5');
+    const auto = section('auto-apply', 'Auto-apply', 'Off unless you turn it on. Only standard application forms; anything unusual stops and asks you.', `
+      ${toggle('auto_apply.enabled', 'Auto-apply to strong matches', v('auto_apply.enabled'))}
+      <fieldset class="job-os-ats"><legend>Allowed application systems</legend>${ATS.map(([key, name]) => `<label><input type="checkbox" data-setting="auto_apply.allowed_ats" value="${key}" ${(v('auto_apply.allowed_ats') || []).includes(key) ? 'checked' : ''}>${esc(name)}</label>`).join('')}</fieldset>
+      <div class="job-os-grid">${numberField('auto_apply.daily_cap', 'Daily limit', v('auto_apply.daily_cap'), 1, 50, 'applications')}${numberField('auto_apply.min_fit_score', 'Minimum fit score', v('auto_apply.min_fit_score'), 0, 100, '/ 100')}</div>
+      ${toggle('auto_apply.dry_run_first', 'Dry run first', v('auto_apply.dry_run_first'), 'Fill the form and capture a screenshot without sending, before the first real submission to each site')}`, 'Phase 6');
+    const resume = section('resume', 'Resume', 'Your Main Resume is uploaded in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>', 'Phase 3');
+    const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${scout}${notify}${auto}${resume}${bar}</form>`;
   }
   function shell(state) {
     const view = state.activeView;
@@ -92,6 +170,8 @@
         <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>Submitted <span class="job-os-count">${applied.length}</span></h2></div>${jobList(applied, 'No applications yet', 'Prepared applications, approvals, and outcomes will appear here once you apply.')}</section>`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Find new roles that match your search.', state)}${placeholder('scout', 'Saved searches and Firecrawl discovery will appear here.')}`;
+    } else if (view === 'settings') {
+      body = `${header('Settings', 'Connections, AI, schedules, notifications and auto-apply for this profile.', state)}${settingsView(state)}`;
     } else {
       body = `${header('Resume Studio', 'Your master CV and tailored versions.', state)}${placeholder('resume-studio', 'Your master CV and tailored versions will appear here.')}`;
     }
