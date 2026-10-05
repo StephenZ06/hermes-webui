@@ -179,7 +179,10 @@ export function createOfficeScene(canvas, options) {
   // Capped device-pixel ratio. Uncapped DPR on a 3x phone quadruples the
   // fragment cost for no visible gain and is the single easiest way to make
   // this panel drop frames.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // At least 1.5x internally (capped at 2x): on a 1x display, thin diagonal
+  // edges (bridge rails, the floor grid, slab rims) stair-stepped even with
+  // MSAA; rendering above the screen's density and filtering down smooths them.
+  renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   // PCFSoftShadowMap is deprecated as of r185 and silently falls back to
@@ -288,7 +291,8 @@ export function createOfficeScene(canvas, options) {
   // over-1.0 colour (see builders.js's makePodGlow) from being clamped to
   // white before bloom ever sees it.
   const composerTarget = new THREE.WebGLRenderTarget(1, 1, {
-    samples: 4, type: THREE.HalfFloatType,
+    // As many MSAA samples as the GPU allows, up to 8.
+    samples: Math.max(4, Math.min(8, (renderer.capabilities && renderer.capabilities.maxSamples) || 4)), type: THREE.HalfFloatType,
   });
   // One bloom pass over the whole render. Nothing in the ordinary palette sits
   // near the 1.0 threshold (see BLOOM_THRESHOLD above), so this only lights up

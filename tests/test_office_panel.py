@@ -371,7 +371,10 @@ def test_office_entry_publishes_the_global_the_panel_calls():
 
 
 def test_scene_caps_pixel_ratio():
-    assert "setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))" in OFFICE_SCENE_JS, (
+    # A 1x display is rendered at 1.5x for smoother edges; the 2x ceiling is
+    # the invariant that matters.
+    line = next(l for l in OFFICE_SCENE_JS.splitlines() if "renderer.setPixelRatio(" in l)
+    assert line.strip().startswith("renderer.setPixelRatio(Math.min(") and line.rstrip().endswith(", 2));"), (
         "uncapped DPR on a 3x display quadruples fragment cost for no visible "
         "gain and is the quickest way to make this panel drop frames"
     )
