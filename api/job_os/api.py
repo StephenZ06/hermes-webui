@@ -40,8 +40,12 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
     if detail:
         from api.job_os.analysis import get_analysis
 
+        from api.job_os.tailor import latest_documents
+
         payload["description"] = job.description
         payload["analysis"] = get_analysis(job.id)
+        payload["documents"] = {kind: {k: d[k] for k in ("id", "status", "error", "revision", "updated_at")}
+                                for kind, d in latest_documents(job.id).items()}
     elif analyses is not None:
         payload["analysis"] = analyses.get(job.id)
     return payload
@@ -86,6 +90,43 @@ def _scout_searches_payload() -> dict:
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"]}}
 
 
+def _document_get(handler, parsed) -> bool:
+    from api.job_os import export
+    from api.job_os.tailor import get_document
+
+    rest = unquote(parsed.path[len(f"{_PREFIX}/documents/"):]).strip("/").split("/")
+    doc = get_document(rest[0])
+    if doc is None:
+        return _error(handler, "Document not found", 404)
+    if len(rest) == 1:
+        j(handler, {"document": doc})
+        return True
+    if rest[1] != "export":
+        return _error(handler, "Not found", 404)
+    fmt = str(parse_qs(parsed.query or "").get("format", ["md"])[0])
+    job = get_job(doc["job_id"])
+    base = export.safe_filename(f"{doc['kind'].replace('_', '-')}-{job.company if job else ''}-{job.title if job else ''}")
+    title = f"{'Cover letter' if doc['kind'] == 'cover_letter' else 'Resume'} - {job.title if job else ''}"
+    if fmt == "docx":
+        body, ctype, name = export.to_docx(doc["content"]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"{base}.docx"
+    elif fmt in ("html", "pdf"):
+        body, ctype, name = export.to_html(doc["content"], title=title, auto_print=fmt == "pdf").encode(), "text/html; charset=utf-8", None
+    elif fmt == "md":
+        body, ctype, name = doc["content"].encode(), "text/markdown; charset=utf-8", f"{base}.md"
+    else:
+        return _error(handler, "Unknown format", 400)
+    handler.send_response(200)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("Cache-Control", "no-store")
+    if name:
+        handler.send_header("Content-Disposition", f'attachment; filename="{name}"')
+    handler.end_headers()
+    handler.wfile.write(body)
+    return True
+
+
 def _scout_get(handler, parsed) -> bool:
     from api.job_os import scout
 
@@ -94,6 +135,19 @@ def _scout_get(handler, parsed) -> bool:
         from api.job_os.resume import load_resume
 
         j(handler, {"resume": load_resume()})
+        return True
+    if path == f"{_PREFIX}/documents":
+        from api.job_os.tailor import list_tailored
+
+        j(handler, {"documents": list_tailored()})
+        return True
+    if path.startswith(f"{_PREFIX}/documents/"):
+        return _document_get(handler, parsed)
+    if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/documents"):
+        from api.job_os.tailor import latest_documents
+
+        job_id = unquote(path[len(f"{_PREFIX}/jobs/"):-len("/documents")]).strip("/")
+        j(handler, {"documents": latest_documents(job_id)})
         return True
     if path == f"{_PREFIX}/analysis/queue":
         from api.job_os.analysis import queue_counts
@@ -148,6 +202,27 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
                 ids = [str(i) for i in (body.get("job_ids") or []) if isinstance(i, str)]
             j(handler, {"queued": analysis.request_analysis(ids, force=bool(body.get("force")))})
             return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/tailor", "/ready")):
+            from api.job_os import tailor
+            from api.job_os.lifecycle import transition_job
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            job = get_job(job_id)
+            if job is None:
+                return _error(handler, "Job not found", 404)
+            if path.endswith("/tailor"):
+                j(handler, tailor.request_tailoring(job_id))
+            else:
+                if job.status != JobStatus.RESUME_READY:
+                    return _error(handler, "Only a job with a ready resume can be marked ready to apply", 400)
+                j(handler, {"job": _job_payload(transition_job(job_id, JobStatus.APPLICATION_READY, expected_revision=job.revision))})
+            return True
+        if path.startswith(f"{_PREFIX}/documents/"):
+            from api.job_os import tailor
+
+            doc_id = unquote(path[len(f"{_PREFIX}/documents/"):]).strip("/")
+            j(handler, {"document": tailor.update_document(doc_id, body.get("content"), expected_revision=body.get("expected_revision"))})
+            return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/analyze", "/details")):
             job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
             if get_job(job_id) is None:
@@ -158,8 +233,14 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             else:
                 j(handler, scout.fill_job_details(job_id))
             return True
+    except KeyError:
+        return _error(handler, "Not found", 404)
     except (resume.ResumeError, analysis.AnalysisError, scout.ScoutError) as error:
         return _error(handler, str(error), 400)
+    except ValueError as error:  # TailorError, invalid transitions, stale revisions
+        from api.job_os.lifecycle import ConcurrentRevisionError
+
+        return _error(handler, str(error), 409 if isinstance(error, ConcurrentRevisionError) else 400)
     except Exception as error:  # unsafe link, Firecrawl or site API down: say so, never a 500
         from api.job_os.firecrawl import FirecrawlError
         from api.job_os.network_policy import UnsafeJobUrl
@@ -270,8 +351,8 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
-    if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or (
-            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details"))):
+    if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
+            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled
