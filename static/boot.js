@@ -3375,7 +3375,6 @@ if(window.visualViewport){
 // Boot: restore last session or start fresh
 // ── Resizable panels ──────────────────────────────────────────────────────
 (function(){
-  const SIDEBAR_MIN=180, SIDEBAR_MAX=420;
   const PANEL_MIN=180,   PANEL_MAX=1200;
 
   function initResize(handleId, targetEl, edge, minW, maxW, storageKey){
@@ -3420,7 +3419,10 @@ if(window.visualViewport){
   window._initResizePanels = function(){
     const sidebar    = document.querySelector('.sidebar');
     const rightpanel = document.querySelector('.rightpanel');
-    initResize('sidebarResize',    sidebar,    'right', SIDEBAR_MIN, SIDEBAR_MAX, 'hermes-sidebar-w');
+    // The left side panel has one fixed width on every page (style.css); it
+    // is no longer draggable. Drop a width saved by the old drag handle.
+    try{localStorage.removeItem('hermes-sidebar-w');}catch(_){}
+    if(sidebar) sidebar.style.removeProperty('width');
     initResize('rightpanelResize', rightpanel, 'left',  PANEL_MIN,   PANEL_MAX,   'hermes-panel-w');
   };
 })();

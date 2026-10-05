@@ -34,7 +34,9 @@ def make_session_tracked(created_list, ws=None):
 def test_index_html_served():
     raw, headers, status = get_raw("/")
     assert status == 200
-    assert b"sidebarResize" in raw, "Resize handle not found in HTML"
+    # The left side panel is fixed-width now; only the right panel resizes.
+    assert b"sidebarResize" not in raw, "the left side panel must not be resizable"
+    assert b"rightpanelResize" in raw
     assert b'id="mainTasks"' in raw, "Tasks main-view not found in HTML"
     assert b'id="settingsMenu"' in raw, "Settings left-rail menu not found in HTML"
     assert b"btnExportJSON" in raw, "Export JSON button not found in HTML"
@@ -171,7 +173,7 @@ def test_session_export_returns_json(cleanup_test_sessions):
 def test_static_index_has_resize_handles():
     raw, _, status = get_raw("/")
     assert status == 200
-    assert b"sidebarResize" in raw
+    assert b"sidebarResize" not in raw
     assert b"rightpanelResize" in raw
 
 def test_app_js_has_resize_logic():
@@ -179,5 +181,6 @@ def test_app_js_has_resize_logic():
     raw, _, status = get_raw("/static/boot.js")
     assert status == 200
     assert b"_initResizePanels" in raw
-    assert b"hermes-sidebar-w" in raw
+    # Only to clear a width saved by the removed sidebar drag handle.
+    assert b"localStorage.removeItem('hermes-sidebar-w')" in raw
     assert b"hermes-panel-w" in raw

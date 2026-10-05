@@ -49,3 +49,27 @@ def test_the_rail_stays_on_top_through_collapse_and_expand():
     for label, state in results.items():
         assert state["sliding"], f"{label}: precondition, the slide is still running"
         assert state["railOnTop"], f"{label}: the sliding panel covered the icon rail"
+
+
+def test_the_side_panel_has_one_fixed_width_on_every_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try { localStorage.setItem('hermes-sidebar-w', '410'); } catch (e) {}")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            widths = {}
+            for panel in ("chat", "notes", "office", "tasks", "agents", "workspaces", "jobs"):
+                page.evaluate(f"async () => {{ await switchPanel('{panel}'); }}")
+                page.wait_for_timeout(250)
+                widths[panel] = round(page.evaluate("() => document.querySelector('.sidebar').getBoundingClientRect().width"))
+            handle = page.evaluate("() => !!document.getElementById('sidebarResize')")
+            saved = page.evaluate("() => localStorage.getItem('hermes-sidebar-w')")
+        finally:
+            browser.close()
+    assert set(widths.values()) == {300}, widths
+    assert not handle, "no drag handle on the side panel"
+    assert saved is None, "a width saved by the old handle is dropped"

@@ -84,7 +84,9 @@ def test_desktop_side_rails_can_shrink_to_resize_minima():
         _rule_body(desktop, ".layout.workspace-panel-collapsed .rightpanel")
     )
 
-    assert re.search(r"\bSIDEBAR_MIN\s*=\s*180\b", BOOT_JS)
+    # The left side panel is no longer drag-resizable (fixed width); it keeps
+    # the CSS shrink floor below for narrow windows.
+    assert "SIDEBAR_MIN" not in BOOT_JS
     assert re.search(r"\bPANEL_MIN\s*=\s*180\b", BOOT_JS)
     assert sidebar.get("flex-shrink") == "1"
     assert sidebar.get("min-width") == "180px"
