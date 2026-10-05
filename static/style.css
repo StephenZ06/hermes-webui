@@ -9609,7 +9609,14 @@ main.main > .main-view{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) bac
 /* Work Hub item inspector: editable title, property list, description, and a
    footer pinned to the bottom. */
 .work-hub-inspector{padding:0;}
-
+/* Phones: the board takes the full width; the details panel is a sheet over
+   it while an item is selected (see renderInspector's has-selection). */
+@media (max-width:620px){
+  .work-hub{grid-template-columns:minmax(0,1fr);position:relative;}
+  .work-hub-resizer{display:none;}
+  .work-hub .work-hub-inspector{grid-column:1 / -1;position:absolute;inset:0;z-index:6;overflow:auto;background:var(--bg);border-left:0;}
+  .work-hub:not(.has-selection) .work-hub-inspector{display:none;}
+}
 .work-hub-inspector .wh-insp{display:flex;flex-direction:column;min-height:100%;padding:14px 14px 0;box-sizing:border-box;}
 .work-hub-inspector .wh-insp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .work-hub-inspector .wh-insp-kicker{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}

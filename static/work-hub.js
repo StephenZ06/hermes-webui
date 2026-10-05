@@ -172,6 +172,8 @@
   function renderInspector() {
     const panel = el('workHubInspector'); if (!panel) return;
     const item = store.items.find(row => row.id === store.selectedItemId);
+    // Phones show the details as a sheet over the board only while an item is selected.
+    const hub = panel.closest('.work-hub'); if (hub) hub.classList.toggle('has-selection', !!item);
     if (!item) { panel.innerHTML = `<div class="work-hub-inspector-empty">${icon('work')}<p>Select a work item to see details.</p></div>`; return; }
     const currentSessionId = typeof S !== 'undefined' && S.session ? S.session.session_id : null;
     const missingAgent = item.agent_profile && !store.profiles.some(profile => profile.name === item.agent_profile);
