@@ -286,6 +286,7 @@
         <span data-i18n="scheduled_jobs">Scheduled jobs</span>
         <div class="panel-head-actions">
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="cronRefreshBtn" onclick="loadCrons(true)" data-tooltip="Refresh job list" aria-label="Refresh job list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="cronDeleteModeBtn" onclick="toggleCronDeleteMode()" data-tooltip="Delete jobs" aria-label="Delete jobs" aria-pressed="false" data-delete-mode-keep><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openCronCreate()" data-tooltip="New job" data-i18n-title="new_job" aria-label="New job"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
@@ -348,6 +349,7 @@
       <div class="panel-head">
         <span data-i18n="tab_agents">Personas</span>
         <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="agentDefDeleteModeBtn" onclick="toggleAgentDefDeleteMode()" data-tooltip="Delete personas" aria-label="Delete personas" aria-pressed="false" data-delete-mode-keep><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openAgentDefCreate()" data-tooltip="New persona" data-i18n-title="new_agent_def" aria-label="New persona"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>
@@ -421,6 +423,7 @@
       <div class="panel-head">
         <span data-i18n="tab_workspaces">Spaces</span>
         <div class="panel-head-actions">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom" id="workspaceDeleteModeBtn" onclick="toggleWorkspaceDeleteMode()" data-tooltip="Remove spaces" aria-label="Remove spaces" aria-pressed="false" data-delete-mode-keep><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
           <button class="panel-head-btn has-tooltip has-tooltip--bottom" onclick="openWorkspaceCreate()" data-tooltip="Add space" data-i18n-title="workspace_add_title" aria-label="Add space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         </div>
       </div>

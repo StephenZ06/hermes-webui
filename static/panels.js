@@ -1122,6 +1122,31 @@ async function loadCronGatewayNotice() {
   }
 }
 
+// Delete mode for the job list (shared createDeleteMode, ui.js): jobs wiggle
+// with an X; read-only jobs from another profile stay still.
+let _cronDeleteMode = false;
+// Created on first use: the page works even where ui.js has not loaded
+// (test harnesses evaluate this file on its own).
+let _cronDeleteModeCtlRef = null;
+function _cronDeleteModeCtl() {
+  if (!_cronDeleteModeCtlRef) _cronDeleteModeCtlRef = createDeleteMode({
+    isInside: target => !!target.closest('#cronList'),
+    onChange: active => {
+      _cronDeleteMode = active;
+      syncDeleteModeButton($('cronDeleteModeBtn'), active, 'Delete jobs');
+      loadCrons();
+    },
+  });
+  return _cronDeleteModeCtlRef;
+}
+function toggleCronDeleteMode() {
+  if (!(_cronDeleteModeCtlRef && _cronDeleteModeCtlRef.active) && !(_cronList || []).some(job => job && !job.read_only)) {
+    showToast('There are no jobs to delete.');
+    return;
+  }
+  _cronDeleteModeCtl().toggle();
+}
+
 async function loadCrons(animate) {
   const box = $('cronList');
   const refreshBtn = $('cronRefreshBtn');
@@ -1174,7 +1199,12 @@ async function loadCrons(animate) {
           <span class="cron-status ${status.listClass}">${esc(status.label)}</span>
           ${readOnlyBadge}
         </div>`;
-      item.onclick = () => openCronDetail(job, item);
+      if (_cronDeleteMode) {
+        if (job.read_only) lockDeleteModeItem(item, 'Read-only: this job belongs to another profile');
+        else decorateDeleteModeItem(item, { label: `Delete job ${job.name}`, index: parent.children.length, onDelete: () => deleteCronJob(job) });
+      } else {
+        item.onclick = () => openCronDetail(job, item);
+      }
       if (_currentCronDetailKey && _currentCronDetailKey === _cronJobKey(job)) item.classList.add('active');
       parent.appendChild(item);
     };
@@ -1193,7 +1223,8 @@ async function loadCrons(animate) {
       try { collapsed = localStorage.getItem('cron-paused-collapsed') !== '0'; } catch (_e) {}
       const details = document.createElement('details');
       details.className = 'cron-paused-section';
-      if (!collapsed) details.open = true;
+      // Delete mode shows paused jobs too, without changing the saved state.
+      if (!collapsed || _cronDeleteMode) details.open = true;
       const pausedLabel = t('cron_status_paused') || 'paused';
       const headerLabel = pausedLabel.charAt(0).toUpperCase() + pausedLabel.slice(1);
       const summary = document.createElement('summary');
@@ -1201,6 +1232,7 @@ async function loadCrons(animate) {
       summary.textContent = `${headerLabel} (${_pausedJobs.length})`;
       details.appendChild(summary);
       details.addEventListener('toggle', () => {
+        if (_cronDeleteMode) return;
         try { localStorage.setItem('cron-paused-collapsed', details.open ? '0' : '1'); } catch (_e) {}
       });
       const inner = document.createElement('div');
@@ -1740,14 +1772,18 @@ function duplicateCurrentCron(){
 }
 async function deleteCurrentCron(){
   if (!_currentCronDetail) return;
-  const id = _currentCronDetail.id;
-  const _ok = await showConfirmDialog({title:t('cron_delete_confirm_title'),message:t('cron_delete_confirm_message'),confirmLabel:t('delete_title'),danger:true,focusCancel:true});
+  await deleteCronJob(_currentCronDetail);
+}
+async function deleteCronJob(job){
+  if (!job || job.read_only) return;
+  const _ok = await showConfirmDialog({title:t('cron_delete_confirm_title'),message:`${job.name ? `"${job.name}"\n\n` : ''}${t('cron_delete_confirm_message')}`,confirmLabel:t('delete_title'),danger:true,focusCancel:true});
   if(!_ok) return;
   try {
-    await api('/api/crons/delete', {method:'POST', body: JSON.stringify({job_id: id})});
+    await api('/api/crons/delete', {method:'POST', body: JSON.stringify({job_id: job.id})});
     showToast(t('cron_job_deleted'));
-    _clearCronDetail();
+    if (_currentCronDetail && _cronJobKey(_currentCronDetail) === _cronJobKey(job)) _clearCronDetail();
     await loadCrons();
+    if (_cronDeleteMode && !(_cronList || []).some(entry => entry && !entry.read_only)) _cronDeleteModeCtl().exit();
   } catch(e) { showToast(t('delete_failed') + e.message, 4000); }
 }
 
@@ -6495,6 +6531,31 @@ async function loadAgentDefinitions() {
   } catch(e) { if (box) box.innerHTML = `<div style="padding:12px;color:var(--accent);font-size:12px">${esc(t('error_prefix'))}${esc(e.message)}</div>`; }
 }
 
+// Delete mode for personas (shared createDeleteMode, ui.js). Built-in
+// personas cannot be deleted and stay still.
+let _agentDefDeleteMode = false;
+// Created on first use: the page works even where ui.js has not loaded
+// (test harnesses evaluate this file on its own).
+let _agentDefDeleteModeCtlRef = null;
+function _agentDefDeleteModeCtl() {
+  if (!_agentDefDeleteModeCtlRef) _agentDefDeleteModeCtlRef = createDeleteMode({
+    isInside: target => !!target.closest('#agentsList, #agentsSearch'),
+    onChange: active => {
+      _agentDefDeleteMode = active;
+      syncDeleteModeButton($('agentDefDeleteModeBtn'), active, 'Delete personas');
+      if (_agentDefsData) renderAgentDefinitions(_agentDefsData);
+    },
+  });
+  return _agentDefDeleteModeCtlRef;
+}
+function toggleAgentDefDeleteMode() {
+  if (!(_agentDefDeleteModeCtlRef && _agentDefDeleteModeCtlRef.active) && !(_agentDefsData || []).some(def => def && !def.builtin)) {
+    showToast('There are no personas to delete. Built-in personas cannot be deleted.');
+    return;
+  }
+  _agentDefDeleteModeCtl().toggle();
+}
+
 function renderAgentDefinitions(definitions) {
   const searchEl = $('agentsSearch');
   const query = ((searchEl && searchEl.value) || '').toLowerCase();
@@ -6516,7 +6577,12 @@ function renderAgentDefinitions(definitions) {
     el.innerHTML = `${dot}<span class="skill-name">${emoji}${esc(def.name)}</span><span class="skill-desc">${esc(def.role || '')}</span>`;
     if (def.builtin) el.title = t('agent_def_builtin_hint');
     if (_currentAgentDefDetail && _currentAgentDefDetail.id === def.id) el.classList.add('active');
-    el.onclick = () => openAgentDefDetail(def.id, el);
+    if (_agentDefDeleteMode) {
+      if (def.builtin) lockDeleteModeItem(el, 'Built-in personas cannot be deleted');
+      else decorateDeleteModeItem(el, { label: `Delete persona ${def.name}`, index: box.children.length, onDelete: () => deleteAgentDefById(def) });
+    } else {
+      el.onclick = () => openAgentDefDetail(def.id, el);
+    }
     box.appendChild(el);
   }
 }
@@ -6915,7 +6981,11 @@ document.addEventListener('click', (e) => {
 
 async function deleteAgentDef() {
   if (!_currentAgentDefDetail) return;
-  const name = _currentAgentDefDetail.name;
+  await deleteAgentDefById(_currentAgentDefDetail);
+}
+async function deleteAgentDefById(def) {
+  if (!def || def.builtin) return;
+  const name = def.name;
   const message = t('agent_def_delete_confirm') ? t('agent_def_delete_confirm').replace('{0}', name) : `Delete persona "${name}"?`;
   const ok = await showConfirmDialog({
     title: t('delete_title') || 'Delete',
@@ -6926,20 +6996,23 @@ async function deleteAgentDef() {
   });
   if (!ok) return;
   try {
-    await api('/api/agent-definitions/delete', { method:'POST', body: JSON.stringify({ id: _currentAgentDefDetail.id }) });
-    _currentAgentDefDetail = null;
-    _agentDefPreFormDetail = null;
+    await api('/api/agent-definitions/delete', { method:'POST', body: JSON.stringify({ id: def.id }) });
     _agentDefsData = null;
-    _agentDefMode = 'empty';
-    const body = $('agentDefDetailBody');
-    const empty = $('agentDefDetailEmpty');
-    const title = $('agentDefDetailTitle');
-    if (body) { body.innerHTML = ''; body.style.display = 'none'; }
-    if (empty) empty.style.display = '';
-    if (title) title.textContent = '';
-    _setAgentDefHeaderButtons('empty');
+    if (_currentAgentDefDetail && _currentAgentDefDetail.id === def.id) {
+      _currentAgentDefDetail = null;
+      _agentDefPreFormDetail = null;
+      _agentDefMode = 'empty';
+      const body = $('agentDefDetailBody');
+      const empty = $('agentDefDetailEmpty');
+      const title = $('agentDefDetailTitle');
+      if (body) { body.innerHTML = ''; body.style.display = 'none'; }
+      if (empty) empty.style.display = '';
+      if (title) title.textContent = '';
+      _setAgentDefHeaderButtons('empty');
+    }
     await loadAgentDefinitions();
     showToast(t('agent_def_deleted'));
+    if (_agentDefDeleteMode && !(_agentDefsData || []).some(entry => entry && !entry.builtin)) _agentDefDeleteModeCtl().exit();
   } catch(e) { setStatus(t('error_prefix') + e.message); }
 }
 
@@ -7864,6 +7937,34 @@ async function loadWorkspacesPanel(){
   _syncWorkspacesPanelAutoRefresh();
 }
 
+// Delete mode for Spaces (shared createDeleteMode, ui.js). Removing a Space
+// only unregisters it; files stay. The current chat's Space stays still.
+let _workspaceDeleteMode = false;
+// Created on first use: the page works even where ui.js has not loaded
+// (test harnesses evaluate this file on its own).
+let _workspaceDeleteModeCtlRef = null;
+function _workspaceDeleteModeCtl() {
+  if (!_workspaceDeleteModeCtlRef) _workspaceDeleteModeCtlRef = createDeleteMode({
+    isInside: target => !!target.closest('#workspacesPanel'),
+    onChange: active => {
+      _workspaceDeleteMode = active;
+      syncDeleteModeButton($('workspaceDeleteModeBtn'), active, 'Remove spaces');
+      renderWorkspacesPanel(_workspaceList || []);
+    },
+  });
+  return _workspaceDeleteModeCtlRef;
+}
+function _workspaceRemovable(w) {
+  return !!w && !(S.session && S.session.workspace === w.path);
+}
+function toggleWorkspaceDeleteMode() {
+  if (!(_workspaceDeleteModeCtlRef && _workspaceDeleteModeCtlRef.active) && !(_workspaceList || []).some(_workspaceRemovable)) {
+    showToast('There are no Spaces to remove.');
+    return;
+  }
+  _workspaceDeleteModeCtl().toggle();
+}
+
 function renderWorkspacesPanel(workspaces, opts={}){
   const panel=$('workspacesPanel');
   panel.innerHTML='';
@@ -7894,7 +7995,12 @@ function renderWorkspacesPanel(workspaces, opts={}){
       </div>`;
     // Click on info area only — not on drag handle
     const info=row.querySelector('.ws-row-info');
-    if(info) info.onclick = (e) => { e.stopPropagation(); openWorkspaceDetail(w.path, row); };
+    if(info) info.onclick = (e) => { e.stopPropagation(); if (_workspaceDeleteMode) return; openWorkspaceDetail(w.path, row); };
+    if (_workspaceDeleteMode) {
+      row.draggable = false;
+      if (_workspaceRemovable(w)) decorateDeleteModeItem(row, { label: `Remove space ${w.name}`, index: i, onDelete: () => removeWorkspaceEntry(w) });
+      else lockDeleteModeItem(row, 'In use by the current chat');
+    }
     if (_currentWorkspaceDetail && _currentWorkspaceDetail.path === w.path) row.classList.add('active');
 
     // ── Drag-and-drop reorder ──
@@ -8104,15 +8210,20 @@ async function disconnectCurrentWorkspace(){
 
 async function deleteCurrentWorkspace(){
   if (!_currentWorkspaceDetail) return;
-  const path = _currentWorkspaceDetail.path;
+  await removeWorkspaceEntry(_currentWorkspaceDetail);
+}
+async function removeWorkspaceEntry(w){
+  if (!w || !w.path) return;
+  const path = w.path;
   const _ok = await showConfirmDialog({title:t('workspace_remove_confirm_title'),message:t('workspace_remove_confirm_message',path),confirmLabel:t('remove'),danger:true,focusCancel:true});
   if(!_ok) return;
   try{
     const data=await api('/api/workspaces/remove',{method:'POST',body:JSON.stringify({path})});
     _workspaceList=data.workspaces;
-    _clearWorkspaceDetail();
+    if (_currentWorkspaceDetail && _currentWorkspaceDetail.path === path) _clearWorkspaceDetail();
     renderWorkspacesPanel(data.workspaces);
     showToast(t('workspace_removed'));
+    if (_workspaceDeleteMode && !(_workspaceList || []).some(_workspaceRemovable)) _workspaceDeleteModeCtl().exit();
   }catch(e){setStatus(t('remove_failed')+e.message);}
 }
 
@@ -8341,15 +8452,10 @@ document.addEventListener('click',e=>{
   if(!e.target.closest('.workspace-form-path-wrap')) closeWorkspacePathSuggestions();
 });
 
+// Path-based entry point kept for existing callers; one implementation.
 async function removeWorkspace(path){
-  const _rmWs=await showConfirmDialog({title:t('workspace_remove_confirm_title'),message:t('workspace_remove_confirm_message',path),confirmLabel:t('remove'),danger:true,focusCancel:true});
-  if(!_rmWs) return;
-  try{
-    const data=await api('/api/workspaces/remove',{method:'POST',body:JSON.stringify({path})});
-    _workspaceList=data.workspaces;
-    renderWorkspacesPanel(data.workspaces);
-    showToast(t('workspace_removed'));
-  }catch(e){setStatus(t('remove_failed')+e.message);}
+  const entry=(_workspaceList||[]).find(w=>w.path===path)||{path};
+  return removeWorkspaceEntry(entry);
 }
 
 async function promptWorkspacePath(){

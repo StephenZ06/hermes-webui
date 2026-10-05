@@ -155,9 +155,9 @@ def test_delete_project_puts_deletable_folders_in_a_wiggling_delete_mode():
               const wraps = [...document.querySelectorAll('.work-hub-project-delete-wrap')];
               return {
                 wiggling: wraps.map(w => w.querySelector('.work-hub-project-name').textContent),
-                animated: wraps.every(w => getComputedStyle(w).animationName === 'work-hub-project-wiggle'),
+                animated: wraps.every(w => getComputedStyle(w).animationName === 'dm-wiggle'),
                 withX: wraps.filter(w => w.querySelector('[data-delete-project-id]')).length,
-                locked: [...document.querySelectorAll('.work-hub-project-tile.is-locked .work-hub-project-name')].map(e => e.textContent),
+                locked: [...document.querySelectorAll('.work-hub-project-tile.dm-locked .work-hub-project-name')].map(e => e.textContent),
                 done: !!document.querySelector('#workHubDeleteDone'),
                 noPicker: !document.querySelector('.work-hub-project-picker'),
               };
@@ -275,6 +275,6 @@ def test_the_delete_mode_wiggle_plays_even_with_reduced_motion():
             finally:
                 browser.close()
         assert state["reduced"], "precondition: the page sees reduced motion"
-        assert state["animations"] and all(a == "work-hub-project-wiggle" for a in state["animations"]), state
+        assert state["animations"] and all(a == "dm-wiggle" for a in state["animations"]), state
     finally:
         _call("/api/projects/delete", {"project_id": wh["project_id"]})

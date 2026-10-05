@@ -12,6 +12,77 @@ const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCall
 function isWorkHubOnlyProject(project){return !!(project&&project.work_hub_managed);}
 window.isWorkHubOnlyProject=isWorkHubOnlyProject;
 
+// ── Delete mode (iOS hold-to-edit) ──────────────────────────────────────────
+// One shared behaviour for list pages (Work Hub projects/boards, scheduled
+// jobs, Spaces, personas): deletable items wiggle with a red outline and an X,
+// the rest stay still and dim; Done, Escape or a click outside the list ends
+// it. Each page owns its own flag and re-render; this owns the lifecycle.
+function createDeleteMode(opts={}){
+  let active=false, cleanup=null;
+  const change=on=>{try{if(typeof opts.onChange==='function')opts.onChange(on);}catch(e){console.warn('delete mode',e);}};
+  function exit(){
+    if(!active)return;
+    active=false;
+    if(cleanup)cleanup();
+    cleanup=null;
+    change(false);
+  }
+  function enter(){
+    if(active)return;
+    active=true;
+    // Escape while a confirm dialog is open belongs to the dialog (aria-hidden
+    // flips the moment it closes; its display lingers through the fade-out).
+    const onKey=e=>{if(e.key==='Escape'&&!document.querySelector('#appDialogOverlay[aria-hidden="false"]'))exit();};
+    const onClick=e=>{
+      const target=e.target;
+      if(!(target instanceof Element))return;
+      if(target.closest('.app-dialog-overlay,[data-delete-mode-keep]'))return;
+      if(typeof opts.isInside==='function'&&opts.isInside(target))return;
+      exit();
+    };
+    document.addEventListener('keydown',onKey);
+    const t=setTimeout(()=>{if(active)document.addEventListener('click',onClick);},0);
+    cleanup=()=>{clearTimeout(t);document.removeEventListener('keydown',onKey);document.removeEventListener('click',onClick);};
+    change(true);
+  }
+  return {enter,exit,toggle(){active?exit():enter();},get active(){return active;}};
+}
+// Put an item into delete mode: wiggle, red outline, and an X on its right.
+// `index` staggers the wiggle so a list does not move in lockstep.
+function decorateDeleteModeItem(el,{label,onDelete,index=0}={}){
+  if(!el)return el;
+  el.classList.add('dm-item','dm-wiggle');
+  el.style.animationDelay=`${-((index*97)%300)}ms`;
+  const x=document.createElement('button');
+  x.type='button';x.className='dm-x';
+  x.setAttribute('aria-label',label||'Delete');x.title=label||'Delete';
+  x.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>';
+  x.onclick=e=>{e.preventDefault();e.stopPropagation();if(typeof onDelete==='function')onDelete();};
+  el.appendChild(x);
+  return el;
+}
+// An item that cannot be deleted stays still and dim, saying why.
+function lockDeleteModeItem(el,reason){
+  if(!el)return el;
+  el.classList.add('dm-locked');
+  if(reason)el.title=reason;
+  return el;
+}
+// The page's trash button: a trash icon at rest, "Done" while the mode is on.
+function syncDeleteModeButton(btn,active,idleLabel){
+  if(!btn)return;
+  btn.classList.toggle('dm-done',!!active);
+  btn.setAttribute('aria-pressed',String(!!active));
+  btn.setAttribute('data-delete-mode-keep','');
+  // "Done" says what it does; a tooltip under it would only repeat it.
+  if(active){btn.textContent='Done';btn.setAttribute('aria-label','Done deleting');btn.classList.remove('has-tooltip');delete btn.dataset.tooltip;}
+  else{btn.innerHTML=typeof li==='function'?li('trash-2',15):'🗑';btn.setAttribute('aria-label',idleLabel||'Delete');btn.classList.add('has-tooltip');btn.dataset.tooltip=idleLabel||'Delete';}
+}
+window.createDeleteMode=createDeleteMode;
+window.decorateDeleteModeItem=decorateDeleteModeItem;
+window.lockDeleteModeItem=lockDeleteModeItem;
+window.syncDeleteModeButton=syncDeleteModeButton;
+
 function assistantDisplayName(){
   if(S.activeProfile&&S.activeProfile!=='default') return S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
   return window._botName||'Hermes';

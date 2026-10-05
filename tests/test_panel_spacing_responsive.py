@@ -81,7 +81,9 @@ def test_office_and_work_hub_use_the_shared_section_heading_pattern():
     assert "officeIcon('setting3-linear')" not in OFFICE
     assert "officeIcon('history2-bold')" not in OFFICE
     assert '<div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects"' in WORK_HUB
-    assert '<div class="work-hub-project-create-row"><button type="button" class="work-hub-project-create"' in WORK_HUB
+    # The row holds + at rest and Done while deleting projects.
+    assert '<div class="work-hub-project-create-row">${store.deleteMode' in WORK_HUB
+    assert 'class="work-hub-project-create" id="workHubProjectCreate"' in WORK_HUB
     assert 'style="flex:1;min-height:0;overflow:auto;"' not in WORK_HUB
     assert "${icon('dashboard')}<span>WORKSPACES</span>" not in WORK_HUB
     assert 'class="work-hub-scope-divider"' not in WORK_HUB
@@ -93,9 +95,10 @@ def test_office_and_work_hub_use_the_shared_section_heading_pattern():
 
 
 def test_work_hub_project_menu_has_three_centered_actions():
-    assert "New board</button><button type=\"button\" data-create-project>New project</button>" in WORK_HUB
-    assert "New board</button><button type=\"button\" data-create-project>New project</button><button type=\"button\" data-delete-board>Delete board</button>" not in WORK_HUB
-    assert "data-delete-project" not in WORK_HUB
+    # New board, New project, and Delete project (which enters the wiggling
+    # delete mode; boards are deleted from that mode too, not a menu entry).
+    assert "New board</button><button type=\"button\" data-create-project>New project</button><button type=\"button\" class=\"is-danger\" data-delete-project>Delete project</button>" in WORK_HUB
+    assert "data-delete-board>Delete board</button>" not in WORK_HUB
     assert ".work-hub-create-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);" in CSS
     assert ".work-hub-create-menu button{text-align:center;" in CSS
 
