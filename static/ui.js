@@ -9175,14 +9175,47 @@ function updateQueueBadge(sessionId){
 }
 const TOAST_DEFAULT_MS=2800;
 const TOAST_ERROR_DEFAULT_MS=20000;
-function clearToastDismissTimer(el){if(!el)return;clearTimeout(el._t);el._t=null;}
+function clearToastDismissTimer(el){if(!el)return;clearTimeout(el._t);el._t=null;el.classList.add('toast-paused');}
 // The toast is deliberately NOT driven by MotionUI. .toast already carries
 // opacity + transform with its own .2s transition, and .toast.show flips both,
 // so the enter/exit is done, composited, and correct. A JS transform would
 // outrank .toast.show's transform, get transitioned a second time by the CSS on
 // top of Motion's animation, and slide the wrong way -- the toast is anchored
 // top-right, not bottom.
-function setToastDismissTimer(el,duration){if(!el)return;clearToastDismissTimer(el);el._t=setTimeout(()=>{el.classList.remove('show');},duration);}
+// The bar along the toast's bottom counts down the same duration; it pauses
+// with the timer (hover/focus) and restarts with it.
+function setToastDismissTimer(el,duration){
+  if(!el)return;
+  clearToastDismissTimer(el);
+  el.style.setProperty('--toast-duration',duration+'ms');
+  el.classList.remove('toast-paused','toast-timing');void el.offsetWidth;el.classList.add('toast-timing');
+  el._t=setTimeout(()=>{el.classList.remove('show','toast-timing');},duration);
+}
+// Swipe a toast right to dismiss it (mouse or touch); a short drag snaps back.
+function _bindToastSwipe(el){
+  if(!el||el._swipeBound)return;
+  el._swipeBound=true;
+  let start=null,dx=0;
+  el.addEventListener('pointerdown',e=>{
+    if(e.button!==0||e.target.closest('button'))return;
+    start=e.clientX;dx=0;el.classList.add('toast-dragging');
+    try{el.setPointerCapture(e.pointerId);}catch(_){}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(start==null)return;
+    dx=Math.max(0,e.clientX-start);
+    el.style.transform=`translateX(${dx}px)`;el.style.opacity=String(Math.max(0.2,1-dx/240));
+  });
+  const end=()=>{
+    if(start==null)return;
+    start=null;el.classList.remove('toast-dragging');
+    el.style.transform='';el.style.opacity='';
+    if(dx>80){el._swiped=true;dismissToast(el);setTimeout(()=>{el._swiped=false;},0);}
+  };
+  el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+  // A swipe must not also count as the click that dismisses on tap.
+  el.addEventListener('click',e=>{if(dx>8){e.stopImmediatePropagation();}},true);
+}
 function dismissToast(btnOrEl){
   const el=btnOrEl&&btnOrEl.closest?btnOrEl.closest('#toast'):(btnOrEl&&btnOrEl.id==='toast'?btnOrEl:null);
   if(!el)return;
@@ -9209,6 +9242,7 @@ function showToast(msg,ms,type){
   el.onfocusin=()=>clearToastDismissTimer(el);
   el.onfocusout=()=>setToastDismissTimer(el,duration);
   el.onclick=t==='error'?null:()=>dismissToast(el);
+  _bindToastSwipe(el);
   setToastDismissTimer(el,duration);
 }
 
@@ -9466,24 +9500,31 @@ function _fallbackCopy(text){
     finally{document.body.removeChild(ta);}
   });
 }
+// One copy confirmation for every copy button: the icon swaps to a check
+// that pops in (style.css .copy-pop), then returns. A second click inside the
+// window keeps the original icon instead of "restoring" the check.
+function _showCopiedFeedback(btn,size,color){
+  if(!btn)return;
+  if(btn._copyRestore){clearTimeout(btn._copyRestore);}
+  else btn._copyOriginal=btn.innerHTML;
+  btn.innerHTML=(typeof li==='function')?li('check',size||13):t('copied');
+  btn.classList.add('copied','copy-pop');
+  if(color)btn.style.color=color;
+  btn._copyRestore=setTimeout(()=>{
+    btn.innerHTML=btn._copyOriginal;btn.classList.remove('copied','copy-pop');btn.style.color='';
+    btn._copyRestore=null;btn._copyOriginal=null;
+  },1500);
+}
 function copyStatusSessionId(btn){
   const text=btn&&btn.getAttribute('data-copy-status-session');
   if(!text)return;
-  _copyText(text).then(()=>{
-    const orig=btn.innerHTML;
-    btn.innerHTML=(typeof li==='function')?li('check',13):t('copied');
-    btn.classList.add('copied');
-    setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('copied');},1500);
-  }).catch(()=>showToast(t('copy_failed')));
+  _copyText(text).then(()=>_showCopiedFeedback(btn,13)).catch(()=>showToast(t('copy_failed')));
 }
 function copyMsg(btn){
   const row=btn.closest('[data-raw-text]');
   const text=row?row.dataset.rawText:'';
   if(!text)return;
-  _copyText(text).then(()=>{
-    const orig=btn.innerHTML;btn.innerHTML=li('check',13);btn.style.color='var(--blue)';
-    setTimeout(()=>{btn.innerHTML=orig;btn.style.color='';},1500);
-  }).catch(()=>showToast(t('copy_failed')));
+  _copyText(text).then(()=>_showCopiedFeedback(btn,13,'var(--blue)')).catch(()=>showToast(t('copy_failed')));
 }
 function _copyThinkingText(btn){
   const card=btn&&btn.closest?btn.closest('.thinking-card'):null;
@@ -9491,12 +9532,7 @@ function _copyThinkingText(btn){
   const pre=card.querySelector('.thinking-card-body pre');
   const text=pre?pre.textContent:'';
   if(!text)return;
-  _copyText(text).then(()=>{
-    const orig=btn.innerHTML;
-    btn.innerHTML=li('check',12);
-    btn.style.color='var(--accent)';
-    setTimeout(()=>{btn.innerHTML=orig;btn.style.color='';},1500);
-  }).catch(()=>showToast(t('copy_failed')));
+  _copyText(text).then(()=>_showCopiedFeedback(btn,12,'var(--accent)')).catch(()=>showToast(t('copy_failed')));
 }
 
 // ── TTS: Text-to-Speech via Web Speech API (#499) ──

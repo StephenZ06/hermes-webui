@@ -1903,6 +1903,14 @@
   .app-dialog-btn:focus-visible,.app-dialog-close:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .toast{pointer-events:none;position:fixed;top:24px;right:24px;left:auto;bottom:auto;transform:translateY(-6px);display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--accent) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--surface));color:var(--accent-text);font-size:13px;font-weight:500;padding:10px 12px 10px 16px;border-radius:10px;opacity:0;transition:opacity .2s,transform .2s;z-index:100;box-shadow:0 6px 24px rgba(0,0,0,.12);letter-spacing:.01em;max-width:min(520px,calc(100vw - 48px));}
   .toast.show{opacity:1;transform:translateY(0);pointer-events:auto;}
+  /* Enter from the right with a soft settle; countdown bar; swipe to dismiss. */
+  .toast{transform:translateX(18px);overflow:hidden;transition:opacity .2s,transform .32s cubic-bezier(.22,1,.36,1);touch-action:pan-y;user-select:none;}
+  .toast.show{transform:none;}
+  .toast.toast-dragging{transition:none;cursor:grabbing;}
+  .toast::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:currentColor;opacity:.35;transform-origin:left center;transform:scaleX(0);pointer-events:none;}
+  .toast.toast-timing::after{animation:toast-countdown var(--toast-duration,4000ms) linear forwards;}
+  .toast.toast-paused::after{animation-play-state:paused;}
+  @keyframes toast-countdown{from{transform:scaleX(1);}to{transform:scaleX(0);}}
   .toast.success{background:color-mix(in srgb,var(--success) 14%,var(--surface));border-color:color-mix(in srgb,var(--success) 45%,var(--surface));color:var(--success);}
   .toast.error{background:color-mix(in srgb,var(--error) 14%,var(--surface));border-color:color-mix(in srgb,var(--error) 45%,var(--surface));color:var(--error);}
   .toast-message{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap;}
@@ -9552,4 +9560,20 @@ html[data-conversation-outline="enabled"] #outlineToggleBtn:not([hidden]){displa
   :root.dark[data-skin="verdigris"] .work-hub-card {
     transition: background-color 180ms ease-out, border-color 180ms ease-out;
   }
+}
+
+/* ── Interaction feedback (shared) ─────────────────────────────────────────
+   Press: buttons dip slightly while held. Copy: the confirming check pops in.
+   Page switch: the view being shown fades/rises in (backwards fill only, so
+   no transform lingers to re-anchor fixed-position dialogs inside it). */
+:where(.btn,.panel-head-btn,.rail-btn,.sm-btn,.job-os-btn,.job-os-metric,.office-header-btn,.work-hub-plan-goal,.work-hub-project-create,.office-dashboard-metric,.office-dashboard-floor,.office-dashboard-worker,.app-dialog-btn,.send-btn,#btnSend):not(:disabled):active{transform:scale(.96);transition:transform .08s ease;}
+.copy-pop svg{animation:copy-pop .32s cubic-bezier(.34,1.56,.64,1);}
+@keyframes copy-pop{0%{transform:scale(.4);opacity:.3;}60%{transform:scale(1.18);opacity:1;}100%{transform:scale(1);}}
+main.main > .main-view{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) backwards;}
+@keyframes page-view-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){
+  :where(.btn,.panel-head-btn,.rail-btn,.sm-btn,.job-os-btn,.job-os-metric,.office-header-btn,.work-hub-plan-goal,.work-hub-project-create,.office-dashboard-metric,.office-dashboard-floor,.office-dashboard-worker,.app-dialog-btn,.send-btn,#btnSend):active{transform:none;}
+  .copy-pop svg,main.main > .main-view{animation:none;}
+  .toast{transition:opacity .2s;transform:none;}
+  .toast.toast-timing::after{animation:none;transform:scaleX(0);}
 }

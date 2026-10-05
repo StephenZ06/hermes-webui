@@ -195,6 +195,7 @@ Object.defineProperty(toast, 'textContent', {
 globalThis.$ = (id) => id === 'toast' ? toast : null;
 globalThis.esc = (value) => String(value);
 globalThis.clearToastDismissTimer = () => {};
+globalThis._bindToastSwipe = () => {};
 globalThis.setToastDismissTimer = (el, duration) => {
   M.renders.push({ message: el.dataset.toastMessage, className: el.className,
     duration, copy: el.innerHTML.includes('data-toast-' + 'copy="1"') });

@@ -50,8 +50,9 @@ def test_thinking_card_header_includes_copy_button_that_does_not_toggle_card():
     assert "const copyBtn=`<button class=\"thinking-copy-btn\"" in UI_JS
     assert "event.stopPropagation();_copyThinkingText(this)" in UI_JS
     assert "card.querySelector('.thinking-card-body pre')" in UI_JS
-    assert "_copyText(text).then(()=>{" in UI_JS
-    assert "btn.innerHTML=li('check',12);" in UI_JS
+    # Confirmation goes through the shared copy feedback (check icon + pop).
+    assert "_copyText(text).then(()=>_showCopiedFeedback(btn,12,'var(--accent)'))" in UI_JS
+    assert "function _showCopiedFeedback(btn,size,color){" in UI_JS
     assert ".thinking-copy-btn{" in COMPACT_CSS
     assert ".thinking-copy-btn:hover,.thinking-copy-btn:focus-visible{" in COMPACT_CSS
 
