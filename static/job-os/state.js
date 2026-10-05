@@ -32,6 +32,12 @@
     resume: null,
     resumeError: '',
     resumeReplacing: false,
+    // Resume Studio tailored versions: the list, the open job, its documents, the tab, unsaved edits.
+    tailored: [],
+    studioJobId: null,
+    studioDocs: null,
+    studioTab: 'resume',
+    studioDraft: null,
     gmailEditing: false,
     gmailMessage: null,
   };

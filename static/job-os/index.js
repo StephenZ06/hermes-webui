@@ -31,7 +31,8 @@
       const wantScout = state.activeView === 'scout';
       const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume] = await Promise.all([
+      const wantStudioDocs = wantResume && state.studioJobId;
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -41,6 +42,8 @@
         wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
         wantResume ? window.JobOSApi.resume().catch(() => null) : Promise.resolve(null),
+        wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
+        wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -51,6 +54,8 @@
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) state.resume = resume.resume;
+      if (tailored) state.tailored = tailored.documents || [];
+      if (studioDocs) state.studioDocs = studioDocs.documents || {};
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -168,7 +173,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details'].includes(name) || name.startsWith('resume-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -255,10 +260,20 @@
     const state = window.JobOSState;
     const sort = document.getElementById('job-os-sort');
     if (sort) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
-    const watching = ['pipeline', 'dashboard'].includes(state.activeView)
-      && ((state.jobs || []).some(busy) || busy(state.jobDetail));
+    const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status))
+      || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
+    const watching = (['pipeline', 'dashboard'].includes(state.activeView)
+      && ((state.jobs || []).some(busy) || busy(state.jobDetail) || (state.jobDetail && state.jobDetail.status === 'tailoring')))
+      || (state.activeView === 'resume-studio' && docBusy && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
+    const editor = document.getElementById('studio-text');
+    if (editor) editor.addEventListener('input', () => {
+      state.studioDraft = editor.value;
+      const save = document.querySelector('[data-job-os-action="studio-save"]');
+      const doc = (state.studioDocs || {})[state.studioTab];
+      if (save) save.disabled = !doc || editor.value === doc.content;
+    });
     const card = state.jobDetail && target.querySelector(`.job-os-job-card[data-job-id="${CSS.escape(state.jobDetail.id)}"]`);
     if (card) card.classList.add('is-selected');
   }
@@ -345,6 +360,44 @@
       if (el) { el.disabled = true; el.textContent = 'Reading posting…'; }
       try { await window.JobOSApi.fetchDetails(job.id); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not read that posting'); }
+      return refresh();
+    }
+    if (name === 'job-tailor' && job) {
+      try { await window.JobOSApi.tailor(job.id); if (typeof window.showToast === 'function') window.showToast('Luna is tailoring your resume'); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start tailoring'); }
+      return refresh();
+    }
+    if ((name === 'job-ready' && job) || name === 'studio-ready') {
+      const id = name === 'studio-ready' ? state.studioJobId : job.id;
+      try { await window.JobOSApi.markReady(id); if (typeof window.showToast === 'function') window.showToast('Ready to apply'); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update the job'); }
+      return refresh();
+    }
+    if (name === 'studio-open') {
+      const id = el.dataset.jobId;
+      if (state.studioDraft != null && state.studioJobId && state.studioJobId !== id && !window.confirm('Discard unsaved edits?')) return undefined;
+      state.studioJobId = id; state.studioDocs = null; state.studioDraft = null; state.studioTab = 'resume';
+      state.activeView = 'resume-studio'; state.statusFilter = null; replaceRoute('resume-studio');
+      return refresh();
+    }
+    if (name === 'studio-close' || name === 'studio-tab') {
+      if (state.studioDraft != null && !window.confirm('Discard unsaved edits?')) return undefined;
+      state.studioDraft = null;
+      if (name === 'studio-close') { state.studioJobId = null; state.studioDocs = null; } else state.studioTab = el.dataset.tab;
+      return refresh();
+    }
+    if (name === 'studio-save') {
+      const doc = (state.studioDocs || {})[state.studioTab];
+      if (!doc || state.studioDraft == null) return undefined;
+      try {
+        const saved = await window.JobOSApi.saveDocument(doc.id, state.studioDraft, doc.revision);
+        state.studioDocs[state.studioTab] = saved.document; state.studioDraft = null;
+        if (typeof window.showToast === 'function') window.showToast(saved.document.status === 'ready' ? 'Saved' : 'Saved — some numbers still need checking');
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not save'); }
+      return refresh();
+    }
+    if (name === 'studio-retry') {
+      try { await window.JobOSApi.tailor(state.studioJobId); } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not retry'); }
       return refresh();
     }
     if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }

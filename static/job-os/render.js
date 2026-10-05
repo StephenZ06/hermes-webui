@@ -274,11 +274,62 @@
       ${finds.length ? `<section class="job-os-card"><div class="job-os-card-head"><h2>Latest finds <span class="job-os-count">${finds.length}</span></h2><button type="button" class="job-os-link" data-job-os-filter="scraped">View in Pipeline</button></div><div class="job-os-list scout-finds">${finds.map(jobCard).join('')}</div></section>` : ''}`;
   }
   // ---- Job detail -------------------------------------------------------------
+  function writingPanel(text) {
+    return `<div class="writing-panel" role="status"><span class="writing-pen" aria-hidden="true"></span><div><strong>${esc(text)}</strong><div class="writing-lines"><i></i><i></i><i></i><i></i></div></div></div>`;
+  }
+  const DOC_STATUS = {pending: 'Queued', running: 'Writing', ready: 'Ready', needs_review: 'Needs review', failed: 'Failed'};
+  function docStatus(status) { return `<span class="doc-status" data-status="${esc(status)}">${esc(DOC_STATUS[status] || status)}</span>`; }
+  function tailoredList(state) {
+    const items = state.tailored || [];
+    if (!items.length) return `<section class="job-os-card"><div class="job-os-card-head"><h2>Tailored versions</h2></div><p class="job-os-card-note">Shortlist a job in Pipeline and choose <strong>Tailor resume</strong>. Each tailored resume and cover letter appears here to review, edit and export.</p></section>`;
+    return `<section class="job-os-card"><div class="job-os-card-head"><h2>Tailored versions <span class="job-os-count">${items.length}</span></h2></div><div class="job-os-list">${items.map((d) => {
+      const cov = d.notes && d.notes.coverage && d.notes.coverage.score;
+      return `<button type="button" class="job-os-job-card studio-item" data-job-os-action="studio-open" data-job-id="${esc(d.job_id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(String(d.job_company || d.job_title || '?').charAt(0).toUpperCase())}</span><span class="job-os-job-main"><strong>${esc(d.job_title)}</strong><span>${esc(d.job_company || '')}</span></span>${cov != null ? `<span class="job-os-chip muted" title="Must-haves the resume mentions">${cov}% keywords</span>` : ''}${docStatus(d.status)}<small class="job-os-job-when">${esc(when(d.updated_at))}</small></button>`;
+    }).join('')}</div></section>`;
+  }
+  function highlightNumbers(text, flags) {
+    let out = esc(text);
+    (flags || []).forEach((n) => { const e = esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); out = out.replace(new RegExp(`(^|[^\\w.])(${e})(?![\\w])`, 'g'), '$1<mark title="Not in your master resume">$2</mark>'); });
+    return out;
+  }
+  function studioEditor(state) {
+    const docs = state.studioDocs || {};
+    const doc = docs[state.studioTab];
+    const job = (state.tailored || []).find((d) => d.job_id === state.studioJobId) || {};
+    const tabs = ['resume', 'cover_letter'].map((k) => `<button type="button" class="${state.studioTab === k ? 'active' : ''}" data-job-os-action="studio-tab" data-tab="${k}">${k === 'resume' ? 'Resume' : 'Cover letter'}${docs[k] ? ' ' + docStatus(docs[k].status) : ''}</button>`).join('');
+    let body;
+    if (!doc) body = '<p class="job-os-card-note">Nothing here yet.</p>';
+    else if (['pending', 'running'].includes(doc.status)) body = writingPanel('Luna is writing…');
+    else if (doc.status === 'failed') body = `<p class="job-os-error">${esc(doc.error || 'Tailoring failed.')}</p><button type="button" class="job-os-btn" data-job-os-action="studio-retry">Try again</button>`;
+    else {
+      const notes = doc.notes || {};
+      const flags = notes.unverified || [];
+      const cov = notes.coverage;
+      const draft = state.studioDraft != null ? state.studioDraft : doc.content;
+      const exportUrl = (fmt) => `/api/job-os/documents/${encodeURIComponent(doc.id)}/export?format=${fmt}`;
+      body = `${flags.length ? `<div class="studio-warning" role="alert"><strong>Check before sending:</strong> ${flags.map((f) => `<code>${esc(f)}</code>`).join(' ')} ${flags.length === 1 ? 'is' : 'are'} not in your master resume. Fix or remove ${flags.length === 1 ? 'it' : 'them'}, then save.</div>` : ''}
+        <div class="studio-grid"><div class="studio-edit"><textarea id="studio-text" spellcheck="true" aria-label="Edit document">${esc(draft)}</textarea>
+          <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
+          <a class="job-os-btn" href="${exportUrl('docx')}">DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
+        <aside class="studio-side">${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
+          ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}
+          ${flags.length ? `<div class="studio-box"><h4>Preview</h4><div class="studio-preview">${highlightNumbers(doc.content, flags)}</div></div>` : ''}</aside></div>`;
+    }
+    const ready = job.job_status === 'resume_ready';
+    return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions">${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}<button type="button" class="job-os-btn" data-job-os-action="studio-close">Back to list</button></div></div>
+      <nav class="studio-tabs" aria-label="Document">${tabs}</nav>${body}</section>`;
+  }
+  function tailoredView(state) {
+    return state.studioJobId ? studioEditor(state) : tailoredList(state);
+  }
   function detailActions(job) {
     const out = [];
     const a = job.analysis;
     if (!job.description) out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-details">Fetch details</button>');
     if (job.status === 'analyzed') out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-status" data-status="shortlisted">Shortlist</button>');
+    if (['analyzed', 'shortlisted'].includes(job.status) && job.description) out.push(`<button type="button" class="job-os-btn${job.status === 'shortlisted' ? ' primary' : ''}" data-job-os-action="job-tailor">Tailor resume</button>`);
+    if (['resume_ready', 'application_ready'].includes(job.status)) out.push(`<button type="button" class="job-os-btn primary" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Open in Resume Studio</button>`);
+    if (job.status === 'resume_ready') out.push('<button type="button" class="job-os-btn" data-job-os-action="job-ready">Ready to apply</button>');
     if (['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(job.status)) out.push('<button type="button" class="job-os-btn" data-job-os-action="job-status" data-status="skipped">Skip</button>');
     if (job.description && !analysing(job)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="job-analyze">${a && a.status === 'done' ? 'Re-analyse' : 'Analyse'}</button>`);
     return out.join('');
@@ -312,6 +363,7 @@
     const meta = [job.company, job.location].filter(Boolean).map(esc).join(' · ');
     return `<section class="job-os-card job-os-detail" id="job-os-detail"><div class="job-os-detail-head"><div><h2>${esc(job.title)}</h2><p>${meta}</p>${jobChips(job)}</div><div class="job-os-detail-side">${badge(job.status)}<button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details">×</button></div></div>
       <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">Open posting</a>${job.posted_at ? `<span class="job-os-chip muted">Posted ${esc(String(job.posted_at).slice(0, 10))}</span>` : ''}<span class="job-os-chip muted">${esc(job.source)}</span></div>
+      ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
       ${analysisPanel(job)}
       ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>` : '<p class="job-os-card-note">No description yet. Fetch details reads the posting page.</p>'}
       <p class="job-os-keys" aria-hidden="true"><kbd>J</kbd><kbd>K</kbd> next/previous · <kbd>S</kbd> shortlist · <kbd>X</kbd> skip · <kbd>A</kbd> analyse · <kbd>Esc</kbd> close</p></section>`;
