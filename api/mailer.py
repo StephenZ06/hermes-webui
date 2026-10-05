@@ -21,7 +21,7 @@ import smtplib
 import socket
 import ssl
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 from typing import Callable
 
@@ -166,6 +166,10 @@ def send(context: str, to_address: str | None, subject: str, body: str, *,
     message["From"] = formataddr((name, address))
     message["To"] = recipient
     message["Subject"] = subject
+    # Set by us rather than left to Gmail: mail without its own Date and
+    # Message-ID scores as more likely-automated in spam filters.
+    message["Date"] = formatdate(localtime=True)
+    message["Message-ID"] = make_msgid(domain=address.rpartition("@")[2] or None)
     message.set_content(body)
     (sender or _smtp_send)(message, address, password)
     return recipient

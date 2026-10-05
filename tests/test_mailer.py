@@ -76,3 +76,11 @@ def test_disconnect_removes_new_and_legacy_keys(base):
     mailer.connect("bot@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
     mailer.disconnect()
     assert not {k for k in shared_env.parse_env_file(shared) if "GMAIL" in k}
+
+
+def test_mail_carries_its_own_date_and_message_id(base):
+    mailer.connect("bot@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
+    seen = []
+    mailer.send("jobs", "main@gmail.com", "Hi", "Body", sender=lambda msg, a, p: seen.append((msg["Date"], msg["Message-ID"])))
+    date, message_id = seen[0]
+    assert date and message_id and message_id.endswith("@gmail.com>")
