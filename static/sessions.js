@@ -5423,6 +5423,11 @@ function showSessionListSkeleton(targetProfile){
       }
     }
   }
+  // The conversation filter lives inside the list (workspaces section). Park it
+  // just above the list before clearing, or the clear destroys it and every
+  // later render reads `.value` on null; the next real render moves it back.
+  const searchWrap = $('sessionSearch')?.closest('.session-search');
+  if (searchWrap && list.contains(searchWrap)) list.before(searchWrap);
   list.innerHTML = '';
   list.appendChild(wrap);
   list.scrollTop = 0;
