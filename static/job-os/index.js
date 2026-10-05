@@ -33,7 +33,7 @@
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
       const wantBoard = state.activeView === 'applications';
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -46,6 +46,7 @@
         wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
         wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
+        wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -59,6 +60,7 @@
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
       if (board) state.board = board;
+      if (notifications) state.notifications = notifications.notifications;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -281,6 +283,19 @@
         state.gmailMessage = {tone: 'ok', text: `Test email from ${result.sender_name} sent to ${result.sent_to}.`};
       } catch (error) {
         state.gmailMessage = {tone: 'error', text: error.message || 'Unable to send the test email.'};
+      }
+      refresh();
+    } else if (name === 'notify-digest' || name === 'notify-check') {
+      if (button) { button.disabled = true; button.classList.add('is-busy'); }
+      try {
+        const result = name === 'notify-digest' ? await window.JobOSApi.sendDigest() : await window.JobOSApi.checkReplies();
+        state.notifications = result.notifications;
+        const text = name === 'notify-digest'
+          ? (result.sent ? 'Digest sent.' : 'Nothing new to put in a digest yet.')
+          : (result.handled ? `Acted on ${result.handled} repl${result.handled === 1 ? 'y' : 'ies'}.` : 'No new replies.');
+        if (typeof window.showToast === 'function') window.showToast(text);
+      } catch (error) {
+        if (typeof window.showToast === 'function') window.showToast(error.message || 'Email step failed');
       }
       refresh();
     } else if (name === 'test-firecrawl') {

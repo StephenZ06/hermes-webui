@@ -141,6 +141,11 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, applications.board())
         return True
+    if path == f"{_PREFIX}/notifications":
+        from api.job_os import notify
+
+        j(handler, {"notifications": notify.status()})
+        return True
     if path == f"{_PREFIX}/funnel":
         from api.job_os import applications
 
@@ -374,6 +379,25 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
     return True
 
 
+def _notifications_post(handler, path: str) -> bool:
+    """Send the digest now, or check for reply commands now."""
+    from api import mailer
+    from api.job_os import notify
+
+    if not notify.status()["ready"]:
+        return _error(handler, "Connect Gmail and turn on email notifications (with a Send-to address) first.", 400)
+    try:
+        if path.endswith("/digest"):
+            sent = notify.maybe_send_digest(force=True)
+            j(handler, {"sent": sent, "notifications": notify.status()})
+        else:
+            handled = notify.poll_replies()
+            j(handler, {"handled": handled, "notifications": notify.status()})
+    except mailer.GmailError as error:
+        return _error(handler, str(error), 400)
+    return True
+
+
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
@@ -385,6 +409,8 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         handled = _scout_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled
+    if parsed.path in {f"{_PREFIX}/notifications/digest", f"{_PREFIX}/notifications/check"}:
+        return _notifications_post(handler, parsed.path)
     if parsed.path in {f"{_PREFIX}/gmail", f"{_PREFIX}/gmail/disconnect", f"{_PREFIX}/gmail/test"}:
         return _handle_gmail_post(handler, parsed.path, body if isinstance(body, dict) else {})
     if parsed.path == f"{_PREFIX}/settings":

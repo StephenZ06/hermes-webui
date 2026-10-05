@@ -4,6 +4,9 @@ When Jobs -> Settings -> Scout schedule is on, each enabled saved search runs
 again once ``schedule_hours`` have passed since its last run. One search is
 started per minute at most, so a long list never hits Firecrawl all at once.
 No AI is involved, so the schedule costs no tokens.
+
+The same loop drives Job OS email (``notify.tick``): new-match alerts, the
+daily digest, and checking for reply commands.
 """
 
 from __future__ import annotations
@@ -55,6 +58,12 @@ def _loop() -> None:
             tick()
         except Exception:  # the schedule must never take the server down
             logger.debug("Job OS scheduler tick failed", exc_info=True)
+        try:
+            from api.job_os import notify
+
+            notify.tick()
+        except Exception:
+            logger.debug("Job OS notification tick failed", exc_info=True)
 
 
 def start_scheduler() -> bool:

@@ -181,7 +181,8 @@
       <div class="job-os-grid">${numberField('notifications.min_fit_score', 'Minimum fit score', v('notifications.min_fit_score'), 0, 100, '/ 100')}</div>
       ${toggle('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'))}
       <div class="job-os-grid">${numberField('notifications.digest_hour', 'Digest hour', v('notifications.digest_hour'), 0, 23, ':00')}</div>
-      ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Reply TAILOR or APPLY to a job email to start that step')}`, 'Phase 5');
+      ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Each job in an alert has codes; reply "TAILOR 1A2B3C4D" or "SKIP 1A2B3C4D" from the Send-to address')}
+      ${notifyStatus(state.notifications)}`);
     const auto = section('auto-apply', 'Auto-apply', 'Off unless you turn it on. Only standard application forms; anything unusual stops and asks you.', `
       ${toggle('auto_apply.enabled', 'Auto-apply to strong matches', v('auto_apply.enabled'))}
       <fieldset class="job-os-ats"><legend>Allowed application systems</legend>${ATS.map(([key, name]) => `<label><input type="checkbox" data-setting="auto_apply.allowed_ats" value="${key}" ${(v('auto_apply.allowed_ats') || []).includes(key) ? 'checked' : ''}>${esc(name)}</label>`).join('')}</fieldset>
@@ -190,6 +191,17 @@
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
     return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${applicant}${scout}${notify}${auto}${resume}${bar}</form>`;
+  }
+  const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
+  function notifyStatus(n) {
+    if (!n) return '';
+    const checked = n.last_poll ? `Replies checked ${esc(when(n.last_poll))}` : 'Replies not checked yet';
+    const log = (n.log || []).slice(0, 6);
+    return `<div class="job-os-notify-status">
+      <p class="job-os-card-note">${n.last_digest ? `Last digest ${esc(n.last_digest)}. ` : ''}${checked}.${n.last_poll_error ? ` <span class="job-os-error">${esc(n.last_poll_error)}</span>` : ''}</p>
+      <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="notify-digest" ${n.ready ? '' : 'disabled'}>Send digest now</button><button type="button" class="job-os-btn" data-job-os-action="notify-check" ${n.ready ? '' : 'disabled'}>Check replies now</button></div>
+      ${log.length ? `<ul class="job-os-email-log">${log.map((e) => `<li data-status="${esc(e.status)}"><strong>${esc(EMAIL_KINDS[e.kind] || e.kind)}</strong> ${esc(e.status)}${e.subject ? ` · ${esc(e.subject)}` : ''}${e.detail ? `<small>${esc(e.detail)}</small>` : ''}<time>${esc(when(e.created_at))}</time></li>`).join('')}</ul>` : ''}
+    </div>`;
   }
   // ---- Applications board -------------------------------------------------------
   const NEXT_OUTCOMES = {

@@ -182,12 +182,23 @@ def _requeue_orphans() -> None:
         conn.close()
 
 
+def _notify_matches() -> None:
+    """The queue drained: email any new strong matches (if notifications are on)."""
+    try:
+        from api.job_os.notify import send_matches
+
+        send_matches()
+    except Exception:
+        logger.debug("match alert failed", exc_info=True)
+
+
 def _work() -> None:
     global _worker
     try:
         while True:
             job_id = _next_pending()
             if job_id is None:
+                _notify_matches()
                 return
             analyze_one(job_id)
     except Exception:

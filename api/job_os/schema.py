@@ -168,7 +168,35 @@ def _migration_4(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE INDEX IF NOT EXISTS job_documents_job ON job_documents (job_id, kind, created_at)")
 
 
-MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4))
+def _migration_5(connection: sqlite3.Connection) -> None:
+    """Email: single-use reply codes, and a log of what was sent or received."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reply_codes (
+            code_hash TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            used_at INTEGER
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_log (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            detail TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        )
+        """
+    )
+
+
+MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:
