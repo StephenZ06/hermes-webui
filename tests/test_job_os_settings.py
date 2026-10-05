@@ -48,7 +48,8 @@ def test_defaults_are_safe(home):
     assert s["revision"] == 0
     assert s["auto_apply"]["enabled"] is False
     assert s["notifications"]["email_enabled"] is False
-    assert s["ai"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium"}
+    assert s["ai"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True}
+    assert s["applicant"]["email"] == ""
     assert set(s["auto_apply"]["allowed_ats"]) == {"greenhouse", "lever", "ashby"}
 
 
@@ -69,6 +70,9 @@ def test_save_merges_validates_and_bumps_revision(home):
     {"notifications": {"digest_hour": 25}},
     {"firecrawl": {"api_url": "javascript:alert(1)"}},
     {"ai": {"reasoning_effort": "ludicrous"}},
+    {"applicant": {"email": "nope"}},
+    {"applicant": {"full_name": "line\nbreak"}},
+    {"applicant": {"linkedin_url": "ftp://x"}},
     {"unknown_section": {}},
     {"notifications": {"app_password": "abcd efgh ijkl mnop"}},
 ])

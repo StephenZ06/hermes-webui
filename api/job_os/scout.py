@@ -393,6 +393,63 @@ def _known_urls() -> set[str]:
         conn.close()
 
 
+def _after_run(new_ids: list[str]) -> None:
+    """Queue Luna analysis for new finds (Settings -> AI -> analyse automatically)."""
+    if not new_ids:
+        return
+    try:
+        from api.job_os import analysis
+        from api.job_os.settings import load_settings
+
+        if load_settings()["ai"].get("auto_analyze", True):
+            analysis.request_analysis(new_ids)
+    except Exception:  # no resume yet, or analysis unavailable: finds are still saved
+        pass
+
+
+def read_posting(url: str, client, cache: dict | None = None) -> tuple[str, dict | None]:
+    """Read one posting URL: ("posting", fields) | ("closed", None) | ("not_posting", None)."""
+    safe = validate_external_job_url(url)
+    kind, posting = ats_posting(safe, lambda api: fetch_json(validate_external_job_url(api)), cache if cache is not None else {})
+    if kind == "unsupported":
+        page = client.scrape(safe)
+        if page.get("status") in (404, 410):
+            return "closed", None
+        posting = extract_job_posting(page["html"], safe)
+        return ("posting", posting) if posting else ("not_posting", None)
+    return kind, posting
+
+
+def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> dict:
+    """Read a manually imported job's page and store its details (discovered -> scraped)."""
+    from api.job_os.lifecycle import transition_job
+    from api.job_os.repository import get_job
+
+    job = get_job(job_id)
+    if job is None:
+        raise KeyError(job_id)
+    kind, posting = read_posting(job.canonical_url, (client_factory or _default_client)())
+    if kind != "posting":
+        raise ScoutError("That page is closed or is not a single job posting." if kind == "closed"
+                         else "No job posting details were found on that page.")
+    conn = connect_job_os()
+    try:
+        conn.execute(
+            "UPDATE jobs SET description=?, salary_text=?, employment_type=?, workplace=?, posted_at=?,"
+            " company=CASE WHEN company='' THEN ? ELSE company END, location=CASE WHEN location='' THEN ? ELSE location END,"
+            " updated_at=? WHERE id=?",
+            (posting["description"], posting["salary_text"], posting["employment_type"], posting["workplace"],
+             posting["posted_at"], posting["company"], posting["location"], int(time.time()), job_id))
+        conn.commit()
+    finally:
+        conn.close()
+    current = get_job(job_id)
+    if current.status == JobStatus.DISCOVERED:
+        current = transition_job(job_id, JobStatus.SCRAPED, expected_revision=current.revision)
+    _after_run([job_id])
+    return {"job_id": job_id, "status": current.status.value}
+
+
 def run_discovery(run_id: str, client_factory: Callable) -> None:
     """Do the work for one run. Never raises; every exit is a terminal state."""
     counts = dict(_EMPTY_COUNTS)
@@ -507,19 +564,13 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 return
             try:
                 safe = validate_external_job_url(url)  # resolve again at the moment of use
-                kind, posting = ats_posting(safe, lambda api: fetch_json(validate_external_job_url(api)), board_cache)
-                if kind == "unsupported":
-                    page = client.scrape(safe)
-                    if page.get("status") in (404, 410):
-                        kind = "closed"
-                    else:
-                        posting = extract_job_posting(page["html"], safe)
+                kind, posting = read_posting(safe, client, board_cache)
                 counts["scraped"] += 1
                 if kind == "closed":
                     counts["closed"] += 1  # the site no longer lists this posting
                     save(detail=f"Read {index} of {len(candidates)} pages · {counts['saved']} new")
                     continue
-                if posting is None:
+                if kind == "not_posting" or posting is None:
                     counts["not_postings"] += 1
                 elif search["remote_only"] and posting["workplace"] != "remote":
                     counts["filtered"] += 1
@@ -545,6 +596,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         finally:
             conn.close()
         finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}")
+        _after_run(new_ids)
     except Exception as error:  # a crashed worker must still leave a terminal run
         note_error("scout", type(error).__name__)
         try:

@@ -16,7 +16,7 @@ from api.job_os.settings import SettingsConflict, SettingsError, load_settings, 
 _PREFIX = "/api/job-os"
 
 
-def _job_payload(job: JobRecord, *, detail: bool = False) -> dict[str, Any]:
+def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None = None) -> dict[str, Any]:
     payload = {
         "id": job.id,
         "canonical_url": job.canonical_url,
@@ -38,7 +38,12 @@ def _job_payload(job: JobRecord, *, detail: bool = False) -> dict[str, Any]:
         "has_description": bool(job.description),
     }
     if detail:
+        from api.job_os.analysis import get_analysis
+
         payload["description"] = job.description
+        payload["analysis"] = get_analysis(job.id)
+    elif analyses is not None:
+        payload["analysis"] = analyses.get(job.id)
     return payload
 
 
@@ -85,6 +90,16 @@ def _scout_get(handler, parsed) -> bool:
     from api.job_os import scout
 
     path = parsed.path
+    if path == f"{_PREFIX}/resume":
+        from api.job_os.resume import load_resume
+
+        j(handler, {"resume": load_resume()})
+        return True
+    if path == f"{_PREFIX}/analysis/queue":
+        from api.job_os.analysis import queue_counts
+
+        j(handler, {"queue": queue_counts()})
+        return True
     if path == f"{_PREFIX}/searches":
         j(handler, _scout_searches_payload())
         return True
@@ -104,6 +119,55 @@ def _scout_get(handler, parsed) -> bool:
         j(handler, {"run": run})
         return True
     return False
+
+
+def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
+    import base64
+    import binascii
+
+    from api.job_os import analysis, resume, scout
+
+    try:
+        if path == f"{_PREFIX}/resume":
+            if body.get("content_base64"):
+                try:
+                    data = base64.b64decode(str(body["content_base64"]), validate=True)
+                except (binascii.Error, ValueError):
+                    return _error(handler, "The file could not be decoded", 400)
+                filename = str(body.get("filename") or "resume")
+                text = resume.extract_text(filename, data)
+                meta = resume.save_resume(filename=filename, text=text, original=data)
+            else:
+                meta = resume.save_resume(filename=str(body.get("filename") or "pasted.txt"), text=str(body.get("text") or ""))
+            j(handler, {"resume": meta})
+            return True
+        if path == f"{_PREFIX}/analyze":
+            if body.get("scope") == "new":
+                ids = [job.id for job in list_jobs(JobFilters(status=JobStatus.SCRAPED))]
+            else:
+                ids = [str(i) for i in (body.get("job_ids") or []) if isinstance(i, str)]
+            j(handler, {"queued": analysis.request_analysis(ids, force=bool(body.get("force")))})
+            return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/analyze", "/details")):
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            if get_job(job_id) is None:
+                return _error(handler, "Job not found", 404)
+            if path.endswith("/analyze"):
+                queued = analysis.request_analysis([job_id], force=bool(body.get("force")))
+                j(handler, {"queued": queued, "analysis": analysis.get_analysis(job_id)})
+            else:
+                j(handler, scout.fill_job_details(job_id))
+            return True
+    except (resume.ResumeError, analysis.AnalysisError, scout.ScoutError) as error:
+        return _error(handler, str(error), 400)
+    except Exception as error:  # unsafe link, Firecrawl or site API down: say so, never a 500
+        from api.job_os.firecrawl import FirecrawlError
+        from api.job_os.network_policy import UnsafeJobUrl
+
+        if isinstance(error, (UnsafeJobUrl, FirecrawlError, scout.FetchError)):
+            return _error(handler, f"Could not read that posting: {error}", 400)
+        raise
+    return None
 
 
 def _scout_post(handler, path: str, body: dict) -> bool | None:
@@ -168,7 +232,10 @@ def handle_job_os_get(handler, parsed) -> bool:
         except ValueError:
             return _error(handler, "Unknown job status", 400)
         jobs = list_jobs(JobFilters(status=status, source=raw_source))
-        j(handler, {"jobs": [_job_payload(job) for job in jobs]})
+        from api.job_os.analysis import analyses_by_job
+
+        analyses = analyses_by_job()
+        j(handler, {"jobs": [_job_payload(job, analyses=analyses) for job in jobs]})
         return True
     job_id = _job_id_from_path(parsed.path)
     if job_id is not None:
@@ -203,6 +270,11 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or (
+            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details"))):
+        handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
+        if handled is not None:
+            return handled
     if parsed.path.startswith((f"{_PREFIX}/searches", f"{_PREFIX}/runs/")):
         handled = _scout_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:

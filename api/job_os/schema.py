@@ -131,7 +131,44 @@ def _migration_3(connection: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3))
+def _migration_4(connection: sqlite3.Connection) -> None:
+    """Luna analysis per job, and tailored documents per job."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_analyses (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            fit_score INTEGER,
+            verdict TEXT NOT NULL DEFAULT '',
+            data_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            requested_at INTEGER NOT NULL,
+            finished_at INTEGER
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS job_documents (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            notes_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            revision INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS job_documents_job ON job_documents (job_id, kind, created_at)")
+
+
+MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

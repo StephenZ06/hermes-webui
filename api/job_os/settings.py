@@ -37,7 +37,9 @@ def default_settings() -> dict:
     return {
         "revision": 0,
         "firecrawl": {"api_url": ""},
-        "ai": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium"},
+        "ai": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True},
+        # Contact details for tailored resumes and application forms.
+        "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20},
         "notifications": {
             "email_enabled": False,
@@ -73,6 +75,12 @@ def _int(value, field, low, high):
 def _text(value, field, limit=64):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise SettingsError(f"{field} must be a short, non-empty text value")
+    return value.strip()
+
+
+def _free_text(value, field, limit):
+    if not isinstance(value, str) or len(value) > limit or "\n" in value:
+        raise SettingsError(f"{field} must be a single line of up to {limit} characters")
     return value.strip()
 
 
@@ -119,6 +127,15 @@ _VALIDATORS = {
         "provider": _text,
         "model": _text,
         "reasoning_effort": _effort,
+        "auto_analyze": _bool,
+    },
+    "applicant": {
+        "full_name": lambda v, f: _free_text(v, f, 120),
+        "email": _email,
+        "phone": lambda v, f: _free_text(v, f, 40),
+        "location": lambda v, f: _free_text(v, f, 120),
+        "linkedin_url": _url,
+        "portfolio_url": _url,
     },
     "scout": {
         "enabled": _bool,
