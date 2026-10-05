@@ -11,6 +11,7 @@ from api.job_os.db import job_os_capability
 from api.job_os.lifecycle import ConcurrentRevisionError, InvalidJobTransition, transition_job
 from api.job_os.models import DuplicateJobError, JobFilters, JobRecord, JobStatus, JobValidationError
 from api.job_os.repository import create_job, get_job, list_jobs, normalize_job_input
+from api.job_os.settings import SettingsConflict, SettingsError, load_settings, save_settings
 
 _PREFIX = "/api/job-os"
 
@@ -43,8 +44,35 @@ def _job_id_from_path(path: str) -> str | None:
     return job_id or None
 
 
+def _firecrawl_health(settings: dict) -> dict:
+    from api.job_os.firecrawl import FirecrawlClient, resolve_firecrawl_config
+
+    override = (settings.get("firecrawl") or {}).get("api_url") or None
+    return FirecrawlClient(resolve_firecrawl_config(override)).health()
+
+
+def _settings_status(settings: dict) -> dict:
+    """Live service status for the Settings page: presence booleans, never values."""
+    from api.job_os.env import profile_env_value
+
+    return {
+        "firecrawl": _firecrawl_health(settings),
+        "gmail": {
+            "address": bool(profile_env_value("JOB_OS_GMAIL_ADDRESS")[0]),
+            "app_password": bool(profile_env_value("JOB_OS_GMAIL_APP_PASSWORD")[0]),
+        },
+    }
+
+
 def handle_job_os_get(handler, parsed) -> bool:
     """Handle Job OS read endpoints or return False for an unknown path."""
+    if parsed.path == f"{_PREFIX}/settings":
+        settings = load_settings()
+        j(handler, {"settings": settings, "status": _settings_status(settings)})
+        return True
+    if parsed.path == f"{_PREFIX}/firecrawl/health":
+        j(handler, {"firecrawl": _firecrawl_health(load_settings())})
+        return True
     if parsed.path == f"{_PREFIX}/capability":
         j(handler, job_os_capability())
         return True
@@ -74,6 +102,17 @@ def handle_job_os_get(handler, parsed) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path == f"{_PREFIX}/settings":
+        if not isinstance(body, dict):
+            return _error(handler, "JSON object body is required", 400)
+        try:
+            saved = save_settings(body.get("settings"), expected_revision=body.get("expected_revision"))
+        except SettingsConflict as error:
+            return _error(handler, str(error), 409)
+        except SettingsError as error:
+            return _error(handler, str(error), 400)
+        j(handler, {"settings": saved, "status": _settings_status(saved)})
+        return True
     if parsed.path != f"{_PREFIX}/jobs":
         return False
     if not isinstance(body, dict):
