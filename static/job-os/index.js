@@ -30,7 +30,8 @@
       const wantSettings = state.activeView === 'settings';
       const wantScout = state.activeView === 'scout';
       const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail] = await Promise.all([
+      const wantResume = state.activeView === 'resume-studio';
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -39,6 +40,7 @@
         wantScout ? window.JobOSApi.searches() : Promise.resolve(null),
         wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
+        wantResume ? window.JobOSApi.resume().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -48,6 +50,7 @@
       if (searches) { state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule; }
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
+      if (resume) state.resume = resume.resume;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -58,6 +61,8 @@
       if (typeof window.animateCounts === 'function') window.animateCounts(target);
       if (wantScout) afterScoutRender(target);
       else stopScoutPolling();
+      afterPipelineRender(target);
+      if (wantResume) bindResumeUpload();
       renderSidebar();
       bind();
     } catch (error) {
@@ -163,6 +168,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details'].includes(name) || name.startsWith('resume-')) return pipelineAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -241,6 +247,115 @@
       } catch (_error) { /* the status pill keeps its last value */ }
       refresh();
     }
+  }
+  // ---- Pipeline: analysis polling, triage, resume ---------------------------
+  let analysisTimer = null;
+  const busy = (job) => !!(job && job.analysis && ['pending', 'running'].includes(job.analysis.status));
+  function afterPipelineRender(target) {
+    const state = window.JobOSState;
+    const sort = document.getElementById('job-os-sort');
+    if (sort) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
+    const watching = ['pipeline', 'dashboard'].includes(state.activeView)
+      && ((state.jobs || []).some(busy) || busy(state.jobDetail));
+    if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
+    if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
+    const card = state.jobDetail && target.querySelector(`.job-os-job-card[data-job-id="${CSS.escape(state.jobDetail.id)}"]`);
+    if (card) card.classList.add('is-selected');
+  }
+  function orderedJobIds() {
+    return [...document.querySelectorAll('#jobOsRoot .job-os-fill .job-os-job-card[data-job-id]')].map((el) => el.dataset.jobId);
+  }
+  async function setJobStatus(status) {
+    const state = window.JobOSState;
+    const job = state.jobDetail;
+    if (!job) return;
+    try {
+      await window.JobOSApi.setStatus(job.id, status, job.revision);
+      if (typeof window.showToast === 'function') window.showToast(status === 'shortlisted' ? 'Shortlisted' : status === 'skipped' ? 'Skipped' : 'Updated');
+      const ids = orderedJobIds();
+      const next = ids[ids.indexOf(job.id) + 1];
+      if (status === 'skipped' && next) state.selectedJobId = next;
+    } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update the job'); }
+    refresh();
+  }
+  function onTriageKey(event) {
+    const state = window.JobOSState;
+    if (state.activeView !== 'pipeline' || !state.jobDetail || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+    const key = event.key.toLowerCase();
+    const ids = orderedJobIds();
+    const i = ids.indexOf(state.jobDetail.id);
+    if (key === 'j' || key === 'k') {
+      const next = ids[i + (key === 'j' ? 1 : -1)];
+      if (next) { event.preventDefault(); openJob(next); }
+    } else if (key === 's' && state.jobDetail.status === 'analyzed') { event.preventDefault(); setJobStatus('shortlisted'); }
+    else if (key === 'x' && ['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(state.jobDetail.status)) { event.preventDefault(); setJobStatus('skipped'); }
+    else if (key === 'a' && state.jobDetail.description) { event.preventDefault(); runAction('job-analyze'); }
+    else if (key === 'escape') { event.preventDefault(); runAction('job-close'); }
+  }
+  document.addEventListener('keydown', onTriageKey);
+  function readAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+      reader.onerror = () => reject(new Error('That file could not be read.'));
+      reader.readAsDataURL(file);
+    });
+  }
+  async function uploadResumeFile(file) {
+    const state = window.JobOSState;
+    const drop = document.getElementById('resume-drop');
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { state.resumeError = 'That file is larger than 5 MB.'; refresh(); return; }
+    if (drop) { drop.classList.add('is-busy'); drop.querySelector('strong').textContent = `Reading ${file.name}…`; }
+    try {
+      const result = await window.JobOSApi.uploadResume(file.name, await readAsBase64(file));
+      state.resume = result.resume; state.resumeError = ''; state.resumeReplacing = false;
+      if (typeof window.showToast === 'function') window.showToast('Resume saved');
+    } catch (error) { state.resumeError = error.message || 'Could not read that resume.'; }
+    refresh();
+  }
+  function bindResumeUpload() {
+    const drop = document.getElementById('resume-drop');
+    const input = document.getElementById('resume-file');
+    if (!drop || !input) return;
+    drop.addEventListener('click', () => input.click());
+    drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    input.addEventListener('change', () => uploadResumeFile(input.files && input.files[0]));
+    ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('is-over')));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); uploadResumeFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+  }
+  async function pipelineAction(name, el) {
+    const state = window.JobOSState;
+    const job = state.jobDetail;
+    if (name === 'job-status') return setJobStatus(el.dataset.status);
+    if (name === 'job-analyze' && job) {
+      try { await window.JobOSApi.analyzeJob(job.id, !!(job.analysis && job.analysis.status === 'done')); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not analyse this job'); }
+      return refresh();
+    }
+    if (name === 'analyze-new') {
+      if (el) { el.disabled = true; el.textContent = 'Queuing…'; }
+      try { const r = await window.JobOSApi.analyzeNew(); if (typeof window.showToast === 'function') window.showToast(`Luna is analysing ${r.queued} job${r.queued === 1 ? '' : 's'}`); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start analysis'); }
+      return refresh();
+    }
+    if (name === 'job-details' && job) {
+      if (el) { el.disabled = true; el.textContent = 'Reading posting…'; }
+      try { await window.JobOSApi.fetchDetails(job.id); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not read that posting'); }
+      return refresh();
+    }
+    if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }
+    if (name === 'resume-cancel') { state.resumeReplacing = false; state.resumeError = ''; return refresh(); }
+    if (name === 'resume-paste') {
+      const text = (document.getElementById('resume-text') || {}).value || '';
+      try { const r = await window.JobOSApi.pasteResume(text); state.resume = r.resume; state.resumeError = ''; state.resumeReplacing = false; }
+      catch (error) { state.resumeError = error.message || 'Could not save that text.'; }
+      return refresh();
+    }
+    return undefined;
   }
   // ---- Scout -----------------------------------------------------------------
   const ACTIVE = ['queued', 'searching', 'scraping'];
@@ -341,8 +456,15 @@
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
   }
   function mount() { applyRoute(); refresh(); }
-  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); }
-  function openJob(jobId) { window.JobOSState.selectedJobId = jobId; window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = null; replaceRoute('pipeline'); refresh(); }
+  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
+  function openJob(jobId) {
+    const state = window.JobOSState;
+    // Stay in the current Pipeline filter when opening jobs from it (and with J/K).
+    if (state.activeView !== 'pipeline') state.statusFilter = null;
+    state.selectedJobId = jobId; state.activeView = 'pipeline';
+    replaceRoute('pipeline', state.statusFilter); refresh();
+    requestAnimationFrame(() => { const d = document.getElementById('job-os-detail'); if (d && d.scrollIntoView) d.scrollIntoView({block: 'nearest', behavior: 'smooth'}); });
+  }
   function resetDraft() { window.JobOSState.importDraft = emptyDraft(); }
   window.JobOS = {mount, refresh, unmount, openJob, resetDraft};
 }());

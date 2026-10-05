@@ -52,10 +52,19 @@
     if (job.employment_type) chips.push(`<span class="job-os-chip">${esc(job.employment_type)}</span>`);
     return chips.length ? `<span class="job-os-chips">${chips.join('')}</span>` : '';
   }
+  // Fit score ring: the arc fills to the score, coloured by verdict.
+  const analysing = (job) => !!(job.analysis && (job.analysis.status === 'pending' || job.analysis.status === 'running'));
+  function fitRing(a, size) {
+    if (!a) return '';
+    if (a.status === 'pending' || a.status === 'running') return `<span class="fit-ring ${size || ''} is-busy" title="Luna is analysing this job" aria-label="Analysing"><span>…</span></span>`;
+    if (a.status === 'failed') return `<span class="fit-ring ${size || ''} is-failed" title="Analysis failed" aria-label="Analysis failed"><span>!</span></span>`;
+    if (a.fit_score == null) return '';
+    return `<span class="fit-ring ${size || ''}" data-verdict="${esc(a.verdict)}" style="--fit:${Number(a.fit_score)}" title="Fit ${Number(a.fit_score)}/100 · ${esc(a.verdict)}" aria-label="Fit score ${Number(a.fit_score)}"><span>${Number(a.fit_score)}</span></span>`;
+  }
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', job.location].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card" type="button" data-job-id="${esc(job.id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span><span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -153,10 +162,18 @@
     const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
       ${textField('ai.model', 'Model', v('ai.model'))}
       ${textField('ai.provider', 'Provider', v('ai.provider'))}
-      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</div>`, 'Phase 2');
+      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</div>
+      ${toggle('ai.auto_analyze', 'Analyse new finds automatically', v('ai.auto_analyze'), 'Scout queues each new job for a fit score against your resume')}`);
+    const applicant = section('applicant', 'Your details', 'Used on tailored resumes and application forms.', `<div class="job-os-grid">
+      ${textField('applicant.full_name', 'Full name', v('applicant.full_name'))}
+      ${textField('applicant.email', 'Email', v('applicant.email'), 'you@example.com', 'email')}
+      ${textField('applicant.phone', 'Phone', v('applicant.phone'), '+1 555 0100', 'tel')}
+      ${textField('applicant.location', 'Location', v('applicant.location'), 'City, Country')}
+      ${textField('applicant.linkedin_url', 'LinkedIn', v('applicant.linkedin_url'), 'https://linkedin.com/in/…', 'url')}
+      ${textField('applicant.portfolio_url', 'Website / portfolio', v('applicant.portfolio_url'), 'https://…', 'url')}</div>`);
     const scout = section('scout', 'Scout schedule', 'A scheduled job searches your saved searches on this interval.', `
       ${toggle('scout.enabled', 'Run Scout automatically', v('scout.enabled'))}
-      <div class="job-os-grid">${numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>`, 'Phase 1');
+      <div class="job-os-grid">${numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>`);
     const notify = section('notifications', 'Notifications', gmailReady ? '' : 'Set up Gmail above to turn email on.', `
       ${toggle('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials')}
       <div class="job-os-grid">${textField('notifications.to_address', 'Send to', v('notifications.to_address'), 'you@gmail.com', 'email')}</div>
@@ -170,9 +187,20 @@
       <fieldset class="job-os-ats"><legend>Allowed application systems</legend>${ATS.map(([key, name]) => `<label><input type="checkbox" data-setting="auto_apply.allowed_ats" value="${key}" ${(v('auto_apply.allowed_ats') || []).includes(key) ? 'checked' : ''}>${esc(name)}</label>`).join('')}</fieldset>
       <div class="job-os-grid">${numberField('auto_apply.daily_cap', 'Daily limit', v('auto_apply.daily_cap'), 1, 50, 'applications')}${numberField('auto_apply.min_fit_score', 'Minimum fit score', v('auto_apply.min_fit_score'), 0, 100, '/ 100')}</div>
       ${toggle('auto_apply.dry_run_first', 'Dry run first', v('auto_apply.dry_run_first'), 'Fill the form and capture a screenshot without sending, before the first real submission to each site')}`, 'Phase 6');
-    const resume = section('resume', 'Resume', 'Your Main Resume is uploaded in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>', 'Phase 3');
+    const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${scout}${notify}${auto}${resume}${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${applicant}${scout}${notify}${auto}${resume}${bar}</form>`;
+  }
+  // ---- Pipeline toolbar ------------------------------------------------------
+  function sortJobs(jobs, by) {
+    if (by !== 'fit') return jobs;
+    const score = (j) => (j.analysis && j.analysis.fit_score != null ? j.analysis.fit_score : -1);
+    return jobs.slice().sort((a, b) => score(b) - score(a));
+  }
+  function pipelineBar(state, jobs) {
+    const unanalysed = jobs.filter((j) => j.status === 'scraped' && j.has_description && !j.analysis).length;
+    const busy = jobs.filter(analysing).length;
+    return `<div class="scout-bar pipeline-bar"><label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best fit</option></select></label>${busy ? `<span class="job-os-chip muted analysing-chip">Analysing ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn primary" data-job-os-action="analyze-new">Analyse ${unanalysed} new</button>` : ''}</div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -246,12 +274,47 @@
       ${finds.length ? `<section class="job-os-card"><div class="job-os-card-head"><h2>Latest finds <span class="job-os-count">${finds.length}</span></h2><button type="button" class="job-os-link" data-job-os-filter="scraped">View in Pipeline</button></div><div class="job-os-list scout-finds">${finds.map(jobCard).join('')}</div></section>` : ''}`;
   }
   // ---- Job detail -------------------------------------------------------------
+  function detailActions(job) {
+    const out = [];
+    const a = job.analysis;
+    if (!job.description) out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-details">Fetch details</button>');
+    if (job.status === 'analyzed') out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-status" data-status="shortlisted">Shortlist</button>');
+    if (['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(job.status)) out.push('<button type="button" class="job-os-btn" data-job-os-action="job-status" data-status="skipped">Skip</button>');
+    if (job.description && !analysing(job)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="job-analyze">${a && a.status === 'done' ? 'Re-analyse' : 'Analyse'}</button>`);
+    return out.join('');
+  }
+  function analysisPanel(job) {
+    const a = job.analysis;
+    if (!a) return '';
+    if (analysing(job)) return '<div class="job-os-analysis is-busy"><span class="fit-ring large is-busy"><span>…</span></span><div><strong>Luna is reading this job against your resume…</strong><div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>';
+    if (a.status === 'failed') return `<div class="job-os-analysis is-failed"><span class="fit-ring large is-failed"><span>!</span></span><div><strong>Analysis failed</strong><p>${esc(a.error || '')}</p></div></div>`;
+    const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
+    return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-verdict="${esc(a.verdict)}">${esc((a.verdict || '').replace(/^./, (c) => c.toUpperCase()))} match</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
+      ${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
+      <div class="analysis-cols">${a.strengths && a.strengths.length ? `<div><h4>Strengths</h4>${list(a.strengths, 'is-good')}</div>` : ''}${a.gaps && a.gaps.length ? `<div><h4>Gaps</h4>${list(a.gaps, 'is-gap')}</div>` : ''}${a.must_haves && a.must_haves.length ? `<div><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}</div>
+      ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div></div>`;
+  }
+  // ---- Resume Studio ---------------------------------------------------------
+  function resumeView(state) {
+    const r = state.resume;
+    const upload = `<div class="resume-drop" id="resume-drop" tabindex="0" role="button" aria-label="Upload resume"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg><strong>Drop your resume here</strong><span>or click to choose · PDF, DOCX, Markdown or text · up to 5 MB</span><input type="file" id="resume-file" accept=".pdf,.docx,.md,.markdown,.txt" hidden></div>
+      <details class="resume-paste"><summary>Paste text instead</summary><textarea id="resume-text" rows="8" placeholder="Paste your resume text"></textarea><button type="button" class="job-os-btn" data-job-os-action="resume-paste">Save pasted resume</button></details>
+      <p class="job-os-error" role="alert">${esc(state.resumeError || '')}</p>`;
+    if (!r || state.resumeReplacing) {
+      return `<section class="job-os-card"><div class="job-os-card-head"><h2>${r ? 'Replace your master resume' : 'Your master resume'}</h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
+    }
+    return `<section class="job-os-card resume-master"><div class="job-os-card-head"><h2>Master resume</h2><button type="button" class="job-os-btn" data-job-os-action="resume-replace">Replace</button></div>
+      <div class="job-os-chips"><span class="job-os-chip">${esc(r.filename)}</span><span class="job-os-chip muted">${Number(r.words || 0).toLocaleString()} words</span><span class="job-os-chip muted">Updated ${esc(when(r.uploaded_at))}</span><span class="job-os-chip muted">Version ${Number(r.revision || 1)}</span></div>
+      <details class="job-os-desc-wrap"><summary>Show text</summary><div class="job-os-description">${esc(r.text)}</div></details></section>`;
+  }
   function jobDetail(job) {
     if (!job) return '';
     const meta = [job.company, job.location].filter(Boolean).map(esc).join(' · ');
     return `<section class="job-os-card job-os-detail" id="job-os-detail"><div class="job-os-detail-head"><div><h2>${esc(job.title)}</h2><p>${meta}</p>${jobChips(job)}</div><div class="job-os-detail-side">${badge(job.status)}<button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details">×</button></div></div>
-      <div class="job-os-actions"><a class="job-os-btn primary" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">Open posting</a>${job.posted_at ? `<span class="job-os-chip muted">Posted ${esc(String(job.posted_at).slice(0, 10))}</span>` : ''}<span class="job-os-chip muted">${esc(job.source)}</span></div>
-      ${job.description ? `<div class="job-os-description">${esc(job.description)}</div>` : '<p class="job-os-card-note">No description was captured for this job.</p>'}</section>`;
+      <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">Open posting</a>${job.posted_at ? `<span class="job-os-chip muted">Posted ${esc(String(job.posted_at).slice(0, 10))}</span>` : ''}<span class="job-os-chip muted">${esc(job.source)}</span></div>
+      ${analysisPanel(job)}
+      ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>` : '<p class="job-os-card-note">No description yet. Fetch details reads the posting page.</p>'}
+      <p class="job-os-keys" aria-hidden="true"><kbd>J</kbd><kbd>K</kbd> next/previous · <kbd>S</kbd> shortlist · <kbd>X</kbd> skip · <kbd>A</kbd> analyse · <kbd>Esc</kbd> close</p></section>`;
   }
   function shell(state) {
     const view = state.activeView;
@@ -271,7 +334,8 @@
       const filter = state.statusFilter;
       body = `${header('Pipeline', filter ? `Jobs currently ${statusLabel(filter).toLowerCase()}.` : 'Every job in this profile, newest first.', state)}
         ${jobDetail(state.jobDetail)}
-        <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${jobs.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Clear filter</button>' : ''}</div>${jobList(jobs, 'No jobs here', filter ? 'No jobs match this status right now.' : 'Import a role from the dashboard to start your pipeline.')}</section>`;
+        ${pipelineBar(state, jobs)}
+        <section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${jobs.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Clear filter</button>' : ''}</div>${jobList(sortJobs(jobs, state.sortBy), 'No jobs here', filter ? 'No jobs match this status right now.' : 'Run a Scout search or import a role to start your pipeline.')}</section>`;
     } else if (view === 'applications') {
       const applied = jobs.filter((job) => APPLIED.includes(job.status));
       body = `${header('Applications', 'Submitted applications and where each one stands.', state)}
@@ -281,7 +345,7 @@
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules, notifications and auto-apply for this profile.', state)}${settingsView(state)}`;
     } else {
-      body = `${header('Resume Studio', 'Your master CV and tailored versions.', state)}${placeholder('resume-studio', 'Your master CV and tailored versions will appear here.')}`;
+      body = `${header('Resume Studio', 'Your master resume and the versions tailored from it.', state)}${resumeView(state)}${typeof tailoredView === 'function' ? tailoredView(state) : ''}`;
     }
     return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view)}<main class="job-os-content">${body}</main></div>`;
   }

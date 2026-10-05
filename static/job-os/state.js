@@ -28,6 +28,10 @@
     searchForm: null, // null = closed; {id?, name, keywords, locations, sites, remote_only}
     searchError: '',
     jobDetail: null,
+    sortBy: 'newest', // Pipeline: 'newest' | 'fit'
+    resume: null,
+    resumeError: '',
+    resumeReplacing: false,
     gmailEditing: false,
     gmailMessage: null,
   };
