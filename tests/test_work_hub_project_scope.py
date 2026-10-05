@@ -246,3 +246,35 @@ def test_a_chat_filed_under_a_work_hub_project_stays_in_the_chat_list():
     finally:
         _call("/api/session/delete", {"session_id": sid})
         _call("/api/projects/delete", {"project_id": wh["project_id"]})
+
+
+def test_the_delete_mode_wiggle_plays_even_with_reduced_motion():
+    """Windows' "Animation effects: off" makes Chrome report reduced motion;
+    the owner still wants the folders to wiggle in delete mode."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    wh = _project(f"WH wiggle {uuid.uuid4().hex[:6]}", True)
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
+                page.goto(BASE + "/", wait_until="domcontentloaded")
+                page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+                page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+                page.evaluate("async () => { await switchPanel('notes'); }")
+                page.wait_for_function("(name) => document.querySelector('#workHubSidebar').innerText.includes(name)",
+                                       arg=wh["name"], timeout=20000)
+                page.click("#workHubProjectCreate")
+                page.click(".work-hub-create-menu [data-delete-project]")
+                page.wait_for_selector(".work-hub-project-delete-wrap", timeout=10000)
+                state = page.evaluate("""() => ({
+                  reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+                  animations: [...document.querySelectorAll('.work-hub-project-delete-wrap')]
+                    .map(w => getComputedStyle(w).animationName),
+                })""")
+            finally:
+                browser.close()
+        assert state["reduced"], "precondition: the page sees reduced motion"
+        assert state["animations"] and all(a == "work-hub-project-wiggle" for a in state["animations"]), state
+    finally:
+        _call("/api/projects/delete", {"project_id": wh["project_id"]})

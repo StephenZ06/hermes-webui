@@ -3726,7 +3726,10 @@
 .work-hub-projects{padding:0 0 10px;}
 .work-hub-project-create-row{position:relative;display:flex;justify-content:center;padding:0 0 8px;}
 /* Delete mode (+ > Delete project), after iOS's hold-to-edit: deletable
-   folders wiggle with a red outline and an X; the rest stay still and dim. */
+   folders wiggle with a red outline and an X; the rest stay still and dim.
+   The wiggle deliberately ignores prefers-reduced-motion: it is under a
+   degree, only runs in a mode the user just chose, and is the cue the owner
+   asked for (Windows "Animation effects: off" reports reduced motion). */
 .work-hub-project-delete-wrap{position:relative;border-radius:8px;transform-origin:50% 50%;}
 .work-hub-project-delete-wrap>[data-project-toggle]{padding-right:36px;border-color:color-mix(in srgb,var(--error,#e5484d) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--error,#e5484d) 22%,transparent),0 0 12px color-mix(in srgb,var(--error,#e5484d) 22%,transparent);cursor:default;}
 .work-hub-project-delete-wrap>.work-hub-project-tile .work-hub-project-count{visibility:hidden;}
@@ -3740,7 +3743,6 @@
 .work-hub-projects.is-delete-mode .work-hub-project-tile.is-locked{opacity:.45;cursor:default;}
 .work-hub-project-delete-done{min-width:72px;height:26px;padding:0 14px;border:1px solid var(--accent);border-radius:999px;background:var(--accent-bg);color:var(--accent-text,var(--accent));font:inherit;font-size:11px;font-weight:650;cursor:pointer;}
 .work-hub-project-delete-done:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
-@media (prefers-reduced-motion:reduce){.work-hub-project-delete-wrap.is-wiggling{animation:none;}}
 .work-hub-project-tile{display:grid;grid-template-columns:16px 8px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:36px;padding:7px 8px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
 .work-hub-project-tile:hover,.work-hub-project-tile.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg);}
 .work-hub-project-color{width:8px;height:8px;border-radius:50%;margin-right:4px;}

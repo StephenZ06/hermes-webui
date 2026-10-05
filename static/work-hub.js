@@ -89,6 +89,7 @@
   // here, or empty -- the server marks them `deletable`) wiggle with a red
   // outline and an X; the rest stay still. Done, Escape or a click elsewhere
   // leaves it. The X still confirms: a delete removes boards and work items.
+  // The wiggle plays even with reduced motion on (see style.css).
   let deleteModeExit = null;
   function enterProjectDeleteMode() {
     if (!store.projects.some(project => project && project.deletable)) {
