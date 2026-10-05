@@ -87,3 +87,20 @@ def test_job_links_are_picked_from_a_careers_page():
         "https://boards.greenhouse.io/acme/jobs/4567",
         "https://jobs.lever.co/acme/8f1c2d3e-aaaa-bbbb-cccc-1234567890ab",
     ]
+
+
+def test_board_pages_are_told_apart_from_single_postings():
+    from api.job_os.extract import looks_like_single_posting
+    assert looks_like_single_posting("https://jobs.lever.co/acme/8f1c2d3e-aaaa-bbbb-cccc-1234567890ab")
+    assert not looks_like_single_posting("https://jobs.lever.co/acme")
+    assert not looks_like_single_posting("https://jobs.ashbyhq.com/acme")
+    assert looks_like_single_posting("https://boards.greenhouse.io/acme/jobs/123")
+    assert not looks_like_single_posting("https://boards.greenhouse.io/acme")
+    assert looks_like_single_posting("https://apply.workable.com/acme/j/AB12CD34/")
+    assert looks_like_single_posting("https://careers.example.com/anything"), "unknown sites are judged by their data"
+
+
+def test_location_requirement_lists_are_joined():
+    remote = dict(POSTING, jobLocationType="TELECOMMUTE", jobLocation=None,
+                  applicantLocationRequirements=[{"@type": "Country", "name": "Argentina"}, {"@type": "Country", "name": "Chile"}])
+    assert extract_job_posting(_page(remote), "https://x.test/j")["location"] == "Remote (Argentina, Chile)"

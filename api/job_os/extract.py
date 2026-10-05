@@ -48,6 +48,8 @@ def _walk(node):
 
 
 def _text(value) -> str:
+    if isinstance(value, list):
+        return ", ".join(dict.fromkeys(t for t in (_text(v) for v in value) if t))
     if isinstance(value, dict):
         value = value.get("name") or value.get("@value") or ""
     return re.sub(r"\s+", " ", html.unescape(str(value or ""))).strip()
@@ -179,3 +181,25 @@ def job_links_from_page(links: list[str], page_url: str, *, limit: int = 50) -> 
         if len(picked) >= limit:
             break
     return picked
+
+
+# ---- single-posting URL shapes on application-tracking sites ---------------
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_POSTING_SHAPES = {
+    "jobs.lever.co": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
+    "jobs.eu.lever.co": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
+    "jobs.ashbyhq.com": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
+    "boards.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
+    "job-boards.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
+    "job-boards.eu.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
+    "apply.workable.com": re.compile(r"^/[^/]+/j/[0-9A-Za-z]+/?$"),
+    "jobs.smartrecruiters.com": re.compile(r"^/[^/]+/\d{6,}[^/]*/?$"),
+}
+
+
+def looks_like_single_posting(url: str) -> bool:
+    """False for a known site's board/listing page; True otherwise (unknown sites
+    are read and judged by their structured data)."""
+    parts = urlsplit(url)
+    shape = _POSTING_SHAPES.get((parts.hostname or "").lower())
+    return True if shape is None else bool(shape.match(parts.path))

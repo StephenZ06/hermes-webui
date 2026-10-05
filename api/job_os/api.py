@@ -75,8 +75,10 @@ def _scout_searches_payload() -> dict:
     searches = scout.list_searches()
     for search in searches:
         search["next_run_at"] = scheduler.next_run_at(search, settings)
-    return {"searches": searches, "schedule": {"enabled": bool(settings["scout"]["enabled"]),
-                                               "hours": settings["scout"]["schedule_hours"]}}
+    from api.job_os.search_provider import search_provider_name
+
+    return {"searches": searches, "search_provider": search_provider_name(),
+            "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"]}}
 
 
 def _scout_get(handler, parsed) -> bool:

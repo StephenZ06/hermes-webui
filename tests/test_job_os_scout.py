@@ -79,9 +79,9 @@ def test_search_validation():
 def test_a_run_searches_reads_postings_and_saves_only_real_ones(store):
     search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
     fake = FakeFirecrawl(
-        results={"site:jobs.lever.co backend": ["https://jobs.lever.co/a/1", "https://jobs.lever.co/a/2",
-                                                  "https://internal.test/x", "https://jobs.lever.co/a/1"]},
-        pages={"https://jobs.lever.co/a/1": _posting("Backend Engineer"), "https://jobs.lever.co/a/2": "<html>listing page</html>"})
+        results={"site:jobs.lever.co backend": ["https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab", "https://jobs.lever.co/a/00000002-aaaa-bbbb-cccc-1234567890ab",
+                                                  "https://internal.test/x", "https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab"]},
+        pages={"https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab": _posting("Backend Engineer"), "https://jobs.lever.co/a/00000002-aaaa-bbbb-cccc-1234567890ab": "<html>listing page</html>"})
     run = _run(search, fake)
     assert run["status"] == "completed", run
     c = run["counts"]
@@ -94,7 +94,7 @@ def test_a_run_searches_reads_postings_and_saves_only_real_ones(store):
 
 def test_second_run_counts_known_jobs_as_duplicates(store):
     search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
-    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/1"]}, pages={"https://jobs.lever.co/a/1": _posting("Backend Engineer")})
+    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab"]}, pages={"https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab": _posting("Backend Engineer")})
     _run(search, fake)
     again = _run(search, fake)
     assert again["counts"]["saved"] == 0 and again["counts"]["duplicates"] == 1
@@ -103,8 +103,8 @@ def test_second_run_counts_known_jobs_as_duplicates(store):
 
 def test_remote_only_filters_onsite_postings(store):
     search = scout.create_search({"keywords": "backend", "remote_only": True, "sites": ["jobs.lever.co"]})
-    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/1", "https://jobs.lever.co/a/2"]},
-                         pages={"https://jobs.lever.co/a/1": _posting("Onsite"), "https://jobs.lever.co/a/2": _posting("Remote", remote=True)})
+    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab", "https://jobs.lever.co/a/00000002-aaaa-bbbb-cccc-1234567890ab"]},
+                         pages={"https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab": _posting("Onsite"), "https://jobs.lever.co/a/00000002-aaaa-bbbb-cccc-1234567890ab": _posting("Remote", remote=True)})
     run = _run(search, fake)
     assert run["counts"]["filtered"] == 1 and run["counts"]["saved"] == 1
     assert "remote" in fake.queries[0]
@@ -121,8 +121,8 @@ def test_careers_page_links_are_followed(store):
 
 def test_a_failed_page_does_not_lose_the_others(store):
     search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
-    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/404", "https://jobs.lever.co/a/1"]},
-                         pages={"https://jobs.lever.co/a/1": _posting("Backend")})
+    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/0000f404-aaaa-bbbb-cccc-1234567890ab", "https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab"]},
+                         pages={"https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab": _posting("Backend")})
     run = _run(search, fake)
     assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["counts"]["errors"] == 1
     assert run["errors"][0]["where"] == "jobs.lever.co"
@@ -136,14 +136,14 @@ def test_search_outage_fails_the_run_clearly(store):
 
 def test_cancel_mid_scrape_stops_before_the_next_page(store):
     search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
-    urls = [f"https://jobs.lever.co/a/{i}" for i in range(5)]
+    urls = [f"https://jobs.lever.co/a/0000000{i}-aaaa-bbbb-cccc-1234567890ab" for i in range(5)]
     holder = {}
 
     def cancel_after_first(url):
         if url == urls[0]:
             scout.cancel_run(holder["run_id"])
 
-    fake = FakeFirecrawl(results={"backend": urls}, pages={u: _posting(f"Job {u[-1]}") for u in urls}, on_scrape=cancel_after_first)
+    fake = FakeFirecrawl(results={"backend": urls}, pages={u: _posting(f"Job {i}") for i, u in enumerate(urls)}, on_scrape=cancel_after_first)
     original = scout._update_run
 
     def capture(run_id, **fields):
@@ -179,10 +179,50 @@ def test_restart_marks_orphaned_runs_interrupted(store):
 
 def test_update_is_revisioned_and_delete_keeps_found_jobs(store):
     search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
-    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/1"]}, pages={"https://jobs.lever.co/a/1": _posting("Backend")})
+    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab"]}, pages={"https://jobs.lever.co/a/00000001-aaaa-bbbb-cccc-1234567890ab": _posting("Backend")})
     _run(search, fake)
     updated = scout.update_search(search["id"], {"enabled": False}, expected_revision=0)
     assert updated["enabled"] is False and updated["revision"] == 1
     with pytest.raises(scout.ScoutConflict):
         scout.update_search(search["id"], {"enabled": True}, expected_revision=0)
     assert scout.delete_search(search["id"]) and len(list_jobs()) == 1
+
+
+def test_the_quota_is_shared_across_sites(store, monkeypatch):
+    from api.job_os.settings import save_settings
+    save_settings({"scout": {"max_results_per_search": 4}}, expected_revision=0)
+    search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co", "careers.example.com"]})
+    lever = [f"https://jobs.lever.co/a/0000000{i}-aaaa-bbbb-cccc-1234567890ab" for i in range(6)]
+    workable = [f"https://careers.example.com/jobs/{i}" for i in range(6)]
+    fake = FakeFirecrawl(results={"site:jobs.lever.co": lever, "site:careers.example.com": workable},
+                         pages={u: _posting(u) for u in lever + workable})
+    run = _run(search, fake)
+    hosts = sorted({u.split("/")[2] for u in fake.scraped})
+    assert run["counts"]["saved"] == 4 and hosts == ["careers.example.com", "jobs.lever.co"]
+
+
+def test_greenhouse_postings_are_read_from_the_public_api(store, monkeypatch):
+    search = scout.create_search({"keywords": "backend", "sites": ["boards.greenhouse.io"]})
+    fetched = []
+    monkeypatch.setattr(scout, "fetch_json", lambda url: fetched.append(url) or {"title": "Backend", "company_name": "Hex", "location": {"name": "NYC"}, "content": "x"})
+    fake = FakeFirecrawl(results={"backend": ["https://boards.greenhouse.io/hex/jobs/42"]})
+    run = _run(search, fake)
+    assert run["counts"]["saved"] == 1 and fake.scraped == [], "the Greenhouse page itself is not scraped"
+    assert fetched == ["https://boards-api.greenhouse.io/v1/boards/hex/jobs/42?pay_transparency=true"]
+
+
+def test_board_pages_and_closed_greenhouse_postings_are_counted_not_errors(store, monkeypatch):
+    search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
+
+    def closed(url):
+        raise scout.FetchError("HTTP 404")
+
+    monkeypatch.setattr(scout, "fetch_json", closed)  # Greenhouse API: posting gone
+    uuid_ = "8f1c2d3e-aaaa-bbbb-cccc-1234567890ab"
+    fake = FakeFirecrawl(results={"backend": ["https://jobs.lever.co/acme", f"https://jobs.lever.co/acme/{uuid_}",
+                                              "https://boards.greenhouse.io/hex/jobs/9"]},
+                         pages={f"https://jobs.lever.co/acme/{uuid_}": _posting("Backend")})
+    run = _run(search, fake)
+    c = run["counts"]
+    assert (c["not_postings"], c["saved"], c["closed"], c["errors"]) == (1, 1, 1, 0)
+    assert "https://jobs.lever.co/acme" not in fake.scraped

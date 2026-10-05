@@ -25,7 +25,8 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from api.job_os.db import connect_job_os
-from api.job_os.extract import ATS_HOSTS, extract_job_posting, job_links_from_page
+from api.job_os.ats_api import ats_posting, canonical_posting_url
+from api.job_os.extract import extract_job_posting, job_links_from_page, looks_like_single_posting
 from api.job_os.models import DuplicateJobError, JobStatus, JobValidationError
 from api.job_os.network_policy import UnsafeJobUrl, validate_external_job_url
 from api.job_os.repository import create_job, normalize_job_input
@@ -35,8 +36,9 @@ TERMINAL_STATES = ("completed", "cancelled", "failed", "interrupted")
 DEFAULT_SITES = ("boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
                  "apply.workable.com", "jobs.smartrecruiters.com")
 MAX_ERRORS = 20
+MAX_QUERIES = 15
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
-                 "duplicates": 0, "not_postings": 0, "filtered": 0, "unsafe": 0, "errors": 0}
+                 "duplicates": 0, "not_postings": 0, "filtered": 0, "unsafe": 0, "closed": 0, "errors": 0}
 # Runs with a live worker in this process (threaded or inline).
 _LIVE_RUNS: set[str] = set()
 _LOCK = threading.Lock()
@@ -290,8 +292,10 @@ def _default_client():
     from api.job_os.firecrawl import FirecrawlClient, resolve_firecrawl_config
     from api.job_os.settings import load_settings
 
+    from api.job_os.search_provider import make_scout_client
+
     override = (load_settings().get("firecrawl") or {}).get("api_url") or None
-    return FirecrawlClient(resolve_firecrawl_config(override))
+    return make_scout_client(FirecrawlClient(resolve_firecrawl_config(override)))
 
 
 def start_discovery(search_id: str, *, trigger: str = "manual", idempotency_key: str | None = None,
@@ -345,6 +349,31 @@ def _queries(search: dict) -> list[str]:
         query = f"{base} {location}".strip()
         out.extend(f"site:{domain} {query}" for domain in domains)
     return out
+
+
+class FetchError(RuntimeError):
+    pass
+
+
+def fetch_json(url: str, *, timeout: float = 20.0, limit: int = 2 * 1024 * 1024) -> dict:
+    """GET a public JSON API (already URL-policy checked), size- and time-bounded."""
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "HermesJobs/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - policy-checked URL
+            body = response.read(limit + 1)
+    except urllib.error.HTTPError as error:
+        raise FetchError(f"HTTP {error.code}") from error
+    except (urllib.error.URLError, OSError, TimeoutError) as error:
+        raise FetchError("did not answer") from error
+    if len(body) > limit:
+        raise FetchError("response too large")
+    try:
+        return json.loads(body.decode("utf-8", "replace"))
+    except ValueError as error:
+        raise FetchError("not JSON") from error
 
 
 def _source_for(url: str) -> str:
@@ -407,7 +436,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         def offer(url: str) -> None:
             counts["found"] += 1
             try:
-                safe = validate_external_job_url(url)
+                safe = validate_external_job_url(canonical_posting_url(url))
             except UnsafeJobUrl:
                 counts["unsafe"] += 1
                 return
@@ -421,6 +450,9 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             seen.add(canonical)
             if canonical in known:
                 counts["duplicates"] += 1
+                return
+            if not looks_like_single_posting(safe):
+                counts["not_postings"] += 1  # a board/listing page, not one posting
                 return
             candidates.append(safe)
 
@@ -439,19 +471,27 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 note_error(page_url, error)
             save(detail=f"Checked careers page {urlsplit(page_url).hostname}")
 
-        for query in _queries(search):
+        # Every query gets a fair share of the quota, so the first site cannot
+        # crowd out the rest; leftovers from thin sites go to the next ones.
+        queries = _queries(search)[:MAX_QUERIES]
+        for position, query in enumerate(queries):
             if _cancel_requested(run_id):
                 finish("cancelled", "Cancelled")
                 return
-            if len(candidates) >= max_results:
+            room = max_results - len(candidates)
+            if room <= 0:
                 break
+            share = max(1, -(-room // (len(queries) - position)))
             counts["queries"] += 1
+            before = len(candidates)
             try:
-                for result in client.search(query, limit=min(10, max_results)):
+                for result in client.search(query, limit=min(10, max(share * 2, 3))):
+                    if len(candidates) - before >= share:
+                        break
                     offer(result["url"])
             except FirecrawlError as error:
                 note_error(query, error)
-            save(detail=f"Searched {counts['queries']} of {len(_queries(search))} queries")
+            save(detail=f"Searched {counts['queries']} of {len(queries)} queries")
 
         candidates = candidates[:max_results]
         counts["candidates"] = len(candidates)
@@ -459,6 +499,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             finish("failed", "Firecrawl could not search; check Settings → Connections")
             return
         save("scraping", f"Reading {len(candidates)} pages")
+        board_cache: dict = {}  # whole-board API answers, fetched once per run
 
         for index, url in enumerate(candidates, start=1):
             if _cancel_requested(run_id):
@@ -466,9 +507,18 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 return
             try:
                 safe = validate_external_job_url(url)  # resolve again at the moment of use
-                page = client.scrape(safe)
+                kind, posting = ats_posting(safe, lambda api: fetch_json(validate_external_job_url(api)), board_cache)
+                if kind == "unsupported":
+                    page = client.scrape(safe)
+                    if page.get("status") in (404, 410):
+                        kind = "closed"
+                    else:
+                        posting = extract_job_posting(page["html"], safe)
                 counts["scraped"] += 1
-                posting = extract_job_posting(page["html"], safe)
+                if kind == "closed":
+                    counts["closed"] += 1  # the site no longer lists this posting
+                    save(detail=f"Read {index} of {len(candidates)} pages · {counts['saved']} new")
+                    continue
                 if posting is None:
                     counts["not_postings"] += 1
                 elif search["remote_only"] and posting["workplace"] != "remote":
@@ -484,7 +534,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     new_ids.append(record.id)
             except DuplicateJobError:
                 counts["duplicates"] += 1
-            except (UnsafeJobUrl, FirecrawlError, JobValidationError) as error:
+            except (UnsafeJobUrl, FirecrawlError, FetchError, JobValidationError) as error:
                 note_error(urlsplit(url).hostname or url, error)
             save(detail=f"Read {index} of {len(candidates)} pages · {counts['saved']} new")
 
