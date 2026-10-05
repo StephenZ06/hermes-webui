@@ -859,6 +859,60 @@ function openDashboardAttention(item, model) {
   openDashboardWorker(item && item.worker, model.mode);
 }
 
+// Work distribution can open one floor's completed tasks inside the card.
+// Kept per outlet so a re-render (every live sync) does not close it.
+let _dashboardFloorDetail = null; // { outlet, key }
+
+function dashboardFloorDetailKey(model) {
+  if (!_dashboardFloorDetail || _dashboardFloorDetail.outlet !== model.mode) return null;
+  return model.floors.some(floor => floor.key === _dashboardFloorDetail.key) ? _dashboardFloorDetail.key : null;
+}
+
+function dashboardDistributionPanel(model) {
+  const openKey = dashboardFloorDetailKey(model);
+  const floor = openKey ? model.floors.find(item => item.key === openKey) : null;
+  if (floor) {
+    const done = floor.workers.filter(worker => taskStatusBucket(worker.status) === 'done')
+      .sort((a, b) => (b.endedAt || b.spawnedAt || 0) - (a.endedAt || a.spawnedAt || 0));
+    return `<article class="office-dashboard-panel office-dashboard-distribution is-floor-detail" data-dashboard-panel="distribution">
+      <div class="office-dashboard-panel-head"><button type="button" class="office-dashboard-floor-back" data-dashboard-floor-back aria-label="Back to all floors">‹</button>
+      <h2 class="office-dashboard-floor-title"><span class="office-dashboard-floor-dot" style="background:${esc(floor.color || 'var(--accent)')}"></span>${esc(floor.name)}</h2>
+      <span>${done.length} completed</span></div>
+      <div class="office-dashboard-panel-body office-dashboard-floor-detail">${done.length
+        ? done.map(worker => dashboardWorkerRow(worker, 'is-done')).join('')
+        : `<div class="office-dashboard-empty">No completed tasks on ${esc(floor.name)} yet.</div>`}</div></article>`;
+  }
+  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution"><div class="office-dashboard-panel-head"><h2>Work distribution</h2><span>${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}</span></div><div class="office-dashboard-panel-body">${model.floors.length
+    ? model.floors.map(item => `<button type="button" class="office-dashboard-floor" data-dashboard-floor="${esc(item.key)}" aria-label="${esc(item.name)}: show completed tasks"><span class="office-dashboard-floor-dot" style="background:${esc(item.color || 'var(--accent)')}"></span><span><strong>${esc(item.name)}</strong><small>${item.workers.length} assigned</small></span><small>${item.active} active · ${item.completed} done</small><span class="office-dashboard-floor-chevron" aria-hidden="true">›</span></button>`).join('')
+    : '<div class="office-dashboard-empty">No delegated work in this office yet.</div>'}</div></article>`;
+}
+
+function bindDashboardDistribution(host, state) {
+  const card = host.querySelector('[data-dashboard-panel="distribution"]');
+  if (!card) return;
+  const rerender = focusSelector => {
+    renderOfficeDashboard(state);
+    const target = focusSelector && document.querySelector(focusSelector);
+    if (target) target.focus({ preventScroll: true });
+  };
+  card.querySelectorAll('[data-dashboard-floor]').forEach(button => {
+    button.onclick = () => {
+      _dashboardFloorDetail = { outlet: _outlet, key: button.dataset.dashboardFloor };
+      rerender('[data-dashboard-floor-back]');
+    };
+  });
+  const back = card.querySelector('[data-dashboard-floor-back]');
+  if (back) {
+    const key = _dashboardFloorDetail && _dashboardFloorDetail.key;
+    const close = () => {
+      _dashboardFloorDetail = null;
+      rerender(key ? `[data-dashboard-floor="${CSS.escape(key)}"]` : null);
+    };
+    back.onclick = close;
+    card.onkeydown = event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } };
+  }
+}
+
 function renderOfficeDashboard(state) {
   const host = document.getElementById('officeDashboardContent');
   if (!host) return;
@@ -880,14 +934,15 @@ function renderOfficeDashboard(state) {
     <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
   </div></div>
   <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><span>${label}</span><strong>${value}</strong><small>${detail}</small></button>`).join('')}</section>
-  <section class="office-dashboard-grid"><article class="office-dashboard-panel office-dashboard-distribution"><div class="office-dashboard-panel-head"><h2>Work distribution</h2><span>${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}</span></div>${model.floors.length ? `<div class="office-dashboard-floor-list">${model.floors.map(floor => `<div class="office-dashboard-floor"><span class="office-dashboard-floor-dot" style="background:${esc(floor.color || 'var(--accent)')}"></span><span><strong>${esc(floor.name)}</strong><small>${floor.workers.length} assigned</small></span><small>${floor.active} active · ${floor.completed} done</small></div>`).join('')}</div>` : '<div class="office-dashboard-empty">No delegated work in this office yet.</div>'}</article>
-  <article class="office-dashboard-panel"><div class="office-dashboard-panel-head"><h2>Live delegation</h2><span>${model.live.length} active</span></div>${rows(model.live, 'is-live', 'No active delegation right now.')}</article>
-  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention"><div class="office-dashboard-panel-head"><h2>Attention required</h2><span>${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}</span></div>${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : '<div class="office-dashboard-empty">Everything is on track.</div>'}</article>
-  <article class="office-dashboard-panel" data-dashboard-panel="completed"><div class="office-dashboard-panel-head"><h2>Recent completions</h2><span>${model.recent.length} shown</span></div>${rows(model.recent, 'is-done', 'Completed work will appear here.')}</article>
+  <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
+  <article class="office-dashboard-panel"><div class="office-dashboard-panel-head"><h2>Live delegation</h2><span>${model.live.length} active</span></div><div class="office-dashboard-panel-body">${rows(model.live, 'is-live', 'No active delegation right now.')}</div></article>
+  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention"><div class="office-dashboard-panel-head"><h2>Attention required</h2><span>${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}</span></div><div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : '<div class="office-dashboard-empty">Everything is on track.</div>'}</div></article>
+  <article class="office-dashboard-panel" data-dashboard-panel="completed"><div class="office-dashboard-panel-head"><h2>Recent completions</h2><span>${model.recent.length} shown</span></div><div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', 'Completed work will appear here.')}</div></article>
   <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${officeIcon('settings', 'Integrations')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor.</small></span><span aria-hidden="true">›</span></button></section>`;
   host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
     button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
   });
+  bindDashboardDistribution(host, state);
   host.querySelectorAll('[data-dashboard-worker-id]').forEach(button => {
     button.onclick = () => openDashboardWorker(model.workers.find(worker => worker.id === button.dataset.dashboardWorkerId), model.mode);
   });
