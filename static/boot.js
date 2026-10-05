@@ -358,12 +358,20 @@ async function _maybeBindFreshDefaultWorkspaceSession(prefillIntent=null){
  * tooltip co-fires alongside the fast custom CSS tooltip — exactly the bug
  * #1775 reports. Always pair `data-tooltip` with `removeAttribute('title')`.
  */
+// Same-value writes still count as DOM mutations; these helpers write only on
+// change, since this sync runs on every locale re-apply and chat load.
+function _setAttrIfChanged(el, name, value){
+  if(el && el.getAttribute(name)!==value) el.setAttribute(name, value);
+}
+function _setDisabledIfChanged(el, disabled){
+  if(el && el.disabled!==disabled) el.disabled=disabled;
+}
 function _setButtonTooltip(btn, text){
   if(!btn) return;
   if(btn.hasAttribute('data-tooltip')){
-    btn.setAttribute('data-tooltip', text);
+    _setAttrIfChanged(btn, 'data-tooltip', text);
     if(btn.hasAttribute('title')) btn.removeAttribute('title');
-  } else {
+  } else if(btn.title!==text){
     btn.title = text;
   }
 }
@@ -387,35 +395,34 @@ function syncWorkspacePanelUI(){
   const hasPreview=_hasWorkspacePreviewVisible();
   if(toggleBtn){
     toggleBtn.classList.toggle('active',isOpen);
-    toggleBtn.setAttribute('aria-pressed',isOpen?'true':'false');
+    _setAttrIfChanged(toggleBtn,'aria-pressed',isOpen?'true':'false');
     const label=_uiText(isOpen?'workspace_panel_hide':'workspace_panel_show', isOpen?'Hide workspace panel':'Show workspace panel');
     _setButtonTooltip(toggleBtn, label);
-    toggleBtn.setAttribute('aria-label', label);
-    toggleBtn.disabled=!canBrowse;
+    _setAttrIfChanged(toggleBtn,'aria-label', label);
+    _setDisabledIfChanged(toggleBtn,!canBrowse);
   }
   if(edgeToggleBtn){
     edgeToggleBtn.classList.toggle('active',isOpen);
-    edgeToggleBtn.setAttribute('aria-expanded',isOpen?'true':'false');
+    _setAttrIfChanged(edgeToggleBtn,'aria-expanded',isOpen?'true':'false');
     const label=_uiText(isOpen?'workspace_panel_hide':'workspace_panel_show', isOpen?'Hide workspace panel':'Show workspace panel');
     _setButtonTooltip(edgeToggleBtn, label);
-    edgeToggleBtn.setAttribute('aria-label', label);
-    edgeToggleBtn.disabled=!canBrowse;
+    _setAttrIfChanged(edgeToggleBtn,'aria-label', label);
+    _setDisabledIfChanged(edgeToggleBtn,!canBrowse);
   }
   if(collapseBtn){
     _setButtonTooltip(collapseBtn, isCompact?_uiText('workspace_panel_close','Close workspace panel'):_uiText('workspace_panel_hide','Hide workspace panel'));
   }
   const hasSession=!!S.session;
   ['btnUpDir','btnNewFile','btnNewFolder','btnRefreshPanel'].forEach(id=>{
-    const el=$(id);
-    if(el)el.disabled=!hasSession;
+    _setDisabledIfChanged($(id),!hasSession);
   });
   const clearBtn=$('btnClearPreview');
   if(clearBtn){
-    clearBtn.disabled=!isOpen;
+    _setDisabledIfChanged(clearBtn,!isOpen);
     const label=hasPreview?_uiText('workspace_close_preview','Close preview'):_uiText('terminal_close','Close');
     _setButtonTooltip(clearBtn, label);
-    clearBtn.setAttribute('aria-label', label);
-    if(!isCompact) clearBtn.style.display='';
+    _setAttrIfChanged(clearBtn,'aria-label', label);
+    if(!isCompact && clearBtn.style.display) clearBtn.style.display='';
   }
 }
 

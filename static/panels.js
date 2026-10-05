@@ -119,24 +119,32 @@ function syncAppTitlebar() {
   // syncAppTitlebar again, destroying the input before the user finishes.
   if (_renamingAppTitlebar) return;
 
-  titleEl.textContent = mainText;
+  // Write only on change: this runs on every locale re-apply and chat load,
+  // and same-value writes still fire DOM mutations.
+  if (titleEl.textContent !== mainText) titleEl.textContent = mainText;
   if (panel !== 'chat') {
     const bot = typeof assistantDisplayName === 'function' ? assistantDisplayName() : '';
     document.title = bot ? mainText + ' \u2014 ' + bot : mainText;
   }
   if (subEl) {
-    if (subText) {
+    const badgeText = sourceLabel ? sourceLabel + (S.session && S.session.read_only ? ' · read-only' : '') : '';
+    const wanted = subText ? (badgeText ? subText + ' ' + badgeText : subText) : '';
+    const hasBadge = !!subEl.querySelector('.topbar-source-badge');
+    const unchanged = subEl.textContent === wanted && hasBadge === !!badgeText && subEl.hidden === !subText;
+    if (!unchanged && subText) {
       subEl.textContent = subText;
-      if (sourceLabel) {
+      if (badgeText) {
         const badge = document.createElement('span');
         badge.className = 'topbar-source-badge';
-        badge.textContent = sourceLabel + (S.session && S.session.read_only ? ' · read-only' : '');
+        badge.textContent = badgeText;
         subEl.appendChild(document.createTextNode(' '));
         subEl.appendChild(badge);
       }
       subEl.hidden = false;
+    } else if (!unchanged) {
+      subEl.textContent = '';
+      subEl.hidden = true;
     }
-    else { subEl.textContent = ''; subEl.hidden = true; }
   }
 
   // Double-click on the titlebar title → rename the active session (same behaviour

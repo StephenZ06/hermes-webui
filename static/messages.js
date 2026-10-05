@@ -6665,12 +6665,20 @@ async function _fetchYoloState(sid) {
 function _updateYoloPill() {
   const pill = $('yoloPill');
   if (!pill) return;
-  pill.style.display = _yoloEnabled ? '' : 'none';
+  const display = _yoloEnabled ? '' : 'none';
+  if (pill.style.display !== display) pill.style.display = display;
   if (_yoloEnabled) {
-    pill.title = t('yolo_pill_title_active');
-    pill.setAttribute('data-i18n-title', 'yolo_pill_title_active');
+    // Localise just this pill; re-applying the locale to the whole document
+    // on every chat load rewrote hundreds of nodes for one tooltip.
+    const label = t('yolo_pill_title_active');
+    if (pill.getAttribute('data-i18n-title') !== 'yolo_pill_title_active') pill.setAttribute('data-i18n-title', 'yolo_pill_title_active');
+    if (pill.hasAttribute('data-tooltip')) {
+      if (pill.getAttribute('data-tooltip') !== label) pill.setAttribute('data-tooltip', label);
+      if (pill.hasAttribute('title')) pill.removeAttribute('title');
+    } else if (pill.title !== label) {
+      pill.title = label;
+    }
   }
-  if (typeof applyLocaleToDOM === 'function') applyLocaleToDOM();
 }
 
 async function toggleYoloFromApproval() {

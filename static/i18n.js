@@ -29966,11 +29966,17 @@ function loadLocale() {
  * Safe to call at any time — missing keys fall back to English.
  * Call after setLocale() to make static HTML text update without a reload.
  */
+// Writes only what changed: re-applying an unchanged locale (many callers do,
+// e.g. on every chat load) must not rewrite hundreds of nodes -- that churn is
+// wasted layout work and floods extensions that watch the page for changes.
+function _setAttrIfChanged(el, name, value) {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
 function applyLocaleToDOM() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     const val = t(key);
-    if (val && val !== key) el.textContent = val;
+    if (val && val !== key && el.textContent !== val) el.textContent = val;
   });
   document.querySelectorAll('[data-i18n-title]').forEach(el => {
     const key = el.getAttribute('data-i18n-title');
@@ -29980,22 +29986,22 @@ function applyLocaleToDOM() {
       // Custom CSS tooltip is in use (#1775) — sync it and explicitly clear
       // the native `title` attribute so the slow ~1.5s browser tooltip never
       // co-fires alongside the fast custom tooltip.
-      el.setAttribute('data-tooltip', val);
+      _setAttrIfChanged(el, 'data-tooltip', val);
       if (el.hasAttribute('title')) el.removeAttribute('title');
     } else {
       // Element opted out of custom tooltips — fall back to the native title.
-      el.title = val;
+      _setAttrIfChanged(el, 'title', val);
     }
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const key = el.getAttribute('data-i18n-placeholder');
     const val = t(key);
-    if (val && val !== key) el.placeholder = val;
+    if (val && val !== key) _setAttrIfChanged(el, 'placeholder', val);
   });
   document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
     const key = el.getAttribute('data-i18n-aria-label');
     const val = t(key);
-    if (val && val !== key) el.setAttribute('aria-label', val);
+    if (val && val !== key) _setAttrIfChanged(el, 'aria-label', val);
   });
   if (typeof syncWorkspacePanelUI === 'function') syncWorkspacePanelUI();
   if (typeof syncAppTitlebar === 'function') syncAppTitlebar();

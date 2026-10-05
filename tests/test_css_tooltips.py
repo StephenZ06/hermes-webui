@@ -287,7 +287,8 @@ class TestI18NTooltipSync(unittest.TestCase):
         # Must reference setAttribute('data-tooltip', ...) or data-tooltip sync
         self.assertRegex(
             block,
-            r"setAttribute\s*\(\s*['\"]data-tooltip['\"]",
+            # Plain or change-guarded write (_setAttrIfChanged avoids same-value DOM churn).
+            r"(?:setAttribute|_setAttrIfChanged)\s*\(\s*(?:el\s*,\s*)?['\"]data-tooltip['\"]",
             "data-i18n-title handler does not sync data-tooltip attribute",
         )
 
@@ -342,9 +343,9 @@ class TestI18NTooltipSync(unittest.TestCase):
         )
         self.assertIsNotNone(block_match, "Could not find data-i18n-title handler")
         block = block_match.group(1)
-        self.assertIn(
-            "el.title",
+        self.assertRegex(
             block,
+            r"el\.title|_setAttrIfChanged\s*\(\s*el\s*,\s*['\"]title['\"]",
             "data-i18n-title handler must still assign el.title for "
             "elements without data-tooltip (non-rail, non-nav surfaces).",
         )

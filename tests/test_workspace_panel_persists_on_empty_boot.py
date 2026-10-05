@@ -173,8 +173,8 @@ class TestWorkspacePanelStatefulLocalization:
             assert 'data-i18n-aria-label="workspace_panel_toggle"' not in tag
             assert 'data-i18n-aria-label="workspace_panel_show"' not in tag
             assert 'data-i18n-aria-label="workspace_panel_hide"' not in tag
-        assert "toggleBtn.setAttribute('aria-label', label);" in BOOT_JS
-        assert "edgeToggleBtn.setAttribute('aria-label', label);" in BOOT_JS
+        assert "_setAttrIfChanged(toggleBtn,'aria-label', label);" in BOOT_JS
+        assert "_setAttrIfChanged(edgeToggleBtn,'aria-label', label);" in BOOT_JS
 
     def test_clear_preview_accessible_label_matches_stateful_tooltip(self):
         """The close/preview action should expose the same localized label everywhere."""
@@ -183,4 +183,8 @@ class TestWorkspacePanelStatefulLocalization:
         body = BOOT_JS[idx:idx + 600]
         assert "const label=hasPreview?" in body
         assert "_setButtonTooltip(clearBtn, label);" in body
-        assert "clearBtn.setAttribute('aria-label', label);" in body
+        assert "_setAttrIfChanged(clearBtn,'aria-label', label);" in body
+        # Stateful like the edge toggle: the sync owns the label, so the HTML
+        # carries no static i18n key for applyLocaleToDOM() to fight it with.
+        tag = _html_tag_by_id("btnClearPreview")
+        assert "data-i18n-aria-label" not in tag and "data-i18n-title" not in tag
