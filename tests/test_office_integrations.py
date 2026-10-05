@@ -30,8 +30,15 @@ def test_malformed_or_token_bearing_metadata_fails_closed_without_secrets():
     assert "refresh_token" not in safe
 
 
-def test_integrations_use_the_original_static_themed_icons():
-    assert "officeIcon('inbox', 'Gmail')" in OFFICE_JS
+def test_integrations_use_their_own_provider_artwork():
+    # Each card shows the artwork the owner supplied, by name, with no outline.
+    static = Path(__file__).resolve().parents[1] / "static"
+    assert '/static/office-integration-gmail.png' in OFFICE_JS
+    assert "/static/office-integration-${name.toLowerCase()}.png" in OFFICE_JS
+    for name in ("gmail", "marketing", "operations", "documents"):
+        icon = static / f"office-integration-{name}.png"
+        assert icon.exists(), icon
+        assert icon.stat().st_size < 32_000, f"{icon.name} should be a small, display-sized asset"
     assert "office-integration-provider-video" not in OFFICE_JS
     assert "office-integration-provider-media" not in OFFICE_CSS
     asset_root = Path(__file__).resolve().parents[1] / "static" / "office" / "integrations"
