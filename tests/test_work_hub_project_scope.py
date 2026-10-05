@@ -131,7 +131,10 @@ def test_work_hub_projects_stay_off_the_chat_and_office_sidebars():
         _call("/api/projects/delete", {"project_id": wh["project_id"]})
 
 
-def test_the_work_hub_plus_menu_deletes_a_work_hub_project():
+def test_delete_project_puts_deletable_folders_in_a_wiggling_delete_mode():
+    """+ > Delete project works like holding an app icon on iOS: deletable
+    folders wiggle with an X, others stay still; X confirms and deletes;
+    Done or Escape leaves the mode. The + button has no hover label."""
     sync_api = pytest.importorskip("playwright.sync_api")
     tag = uuid.uuid4().hex[:6]
     wh = _project(f"WH removable {tag}", True)
@@ -144,26 +147,49 @@ def test_the_work_hub_plus_menu_deletes_a_work_hub_project():
             page.evaluate("async () => { await switchPanel('notes'); }")
             page.wait_for_function("(name) => document.querySelector('#workHubSidebar').innerText.includes(name)",
                                    arg=wh["name"], timeout=20000)
+            plus_title = page.get_attribute("#workHubProjectCreate", "title")
             page.click("#workHubProjectCreate")
             page.click(".work-hub-create-menu [data-delete-project]")
-            picker = page.wait_for_selector(".work-hub-project-picker", timeout=10000)
-            options = picker.inner_text()
-            page.click(f".work-hub-project-picker .project-picker-item:has-text('{wh['name']}')")
+            page.wait_for_selector(".work-hub-projects.is-delete-mode", timeout=10000)
+            mode = page.evaluate("""() => {
+              const wraps = [...document.querySelectorAll('.work-hub-project-delete-wrap')];
+              return {
+                wiggling: wraps.map(w => w.querySelector('.work-hub-project-name').textContent),
+                animated: wraps.every(w => getComputedStyle(w).animationName === 'work-hub-project-wiggle'),
+                withX: wraps.filter(w => w.querySelector('[data-delete-project-id]')).length,
+                locked: [...document.querySelectorAll('.work-hub-project-tile.is-locked .work-hub-project-name')].map(e => e.textContent),
+                done: !!document.querySelector('#workHubDeleteDone'),
+                noPicker: !document.querySelector('.work-hub-project-picker'),
+              };
+            }""")
+            # The wiggle never lets Playwright see the X as "stable"; a person
+            # can click a target moving ~1.7px, as on iOS.
+            page.click(f"[data-delete-project-id='{wh['project_id']}']", force=True)
             page.wait_for_selector("#appDialogOverlay #appDialogConfirm", state="visible", timeout=10000)
             dialog_text = page.inner_text("#appDialogOverlay")
             page.click("#appDialogConfirm")
             page.wait_for_function("(name) => !document.querySelector('#workHubSidebar').innerText.includes(name)",
                                    arg=wh["name"], timeout=20000)
+            still_in_mode = page.is_visible(".work-hub-projects.is-delete-mode")
+            page.keyboard.press("Escape")
+            page.wait_for_selector("#workHubProjectCreate", timeout=10000)
+            left_mode = not page.is_visible(".work-hub-projects.is-delete-mode")
         finally:
             browser.close()
     projects = _call("/api/projects")[0]["projects"]
     _call("/api/session/delete", {"session_id": kept_sid})
     _call("/api/projects/delete", {"project_id": legacy["project_id"]})
-    assert wh["name"] in options
-    assert legacy["name"] in options, "an empty unflagged project (pre-flag Work Hub project) is offered"
-    assert chat["name"] not in options, "a project holding chats is not offered for deletion"
-    assert wh["name"] in dialog_text, "the confirmation names the project being deleted"
+
+    assert plus_title is None, "the + button shows no hover label"
+    assert wh["name"] in mode["wiggling"] and legacy["name"] in mode["wiggling"]
+    assert chat["name"] not in mode["wiggling"] and chat["name"] in mode["locked"], (
+        "a project holding chats stays still and is not deletable")
+    assert mode["animated"] and mode["withX"] == len(mode["wiggling"])
+    assert mode["done"] and mode["noPicker"]
+    assert wh["name"] in dialog_text, "the X still confirms, naming the project"
     assert not any(p["project_id"] == wh["project_id"] for p in projects)
+    assert still_in_mode, "the mode stays while other deletable folders remain"
+    assert left_mode, "Escape leaves delete mode"
 
 
 def test_integration_icons_match_their_title_and_subtitle_height():

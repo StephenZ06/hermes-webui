@@ -4,7 +4,7 @@
   let currentInspectorWidth = (() => { const raw = localStorage.getItem('workHubInspectorWidth'); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
-  const store = { items: [], folders: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
+  const store = { items: [], folders: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', deleteMode: false, activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
   const workspaceExpandedBoards = new Set();
   const icon = (name) => window.WorkHubIcons ? window.WorkHubIcons(name) : '';
   const el = (id) => document.getElementById(id);
@@ -40,8 +40,11 @@
   }
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
-    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row"><button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="Create project" title="Create project">${icon('plus')}</button></div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
+    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
+      ? '<button type="button" class="work-hub-project-delete-done" id="workHubDeleteDone">Done</button>'
+      : `<button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="New board, new project or delete project">${icon('plus')}</button>`}</div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
     const projectList = el('workHubProjects');
+    projectList.classList.toggle('is-delete-mode', !!store.deleteMode);
     store.projects.forEach(project => {
       const boards = store.boards.filter(board => board.project_id === project.project_id); const count = boards.length;
       const expanded = !!store.expandedProjects[project.project_id];
@@ -49,7 +52,20 @@
       b.innerHTML = `<span class="project-folder-chevron work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="color-dot work-hub-project-color" aria-hidden="true"></span><span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${count} boards">${count}</span>`;
       b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
       b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
-      projectList.appendChild(b);
+      if (store.deleteMode && project.deletable) {
+        const wrap = document.createElement('div');
+        wrap.className = 'work-hub-project-delete-wrap is-wiggling';
+        // Offset each folder's wiggle so they do not move in lockstep.
+        wrap.style.animationDelay = `${-((projectList.children.length * 97) % 300)}ms`;
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.className = 'work-hub-project-delete-x'; remove.dataset.deleteProjectId = project.project_id;
+        remove.setAttribute('aria-label', `Delete ${project.name || 'project'}`); remove.title = `Delete ${project.name || 'project'}`;
+        remove.innerHTML = icon('close');
+        wrap.append(b, remove); projectList.appendChild(wrap);
+      } else {
+        if (store.deleteMode) { b.classList.add('is-locked'); b.title = 'Holds chats or work items -- it stays with the chat page'; }
+        projectList.appendChild(b);
+      }
       const boardsList = document.createElement('div'); boardsList.id = `workHubFolderBoards-${project.project_id}`; boardsList.className = 'project-folder-sessions work-hub-project-boards' + (expanded ? ' expanded' : ''); boardsList.inert = !expanded;
       const boardsInner = document.createElement('div'); boardsInner.className = 'project-folder-sessions-inner work-hub-project-boards-inner';
       boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}" data-folder-id="${esc(project.project_id)}">${icon('board')}<span>${esc(board.name)}</span></button><button type="button" class="work-hub-board-rename" data-rename-board="${esc(board.id)}" aria-label="Rename ${esc(board.name)}" title="Rename ${esc(board.name)}">${icon('pencil')}</button><button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`; boardsInner.appendChild(row); });
@@ -69,15 +85,39 @@
       if (typeof showToast === 'function') showToast(`Project create failed: ${error.message || error}`);
     }
   }
-  async function deleteWorkHubProject(anchor) {
-    // Projects created here, or empty ones (no chats, no work items); the
-    // server marks them `deletable` and refuses the rest.
-    const deletable = store.projects.filter(project => project && project.deletable);
-    const projectId = await showWorkHubProjectPicker(anchor, deletable, 'There are no Work Hub projects to delete.');
-    if (!projectId) return;
-    const project = deletable.find(entry => entry.project_id === projectId);
+  // Delete mode: like holding an app icon on iOS. Deletable folders (created
+  // here, or empty -- the server marks them `deletable`) wiggle with a red
+  // outline and an X; the rest stay still. Done, Escape or a click elsewhere
+  // leaves it. The X still confirms: a delete removes boards and work items.
+  let deleteModeExit = null;
+  function enterProjectDeleteMode() {
+    if (!store.projects.some(project => project && project.deletable)) {
+      if (typeof showToast === 'function') showToast('There are no Work Hub projects to delete.');
+      return;
+    }
+    store.deleteMode = true;
+    renderWorkHubNavigation(); bind();
+    const onKey = event => { if (event.key === 'Escape') exitProjectDeleteMode(); };
+    const onClick = event => {
+      if (event.target.closest('.work-hub-projects, .work-hub-project-create-row, .app-dialog-overlay')) return;
+      exitProjectDeleteMode();
+    };
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => { if (store.deleteMode) document.addEventListener('click', onClick); }, 0);
+    deleteModeExit = () => { document.removeEventListener('keydown', onKey); document.removeEventListener('click', onClick); };
+  }
+  function exitProjectDeleteMode() {
+    if (deleteModeExit) deleteModeExit();
+    deleteModeExit = null;
+    if (!store.deleteMode) return;
+    store.deleteMode = false;
+    renderWorkHubNavigation(); bind();
+  }
+  async function deleteWorkHubProject(projectId) {
+    const project = store.projects.find(entry => entry.project_id === projectId && entry.deletable);
+    if (!project) return;
     const boardCount = store.boards.filter(board => board.project_id === projectId).length;
-    const name = project?.name || 'this project';
+    const name = project.name || 'this project';
     const message = `This permanently removes "${name}"${boardCount ? `, its ${boardCount} board${boardCount === 1 ? '' : 's'}` : ''} and every work item in it. Chats filed under it stay, without a project.`;
     if (!await showConfirmDialog({ title: 'Delete project', message, confirmLabel: 'Delete', danger: true })) return;
     try {
@@ -86,6 +126,7 @@
       delete store.expandedProjects[projectId];
       await loadWorkHubPanel(); notifyWorkHubChanged();
       if (typeof showToast === 'function') showToast(`Deleted "${name}"`);
+      if (!store.projects.some(entry => entry && entry.deletable)) exitProjectDeleteMode();
     } catch (error) {
       store.stale = true; render();
       if (typeof showToast === 'function') showToast(`Project delete failed: ${error.message || error}`);
@@ -142,11 +183,13 @@
   }
   function bind() {
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); });
+    document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
+    const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
-    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><button type="button" class="is-danger" data-delete-project>Delete project</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { menu.remove(); deleteWorkHubProject(createProject); }; };
+    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><button type="button" class="is-danger" data-delete-project>Delete project</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { menu.remove(); enterProjectDeleteMode(); }; };
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
