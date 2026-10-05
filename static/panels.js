@@ -1956,6 +1956,13 @@ function _renderCronForm({ name, schedule, prompt, deliver, profile, toast_notif
   _setCronHeaderButtons(isEdit ? 'edit' : 'create');
   _populateCronDeliverOptions(deliver, isEdit);
   _populateCronFormModelSelect(model, provider, isNoAgent);
+  // Each profile has its own model catalog: reload it when the profile changes.
+  const cronProfileSel = $('cronFormProfile');
+  if (cronProfileSel && !isNoAgent) cronProfileSel.onchange = () => {
+    const modelSel = $('cronFormModel');
+    const current = modelSel && modelSel.selectedOptions[0];
+    _populateCronFormModelSelect(current ? current.value : '', current ? (current.dataset.provider || '') : '', false);
+  };
   if (!isNoAgent) _renderCronSkillTags();
   _initCronSchedulePresetControls();
   const focusEl = $('cronFormName');
@@ -2000,8 +2007,10 @@ async function _populateCronFormModelSelect(selectedModel, selectedProvider, dis
   sel.disabled = true;
   sel.innerHTML = `<option value="">${esc(t('cron_model_use_default') || 'Default (use profile/system default)')}</option>`;
   try {
-    const profileCatalog = editProfile && editProfile.name
-      ? `/api/models?profile=${encodeURIComponent(editProfile.name)}`
+    // The catalog of the profile the job will run under ('' = server default).
+    const jobProfile = ($('cronFormProfile') && $('cronFormProfile').value) || '';
+    const profileCatalog = jobProfile
+      ? `/api/models?profile=${encodeURIComponent(jobProfile)}`
       : '/api/models';
     const data = await api(profileCatalog);
     const groups = (Array.isArray(data && data.groups) && data.groups.length) ? data.groups : [];
