@@ -53,15 +53,9 @@ def _firecrawl_health(settings: dict) -> dict:
 
 def _settings_status(settings: dict) -> dict:
     """Live service status for the Settings page: presence booleans, never values."""
-    from api.job_os.env import profile_env_value
+    from api.job_os import gmail
 
-    return {
-        "firecrawl": _firecrawl_health(settings),
-        "gmail": {
-            "address": bool(profile_env_value("JOB_OS_GMAIL_ADDRESS")[0]),
-            "app_password": bool(profile_env_value("JOB_OS_GMAIL_APP_PASSWORD")[0]),
-        },
-    }
+    return {"firecrawl": _firecrawl_health(settings), "gmail": gmail.status()}
 
 
 def handle_job_os_get(handler, parsed) -> bool:
@@ -100,8 +94,27 @@ def handle_job_os_get(handler, parsed) -> bool:
     return False
 
 
+def _handle_gmail_post(handler, path: str, body: dict) -> bool:
+    from api.job_os import gmail
+
+    try:
+        if path == f"{_PREFIX}/gmail":
+            result = gmail.connect(body.get("address"), body.get("app_password"), verify=gmail.verify_login)
+            j(handler, {"gmail": result})
+        elif path == f"{_PREFIX}/gmail/disconnect":
+            j(handler, {"gmail": gmail.disconnect()})
+        else:
+            sent_to = gmail.send_test(body.get("to") or load_settings()["notifications"]["to_address"])
+            j(handler, {"sent_to": sent_to})
+    except gmail.GmailError as error:
+        return _error(handler, str(error), 400)
+    return True
+
+
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path in {f"{_PREFIX}/gmail", f"{_PREFIX}/gmail/disconnect", f"{_PREFIX}/gmail/test"}:
+        return _handle_gmail_post(handler, parsed.path, body if isinstance(body, dict) else {})
     if parsed.path == f"{_PREFIX}/settings":
         if not isinstance(body, dict):
             return _error(handler, "JSON object body is required", 400)

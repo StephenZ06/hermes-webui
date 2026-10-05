@@ -106,7 +106,9 @@ def test_http_get_reports_status_with_booleans_only(home, monkeypatch):
     assert routes.handle_get(h, urlparse("/api/job-os/settings")) is True
     body = json.loads(h.wfile.getvalue())
     assert h.status == 200
-    assert body["status"]["gmail"] == {"address": True, "app_password": True}
+    gmail_status = body["status"]["gmail"]
+    assert gmail_status["address"] is True and gmail_status["app_password"] is True
+    assert gmail_status["address_hint"] == "m***@gmail.com"
     assert body["status"]["firecrawl"]["state"] == "not_configured"
     assert "abcd efgh" not in h.wfile.getvalue().decode()
 

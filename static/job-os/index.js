@@ -85,6 +85,10 @@
       settingsForm.addEventListener('input', onSettingsEdit, {signal});
       settingsForm.addEventListener('change', onSettingsEdit, {signal});
       settingsForm.addEventListener('submit', (event) => { event.preventDefault(); runAction('save-settings'); }, {signal});
+      // Enter in the Gmail fields connects Gmail rather than saving settings.
+      settingsForm.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && event.target.closest('#job-os-gmail')) { event.preventDefault(); runAction('gmail-connect'); }
+      }, {signal});
     }
     const form = document.getElementById('job-os-import-form');
     if (!form) return;
@@ -168,6 +172,54 @@
         state.settingsError = error.message || 'Unable to save settings.';
         syncSaveBar();
       }
+    } else if (name === 'gmail-connect') {
+      const addressEl = document.getElementById('job-os-gmail-address');
+      const passwordEl = document.getElementById('job-os-gmail-password');
+      if (!addressEl || !passwordEl) return;
+      const address = addressEl.value;
+      const password = passwordEl.value;
+      passwordEl.value = '';
+      if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Checking with Gmail…'; }
+      try {
+        const result = await window.JobOSApi.connectGmail(address, password);
+        state.settingsStatus = Object.assign({}, state.settingsStatus, {gmail: result.gmail});
+        state.gmailEditing = false;
+        state.gmailMessage = {tone: 'ok', text: 'Gmail connected. It now works for every profile.'};
+        if (typeof window.showToast === 'function') window.showToast('Gmail connected');
+        refresh();
+      } catch (error) {
+        state.gmailMessage = {tone: 'error', text: error.message || 'Unable to connect Gmail.'};
+        if (button) { button.disabled = false; button.classList.remove('is-busy'); button.textContent = 'Connect Gmail'; }
+        const msg = document.querySelector('#job-os-gmail .job-os-gmail-msg');
+        if (msg) { msg.dataset.tone = 'error'; msg.textContent = state.gmailMessage.text; }
+      }
+    } else if (name === 'gmail-edit' || name === 'gmail-cancel') {
+      state.gmailEditing = name === 'gmail-edit';
+      state.gmailMessage = null;
+      refresh();
+    } else if (name === 'gmail-disconnect') {
+      const ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({message: 'Disconnect Gmail? Job notifications and email replies stop for every profile.', confirmLabel: 'Disconnect', danger: true})
+        : window.confirm('Disconnect Gmail?');
+      if (!ok) return;
+      try {
+        const result = await window.JobOSApi.disconnectGmail();
+        state.settingsStatus = Object.assign({}, state.settingsStatus, {gmail: result.gmail});
+        state.gmailMessage = {tone: 'ok', text: 'Gmail disconnected.'};
+        refresh();
+      } catch (error) {
+        state.gmailMessage = {tone: 'error', text: error.message || 'Unable to disconnect Gmail.'};
+        refresh();
+      }
+    } else if (name === 'gmail-test') {
+      if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Sending…'; }
+      try {
+        const result = await window.JobOSApi.testGmail();
+        state.gmailMessage = {tone: 'ok', text: `Test email sent to ${result.sent_to}.`};
+      } catch (error) {
+        state.gmailMessage = {tone: 'error', text: error.message || 'Unable to send the test email.'};
+      }
+      refresh();
     } else if (name === 'test-firecrawl') {
       if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Testing…'; }
       try {

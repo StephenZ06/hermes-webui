@@ -18,5 +18,9 @@
     settingsDirty: false,
     settingsError: '',
     settingsSavedAt: 0,
+    // Gmail form: whether the connected account is being replaced, and the
+    // last result line. Credentials themselves are never stored here.
+    gmailEditing: false,
+    gmailMessage: null,
   };
 }());

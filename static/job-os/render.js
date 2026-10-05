@@ -101,6 +101,30 @@
   function section(id, title, note, inner, phase) {
     return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}"><div class="job-os-card-head"><h2>${esc(title)}</h2>${phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : ''}</div>${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
   }
+  // Gmail: verified on the server with a real login, then saved to the shared
+  // secrets file every profile reads. The password field is never pre-filled
+  // and its value is never kept in page state.
+  function gmailBlock(state, gmail, ready) {
+    const msg = state.gmailMessage ? `<p class="job-os-gmail-msg" data-tone="${esc(state.gmailMessage.tone)}" role="status">${esc(state.gmailMessage.text)}</p>` : '<p class="job-os-gmail-msg" role="status"></p>';
+    if (ready && !state.gmailEditing) {
+      return `<div class="job-os-conn" id="job-os-gmail">
+        <div class="job-os-conn-head"><strong>Gmail</strong>${pill(true, 'Connected')}</div>
+        <p class="job-os-card-note">Connected as <strong>${esc(gmail.address_hint || 'your account')}</strong>. ${gmail.scope === 'shared' ? 'Saved once for every profile.' : 'Saved for this profile.'}</p>
+        <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
+        ${msg}
+      </div>`;
+    }
+    return `<div class="job-os-conn" id="job-os-gmail">
+      <div class="job-os-conn-head"><strong>Gmail</strong>${pill(false, 'Not connected')}</div>
+      <p class="job-os-card-note">Use a Gmail <strong>app password</strong>, not your normal password: Google Account → Security → 2-Step Verification → App passwords (<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">open</a>). Hermes logs in once to check it, then saves it ${gmail.scope === 'shared' ? 'for every profile' : 'for this profile'}; it is never shown again.</p>
+      <div class="job-os-grid">
+        <label class="job-os-field"><span>Gmail address</span><input type="email" id="job-os-gmail-address" autocomplete="email" spellcheck="false" placeholder="you@gmail.com"></label>
+        <label class="job-os-field"><span>App password</span><input type="password" id="job-os-gmail-password" autocomplete="new-password" spellcheck="false" placeholder="xxxx xxxx xxxx xxxx"></label>
+      </div>
+      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="gmail-connect">Connect Gmail</button>${ready ? '<button type="button" class="job-os-btn" data-job-os-action="gmail-cancel">Cancel</button>' : ''}</div>
+      ${msg}
+    </div>`;
+  }
   function settingsView(state) {
     const s = state.settingsDraft || state.settings;
     if (!s) return '<section class="job-os-card"><p class="job-os-card-note">Loading settings…</p></section>';
@@ -113,15 +137,11 @@
     const firecrawl = section('connections', 'Connections', '', `
       <div class="job-os-conn">
         <div class="job-os-conn-head"><strong>Firecrawl</strong>${pill(fc.state === 'healthy', FIRECRAWL_LABELS[fc.state] || 'Unknown')}</div>
-        <p class="job-os-card-note">${esc(fc.detail || '')}${fc.base_url ? ` Using <code>${esc(fc.base_url)}</code>${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from the profile .env)' : ''}.` : ''}${fc.latency_ms != null ? ` ${esc(fc.latency_ms)} ms.` : ''}</p>
-        ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from the profile .env', 'url')}
+        <p class="job-os-card-note">${esc(fc.detail || '')}${fc.base_url ? ` Using <code>${esc(fc.base_url)}</code>${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from your .env settings)' : ''}.` : ''}${fc.latency_ms != null ? ` ${esc(fc.latency_ms)} ms.` : ''}</p>
+        ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from your .env settings', 'url')}
         <button type="button" class="job-os-btn" data-job-os-action="test-firecrawl">Test connection</button>
       </div>
-      <div class="job-os-conn">
-        <div class="job-os-conn-head"><strong>Gmail</strong>${pill(gmailReady, gmailReady ? 'Credentials found' : 'Not set up')}</div>
-        <p class="job-os-card-note">Add these two lines to this profile's <code>.env</code> (an App Password from your Google account → Security → App passwords). The WebUI only checks that they exist; it never shows or stores them.</p>
-        <ul class="job-os-checklist"><li data-ok="${gmail.address ? 'true' : 'false'}"><code>JOB_OS_GMAIL_ADDRESS</code></li><li data-ok="${gmail.app_password ? 'true' : 'false'}"><code>JOB_OS_GMAIL_APP_PASSWORD</code></li></ul>
-      </div>`);
+      ${gmailBlock(state, gmail, gmailReady)}`);
     const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
       ${textField('ai.model', 'Model', v('ai.model'))}
       ${textField('ai.provider', 'Provider', v('ai.provider'))}
