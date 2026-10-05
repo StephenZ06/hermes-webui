@@ -9611,6 +9611,9 @@ async function deleteSession(sid, beforeDelete=null){
   const cleanupFailed=!!(response&&response.state_db_cleanup_failed);
   if(typeof _clearPersistedSessionQueue==='function') _clearPersistedSessionQueue(sid);
   if(!optimisticRendered){
+    // Fade the row out first; the existing reflow then slides its
+    // neighbours up (so no height collapse here).
+    if(typeof animateRemoval==='function') await animateRemoval(document.querySelector(`.session-item[data-sid="${CSS.escape(sid)}"]`),{collapse:false});
     _pendingSessionReflowPositions=reflowPositions;
     _optimisticallyRemoveSessionFromList(sid);
   }

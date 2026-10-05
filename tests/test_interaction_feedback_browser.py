@@ -81,3 +81,61 @@ def test_buttons_dip_while_pressed_and_page_views_fade_in():
             browser.close()
     assert view_anim == "page-view-in"
     assert pressed.startswith("matrix(0.96"), pressed
+
+
+def test_removed_rows_collapse_and_new_rows_glow_in():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            state = page.evaluate("""async () => {
+              const box = document.createElement('div');
+              box.innerHTML = '<div id="gone" style="height:40px;margin:6px 0;padding:4px">row</div><div id="new">new</div>';
+              document.body.appendChild(box);
+              const gone = document.getElementById('gone');
+              await animateRemoval(gone);
+              const after = getComputedStyle(gone);
+              const fresh = markArrival(document.getElementById('new'));
+              return {height: gone.getBoundingClientRect().height, opacity: after.opacity,
+                      arrive: getComputedStyle(fresh).animationName};
+            }""")
+        finally:
+            browser.close()
+    assert state["height"] == 0 and state["opacity"] == "0", state
+    assert state["arrive"] == "item-arrive"
+
+
+def test_deleting_a_job_animates_its_own_row_away():
+    import json
+    import urllib.request
+    import uuid
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    name = f"Fade me {uuid.uuid4().hex[:6]}"
+    req = urllib.request.Request(BASE + "/api/crons/create",
+                                 data=json.dumps({"name": name, "schedule": "0 9 * * *", "prompt": "hi"}).encode(),
+                                 headers={"Content-Type": "application/json", "Origin": BASE})
+    job = json.loads(urllib.request.urlopen(req, timeout=20).read())
+    job_id = (job.get("job") or job)["id"]
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            page.evaluate("async () => { await switchPanel('tasks'); }")
+            page.wait_for_function("(n) => document.querySelector('#cronList').innerText.includes(n)", arg=name, timeout=20000)
+            page.evaluate("""() => { const real = window.animateRemoval; window.__removed = [];
+              window.animateRemoval = (el, o) => { window.__removed.push(el && el.querySelector('.cron-name') && el.querySelector('.cron-name').textContent); return real(el, o); };
+              animateRemoval = window.animateRemoval; }""")
+            page.click("#cronDeleteModeBtn")
+            page.click(f"#cronList .dm-item:has-text('{name}') .dm-x", force=True)
+            page.wait_for_selector("#appDialogConfirm", state="visible", timeout=10000)
+            page.click("#appDialogConfirm")
+            page.wait_for_function("(n) => !document.querySelector('#cronList').innerText.includes(n)", arg=name, timeout=20000)
+            removed = page.evaluate("() => window.__removed")
+        finally:
+            browser.close()
+            try:  # already gone when the test passed
+                urllib.request.urlopen(urllib.request.Request(BASE + "/api/crons/delete", data=json.dumps({"job_id": job_id}).encode(),
+                                                              headers={"Content-Type": "application/json", "Origin": BASE}), timeout=20)
+            except Exception:
+                pass
+    assert removed == [name], removed

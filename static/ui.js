@@ -78,6 +78,38 @@ function syncDeleteModeButton(btn,active,idleLabel){
   if(active){btn.textContent='Done';btn.setAttribute('aria-label','Done deleting');btn.classList.remove('has-tooltip');delete btn.dataset.tooltip;}
   else{btn.innerHTML=typeof li==='function'?li('trash-2',15):'🗑';btn.setAttribute('aria-label',idleLabel||'Delete');btn.classList.add('has-tooltip');btn.dataset.tooltip=idleLabel||'Delete';}
 }
+// ── List change motion ──────────────────────────────────────────────────────
+// A deleted row shrinks and fades before the list re-renders (collapse:false
+// only fades, for lists that already reflow their neighbours, e.g. chats);
+// a new row gets a brief arrival highlight. Both skip under reduced motion.
+function _listMotionReduced(){try{return window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){return false;}}
+function animateRemoval(el,opts={}){
+  if(!el||!el.isConnected||typeof el.animate!=='function'||_listMotionReduced())return Promise.resolve();
+  const collapse=opts.collapse!==false;
+  el.style.pointerEvents='none';
+  let frames;
+  if(collapse){
+    const cs=getComputedStyle(el);
+    el.style.overflow='hidden';
+    frames=[
+      {height:el.getBoundingClientRect().height+'px',opacity:1,marginTop:cs.marginTop,marginBottom:cs.marginBottom,paddingTop:cs.paddingTop,paddingBottom:cs.paddingBottom,transform:'scale(1)'},
+      {height:'0px',opacity:0,marginTop:'0px',marginBottom:'0px',paddingTop:'0px',paddingBottom:'0px',transform:'scale(.97)'},
+    ];
+  }else{
+    frames=[{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.97)'}];
+  }
+  try{
+    return el.animate(frames,{duration:collapse?220:160,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'}).finished.then(()=>{},()=>{});
+  }catch(_){return Promise.resolve();}
+}
+function markArrival(el){
+  if(!el||_listMotionReduced())return el;
+  el.classList.remove('item-arrive');void el.offsetWidth;el.classList.add('item-arrive');
+  el.addEventListener('animationend',()=>el.classList.remove('item-arrive'),{once:true});
+  return el;
+}
+window.animateRemoval=animateRemoval;
+window.markArrival=markArrival;
 window.createDeleteMode=createDeleteMode;
 window.decorateDeleteModeItem=decorateDeleteModeItem;
 window.lockDeleteModeItem=lockDeleteModeItem;

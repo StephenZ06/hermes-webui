@@ -1780,6 +1780,7 @@ async function deleteCronJob(job){
   if(!_ok) return;
   try {
     await api('/api/crons/delete', {method:'POST', body: JSON.stringify({job_id: job.id})});
+    await animateRemoval(document.getElementById(_cronItemId(job)));
     showToast(t('cron_job_deleted'));
     if (_currentCronDetail && _cronJobKey(_currentCronDetail) === _cronJobKey(job)) _clearCronDetail();
     await loadCrons();
@@ -2205,6 +2206,8 @@ async function saveCronForm(){
     showToast(t('cron_job_created'));
     await loadCrons();
     const newId = res && (res.id || (res.job && res.job.id));
+    const newJob = res && res.job;
+    if (newJob) markArrival(document.getElementById(_cronItemId(newJob)));
     if (newId) openCronDetail(newId);
     else if (_cronList && _cronList.length) openCronDetail(_cronList[_cronList.length - 1]);
   }catch(e){
@@ -6776,6 +6779,7 @@ async function saveAgentDefForm() {
     await loadAgentDefinitions();
     const saved = result.definition;
     const targetEl = document.querySelector(`#agentsList [data-agent-def-id="${saved.id}"]`);
+    markArrival(targetEl);
     await openAgentDefDetail(saved.id, targetEl);
   } catch(e) { errEl.textContent = t('error_prefix') + e.message; errEl.style.display = ''; }
 }
@@ -6789,6 +6793,7 @@ async function duplicateAgentDef() {
     await loadAgentDefinitions();
     const saved = result.definition;
     const targetEl = document.querySelector(`#agentsList [data-agent-def-id="${saved.id}"]`);
+    markArrival(targetEl);
     await openAgentDefDetail(saved.id, targetEl);
   } catch(e) { setStatus(t('error_prefix') + e.message); }
 }
@@ -6997,6 +7002,7 @@ async function deleteAgentDefById(def) {
   if (!ok) return;
   try {
     await api('/api/agent-definitions/delete', { method:'POST', body: JSON.stringify({ id: def.id }) });
+    await animateRemoval(document.querySelector(`#agentsList [data-agent-def-id="${CSS.escape(def.id)}"]`));
     _agentDefsData = null;
     if (_currentAgentDefDetail && _currentAgentDefDetail.id === def.id) {
       _currentAgentDefDetail = null;
@@ -8219,6 +8225,7 @@ async function removeWorkspaceEntry(w){
   if(!_ok) return;
   try{
     const data=await api('/api/workspaces/remove',{method:'POST',body:JSON.stringify({path})});
+    await animateRemoval(document.querySelector(`#workspacesPanel .ws-row[data-path="${CSS.escape(path)}"]`));
     _workspaceList=data.workspaces;
     if (_currentWorkspaceDetail && _currentWorkspaceDetail.path === path) _clearWorkspaceDetail();
     renderWorkspacesPanel(data.workspaces);
@@ -8356,6 +8363,7 @@ async function saveWorkspaceForm(){
       renderWorkspacesPanel(_workspaceList);
       showToast(t('workspace_added'));
       const added = _workspaceList[_workspaceList.length - 1];
+      if (added) markArrival(document.querySelector(`#workspacesPanel .ws-row[data-path="${CSS.escape(added.path)}"]`));
       if (added) openWorkspaceDetail(added.path);
     } catch (e) {
       errEl.textContent = t('error_prefix') + e.message;
@@ -8392,6 +8400,7 @@ async function saveWorkspaceForm(){
       _workspaceList = refreshed.workspaces || _workspaceList;
     }
     renderWorkspacesPanel(_workspaceList);
+    markArrival(document.querySelector(`#workspacesPanel .ws-row[data-path="${CSS.escape(path)}"]`));
     showToast(t('workspace_added'));
     const added = _workspaceList.find(w => w.path === path) || _workspaceList[_workspaceList.length - 1];
     if (added) openWorkspaceDetail(added.path);
