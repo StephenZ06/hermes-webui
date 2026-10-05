@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Greenhouse-style form</title></head><body>
+<h1>Backend Engineer</h1>
+<form id="application-form" onsubmit="event.preventDefault(); document.body.innerHTML = '<h1>Thank you for applying.</h1><p>Your application has been submitted.</p>';">
+  <div><label for="first_name">First Name *</label><input id="first_name" name="first_name" required></div>
+  <div><label for="last_name">Last Name *</label><input id="last_name" name="last_name" required></div>
+  <div><label for="email">Email *</label><input id="email" name="email" type="email" required></div>
+  <div><label for="phone">Phone</label><input id="phone" name="phone" type="tel"></div>
+  <div><label for="resume">Resume/CV *</label><input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx" required></div>
+  <div><label for="q1">LinkedIn Profile</label><input id="q1" name="question_1"></div>
+  <div><label for="q2">Website</label><input id="q2" name="question_2"></div>
+  <div><label for="gender">Gender</label><select id="gender" name="gender"><option></option><option>Decline</option></select></div>
+  <button type="submit">Submit application</button>
+</form></body></html>

@@ -125,7 +125,18 @@ def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None,
     return reasons
 
 
+def _auto_summary(run: dict | None) -> dict | None:
+    if not run:
+        return None
+    result = run.get("result") or {}
+    return {"mode": run["mode"], "status": run["status"], "reason": run["reason"], "finished_at": run["finished_at"],
+            "screenshots": result.get("screenshots") or [], "filled": [f.get("label") for f in result.get("filled") or []]}
+
+
 def board() -> dict:
+    from api.job_os.autoapply import ats_of, latest_runs
+
+    runs = latest_runs()
     applied, changed, docs, extra = _signals()
     now = int(time.time())
     by_status = {status: key for key, _label, statuses in COLUMNS for status in statuses}
@@ -139,7 +150,8 @@ def board() -> dict:
                 "workplace": job.workplace, "salary_text": job.salary_text, "status": job.status.value,
                 "revision": job.revision, "canonical_url": job.canonical_url,
                 "analysis": extra["analyses"].get(job.id), "attention": reasons,
-                "applied": applied.get(job.id), "updated_at": job.updated_at}
+                "applied": applied.get(job.id), "updated_at": job.updated_at,
+                "ats": ats_of(job.canonical_url), "auto": _auto_summary(runs.get(job.id))}
         target = "attention" if reasons and key in ("preparing", "ready") else key
         columns[target].append(card)
     for cards in columns.values():

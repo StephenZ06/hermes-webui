@@ -127,6 +127,30 @@ def _document_get(handler, parsed) -> bool:
     return True
 
 
+def _proof_get(handler, path: str) -> bool:
+    """A screenshot an auto-apply run saved for this job."""
+    import re
+
+    from api.job_os.autoapply import proof_dir
+
+    job_id, _, name = unquote(path[len(f"{_PREFIX}/jobs/"):]).partition("/proof/")
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", job_id) or not re.fullmatch(r"[0-9]{8}-[0-9]{6}-[a-z]+-[a-z]+\.png", name):
+        return _error(handler, "Not found", 404)
+    target = proof_dir(job_id) / name
+    try:
+        body = target.read_bytes()
+    except OSError:
+        return _error(handler, "Not found", 404)
+    handler.send_response(200)
+    handler.send_header("Content-Type", "image/png")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(body)
+    return True
+
+
 def _scout_get(handler, parsed) -> bool:
     from api.job_os import scout
 
@@ -151,6 +175,15 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"funnel": applications.funnel()})
         return True
+    if path == f"{_PREFIX}/auto-apply":
+        from api.job_os import autoapply
+
+        settings = load_settings()["auto_apply"]
+        j(handler, {"auto_apply": {"enabled": settings["enabled"], "submitted_today": autoapply.submitted_today(),
+                                   "daily_cap": settings["daily_cap"], "browser_ready": autoapply.browser_python() is not None}})
+        return True
+    if path.startswith(f"{_PREFIX}/jobs/") and "/proof/" in path:
+        return _proof_get(handler, path)
     if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/timeline"):
         from api.job_os import applications
 
@@ -222,6 +255,14 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             else:
                 ids = [str(i) for i in (body.get("job_ids") or []) if isinstance(i, str)]
             j(handler, {"queued": analysis.request_analysis(ids, force=bool(body.get("force")))})
+            return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/autofill", "/approve", "/cancel-apply")):
+            from api.job_os import autoapply
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            action = {"/autofill": autoapply.request_preview, "/approve": autoapply.approve,
+                      "/cancel-apply": autoapply.cancel}[path[path.rfind("/"):]]
+            j(handler, action(job_id))
             return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/applied", "/note")):
             from api.job_os import applications
@@ -401,7 +442,8 @@ def _notifications_post(handler, path: str) -> bool:
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
-            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note"))):
+            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
+                                                                                "/autofill", "/approve", "/cancel-apply"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled

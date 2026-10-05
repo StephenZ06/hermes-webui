@@ -59,9 +59,10 @@ def _loop() -> None:
         except Exception:  # the schedule must never take the server down
             logger.debug("Job OS scheduler tick failed", exc_info=True)
         try:
-            from api.job_os import notify
+            from api.job_os import autoapply, notify
 
             notify.tick()
+            autoapply.tick()
         except Exception:
             logger.debug("Job OS notification tick failed", exc_info=True)
 

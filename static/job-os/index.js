@@ -33,7 +33,7 @@
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
       const wantBoard = state.activeView === 'applications';
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, autoApply] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -47,6 +47,7 @@
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
         wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
         wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
+        wantBoard ? window.JobOSApi.autoApply().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -61,6 +62,7 @@
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
       if (board) state.board = board;
       if (notifications) state.notifications = notifications.notifications;
+      if (autoApply) state.autoApply = autoApply.auto_apply;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -100,7 +102,11 @@
   // After a board move, the card glows in its new column.
   let flashId = null;
   function flash(jobId) { flashId = jobId; }
+  let boardPoll = null;
   function afterBoardRender(target) {
+    clearTimeout(boardPoll);
+    // A fill or a submission is running: check again shortly.
+    if (target.querySelector('.board-card[data-busy]')) boardPoll = setTimeout(() => { if (window.JobOSState.activeView === 'applications') refresh(); }, 3000);
     if (!flashId) return;
     const card = target.querySelector(`.board-card[data-board-job="${CSS.escape(flashId)}"]`);
     if (card && typeof window.markArrival === 'function') window.markArrival(card);
@@ -215,7 +221,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'board-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'board-apply', 'board-autofill', 'board-approve', 'board-cancel-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -470,6 +476,23 @@
         flash(id);
         if (typeof window.showToast === 'function') window.showToast('Application recorded');
       } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not record it'); }
+      return refresh();
+    }
+    if (name === 'board-autofill' || name === 'board-approve' || name === 'board-cancel-apply') {
+      const id = el.dataset.jobId;
+      if (name === 'board-approve') {
+        const ok = typeof window.showConfirmDialog === 'function'
+          ? await window.showConfirmDialog({title: 'Send this application?', message: 'Hermes will fill the form again and press submit. This can’t be undone.', confirmLabel: 'Send it', cancelLabel: 'Not yet'})
+          : window.confirm('Send this application?');
+        if (!ok) return undefined;
+      }
+      el.disabled = true;
+      try {
+        if (name === 'board-autofill') await window.JobOSApi.autofill(id);
+        else if (name === 'board-approve') await window.JobOSApi.approveApply(id);
+        else await window.JobOSApi.cancelApply(id);
+        flash(id);
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Auto-apply failed'); }
       return refresh();
     }
     if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }

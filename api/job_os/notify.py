@@ -41,7 +41,8 @@ CONTEXT = "jobs"
 CODE_TTL = 7 * 86400
 MATCH_WINDOW = 3 * 86400  # analyses older than this never trigger an alert (no backlog flood)
 MAX_PER_ALERT = 10
-REPLY_ACTIONS = ("tailor", "skip")
+REPLY_ACTIONS = ("tailor", "skip")  # offered in match alerts
+ACCEPTED_ACTIONS = ("tailor", "skip", "apply")  # "apply" codes come only with an auto-apply preview
 _COMMAND = re.compile(r"\b(TAILOR|SKIP|APPLY)\s+([0-9A-F]{8})\b", re.I)
 _send_lock = threading.Lock()
 _poll_lock = threading.Lock()
@@ -200,6 +201,38 @@ def send_matches(*, now: int | None = None, send: Callable = mailer.send) -> int
         return len(jobs)
 
 
+def send_preview(job_id: str, result: dict, *, send: Callable | None = None) -> bool:
+    """Auto-apply filled a form: ask for approval, with an APPLY code when replies are on."""
+    from api.job_os.repository import get_job
+    from api.job_os.settings import load_settings
+
+    settings = load_settings()
+    job = get_job(job_id)
+    if job is None or not _ready(settings):
+        return False
+    lines = [f"Auto-apply filled the application for {job.title}" + (f" at {job.company}" if job.company else "") + ".",
+             "", "Filled:"] + [f"  • {f['label']}" for f in (result.get("filled") or [])] + ["", job.canonical_url]
+    if settings["notifications"]["reply_actions"]:
+        conn = connect_job_os()
+        try:
+            code = issue_code(conn, job_id, "apply", int(time.time()))
+            conn.commit()
+        finally:
+            conn.close()
+        lines += ["", f"To send it, reply with:  APPLY {code}",
+                  "Or open Hermes -> Jobs -> Applications to look at the screenshot first."]
+    else:
+        lines += ["", "Open Hermes -> Jobs -> Applications to look at the screenshot and send it."]
+    subject = f"Ready to send: {job.title}"
+    try:
+        (send or mailer.send)(CONTEXT, settings["notifications"]["to_address"], subject, "\n".join(lines))
+    except Exception as error:
+        _log("preview", "failed", subject, str(error))
+        return False
+    _log("preview", "sent", subject)
+    return True
+
+
 # ---- daily digest --------------------------------------------------------
 
 def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
@@ -314,6 +347,11 @@ def _act(action: str, job_id: str) -> str:
         if action == "skip":
             transition_job(job_id, JobStatus.SKIPPED, expected_revision=job.revision)
             return f"Skipped {name}."
+        if action == "apply":
+            from api.job_os import autoapply
+
+            autoapply.approve(job_id, trigger="email")
+            return f"Sending your application for {name}. You'll see it under Applied once the site confirms it."
     except Exception as error:
         return f"Couldn't {action} {name}: {error}"
     return f"Unknown action for {name}."
@@ -330,8 +368,7 @@ def handle_message(raw: bytes, settings: dict, *, now: int | None = None) -> lis
         return None
     outcomes = []
     for action, code in commands:
-        if action not in REPLY_ACTIONS:
-            outcomes.append(f"{action.upper()} {code}: not available by email yet.")
+        if action not in ACCEPTED_ACTIONS:
             continue
         job_id = redeem_code(action, code, now=now)
         if job_id is None:

@@ -196,7 +196,29 @@ def _migration_5(connection: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5))
+def _migration_6(connection: sqlite3.Connection) -> None:
+    """Auto-apply browser runs (preview fills and real submissions)."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS apply_runs (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            ats TEXT NOT NULL,
+            trigger TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            result_json TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER NOT NULL,
+            finished_at INTEGER
+        )
+        """
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS apply_runs_job ON apply_runs (job_id, created_at)")
+
+
+MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
+              (6, _migration_6))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

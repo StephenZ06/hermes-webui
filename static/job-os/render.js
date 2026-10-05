@@ -187,12 +187,12 @@
       ${toggle('auto_apply.enabled', 'Auto-apply to strong matches', v('auto_apply.enabled'))}
       <fieldset class="job-os-ats"><legend>Allowed application systems</legend>${ATS.map(([key, name]) => `<label><input type="checkbox" data-setting="auto_apply.allowed_ats" value="${key}" ${(v('auto_apply.allowed_ats') || []).includes(key) ? 'checked' : ''}>${esc(name)}</label>`).join('')}</fieldset>
       <div class="job-os-grid">${numberField('auto_apply.daily_cap', 'Daily limit', v('auto_apply.daily_cap'), 1, 50, 'applications')}${numberField('auto_apply.min_fit_score', 'Minimum fit score', v('auto_apply.min_fit_score'), 0, 100, '/ 100')}</div>
-      ${toggle('auto_apply.dry_run_first', 'Dry run first', v('auto_apply.dry_run_first'), 'Fill the form and capture a screenshot without sending, before the first real submission to each site')}`, 'Phase 6');
+      ${toggle('auto_apply.dry_run_first', 'Dry run first', v('auto_apply.dry_run_first'), 'Fill the form and capture a screenshot without sending, before the first real submission to each site')}`);
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
     return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${applicant}${scout}${notify}${auto}${resume}${bar}</form>`;
   }
-  const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
+  const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply', preview: 'Ready to send'};
   function notifyStatus(n) {
     if (!n) return '';
     const checked = n.last_poll ? `Replies checked ${esc(when(n.last_poll))}` : 'Replies not checked yet';
@@ -210,20 +210,42 @@
     interviewing: [['offer', 'Offer'], ['rejected', 'Rejected'], ['no_response', 'No response'], ['withdrawn', 'Withdrawn']],
     offer: [['offer_accepted', 'Accepted'], ['offer_declined', 'Declined'], ['withdrawn', 'Withdrawn']],
   };
+  function autoPanel(job) {
+    const auto = job.auto;
+    if (job.status === 'applying' || (auto && auto.status === 'pending')) {
+      return `<p class="board-auto is-busy"><span class="auto-dots" aria-hidden="true"><i></i><i></i><i></i></span>${job.status === 'applying' ? 'Sending the application…' : 'Filling the form…'}</p>`;
+    }
+    if (!auto || !auto.screenshots || !auto.screenshots.length || !['awaiting_approval', 'application_ready'].includes(job.status)) return '';
+    const shot = auto.screenshots[auto.screenshots.length - 1];
+    const src = `/api/job-os/jobs/${encodeURIComponent(job.id)}/proof/${encodeURIComponent(shot)}`;
+    const filled = (auto.filled || []).length ? `<small>Filled ${auto.filled.length}: ${esc(auto.filled.slice(0, 4).join(', '))}${auto.filled.length > 4 ? '…' : ''}</small>` : '';
+    return `<a class="board-proof" href="${src}" target="_blank" rel="noopener"><img src="${src}" alt="Screenshot of the filled application form" loading="lazy"><span>${auto.status === 'filled' ? 'Filled form — check before sending' : 'Last attempt'}</span></a>${filled}`;
+  }
+  let autoApply = null;
   function boardCard(job, column) {
     const applied = job.applied ? `<small class="board-meta">Applied ${esc(when(job.applied.at))}${job.applied.method === 'auto' ? ' · auto' : ''}</small>` : '';
     const outcomes = NEXT_OUTCOMES[job.status];
     const actions = [];
-    if (job.status === 'application_ready') actions.push(`<button type="button" class="job-os-btn primary small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">Apply</button>`);
+    const auto = job.auto;
+    const busy = (auto && auto.status === 'pending') || job.status === 'applying';
+    if (job.status === 'application_ready') {
+      actions.push(`<button type="button" class="job-os-btn primary small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">Apply</button>`);
+      if (job.ats && autoApply && autoApply.enabled && !busy) actions.push(`<button type="button" class="job-os-btn small" data-job-os-action="board-autofill" data-job-id="${esc(job.id)}" title="Fill the ${esc(job.ats)} form and take a screenshot, without sending">Auto-fill</button>`);
+    }
+    if (job.status === 'awaiting_approval' && !busy) {
+      actions.push(`<button type="button" class="job-os-btn primary small" data-job-os-action="board-approve" data-job-id="${esc(job.id)}">Send application</button>`);
+      actions.push(`<button type="button" class="job-os-btn small" data-job-os-action="board-cancel-apply" data-job-id="${esc(job.id)}">Don't send</button>`);
+    }
     if (job.status === 'resume_ready') actions.push(`<button type="button" class="job-os-btn small" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Review resume</button>`);
     if (outcomes) actions.push(`<label class="board-outcome"><span class="sr-only">Update status</span><select data-job-os-change="board-outcome" data-job-id="${esc(job.id)}" data-revision="${Number(job.revision)}"><option value="">Update…</option>${outcomes.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>`);
-    return `<article class="board-card" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}">
+    return `<article class="board-card" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}"${busy ? ' data-busy="true"' : ''}>
       <button type="button" class="board-card-main" data-job-id="${esc(job.id)}">${fitRing(job.analysis, 'small')}<span><strong>${esc(job.title)}</strong><small>${esc([job.company, job.location].filter(Boolean).join(' · '))}</small></span></button>
       ${(job.attention || []).map((reason) => `<p class="board-attention">${esc(reason)}</p>`).join('')}
-      ${applied}${column === 'closed' || column === 'offers' ? badge(job.status) : ''}
+      ${autoPanel(job)}${applied}${column === 'closed' || column === 'offers' ? badge(job.status) : ''}
       ${actions.length ? `<div class="board-actions">${actions.join('')}</div>` : ''}</article>`;
   }
   function boardView(state) {
+    autoApply = state.autoApply;
     const board = state.board;
     if (!board) return '<section class="job-os-card"><p class="job-os-card-note">Loading…</p></section>';
     const total = board.columns.reduce((n, c) => n + c.jobs.length, 0);
