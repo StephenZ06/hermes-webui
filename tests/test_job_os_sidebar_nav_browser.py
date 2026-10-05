@@ -159,3 +159,26 @@ def test_a_slow_earlier_refresh_cannot_overwrite_a_newer_view():
             assert page.eval_on_selector_all("#jobOsRoot .job-os-job-card", "els => els.length") > 0, "late empty filtered response replaced the dashboard list"
         finally:
             browser.close()
+
+
+def test_dashboard_metric_icons_match_their_value_and_label_height():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1280)
+        try:
+            page.wait_for_selector(".job-os-metric img.job-os-metric-icon", timeout=10000)
+            rows = page.evaluate("""() => [...document.querySelectorAll('.job-os-metric')].map(card => {
+              const icon = card.querySelector('.job-os-metric-icon');
+              const value = card.querySelector('.job-os-metric-body strong').getBoundingClientRect();
+              const label = card.querySelector('.job-os-metric-body span').getBoundingClientRect();
+              const box = icon.getBoundingClientRect();
+              return {src: icon.getAttribute('src'), loaded: icon.complete && icon.naturalWidth > 0,
+                      icon: box.height, text: label.bottom - value.top, top: box.top, textTop: value.top};
+            })""")
+        finally:
+            browser.close()
+    assert [r["src"].rsplit("/", 1)[-1] for r in rows] == [
+        "job-os-metric-total.png", "job-os-metric-active.png", "job-os-metric-attention.png", "job-os-metric-applied.png"]
+    for row in rows:
+        assert row["loaded"], row
+        assert abs(row["icon"] - row["text"]) < 1 and abs(row["top"] - row["textTop"]) < 1, row

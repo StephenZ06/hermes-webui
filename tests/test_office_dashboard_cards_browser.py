@@ -38,6 +38,11 @@ def test_every_card_body_has_one_fixed_height_and_scrolls_past_it():
         try:
             projects = page.evaluate("""() => [...document.querySelectorAll('.office-dashboard-panel-body')]
               .map(b => ({h: Math.round(b.getBoundingClientRect().height), overflow: getComputedStyle(b).overflowY}))""")
+            gaps = page.evaluate("""() => [...document.querySelectorAll('.office-dashboard-panel')].map(card => {
+              const c = card.getBoundingClientRect(), body = card.querySelector('.office-dashboard-panel-body');
+              const first = body.firstElementChild.getBoundingClientRect();
+              return {left: Math.round(first.left - c.left), right: Math.round(c.right - first.right)};
+            })""")
             page.click("[data-dashboard-outlet='business']")
             page.wait_for_function(
                 "() => document.querySelectorAll('[data-dashboard-panel=\"distribution\"] [data-dashboard-floor]').length > 4",
@@ -53,6 +58,7 @@ def test_every_card_body_has_one_fixed_height_and_scrolls_past_it():
             browser.close()
 
     assert len(projects) == 4
+    assert all(g["left"] == g["right"] for g in gaps), f"content sits as far from the right edge as the left: {gaps}"
     assert len({p["h"] for p in projects}) == 1, f"all four cards share one body height: {projects}"
     assert all(p["overflow"] == "scroll" for p in projects), "every card keeps a visible scrollbar track"
     assert business["h"] == projects[0]["h"], "seven Business floors must not stretch the card"

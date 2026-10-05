@@ -5783,13 +5783,11 @@ main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 .job-os-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
 .job-os-metric{display:flex;align-items:center;gap:14px;min-width:0;border:1px solid var(--border2);border-radius:14px;background:var(--card);padding:16px 18px;color:var(--text);text-align:left;font:inherit;cursor:pointer;transition:border-color .15s,background .15s;}
 .job-os-metric:hover{border-color:var(--accent);}
-.job-os-metric-icon{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;border-radius:10px;background:var(--surface);color:var(--muted);}
-.job-os-metric-icon[data-metric="active"]{color:var(--accent);background:var(--accent-bg);}
-.job-os-metric-icon[data-metric="attention"]{color:var(--warning,#f5b84b);background:color-mix(in srgb,var(--warning,#f5b84b) 14%,transparent);}
-.job-os-metric-icon[data-metric="applied"]{color:var(--success,#4ade80);background:color-mix(in srgb,var(--success,#4ade80) 14%,transparent);}
+.job-os-metric-icon{display:block;flex:0 0 46px;width:46px;height:46px;object-fit:contain;}
+/* The icon is exactly as tall as the value + label beside it (28 + 2 + 16). */
 .job-os-metric-body{display:flex;flex-direction:column;min-width:0;}
-.job-os-metric-body strong{font-size:24px;font-weight:650;line-height:1.1;font-variant-numeric:tabular-nums;}
-.job-os-metric-body span{margin-top:3px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-os-metric-body strong{font-size:24px;font-weight:650;line-height:28px;font-variant-numeric:tabular-nums;}
+.job-os-metric-body span{margin-top:2px;font-size:12px;line-height:16px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .job-os-columns{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);gap:20px;min-height:0;align-items:stretch;}
 .job-os-recent,.job-os-fill{flex:1;min-height:0;}
 .job-os-list{display:flex;flex-direction:column;gap:6px;min-height:0;overflow-y:auto;}
@@ -5841,7 +5839,7 @@ main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
   .job-os-tabs button.active{color:var(--accent-text,var(--text));border-color:var(--accent);background:var(--accent-bg);}
   .job-os-metrics{gap:10px;}
   .job-os-metric{padding:12px;gap:10px;}
-  .job-os-metric-icon{width:32px;height:32px;}
+  .job-os-metric-icon{flex-basis:46px;width:46px;height:46px;}
   .job-os-metric-body strong{font-size:20px;}
   .job-os-job-card{grid-template-columns:32px minmax(0,1fr) auto;}
   .job-os-job-avatar{width:32px;height:32px;}
@@ -5987,16 +5985,19 @@ main.main > #mainPlugin{display:none;}
 /* Every dashboard card body is one fixed height -- four rows (all of a
    Projects office's floors) -- and scrolls past that, so a seven-floor
    Business office or a long list no longer stretches its card. */
-.office-dashboard-panel-body{--office-dash-row:56px;--office-dash-gap:7px;display:flex;flex-direction:column;gap:var(--office-dash-gap);height:calc(var(--office-dash-row) * 4 + var(--office-dash-gap) * 3);overflow-y:scroll;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:12px;margin-right:-6px;
+.office-dashboard-panel-body{--office-dash-row:56px;--office-dash-gap:7px;display:flex;flex-direction:column;gap:var(--office-dash-gap);height:calc(var(--office-dash-row) * 4 + var(--office-dash-gap) * 3);overflow-y:scroll;overscroll-behavior:contain;scrollbar-gutter:stable;
+  /* The 4px bar + 6px gap sit inside the card's right padding (margin-right
+     -10px), so content is as far from the right edge as from the left. */
+  padding-right:6px;margin-right:-10px;
   /* An inherited scrollbar-color (some skins set it on :root) makes Chrome
      ignore the ::-webkit-scrollbar styling below; reset it here. */
   scrollbar-color:auto;scrollbar-width:auto;}
 /* Every card shows a permanent, full-height track (a thumb appears once it
    overflows), instead of the app's near-invisible 5px default. */
-.office-dashboard-panel-body::-webkit-scrollbar{width:8px;}
+.office-dashboard-panel-body::-webkit-scrollbar{width:4px;}
 .office-dashboard-panel-body::-webkit-scrollbar-track{background:color-mix(in srgb,var(--border2) 55%,transparent);border-radius:99px;}
-.office-dashboard-panel-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 55%,transparent);border-radius:99px;border:2px solid transparent;background-clip:padding-box;min-height:32px;}
-.office-dashboard-panel-body::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--accent) 75%,transparent);background-clip:padding-box;}
+.office-dashboard-panel-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 55%,transparent);border-radius:99px;min-height:32px;}
+.office-dashboard-panel-body::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--accent) 75%,transparent);}
 @supports not selector(::-webkit-scrollbar){.office-dashboard-panel-body{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--muted) 55%,transparent) color-mix(in srgb,var(--border2) 55%,transparent);}}
 .office-dashboard-panel-body>*{flex-shrink:0;}
 .office-dashboard-panel-body>.office-dashboard-floor,.office-dashboard-panel-body>.office-dashboard-worker{box-sizing:border-box;min-height:var(--office-dash-row);}
