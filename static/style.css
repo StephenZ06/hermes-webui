@@ -2144,7 +2144,9 @@
   .clarify-card.collapsed .clarify-header{margin-bottom:0;}
   .clarify-card.collapsed .clarify-question,.clarify-card.collapsed .clarify-choices,.clarify-card.collapsed .clarify-response,.clarify-card.collapsed .clarify-hint{display:none;}
   /* Left rail (desktop primary navigation) */
-  .rail{display:none;width:48px;flex-shrink:0;flex-direction:column;align-items:center;gap:4px;padding:8px 0;background:var(--sidebar);border-right:1px solid var(--border);}
+  /* position+z-index: a sliding side panel is pinned at z-index 6 (motion-ui
+     slidePanel / boot.js FLIP); it must pass under the rail, not over it. */
+  .rail{display:none;position:relative;z-index:7;width:48px;flex-shrink:0;flex-direction:column;align-items:center;gap:4px;padding:8px 0;background:var(--sidebar);border-right:1px solid var(--border);}
   .rail-btn{width:36px;height:36px;border-radius:8px;border:none;background:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:color .15s,background .15s;flex-shrink:0;padding:0;}
   .rail-btn:hover{color:var(--text);background:var(--hover-bg);}
   .rail-btn.active{color:var(--accent-text);background:var(--accent-bg);}
