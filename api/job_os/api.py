@@ -136,6 +136,22 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"resume": load_resume()})
         return True
+    if path == f"{_PREFIX}/applications":
+        from api.job_os import applications
+
+        j(handler, applications.board())
+        return True
+    if path == f"{_PREFIX}/funnel":
+        from api.job_os import applications
+
+        j(handler, {"funnel": applications.funnel()})
+        return True
+    if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/timeline"):
+        from api.job_os import applications
+
+        job_id = unquote(path[len(f"{_PREFIX}/jobs/"):-len("/timeline")]).strip("/")
+        j(handler, {"timeline": applications.timeline(job_id)})
+        return True
     if path == f"{_PREFIX}/documents":
         from api.job_os.tailor import list_tailored
 
@@ -201,6 +217,15 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             else:
                 ids = [str(i) for i in (body.get("job_ids") or []) if isinstance(i, str)]
             j(handler, {"queued": analysis.request_analysis(ids, force=bool(body.get("force")))})
+            return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/applied", "/note")):
+            from api.job_os import applications
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            if path.endswith("/applied"):
+                j(handler, applications.mark_applied(job_id, method="manual", note=str(body.get("note") or "")))
+            else:
+                j(handler, applications.add_note(job_id, body.get("text")))
             return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/tailor", "/ready")):
             from api.job_os import tailor
@@ -352,7 +377,7 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
-            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready"))):
+            parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled
