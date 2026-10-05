@@ -1110,6 +1110,13 @@ def invalidate_providers_cache() -> None:
         _providers_cache.clear()
 
 
+def _layered_env(home: Path | str) -> dict[str, str]:
+    """The profile's effective env file values: shared secrets under its own .env."""
+    from api.shared_env import load_layered_env
+
+    return load_layered_env(home)
+
+
 def _load_env_file(env_path: Path) -> dict[str, str]:
     """Read key=value pairs from a .env file."""
     values: dict[str, str] = {}
@@ -1181,8 +1188,7 @@ def _provider_has_shadowed_codex_oauth_value(provider_id: str) -> bool:
     values: list[object] = []
     env_var = _provider_env_var_for(provider_id)
     if env_var:
-        env_path = _get_hermes_home() / ".env"
-        env_values = _load_env_file(env_path)
+        env_values = _layered_env(_get_hermes_home())
         values.append(env_values.get(env_var))
         values.append(_thread_local_env_value(env_var))
         for alias in _PROVIDER_ENV_VAR_ALIASES.get(provider_id, ()) or ():
@@ -1322,8 +1328,7 @@ def _provider_has_key(provider_id: str) -> bool:
     """
     env_var = _provider_env_var_for(provider_id)
     if env_var:
-        env_path = _get_hermes_home() / ".env"
-        env_values = _load_env_file(env_path)
+        env_values = _layered_env(_get_hermes_home())
         env_file_value = env_values.get(env_var)
         if _provider_value_counts_as_api_key(provider_id, env_file_value):
             return True
@@ -1385,8 +1390,7 @@ def _get_provider_api_key(provider_id: str) -> str | None:
     provider_id = (provider_id or "").strip().lower()
     env_var = _provider_env_var_for(provider_id)
     if env_var:
-        env_path = _get_hermes_home() / ".env"
-        env_values = _load_env_file(env_path)
+        env_values = _layered_env(_get_hermes_home())
         env_file_value = env_values.get(env_var)
         if _provider_value_counts_as_api_key(provider_id, env_file_value):
             return str(env_file_value).strip() or None
@@ -1674,7 +1678,7 @@ def _account_usage_subprocess_env(home: Path, provider: str, api_key: str | None
     # WebUI process-global environment. This is especially important for
     # Anthropic account usage, where the agent resolver reads OAuth/API tokens
     # from environment variables.
-    for key, value in _load_env_file(Path(home) / ".env").items():
+    for key, value in _layered_env(home).items():
         if value:
             env[key] = value
 
@@ -2675,8 +2679,7 @@ def get_providers() -> dict[str, Any]:
         elif has_key:
             env_var = _provider_env_var_for(pid)
             if env_var:
-                env_path = _get_hermes_home() / ".env"
-                env_values = _load_env_file(env_path)
+                env_values = _layered_env(_get_hermes_home())
                 if _provider_value_counts_as_api_key(pid, env_values.get(env_var)):
                     key_source = "env_file"
                 elif _provider_value_counts_as_api_key(pid, _thread_local_env_value(env_var)):
@@ -2986,9 +2989,11 @@ def set_provider_key(provider_id: str, api_key: str | None) -> dict[str, Any]:
         if len(api_key) < 8:
             return {"ok": False, "error": "API key appears too short."}
 
-    env_path = _get_hermes_home() / ".env"
     try:
-        _write_env_file(env_path, {env_var: api_key})
+        # Shared file unless this profile overrides the key; a removal clears both.
+        from api.shared_env import write_env_values
+
+        write_env_values(_get_hermes_home(), {env_var: api_key or None})
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     except Exception as exc:

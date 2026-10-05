@@ -1279,7 +1279,15 @@ def _gateway_status_payload() -> dict:
 
 
 def _read_env_var(env_path: Path, key: str) -> str:
-    """Best-effort read of a single KEY=VALUE line from a .env file."""
+    """Best-effort read of a profile's effective value for ``key``: the shared
+    secrets file under that profile's ``.env`` (api/shared_env.py)."""
+    if env_path.name == ".env":
+        try:
+            from api.shared_env import load_layered_env
+
+            return load_layered_env(env_path.parent).get(key, "")
+        except Exception:
+            pass
     try:
         with env_path.open("r", encoding="utf-8") as f:
             for line in f:
@@ -11406,6 +11414,14 @@ def _llm_wiki_active_hermes_home() -> Path:
 
 
 def _llm_wiki_env_file_path(hermes_home: Path) -> str | None:
+    try:
+        from api.shared_env import load_layered_env
+
+        value = load_layered_env(hermes_home).get("WIKI_PATH", "")
+        if value:
+            return value
+    except Exception:
+        pass
     env_path = hermes_home / ".env"
     if not env_path.exists() or not env_path.is_file():
         return None
@@ -11933,7 +11949,13 @@ _neuralwatt_usage_snapshot_cache_lock = threading.Lock()
 
 
 def _load_profile_env_file(profile_home: Path) -> dict[str, str]:
-    """Read key=value pairs from a profile's .env file."""
+    """A profile's effective env file values: shared secrets under its .env."""
+    try:
+        from api.shared_env import load_layered_env
+
+        return load_layered_env(profile_home)
+    except Exception:
+        pass
     values: dict[str, str] = {}
     env_path = Path(profile_home) / ".env"
     if not env_path.exists():
@@ -22630,7 +22652,8 @@ def _handle_tts(handler, parsed):
             try:
                 from api.onboarding import _load_env_file
                 from api.profiles import get_active_hermes_home
-                api_key = _load_env_file(get_active_hermes_home() / ".env").get("ELEVENLABS_API_KEY", "")
+                from api.shared_env import load_layered_env
+                api_key = load_layered_env(get_active_hermes_home()).get("ELEVENLABS_API_KEY", "")
             except Exception:
                 pass
         if not api_key:
@@ -22710,7 +22733,8 @@ def _handle_tts(handler, parsed):
             try:
                 from api.onboarding import _load_env_file
                 from api.profiles import get_active_hermes_home
-                env_cfg = _load_env_file(get_active_hermes_home() / ".env")
+                from api.shared_env import load_layered_env
+                env_cfg = load_layered_env(get_active_hermes_home())
                 api_key = env_cfg.get("VOICE_TOOLS_OPENAI_KEY", "") or env_cfg.get("OPENAI_API_KEY", "")
             except Exception:
                 pass

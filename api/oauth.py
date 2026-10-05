@@ -341,12 +341,10 @@ def _clear_anthropic_env_values(hermes_home: Path) -> None:
     cannot leave or partially clear stale Anthropic fallbacks.
     """
     try:
-        from api.providers import _write_env_file
+        # Clears the profile .env and the shared secrets file (api/shared_env.py).
+        from api.shared_env import write_env_values
 
-        _write_env_file(
-            Path(hermes_home) / ".env",
-            {key: None for key in _ANTHROPIC_ENV_KEYS},
-        )
+        write_env_values(Path(hermes_home), {key: None for key in _ANTHROPIC_ENV_KEYS})
     except Exception as exc:
         logger.warning("Failed to clear Anthropic env values: %s", exc)
     _clear_process_anthropic_env_values()

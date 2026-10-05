@@ -104,4 +104,6 @@ def remove_opencodego_state(home: Path | str) -> dict[str, int]:
         summary["env_entries_removed"] += _remove_env_entries(profile_home / ".env")
         summary["auth_entries_removed"] += _clean_auth(profile_home / "auth.json")
         summary["config_entries_removed"] += _clean_config(profile_home / "config.yaml")
+    # The shared secrets file every profile reads (api/shared_env.py).
+    summary["env_entries_removed"] += _remove_env_entries(root / "shared" / "secrets.env")
     return summary

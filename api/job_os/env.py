@@ -33,11 +33,13 @@ def _parse_dotenv(path: Path) -> dict[str, str]:
 
 
 def profile_env_value(key: str) -> tuple[str | None, str | None]:
-    """Return ``(value, source)`` for ``key``: the profile ``.env`` first, then
-    the process environment. ``source`` is ``"profile"``, ``"process"`` or None."""
+    """Return ``(value, source)`` for ``key``: the profile's env files (shared
+    secrets under its ``.env``, see api/shared_env.py) first, then the process
+    environment. ``source`` is ``"profile"``, ``"process"`` or None."""
     from api import profiles
+    from api.shared_env import load_layered_env
 
-    value = _parse_dotenv(Path(profiles.get_active_hermes_home()) / ".env").get(key, "")
+    value = load_layered_env(Path(profiles.get_active_hermes_home())).get(key, "")
     if value:
         return value, "profile"
     value = os.environ.get(key, "")

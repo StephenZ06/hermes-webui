@@ -999,24 +999,19 @@ def get_profile_runtime_env(home: Path) -> dict[str, str]:
                 env[env_key] = _stringify_env_value(terminal_cfg[key])
 
     env_path = home / '.env'
-    if env_path.exists():
-        try:
-            for line in env_path.read_text(encoding='utf-8').splitlines():
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, v = line.split('=', 1)
-                    k = k.strip()
-                    v = v.strip().strip('"').strip("'")
-                    if k and v:
-                        # #4589: never let a profile's own .env override an
-                        # operator/deployment posture (e.g. disable isolation via
-                        # HERMES_WEBUI_ISOLATED_PROFILE=0) on the runtime-env path
-                        # the same way _reload_dotenv() protects the live env.
-                        if k in _PROTECTED_ENV_KEYS:
-                            continue
-                        env[k] = v
-        except Exception:
-            logger.debug("Failed to read runtime env from %s", env_path)
+    try:
+        # Shared secrets (api/shared_env.py) under the profile's own .env.
+        from api.shared_env import load_layered_env
+
+        for k, v in load_layered_env(home).items():
+            # #4589: never let a profile's own .env override an
+            # operator/deployment posture (e.g. disable isolation via
+            # HERMES_WEBUI_ISOLATED_PROFILE=0) on the runtime-env path
+            # the same way _reload_dotenv() protects the live env.
+            if k and v and k not in _PROTECTED_ENV_KEYS:
+                env[k] = v
+    except Exception:
+        logger.debug("Failed to read runtime env from %s", env_path)
 
     return env
 
@@ -1655,29 +1650,25 @@ def _reload_dotenv(home: Path):
     _loaded_profile_env_keys = set()
 
     env_path = home / '.env'
-    if not env_path.exists():
-        return
     try:
+        # Shared secrets (api/shared_env.py) under the profile's own .env.
+        from api.shared_env import load_layered_env
+
         loaded_keys: set[str] = set()
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                k = k.strip()
-                v = v.strip().strip('"').strip("'")
-                if k and v:
-                    # Operator/deployment-level keys are never overridable by a
-                    # profile's own .env (#4589 — prevents a contained user from
-                    # disabling their isolation via HERMES_WEBUI_ISOLATED_PROFILE=0).
-                    if k in _PROTECTED_ENV_KEYS:
-                        logger.warning(
-                            "Ignoring protected key %s in profile .env %s; "
-                            "operator/deployment env takes precedence",
-                            k, env_path,
-                        )
-                        continue
-                    os.environ[k] = v
-                    loaded_keys.add(k)
+        for k, v in load_layered_env(home).items():
+            if k and v:
+                # Operator/deployment-level keys are never overridable by a
+                # profile's own .env (#4589 — prevents a contained user from
+                # disabling their isolation via HERMES_WEBUI_ISOLATED_PROFILE=0).
+                if k in _PROTECTED_ENV_KEYS:
+                    logger.warning(
+                        "Ignoring protected key %s in profile .env %s; "
+                        "operator/deployment env takes precedence",
+                        k, env_path,
+                    )
+                    continue
+                os.environ[k] = v
+                loaded_keys.add(k)
         _loaded_profile_env_keys = loaded_keys
     except Exception:
         _loaded_profile_env_keys = set()
@@ -2569,14 +2560,11 @@ def _write_api_key_to_dotenv(
             env_var,
         )
 
-    env_path = profile_dir / ".env"
-    _upsert_dotenv_line(env_path, env_var, api_key)
+    # Shared secrets file unless this profile already overrides the key
+    # (api/shared_env.py); write_env_values also tightens permissions.
+    from api.shared_env import write_env_values
 
-    # Tighten permissions so the key isn't world-readable.
-    try:
-        env_path.chmod(0o600)
-    except Exception:
-        logger.debug("Failed to chmod 0o600 on %s", env_path)
+    write_env_values(profile_dir, {env_var: api_key})
 
 
 def _write_endpoint_to_config(profile_dir: Path, base_url: str = None, api_key: str = None) -> None:

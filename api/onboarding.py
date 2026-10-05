@@ -689,7 +689,9 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
     provider = _extract_current_provider(cfg)
     model = _extract_current_model(cfg)
     base_url = _extract_current_base_url(cfg)
-    env_values = _load_env_file(_get_active_hermes_home() / ".env")
+    from api.shared_env import load_layered_env
+
+    env_values = load_layered_env(_get_active_hermes_home())
 
     provider_configured = bool(provider and model)
     provider_ready = False
@@ -998,8 +1000,9 @@ def apply_onboarding_setup(body: dict) -> dict:
         }
 
     cfg = _load_yaml_config(config_path)
-    env_path = _get_active_hermes_home() / ".env"
-    env_values = _load_env_file(env_path)
+    from api.shared_env import load_layered_env, write_env_values
+
+    env_values = load_layered_env(_get_active_hermes_home())
 
     if not api_key and not _provider_api_key_present(provider, cfg, env_values):
         # Providers that may run keyless (lmstudio, ollama, custom — gated by
@@ -1031,7 +1034,7 @@ def apply_onboarding_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key:
-        _write_env_file(env_path, {provider_meta["env_var"]: api_key})
+        write_env_values(_get_active_hermes_home(), {provider_meta["env_var"]: api_key})
 
     # Reload the hermes_cli provider/config cache so the next streaming call
     # picks up the new key without requiring a server restart.
@@ -1109,7 +1112,9 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key and env_var:
-        _write_env_file(_get_active_hermes_home() / ".env", {env_var: api_key})
+        from api.shared_env import write_env_values
+
+        write_env_values(_get_active_hermes_home(), {env_var: api_key})
         os.environ[env_var] = api_key
 
     try:

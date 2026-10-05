@@ -7323,15 +7323,13 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
             except ImportError:
                 hermes_env_path = _DEFAULT_HERMES_HOME / ".env"
             env_keys = {}
-            if hermes_env_path.exists():
-                try:
-                    for line in hermes_env_path.read_text(encoding="utf-8").splitlines():
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            env_keys[k.strip()] = v.strip().strip('"').strip("'")
-                except Exception:
-                    logger.debug("Failed to parse hermes env file")
+            try:
+                # Shared secrets under the profile .env (api/shared_env.py).
+                from api.shared_env import load_layered_env
+
+                env_keys = load_layered_env(hermes_env_path.parent)
+            except Exception:
+                logger.debug("Failed to parse hermes env file")
             all_env = {**env_keys}
             _anthropic_env_vars = _get_anthropic_fallback_env_vars()
             for k in (
