@@ -213,11 +213,13 @@ def test_only_an_idle_conductor_wanders():
 
 
 def test_a_seated_worker_never_shows_legs():
-    # poseWorker covers every desk-bound state; only poseWalking puts legs on
-    # screen, so a seated figure can never sprout them mid-pose.
+    # poseWorker covers every desk-bound state and hides legs unless the caller
+    # says the figure is standing (only the deskless conductor does). The
+    # behaviour itself is checked in tests/test_office_conductor_legs.py.
     at = BUILDERS_SRC.index("export function poseWorker(")
-    body = BUILDERS_SRC[at:at + 500]
-    assert "joints.legs.visible = false" in body
+    body = BUILDERS_SRC[at:at + 600]
+    assert "const standing = !!(opts && opts.standing);" in body
+    assert "joints.legs.visible = standing" in body
 
 
 def test_arrival_is_driven_before_the_working_pose():

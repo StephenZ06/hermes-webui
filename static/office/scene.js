@@ -1650,7 +1650,7 @@ export function createOfficeScene(canvas, options) {
         const seated = wanderer.moveTo(0, 0, dtMs);
         person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
         if (seated) {
-          poseWorker(person, 'orchestrate', t, dt);
+          poseWorker(person, 'orchestrate', t, dt, { standing: true });
         } else {
           person.rotation.y = wanderer.state.heading;
           poseWalking(person, wanderer.state.phase, 1);
@@ -1662,7 +1662,7 @@ export function createOfficeScene(canvas, options) {
           person.rotation.y = wanderer.state.heading;
           poseWalking(person, wanderer.state.phase, 1);
         } else {
-          poseWorker(person, 'idle', t, dt);
+          poseWorker(person, 'idle', t, dt, { standing: true });
         }
       }
     }

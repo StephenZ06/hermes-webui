@@ -1369,11 +1369,13 @@ function lerp(a, b, t) {
  * `elapsed` seconds drives the small idle motion that keeps a working figure
  * from looking frozen — typing jitter while working, breathing otherwise.
  */
-export function poseWorker(person, pose, elapsed, dt) {
+export function poseWorker(person, pose, elapsed, dt, opts) {
   const joints = person && person.userData && person.userData.joints;
   if (!joints) return;
-  // Anything driven by poseWorker is at a desk; only poseWalking shows legs.
-  if (joints.legs) joints.legs.visible = false;
+  // A desk worker's legs are tucked behind furniture. A figure with no desk
+  // (the conductor, pausing on its plinth or orchestrating) stands on them.
+  const standing = !!(opts && opts.standing);
+  if (joints.legs) joints.legs.visible = standing;
   // An idle behaviour may be playing over plain work; everything below drives
   // toward whichever pose that resolves to.
   const played = idlePoseFor(person.userData, pose, elapsed * 1000);
@@ -1401,6 +1403,11 @@ export function poseWorker(person, pose, elapsed, dt) {
   joints.head.rotation.y = lerp(joints.head.rotation.y, headY, k);
   joints.torso.rotation.x = lerp(joints.torso.rotation.x, target.torsoX + breathe, k);
   joints.torso.position.y = lerp(joints.torso.position.y, 1.55 + target.lift, k);
+  if (standing && joints.hipL && joints.hipR) {
+    // Settle out of the last stride rather than freezing mid-swing.
+    joints.hipL.rotation.x = lerp(joints.hipL.rotation.x, 0, k);
+    joints.hipR.rotation.x = lerp(joints.hipR.rotation.x, 0, k);
+  }
   person.userData.pose = played;
 }
 
