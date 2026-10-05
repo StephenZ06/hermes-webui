@@ -153,13 +153,13 @@ def test_the_best_matching_department_wins_not_the_first_declared(driver):
 def test_workers_sit_in_the_department_their_goal_names(driver):
     out = run(driver,
               personalities=[{"name": "invoice_clerk", "description": ""}],
-              state={"workers": [worker("w1", "raise the October invoices")]})
+              state={"workers": [worker("w1", "raise the October finance invoices")]})
     seated = [d for d in out["view"]["desks"] if d["workerId"] == "w1"]
     assert len(seated) == 1 and seated[0]["cluster"] == "finance"
 
 
 def test_an_unmatched_worker_goes_to_the_floor_not_a_wrong_department(driver):
-    out = run(driver, state={"workers": [worker("w1", "plan the company offsite")]})
+    out = run(driver, state={"workers": [worker("w1", "plan the business offsite")]})
     seated = next(d for d in out["view"]["desks"] if d["workerId"] == "w1")
     assert seated["cluster"] == "floor"
 
@@ -180,21 +180,32 @@ def test_scheduled_agent_and_script_jobs_are_seated_on_the_business_floor(driver
     }
 
 
-def test_coding_and_personal_work_stay_out_of_the_business_office(driver):
-    out = run(driver,
-              routeProbe=["debug the React checkout API", "research competitor pricing", "plan a personal reading list"],
-              state={"workers": [
-                  worker("code", "debug the React checkout API"),
-                  worker("personal", "plan a personal reading list"),
-                  worker("business", "reconcile the vendor invoices"),
-              ]})
-    assert dict(out["routed"]) == {
-        "debug the React checkout API": "projects",
-        "research competitor pricing": "projects",
-        "plan a personal reading list": "projects",
-    }
+def test_only_business_or_a_business_floor_name_reaches_the_business_office(driver):
+    """Business takes a task that says "business" or names one of its floors;
+    everything else -- including department keywords like "report" or
+    "invoice" on their own -- stays in Projects."""
+    business = [
+        "Draft the business plan", "Write the marketing newsletter",
+        "reply to customer emails", "e-mail the supplier", "update the sales pipeline",
+        "review operations for Q3", "prepare the quarterly financial summary",
+        "track the delivery schedule", "fix the finance dashboard bug",
+    ]
+    personal = [
+        "List the files and folders in the workspace and report the names.",
+        "debug the React checkout API", "research competitor pricing",
+        "plan a personal reading list", "reconcile the vendor invoices",
+        "plan the company offsite", "send the mailing list", "businesslike tone check",
+    ]
+    out = run(driver, routeProbe=business + personal, state={"workers": [
+        worker("code", "debug the React checkout API"),
+        worker("personal", "list the files and report the names"),
+        worker("business", "reconcile the finance invoices"),
+    ]})
+    routed = dict(out["routed"])
+    assert {text: routed[text] for text in business} == {text: "business" for text in business}
+    assert {text: routed[text] for text in personal} == {text: "projects" for text in personal}
     seated = {desk["workerId"] for desk in out["view"]["desks"] if desk["workerId"]}
-    assert seated == {"business"}, "Business must not show coding or personal delegates"
+    assert seated == {"business"}, "Business shows only business delegates"
 
 
 def test_a_business_branch_stays_together_when_its_child_is_coding_work(driver):
@@ -202,7 +213,7 @@ def test_a_business_branch_stays_together_when_its_child_is_coding_work(driver):
     # code. Keeping its lineage together prevents a split animation where the
     # parent is in Business and its live child is only on Projects.
     out = run(driver, state={"workers": [
-        worker("campaign", "launch the customer acquisition campaign"),
+        worker("campaign", "launch the marketing campaign"),
         dict(worker("site", "implement the campaign landing page"), parentId="campaign"),
     ]})
     assert out["businessIds"] == ["campaign", "site"]
@@ -215,8 +226,8 @@ def test_running_workers_are_seated_before_finished_ones(driver):
     # floor, not whichever spawned first.
     out = run(driver,
               state={"workers": [
-                  worker("done", "invoice run", status="completed", spawned=1),
-                  worker("live", "invoice run", status="running", spawned=9),
+                  worker("done", "finance invoice run", status="completed", spawned=1),
+                  worker("live", "finance invoice run", status="running", spawned=9),
               ]})
     finance = desks_by_cluster(out["view"])["finance"]
     assert finance[0]["workerId"] == "live"
@@ -225,7 +236,7 @@ def test_running_workers_are_seated_before_finished_ones(driver):
 def test_a_full_office_grows_rather_than_dropping_a_worker(driver):
     # Every department seat and the floor taken: Hermes really is running
     # these, so the floor gains desks rather than losing workers.
-    workers = [worker(f"w{i}", "plan the company offsite") for i in range(5)]
+    workers = [worker(f"w{i}", "plan the business offsite") for i in range(5)]
     out = run(driver, state={"workers": workers})
     seated = {d["workerId"] for d in out["view"]["desks"] if d["workerId"]}
     assert seated == {w["id"] for w in workers}
@@ -272,7 +283,7 @@ def test_projects_children_inherit_their_nearest_projects_ancestor_floor(driver)
 
 
 def test_projects_keeps_business_branches_out_and_expands_their_own_floor(driver):
-    workers = [worker("business", "reconcile this month's invoice")]
+    workers = [worker("business", "reconcile this month's finance invoice")]
     workers.extend(worker(f"research-{index}", "research competitor pricing", spawned=index)
                    for index in range(8))
     out = run(driver, state={"workers": workers})

@@ -345,16 +345,18 @@ somewhere to sit the subagents it actually spawned.
 - Every department always has at least one desk, so an idle office reads as a
   company rather than an empty room. A desk with nobody at it shows its roster
   name; the scene prefers `desk.seatLabel` when a seat is free.
-- A shared visual-routing guideline keeps personal and coding work on
-  **Projects**, and business-context work on **Business**. Coding language
-  takes precedence over broad department words; business work is seated by
-  matching its goal against department keywords, scored rather than
-  first-match ("invoice reminder email" mentions both Finance and Emails; the
-  department with more evidence wins). Running workers are seated before
-  finished ones, so a busy department shows live work.
-- Business work that names no standing department goes to **The Floor**, where
-  it is visibly unfiled. Personal or otherwise unclassified work stays on
-  Projects. Descendants retain their business parent's route, so one
+- A shared visual-routing guideline sends a task to **Business** only when its
+  goal says "business" or names one of the Business floors (Marketing, Emails,
+  Sales, Operations, Finance, Delivery, with everyday word forms such as
+  "e-mail" or "financial"). Everything else -- coding, personal work, and tasks
+  that merely use a department keyword such as "report" or "invoice" -- stays
+  on **Projects**. Once a task is Business work it is seated by matching its
+  goal against department keywords, scored rather than first-match ("invoice
+  reminder email" mentions both Finance and Emails; the department with more
+  evidence wins). Running workers are seated before finished ones, so a busy
+  department shows live work.
+- Business work that names no standing department ("plan the business
+  offsite") goes to **The Floor**, where it is visibly unfiled. Descendants retain their business parent's route, so one
   delegation branch never splits across both views. A full Business office
   grows rather than dropping a worker Hermes really is running.
 - The choice persists in `localStorage['hermes-webui-office-mode']`, read

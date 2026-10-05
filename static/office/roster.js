@@ -110,22 +110,15 @@ function normalise(text) {
   return String(text == null ? '' : text).toLowerCase().replace(/[_\-/]+/g, ' ');
 }
 
-// Concrete engineering signals take priority over the broad wording shared
-// by personal and business work. Vague words such as "build" and "project"
-// are intentionally absent: they cannot reliably choose an office alone.
+// Concrete engineering signals for the Projects Coding floor. Vague words
+// such as "build" and "project" are intentionally absent: they cannot
+// reliably pick a floor alone.
 const CODING_KEYWORDS = [
   'code', 'coding', 'software', 'program', 'repository', ' repo ', 'commit',
   'pull request', 'frontend', 'backend', 'api', 'database', 'react',
   'javascript', 'typescript', 'python', 'html', 'css', 'debug', 'refactor',
   'bug', 'unit test', 'test suite', 'regression test', 'web app', 'website',
   'deploy', 'implementation', 'implement', 'fix ',
-];
-
-// A business task can be valid without naming one of the six departments. It
-// then belongs on The Floor, rather than appearing as a Projects task.
-const BUSINESS_CONTEXT_KEYWORDS = [
-  'business', 'company', 'client', 'customer', 'vendor', 'stakeholder',
-  'offsite', 'meeting', 'strategy', 'roadmap', 'team', 'revenue',
 ];
 
 /**
@@ -153,19 +146,27 @@ export function departmentFor(text) {
   return best;
 }
 
+// What sends a task to the Business office: the word "business" itself, or
+// the name of one of its floors (with its everyday word forms). Nothing else
+// does -- department keywords such as "report" or "research" only choose a
+// floor once a task is already Business work, so a personal task that happens
+// to use one stays in Projects.
+const BUSINESS_FLOOR_WORDS = {
+  marketing: ['marketing'],
+  emails: ['email', 'emails', 'e mail', 'e mails'],
+  sales: ['sales'],
+  operations: ['operations', 'operational'],
+  finance: ['finance', 'finances', 'financial'],
+  delivery: ['delivery', 'deliveries'],
+};
+const BUSINESS_ROUTE_PATTERN = new RegExp(`\\b(?:${[
+  'business', 'businesses',
+  ...DEPARTMENTS.flatMap(dept => BUSINESS_FLOOR_WORDS[dept.key] || [dept.name.toLowerCase()]),
+].map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`);
+
 /** The shared visual-routing guideline for the two Office outlets. */
 export function officeFor(text) {
-  const hay = normalise(text);
-  if (!hay.trim()) return 'projects';
-  if (CODING_KEYWORDS.some(keyword => hay.includes(keyword))) return 'projects';
-  // Research is a first-class Projects workstream unless the wording also
-  // identifies it as company work. This prevents generic investigations from
-  // being swept into Business Operations solely because both use the word.
-  if (PROJECT_RESEARCH_KEYWORDS.some(keyword => hay.includes(keyword))
-    && !BUSINESS_CONTEXT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'projects';
-  if (departmentFor(hay)) return 'business';
-  if (BUSINESS_CONTEXT_KEYWORDS.some(keyword => hay.includes(keyword))) return 'business';
-  return 'projects';
+  return BUSINESS_ROUTE_PATTERN.test(normalise(text)) ? 'business' : 'projects';
 }
 
 /**

@@ -82,7 +82,7 @@ def desk(id_, worker_id, cluster="__conductor__"):
 
 def test_a_business_classified_worker_is_dropped_from_the_projects_floor(driver):
     state = {
-        "workers": [worker("w1", "reconcile the monthly invoice")],
+        "workers": [worker("w1", "reconcile the monthly finance invoice")],
         "desks": [desk("d1", "w1")],
     }
     out = run(driver, state)
@@ -114,7 +114,7 @@ def test_descendants_of_a_business_worker_are_hidden_too(driver):
     # is still part of that business branch, not re-classified on its own.
     state = {
         "workers": [
-            worker("parent", "update the budget and reconcile invoices"),
+            worker("parent", "update the finance budget and reconcile invoices"),
             worker("child", "read api/routes.py", parent_id="parent"),
         ],
         "desks": [desk("d-parent", "parent"), desk("d-child", "child", cluster="parent")],
@@ -126,7 +126,7 @@ def test_descendants_of_a_business_worker_are_hidden_too(driver):
 def test_only_the_business_branch_is_hidden_not_unrelated_work(driver):
     state = {
         "workers": [
-            worker("biz", "process the vendor payment"),
+            worker("biz", "process the business vendor payment"),
             worker("other", "write a short poem about the ocean"),
         ],
         "desks": [desk("d-biz", "biz"), desk("d-other", "other")],
