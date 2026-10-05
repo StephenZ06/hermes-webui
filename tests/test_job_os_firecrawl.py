@@ -39,6 +39,7 @@ def home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "research")
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: home)
+    monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: home)
     monkeypatch.delenv("FIRECRAWL_API_URL", raising=False)
     monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
     return home

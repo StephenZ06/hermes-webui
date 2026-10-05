@@ -14,6 +14,7 @@ from api.job_os.repository import create_job, get_job, normalize_job_input
 def _use_profile_home(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "research")
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path / "research")
+    monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: tmp_path / "research")
 
 
 def _new_job(tmp_path, monkeypatch):

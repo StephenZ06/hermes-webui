@@ -39,6 +39,7 @@ def _body(payload: object) -> bytes:
 def _use_profile_home(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "research")
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path / "research")
+    monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: tmp_path / "research")
 
 
 def test_job_os_routes_expose_capability_and_validate_bad_job_payloads(tmp_path, monkeypatch):

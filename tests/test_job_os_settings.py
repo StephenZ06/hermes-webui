@@ -34,6 +34,8 @@ def home(tmp_path, monkeypatch):
     state = {"name": "research"}
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: state["name"])
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path / state["name"])
+    monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: tmp_path / "base")
+    monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: state.get("isolated", False))
     monkeypatch.setattr(routes, "_check_csrf", lambda _h: True)
     monkeypatch.setattr(routes, "_guard_request_session_visibility", lambda *a, **k: True)
     for key in ("FIRECRAWL_API_URL", "JOB_OS_GMAIL_ADDRESS", "JOB_OS_GMAIL_APP_PASSWORD"):
@@ -82,8 +84,16 @@ def test_stale_revision_is_a_conflict(home):
         save_settings({"scout": {"schedule_hours": 8}}, expected_revision=0)
 
 
-def test_settings_are_isolated_per_profile(home):
+def test_settings_are_global_across_profiles(home):
     state, _ = home
+    save_settings({"scout": {"schedule_hours": 4}}, expected_revision=0)
+    state["name"] = "other"
+    assert load_settings()["scout"]["schedule_hours"] == 4
+
+
+def test_isolated_deployments_keep_settings_per_profile(home):
+    state, _ = home
+    state["isolated"] = True
     save_settings({"scout": {"schedule_hours": 4}}, expected_revision=0)
     state["name"] = "other"
     assert load_settings()["scout"]["schedule_hours"] == default_settings()["scout"]["schedule_hours"]

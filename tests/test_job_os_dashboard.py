@@ -15,6 +15,9 @@ def test_dashboard_counts_only_canonical_records_from_the_active_profile(tmp_pat
     active = {"name": "research"}
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: active["name"])
     monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: homes[active["name"]])
+    # Per-profile stores are the isolated-deployment contract; Job OS is
+    # otherwise global (see test_job_os_storage.py).
+    monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: True)
 
     first = create_job(
         normalize_job_input({"title": "Backend", "canonical_url": "https://jobs.example.test/backend"})
