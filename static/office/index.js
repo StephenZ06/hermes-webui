@@ -782,7 +782,13 @@ function dashboardAttentionCard(item) {
     : choices.length
       ? choices.map(choice => `<button type="button" class="office-dashboard-attention-action" data-attention-choice="${esc(choice)}" data-attention-session="${esc(item.sessionId)}" data-attention-kind="clarify" data-attention-id="${esc(pending.clarify_id || '')}">${esc(choice)}</button>`).join('')
       : `<input class="office-dashboard-attention-input" data-attention-input="1" placeholder="Type a response"><button type="button" class="office-dashboard-attention-action" data-attention-choice="__input__" data-attention-session="${esc(item.sessionId)}" data-attention-kind="clarify" data-attention-id="${esc(pending.clarify_id || '')}">Send response</button>`;
-  return `<article class="office-dashboard-attention-card" role="button" tabindex="0" data-attention-focus="1" data-attention-session="${esc(item.sessionId)}"><div><span>${item.kind === 'approval' ? 'Permission required' : 'Answer needed'}</span><strong>${title}</strong></div><div class="office-dashboard-attention-actions">${controls}</div></article>`;
+  // Answers go through profile-guarded endpoints, so a chat from another
+  // profile is opened (which switches profile) rather than answered here.
+  const actions = item.sameProfile === false
+    ? `<button type="button" class="office-dashboard-attention-action" data-attention-open="${esc(item.sessionId)}">Open chat</button>`
+    : controls;
+  const where = item.sameProfile === false && item.profile ? ` <em class="office-dashboard-attention-profile">${esc(item.profile)}</em>` : '';
+  return `<article class="office-dashboard-attention-card" role="button" tabindex="0" data-attention-focus="1" data-attention-session="${esc(item.sessionId)}"><div><span>${item.kind === 'approval' ? 'Permission required' : 'Answer needed'}${where}</span><strong>${title}</strong></div><div class="office-dashboard-attention-actions">${actions}</div></article>`;
 }
 
 async function respondDashboardAttention(button) {
@@ -856,7 +862,14 @@ function openDashboardWorker(worker, outlet) {
 }
 
 function openDashboardAttention(item, model) {
-  openDashboardWorker(item && item.worker, model.mode);
+  if (item && item.worker) { openDashboardWorker(item.worker, model.mode); return; }
+  if (item && item.sessionId) openAttentionChat(item.sessionId);
+}
+
+// loadSession() switches to the chat's profile when it belongs to another one.
+function openAttentionChat(sessionId) {
+  if (typeof window.loadSession === 'function') window.loadSession(sessionId);
+  if (typeof window.switchPanel === 'function') window.switchPanel('chat');
 }
 
 // Work distribution can open one floor's completed tasks inside the card.
@@ -949,6 +962,9 @@ function renderOfficeDashboard(state) {
   });
   host.querySelectorAll('[data-dashboard-metric-action]').forEach(button => {
     button.onclick = () => dashboardMetricAction(button.dataset.dashboardMetricAction, model);
+  });
+  host.querySelectorAll('[data-attention-open]').forEach(button => {
+    button.onclick = (event) => { event.stopPropagation(); openAttentionChat(button.dataset.attentionOpen); };
   });
   host.querySelectorAll('[data-attention-choice]').forEach(button => {
     button.onclick = (event) => { event.stopPropagation(); respondDashboardAttention(button); };
@@ -1931,21 +1947,20 @@ async function renderSidebar() {
 }
 
 async function loadDashboardAttention() {
-  const parents = _historyParents.slice(0, 60);
-  const results = await Promise.all(parents.map(async parent => {
-    const sessionId = String(parent && parent.parent_session_id || '');
-    if (!sessionId) return null;
-    const [approval, clarify] = await Promise.all([
-      request(`/api/approval/pending?session_id=${encodeURIComponent(sessionId)}`, { timeoutToast: false }).catch(() => null),
-      request(`/api/clarify/pending?session_id=${encodeURIComponent(sessionId)}`, { timeoutToast: false }).catch(() => null),
-    ]);
-    const goal = (Array.isArray(parent.children) && parent.children[0] && parent.children[0].title) || parent.title || '';
+  // One request for every chat waiting on the user, across all profiles. The
+  // old per-chat polling only covered the active profile's delegating chats
+  // and 404'd on chats tagged with another profile.
+  const data = await request('/api/office/attention', { timeoutToast: false }).catch(() => null);
+  if (!data || !Array.isArray(data.items)) return;
+  const results = data.items.map(entry => {
+    const sessionId = String(entry && entry.session_id || '');
+    if (!sessionId || !entry.pending) return null;
+    const goal = String(entry.title || '');
     const mode = businessView({ workers: [{ id: sessionId, goal, label: goal, status: 'completed' }] }, _roster)
       .desks.some(desk => desk.workerId === sessionId) ? 'business' : 'projects';
-    if (approval && approval.pending) return { sessionId, mode, kind: 'approval', pending: approval.pending };
-    if (clarify && clarify.pending) return { sessionId, mode, kind: 'clarify', pending: clarify.pending };
-    return null;
-  }));
+    return { sessionId, mode, kind: entry.kind === 'approval' ? 'approval' : 'clarify', pending: entry.pending,
+      title: goal, profile: String(entry.profile || ''), sameProfile: entry.same_profile !== false };
+  });
   _dashboardAttentionBySession.clear();
   results.filter(Boolean).forEach(item => _dashboardAttentionBySession.set(item.sessionId, item));
   if (_officeSubview === 'dashboard') scheduleSync();

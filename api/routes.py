@@ -15489,6 +15489,10 @@ def _route_get_api_clarify_pending(handler, parsed):
     return _handle_clarify_pending(handler, parsed)
 
 
+def _route_get_api_office_attention(handler, parsed):
+    return _handle_office_attention(handler, parsed)
+
+
 def _route_get_api_clarify_stream(handler, parsed):
     return _handle_clarify_sse_stream(handler, parsed)
 
@@ -16026,6 +16030,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/approval/stream"), _route_get_api_approval_stream),
         (Exact("/api/approval/inject_test"), _route_get_api_approval_inject_test),
         (Exact("/api/clarify/pending"), _route_get_api_clarify_pending),
+        (Exact("/api/office/attention"), _route_get_api_office_attention),
         (Exact("/api/clarify/stream"), _route_get_api_clarify_stream),
         (Exact("/api/session/stream"), _route_get_api_session_stream),
         (Exact("/api/clarify/inject_test"), _route_get_api_clarify_inject_test),
@@ -23628,6 +23633,14 @@ def _read_anchored_file_bytes(ws_root: Path, target: Path) -> bytes:
 
 def _handle_approval_pending(handler, parsed):
     sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    p, total = _approval_pending_head(sid)
+    if p:
+        return j(handler, {"pending": dict(p), "pending_count": total})
+    return j(handler, {"pending": None, "pending_count": 0})
+
+
+def _approval_pending_head(sid):
+    """The oldest pending approval for ``sid`` and the queue length, or (None, 0)."""
     with _lock:
         _head, _total, _changed = reconcile_gateway_pending_mirror_locked(sid)
         queue = _pending.get(sid)
@@ -23650,9 +23663,55 @@ def _handle_approval_pending(handler, parsed):
                     total = len(gw_queue)
                 else:
                     logger.warning("Gateway queue entry for %s has no .data attribute", sid)
-    if p:
-        return j(handler, {"pending": dict(p), "pending_count": total})
-    return j(handler, {"pending": None, "pending_count": 0})
+    return (p, total) if p else (None, 0)
+
+
+def _handle_office_attention(handler, parsed):
+    """Every WebUI chat waiting on the user, across all profiles.
+
+    The Office dashboard's Attention card. A chat blocked on a permission
+    prompt or a clarify question matters whichever profile it runs on, so this
+    is deliberately not scoped to the request's profile -- it is the one
+    cross-profile summary. Each item carries the chat's profile and
+    ``same_profile``; answering still goes through the profile-guarded respond
+    endpoints, so a chat from another profile is opened, not answered, here.
+    Chats with no WebUI session (CLI, messaging) are left out: they cannot be
+    opened or answered from the WebUI.
+    """
+    from api import clarify as _clarify
+
+    with _lock:
+        approval_sids = set(_pending) | set(_gateway_queues)
+    with _clarify._lock:
+        clarify_sids = set(_clarify._pending) | set(_clarify._gateway_queues)
+    active_profile = _get_active_profile_name()
+    items = []
+    for sid in sorted(approval_sids | clarify_sids):
+        if not isinstance(sid, str) or not is_safe_session_id(sid):
+            continue
+        try:
+            session = get_session(sid, metadata_only=True)
+        except Exception:
+            continue
+        pending, total = _approval_pending_head(sid) if sid in approval_sids else (None, 0)
+        kind = "approval"
+        if not pending and sid in clarify_sids:
+            pending = get_clarify_pending(sid)
+            total = 1 if pending else 0
+            kind = "clarify"
+        if not pending:
+            continue
+        profile = getattr(session, "profile", None)
+        items.append({
+            "session_id": sid,
+            "title": getattr(session, "title", None) or "",
+            "profile": profile or "default",
+            "same_profile": _profiles_match(profile, active_profile),
+            "kind": kind,
+            "pending": dict(pending),
+            "pending_count": total,
+        })
+    return j(handler, {"items": items})
 
 
 def _handle_approval_sse_stream(handler, parsed):
