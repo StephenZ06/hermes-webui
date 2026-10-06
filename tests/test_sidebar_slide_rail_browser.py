@@ -132,55 +132,50 @@ def test_sidebar_slide_stays_transform_only_without_web_animations():
     assert settled["width"] <= 1, settled
 
 
-def test_sidebar_slide_interpolates_the_main_layout_bounds_together():
-    """The visible main width and position must move as one FLIP transition."""
+def test_sidebar_slide_moves_main_as_one_rigid_body():
+    """Main glides by translation only: its position moves, its width never does.
+
+    Scaling main to interpolate its width stretched every glyph and card for
+    the whole slide, which read as a wobble. The page keeps its final layout
+    width and slides into place.
+    """
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            cdp = page.context.new_cdp_session(page)
             page.goto(BASE + "/", wait_until="domcontentloaded")
-            page.wait_for_function(
-                "() => typeof S !== 'undefined' && S._bootReady === true",
-                polling=100,
-                timeout=30000,
-            )
-            page.evaluate(
-                "() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())"
-            )
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             page.evaluate("async () => { await switchPanel('tasks'); }")
-            before = page.evaluate("""() => {
-              const rect = document.querySelector('.main').getBoundingClientRect();
-              return {left: rect.left, width: rect.width};
-            }""")
-            page.evaluate("() => toggleSidebar()")
-            # Allow the spring one rendered frame before sampling. On a loaded
-            # Office-size DOM the first compositor sample can legitimately
-            # still be its exact FLIP start geometry at 60ms.
-            page.wait_for_timeout(120)
-            moving = page.evaluate("""() => ({
-              panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position'),
-              mainTransform: getComputedStyle(document.querySelector('.main')).transform,
-              rect: (() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; })(),
-            })""")
-            page.wait_for_timeout(320)
-            settled = page.evaluate("""() => {
-              const rect = document.querySelector('.main').getBoundingClientRect();
-              return {left: rect.left, width: rect.width};
-            }""")
+            cdp.send("Animation.enable")
+            results = {}
+            for label in ("collapse", "expand"):
+                before = page.evaluate("() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; }")
+                cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.02})
+                page.evaluate("() => toggleSidebar()")
+                page.wait_for_function("() => document.querySelector('.main').getAnimations().some(a => a.playState === 'running')",
+                                       polling=50, timeout=10000)
+                page.wait_for_timeout(800)
+                moving = page.evaluate("""() => ({
+                  panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position'),
+                  matrix: getComputedStyle(document.querySelector('.main')).transform,
+                  rect: (() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; })(),
+                })""")
+                cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
+                page.wait_for_function("() => !document.querySelector('.main').getAnimations().length", polling=50, timeout=10000)
+                settled = page.evaluate("() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; }")
+                results[label] = (before, moving, settled)
         finally:
             browser.close()
 
-    assert moving["panelPosition"] == "fixed", moving
-    assert moving["mainTransform"] != "none", moving
-    for field in ("left", "width"):
-        low, high = sorted((before[field], settled[field]))
-        assert low + 1 < moving["rect"][field] < high - 1, {
-            "field": field,
-            "before": before,
-            "moving": moving,
-            "settled": settled,
-        }
+    for label, (before, moving, settled) in results.items():
+        assert moving["matrix"].startswith("matrix(1, 0, 0, 1,"), (label, moving)  # translate only, no scale
+        assert abs(moving["rect"]["width"] - settled["width"]) < 2, (label, moving, settled)  # width never interpolates
+        low, high = sorted((before["left"], settled["left"]))
+        assert low + 1 < moving["rect"]["left"] < high - 1, (label, before, moving, settled)  # but position does
+    assert results["collapse"][1]["panelPosition"] == "fixed"
 
 
 def test_expanding_the_sidebar_slides_main_to_its_final_place_without_a_late_jump():

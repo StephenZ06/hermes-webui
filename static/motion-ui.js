@@ -409,10 +409,10 @@
     // How far the main column jumped when the state was applied. It is carried
     // back and animated to zero so the content glides instead of popping.
     const mainFrom = animateMain ? mainBefore.left - mainAfter.left : 0;
-    const mainScale = animateMain && mainAfter.width > 0
-      ? mainBefore.width / mainAfter.width
-      : 1;
-    const mainFromTransform = 'translateX(' + mainFrom + 'px) scaleX(' + mainScale + ')';
+    // Translate only. The page keeps its final layout width and moves as one
+    // rigid body: scaling main to interpolate its width stretched every glyph
+    // and card for the length of the slide, which read as a wobble.
+    const mainFromTransform = 'translateX(' + mainFrom + 'px)';
 
     if(expanding) holdPanelInFlow(panel);
     else pinPanel(panel, rect);
@@ -420,14 +420,12 @@
     try{
       running.push(springTransform(panel,
         'translateX(' + panelFrom + 'px)', 'translateX(' + panelTo + 'px)'));
-      if(Math.abs(mainFrom) > 0.5 || Math.abs(mainScale - 1) > 0.001){
-        main.style.transformOrigin = 'left top';
+      if(Math.abs(mainFrom) > 0.5){
         running.push(springTransform(main, mainFromTransform, 'none'));
       }
     }catch(_){
       unpinPanel(panel);
       main.style.transform = '';
-      main.style.transformOrigin = '';
       finish();
       return;
     }
@@ -435,7 +433,6 @@
     const settle = () => {
       unpinPanel(panel);
       main.style.transform = '';
-      main.style.transformOrigin = '';
       finish();
     };
     track(motionName, running, settle);
