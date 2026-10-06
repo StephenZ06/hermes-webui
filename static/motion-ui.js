@@ -322,6 +322,17 @@
     el.style.setProperty('z-index', '6', 'important');
   }
 
+  // An expanding panel keeps its place in the flex row. Pinning it out of the
+  // row (as a collapsing panel must be, since its width is 0) would let the
+  // main column sit at the *collapsed* geometry for the whole slide and snap
+  // to the expanded one when the pin is dropped -- the FLIP transform on main
+  // is computed against the expanded layout, so main has to actually be there.
+  function holdPanelInFlow(el){
+    el.style.setProperty('position', 'relative', 'important');
+    el.style.setProperty('opacity', '1', 'important');
+    el.style.setProperty('z-index', '6', 'important');
+  }
+
   function unpinPanel(el){
     ['position','left','top','width','height','opacity','z-index','transform']
       .forEach(prop => el.style.removeProperty(prop));
@@ -403,7 +414,8 @@
       : 1;
     const mainFromTransform = 'translateX(' + mainFrom + 'px) scaleX(' + mainScale + ')';
 
-    pinPanel(panel, rect);
+    if(expanding) holdPanelInFlow(panel);
+    else pinPanel(panel, rect);
     const running = [];
     try{
       running.push(springTransform(panel,

@@ -181,3 +181,50 @@ def test_sidebar_slide_interpolates_the_main_layout_bounds_together():
             "moving": moving,
             "settled": settled,
         }
+
+
+def test_expanding_the_sidebar_slides_main_to_its_final_place_without_a_late_jump():
+    """On expand, main must already sit at its expanded layout box during the slide.
+
+    The FLIP transform on main is measured against the expanded layout. If the
+    panel is pinned out of the flex row, main sits at the *collapsed* box for
+    the whole slide and snaps right when the pin is dropped: the page glides
+    to the left edge, then jumps to where it belongs.
+    """
+    sync_api = pytest.importorskip("playwright.sync_api")
+    # Scoped to the two sliding elements: the Jobs page has endless pulse animations.
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            cdp = page.context.new_cdp_session(page)
+            page.goto(BASE + "/#jobs/dashboard", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("async () => { await switchPanel('jobs'); }")
+            page.wait_for_selector(".job-os-shell", timeout=15000)
+            expanded = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
+            page.evaluate("() => toggleSidebar(true)")
+            page.wait_for_function("() => ![...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
+            collapsed = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
+            cdp.send("Animation.enable")
+            cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.02})
+            page.evaluate("() => toggleSidebar(false)")
+            page.wait_for_function("() => [...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
+            page.wait_for_timeout(800)
+            during = page.evaluate("""() => {
+              const m = document.querySelector('.main');
+              return {box: [m.offsetLeft, m.offsetWidth], visibleLeft: m.getBoundingClientRect().left,
+                      panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position')};
+            }""")
+            cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
+            page.wait_for_function("() => ![...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
+            settled = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
+        finally:
+            browser.close()
+
+    assert collapsed != expanded, "precondition: the sidebar changes main's box"
+    assert settled == expanded, settled
+    assert during["box"] == expanded, during  # main already at its final box mid-slide
+    assert collapsed[0] < during["visibleLeft"] < expanded[0], during  # and gliding toward it
+    assert during["panelPosition"] != "fixed", during  # an expanding panel keeps its flex slot

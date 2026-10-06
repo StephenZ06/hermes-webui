@@ -1057,11 +1057,19 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const mainFromTransform='translateX('+mainFrom+'px) scaleX('+mainScale+')';
   // The collapsed selector owns width:0!important, so the temporary visual
   // panel needs equally-specific pins while its transform carries it away.
-  panel.style.setProperty('position','fixed','important');
-  panel.style.setProperty('left',rect.left+'px','important');
-  panel.style.setProperty('top',rect.top+'px','important');
-  panel.style.setProperty('width',rect.width+'px','important');
-  panel.style.setProperty('height',rect.height+'px','important');
+  if(expanding){
+    // An expanding panel stays in the flex row so `main` really sits at its
+    // expanded geometry (the FLIP transform below is measured against it).
+    // Pinning it out of the row would leave main at the collapsed geometry
+    // for the whole slide and snap it when the pin is dropped.
+    panel.style.setProperty('position','relative','important');
+  }else{
+    panel.style.setProperty('position','fixed','important');
+    panel.style.setProperty('left',rect.left+'px','important');
+    panel.style.setProperty('top',rect.top+'px','important');
+    panel.style.setProperty('width',rect.width+'px','important');
+    panel.style.setProperty('height',rect.height+'px','important');
+  }
   panel.style.setProperty('opacity','1','important');
   panel.style.setProperty('z-index','6','important');
   panel.style.setProperty('will-change','transform');
