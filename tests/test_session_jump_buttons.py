@@ -83,4 +83,4 @@ def test_session_jump_buttons_are_i18n_localized_in_text_tooltip_and_aria():
     for key, value in english_literals.items():
         assert I18N_JS.count(f"{key}: '{value}'") == 1, f"non-English locale still uses English literal for {key}"
     assert "document.querySelectorAll('[data-i18n-aria-label]')" in I18N_JS
-    assert "el.setAttribute('aria-label', val)" in I18N_JS
+    assert "_setAttrIfChanged(el, 'aria-label', val)" in I18N_JS  # write-if-changed (no DOM churn)

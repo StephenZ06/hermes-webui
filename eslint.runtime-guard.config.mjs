@@ -33,11 +33,11 @@ export default [
     },
   },
   {
-    // static/office/* are the app's only first-party ES modules (they import
-    // three.js through the <head> import map). Parsed as "script" their
-    // `import`/`export` statements are syntax errors, which would fail the
-    // whole gate rather than lint them. Same rules, module parser.
-    files: ["static/office/**/*.js"],
+    // static/office/* and the Job OS Logistics scene are the app's first-party
+    // ES modules (they import three.js through the <head> import map). Parsed
+    // as "script" their `import`/`export` statements are syntax errors, which
+    // would fail the whole gate rather than lint them. Same rules, module parser.
+    files: ["static/office/**/*.js", "static/job-os/logistics.js"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module" },
     rules: {
       "no-const-assign": "error",
