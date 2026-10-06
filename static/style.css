@@ -6028,6 +6028,23 @@ button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
 .job-os-email-log li small{grid-column:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .job-os-email-log li time{grid-column:2;grid-row:1;}
 .job-os-email-log li[data-status="failed"] strong,.job-os-email-log li[data-status="rejected"] strong{color:var(--error,#f07878);}
+/* ---- Interview prep ---- */
+.job-os-prep{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--accent) 4%,transparent);animation:page-view-in .3s cubic-bezier(.22,1,.36,1) backwards;}
+.job-os-prep h3{margin:0;font-size:15px;}
+.job-os-prep h4{margin:4px 0 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.prep-questions{display:flex;flex-direction:column;gap:6px;}
+.prep-q{border:1px solid var(--border2);border-radius:9px;padding:8px 10px;background:var(--surface);}
+.prep-q summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--text);display:flex;gap:8px;align-items:center;justify-content:space-between;}
+.prep-q p{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--text);}
+.prep-q .prep-why{color:var(--muted);font-style:italic;font-size:12px;}
+.prep-q[data-gap="true"]{border-color:color-mix(in srgb,var(--warning,#f5b84b) 45%,var(--border2));}
+.prep-stories{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;}
+.prep-story{padding:10px;border:1px solid var(--border2);border-radius:9px;background:var(--surface);font-size:12.5px;}
+.prep-story dl{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;margin:6px 0;}
+.prep-story dt{color:var(--muted);font-weight:600;}
+.prep-story dd{margin:0;color:var(--text);}
+.prep-story small{color:var(--muted);}
+@media (prefers-reduced-motion:reduce){.job-os-prep{animation:none;}}
 /* ---- Automations ---- */
 .automations{display:flex;flex-direction:column;gap:2px;}
 .automation-row{display:grid;grid-template-columns:12px minmax(0,1fr) minmax(0,auto);align-items:center;gap:12px;width:100%;padding:9px 6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;text-align:left;animation:automation-in .35s cubic-bezier(.22,1,.36,1) calc(var(--i) * 45ms) backwards;}

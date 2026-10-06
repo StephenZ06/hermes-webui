@@ -420,6 +420,10 @@
     if (job.status === 'resume_ready') out.push('<button type="button" class="job-os-btn" data-job-os-action="job-ready">Ready to apply</button>');
     if (['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(job.status)) out.push('<button type="button" class="job-os-btn" data-job-os-action="job-status" data-status="skipped">Skip</button>');
     if (job.description && !analysing(job)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="job-analyze">${a && a.status === 'done' ? 'Re-analyse' : 'Analyse'}</button>`);
+    const prep = job.interview;
+    if (['screening', 'interviewing', 'offer'].includes(job.status) && !(prep && ['pending', 'running'].includes(prep.status))) {
+      out.unshift(`<button type="button" class="job-os-btn${prep && prep.status === 'done' ? '' : ' primary'}" data-job-os-action="job-interview">${prep && prep.status === 'done' ? 'Refresh interview prep' : 'Prepare for interview'}</button>`);
+    }
     return out.join('');
   }
   function analysisPanel(job) {
@@ -446,12 +450,27 @@
       <div class="job-os-chips"><span class="job-os-chip">${esc(r.filename)}</span><span class="job-os-chip muted">${Number(r.words || 0).toLocaleString()} words</span><span class="job-os-chip muted">Updated ${esc(when(r.uploaded_at))}</span><span class="job-os-chip muted">Version ${Number(r.revision || 1)}</span></div>
       <details class="job-os-desc-wrap"><summary>Show text</summary><div class="job-os-description">${esc(r.text)}</div></details></section>`;
   }
+  function interviewPanel(job) {
+    const p = job.interview;
+    if (!p) return '';
+    if (['pending', 'running'].includes(p.status)) return writingPanel('Luna is preparing interview questions, stories and research for this job…');
+    if (p.status === 'failed') return `<div class="job-os-analysis is-failed"><div><strong>Interview prep failed</strong><p>${esc(p.error || '')}</p></div></div>`;
+    const list = (items) => (items || []).map((i) => `<li>${esc(i)}</li>`).join('');
+    const questions = (p.questions || []).map((q) => `<details class="prep-q"${q.supported ? '' : ' data-gap="true"'}><summary>${esc(q.question)}${q.supported ? '' : '<span class="job-os-chip muted">Prepare</span>'}</summary>${q.why ? `<p class="prep-why">${esc(q.why)}</p>` : ''}<p>${esc(q.outline)}</p></details>`).join('');
+    const stories = (p.stories || []).map((s) => `<div class="prep-story"><strong>${esc(s.title)}</strong><dl><dt>Situation</dt><dd>${esc(s.situation)}</dd><dt>Action</dt><dd>${esc(s.action)}</dd><dt>Result</dt><dd>${esc(s.result)}</dd></dl>${s.use_for ? `<small>Use for: ${esc(s.use_for)}</small>` : ''}</div>`).join('');
+    const block = (title, items) => (items || []).length ? `<div><h4>${title}</h4><ul class="analysis-list">${list(items)}</ul></div>` : '';
+    return `<section class="job-os-prep"><div class="job-os-card-head"><h3>Interview prep</h3><a class="job-os-link" href="/api/job-os/jobs/${encodeURIComponent(job.id)}/interview-prep.md" download>Download</a></div>
+      <h4>Likely questions</h4><div class="prep-questions">${questions}</div>
+      ${stories ? `<h4>Stories to rehearse</h4><div class="prep-stories">${stories}</div>` : ''}
+      <div class="analysis-cols">${block('Ask them', p.ask_them)}${block('Research', p.research)}${block('Watch-outs', p.watch_outs)}</div></section>`;
+  }
   function jobDetail(job) {
     if (!job) return '';
     const meta = [job.company, job.location].filter(Boolean).map(esc).join(' · ');
     return `<section class="job-os-card job-os-detail" id="job-os-detail"><div class="job-os-detail-head"><div><h2>${esc(job.title)}</h2><p>${meta}</p>${jobChips(job)}</div><div class="job-os-detail-side">${badge(job.status)}<button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details">×</button></div></div>
       <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">Open posting</a>${job.posted_at ? `<span class="job-os-chip muted">Posted ${esc(String(job.posted_at).slice(0, 10))}</span>` : ''}<span class="job-os-chip muted">${esc(job.source)}</span></div>
       ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
+      ${interviewPanel(job)}
       ${analysisPanel(job)}
       ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>` : '<p class="job-os-card-note">No description yet. Fetch details reads the posting page.</p>'}
       <p class="job-os-keys" aria-hidden="true"><kbd>J</kbd><kbd>K</kbd> next/previous · <kbd>S</kbd> shortlist · <kbd>X</kbd> skip · <kbd>A</kbd> analyse · <kbd>Esc</kbd> close</p></section>`;

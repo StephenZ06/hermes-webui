@@ -217,8 +217,25 @@ def _migration_6(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE INDEX IF NOT EXISTS apply_runs_job ON apply_runs (job_id, created_at)")
 
 
+def _migration_7(connection: sqlite3.Connection) -> None:
+    """Luna interview preparation per job."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS interview_preps (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            data_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            requested_at INTEGER NOT NULL,
+            finished_at INTEGER
+        )
+        """
+    )
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
-              (6, _migration_6))
+              (6, _migration_6), (7, _migration_7))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

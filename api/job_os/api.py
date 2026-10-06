@@ -46,6 +46,9 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         payload["analysis"] = get_analysis(job.id)
         payload["documents"] = {kind: {k: d[k] for k in ("id", "status", "error", "revision", "updated_at")}
                                 for kind, d in latest_documents(job.id).items()}
+        from api.job_os.interview import get_prep
+
+        payload["interview"] = get_prep(job.id)
     elif analyses is not None:
         payload["analysis"] = analyses.get(job.id)
     return payload
@@ -187,6 +190,24 @@ def _scout_get(handler, parsed) -> bool:
         j(handler, {"auto_apply": {"enabled": settings["enabled"], "submitted_today": autoapply.submitted_today(),
                                    "daily_cap": settings["daily_cap"], "browser_ready": autoapply.browser_python() is not None}})
         return True
+    if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/interview-prep.md"):
+        from api.job_os import export
+        from api.job_os.interview import get_prep
+
+        job_id = unquote(path[len(f"{_PREFIX}/jobs/"):-len("/interview-prep.md")]).strip("/")
+        prep, job = get_prep(job_id), get_job(job_id)
+        if not prep or prep["status"] != "done" or job is None:
+            return _error(handler, "Not found", 404)
+        body = prep["markdown"].encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/markdown; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.send_header("Cache-Control", "no-store")
+        handler.send_header("Content-Disposition", f'attachment; filename="{export.safe_filename("interview-prep-" + job.company + "-" + job.title)}.md"')
+        handler.end_headers()
+        handler.wfile.write(body)
+        return True
     if path.startswith(f"{_PREFIX}/jobs/") and "/proof/" in path:
         return _proof_get(handler, path)
     if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/timeline"):
@@ -260,6 +281,12 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             else:
                 ids = [str(i) for i in (body.get("job_ids") or []) if isinstance(i, str)]
             j(handler, {"queued": analysis.request_analysis(ids, force=bool(body.get("force")))})
+            return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/interview-prep"):
+            from api.job_os import interview
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            j(handler, {"interview": interview.request_prep(job_id)})
             return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/autofill", "/approve", "/cancel-apply")):
             from api.job_os import autoapply
@@ -448,7 +475,7 @@ def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
-                                                                                "/autofill", "/approve", "/cancel-apply"))):
+                                                                                "/autofill", "/approve", "/cancel-apply", "/interview-prep"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled

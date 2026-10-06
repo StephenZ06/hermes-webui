@@ -273,7 +273,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'board-apply', 'board-autofill', 'board-approve', 'board-cancel-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'board-autofill', 'board-approve', 'board-cancel-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -376,7 +376,8 @@
     const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status))
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
-      && ((state.jobs || []).some(busy) || busy(state.jobDetail) || (state.jobDetail && state.jobDetail.status === 'tailoring')))
+      && ((state.jobs || []).some(busy) || busy(state.jobDetail) || (state.jobDetail && state.jobDetail.status === 'tailoring')
+        || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))))
       || (state.activeView === 'resume-studio' && docBusy && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
@@ -458,6 +459,11 @@
     const state = window.JobOSState;
     const job = state.jobDetail;
     if (name === 'job-status') return setJobStatus(el.dataset.status);
+    if (name === 'job-interview' && job) {
+      try { await window.JobOSApi.interviewPrep(job.id); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start interview prep'); }
+      return refresh();
+    }
     if (name === 'job-analyze' && job) {
       try { await window.JobOSApi.analyzeJob(job.id, !!(job.analysis && job.analysis.status === 'done')); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not analyse this job'); }
