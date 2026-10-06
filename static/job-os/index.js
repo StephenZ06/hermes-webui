@@ -234,6 +234,7 @@
     if (path === 'auto_apply.allowed_ats') {
       return [...form.querySelectorAll('[data-setting="auto_apply.allowed_ats"]')].filter((box) => box.checked).map((box) => box.value);
     }
+    if (path === 'scout.blocked_companies') return control.value.split('\n');
     if (control.type === 'checkbox') return control.checked;
     if (control.type === 'number') return control.value === '' ? control.value : Number(control.value);
     return control.value;

@@ -38,7 +38,35 @@ DEFAULT_SITES = ("boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
 MAX_ERRORS = 20
 MAX_QUERIES = 15
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
-                 "duplicates": 0, "not_postings": 0, "filtered": 0, "unsafe": 0, "closed": 0, "errors": 0}
+                 "duplicates": 0, "not_postings": 0, "filtered": 0, "blocked": 0, "unsafe": 0, "closed": 0, "errors": 0}
+_COMPANY_SUFFIX = re.compile(r"\b(inc|incorporated|ltd|limited|llc|plc|gmbh|ag|sa|bv|co|corp|corporation|company|pty)\b\.?", re.I)
+SIMILAR_WINDOW = 60 * 86400
+
+
+def company_key(name: object) -> str:
+    """'Acme, Inc.' and 'ACME' compare equal."""
+    text = _COMPANY_SUFFIX.sub(" ", str(name or "").lower())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def _title_key(title: object) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).split())
+
+
+def similar_job_exists(company: object, title: object, *, now: float | None = None) -> bool:
+    """A recent job with the same employer and title, whatever site it came from."""
+    ckey, tkey = company_key(company), _title_key(title)
+    if not ckey or not tkey:
+        return False
+    since = int((time.time() if now is None else now) - SIMILAR_WINDOW)
+    conn = connect_job_os()
+    try:
+        rows = conn.execute("SELECT company, title FROM jobs WHERE created_at>=?", (since,)).fetchall()
+    finally:
+        conn.close()
+    return any(company_key(r["company"]) == ckey and _title_key(r["title"]) == tkey for r in rows)
+
+
 # Runs with a live worker in this process (threaded or inline).
 _LIVE_RUNS: set[str] = set()
 _LOCK = threading.Lock()
@@ -482,7 +510,9 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             return
         from api.job_os.settings import load_settings
 
-        max_results = int(load_settings()["scout"]["max_results_per_search"])
+        scout_settings = load_settings()["scout"]
+        max_results = int(scout_settings["max_results_per_search"])
+        blocked = {company_key(name) for name in scout_settings.get("blocked_companies") or []}
         client = client_factory()
         save("searching", "Searching job sites", started_at=int(time.time()))
 
@@ -574,6 +604,10 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     counts["not_postings"] += 1
                 elif search["remote_only"] and posting["workplace"] != "remote":
                     counts["filtered"] += 1
+                elif company_key(posting.get("company")) in blocked:
+                    counts["blocked"] += 1
+                elif similar_job_exists(posting.get("company"), posting.get("title")):
+                    counts["duplicates"] += 1  # the same role, found on another site
                 else:
                     job = replace(
                         normalize_job_input({**posting, "source": _source_for(safe)}),

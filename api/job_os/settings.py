@@ -40,7 +40,8 @@ def default_settings() -> dict:
         "ai": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True},
         # Contact details for tailored resumes and application forms.
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
-        "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20},
+        # blocked_companies: Scout never saves postings from these employers.
+        "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20, "blocked_companies": []},
         "notifications": {
             "email_enabled": False,
             "to_address": "",
@@ -121,6 +122,17 @@ def _ats(value, field):
     return [ats for ats in SUPPORTED_ATS if ats in picked]
 
 
+def _companies(value, field):
+    if isinstance(value, str):
+        value = value.splitlines()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise SettingsError(f"{field} must be a list of company names")
+    names = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+    if len(names) > 200 or any(len(name) > 120 for name in names):
+        raise SettingsError(f"{field} allows up to 200 names of 120 characters")
+    return names
+
+
 _VALIDATORS = {
     "firecrawl": {"api_url": _url},
     "ai": {
@@ -141,6 +153,7 @@ _VALIDATORS = {
         "enabled": _bool,
         "schedule_hours": lambda v, f: _int(v, f, 1, 168),
         "max_results_per_search": lambda v, f: _int(v, f, 1, 100),
+        "blocked_companies": _companies,
     },
     "notifications": {
         "email_enabled": _bool,

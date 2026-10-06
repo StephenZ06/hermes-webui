@@ -115,6 +115,29 @@ def test_remote_only_filters_onsite_postings(store):
     assert "remote" in fake.queries[0]
 
 
+def test_blocked_companies_and_cross_site_duplicates_are_skipped(store):
+    from api.job_os.settings import save_settings
+
+    save_settings({"scout": {"blocked_companies": ["Globex Corporation"]}}, expected_revision=0)
+    search = scout.create_search({"keywords": "backend", "sites": ["jobs.lever.co"]})
+    urls = [f"https://jobs.lever.co/a/0000000{n}-aaaa-bbbb-cccc-1234567890ab" for n in range(1, 4)]
+    fake = FakeFirecrawl(results={"backend": urls}, pages={
+        urls[0]: _posting("Backend Engineer", company="Acme"),
+        urls[1]: _posting("Backend Engineer", company="ACME, Inc."),  # same role, listed again elsewhere
+        urls[2]: _posting("Backend Engineer", company="globex"),
+    })
+    run = _run(search, fake)
+    c = run["counts"]
+    assert (c["saved"], c["duplicates"], c["blocked"]) == (1, 1, 1)
+    assert [j.company for j in list_jobs()] == ["Acme"]
+
+
+def test_company_key_normalises_names():
+    assert scout.company_key("Acme, Inc.") == scout.company_key("ACME") == "acme"
+    assert scout.company_key("Globex Corporation") == "globex"
+    assert scout.company_key("Initech Ltd") != scout.company_key("Initrode")
+
+
 def test_careers_page_links_are_followed(store):
     search = scout.create_search({"keywords": "backend", "sites": ["https://acme.com/careers"]})
     fake = FakeFirecrawl(links={"https://acme.com/careers": ["https://acme.com/careers/jobs/42-backend", "https://acme.com/about"]},
