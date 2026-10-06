@@ -30,6 +30,7 @@ import {
   createWanderer, createArrival, advanceArrival, arrivalSettle,
 } from './motion.js';
 import { shouldSleepWhileRunning } from './idle.js';
+import { createQualityGovernor } from './quality.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
 // office is authored against this so a desk keeps the same on-screen size
@@ -182,7 +183,13 @@ export function createOfficeScene(canvas, options) {
   // At least 1.5x internally (capped at 2x): on a 1x display, thin diagonal
   // edges (bridge rails, the floor grid, slab rims) stair-stepped even with
   // MSAA; rendering above the screen's density and filtering down smooths them.
-  renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2));
+  // That is the *preferred* ratio. A GPU that cannot hold the frame rate at it
+  // (an integrated GPU, a 4K panel) gets less: the quality governor
+  // (quality.js) steps the ratio down to 1x while frames run slow, and back
+  // up after a sustained stretch of headroom.
+  const preferredPixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2);
+  const quality = createQualityGovernor({ base: preferredPixelRatio, min: 1 });
+  renderer.setPixelRatio(preferredPixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   // PCFSoftShadowMap is deprecated as of r185 and silently falls back to
@@ -291,8 +298,9 @@ export function createOfficeScene(canvas, options) {
   // over-1.0 colour (see builders.js's makePodGlow) from being clamped to
   // white before bloom ever sees it.
   const composerTarget = new THREE.WebGLRenderTarget(1, 1, {
-    // As many MSAA samples as the GPU allows, up to 8.
-    samples: Math.max(4, Math.min(8, (renderer.capabilities && renderer.capabilities.maxSamples) || 4)), type: THREE.HalfFloatType,
+    // 4x MSAA. On top of the >=1.5x internal resolution, 8 samples bought no
+    // visible smoothing and doubled the resolve cost of every frame.
+    samples: Math.min(4, (renderer.capabilities && renderer.capabilities.maxSamples) || 4), type: THREE.HalfFloatType,
   });
   // One bloom pass over the whole render. Nothing in the ordinary palette sits
   // near the 1.0 threshold (see BLOOM_THRESHOLD above), so this only lights up
@@ -1611,6 +1619,13 @@ export function createOfficeScene(canvas, options) {
   }
 
   // ---- render loop ------------------------------------------------------
+  const SCREEN_REDRAW_S = 1 / 12;
+  function setRenderPixelRatio(ratio) {
+    renderer.setPixelRatio(ratio);
+    composer.setPixelRatio(ratio);
+    lastWidth = 0; // reallocate the buffers at the new ratio on this frame's resize()
+    resize();
+  }
   let rafId = 0;
   let running = false;
   let lastFrameAt = 0;
@@ -1621,8 +1636,11 @@ export function createOfficeScene(canvas, options) {
     resize();
 
     const t = (now || 0) / 1000;
+    const frameMs = lastFrameAt ? (t - lastFrameAt) * 1000 : 0;
     const dt = lastFrameAt ? Math.min(0.1, t - lastFrameAt) : 0.016;
     lastFrameAt = t;
+    const nextRatio = quality.sample(frameMs, now || 0);
+    if (nextRatio) setRenderPixelRatio(nextRatio);
 
     if (tween) advanceTween(now || 0);
     advanceOutletTransition(now || 0);
@@ -1669,7 +1687,12 @@ export function createOfficeScene(canvas, options) {
         seat.bubble.scale.set(bubbleScale * k, bubbleScale * 0.76 * k, 1);
         seat.bubble.position.y = 3.12 + Math.sin(t * 3 + seat.screenSeed) * 0.08;
       }
-      if (seat.workerId && seat.pose && (seat.pose === 'work' || seat.pose === 'tool' || seat.pose === 'sleep')) {
+      // The screen shimmer is a 2D canvas redrawn and re-uploaded as a
+      // texture; ~12 times a second looks the same as every frame and costs
+      // a fifth as much with a floor full of busy desks.
+      if (seat.workerId && seat.pose && (seat.pose === 'work' || seat.pose === 'tool' || seat.pose === 'sleep')
+          && t - (seat.screenDrawnAt || 0) >= SCREEN_REDRAW_S) {
+        seat.screenDrawnAt = t;
         drawActiveScreen(seat.screen, palette, t, seat.screenSeed);
       }
     });
@@ -1711,6 +1734,7 @@ export function createOfficeScene(canvas, options) {
     // "running" flag honest so visibilitychange can restart cleanly.
     running = true;
     lastFrameAt = 0;
+    quality.reset(performance.now());
     rafId = window.requestAnimationFrame(frame);
   }
 
@@ -1759,6 +1783,7 @@ export function createOfficeScene(canvas, options) {
   return {
     start, stop, resize, renderNow, dispose, isRunning, applyTheme, syncOffice,
     beginLayoutMotion, endLayoutMotion, isInLayoutMotion: () => layoutMotion,
+    getRenderQuality: () => ({ pixelRatio: renderer.getPixelRatio(), preferred: preferredPixelRatio, samples: composerTarget.samples }),
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
     podScreenRect, scene, setOutletTransition,
   };
