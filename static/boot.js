@@ -1131,10 +1131,11 @@ function _slidePanelIfPossible(panel,side,apply){
   const lifecycle={
     onStart:function(){_notifyOfficePanelLayoutMotion(true);},
     onComplete:function(){_notifyOfficePanelLayoutMotion(false);},
-    // A left sidebar reveals more room for the active page; its contents
-    // should reflow once, not visibly travel with the panel. The right-side
-    // workspace drawer keeps its existing paired slide.
-    animateMain:side==='right'
+    // The panel state changes once, then the main workspace is carried from
+    // its old position to the new flex geometry on the compositor. This makes
+    // the available page area visibly settle with the sidebar instead of
+    // snapping after the panel finishes.
+    animateMain:true
   };
   try{
     const motionUi=window.MotionUI;

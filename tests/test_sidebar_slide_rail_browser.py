@@ -132,8 +132,8 @@ def test_sidebar_slide_stays_transform_only_without_web_animations():
     assert settled["width"] <= 1, settled
 
 
-def test_sidebar_slide_does_not_translate_the_page_contents():
-    """The sidebar may slide, but the active page must not travel with it."""
+def test_sidebar_slide_carries_main_content_to_its_new_layout_position():
+    """The main workspace must glide to the new sidebar layout, not snap."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -158,4 +158,4 @@ def test_sidebar_slide_does_not_translate_the_page_contents():
             browser.close()
 
     assert moving["panelPosition"] == "fixed", moving
-    assert moving["mainTransform"] == "none", moving
+    assert moving["mainTransform"] != "none", moving
