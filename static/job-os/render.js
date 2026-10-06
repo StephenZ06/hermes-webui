@@ -503,7 +503,7 @@
       const legend = [['strong', 'Strong fit'], ['good', 'Good fit'], ['stretch', 'Stretch'], ['poor', 'Poor fit'], ['none', 'Not scored']]
         .map(([key, text]) => `<span><i data-verdict="${key}"></i>${text}</span>`).join('');
       body = `${header('Logistics centre', 'Every job is a parcel moving through the warehouse. Click one to open it.', state)}
-        <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage"></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
+        <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage" data-slide-safe></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find postings on job sites and read each one.', state)}${scoutView(state)}`;
     } else if (view === 'settings') {

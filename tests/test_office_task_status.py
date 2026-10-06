@@ -209,8 +209,8 @@ def test_the_panel_is_a_floating_stage_card_with_equal_expanded_insets():
     assert ".office-tasks{" in CSS
     assert ".office-body{" in CSS
     assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);" in CSS
-    assert "<div class=\"office-stage\">" in OFFICE_SRC
-    stage_at = OFFICE_SRC.index('<div class="office-stage">')
+    assert "<div class=\"office-stage\" data-slide-safe>" in OFFICE_SRC
+    stage_at = OFFICE_SRC.index('<div class="office-stage" data-slide-safe>')
     tasks_at = OFFICE_SRC.index('<div class="office-tasks"')
     body_at = OFFICE_SRC.index('<div class="office-tasks-body"')
     body_end = OFFICE_SRC.index('</div>\n    </div>`;', stage_at)

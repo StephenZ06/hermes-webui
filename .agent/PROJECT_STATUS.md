@@ -15,6 +15,16 @@
   Office, canvas/iframe/terminal pages and pages whose layout probe exceeds
   10ms keep the single-layout compositor slide (`_slidePanelWithNativeAnimation`
   / `MotionUI.slidePanel`; an expanding panel now stays in the flex row there).
+- Follow-ups after real-screen feedback: (1) animation time now advances by at
+  most one 34ms frame per callback, so a long first frame (raster of a big
+  sidebar) no longer swallows the curve (Work Hub expand "stopped, then
+  appeared expanded"); (2) canvas pages take the layout-driven slide when the
+  canvas sits in a `[data-slide-safe]` container: the Office stage (canvas
+  already spans the widest stage, centred) and the Logistics stage (canvas
+  keeps one drawing buffer at `layout.dataset.slideMainMax` width while
+  `.layout.panel-sliding`, one resize after). Other canvas/iframe/video/xterm
+  pages keep the compositor slide, which is only correct for left-aligned
+  content (centred content steps backwards on frame one).
 - Test hook: `window.__hermesSlideTimeScale` slows the slide; `.layout.panel-sliding`
   marks it. Tests: `tests/test_sidebar_slide_rail_browser.py`.
 - Headless here can't show real-GPU smoothness; frame pacing was steady

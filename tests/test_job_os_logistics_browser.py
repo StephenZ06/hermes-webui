@@ -80,3 +80,41 @@ def test_logistics_centre_places_parcels_and_disposes_on_leave():
     assert not errors, errors
     assert labels["Receiving dock"] >= 1 and labels["Tailoring workshop"] >= 1 and labels["Shipping bay"] >= 1
     assert same
+
+
+@pytest.mark.skipif(os.environ.get("HERMES_WEBUI_BROWSER_TESTS") != "1",
+                    reason="opt-in: set HERMES_WEBUI_BROWSER_TESTS=1 (WebGL under SwiftShader is slow)")
+def test_logistics_canvas_keeps_one_drawing_buffer_through_a_sidebar_slide():
+    """Reallocating the WebGL buffer every frame of a slide stutters and blanks.
+
+    The canvas keeps the widest width the stage reaches, centred in the
+    clipping stage, and is resized once when the slide ends.
+    """
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox",
+                                           "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900}, reduced_motion="no-preference")
+            _open(page)
+            page.wait_for_selector(".logistics-host canvas.logistics-canvas", state="attached", timeout=240000)
+            page.wait_for_timeout(3000)
+            result = page.evaluate("""() => new Promise((resolve) => {
+              const canvas = document.querySelector('.logistics-canvas');
+              const host = document.querySelector('.logistics-host');
+              const layout = document.querySelector('.layout');
+              const widths = new Set(); let frames = 0;
+              toggleSidebar(true);
+              const tick = () => {
+                if (layout.classList.contains('panel-sliding')) { widths.add(canvas.width); frames += 1; requestAnimationFrame(tick); return; }
+                setTimeout(() => resolve({widths: [...widths], frames, final: canvas.width, hostWidth: host.clientWidth,
+                                          dpr: window.devicePixelRatio, style: canvas.style.cssText}), 300);
+              };
+              requestAnimationFrame(tick);
+            })""")
+        finally:
+            browser.close()
+    assert result["frames"] >= 5, result
+    assert len(result["widths"]) == 1, result  # one drawing buffer for the whole slide
+    assert result["style"] == "", result  # slide-time overrides are gone
+    assert abs(result["final"] - result["hostWidth"] * result["dpr"]) <= 2, result  # settled to the stage

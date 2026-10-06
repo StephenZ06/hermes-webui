@@ -251,11 +251,13 @@ export function mountLogistics(host, {onOpenJob} = {}) {
   });
   function placeLabels() {
     const rect = canvas.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const offset = rect.left - hostRect.left; // the canvas can be wider than the stage mid-slide
     const v = new THREE.Vector3();
     for (const label of labels) {
       v.set(label.zone.x, 0, 30).project(camera);
       const half = label.el.offsetWidth / 2 + 6; // keep labels inside the stage on narrow screens
-      const x = Math.min(rect.width - half, Math.max(half, (v.x + 1) / 2 * rect.width));
+      const x = Math.min(hostRect.width - half, Math.max(half, offset + (v.x + 1) / 2 * rect.width));
       label.el.style.transform = `translate(-50%, 0) translate(${x}px, ${(1 - v.y) / 2 * rect.height}px)`;
     }
   }
@@ -348,9 +350,30 @@ export function mountLogistics(host, {onOpenJob} = {}) {
 
   // ---- camera framing, resize, zoom ----
   let zoom = 1;
+  // While the sidebar slides, the stage changes width every frame. Reallocating
+  // the WebGL drawing buffer each time would stutter (and blank), so the canvas
+  // keeps the widest width the stage reaches during the slide, centred in the
+  // clipping stage; only the visible window changes. The camera's vertical
+  // extent is fixed, so the centred part is exactly what the final, narrower
+  // canvas shows and the single resize after the slide is seamless.
+  function slideSpan() {
+    const layout = document.querySelector('.layout');
+    const main = document.querySelector('.main');
+    const max = layout && layout.classList.contains('panel-sliding') ? Number(layout.dataset.slideMainMax) : 0;
+    if (!max || !main) return 0;
+    return Math.max(host.clientWidth, Math.round(host.clientWidth + max - main.clientWidth));
+  }
+  let bufferW = 0, bufferH = 0;
   function resize() {
-    const w = host.clientWidth || 1, h = host.clientHeight || 1;
-    renderer.setSize(w, h, false);
+    const span = slideSpan();
+    const w = span || host.clientWidth || 1, h = host.clientHeight || 1;
+    if (span) {
+      canvas.style.cssText = `width:${span}px;max-width:none;position:absolute;left:50%;transform:translateX(-50%);`;
+    } else if (canvas.style.cssText) {
+      canvas.style.cssText = '';
+    }
+    const resized = w !== bufferW || h !== bufferH;
+    if (resized) { renderer.setSize(w, h, false); bufferW = w; bufferH = h; }
     const aspect = w / h;
     // Fit the 150-unit-wide floor on narrow screens; keep a constant scale on wide ones.
     const half = Math.max(FRUSTUM, 60 / aspect);
@@ -358,10 +381,21 @@ export function mountLogistics(host, {onOpenJob} = {}) {
     camera.zoom = zoom;
     camera.updateProjectionMatrix();
     placeLabels();
+    // Resizing clears the drawing buffer; paint now so no blank frame shows.
+    if (resized) renderer.render(scene, camera);
     wake();
   }
   const observer = new ResizeObserver(resize);
   observer.observe(host);
+  // The host's size may not change when a slide ends, but the canvas leaves
+  // its slide-time span then: settle it.
+  const layoutEl = document.querySelector('.layout');
+  let wasSliding = false;
+  const slideObserver = layoutEl ? new MutationObserver(() => {
+    const sliding = layoutEl.classList.contains('panel-sliding');
+    if (sliding !== wasSliding) { wasSliding = sliding; resize(); }
+  }) : null;
+  if (slideObserver) slideObserver.observe(layoutEl, {attributes: true, attributeFilter: ['class']});
   function onWheel(event) {
     event.preventDefault();
     zoom = Math.min(2.6, Math.max(0.7, zoom * (event.deltaY > 0 ? 0.9 : 1.1)));
@@ -478,6 +512,7 @@ export function mountLogistics(host, {onOpenJob} = {}) {
     if (raf) cancelAnimationFrame(raf);
     clearInterval(heartbeat);
     observer.disconnect();
+    if (slideObserver) slideObserver.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('pointermove', onMove);

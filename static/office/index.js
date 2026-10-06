@@ -2045,7 +2045,7 @@ function mount(container) {
       <button type="button" class="office-header-btn" id="officePauseBtn">View live</button>
     </div>
     <div class="office-body">
-      <div class="office-stage">
+      <div class="office-stage" data-slide-safe>
         <canvas class="office-canvas is-mounting" id="officeCanvas" role="img"
                 aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
         <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>

@@ -1152,6 +1152,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
 // where a layout probe is slow keep the compositor-only slide below.
 const _SLIDE_OMEGA=24;      // critically damped spring: starts at rest, ~340ms to 99.7%
 const _SLIDE_MAX_MS=700;
+const _SLIDE_MAX_FRAME_MS=34;
 const _SLIDE_LAYOUT_BUDGET_MS=10;
 const _SLIDE_PROBE_NODES=700;
 let _layoutSlide=null;
@@ -1172,15 +1173,20 @@ function _layoutSlideCollapsedClass(side){
 }
 
 function _layoutSlideEligible(main,prop){
-  // The Office scene redraws its WebGL canvas whenever its stage resizes; it
-  // keeps the single-layout compositor slide.
-  if(main.classList.contains('showing-office'))return false;
   let nodes=0;
   const views=Array.prototype.filter.call(main.children,function(child){
     try{return getComputedStyle(child).display!=='none';}catch(_){return false;}
   });
   for(let i=0;i<views.length;i++){
-    if(views[i].querySelector('canvas,iframe,video,.xterm'))return false;
+    // Content that re-allocates a drawing surface when it resizes (canvas,
+    // iframe, video, terminal) must not be resized every frame -- unless it
+    // marks itself [data-slide-safe]: it keeps its surface fixed while
+    // .layout.panel-sliding is set and only the visible window changes
+    // (the Office stage and the Logistics scene do exactly that).
+    const heavy=views[i].querySelectorAll('canvas,iframe,video,.xterm');
+    for(let j=0;j<heavy.length;j++){
+      if(!heavy[j].closest('[data-slide-safe]'))return false;
+    }
     nodes+=views[i].getElementsByTagName('*').length;
   }
   if(nodes<=_SLIDE_PROBE_NODES)return true;
@@ -1219,7 +1225,8 @@ function _slidePanelByLayout(panel,side,apply,opts){
     apply();
     live.from=live.q;
     live.target=layout.classList.contains(collapsedClass)?0:1;
-    live.start=performance.now();
+    live.elapsed=0;
+    live.last=null;
     live.raf=requestAnimationFrame(live.step);
     return true;
   }
@@ -1255,13 +1262,15 @@ function _slidePanelByLayout(panel,side,apply,opts){
     try{if(typeof options.onComplete==='function')options.onComplete();}catch(_){}
   };
 
-  let before,after;
+  let before,after,mainBefore,mainAfter;
   try{
     before=panel.getBoundingClientRect();
+    mainBefore=main.getBoundingClientRect();
     begin();
     panel.style.setProperty('transition','none','important');
     apply();
     after=panel.getBoundingClientRect();
+    mainAfter=main.getBoundingClientRect();
   }catch(_){
     restore(panel,panelProps,saved);
     finish();
@@ -1289,8 +1298,11 @@ function _slidePanelByLayout(panel,side,apply,opts){
     panel.style.setProperty('transform','translateX('+(direction*width*(1-q))+'px)','important');
     main.style.setProperty(prop,(width*q)+'px');
   };
-  const state={q:expanding?0:1,from:expanding?0:1,target:expanding?1:0,start:performance.now(),raf:0,step:null};
+  const state={q:expanding?0:1,from:expanding?0:1,target:expanding?1:0,elapsed:0,last:null,raf:0,step:null};
   place(state.q);
+  // The widest <main> gets during this slide, for content that keeps a fixed
+  // drawing surface (see data-slide-safe) and only changes its visible window.
+  layout.dataset.slideMainMax=String(Math.round(Math.max(mainBefore.width,mainAfter.width)));
   layout.classList.add('panel-sliding');
 
   const settle=function(){
@@ -1303,6 +1315,7 @@ function _slidePanelByLayout(panel,side,apply,opts){
     if(savedMain[0])main.style.setProperty(prop,savedMain[0],savedMain[1]);
     else main.style.removeProperty(prop);
     layout.classList.remove('panel-sliding');
+    delete layout.dataset.slideMainMax;
     try{void panel.offsetWidth;}catch(_){}
     if(saved.transition[0])panel.style.setProperty('transition',saved.transition[0],saved.transition[1]);
     else panel.style.removeProperty('transition');
@@ -1311,9 +1324,14 @@ function _slidePanelByLayout(panel,side,apply,opts){
   };
   state.step=function(now){
     state.raf=0;
-    const seconds=Math.max(0,(now-state.start)*_slideTimeScale()/1000);
-    const progress=_slideSpring(seconds);
-    const done=Math.abs(1-progress)<0.003||(now-state.start)>_SLIDE_MAX_MS/_slideTimeScale();
+    // Animation time advances by at most one slow frame per callback. A long
+    // task at the start (first raster of a big sidebar, a heavy reflow) would
+    // otherwise eat the whole curve and the page would just appear expanded.
+    const dt=state.last==null?0:Math.min(now-state.last,_SLIDE_MAX_FRAME_MS);
+    state.last=now;
+    state.elapsed+=dt*_slideTimeScale();
+    const progress=_slideSpring(state.elapsed/1000);
+    const done=Math.abs(1-progress)<0.003||state.elapsed>_SLIDE_MAX_MS;
     state.q=done?state.target:state.from+(state.target-state.from)*progress;
     place(state.q);
     if(done){settle();return;}

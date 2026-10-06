@@ -91,8 +91,10 @@ def test_sidebar_slide_stays_transform_only_without_web_animations():
             page.evaluate(
                 "() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())"
             )
-            page.evaluate("async () => { await switchPanel('office'); }")
+            page.evaluate("async () => { await switchPanel('tasks'); }")
             state = page.evaluate("""() => {
+              // An iframe keeps the page on the single-layout compositor slide.
+              document.querySelector('#mainTasks').appendChild(document.createElement('iframe'));
               window.MotionUI = null;
               Object.defineProperty(Element.prototype, 'animate', {
                 configurable: true,
@@ -267,3 +269,61 @@ def test_toggling_again_mid_slide_reverses_from_where_the_page_is():
     assert abs(result["frames"][0] - result["mid"]) < 40, result
     # ...and finished at the expanded layout.
     assert result["left"] > 300, result
+
+
+def test_a_long_first_frame_does_not_swallow_the_slide():
+    """A stall right after the toggle (first raster of a big sidebar, a heavy
+    reflow) must not use up the curve: the page would just appear expanded.
+    Animation time advances by at most one slow frame per callback."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "tasks")
+            page.evaluate("() => toggleSidebar(true)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=10000)
+            result = page.evaluate("""() => new Promise((resolve) => {
+              const main = document.querySelector('.main');
+              const start = main.getBoundingClientRect().left;
+              toggleSidebar(false);
+              const t = performance.now();
+              while (performance.now() - t < 400) {}          // a 400ms stall
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                const after = main.getBoundingClientRect().left;
+                resolve({start, after, sliding: document.querySelector('.layout').classList.contains('panel-sliding')});
+              }));
+            })""")
+        finally:
+            browser.close()
+    travel = 348 - result["start"]
+    assert result["sliding"], result  # still gliding after the stall...
+    assert (result["after"] - result["start"]) < 0.6 * travel, result  # ...not already at the end
+
+
+def test_only_slide_safe_canvases_keep_the_page_on_the_layout_driven_slide():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "tasks")
+            outcome = {}
+            for label, wrapper in (("plain", "<div></div>"), ("safe", "<div data-slide-safe></div>")):
+                page.evaluate("""(html) => {
+                  document.querySelectorAll('#mainTasks .__probe').forEach(e => e.remove());
+                  const box = document.createElement('div'); box.className = '__probe'; box.innerHTML = html;
+                  box.firstChild.appendChild(document.createElement('canvas'));
+                  document.querySelector('#mainTasks').appendChild(box);
+                }""", wrapper)
+                outcome[label] = page.evaluate("""() => new Promise((resolve) => {
+                  const layout = document.querySelector('.layout');
+                  toggleSidebar();
+                  requestAnimationFrame(() => requestAnimationFrame(() => {
+                    resolve(layout.classList.contains('panel-sliding'));
+                  }));
+                })""")
+                page.wait_for_timeout(700)
+        finally:
+            browser.close()
+    assert outcome == {"plain": False, "safe": True}, outcome
