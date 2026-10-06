@@ -6028,6 +6028,25 @@ button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
 .job-os-email-log li small{grid-column:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .job-os-email-log li time{grid-column:2;grid-row:1;}
 .job-os-email-log li[data-status="failed"] strong,.job-os-email-log li[data-status="rejected"] strong{color:var(--error,#f07878);}
+/* ---- Logistics centre ---- */
+.logistics-wrap{display:flex;flex-direction:column;gap:10px;}
+.logistics-stage{position:relative;height:min(68vh,640px);min-height:340px;border:1px solid var(--border2);border-radius:14px;overflow:hidden;background:var(--bg);}
+.logistics-host{position:absolute;inset:0;}
+.logistics-canvas{display:block;width:100%;height:100%;outline:none;}
+.logistics-overlay{position:absolute;inset:0;pointer-events:none;}
+.logistics-label{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--border2);white-space:nowrap;}
+.logistics-label strong{font-size:12px;color:var(--text);}
+.logistics-label small{font-size:10.5px;color:var(--muted);}
+.logistics-tip{position:absolute;z-index:2;max-width:260px;padding:7px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 8px 22px rgba(0,0,0,.35);pointer-events:none;display:flex;flex-direction:column;gap:2px;}
+.logistics-tip strong{font-size:12.5px;color:var(--text);}
+.logistics-tip small{font-size:11.5px;color:var(--muted);}
+.logistics-fallback{margin:0;padding:40px 20px;text-align:center;color:var(--muted);}
+.logistics-legend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;color:var(--muted);}
+.logistics-legend i{display:inline-block;width:11px;height:11px;margin-right:6px;border-radius:3px;vertical-align:-1px;background:#9aa3b2;}
+.logistics-legend i[data-verdict="strong"]{background:#4ade80;}.logistics-legend i[data-verdict="good"]{background:#ffd21f;}
+.logistics-legend i[data-verdict="stretch"]{background:#f5a524;}.logistics-legend i[data-verdict="poor"]{background:#f07878;}
+.logistics-legend-hint{margin-left:auto;}
+@media (max-width:760px){.logistics-stage{height:58vh;}.logistics-label{padding:2px 6px;}.logistics-label strong{font-size:10.5px;}.logistics-label small{display:none;}.logistics-legend-hint{display:none;}}
 /* ---- Applications board ---- */
 .board{position:relative;display:grid;max-width:100%;min-width:0;grid-auto-flow:column;grid-auto-columns:minmax(250px,1fr);gap:12px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x proximity;}
 .board-col{align-self:start;display:flex;flex-direction:column;gap:10px;min-width:0;padding:10px;border:1px solid var(--border2);border-radius:14px;background:color-mix(in srgb,var(--surface) 55%,transparent);scroll-snap-align:start;}

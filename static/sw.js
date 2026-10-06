@@ -36,6 +36,7 @@ const SHELL_ASSETS = [
   './static/job-os/api.js' + VQ,
   './static/job-os/render.js' + VQ,
   './static/job-os/index.js' + VQ,
+  './static/job-os/logistics.js' + VQ,
   './static/commands.js' + VQ,
   './static/icons.js' + VQ,
   './static/i18n.js' + VQ,

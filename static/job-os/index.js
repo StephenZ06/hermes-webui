@@ -7,7 +7,7 @@
   const root = () => document.getElementById('jobOsRoot');
   const sidebarRoot = () => document.getElementById('jobOsSidebar');
   function applyRoute() {
-    const match = String(window.location.hash || '').match(/^#jobs\/(dashboard|scout|pipeline|resume-studio|applications|settings)(?:\?status=([^&]+))?$/);
+    const match = String(window.location.hash || '').match(/^#jobs\/(dashboard|scout|pipeline|resume-studio|applications|logistics|settings)(?:\?status=([^&]+))?$/);
     if (!match) return;
     window.JobOSState.activeView = match[1];
     window.JobOSState.statusFilter = match[2] ? decodeURIComponent(match[2]) : null;
@@ -75,6 +75,8 @@
       else stopScoutPolling();
       afterPipelineRender(target);
       if (wantBoard) afterBoardRender(target);
+      if (state.activeView === 'logistics') afterLogisticsRender(target);
+      else disposeLogistics();
       if (wantResume) bindResumeUpload();
       renderSidebar();
       bind();
@@ -102,6 +104,46 @@
   // After a board move, the card glows in its new column.
   let flashId = null;
   function flash(jobId) { flashId = jobId; }
+  // ---- Logistics centre: a WebGL scene that must survive re-renders ----
+  // The page is rebuilt with innerHTML on every refresh, so the canvas lives
+  // in one persistent host that is moved into each new slot; leaving the view
+  // disposes the scene (and its GPU context).
+  let logistics = null;
+  let logisticsHost = null;
+  let logisticsLoading = null;
+  let logisticsPoll = null;
+  function moduleUrl(name) {
+    const own = document.querySelector('script[src*="job-os/index.js"]');
+    const query = own ? (own.getAttribute('src').split('?')[1] || '') : '';
+    return new URL(`static/job-os/${name}${query ? '?' + query : ''}`, document.baseURI).href;
+  }
+  function afterLogisticsRender(target) {
+    const slot = target.querySelector('#job-os-logistics-slot');
+    if (!slot) return;
+    if (!logisticsHost) { logisticsHost = document.createElement('div'); logisticsHost.className = 'logistics-host'; }
+    slot.appendChild(logisticsHost);
+    const jobs = window.JobOSState.jobs || [];
+    if (logistics) logistics.update(jobs);
+    else if (!logisticsLoading) {
+      logisticsLoading = import(moduleUrl('logistics.js')).then((mod) => {
+        logisticsLoading = null;
+        if (window.JobOSState.activeView !== 'logistics') return;
+        logistics = mod.mountLogistics(logisticsHost, {onOpenJob: openJob});
+        logistics.update(window.JobOSState.jobs || []);
+      }).catch((error) => {
+        logisticsLoading = null;
+        logisticsHost.innerHTML = `<p class="logistics-fallback">The 3D view could not load (${String(error && error.message || error).slice(0, 120)}).</p>`;
+      });
+    }
+    clearTimeout(logisticsPoll);
+    // Live floor: pick up Scout finds, analysis and tailoring as they happen.
+    logisticsPoll = setTimeout(() => { if (window.JobOSState.activeView === 'logistics' && !document.hidden) refresh(); else if (window.JobOSState.activeView === 'logistics') afterLogisticsRender(root()); }, 8000);
+  }
+  function disposeLogistics() {
+    clearTimeout(logisticsPoll);
+    if (logistics) { logistics.dispose(); logistics = null; }
+    logisticsHost = null;
+  }
   let boardPoll = null;
   function afterBoardRender(target) {
     clearTimeout(boardPoll);
@@ -604,7 +646,7 @@
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
   }
   function mount() { applyRoute(); refresh(); }
-  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
+  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); disposeLogistics(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
   function openJob(jobId) {
     const state = window.JobOSState;
     // Stay in the current Pipeline filter when opening jobs from it (and with J/K).
