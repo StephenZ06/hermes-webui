@@ -1155,7 +1155,10 @@ const _SLIDE_MAX_MS=700;
 const _SLIDE_MAX_FRAME_MS=34;
 const _SLIDE_LAYOUT_BUDGET_MS=10;
 const _SLIDE_PROBE_NODES=700;
-let _layoutSlide=null;
+// One in-flight slide per side: the sidebar and the workspace panel can slide
+// at the same time (opening Work Hub closes the workspace panel while the
+// sidebar expands) and must not take over each other's state.
+const _layoutSlides={left:null,right:null};
 
 function _slideSpring(seconds){
   const x=_SLIDE_OMEGA*seconds;
@@ -1217,14 +1220,16 @@ function _slidePanelByLayout(panel,side,apply,opts){
   const collapsedClass=_layoutSlideCollapsedClass(side);
   const direction=side==='right'?1:-1;
 
-  const live=_layoutSlide;
+  const live=_layoutSlides[side];
   if(live){
     // Toggled again mid-slide: keep going from where the page is now.
+    apply();
+    const target=layout.classList.contains(collapsedClass)?0:1;
+    if(target===live.target)return true;  // already heading there
     if(live.raf)cancelAnimationFrame(live.raf);
     live.raf=0;
-    apply();
     live.from=live.q;
-    live.target=layout.classList.contains(collapsedClass)?0:1;
+    live.target=target;
     live.elapsed=0;
     live.last=null;
     live.raf=requestAnimationFrame(live.step);
@@ -1302,7 +1307,7 @@ function _slidePanelByLayout(panel,side,apply,opts){
   place(state.q);
   // The widest <main> gets during this slide, for content that keeps a fixed
   // drawing surface (see data-slide-safe) and only changes its visible window.
-  layout.dataset.slideMainMax=String(Math.round(Math.max(mainBefore.width,mainAfter.width)));
+  layout.dataset.slideMainMax=String(Math.round(Math.max(mainBefore.width,mainAfter.width,Number(layout.dataset.slideMainMax)||0)));
   layout.classList.add('panel-sliding');
 
   const settle=function(){
@@ -1314,12 +1319,14 @@ function _slidePanelByLayout(panel,side,apply,opts){
     restore(panel,panelProps.filter(function(name){return name!=='transition';}),saved);
     if(savedMain[0])main.style.setProperty(prop,savedMain[0],savedMain[1]);
     else main.style.removeProperty(prop);
-    layout.classList.remove('panel-sliding');
-    delete layout.dataset.slideMainMax;
+    if(_layoutSlides[side]===state)_layoutSlides[side]=null;
+    if(!_layoutSlides.left&&!_layoutSlides.right){
+      layout.classList.remove('panel-sliding');
+      delete layout.dataset.slideMainMax;
+    }
     try{void panel.offsetWidth;}catch(_){}
     if(saved.transition[0])panel.style.setProperty('transition',saved.transition[0],saved.transition[1]);
     else panel.style.removeProperty('transition');
-    if(_layoutSlide===state)_layoutSlide=null;
     finish();
   };
   state.step=function(now){
@@ -1337,7 +1344,7 @@ function _slidePanelByLayout(panel,side,apply,opts){
     if(done){settle();return;}
     state.raf=requestAnimationFrame(state.step);
   };
-  _layoutSlide=state;
+  _layoutSlides[side]=state;
   state.raf=requestAnimationFrame(state.step);
   return true;
 }

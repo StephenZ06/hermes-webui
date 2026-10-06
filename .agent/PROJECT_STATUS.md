@@ -25,6 +25,12 @@
   `.layout.panel-sliding`, one resize after). Other canvas/iframe/video/xterm
   pages keep the compositor slide, which is only correct for left-aligned
   content (centred content steps backwards on frame one).
+- Work Hub expand stall, root cause: `switchPanel('notes')` also calls
+  `closeWorkspacePanel()`, a second slide (right side). The single global
+  `_layoutSlide` treated it as a re-toggle of the sidebar slide and re-targeted
+  it with the wrong panel's class, so the sidebar sat still, then snapped.
+  Slides are now tracked per side (`_layoutSlides`); a re-toggle with the same
+  target is a no-op. Reproduced via `switchPanel('notes',{fromRailClick:true})`.
 - Test hook: `window.__hermesSlideTimeScale` slows the slide; `.layout.panel-sliding`
   marks it. Tests: `tests/test_sidebar_slide_rail_browser.py`.
 - Headless here can't show real-GPU smoothness; frame pacing was steady

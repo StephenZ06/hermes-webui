@@ -327,3 +327,63 @@ def test_only_slide_safe_canvases_keep_the_page_on_the_layout_driven_slide():
         finally:
             browser.close()
     assert outcome == {"plain": False, "safe": True}, outcome
+
+
+def test_work_hub_rail_click_expand_glides_instead_of_stalling():
+    """Opening Work Hub also closes the workspace panel (a second slide on the
+    other side). That call used to take over the sidebar's in-flight slide, so
+    the sidebar's expand sat still for the whole slide and then snapped."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "notes")
+            page.evaluate("() => toggleSidebar(true)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=10000)
+            frames = page.evaluate("""() => new Promise((resolve) => {
+              const main = document.querySelector('.main');
+              const layout = document.querySelector('.layout');
+              const lefts = [main.getBoundingClientRect().left];
+              switchPanel('notes', {fromRailClick: true});   // rail click while collapsed
+              const tick = () => {
+                lefts.push(main.getBoundingClientRect().left);
+                if (layout.classList.contains('panel-sliding') || lefts.length < 4) requestAnimationFrame(tick);
+                else resolve(lefts);
+              };
+              requestAnimationFrame(tick);
+            })""")
+        finally:
+            browser.close()
+    start, end = frames[0], frames[-1]
+    between = [x for x in frames if start + 8 < x < end - 8]
+    assert end - start > 200, frames
+    assert len(between) >= 5, ("the page should pass through intermediate positions", [round(x) for x in frames])
+    assert all(b >= a - 1 for a, b in zip(frames, frames[1:])), [round(x) for x in frames]
+
+
+def test_two_panels_can_slide_at_once_without_taking_each_other_over():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "chat")
+            page.evaluate("() => toggleSidebar(true)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=10000)
+            state = page.evaluate("""() => new Promise((resolve) => {
+              const layout = document.querySelector('.layout');
+              toggleSidebar(false);                    // sidebar expands...
+              toggleWorkspacePanel(true);              // ...while the workspace panel opens
+              const tick = () => {
+                if (layout.classList.contains('panel-sliding')) { requestAnimationFrame(tick); return; }
+                resolve({sidebarCollapsed: layout.classList.contains('sidebar-collapsed'),
+                         panelCollapsed: layout.classList.contains('workspace-panel-collapsed'),
+                         left: document.querySelector('.main').style.marginLeft, right: document.querySelector('.main').style.marginRight});
+              };
+              requestAnimationFrame(tick);
+            })""")
+        finally:
+            browser.close()
+    assert state["sidebarCollapsed"] is False, state
+    assert state["left"] == "" and state["right"] == "", state
