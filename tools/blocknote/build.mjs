@@ -1,5 +1,5 @@
 // Build the vendored BlockNote bundle for the Notes page.
-//   cd tools/blocknote && npm ci && npm run build
+//   cd tools/blocknote && npm install && npm run build
 // Output: static/vendor/blocknote/<version>/blocknote-hermes.{js,css}
 import { build } from "esbuild";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -34,7 +34,7 @@ await build({
 
 writeFileSync(
   resolve(outdir, "README.md"),
-  `# BlockNote ${version} (vendored)\n\nBuilt by \`tools/blocknote\` (\`npm ci && npm run build\`).\n` +
+  `# BlockNote ${version} (vendored)\n\nBuilt by \`tools/blocknote\` (\`npm install && npm run build\`).\n` +
     `Packages: @blocknote/core, @blocknote/react, @blocknote/mantine (MPL-2.0), React and Mantine (MIT).\n` +
     `No GPL \`@blocknote/xl-*\` packages are included. Third-party licence texts: blocknote-hermes.js.LEGAL.txt.\n`,
 );

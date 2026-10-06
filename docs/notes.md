@@ -58,10 +58,10 @@ The licence texts ship as `blocknote-hermes.js.LEGAL.txt`.
 ### Rebuilding the bundle
 
 ```bash
-cd tools/blocknote && npm ci && npm run build
+cd tools/blocknote && npm install && npm run build
 ```
 
-To upgrade BlockNote, bump the versions in `tools/blocknote/package.json`,
+Versions are pinned exactly in `tools/blocknote/package.json` (the repo does not track lockfiles). To upgrade BlockNote, bump the versions in `tools/blocknote/package.json`,
 rebuild, and update `EDITOR_VERSION` in `static/notebook/index.js`. The output
 directory is named after the version, so caches don't serve the old bundle.
 
