@@ -22,27 +22,22 @@ def test_the_rail_stays_on_top_through_collapse_and_expand():
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
-            cdp = page.context.new_cdp_session(page)
             page.goto(BASE + "/", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             page.evaluate("async () => { await switchPanel('tasks'); }")
-            cdp.send("Animation.enable")
             results = {}
             for label in ("collapse", "expand"):
-                # Freeze the slide part-way so the crossing can be inspected.
-                cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.02})
-                page.evaluate("() => toggleSidebar()")
-                page.wait_for_function("() => document.getAnimations().some(a => a.playState === 'running')",
-                                       polling=50, timeout=10000)
+                # Slow the slide right down so the crossing can be inspected part-way.
+                page.evaluate("() => { window.__hermesSlideTimeScale = 0.02; toggleSidebar(); }")
+                page.wait_for_selector(".layout.panel-sliding", state="attached", timeout=10000)
                 page.wait_for_timeout(1500)
                 results[label] = {
                     "railOnTop": page.evaluate(_RAIL_ON_TOP),
-                    "sliding": page.evaluate("() => document.getAnimations().some(a => a.playState === 'running')"),
+                    "sliding": page.evaluate("() => document.querySelector('.layout').classList.contains('panel-sliding')"),
                 }
-                cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
-                page.wait_for_function("() => !document.getAnimations().some(a => a.playState === 'running')",
-                                       polling=50, timeout=10000)
+                page.evaluate("() => { window.__hermesSlideTimeScale = 1; }")
+                page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=10000)
         finally:
             browser.close()
 
@@ -132,94 +127,143 @@ def test_sidebar_slide_stays_transform_only_without_web_animations():
     assert settled["width"] <= 1, settled
 
 
-def test_sidebar_slide_moves_main_as_one_rigid_body():
-    """Main glides by translation only: its position moves, its width never does.
+_SAMPLE_SLIDE = """(direction) => new Promise((resolve) => {
+  const main = document.querySelector('.main');
+  const layout = document.querySelector('.layout');
+  const read = () => { const r = main.getBoundingClientRect(); return {left: r.left, width: r.width, center: r.left + r.width / 2, transform: getComputedStyle(main).transform}; };
+  const before = read();
+  const frames = [];
+  toggleSidebar(direction === 'collapse');
+  const tick = () => {
+    frames.push(read());
+    if (layout.classList.contains('panel-sliding') || frames.length < 3) requestAnimationFrame(tick);
+    else resolve({before, frames, settled: read()});
+  };
+  requestAnimationFrame(tick);
+})"""
 
-    Scaling main to interpolate its width stretched every glyph and card for
-    the whole slide, which read as a wobble. The page keeps its final layout
-    width and slides into place.
+
+def _slide(page, direction):
+    return page.evaluate(_SAMPLE_SLIDE, direction)
+
+
+def _open(page, panel):
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate(f"async () => {{ await switchPanel('{panel}'); }}")
+    page.wait_for_timeout(300)
+
+
+def test_main_is_laid_out_at_every_width_while_the_sidebar_slides():
+    """The page follows the sidebar by real layout, not by a transform.
+
+    A single transform on <main> can't be right for everything inside it:
+    translating by the left-edge delta sent centred content ~150px the wrong
+    way on the first frame, and scaling stretched every glyph. So <main> gets
+    the space the panel vacates as a margin on the same curve, and the page is
+    laid out at each in-between width: width and position both interpolate,
+    and no transform is involved.
     """
     sync_api = pytest.importorskip("playwright.sync_api")
-    with sync_api.sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            cdp = page.context.new_cdp_session(page)
-            page.goto(BASE + "/", wait_until="domcontentloaded")
-            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
-            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
-            page.evaluate("async () => { await switchPanel('tasks'); }")
-            cdp.send("Animation.enable")
-            results = {}
-            for label in ("collapse", "expand"):
-                before = page.evaluate("() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; }")
-                cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.02})
-                page.evaluate("() => toggleSidebar()")
-                page.wait_for_function("() => document.querySelector('.main').getAnimations().some(a => a.playState === 'running')",
-                                       polling=50, timeout=10000)
-                page.wait_for_timeout(800)
-                moving = page.evaluate("""() => ({
-                  panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position'),
-                  matrix: getComputedStyle(document.querySelector('.main')).transform,
-                  rect: (() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; })(),
-                })""")
-                cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
-                page.wait_for_function("() => !document.querySelector('.main').getAnimations().length", polling=50, timeout=10000)
-                settled = page.evaluate("() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; }")
-                results[label] = (before, moving, settled)
-        finally:
-            browser.close()
-
-    for label, (before, moving, settled) in results.items():
-        assert moving["matrix"].startswith("matrix(1, 0, 0, 1,"), (label, moving)  # translate only, no scale
-        assert abs(moving["rect"]["width"] - settled["width"]) < 2, (label, moving, settled)  # width never interpolates
-        low, high = sorted((before["left"], settled["left"]))
-        assert low + 1 < moving["rect"]["left"] < high - 1, (label, before, moving, settled)  # but position does
-    assert results["collapse"][1]["panelPosition"] == "fixed"
-
-
-def test_expanding_the_sidebar_slides_main_to_its_final_place_without_a_late_jump():
-    """On expand, main must already sit at its expanded layout box during the slide.
-
-    The FLIP transform on main is measured against the expanded layout. If the
-    panel is pinned out of the flex row, main sits at the *collapsed* box for
-    the whole slide and snaps right when the pin is dropped: the page glides
-    to the left edge, then jumps to where it belongs.
-    """
-    sync_api = pytest.importorskip("playwright.sync_api")
-    # Scoped to the two sliding elements: the Jobs page has endless pulse animations.
     with sync_api.sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 900})
-            cdp = page.context.new_cdp_session(page)
-            page.goto(BASE + "/#jobs/dashboard", wait_until="domcontentloaded")
-            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
-            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
-            page.evaluate("async () => { await switchPanel('jobs'); }")
-            page.wait_for_selector(".job-os-shell", timeout=15000)
-            expanded = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
-            page.evaluate("() => toggleSidebar(true)")
-            page.wait_for_function("() => ![...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
-            collapsed = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
-            cdp.send("Animation.enable")
-            cdp.send("Animation.setPlaybackRate", {"playbackRate": 0.02})
-            page.evaluate("() => toggleSidebar(false)")
-            page.wait_for_function("() => [...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
-            page.wait_for_timeout(800)
-            during = page.evaluate("""() => {
-              const m = document.querySelector('.main');
-              return {box: [m.offsetLeft, m.offsetWidth], visibleLeft: m.getBoundingClientRect().left,
-                      panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position')};
-            }""")
-            cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
-            page.wait_for_function("() => ![...document.querySelector('.sidebar').getAnimations(), ...document.querySelector('.main').getAnimations()].some(a => a.playState === 'running')", polling=50, timeout=10000)
-            settled = page.evaluate("() => { const m = document.querySelector('.main'); return [m.offsetLeft, m.offsetWidth]; }")
+            _open(page, "tasks")
+            runs = {d: _slide(page, d) for d in ("collapse", "expand")}
         finally:
             browser.close()
 
-    assert collapsed != expanded, "precondition: the sidebar changes main's box"
-    assert settled == expanded, settled
-    assert during["box"] == expanded, during  # main already at its final box mid-slide
-    assert collapsed[0] < during["visibleLeft"] < expanded[0], during  # and gliding toward it
-    assert during["panelPosition"] != "fixed", during  # an expanding panel keeps its flex slot
+    for direction, run in runs.items():
+        before, frames, settled = run["before"], run["frames"], run["settled"]
+        assert abs(before["width"] - settled["width"]) > 100, "precondition: the sidebar changes main's width"
+        assert all(f["transform"] == "none" for f in frames), (direction, frames[:3])
+        for field in ("left", "width"):
+            low, high = sorted((before[field], settled[field]))
+            between = [f for f in frames if low + 3 < f[field] < high - 3]
+            assert len(between) >= 5, (direction, field, "layout should pass through intermediate values", len(between))
+        # Settling hands the space back to the flex row: no jump at the end.
+        assert abs(frames[-1]["left"] - settled["left"]) < 3 and abs(frames[-1]["width"] - settled["width"]) < 3, (direction, frames[-2:], settled)
+
+
+def test_centred_content_moves_one_way_when_the_sidebar_slides():
+    """Centred content must glide from its old centre to its new one.
+
+    Regression: with <main> moved by one transform, expanding made the page
+    centre jump ~150px left on frame one and then travel ~300px right.
+    """
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "tasks")
+            collapse = _slide(page, "collapse")
+            page.wait_for_timeout(200)
+            expand = _slide(page, "expand")
+        finally:
+            browser.close()
+
+    for direction, run, sign in (("expand", expand, 1), ("collapse", collapse, -1)):
+        centres = [run["before"]["center"]] + [f["center"] for f in run["frames"]] + [run["settled"]["center"]]
+        steps = [(b - a) * sign for a, b in zip(centres, centres[1:])]
+        assert min(steps) >= -1.5, (direction, "page centre stepped backwards", [round(c) for c in centres])
+        assert abs(centres[1] - centres[0]) < 60, (direction, "first frame must start where the page was", centres[:3])
+        assert (centres[-1] - centres[0]) * sign > 100, (direction, "the page centre must travel", centres[0], centres[-1])
+
+
+def test_the_panel_leaves_the_flex_row_only_while_it_slides():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "tasks")
+            page.evaluate("() => { window.__hermesSlideTimeScale = 0.02; toggleSidebar(); }")
+            page.wait_for_selector(".layout.panel-sliding", state="attached", timeout=10000)
+            page.wait_for_timeout(400)
+            moving = page.evaluate("""() => { const p = document.querySelector('.sidebar'); return {position: p.style.getPropertyValue('position'), margin: document.querySelector('.main').style.getPropertyValue('margin-left')}; }""")
+            page.evaluate("() => { window.__hermesSlideTimeScale = 1; }")
+            page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=10000)
+            settled = page.evaluate("""() => { const p = document.querySelector('.sidebar'); return {position: p.style.getPropertyValue('position'), transform: p.style.getPropertyValue('transform'), margin: document.querySelector('.main').style.getPropertyValue('margin-left')}; }""")
+        finally:
+            browser.close()
+    assert moving["position"] == "fixed" and moving["margin"].endswith("px"), moving
+    assert settled == {"position": "", "transform": "", "margin": ""}, settled
+
+
+def test_toggling_again_mid_slide_reverses_from_where_the_page_is():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open(page, "tasks")
+            result = page.evaluate("""() => new Promise((resolve) => {
+              const main = document.querySelector('.main');
+              const layout = document.querySelector('.layout');
+              toggleSidebar(true);                     // collapse...
+              setTimeout(() => {
+                const mid = main.getBoundingClientRect().left;
+                toggleSidebar(false);                  // ...reverse part-way
+                const frames = [];
+                const tick = () => {
+                  frames.push(main.getBoundingClientRect().left);
+                  if (layout.classList.contains('panel-sliding')) requestAnimationFrame(tick);
+                  else resolve({mid, frames, collapsed: layout.classList.contains('sidebar-collapsed'),
+                                margin: main.style.getPropertyValue('margin-left'),
+                                panel: document.querySelector('.sidebar').style.getPropertyValue('position'),
+                                left: main.getBoundingClientRect().left});
+                };
+                requestAnimationFrame(tick);
+              }, 90);
+            })""")
+        finally:
+            browser.close()
+    assert result["collapsed"] is False, result
+    assert result["margin"] == "" and result["panel"] == "", result
+    # It continued from the mid-slide position (no snap back to either end)...
+    assert abs(result["frames"][0] - result["mid"]) < 40, result
+    # ...and finished at the expanded layout.
+    assert result["left"] > 300, result

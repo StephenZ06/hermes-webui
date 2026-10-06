@@ -1135,6 +1135,195 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   }
 }
 
+// ── Layout-driven panel slide ────────────────────────────────────────────────
+// A panel that pushes the page has to move the page the way layout would:
+// centred content travels half as far as left-aligned content, right-aligned
+// content hardly moves, and text re-wraps as the width changes. Any single
+// transform applied to <main> gets one of those wrong, so the page used to
+// snap (centred content stepped backwards ~150px on frame one) or stretch
+// (scaleX distorted every glyph). Instead the panel is lifted out of the flex
+// row, slid by transform, and <main> is given the space it vacates as a
+// margin that follows the same curve every frame: the page really is laid out
+// at each intermediate width, so nothing snaps and nothing is distorted.
+//
+// That costs one layout per frame, which is well under a millisecond on the
+// app's pages (a 1,350-node chat measured ~8ms). Pages that must not be
+// re-laid-out per frame -- WebGL canvases, iframes, terminals -- and pages
+// where a layout probe is slow keep the compositor-only slide below.
+const _SLIDE_OMEGA=24;      // critically damped spring: starts at rest, ~340ms to 99.7%
+const _SLIDE_MAX_MS=700;
+const _SLIDE_LAYOUT_BUDGET_MS=10;
+const _SLIDE_PROBE_NODES=700;
+let _layoutSlide=null;
+
+function _slideSpring(seconds){
+  const x=_SLIDE_OMEGA*seconds;
+  return 1-(1+x)*Math.exp(-x);
+}
+
+function _slideTimeScale(){
+  // Tests slow the slide down to inspect it part-way.
+  const scale=Number(window.__hermesSlideTimeScale);
+  return scale>0?scale:1;
+}
+
+function _layoutSlideCollapsedClass(side){
+  return side==='right'?'workspace-panel-collapsed':'sidebar-collapsed';
+}
+
+function _layoutSlideEligible(main,prop){
+  // The Office scene redraws its WebGL canvas whenever its stage resizes; it
+  // keeps the single-layout compositor slide.
+  if(main.classList.contains('showing-office'))return false;
+  let nodes=0;
+  const views=Array.prototype.filter.call(main.children,function(child){
+    try{return getComputedStyle(child).display!=='none';}catch(_){return false;}
+  });
+  for(let i=0;i<views.length;i++){
+    if(views[i].querySelector('canvas,iframe,video,.xterm'))return false;
+    nodes+=views[i].getElementsByTagName('*').length;
+  }
+  if(nodes<=_SLIDE_PROBE_NODES)return true;
+  // A big page: time one real reflow before committing to one per frame.
+  const saved=[main.style.getPropertyValue(prop),main.style.getPropertyPriority(prop)];
+  let cost=Infinity;
+  try{
+    const t0=performance.now();
+    main.style.setProperty(prop,'1px');
+    void main.offsetWidth;
+    cost=performance.now()-t0;
+  }catch(_){}
+  if(saved[0])main.style.setProperty(prop,saved[0],saved[1]);
+  else main.style.removeProperty(prop);
+  return cost<=_SLIDE_LAYOUT_BUDGET_MS;
+}
+
+function _slidePanelByLayout(panel,side,apply,opts){
+  const options=opts||{};
+  if(!panel||typeof apply!=='function')return false;
+  try{
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)return false;
+  }catch(_){}
+  const main=document.querySelector('.main');
+  const layout=document.querySelector('.layout');
+  if(!main||!layout)return false;
+  const prop=side==='right'?'margin-right':'margin-left';
+  const collapsedClass=_layoutSlideCollapsedClass(side);
+  const direction=side==='right'?1:-1;
+
+  const live=_layoutSlide;
+  if(live){
+    // Toggled again mid-slide: keep going from where the page is now.
+    if(live.raf)cancelAnimationFrame(live.raf);
+    live.raf=0;
+    apply();
+    live.from=live.q;
+    live.target=layout.classList.contains(collapsedClass)?0:1;
+    live.start=performance.now();
+    live.raf=requestAnimationFrame(live.step);
+    return true;
+  }
+
+  // Anything still mid-way through a compositor slide settles first.
+  try{if(_nativePanelSlide&&typeof _nativePanelSlide.cleanup==='function')_nativePanelSlide.cleanup();}catch(_){}
+  try{if(window.MotionUI&&typeof window.MotionUI.interrupt==='function')window.MotionUI.interrupt('panel-slide');}catch(_){}
+  if(!_layoutSlideEligible(main,prop))return false;
+
+  const panelProps=['transition','position','left','top','width','height','opacity','z-index','transform'];
+  const saved={};
+  panelProps.forEach(function(name){
+    saved[name]=[panel.style.getPropertyValue(name),panel.style.getPropertyPriority(name)];
+  });
+  const savedMain=[main.style.getPropertyValue(prop),main.style.getPropertyPriority(prop)];
+  const restore=function(el,names,values){
+    names.forEach(function(name){
+      const value=values[name][0];
+      if(value)el.style.setProperty(name,value,values[name][1]);
+      else el.style.removeProperty(name);
+    });
+  };
+
+  let started=false;
+  const begin=function(){
+    if(started)return;
+    started=true;
+    try{if(typeof options.onStart==='function')options.onStart();}catch(_){}
+  };
+  const finish=function(){
+    if(!started)return;
+    started=false;
+    try{if(typeof options.onComplete==='function')options.onComplete();}catch(_){}
+  };
+
+  let before,after;
+  try{
+    before=panel.getBoundingClientRect();
+    begin();
+    panel.style.setProperty('transition','none','important');
+    apply();
+    after=panel.getBoundingClientRect();
+  }catch(_){
+    restore(panel,panelProps,saved);
+    finish();
+    return true;
+  }
+  const expanding=after.width>before.width;
+  const rect=expanding?after:before;
+  if(Math.abs(after.width-before.width)<1||rect.width<1){
+    restore(panel,panelProps,saved);
+    finish();
+    return true;
+  }
+  const width=rect.width;
+
+  // Lift the panel out of the row and hand its space to <main> as a margin.
+  // The first painted frame is geometrically identical to the one before.
+  panel.style.setProperty('position','fixed','important');
+  panel.style.setProperty('left',rect.left+'px','important');
+  panel.style.setProperty('top',rect.top+'px','important');
+  panel.style.setProperty('width',width+'px','important');
+  panel.style.setProperty('height',rect.height+'px','important');
+  panel.style.setProperty('opacity','1','important');
+  panel.style.setProperty('z-index','6','important');
+  const place=function(q){
+    panel.style.setProperty('transform','translateX('+(direction*width*(1-q))+'px)','important');
+    main.style.setProperty(prop,(width*q)+'px');
+  };
+  const state={q:expanding?0:1,from:expanding?0:1,target:expanding?1:0,start:performance.now(),raf:0,step:null};
+  place(state.q);
+  layout.classList.add('panel-sliding');
+
+  const settle=function(){
+    if(state.raf)cancelAnimationFrame(state.raf);
+    state.raf=0;
+    // Drop the pins with every transition off, so the panel's stylesheet width
+    // transition doesn't start a second animation, then restore it.
+    panel.style.setProperty('transition','none','important');
+    restore(panel,panelProps.filter(function(name){return name!=='transition';}),saved);
+    if(savedMain[0])main.style.setProperty(prop,savedMain[0],savedMain[1]);
+    else main.style.removeProperty(prop);
+    layout.classList.remove('panel-sliding');
+    try{void panel.offsetWidth;}catch(_){}
+    if(saved.transition[0])panel.style.setProperty('transition',saved.transition[0],saved.transition[1]);
+    else panel.style.removeProperty('transition');
+    if(_layoutSlide===state)_layoutSlide=null;
+    finish();
+  };
+  state.step=function(now){
+    state.raf=0;
+    const seconds=Math.max(0,(now-state.start)*_slideTimeScale()/1000);
+    const progress=_slideSpring(seconds);
+    const done=Math.abs(1-progress)<0.003||(now-state.start)>_SLIDE_MAX_MS/_slideTimeScale();
+    state.q=done?state.target:state.from+(state.target-state.from)*progress;
+    place(state.q);
+    if(done){settle();return;}
+    state.raf=requestAnimationFrame(state.step);
+  };
+  _layoutSlide=state;
+  state.raf=requestAnimationFrame(state.step);
+  return true;
+}
+
 // Routes a panel's collapse/expand through MotionUI.slidePanel when it is
 // available. The native FLIP fallback keeps the behavior and performance
 // contract intact when that optional runtime is absent.
@@ -1148,6 +1337,9 @@ function _slidePanelIfPossible(panel,side,apply){
     // snapping after the panel finishes.
     animateMain:true
   };
+  try{
+    if(_slidePanelByLayout(panel,side,apply,lifecycle))return;
+  }catch(_){}
   try{
     const motionUi=window.MotionUI;
     // motion-ui.js can be present while its optional Motion vendor did not

@@ -1,5 +1,25 @@
 # Project status — hermes-webui
 
+## 2026-10-06 (later): sidebar slide is now layout-driven
+
+- Symptom: page content stuttered as the sidebar expanded/collapsed. Cause,
+  measured per frame: a single FLIP transform on `<main>` is wrong for most
+  content. Translating by the left-edge delta moved *centred* content ~150px
+  backwards on frame one then ~300px forward (and the pinned panel left main
+  at the collapsed box until the pin dropped, a ~300px late snap); scaleX
+  fixed the bounds but stretched every glyph.
+- Fix (`static/boot.js` `_slidePanelByLayout`): lift the panel out of the row,
+  slide it by transform, and give `<main>` the vacated space as a margin on
+  the same critically damped spring, so the page is genuinely laid out at each
+  width (one layout/frame: <1ms on app pages, ~8ms for a 1,350-node chat).
+  Office, canvas/iframe/terminal pages and pages whose layout probe exceeds
+  10ms keep the single-layout compositor slide (`_slidePanelWithNativeAnimation`
+  / `MotionUI.slidePanel`; an expanding panel now stays in the flex row there).
+- Test hook: `window.__hermesSlideTimeScale` slows the slide; `.layout.panel-sliding`
+  marks it. Tests: `tests/test_sidebar_slide_rail_browser.py`.
+- Headless here can't show real-GPU smoothness; frame pacing was steady
+  (16.7ms DrawAndSwap) in software and SwiftShader-GL traces.
+
 ## 2026-10-06: Job OS phases 4-7 and extras shipped (live, not pushed)
 
 - *Shipped.* Applications board + funnel (`5940f24c7`); email alerts, daily

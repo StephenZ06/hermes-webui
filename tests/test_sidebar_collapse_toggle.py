@@ -189,7 +189,7 @@ class TestSidebarCollapseBootJS:
         assert ".animate([" in BOOT_JS, \
             "Native fallback must use Element.animate() rather than CSS width"
         helper_idx = BOOT_JS.index("function _slidePanelIfPossible")
-        helper = BOOT_JS[helper_idx:helper_idx + 1200]
+        helper = BOOT_JS[helper_idx:helper_idx + 2200]
         assert ".enabled()" in helper, \
             "Helper must detect a MotionUI shell with its vendor runtime unavailable"
         assert "_slidePanelWithNativeAnimation(panel,side,apply,lifecycle)" in helper, \
