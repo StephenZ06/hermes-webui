@@ -6028,6 +6028,23 @@ button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
 .job-os-email-log li small{grid-column:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .job-os-email-log li time{grid-column:2;grid-row:1;}
 .job-os-email-log li[data-status="failed"] strong,.job-os-email-log li[data-status="rejected"] strong{color:var(--error,#f07878);}
+/* ---- Automations ---- */
+.automations{display:flex;flex-direction:column;gap:2px;}
+.automation-row{display:grid;grid-template-columns:12px minmax(0,1fr) minmax(0,auto);align-items:center;gap:12px;width:100%;padding:9px 6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;text-align:left;animation:automation-in .35s cubic-bezier(.22,1,.36,1) calc(var(--i) * 45ms) backwards;}
+button.automation-row{cursor:pointer;}
+button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,transparent);}
+.automation-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);opacity:.45;}
+.automation-row[data-on="true"] .automation-dot{background:var(--success,#4ade80);opacity:1;box-shadow:0 0 0 0 color-mix(in srgb,var(--success,#4ade80) 55%,transparent);animation:automation-pulse 2.4s ease-out infinite;}
+.automation-main{display:flex;flex-direction:column;min-width:0;}
+.automation-main strong{font-size:13px;color:var(--text);}
+.automation-main small{font-size:11.5px;color:var(--muted);}
+.automation-note{font-size:12px;color:var(--muted);text-align:right;}
+.automation-note em{font-style:normal;font-weight:700;color:var(--text);opacity:.7;}
+@keyframes automation-in{from{opacity:0;transform:translateX(-6px);}}
+@keyframes automation-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--success,#4ade80) 55%,transparent);}70%,100%{box-shadow:0 0 0 7px transparent;}}
+.job-os-content.is-entering{animation:page-view-in .26s cubic-bezier(.22,1,.36,1) backwards;}
+@media (max-width:760px){.automation-row{grid-template-columns:12px minmax(0,1fr);}.automation-note{grid-column:2;text-align:left;}}
+@media (prefers-reduced-motion:reduce){.automation-row,.automation-row[data-on="true"] .automation-dot,.job-os-content.is-entering{animation:none;}}
 /* ---- Logistics centre ---- */
 .logistics-wrap{display:flex;flex-direction:column;gap:10px;}
 .logistics-stage{position:relative;height:min(68vh,640px);min-height:340px;border:1px solid var(--border2);border-radius:14px;overflow:hidden;background:var(--bg);}

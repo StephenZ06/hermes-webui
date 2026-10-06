@@ -3,6 +3,7 @@
   // Each refresh takes a number; only the newest may render, so a slow
   // earlier response (e.g. a filtered list) cannot land on a newer view.
   let refreshSeq = 0;
+  let lastView = null;
   const emptyDraft = () => ({title: '', canonical_url: '', company: ''});
   const root = () => document.getElementById('jobOsRoot');
   const sidebarRoot = () => document.getElementById('jobOsSidebar');
@@ -33,7 +34,8 @@
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
       const wantBoard = state.activeView === 'applications';
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, autoApply] = await Promise.all([
+      const wantAutomations = state.activeView === 'dashboard';
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, autoApply, automations] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -48,6 +50,7 @@
         wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
         wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
         wantBoard ? window.JobOSApi.autoApply().catch(() => null) : Promise.resolve(null),
+        wantAutomations ? window.JobOSApi.automations().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       state.capability = capability;
@@ -63,6 +66,7 @@
       if (board) state.board = board;
       if (notifications) state.notifications = notifications.notifications;
       if (autoApply) state.autoApply = autoApply.auto_apply;
+      if (automations) state.automations = automations.automations;
       if (settings) {
         state.settings = settings.settings;
         state.settingsStatus = settings.status;
@@ -70,6 +74,11 @@
         if (!state.settingsDirty) state.settingsDraft = null;
       }
       target.innerHTML = window.JobOSRender.shell(state);
+      if (lastView !== state.activeView) {
+        const content = target.querySelector('.job-os-content');
+        if (content) content.classList.add('is-entering');
+        lastView = state.activeView;
+      }
       if (typeof window.animateCounts === 'function') window.animateCounts(target);
       if (wantScout) afterScoutRender(target);
       else stopScoutPolling();

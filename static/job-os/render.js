@@ -32,6 +32,25 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
   const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}">${esc(statusLabel(status))}</span>`;
+  function until(epochSeconds) {
+    const seconds = Number(epochSeconds || 0) - Math.floor(Date.now() / 1000);
+    if (!epochSeconds) return '';
+    if (seconds < 90) return 'any moment';
+    if (seconds < 3600) return 'in ' + Math.round(seconds / 60) + 'm';
+    if (seconds < 86400) return 'in ' + Math.round(seconds / 3600) + 'h';
+    return 'in ' + Math.round(seconds / 86400) + 'd';
+  }
+  function automationsCard(items) {
+    if (!items) return '';
+    const rows = items.map((a, i) => {
+      const last = typeof a.last === 'number' ? `Last ${when(a.last)}` : a.last ? `Last ${esc(a.last)}` : '';
+      const timing = [last, a.next ? `next ${until(a.next)}` : ''].filter(Boolean).join(' · ');
+      const note = a.on ? [a.detail, timing].filter(Boolean).join(' · ') : a.off_reason;
+      const tag = a.view ? 'button' : 'div';
+      return `<${tag}${a.view ? ` type="button" data-job-os-view="${esc(a.view)}"` : ''} class="automation-row" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small></span><span class="automation-note">${a.on ? '' : '<em>Off</em> '}${esc(note || '')}</span></${tag}>`;
+    }).join('');
+    return `<section class="job-os-card automations-card"><div class="job-os-card-head"><h2>Automations</h2><button type="button" class="job-os-link" data-job-os-view="settings">Change</button></div><div class="automations">${rows}</div></section>`;
+  }
   function when(epochSeconds) {
     const seconds = Math.max(0, Math.floor(Date.now() / 1000) - Number(epochSeconds || 0));
     if (!epochSeconds) return '';
@@ -448,6 +467,7 @@
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="applications"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-view="applications"')}</section>
         ${funnelCard(dashboard.funnel)}
+        ${automationsCard(state.automations)}
         <div class="job-os-columns">
           <section class="job-os-card job-os-recent"><div class="job-os-card-head"><h2>Recent jobs</h2><button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button></div>${jobList(jobs.slice(0, 12), 'No jobs saved yet', 'Import a role to start tracking it through your pipeline.')}</section>
           <section class="job-os-card job-os-import"><div class="job-os-card-head"><h2>Import a job</h2></div><p class="job-os-card-note">Scout finds jobs for you; save one by hand here.</p><form id="job-os-import-form"><label>Role title<input name="title" required maxlength="240" placeholder="e.g. Senior Frontend Engineer" value="${esc(draft.title)}"></label><label>Job URL<input name="canonical_url" type="url" required placeholder="https://" value="${esc(draft.canonical_url)}"></label><label>Company<input name="company" maxlength="240" placeholder="Optional" value="${esc(draft.company)}"></label><button class="job-os-btn primary" type="submit">${icon('import', 14)}Save job</button><p id="job-os-import-error" class="job-os-error" role="alert"></p></form></section>

@@ -22,6 +22,7 @@
     checkReplies: () => request('/api/job-os/notifications/check', {method: 'POST', body: '{}'}),
     board: () => request('/api/job-os/applications'),
     autoApply: () => request('/api/job-os/auto-apply'),
+    automations: () => request('/api/job-os/automations'),
     autofill: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/autofill', {method: 'POST', body: '{}'}),
     approveApply: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/approve', {method: 'POST', body: '{}'}),
     cancelApply: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/cancel-apply', {method: 'POST', body: '{}'}),

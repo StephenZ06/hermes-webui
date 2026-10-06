@@ -175,6 +175,11 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"funnel": applications.funnel()})
         return True
+    if path == f"{_PREFIX}/automations":
+        from api.job_os import automations
+
+        j(handler, {"automations": automations.summary()})
+        return True
     if path == f"{_PREFIX}/auto-apply":
         from api.job_os import autoapply
 
