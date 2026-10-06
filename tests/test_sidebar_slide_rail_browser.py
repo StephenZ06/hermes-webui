@@ -132,8 +132,8 @@ def test_sidebar_slide_stays_transform_only_without_web_animations():
     assert settled["width"] <= 1, settled
 
 
-def test_sidebar_slide_carries_main_content_to_its_new_layout_position():
-    """The main workspace must glide to the new sidebar layout, not snap."""
+def test_sidebar_slide_interpolates_the_main_layout_bounds_together():
+    """The visible main width and position must move as one FLIP transition."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -148,14 +148,36 @@ def test_sidebar_slide_carries_main_content_to_its_new_layout_position():
             page.evaluate(
                 "() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())"
             )
-            page.evaluate("async () => { await switchPanel('tasks'); toggleSidebar(); }")
-            page.wait_for_timeout(60)
+            page.evaluate("async () => { await switchPanel('tasks'); }")
+            before = page.evaluate("""() => {
+              const rect = document.querySelector('.main').getBoundingClientRect();
+              return {left: rect.left, width: rect.width};
+            }""")
+            page.evaluate("() => toggleSidebar()")
+            # Allow the spring one rendered frame before sampling. On a loaded
+            # Office-size DOM the first compositor sample can legitimately
+            # still be its exact FLIP start geometry at 60ms.
+            page.wait_for_timeout(120)
             moving = page.evaluate("""() => ({
               panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position'),
               mainTransform: getComputedStyle(document.querySelector('.main')).transform,
+              rect: (() => { const r = document.querySelector('.main').getBoundingClientRect(); return {left: r.left, width: r.width}; })(),
             })""")
+            page.wait_for_timeout(320)
+            settled = page.evaluate("""() => {
+              const rect = document.querySelector('.main').getBoundingClientRect();
+              return {left: rect.left, width: rect.width};
+            }""")
         finally:
             browser.close()
 
     assert moving["panelPosition"] == "fixed", moving
     assert moving["mainTransform"] != "none", moving
+    for field in ("left", "width"):
+        low, high = sorted((before[field], settled[field]))
+        assert low + 1 < moving["rect"][field] < high - 1, {
+            "field": field,
+            "before": before,
+            "moving": moving,
+            "settled": settled,
+        }

@@ -993,7 +993,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
 
   const panelProps=['transition','position','left','top','width','height',
     'opacity','z-index','transform','will-change'];
-  const mainProps=['transition','transform','will-change'];
+  const mainProps=['transition','transform','transform-origin','will-change'];
   const savedPanel={};
   const savedMain={};
   panelProps.forEach(function(prop){
@@ -1053,6 +1053,8 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const panelFrom=expanding?offscreen:0;
   const panelTo=expanding?0:offscreen;
   const mainFrom=animateMain?mainBefore.left-mainAfter.left:0;
+  const mainScale=animateMain&&mainAfter.width>0?mainBefore.width/mainAfter.width:1;
+  const mainFromTransform='translateX('+mainFrom+'px) scaleX('+mainScale+')';
   // The collapsed selector owns width:0!important, so the temporary visual
   // panel needs equally-specific pins while its transform carries it away.
   panel.style.setProperty('position','fixed','important');
@@ -1065,6 +1067,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   panel.style.setProperty('will-change','transform');
   panel.style.setProperty('transform','translateX('+panelTo+'px)','important');
   main.style.setProperty('will-change','transform');
+  main.style.setProperty('transform-origin','left top');
   main.style.transform='translateX(0px)';
 
   const current={cleanup:null,animations:[],raf:0,timer:0};
@@ -1092,9 +1095,9 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
         {transform:'translateX('+panelFrom+'px)'},
         {transform:'translateX('+panelTo+'px)'}
       ],timing)];
-      if(Math.abs(mainFrom)>.5){
+      if(Math.abs(mainFrom)>.5||Math.abs(mainScale-1)>.001){
         current.animations.push(main.animate([
-          {transform:'translateX('+mainFrom+'px)'},
+          {transform:mainFromTransform},
           {transform:'translateX(0px)'}
         ],timing));
       }
@@ -1108,7 +1111,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
     // Preserve the same FLIP geometry and transition only the two composited
     // transforms. Width remains frozen for the complete slide.
     panel.style.setProperty('transform','translateX('+panelFrom+'px)','important');
-    main.style.transform='translateX('+mainFrom+'px)';
+    main.style.transform=mainFromTransform;
     void panel.offsetWidth;
     panel.style.setProperty('transition','transform '+duration+'ms '+easing,'important');
     main.style.setProperty('transition','transform '+duration+'ms '+easing,'important');
