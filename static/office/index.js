@@ -229,6 +229,7 @@ function pauseForLayoutMotion() {
   if (_layoutMotionPauseDepth !== 1 || !_scene) return;
   _resumeSceneAfterLayoutMotion = _scene.isRunning();
   if (_resumeSceneAfterLayoutMotion) _scene.stop();
+  if (typeof _scene.beginLayoutMotion === 'function') _scene.beginLayoutMotion();
 }
 
 function resumeAfterLayoutMotion() {
@@ -247,7 +248,9 @@ function resumeAfterLayoutMotion() {
       _layoutMotionResumeRaf = 0;
       if (_layoutMotionPauseDepth || _scene !== scene) return;
       syncCanvasSpan();
+      if (typeof scene.endLayoutMotion === 'function') scene.endLayoutMotion();
       scene.resize();
+      repositionDepartmentCards();
       if (shouldResume && !document.hidden) scene.start();
       flushDeferredMotionWork();
     });
@@ -560,15 +563,6 @@ function renderDepartmentCards(view, state) {
  * there is nothing to reposition, which is whenever the current outlet has
  * no cards up.
  */
-function cardBounds(x, y, width, height) {
-  return {
-    left: x - width / 2,
-    top: y - height,
-    right: x + width / 2,
-    bottom: y,
-  };
-}
-
 function repositionDepartmentCards() {
   if (!_deptCardEls.size) return;
   if (!_scene || typeof _scene.podScreenRect !== 'function') return;
@@ -576,19 +570,27 @@ function repositionDepartmentCards() {
   const stageHeight = _deptCardsEl.clientHeight;
   const sceneZoom = _scene.getView().zoom;
   const scale = _labelsAdaptive ? Math.max(0.65, Math.min(1, sceneZoom)) : 1;
+  // Read every position and size first, then write: interleaving them forced
+  // a layout per card, on every frame of a side-panel slide.
+  const plans = [];
   _deptCardEls.forEach((el, cluster) => {
-    const rect = _scene.podScreenRect(cluster);
-    if (!rect || !_labelsVisible) { el.style.display = 'none'; return; }
+    const rect = _labelsVisible ? _scene.podScreenRect(cluster) : null;
+    plans.push({ el, rect, width: el.offsetWidth, height: el.offsetHeight, hidden: el.style.display === 'none' });
+  });
+  const place = (el, rect, width, height) => {
+    el.style.left = Math.max(width / 2 + 8, Math.min(stageWidth - width / 2 - 8, rect.x)) + 'px';
+    el.style.top = Math.max(height + 8, Math.min(stageHeight - 8, rect.y)) + 'px';
+  };
+  const shown = [];
+  plans.forEach(plan => {
+    const { el, rect } = plan;
+    if (!rect) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.style.transform = `translate(-50%, -100%) scale(${scale})`;
-    const width = el.offsetWidth;
-    const height = el.offsetHeight;
-    const x = Math.max(width / 2 + 8, Math.min(stageWidth - width / 2 - 8, rect.x));
-    const y = Math.max(height + 8, Math.min(stageHeight - 8, rect.y));
-    const placement = { x, y, bounds: cardBounds(x, y, width, height) };
-    el.style.left = placement.x + 'px';
-    el.style.top = placement.y + 'px';
+    if (plan.hidden) shown.push(plan); // no size until displayed: measured below
+    else place(el, rect, plan.width, plan.height);
   });
+  shown.forEach(plan => place(plan.el, plan.rect, plan.el.offsetWidth, plan.el.offsetHeight));
 }
 
 function renderPlatformLabelScaleButton() {

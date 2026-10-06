@@ -66,7 +66,7 @@ def test_overview_cards_stay_anchored_instead_of_hiding_or_detaching():
     body = _function_body(OFFICE_INDEX_SRC, "repositionDepartmentCards")
     assert "MIN_CARD_ZOOM" not in OFFICE_INDEX_SRC
     assert "const candidates" not in body
-    assert "placement = { x, y, bounds" in body
+    assert "const place = (el, rect, width, height)" in body  # anchored at the pod, clamped to the stage
 
 
 def test_a_card_without_a_colour_clears_any_previous_one():

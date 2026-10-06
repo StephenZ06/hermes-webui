@@ -1576,6 +1576,37 @@ export function createOfficeScene(canvas, options) {
    * whole slide (resizing alone would blank it until the next render).
    */
   function renderNow() {
+    if (layoutMotion) { previewLayoutMotion(); return; }
+    if (resize()) composer.render();
+  }
+
+  // ---- side-panel slides ------------------------------------------------
+  // A slide changes the visible stage width every frame for ~1/3s. Redrawing
+  // the bloom pipeline at the full drawing-buffer size each of those frames
+  // is the costliest thing the page does (on an integrated GPU it drops
+  // frames). The framed zoom only scales the picture about the camera
+  // target, and the camera target projects to the canvas centre (ortho,
+  // symmetric frustum), so mid-slide the last frame is scaled with a CSS
+  // transform -- compositor-only -- and drawn for real once when it ends.
+  // podScreenRect reads the transformed canvas rect, so the floating
+  // department cards follow the scaled picture without extra work.
+  let layoutMotion = false;
+  function previewLayoutMotion() {
+    const width = Math.max(1, canvas.clientWidth || 0);
+    const height = Math.max(1, canvas.clientHeight || 0);
+    const stageWidth = canvas.parentElement ? canvas.parentElement.clientWidth : width;
+    const visible = Math.max(1, Math.min(width, stageWidth || width));
+    const following = !focusedId && !manualZoom && !tween;
+    const scale = following && view.zoom > 0 ? zoomForRadius(visible, height, framedRadius) / view.zoom : 1;
+    canvas.style.transform = Math.abs(scale - 1) < 1e-4 ? '' : 'translateX(-50%) scale(' + scale.toFixed(5) + ')';
+  }
+  function beginLayoutMotion() { layoutMotion = true; }
+  function endLayoutMotion() {
+    if (!layoutMotion) return;
+    layoutMotion = false;
+    // Drop the preview scale and draw the real frame in the same task, so
+    // the settled picture replaces the scaled one without a blank frame.
+    canvas.style.transform = '';
     if (resize()) composer.render();
   }
 
@@ -1727,6 +1758,7 @@ export function createOfficeScene(canvas, options) {
 
   return {
     start, stop, resize, renderNow, dispose, isRunning, applyTheme, syncOffice,
+    beginLayoutMotion, endLayoutMotion, isInLayoutMotion: () => layoutMotion,
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
     podScreenRect, scene, setOutletTransition,
   };
