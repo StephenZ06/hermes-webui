@@ -13841,6 +13841,12 @@ def _session_events_path_session_id(path: str | None) -> str | None:
     return sid or None
 
 
+def _route_get_api_notebook_prefix(handler, parsed):
+    from api.notebook_api import handle_notebook_get
+
+    return handle_notebook_get(handler, parsed)
+
+
 def _route_get_api_job_os_prefix(handler, parsed):
     from api.job_os.api import handle_job_os_get
 
@@ -15965,6 +15971,7 @@ def _route_get_dashboard_plugins_prefix(handler, parsed):
 _GET_ROUTES = RouteTable(
     (
         (Prefix("/api/job-os/"), _route_get_api_job_os_prefix),
+        (Prefix("/api/notebook/"), _route_get_api_notebook_prefix),
         (Exact("/api/insights"), _route_get_api_insights),
         (Exact("/api/account_usage"), _route_get_api_account_usage),
         (Exact("/api/project-os/dashboard"), _route_get_api_project_os_dashboard),
@@ -16558,6 +16565,12 @@ _POST_RAW_BODY = RouteTable(
 
 _CREWS_DISPATCH_PREFIX = "/api/crews/"
 _WORK_HUB_WORKFLOW_ACTION_PREFIX = "/api/work_hub/workflows/"
+
+
+def _route_post_api_notebook_prefix(handler, parsed, body, diag):
+    from api.notebook_api import handle_notebook_post
+
+    return handle_notebook_post(handler, parsed, body)
 
 
 def _route_post_api_job_os_prefix(handler, parsed, body, diag):
@@ -20017,6 +20030,7 @@ def _route_post_api_rollback_restore(handler, parsed, body, diag):
 _POST_ROUTES = RouteTable(
     (
         (Prefix("/api/job-os/"), _route_post_api_job_os_prefix),
+        (Prefix("/api/notebook/"), _route_post_api_notebook_prefix),
         (Exact("/api/escape/authorize"), _route_post_api_escape_authorize),
         (Exact("/api/updates/check"), _route_post_api_updates_check),
         (Exact("/api/extensions/toggle"), _route_post_api_extensions_toggle),

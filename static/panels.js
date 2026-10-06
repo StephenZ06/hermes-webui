@@ -87,7 +87,10 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs'];
+// Panels whose internal key is not their visible name (`notes` is the Work Hub
+// for saved-state compatibility; `notebook` is the Notes page).
+const APP_TITLEBAR_LABELS = { notes: 'Work Hub', notebook: 'Notes' };
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs','notebook'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -111,7 +114,7 @@ function syncAppTitlebar() {
     if (/^webui$/i.test(sourceLabel)) sourceLabel = '';
   } else {
     const key = APP_TITLEBAR_KEYS[panel];
-    mainText = key && typeof t === 'function' ? t(key) : (panel.charAt(0).toUpperCase() + panel.slice(1));
+    mainText = key && typeof t === 'function' ? t(key) : (APP_TITLEBAR_LABELS[panel] || (panel.charAt(0).toUpperCase() + panel.slice(1)));
   }
 
   // Don't touch the element while an inline rename is in progress — replacing
@@ -468,6 +471,8 @@ async function switchPanel(name, opts = {}) {
   // Work Hub owns the full main surface. Do not carry the chat workspace
   // browser into it when navigating from another panel.
   if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
+  // Notes owns the full main surface too.
+  if (nextPanel === 'notebook' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   // Close any long-lived Kanban SSE stream when leaving the kanban panel
   // so we don't keep a stale connection open in the background.
@@ -494,6 +499,9 @@ async function switchPanel(name, opts = {}) {
     } else if (window.HermesOffice && typeof window.HermesOffice.unmount === 'function') {
       window.HermesOffice.unmount();
     }
+  }
+  if (prevPanel === 'notebook' && nextPanel !== 'notebook' && window.Notebook && typeof window.Notebook.unmount === 'function') {
+    window.Notebook.unmount();
   }
   if (prevPanel === 'jobs' && nextPanel !== 'jobs' && window.JobOS && typeof window.JobOS.unmount === 'function') {
     window.JobOS.unmount();
@@ -544,6 +552,7 @@ async function switchPanel(name, opts = {}) {
   // Hub. The old Notes script stays loaded only for its legacy workspace pane.
   if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'jobs' && window.JobOS && typeof window.JobOS.mount === 'function') { window.JobOS.mount(); }
+  if (nextPanel === 'notebook' && window.Notebook && typeof window.Notebook.mount === 'function') { window.Notebook.mount(); }
   if (nextPanel === 'profiles') { await loadProfilesPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'todos') loadTodos();
   if (nextPanel === 'insights') { await loadInsights(); if (!panelTicketIsCurrent()) return false; }

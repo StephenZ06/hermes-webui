@@ -1,0 +1,22 @@
+{
+  "name": "hermes-blocknote-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds the vendored BlockNote editor bundle used by the Notes page (static/vendor/blocknote/). Not part of the app at runtime: the app loads the committed, pre-built bundle. Rebuild with `npm ci && npm run build` here.",
+  "license": "MPL-2.0",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@blocknote/core": "0.55.0",
+    "@blocknote/mantine": "0.55.0",
+    "@blocknote/react": "0.55.0",
+    "@mantine/core": "9.7.1",
+    "@mantine/hooks": "9.7.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
