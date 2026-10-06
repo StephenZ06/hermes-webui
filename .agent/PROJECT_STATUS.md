@@ -1,5 +1,29 @@
 # Project status — hermes-webui
 
+## 2026-10-06: Job OS phases 4-7 and extras shipped (live, not pushed)
+
+- *Shipped.* Applications board + funnel (`5940f24c7`); email alerts, daily
+  digest, reply-to-proceed codes (`7fb3434a2`, docs/job-os-email.md); gated
+  auto-apply for Greenhouse/Lever/Ashby (`62d92c21c`, docs/job-os-auto-apply.md);
+  3D Logistics centre (`aa5aecbb4`); company blocklist + cross-site dedupe
+  (`281f6991d`); Automations overview + view-enter animation (`f818c9982`);
+  Luna interview prep (`6036494f2`). Live DB is at schema v7.
+- *Auto-apply browser.* The live server's interpreter has no Playwright, so
+  runs use the repo `.venv` in a subprocess (override with
+  `HERMES_JOB_OS_BROWSER_PYTHON`). Auto-apply is off in live settings.
+- *Not verified end to end.* A real email reply round-trip (needs the user to
+  reply to an alert), and any real ATS fill/submit (only a read-only control
+  probe of real forms ran).
+- *Suite.* Full sharded run found 4 Job OS regressions (fixed in `75fd981d7`)
+  and an onboarding helper bypass from the shared-secrets change (fixed in
+  `9925f3aaa`). `test_issue2545_xai_oauth_provider::...live_catalog` fails
+  order-dependently with or without these changes (pre-existing).
+- *Gotcha.* Five parallel shards fill the 7.9 GB `/tmp` tmpfs via
+  `/tmp/pytest-of-$USER`; ENOSPC then shows up as random errors. Clear it
+  between runs.
+- *Logistics test.* The WebGL test is opt-in (`HERMES_WEBUI_BROWSER_TESTS=1`,
+  ~90 s under SwiftShader); the always-on test covers the no-WebGL fallback.
+
 ## 2026-10-04 (evening): Office sidebar slide, remaining test order dependencies
 
 - Office sidebar toggle (`b4f554541`). A CPU profile of the toggle was
