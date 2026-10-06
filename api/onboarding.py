@@ -689,9 +689,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
     provider = _extract_current_provider(cfg)
     model = _extract_current_model(cfg)
     base_url = _extract_current_base_url(cfg)
-    from api.shared_env import load_layered_env
-
-    env_values = load_layered_env(_get_active_hermes_home())
+    env_values = _profile_env_values()
 
     provider_configured = bool(provider and model)
     provider_ready = False
@@ -952,6 +950,24 @@ def get_onboarding_status() -> dict:
     }
 
 
+def _profile_env_values() -> dict:
+    """The active profile's env; with the shared secrets layer on, shared values sit underneath."""
+    from api.shared_env import load_layered_env, shared_env_enabled
+
+    home = _get_active_hermes_home()
+    return load_layered_env(home) if shared_env_enabled() else _load_env_file(home / ".env")
+
+
+def _write_profile_env(updates: dict) -> None:
+    from api.shared_env import shared_env_enabled, write_env_values
+
+    home = _get_active_hermes_home()
+    if shared_env_enabled():
+        write_env_values(home, updates)
+    else:
+        _write_env_file(home / ".env", updates)
+
+
 def apply_onboarding_setup(body: dict) -> dict:
     # Hard guard: if the operator set SKIP_ONBOARDING, the wizard should never
     # have appeared.  Even if the frontend somehow calls this endpoint anyway
@@ -1000,9 +1016,7 @@ def apply_onboarding_setup(body: dict) -> dict:
         }
 
     cfg = _load_yaml_config(config_path)
-    from api.shared_env import load_layered_env, write_env_values
-
-    env_values = load_layered_env(_get_active_hermes_home())
+    env_values = _profile_env_values()
 
     if not api_key and not _provider_api_key_present(provider, cfg, env_values):
         # Providers that may run keyless (lmstudio, ollama, custom — gated by
@@ -1034,7 +1048,7 @@ def apply_onboarding_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key:
-        write_env_values(_get_active_hermes_home(), {provider_meta["env_var"]: api_key})
+        _write_profile_env({provider_meta["env_var"]: api_key})
 
     # Reload the hermes_cli provider/config cache so the next streaming call
     # picks up the new key without requiring a server restart.
@@ -1112,9 +1126,7 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key and env_var:
-        from api.shared_env import write_env_values
-
-        write_env_values(_get_active_hermes_home(), {env_var: api_key})
+        _write_profile_env({env_var: api_key})
         os.environ[env_var] = api_key
 
     try:
