@@ -18,7 +18,7 @@ def test_dashboard_lists_automations_and_views_animate_in():
             page.wait_for_selector(".automations-card .automation-row", timeout=15000)
             rows = page.evaluate("() => [...document.querySelectorAll('.automation-row')].map(r => [r.querySelector('strong').textContent, r.dataset.on])")
             page.click(".automation-row[data-job-os-view='scout']")
-            page.wait_for_function("() => window.JobOSState.activeView === 'scout' && document.querySelector('.job-os-content.is-entering')", timeout=10000)
+            page.wait_for_selector(".job-os-shell[data-view='scout'] .job-os-content.is-entering", state='attached', timeout=10000)
             page.evaluate("async () => { await window.JobOS.refresh(); }")
             same_view_again = page.evaluate("() => !!document.querySelector('.job-os-content.is-entering')")
         finally:
