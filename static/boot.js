@@ -943,9 +943,9 @@ function _syncSidebarAria(){
 // must not send a live Office scene back through a CSS `width` transition.
 // Width changes re-layout the entire flex row on every animation frame, which
 // is especially visible while the office renderer is also drawing. This native
-// Web Animations fallback performs the same one-layout FLIP sequence using
-// transform-only keyframes, so it is compositor-driven in every supported
-// Chromium/WebView even without the optional bundle.
+// fallback performs the same one-layout FLIP sequence using transform-only
+// keyframes. Modern browsers use WAAPI; older embedded WebViews use a CSS
+// transform transition on the pinned layers. Neither path animates width.
 let _nativePanelSlide=null;
 
 function _notifyOfficePanelLayoutMotion(active){
@@ -958,6 +958,7 @@ function _notifyOfficePanelLayoutMotion(active){
 
 function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const options=opts||{};
+  const animateMain=options.animateMain!==false;
   let lifecycleStarted=false;
   const begin=function(){
     if(lifecycleStarted)return;
@@ -969,7 +970,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
     lifecycleStarted=false;
     try{if(typeof options.onComplete==='function')options.onComplete();}catch(_){}
   };
-  if(!panel||typeof apply!=='function'||typeof panel.animate!=='function'){
+  if(!panel||typeof apply!=='function'){
     apply();
     return;
   }
@@ -992,7 +993,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
 
   const panelProps=['transition','position','left','top','width','height',
     'opacity','z-index','transform','will-change'];
-  const mainProps=['transform','will-change'];
+  const mainProps=['transition','transform','will-change'];
   const savedPanel={};
   const savedMain={};
   panelProps.forEach(function(prop){
@@ -1009,21 +1010,32 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
       else el.style.removeProperty(prop);
     });
   };
+  const restoreAtRest=function(el,props,saved){
+    // Dropping the temporary width/position pins while the stylesheet's width
+    // transition is live starts a second, layout-driven animation. Keep every
+    // transition off until final geometry has been committed and painted.
+    el.style.setProperty('transition','none','important');
+    restore(el,props.filter(function(prop){return prop!=='transition';}),saved);
+    try{void el.offsetWidth;}catch(_){}
+    const transition=saved.transition||['',''];
+    if(transition[0])el.style.setProperty('transition',transition[0],transition[1]);
+    else el.style.removeProperty('transition');
+  };
 
   let panelBefore,mainBefore,panelAfter,mainAfter;
   try{
     panelBefore=panel.getBoundingClientRect();
-    mainBefore=main.getBoundingClientRect();
+    if(animateMain)mainBefore=main.getBoundingClientRect();
     begin();
     // Prevent the CSS width/opacity transition from starting when the class is
     // committed. The geometry is therefore final after this one layout read.
     panel.style.setProperty('transition','none','important');
     apply();
     panelAfter=panel.getBoundingClientRect();
-    mainAfter=main.getBoundingClientRect();
+    if(animateMain)mainAfter=main.getBoundingClientRect();
   }catch(_){
-    restore(panel,panelProps,savedPanel);
-    restore(main,mainProps,savedMain);
+    restoreAtRest(panel,panelProps,savedPanel);
+    restoreAtRest(main,mainProps,savedMain);
     finish();
     return;
   }
@@ -1031,8 +1043,8 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const expanding=panelAfter.width>panelBefore.width;
   const rect=expanding?panelAfter:panelBefore;
   if(Math.abs(panelAfter.width-panelBefore.width)<1||rect.width<1){
-    restore(panel,panelProps,savedPanel);
-    restore(main,mainProps,savedMain);
+    restoreAtRest(panel,panelProps,savedPanel);
+    restoreAtRest(main,mainProps,savedMain);
     finish();
     return;
   }
@@ -1040,7 +1052,7 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const offscreen=side==='right'?rect.width:-rect.width;
   const panelFrom=expanding?offscreen:0;
   const panelTo=expanding?0:offscreen;
-  const mainFrom=mainBefore.left-mainAfter.left;
+  const mainFrom=animateMain?mainBefore.left-mainAfter.left:0;
   // The collapsed selector owns width:0!important, so the temporary visual
   // panel needs equally-specific pins while its transform carries it away.
   panel.style.setProperty('position','fixed','important');
@@ -1055,35 +1067,58 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   main.style.setProperty('will-change','transform');
   main.style.transform='translateX(0px)';
 
-  const current={cleanup:null};
+  const current={cleanup:null,animations:[],raf:0,timer:0};
   let cleaned=false;
   const cleanup=function(){
     if(cleaned)return;
     cleaned=true;
+    if(current.raf)cancelAnimationFrame(current.raf);
+    if(current.timer)clearTimeout(current.timer);
     try{current.animations.forEach(function(animation){animation.cancel();});}catch(_){}
-    restore(panel,panelProps,savedPanel);
-    restore(main,mainProps,savedMain);
+    restoreAtRest(panel,panelProps,savedPanel);
+    restoreAtRest(main,mainProps,savedMain);
     finish();
     if(_nativePanelSlide===current)_nativePanelSlide=null;
   };
   current.cleanup=cleanup;
   _nativePanelSlide=current;
 
+  const duration=240;
+  const easing='cubic-bezier(.22,1,.36,1)';
   try{
-    const timing={duration:240,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'};
-    current.animations=[panel.animate([
-      {transform:'translateX('+panelFrom+'px)'},
-      {transform:'translateX('+panelTo+'px)'}
-    ],timing)];
-    if(Math.abs(mainFrom)>.5){
-      current.animations.push(main.animate([
-        {transform:'translateX('+mainFrom+'px)'},
-        {transform:'translateX(0px)'}
-      ],timing));
+    if(typeof panel.animate==='function'&&typeof main.animate==='function'){
+      const timing={duration:duration,easing:easing,fill:'both'};
+      current.animations=[panel.animate([
+        {transform:'translateX('+panelFrom+'px)'},
+        {transform:'translateX('+panelTo+'px)'}
+      ],timing)];
+      if(Math.abs(mainFrom)>.5){
+        current.animations.push(main.animate([
+          {transform:'translateX('+mainFrom+'px)'},
+          {transform:'translateX(0px)'}
+        ],timing));
+      }
+      Promise.all(current.animations.map(function(animation){
+        return animation.finished.catch(function(){return undefined;});
+      })).then(cleanup,cleanup);
+      return;
     }
-    Promise.all(current.animations.map(function(animation){
-      return animation.finished.catch(function(){return undefined;});
-    })).then(cleanup,cleanup);
+
+    // Older embedded WebViews expose neither Motion nor Element.animate().
+    // Preserve the same FLIP geometry and transition only the two composited
+    // transforms. Width remains frozen for the complete slide.
+    panel.style.setProperty('transform','translateX('+panelFrom+'px)','important');
+    main.style.transform='translateX('+mainFrom+'px)';
+    void panel.offsetWidth;
+    panel.style.setProperty('transition','transform '+duration+'ms '+easing,'important');
+    main.style.setProperty('transition','transform '+duration+'ms '+easing,'important');
+    current.raf=requestAnimationFrame(function(){
+      current.raf=0;
+      if(cleaned)return;
+      panel.style.setProperty('transform','translateX('+panelTo+'px)','important');
+      main.style.transform='translateX(0px)';
+    });
+    current.timer=setTimeout(cleanup,duration+40);
   }catch(_){
     cleanup();
   }
@@ -1095,7 +1130,11 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
 function _slidePanelIfPossible(panel,side,apply){
   const lifecycle={
     onStart:function(){_notifyOfficePanelLayoutMotion(true);},
-    onComplete:function(){_notifyOfficePanelLayoutMotion(false);}
+    onComplete:function(){_notifyOfficePanelLayoutMotion(false);},
+    // A left sidebar reveals more room for the active page; its contents
+    // should reflow once, not visibly travel with the panel. The right-side
+    // workspace drawer keeps its existing paired slide.
+    animateMain:side==='right'
   };
   try{
     const motionUi=window.MotionUI;
@@ -1104,7 +1143,7 @@ function _slidePanelIfPossible(panel,side,apply){
     // use the native compositor path below instead.
     const runtimeReady=!motionUi||typeof motionUi.enabled!=='function'||motionUi.enabled();
     if(motionUi&&typeof motionUi.slidePanel==='function'&&runtimeReady){
-      motionUi.slidePanel(panel,apply,{side:side,onStart:lifecycle.onStart,onComplete:lifecycle.onComplete});
+      motionUi.slidePanel(panel,apply,{side:side,onStart:lifecycle.onStart,onComplete:lifecycle.onComplete,animateMain:lifecycle.animateMain});
       return;
     }
   }catch(_){}

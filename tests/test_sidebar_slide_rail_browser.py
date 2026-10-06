@@ -73,3 +73,89 @@ def test_the_side_panel_has_one_fixed_width_on_every_page():
     assert set(widths.values()) == {300}, widths
     assert not handle, "no drag handle on the side panel"
     assert saved is None, "a width saved by the old handle is dropped"
+
+
+def test_sidebar_slide_stays_transform_only_without_web_animations():
+    """Old embedded WebViews can lack both Motion and Element.animate.
+
+    That environment must still pin the panel and animate a compositor-only
+    transform. Falling through to the stylesheet's width transition makes the
+    heavier Office layout reflow on every frame and visibly stutter.
+    """
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function(
+                "() => typeof S !== 'undefined' && S._bootReady === true",
+                polling=100,
+                timeout=30000,
+            )
+            page.evaluate(
+                "() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())"
+            )
+            page.evaluate("async () => { await switchPanel('office'); }")
+            state = page.evaluate("""() => {
+              window.MotionUI = null;
+              Object.defineProperty(Element.prototype, 'animate', {
+                configurable: true,
+                value: undefined,
+              });
+              toggleSidebar();
+              const panel = document.querySelector('.sidebar');
+              return {
+                collapsed: document.querySelector('.layout').classList.contains('sidebar-collapsed'),
+                position: panel.style.getPropertyValue('position'),
+                transition: panel.style.getPropertyValue('transition'),
+                transform: panel.style.getPropertyValue('transform'),
+              };
+            }""")
+            page.wait_for_timeout(320)
+            settled = page.evaluate("""() => {
+              const panel = document.querySelector('.sidebar');
+              return {
+                position: panel.style.getPropertyValue('position'),
+                width: Math.round(panel.getBoundingClientRect().width),
+              };
+            }""")
+        finally:
+            browser.close()
+
+    assert state["collapsed"] is True
+    assert state["position"] == "fixed", state
+    assert state["transition"].startswith("transform 240ms"), state
+    assert "width" not in state["transition"], state
+    assert state["transform"], state
+    assert settled["position"] == "", settled
+    assert settled["width"] <= 1, settled
+
+
+def test_sidebar_slide_does_not_translate_the_page_contents():
+    """The sidebar may slide, but the active page must not travel with it."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function(
+                "() => typeof S !== 'undefined' && S._bootReady === true",
+                polling=100,
+                timeout=30000,
+            )
+            page.evaluate(
+                "() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())"
+            )
+            page.evaluate("async () => { await switchPanel('tasks'); toggleSidebar(); }")
+            page.wait_for_timeout(60)
+            moving = page.evaluate("""() => ({
+              panelPosition: document.querySelector('.sidebar').style.getPropertyValue('position'),
+              mainTransform: getComputedStyle(document.querySelector('.main')).transform,
+            })""")
+        finally:
+            browser.close()
+
+    assert moving["panelPosition"] == "fixed", moving
+    assert moving["mainTransform"] == "none", moving

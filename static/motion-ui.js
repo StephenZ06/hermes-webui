@@ -351,6 +351,7 @@
     const motionName = options.name || 'panel-slide';
     const side = options.side === 'right' ? 'right' : 'left';
     const main = options.main || document.querySelector('.main');
+    const animateMain = options.animateMain !== false;
     const onStart = typeof options.onStart === 'function' ? options.onStart : null;
     const onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
     let lifecycleStarted = false;
@@ -370,12 +371,12 @@
     let panelBefore, mainBefore, panelAfter, mainAfter;
     try{
       panelBefore = panel.getBoundingClientRect();
-      mainBefore = main.getBoundingClientRect();
+      if(animateMain) mainBefore = main.getBoundingClientRect();
       begin();
       freezePanel(panel);
       apply(); // the one and only layout-invalidating step
       panelAfter = panel.getBoundingClientRect();
-      mainAfter = main.getBoundingClientRect();
+      if(animateMain) mainAfter = main.getBoundingClientRect();
     }catch(_){
       try{ apply(); }catch(__){}
       try{ thawPanel(panel); }catch(__){}
@@ -396,7 +397,7 @@
     const panelTo = expanding ? 0 : offscreen;
     // How far the main column jumped when the state was applied. It is carried
     // back and animated to zero so the content glides instead of popping.
-    const mainFrom = mainBefore.left - mainAfter.left;
+    const mainFrom = animateMain ? mainBefore.left - mainAfter.left : 0;
 
     pinPanel(panel, rect);
     const running = [];
