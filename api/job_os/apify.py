@@ -170,7 +170,9 @@ def indeed_posting(item: dict, host: str) -> dict | None:
     return {
         "title": str(item.get("title") or "").strip()[:240],
         "company": str((item.get("employer") or {}).get("name") or "").strip()[:240] if isinstance(item.get("employer"), dict) else "",
-        "location": ", ".join(p for p in (str(where.get("city") or ""), str(where.get("admin1Code") or "")) if p and not p.isdigit())[:240],
+        # Indeed's region codes ("M14", "061") mean nothing to a reader; a state like "NY" does.
+        "location": ", ".join(p for p in (str(where.get("city") or ""), str(where.get("admin1Code") or ""))
+                              if p and not re.fullmatch(r"[A-Za-z]?\d+", p))[:240],
         "country": str(where.get("countryName") or "")[:80],
         "salary_text": _salary(item.get("baseSalary"))[:120],
         "employment_type": ", ".join(_values(item.get("jobTypes")))[:60],

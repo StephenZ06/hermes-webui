@@ -229,3 +229,19 @@ def test_apify_settings_are_validated(home):
             save_settings({"apify": bad}, expected_revision=0)
     assert save_settings({"apify": {"indeed_actor": "someone/indeed-v2", "results_per_city": 120}}, expected_revision=0)["apify"] == {
         "enabled": False, "indeed_actor": "someone/indeed-v2", "results_per_city": 120}
+
+
+def test_indeed_region_codes_are_dropped_from_the_location():
+    item = _item("k9", location={"countryName": "Malaysia", "admin1Code": "M14", "city": "Kuala Lumpur"})
+    assert apify.indeed_posting(item, "x")["location"] == "Kuala Lumpur"
+    us = _item("k8", location={"countryName": "United States", "admin1Code": "NY", "city": "New York"})
+    assert apify.indeed_posting(us, "x")["location"] == "New York, NY", "a readable state stays"
+
+
+def test_a_run_says_when_new_finds_were_not_scored_for_want_of_a_resume(home, monkeypatch):
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    results += [[_item("n1")]]
+    run = _run(scout.create_search({"keywords": "x", "country": "my"}))
+    assert run["status"] == "completed"
+    assert run["stage_detail"] == "1 new job · not scored: upload your master resume in Resume Studio"

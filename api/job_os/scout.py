@@ -406,18 +406,27 @@ def _known_urls() -> set[str]:
         conn.close()
 
 
-def _after_run(new_ids: list[str]) -> None:
-    """Queue Luna analysis for new finds (Settings -> AI -> analyse automatically)."""
+NOT_SCORED = " · not scored: upload your master resume in Resume Studio"
+
+
+def _after_run(new_ids: list[str]) -> str:
+    """Queue Luna analysis for new finds (Settings -> AI -> analyse automatically).
+    Returns a note for the run's summary when the finds could not be scored."""
     if not new_ids:
-        return
+        return ""
     try:
         from api.job_os import analysis
+        from api.job_os.resume import load_resume
         from api.job_os.settings import load_settings
 
-        if load_settings()["ai"].get("auto_analyze", True):
-            analysis.request_analysis(new_ids)
-    except Exception:  # no resume yet, or analysis unavailable: finds are still saved
+        if not load_settings()["ai"].get("auto_analyze", True):
+            return ""
+        if not load_resume():
+            return NOT_SCORED  # scoring compares each job with the master resume
+        analysis.request_analysis(new_ids)
+    except Exception:  # analysis unavailable: finds are still saved
         pass
+    return ""
 
 
 def read_posting(url: str, client) -> tuple[str, dict | None]:
@@ -599,8 +608,8 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 finish("failed", f"Apify could not run: {errors[0]['message'] if errors else 'unknown error'}")
                 return
             _mark_ran(search["id"])
-            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}")
-            _after_run(new_ids)
+            note = _after_run(new_ids)
+            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
             return
 
         def offer(url: str) -> None:
@@ -705,9 +714,9 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             if refused >= REFUSALS_BEFORE_STOP:
                 _mark_ran(search["id"])  # so the schedule waits its interval instead of retrying into the block
                 saved = f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}"
+                note = _after_run(new_ids)
                 finish("completed" if counts["saved"] else "failed",
-                       f"{saved} · Indeed is refusing requests right now; run again in a few minutes")
-                _after_run(new_ids)
+                       f"{saved}{note} · Indeed is refusing requests right now; run again in a few minutes")
                 return
             try:
                 safe = validate_external_job_url(url)  # resolve again at the moment of use
@@ -732,8 +741,8 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             save(detail=f"Read {index} of {len(candidates)} postings · {counts['saved']} new")
 
         _mark_ran(search["id"])
-        finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}")
-        _after_run(new_ids)
+        note = _after_run(new_ids)
+        finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
     except Exception as error:  # a crashed worker must still leave a terminal run
         note_error("scout", type(error).__name__)
         try:
