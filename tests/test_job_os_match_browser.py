@@ -48,14 +48,20 @@ def test_the_ring_shows_the_score_and_band_of_the_picked_job():
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             page.evaluate("async () => { await switchPanel('jobs'); }")
             page.wait_for_selector(".match-ring[data-band]", timeout=20000)
-            page.evaluate("""(id) => { const s = document.querySelector('select[data-job-os-change="match-job"]');
-              s.value = id; s.dispatchEvent(new Event('change', {bubbles: true})); }""", fair["id"])
+            # The match check steps through the board one job at a time (Next / Previous, or the arrow keys).
+            def go_to(title):
+                for _ in range(40):
+                    if page.inner_text(".match-job strong") == title:
+                        return
+                    page.keyboard.press("ArrowRight" if page.locator(".match-step[aria-label='Next job']:not([disabled])").count() else "ArrowLeft")
+                    page.wait_for_timeout(250)
+                raise AssertionError(f"{title} not in the match check")
+            go_to(f"Fair {marker}")
             page.wait_for_selector('.match-ring[data-band="fair"]', timeout=15000)
             fair_ring = page.inner_text(".match-ring")
             fair_color = page.evaluate("() => getComputedStyle(document.querySelector('.match-ring')).getPropertyValue('--ring').trim()")
             summary = page.inner_text(".match-detail")
-            page.evaluate("""(id) => { const s = document.querySelector('select[data-job-os-change="match-job"]');
-              s.value = id; s.dispatchEvent(new Event('change', {bubbles: true})); }""", weak["id"])
+            go_to(f"Weak {marker}")
             page.wait_for_selector('.match-ring[data-band="poor"]', timeout=15000)
             poor_ring = page.inner_text(".match-ring")
             poor_color = page.evaluate("() => getComputedStyle(document.querySelector('.match-ring')).getPropertyValue('--ring').trim()")

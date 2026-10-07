@@ -1,28 +1,48 @@
 (function () {
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
   const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', logistics: 'Logistics', settings: 'Settings'};
+  // Linear icons from mx-icons (MIT; see static/vendor/mx-icons/LICENSE), 24px grid.
   const icons = {
-    dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
-    scout: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4.2-4.2"/>',
-    pipeline: '<path d="M4 6h16M7 12h10M10 18h4"/>',
-    'resume-studio': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
-    applications: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
-    logistics: '<path d="M3 21V9l9-5 9 5v12"/><path d="M7 21v-7h10v7M7 17h10"/>',
-    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
-    total: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-    active: '<path d="M12 3v3M12 18v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M3 12h3M18 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/>',
-    attention: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>',
-    applied: '<path d="M20 6 9 17l-5-5"/>',
-    import: '<path d="M12 5v14M5 12h14"/>',
-    board: '<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/>',
-    list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
-    pin: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
-    pay: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v.01M18 14.5v.01"/>',
-    briefcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
-    external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
-    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    dashboard: '<path d="M22 10.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V10.9C13.5 12.4 14.14 13 15.73 13H19.77C21.36 13 22 12.4 22 10.9Z"/><path d="M22 19.9V18.1C22 16.6 21.36 16 19.77 16H15.73C14.14 16 13.5 16.6 13.5 18.1V19.9C13.5 21.4 14.14 22 15.73 22H19.77C21.36 22 22 21.4 22 19.9Z"/><path d="M10.5 13.1V19.9C10.5 21.4 9.86 22 8.27 22H4.23C2.64 22 2 21.4 2 19.9V13.1C2 11.6 2.64 11 4.23 11H8.27C9.86 11 10.5 11.6 10.5 13.1Z"/><path d="M10.5 4.1V5.9C10.5 7.4 9.86 8 8.27 8H4.23C2.64 8 2 7.4 2 5.9V4.1C2 2.6 2.64 2 4.23 2H8.27C9.86 2 10.5 2.6 10.5 4.1Z"/>',
+    scout: '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/>',
+    pipeline: '<path d="M10.5 19.9V4.1C10.5 2.6 9.86 2 8.27 2H4.23C2.64 2 2 2.6 2 4.1V19.9C2 21.4 2.64 22 4.23 22H8.27C9.86 22 10.5 21.4 10.5 19.9Z"/><path d="M22 12.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V12.9C13.5 14.4 14.14 15 15.73 15H19.77C21.36 15 22 14.4 22 12.9Z"/>',
+    'resume-studio': '<path d="M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14"/><path d="M22 10H18C15 10 14 9 14 6V2L22 10Z"/><path d="M7 13H13"/><path d="M7 17H11"/>',
+    applications: '<path d="M7.39999 6.32003L15.89 3.49003C19.7 2.22003 21.77 4.30003 20.51 8.11003L17.68 16.6C15.78 22.31 12.66 22.31 10.76 16.6L9.91999 14.08L7.39999 13.24C1.68999 11.34 1.68999 8.23003 7.39999 6.32003Z"/><path d="M10.11 13.6501L13.69 10.0601"/>',
+    logistics: '<path d="M3.17004 7.43994L12 12.5499L20.77 7.46991"/><path d="M12 21.6099V12.5399"/><path d="M9.92999 2.48L4.59 5.45003C3.38 6.12003 2.39001 7.80001 2.39001 9.18001V14.83C2.39001 16.21 3.38 17.89 4.59 18.56L9.92999 21.53C11.07 22.16 12.94 22.16 14.08 21.53L19.42 18.56C20.63 17.89 21.62 16.21 21.62 14.83V9.18001C21.62 7.80001 20.63 6.12003 19.42 5.45003L14.08 2.48C12.93 1.84 11.07 1.84 9.92999 2.48Z"/><path d="M17 13.24V9.58002L7.51001 4.09998"/>',
+    settings: '<path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"/><path d="M2 12.8799V11.1199C2 10.0799 2.85 9.21994 3.9 9.21994C5.71 9.21994 6.45 7.93994 5.54 6.36994C5.02 5.46994 5.33 4.29994 6.24 3.77994L7.97 2.78994C8.76 2.31994 9.78 2.59994 10.25 3.38994L10.36 3.57994C11.26 5.14994 12.74 5.14994 13.65 3.57994L13.76 3.38994C14.23 2.59994 15.25 2.31994 16.04 2.78994L17.77 3.77994C18.68 4.29994 18.99 5.46994 18.47 6.36994C17.56 7.93994 18.3 9.21994 20.11 9.21994C21.15 9.21994 22.01 10.0699 22.01 11.1199V12.8799C22.01 13.9199 21.16 14.7799 20.11 14.7799C18.3 14.7799 17.56 16.0599 18.47 17.6299C18.99 18.5399 18.68 19.6999 17.77 20.2199L16.04 21.2099C15.25 21.6799 14.23 21.3999 13.76 20.6099L13.65 20.4199C12.75 18.8499 11.27 18.8499 10.36 20.4199L10.25 20.6099C9.78 21.3999 8.76 21.6799 7.97 21.2099L6.24 20.2199C5.33 19.6999 5.02 18.5299 5.54 17.6299C6.45 16.0599 5.71 14.7799 3.9 14.7799C2.85 14.7799 2 13.9199 2 12.8799Z"/>',
+    total: '<path d="M7.99995 22H15.9999C20.0199 22 20.7399 20.39 20.9499 18.43L21.6999 10.43C21.9699 7.99 21.2699 6 16.9999 6H6.99995C2.72995 6 2.02995 7.99 2.29995 10.43L3.04995 18.43C3.25995 20.39 3.97995 22 7.99995 22Z"/><path d="M8 6V5.2C8 3.43 8 2 11.2 2H12.8C16 2 16 3.43 16 5.2V6"/><path d="M14 13V14C14 14.01 14 14.01 14 14.02C14 15.11 13.99 16 12 16C10.02 16 10 15.12 10 14.03V13C10 12 10 12 11 12H13C14 12 14 12 14 13Z"/><path d="M21.65 11C19.34 12.68 16.7 13.68 14 14.02"/><path d="M2.62 11.27C4.87 12.81 7.41 13.74 10 14.03"/>',
+    active: '<path d="M9 22H15C20 22 22 20 22 15V9C22 4 20 2 15 2H9C4 2 2 4 2 9V15C2 20 4 22 9 22Z"/><path d="M7.33008 14.49L9.71008 11.4C10.0501 10.96 10.6801 10.88 11.1201 11.22L12.9501 12.66C13.3901 13 14.0201 12.92 14.3601 12.49L16.6701 9.51001"/>',
+    attention: '<path d="M12 9V14"/><path d="M12.0001 21.41H5.94005C2.47005 21.41 1.02005 18.93 2.70005 15.9L5.82006 10.28L8.76006 5.00003C10.5401 1.79003 13.4601 1.79003 15.2401 5.00003L18.1801 10.29L21.3001 15.91C22.9801 18.94 21.5201 21.42 18.0601 21.42H12.0001V21.41Z"/><path d="M11.9945 17H12.0035"/>',
+    applied: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M7.75 12L10.58 14.83L16.25 9.17004"/>',
+    import: '<path d="M6 12H18"/><path d="M12 18V6"/>',
+    board: '<path d="M10.5 19.9V4.1C10.5 2.6 9.86 2 8.27 2H4.23C2.64 2 2 2.6 2 4.1V19.9C2 21.4 2.64 22 4.23 22H8.27C9.86 22 10.5 21.4 10.5 19.9Z"/><path d="M22 12.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V12.9C13.5 14.4 14.14 15 15.73 15H19.77C21.36 15 22 14.4 22 12.9Z"/>',
+    list: '<path d="M12 4.5H3"/><path d="M12 9.5H3"/><path d="M21 14.5H3"/><path d="M21 19.5H3"/>',
+    pin: '<path d="M12 13.4299C13.7231 13.4299 15.12 12.0331 15.12 10.3099C15.12 8.58681 13.7231 7.18994 12 7.18994C10.2769 7.18994 8.88 8.58681 8.88 10.3099C8.88 12.0331 10.2769 13.4299 12 13.4299Z"/><path d="M3.62001 8.49C5.59001 -0.169998 18.42 -0.159997 20.38 8.5C21.53 13.58 18.37 17.88 15.6 20.54C13.59 22.48 10.41 22.48 8.39001 20.54C5.63001 17.88 2.47001 13.57 3.62001 8.49Z"/>',
+    pay: '<path d="M17 20.5H7C4 20.5 2 19 2 15.5V8.5C2 5 4 3.5 7 3.5H17C20 3.5 22 5 22 8.5V15.5C22 19 20 20.5 17 20.5Z"/><path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"/><path d="M2 9H3C6 9 7 8 7 5V4"/><path d="M22 9H21C18 9 17 8 17 5V4"/><path d="M2 15H3C6 15 7 16 7 19V20"/><path d="M22 15H21C18 15 17 16 17 19V20"/>',
+    briefcase: '<path d="M7.99995 22H15.9999C20.0199 22 20.7399 20.39 20.9499 18.43L21.6999 10.43C21.9699 7.99 21.2699 6 16.9999 6H6.99995C2.72995 6 2.02995 7.99 2.29995 10.43L3.04995 18.43C3.25995 20.39 3.97995 22 7.99995 22Z"/><path d="M8 6V5.2C8 3.43 8 2 11.2 2H12.8C16 2 16 3.43 16 5.2V6"/><path d="M14 13V14C14 14.01 14 14.01 14 14.02C14 15.11 13.99 16 12 16C10.02 16 10 15.12 10 14.03V13C10 12 10 12 11 12H13C14 12 14 12 14 13Z"/><path d="M21.65 11C19.34 12.68 16.7 13.68 14 14.02"/><path d="M2.62 11.27C4.87 12.81 7.41 13.74 10 14.03"/>',
+    external: '<path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12"/><path d="M13 11L21.2 2.80005"/><path d="M21.9999 6.83V2H17.1699"/>',
+    edit: '<path d="M13.26 3.59997L5.04997 12.29C4.73997 12.62 4.43997 13.27 4.37997 13.72L4.00997 16.96C3.87997 18.13 4.71997 18.93 5.87997 18.73L9.09997 18.18C9.54997 18.1 10.18 17.77 10.49 17.43L18.7 8.73997C20.12 7.23997 20.76 5.52997 18.55 3.43997C16.35 1.36997 14.68 2.09997 13.26 3.59997Z"/><path d="M11.89 5.05005C12.32 7.81005 14.56 9.92005 17.34 10.2"/><path d="M3 22H21"/>',
+    prev: '<path d="M15 19.9201L8.47997 13.4001C7.70997 12.6301 7.70997 11.3701 8.47997 10.6001L15 4.08008"/>',
+    next: '<path d="M8.91003 19.9201L15.43 13.4001C16.2 12.6301 16.2 11.3701 15.43 10.6001L8.91003 4.08008"/>',
+    expand: '<path d="M21 9V3H15"/><path d="M3 15V21H9"/><path d="M21 3L13.5 10.5"/><path d="M10.5 13.5L3 21"/>',
+    magic: '<path d="M17.29 4.13999L17.22 7.92997C17.21 8.44997 17.54 9.13999 17.96 9.44999L20.44 11.33C22.03 12.53 21.77 14 19.87 14.6L16.64 15.61C16.1 15.78 15.53 16.37 15.39 16.92L14.62 19.86C14.01 22.18 12.49 22.41 11.23 20.37L9.46999 17.52C9.14999 17 8.39 16.61 7.79 16.64L4.45003 16.81C2.06003 16.93 1.38002 15.55 2.94002 13.73L4.92 11.43C5.29 11 5.46 10.2 5.29 9.65998L4.28005 6.42997C3.69005 4.52997 4.75004 3.47999 6.64004 4.09999L9.59005 5.06999C10.09 5.22999 10.84 5.11998 11.26 4.80998L14.34 2.58998C16 1.38998 17.33 2.08999 17.29 4.13999Z"/><path d="M21.91 22L18.88 18.97"/>',
+    flash: '<path d="M6.08998 13.28H9.17998V20.48C9.17998 22.16 10.09 22.5 11.2 21.24L18.77 12.64C19.7 11.59 19.31 10.72 17.9 10.72H14.81V3.52002C14.81 1.84002 13.9 1.50002 12.79 2.76002L5.21998 11.36C4.29998 12.42 4.68998 13.28 6.08998 13.28Z"/>',
+    refresh: '<path d="M22 12C22 17.52 17.52 22 12 22C6.48 22 3.11 16.44 3.11 16.44M3.11 16.44H7.63M3.11 16.44V21.44M2 12C2 6.48 6.44 2 12 2C18.67 2 22 7.56 22 7.56M22 7.56V2.56M22 7.56H17.56"/>',
+    clock: '<path d="M12 9.66003V12.45L13.4 13.85"/><path d="M5.5 12C5.5 8.41 8.41 5.5 12 5.5C15.59 5.5 18.5 8.41 18.5 12C18.5 14.08 17.52 15.94 16 17.13H15.99C14.89 17.99 13.51 18.5 12 18.5C10.51 18.5 9.14 18 8.04 17.15H8.03C6.49 15.96 5.5 14.1 5.5 12Z"/><path d="M8.03003 17.15H8.04003C9.14003 18 10.51 18.5 12 18.5C13.51 18.5 14.89 17.99 15.99 17.13H16L15.49 19.6C15 21.5 13.9 22 12.55 22H11.46C10.11 22 9.00003 21.5 8.52003 19.59L8.03003 17.15Z"/><path d="M8.03003 6.85H8.04003C9.14003 6 10.51 5.5 12 5.5C13.51 5.5 14.89 6.01 15.99 6.87H16L15.49 4.4C15 2.5 13.9 2 12.55 2H11.46C10.11 2 9.00003 2.5 8.52003 4.41L8.03003 6.85Z"/>',
+    eye: '<path d="M15.58 12C15.58 13.98 13.98 15.58 12 15.58C10.02 15.58 8.42004 13.98 8.42004 12C8.42004 10.02 10.02 8.42004 12 8.42004C13.98 8.42004 15.58 10.02 15.58 12Z"/><path d="M12 20.27C15.53 20.27 18.82 18.19 21.11 14.59C22.01 13.18 22.01 10.81 21.11 9.39997C18.82 5.79997 15.53 3.71997 12 3.71997C8.46997 3.71997 5.17997 5.79997 2.88997 9.39997C1.98997 10.81 1.98997 13.18 2.88997 14.59C5.17997 18.19 8.46997 20.27 12 20.27Z"/>',
+    download: '<path d="M9 11V17L11 15"/><path d="M9 17L7 15"/><path d="M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14"/><path d="M22 10H18C15 10 14 9 14 6V2L22 10Z"/>',
+    radar: '<path d="M6 4C7.67 2.75 9.75 2 12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 10.19 2.47999 8.48999 3.32999 7.01999L12 12"/><path d="M6.82999 8.95999C6.29999 9.84999 6 10.89 6 12C6 15.31 8.69 18 12 18C15.31 18 18 15.31 18 12C18 8.69 15.31 6 12 6C11.09 6 10.22 6.20001 9.45001 6.57001"/>',
+    calendar: '<path d="M8 2V5"/><path d="M16 2V5"/><path d="M3.5 9.08997H20.5"/><path d="M21 8.5V17C21 20 19.5 22 16 22H8C4.5 22 3 20 3 17V8.5C3 5.5 4.5 3.5 8 3.5H16C19.5 3.5 21 5.5 21 8.5Z"/><path d="M15.6947 13.7H15.7037"/><path d="M15.6947 16.7H15.7037"/><path d="M11.9955 13.7H12.0045"/><path d="M11.9955 16.7H12.0045"/><path d="M8.29431 13.7H8.30329"/><path d="M8.29431 16.7H8.30329"/>',
+    mail: '<path d="M17 20.5H7C4 20.5 2 19 2 15.5V8.5C2 5 4 3.5 7 3.5H17C20 3.5 22 5 22 8.5V15.5C22 19 20 20.5 17 20.5Z"/><path d="M17 9L13.87 11.5C12.84 12.32 11.15 12.32 10.12 11.5L7 9"/>',
+    bell: '<path d="M12 6.43994V9.76994"/><path d="M12.02 2C8.34002 2 5.36002 4.98 5.36002 8.66V10.76C5.36002 11.44 5.08002 12.46 4.73002 13.04L3.46002 15.16C2.68002 16.47 3.22002 17.93 4.66002 18.41C9.44002 20 14.61 20 19.39 18.41C20.74 17.96 21.32 16.38 20.59 15.16L19.32 13.04C18.97 12.46 18.69 11.43 18.69 10.76V8.66C18.68 5 15.68 2 12.02 2Z"/><path d="M15.33 18.8201C15.33 20.6501 13.83 22.1501 12 22.1501C11.09 22.1501 10.25 21.7701 9.65004 21.1701C9.05004 20.5701 8.67004 19.7301 8.67004 18.8201"/>',
+    chart: '<path d="M9 22H15C20 22 22 20 22 15V9C22 4 20 2 15 2H9C4 2 2 4 2 9V15C2 20 4 22 9 22Z"/><path d="M15.5 18.5C16.6 18.5 17.5 17.6 17.5 16.5V7.5C17.5 6.4 16.6 5.5 15.5 5.5C14.4 5.5 13.5 6.4 13.5 7.5V16.5C13.5 17.6 14.39 18.5 15.5 18.5Z"/><path d="M8.5 18.5C9.6 18.5 10.5 17.6 10.5 16.5V13C10.5 11.9 9.6 11 8.5 11C7.4 11 6.5 11.9 6.5 13V16.5C6.5 17.6 7.39 18.5 8.5 18.5Z"/>',
+    cloud: '<path d="M6.36997 9.50993C2.28997 9.79993 2.29997 15.7099 6.36997 15.9999H16.03C17.2 16.0099 18.33 15.5699 19.2 14.7799C22.06 12.2799 20.53 7.27991 16.76 6.79991C15.41 -1.34009 3.61998 1.74993 6.40998 9.50993"/><path d="M12 16V19"/><path d="M12 23C13.1046 23 14 22.1046 14 21C14 19.8954 13.1046 19 12 19C10.8954 19 10 19.8954 10 21C10 22.1046 10.8954 23 12 23Z"/><path d="M18 21H14"/><path d="M10 21H6"/>',
+    wallet: '<path d="M10.7516 16.8604V18.8904C10.7516 20.6104 9.15158 22.0004 7.18158 22.0004C5.21158 22.0004 3.60156 20.6104 3.60156 18.8904V16.8604C3.60156 18.5804 5.20158 19.8004 7.18158 19.8004C9.15158 19.8004 10.7516 18.5704 10.7516 16.8604Z"/><path d="M10.7501 14.11C10.7501 14.61 10.6101 15.07 10.3701 15.47C9.78006 16.44 8.57004 17.05 7.17004 17.05C5.77004 17.05 4.56003 16.43 3.97003 15.47C3.73003 15.07 3.59009 14.61 3.59009 14.11C3.59009 13.25 3.99007 12.48 4.63007 11.92C5.28007 11.35 6.17003 11.01 7.16003 11.01C8.15003 11.01 9.04006 11.36 9.69006 11.92C10.3501 12.47 10.7501 13.25 10.7501 14.11Z"/><path d="M10.7516 14.11V16.86C10.7516 18.58 9.15158 19.8 7.18158 19.8C5.21158 19.8 3.60156 18.57 3.60156 16.86V14.11C3.60156 12.39 5.20158 11 7.18158 11C8.17158 11 9.06161 11.35 9.71161 11.91C10.3516 12.47 10.7516 13.25 10.7516 14.11Z"/><path d="M22 10.9699V13.03C22 13.58 21.56 14.0299 21 14.0499H19.0399C17.9599 14.0499 16.97 13.2599 16.88 12.1799C16.82 11.5499 17.0599 10.9599 17.4799 10.5499C17.8499 10.1699 18.36 9.94995 18.92 9.94995H21C21.56 9.96995 22 10.4199 22 10.9699Z"/><path d="M2 10.5V8.5C2 5.78 3.64 3.88 6.19 3.56C6.45 3.52 6.72 3.5 7 3.5H16C16.26 3.5 16.51 3.50999 16.75 3.54999C19.33 3.84999 21 5.76 21 8.5V9.95001H18.92C18.36 9.95001 17.85 10.17 17.48 10.55C17.06 10.96 16.82 11.55 16.88 12.18C16.97 13.26 17.96 14.05 19.04 14.05H21V15.5C21 18.5 19 20.5 16 20.5H13.5"/>',
+    ai: '<path d="M9.6 20H14.4C18.4 20 20 18.4 20 14.4V9.6C20 5.6 18.4 4 14.4 4H9.6C5.6 4 4 5.6 4 9.6V14.4C4 18.4 5.6 20 9.6 20Z"/><path d="M10.5 17H13.5C16 17 17 16 17 13.5V10.5C17 8 16 7 13.5 7H10.5C8 7 7 8 7 10.5V13.5C7 16 8 17 10.5 17Z"/><path d="M8.01001 4V2"/><path d="M12 4V2"/><path d="M16 4V2"/><path d="M20 8H22"/><path d="M20 12H22"/><path d="M20 16H22"/><path d="M16 20V22"/><path d="M12.01 20V22"/><path d="M8.01001 20V22"/><path d="M2 8H4"/><path d="M2 12H4"/><path d="M2 16H4"/><path d="M12 9.69995L11.06 11.34C10.85 11.7 11.02 12 11.44 12H12.56C12.98 12 13.15 12.3 12.94 12.66L12 14.3"/>',
+    trash: '<path d="M21 5.97998C17.67 5.64998 14.32 5.47998 10.98 5.47998C9 5.47998 7.02 5.57998 5.04 5.77998L3 5.97998"/><path d="M8.5 4.97L8.72 3.66C8.88 2.71 9 2 10.69 2H13.31C15 2 15.13 2.75 15.28 3.67L15.5 4.97"/><path d="M18.85 9.14001L18.2 19.21C18.09 20.78 18 22 15.21 22H8.79002C6.00002 22 5.91002 20.78 5.80002 19.21L5.15002 9.14001"/><path d="M10.33 16.5H13.66"/><path d="M9.5 12.5H14.5"/>',
+    close: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M9.16998 14.83L14.83 9.17004"/><path d="M14.83 14.83L9.16998 9.17004"/>',
   };
-  const icon = (name, size) => `<svg width="${size || 16}" height="${size || 16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || ''}</svg>`;
+  const icon = (name, size) => `<svg width="${size || 16}" height="${size || 16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || ''}</svg>`;
   // Lifecycle statuses grouped into the tones a reader scans for.
   const tones = {
     discovered: 'neutral', scraped: 'neutral', analyzed: 'neutral', shortlisted: 'info',
@@ -47,16 +67,39 @@
     if (seconds < 86400) return 'in ' + Math.round(seconds / 3600) + 'h';
     return 'in ' + Math.round(seconds / 86400) + 'd';
   }
+  // Settings section each automation is configured in.
+  const AUTOMATION_SECTION = {scout: 'scout', analysis: 'ai', alerts: 'notifications', digest: 'notifications', replies: 'notifications'};
   function automationsCard(items) {
     if (!items) return '';
     const rows = items.map((a, i) => {
       const last = typeof a.last === 'number' ? `Last ${when(a.last)}` : a.last ? `Last ${esc(a.last)}` : '';
       const timing = [last, a.next ? `next ${until(a.next)}` : ''].filter(Boolean).join(' · ');
       const note = a.on ? [a.detail, timing].filter(Boolean).join(' · ') : a.off_reason;
-      const tag = a.view ? 'button' : 'div';
-      return `<${tag}${a.view ? ` type="button" data-job-os-view="${esc(a.view)}"` : ''} class="automation-row" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small></span><span class="automation-note">${a.on ? '' : '<em>Off</em> '}${esc(note || '')}</span></${tag}>`;
+      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 15)}</span></button>`;
     }).join('');
-    return `<section class="job-os-card automations-card"><div class="job-os-card-head"><h2>Automations</h2><button type="button" class="job-os-link" data-job-os-view="settings">Change</button></div><div class="automations">${rows}</div></section>`;
+    return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 17)}</button>`)}<div class="automations">${rows}</div></section>`;
+  }
+  // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
+  function cardHead(title, iconName, actions, count) {
+    return `<div class="job-os-card-head"><h2>${iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, 15)}</span>` : ''}<span>${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
+  }
+  // Ten rows a page; the pager says where you are and steps through the rest.
+  const PAGE = 10;
+  function paged(items, page) {
+    const pages = Math.max(1, Math.ceil(items.length / PAGE));
+    const at = Math.min(Math.max(0, Number(page) || 0), pages - 1);
+    return {rows: items.slice(at * PAGE, at * PAGE + PAGE), at, pages, total: items.length};
+  }
+  function pager(key, p) {
+    if (p.pages <= 1) return '';
+    const btn = (to, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn" data-job-os-action="page" data-pager="${key}" data-page="${to}" aria-label="${label}" title="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 15)}</button>`;
+    const numbers = Array.from({length: p.pages}, (_, i) => i).filter((i) => p.pages <= 7 || i === 0 || i === p.pages - 1 || Math.abs(i - p.at) <= 1);
+    const dots = [];
+    numbers.forEach((i, n) => {
+      if (n && i - numbers[n - 1] > 1) dots.push('<span class="pager-gap">…</span>');
+      dots.push(`<button type="button" class="pager-num${i === p.at ? ' active' : ''}" data-job-os-action="page" data-pager="${key}" data-page="${i}"${i === p.at ? ' aria-current="page"' : ''}>${i + 1}</button>`);
+    });
+    return `<nav class="pager" aria-label="Pages"><span class="pager-range">${p.at * PAGE + 1}–${Math.min(p.total, p.at * PAGE + PAGE)} of ${p.total}</span><span class="pager-buttons">${btn(p.at - 1, 'Previous page', 'prev', p.at === 0)}${dots.join('')}${btn(p.at + 1, 'Next page', 'next', p.at >= p.pages - 1)}</span></nav>`;
   }
   function when(epochSeconds) {
     const seconds = Math.max(0, Math.floor(Date.now() / 1000) - Number(epochSeconds || 0));
@@ -172,8 +215,10 @@
   function pill(ok, text) {
     return `<span class="job-os-pill" data-ok="${ok ? 'true' : 'false'}">${esc(text)}</span>`;
   }
+  const SECTION_ICONS = {connections: 'cloud', apify: 'cloud', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
+    notifications: 'bell', resume: 'resume-studio', display: 'dashboard'};
   function section(id, title, note, inner, phase) {
-    return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}"><div class="job-os-card-head"><h2>${esc(title)}</h2>${phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : ''}</div>${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
+    return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}">${cardHead(title, SECTION_ICONS[id], phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : '')}${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
   }
   // Gmail: verified on the server with a real login, then saved to the shared
   // secrets file every profile reads. The password field is never pre-filled
@@ -321,19 +366,34 @@
     if (!(job.moves || []).length) return '';
     return `<label class="pipe-move"><span class="sr-only">Move ${esc(job.title)} to</span><select data-job-os-change="board-move" data-job-id="${esc(job.id)}" data-revision="${Number(job.revision)}"><option value="">Move to…</option>${job.moves.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select></label>`;
   }
+  // Where a card may be dropped on the board, and what the drop does there.
+  const CLOSED_MOVES = ['rejected', 'no_response', 'withdrawn', 'skipped'];
+  function dropTargets(job) {
+    const moves = (job.moves || []).map(([v]) => v);
+    const out = [];
+    if (moves.includes('shortlisted')) out.push('shortlisted');
+    if (job.has_description && ['scraped', 'analyzed', 'shortlisted'].includes(job.status)) out.push('resume');
+    if (job.status === 'resume_ready') out.push('ready');
+    if (moves.includes('submitted')) out.push('applied');
+    if (moves.includes('interviewing') || moves.includes('screening')) out.push('interviewing');
+    if (moves.includes('offer')) out.push('offers');
+    if (CLOSED_MOVES.some((m) => moves.includes(m))) out.push('closed');
+    return out.filter((col) => col !== job.column);
+  }
   function pipeCard(job) {
     const src = sourceOf(job);
     const where = place(job);
     const work = [WORKPLACE[job.workplace], job.employment_type].filter(Boolean).join(' · ');
     const facts = [
-      where ? `<span class="pipe-fact">${icon('pin', 13)}<span>${esc(where)}</span></span>` : '',
-      job.salary_text ? `<span class="pipe-fact">${icon('pay', 13)}<span>${esc(job.salary_text)}</span></span>` : '',
-      work ? `<span class="pipe-fact">${icon('briefcase', 13)}<span>${esc(work)}</span></span>` : '',
+      where ? `<span class="pipe-fact">${icon('pin', 14)}<span>${esc(where)}</span></span>` : '',
+      job.salary_text ? `<span class="pipe-fact">${icon('pay', 14)}<span>${esc(job.salary_text)}</span></span>` : '',
+      work ? `<span class="pipe-fact">${icon('briefcase', 14)}<span>${esc(work)}</span></span>` : '',
     ].join('');
     const primary = cardPrimary(job);
     const move = moveSelect(job);
     const applied = job.applied ? ` · applied ${esc(when(job.applied.at))}` : '';
-    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}">
+    const drops = dropTargets(job);
+    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}"${drops.length ? ` draggable="true" data-drops="${drops.join(' ')}" data-moves="${esc((job.moves || []).map(([v]) => v).join(' '))}"` : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><span class="pipe-card-title"><strong>${esc(job.title)}</strong><span>${esc(job.company || 'Company not set')}</span></span>${fitRing(job.analysis, 'small')}</span>
         ${facts ? `<span class="pipe-facts">${facts}</span>` : ''}
@@ -347,7 +407,7 @@
     if (!board) return '<section class="job-os-card"><p class="job-os-card-note">Loading…</p></section>';
     const total = board.columns.reduce((n, c) => n + c.jobs.length, 0);
     if (!total) return emptyPipeline(state);
-    return `<div class="pipe-board" role="list" aria-label="Pipeline stages">${board.columns.map((c) => `<section class="pipe-col" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Nothing here</p>'}</div></section>`).join('')}</div>`;
+    return `<div class="pipe-board" role="list" aria-label="Pipeline stages">${board.columns.map((c) => `<section class="pipe-col" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`).join('')}</div>`;
   }
   function emptyPipeline(state) {
     const src = state.pipelineSource;
@@ -452,22 +512,30 @@
           <div class="job-form-actions"><button type="button" class="job-os-btn" data-job-os-action="job-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save changes' : 'Save job'}</button></div>
         </form></aside>`;
   }
-  // Apify bills per job: this month's spend against the account's limit, with a
+  // Apify bills per job: this month's spend against the account's limit, in
+  // the side panel like the chat page's usage meter (cells show what is left),
   // warning from 80% so scheduled runs don't stop by surprise.
-  function apifyCard(info) {
+  function apifyWidget(info) {
     const u = info && info.usage;
     if (!u || !u.limit_usd) return '';
-    const pct = Math.min(100, Math.round(u.ratio * 100));
     const left = Math.max(0, u.limit_usd - u.used_usd);
-    return `<section class="job-os-card apify-usage${u.warn ? ' is-warn' : ''}"><div class="job-os-card-head"><h2>Apify credit</h2><a class="job-os-link" href="https://console.apify.com/billing" target="_blank" rel="noopener noreferrer">Open billing</a></div>
-      <div class="apify-usage-row"><strong>$${u.used_usd.toFixed(2)}</strong><span>of $${u.limit_usd.toFixed(2)} this month${u.cycle_end ? ` · resets after ${esc(u.cycle_end)}` : ''}</span></div>
-      <div class="apify-usage-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Apify credit used"><i style="width:${Math.max(2, pct)}%"></i></div>
-      <p class="job-os-card-note">${u.warn ? `Only $${left.toFixed(2)} left: scheduled runs stop when it runs out. Lower “Results per search and city”, pause a search, or upgrade the Apify plan.` : `$${left.toFixed(2)} left.`}</p></section>`;
+    const remaining = Math.max(0, Math.min(100, Math.round(100 * left / u.limit_usd)));
+    const filled = Math.round(remaining / 10);
+    const level = remaining <= 5 ? 'danger' : u.warn || remaining <= 20 ? 'warn' : 'normal';
+    const cells = Array.from({length: 10}, (_, i) => `<span class="chat-usage-widget-battery-cell${i < filled ? ' is-filled' : ''}" style="--usage-battery-index:${i}"></span>`).join('');
+    return `<section class="chat-usage-widget job-os-apify-widget${u.warn ? ' is-warn' : ''}" aria-label="Apify credit">
+      <div class="chat-usage-widget-row chat-usage-widget-title-row"><span class="chat-usage-widget-label"><span class="chat-usage-widget-label-stage">Apify credit</span></span><a class="job-os-apify-link" href="https://console.apify.com/billing" target="_blank" rel="noopener noreferrer" title="Open Apify billing" aria-label="Open Apify billing">${icon('external', 13)}</a></div>
+      <div class="chat-usage-widget-battery" data-level="${level}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${remaining}" aria-label="${remaining}% of the Apify credit left">${cells}</div>
+      <div class="chat-usage-widget-meta"><span class="chat-usage-widget-plan">$${left.toFixed(2)} left of $${u.limit_usd.toFixed(2)}</span><span class="chat-usage-widget-percent">${remaining}%</span></div>
+      <div class="chat-usage-widget-reset">${u.warn ? 'Low: scheduled runs stop when it runs out' : `$${u.used_usd.toFixed(2)} used${u.cycle_end ? ` · resets after ${esc(u.cycle_end)}` : ''}`}</div></section>`;
   }
   function funnelCard(funnel) {
-    if (!funnel || !funnel.length || !funnel[0].count) return '';
-    const max = Math.max(...funnel.map((s) => s.count), 1);
-    return `<section class="job-os-card funnel-card"><div class="job-os-card-head"><h2>Your funnel</h2></div><div class="funnel">${funnel.map((s, i) => `<div class="funnel-row"><span>${esc(s.label)}</span><div class="funnel-track"><i style="--w:${Math.max(2, Math.round(100 * s.count / max))}%;--i:${i}"></i></div><strong data-count-key="funnel-${esc(s.key)}">${s.count}</strong></div>`).join('')}</div></section>`;
+    const rows = funnel && funnel.length && funnel[0].count ? funnel : null;
+    const max = rows ? Math.max(...rows.map((st) => st.count), 1) : 1;
+    const body = rows
+      ? `<div class="funnel">${rows.map((st, i) => `<div class="funnel-row"><span>${esc(st.label)}</span><div class="funnel-track"><i style="--w:${Math.max(2, Math.round(100 * st.count / max))}%;--i:${i}"></i></div><strong data-count-key="funnel-${esc(st.key)}">${st.count}</strong></div>`).join('')}</div>`
+      : '<p class="job-os-card-note card-empty-note">Your funnel fills in as Scout finds jobs and you move them along.</p>';
+    return `<section class="job-os-card funnel-card">${cardHead('Your funnel', 'chart')}${body}</section>`;
   }
   // ---- Pipeline toolbar ------------------------------------------------------
   function sortJobs(jobs, by) {
@@ -511,8 +579,12 @@
     const errors = c.errors ? `<span class="scout-stat is-error"><strong>${Number(c.errors)}</strong>Errors</span>` : '';
     return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
   }
-  function runPanel(run) {
-    if (!run) return '';
+  function runPanel(run, search) {
+    if (!run) {
+      // Same outline as a run, so every search card keeps one shape.
+      const hint = search && search.last_run_at ? `Last ran ${esc(when(search.last_run_at))}; its results have been cleared.` : 'Run it now, or it runs at the next scheduled time.';
+      return `<div class="scout-run is-empty"><span class="scout-run-idle" aria-hidden="true">${icon('clock', 18)}</span><div class="scout-run-body"><div class="scout-run-head"><span class="scout-run-state">Not run yet</span></div><span class="scout-run-detail">${hint}</span></div></div>`;
+    }
     const active = ACTIVE_RUN.includes(run.status);
     return `<div class="scout-run${active ? ' is-active' : ''}" data-run-panel="${esc(run.id)}" data-status="${esc(run.status)}">${active ? '<span class="scout-radar" aria-hidden="true"><i></i><i></i><i></i></span>' : ''}<div class="scout-run-body" aria-live="polite">${runBody(run)}</div></div>`;
   }
@@ -521,16 +593,24 @@
     const active = run && ACTIVE_RUN.includes(run.status);
     const viaApify = !!(state.apify && state.apify.active);
     const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy');
-    const where = [...(search.locations || []), search.remote_only ? 'Remote only' : '', POSTED[search.posted_within_days] || '',
-      (search.title_filter || []).length ? `Title: ${search.title_filter.join(' / ')}` : ''].filter(Boolean);
-    const country = search.country_name ? `${icon('pin', 12)}${esc(search.country_name)}` : 'Choose a country';
-    const schedule = state.schedule && state.schedule.enabled && search.enabled && search.next_run_at ? `Next ${until(search.next_run_at)}` : '';
+    const schedOn = state.schedule && state.schedule.enabled;
+    const schedule = !search.enabled ? 'Paused' : !schedOn ? 'Schedule off' : search.next_run_at ? `Next ${until(search.next_run_at)}` : 'Scheduled';
+    const fact = (label, value, muted) => `<div><dt>${label}</dt><dd${muted ? ' class="is-muted"' : ''}>${value}</dd></div>`;
+    const sites = (search.sites || ['indeed']).map((k) => `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('');
+    const host = (state.countries || []).find((c) => c.code === search.country);
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
-      <div class="scout-search-head"><div class="scout-search-title"><h3>${esc(search.name)}</h3><p>${esc(search.keywords)}</p></div>
+      <div class="scout-search-head"><span class="card-icon" aria-hidden="true">${icon('radar', 16)}</span><div class="scout-search-title"><h3 title="${esc(search.name)}">${esc(search.name)}</h3><p title="${esc(search.keywords)}">${esc(search.keywords)}</p></div>
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
-      <div class="job-os-chips">${(search.sites || ['indeed']).map((k) => `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('')}<span class="job-os-chip scout-country"${search.country_name ? '' : ' data-kind="warn"'} title="Searched on ${esc((state.countries || []).find((c) => c.code === search.country)?.host || 'Indeed')}">${country}</span>${where.map((w) => `<span class="job-os-chip">${esc(w)}</span>`).join('')}${search.last_run_at ? `<span class="job-os-chip muted">Last run ${esc(when(search.last_run_at))}</span>` : ''}${schedule ? `<span class="job-os-chip muted">${esc(schedule)}</span>` : ''}</div>
-      ${runPanel(run)}
-      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">Edit</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}">Delete</button></div>
+      <dl class="scout-facts">
+        ${fact('Sites', `<span class="job-os-chips">${sites}</span>`)}
+        ${fact('Country', search.country_name ? `${icon('pin', 13)}<span title="Searched on ${esc(host ? host.host : 'Indeed')}">${esc(search.country_name)}</span>` : 'Choose a country', !search.country_name)}
+        ${fact('Cities', (search.locations || []).length ? esc(search.locations.join(', ')) : 'Whole country', !(search.locations || []).length)}
+        ${fact('Posted', esc(POSTED[search.posted_within_days] || 'Any time') + (search.remote_only ? ' · Remote only' : ''))}
+        ${fact('Title has', (search.title_filter || []).length ? esc(search.title_filter.join(' / ')) : 'Any title', !(search.title_filter || []).length)}
+        ${fact('Schedule', esc(schedule), !search.enabled || !schedOn)}
+      </dl>
+      ${runPanel(run, search)}
+      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 15)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">${icon('edit', 15)}Edit</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -571,27 +651,36 @@
     if (!released.length && !waiting) return '';
     const cards = released.map((m) => jobCard({...m, analysis: {status: 'done', fit_score: m.fit_score}, updated_at: m.released_at})).join('');
     return `<section class="job-os-card match-inbox${released.length ? ' has-new' : ''}">
-      <div class="job-os-card-head"><div><h2>${released.length ? `New good matches <span class="job-os-count">${released.length}</span>` : 'Good matches'}</h2>
-        <p class="job-os-card-note">${waiting ? `${waiting} waiting for the next update. ` : ''}${esc(rule)}</p></div>
-        ${released.length ? '<button type="button" class="job-os-btn" data-job-os-action="matches-seen">Mark all seen</button>' : ''}</div>
+      ${cardHead(released.length ? 'New good matches' : 'Good matches', 'applied', released.length ? '<button type="button" class="job-os-btn" data-job-os-action="matches-seen">Mark all seen</button>' : '', released.length || null)}
+      <p class="job-os-card-note match-inbox-rule">${waiting ? `<strong>${waiting} waiting</strong> for the next update. ` : ''}${esc(rule)}</p>
       ${released.length ? `<div class="job-os-list scout-finds">${cards}</div>` : ''}</section>`;
   }
   function scoutView(state) {
     const searches = state.searches || [];
     const fc = state.firecrawl || {};
     const provider = state.searchProvider === 'brave' ? 'Brave Search API' : 'Firecrawl search';  // used only if Indeed refuses its results page
-    const sched = state.schedule && state.schedule.enabled ? `Scheduled: ${state.schedule.summary || `every ${state.schedule.hours}h`}` : 'Schedule off';
+    const schedOn = !!(state.schedule && state.schedule.enabled);
     const viaApify = !!(state.apify && state.apify.active);
     const banner = !viaApify && fc.state && fc.state !== 'healthy'
       ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Scout can't run until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
     const recent = (state.runs || []).filter((run) => run.counts && run.counts.saved && !ACTIVE_RUN.includes(run.status)).slice(0, 1)[0];
     const newIds = new Set(recent ? recent.new_job_ids : []);
-    const finds = (state.jobs || []).filter((job) => newIds.has(job.id));
-    return `${banner}${matchInbox(state)}<div class="scout-bar">${viaApify ? '<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings" title="Scout runs the Indeed scraper on Apify">Source: Indeed via Apify</button>' : `<span class="job-os-chip muted" title="If Indeed refuses its results page, Scout searches the web for that Indeed site with ${esc(provider)}">Source: Indeed</span>`}<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
+    const finds = paged(newestFirst((state.jobs || []).filter((job) => newIds.has(job.id))), state.findsPage);
+    const on = searches.filter((x) => x.enabled);
+    const next = schedOn ? Math.min(...on.map((x) => Number(x.next_run_at) || Infinity)) : Infinity;
+    const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
+    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}><span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span><span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    const overview = `<section class="scout-overview" aria-label="Scout at a glance">
+      ${tile('cloud', 'Source', viaApify ? 'Apify' : 'This machine', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : `Indeed, ${esc(provider)} as fallback`, ' data-job-os-action="settings-focus" data-section="apify"')}
+      ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
+      ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Soonest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
+      ${tile('radar', 'Searches', `${on.length} of ${searches.length}`, last ? `Last run ${esc(when(last))}` : 'Not run yet')}</section>`;
+    return `${banner}${overview}${matchInbox(state)}
       ${searchFormCard(state.searchForm, state)}
-      ${searches.length ? `<div class="scout-searches">${searches.map((s) => searchCard(s, state)).join('')}</div>`
-        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the Indeed country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
-      ${finds.length ? `<section class="job-os-card"><div class="job-os-card-head"><h2>Latest finds <span class="job-os-count">${finds.length}</span></h2><button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button></div><div class="job-os-list scout-finds">${finds.map(jobCard).join('')}</div></section>` : ''}`;
+      <div class="section-bar"><h2>Saved searches <span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 15)}New search</button></div>
+      ${searches.length ? `<div class="scout-searches">${searches.map((x) => searchCard(x, state)).join('')}</div>`
+        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
+      ${finds.total ? `<section class="job-os-card">${cardHead('Latest finds', 'magic', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button>', finds.total)}<div class="job-os-list scout-finds">${finds.rows.map(jobCard).join('')}</div>${pager('finds', finds)}</section>` : ''}`;
   }
   // ---- Job detail -------------------------------------------------------------
   function writingPanel(text) {
@@ -630,13 +719,15 @@
       body = `${flags.length ? `<div class="studio-warning" role="alert"><strong>Check before sending:</strong> ${flags.map((f) => `<code>${esc(f)}</code>`).join(' ')} ${flags.length === 1 ? 'is' : 'are'} not in your master resume. Fix or remove ${flags.length === 1 ? 'it' : 'them'}, then save.</div>` : ''}
         <div class="studio-grid"><div class="studio-edit"><textarea id="studio-text" spellcheck="true" aria-label="Edit document">${esc(draft)}</textarea>
           <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
-          <a class="job-os-btn" href="${exportUrl('docx')}">DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
+          <button type="button" class="job-os-btn" data-job-os-action="doc-preview" data-url="${exportUrl('html')}" data-title="${esc(`${state.studioTab === 'resume' ? 'Resume' : 'Cover letter'} — ${job.job_title || ''}`)}" ${state.studioDraft != null && state.studioDraft !== doc.content ? 'disabled title="Save your edits to preview them"' : ''}>${icon('eye', 15)}Preview</button>
+          <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 15)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
         <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
+          ${state.studioTab === 'resume' ? reportBox(notes.report) : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}
           ${flags.length ? `<div class="studio-box"><h4>Preview</h4><div class="studio-preview">${highlightNumbers(doc.content, flags)}</div></div>` : ''}</aside></div>`;
     }
     const ready = job.job_status === 'resume_ready';
-    return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions">${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}<button type="button" class="job-os-btn" data-job-os-action="studio-close">Back to list</button></div></div>
+    return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="studio-close">${icon('prev', 15)}Back to list</button>${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}</div></div>
       <nav class="studio-tabs" aria-label="Document">${tabs}</nav>${body}</section>`;
   }
   // ---- Resume Studio: how well the master resume matches one job ----------------------
@@ -647,33 +738,72 @@
     const [, key, text] = band(a.fit_score);
     return `<div class="match-ring" data-band="${key}" style="--fit:${Number(a.fit_score)}" role="img" aria-label="${esc(text)}: ${Number(a.fit_score)} percent"><span><strong>${Number(a.fit_score)}%</strong><small>${esc(text)}</small></span></div>`;
   }
+  // The match check walks the jobs on the board in board order (New, then
+  // Shortlisted, Resume, Ready to apply), newest first within a stage.
+  const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['shortlisted', ['shortlisted']], ['resume', ['tailoring', 'resume_ready']],
+    ['ready', ['application_ready', 'awaiting_approval', 'applying']]];
+  const STAGE_LABEL = {new: 'New', shortlisted: 'Shortlisted', resume: 'Resume', ready: 'Ready to apply'};
+  function matchQueue(jobs) {
+    const fresh = newestFirst(jobs || []).filter((j) => j.has_description);
+    return QUEUE_STAGES.flatMap(([stage, statuses]) => fresh.filter((j) => statuses.includes(j.status)).map((j) => Object.assign({stage}, j)));
+  }
   function matchCheck(state) {
     if (!state.resume) return '';
-    const jobs = newestFirst(state.jobs || []).filter((j) => j.has_description);
-    const head = '<div class="job-os-card-head"><div><h2>Match check</h2><p class="job-os-card-note">How well your master resume matches a job, scored by Luna from the job description.</p></div></div>';
-    if (!jobs.length) return `<section class="job-os-card match-card">${head}<p class="job-os-card-note">Save a job with its description — from Scout or with <button type="button" class="job-os-link" data-job-os-action="job-form-new">Add job</button> — to score your resume against it.</p></section>`;
-    const job = state.studioMatch && jobs.some((j) => j.id === state.studioMatch.id) ? state.studioMatch : null;
-    const picked = job ? job.id : jobs[0].id;
-    const a = job ? job.analysis : (jobs[0].analysis || null);
-    const list = (items, cls) => (items || []).slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('') ? `<ul class="analysis-list ${cls}">${(items || []).slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
+    const queue = matchQueue(state.jobs);
+    const automate = queue.length ? `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here, then tailor a resume for each one at 50% or more">${icon('magic', 15)}Automate all</button>` : '';
+    const head = cardHead('Match check', 'eye', automate);
+    if (!queue.length) return `<section class="job-os-card match-card">${head}<p class="job-os-card-note card-empty-note">Jobs on your board with a description appear here one at a time. Save one from Scout or with <button type="button" class="job-os-link" data-job-os-action="job-form-new">Add job</button> to check your resume against it.</p></section>`;
+    const at = Math.max(0, queue.findIndex((j) => j.id === state.studioMatchId));
+    const item = queue[at];
+    const job = state.studioMatch && state.studioMatch.id === item.id ? state.studioMatch : null;
+    const a = job ? job.analysis : item.analysis || null;
+    const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
     const done = a && a.status === 'done';
     const busyNow = a && ['pending', 'running'].includes(a.status);
-    const status = (job || jobs[0]).status;
+    const status = item.status;
     const canTailor = ['scraped', 'analyzed', 'shortlisted', 'resume_ready', 'application_ready'].includes(status);
-    const hasDocs = ['tailoring', 'resume_ready', 'application_ready'].includes(status) || (state.tailored || []).some((d) => d.job_id === picked);
+    const retailor = ['resume_ready', 'application_ready'].includes(status);
+    const hasDocs = ['tailoring', 'resume_ready', 'application_ready'].includes(status) || (state.tailored || []).some((d) => d.job_id === item.id);
+    const nextId = queue[at + 1] ? queue[at + 1].id : '';
     const actions = [
-      busyNow ? '' : `<button type="button" class="job-os-btn${done ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(picked)}">${done ? 'Score again' : 'Score my resume'}</button>`,
-      canTailor ? `<button type="button" class="job-os-btn${done ? ' primary' : ''}" data-job-os-action="card-tailor" data-job-id="${esc(picked)}">${['resume_ready', 'application_ready'].includes(status) ? 'Tailor again' : 'Tailor resume'}</button>` : '',
-      hasDocs ? `<button type="button" class="job-os-btn" data-job-os-action="studio-open" data-job-id="${esc(picked)}">Open tailored resume</button>` : '',
+      canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}">${icon('magic', 15)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '',
+      busyNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}">${done ? 'Score again' : 'Score my resume'}</button>`,
+      retailor ? `<button type="button" class="job-os-btn" data-job-os-action="card-tailor" data-job-id="${esc(item.id)}">Tailor again</button>` : '',
+      hasDocs ? `<button type="button" class="job-os-btn${retailor ? ' primary' : ''}" data-job-os-action="studio-open" data-job-id="${esc(item.id)}">Open tailored resume</button>` : '',
+      `<button type="button" class="job-os-link" data-job-id="${esc(item.id)}">Open job</button>`,
     ].join('');
+    const nav = (to, label, iconName) => `<button type="button" class="job-os-icon-btn match-step" data-job-os-action="match-go" data-job-id="${esc(to ? to.id : '')}" aria-label="${label}" title="${label} (${iconName === 'prev' ? '←' : '→'})" ${to ? '' : 'disabled'}>${icon(iconName, 18)}</button>`;
+    const meta = [item.company, place(item), SOURCE_LABEL[sourceOf(item)]].filter(Boolean).map(esc).join(' · ');
     return `<section class="job-os-card match-card">${head}
-      <label class="job-os-field match-pick"><span>Job</span><select data-job-os-change="match-job">${jobs.map((j) => `<option value="${esc(j.id)}" ${j.id === picked ? 'selected' : ''}>${esc(j.title)}${j.company ? ` — ${esc(j.company)}` : ''} (${esc(SOURCE_LABEL[sourceOf(j)])})</option>`).join('')}</select></label>
-      <div class="match-body">${matchRing(a)}<div class="match-detail">
+      <div class="match-nav">${nav(queue[at - 1], 'Previous job', 'prev')}
+        <div class="match-job" aria-live="polite"><span class="match-stage" data-stage="${esc(item.stage)}">${esc(STAGE_LABEL[item.stage])}</span><strong>${esc(item.title)}</strong><span>${meta}</span></div>
+        <span class="match-count">${at + 1} <small>of ${queue.length}</small></span>${nav(queue[at + 1], 'Next job', 'next')}</div>
+      <div class="match-progress" aria-hidden="true"><i style="width:${Math.round(100 * (at + 1) / queue.length)}%"></i></div>
+      <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
         ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? 'Luna is reading the job against your resume…' : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
         ${done && job ? `<div class="analysis-cols">${job.analysis.strengths && job.analysis.strengths.length ? `<div><h4>Matches</h4>${list(job.analysis.strengths, 'is-good')}</div>` : ''}${job.analysis.gaps && job.analysis.gaps.length ? `<div><h4>Missing</h4>${list(job.analysis.gaps, 'is-gap')}</div>` : ''}</div>` : ''}
         <div class="job-os-actions">${actions}</div>
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
       </div></div></section>`;
+  }
+  // The tailoring method's working: how the resume's bullets met the job,
+  // what was reworded and why it is still true, and the gaps it left alone.
+  function reportBox(report) {
+    if (!report) return '';
+    const m = report.mapping || {};
+    const total = ['direct', 'transferable', 'adjacent'].reduce((n, k) => n + (m[k] || 0), 0);
+    const bar = total ? `<div class="map-bar" role="img" aria-label="${m.direct || 0} direct, ${m.transferable || 0} transferable, ${m.adjacent || 0} adjacent bullets">${['direct', 'transferable', 'adjacent'].map((k) => m[k] ? `<i data-kind="${k}" style="flex:${m[k]}"></i>` : '').join('')}</div>
+      <p class="map-legend">${['direct', 'transferable', 'adjacent'].map((k) => `<span data-kind="${k}">${m[k] || 0} ${k}</span>`).join('')}${m.gaps ? `<span data-kind="gap">${m.gaps} gap${m.gaps === 1 ? '' : 's'}</span>` : ''}</p>` : '';
+    const terms = (report.terms || []).map((t) => `<li><span>${esc(t.from)}</span>${icon('next', 12)}<strong>${esc(t.to)}</strong></li>`).join('');
+    const reframes = (report.reframings || []).map((r) => `<li><del>${esc(r.original)}</del><ins>${esc(r.reframed)}</ins>${r.why ? `<small>${esc(r.why)}</small>` : ''}</li>`).join('');
+    const gaps = (report.gaps || []).map((g) => `<li><strong>${esc(g.need)}</strong>${g.advice ? ` — ${esc(g.advice)}` : ''}</li>`).join('');
+    const questions = (report.questions || []).map((q) => `<li>${esc(q)}</li>`).join('');
+    return `<div class="studio-box report-box"><h4>How Luna tailored it</h4>${bar}
+      ${(report.core || []).length ? `<h5>What the role needs</h5><div class="job-os-chips">${report.core.map((c) => `<span class="job-os-chip">${esc(c)}</span>`).join('')}${(report.valued || []).map((c) => `<span class="job-os-chip muted">${esc(c)}</span>`).join('')}</div>` : ''}
+      ${terms ? `<h5>In the posting's words</h5><ul class="report-terms">${terms}</ul>` : ''}
+      ${reframes ? `<details class="report-more"><summary>Reworded (${report.reframings.length})</summary><ul class="report-reframes">${reframes}</ul></details>` : ''}
+      ${gaps ? `<h5>Left out — not in your resume</h5><ul class="analysis-list is-gap">${gaps}</ul>` : ''}
+      ${questions ? `<h5>Worth asking yourself</h5><ul class="analysis-list is-need">${questions}</ul><p class="job-os-card-note">If any is true, add it to your master resume and tailor again.</p>` : ''}</div>`;
   }
   // Master vs tailored: both scored by Luna with the same prompt, so the gain is real.
   function fitCompare(notes) {
@@ -735,9 +865,36 @@
     if (!r || state.resumeReplacing) {
       return `<section class="job-os-card"><div class="job-os-card-head"><h2>${r ? 'Replace your master resume' : 'Your master resume'}</h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
     }
-    return `<section class="job-os-card resume-master"><div class="job-os-card-head"><h2>Master resume</h2><button type="button" class="job-os-btn" data-job-os-action="resume-replace">Replace</button></div>
-      <div class="job-os-chips"><span class="job-os-chip">${esc(r.filename)}</span><span class="job-os-chip muted">${Number(r.words || 0).toLocaleString()} words</span><span class="job-os-chip muted">Updated ${esc(when(r.uploaded_at))}</span><span class="job-os-chip muted">Version ${Number(r.revision || 1)}</span></div>
-      <details class="job-os-desc-wrap"><summary>Show text</summary><div class="job-os-description">${esc(r.text)}</div></details></section>`;
+    const design = r.style || {};
+    const swatches = [design.heading && design.heading.color, design.name && design.name.color, design.body && design.body.color]
+      .filter((c, i, all) => c && all.indexOf(c) === i).map((c) => `<i style="background:${esc(c)}"></i>`).join('');
+    const designNote = design.source === 'file'
+      ? `${esc(design.font || '')} · ${design.page === 'letter' ? 'Letter' : 'A4'} · ${design.align_header === 'center' ? 'centred header' : 'left-aligned header'}${design.heading && design.heading.rule ? ' · ruled headings' : ''}`
+      : 'Neutral design (upload a PDF or DOCX to keep your own)';
+    const kind = state.resumeOriginal === 'pdf' ? 'pdf' : 'html';
+    // The first page, once drawn, is kept as an image so redraws don't flicker.
+    const thumb = state.resumeThumb && state.resumeThumb.revision === r.revision && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(state.resumeThumb.url) ? state.resumeThumb.url : '';
+    return `<section class="job-os-card resume-master">${cardHead('Master resume', 'resume-studio', `${state.resumeOriginal ? `<a class="job-os-btn" href="/api/job-os/resume/original" ${state.resumeOriginal === 'pdf' ? 'target="_blank" rel="noopener"' : 'download'}>${icon('download', 15)}Original</a>` : ''}<button type="button" class="job-os-btn" data-job-os-action="resume-replace">Replace</button>`)}
+      <div class="resume-master-body">
+        <button type="button" class="resume-thumb" data-job-os-action="resume-preview" data-kind="${kind}" aria-label="Open a full preview of your master resume" title="Preview">
+          <span class="resume-thumb-page${thumb ? ' is-drawn' : ''}" id="resume-thumb" data-kind="${kind}">${kind === 'html' ? '<iframe src="/api/job-os/resume/preview" title="Resume thumbnail" tabindex="-1" aria-hidden="true" loading="lazy"></iframe>' : thumb ? `<img src="${thumb}" alt="">` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</span>
+          <span class="resume-thumb-hint">${icon('expand', 14)}Preview</span></button>
+        <div class="resume-master-info">
+          <strong class="resume-file">${esc(r.filename)}</strong>
+          <div class="job-os-chips"><span class="job-os-chip muted">${Number(r.words || 0).toLocaleString()} words</span><span class="job-os-chip muted">Updated ${esc(when(r.uploaded_at))}</span><span class="job-os-chip muted">Version ${Number(r.revision || 1)}</span></div>
+          <div class="resume-design"><span class="resume-swatches" aria-hidden="true">${swatches}</span><span><strong>Design kept for tailoring</strong><small>${designNote}</small></span></div>
+          <p class="job-os-card-note">Every tailored resume comes from this file and is laid out like it: same sections, same header, same look. Luna only rephrases, reorders and selects; it never adds experience you do not have.</p>
+          <details class="job-os-desc-wrap"><summary>Show text</summary><div class="job-os-description">${esc(r.text)}</div></details>
+        </div>
+      </div></section>`;
+  }
+  // Full-size preview of the master (or a tailored) resume: click anywhere to close.
+  function resumePreview(state) {
+    const p = state.resumePreview;
+    if (!p) return '';
+    return `<div class="resume-preview" data-job-os-action="resume-preview-close" role="dialog" aria-label="Resume preview" tabindex="-1">
+      <div class="resume-preview-bar"><span>${esc(p.title || 'Resume')}</span><small>Click anywhere or press Esc to close</small></div>
+      <div class="resume-preview-pages" id="resume-preview-pages" data-kind="${esc(p.kind)}">${p.kind === 'html' ? `<iframe src="${esc(p.url)}" title="${esc(p.title || 'Resume')}"></iframe>` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</div></div>`;
   }
   function interviewPanel(job) {
     const p = job.interview;
@@ -762,14 +919,13 @@
     const draft = state.importDraft || {};
     let body;
     if (view === 'dashboard') {
+      const recent = paged(jobs, state.recentPage);
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="submitted"')}</section>
-        ${apifyCard(state.apifyUsage)}
-        ${funnelCard(dashboard.funnel)}
-        ${automationsCard(state.automations)}
+        <div class="job-os-pair">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}${funnelCard(dashboard.funnel)}</div>
         <div class="job-os-columns">
-          <section class="job-os-card job-os-recent"><div class="job-os-card-head"><h2>Recent jobs</h2><button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button></div>${jobList(jobs.slice(0, 12), 'No jobs saved yet', 'Import a role to start tracking it through your pipeline.')}</section>
-          <section class="job-os-card job-os-import"><div class="job-os-card-head"><h2>Track a job</h2></div><p class="job-os-card-note">Found a role on another site? Save its link and description here to score and tailor your resume for it, then follow it through your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></section>
+          <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
+          <section class="job-os-card job-os-import">${cardHead('Track a job', 'import')}<p class="job-os-card-note">Manually save jobs, tailor your resume to it, then follow through on your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 15)}Add job</button></section>
         </div>${jobForm(state)}`;
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
@@ -793,7 +949,7 @@
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {
-      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}`;
+      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
     }
     return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view, state)}<main class="job-os-content">${body}</main></div>`;
   }
@@ -812,7 +968,7 @@
       const active = view === 'pipeline' && state.statusFilter === status;
       return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}" data-job-os-filter="${status}"><span class="job-os-dot" data-tone="${tones[status]}" aria-hidden="true"></span><span>${esc(statusLabel(status))}</span><span class="job-os-side-count">${byStatus[status]}</span></button>`;
     }).join('');
-    return `<nav class="side-menu job-os-side-nav" aria-label="Job OS sections">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
+    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar, runBody};
+  window.JobOSRender = {shell, sidebar, runBody, matchQueue};
 }());

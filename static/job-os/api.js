@@ -23,6 +23,7 @@
     board: (source) => request('/api/job-os/applications' + (source && source !== 'all' ? '?source=' + encodeURIComponent(source) : '')),
     editJob: (id, job, expectedRevision) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/edit', {method: 'POST', body: JSON.stringify({job, expected_revision: expectedRevision})}),
     automations: () => request('/api/job-os/automations'),
+    automate: (jobIds) => request('/api/job-os/automate', {method: 'POST', body: JSON.stringify({job_ids: jobIds})}),
     applyKit: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/apply-kit', {method: 'POST', body: '{}'}),
     interviewPrep: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/interview-prep', {method: 'POST', body: '{}'}),
     markApplied: (id, note) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/applied', {method: 'POST', body: JSON.stringify({note: note || ''})}),

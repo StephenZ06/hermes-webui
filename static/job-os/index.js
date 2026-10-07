@@ -18,9 +18,47 @@
     const suffix = status ? '?status=' + encodeURIComponent(status) : '';
     window.history.replaceState(window.history.state || null, '', window.location.pathname + window.location.search + '#jobs/' + view + suffix);
   }
+  // Each container keeps the HTML it last drew: polling that changes nothing
+  // leaves the DOM (and focus, scroll and running animations) alone.
+  function paint(el, html) {
+    if (!el || el._jobOsHtml === html) return false;
+    el.innerHTML = html;
+    el._jobOsHtml = html;
+    return true;
+  }
   function renderSidebar() {
-    const side = sidebarRoot();
-    if (side) side.innerHTML = window.JobOSRender.sidebar(window.JobOSState);
+    paint(sidebarRoot(), window.JobOSRender.sidebar(window.JobOSState));
+  }
+  // Slow-changing reads are reused for a while instead of being asked for on
+  // every refresh; actions that change them call forget().
+  const cache = new Map();
+  function cached(key, ttlMs, load) {
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+    const value = load().then((result) => result, (error) => { cache.delete(key); throw error; });
+    cache.set(key, {at: Date.now(), value});
+    return value;
+  }
+  function forget(...keys) { (keys.length ? keys : [...cache.keys()]).forEach((key) => cache.delete(key)); }
+  // Draw the page the moment its view changes, from what is already known, so
+  // a click never waits on the network; the fetch then fills in what is new.
+  let enteredAt = 0;
+  function paintNow() {
+    const target = root();
+    if (!target || !window.JobOSState.capability) return;
+    renderSidebar();
+    paint(target, window.JobOSRender.shell(window.JobOSState));
+    target._jobOsHtml = null;  // the fetch that follows redraws and binds the page
+    const content = target.querySelector('.job-os-content');
+    if (content && lastView !== window.JobOSState.activeView) { content.classList.add('is-entering'); lastView = window.JobOSState.activeView; enteredAt = performance.now(); }
+  }
+  // A redraw during the entry animation picks it up where it was, so the page
+  // never jumps back to fully visible half way through fading in.
+  function keepEntering(content) {
+    const elapsed = performance.now() - enteredAt;
+    if (!content || elapsed > 320) return;
+    content.classList.add('is-entering');
+    content.style.animationDelay = `-${Math.round(elapsed)}ms`;
   }
   async function refresh() {
     const state = window.JobOSState;
@@ -40,42 +78,47 @@
       const wantAutomations = state.activeView === 'dashboard';
       // Countries feed the Scout form and the tracker's country list; they never change.
       const wantCountries = !state.countries.length;
+      // Firecrawl only matters while Scout reads Indeed itself (Apify off).
+      const wantFirecrawl = wantScout || wantSettings || !(state.apifyUsage && state.apifyUsage.active);
       const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage] = await Promise.all([
-        window.JobOSApi.capability(), window.JobOSApi.dashboard(),
+        cached('capability', 10 * 60 * 1000, window.JobOSApi.capability), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
-        window.JobOSApi.firecrawlHealth().catch(() => null),
+        wantFirecrawl ? cached('firecrawl', 60 * 1000, window.JobOSApi.firecrawlHealth).catch(() => null) : Promise.resolve(null),
         wantSettings ? window.JobOSApi.settings() : Promise.resolve(null),
         wantScout || wantCountries ? window.JobOSApi.searches().catch(() => null) : Promise.resolve(null),
         wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
-        wantResume ? window.JobOSApi.resume().catch(() => null) : Promise.resolve(null),
+        wantResume ? cached('resume', 30 * 1000, window.JobOSApi.resume).catch(() => null) : Promise.resolve(null),
         wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
         wantBoard ? window.JobOSApi.board(state.pipelineSource).catch(() => null) : Promise.resolve(null),
         wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
-        wantAutomations ? window.JobOSApi.automations().catch(() => null) : Promise.resolve(null),
+        wantAutomations ? cached('automations', 20 * 1000, window.JobOSApi.automations).catch(() => null) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.timeline(state.selectedJobId).catch(() => null) : Promise.resolve(null),
         // The Scout inbox feeds the side-panel badge on every page.
-        window.JobOSApi.matches().catch(() => null),
-        // Apify status and spend for the header chip and the Dashboard (cached on the server).
-        window.JobOSApi.apifyUsage().catch(() => null),
+        cached('matches', 20 * 1000, window.JobOSApi.matches).catch(() => null),
+        // Apify status and spend for the header chip and the side panel (cached on the server too).
+        cached('apify', 60 * 1000, window.JobOSApi.apifyUsage).catch(() => null),
       ]);
       if (seq !== refreshSeq) return;
-      // Resume Studio's match check reads the full analysis of one job: the
-      // picked one, or the newest with a description.
+      // Resume Studio's match check reads the full analysis of the job it is on:
+      // the one stepped to, or the first on the board.
       let match = null;
       if (wantResume && !state.studioJobId && resume && resume.resume) {
-        const described = (jobs.jobs || []).filter((j) => j.has_description).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
-        const pick = described.find((j) => j.id === state.studioMatchId) || described[0];
-        if (pick) match = await window.JobOSApi.job(pick.id).catch(() => null);
+        const queue = window.JobOSRender.matchQueue(jobs.jobs || []);
+        const pick = queue.find((j) => j.id === state.studioMatchId) || queue[0];
+        if (pick) {
+          state.studioMatchId = pick.id;
+          match = await window.JobOSApi.job(pick.id).catch(() => null);
+        }
         if (seq !== refreshSeq) return;
       }
-      state.studioMatch = match && match.job;
+      if (wantResume) state.studioMatch = match && match.job;
       state.capability = capability;
       state.dashboard = dashboard;
       state.jobs = jobs.jobs || [];
-      state.firecrawl = health && health.firecrawl;
+      if (health) state.firecrawl = health.firecrawl;
       if (searches) {
         state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule;
         state.countries = searches.countries || []; state.postedWithin = searches.posted_within_days || state.postedWithin;
@@ -84,13 +127,13 @@
       }
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (matches) state.matches = matches.matches;
-      state.apifyUsage = apifyUsage ? apifyUsage.apify : null;
+      if (apifyUsage) state.apifyUsage = apifyUsage.apify;
       if (apifyUsage && apifyUsage.display) state.showLogistics = apifyUsage.display.show_logistics !== false;
       // A hidden Logistics view falls back to the Dashboard.
       if (state.activeView === 'logistics' && state.showLogistics === false) { state.activeView = 'dashboard'; replaceRoute('dashboard'); }
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
-      if (resume) state.resume = resume.resume;
+      if (resume) { state.resume = resume.resume; state.resumeOriginal = resume.original || null; }
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
       state.board = board || (wantBoard ? state.board : null);
@@ -102,21 +145,25 @@
         if (settings.status && settings.status.firecrawl) state.firecrawl = settings.status.firecrawl;
         if (!state.settingsDirty) state.settingsDraft = null;
       }
-      target.innerHTML = window.JobOSRender.shell(state);
+      const changed = paint(target, window.JobOSRender.shell(state));
       if (lastView !== state.activeView) {
         const content = target.querySelector('.job-os-content');
         if (content) content.classList.add('is-entering');
         lastView = state.activeView;
+        enteredAt = performance.now();
+      } else if (changed) keepEntering(target.querySelector('.job-os-content'));
+      if (changed) {
+        if (typeof window.animateCounts === 'function') window.animateCounts(target);
+        bindJobForms(target);
+        afterBoardRender(target);
+        if (wantResume) { bindResumeUpload(); afterStudioRender(target); }
+        afterSettingsRender(target);
       }
-      if (typeof window.animateCounts === 'function') window.animateCounts(target);
-      if (wantScout) afterScoutRender(target);
+      if (wantScout) afterScoutRender(target, changed);
       else stopScoutPolling();
-      afterPipelineRender(target);
-      afterBoardRender(target);
-      bindJobForms(target);
+      afterPipelineRender(target, changed);
       if (state.activeView === 'logistics') afterLogisticsRender(target);
       else disposeLogistics();
-      if (wantResume) bindResumeUpload();
       renderSidebar();
       bind();
     } catch (error) {
@@ -125,17 +172,22 @@
       message.className = 'job-os-error';
       message.textContent = String(error.message || 'Unable to load Job OS.');
       target.innerHTML = '<div class="job-os-shell"></div>';
+      target._jobOsHtml = null;
       target.firstChild.appendChild(message);
     }
   }
-  function showView(view) { window.JobOSState.activeView = view; window.JobOSState.statusFilter = null; replaceRoute(view); refresh(); }
-  function showStatus(status) { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = status || null; replaceRoute('pipeline', window.JobOSState.statusFilter); refresh(); }
+  function showView(view) {
+    const state = window.JobOSState;
+    const moved = state.activeView !== view;
+    state.activeView = view; state.statusFilter = null; state.resumePreview = null; replaceRoute(view);
+    if (moved) { paintNow(); const main = document.getElementById('mainJobs'); if (main) main.scrollTop = 0; }
+    refresh();
+  }
+  function showStatus(status) { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = status || null; replaceRoute('pipeline', window.JobOSState.statusFilter); paintNow(); refresh(); }
   // One delegated listener per container: the page and the side-panel nav
   // re-render on every refresh, so per-button listeners would be rebuilt anyway.
   async function onChange(event) {
     const state = window.JobOSState;
-    const pick = event.target.closest('[data-job-os-change="match-job"]');
-    if (pick) { state.studioMatchId = pick.value; refresh(); return; }
     const country = event.target.closest('[data-job-os-change="scout-country"]');
     if (country) {
       const form = country.form;
@@ -297,6 +349,7 @@
   }
   async function runAction(name, button) {
     const state = window.JobOSState;
+    if (['page', 'settings-focus', 'automate-all', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
@@ -314,6 +367,7 @@
         state.settings = saved.settings; state.settingsStatus = saved.status;
         state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
         state.settingsSavedAt = Date.now();
+        forget();
         if (typeof window.showToast === 'function') window.showToast('Jobs settings saved');
         refresh();
       } catch (error) {
@@ -342,6 +396,7 @@
         if (msg) { msg.dataset.tone = 'error'; msg.textContent = state.gmailMessage.text; }
       }
     } else if (name === 'matches-seen') {
+      forget('matches');
       try { const r = await window.JobOSApi.matchesSeen(); state.matches = r.matches; } catch (_) { /* the next refresh shows it */ }
       refresh();
     } else if (name.startsWith('apify-')) {
@@ -418,6 +473,7 @@
       else if (name === 'apify-test') { result = await window.JobOSApi.testApify(); say('ok', `The token works${result.apify.username ? ` (${result.apify.username}${result.apify.plan ? `, ${result.apify.plan} plan` : ''})` : ''}.`); }
       else { result = await window.JobOSApi.disconnectApify(); say('ok', 'Apify disconnected.'); }
       state.settingsStatus = Object.assign({}, state.settingsStatus, {apify: result.apify});
+      forget('apify', 'firecrawl');
     } catch (error) {
       say('error', error.message || 'Apify request failed.');
     }
@@ -426,10 +482,8 @@
   // ---- Pipeline: analysis polling, triage, resume ---------------------------
   let analysisTimer = null;
   const busy = (job) => !!(job && job.analysis && ['pending', 'running'].includes(job.analysis.status));
-  function afterPipelineRender(target) {
+  function afterPipelineRender(target, changed) {
     const state = window.JobOSState;
-    const sort = document.getElementById('job-os-sort');
-    if (sort) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
     const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status)
       || (d.notes && d.notes.tailored_fit && d.notes.tailored_fit.status === 'running'))
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
@@ -440,6 +494,10 @@
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
+    if (!changed) return;
+    const sort = document.getElementById('job-os-sort');
+    if (sort) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
+    initBoardDrag(target);
     const editor = document.getElementById('studio-text');
     if (editor) editor.addEventListener('input', () => {
       state.studioDraft = editor.value;
@@ -503,6 +561,7 @@
     try {
       const result = await window.JobOSApi.uploadResume(file.name, await readAsBase64(file));
       state.resume = result.resume; state.resumeError = ''; state.resumeReplacing = false;
+      forget('resume');
       if (typeof window.showToast === 'function') window.showToast('Resume saved');
     } catch (error) { state.resumeError = error.message || 'Could not read that resume.'; }
     refresh();
@@ -636,11 +695,291 @@
     if (name === 'resume-cancel') { state.resumeReplacing = false; state.resumeError = ''; return refresh(); }
     if (name === 'resume-paste') {
       const text = (document.getElementById('resume-text') || {}).value || '';
+      forget('resume');
       try { const r = await window.JobOSApi.pasteResume(text); state.resume = r.resume; state.resumeError = ''; state.resumeReplacing = false; }
       catch (error) { state.resumeError = error.message || 'Could not save that text.'; }
       return refresh();
     }
     return undefined;
+  }
+  // ---- Pages, settings shortcuts, the match check and resume previews -------------------
+  const toast = (text) => { if (typeof window.showToast === 'function') window.showToast(text); };
+  async function studioAction(name, el) {
+    const state = window.JobOSState;
+    if (name === 'page') {
+      const key = el.dataset.pager === 'finds' ? 'findsPage' : 'recentPage';
+      state[key] = Math.max(0, Number(el.dataset.page) || 0);
+      paint(root(), window.JobOSRender.shell(state));
+      const card = root().querySelector(`[data-job-os-action="page"][data-pager="${el.dataset.pager}"]`);
+      const section = card && card.closest('.job-os-card');
+      if (section) section.querySelector('.job-os-list')?.classList.add('is-paging');
+      return undefined;
+    }
+    if (name === 'settings-focus') {
+      state.settingsFocus = el.dataset.section || '';
+      return showView('settings');
+    }
+    if (name === 'match-go') {
+      if (!el.dataset.jobId) return undefined;
+      state.studioMatchId = el.dataset.jobId;
+      state.matchDirection = el.closest('.match-step') && el.getAttribute('aria-label') === 'Previous job' ? 'back' : 'forward';
+      return refresh();
+    }
+    if (name === 'match-tailor') {
+      el.disabled = true;
+      try { await window.JobOSApi.tailor(el.dataset.jobId); toast('Luna is tailoring your resume'); }
+      catch (error) { toast(error.message || 'Could not start tailoring'); }
+      if (el.dataset.nextId) { state.studioMatchId = el.dataset.nextId; state.matchDirection = 'forward'; }
+      forget('resume');
+      return refresh();
+    }
+    if (name === 'automate-all') {
+      const queue = window.JobOSRender.matchQueue(state.jobs || []).filter((j) => ['scraped', 'analyzed', 'shortlisted'].includes(j.status));
+      if (!queue.length) { toast('Every job here is already tailored or under way'); return undefined; }
+      const ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({title: 'Automate all?', confirmLabel: 'Automate all',
+          message: `Luna scores the ${queue.length} job${queue.length === 1 ? '' : 's'} not yet tailored, then tailors a resume for each one that scores 50% or more. It runs in the background, one job at a time; nothing is sent. Review and apply when you have time.`})
+        : window.confirm('Score and tailor every job here?');
+      if (!ok) return undefined;
+      el.disabled = true;
+      try {
+        const r = (await window.JobOSApi.automate(queue.map((j) => j.id))).automate;
+        const parts = [r.tailoring && `${r.tailoring} tailoring now`, r.scoring && `${r.scoring} being scored first`, r.below && `${r.below} below 50% left for you`].filter(Boolean);
+        toast(parts.length ? parts.join(' · ') : 'Nothing to automate');
+      } catch (error) { toast(error.message || 'Could not start'); }
+      return refresh();
+    }
+    if (name === 'resume-preview') {
+      state.resumePreview = el.dataset.kind === 'pdf'
+        ? {kind: 'pdf', url: '/api/job-os/resume/original', title: state.resume ? state.resume.filename : 'Master resume'}
+        : {kind: 'html', url: '/api/job-os/resume/preview', title: state.resume ? state.resume.filename : 'Master resume'};
+      return openPreview();
+    }
+    if (name === 'doc-preview') {
+      state.resumePreview = {kind: 'html', url: el.dataset.url, title: el.dataset.title || 'Preview'};
+      return openPreview();
+    }
+    if (name === 'resume-preview-close') return closePreview();
+    return undefined;
+  }
+  function openPreview() {
+    paint(root(), window.JobOSRender.shell(window.JobOSState));
+    root()._jobOsHtml = null;
+    afterStudioRender(root());
+    const overlay = document.querySelector('.resume-preview');
+    if (overlay) overlay.focus({preventScroll: true});
+  }
+  function closePreview() {
+    const overlay = document.querySelector('.resume-preview');
+    window.JobOSState.resumePreview = null;
+    const done = () => { paint(root(), window.JobOSRender.shell(window.JobOSState)); root()._jobOsHtml = null; afterStudioRender(root()); };
+    if (!overlay || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return done();
+    overlay.classList.add('is-closing');
+    setTimeout(done, 170);
+    return undefined;
+  }
+  document.addEventListener('keydown', (event) => {
+    const state = window.JobOSState;
+    if (event.key === 'Escape' && state.resumePreview) { event.preventDefault(); closePreview(); return; }
+    if (state.activeView !== 'resume-studio' || state.studioJobId || state.resumePreview || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+    const step = document.querySelector(`.match-step[aria-label="${event.key === 'ArrowLeft' ? 'Previous job' : 'Next job'}"]:not([disabled])`);
+    if (step) { event.preventDefault(); studioAction('match-go', step); }
+  });
+  // PDF pages are drawn with PDF.js, loaded the same way as the chat's PDF
+  // previews (shared window._pdfjsLib).
+  let pdfjs = null;
+  function loadPdfJs() {
+    if (window._pdfjsLib) return Promise.resolve(window._pdfjsLib);
+    if (pdfjs) return pdfjs;
+    pdfjs = new Promise((resolve, reject) => {
+      const src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.9.155/build/pdf.min.mjs';
+      const worker = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.9.155/build/pdf.worker.min.mjs';
+      const blob = new Blob([`import*as p from'${src}';p.GlobalWorkerOptions.workerSrc='${worker}';window._pdfjsLib=p;window._pdfjsReady=true;window.dispatchEvent(new Event('pdfjs-ready'));`], {type: 'application/javascript'});
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = URL.createObjectURL(blob);
+      window.addEventListener('pdfjs-ready', () => resolve(window._pdfjsLib), {once: true});
+      script.onerror = () => { pdfjs = null; reject(new Error('PDF viewer unavailable')); };
+      document.head.appendChild(script);
+      setTimeout(() => { if (!window._pdfjsLib) { pdfjs = null; reject(new Error('PDF viewer timed out')); } }, 15000);
+    });
+    return pdfjs;
+  }
+  let pdfDoc = null; // {revision, promise}
+  function masterPdf() {
+    const revision = (window.JobOSState.resume || {}).revision;
+    if (!pdfDoc || pdfDoc.revision !== revision) {
+      pdfDoc = {revision, promise: loadPdfJs().then((lib) => fetch('/api/job-os/resume/original').then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.arrayBuffer();
+      }).then((buf) => lib.getDocument({data: buf, isEvalSupported: false}).promise))};
+      pdfDoc.promise.catch(() => { pdfDoc = null; });
+    }
+    return pdfDoc.promise;
+  }
+  async function drawPages(host, {scale, max}) {
+    try {
+      const pdf = await masterPdf();
+      if (!host.isConnected) return;
+      const canvases = [];
+      for (let i = 1; i <= Math.min(pdf.numPages, max); i += 1) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({scale: scale * (window.devicePixelRatio || 1)});
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        canvas.className = 'resume-page-canvas';
+        await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+        canvases.push(canvas);
+      }
+      if (!host.isConnected) return;
+      host.replaceChildren(...canvases);
+      host.classList.add('is-drawn');
+      if (max === 1 && canvases[0]) window.JobOSState.resumeThumb = {revision: (window.JobOSState.resume || {}).revision, url: canvases[0].toDataURL('image/png')};
+    } catch (_) {
+      // Offline or blocked: show the text in its design instead.
+      host.dataset.kind = 'html';
+      host.innerHTML = '<iframe src="/api/job-os/resume/preview" title="Resume" tabindex="-1"></iframe>';
+    }
+  }
+  function afterStudioRender(target) {
+    const thumb = target.querySelector('#resume-thumb[data-kind="pdf"]');
+    if (thumb && !thumb.classList.contains('is-drawn')) drawPages(thumb, {scale: 0.36, max: 1});
+    const pages = target.querySelector('#resume-preview-pages');
+    if (pages && pages.dataset.kind === 'pdf') drawPages(pages, {scale: 1.35, max: 6});
+    // HTML previews grow to their full height so the overlay scrolls, not the frame.
+    if (pages && pages.dataset.kind === 'html') {
+      const frame = pages.querySelector('iframe');
+      if (frame) frame.addEventListener('load', () => { try { frame.style.height = `${frame.contentDocument.documentElement.scrollHeight + 8}px`; } catch (_) { /* cross-origin */ } }, {once: true});
+    }
+    const match = target.querySelector('.match-body');
+    if (match && window.JobOSState.matchDirection) {
+      match.dataset.enter = window.JobOSState.matchDirection;
+      window.JobOSState.matchDirection = null;
+    }
+  }
+  // A Settings section asked for (an automation row, a Scout tile) scrolls into view and glows.
+  function afterSettingsRender(target) {
+    const state = window.JobOSState;
+    if (!state.settingsFocus || state.activeView !== 'settings') return;
+    const section = target.querySelector(`#job-os-settings-${CSS.escape(state.settingsFocus)}`);
+    if (!section) return;
+    state.settingsFocus = '';
+    requestAnimationFrame(() => {
+      section.scrollIntoView({block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+      section.classList.remove('is-focus'); void section.offsetWidth; section.classList.add('is-focus');
+    });
+  }
+  // ---- Board drag and drop -----------------------------------------------------------
+  // Cards carry the columns they may go to (render.js dropTargets); dropping
+  // runs the same step as the card's own buttons.
+  function initBoardDrag(target) {
+    const board = target.querySelector('.pipe-board');
+    if (!board) return;
+    let drag = null;
+    board.querySelectorAll('.pipe-card[draggable="true"]').forEach((card) => {
+      card.addEventListener('dragstart', (event) => {
+        drag = {id: card.dataset.boardJob, drops: (card.dataset.drops || '').split(' '), height: card.offsetHeight, card};
+        event.dataTransfer.setData('text/plain', drag.id);
+        event.dataTransfer.effectAllowed = 'move';
+        requestAnimationFrame(() => card.classList.add('dragging'));
+        board.classList.add('is-dragging');
+        board.querySelectorAll('.pipe-col').forEach((col) => col.classList.toggle('can-drop', drag.drops.includes(col.dataset.col)));
+      });
+      card.addEventListener('dragend', () => {
+        edge = 0;
+        card.classList.remove('dragging');
+        board.classList.remove('is-dragging');
+        board.querySelectorAll('.pipe-col').forEach((col) => col.classList.remove('can-drop', 'drop-target'));
+        if (typeof hideDragSlot === 'function') hideDragSlot();
+        drag = null;
+      });
+    });
+    // Near the board's left or right edge, a dragged card scrolls the board so
+    // columns off screen can be reached.
+    let edge = 0;
+    let edgeLoop = 0;
+    const scrollEdge = () => {
+      if (!drag || !edge) { edgeLoop = 0; return; }
+      board.scrollLeft += edge;
+      edgeLoop = requestAnimationFrame(scrollEdge);
+    };
+    board.addEventListener('dragover', (event) => {
+      if (!drag) return;
+      const box = board.getBoundingClientRect();
+      const zone = Math.min(80, box.width / 6);
+      edge = event.clientX < box.left + zone ? -Math.ceil((box.left + zone - event.clientX) / 6)
+        : event.clientX > box.right - zone ? Math.ceil((event.clientX - (box.right - zone)) / 6) : 0;
+      if (edge && !edgeLoop) edgeLoop = requestAnimationFrame(scrollEdge);
+    });
+    board.addEventListener('dragleave', (event) => { if (!board.contains(event.relatedTarget)) edge = 0; });
+    board.querySelectorAll('.pipe-col').forEach((col) => {
+      col.addEventListener('dragover', (event) => {
+        if (!drag || !drag.drops.includes(col.dataset.col)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (!col.classList.contains('drop-target')) {
+          board.querySelectorAll('.pipe-col.drop-target').forEach((other) => other.classList.remove('drop-target'));
+          col.classList.add('drop-target');
+          if (typeof showDragSlot === 'function') showDragSlot(col.querySelector('.pipe-col-cards'), drag.height);
+        }
+      });
+      col.addEventListener('dragleave', (event) => {
+        if (event.relatedTarget && col.contains(event.relatedTarget)) return;
+        col.classList.remove('drop-target');
+      });
+      col.addEventListener('drop', (event) => {
+        if (!drag || !drag.drops.includes(col.dataset.col)) return;
+        event.preventDefault();
+        const {card} = drag;
+        col.classList.remove('drop-target');
+        if (typeof hideDragSlot === 'function') hideDragSlot();
+        dropOn(card, col.dataset.col, col);
+      });
+    });
+  }
+  const CLOSE_LABELS = {rejected: 'Rejected', no_response: 'No response', withdrawn: 'Withdrawn', skipped: 'Skipped'};
+  function pickClosed(card, col) {
+    const moves = (card.dataset.moves || '').split(' ').filter((m) => CLOSE_LABELS[m]);
+    if (moves.length <= 1) return Promise.resolve(moves[0] || null);
+    return new Promise((resolve) => {
+      const menu = document.createElement('div');
+      menu.className = 'pipe-drop-menu';
+      menu.setAttribute('role', 'menu');
+      menu.innerHTML = `<p>Close it as</p>${moves.map((m) => `<button type="button" role="menuitem" data-move="${m}">${CLOSE_LABELS[m]}</button>`).join('')}<button type="button" class="is-cancel" data-move="">Cancel</button>`;
+      col.querySelector('.pipe-col-head').after(menu);
+      const finish = (value) => { menu.remove(); document.removeEventListener('pointerdown', outside, true); resolve(value); };
+      const outside = (event) => { if (!menu.contains(event.target)) finish(null); };
+      menu.addEventListener('click', (event) => { const b = event.target.closest('[data-move]'); if (b) finish(b.dataset.move || null); });
+      setTimeout(() => document.addEventListener('pointerdown', outside, true));
+      menu.querySelector('button').focus();
+    });
+  }
+  async function dropOn(card, column, col) {
+    const id = card.dataset.boardJob;
+    const revision = Number(card.dataset.revision);
+    const moves = (card.dataset.moves || '').split(' ');
+    try {
+      if (column === 'resume') { await window.JobOSApi.tailor(id); toast('Luna is tailoring your resume'); }
+      else if (column === 'ready') { await window.JobOSApi.markReady(id); toast('Ready to apply'); }
+      else if (column === 'applied') {
+        const ok = typeof window.showConfirmDialog === 'function'
+          ? await window.showConfirmDialog({title: 'Mark as applied?', message: 'Record that you sent the application for this job.', confirmLabel: 'Mark applied', cancelLabel: 'Cancel'})
+          : window.confirm('Mark as applied?');
+        if (!ok) return;
+        await window.JobOSApi.markApplied(id);
+        toast('Application recorded');
+      } else {
+        const status = column === 'closed' ? await pickClosed(card, col)
+          : column === 'interviewing' ? (moves.includes('interviewing') ? 'interviewing' : 'screening')
+            : column === 'offers' ? 'offer' : column;
+        if (!status) return;
+        await window.JobOSApi.setStatus(id, status, revision);
+      }
+      flash(id);
+    } catch (error) { toast(error.message || 'Could not move the job'); }
+    forget('automations');
+    refresh();
   }
   // ---- Pipeline layout and the manual tracker ------------------------------------------
   const PREFS = 'hermes-job-os-pipeline';
@@ -741,13 +1080,13 @@
   let pollTimer = null;
   const seenFinds = new Set();
   function stopScoutPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
-  function afterScoutRender(target) {
+  function afterScoutRender(target, changed) {
     // New finds glow in once; the radar keeps running while any run is active.
     target.querySelectorAll('.scout-finds [data-job-id]').forEach((card) => {
       if (!seenFinds.has(card.dataset.jobId)) { seenFinds.add(card.dataset.jobId); if (typeof window.markArrival === 'function') window.markArrival(card); }
     });
     const form = document.getElementById('job-os-search-form');
-    if (form) {
+    if (form && changed) {
       form.addEventListener('submit', (event) => { event.preventDefault(); saveSearchForm(form); });
       const first = form.querySelector('input[name="keywords"]');
       if (first && !first.value) first.focus();
@@ -837,6 +1176,7 @@
       refresh();
     } else if (name === 'scout-toggle') {
       if (!search) return;
+      forget('automations');
       try { await window.JobOSApi.updateSearch(searchId, {enabled: el.checked}, search.revision); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update the search'); }
       refresh();

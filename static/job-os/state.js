@@ -55,5 +55,12 @@
     apify: null,
     sites: null, // job sites Scout offers: [{key, name, needs_apify, actors}] // {active}: Scout runs on Apify, so Firecrawl is not needed
     gmailMessage: null,
+    recentPage: 0, // Dashboard recent jobs, ten a page
+    findsPage: 0, // Scout latest finds, ten a page
+    resumeOriginal: null, // 'pdf' | 'docx' | ... when the master was uploaded as a file
+    resumePreview: null, // full-size preview overlay: {kind: 'pdf'|'html', url, title}
+    resumeThumb: null, // {revision, url}: the master's first page, drawn once
+    settingsFocus: '', // a Settings section to scroll to after opening Settings
+    matchDirection: null, // which way the match check last stepped, for its slide
   };
 }());

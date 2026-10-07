@@ -23,21 +23,25 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
               const host = document.createElement('div');
               const base = {capability: {available: true}, dashboard: null, jobs: [], pipelineSource: 'all', pipelineMode: 'list'};
               const usage = (used) => ({active: true, usage: {used_usd: used, limit_usd: 5, ratio: used / 5, warn: used / 5 >= 0.8, cycle_end: '2026-11-06'}});
+              const side = document.createElement('div');
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', apifyUsage: usage(1.19)});
-              const calm = {chip: host.querySelector('.job-os-status').textContent, warn: host.querySelector('.apify-usage').classList.contains('is-warn'),
-                            ready: host.querySelector('.job-os-status').dataset.ready};
+              side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null, apifyUsage: usage(1.19)});
+              const calm = {chip: host.querySelector('.job-os-status').textContent, warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'),
+                            ready: host.querySelector('.job-os-status').dataset.ready, onDashboard: !!host.querySelector('.job-os-apify-widget')};
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', apifyUsage: usage(4.4)});
-              const tight = {warn: host.querySelector('.apify-usage').classList.contains('is-warn'), ready: host.querySelector('.job-os-status').dataset.ready,
-                             bar: host.querySelector('.apify-usage-track i').style.width,
-                             note: host.querySelector('.apify-usage .job-os-card-note').textContent};
+              side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null, apifyUsage: usage(4.4)});
+              const tight = {warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'), ready: host.querySelector('.job-os-status').dataset.ready,
+                             cells: side.querySelectorAll('.chat-usage-widget-battery-cell.is-filled').length,
+                             level: side.querySelector('.chat-usage-widget-battery').dataset.level,
+                             note: side.querySelector('.job-os-apify-widget').textContent};
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', apifyUsage: {active: false, usage: null}, firecrawl: {state: 'healthy'}});
-              const off = {chip: host.querySelector('.job-os-status').textContent, card: !!host.querySelector('.apify-usage')};
+              side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null, apifyUsage: {active: false, usage: null}});
+              const off = {chip: host.querySelector('.job-os-status').textContent, card: !!side.querySelector('.job-os-apify-widget')};
               const doc = {id: 'd1', status: 'ready', content: '# Jane', revision: 1,
                            notes: {master_fit: 68, tailored_fit: {status: 'done', fit_score: 84}}};
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'resume-studio', resume: {filename: 'cv.md', text: 'x'},
                 studioJobId: 'j1', studioDocs: {resume: doc}, studioTab: 'resume', tailored: []});
               const fit = {gain: host.querySelector('.fit-gain').textContent, rings: [...host.querySelectorAll('.fit-compare .fit-ring')].map((r) => r.textContent)};
-              const side = document.createElement('div');
               side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', showLogistics: false, dashboard: null});
               const hidden = !side.querySelector('[data-job-os-view="logistics"]');
               side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null});
@@ -45,9 +49,9 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
             }""")
         finally:
             browser.close()
-    assert out["calm"] == {"chip": "Apify · $1.19 of $5", "warn": False, "ready": "true"}
-    assert out["tight"]["warn"] and out["tight"]["ready"] == "false" and "Only $0.60 left" in out["tight"]["note"]
-    assert out["tight"]["bar"] == "88%"
+    assert out["calm"] == {"chip": "Apify · $1.19 of $5", "warn": False, "ready": "true", "onDashboard": False}
+    assert out["tight"]["warn"] and out["tight"]["ready"] == "false" and "$0.60 left of $5.00" in out["tight"]["note"]
+    assert out["tight"]["cells"] == 1 and out["tight"]["level"] == "warn"
     assert out["off"] == {"chip": "Firecrawl ready", "card": False}
     assert out["fit"] == {"gain": "+16", "rings": ["68", "84"]}
     assert out["hidden"] and out["shown"]
@@ -109,3 +113,39 @@ def test_settings_toggles_keep_their_hidden_checkbox_inside_the_label():
         finally:
             browser.close()
     assert out["count"] > 3 and out["outside"] == 0
+
+
+def test_pagers_drop_targets_the_match_queue_and_idle_search_cards():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              const jobs = Array.from({length: 23}, (_, i) => ({id: 'j' + i, title: 'Job ' + i, status: i % 3 ? 'analyzed' : 'shortlisted',
+                has_description: i !== 5, updated_at: 1000 + i, created_at: 1000 + i, source: 'indeed'}));
+              const base = {capability: {available: true}, dashboard: null, jobs, pipelineSource: 'all', pipelineMode: 'board'};
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', recentPage: 2});
+              const recent = {rows: host.querySelectorAll('.job-os-recent .job-os-job-card').length, range: host.querySelector('.pager-range').textContent,
+                              current: host.querySelector('.pager-num.active').textContent,
+                              nextDisabled: host.querySelector('[data-pager="recent"][aria-label="Next page"]').disabled};
+              const queue = window.JobOSRender.matchQueue(jobs).map((j) => j.stage + ':' + j.id);
+              const card = (job) => { host.innerHTML = window.JobOSRender.shell({...base, activeView: 'pipeline',
+                board: {columns: [{key: job.column, label: 'X', jobs: [job]}]}}); return host.querySelector('.pipe-card'); };
+              const fresh = card({id: 'a', title: 'A', status: 'analyzed', column: 'new', has_description: true, revision: 1,
+                moves: [['shortlisted', 'Shortlisted'], ['submitted', 'Applied'], ['skipped', 'Skipped']]});
+              const done = card({id: 'b', title: 'B', status: 'offer_accepted', column: 'offers', revision: 1, moves: []});
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'scout', searches: [{id: 's1', name: 'SOC', keywords: 'SOC Analyst',
+                enabled: true, sites: ['indeed'], locations: [], title_filter: []}], runs: []});
+              return {recent, queue: [queue.length, queue[0], queue[queue.length - 1]], drops: fresh.dataset.drops, draggable: fresh.draggable,
+                      fixed: done.hasAttribute('draggable'), idle: host.querySelector('.scout-run.is-empty .scout-run-state').textContent,
+                      facts: [...host.querySelectorAll('.scout-facts dt')].length};
+            }""")
+        finally:
+            browser.close()
+    assert out["recent"] == {"rows": 3, "range": "21–23 of 23", "current": "3", "nextDisabled": True}
+    # Board order: shortlisted jobs come after every new one; the job without a description is left out.
+    assert out["queue"] == [22, "new:j22", "shortlisted:j0"]
+    assert out["drops"] == "shortlisted resume applied closed" and out["draggable"] and not out["fixed"]
+    assert out["idle"] == "Not run yet" and out["facts"] == 6
