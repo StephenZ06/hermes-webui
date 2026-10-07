@@ -174,10 +174,18 @@ Health is read from `GET /` (`{"message": "Firecrawl API"}`) and
   set, paced to 1 request/second; otherwise to Firecrawl's `/search`
   (SearXNG). Self-hosted SearXNG gets rate-limited and CAPTCHA'd by its
   upstream engines after a burst, so the Brave key is strongly recommended.
-- **Default sites:** Greenhouse, Lever, Ashby, Workable, SmartRecruiters.
-  A saved search can list its own domains (searched with `site:`) or
-  careers-page URLs (read for links to single postings).
-- **Reading.** Those five sites render postings in the browser, so Scout
+- **Default site:** Indeed (`indeed.com`). A saved search can list its own
+  domains (searched with `site:`, e.g. `jobs.lever.co`) or careers-page URLs
+  (read for links to single postings).
+- **Indeed.** Search engines index Indeed's results pages, not single
+  postings, so Scout opens up to 4 results pages per run and reads the
+  postings linked from them. Indeed serves a posting to an automated reader
+  only through its click link (`/rc/clk?jk=…`), not `/viewjob?jk=…`, and
+  refuses back-to-back requests, so Indeed pages are read 5 seconds apart.
+  The job is saved as `https://<host>/viewjob?jk=<key>`, and the key is what
+  makes two Indeed postings different jobs. LinkedIn and JobStreet refuse
+  the self-hosted Firecrawl outright.
+- **Reading.** Greenhouse, Lever, Ashby, Workable and SmartRecruiters render postings in the browser, so Scout
   reads their official public posting APIs (`ats_api.py`); any other site is
   read through Firecrawl and parsed from its schema.org `JobPosting` JSON-LD
   (`extract.py`). Board pages are skipped by URL shape; postings a site no

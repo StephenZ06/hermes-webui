@@ -321,7 +321,7 @@
     const active = run && ACTIVE_RUN.includes(run.status);
     const ready = state.firecrawl && state.firecrawl.state === 'healthy';
     const where = [...(search.locations || []), search.remote_only ? 'Remote only' : ''].filter(Boolean);
-    const sites = (search.sites || []).length ? `${search.sites.length} site${search.sites.length === 1 ? '' : 's'}` : 'Default job sites';
+    const sites = (search.sites || []).length ? `${search.sites.length} site${search.sites.length === 1 ? '' : 's'}` : 'Indeed';
     const schedule = state.schedule && state.schedule.enabled && search.enabled && search.next_run_at ? `Next ${until(search.next_run_at)}` : '';
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
       <div class="scout-search-head"><div class="scout-search-title"><h3>${esc(search.name)}</h3><p>${esc(search.keywords)}</p></div>
@@ -340,7 +340,7 @@
         <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
         <label class="job-os-field"><span>Locations</span><input name="locations" placeholder="Comma-separated, e.g. Berlin, London" value="${esc(form.locations)}"></label>
       </div>
-      <label class="job-os-field"><span>Sites</span><textarea name="sites" rows="3" placeholder="One per line. A domain (lever.co) is searched; a careers-page URL is read for its job links. Empty = Greenhouse, Lever, Ashby, Workable, SmartRecruiters.">${esc(form.sites)}</textarea></label>
+      <label class="job-os-field"><span>Sites</span><textarea name="sites" rows="3" placeholder="One per line. A domain (lever.co) is searched; a careers-page URL is read for its job links. Empty = Indeed.">${esc(form.sites)}</textarea></label>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Skip postings that are not remote</small></span></label>
       <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
       <div class="job-os-actions"><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button></div></form></section>`;

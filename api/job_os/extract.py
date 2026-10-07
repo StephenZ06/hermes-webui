@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 MAX_DESCRIPTION = 20000
 ATS_HOSTS = (
@@ -197,9 +197,54 @@ _POSTING_SHAPES = {
 }
 
 
+# ---- Indeed -------------------------------------------------------------------
+# Search engines index Indeed's results pages rather than single postings. A
+# posting is reached through a click link (/rc/clk?jk=<key>&bb=<token>): Indeed
+# serves those to automated readers but refuses /viewjob?jk=<key>, and the click
+# token changes on every results page, so the job key identifies the posting.
+_INDEED_POSTING_PATHS = {"/rc/clk", "/pagead/clk", "/viewjob"}
+_INDEED_KEY = re.compile(r"^[0-9A-Za-z]{1,40}$")
+
+
+def is_indeed(url: str) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    return host == "indeed.com" or host.endswith(".indeed.com")
+
+
+def indeed_job_key(url: str) -> str | None:
+    """The posting key of an Indeed posting link, or None for any other link."""
+    if not is_indeed(url):
+        return None
+    parts = urlsplit(url)
+    if parts.path.rstrip("/") not in _INDEED_POSTING_PATHS:
+        return None
+    key = (parse_qs(parts.query).get("jk") or [""])[0]
+    return key if _INDEED_KEY.match(key) else None
+
+
+def indeed_posting_url(url: str) -> str:
+    """The stable address of an Indeed posting (what is stored and shown)."""
+    return f"https://{urlsplit(url).hostname.lower()}/viewjob?jk={indeed_job_key(url)}"
+
+
+def indeed_posting_links(links: list[str], page_url: str, *, limit: int = 50) -> list[str]:
+    """Click links to single postings on an Indeed results page, one per posting."""
+    picked: dict[str, str] = {}
+    for raw in links or []:
+        link = _strip_fragment(urljoin(page_url, str(raw)))
+        key = indeed_job_key(link)
+        if key and key not in picked and urlsplit(link).path.rstrip("/") != "/viewjob":
+            picked[key] = link
+        if len(picked) >= limit:
+            break
+    return list(picked.values())
+
+
 def looks_like_single_posting(url: str) -> bool:
     """False for a known site's board/listing page; True otherwise (unknown sites
     are read and judged by their structured data)."""
+    if is_indeed(url):
+        return indeed_job_key(url) is not None
     parts = urlsplit(url)
     shape = _POSTING_SHAPES.get((parts.hostname or "").lower())
     return True if shape is None else bool(shape.match(parts.path))

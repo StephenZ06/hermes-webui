@@ -104,3 +104,13 @@ def test_location_requirement_lists_are_joined():
     remote = dict(POSTING, jobLocationType="TELECOMMUTE", jobLocation=None,
                   applicantLocationRequirements=[{"@type": "Country", "name": "Argentina"}, {"@type": "Country", "name": "Chile"}])
     assert extract_job_posting(_page(remote), "https://x.test/j")["location"] == "Remote (Argentina, Chile)"
+
+
+def test_indeed_click_links_are_postings_and_results_pages_are_not():
+    from api.job_os.extract import indeed_job_key, looks_like_single_posting
+    assert looks_like_single_posting("https://malaysia.indeed.com/rc/clk?jk=ab12&bb=x")
+    assert not looks_like_single_posting("https://malaysia.indeed.com/q-backend-jobs.html")
+    assert not looks_like_single_posting("https://www.indeed.com/jobs?q=backend")
+    assert indeed_job_key("https://malaysia.indeed.com/rc/clk?jk=ab12&bb=x") == "ab12"
+    assert indeed_job_key("https://malaysia.indeed.com/cmp/Acme") is None
+    assert indeed_job_key("https://evilindeed.com/rc/clk?jk=ab12") is None

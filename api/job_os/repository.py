@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from api.job_os.db import connect_job_os
+from api.job_os.extract import indeed_job_key
 from api.job_os.models import (
     DuplicateJobError,
     JobFilters,
@@ -40,7 +41,13 @@ def _canonicalize_url(value: str) -> str:
     host = parsed.hostname.lower()
     netloc = host if parsed.port is None else f"{host}:{parsed.port}"
     path = parsed.path.rstrip("/") or "/"
-    return urlunsplit((parsed.scheme.lower(), netloc, path, "", ""))
+    # Queries are dropped (tracking noise), except Indeed's job key: every Indeed
+    # posting lives at /viewjob and only ?jk= tells them apart.
+    query = ""
+    key = indeed_job_key(value.strip())
+    if key:
+        query = f"jk={key}"
+    return urlunsplit((parsed.scheme.lower(), netloc, path, query, ""))
 
 
 def normalize_job_input(payload: Mapping[str, object]) -> JobInput:

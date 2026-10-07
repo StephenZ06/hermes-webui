@@ -254,3 +254,55 @@ def test_board_pages_and_closed_greenhouse_postings_are_counted_not_errors(store
     c = run["counts"]
     assert (c["not_postings"], c["saved"], c["closed"], c["errors"]) == (1, 1, 1, 0)
     assert "https://jobs.lever.co/acme" not in fake.scraped
+
+
+# ---- Indeed ------------------------------------------------------------------
+# Search engines index Indeed's results pages, not single postings, and Indeed
+# serves postings to automated readers only through its click links
+# (/rc/clk?jk=...); /viewjob?jk=... is refused. Observed against the live site.
+INDEED_LIST = "https://malaysia.indeed.com/q-backend-jobs.html"
+
+
+def _clk(jk, token="t1"):
+    return f"https://malaysia.indeed.com/rc/clk?jk={jk}&bb={token}&from=serp"
+
+
+def test_a_search_with_no_sites_searches_indeed(store):
+    search = scout.create_search({"keywords": "backend"})
+    fake = FakeFirecrawl()
+    _run(search, fake)
+    assert fake.queries == ["site:indeed.com backend"]
+
+
+def test_indeed_results_pages_are_opened_and_their_postings_saved(store, monkeypatch):
+    monkeypatch.setattr(scout, "_sleep", lambda seconds: None)
+    search = scout.create_search({"keywords": "backend", "sites": ["indeed.com"]})
+    fake = FakeFirecrawl(
+        results={"site:indeed.com backend": [INDEED_LIST]},
+        links={INDEED_LIST: [_clk("aaa111"), _clk("aaa111", "other"), "https://malaysia.indeed.com/cmp/Acme",
+                             "https://malaysia.indeed.com/career/backend/salaries", _clk("bbb222")]},
+        pages={_clk("aaa111"): _posting("Backend Engineer"), _clk("bbb222"): _posting("Platform Engineer", company="Globex")})
+    run = _run(search, fake)
+    assert run["status"] == "completed", run
+    assert run["counts"]["saved"] == 2, run["counts"]
+    jobs = {get_job(i).title: get_job(i) for i in run["new_job_ids"]}
+    assert jobs["Backend Engineer"].canonical_url == "https://malaysia.indeed.com/viewjob?jk=aaa111"
+    assert jobs["Backend Engineer"].source == "indeed"
+    assert fake.scraped == [INDEED_LIST, _clk("aaa111"), _clk("bbb222")]
+
+    # The same postings behind fresh click tokens are the same jobs.
+    fake.links[INDEED_LIST] = [_clk("aaa111", "t9"), _clk("bbb222", "t9")]
+    again = _run(search, fake)
+    assert again["counts"]["saved"] == 0 and again["counts"]["duplicates"] == 2, again["counts"]
+
+
+def test_indeed_requests_are_spaced_out(store, monkeypatch):
+    waits = []
+    monkeypatch.setattr(scout, "_sleep", waits.append)
+    clock = iter(range(0, 10_000, 1))
+    monkeypatch.setattr(scout, "_monotonic", lambda: next(clock))
+    search = scout.create_search({"keywords": "backend", "sites": ["indeed.com"]})
+    fake = FakeFirecrawl(results={"backend": [INDEED_LIST]}, links={INDEED_LIST: [_clk("aaa111"), _clk("bbb222")]},
+                         pages={_clk("aaa111"): _posting("A"), _clk("bbb222"): _posting("B", company="Globex")})
+    _run(search, fake)
+    assert len(waits) == 2 and all(w > 0 for w in waits), waits  # before the 2nd and 3rd Indeed page

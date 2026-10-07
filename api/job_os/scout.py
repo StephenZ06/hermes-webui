@@ -26,15 +26,23 @@ from urllib.parse import urlsplit
 
 from api.job_os.db import connect_job_os
 from api.job_os.ats_api import ats_posting, canonical_posting_url
-from api.job_os.extract import extract_job_posting, job_links_from_page, looks_like_single_posting
+from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
+                                 job_links_from_page, looks_like_single_posting)
 from api.job_os.models import DuplicateJobError, JobStatus, JobValidationError
 from api.job_os.network_policy import UnsafeJobUrl, validate_external_job_url
 from api.job_os.repository import create_job, normalize_job_input
 
 ACTIVE_STATES = ("queued", "searching", "scraping")
 TERMINAL_STATES = ("completed", "cancelled", "failed", "interrupted")
-DEFAULT_SITES = ("boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
-                 "apply.workable.com", "jobs.smartrecruiters.com")
+# Searched when a saved search names no sites. Application-tracking sites
+# (Greenhouse, Lever, ...) can still be listed per search.
+DEFAULT_SITES = ("indeed.com",)
+# Indeed refuses a reader that asks for pages back to back (observed: every
+# request failed after a burst, and succeeded again 5s apart after a pause).
+INDEED_GAP_S = 5.0
+MAX_INDEED_RESULT_PAGES = 4
+_sleep = time.sleep
+_monotonic = time.monotonic
 MAX_ERRORS = 20
 MAX_QUERIES = 15
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
@@ -406,6 +414,8 @@ def fetch_json(url: str, *, timeout: float = 20.0, limit: int = 2 * 1024 * 1024)
 
 def _source_for(url: str) -> str:
     host = (urlsplit(url).hostname or "").lower()
+    if is_indeed(url):
+        return "indeed"
     for name, ats in (("greenhouse", "greenhouse.io"), ("lever", "lever.co"), ("ashby", "ashbyhq.com"),
                       ("workable", "workable.com"), ("smartrecruiters", "smartrecruiters.com")):
         if host == ats or host.endswith("." + ats):
@@ -478,6 +488,29 @@ def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> 
     return {"job_id": job_id, "status": current.status.value}
 
 
+class _PacedClient:
+    """Spaces requests to Indeed INDEED_GAP_S apart; other sites are not held back."""
+
+    def __init__(self, client) -> None:
+        self._client = client
+        self._last_indeed: float | None = None
+
+    def search(self, query: str, *, limit: int = 10) -> list[dict]:
+        return self._client.search(query, limit=limit)
+
+    def scrape(self, url: str, *, links: bool = False) -> dict:
+        if is_indeed(url):
+            if self._last_indeed is not None:
+                wait = INDEED_GAP_S - (_monotonic() - self._last_indeed)
+                if wait > 0:
+                    _sleep(wait)
+            try:
+                return self._client.scrape(url, links=links)
+            finally:
+                self._last_indeed = _monotonic()
+        return self._client.scrape(url, links=links)
+
+
 def run_discovery(run_id: str, client_factory: Callable) -> None:
     """Do the work for one run. Never raises; every exit is a terminal state."""
     counts = dict(_EMPTY_COUNTS)
@@ -513,10 +546,12 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         scout_settings = load_settings()["scout"]
         max_results = int(scout_settings["max_results_per_search"])
         blocked = {company_key(name) for name in scout_settings.get("blocked_companies") or []}
-        client = client_factory()
+        client = _PacedClient(client_factory())
         save("searching", "Searching job sites", started_at=int(time.time()))
 
         candidates: list[str] = []
+        stored_url: dict[str, str] = {}  # read URL -> the stable URL saved (Indeed)
+        result_pages: list[str] = []  # Indeed results pages, opened for their postings
         seen: set[str] = set()
         known = _known_urls()
 
@@ -527,8 +562,10 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             except UnsafeJobUrl:
                 counts["unsafe"] += 1
                 return
+            indeed_posting = is_indeed(safe) and looks_like_single_posting(safe)
             try:
-                canonical = normalize_job_input({"title": "x", "canonical_url": safe}).canonical_url
+                stable = indeed_posting_url(safe) if indeed_posting else safe
+                canonical = normalize_job_input({"title": "x", "canonical_url": stable}).canonical_url
             except JobValidationError:
                 counts["unsafe"] += 1
                 return
@@ -539,8 +576,13 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 counts["duplicates"] += 1
                 return
             if not looks_like_single_posting(safe):
+                if is_indeed(safe):
+                    result_pages.append(safe)
+                    return
                 counts["not_postings"] += 1  # a board/listing page, not one posting
                 return
+            if indeed_posting:
+                stored_url[safe] = canonical
             candidates.append(safe)
 
         from api.job_os.firecrawl import FirecrawlError
@@ -580,6 +622,21 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 note_error(query, error)
             save(detail=f"Searched {counts['queries']} of {len(queries)} queries")
 
+        for page_url in result_pages[:MAX_INDEED_RESULT_PAGES]:
+            if _cancel_requested(run_id):
+                finish("cancelled", "Cancelled")
+                return
+            if len(candidates) >= max_results:
+                break
+            try:
+                validate_external_job_url(page_url)
+                page = client.scrape(page_url, links=True)
+                for link in indeed_posting_links(page["links"], page_url):
+                    offer(link)
+            except (UnsafeJobUrl, FirecrawlError) as error:
+                note_error(urlsplit(page_url).hostname or page_url, error)
+            save(detail="Opened an Indeed results page")
+
         candidates = candidates[:max_results]
         counts["candidates"] = len(candidates)
         if not candidates and counts["errors"] and counts["queries"] and counts["errors"] >= counts["queries"]:
@@ -610,7 +667,8 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     counts["duplicates"] += 1  # the same role, found on another site
                 else:
                     job = replace(
-                        normalize_job_input({**posting, "source": _source_for(safe)}),
+                        normalize_job_input({**posting, "canonical_url": stored_url.get(url, posting["canonical_url"]),
+                                            "source": _source_for(safe)}),
                         description=posting["description"], salary_text=posting["salary_text"],
                         employment_type=posting["employment_type"], workplace=posting["workplace"],
                         posted_at=posting["posted_at"], search_id=search["id"], run_id=run_id)
