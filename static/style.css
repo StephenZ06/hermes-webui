@@ -5865,6 +5865,17 @@ html .hermes-note-editor .bn-editor{padding-inline:54px;background:transparent;f
 .hermes-note-editor [data-content-type="codeBlock"]{background:var(--code-bg);color:var(--code-text,var(--text));}
 .hermes-note-editor [data-style-type="code"]{background:var(--code-inline-bg,var(--code-bg));color:var(--code-text,var(--text));}
 .nb-create-row{margin-top:2px;}
+.nb-trash-scope{justify-content:center;}
+.nb-trash-scope .nb-scope-count{margin-left:0;}
+.nb-create-menu.is-picking{gap:1px;}
+.nb-pick-head{display:flex;align-items:center;gap:6px;padding:2px 2px 6px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.nb-create-menu .nb-pick-back{width:20px;height:20px;padding:0;border-radius:5px;color:var(--muted);font-size:15px;line-height:1;}
+.nb-create-menu .nb-pick-back:hover{color:var(--text);}
+.nb-pick-list{display:grid;gap:1px;max-height:260px;overflow:auto;animation:nb-in .16s ease;}
+.nb-pick-label{padding:6px 8px 2px;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;}
+.nb-create-menu .nb-pick-item{display:flex;align-items:center;gap:8px;min-width:0;text-align:left;}
+.nb-create-menu .nb-pick-item .color-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.nb-pick-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nb-editor-head.is-entering{animation:nb-in .22s cubic-bezier(.22,1,.36,1);}
 .nb-banner{animation:nb-in .2s ease;}
 .nb-status[data-status="saving"]{animation:nb-pulse 1s ease-in-out infinite;}
@@ -9542,6 +9553,10 @@ main.main.showing-logs > #mainLogs{display:flex;}
 #workHubProjects.work-hub-projects{padding:0 0 10px;}
 /* Notes' workspace and folder lists sit flush, exactly like the Work Hub's. */
 #notebookSidebar .work-hub-projects{padding:0 0 10px;}
+/* A heading straight after a list already has the list's 10px under it: equal space above and below its line. */
+#notebookSidebar .work-hub-projects + .work-hub-projects-heading{margin-top:0;}
+/* After the scope buttons (no list padding above it): 14px brings the space above its line up to the space below. */
+#notebookSidebar .nb-scope + .work-hub-projects-heading{margin-top:14px;}
 #panelWorkspaces .panel-head-sub{padding-bottom:2px;}
 @media (max-width:640px){#insightsContent,.logs-main-body{padding:14px;}.insights-row{grid-template-columns:1fr;}.logs-output{max-height:calc(100dvh - 150px);}}
 

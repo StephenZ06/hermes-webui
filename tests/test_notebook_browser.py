@@ -181,12 +181,19 @@ def test_side_panel_matches_work_hub_and_its_plus_menu_creates_and_deletes(page)
     page.click("#appDialogConfirm")
     tile = f"#notebookSidebar .nb-place-btn[data-nb-kind=folder]:has-text('{folder_name}')"
     page.wait_for_selector(tile, timeout=10000)
+    folder_id = page.get_attribute(tile, "data-nb-id")
     page.click("#notebookSidebar .nb-create-row .work-hub-project-create")
     page.click(".nb-create-menu [data-nb-create=note]")
+    # New note turns the same menu into a "where" picker: General, workspaces, folders.
+    page.wait_for_selector(".nb-create-menu.is-picking", timeout=5000)
+    choices = page.evaluate("() => [...document.querySelectorAll('.nb-create-menu .nb-pick-item')].map(b => b.dataset.nbPick)")
+    projects = [p["project_id"] for p in _api("/api/notebook/bootstrap")["projects"]]
+    assert choices[0] == "general" and ["p:" + p for p in projects] == [c for c in choices if c.startswith("p:")]
+    assert "f:" + folder_id in choices
+    page.click(f".nb-create-menu [data-nb-pick='f:{folder_id}']")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     page.fill("#nbTitle", "Inside drafts")
     _saved(page)
-    folder_id = page.get_attribute(tile, "data-nb-id")
     assert _note_by_title("Inside drafts")["folder_id"] == folder_id
     # The whole tile toggles its notes in place (no re-render, so it animates).
     tile_by_id = f"#notebookSidebar .nb-place-btn[data-nb-id='{folder_id}']"
@@ -210,3 +217,24 @@ def test_side_panel_matches_work_hub_and_its_plus_menu_creates_and_deletes(page)
     assert _note_by_title("Inside drafts")["deleted_at"]
     page.click("#notebookSidebar .work-hub-project-delete-done")
     page.wait_for_selector("#notebookSidebar .nb-create-row .work-hub-project-create", timeout=5000)
+
+
+
+def test_trash_is_centred_and_section_dividers_have_equal_space(page):
+    _api("/api/notebook/folders/create", {"name": f"Spacing {uuid.uuid4().hex[:4]}"})
+    _open(page)
+    trash = page.evaluate("""() => { const b = document.querySelector('#notebookSidebar .nb-trash-scope'); const r = b.getBoundingClientRect();
+      const kids = [...b.children].map(e => e.getBoundingClientRect()); const left = Math.min(...kids.map(k => k.left)), right = Math.max(...kids.map(k => k.right));
+      return {leftGap: Math.round(left - r.left), rightGap: Math.round(r.right - right)}; }""")
+    assert abs(trash["leftGap"] - trash["rightGap"]) <= 2, trash
+    gaps = page.evaluate("""() => [...document.querySelectorAll('#notebookSidebar .work-hub-projects-heading')].slice(0, 2).map(h => {
+      const line = h.getBoundingClientRect().top + h.getBoundingClientRect().height / 2;
+      const prev = h.previousElementSibling;
+      const above = prev.matches('.work-hub-scope') ? [prev] : [...prev.querySelectorAll('.work-hub-project-tile, .work-hub-board-row')]
+        .filter(e => { const g = e.closest('.project-folder-sessions'); return !g || g.classList.contains('expanded'); });
+      const below = h.nextElementSibling.querySelector('.work-hub-project-tile');
+      return [Math.round(line - Math.max(...above.map(e => e.getBoundingClientRect().bottom))), below ? Math.round(below.getBoundingClientRect().top - line) : null];
+    })""")
+    for above, below in gaps:
+        if below is not None:
+            assert abs(above - below) <= 1, gaps

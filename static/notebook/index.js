@@ -134,9 +134,9 @@
 
   // ── rendering: side panel ───────────────────────────────────────────────────
   function count(predicate) { return S.notes.filter(predicate).length; }
-  function scopeButton(kind, label, iconName, n) {
+  function scopeButton(kind, label, iconName, n, extraClass) {
     const active = S.scope.kind === kind ? ' active' : '';
-    return `<button type="button" class="work-hub-scope nb-scope${active}" data-nb-scope="${kind}">${icon(iconName)}<span>${esc(label)}</span>${n ? `<span class="nb-scope-count">${n}</span>` : ''}</button>`;
+    return `<button type="button" class="work-hub-scope nb-scope${extraClass ? ' ' + extraClass : ''}${active}" data-nb-scope="${kind}">${icon(iconName)}<span>${esc(label)}</span>${n ? `<span class="nb-scope-count">${n}</span>` : ''}</button>`;
   }
   function noteRows(notes) {
     if (!notes.length) return '<p class="nb-tree-empty">No notes yet</p>';
@@ -177,7 +177,7 @@
         : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
       ${tags.length ? `<div class="work-hub-nav-label work-hub-projects-heading"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
       <div class="nb-nav-spacer"></div>
-      ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at))}
+      ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at), 'nb-trash-scope')}
     </nav>`;
     // Names are set as text, never as HTML.
     side.querySelectorAll('.nb-place-btn').forEach((button) => {
@@ -231,13 +231,30 @@
     const menu = document.createElement('div');
     menu.className = 'work-hub-create-menu nb-create-menu';
     menu.setAttribute('role', 'menu');
-    menu.innerHTML = '<button type="button" role="menuitem" data-nb-create="note">New note</button><button type="button" role="menuitem" data-nb-create="folder">New folder</button><button type="button" role="menuitem" class="is-danger" data-nb-create="delete">Delete</button>';
+    createMenuItems(menu);
     button.parentElement.appendChild(menu);
     const close = (event) => {
       if (menu.contains(event.target) || button.contains(event.target)) return;
       menu.remove(); document.removeEventListener('click', close, true);
     };
     setTimeout(() => document.addEventListener('click', close, true), 0);
+  }
+  // New note from the + menu: the same menu turns into a "where" picker.
+  function showPlacePicker(menu) {
+    const item = (value, name, color) => `<button type="button" role="menuitem" class="nb-pick-item" data-nb-pick="${esc(value)}"><span class="color-dot" aria-hidden="true" style="background:${esc(color)}"></span><span class="nb-pick-name">${esc(name)}</span></button>`;
+    menu.classList.add('is-picking');
+    menu.innerHTML = `<div class="nb-pick-head"><button type="button" class="nb-pick-back" data-nb-pick-back aria-label="Back to the menu">‹</button><span>Add note to</span></div>
+      <div class="nb-pick-list">
+        ${item('general', 'General', 'var(--muted)')}
+        ${S.projects.length ? `<div class="nb-pick-label">Workspaces</div>${S.projects.map((p) => item('p:' + p.project_id, p.name, p.color || 'var(--accent)')).join('')}` : ''}
+        ${S.folders.length ? `<div class="nb-pick-label">Folders</div>${S.folders.map((f) => item('f:' + f.id, f.name, f.color || 'var(--muted)')).join('')}` : ''}
+      </div>`;
+    const first = menu.querySelector('.nb-pick-item');
+    if (first) first.focus();
+  }
+  function createMenuItems(menu) {
+    menu.classList.remove('is-picking');
+    menu.innerHTML = '<button type="button" role="menuitem" data-nb-create="note">New note</button><button type="button" role="menuitem" data-nb-create="folder">New folder</button><button type="button" role="menuitem" class="is-danger" data-nb-create="delete">Delete</button>';
   }
   // A workspace or folder tile: select it and open/close it without
   // re-rendering the panel, so the open/close transition plays.
@@ -868,10 +885,25 @@
     if (t.closest('.dm-x')) return; // delete-mode X buttons handle themselves
     const tile = t.closest('.nb-place-btn');
     if (tile) { if (!S.deleteMode) toggleTile(tile); return; }
+    const back = t.closest('[data-nb-pick-back]');
+    if (back) { const menu = back.closest('.nb-create-menu'); if (menu) createMenuItems(menu); return; }
+    const pick = t.closest('[data-nb-pick]');
+    if (pick) {
+      const value = pick.dataset.nbPick;
+      const menu = pick.closest('.nb-create-menu'); if (menu) menu.remove();
+      const place = value.startsWith('p:') ? {project_id: value.slice(2), folder_id: null}
+        : value.startsWith('f:') ? {project_id: null, folder_id: value.slice(2)} : {project_id: null, folder_id: null};
+      // Show the new note where it was put.
+      S.scope = place.project_id ? {kind: 'project', id: place.project_id} : place.folder_id ? {kind: 'folder', id: place.folder_id} : {kind: 'general', id: null};
+      await newNote(place);
+      return;
+    }
     const create = t.closest('[data-nb-create]');
     if (create) {
       const what = create.dataset.nbCreate;
-      const menu = create.closest('.nb-create-menu'); if (menu) menu.remove();
+      const menu = create.closest('.nb-create-menu');
+      if (what === 'note' && menu) { showPlacePicker(menu); return; }
+      if (menu) menu.remove();
       if (what === 'note') await newNote();
       else if (what === 'folder') await newFolder();
       else enterDeleteMode();
