@@ -36,6 +36,21 @@
 - Headless here can't show real-GPU smoothness; frame pacing was steady
   (16.7ms DrawAndSwap) in software and SwiftShader-GL traces.
 
+## 2026-10-08: Jobs on Apify — live setup (`0c7f93109`, live, not pushed)
+
+- *Scout:* Indeed (valig) + LinkedIn (valig chosen over curious_coder for cost:
+  curious_coder can't filter titles or skip saved jobs, ~$50/mo vs ~$4 for the
+  user's searches). JobStreet removed; scrapers are adapters in
+  `apify.ADAPTERS`/`SITES`. Set times 12:30/18:30 per country clock (MY Mon-Fri,
+  QA Sun-Thu), Saturday once, quiet-day skip. Good matches (65%+) released at
+  5 waiting or 20:00 MYT.
+- *Live config (applied unsupervised, backups in ~/.hermes/backups/*-20261008*):*
+  schedule on; searches "Analyst roles — Malaysia/Qatar" (SOC/IT/Security
+  Analyst, title must contain "analyst", Indeed+LinkedIn, 24h); old "IT"
+  search paused, not deleted. Apify spend at setup: $1.19 of $5 (testing).
+- *Unverified live:* first scheduled runs (Thu 12:30 MYT / 12:30 Doha), the
+  5-match/20:00 release and its email, tailored-resume scoring with real Luna.
+
 ## 2026-10-07: Jobs overhaul — Indeed-only Scout, pipeline tracker, match ring (`4d78a5236`, live, not pushed)
 
 - *Shipped.* Scout searches Indeed only (country site + cities + date posted,
