@@ -52,9 +52,9 @@ _apify_run = apify.run_actor  # tests replace it
 _monotonic = time.monotonic
 MAX_ERRORS = 20
 MAX_LOCATIONS = 10
-# Job sites a search can cover. Indeed can be read directly; LinkedIn and
-# JobStreet only through Apify (they refuse a self-hosted reader outright).
-JOB_SITES = ("indeed", "linkedin", "jobstreet")
+# Job sites a search can cover (apify.SITES). Indeed can also be read directly;
+# the others only through Apify (LinkedIn refuses a self-hosted reader outright).
+JOB_SITES = tuple(apify.SITES)
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
                  "duplicates": 0, "not_postings": 0, "filtered": 0, "blocked": 0, "unsafe": 0, "closed": 0, "errors": 0}
 _COMPANY_SUFFIX = re.compile(r"\b(inc|incorporated|ltd|limited|llc|plc|gmbh|ag|sa|bv|co|corp|corporation|company|pty)\b\.?", re.I)
@@ -164,9 +164,7 @@ def normalize_search(payload: dict) -> dict:
     sites = [str(s).strip().lower() for s in _split(payload.get("sites"), limit=len(JOB_SITES), field="sites")] or ["indeed"]
     unknown = [s for s in sites if s not in JOB_SITES]
     if unknown:
-        raise ScoutError(f"Unknown job site: {unknown[0][:40]}. Choose Indeed, LinkedIn or JobStreet.")
-    if "jobstreet" in sites and country not in apify.JOBSTREET_HOSTS:
-        raise ScoutError("JobStreet only covers Malaysia, Singapore, Indonesia and the Philippines")
+        raise ScoutError(f"Unknown job site: {unknown[0][:40]}. Choose {' or '.join(apify.SITE_NAMES.values())}.")
     return {
         "name": name or keywords[:80],
         "keywords": keywords,
@@ -434,25 +432,14 @@ def start_discovery(search_id: str, *, trigger: str = "manual", idempotency_key:
 _LINKEDIN_ID = re.compile(r"^https://www\.linkedin\.com/jobs/view/(\d+)$")
 
 
-def _site_input(site: str, country: str, country_name: str, keywords: str, location: str, *,
-                limit: int, posted_within_days: int) -> dict:
-    if site == "linkedin":
-        return apify.linkedin_input(country_name, keywords, location, limit=limit, posted_within_days=posted_within_days)
-    if site == "jobstreet":
-        return apify.jobstreet_input(country, keywords, location, limit=limit, posted_within_days=posted_within_days)
-    return apify.indeed_input(country, keywords, location, limit=limit, posted_within_days=posted_within_days)
+# Job ids Scout already has, per site, read back from the stored links (for
+# actors that can skip known jobs).
+_KNOWN_ID = {"linkedin": _LINKEDIN_ID, "indeed": re.compile(r"^https://[a-z.]*indeed\.com/viewjob\?jk=(\w+)$")}
 
 
-def _site_posting(site: str, item: dict, country: str, indeed_host: str) -> dict | None:
-    if site == "linkedin":
-        posting = apify.linkedin_posting(item)
-    elif site == "jobstreet":
-        posting = apify.jobstreet_posting(item, country)
-    else:
-        posting = apify.indeed_posting(item, indeed_host)
-    if posting is not None and site != "indeed":
-        posting["country"] = indeed.country_name(country)
-    return posting
+def _known_ids(site: str, known: set[str]) -> list[str]:
+    pattern = _KNOWN_ID.get(site)
+    return [m.group(1) for url in sorted(known) if pattern and (m := pattern.match(url))] if pattern else []
 
 
 def _oldest_posted(days: int) -> str:
@@ -618,7 +605,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             finish("failed", "Apify is on but not connected; connect it in Settings → Apify or turn it off")
             return
         sites = search["sites"]
-        # LinkedIn and JobStreet are only reachable through Apify.
+        # Sites other than Indeed are only reachable through Apify.
         apify_sites = list(sites) if via_apify else []
         unreachable = [s for s in sites if s != "indeed" and not via_apify]
         if unreachable and sites == unreachable:
@@ -660,9 +647,6 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             locations = search["locations"] or [""]
             country_name = indeed.country_name(search["country"])
             oldest = _oldest_posted(search["posted_within_days"])
-            # Jobs already saved are left out on the actor's side, so repeat runs
-            # pay only for new postings (LinkedIn: a skip list; JobStreet: its own memory).
-            linkedin_known = [m.group(1) for url in sorted(known) if (m := _LINKEDIN_ID.match(url))]
             runs = failures = 0
             pairs = [(query, location) for query in search["queries"] for location in locations]
             for site in apify_sites:
@@ -675,27 +659,26 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     keywords = query + (" remote" if search["remote_only"] else "")
                     label = f"{apify.SITE_NAMES[site]} “{query}”{' in ' + location if location else ''}"
                     save(detail=f"Apify is searching {label}")
+                    context = {"country": search["country"], "country_name": country_name, "indeed_host": country_host,
+                               "keywords": keywords, "location": location, "limit": int(apify_settings["results_per_city"]),
+                               "posted_within_days": search["posted_within_days"]}
                     try:
-                        actor_input = _site_input(
-                            site, search["country"], country_name, keywords, location,
-                            limit=int(apify_settings["results_per_city"]), posted_within_days=search["posted_within_days"])
-                        if site == "linkedin" and linkedin_known:
-                            actor_input["skipJobId"] = linkedin_known[-apify.MAX_SKIP_IDS:]
-                        if site == "linkedin" and search["title_filter"]:
-                            actor_input["titleInclude"] = list(search["title_filter"])
-                        if site == "jobstreet":
-                            actor_input.update(apify.jobstreet_input(
-                                search["country"], keywords, location, limit=int(apify_settings["results_per_city"]),
-                                posted_within_days=search["posted_within_days"], title_filter=search["title_filter"],
-                                state_key=apify.state_key(search["id"][:8], search["country"], query, location or "all")))
-                        items = _apify_run(apify_settings[f"{site}_actor"], actor_input)
+                        reader = apify.adapter(site, apify_settings.get(f"{site}_actor") or apify.default_actor(site))
+                        actor_input = reader.build(context)
+                        # Where the actor can, it drops off-title and already-known jobs
+                        # itself, so they are not charged; Scout filters the rest.
+                        if reader.title_filter and search["title_filter"]:
+                            actor_input[reader.title_filter] = list(search["title_filter"])
+                        if reader.skip_known and (ids := _known_ids(site, known)):
+                            actor_input[reader.skip_known] = ids[-apify.MAX_SKIP_IDS:]
+                        items = _apify_run(reader.actor, actor_input)
                     except apify.ApifyError as error:
                         failures += 1
                         note_error(f"Apify {label}", error)
                         continue
                     for item in items:
                         counts["found"] += 1
-                        posting = _site_posting(site, item, search["country"], country_host)
+                        posting = reader.parse(item, context)
                         if posting is None:
                             counts["closed"] += 1  # expired, or not a usable record
                             continue

@@ -52,7 +52,8 @@
     apifyEditing: false,
     apifyMessage: null,
     matches: null, // Scout inbox: {waiting, released, release_count, ...}
-    apify: null, // {active}: Scout runs on Apify, so Firecrawl is not needed
+    apify: null,
+    sites: null, // job sites Scout offers: [{key, name, needs_apify, actors}] // {active}: Scout runs on Apify, so Firecrawl is not needed
     gmailMessage: null,
   };
 }());

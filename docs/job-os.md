@@ -16,19 +16,17 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 
 1. **Scout (automated).** A search names job titles or keywords, the country,
    optional cities, a date-posted window, *remote only*, and its **job sites**:
-   Indeed, LinkedIn and JobStreet (JobStreet covers Malaysia, Singapore,
-   Indonesia and the Philippines). LinkedIn and JobStreet need Apify.
+   Indeed and LinkedIn (LinkedIn needs Apify).
    Job titles are comma-separated and each is searched on its own (up to 5).
    **Title must contain** keeps a posting only if its title has all the words
    of at least one phrase (`analyst`, or `soc, security analyst`): job sites
    match keywords loosely (on 2026-10-07 LinkedIn returned 342 jobs for "IT
-   Analyst" in a day, 53 with "analyst" in the title). LinkedIn
-   (`titleInclude`) and JobStreet (title-only `includeKeywords`) apply it
-   before returning results, so dropped jobs cost nothing; Scout applies it to
-   every site as well. Each run
+   Analyst" in a day, 53 with "analyst" in the title). Scrapers that support it
+   (valig's LinkedIn one, `titleInclude`) apply it before returning results,
+   so dropped jobs cost nothing; Scout applies it to every site as well. Each run
    reads the country's Indeed results and saves every new posting with its
    description, salary, employment type and country (source `indeed`,
-   `linkedin` or `jobstreet`; one role found on two sites is saved once). See
+   `linkedin`; one role found on two sites is saved once). See
    `docs/job-os-firecrawl.md` for how Indeed is read.
    With **Apify** on (below), the same search runs on Apify instead.
 2. **Add job (manual tracker).** For jobs found anywhere else: title, link,
@@ -54,20 +52,27 @@ checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
 - **Settings:** one actor (`owner/name`) per site and **Results per city**
   (1–1000), which caps the cost.
 
-| Site | Default actor | Cost (free plan) | Notes |
+| Site | Scrapers (first = default) | Cost (free plan) | Notes |
 |---|---|---|---|
 | Indeed | `valig/indeed-jobs-scraper` | $0.001 a run + $0.10 per 1,000 jobs | country site per search |
-| LinkedIn | `valig/linkedin-jobs-scraper` | $0.001 a run + $0.40 per 1,000 jobs | country goes into the location; date filter 1/7/30 days, Scout drops older posts |
-| JobStreet | `blackfalcondata/jobstreet-scraper` | $0.01 a run + $2.00 per 1,000 jobs | MY, SG, ID, PH; sorted by date |
+| LinkedIn | `curious_coder/linkedin-jobs-scraper` | $0.00005 a run + $2.00 per 1,000 jobs | most used; no title filter or skip list on its side, so every job it returns is charged |
+| LinkedIn | `valig/linkedin-jobs-scraper` | $0.001 a run + $0.40 per 1,000 jobs | applies the title filter and skips saved jobs on its side |
 
   The free plan includes $5 a month. Apify counts repeats of jobs you
-  already have. Checked on 2026-10-07 for "data analyst", Kuala Lumpur, 7
-  days: LinkedIn 10/10 records with full descriptions (no salary or work
-  arrangement given); JobStreet 10/10 with descriptions, 6 with salary.
+  already have unless the scraper skips them. Checked on 2026-10-08,
+  Malaysia, last 24 hours: curious_coder returned 40 jobs for "SOC Analyst"
+  (5 with "analyst" in the title) and 200+ for "IT Analyst" (37 of the first
+  200), all with full descriptions; quoting the phrase did not narrow it.
+  valig's LinkedIn scraper with the title filter `analyst` returned 53 for
+  "IT Analyst", all analyst titles.
 - **Failures:** one city failing keeps the others; every city failing fails
   the run with Apify's reason (refused token, out of credit, no answer).
-- **More sites:** `apify.SITES` maps a site to its default actor, with an
-  input builder and a record mapping per site.
+- **More sites or scrapers:** add an `Adapter` (input builder, record mapping,
+  and the input fields it has for a title filter or a skip list) to
+  `apify.ADAPTERS` and list it under its site in `apify.SITES`. Settings,
+  the Scout form and the Pipeline tabs pick it up from there. (JobStreet,
+  `blackfalcondata/jobstreet-scraper`, was removed on 2026-10-08; its adapter
+  is in git history.)
 
 ## Schedule (Settings → Scout schedule)
 
@@ -97,9 +102,9 @@ evening update below.
 4. You choose **Tailor resume** on the ones worth it; Luna writes the
    tailored resume and cover letter in Resume Studio.
 
-Pay only for new jobs: JobStreet runs in the actor's incremental mode (one
-memory per search and city), and LinkedIn is given the jobs Scout already has
-to leave out. Indeed has no such option but costs $0.10 per 1,000 jobs.
+Pay only for new jobs: scrapers that take a skip list (valig's LinkedIn one)
+are given the jobs Scout already has to leave out. The others return them
+again and Scout drops the repeats.
 
 ## Pipeline
 

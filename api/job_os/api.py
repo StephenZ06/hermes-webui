@@ -80,7 +80,8 @@ def _settings_status(settings: dict) -> dict:
 
     from api.job_os import apify
 
-    return {"firecrawl": _firecrawl_health(settings), "gmail": gmail.status(), "apify": apify.status()}
+    return {"firecrawl": _firecrawl_health(settings), "gmail": gmail.status(),
+            "apify": {**apify.status(), "sites": apify.sites_payload()}}
 
 
 def _scout_searches_payload() -> dict:
@@ -100,6 +101,7 @@ def _scout_searches_payload() -> dict:
             # Apify runs need no Firecrawl, so the page lets them run without it.
             "apify": {"active": bool(settings["apify"]["enabled"] and apify.token())},
             "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
+            "sites": apify.sites_payload(),
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"],
                          "summary": automations._scout_when(settings["scout"])}}
 

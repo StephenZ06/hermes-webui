@@ -5,9 +5,11 @@ A job site refuses a reader that asks for many pages from one address; Apify
 runs the scraper on its own pool of addresses and returns structured job
 records. One actor per site is configured in Settings -> Apify; Indeed's
 default is ``valig/indeed-jobs-scraper`` (about $0.10 per 1,000 jobs plus
-$0.001 per run on Apify's free plan); LinkedIn's is ``valig/linkedin-jobs-scraper``
-and JobStreet's ``blackfalcondata/jobstreet-scraper``. Each site has its own
-input builder and record mapping below.
+$0.001 per run on Apify's free plan); LinkedIn's is
+``curious_coder/linkedin-jobs-scraper``. Each actor Scout can read has an
+``Adapter`` (its input and its records) in ``ADAPTERS``; ``SITES`` lists the
+job sites and their actors, first one the default. Adding a site or another
+scraper is one adapter and one ``SITES`` entry.
 
 The API token lives in the profile's env files as ``APIFY_API_TOKEN`` (the
 shared secrets file when enabled, like the Gmail credentials). Responses only
@@ -20,6 +22,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Callable
 
 from api.job_os.env import profile_env_value
@@ -27,9 +30,6 @@ from api.job_os.env import profile_env_value
 TOKEN_KEY = "APIFY_API_TOKEN"
 API = "https://api.apify.com/v2"
 # site -> default actor. The actor's input and output shapes are mapped below.
-SITES = {"indeed": "valig/indeed-jobs-scraper", "linkedin": "valig/linkedin-jobs-scraper",
-         "jobstreet": "blackfalcondata/jobstreet-scraper"}
-SITE_NAMES = {"indeed": "Indeed", "linkedin": "LinkedIn", "jobstreet": "JobStreet"}
 RUN_TIMEOUT_S = 300  # Apify's limit for a synchronous run
 _MAX_BODY = 32 * 1024 * 1024
 _ACTOR = re.compile(r"^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,80}$")
@@ -186,7 +186,8 @@ def indeed_posting(item: dict, host: str) -> dict | None:
     }
 
 
-# ---- LinkedIn (valig/linkedin-jobs-scraper) ---------------------------------------
+# ---- LinkedIn ------------------------------------------------------------------
+# valig/linkedin-jobs-scraper:
 # LinkedIn has no per-country site: the country goes into the location text.
 # Its date filter has only 1, 7 and 30 days; Scout drops anything older than
 # the search's own window afterwards.
@@ -230,49 +231,88 @@ def linkedin_posting(item: dict) -> dict | None:
     }
 
 
-# ---- JobStreet (blackfalcondata/jobstreet-scraper) ---------------------------------
-JOBSTREET_HOSTS = {"my": "my.jobstreet.com", "sg": "sg.jobstreet.com", "id": "id.jobstreet.com", "ph": "ph.jobstreet.com"}
+# curious_coder/linkedin-jobs-scraper: the most used LinkedIn actor. It has no
+# title filter or skip list, so those jobs are returned (and charged) and
+# Scout filters them out afterwards.
+_CURIOUS_AGE = {0: "anyTime", 1: "past24Hours", 3: "pastWeek", 7: "pastWeek", 14: "pastMonth"}
 
 
-def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int,
-                    state_key: str = "", title_filter: list[str] | None = None) -> dict:
-    """``state_key``: names this search's memory on Apify. With it the actor runs
-    incrementally: after the first run it returns (and charges for) only
-    postings that are new or changed since the last run."""
-    payload = {"query": keywords, "country": country.upper(), "location": location, "maxResults": int(limit),
-               # About 22-32 postings a results page.
-               "maxPages": max(1, min(40, -(-int(limit) // 20))), "sortMode": "date",
-               "dateRange": str(posted_within_days) if posted_within_days else "",
-               "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
-    if state_key:
-        payload.update({"incrementalMode": True, "stateKey": state_key, "emitUnchanged": False, "emitExpired": False})
-    if title_filter:
-        # Matched against the title only, on the actor's side: other postings are not returned or charged.
-        payload.update({"includeKeywords": list(title_filter), "keywordMatchTitle": True, "keywordMatchCompany": False,
-                        "keywordMatchDescription": False, "keywordMatchCategory": False, "keywordMatchBulletPoints": False})
-    return payload
+def linkedin_curious_input(country_name: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
+    return {"keywords": keywords, "location": f"{location}, {country_name}" if location else country_name,
+            "datePosted": _CURIOUS_AGE.get(int(posted_within_days or 0), "anyTime"), "limitPerSource": int(limit),
+            # Company pages cost an extra request per job and Scout doesn't use them.
+            "scrapeCompany": False, "splitByLocation": False}
 
 
-def state_key(*parts: str) -> str:
-    """A stable, safe name for an incremental actor's memory."""
-    text = "-".join(re.sub(r"[^a-z0-9]+", "-", str(p).lower()).strip("-") for p in parts if p)
-    return ("hermes-" + text)[:80]
-
-
-def jobstreet_posting(item: dict, country: str) -> dict | None:
-    job_id = str(item.get("seekJobId") or "").strip()
-    if not re.fullmatch(r"\d{4,20}", job_id) or country not in JOBSTREET_HOSTS:
+def linkedin_curious_posting(item: dict) -> dict | None:
+    job_id = str(item.get("id") or "").strip()
+    if not re.fullmatch(r"\d{4,20}", job_id):
         return None
-    arrangement = str(item.get("workArrangement") or "").lower().replace("-", "")
     location = str(item.get("location") or "").strip()
+    salary = item.get("salaryInfo")
+    salary_text = " – ".join(str(v) for v in salary if v) if isinstance(salary, list) else str(salary or "")
     return {
         "title": str(item.get("title") or "").strip()[:240],
-        "company": str(item.get("company") or "").strip()[:240],
+        "company": str(item.get("companyName") or "").strip()[:240],
         "location": location[:240],
-        "salary_text": str(item.get("salaryText") or "").strip()[:120],
+        "salary_text": salary_text.strip()[:120],
         "employment_type": str(item.get("employmentType") or "").strip()[:60],
-        "workplace": arrangement if arrangement in ("remote", "hybrid", "onsite") else _workplace_from(location),
-        "posted_at": str(item.get("postedDate") or "")[:10],
-        "description": str(item.get("description") or item.get("teaser") or "").strip()[:20000],
-        "canonical_url": f"https://{JOBSTREET_HOSTS[country]}/job/{job_id}",
+        "workplace": _workplace_from(location, str(item.get("workplaceType") or "")),
+        "posted_at": str(item.get("postedAt") or "")[:10],
+        "description": str(item.get("descriptionText") or "").strip()[:20000],
+        "canonical_url": f"https://www.linkedin.com/jobs/view/{job_id}",
     }
+
+
+# ---- registry ------------------------------------------------------------------
+@dataclass(frozen=True)
+class Adapter:
+    """How Scout talks to one actor: its input, its records, and what it can
+    do on its own side (dropping titles, skipping known jobs)."""
+    actor: str
+    site: str
+    price: str  # for Settings, free plan
+    build: Callable[[dict], dict]
+    parse: Callable[[dict, dict], dict | None]
+    title_filter: str = ""  # the input field taking title phrases, if any
+    skip_known: str = ""  # the input field taking known job ids, if any
+
+
+ADAPTERS: dict[str, Adapter] = {a.actor: a for a in (
+    Adapter("valig/indeed-jobs-scraper", "indeed", "$0.001 a run + $0.10 per 1,000 jobs",
+            lambda c: indeed_input(c["country"], c["keywords"], c["location"], limit=c["limit"],
+                                   posted_within_days=c["posted_within_days"]),
+            lambda item, c: indeed_posting(item, c["indeed_host"])),
+    Adapter("curious_coder/linkedin-jobs-scraper", "linkedin", "$0.00005 a run + $2.00 per 1,000 jobs",
+            lambda c: linkedin_curious_input(c["country_name"], c["keywords"], c["location"], limit=c["limit"],
+                                             posted_within_days=c["posted_within_days"]),
+            lambda item, c: linkedin_curious_posting(item)),
+    Adapter("valig/linkedin-jobs-scraper", "linkedin", "$0.001 a run + $0.40 per 1,000 jobs",
+            lambda c: linkedin_input(c["country_name"], c["keywords"], c["location"], limit=c["limit"],
+                                     posted_within_days=c["posted_within_days"]),
+            lambda item, c: linkedin_posting(item), title_filter="titleInclude", skip_known="skipJobId"),
+)}
+# site -> (name, actors it can use; the first is the default)
+SITES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "indeed": ("Indeed", ("valig/indeed-jobs-scraper",)),
+    "linkedin": ("LinkedIn", ("curious_coder/linkedin-jobs-scraper", "valig/linkedin-jobs-scraper")),
+}
+SITE_NAMES = {site: name for site, (name, _actors) in SITES.items()}
+
+
+def default_actor(site: str) -> str:
+    return SITES[site][1][0]
+
+
+def adapter(site: str, actor: str) -> Adapter:
+    found = ADAPTERS.get(actor)
+    if found is None or found.site != site:
+        raise ApifyError(f"Scout can't read {actor!r} for {SITE_NAMES.get(site, site)}; pick a scraper in Settings → Apify")
+    return found
+
+
+def sites_payload() -> list[dict]:
+    """Sites and their scrapers, for the Scout form and Settings."""
+    return [{"key": site, "name": name, "needs_apify": site != "indeed",
+             "actors": [{"actor": a, "price": ADAPTERS[a].price} for a in actors]}
+            for site, (name, actors) in SITES.items()]

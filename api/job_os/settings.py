@@ -51,9 +51,8 @@ def default_settings() -> dict:
                   "max_results_per_search": 20, "blocked_companies": []},
         # Apify runs the job-site scraper on its own addresses (api/job_os/apify.py).
         # The token is a secret in the env files; these are the non-secret choices.
-        "apify": {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper",
-                  "linkedin_actor": "valig/linkedin-jobs-scraper", "jobstreet_actor": "blackfalcondata/jobstreet-scraper",
-                  "results_per_city": 50},
+        # One "<site>_actor" per job site in apify.SITES (its first actor by default).
+        "apify": {"enabled": False, **{f"{site}_actor": _default_actor(site) for site in _sites()}, "results_per_city": 50},
         "notifications": {
             "email_enabled": False,
             "to_address": "",
@@ -122,12 +121,27 @@ def _effort(value, field):
     return value
 
 
-def _actor(value, field):
-    from api.job_os.apify import valid_actor
+def _sites():
+    from api.job_os.apify import SITES
 
-    if not isinstance(value, str) or not valid_actor(value.strip()):
-        raise SettingsError(f"{field} must look like owner/actor-name")
-    return value.strip()
+    return tuple(SITES)
+
+
+def _default_actor(site):
+    from api.job_os.apify import default_actor
+
+    return default_actor(site)
+
+
+def _actor_for(site):
+    """Only actors Scout has an adapter for (apify.ADAPTERS) can read this site."""
+    def check(value, field):
+        from api.job_os.apify import SITES
+
+        if value not in SITES[site][1]:
+            raise SettingsError(f"{field} must be one of: {', '.join(SITES[site][1])}")
+        return value
+    return check
 
 
 def _run_times(value, field):
@@ -189,9 +203,7 @@ _VALIDATORS = {
     },
     "apify": {
         "enabled": _bool,
-        "indeed_actor": _actor,
-        "linkedin_actor": _actor,
-        "jobstreet_actor": _actor,
+        **{f"{site}_actor": _actor_for(site) for site in _sites()},
         "results_per_city": lambda v, f: _int(v, f, 1, 1000),
     },
     "scout": {

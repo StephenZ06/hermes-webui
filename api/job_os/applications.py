@@ -2,8 +2,8 @@
 
 The board shows every job in one column per stage, from new finds to closed,
 and can be narrowed to one source (``indeed`` from Scout, ``manual`` from the
-tracker). Scout's finds carry their site (``indeed``, ``linkedin``,
-``jobstreet``); the board can also narrow to one of those. Marking a job applied walks the canonical lifecycle path to
+tracker). Scout's finds carry their job site (``apify.SITES``); the board can also
+narrow to one of those. Marking a job applied walks the canonical lifecycle path to
 ``submitted`` (every step lands in the event log) and records an
 ``application_submitted`` event; a job applied for without a tailored resume
 goes straight to ``submitted``. Outcomes after that (screening, interview,
@@ -32,7 +32,13 @@ COLUMNS = (
     ("offers", "Offer", ("offer", "offer_accepted", "offer_declined")),
     ("closed", "Closed", ("rejected", "withdrawn", "no_response", "closed", "skipped", "expired")),
 )
-SOURCES = ("indeed", "linkedin", "jobstreet", "manual")
+def _sources() -> tuple[str, ...]:
+    from api.job_os.apify import SITES
+
+    return (*SITES, "manual")
+
+
+SOURCES = _sources()
 # What a person can move a card to by hand (tailoring and the internal apply
 # steps have their own actions). "submitted" goes through mark_applied.
 MOVES = (("shortlisted", "Shortlisted"), ("submitted", "Applied"), ("screening", "Screening"),

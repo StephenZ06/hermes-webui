@@ -224,12 +224,14 @@ def test_apify_on_without_a_token_fails_clearly(home, monkeypatch):
 def test_apify_settings_are_validated(home):
     from api.job_os.settings import SettingsError
 
-    for bad in ({"indeed_actor": "no-slash"}, {"results_per_city": 0}, {"results_per_city": 5000}, {"enabled": "yes"}):
+    for bad in ({"indeed_actor": "valig/linkedin-jobs-scraper"}, {"results_per_city": 0}, {"results_per_city": 5000}, {"enabled": "yes"}):
         with pytest.raises(SettingsError):
             save_settings({"apify": bad}, expected_revision=0)
-    saved = save_settings({"apify": {"indeed_actor": "someone/indeed-v2", "results_per_city": 120}}, expected_revision=0)["apify"]
-    assert saved == {"enabled": False, "indeed_actor": "someone/indeed-v2", "linkedin_actor": "valig/linkedin-jobs-scraper",
-                     "jobstreet_actor": "blackfalcondata/jobstreet-scraper", "results_per_city": 120}
+    with pytest.raises(SettingsError, match="must be one of"):
+        save_settings({"apify": {"linkedin_actor": "someone/unknown"}}, expected_revision=0)
+    saved = save_settings({"apify": {"linkedin_actor": "valig/linkedin-jobs-scraper", "results_per_city": 120}}, expected_revision=0)["apify"]
+    assert saved == {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper",
+                     "linkedin_actor": "valig/linkedin-jobs-scraper", "results_per_city": 120}
 
 
 def test_indeed_region_codes_are_dropped_from_the_location():
@@ -248,87 +250,79 @@ def test_a_run_says_when_new_finds_were_not_scored_for_want_of_a_resume(home, mo
     assert run["stage_detail"] == "1 new job · not scored: upload your master resume in Resume Studio"
 
 
-# ---- LinkedIn and JobStreet ----------------------------------------------------------
+# ---- LinkedIn, the scraper registry, title filter ----------------------------------
 
 def _linkedin(job_id, title="Data Analyst", company="Acme", posted="2026-10-07", **extra):
-    return {"id": job_id, "url": f"https://www.linkedin.com/jobs/view/data-analyst-at-acme-{job_id}", "title": title,
+    """A curious_coder/linkedin-jobs-scraper record."""
+    return {"id": job_id, "link": f"https://www.linkedin.com/jobs/view/data-analyst-at-acme-{job_id}?trk=x", "title": title,
             "location": "Kuala Lumpur, Federal Territory of Kuala Lumpur, Malaysia", "companyName": company,
-            "contractType": "Full-time", "salary": "", "postedDate": posted, "description": "SQL.", **extra}
+            "salaryInfo": ["RM5,000", "RM7,000"], "postedAt": posted, "descriptionText": "SQL.", **extra}
 
 
-def _jobstreet(job_id, title="Data Analyst", company="Acme", posted="2026-10-07T01:42:31.188Z", **extra):
-    return {"jobId": "hash", "seekJobId": job_id, "title": title, "canonicalUrl": f"https://my.jobstreet.com/job/{job_id}",
-            "company": company, "location": "Kuala Lumpur, Malaysia", "salaryText": "RM 5,000 – RM 6,000 per month",
-            "employmentType": "Full time", "workArrangement": "hybrid", "description": "Dashboards.", "postedDate": posted, **extra}
-
-
-def test_linkedin_and_jobstreet_records_map_to_postings():
-    li = apify.linkedin_posting(_linkedin("4219847745"))
+def test_curious_coder_linkedin_records_map_to_postings():
+    li = apify.linkedin_curious_posting(_linkedin("4219847745"))
     assert li["canonical_url"] == "https://www.linkedin.com/jobs/view/4219847745"
-    assert (li["company"], li["employment_type"], li["posted_at"], li["description"]) == ("Acme", "Full-time", "2026-10-07", "SQL.")
-    assert apify.linkedin_posting(_linkedin("../x")) is None
-    assert apify.linkedin_input("Malaysia", "data analyst", "Penang", limit=50, posted_within_days=3) == {
-        "keywords": "data analyst", "location": "Penang, Malaysia", "limit": 50, "datePosted": "r604800"}
-    assert apify.linkedin_input("Malaysia", "x", "", limit=5, posted_within_days=1)["location"] == "Malaysia"
-    js = apify.jobstreet_posting(_jobstreet("91247023"), "my")
-    assert js["canonical_url"] == "https://my.jobstreet.com/job/91247023"
-    assert (js["salary_text"], js["workplace"], js["posted_at"]) == ("RM 5,000 – RM 6,000 per month", "hybrid", "2026-10-07")
-    assert apify.jobstreet_posting(_jobstreet("91247023"), "us") is None
-    assert apify.jobstreet_input("sg", "x", "", limit=50, posted_within_days=7) == {
-        "query": "x", "country": "SG", "location": "", "maxResults": 50, "maxPages": 3, "sortMode": "date",
-        "dateRange": "7", "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
+    assert (li["company"], li["salary_text"], li["posted_at"], li["description"]) == ("Acme", "RM5,000 – RM7,000", "2026-10-07", "SQL.")
+    assert apify.linkedin_curious_posting(_linkedin("../x")) is None
+    assert apify.linkedin_curious_input("Qatar", "SOC Analyst", "Doha", limit=40, posted_within_days=1) == {
+        "keywords": "SOC Analyst", "location": "Doha, Qatar", "datePosted": "past24Hours", "limitPerSource": 40,
+        "scrapeCompany": False, "splitByLocation": False}
+    assert apify.linkedin_curious_input("Malaysia", "x", "", limit=5, posted_within_days=3)["datePosted"] == "pastWeek"
 
 
-def test_a_search_on_three_sites_runs_each_site_and_saves_a_role_once(home, monkeypatch, ):
+def test_the_registry_offers_each_sites_scrapers_and_refuses_unknown_ones():
+    assert apify.SITE_NAMES == {"indeed": "Indeed", "linkedin": "LinkedIn"}
+    assert apify.default_actor("linkedin") == "curious_coder/linkedin-jobs-scraper"
+    payload = {s["key"]: s for s in apify.sites_payload()}
+    assert [a["actor"] for a in payload["linkedin"]["actors"]] == ["curious_coder/linkedin-jobs-scraper", "valig/linkedin-jobs-scraper"]
+    assert payload["linkedin"]["needs_apify"] and not payload["indeed"]["needs_apify"]
+    with pytest.raises(apify.ApifyError, match="pick a scraper"):
+        apify.adapter("linkedin", "valig/indeed-jobs-scraper")
+
+
+def test_a_search_on_both_sites_runs_each_and_saves_a_role_once(home, monkeypatch):
     runs = []
     results = _apify_on(monkeypatch, runs)
     today = __import__("time").strftime("%Y-%m-%d")
     results += [[_item("in1", datePublished=today + "T00:00:00Z")],
                 [_linkedin("1111111", title="BI Analyst", company="Globex", posted=today),
-                 _linkedin("2222222", title="Data Analyst", company="Acme", posted=today),  # same role as Indeed's
-                 _linkedin("3333333", title="Old Role", company="Initech", posted="2020-01-01")],
-                [_jobstreet("91247023", title="Data Engineer", company="Umbrella", posted=today + "T01:00:00Z")]]
-    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["jobstreet", "indeed", "linkedin"],
-                                  "posted_within_days": 7})
-    assert search["sites"] == ["indeed", "linkedin", "jobstreet"]
+                 _linkedin("2222222", title="Data Analyst", company="Acme", posted=today),  # the same role as Indeed's
+                 _linkedin("3333333", title="Old Role", company="Initech", posted="2020-01-01")]]
+    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["linkedin", "indeed"], "posted_within_days": 7})
+    assert search["sites"] == ["indeed", "linkedin"]
     run = _run(search)
     assert run["status"] == "completed", run
-    assert [a for a, _ in runs] == ["valig/indeed-jobs-scraper", "valig/linkedin-jobs-scraper", "blackfalcondata/jobstreet-scraper"]
-    assert runs[1][1]["location"] == "Malaysia" and runs[2][1]["country"] == "MY"
+    assert [a for a, _ in runs] == ["valig/indeed-jobs-scraper", "curious_coder/linkedin-jobs-scraper"]
+    assert runs[1][1]["location"] == "Malaysia" and "skipJobId" not in runs[1][1] and "titleInclude" not in runs[1][1]
     c = run["counts"]
-    assert (c["saved"], c["duplicates"], c["filtered"]) == (3, 1, 1), c
+    assert (c["saved"], c["duplicates"], c["filtered"]) == (2, 1, 1), c
     by_source = {j.source: j for j in list_jobs()}
-    assert set(by_source) == {"indeed", "linkedin", "jobstreet"}
-    assert by_source["linkedin"].country == "Malaysia" and by_source["jobstreet"].canonical_url == "https://my.jobstreet.com/job/91247023"
+    assert set(by_source) == {"indeed", "linkedin"} and by_source["linkedin"].country == "Malaysia"
 
 
 def test_sites_are_validated_and_need_apify(home, monkeypatch):
     with pytest.raises(scout.ScoutError, match="Unknown job site"):
-        scout.create_search({"keywords": "x", "country": "my", "sites": ["monster"]})
-    with pytest.raises(scout.ScoutError, match="JobStreet only covers"):
-        scout.create_search({"keywords": "x", "country": "us", "sites": ["jobstreet"]})
+        scout.create_search({"keywords": "x", "country": "my", "sites": ["jobstreet"]})
     run = _run(scout.create_search({"keywords": "x", "country": "my", "sites": ["linkedin"]}))
     assert run["status"] == "failed" and "LinkedIn need" in run["stage_detail"]
 
 
-def test_repeat_runs_ask_apify_only_for_new_jobs(home, monkeypatch):
+def test_scrapers_that_can_skip_known_jobs_and_off_title_ones_are_told_to(home, monkeypatch):
     runs = []
-    results = _apify_on(monkeypatch, runs)
+    results = _apify_on(monkeypatch, runs, linkedin_actor="valig/linkedin-jobs-scraper")
     today = __import__("time").strftime("%Y-%m-%d")
-    results += [[_linkedin("1111111", posted=today)], [_jobstreet("91247023", title="Data Engineer", company="Umbrella", posted=today + "T01:00:00Z")]]
-    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["linkedin", "jobstreet"], "locations": ["Kuala Lumpur"]})
-    assert _run(search)["counts"]["saved"] == 2
-    first_li, first_js = runs[0][1], runs[1][1]
-    assert "skipJobId" not in first_li
-    assert first_js["incrementalMode"] is True and first_js["stateKey"] == f"hermes-{search['id'][:8]}-my-data-kuala-lumpur"
-    results += [[], []]
+    valig = lambda job_id, title, company: {"id": job_id, "title": title, "companyName": company, "location": "Kuala Lumpur",
+                                            "postedDate": today, "description": "x"}
+    results += [[valig("1111111", "SOC Analyst", "A")]]
+    search = scout.create_search({"keywords": "SOC Analyst", "country": "my", "sites": ["linkedin"], "title_filter": "soc"})
+    assert _run(search)["counts"]["saved"] == 1
+    assert runs[0][1]["titleInclude"] == ["soc"] and "skipJobId" not in runs[0][1]
+    results += [[]]
     _run(search)
-    assert runs[2][1]["skipJobId"] == ["1111111"], "LinkedIn leaves out jobs Scout already has"
-    assert runs[3][1]["stateKey"] == first_js["stateKey"], "JobStreet keeps one memory per search and city"
-    assert apify.state_key("ab", "my", "Petaling Jaya / SS2") == "hermes-ab-my-petaling-jaya-ss2"
+    assert runs[1][1]["skipJobId"] == ["1111111"], "jobs Scout already has are left out on the actor's side"
 
 
-def test_title_filter_keeps_only_matching_titles_and_reaches_the_actors(home, monkeypatch):
+def test_title_filter_keeps_only_matching_titles(home, monkeypatch):
     runs = []
     results = _apify_on(monkeypatch, runs)
     today = __import__("time").strftime("%Y-%m-%d")
@@ -342,20 +336,12 @@ def test_title_filter_keeps_only_matching_titles_and_reaches_the_actors(home, mo
                                   "title_filter": "soc, Security Analyst"})
     assert search["title_filter"] == ["soc", "security analyst"] and search["queries"] == ["SOC Analyst", "Security Analyst"]
     run = _run(search)
-    # One run per site and job title.
     assert [(a.split("/")[1], i.get("title") or i.get("keywords")) for a, i in runs] == [
         ("indeed-jobs-scraper", "SOC Analyst"), ("indeed-jobs-scraper", "Security Analyst"),
         ("linkedin-jobs-scraper", "SOC Analyst"), ("linkedin-jobs-scraper", "Security Analyst")]
-    assert runs[2][1]["titleInclude"] == ["soc", "security analyst"], "LinkedIn drops other titles before charging"
     saved = sorted(j.title for j in list_jobs())
     assert saved == ["Cyber Security Analyst", "SOC Analyst L1", "Security Operations Analyst", "Senior Security Analyst"]
     assert run["counts"]["filtered"] == 2  # Network Engineer, Analyst Relations Lead
-
-
-def test_jobstreet_gets_the_title_filter_as_title_only_keywords():
-    payload = apify.jobstreet_input("my", "SOC Analyst", "", limit=10, posted_within_days=1, title_filter=["soc", "security analyst"])
-    assert payload["includeKeywords"] == ["soc", "security analyst"]
-    assert payload["keywordMatchTitle"] is True and payload["keywordMatchDescription"] is False
     assert scout.title_matches("Senior SOC Analyst (L2)", ["soc"]) and not scout.title_matches("Associate", ["soc"])
     assert scout.title_matches("Analyst, Security Operations", ["security analyst"]), "all words, any order"
     assert scout.title_matches("Anything", []), "no filter keeps everything"

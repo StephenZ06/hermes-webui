@@ -34,6 +34,8 @@
       const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
+      // A remembered tab for a job site that is no longer offered falls back to All.
+      if (state.sites && !['all', 'manual', ...state.sites.map((site) => site.key)].includes(state.pipelineSource)) state.pipelineSource = 'all';
       const wantBoard = state.activeView === 'pipeline' && state.pipelineMode === 'board' && !state.statusFilter;
       const wantAutomations = state.activeView === 'dashboard';
       // Countries feed the Scout form and the tracker's country list; they never change.
@@ -76,6 +78,7 @@
         state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule;
         state.countries = searches.countries || []; state.postedWithin = searches.posted_within_days || state.postedWithin;
         state.apify = searches.apify || null;
+        state.sites = searches.sites || state.sites;
       }
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (matches) state.matches = matches.matches;
@@ -622,7 +625,7 @@
     const state = window.JobOSState;
     try {
       const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
-      if (['all', 'indeed', 'linkedin', 'jobstreet', 'manual'].includes(saved.source)) state.pipelineSource = saved.source;
+      if (typeof saved.source === 'string' && /^[a-z]{1,20}$/.test(saved.source)) state.pipelineSource = saved.source;
       if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
     } catch (_) { /* defaults */ }
   }
