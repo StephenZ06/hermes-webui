@@ -36,6 +36,26 @@
 - Headless here can't show real-GPU smoothness; frame pacing was steady
   (16.7ms DrawAndSwap) in software and SwiftShader-GL traces.
 
+## 2026-10-07: Jobs overhaul — Indeed-only Scout, pipeline tracker, match ring (`4d78a5236`, live, not pushed)
+
+- *Shipped.* Scout searches Indeed only (country site + cities + date posted,
+  direct `/jobs?q=&l=` pages, web-search fallback). Greenhouse/Lever/Ashby
+  reading and **auto-apply removed** (supersedes the 2026-10-06 auto-apply
+  entry below). Pipeline = board per stage with All/Indeed/Manual tabs, Add
+  job manual tracker, Edit, notes drawer; Applications view folded in. Resume
+  Studio Match check ring (green ≥75, yellow ≥50, red below). Schema 8. Guide:
+  `docs/job-os.md`.
+- *Indeed blocks bursts.* After many requests it refuses posting pages for
+  minutes while results pages still load; Scout reads postings 5s apart and
+  stops after 4 refusals in a row. On 2026-10-07 repeated probing left it
+  refusing; one earlier paced run saved 18 Kuala Lumpur postings.
+- *Live DB.* Migration 8 runs on the first Jobs visit; backup taken at
+  `~/.hermes/backups/job_os-pre-v8-20261007.db`.
+- *Suite (3 shards, before the early-stop tweak).* 16,844 passed, 4 failed:
+  `test_rail_grouping_browser` (x2, Notes rail item) and
+  `test_model_cache_metadata` also fail on the parent commit; the dashboard
+  count-roll test passes alone (load flake).
+
 ## 2026-10-06: Job OS phases 4-7 and extras shipped (live, not pushed)
 
 - *Shipped.* Applications board + funnel (`5940f24c7`); email alerts, daily
