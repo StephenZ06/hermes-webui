@@ -96,9 +96,9 @@ def test_search_validation():
     with pytest.raises(scout.ScoutError, match="Date posted"):
         scout.normalize_search({"keywords": "x", "country": "my", "posted_within_days": 5})
     data = scout.normalize_search({"keywords": "python dev", "country": "SG", "locations": "Singapore, Jurong",
-                                   "posted_within_days": "7", "sites": ["jobs.lever.co"]})
+                                   "posted_within_days": "7"})
     assert data == {"name": "python dev", "keywords": "python dev", "country": "sg", "locations": ["Singapore", "Jurong"],
-                    "posted_within_days": 7, "remote_only": False, "enabled": True}
+                    "sites": ["indeed"], "posted_within_days": 7, "remote_only": False, "enabled": True}
 
 
 def test_a_run_reads_the_countrys_results_page_and_saves_its_postings(store):

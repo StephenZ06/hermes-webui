@@ -209,7 +209,7 @@ def test_one_failed_city_keeps_the_others_and_all_failing_fails_the_run(home, mo
     results += [apify.ApifyError("Apify did not answer"), [_item("ok1")]]
     search = scout.create_search({"keywords": "x", "country": "my", "locations": ["A", "B"]})
     run = _run(search)
-    assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["errors"][0]["where"] == "Apify A"
+    assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["errors"][0]["where"] == "Apify Indeed A"
     results += [apify.ApifyError("Your Apify account is out of credit for this month.")]
     failed = _run(scout.create_search({"keywords": "y", "country": "my"}))
     assert failed["status"] == "failed" and "out of credit" in failed["stage_detail"]
@@ -227,8 +227,9 @@ def test_apify_settings_are_validated(home):
     for bad in ({"indeed_actor": "no-slash"}, {"results_per_city": 0}, {"results_per_city": 5000}, {"enabled": "yes"}):
         with pytest.raises(SettingsError):
             save_settings({"apify": bad}, expected_revision=0)
-    assert save_settings({"apify": {"indeed_actor": "someone/indeed-v2", "results_per_city": 120}}, expected_revision=0)["apify"] == {
-        "enabled": False, "indeed_actor": "someone/indeed-v2", "results_per_city": 120}
+    saved = save_settings({"apify": {"indeed_actor": "someone/indeed-v2", "results_per_city": 120}}, expected_revision=0)["apify"]
+    assert saved == {"enabled": False, "indeed_actor": "someone/indeed-v2", "linkedin_actor": "valig/linkedin-jobs-scraper",
+                     "jobstreet_actor": "blackfalcondata/jobstreet-scraper", "results_per_city": 120}
 
 
 def test_indeed_region_codes_are_dropped_from_the_location():
@@ -245,3 +246,66 @@ def test_a_run_says_when_new_finds_were_not_scored_for_want_of_a_resume(home, mo
     run = _run(scout.create_search({"keywords": "x", "country": "my"}))
     assert run["status"] == "completed"
     assert run["stage_detail"] == "1 new job · not scored: upload your master resume in Resume Studio"
+
+
+# ---- LinkedIn and JobStreet ----------------------------------------------------------
+
+def _linkedin(job_id, title="Data Analyst", company="Acme", posted="2026-10-07", **extra):
+    return {"id": job_id, "url": f"https://www.linkedin.com/jobs/view/data-analyst-at-acme-{job_id}", "title": title,
+            "location": "Kuala Lumpur, Federal Territory of Kuala Lumpur, Malaysia", "companyName": company,
+            "contractType": "Full-time", "salary": "", "postedDate": posted, "description": "SQL.", **extra}
+
+
+def _jobstreet(job_id, title="Data Analyst", company="Acme", posted="2026-10-07T01:42:31.188Z", **extra):
+    return {"jobId": "hash", "seekJobId": job_id, "title": title, "canonicalUrl": f"https://my.jobstreet.com/job/{job_id}",
+            "company": company, "location": "Kuala Lumpur, Malaysia", "salaryText": "RM 5,000 – RM 6,000 per month",
+            "employmentType": "Full time", "workArrangement": "hybrid", "description": "Dashboards.", "postedDate": posted, **extra}
+
+
+def test_linkedin_and_jobstreet_records_map_to_postings():
+    li = apify.linkedin_posting(_linkedin("4219847745"))
+    assert li["canonical_url"] == "https://www.linkedin.com/jobs/view/4219847745"
+    assert (li["company"], li["employment_type"], li["posted_at"], li["description"]) == ("Acme", "Full-time", "2026-10-07", "SQL.")
+    assert apify.linkedin_posting(_linkedin("../x")) is None
+    assert apify.linkedin_input("Malaysia", "data analyst", "Penang", limit=50, posted_within_days=3) == {
+        "keywords": "data analyst", "location": "Penang, Malaysia", "limit": 50, "datePosted": "r604800"}
+    assert apify.linkedin_input("Malaysia", "x", "", limit=5, posted_within_days=1)["location"] == "Malaysia"
+    js = apify.jobstreet_posting(_jobstreet("91247023"), "my")
+    assert js["canonical_url"] == "https://my.jobstreet.com/job/91247023"
+    assert (js["salary_text"], js["workplace"], js["posted_at"]) == ("RM 5,000 – RM 6,000 per month", "hybrid", "2026-10-07")
+    assert apify.jobstreet_posting(_jobstreet("91247023"), "us") is None
+    assert apify.jobstreet_input("sg", "x", "", limit=50, posted_within_days=7) == {
+        "query": "x", "country": "SG", "location": "", "maxResults": 50, "maxPages": 3, "sortMode": "date",
+        "dateRange": "7", "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
+
+
+def test_a_search_on_three_sites_runs_each_site_and_saves_a_role_once(home, monkeypatch, ):
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    today = __import__("time").strftime("%Y-%m-%d")
+    results += [[_item("in1", datePublished=today + "T00:00:00Z")],
+                [_linkedin("1111111", title="BI Analyst", company="Globex", posted=today),
+                 _linkedin("2222222", title="Data Analyst", company="Acme", posted=today),  # same role as Indeed's
+                 _linkedin("3333333", title="Old Role", company="Initech", posted="2020-01-01")],
+                [_jobstreet("91247023", title="Data Engineer", company="Umbrella", posted=today + "T01:00:00Z")]]
+    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["jobstreet", "indeed", "linkedin"],
+                                  "posted_within_days": 7})
+    assert search["sites"] == ["indeed", "linkedin", "jobstreet"]
+    run = _run(search)
+    assert run["status"] == "completed", run
+    assert [a for a, _ in runs] == ["valig/indeed-jobs-scraper", "valig/linkedin-jobs-scraper", "blackfalcondata/jobstreet-scraper"]
+    assert runs[1][1]["location"] == "Malaysia" and runs[2][1]["country"] == "MY"
+    c = run["counts"]
+    assert (c["saved"], c["duplicates"], c["filtered"]) == (3, 1, 1), c
+    by_source = {j.source: j for j in list_jobs()}
+    assert set(by_source) == {"indeed", "linkedin", "jobstreet"}
+    assert by_source["linkedin"].country == "Malaysia" and by_source["jobstreet"].canonical_url == "https://my.jobstreet.com/job/91247023"
+
+
+def test_sites_are_validated_and_need_apify(home, monkeypatch):
+    with pytest.raises(scout.ScoutError, match="Unknown job site"):
+        scout.create_search({"keywords": "x", "country": "my", "sites": ["monster"]})
+    with pytest.raises(scout.ScoutError, match="JobStreet only covers"):
+        scout.create_search({"keywords": "x", "country": "us", "sites": ["jobstreet"]})
+    run = _run(scout.create_search({"keywords": "x", "country": "my", "sites": ["linkedin"]}))
+    assert run["status"] == "failed" and "LinkedIn need" in run["stage_detail"]

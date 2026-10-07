@@ -14,10 +14,13 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 
 ## Two ways in
 
-1. **Scout (automated).** A search names job titles or keywords, the Indeed
-   country, optional cities, a date-posted window and *remote only*. Each run
+1. **Scout (automated).** A search names job titles or keywords, the country,
+   optional cities, a date-posted window, *remote only*, and its **job sites**:
+   Indeed, LinkedIn and JobStreet (JobStreet covers Malaysia, Singapore,
+   Indonesia and the Philippines). LinkedIn and JobStreet need Apify. Each run
    reads the country's Indeed results and saves every new posting with its
-   description, salary, employment type and country (source `indeed`). See
+   description, salary, employment type and country (source `indeed`,
+   `linkedin` or `jobstreet`; one role found on two sites is saved once). See
    `docs/job-os-firecrawl.md` for how Indeed is read.
    With **Apify** on (below), the same search runs on Apify instead.
 2. **Add job (manual tracker).** For jobs found anywhere else: title, link,
@@ -31,8 +34,7 @@ Either way, a job with a description can be scored and tailored.
 
 Indeed blocks a reader that asks for many pages from one address. With Apify
 connected and **Search Indeed through Apify** on, each city in a Scout search
-is one run of an Apify actor (default `valig/indeed-jobs-scraper`) on Apify's
-own addresses; it returns finished postings, description included, and Scout
+and site is one run of an Apify actor on Apify's own addresses; it returns finished postings, description included, and Scout
 saves them like any other find (same duplicate, blocked-company and remote
 checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
 
@@ -41,14 +43,23 @@ checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
   (the shared secrets file when enabled). It is sent to Apify in a header,
   never in a URL, and never returned to the browser (only "connected" and its
   last four characters).
-- **Settings:** the actor (`owner/name`) and **Results per city** (1–1000),
-  which caps the cost.
-- **Cost (valig, free plan):** $0.001 per run + $0.10 per 1,000 jobs; the free
-  plan includes $5 a month. Apify counts repeats of jobs you already have.
+- **Settings:** one actor (`owner/name`) per site and **Results per city**
+  (1–1000), which caps the cost.
+
+| Site | Default actor | Cost (free plan) | Notes |
+|---|---|---|---|
+| Indeed | `valig/indeed-jobs-scraper` | $0.001 a run + $0.10 per 1,000 jobs | country site per search |
+| LinkedIn | `valig/linkedin-jobs-scraper` | $0.001 a run + $0.40 per 1,000 jobs | country goes into the location; date filter 1/7/30 days, Scout drops older posts |
+| JobStreet | `blackfalcondata/jobstreet-scraper` | $0.01 a run + $2.00 per 1,000 jobs | MY, SG, ID, PH; sorted by date |
+
+  The free plan includes $5 a month. Apify counts repeats of jobs you
+  already have. Checked on 2026-10-07 for "data analyst", Kuala Lumpur, 7
+  days: LinkedIn 10/10 records with full descriptions (no salary or work
+  arrangement given); JobStreet 10/10 with descriptions, 6 with salary.
 - **Failures:** one city failing keeps the others; every city failing fails
   the run with Apify's reason (refused token, out of credit, no answer).
-- **More sites:** `apify.SITES` maps a site to its default actor; LinkedIn
-  and JobStreet actors can be added with their own record mapping.
+- **More sites:** `apify.SITES` maps a site to its default actor, with an
+  input builder and a record mapping per site.
 
 ## Pipeline
 

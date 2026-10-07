@@ -93,8 +93,11 @@
     const [, key, text] = band(a.fit_score);
     return `<span class="fit-ring ${size || ''}" data-band="${key}" style="--fit:${Number(a.fit_score)}" title="${esc(text)} · ${Number(a.fit_score)}%" aria-label="${esc(text)}, ${Number(a.fit_score)} percent"><span>${Number(a.fit_score)}</span></span>`;
   }
-  const sourceOf = (job) => (job.source === 'manual' ? 'manual' : 'indeed');
-  const SOURCE_LABEL = {indeed: 'Indeed', manual: 'Manual'};
+  const SOURCE_LABEL = {indeed: 'Indeed', linkedin: 'LinkedIn', jobstreet: 'JobStreet', manual: 'Manual'};
+  // Scout's finds carry their job site; anything older or unknown was Indeed.
+  const sourceOf = (job) => (SOURCE_LABEL[job.source] ? job.source : 'indeed');
+  const SITES = [['indeed', 'Indeed'], ['linkedin', 'LinkedIn'], ['jobstreet', 'JobStreet']];
+  const JOBSTREET_COUNTRIES = ['my', 'sg', 'id', 'ph'];
   // "Kuala Lumpur, M14, MY" + "Malaysia" reads as "Kuala Lumpur, Malaysia":
   // Indeed's region and country codes add nothing next to the country name.
   function place(job) {
@@ -202,11 +205,11 @@
           ${msg}</div>`;
     const perCity = Number(v('apify.results_per_city')) || 0;
     const cost = (0.001 + perCity * 0.0001).toFixed(3);
-    return section('apify', 'Apify', 'Runs the Indeed scraper on Apify’s servers instead of reading Indeed from this machine, so Indeed can’t block your address, and every job arrives with its full description.', `
+    return section('apify', 'Apify', 'Runs the job-site scrapers on Apify’s servers instead of this machine, so Indeed can’t block your address, LinkedIn and JobStreet become searchable, and every job arrives with its full description.', `
       ${token}
-      ${toggle('apify.enabled', 'Search Indeed through Apify', v('apify.enabled'), ap.token ? 'Scout searches run on Apify instead of Firecrawl' : 'Connect a token first')}
-      <div class="job-os-grid">${textField('apify.indeed_actor', 'Indeed scraper (actor)', v('apify.indeed_actor'), 'valig/indeed-jobs-scraper')}${numberField('apify.results_per_city', 'Results per city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
-      <p class="job-os-card-note apify-cost">Each city in a search is one run: about <strong>$${cost}</strong> at ${perCity} results ($0.001 a run + $0.10 per 1,000 jobs with <code>valig/indeed-jobs-scraper</code> on the free plan). Repeats of jobs you already have are still counted by Apify.</p>`);
+      ${toggle('apify.enabled', 'Search job sites through Apify', v('apify.enabled'), ap.token ? 'Scout searches run on Apify instead of Firecrawl; needed for LinkedIn and JobStreet' : 'Connect a token first')}
+      <div class="job-os-grid">${textField('apify.indeed_actor', 'Indeed scraper', v('apify.indeed_actor'), 'valig/indeed-jobs-scraper')}${textField('apify.linkedin_actor', 'LinkedIn scraper', v('apify.linkedin_actor'), 'valig/linkedin-jobs-scraper')}${textField('apify.jobstreet_actor', 'JobStreet scraper', v('apify.jobstreet_actor'), 'blackfalcondata/jobstreet-scraper')}${numberField('apify.results_per_city', 'Results per city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
+      <p class="job-os-card-note apify-cost">Each site and city in a search is one run. At ${perCity} results with the default scrapers on the free plan: Indeed about <strong>$${cost}</strong>, LinkedIn about <strong>$${(0.001 + perCity * 0.0004).toFixed(3)}</strong>, JobStreet about <strong>$${(0.01 + perCity * 0.002).toFixed(3)}</strong> a run. Repeats of jobs you already have are still counted by Apify.</p>`);
   }
   function settingsView(state) {
     const s = state.settingsDraft || state.settings;
@@ -316,12 +319,13 @@
   }
   function emptyPipeline(state) {
     const src = state.pipelineSource;
-    const title = src === 'manual' ? 'No tracked jobs yet' : src === 'indeed' ? 'No Indeed finds yet' : 'Your pipeline is empty';
+    const site = src !== 'all' && src !== 'manual' ? SOURCE_LABEL[src] : '';
+    const title = src === 'manual' ? 'No tracked jobs yet' : site ? `No ${site} finds yet` : 'Your pipeline is empty';
     const body = src === 'manual' ? 'Add a job you found yourself — paste its link and description, then score and tailor your resume for it.'
-      : src === 'indeed' ? 'Create a Scout search for your job titles and the cities you want; every posting it finds lands here.'
-        : 'Scout fills it from Indeed, or add a job you found yourself.';
+      : site ? `Create a Scout search that includes ${site}${src !== 'indeed' ? ' (through Apify)' : ''}; every posting it finds lands here.`
+        : 'Scout fills it from Indeed, LinkedIn and JobStreet, or add a job you found yourself.';
     const actions = [src !== 'manual' ? '<button type="button" class="job-os-btn" data-job-os-view="scout">Open Scout</button>' : '',
-      src !== 'indeed' ? `<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button>` : ''].join('');
+      !site ? `<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button>` : ''].join('');
     return `<section class="job-os-card job-os-empty pipe-empty-state"><strong>${title}</strong><p>${body}</p><div class="job-os-actions">${actions}</div></section>`;
   }
   // ---- Job drawer: details, actions, notes -----------------------------------------
@@ -403,7 +407,7 @@
   function pipelineBar(state, jobs, counts) {
     const unanalysed = jobs.filter((j) => j.status === 'scraped' && j.has_description && !j.analysis).length;
     const busy = jobs.filter(analysing).length;
-    const tabs = [['all', 'All'], ['indeed', 'Indeed'], ['manual', 'Manual']].map(([key, text]) => {
+    const tabs = [['all', 'All'], ...SITES, ['manual', 'Manual']].map(([key, text]) => {
       const on = state.pipelineSource === key;
       return `<button type="button" role="tab" aria-selected="${on}" class="seg-btn${on ? ' active' : ''}" data-job-os-action="pipe-source" data-source="${key}">${text}<span class="seg-count">${Number(counts[key] || 0)}</span></button>`;
     }).join('');
@@ -452,7 +456,7 @@
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
       <div class="scout-search-head"><div class="scout-search-title"><h3>${esc(search.name)}</h3><p>${esc(search.keywords)}</p></div>
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
-      <div class="job-os-chips"><span class="job-os-chip scout-country"${search.country_name ? '' : ' data-kind="warn"'} title="Searched on ${esc((state.countries || []).find((c) => c.code === search.country)?.host || 'Indeed')}">${country}</span>${where.map((w) => `<span class="job-os-chip">${esc(w)}</span>`).join('')}${search.last_run_at ? `<span class="job-os-chip muted">Last run ${esc(when(search.last_run_at))}</span>` : ''}${schedule ? `<span class="job-os-chip muted">${esc(schedule)}</span>` : ''}</div>
+      <div class="job-os-chips">${(search.sites || ['indeed']).map((k) => `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('')}<span class="job-os-chip scout-country"${search.country_name ? '' : ' data-kind="warn"'} title="Searched on ${esc((state.countries || []).find((c) => c.code === search.country)?.host || 'Indeed')}">${country}</span>${where.map((w) => `<span class="job-os-chip">${esc(w)}</span>`).join('')}${search.last_run_at ? `<span class="job-os-chip muted">Last run ${esc(when(search.last_run_at))}</span>` : ''}${schedule ? `<span class="job-os-chip muted">${esc(schedule)}</span>` : ''}</div>
       ${runPanel(run)}
       <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">Edit</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}">Delete</button></div>
     </article>`;
@@ -464,13 +468,20 @@
     const countries = (state.countries || []).map((c) => `<option value="${esc(c.code)}" ${c.code === form.country ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
     const posted = (state.postedWithin || [0, 1, 3, 7, 14]).map((d) => `<option value="${d}" ${Number(form.posted_within_days) === d ? 'selected' : ''}>${esc(POSTED[d] || 'Any time')}</option>`).join('');
     const host = ((state.countries || []).find((c) => c.code === form.country) || {}).host;
-    return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New Indeed search'}</h2><p class="job-os-card-note">Scout searches ${host ? `<code>${esc(host)}</code>` : 'Indeed'} for these titles in each city and reads every posting it finds.</p></div></div>
+    const apifyOn = !!(state.apify && state.apify.active);
+    return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New search'}</h2><p class="job-os-card-note">Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div></div>
       <form id="job-os-search-form" novalidate><div class="scout-form-grid">
         <label class="job-os-field wide"><span>Job titles or keywords <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. data analyst, SQL" value="${esc(form.keywords)}"></label>
         <label class="job-os-field"><span>Country <em>required</em></span><select name="country" required data-job-os-change="scout-country"><option value="">Choose…</option>${countries}</select></label>
         <label class="job-os-field"><span>Cities</span><input name="locations" placeholder="Comma-separated, e.g. Kuala Lumpur, Penang. Empty = whole country" value="${esc(form.locations)}"></label>
         <label class="job-os-field"><span>Date posted</span><select name="posted_within_days">${posted}</select></label>
         <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
+        <fieldset class="job-os-field wide scout-sites"><legend>Job sites</legend><div class="scout-site-options">${SITES.map(([key, text]) => {
+          const blocked = key === 'jobstreet' && form.country && !JOBSTREET_COUNTRIES.includes(form.country);
+          const note = key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : key === 'jobstreet' ? (blocked ? 'not in this country' : 'MY, SG, ID, PH · Apify') : 'through Apify';
+          const checked = (form.sites || ['indeed']).includes(key) && !blocked;
+          return `<label class="scout-site${blocked || (key !== 'indeed' && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span><strong>${text}</strong><small>${note}</small></span></label>`;
+        }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">LinkedIn and JobStreet run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
       </div>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
       <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
@@ -656,10 +667,10 @@
       const src = state.pipelineSource || 'all';
       const scoped = jobs.filter((j) => src === 'all' || sourceOf(j) === src);
       const counts = state.board && state.board.sources ? state.board.sources
-        : {all: jobs.length, indeed: jobs.filter((j) => sourceOf(j) === 'indeed').length, manual: jobs.filter((j) => sourceOf(j) === 'manual').length};
+        : Object.fromEntries([['all', jobs.length], ...Object.keys(SOURCE_LABEL).map((k) => [k, jobs.filter((j) => sourceOf(j) === k).length])]);
       const listMode = state.pipelineMode === 'list' || filter;
       const list = `<section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${scoped.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Show the board</button>' : ''}</div>${scoped.length ? jobList(sortJobs(scoped, state.sortBy), '', '') : emptyPipeline(state)}</section>`;
-      body = `${header('Pipeline', 'Every job from new find to offer — Scout’s Indeed finds and the ones you track yourself.', state)}
+      body = `${header('Pipeline', 'Every job from new find to offer — Scout’s finds from Indeed, LinkedIn and JobStreet, and the ones you track yourself.', state)}
         ${pipelineBar(state, jobs, counts)}
         ${listMode ? list : pipelineBoard(state)}
         ${jobDrawer(state)}${jobForm(state)}`;
@@ -669,7 +680,7 @@
       body = `${header('Logistics centre', 'Every job is a parcel moving through the warehouse. Click one to open it.', state)}
         <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage" data-slide-safe></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
     } else if (view === 'scout') {
-      body = `${header('Scout', 'Saved searches find new postings on Indeed and read each one into your Pipeline.', state)}${scoutView(state)}${jobForm(state)}`;
+      body = `${header('Scout', 'Saved searches find new postings on Indeed, LinkedIn and JobStreet and save each one into your Pipeline.', state)}${scoutView(state)}${jobForm(state)}`;
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {

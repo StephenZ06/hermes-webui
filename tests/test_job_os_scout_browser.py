@@ -44,6 +44,7 @@ def test_scout_search_lifecycle_and_blocked_run():
               s.value = 'my'; s.dispatchEvent(new Event('change', {bubbles: true})); }""")
             page.wait_for_selector('#scout-form code:has-text("malaysia.indeed.com")', timeout=10000)
             kept = page.input_value('input[name="keywords"]')
+            sites = page.evaluate("() => Object.fromEntries([...document.querySelectorAll('input[name=sites]')].map(i => [i.value, i.checked]))")
             page.fill('input[name="locations"]', "Kuala Lumpur, Penang")
             page.evaluate("""() => { const s = document.querySelector('#job-os-search-form select[name="posted_within_days"]'); s.value = '7'; }""")
             page.click('#job-os-search-form button[type="submit"]')
@@ -65,6 +66,7 @@ def test_scout_search_lifecycle_and_blocked_run():
             browser.close()
     assert "Firecrawl" in banner and run_disabled, "Run waits for a ready Firecrawl"
     assert kept == "python backend"
+    assert sites == {"indeed": True, "linkedin": False, "jobstreet": False}, "a new search starts on Indeed"
     assert all(word in chips for word in ("Malaysia", "Kuala Lumpur", "Penang", "Last 7 days"))
 
 

@@ -2,7 +2,8 @@
 
 The board shows every job in one column per stage, from new finds to closed,
 and can be narrowed to one source (``indeed`` from Scout, ``manual`` from the
-tracker). Marking a job applied walks the canonical lifecycle path to
+tracker). Scout's finds carry their site (``indeed``, ``linkedin``,
+``jobstreet``); the board can also narrow to one of those. Marking a job applied walks the canonical lifecycle path to
 ``submitted`` (every step lands in the event log) and records an
 ``application_submitted`` event; a job applied for without a tailored resume
 goes straight to ``submitted``. Outcomes after that (screening, interview,
@@ -31,7 +32,7 @@ COLUMNS = (
     ("offers", "Offer", ("offer", "offer_accepted", "offer_declined")),
     ("closed", "Closed", ("rejected", "withdrawn", "no_response", "closed", "skipped", "expired")),
 )
-SOURCES = ("indeed", "manual")
+SOURCES = ("indeed", "linkedin", "jobstreet", "manual")
 # What a person can move a card to by hand (tailoring and the internal apply
 # steps have their own actions). "submitted" goes through mark_applied.
 MOVES = (("shortlisted", "Shortlisted"), ("submitted", "Applied"), ("screening", "Screening"),
@@ -158,7 +159,7 @@ def board(source: str | None = None) -> dict:
         key = by_status.get(job.status.value)
         if key is None:
             continue
-        kind = "manual" if job.source == "manual" else "indeed"
+        kind = job.source if job.source in SOURCES else "indeed"  # Scout's older finds were all Indeed
         sources[kind] += 1
         if source is not None and kind != source:
             continue

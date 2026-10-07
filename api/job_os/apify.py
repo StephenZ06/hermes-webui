@@ -5,8 +5,9 @@ A job site refuses a reader that asks for many pages from one address; Apify
 runs the scraper on its own pool of addresses and returns structured job
 records. One actor per site is configured in Settings -> Apify; Indeed's
 default is ``valig/indeed-jobs-scraper`` (about $0.10 per 1,000 jobs plus
-$0.001 per run on Apify's free plan). LinkedIn and JobStreet actors can be
-added to ``SITES`` the same way.
+$0.001 per run on Apify's free plan); LinkedIn's is ``valig/linkedin-jobs-scraper``
+and JobStreet's ``blackfalcondata/jobstreet-scraper``. Each site has its own
+input builder and record mapping below.
 
 The API token lives in the profile's env files as ``APIFY_API_TOKEN`` (the
 shared secrets file when enabled, like the Gmail credentials). Responses only
@@ -26,7 +27,9 @@ from api.job_os.env import profile_env_value
 TOKEN_KEY = "APIFY_API_TOKEN"
 API = "https://api.apify.com/v2"
 # site -> default actor. The actor's input and output shapes are mapped below.
-SITES = {"indeed": "valig/indeed-jobs-scraper"}
+SITES = {"indeed": "valig/indeed-jobs-scraper", "linkedin": "valig/linkedin-jobs-scraper",
+         "jobstreet": "blackfalcondata/jobstreet-scraper"}
+SITE_NAMES = {"indeed": "Indeed", "linkedin": "LinkedIn", "jobstreet": "JobStreet"}
 RUN_TIMEOUT_S = 300  # Apify's limit for a synchronous run
 _MAX_BODY = 32 * 1024 * 1024
 _ACTOR = re.compile(r"^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,80}$")
@@ -180,4 +183,70 @@ def indeed_posting(item: dict, host: str) -> dict | None:
         "posted_at": str(item.get("datePublished") or item.get("dateOnIndeed") or "")[:10],
         "description": str(text or "").strip()[:20000],
         "canonical_url": f"https://{host}/viewjob?jk={key}",
+    }
+
+
+# ---- LinkedIn (valig/linkedin-jobs-scraper) ---------------------------------------
+# LinkedIn has no per-country site: the country goes into the location text.
+# Its date filter has only 1, 7 and 30 days; Scout drops anything older than
+# the search's own window afterwards.
+_LINKEDIN_AGE = {0: "", 1: "r86400", 3: "r604800", 7: "r604800", 14: "r2592000"}
+
+
+def linkedin_input(country_name: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
+    return {"keywords": keywords, "location": f"{location}, {country_name}" if location else country_name,
+            "limit": int(limit), "datePosted": _LINKEDIN_AGE.get(int(posted_within_days or 0), "")}
+
+
+def _workplace_from(*texts: str) -> str:
+    text = " ".join(t for t in texts if t).lower()
+    return "remote" if "remote" in text else "hybrid" if "hybrid" in text else "onsite" if "on-site" in text or "onsite" in text else ""
+
+
+def linkedin_posting(item: dict) -> dict | None:
+    job_id = str(item.get("id") or "").strip()
+    if not re.fullmatch(r"\d{4,20}", job_id):
+        return None
+    location = str(item.get("location") or "").strip()
+    return {
+        "title": str(item.get("title") or "").strip()[:240],
+        "company": str(item.get("companyName") or "").strip()[:240],
+        "location": location[:240],
+        "salary_text": str(item.get("salary") or "").strip()[:120],
+        "employment_type": str(item.get("contractType") or "").strip()[:60],
+        "workplace": _workplace_from(location, str(item.get("workplaceType") or "")),
+        "posted_at": str(item.get("postedDate") or "")[:10],
+        "description": str(item.get("description") or "").strip()[:20000],
+        "canonical_url": f"https://www.linkedin.com/jobs/view/{job_id}",
+    }
+
+
+# ---- JobStreet (blackfalcondata/jobstreet-scraper) ---------------------------------
+JOBSTREET_HOSTS = {"my": "my.jobstreet.com", "sg": "sg.jobstreet.com", "id": "id.jobstreet.com", "ph": "ph.jobstreet.com"}
+
+
+def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
+    return {"query": keywords, "country": country.upper(), "location": location, "maxResults": int(limit),
+            # About 22-32 postings a results page.
+            "maxPages": max(1, min(10, -(-int(limit) // 20))), "sortMode": "date",
+            "dateRange": str(posted_within_days) if posted_within_days else "",
+            "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
+
+
+def jobstreet_posting(item: dict, country: str) -> dict | None:
+    job_id = str(item.get("seekJobId") or "").strip()
+    if not re.fullmatch(r"\d{4,20}", job_id) or country not in JOBSTREET_HOSTS:
+        return None
+    arrangement = str(item.get("workArrangement") or "").lower().replace("-", "")
+    location = str(item.get("location") or "").strip()
+    return {
+        "title": str(item.get("title") or "").strip()[:240],
+        "company": str(item.get("company") or "").strip()[:240],
+        "location": location[:240],
+        "salary_text": str(item.get("salaryText") or "").strip()[:120],
+        "employment_type": str(item.get("employmentType") or "").strip()[:60],
+        "workplace": arrangement if arrangement in ("remote", "hybrid", "onsite") else _workplace_from(location),
+        "posted_at": str(item.get("postedDate") or "")[:10],
+        "description": str(item.get("description") or item.get("teaser") or "").strip()[:20000],
+        "canonical_url": f"https://{JOBSTREET_HOSTS[country]}/job/{job_id}",
     }

@@ -90,7 +90,7 @@ def test_board_narrows_to_one_source_and_counts_both(store):
     assert sorted(ids(applications.board())) == sorted([manual.id, found.id])
     indeed_board = applications.board("indeed")
     assert ids(indeed_board) == [found.id] and ids(applications.board("manual")) == [manual.id]
-    assert indeed_board["sources"] == {"all": 2, "indeed": 1, "manual": 1}
+    assert indeed_board["sources"] == {"all": 2, "indeed": 1, "linkedin": 0, "jobstreet": 0, "manual": 1}
     card = indeed_board["columns"][0]["jobs"][0]
     assert (card["source"], card["country"], card["salary_text"]) == ("indeed", "Malaysia", "RM 5,000 / month")
 
@@ -134,7 +134,7 @@ def test_routes(store):
     routes.handle_get(b, urlparse("/api/job-os/applications"))
     assert [c["key"] for c in json.loads(b.wfile.getvalue())["columns"]][:2] == ["new", "shortlisted"]
     bad = _H()
-    routes.handle_get(bad, urlparse("/api/job-os/applications?source=linkedin"))
+    routes.handle_get(bad, urlparse("/api/job-os/applications?source=monster"))
     assert bad.status == 400
     t = _H()
     routes.handle_get(t, urlparse(f"/api/job-os/jobs/{job.id}/timeline"))

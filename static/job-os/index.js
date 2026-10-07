@@ -615,7 +615,7 @@
     const state = window.JobOSState;
     try {
       const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
-      if (['all', 'indeed', 'manual'].includes(saved.source)) state.pipelineSource = saved.source;
+      if (['all', 'indeed', 'linkedin', 'jobstreet', 'manual'].includes(saved.source)) state.pipelineSource = saved.source;
       if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
     } catch (_) { /* defaults */ }
   }
@@ -742,14 +742,15 @@
   function formFromSearch(search) {
     // A new search starts in the country of the last one made.
     const last = (window.JobOSState.searches || []).slice(-1)[0];
-    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords, country: search.country,
+    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords, country: search.country, sites: search.sites,
       locations: (search.locations || []).join(', '), posted_within_days: search.posted_within_days, remote_only: search.remote_only}
-      : {name: '', keywords: '', country: last ? last.country : '', locations: '', posted_within_days: 0, remote_only: false};
+      : {name: '', keywords: '', country: last ? last.country : '', sites: last ? last.sites : ['indeed'], locations: '', posted_within_days: 0, remote_only: false};
   }
   function searchPayload(form) {
     const data = new FormData(form);
     return {name: data.get('name') || '', keywords: data.get('keywords') || '', country: data.get('country') || '',
       locations: data.get('locations') || '', posted_within_days: Number(data.get('posted_within_days') || 0),
+      sites: data.getAll('sites'),
       remote_only: data.get('remote_only') === 'on'};
   }
   async function saveSearchForm(form) {
