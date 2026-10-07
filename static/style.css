@@ -9563,6 +9563,9 @@ main.main.showing-logs > #mainLogs{display:flex;}
 /* This rule must follow the shared .project-folder-list padding so Work Hub
    folders share the All work row's exact horizontal frame. */
 #workHubProjects.work-hub-projects{padding:0 0 10px;}
+/* Same 2px between the scope buttons as Notes (.nb-nav gap), without a nav-wide
+   gap that would also widen the spacing around the WORKSPACES divider. */
+#workHubSidebar .work-hub-scope + .work-hub-scope{margin-top:2px;}
 /* Notes' workspace and folder lists sit flush, exactly like the Work Hub's. */
 #notebookSidebar .work-hub-projects{padding:0 0 10px;}
 /* A heading straight after a list already has the list's 10px under it: equal space above and below its line. */

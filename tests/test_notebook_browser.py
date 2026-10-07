@@ -241,6 +241,17 @@ def test_trash_is_centred_and_section_dividers_have_equal_space(page):
             assert abs(above - below) <= 1, gaps
 
 
+def test_work_hub_scope_buttons_are_spaced_like_the_notes_ones(page):
+    _open(page)
+    def spacing(root):
+        return page.evaluate("""(root) => { const [a, b] = document.querySelectorAll(root + ' .work-hub-scope');
+          return Math.round((b.getBoundingClientRect().top - a.getBoundingClientRect().bottom) * 10) / 10; }""", root)
+    notes = spacing("#notebookSidebar")
+    page.evaluate("async () => { await switchPanel('notes'); }")
+    page.wait_for_selector("#workHubSidebar .work-hub-scope", timeout=15000)
+    assert notes > 0 and spacing("#workHubSidebar") == notes
+
+
 @pytest.mark.parametrize("panel", ["notes", "notebook"])
 def test_opening_a_workspace_does_not_slide_its_rows(page, panel):
     """Work Hub and Notes share .project-folder-sessions. A collapsed 5px
