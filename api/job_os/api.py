@@ -193,10 +193,12 @@ def _scout_get(handler, parsed) -> bool:
 
     path = parsed.path
     if path == f"{_PREFIX}/resume":
-        from api.job_os.resume import load_resume, original_file
+        from api.job_os.resume import load_resume, original_file, style_profile
 
         found = original_file()
         meta = load_resume()
+        if meta:  # a resume saved before designs were read gets its design now
+            meta["style"] = style_profile()
         j(handler, {"resume": meta, "original": found[0].suffix.lstrip(".") if found and meta else None})
         return True
     if path in (f"{_PREFIX}/resume/original", f"{_PREFIX}/resume/preview"):

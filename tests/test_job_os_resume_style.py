@@ -156,6 +156,13 @@ def test_routes_serve_the_original_a_preview_and_automate(store, monkeypatch):  
     info = _H()
     routes.handle_get(info, urlparse("/api/job-os/resume"))
     assert json.loads(info.wfile.getvalue())["original"] == "pdf"
+    # A resume stored before designs were read gets one when it is next asked for.
+    stored = json.loads((resume._dir() / "master.json").read_text())
+    stored.pop("style")
+    (resume._dir() / "master.json").write_text(json.dumps(stored))
+    again = _H()
+    routes.handle_get(again, urlparse("/api/job-os/resume"))
+    assert json.loads(again.wfile.getvalue())["resume"]["style"]["heading"]["color"] == "#297d80"
     pdf = _H()
     routes.handle_get(pdf, urlparse("/api/job-os/resume/original"))
     assert pdf.status == 200 and pdf.sent["Content-Type"] == "application/pdf" and pdf.wfile.getvalue() == data

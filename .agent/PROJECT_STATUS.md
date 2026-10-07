@@ -1,5 +1,26 @@
 # Project status — hermes-webui
 
+## 2026-10-08 (later): Jobs round 2 — speed, layout, drag and drop, design-matched tailoring (live, not pushed)
+
+- **Fixed:** Settings toggles blanked the page (hidden checkbox positioned against a far
+  ancestor; focus scrolled the app shell). A search named only by its keywords now
+  follows them; the live "IT" search was renamed to its keywords by SQL (backup
+  `~/.hermes/backups/job_os-20261008-before-search-rename.db`).
+- **Speed:** views paint instantly from cached state; slow reads cached briefly;
+  unchanged HTML is not re-applied. 300 ms simulated latency: ~2.4 s -> <10 ms to paint.
+- **UI:** mx-icons, card head rhythm, Apify meter in the side panel, Automations beside
+  funnel (rows open their Settings section), pagers (Recent jobs, Latest finds), Scout
+  overview + equal search cards, board drag and drop, Resume Studio thumbnail/preview,
+  match-check stepper with Tailor & next and Automate all, tailoring report.
+- **Backend:** `resume_style.py` (design read from PDF/DOCX), styled exports, tailoring
+  prompt keeps master layout (method from amanattar/resume-tailoring-skill),
+  `autopilot.py` + schema 11 `auto_tailor`, `/resume/original`, `/resume/preview`,
+  `/automate`.
+- **Installed:** resume-tailoring skill via `hermes skills install` into the active
+  profile (`coding-neuralwatt/skills/productivity/resume-tailoring`), scan SAFE.
+- **Unverified live:** a real Luna tailoring with the new prompt and report; the real
+  master's design export opened in Word; Automate all on real jobs (costs model calls).
+
 ## 2026-10-06 (later): sidebar slide is now layout-driven
 
 - Symptom: page content stuttered as the sidebar expanded/collapsed. Cause,

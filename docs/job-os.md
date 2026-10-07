@@ -5,7 +5,7 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 
 | Section | What it does |
 |---|---|
-| **Dashboard** | Counts, the funnel, automations, recent jobs, and **Add job**. |
+| **Dashboard** | Counts, automations beside the funnel, recent jobs (ten a page), and **Add job**. |
 | **Scout** | Saved Indeed searches; runs find postings and add them to the Pipeline. |
 | **Pipeline** | Every job, from new find to offer: a board or a list. |
 | **Resume Studio** | The master resume, its match score against a job, and tailored versions. |
@@ -110,10 +110,11 @@ again and Scout drops the repeats.
 
 ## Watching the cost and the result
 
-- **Apify credit (Dashboard):** this month's spend against the account's
-  monthly limit (`GET /v2/users/me/limits`, checked at most every 10 minutes),
-  with a warning from 80%: scheduled runs stop when the credit runs out. The
-  header chip shows Apify and its spend while Apify is on.
+- **Apify credit (side panel):** this month's credit left against the
+  account's monthly limit, in the chat page's usage-meter format
+  (`GET /v2/users/me/limits`, checked at most every 10 minutes), with a
+  warning from 80%: scheduled runs stop when the credit runs out. The header
+  chip shows Apify and its spend while Apify is on.
 - **Master vs tailored (Resume Studio):** when Luna tailors a resume, the
   tailored resume is scored against the job with the same prompt as the master
   (`analysis.score_text`), shown as "Master 68 → Tailored 84 (+16)". After
@@ -130,6 +131,10 @@ again and Scout drops the repeats.
   Applied, Interviewing, Offer, Closed. Cards show the company, place,
   salary, workplace and type, the match ring, where the job came from, and
   the next step for the stage (Tailor resume, Review resume, Apply, …).
+- **Drag a card** to another column: Shortlisted, Resume (tailors it),
+  Ready to apply (from a tailored resume), Applied (asks first), Interviewing,
+  Offer, or Closed (pick Rejected, No response, Withdrawn or Skipped). Columns
+  a card can't go to fade while it is dragged; the board scrolls at its edges.
 - **Move to…** on a card lists only the stages its lifecycle allows
   (`applications.moves_for`). *Applied* records an application from any stage
   before it, with or without a tailored resume.
@@ -145,9 +150,40 @@ Luna (Settings → AI) reads the job description against the master resume and
 returns a 0–100 fit score with the matches and gaps. The ring is coloured by
 band: **75–100 Good match** (green), **50–74 Needs improvement** (yellow),
 **0–49 Terrible match** (red), with the percentage in the centre. Resume
-Studio's **Match check** shows it for any job with a description; **Score my
-resume** costs one model call. Scout finds are scored automatically when
-*Analyse new finds automatically* is on.
+Studio's **Match check** steps through the jobs on the board one at a time,
+in board order (New, Shortlisted, Resume, Ready to apply): Previous/Next or
+the arrow keys, then **Tailor & next**. **Score my resume** costs one model
+call. Scout finds are scored automatically when *Analyse new finds
+automatically* is on.
+
+**Automate all** does the same for every job in the match check not yet
+tailored: jobs already scored 50% or more are tailored now, unscored ones are
+scored first and tailored if they reach 50% (`autopilot.py`, table
+`auto_tailor`). Nothing is sent; you review and apply.
+
+## Tailoring in your resume's own design
+
+The master resume's design is read once from the uploaded PDF or DOCX
+(`resume_style.py`): page size and margins, font, and the size, colour and
+weight of the name, headline, contact line, section headings (and their
+rules), entry lines and body, plus the bullet mark. Resume Studio shows a
+thumbnail of the uploaded file; click it for a full preview, click again or
+press Esc to close.
+
+Luna gets the master as Markdown and keeps its layout: the same header lines,
+the same section headings in the same order, the same "Title | Company |
+Place | Dates" entry lines and bullets. Only the wording and the selection
+change. The PDF and DOCX exports draw that Markdown in the master's design,
+and **Preview** shows it. A pasted resume uses a neutral design.
+
+The tailoring prompt follows the resume-tailoring skill
+(github.com/amanattar/resume-tailoring-skill, MIT): a success profile of the
+role, every bullet matched as direct, transferable or adjacent, truthful
+rewording (the posting's terms for the same thing, never a higher title), and
+gaps left out and reported. Resume Studio shows that report beside the
+tailored resume, with questions that may surface experience you have not
+listed yet. The skill itself is also installed for chat use under
+`productivity/resume-tailoring` in the Hermes profile.
 
 ## Applying: the Apply kit
 
