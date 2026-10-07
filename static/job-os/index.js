@@ -73,6 +73,7 @@
       if (searches) {
         state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule;
         state.countries = searches.countries || []; state.postedWithin = searches.posted_within_days || state.postedWithin;
+        state.apify = searches.apify || null;
       }
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (runs) state.runs = runs.runs || [];
@@ -235,6 +236,7 @@
       // Enter in the Gmail fields connects Gmail rather than saving settings.
       settingsForm.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && event.target.closest('#job-os-gmail')) { event.preventDefault(); runAction('gmail-connect'); }
+        if (event.key === 'Enter' && event.target.closest('#job-os-apify')) { event.preventDefault(); runAction('apify-connect', document.querySelector('[data-job-os-action="apify-connect"]')); }
       }, {signal});
     }
   }
@@ -320,6 +322,8 @@
         const msg = document.querySelector('#job-os-gmail .job-os-gmail-msg');
         if (msg) { msg.dataset.tone = 'error'; msg.textContent = state.gmailMessage.text; }
       }
+    } else if (name.startsWith('apify-')) {
+      return apifyAction(name, button);
     } else if (name === 'gmail-edit' || name === 'gmail-cancel') {
       state.gmailEditing = name === 'gmail-edit';
       state.gmailMessage = null;
@@ -370,6 +374,32 @@
       } catch (_error) { /* the status pill keeps its last value */ }
       refresh();
     }
+  }
+  // ---- Apify token ------------------------------------------------------------
+  async function apifyAction(name, button) {
+    const state = window.JobOSState;
+    const say = (tone, text) => { state.apifyMessage = {tone, text}; };
+    if (name === 'apify-edit' || name === 'apify-cancel') { state.apifyEditing = name === 'apify-edit'; state.apifyMessage = null; return refresh(); }
+    if (name === 'apify-disconnect') {
+      const ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({message: 'Disconnect Apify? Scout goes back to reading Indeed itself.', confirmLabel: 'Disconnect', danger: true})
+        : window.confirm('Disconnect Apify?');
+      if (!ok) return undefined;
+    }
+    const input = document.getElementById('job-os-apify-token');
+    const value = input ? input.value : '';
+    if (input) input.value = '';
+    if (button) { button.disabled = true; button.classList.add('is-busy'); }
+    try {
+      let result;
+      if (name === 'apify-connect') { result = await window.JobOSApi.connectApify(value); say('ok', `Connected${result.apify.username ? ` as ${result.apify.username}` : ''}. Turn on “Search Indeed through Apify” and save.`); state.apifyEditing = false; }
+      else if (name === 'apify-test') { result = await window.JobOSApi.testApify(); say('ok', `The token works${result.apify.username ? ` (${result.apify.username}${result.apify.plan ? `, ${result.apify.plan} plan` : ''})` : ''}.`); }
+      else { result = await window.JobOSApi.disconnectApify(); say('ok', 'Apify disconnected.'); }
+      state.settingsStatus = Object.assign({}, state.settingsStatus, {apify: result.apify});
+    } catch (error) {
+      say('error', error.message || 'Apify request failed.');
+    }
+    return refresh();
   }
   // ---- Pipeline: analysis polling, triage, resume ---------------------------
   let analysisTimer = null;

@@ -41,6 +41,9 @@ def default_settings() -> dict:
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         # blocked_companies: Scout never saves postings from these employers.
         "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20, "blocked_companies": []},
+        # Apify runs the job-site scraper on its own addresses (api/job_os/apify.py).
+        # The token is a secret in the env files; these are the non-secret choices.
+        "apify": {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper", "results_per_city": 50},
         "notifications": {
             "email_enabled": False,
             "to_address": "",
@@ -104,6 +107,14 @@ def _effort(value, field):
     return value
 
 
+def _actor(value, field):
+    from api.job_os.apify import valid_actor
+
+    if not isinstance(value, str) or not valid_actor(value.strip()):
+        raise SettingsError(f"{field} must look like owner/actor-name")
+    return value.strip()
+
+
 def _companies(value, field):
     if isinstance(value, str):
         value = value.splitlines()
@@ -130,6 +141,11 @@ _VALIDATORS = {
         "location": lambda v, f: _free_text(v, f, 120),
         "linkedin_url": _url,
         "portfolio_url": _url,
+    },
+    "apify": {
+        "enabled": _bool,
+        "indeed_actor": _actor,
+        "results_per_city": lambda v, f: _int(v, f, 1, 1000),
     },
     "scout": {
         "enabled": _bool,

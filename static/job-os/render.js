@@ -182,6 +182,32 @@
       ${msg}
     </div>`;
   }
+  // Apify: the token is checked with Apify, then saved in the env files like
+  // Gmail's password and never shown again; the other choices are settings.
+  function apifySection(state, v) {
+    const ap = (state.settingsStatus || {}).apify || {};
+    const msg = `<p class="job-os-gmail-msg"${state.apifyMessage ? ` data-tone="${esc(state.apifyMessage.tone)}"` : ''} role="status">${esc(state.apifyMessage ? state.apifyMessage.text : '')}</p>`;
+    const where = ap.scope === 'shared' ? 'for every profile' : 'for this profile';
+    const token = ap.token && !state.apifyEditing
+      ? `<div class="job-os-conn" id="job-os-apify">
+          <div class="job-os-conn-head"><strong>API token</strong>${pill(true, 'Connected')}</div>
+          <p class="job-os-card-note">Token ending <code>${esc(ap.token_hint || '')}</code>, saved ${where}. It is never shown again.</p>
+          <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="apify-test">Test token</button><button type="button" class="job-os-btn" data-job-os-action="apify-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="apify-disconnect">Disconnect</button></div>
+          ${msg}</div>`
+      : `<div class="job-os-conn" id="job-os-apify">
+          <div class="job-os-conn-head"><strong>API token</strong>${pill(false, 'Not connected')}</div>
+          <p class="job-os-card-note">Create a free account at <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener noreferrer">apify.com</a> (no card needed; $5 of usage a month), then copy your token from <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener noreferrer">Settings → API &amp; Integrations</a>. Hermes checks it with Apify, then saves it ${where}.</p>
+          <div class="job-os-grid"><label class="job-os-field"><span>Apify API token</span><input type="password" id="job-os-apify-token" autocomplete="off" spellcheck="false" placeholder="apify_api_…"></label></div>
+          <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="apify-connect">Connect Apify</button>${ap.token ? '<button type="button" class="job-os-btn" data-job-os-action="apify-cancel">Cancel</button>' : ''}</div>
+          ${msg}</div>`;
+    const perCity = Number(v('apify.results_per_city')) || 0;
+    const cost = (0.001 + perCity * 0.0001).toFixed(3);
+    return section('apify', 'Apify', 'Runs the Indeed scraper on Apify’s servers instead of reading Indeed from this machine, so Indeed can’t block your address, and every job arrives with its full description.', `
+      ${token}
+      ${toggle('apify.enabled', 'Search Indeed through Apify', v('apify.enabled'), ap.token ? 'Scout searches run on Apify instead of Firecrawl' : 'Connect a token first')}
+      <div class="job-os-grid">${textField('apify.indeed_actor', 'Indeed scraper (actor)', v('apify.indeed_actor'), 'valig/indeed-jobs-scraper')}${numberField('apify.results_per_city', 'Results per city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
+      <p class="job-os-card-note apify-cost">Each city in a search is one run: about <strong>$${cost}</strong> at ${perCity} results ($0.001 a run + $0.10 per 1,000 jobs with <code>valig/indeed-jobs-scraper</code> on the free plan). Repeats of jobs you already have are still counted by Apify.</p>`);
+  }
   function settingsView(state) {
     const s = state.settingsDraft || state.settings;
     if (!s) return '<section class="job-os-card"><p class="job-os-card-note">Loading settings…</p></section>';
@@ -226,7 +252,7 @@
       ${notifyStatus(state.notifications)}`);
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${ai}${applicant}${scout}${notify}${resume}${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${scout}${notify}${resume}${bar}</form>`;
   }
   const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
   function notifyStatus(n) {
@@ -418,7 +444,8 @@
   function searchCard(search, state) {
     const run = latestRun(state, search.id);
     const active = run && ACTIVE_RUN.includes(run.status);
-    const ready = state.firecrawl && state.firecrawl.state === 'healthy';
+    const viaApify = !!(state.apify && state.apify.active);
+    const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy');
     const where = [...(search.locations || []), search.remote_only ? 'Remote only' : '', POSTED[search.posted_within_days] || ''].filter(Boolean);
     const country = search.country_name ? `${icon('pin', 12)}${esc(search.country_name)}` : 'Choose a country';
     const schedule = state.schedule && state.schedule.enabled && search.enabled && search.next_run_at ? `Next ${until(search.next_run_at)}` : '';
@@ -427,7 +454,7 @@
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
       <div class="job-os-chips"><span class="job-os-chip scout-country"${search.country_name ? '' : ' data-kind="warn"'} title="Searched on ${esc((state.countries || []).find((c) => c.code === search.country)?.host || 'Indeed')}">${country}</span>${where.map((w) => `<span class="job-os-chip">${esc(w)}</span>`).join('')}${search.last_run_at ? `<span class="job-os-chip muted">Last run ${esc(when(search.last_run_at))}</span>` : ''}${schedule ? `<span class="job-os-chip muted">${esc(schedule)}</span>` : ''}</div>
       ${runPanel(run)}
-      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? '' : 'Firecrawl is not ready — see Settings'}">${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">Edit</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}">Delete</button></div>
+      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">Edit</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}">Delete</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -454,12 +481,13 @@
     const fc = state.firecrawl || {};
     const provider = state.searchProvider === 'brave' ? 'Brave Search API' : 'Firecrawl search';  // used only if Indeed refuses its results page
     const sched = state.schedule && state.schedule.enabled ? `Scheduled every ${state.schedule.hours}h` : 'Schedule off';
-    const banner = fc.state && fc.state !== 'healthy'
+    const viaApify = !!(state.apify && state.apify.active);
+    const banner = !viaApify && fc.state && fc.state !== 'healthy'
       ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Scout can't run until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
     const recent = (state.runs || []).filter((run) => run.counts && run.counts.saved && !ACTIVE_RUN.includes(run.status)).slice(0, 1)[0];
     const newIds = new Set(recent ? recent.new_job_ids : []);
     const finds = (state.jobs || []).filter((job) => newIds.has(job.id));
-    return `${banner}<div class="scout-bar"><span class="job-os-chip muted" title="If Indeed refuses its results page, Scout searches the web for that Indeed site with ${esc(provider)}">Source: Indeed</span><button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
+    return `${banner}<div class="scout-bar">${viaApify ? '<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings" title="Scout runs the Indeed scraper on Apify">Source: Indeed via Apify</button>' : `<span class="job-os-chip muted" title="If Indeed refuses its results page, Scout searches the web for that Indeed site with ${esc(provider)}">Source: Indeed</span>`}<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
       ${searchFormCard(state.searchForm, state)}
       ${searches.length ? `<div class="scout-searches">${searches.map((s) => searchCard(s, state)).join('')}</div>`
         : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the Indeed country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}

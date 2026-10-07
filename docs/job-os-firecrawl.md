@@ -169,7 +169,9 @@ Health is read from `GET /` (`{"message": "Firecrawl API"}`) and
 
 ## How Scout finds and reads postings
 
-Scout searches **Indeed only** (`indeed.py`, `scout.py`):
+Scout searches **Indeed only** (`indeed.py`, `scout.py`). With Apify on
+(Settings → Apify, see `docs/job-os.md`), searches run on Apify instead and
+none of the following applies. Without it:
 
 - **Country and cities.** Indeed runs a separate site per country
   (`malaysia.indeed.com`, `sg.indeed.com`, `www.indeed.com`, …). A saved

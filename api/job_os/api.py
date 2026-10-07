@@ -78,7 +78,9 @@ def _settings_status(settings: dict) -> dict:
     """Live service status for the Settings page: presence booleans, never values."""
     from api.job_os import gmail
 
-    return {"firecrawl": _firecrawl_health(settings), "gmail": gmail.status()}
+    from api.job_os import apify
+
+    return {"firecrawl": _firecrawl_health(settings), "gmail": gmail.status(), "apify": apify.status()}
 
 
 def _scout_searches_payload() -> dict:
@@ -92,7 +94,11 @@ def _scout_searches_payload() -> dict:
 
     from api.job_os.indeed import POSTED_WITHIN_DAYS, countries_payload
 
+    from api.job_os import apify
+
     return {"searches": searches, "search_provider": search_provider_name(),
+            # Apify runs need no Firecrawl, so the page lets them run without it.
+            "apify": {"active": bool(settings["apify"]["enabled"] and apify.token())},
             "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"]}}
 
@@ -419,6 +425,25 @@ def _handle_gmail_post(handler, path: str, body: dict) -> bool:
     return True
 
 
+def _apify_post(handler, path: str, body: dict) -> bool:
+    """Connect (verify then save the token), disconnect, or test the saved token."""
+    from api.job_os import apify
+
+    try:
+        if path == f"{_PREFIX}/apify":
+            j(handler, {"apify": apify.connect(body.get("token"))})
+        elif path == f"{_PREFIX}/apify/disconnect":
+            j(handler, {"apify": apify.disconnect()})
+        else:
+            value = apify.token()
+            if not value:
+                return _error(handler, "Connect Apify first.", 400)
+            j(handler, {"apify": {**apify.status(), **apify.verify_token(value)}})
+    except apify.ApifyError as error:
+        return _error(handler, str(error), 400)
+    return True
+
+
 def _notifications_post(handler, path: str) -> bool:
     """Send the digest now, or check for reply commands now."""
     from api import mailer
@@ -452,6 +477,8 @@ def handle_job_os_post(handler, parsed, body) -> bool:
             return handled
     if parsed.path in {f"{_PREFIX}/notifications/digest", f"{_PREFIX}/notifications/check"}:
         return _notifications_post(handler, parsed.path)
+    if parsed.path in {f"{_PREFIX}/apify", f"{_PREFIX}/apify/disconnect", f"{_PREFIX}/apify/test"}:
+        return _apify_post(handler, parsed.path, body if isinstance(body, dict) else {})
     if parsed.path in {f"{_PREFIX}/gmail", f"{_PREFIX}/gmail/disconnect", f"{_PREFIX}/gmail/test"}:
         return _handle_gmail_post(handler, parsed.path, body if isinstance(body, dict) else {})
     if parsed.path == f"{_PREFIX}/settings":

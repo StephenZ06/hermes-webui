@@ -49,6 +49,9 @@
     studioDraft: null,
     board: null,
     gmailEditing: false,
+    apifyEditing: false,
+    apifyMessage: null,
+    apify: null, // {active}: Scout runs on Apify, so Firecrawl is not needed
     gmailMessage: null,
   };
 }());

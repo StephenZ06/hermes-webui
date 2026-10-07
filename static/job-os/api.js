@@ -45,6 +45,9 @@
     firecrawlHealth: () => request('/api/job-os/firecrawl/health'),
     connectGmail: (address, appPassword) => request('/api/job-os/gmail', {method: 'POST', body: JSON.stringify({address, app_password: appPassword})}),
     disconnectGmail: () => request('/api/job-os/gmail/disconnect', {method: 'POST', body: '{}'}),
+    connectApify: (token) => request('/api/job-os/apify', {method: 'POST', body: JSON.stringify({token})}),
+    disconnectApify: () => request('/api/job-os/apify/disconnect', {method: 'POST', body: '{}'}),
+    testApify: () => request('/api/job-os/apify/test', {method: 'POST', body: '{}'}),
     testGmail: (to, context) => request('/api/job-os/gmail/test', {method: 'POST', body: JSON.stringify({to: to || '', context: context || 'jobs'})}),
   };
 }());

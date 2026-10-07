@@ -29,7 +29,7 @@ from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
 
-from api.job_os import indeed
+from api.job_os import apify, indeed
 from api.job_os.db import connect_job_os
 from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
                                  looks_like_single_posting)
@@ -48,6 +48,7 @@ PAGES_PER_LOCATION = 3  # results pages read per city (10 postings each)
 # many failed postings in a row end the run instead of waiting on the rest.
 REFUSALS_BEFORE_STOP = 4
 _sleep = time.sleep
+_apify_run = apify.run_actor  # tests replace it
 _monotonic = time.monotonic
 MAX_ERRORS = 20
 MAX_LOCATIONS = 10
@@ -514,7 +515,8 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             return
         from api.job_os.settings import load_settings
 
-        scout_settings = load_settings()["scout"]
+        all_settings = load_settings()
+        scout_settings = all_settings["scout"]
         max_results = int(scout_settings["max_results_per_search"])
         blocked = {company_key(name) for name in scout_settings.get("blocked_companies") or []}
         client = _PacedClient(client_factory())
@@ -522,13 +524,84 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             finish("failed", "Choose the Indeed country for this search")
             return
         country_host = indeed.country_host(search["country"])
-        save("searching", f"Searching {country_host}", started_at=int(time.time()))
+        apify_settings = all_settings["apify"]
+        via_apify = bool(apify_settings["enabled"])
+        if via_apify and not apify.token():
+            finish("failed", "Apify is on but not connected; connect it in Settings → Apify or turn it off")
+            return
+        save("searching", f"Searching {country_host}{' through Apify' if via_apify else ''}", started_at=int(time.time()))
 
         candidates: list[str] = []
         stored_url: dict[str, str] = {}  # read URL -> the stable URL saved (Indeed)
         result_pages: list[str] = []  # Indeed results pages, opened for their postings
         seen: set[str] = set()
         known = _known_urls()
+
+        def keep(posting: dict, canonical_url: str) -> None:
+            """Filter one read posting and save it (raises DuplicateJobError, JobValidationError)."""
+            if search["remote_only"] and not _is_remote(posting):
+                counts["filtered"] += 1
+            elif company_key(posting.get("company")) in blocked:
+                counts["blocked"] += 1
+            elif similar_job_exists(posting.get("company"), posting.get("title")):
+                counts["duplicates"] += 1  # the same role, posted again
+            else:
+                job = replace(
+                    normalize_job_input({**posting, "canonical_url": canonical_url, "source": "indeed",
+                                        "country": indeed.country_name(search["country"])}),
+                    search_id=search["id"], run_id=run_id)
+                record = create_job(job, status=JobStatus.SCRAPED)
+                counts["saved"] += 1
+                new_ids.append(record.id)
+
+        if via_apify:
+            # One actor run per city returns finished postings (description
+            # included), so there is nothing left to read page by page.
+            locations = search["locations"] or [""]
+            failures = 0
+            for position, location in enumerate(locations):
+                if _cancel_requested(run_id):
+                    finish("cancelled", "Cancelled")
+                    return
+                counts["queries"] += 1
+                save(detail=f"Apify is searching {country_host}{' for ' + location if location else ''} ({position + 1} of {len(locations)})")
+                try:
+                    items = _apify_run(apify_settings["indeed_actor"], apify.indeed_input(
+                        search["country"], search["keywords"] + (" remote" if search["remote_only"] else ""), location,
+                        limit=int(apify_settings["results_per_city"]), posted_within_days=search["posted_within_days"]))
+                except apify.ApifyError as error:
+                    failures += 1
+                    note_error(f"Apify {location or country_host}", error)
+                    continue
+                for item in items:
+                    counts["found"] += 1
+                    posting = apify.indeed_posting(item, country_host)
+                    if posting is None:
+                        counts["closed"] += 1  # expired on Indeed
+                        continue
+                    canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
+                    if canonical in seen:
+                        continue
+                    seen.add(canonical)
+                    if canonical in known:
+                        counts["duplicates"] += 1
+                        continue
+                    counts["scraped"] += 1
+                    try:
+                        keep(posting, canonical)
+                    except DuplicateJobError:
+                        counts["duplicates"] += 1
+                    except JobValidationError as error:
+                        note_error(country_host, error)
+                save(detail=f"Searched {position + 1} of {len(locations)} · {counts['saved']} new")
+            counts["candidates"] = counts["scraped"]
+            if failures and failures == len(locations):
+                finish("failed", f"Apify could not run: {errors[0]['message'] if errors else 'unknown error'}")
+                return
+            _mark_ran(search["id"])
+            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}")
+            _after_run(new_ids)
+            return
 
         def offer(url: str) -> None:
             counts["found"] += 1
@@ -647,20 +720,8 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     continue
                 if kind == "not_posting" or posting is None:
                     counts["not_postings"] += 1
-                elif search["remote_only"] and not _is_remote(posting):
-                    counts["filtered"] += 1
-                elif company_key(posting.get("company")) in blocked:
-                    counts["blocked"] += 1
-                elif similar_job_exists(posting.get("company"), posting.get("title")):
-                    counts["duplicates"] += 1  # the same role, found on another site
                 else:
-                    job = replace(
-                        normalize_job_input({**posting, "canonical_url": stored_url.get(url, posting["canonical_url"]),
-                                            "source": "indeed", "country": indeed.country_name(search["country"])}),
-                        search_id=search["id"], run_id=run_id)
-                    record = create_job(job, status=JobStatus.SCRAPED)
-                    counts["saved"] += 1
-                    new_ids.append(record.id)
+                    keep(posting, stored_url.get(url, posting["canonical_url"]))
             except DuplicateJobError:
                 counts["duplicates"] += 1
             except FirecrawlError as error:
