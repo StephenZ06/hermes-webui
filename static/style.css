@@ -7754,9 +7754,12 @@ main.main > #mainPlugin{display:none;}
    grid-template-rows transition (0fr <-> 1fr), which -- unlike a fixed
    max-height guess -- tracks the row's actual content height, so the
    animation speed feels consistent whether a folder has 1 session or 20. */
+/* margin-left stays 0 in both states: the expanded rule's margin shorthand
+   zeroes it, and a collapsed 5px made every open slide its rows (and their
+   icons) 5px sideways while the margin transitioned. */
 .project-folder-sessions{
   display:grid;grid-template-rows:0fr;
-  margin-left:5px;padding-left:6px;border-left:1px solid var(--border);
+  margin-left:0;padding-left:6px;border-left:1px solid var(--border);
   transition:grid-template-rows .16s cubic-bezier(.2,.8,.2,1),margin .16s cubic-bezier(.2,.8,.2,1);
 }
 .project-folder-sessions.expanded{grid-template-rows:1fr;margin:2px 0 4px;}
@@ -9555,8 +9558,9 @@ main.main.showing-logs > #mainLogs{display:flex;}
 #notebookSidebar .work-hub-projects{padding:0 0 10px;}
 /* A heading straight after a list already has the list's 10px under it: equal space above and below its line. */
 #notebookSidebar .work-hub-projects + .work-hub-projects-heading{margin-top:0;}
-/* After the scope buttons (no list padding above it): 14px brings the space above its line up to the space below. */
-#notebookSidebar .nb-scope + .work-hub-projects-heading{margin-top:14px;}
+/* After the scope buttons (no list padding above it): 14px brings the space
+   above the line up to the space below, on the Work Hub and Notes alike. */
+.work-hub-nav .work-hub-scope + .work-hub-projects-heading{margin-top:14px;}
 #panelWorkspaces .panel-head-sub{padding-bottom:2px;}
 @media (max-width:640px){#insightsContent,.logs-main-body{padding:14px;}.insights-row{grid-template-columns:1fr;}.logs-output{max-height:calc(100dvh - 150px);}}
 

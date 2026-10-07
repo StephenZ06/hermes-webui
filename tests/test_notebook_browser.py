@@ -222,6 +222,7 @@ def test_side_panel_matches_work_hub_and_its_plus_menu_creates_and_deletes(page)
 
 def test_trash_is_centred_and_section_dividers_have_equal_space(page):
     _api("/api/notebook/folders/create", {"name": f"Spacing {uuid.uuid4().hex[:4]}"})
+    _api("/api/projects/create", {"name": f"Spacing space {uuid.uuid4().hex[:4]}", "color": "#5fbf9f"})
     _open(page)
     trash = page.evaluate("""() => { const b = document.querySelector('#notebookSidebar .nb-trash-scope'); const r = b.getBoundingClientRect();
       const kids = [...b.children].map(e => e.getBoundingClientRect()); const left = Math.min(...kids.map(k => k.left)), right = Math.max(...kids.map(k => k.right));
@@ -238,3 +239,34 @@ def test_trash_is_centred_and_section_dividers_have_equal_space(page):
     for above, below in gaps:
         if below is not None:
             assert abs(above - below) <= 1, gaps
+
+
+@pytest.mark.parametrize("panel", ["notes", "notebook"])
+def test_opening_a_workspace_does_not_slide_its_rows_sideways(page, panel):
+    """Work Hub and Notes share .project-folder-sessions. A collapsed 5px
+    margin-left (zeroed by the expanded rule) made each open slide the child
+    rows and their icons 5px sideways while the margin transitioned."""
+    project = _api("/api/projects/create", {"name": f"Slide {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
+    _api("/api/notebook/notes/create", {"title": "Row", "project_id": project["project_id"]})
+    # Two boards: a Work Hub folder with one board opens it instead of expanding.
+    for name in ("Board A", "Board B"):
+        boot = _api("/api/work_hub/bootstrap")
+        _api("/api/work_hub/boards/create", {"board": {"name": name, "project_id": project["project_id"]}, "expected_revision": boot["revision"]})
+    _open(page)
+    page.evaluate(f"async () => {{ await switchPanel('{panel}'); }}")
+    tile = (f"#workHubSidebar [data-project-toggle='{project['project_id']}']" if panel == "notes"
+            else f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']")
+    page.wait_for_selector(tile, timeout=15000)
+    xs = page.evaluate("""(sel) => new Promise((resolve) => {
+      const tile = document.querySelector(sel);
+      const group = document.getElementById(tile.getAttribute('aria-controls'));
+      const xs = []; const t0 = performance.now();
+      tile.click();
+      const tick = () => {
+        const row = group.querySelector('.work-hub-board-row');
+        if (row) xs.push(Math.round(row.getBoundingClientRect().left * 10) / 10);
+        if (performance.now() - t0 < 400) requestAnimationFrame(tick); else resolve(xs);
+      };
+      requestAnimationFrame(tick);
+    })""", tile)
+    assert len(xs) > 5 and max(xs) - min(xs) < 0.5, xs
