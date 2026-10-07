@@ -8,15 +8,19 @@ long-form documents.
 
 ## Layout
 
-- **Side panel** (`#notebookSidebar`) contains:
-  - *New note*;
+- **Side panel** (`#notebookSidebar`) uses the Work Hub panel's markup and
+  classes, so the two look and move the same. It contains:
   - scopes: All notes, General, Pinned, Favorites and Trash;
   - **Workspaces**, the shared project registry also listed by Chat and Work Hub;
   - **Folders**, which are Notes-only: they are created here and never appear on other pages;
+  - a centred `+` under Folders that opens *New note / New folder / Delete*;
   - tags.
 
-  Workspaces and folders expand to list their notes, the same way Work Hub
-  folders list boards.
+  A click anywhere on a workspace or folder tile selects it and opens or
+  closes its list of notes in place (animated). *Delete* enters the shared
+  delete mode (`createDeleteMode` in `static/ui.js`): notes and Notes folders
+  wiggle with an X, and workspaces stay locked because they belong to Chat
+  and Work Hub too. Right-click a folder to rename it.
 - **Main view** (`#notebookRoot`) holds the notes list (search, items) and the
   editor. The editor shows the title, status, pin, favorite and a "More" menu,
   then the workspace/folder picker, tags and the BlockNote body.

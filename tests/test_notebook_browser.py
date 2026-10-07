@@ -21,11 +21,11 @@ def _open(page):
     page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
     page.evaluate("() => { try { localStorage.removeItem('hermes-notebook-last'); } catch (e) {} }")
     page.evaluate("async () => { await switchPanel('notebook'); }")
-    page.wait_for_selector(".nb-new-btn", timeout=15000)
+    page.wait_for_selector("#notebookSidebar .nb-nav", timeout=15000)
 
 
 def _new_note(page, title):
-    page.click(".nb-new-btn")
+    page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     page.fill("#nbTitle", title)
 
@@ -85,10 +85,10 @@ def test_notes_are_created_in_the_selected_folder_or_workspace(page):
     folder = _api("/api/notebook/folders/create", {"name": f"Ideas {uuid.uuid4().hex[:4]}"})["folder"]
     project = _api("/api/projects/create", {"name": f"Space {uuid.uuid4().hex[:4]}", "color": "#5fbf9f"})["project"]
     _open(page)
-    page.click(f"[data-nb-scope=folder][data-nb-id='{folder['id']}']")
+    page.click(f".nb-place-btn[data-nb-kind=folder][data-nb-id='{folder['id']}']")
     _new_note(page, "In a folder")
     _saved(page)
-    page.click(f"[data-nb-scope=project][data-nb-id='{project['project_id']}']")
+    page.click(f".nb-place-btn[data-nb-kind=project][data-nb-id='{project['project_id']}']")
     _new_note(page, "In a workspace")
     _saved(page)
     placed = {n["title"]: (n["project_id"], n["folder_id"]) for n in _api("/api/notebook/bootstrap")["notes"]}
@@ -162,3 +162,51 @@ def test_send_to_chat_prefills_a_chat_without_sending(page):
     page.wait_for_function("(t) => document.querySelector('#msg').value.includes(t)", arg=title, timeout=10000)
     composer = page.input_value("#msg")
     assert "Fix the white artifacts around the platforms" in composer
+
+
+
+def test_side_panel_matches_work_hub_and_its_plus_menu_creates_and_deletes(page):
+    folder_name = f"Drafts {uuid.uuid4().hex[:4]}"
+    _open(page)
+    # Same section markup as the Work Hub: headings with the divider, tiles, a centred + row.
+    headings = page.evaluate("() => [...document.querySelectorAll('#notebookSidebar .work-hub-projects-heading span')].map(e => e.textContent)")
+    assert headings[:2] == ["WORKSPACES", "FOLDERS"]
+    assert not page.query_selector(".nb-new-btn")
+    assert "Folders you create here" not in page.inner_text("#notebookSidebar")
+    page.click("#notebookSidebar .nb-create-row .work-hub-project-create")
+    items = page.evaluate("() => [...document.querySelectorAll('.nb-create-menu button')].map(b => b.textContent)")
+    assert items == ["New note", "New folder", "Delete"]
+    page.click(".nb-create-menu [data-nb-create=folder]")
+    page.fill("#appDialogInput", folder_name)
+    page.click("#appDialogConfirm")
+    tile = f"#notebookSidebar .nb-place-btn[data-nb-kind=folder]:has-text('{folder_name}')"
+    page.wait_for_selector(tile, timeout=10000)
+    page.click("#notebookSidebar .nb-create-row .work-hub-project-create")
+    page.click(".nb-create-menu [data-nb-create=note]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    page.fill("#nbTitle", "Inside drafts")
+    _saved(page)
+    folder_id = page.get_attribute(tile, "data-nb-id")
+    assert _note_by_title("Inside drafts")["folder_id"] == folder_id
+    # The whole tile toggles its notes in place (no re-render, so it animates).
+    tile_by_id = f"#notebookSidebar .nb-place-btn[data-nb-id='{folder_id}']"
+    page.evaluate(f"() => {{ window.__tile = document.querySelector(\"{tile_by_id}\"); }}")
+    expanded_before = page.get_attribute(tile_by_id, "aria-expanded")
+    page.click(tile_by_id)
+    state = page.evaluate(f"""() => {{ const t = document.querySelector("{tile_by_id}");
+      return {{same: t === window.__tile, expanded: t.getAttribute('aria-expanded'),
+               open: document.getElementById(t.getAttribute('aria-controls')).classList.contains('expanded')}}; }}""")
+    assert state["same"] and state["expanded"] != expanded_before and state["open"] == (state["expanded"] == "true")
+    if state["expanded"] != "true":
+        page.click(tile_by_id)
+    # Delete mode: notes and Notes folders wiggle with an X; workspaces stay locked.
+    page.click("#notebookSidebar .nb-create-row .work-hub-project-create")
+    page.click(".nb-create-menu [data-nb-create=delete]")
+    page.wait_for_selector("#notebookSidebar .work-hub-project-delete-done", timeout=5000)
+    row = f"#notebookSidebar [data-nb-note-row]:has-text('Inside drafts')"
+    assert "dm-wiggle" in page.get_attribute(row, "class")
+    page.click(f"{row} .dm-x", force=True)  # the row wiggles on purpose
+    page.wait_for_function("() => !document.querySelector('#notebookSidebar [data-nb-note-row] span') || ![...document.querySelectorAll('#notebookSidebar [data-nb-note-row] span')].some(e => e.textContent === 'Inside drafts')", timeout=10000)
+    assert _note_by_title("Inside drafts")["deleted_at"]
+    page.click("#notebookSidebar .work-hub-project-delete-done")
+    page.wait_for_selector("#notebookSidebar .nb-create-row .work-hub-project-create", timeout=5000)

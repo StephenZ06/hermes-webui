@@ -140,21 +140,21 @@
   }
   function noteRows(notes) {
     if (!notes.length) return '<p class="nb-tree-empty">No notes yet</p>';
-    return notes.slice(0, 50).map((n) => `<div class="work-hub-board-row nb-tree-note${S.note && S.note.id === n.id ? ' active' : ''}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('');
+    return notes.slice(0, 50).map((n) => `<div class="work-hub-board-row nb-tree-note${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('');
   }
+  // Same markup and classes as the Work Hub's workspace folders, so the two
+  // side panels look and move the same: a whole-tile click selects the place
+  // and opens/closes it in place (the grid-rows transition animates).
   function placeGroup(kind, item, notes) {
     const key = kind + ':' + item.id;
-    const expanded = !!S.expanded[key];
+    const expanded = !!S.expanded[key] || (S.deleteMode && notes.length > 0);
     const active = S.scope.kind === kind && S.scope.id === item.id ? ' active' : '';
-    const dot = kind === 'project'
-      ? `<span class="color-dot nb-dot" style="background:${esc(item.color || 'var(--accent)')}" aria-hidden="true"></span>`
-      : `<span class="nb-folder-icon" aria-hidden="true">${icon('folder', 13)}</span>`;
-    const more = kind === 'folder' ? `<button type="button" class="nb-row-more" data-nb-folder-menu="${esc(item.id)}" aria-label="Folder options">${icon('more', 14)}</button>` : '';
-    return `<div class="nb-place" data-nb-place="${esc(key)}">
-      <div class="nb-place-row"><button type="button" class="project-chip project-folder-row work-hub-project-tile nb-place-btn${active}" data-nb-scope="${kind}" data-nb-id="${esc(item.id)}" aria-expanded="${expanded}">
-        <span class="project-folder-chevron nb-chevron${expanded ? ' expanded' : ''}" data-nb-toggle="${esc(key)}" aria-label="${expanded ? 'Collapse' : 'Expand'}">▸</span>${dot}<span class="project-folder-name"></span><span class="project-folder-count">${notes.length}</span></button>${more}</div>
-      <div class="project-folder-sessions${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner">${noteRows(notes)}</div></div>
-    </div>`;
+    const groupId = 'nbGroup-' + key.replace(/[^A-Za-z0-9_-]/g, '_');
+    return `<button type="button" class="project-chip project-folder-row work-hub-project-tile nb-place-btn${active}" data-nb-kind="${kind}" data-nb-id="${esc(item.id)}" data-nb-key="${esc(key)}" aria-expanded="${expanded}" aria-controls="${groupId}">`
+      + `<span class="project-folder-chevron work-hub-project-chevron${expanded ? ' expanded' : ''}">▸</span>`
+      + `<span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span>`
+      + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
+      + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}</div></div>`;
   }
   function renderSidebar() {
     const side = $('notebookSidebar');
@@ -162,25 +162,101 @@
     if (!S.loaded) { side.innerHTML = S.error ? `<p class="nb-side-error">${esc(S.error)}</p>` : '<div class="nb-side-loading" aria-busy="true"><i></i><i></i><i></i></div>'; return; }
     const liveNotes = S.notes.filter(live);
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
+    const dm = S.deleteMode ? ' is-delete-mode' : '';
     side.innerHTML = `<nav class="work-hub-nav nb-nav" aria-label="Notes navigation">
-      <button type="button" class="nb-new-btn" data-nb-action="new">${icon('plus', 14)}<span>New note</span></button>
       ${scopeButton('all', 'All notes', 'all', count((n) => live(n) && !n.archived))}
       ${scopeButton('general', 'General', 'general', count((n) => live(n) && !n.project_id && !n.folder_id))}
       ${scopeButton('pinned', 'Pinned', 'pin', count((n) => live(n) && n.pinned))}
       ${scopeButton('favorites', 'Favorites', 'star', count((n) => live(n) && n.favorite))}
-      <div class="work-hub-nav-label nb-nav-label"><span>WORKSPACES</span></div>
-      <div class="nb-places">${S.projects.length ? S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('') : '<p class="nb-tree-empty">No workspaces yet</p>'}</div>
-      <div class="work-hub-nav-label nb-nav-label nb-label-row"><span>FOLDERS</span><button type="button" class="work-hub-project-create nb-folder-create" data-nb-action="new-folder" aria-label="New folder" title="New folder">${icon('plus', 13)}</button></div>
-      <div class="nb-places">${S.folders.length ? S.folders.map((f) => placeGroup('folder', {id: f.id}, liveNotes.filter((n) => n.folder_id === f.id))).join('') : '<p class="nb-tree-empty">Folders you create here stay on the Notes page.</p>'}</div>
-      ${tags.length ? `<div class="work-hub-nav-label nb-nav-label"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+      <div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
+      <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>
+      <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
+      <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
+      <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
+        ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'
+        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
+      ${tags.length ? `<div class="work-hub-nav-label work-hub-projects-heading"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
       <div class="nb-nav-spacer"></div>
       ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at))}
     </nav>`;
     // Names are set as text, never as HTML.
     side.querySelectorAll('.nb-place-btn').forEach((button) => {
-      const item = button.dataset.nbScope === 'project' ? projectOf(button.dataset.nbId) : folderOf(button.dataset.nbId);
+      const item = button.dataset.nbKind === 'project' ? projectOf(button.dataset.nbId) : folderOf(button.dataset.nbId);
       button.querySelector('.project-folder-name').textContent = (item && item.name) || 'Untitled';
     });
+    if (S.deleteMode) decorateDeleteMode(side);
+  }
+  // Delete mode (shared createDeleteMode, as on the Work Hub): Notes folders
+  // and notes wiggle with an X; workspaces stay still -- they belong to Chat
+  // and Work Hub too.
+  function decorateDeleteMode(side) {
+    let index = 0;
+    side.querySelectorAll('.nb-place-btn').forEach((tile) => {
+      if (tile.dataset.nbKind === 'project') {
+        if (typeof window.lockDeleteModeItem === 'function') window.lockDeleteModeItem(tile, 'Workspaces are shared with Chat and Work Hub');
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'work-hub-project-delete-wrap';
+      tile.replaceWith(wrap);
+      wrap.appendChild(tile);
+      const folder = folderOf(tile.dataset.nbId);
+      if (typeof window.decorateDeleteModeItem === 'function') {
+        window.decorateDeleteModeItem(wrap, {label: `Delete ${(folder && folder.name) || 'folder'}`, index: index++, onDelete: () => deleteFolder(tile.dataset.nbId, wrap)});
+      }
+    });
+    side.querySelectorAll('[data-nb-note-row]').forEach((row) => {
+      const note = S.notes.find((n) => n.id === row.dataset.nbNoteRow);
+      if (typeof window.decorateDeleteModeItem === 'function') {
+        window.decorateDeleteModeItem(row, {label: `Move ${(note && note.title) || 'Untitled'} to trash`, index: index++, onDelete: () => trashNote(row.dataset.nbNoteRow, row)});
+      }
+    });
+  }
+  let deleteModeRef = null;
+  const deleteMode = () => deleteModeRef || (deleteModeRef = window.createDeleteMode({
+    isInside: (target) => !!target.closest('#notebookSidebar .work-hub-projects, #notebookSidebar .nb-create-row'),
+    onChange: (active) => { S.deleteMode = active; renderSidebar(); },
+  }));
+  function enterDeleteMode() {
+    if (!S.folders.length && !S.notes.some((n) => live(n) && (n.project_id || n.folder_id))) {
+      toast('There are no folders or filed notes to delete.');
+      return;
+    }
+    if (typeof window.createDeleteMode !== 'function') return;
+    deleteMode().enter();
+  }
+  function openCreateMenu(button) {
+    const old = document.querySelector('.nb-create-menu');
+    if (old) { old.remove(); return; }
+    const menu = document.createElement('div');
+    menu.className = 'work-hub-create-menu nb-create-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = '<button type="button" role="menuitem" data-nb-create="note">New note</button><button type="button" role="menuitem" data-nb-create="folder">New folder</button><button type="button" role="menuitem" class="is-danger" data-nb-create="delete">Delete</button>';
+    button.parentElement.appendChild(menu);
+    const close = (event) => {
+      if (menu.contains(event.target) || button.contains(event.target)) return;
+      menu.remove(); document.removeEventListener('click', close, true);
+    };
+    setTimeout(() => document.addEventListener('click', close, true), 0);
+  }
+  // A workspace or folder tile: select it and open/close it without
+  // re-rendering the panel, so the open/close transition plays.
+  function toggleTile(tile) {
+    const key = tile.dataset.nbKey;
+    const expanded = !S.expanded[key];
+    S.expanded[key] = expanded;
+    S.scope = {kind: tile.dataset.nbKind, id: tile.dataset.nbId};
+    S.pane = 'list';
+    const side = $('notebookSidebar');
+    side.querySelectorAll('.nb-place-btn.active, .nb-scope.active').forEach((other) => { if (other !== tile) other.classList.remove('active'); });
+    tile.classList.add('active');
+    tile.setAttribute('aria-expanded', String(expanded));
+    const chevron = tile.querySelector('.work-hub-project-chevron');
+    if (chevron) chevron.classList.toggle('expanded', expanded);
+    const group = document.getElementById(tile.getAttribute('aria-controls'));
+    if (group) { group.classList.toggle('expanded', expanded); group.inert = !expanded; }
+    ensureShell();
+    renderList();
   }
 
   // ── rendering: main ─────────────────────────────────────────────────────────
@@ -248,10 +324,17 @@
       + (S.projects.length ? `<optgroup label="Workspaces">${S.projects.map((p) => option('p:' + p.project_id, p.name)).join('')}</optgroup>` : '')
       + (S.folders.length ? `<optgroup label="Folders">${S.folders.map((f) => option('f:' + f.id, f.name)).join('')}</optgroup>` : '');
   }
+  let headNoteId = null;
   function renderEditorHead() {
     const head = $('nbEditorHead');
     if (!head) return;
     const note = S.note;
+    // The header eases in when a different note opens, not on every re-render.
+    const nextId = note ? note.id : null;
+    if (nextId && nextId !== headNoteId) {
+      head.classList.remove('is-entering'); void head.offsetWidth; head.classList.add('is-entering');
+    }
+    headNoteId = nextId;
     if (!note) {
       head.innerHTML = S.noteLoading ? '<div class="nb-skeleton head"><i></i><i></i></div>'
         : S.noteError ? `<div class="nb-empty"><p>${esc(S.noteError)}</p></div>`
@@ -506,6 +589,11 @@
       render();
     }
   }
+  // A new note's list item and side-panel row get the shared arrival glow.
+  function arrive(noteId) {
+    if (typeof window.markArrival !== 'function') return;
+    document.querySelectorAll(`.nb-item[data-nb-open="${CSS.escape(noteId)}"], #notebookSidebar [data-nb-note-row="${CSS.escape(noteId)}"]`).forEach((el) => window.markArrival(el));
+  }
   async function newNote(extra) {
     await flushSave();
     try {
@@ -516,6 +604,7 @@
       if (key) S.expanded[key] = true;
       await openNote(note.id, {force: true});
       const title = $('nbTitle'); if (title) title.focus();
+      arrive(note.id);
       return note;
     } catch (error) { toast(error.message || 'The note could not be created'); return null; }
   }
@@ -528,15 +617,8 @@
   }
   async function trashCurrent() {
     const note = S.note; if (!note) return;
-    await flushSave();
-    try {
-      const result = await window.NotebookApi.trash(note.id);
-      upsertSummary(result.note);
-      clearDraft(note.id);
-      destroyEditor(); S.note = null; S.pane = 'list';
-      render();
-      toast('Moved to trash');
-    } catch (error) { toast(error.message || 'Could not move the note to the trash'); }
+    const item = document.querySelector(`.nb-item[data-nb-open="${CSS.escape(note.id)}"]`);
+    await trashNote(note.id, item);
   }
   async function restoreCurrent() {
     const note = S.note; if (!note) return;
@@ -692,37 +774,58 @@
       const {folder} = await window.NotebookApi.createFolder(name.trim());
       S.folders.push(folder);
       S.scope = {kind: 'folder', id: folder.id};
-      S.expanded['folder:' + folder.id] = true;
       render();
+      const tile = document.querySelector(`#notebookSidebar .nb-place-btn[data-nb-key="folder:${CSS.escape(folder.id)}"]`);
+      if (tile && typeof window.markArrival === 'function') window.markArrival(tile);
     } catch (error) { toast(error.message || 'Could not create the folder'); }
   }
-  function folderMenu(anchor, folderId) {
+  async function deleteFolder(folderId, el) {
     const folder = folderOf(folderId); if (!folder) return;
+    const n = S.notes.filter((x) => x.folder_id === folderId && live(x)).length;
+    const ok = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({title: 'Delete folder?', message: n ? `Its ${n} note${n === 1 ? '' : 's'} will move to General.` : 'The folder is empty.', confirmLabel: 'Delete folder', danger: true})
+      : window.confirm('Delete folder?');
+    if (!ok) return;
+    try {
+      await window.NotebookApi.deleteFolder(folderId);
+      if (el && typeof window.animateRemoval === 'function') await window.animateRemoval(el);
+      S.folders = S.folders.filter((f) => f.id !== folderId);
+      S.notes.forEach((x) => { if (x.folder_id === folderId) x.folder_id = null; });
+      if (S.note && S.note.folder_id === folderId) S.note.folder_id = null;
+      if (S.scope.kind === 'folder' && S.scope.id === folderId) S.scope = {kind: 'general', id: null};
+      if (S.deleteMode && !S.folders.length && !S.notes.some((x) => live(x) && (x.project_id || x.folder_id)) && deleteModeRef) deleteModeRef.exit();
+      render();
+    } catch (error) { toast(error.message || 'Could not delete the folder'); }
+  }
+  // Move any note to the trash (it can be restored from Trash).
+  async function trashNote(noteId, el) {
+    if (S.note && S.note.id === noteId) await flushSave();
+    try {
+      const result = await window.NotebookApi.trash(noteId);
+      if (el && typeof window.animateRemoval === 'function') await window.animateRemoval(el);
+      upsertSummary(result.note);
+      clearDraft(noteId);
+      if (S.note && S.note.id === noteId) { destroyEditor(); S.note = null; S.pane = 'list'; }
+      render();
+      toast('Moved to trash');
+    } catch (error) { toast(error.message || 'Could not move the note to the trash'); }
+  }
+  async function renameFolder(folderId) {
+    const folder = folderOf(folderId); if (!folder) return;
+    const name = typeof window.showPromptDialog === 'function'
+      ? await window.showPromptDialog({title: 'Rename folder', value: folder.name, confirmLabel: 'Rename'})
+      : window.prompt('Folder name', folder.name);
+    if (!name || !name.trim()) return;
+    try { const result = await window.NotebookApi.renameFolder(folderId, name.trim()); Object.assign(folder, result.folder); renderSidebar(); }
+    catch (error) { toast(error.message || 'Could not rename the folder'); }
+  }
+  // Right-click on a folder tile: the less frequent folder actions.
+  function folderMenu(anchor, folderId) {
+    if (!folderOf(folderId)) return;
     openMenu(anchor, [
       {label: 'New note here', run: async () => { S.scope = {kind: 'folder', id: folderId}; await newNote(); }},
-      {label: 'Rename', run: async () => {
-        const name = typeof window.showPromptDialog === 'function'
-          ? await window.showPromptDialog({title: 'Rename folder', value: folder.name, confirmLabel: 'Rename'})
-          : window.prompt('Folder name', folder.name);
-        if (!name || !name.trim()) return;
-        try { const result = await window.NotebookApi.renameFolder(folderId, name.trim()); Object.assign(folder, result.folder); render(); }
-        catch (error) { toast(error.message || 'Could not rename the folder'); }
-      }},
-      {label: 'Delete folder', danger: true, run: async () => {
-        const n = S.notes.filter((x) => x.folder_id === folderId && live(x)).length;
-        const ok = typeof window.showConfirmDialog === 'function'
-          ? await window.showConfirmDialog({title: 'Delete folder?', message: n ? `Its ${n} note${n === 1 ? '' : 's'} will move to General.` : 'The folder is empty.', confirmLabel: 'Delete folder', danger: true})
-          : window.confirm('Delete folder?');
-        if (!ok) return;
-        try {
-          await window.NotebookApi.deleteFolder(folderId);
-          S.folders = S.folders.filter((f) => f.id !== folderId);
-          S.notes.forEach((x) => { if (x.folder_id === folderId) x.folder_id = null; });
-          if (S.note && S.note.folder_id === folderId) S.note.folder_id = null;
-          if (S.scope.kind === 'folder' && S.scope.id === folderId) S.scope = {kind: 'general', id: null};
-          render();
-        } catch (error) { toast(error.message || 'Could not delete the folder'); }
-      }},
+      {label: 'Rename', run: () => renameFolder(folderId)},
+      {label: 'Delete folder', danger: true, run: () => deleteFolder(folderId, anchor)},
     ]);
   }
   async function resolveConflict(keepMine) {
@@ -762,20 +865,24 @@
   // ── events ──────────────────────────────────────────────────────────────────
   async function onClick(event) {
     const t = event.target;
-    const toggle = t.closest('[data-nb-toggle]');
-    if (toggle) {
-      event.preventDefault(); event.stopPropagation();
-      const key = toggle.dataset.nbToggle;
-      S.expanded[key] = !S.expanded[key];
-      renderSidebar();
+    if (t.closest('.dm-x')) return; // delete-mode X buttons handle themselves
+    const tile = t.closest('.nb-place-btn');
+    if (tile) { if (!S.deleteMode) toggleTile(tile); return; }
+    const create = t.closest('[data-nb-create]');
+    if (create) {
+      const what = create.dataset.nbCreate;
+      const menu = create.closest('.nb-create-menu'); if (menu) menu.remove();
+      if (what === 'note') await newNote();
+      else if (what === 'folder') await newFolder();
+      else enterDeleteMode();
       return;
     }
+    if (S.deleteMode && t.closest('[data-nb-open]') && t.closest('#notebookSidebar')) return;
     const open = t.closest('[data-nb-open]');
     if (open) { await openNote(open.dataset.nbOpen); return; }
     const scope = t.closest('[data-nb-scope]');
     if (scope) {
-      S.scope = {kind: scope.dataset.nbScope, id: scope.dataset.nbId || null};
-      if (S.scope.id) S.expanded[S.scope.kind + ':' + S.scope.id] = true;
+      S.scope = {kind: scope.dataset.nbScope, id: null};
       S.pane = 'list';
       render();
       return;
@@ -785,16 +892,19 @@
     const untag = t.closest('[data-nb-untag]');
     if (untag && S.note) {
       S.note.tags = (S.note.tags || []).filter((x) => x !== untag.dataset.nbUntag);
-      queueSave('tags', true); renderEditorHead();
+      queueSave('tags', true);
+      const chip = untag.closest('.nb-tag-chip');
+      if (chip && typeof window.animateRemoval === 'function') await window.animateRemoval(chip, {collapse: false});
+      renderEditorHead();
       return;
     }
-    const folderMenuBtn = t.closest('[data-nb-folder-menu]');
-    if (folderMenuBtn) { folderMenu(folderMenuBtn, folderMenuBtn.dataset.nbFolderMenu); return; }
     const action = t.closest('[data-nb-action]');
     if (!action) return;
     switch (action.dataset.nbAction) {
       case 'new': await newNote(); break;
       case 'new-folder': await newFolder(); break;
+      case 'create-menu': openCreateMenu(action); break;
+      case 'delete-done': if (deleteModeRef) deleteModeRef.exit(); break;
       case 'menu': noteMenu(action); break;
       case 'toggle-pinned': await setFlag('pinned'); break;
       case 'toggle-favorite': await setFlag('favorite'); break;
@@ -833,6 +943,12 @@
     const root = $('notebookRoot'); const side = $('notebookSidebar');
     if (root) root.addEventListener('click', onClick);
     if (side) side.addEventListener('click', onClick);
+    if (side) side.addEventListener('contextmenu', (event) => {
+      const tile = event.target.closest('.nb-place-btn[data-nb-kind="folder"]');
+      if (!tile || S.deleteMode) return;
+      event.preventDefault();
+      folderMenu(tile, tile.dataset.nbId);
+    });
     document.addEventListener('keydown', onKeydown);
     window.addEventListener('beforeunload', onBeforeUnload);
     document.addEventListener('visibilitychange', () => { if (document.hidden && Object.keys(save.dirty).length) { writeDraft(); runSave(); } });

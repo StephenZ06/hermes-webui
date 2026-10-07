@@ -5769,20 +5769,8 @@ main.main.showing-notebook > #mainNotebook{display:flex;}
    app tokens below so its menus and toolbar look native. */
 #notebookSidebar{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;}
 .nb-nav{gap:2px;}
-.nb-new-btn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:32px;margin:0 0 8px;padding:6px 10px;border:0;border-radius:7px;background:var(--accent);color:var(--accent-contrast);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:filter .15s ease;}
-.nb-new-btn:hover{filter:brightness(1.08);}
 .nb-scope-count{margin-left:auto;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;}
 .nb-scope.active .nb-scope-count{color:inherit;}
-.nb-nav-label{margin-top:14px;}
-.nb-label-row{display:flex;align-items:center;justify-content:space-between;}
-.nb-folder-create{width:18px;height:18px;border-radius:5px;}
-.nb-place-row{display:flex;align-items:center;gap:2px;}
-.nb-place-btn{flex:1;min-width:0;}
-.nb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.nb-folder-icon{display:inline-flex;color:var(--muted);flex-shrink:0;}
-.nb-row-more{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;opacity:0;transition:opacity .15s ease;}
-.nb-place-row:hover .nb-row-more,.nb-row-more:focus-visible{opacity:1;}
-.nb-row-more:hover{background:var(--hover-bg);color:var(--text);}
 .nb-tree-note button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nb-tree-empty{margin:2px 0 6px;padding:2px 8px;color:var(--muted);font-size:11px;line-height:1.45;}
 .nb-tag-cloud{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;}
@@ -5876,19 +5864,29 @@ html .bn-root[data-color-scheme],html .bn-container[data-color-scheme]{
 html .hermes-note-editor .bn-editor{padding-inline:54px;background:transparent;font-family:var(--font-ui);}
 .hermes-note-editor [data-content-type="codeBlock"]{background:var(--code-bg);color:var(--code-text,var(--text));}
 .hermes-note-editor [data-style-type="code"]{background:var(--code-inline-bg,var(--code-bg));color:var(--code-text,var(--text));}
+.nb-create-row{margin-top:2px;}
+.nb-editor-head.is-entering{animation:nb-in .22s cubic-bezier(.22,1,.36,1);}
+.nb-banner{animation:nb-in .2s ease;}
+.nb-status[data-status="saving"]{animation:nb-pulse 1s ease-in-out infinite;}
+.work-hub-create-menu{animation:nb-pop .14s cubic-bezier(.22,1,.36,1);transform-origin:top center;}
+.nb-search svg{transition:color .15s ease;}
+.nb-search:focus-within svg{color:var(--accent-text);}
+@keyframes nb-pulse{50%{opacity:.45;}}
+@keyframes nb-slide-in{from{opacity:0;transform:translateX(10px);}}
 @keyframes nb-in{from{opacity:0;transform:translateY(4px);}}
 @keyframes nb-pop{from{opacity:0;transform:translateY(-3px) scale(.98);}}
 @keyframes nb-shimmer{to{background-position:-200% 0;}}
 @media (max-width:900px){
   .nb{grid-template-columns:minmax(0,1fr);}
   .nb[data-pane="list"] .nb-editor,.nb[data-pane="editor"] .nb-list{display:none;}
+  .nb[data-pane="editor"] .nb-editor,.nb[data-pane="list"] .nb-list{animation:nb-slide-in .22s cubic-bezier(.22,1,.36,1);}
   .nb-back{display:grid;}
   .nb-editor-head{padding:14px 16px 0;}
   .nb-title{font-size:22px;}
   .hermes-note-editor .bn-editor{padding-inline:28px;}
   .nb-updated{display:none;}
 }
-@media (prefers-reduced-motion:reduce){.nb-item,.nb-tag-chip,.nb-menu,.nb-editor-mount{animation:none;}.nb-side-loading i,.nb-skeleton i{animation:none;}}
+@media (prefers-reduced-motion:reduce){.nb-item,.nb-tag-chip,.nb-menu,.nb-editor-mount,.nb-editor-head.is-entering,.nb-banner,.nb-status,.work-hub-create-menu,.nb-editor,.nb-list{animation:none!important;}.nb-side-loading i,.nb-skeleton i{animation:none;}}
 
 /* ── Job OS ──
    The side panel (#jobOsSidebar) owns section navigation and the pipeline
@@ -9542,6 +9540,8 @@ main.main.showing-logs > #mainLogs{display:flex;}
 /* This rule must follow the shared .project-folder-list padding so Work Hub
    folders share the All work row's exact horizontal frame. */
 #workHubProjects.work-hub-projects{padding:0 0 10px;}
+/* Notes' workspace and folder lists sit flush, exactly like the Work Hub's. */
+#notebookSidebar .work-hub-projects{padding:0 0 10px;}
 #panelWorkspaces .panel-head-sub{padding-bottom:2px;}
 @media (max-width:640px){#insightsContent,.logs-main-body{padding:14px;}.insights-row{grid-template-columns:1fr;}.logs-output{max-height:calc(100dvh - 150px);}}
 
