@@ -263,8 +263,21 @@ def _migration_10(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_11(connection: sqlite3.Connection) -> None:
+    """Automate all: jobs waiting for their fit score before Luna tailors them."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auto_tailor (
+            job_id TEXT PRIMARY KEY,
+            requested_at INTEGER NOT NULL
+        )
+        """
+    )
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
-              (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10))
+              (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10),
+              (11, _migration_11))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

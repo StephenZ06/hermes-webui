@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
@@ -126,10 +127,16 @@ def _document_get(handler, parsed) -> bool:
     job = get_job(doc["job_id"])
     base = export.safe_filename(f"{doc['kind'].replace('_', '-')}-{job.company if job else ''}-{job.title if job else ''}")
     title = f"{'Cover letter' if doc['kind'] == 'cover_letter' else 'Resume'} - {job.title if job else ''}"
+    # Both documents use the master resume's design; only a resume has its header and sections.
+    from api.job_os.resume import style_profile
+
+    style, is_resume = style_profile(), doc["kind"] == "resume"
     if fmt == "docx":
-        body, ctype, name = export.to_docx(doc["content"]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"{base}.docx"
+        body, ctype, name = (export.to_docx(doc["content"], style=style, resume=is_resume),
+                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"{base}.docx")
     elif fmt in ("html", "pdf"):
-        body, ctype, name = export.to_html(doc["content"], title=title, auto_print=fmt == "pdf").encode(), "text/html; charset=utf-8", None
+        body = export.to_html(doc["content"], title=title, auto_print=fmt == "pdf", style=style, resume=is_resume).encode()
+        ctype, name = "text/html; charset=utf-8", None
     elif fmt == "md":
         body, ctype, name = doc["content"].encode(), "text/markdown; charset=utf-8", f"{base}.md"
     else:
@@ -146,15 +153,54 @@ def _document_get(handler, parsed) -> bool:
     return True
 
 
+def _resume_file(handler, preview: bool) -> bool:
+    """The master resume as uploaded (PDF shown inline, others downloaded), or
+    an HTML page of its text in its own design for files a browser can't show."""
+    from api.job_os import export
+    from api.job_os.resume import load_resume, original_file, style_profile
+
+    meta = load_resume()
+    if not meta:
+        return _error(handler, "No master resume yet", 404)
+    found = original_file()
+    if preview:
+        body = export.text_page(meta["text"], title=meta["filename"], style=style_profile()).encode()
+        ctype, name = "text/html; charset=utf-8", None
+    elif found:
+        body = found[0].read_bytes()
+        kind = found[0].suffix.lower()
+        ctype = {".pdf": "application/pdf",
+                 ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}.get(kind, "text/plain; charset=utf-8")
+        name = None if kind == ".pdf" else export.safe_filename(Path(found[1]).stem) + kind
+    else:
+        return _error(handler, "The resume was pasted as text; there is no original file.", 404)
+    handler.send_response(200)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("Cache-Control", "no-store")
+    if preview:
+        handler.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+    if name:
+        handler.send_header("Content-Disposition", f'attachment; filename="{name}"')
+    handler.end_headers()
+    handler.wfile.write(body)
+    return True
+
+
 def _scout_get(handler, parsed) -> bool:
     from api.job_os import scout
 
     path = parsed.path
     if path == f"{_PREFIX}/resume":
-        from api.job_os.resume import load_resume
+        from api.job_os.resume import load_resume, original_file
 
-        j(handler, {"resume": load_resume()})
+        found = original_file()
+        meta = load_resume()
+        j(handler, {"resume": meta, "original": found[0].suffix.lstrip(".") if found and meta else None})
         return True
+    if path in (f"{_PREFIX}/resume/original", f"{_PREFIX}/resume/preview"):
+        return _resume_file(handler, path.endswith("/preview"))
     if path == f"{_PREFIX}/applications":
         from api.job_os import applications
 
@@ -488,6 +534,17 @@ def _notifications_post(handler, path: str) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path == f"{_PREFIX}/automate":
+        from api.job_os import autopilot
+
+        ids = body.get("job_ids") if isinstance(body, dict) else None
+        if not isinstance(ids, list) or not ids or len(ids) > 200:
+            return _error(handler, "job_ids must list 1-200 jobs", 400)
+        try:
+            j(handler, {"automate": autopilot.automate([str(i) for i in ids]), "min_fit": autopilot.MIN_FIT})
+        except autopilot.AutopilotError as error:
+            return _error(handler, str(error), 400)
+        return True
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
                                                                                 "/interview-prep"))):

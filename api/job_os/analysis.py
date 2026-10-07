@@ -157,6 +157,7 @@ def analyze_one(job_id: str) -> dict:
                 transition_job(job_id, JobStatus.ANALYZED, expected_revision=current.revision)
             except Exception:  # a concurrent user action wins; the analysis is still stored
                 logger.debug("analyzed transition skipped for %s", job_id, exc_info=True)
+        _after(job_id, result["fit_score"])
     except Exception as error:
         message = str(error) if isinstance(error, llm.LLMError) else f"Analysis failed ({type(error).__name__})."
         conn = connect_job_os()
@@ -166,7 +167,18 @@ def analyze_one(job_id: str) -> dict:
             conn.commit()
         finally:
             conn.close()
+        _after(job_id, None)
     return get_analysis(job_id)
+
+
+def _after(job_id: str, fit_score: int | None) -> None:
+    """Automate all may be waiting on this score to tailor the job."""
+    try:
+        from api.job_os.autopilot import after_analysis
+
+        after_analysis(job_id, fit_score)
+    except Exception:
+        logger.debug("auto-tailor check failed for %s", job_id, exc_info=True)
 
 
 def _next_pending() -> str | None:

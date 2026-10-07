@@ -131,7 +131,7 @@ def test_exports_are_valid():
     text = resume._docx_text(docx)
     assert text.startswith("Jane Doe") and "• Python services on AWS for 8 years." in text
     page = export.to_html(TAILORED + "\n[site](javascript:alert(1))", title="Resume", auto_print=True)
-    assert "<h1>Jane Doe</h1>" in page and "<strong>Python</strong>" in page and "window.print" in page
+    assert '<h1 class="name">Jane Doe</h1>' in page and "<strong>Python</strong>" in page and "window.print" in page
     assert "javascript:" not in page
 
 

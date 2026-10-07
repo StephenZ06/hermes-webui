@@ -122,8 +122,43 @@ def save_resume(*, filename: str, text: str, original: bytes | None = None) -> d
     folder = _dir()
     if original is not None:
         _write_private(folder / ("original" + Path(meta["filename"]).suffix.lower()), original)
+    meta["style"] = _profile(meta["filename"], original, text)
     _write_private(folder / "master.json", json.dumps(meta).encode("utf-8"))
     return meta
+
+
+def _profile(filename: str, original: bytes | None, text: str) -> dict:
+    from api.job_os import resume_style
+
+    profile = resume_style.extract_profile(filename, original, text) if original else {**resume_style.DEFAULT, "bullet": resume_style._bullet(text)}
+    return {**profile, "v": resume_style.VERSION}
+
+
+def original_file() -> tuple[Path, str] | None:
+    """The uploaded file as it was (path, filename), if there is one. A pasted
+    resume (``pasted.txt``) has none, even if an older upload is still on disk."""
+    meta = load_resume()
+    if not meta:
+        return None
+    path = _dir() / ("original" + Path(meta["filename"]).suffix.lower())
+    return (path, meta["filename"]) if path.is_file() else None
+
+
+def style_profile() -> dict:
+    """How the master resume looks (see resume_style.py); worked out once from
+    the original file and kept with the resume."""
+    from api.job_os import resume_style
+
+    meta = load_resume()
+    if not meta:
+        return dict(resume_style.DEFAULT)
+    style = meta.get("style")
+    if isinstance(style, dict) and style.get("v") == resume_style.VERSION:
+        return style
+    found = original_file()
+    meta["style"] = _profile(meta["filename"], found[0].read_bytes() if found else None, meta["text"])
+    _write_private(_dir() / "master.json", json.dumps(meta).encode("utf-8"))
+    return meta["style"]
 
 
 def summary(meta: dict | None) -> dict | None:

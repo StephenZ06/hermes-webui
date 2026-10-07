@@ -1,6 +1,8 @@
 """Resume Studio tailoring: a job-specific resume and cover letter from the master resume.
 
-Luna may rephrase, reorder, select and emphasise -- never invent. Two guards
+Luna may rephrase, reorder, select and emphasise -- never invent -- and keeps
+the master resume's layout (its sections, header and entry lines), so the
+export in the master's design (resume_style.py) reads like the original. Two guards
 back that up after generation:
 - every number, year and percentage in the tailored text must appear in the
   master resume; anything else is flagged and the document is marked
@@ -32,16 +34,40 @@ _lock = threading.Lock()
 _worker: threading.Thread | None = None
 _recovered = False
 
+# The method follows the resume-tailoring skill (github.com/amanattar/resume-tailoring-skill,
+# MIT): a success profile from the posting, every resume bullet matched to it
+# (direct / transferable / adjacent / gap), truthful reframing, gaps reported
+# rather than papered over. Its interactive checkpoints become the report in
+# Resume Studio; the questions stand in for its experience-discovery interview.
 SYSTEM = (
-    "You tailor a candidate's resume and write a cover letter for one job. Return ONLY JSON:\n"
-    '{"resume_markdown": "<full tailored resume in Markdown>", "cover_letter": "<cover letter, plain text, 180-320 words>", '
-    '"changes": [{"what": "<edit made>", "why": "<which posting need it serves>"}]}\n'
+    "You tailor a candidate's master resume to one job and write a cover letter, using a truth-preserving method.\n"
+    "1. Success profile: from the posting, the core requirements (must-haves), the valued capabilities, and a "
+    "terminology map from the candidate's wording to the posting's (only where the meaning is the same).\n"
+    "2. Match: judge every experience and project bullet against the profile as direct (same skill, same domain), "
+    "transferable (same capability, different context), adjacent (related tools or problems) or weak. Lead each "
+    "section with the strongest; shorten or drop weak bullets rather than padding.\n"
+    "3. Reframe truthfully: align keywords (the posting's term for the same thing), shift emphasis (same facts, the "
+    "relevant aspect first), adjust the level of technical detail, highlight the relevant scale. A job title may take "
+    "its standard industry form but never a higher seniority; company names and dates stay exact.\n"
+    "4. Gaps: a requirement the resume cannot support stays out of the resume; list it with a recommendation.\n"
+    "5. Layout: the master resume is given in Markdown. Keep its layout exactly: the same header lines in the same "
+    "order ('# Name', the bold headline line if there is one, the contact line with the same separators), the same "
+    "'## ' section headings word for word and in the same order, the same '### Title | Company | Place | Dates' entry "
+    "lines, '**Label:** text' lines where the master has them, '- ' bullets, and about the same length. Only the "
+    "wording and selection inside the sections change.\n"
     "Hard rules: use ONLY facts in the master resume. You may rephrase, reorder, select, merge and emphasise; never add "
     "employers, titles, dates, numbers, degrees, certifications, tools or achievements that are not in it. Keep every "
-    "date and number exactly as written. Mirror the posting's wording only where the resume genuinely supports it. "
-    "Resume: Markdown with '# Name', a short contact line, '## ' sections, '- ' bullets; no tables, columns or images "
-    "(application tracking systems parse plain structure best). Cover letter: specific to this company and role, "
-    "no placeholders like [Company]. Up to 8 changes. " + llm.UNTRUSTED
+    "date and number exactly as written. Cover letter: plain text, 180-320 words, specific to this company and role, "
+    "no placeholders like [Company].\n"
+    "Return ONLY JSON:\n"
+    '{"profile": {"core": ["<must-have>"], "valued": ["<nice-to-have>"], "terms": [{"from": "<resume wording>", "to": "<posting wording>"}]}, '
+    '"mapping": {"direct": <bullets>, "transferable": <bullets>, "adjacent": <bullets>, "gaps": <requirements not covered>}, '
+    '"resume_markdown": "<the tailored resume in the master\'s layout>", "cover_letter": "<text>", '
+    '"changes": [{"what": "<edit made>", "why": "<which posting need it serves>"}], '
+    '"reframings": [{"original": "<master wording>", "reframed": "<new wording>", "why": "<why it is still true>"}], '
+    '"gaps": [{"need": "<requirement>", "advice": "<cover letter angle, or what to add if it is true>"}], '
+    '"questions": ["<question for the candidate that could surface real, unlisted experience for a gap>"]}\n'
+    "Up to 6 items in each list, 8 changes. " + llm.UNTRUSTED
 )
 
 _NUMBER = re.compile(r"(?<![\w.])(\d[\d,.]*\s?%?|[€$£]\s?\d[\d,.]*\s?[kKmM]?)(?![\w])")
@@ -213,8 +239,11 @@ def tailor_one(job_id: str) -> dict:
                    f"Gaps identified: {json.dumps(analysis.get('gaps') or [])}")
         contact = (f"Candidate name: {applicant.get('full_name')}\nContact line: {_contact_line(applicant)}"
                    if applicant.get("full_name") else "Use the name and contact details from the master resume.")
-        data, model = llm.ask_json(SYSTEM, f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{master['text'][:16000]}\nMASTER RESUME>>>",
-                                   max_tokens=6000)
+        from api.job_os.export import text_markdown
+
+        layout = text_markdown(master["text"])[:18000]
+        data, model = llm.ask_json(SYSTEM, f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\nMASTER RESUME>>>",
+                                   max_tokens=9000)
         tailored = str(data.get("resume_markdown") or "").strip()
         letter = str(data.get("cover_letter") or "").strip()
         if len(tailored) < 200:
@@ -227,6 +256,7 @@ def tailor_one(job_id: str) -> dict:
         coverage = keyword_coverage(tailored, analysis.get("must_haves") or [])
         set_doc(resume_doc, status="needs_review" if flags_resume else "ready", content=tailored[:30000], model=model, error="",
                 notes_json=json.dumps({"changes": changes, "unverified": flags_resume, "coverage": coverage,
+                                       "report": _report(data),
                                        "master_revision": master.get("revision"),
                                        "master_fit": analysis.get("fit_score"),
                                        "tailored_fit": _fit_of(job, tailored)}))
@@ -239,6 +269,31 @@ def tailor_one(job_id: str) -> dict:
             set_doc(doc, status="failed", error=message[:300])
         finish_job(JobStatus.SHORTLISTED)
     return latest_documents(job_id)
+
+
+def _report(data: dict) -> dict:
+    """The tailoring method's working, cleaned for the Resume Studio report."""
+    def text(value, limit=200):
+        return str(value or "").strip()[:limit]
+
+    def strings(value, limit=6):
+        return [text(v, 160) for v in (value if isinstance(value, list) else []) if text(v)][:limit]
+
+    def pairs(value, keys, limit=6):
+        rows = value if isinstance(value, list) else []
+        return [{k: text(row.get(k)) for k in keys} for row in rows if isinstance(row, dict) and text(row.get(keys[0]))][:limit]
+    profile = data.get("profile") if isinstance(data.get("profile"), dict) else {}
+    raw = data.get("mapping") if isinstance(data.get("mapping"), dict) else {}
+    mapping = {}
+    for key in ("direct", "transferable", "adjacent", "gaps"):
+        try:
+            mapping[key] = max(0, min(99, int(raw.get(key) or 0)))
+        except (TypeError, ValueError):
+            mapping[key] = 0
+    return {"core": strings(profile.get("core")), "valued": strings(profile.get("valued")),
+            "terms": pairs(profile.get("terms"), ("from", "to")), "mapping": mapping,
+            "reframings": pairs(data.get("reframings"), ("original", "reframed", "why")),
+            "gaps": pairs(data.get("gaps"), ("need", "advice")), "questions": strings(data.get("questions"), 5)}
 
 
 def _fit_of(job, text: str) -> dict:
