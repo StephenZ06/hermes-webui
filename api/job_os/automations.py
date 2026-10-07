@@ -1,8 +1,8 @@
 """What Job OS does on its own, and when (Settings -> Automations).
 
 Read-only summary of the background work driven by the scheduler loop
-(scheduler.py): Scout runs, Luna analysis, match alerts, the daily digest,
-reply checks and auto-apply. Nothing here starts work; it reports settings
+(scheduler.py): Scout runs, Luna analysis, match alerts, the daily digest
+and reply checks. Nothing here starts work; it reports settings
 and the last/next run times so the schedule is visible in one place.
 """
 
@@ -25,13 +25,13 @@ def _next_digest(hour: int, last: str | None, now: float) -> int:
 
 
 def summary(*, now: float | None = None) -> list[dict]:
-    from api.job_os import autoapply, notify, scheduler, scout
+    from api.job_os import notify, scheduler, scout
     from api.job_os.analysis import queue_counts
     from api.job_os.settings import load_settings
 
     now = time.time() if now is None else now
     settings = load_settings()
-    n, auto = settings["notifications"], settings["auto_apply"]
+    n = settings["notifications"]
     email = bool(n["email_enabled"] and n["to_address"] and all(mailer.credentials()))
     state = notify.load_state()
     searches = [s for s in scout.list_searches() if s["enabled"]]
@@ -58,8 +58,4 @@ def summary(*, now: float | None = None) -> list[dict]:
          "schedule": f"Inbox checked every {notify.POLL_EVERY // 60} min", "last": state.get("last_poll"),
          "next": int((state.get("last_poll") or now) + notify.POLL_EVERY) if email and n["reply_actions"] else None,
          "detail": state.get("last_poll_error") or "", "off_reason": "" if email else "Connect Gmail and turn on Email me"},
-        {"key": "auto_apply", "label": "Auto-apply", "on": bool(auto["enabled"]),
-         "schedule": f"Up to {auto['daily_cap']} a day · fit {auto['min_fit_score']}+", "last": None, "next": None,
-         "detail": f"{autoapply.submitted_today(now)} sent today" if auto["enabled"] else "",
-         "off_reason": "" if auto["enabled"] else "Turn it on under Auto-apply", "view": "applications"},
     ]

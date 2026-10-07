@@ -29,14 +29,14 @@ def test_everything_off_says_why(store):
     assert not any(a["on"] for a in items.values() if a["key"] != "analysis")
     assert items["scout"]["off_reason"] == "Turn on Run Scout automatically"
     assert items["digest"]["off_reason"].startswith("Connect Gmail")
-    assert items["auto_apply"]["off_reason"] == "Turn it on under Auto-apply"
+    assert "auto_apply" not in items, "Auto-apply was removed"
 
 
 def test_schedules_report_last_and_next(store):
     store.setattr(mailer, "credentials", lambda: ("a@gmail.com", "pw"))
     save_settings({"scout": {"enabled": True, "schedule_hours": 4},
                    "notifications": {"email_enabled": True, "to_address": "me@gmail.com", "digest_hour": 8}}, expected_revision=0)
-    search = scout.create_search({"keywords": "backend"})
+    search = scout.create_search({"keywords": "backend", "country": "my"})
     from api.job_os.db import connect_job_os
 
     conn = connect_job_os()

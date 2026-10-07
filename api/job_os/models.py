@@ -58,6 +58,7 @@ class JobInput:
     posted_at: str = ""
     search_id: str | None = None
     run_id: str | None = None
+    country: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,3 +87,4 @@ class JobRecord:
     posted_at: str = ""
     search_id: str | None = None
     run_id: str | None = None
+    country: str = ""

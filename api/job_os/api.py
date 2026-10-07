@@ -35,6 +35,7 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         "posted_at": job.posted_at,
         "search_id": job.search_id,
         "run_id": job.run_id,
+        "country": job.country,
         "has_description": bool(job.description),
     }
     if detail:
@@ -89,7 +90,10 @@ def _scout_searches_payload() -> dict:
         search["next_run_at"] = scheduler.next_run_at(search, settings)
     from api.job_os.search_provider import search_provider_name
 
+    from api.job_os.indeed import POSTED_WITHIN_DAYS, countries_payload
+
     return {"searches": searches, "search_provider": search_provider_name(),
+            "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"]}}
 
 
@@ -130,30 +134,6 @@ def _document_get(handler, parsed) -> bool:
     return True
 
 
-def _proof_get(handler, path: str) -> bool:
-    """A screenshot an auto-apply run saved for this job."""
-    import re
-
-    from api.job_os.autoapply import proof_dir
-
-    job_id, _, name = unquote(path[len(f"{_PREFIX}/jobs/"):]).partition("/proof/")
-    if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", job_id) or not re.fullmatch(r"[0-9]{8}-[0-9]{6}-[a-z]+-[a-z]+\.png", name):
-        return _error(handler, "Not found", 404)
-    target = proof_dir(job_id) / name
-    try:
-        body = target.read_bytes()
-    except OSError:
-        return _error(handler, "Not found", 404)
-    handler.send_response(200)
-    handler.send_header("Content-Type", "image/png")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Cache-Control", "no-store")
-    handler.end_headers()
-    handler.wfile.write(body)
-    return True
-
-
 def _scout_get(handler, parsed) -> bool:
     from api.job_os import scout
 
@@ -166,7 +146,11 @@ def _scout_get(handler, parsed) -> bool:
     if path == f"{_PREFIX}/applications":
         from api.job_os import applications
 
-        j(handler, applications.board())
+        source = str(parse_qs(parsed.query or "").get("source", [""])[0] or "").strip() or None
+        try:
+            j(handler, applications.board(source))
+        except applications.ApplicationError as error:
+            return _error(handler, str(error), 400)
         return True
     if path == f"{_PREFIX}/notifications":
         from api.job_os import notify
@@ -182,13 +166,6 @@ def _scout_get(handler, parsed) -> bool:
         from api.job_os import automations
 
         j(handler, {"automations": automations.summary()})
-        return True
-    if path == f"{_PREFIX}/auto-apply":
-        from api.job_os import autoapply
-
-        settings = load_settings()["auto_apply"]
-        j(handler, {"auto_apply": {"enabled": settings["enabled"], "submitted_today": autoapply.submitted_today(),
-                                   "daily_cap": settings["daily_cap"], "browser_ready": autoapply.browser_python() is not None}})
         return True
     if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/interview-prep.md"):
         from api.job_os import export
@@ -208,8 +185,6 @@ def _scout_get(handler, parsed) -> bool:
         handler.end_headers()
         handler.wfile.write(body)
         return True
-    if path.startswith(f"{_PREFIX}/jobs/") and "/proof/" in path:
-        return _proof_get(handler, path)
     if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/timeline"):
         from api.job_os import applications
 
@@ -288,14 +263,6 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
             j(handler, {"interview": interview.request_prep(job_id)})
             return True
-        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/autofill", "/approve", "/cancel-apply")):
-            from api.job_os import autoapply
-
-            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
-            action = {"/autofill": autoapply.request_preview, "/approve": autoapply.approve,
-                      "/cancel-apply": autoapply.cancel}[path[path.rfind("/"):]]
-            j(handler, action(job_id))
-            return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/applied", "/note")):
             from api.job_os import applications
 
@@ -348,7 +315,7 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
         from api.job_os.firecrawl import FirecrawlError
         from api.job_os.network_policy import UnsafeJobUrl
 
-        if isinstance(error, (UnsafeJobUrl, FirecrawlError, scout.FetchError)):
+        if isinstance(error, (UnsafeJobUrl, FirecrawlError)):
             return _error(handler, f"Could not read that posting: {error}", 400)
         raise
     return None
@@ -475,7 +442,7 @@ def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
-                                                                                "/autofill", "/approve", "/cancel-apply", "/interview-prep"))):
+                                                                                "/interview-prep"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled
@@ -498,13 +465,18 @@ def handle_job_os_post(handler, parsed, body) -> bool:
             return _error(handler, str(error), 400)
         j(handler, {"settings": saved, "status": _settings_status(saved)})
         return True
+    if parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith("/edit"):
+        return _edit_job(handler, parsed.path, body)
     if parsed.path != f"{_PREFIX}/jobs":
         return False
     if not isinstance(body, dict):
         return _error(handler, "JSON object body is required", 400)
     try:
-        job = normalize_job_input(body)
-        created = create_job(job, idempotency_key=body.get("idempotency_key"))
+        # The manual tracker: a job saved with its description is ready to
+        # analyse and tailor, like a Scout find.
+        job = normalize_job_input({**body, "source": "manual"})
+        created = create_job(job, idempotency_key=body.get("idempotency_key"),
+                             status=JobStatus.SCRAPED if job.description else JobStatus.DISCOVERED)
     except JobValidationError as error:
         return _error(handler, str(error), 400)
     except DuplicateJobError as error:
@@ -514,6 +486,24 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         j(handler, payload, status=409)
         return True
     j(handler, {"job": _job_payload(created)}, status=201)
+    return True
+
+
+def _edit_job(handler, path: str, body) -> bool:
+    from api.job_os.repository import StaleJobRevision, update_job_details
+
+    if not isinstance(body, dict):
+        return _error(handler, "JSON object body is required", 400)
+    job_id = unquote(path[len(f"{_PREFIX}/jobs/"):-len("/edit")]).strip("/")
+    try:
+        updated = update_job_details(job_id, body.get("job") or {}, expected_revision=body.get("expected_revision"))
+    except KeyError:
+        return _error(handler, "Job not found", 404)
+    except StaleJobRevision as error:
+        return _error(handler, str(error), 409)
+    except JobValidationError as error:
+        return _error(handler, str(error), 400)
+    j(handler, {"job": _job_payload(updated, detail=True)})
     return True
 
 

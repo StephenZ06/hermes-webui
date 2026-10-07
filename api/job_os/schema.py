@@ -234,8 +234,16 @@ def _migration_7(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_8(connection: sqlite3.Connection) -> None:
+    """Indeed-only Scout: a search names its Indeed country and date window;
+    every job carries the country it is in."""
+    connection.execute("ALTER TABLE searches ADD COLUMN country TEXT NOT NULL DEFAULT ''")
+    connection.execute("ALTER TABLE searches ADD COLUMN posted_within_days INTEGER NOT NULL DEFAULT 0")
+    connection.execute("ALTER TABLE jobs ADD COLUMN country TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
-              (6, _migration_6), (7, _migration_7))
+              (6, _migration_6), (7, _migration_7), (8, _migration_8))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

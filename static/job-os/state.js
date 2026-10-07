@@ -25,10 +25,19 @@
     searchProvider: '',
     schedule: null,
     runs: [],
-    searchForm: null, // null = closed; {id?, name, keywords, locations, sites, remote_only}
+    searchForm: null, // null = closed; {id?, name, keywords, country, locations, posted_within_days, remote_only}
+    countries: [], // Indeed country sites: [{code, name, host}]
+    postedWithin: [0, 1, 3, 7, 14],
     searchError: '',
     jobDetail: null,
-    sortBy: 'newest', // Pipeline: 'newest' | 'fit'
+    sortBy: 'newest', // Pipeline list: 'newest' | 'fit'
+    pipelineSource: 'all', // 'all' | 'indeed' | 'manual'
+    pipelineMode: 'board', // 'board' | 'list'
+    jobForm: null, // the Add/Edit job drawer: null = closed
+    jobFormError: '',
+    jobTimeline: [],
+    studioMatchId: null, // Resume Studio match check: the job picked
+    studioMatch: null,
     resume: null,
     resumeError: '',
     resumeReplacing: false,

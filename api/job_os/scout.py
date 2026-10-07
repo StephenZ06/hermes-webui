@@ -7,9 +7,14 @@ instead of one that claims to be running forever. Firecrawl never owns state:
 it is asked for search results and pages; Job OS decides what is a posting
 and what is saved.
 
-Flow: queued -> searching (keyword queries, optionally limited to sites) ->
-scraping (each candidate page; postings read from their JSON-LD) ->
-completed | cancelled | failed | interrupted.
+Scout searches Indeed only: each saved search names an Indeed country site
+and, optionally, cities. A run opens the country's results page for every
+city (``indeed.search_url``), collects the postings it links to, and reads
+each one. When the results page itself is refused, the run falls back to a
+web search restricted to that Indeed site.
+
+Flow: queued -> searching (results pages) -> scraping (each posting; read
+from its JSON-LD) -> completed | cancelled | failed | interrupted.
 """
 
 from __future__ import annotations
@@ -24,27 +29,28 @@ from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
 
+from api.job_os import indeed
 from api.job_os.db import connect_job_os
-from api.job_os.ats_api import ats_posting, canonical_posting_url
 from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
-                                 job_links_from_page, looks_like_single_posting)
+                                 looks_like_single_posting)
 from api.job_os.models import DuplicateJobError, JobStatus, JobValidationError
 from api.job_os.network_policy import UnsafeJobUrl, validate_external_job_url
 from api.job_os.repository import create_job, normalize_job_input
 
 ACTIVE_STATES = ("queued", "searching", "scraping")
 TERMINAL_STATES = ("completed", "cancelled", "failed", "interrupted")
-# Searched when a saved search names no sites. Application-tracking sites
-# (Greenhouse, Lever, ...) can still be listed per search.
-DEFAULT_SITES = ("indeed.com",)
 # Indeed refuses a reader that asks for pages back to back (observed: every
 # request failed after a burst, and succeeded again 5s apart after a pause).
 INDEED_GAP_S = 5.0
-MAX_INDEED_RESULT_PAGES = 4
+MAX_INDEED_RESULT_PAGES = 4  # pages found by the fallback web search
+PAGES_PER_LOCATION = 3  # results pages read per city (10 postings each)
+# Once Indeed starts refusing it keeps refusing for minutes (observed), so this
+# many failed postings in a row end the run instead of waiting on the rest.
+REFUSALS_BEFORE_STOP = 4
 _sleep = time.sleep
 _monotonic = time.monotonic
 MAX_ERRORS = 20
-MAX_QUERIES = 15
+MAX_LOCATIONS = 10
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
                  "duplicates": 0, "not_postings": 0, "filtered": 0, "blocked": 0, "unsafe": 0, "closed": 0, "errors": 0}
 _COMPANY_SUFFIX = re.compile(r"\b(inc|incorporated|ltd|limited|llc|plc|gmbh|ag|sa|bv|co|corp|corporation|company|pty)\b\.?", re.I)
@@ -78,7 +84,6 @@ def similar_job_exists(company: object, title: object, *, now: float | None = No
 # Runs with a live worker in this process (threaded or inline).
 _LIVE_RUNS: set[str] = set()
 _LOCK = threading.Lock()
-_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$")
 
 
 class ScoutError(ValueError):
@@ -106,20 +111,6 @@ def _split(value, *, limit: int, field: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def _site(value: str) -> str:
-    """A bare domain (searched with ``site:``) or a full careers-page URL (scraped for job links)."""
-    text = value.strip()
-    if "://" in text:
-        parts = urlsplit(text)
-        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
-            raise ScoutError(f"Not a usable site: {value[:80]}")
-        return text.rstrip("/")
-    domain = text.lower().strip("/").removeprefix("www.")
-    if not _DOMAIN.match(domain):
-        raise ScoutError(f"Not a usable site: {value[:80]}")
-    return domain
-
-
 def normalize_search(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise ScoutError("search must be an object")
@@ -129,12 +120,24 @@ def normalize_search(payload: dict) -> dict:
         raise ScoutError("Keywords are required (up to 200 characters)")
     if len(name) > 80:
         raise ScoutError("Name is too long")
-    sites = [_site(s) for s in _split(payload.get("sites"), limit=20, field="sites")]
+    country = str(payload.get("country") or "").strip().lower()
+    if country not in indeed.COUNTRIES:
+        raise ScoutError("Choose the Indeed country to search")
+    try:
+        posted = int(payload.get("posted_within_days") or 0)
+    except (TypeError, ValueError):
+        posted = -1
+    if posted not in indeed.POSTED_WITHIN_DAYS:
+        raise ScoutError("Date posted must be any time, or the last 1, 3, 7 or 14 days")
+    locations = _split(payload.get("locations"), limit=MAX_LOCATIONS, field="locations")
+    if any(len(location) > 80 for location in locations):
+        raise ScoutError("A location is too long")
     return {
         "name": name or keywords[:80],
         "keywords": keywords,
-        "locations": _split(payload.get("locations"), limit=10, field="locations"),
-        "sites": sites,
+        "country": country,
+        "locations": locations,
+        "posted_within_days": posted,
         "remote_only": bool(payload.get("remote_only")),
         "enabled": bool(payload.get("enabled", True)),
     }
@@ -143,7 +146,9 @@ def normalize_search(payload: dict) -> dict:
 def _search_row(row) -> dict:
     return {
         "id": row["id"], "name": row["name"], "keywords": row["keywords"],
-        "locations": json.loads(row["locations"] or "[]"), "sites": json.loads(row["sites"] or "[]"),
+        "locations": json.loads(row["locations"] or "[]"),
+        "country": row["country"], "country_name": indeed.country_name(row["country"]),
+        "posted_within_days": row["posted_within_days"],
         "remote_only": bool(row["remote_only"]), "enabled": bool(row["enabled"]),
         "revision": row["revision"], "last_run_at": row["last_run_at"],
         "created_at": row["created_at"], "updated_at": row["updated_at"],
@@ -174,10 +179,10 @@ def create_search(payload: dict) -> dict:
     conn = connect_job_os()
     try:
         conn.execute(
-            "INSERT INTO searches (id, name, keywords, locations, sites, remote_only, enabled, revision, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
-            (search_id, data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
-             int(data["remote_only"]), int(data["enabled"]), now, now))
+            "INSERT INTO searches (id, name, keywords, locations, country, posted_within_days, remote_only, enabled,"
+            " revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            (search_id, data["name"], data["keywords"], json.dumps(data["locations"]), data["country"],
+             data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), now, now))
         conn.commit()
     finally:
         conn.close()
@@ -195,10 +200,11 @@ def update_search(search_id: str, payload: dict, *, expected_revision: int) -> d
     conn = connect_job_os()
     try:
         cur = conn.execute(
-            "UPDATE searches SET name=?, keywords=?, locations=?, sites=?, remote_only=?, enabled=?,"
-            " revision=revision+1, updated_at=? WHERE id=? AND revision=?",
-            (data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
-             int(data["remote_only"]), int(data["enabled"]), int(time.time()), search_id, expected_revision))
+            "UPDATE searches SET name=?, keywords=?, locations=?, country=?, posted_within_days=?, remote_only=?,"
+            " enabled=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
+            (data["name"], data["keywords"], json.dumps(data["locations"]), data["country"],
+             data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), int(time.time()),
+             search_id, expected_revision))
         conn.commit()
         if cur.rowcount != 1:
             raise ScoutConflict("This search changed in another tab; reload and try again")
@@ -376,51 +382,19 @@ def start_discovery(search_id: str, *, trigger: str = "manual", idempotency_key:
     return get_run(run_id)
 
 
-def _queries(search: dict) -> list[str]:
-    base = search["keywords"] + (" remote" if search["remote_only"] else "")
-    locations = search["locations"] or [""]
-    domains = [s for s in search["sites"] if "://" not in s] or list(DEFAULT_SITES)
-    out = []
-    for location in locations:
-        query = f"{base} {location}".strip()
-        out.extend(f"site:{domain} {query}" for domain in domains)
-    return out
-
-
-class FetchError(RuntimeError):
-    pass
-
-
-def fetch_json(url: str, *, timeout: float = 20.0, limit: int = 2 * 1024 * 1024) -> dict:
-    """GET a public JSON API (already URL-policy checked), size- and time-bounded."""
-    import urllib.error
-    import urllib.request
-
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "HermesJobs/1.0"})
+def _mark_ran(search_id: str) -> None:
+    conn = connect_job_os()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - policy-checked URL
-            body = response.read(limit + 1)
-    except urllib.error.HTTPError as error:
-        raise FetchError(f"HTTP {error.code}") from error
-    except (urllib.error.URLError, OSError, TimeoutError) as error:
-        raise FetchError("did not answer") from error
-    if len(body) > limit:
-        raise FetchError("response too large")
-    try:
-        return json.loads(body.decode("utf-8", "replace"))
-    except ValueError as error:
-        raise FetchError("not JSON") from error
+        conn.execute("UPDATE searches SET last_run_at=? WHERE id=?", (int(time.time()), search_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 
-def _source_for(url: str) -> str:
-    host = (urlsplit(url).hostname or "").lower()
-    if is_indeed(url):
-        return "indeed"
-    for name, ats in (("greenhouse", "greenhouse.io"), ("lever", "lever.co"), ("ashby", "ashbyhq.com"),
-                      ("workable", "workable.com"), ("smartrecruiters", "smartrecruiters.com")):
-        if host == ats or host.endswith("." + ats):
-            return name
-    return host.removeprefix("www.")[:60] or "web"
+def _is_remote(posting: dict) -> bool:
+    """Indeed often leaves the workplace out of a posting's data; its title or place says it."""
+    text = f"{posting.get('title', '')} {posting.get('location', '')}".lower()
+    return posting.get("workplace") == "remote" or "remote" in text
 
 
 def _known_urls() -> set[str]:
@@ -445,17 +419,14 @@ def _after_run(new_ids: list[str]) -> None:
         pass
 
 
-def read_posting(url: str, client, cache: dict | None = None) -> tuple[str, dict | None]:
+def read_posting(url: str, client) -> tuple[str, dict | None]:
     """Read one posting URL: ("posting", fields) | ("closed", None) | ("not_posting", None)."""
     safe = validate_external_job_url(url)
-    kind, posting = ats_posting(safe, lambda api: fetch_json(validate_external_job_url(api)), cache if cache is not None else {})
-    if kind == "unsupported":
-        page = client.scrape(safe)
-        if page.get("status") in (404, 410):
-            return "closed", None
-        posting = extract_job_posting(page["html"], safe)
-        return ("posting", posting) if posting else ("not_posting", None)
-    return kind, posting
+    page = client.scrape(safe)
+    if page.get("status") in (404, 410):
+        return "closed", None
+    posting = extract_job_posting(page["html"], safe)
+    return ("posting", posting) if posting else ("not_posting", None)
 
 
 def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> dict:
@@ -489,7 +460,7 @@ def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> 
 
 
 class _PacedClient:
-    """Spaces requests to Indeed INDEED_GAP_S apart; other sites are not held back."""
+    """Spaces requests to Indeed INDEED_GAP_S apart (a manual job's own page is not held back)."""
 
     def __init__(self, client) -> None:
         self._client = client
@@ -547,7 +518,11 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         max_results = int(scout_settings["max_results_per_search"])
         blocked = {company_key(name) for name in scout_settings.get("blocked_companies") or []}
         client = _PacedClient(client_factory())
-        save("searching", "Searching job sites", started_at=int(time.time()))
+        if search["country"] not in indeed.COUNTRIES:
+            finish("failed", "Choose the Indeed country for this search")
+            return
+        country_host = indeed.country_host(search["country"])
+        save("searching", f"Searching {country_host}", started_at=int(time.time()))
 
         candidates: list[str] = []
         stored_url: dict[str, str] = {}  # read URL -> the stable URL saved (Indeed)
@@ -558,13 +533,16 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         def offer(url: str) -> None:
             counts["found"] += 1
             try:
-                safe = validate_external_job_url(canonical_posting_url(url))
+                safe = validate_external_job_url(url)
             except UnsafeJobUrl:
                 counts["unsafe"] += 1
                 return
-            indeed_posting = is_indeed(safe) and looks_like_single_posting(safe)
+            if (urlsplit(safe).hostname or "").lower() != country_host:
+                counts["filtered"] += 1  # another site, or another country's Indeed
+                return
+            posting_link = looks_like_single_posting(safe)
             try:
-                stable = indeed_posting_url(safe) if indeed_posting else safe
+                stable = indeed_posting_url(safe) if posting_link else safe
                 canonical = normalize_job_input({"title": "x", "canonical_url": stable}).canonical_url
             except JobValidationError:
                 counts["unsafe"] += 1
@@ -572,55 +550,57 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             if canonical in seen:
                 return
             seen.add(canonical)
+            if not posting_link:
+                result_pages.append(safe)  # a results page the web search found
+                return
             if canonical in known:
                 counts["duplicates"] += 1
                 return
-            if not looks_like_single_posting(safe):
-                if is_indeed(safe):
-                    result_pages.append(safe)
-                    return
-                counts["not_postings"] += 1  # a board/listing page, not one posting
-                return
-            if indeed_posting:
-                stored_url[safe] = canonical
+            stored_url[safe] = canonical
             candidates.append(safe)
 
         from api.job_os.firecrawl import FirecrawlError
 
-        for page_url in [s for s in search["sites"] if "://" in s]:
-            if _cancel_requested(run_id):
-                finish("cancelled", "Cancelled")
-                return
-            try:
-                validate_external_job_url(page_url)
-                page = client.scrape(page_url, links=True)
-                for link in job_links_from_page(page["links"], page_url):
-                    offer(link)
-            except (UnsafeJobUrl, FirecrawlError) as error:
-                note_error(page_url, error)
-            save(detail=f"Checked careers page {urlsplit(page_url).hostname}")
-
-        # Every query gets a fair share of the quota, so the first site cannot
-        # crowd out the rest; leftovers from thin sites go to the next ones.
-        queries = _queries(search)[:MAX_QUERIES]
-        for position, query in enumerate(queries):
-            if _cancel_requested(run_id):
-                finish("cancelled", "Cancelled")
-                return
+        # Every city gets a fair share of the quota, so the first one cannot
+        # crowd out the rest; leftovers from thin cities go to the next ones.
+        keywords = search["keywords"] + (" remote" if search["remote_only"] else "")
+        locations = search["locations"] or [""]
+        for position, location in enumerate(locations):
             room = max_results - len(candidates)
             if room <= 0:
                 break
-            share = max(1, -(-room // (len(queries) - position)))
+            share = max(1, -(-room // (len(locations) - position)))
             counts["queries"] += 1
             before = len(candidates)
-            try:
-                for result in client.search(query, limit=min(10, max(share * 2, 3))):
+            for page_number in range(PAGES_PER_LOCATION):
+                if _cancel_requested(run_id):
+                    finish("cancelled", "Cancelled")
+                    return
+                url = indeed.search_url(search["country"], keywords, location,
+                                        posted_within_days=search["posted_within_days"], page=page_number)
+                try:
+                    page = client.scrape(url, links=True)
+                except FirecrawlError as error:
+                    note_error(f"{country_host} {location or 'results'}", error)
+                    if page_number == 0:
+                        # Indeed refused its results page; ask a web search for this site instead.
+                        try:
+                            for result in client.search(f"site:{country_host} {keywords} {location}".strip(), limit=10):
+                                offer(result["url"])
+                        except FirecrawlError as search_error:
+                            note_error("web search", search_error)
+                    break
+                added = len(candidates)
+                links = indeed_posting_links(page["links"], url)
+                for link in links:
                     if len(candidates) - before >= share:
                         break
-                    offer(result["url"])
-            except FirecrawlError as error:
-                note_error(query, error)
-            save(detail=f"Searched {counts['queries']} of {len(queries)} queries")
+                    offer(link)
+                # A short page is the last one; a page of only known postings means
+                # Indeed is repeating itself.
+                if len(links) < indeed.RESULTS_PER_PAGE or len(candidates) == added or len(candidates) - before >= share:
+                    break
+            save(detail=f"Searched {counts['queries']} of {len(locations)} location{'s' if len(locations) != 1 else ''}")
 
         for page_url in result_pages[:MAX_INDEED_RESULT_PAGES]:
             if _cancel_requested(run_id):
@@ -640,26 +620,34 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         candidates = candidates[:max_results]
         counts["candidates"] = len(candidates)
         if not candidates and counts["errors"] and counts["queries"] and counts["errors"] >= counts["queries"]:
-            finish("failed", "Firecrawl could not search; check Settings → Connections")
+            finish("failed", f"{country_host} could not be read; check Settings → Connections or try again later")
             return
-        save("scraping", f"Reading {len(candidates)} pages")
-        board_cache: dict = {}  # whole-board API answers, fetched once per run
+        save("scraping", f"Reading {len(candidates)} postings")
 
+        refused = 0
         for index, url in enumerate(candidates, start=1):
             if _cancel_requested(run_id):
                 finish("cancelled", "Cancelled")
                 return
+            if refused >= REFUSALS_BEFORE_STOP:
+                _mark_ran(search["id"])  # so the schedule waits its interval instead of retrying into the block
+                saved = f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}"
+                finish("completed" if counts["saved"] else "failed",
+                       f"{saved} · Indeed is refusing requests right now; run again in a few minutes")
+                _after_run(new_ids)
+                return
             try:
                 safe = validate_external_job_url(url)  # resolve again at the moment of use
-                kind, posting = read_posting(safe, client, board_cache)
+                kind, posting = read_posting(safe, client)
+                refused = 0
                 counts["scraped"] += 1
                 if kind == "closed":
                     counts["closed"] += 1  # the site no longer lists this posting
-                    save(detail=f"Read {index} of {len(candidates)} pages · {counts['saved']} new")
+                    save(detail=f"Read {index} of {len(candidates)} postings · {counts['saved']} new")
                     continue
                 if kind == "not_posting" or posting is None:
                     counts["not_postings"] += 1
-                elif search["remote_only"] and posting["workplace"] != "remote":
+                elif search["remote_only"] and not _is_remote(posting):
                     counts["filtered"] += 1
                 elif company_key(posting.get("company")) in blocked:
                     counts["blocked"] += 1
@@ -668,25 +656,21 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 else:
                     job = replace(
                         normalize_job_input({**posting, "canonical_url": stored_url.get(url, posting["canonical_url"]),
-                                            "source": _source_for(safe)}),
-                        description=posting["description"], salary_text=posting["salary_text"],
-                        employment_type=posting["employment_type"], workplace=posting["workplace"],
-                        posted_at=posting["posted_at"], search_id=search["id"], run_id=run_id)
+                                            "source": "indeed", "country": indeed.country_name(search["country"])}),
+                        search_id=search["id"], run_id=run_id)
                     record = create_job(job, status=JobStatus.SCRAPED)
                     counts["saved"] += 1
                     new_ids.append(record.id)
             except DuplicateJobError:
                 counts["duplicates"] += 1
-            except (UnsafeJobUrl, FirecrawlError, FetchError, JobValidationError) as error:
+            except FirecrawlError as error:
+                refused += 1
                 note_error(urlsplit(url).hostname or url, error)
-            save(detail=f"Read {index} of {len(candidates)} pages · {counts['saved']} new")
+            except (UnsafeJobUrl, JobValidationError) as error:
+                note_error(urlsplit(url).hostname or url, error)
+            save(detail=f"Read {index} of {len(candidates)} postings · {counts['saved']} new")
 
-        conn = connect_job_os()
-        try:
-            conn.execute("UPDATE searches SET last_run_at=? WHERE id=?", (int(time.time()), search["id"]))
-            conn.commit()
-        finally:
-            conn.close()
+        _mark_ran(search["id"])
         finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}")
         _after_run(new_ids)
     except Exception as error:  # a crashed worker must still leave a terminal run

@@ -46,26 +46,24 @@ def home(tmp_path, monkeypatch):
 def test_defaults_are_safe(home):
     s = load_settings()
     assert s["revision"] == 0
-    assert s["auto_apply"]["enabled"] is False
     assert s["notifications"]["email_enabled"] is False
     assert s["ai"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True}
     assert s["applicant"]["email"] == ""
-    assert set(s["auto_apply"]["allowed_ats"]) == {"greenhouse", "lever", "ashby"}
+    assert "auto_apply" not in s, "Auto-apply was removed"
 
 
 def test_save_merges_validates_and_bumps_revision(home):
-    saved = save_settings({"scout": {"schedule_hours": 4}, "auto_apply": {"enabled": True, "daily_cap": 3}}, expected_revision=0)
+    saved = save_settings({"scout": {"schedule_hours": 4}, "notifications": {"min_fit_score": 60}}, expected_revision=0)
     assert saved["revision"] == 1
-    assert saved["scout"]["schedule_hours"] == 4 and saved["auto_apply"]["daily_cap"] == 3
-    assert saved["auto_apply"]["min_fit_score"] == default_settings()["auto_apply"]["min_fit_score"]
+    assert saved["scout"]["schedule_hours"] == 4 and saved["notifications"]["min_fit_score"] == 60
+    assert saved["notifications"]["digest_hour"] == default_settings()["notifications"]["digest_hour"]
     assert load_settings() == saved
 
 
 @pytest.mark.parametrize("patch", [
     {"scout": {"schedule_hours": 0}},
-    {"auto_apply": {"daily_cap": 500}},
-    {"auto_apply": {"allowed_ats": ["workday"]}},
-    {"auto_apply": {"min_fit_score": 120}},
+    {"auto_apply": {"enabled": True}},
+    {"notifications": {"min_fit_score": 120}},
     {"notifications": {"to_address": "not-an-email"}},
     {"notifications": {"digest_hour": 25}},
     {"firecrawl": {"api_url": "javascript:alert(1)"}},

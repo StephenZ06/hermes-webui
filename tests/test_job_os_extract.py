@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from api.job_os.extract import extract_job_posting, job_links_from_page
+from api.job_os.extract import extract_job_posting
 
 
 def _page(*blocks, head_extra=""):
@@ -69,35 +69,6 @@ def test_pages_without_a_posting_or_with_broken_json_return_none():
 def test_description_is_capped():
     long = dict(POSTING, description="<p>" + "word " * 20000 + "</p>")
     assert len(extract_job_posting(_page(long), "https://x.test")["description"]) <= 20000
-
-
-def test_job_links_are_picked_from_a_careers_page():
-    links = [
-        "https://acme.com/careers/jobs/1234-backend-engineer",
-        "https://acme.com/about",
-        "https://boards.greenhouse.io/acme/jobs/4567",
-        "https://jobs.lever.co/acme/8f1c2d3e-aaaa-bbbb-cccc-1234567890ab",
-        "https://acme.com/careers",
-        "https://twitter.com/acme",
-        "https://acme.com/careers/jobs/1234-backend-engineer#apply",
-    ]
-    picked = job_links_from_page(links, "https://acme.com/careers")
-    assert picked == [
-        "https://acme.com/careers/jobs/1234-backend-engineer",
-        "https://boards.greenhouse.io/acme/jobs/4567",
-        "https://jobs.lever.co/acme/8f1c2d3e-aaaa-bbbb-cccc-1234567890ab",
-    ]
-
-
-def test_board_pages_are_told_apart_from_single_postings():
-    from api.job_os.extract import looks_like_single_posting
-    assert looks_like_single_posting("https://jobs.lever.co/acme/8f1c2d3e-aaaa-bbbb-cccc-1234567890ab")
-    assert not looks_like_single_posting("https://jobs.lever.co/acme")
-    assert not looks_like_single_posting("https://jobs.ashbyhq.com/acme")
-    assert looks_like_single_posting("https://boards.greenhouse.io/acme/jobs/123")
-    assert not looks_like_single_posting("https://boards.greenhouse.io/acme")
-    assert looks_like_single_posting("https://apply.workable.com/acme/j/AB12CD34/")
-    assert looks_like_single_posting("https://careers.example.com/anything"), "unknown sites are judged by their data"
 
 
 def test_location_requirement_lists_are_joined():

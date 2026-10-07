@@ -19,7 +19,6 @@ from urllib.parse import urlsplit
 
 from api.job_os.paths import job_os_state_dir
 
-SUPPORTED_ATS = ("greenhouse", "lever", "ashby")
 REASONING_EFFORTS = ("low", "medium", "high")
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,}$")
 _LOCK = threading.Lock()
@@ -38,7 +37,7 @@ def default_settings() -> dict:
         "revision": 0,
         "firecrawl": {"api_url": ""},
         "ai": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True},
-        # Contact details for tailored resumes and application forms.
+        # Contact details for tailored resumes and cover letters.
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         # blocked_companies: Scout never saves postings from these employers.
         "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20, "blocked_companies": []},
@@ -50,13 +49,6 @@ def default_settings() -> dict:
             "daily_digest": True,
             "digest_hour": 8,
             "reply_actions": True,
-        },
-        "auto_apply": {
-            "enabled": False,
-            "allowed_ats": list(SUPPORTED_ATS),
-            "daily_cap": 5,
-            "min_fit_score": 80,
-            "dry_run_first": True,
         },
     }
 
@@ -112,16 +104,6 @@ def _effort(value, field):
     return value
 
 
-def _ats(value, field):
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise SettingsError(f"{field} must be a list")
-    picked = [item.strip().lower() for item in value]
-    unknown = [item for item in picked if item not in SUPPORTED_ATS]
-    if unknown:
-        raise SettingsError(f"{field} only supports {', '.join(SUPPORTED_ATS)}")
-    return [ats for ats in SUPPORTED_ATS if ats in picked]
-
-
 def _companies(value, field):
     if isinstance(value, str):
         value = value.splitlines()
@@ -163,13 +145,6 @@ _VALIDATORS = {
         "daily_digest": _bool,
         "digest_hour": lambda v, f: _int(v, f, 0, 23),
         "reply_actions": _bool,
-    },
-    "auto_apply": {
-        "enabled": _bool,
-        "allowed_ats": _ats,
-        "daily_cap": lambda v, f: _int(v, f, 1, 50),
-        "min_fit_score": lambda v, f: _int(v, f, 0, 100),
-        "dry_run_first": _bool,
     },
 }
 

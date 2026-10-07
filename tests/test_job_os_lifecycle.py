@@ -50,7 +50,7 @@ def test_transition_job_rejects_invalid_target_without_mutating_state_or_events(
         connection.close()
 
     with pytest.raises(InvalidJobTransition):
-        transition_job(job.id, JobStatus.SUBMITTED, expected_revision=job.revision)
+        transition_job(job.id, JobStatus.OFFER, expected_revision=job.revision)
 
     unchanged = get_job(job.id)
     connection = connect_job_os()

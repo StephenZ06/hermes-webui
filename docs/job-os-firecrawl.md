@@ -1,6 +1,6 @@
 # Job OS: self-hosted Firecrawl
 
-The Jobs page (Job OS) discovers and scrapes job postings through a
+The Jobs page (Job OS) discovers and reads Indeed postings through a
 self-hosted [Firecrawl](https://github.com/firecrawl/firecrawl). This page is
 how it is set up next to a native Hermes WebUI on WSL2.
 
@@ -169,27 +169,34 @@ Health is read from `GET /` (`{"message": "Firecrawl API"}`) and
 
 ## How Scout finds and reads postings
 
-- **Search.** Keyword queries (one per site and location, quota shared
-  across sites) go to the **Brave Search API** when `BRAVE_SEARCH_API_KEY` is
-  set, paced to 1 request/second; otherwise to Firecrawl's `/search`
-  (SearXNG). Self-hosted SearXNG gets rate-limited and CAPTCHA'd by its
-  upstream engines after a burst, so the Brave key is strongly recommended.
-- **Default site:** Indeed (`indeed.com`). A saved search can list its own
-  domains (searched with `site:`, e.g. `jobs.lever.co`) or careers-page URLs
-  (read for links to single postings).
-- **Indeed.** Search engines index Indeed's results pages, not single
-  postings, so Scout opens up to 4 results pages per run and reads the
-  postings linked from them. Indeed serves a posting to an automated reader
-  only through its click link (`/rc/clk?jk=…`), not `/viewjob?jk=…`, and
-  refuses back-to-back requests, so Indeed pages are read 5 seconds apart.
-  The job is saved as `https://<host>/viewjob?jk=<key>`, and the key is what
-  makes two Indeed postings different jobs. LinkedIn and JobStreet refuse
-  the self-hosted Firecrawl outright.
-- **Reading.** Greenhouse, Lever, Ashby, Workable and SmartRecruiters render postings in the browser, so Scout
-  reads their official public posting APIs (`ats_api.py`); any other site is
-  read through Firecrawl and parsed from its schema.org `JobPosting` JSON-LD
-  (`extract.py`). Board pages are skipped by URL shape; postings a site no
-  longer lists are counted as *closed*.
+Scout searches **Indeed only** (`indeed.py`, `scout.py`):
+
+- **Country and cities.** Indeed runs a separate site per country
+  (`malaysia.indeed.com`, `sg.indeed.com`, `www.indeed.com`, …). A saved
+  search names its country and, optionally, cities; each city is searched on
+  that country's site: `https://<host>/jobs?q=<keywords>&l=<city>`, with
+  `fromage=<days>` when the search limits the date posted. The quota is
+  shared across cities.
+- **Results pages.** Scout reads up to 3 results pages per city (Indeed shows
+  about 10 postings a page) and stops at a short or repeated page.
+- **Postings.** Indeed serves a posting to an automated reader only through
+  its click link (`/rc/clk?jk=…`), not `/viewjob?jk=…`, and refuses
+  back-to-back requests, so Indeed pages are read 5 seconds apart. A posting
+  is parsed from its schema.org `JobPosting` JSON-LD (`extract.py`) and saved
+  as `https://<host>/viewjob?jk=<key>`; the key is what makes two Indeed
+  postings different jobs. Postings Indeed no longer lists count as *closed*.
+- **Blocks.** After a burst, Indeed refuses every request for several
+  minutes. Four refused postings in a row end the run early ("Indeed is
+  refusing requests right now"); the search's last-run time is still set, so
+  the schedule waits its interval before trying again.
+- **Fallback search.** If Indeed refuses a results page, Scout asks a web
+  search for that Indeed site instead: the **Brave Search API** when
+  `BRAVE_SEARCH_API_KEY` is set (paced to 1 request/second), otherwise
+  Firecrawl's `/search` (SearXNG, which its upstream engines rate-limit after
+  a burst). Links to any other site, or another country's Indeed, are
+  skipped.
+- **Other job sites.** LinkedIn and JobStreet refuse the self-hosted Firecrawl
+  outright, so they are not searched. Track jobs from them with **Add job**.
 - **Runs** are saved after every page (`scout.py`), can be cancelled between
   pages, and a WebUI restart mid-run leaves them *interrupted*.
 - **Schedule:** Jobs → Settings → Scout schedule runs enabled searches every

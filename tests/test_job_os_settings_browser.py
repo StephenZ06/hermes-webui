@@ -31,8 +31,7 @@ def test_settings_page_saves_and_reloads():
             save = page.locator('[data-job-os-action="save-settings"]')
             clean_disabled = save.is_disabled()
             page.fill('[data-setting="scout.schedule_hours"]', "9")
-            page.locator('label.job-os-toggle:has([data-setting="auto_apply.enabled"])').click()
-            page.uncheck('[data-setting="auto_apply.allowed_ats"][value="ashby"]')
+            page.locator('label.job-os-toggle:has([data-setting="ai.auto_analyze"])').click()
             dirty = page.get_attribute(".job-os-savebar", "data-dirty")
             focused_kept = page.evaluate("() => !!document.activeElement")
             save.click()
@@ -43,8 +42,7 @@ def test_settings_page_saves_and_reloads():
             page.evaluate("async () => { await switchPanel('jobs'); }")
             page.wait_for_selector("#job-os-settings-form", timeout=20000)
             reloaded = page.evaluate("""() => ({hours: document.querySelector('[data-setting="scout.schedule_hours"]').value,
-              auto: document.querySelector('[data-setting="auto_apply.enabled"]').checked,
-              ashby: document.querySelector('[data-setting="auto_apply.allowed_ats"][value="ashby"]').checked})""")
+              auto: document.querySelector('[data-setting="ai.auto_analyze"]').checked})""")
         finally:
             browser.close()
     after = _settings()["settings"]
@@ -56,6 +54,5 @@ def test_settings_page_saves_and_reloads():
     assert "Firecrawl" in chip_text
     assert clean_disabled and dirty == "true" and focused_kept
     assert after["revision"] == before["revision"] + 1
-    assert after["scout"]["schedule_hours"] == 9 and after["auto_apply"]["enabled"] is True
-    assert after["auto_apply"]["allowed_ats"] == ["greenhouse", "lever"]
-    assert reloaded == {"hours": "9", "auto": True, "ashby": False}
+    assert after["scout"]["schedule_hours"] == 9 and after["ai"]["auto_analyze"] is (not before["ai"]["auto_analyze"])
+    assert reloaded == {"hours": "9", "auto": not before["ai"]["auto_analyze"]}

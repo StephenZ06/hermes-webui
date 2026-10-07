@@ -34,6 +34,7 @@ def test_resume_upload_through_the_file_picker(tmp_path):
     with sync_api.sync_playwright() as pw:
         browser, page = _open(pw, "resume-studio")
         try:
+            page.wait_for_selector(".resume-master, #resume-drop", timeout=20000)
             if page.query_selector(".resume-master"):
                 page.click('[data-job-os-action="resume-replace"]')
             page.wait_for_selector("#resume-file", state="attached", timeout=20000)
@@ -45,18 +46,32 @@ def test_resume_upload_through_the_file_picker(tmp_path):
     assert "cv.md" in chips and "words" in chips
 
 
-def test_a_bare_job_offers_fetch_details_and_x_skips_it():
+def test_a_bare_job_offers_its_next_step_and_x_skips_it():
     sync_api = pytest.importorskip("playwright.sync_api")
-    job = _post("/api/job-os/jobs", {"title": f"Bare {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})["job"]
+    import sqlite3
+
+    from tests._pytest_port import TEST_STATE_DIR
+
+    tracked = _post("/api/job-os/jobs", {"title": f"Bare {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})["job"]
+    found = _post("/api/job-os/jobs", {"title": f"Found {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})["job"]
+    with sqlite3.connect(TEST_STATE_DIR / "webui_state" / "job_os" / "job_os.db") as conn:
+        conn.execute("UPDATE jobs SET source='indeed' WHERE id=?", (found["id"],))
+    card = lambda job: f'.pipe-card[data-board-job="{job["id"]}"]'
     with sync_api.sync_playwright() as pw:
         browser, page = _open(pw, "pipeline")
         try:
-            page.click(f'.job-os-job-card[data-job-id="{job["id"]}"]')
+            page.evaluate("() => { localStorage.removeItem('hermes-job-os-pipeline'); window.JobOSState.pipelineSource = 'all'; window.JobOSState.pipelineMode = 'board'; return window.JobOS.refresh(); }")
+            page.wait_for_selector(card(tracked), timeout=15000)
+            # Without a description: a tracked job asks for one, an Indeed find offers to read its posting.
+            tracked_step = page.inner_text(f'{card(tracked)} .pipe-card-actions .job-os-btn')
+            found_step = page.inner_text(f'{card(found)} .pipe-card-actions .job-os-btn')
+            page.click(f'{card(found)} .pipe-card-main')
             page.wait_for_selector("#job-os-detail", timeout=15000)
-            has_fetch = bool(page.query_selector('[data-job-os-action="job-details"]'))
-            selected = page.evaluate(f"() => document.querySelector('.job-os-job-card[data-job-id=\"{job['id']}\"]').classList.contains('is-selected')")
+            has_fetch = bool(page.query_selector('#job-os-detail [data-job-os-action="job-details"]'))
+            selected = page.evaluate(f"() => document.querySelector('{card(found)}').classList.contains('is-selected')")
             page.keyboard.press("x")
-            page.wait_for_function(f"() => document.querySelector('.job-os-job-card[data-job-id=\"{job['id']}\"] .job-os-badge')?.textContent === 'Skipped'", timeout=15000)
+            page.wait_for_selector(f'.pipe-col[data-col="closed"] {card(found)}', timeout=15000)
         finally:
             browser.close()
+    assert tracked_step == "Add description" and found_step == "Fetch details"
     assert has_fetch and selected

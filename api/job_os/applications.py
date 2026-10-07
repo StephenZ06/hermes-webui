@@ -1,9 +1,11 @@
-"""Applications: the board, manual 'I applied' recording, notes, attention, funnel.
+"""Pipeline board, 'I applied' recording, notes, attention and the funnel.
 
-Marking a job applied walks the canonical lifecycle path (application_ready ->
-awaiting_approval -> applying -> submitted) so every step is in the event
-log, and records how it was sent (manual, auto) in an
-``application_submitted`` event. Outcomes after that (screening, interview,
+The board shows every job in one column per stage, from new finds to closed,
+and can be narrowed to one source (``indeed`` from Scout, ``manual`` from the
+tracker). Marking a job applied walks the canonical lifecycle path to
+``submitted`` (every step lands in the event log) and records an
+``application_submitted`` event; a job applied for without a tailored resume
+goes straight to ``submitted``. Outcomes after that (screening, interview,
 offer, rejected, ...) use the normal status transitions.
 """
 
@@ -20,14 +22,24 @@ from api.job_os.repository import get_job, list_jobs
 
 FOLLOW_UP_DAYS = 7
 COLUMNS = (
-    ("preparing", "Preparing", ("shortlisted", "tailoring", "resume_ready")),
-    ("ready", "Ready to apply", ("application_ready",)),
-    ("attention", "Needs attention", ("awaiting_approval", "applying")),
+    ("new", "New", ("discovered", "scraped", "analyzed")),
+    ("shortlisted", "Shortlisted", ("shortlisted",)),
+    ("resume", "Resume", ("tailoring", "resume_ready")),
+    ("ready", "Ready to apply", ("application_ready", "awaiting_approval", "applying")),
     ("applied", "Applied", ("submitted",)),
     ("interviewing", "Interviewing", ("screening", "interviewing")),
-    ("offers", "Offers", ("offer", "offer_accepted", "offer_declined")),
-    ("closed", "Closed", ("rejected", "withdrawn", "no_response", "closed")),
+    ("offers", "Offer", ("offer", "offer_accepted", "offer_declined")),
+    ("closed", "Closed", ("rejected", "withdrawn", "no_response", "closed", "skipped", "expired")),
 )
+SOURCES = ("indeed", "manual")
+# What a person can move a card to by hand (tailoring and the internal apply
+# steps have their own actions). "submitted" goes through mark_applied.
+MOVES = (("shortlisted", "Shortlisted"), ("submitted", "Applied"), ("screening", "Screening"),
+         ("interviewing", "Interviewing"), ("offer", "Offer"), ("offer_accepted", "Offer accepted"),
+         ("offer_declined", "Offer declined"), ("rejected", "Rejected"), ("no_response", "No response"),
+         ("withdrawn", "Withdrawn"), ("skipped", "Skipped"))
+# Applying without a tailored resume: these go straight to submitted.
+_DIRECT_APPLY = (JobStatus.DISCOVERED, JobStatus.SCRAPED, JobStatus.ANALYZED, JobStatus.SHORTLISTED)
 _PATH = [JobStatus.SHORTLISTED, JobStatus.TAILORING, JobStatus.RESUME_READY, JobStatus.APPLICATION_READY,
          JobStatus.AWAITING_APPROVAL, JobStatus.APPLYING, JobStatus.SUBMITTED]
 
@@ -42,19 +54,23 @@ def _event(conn, job_id: str, event_type: str, payload: dict) -> None:
 
 
 def mark_applied(job_id: str, *, method: str = "manual", note: str = "") -> dict:
-    """Record that the application was sent. Allowed from resume_ready onward."""
+    """Record that the application was sent: from any stage before it, with or
+    without a tailored resume (a tailoring job must finish first)."""
     job = get_job(job_id)
     if job is None:
         raise KeyError(job_id)
-    if job.status not in _PATH or _PATH.index(job.status) < _PATH.index(JobStatus.RESUME_READY):
-        raise ApplicationError("Tailor a resume for this job before recording an application.")
     if job.status == JobStatus.SUBMITTED:
         return {"job_id": job_id, "status": job.status.value}
-    for target in _PATH[_PATH.index(job.status) + 1:]:
-        job = transition_job(job_id, target, expected_revision=job.revision)
+    if job.status in _DIRECT_APPLY:
+        job = transition_job(job_id, JobStatus.SUBMITTED, expected_revision=job.revision)
+    elif job.status in _PATH and _PATH.index(job.status) >= _PATH.index(JobStatus.RESUME_READY):
+        for target in _PATH[_PATH.index(job.status) + 1:]:
+            job = transition_job(job_id, target, expected_revision=job.revision)
+    else:
+        raise ApplicationError("This job can't be marked applied from its current stage.")
     conn = connect_job_os()
     try:
-        _event(conn, job_id, "application_submitted", {"method": method if method in ("manual", "auto") else "manual",
+        _event(conn, job_id, "application_submitted", {"method": "manual",
                                                        "note": str(note or "")[:500]})
         conn.commit()
     finally:
@@ -101,10 +117,7 @@ def _signals() -> tuple[dict, dict, dict, dict]:
             docs.setdefault(r["job_id"], []).append(r["status"])
         analyses = {r["job_id"]: {"status": r["status"], "fit_score": r["fit_score"], "verdict": r["verdict"]}
                     for r in conn.execute("SELECT job_id, status, fit_score, verdict FROM job_analyses")}
-        stopped = {r["job_id"]: json.loads(r["payload_json"] or "{}").get("reason", "")
-                   for r in conn.execute("SELECT job_id, payload_json FROM job_events e WHERE event_type='auto_apply_stopped'"
-                                         " AND created_at = (SELECT MAX(created_at) FROM job_events WHERE job_id=e.job_id AND event_type='auto_apply_stopped')")}
-        return applied, changed, docs, {"analyses": analyses, "stopped": stopped}
+        return applied, changed, docs, {"analyses": analyses}
     finally:
         conn.close()
 
@@ -112,10 +125,6 @@ def _signals() -> tuple[dict, dict, dict, dict]:
 def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None, now: int) -> list[str]:
     reasons = []
     status = job.status.value
-    if status == "awaiting_approval":
-        reasons.append("Waiting for your approval to apply")
-    if extra["stopped"].get(job.id) and status in ("application_ready", "awaiting_approval", "applying"):
-        reasons.append(f"Auto-apply stopped: {extra['stopped'][job.id]}")
     if status in ("resume_ready", "application_ready") and "needs_review" in docs:
         reasons.append("A tailored document has numbers to check")
     if "failed" in docs and status == "shortlisted":
@@ -125,38 +134,47 @@ def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None,
     return reasons
 
 
-def _auto_summary(run: dict | None) -> dict | None:
-    if not run:
-        return None
-    result = run.get("result") or {}
-    return {"mode": run["mode"], "status": run["status"], "reason": run["reason"], "finished_at": run["finished_at"],
-            "screenshots": result.get("screenshots") or [], "filled": [f.get("label") for f in result.get("filled") or []]}
+def moves_for(status: JobStatus) -> list[list[str]]:
+    """The stages a card can be moved to from ``status``, as [value, label]."""
+    from api.job_os.lifecycle import _ALLOWED_TRANSITIONS
+
+    allowed = {s.value for s in _ALLOWED_TRANSITIONS.get(status, ())}
+    if status in _DIRECT_APPLY or status in (JobStatus.RESUME_READY, JobStatus.APPLICATION_READY):
+        allowed.add("submitted")
+    return [[value, label] for value, label in MOVES if value in allowed]
 
 
-def board() -> dict:
-    from api.job_os.autoapply import ats_of, latest_runs
-
-    runs = latest_runs()
+def board(source: str | None = None) -> dict:
+    """Every job in a column per stage, newest first; ``source`` narrows it to
+    Scout's Indeed finds or the manual tracker. ``sources`` counts both."""
+    if source is not None and source not in SOURCES:
+        raise ApplicationError("Unknown source")
     applied, changed, docs, extra = _signals()
     now = int(time.time())
     by_status = {status: key for key, _label, statuses in COLUMNS for status in statuses}
     columns = {key: [] for key, _label, _statuses in COLUMNS}
+    sources = {name: 0 for name in SOURCES}
     for job in list_jobs():
         key = by_status.get(job.status.value)
         if key is None:
             continue
-        reasons = attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now)
+        kind = "manual" if job.source == "manual" else "indeed"
+        sources[kind] += 1
+        if source is not None and kind != source:
+            continue
         card = {"id": job.id, "title": job.title, "company": job.company, "location": job.location,
-                "workplace": job.workplace, "salary_text": job.salary_text, "status": job.status.value,
-                "revision": job.revision, "canonical_url": job.canonical_url,
-                "analysis": extra["analyses"].get(job.id), "attention": reasons,
-                "applied": applied.get(job.id), "updated_at": job.updated_at,
-                "ats": ats_of(job.canonical_url), "auto": _auto_summary(runs.get(job.id))}
-        target = "attention" if reasons and key in ("preparing", "ready") else key
-        columns[target].append(card)
+                "country": job.country, "workplace": job.workplace, "salary_text": job.salary_text,
+                "employment_type": job.employment_type, "source": kind, "status": job.status.value,
+                "revision": job.revision, "canonical_url": job.canonical_url, "posted_at": job.posted_at,
+                "has_description": bool(job.description), "analysis": extra["analyses"].get(job.id),
+                "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
+                "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at,
+                "moves": moves_for(job.status)}
+        columns[key].append(card)
     for cards in columns.values():
         cards.sort(key=lambda c: -(c["updated_at"] or 0))
-    return {"columns": [{"key": k, "label": label, "jobs": columns[k]} for k, label, _ in COLUMNS]}
+    return {"columns": [{"key": k, "label": label, "jobs": columns[k]} for k, label, _ in COLUMNS],
+            "sources": {"all": sum(sources.values()), **sources}}
 
 
 def funnel() -> list[dict]:

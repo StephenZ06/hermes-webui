@@ -63,21 +63,21 @@ def test_side_panel_navigates_sections_and_filters_by_stage():
             browser.close()
 
 
-def test_dashboard_import_saves_a_job_and_escapes_its_title():
+def test_dashboard_add_job_saves_a_job_and_escapes_its_title():
     sync_api = pytest.importorskip("playwright.sync_api")
     marker = uuid.uuid4().hex[:8]
     title = f"<img src=x onerror=window.__jobXss=1> {marker}"
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1280)
         try:
-            page.wait_for_selector("#job-os-import-form", timeout=10000)
-            page.fill("#job-os-import-form input[name='title']", title)
-            page.fill("#job-os-import-form input[name='canonical_url']", f"https://example.com/import-{marker}")
-            page.click("#job-os-import-form button[type='submit']")
-            page.wait_for_function("() => !document.querySelector('#job-os-import-form input[name=title]')?.value", polling=100, timeout=10000)
-            page.click("#jobOsSidebar [data-job-os-view='pipeline']")
+            page.click(".job-os-import [data-job-os-action='job-form-new']")
+            page.wait_for_selector("#job-os-job-form", timeout=10000)
+            page.fill("#job-os-job-form input[name='title']", title)
+            page.fill("#job-os-job-form input[name='canonical_url']", f"https://example.com/import-{marker}")
+            page.click("#job-os-job-form button[type='submit']")
+            # Saving lands on the Pipeline with the new job on the board.
             page.wait_for_function(
-                "(marker) => [...document.querySelectorAll('#jobOsRoot .job-os-job-card strong')].some(e => e.textContent.includes(marker))",
+                "(marker) => [...document.querySelectorAll('#jobOsRoot .pipe-card strong')].some(e => e.textContent.includes(marker))",
                 arg=marker, polling=100, timeout=10000,
             )
             assert page.evaluate("() => window.__jobXss") is None
@@ -91,8 +91,9 @@ def test_narrow_screen_keeps_an_in_page_section_switcher():
         browser, page = _open_jobs(pw, 390)
         try:
             assert page.is_visible("#jobOsRoot .job-os-tabs")
-            page.click("#jobOsRoot .job-os-tabs [data-job-os-view='applications']")
-            page.wait_for_function("() => location.hash === '#jobs/applications'", polling=100, timeout=10000)
+            page.click("#jobOsRoot .job-os-tabs [data-job-os-view='pipeline']")
+            page.wait_for_function("() => location.hash === '#jobs/pipeline'", polling=100, timeout=10000)
+            page.wait_for_selector("#jobOsRoot .pipe-toolbar", timeout=10000)
             assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
         finally:
             browser.close()
@@ -109,7 +110,7 @@ def test_job_lists_read_newest_first():
                 const jobs = Array.from({length: 14}, (_, i) => ({id: 'j' + i, title: 'Job ' + i, company: 'Co', status: 'discovered', created_at: 1000 + i, updated_at: 1000 + i}));
                 const host = document.createElement('div');
                 const render = (view) => {
-                    host.innerHTML = window.JobOSRender.shell({activeView: view, statusFilter: null, capability: {available: true}, dashboard: null, jobs});
+                    host.innerHTML = window.JobOSRender.shell({activeView: view, statusFilter: null, capability: {available: true}, dashboard: null, jobs, pipelineSource: 'all', pipelineMode: 'list'});
                     return [...host.querySelectorAll('.job-os-job-card strong')].map(e => e.textContent);
                 };
                 return {dashboard: render('dashboard'), pipeline: render('pipeline')};
@@ -121,19 +122,22 @@ def test_job_lists_read_newest_first():
             browser.close()
 
 
-def test_a_refresh_keeps_unsaved_import_form_input():
-    """Every refresh rebuilds the page; text typed into Import must survive it."""
+def test_a_refresh_keeps_unsaved_job_form_input():
+    """Every refresh rebuilds the page; text typed into Add job must survive it."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1280)
         try:
-            page.wait_for_selector("#job-os-import-form", timeout=10000)
-            page.fill("#job-os-import-form input[name='title']", "Typed before refresh")
-            page.fill("#job-os-import-form input[name='company']", "Draft Co")
+            page.click(".job-os-import [data-job-os-action='job-form-new']")
+            page.wait_for_selector("#job-os-job-form", timeout=10000)
+            page.fill("#job-os-job-form input[name='title']", "Typed before refresh")
+            page.fill("#job-os-job-form input[name='company']", "Draft Co")
+            page.fill("#job-os-job-form textarea[name='description']", "Long pasted description")
             page.evaluate("() => window.JobOS.refresh()")
             page.evaluate("() => new Promise(r => setTimeout(r, 300))")
-            assert page.input_value("#job-os-import-form input[name='title']") == "Typed before refresh"
-            assert page.input_value("#job-os-import-form input[name='company']") == "Draft Co"
+            assert page.input_value("#job-os-job-form input[name='title']") == "Typed before refresh"
+            assert page.input_value("#job-os-job-form input[name='company']") == "Draft Co"
+            assert page.input_value("#job-os-job-form textarea[name='description']") == "Long pasted description"
         finally:
             browser.close()
 

@@ -132,7 +132,7 @@ def list_tailored() -> list[dict]:
 
 
 def request_tailoring(job_id: str, *, start_worker: bool = True) -> dict:
-    """Start tailoring for a shortlisted (or analysed) job."""
+    """Start tailoring for a job with a description (shortlisting it first if needed)."""
     from api.job_os.lifecycle import transition_job
     from api.job_os.resume import load_resume
 
@@ -143,7 +143,7 @@ def request_tailoring(job_id: str, *, start_worker: bool = True) -> dict:
         raise KeyError(job_id)
     if not job.description:
         raise TailorError("This job has no description yet; fetch its details first.")
-    if job.status == JobStatus.ANALYZED:
+    if job.status in (JobStatus.SCRAPED, JobStatus.ANALYZED):
         job = transition_job(job_id, JobStatus.SHORTLISTED, expected_revision=job.revision)
     if job.status in (JobStatus.RESUME_READY, JobStatus.APPLICATION_READY):
         job = transition_job(job_id, JobStatus.SHORTLISTED, expected_revision=job.revision)  # re-tailor

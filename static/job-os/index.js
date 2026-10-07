@@ -10,7 +10,8 @@
   function applyRoute() {
     const match = String(window.location.hash || '').match(/^#jobs\/(dashboard|scout|pipeline|resume-studio|applications|logistics|settings)(?:\?status=([^&]+))?$/);
     if (!match) return;
-    window.JobOSState.activeView = match[1];
+    // The Applications board became the Pipeline board; old links still land there.
+    window.JobOSState.activeView = match[1] === 'applications' ? 'pipeline' : match[1];
     window.JobOSState.statusFilter = match[2] ? decodeURIComponent(match[2]) : null;
   }
   function replaceRoute(view, status) {
@@ -33,39 +34,54 @@
       const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
-      const wantBoard = state.activeView === 'applications';
+      const wantBoard = state.activeView === 'pipeline' && state.pipelineMode === 'board' && !state.statusFilter;
       const wantAutomations = state.activeView === 'dashboard';
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, autoApply, automations] = await Promise.all([
+      // Countries feed the Scout form and the tracker's country list; they never change.
+      const wantCountries = !state.countries.length;
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
         window.JobOSApi.firecrawlHealth().catch(() => null),
         wantSettings ? window.JobOSApi.settings() : Promise.resolve(null),
-        wantScout ? window.JobOSApi.searches() : Promise.resolve(null),
+        wantScout || wantCountries ? window.JobOSApi.searches().catch(() => null) : Promise.resolve(null),
         wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
         wantResume ? window.JobOSApi.resume().catch(() => null) : Promise.resolve(null),
         wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
-        wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
+        wantBoard ? window.JobOSApi.board(state.pipelineSource).catch(() => null) : Promise.resolve(null),
         wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
-        wantBoard ? window.JobOSApi.autoApply().catch(() => null) : Promise.resolve(null),
         wantAutomations ? window.JobOSApi.automations().catch(() => null) : Promise.resolve(null),
+        wantDetail ? window.JobOSApi.timeline(state.selectedJobId).catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
+      // Resume Studio's match check reads the full analysis of one job: the
+      // picked one, or the newest with a description.
+      let match = null;
+      if (wantResume && !state.studioJobId && resume && resume.resume) {
+        const described = (jobs.jobs || []).filter((j) => j.has_description).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+        const pick = described.find((j) => j.id === state.studioMatchId) || described[0];
+        if (pick) match = await window.JobOSApi.job(pick.id).catch(() => null);
+        if (seq !== refreshSeq) return;
+      }
+      state.studioMatch = match && match.job;
       state.capability = capability;
       state.dashboard = dashboard;
       state.jobs = jobs.jobs || [];
       state.firecrawl = health && health.firecrawl;
-      if (searches) { state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule; }
+      if (searches) {
+        state.searches = searches.searches || []; state.searchProvider = searches.search_provider; state.schedule = searches.schedule;
+        state.countries = searches.countries || []; state.postedWithin = searches.posted_within_days || state.postedWithin;
+      }
+      state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) state.resume = resume.resume;
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
-      if (board) state.board = board;
+      state.board = board || (wantBoard ? state.board : null);
       if (notifications) state.notifications = notifications.notifications;
-      if (autoApply) state.autoApply = autoApply.auto_apply;
       if (automations) state.automations = automations.automations;
       if (settings) {
         state.settings = settings.settings;
@@ -83,7 +99,8 @@
       if (wantScout) afterScoutRender(target);
       else stopScoutPolling();
       afterPipelineRender(target);
-      if (wantBoard) afterBoardRender(target);
+      afterBoardRender(target);
+      bindJobForms(target);
       if (state.activeView === 'logistics') afterLogisticsRender(target);
       else disposeLogistics();
       if (wantResume) bindResumeUpload();
@@ -103,11 +120,26 @@
   // One delegated listener per container: the page and the side-panel nav
   // re-render on every refresh, so per-button listeners would be rebuilt anyway.
   async function onChange(event) {
-    const el = event.target.closest('[data-job-os-change="board-outcome"]');
+    const state = window.JobOSState;
+    const pick = event.target.closest('[data-job-os-change="match-job"]');
+    if (pick) { state.studioMatchId = pick.value; refresh(); return; }
+    const country = event.target.closest('[data-job-os-change="scout-country"]');
+    if (country) {
+      const form = country.form;
+      state.searchForm = Object.assign({}, state.searchForm, searchPayload(form));
+      refresh();
+      return;
+    }
+    const el = event.target.closest('[data-job-os-change="board-move"]');
     if (!el || !el.value) return;
     el.disabled = true;
-    try { await window.JobOSApi.setStatus(el.dataset.jobId, el.value, Number(el.dataset.revision)); flash(el.dataset.jobId); }
-    catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update'); }
+    const card = el.closest('.pipe-card');
+    try {
+      // "Applied" walks whatever lifecycle steps are left, so it has its own endpoint.
+      if (el.value === 'submitted') { await window.JobOSApi.markApplied(el.dataset.jobId); await swoosh(card); }
+      else await window.JobOSApi.setStatus(el.dataset.jobId, el.value, Number(el.dataset.revision));
+      flash(el.dataset.jobId);
+    } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update'); }
     refresh();
   }
   // After a board move, the card glows in its new column.
@@ -153,19 +185,15 @@
     if (logistics) { logistics.dispose(); logistics = null; }
     logisticsHost = null;
   }
-  let boardPoll = null;
   function afterBoardRender(target) {
-    clearTimeout(boardPoll);
-    // A fill or a submission is running: check again shortly.
-    if (target.querySelector('.board-card[data-busy]')) boardPoll = setTimeout(() => { if (window.JobOSState.activeView === 'applications') refresh(); }, 3000);
     if (!flashId) return;
-    const card = target.querySelector(`.board-card[data-board-job="${CSS.escape(flashId)}"]`);
+    const card = target.querySelector(`.pipe-card[data-board-job="${CSS.escape(flashId)}"]`);
     if (card && typeof window.markArrival === 'function') window.markArrival(card);
     flashId = null;
   }
   // Paper plane from the card to the Applied column.
   function swoosh(fromEl) {
-    const to = document.querySelector('.board-col[data-col="applied"] header');
+    const to = document.querySelector('.pipe-col[data-col="applied"] header');
     if (!fromEl || !to || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
     const a = fromEl.getBoundingClientRect(), b = to.getBoundingClientRect();
     const plane = document.createElement('span');
@@ -209,27 +237,6 @@
         if (event.key === 'Enter' && event.target.closest('#job-os-gmail')) { event.preventDefault(); runAction('gmail-connect'); }
       }, {signal});
     }
-    const form = document.getElementById('job-os-import-form');
-    if (!form) return;
-    form.addEventListener('input', (event) => {
-      const name = event.target && event.target.name;
-      if (name && Object.prototype.hasOwnProperty.call(window.JobOSState.importDraft, name)) window.JobOSState.importDraft[name] = event.target.value;
-    }, {signal});
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const error = document.getElementById('job-os-import-error');
-      const submit = form.querySelector('button[type="submit"]');
-      error.textContent = '';
-      if (submit) submit.disabled = true;
-      try {
-        await window.JobOSApi.create(Object.fromEntries(new FormData(form)));
-        window.JobOSState.importDraft = emptyDraft();
-        await refresh();
-      } catch (err) {
-        error.textContent = err.message || 'Unable to save this job.';
-        if (submit) submit.disabled = false;
-      }
-    }, {signal});
   }
   // ---- Settings editing ----------------------------------------------------
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -240,9 +247,6 @@
   }
   function readControl(form, control) {
     const path = control.dataset.setting;
-    if (path === 'auto_apply.allowed_ats') {
-      return [...form.querySelectorAll('[data-setting="auto_apply.allowed_ats"]')].filter((box) => box.checked).map((box) => box.value);
-    }
     if (path === 'scout.blocked_companies') return control.value.split('\n');
     if (control.type === 'checkbox') return control.checked;
     if (control.type === 'number') return control.value === '' ? control.value : Number(control.value);
@@ -273,7 +277,8 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'board-autofill', 'board-approve', 'board-cancel-apply'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -376,9 +381,9 @@
     const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status))
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
-      && ((state.jobs || []).some(busy) || busy(state.jobDetail) || (state.jobDetail && state.jobDetail.status === 'tailoring')
+      && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring') || busy(state.jobDetail)
         || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))))
-      || (state.activeView === 'resume-studio' && docBusy && state.studioDraft == null);
+      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
     const editor = document.getElementById('studio-text');
@@ -388,7 +393,7 @@
       const doc = (state.studioDocs || {})[state.studioTab];
       if (save) save.disabled = !doc || editor.value === doc.content;
     });
-    const card = state.jobDetail && target.querySelector(`.job-os-job-card[data-job-id="${CSS.escape(state.jobDetail.id)}"]`);
+    const card = state.jobDetail && target.querySelector(`.job-os-job-card[data-job-id="${CSS.escape(state.jobDetail.id)}"], .pipe-card[data-board-job="${CSS.escape(state.jobDetail.id)}"]`);
     if (card) card.classList.add('is-selected');
   }
   function orderedJobIds() {
@@ -409,7 +414,7 @@
   }
   function onTriageKey(event) {
     const state = window.JobOSState;
-    if (state.activeView !== 'pipeline' || !state.jobDetail || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (state.activeView !== 'pipeline' || !state.jobDetail || state.jobForm || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
     const key = event.key.toLowerCase();
     const ids = orderedJobIds();
@@ -422,6 +427,10 @@
     else if (key === 'a' && state.jobDetail.description) { event.preventDefault(); runAction('job-analyze'); }
     else if (key === 'escape') { event.preventDefault(); runAction('job-close'); }
   }
+  // Esc closes the job form wherever it is open.
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && window.JobOSState.jobForm && document.getElementById('job-os-job-form')) { event.preventDefault(); trackerAction('job-form-close'); }
+  });
   document.addEventListener('keydown', onTriageKey);
   function readAsBase64(file) {
     return new Promise((resolve, reject) => {
@@ -481,9 +490,24 @@
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not read that posting'); }
       return refresh();
     }
-    if (name === 'job-tailor' && job) {
-      try { await window.JobOSApi.tailor(job.id); if (typeof window.showToast === 'function') window.showToast('Luna is tailoring your resume'); }
+    if ((name === 'job-tailor' && job) || name === 'card-tailor') {
+      const id = name === 'card-tailor' ? el.dataset.jobId : job.id;
+      if (el) el.disabled = true;
+      try { await window.JobOSApi.tailor(id); if (typeof window.showToast === 'function') window.showToast('Luna is tailoring your resume'); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start tailoring'); }
+      return refresh();
+    }
+    if (name === 'card-details') {
+      el.disabled = true; el.textContent = 'Reading…';
+      try { await window.JobOSApi.fetchDetails(el.dataset.jobId); flash(el.dataset.jobId); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not read that posting'); }
+      return refresh();
+    }
+    if (name === 'match-score') {
+      el.disabled = true;
+      state.studioMatchId = el.dataset.jobId;
+      try { await window.JobOSApi.analyzeJob(el.dataset.jobId, true); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not score your resume'); }
       return refresh();
     }
     if ((name === 'job-ready' && job) || name === 'studio-ready') {
@@ -521,36 +545,24 @@
     }
     if (name === 'board-apply') {
       const id = el.dataset.jobId;
-      window.open(el.dataset.url, '_blank', 'noopener');
+      // From a card the posting opens to apply there; from the drawer the
+      // application already went out and is only being recorded.
+      const fromCard = !!el.closest('.pipe-card');
+      if (fromCard) window.open(el.dataset.url, '_blank', 'noopener');
       const ok = typeof window.showConfirmDialog === 'function'
-        ? await window.showConfirmDialog({title: 'Did you submit it?', message: 'The posting opened in a new tab. Once you have sent the application there, record it here.', confirmLabel: 'I applied', cancelLabel: 'Not yet'})
+        ? await window.showConfirmDialog(fromCard
+          ? {title: 'Did you submit it?', message: 'The posting opened in a new tab. Once you have sent the application there, record it here.', confirmLabel: 'I applied', cancelLabel: 'Not yet'}
+          : {title: 'Mark as applied?', message: 'Record that you sent the application for this job. It moves to Applied.', confirmLabel: 'Mark applied', cancelLabel: 'Cancel'})
         : window.confirm('Did you submit the application?');
       if (!ok) return undefined;
       try {
-        const card = el.closest('.board-card');
+        const card = el.closest('.pipe-card') || document.querySelector(`.pipe-card[data-board-job="${CSS.escape(id)}"]`);
         await window.JobOSApi.markApplied(id);
         if (card) card.classList.add('is-sent');
         await swoosh(card);
         flash(id);
         if (typeof window.showToast === 'function') window.showToast('Application recorded');
       } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not record it'); }
-      return refresh();
-    }
-    if (name === 'board-autofill' || name === 'board-approve' || name === 'board-cancel-apply') {
-      const id = el.dataset.jobId;
-      if (name === 'board-approve') {
-        const ok = typeof window.showConfirmDialog === 'function'
-          ? await window.showConfirmDialog({title: 'Send this application?', message: 'Hermes will fill the form again and press submit. This can’t be undone.', confirmLabel: 'Send it', cancelLabel: 'Not yet'})
-          : window.confirm('Send this application?');
-        if (!ok) return undefined;
-      }
-      el.disabled = true;
-      try {
-        if (name === 'board-autofill') await window.JobOSApi.autofill(id);
-        else if (name === 'board-approve') await window.JobOSApi.approveApply(id);
-        else await window.JobOSApi.cancelApply(id);
-        flash(id);
-      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Auto-apply failed'); }
       return refresh();
     }
     if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }
@@ -562,6 +574,100 @@
       return refresh();
     }
     return undefined;
+  }
+  // ---- Pipeline layout and the manual tracker ------------------------------------------
+  const PREFS = 'hermes-job-os-pipeline';
+  function savePrefs() {
+    const state = window.JobOSState;
+    try { localStorage.setItem(PREFS, JSON.stringify({source: state.pipelineSource, mode: state.pipelineMode})); } catch (_) { /* private window */ }
+  }
+  function loadPrefs() {
+    const state = window.JobOSState;
+    try {
+      const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
+      if (['all', 'indeed', 'manual'].includes(saved.source)) state.pipelineSource = saved.source;
+      if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
+    } catch (_) { /* defaults */ }
+  }
+  const FORM_FIELDS = ['title', 'company', 'canonical_url', 'country', 'location', 'salary_text', 'employment_type', 'workplace', 'description'];
+  const emptyJobForm = () => ({title: '', company: '', canonical_url: '', country: '', location: '', salary_text: '', employment_type: '', workplace: '', description: '', note: '', stage: 'saved'});
+  async function trackerAction(name, el) {
+    const state = window.JobOSState;
+    if (name === 'pipe-source') { state.pipelineSource = el.dataset.source; state.statusFilter = null; savePrefs(); replaceRoute('pipeline'); return refresh(); }
+    if (name === 'pipe-mode') { state.pipelineMode = el.dataset.mode; state.statusFilter = null; savePrefs(); replaceRoute('pipeline'); return refresh(); }
+    if (name === 'job-form-new') { state.jobForm = Object.assign(emptyJobForm(), window.JobOSState.importDraft || {}); state.jobFormError = ''; return refresh(); }
+    if (name === 'job-form-edit') {
+      const id = el.dataset.jobId;
+      const job = state.jobDetail && state.jobDetail.id === id ? state.jobDetail : (await window.JobOSApi.job(id).catch(() => null) || {}).job;
+      if (!job) return undefined;
+      state.jobForm = Object.assign(emptyJobForm(), Object.fromEntries(FORM_FIELDS.map((f) => [f, job[f] || ''])), {id: job.id, revision: job.revision});
+      state.jobFormError = '';
+      return refresh();
+    }
+    if (name === 'job-form-close') { state.jobForm = null; state.jobFormError = ''; return refresh(); }
+    return undefined;
+  }
+  function readJobForm(form) {
+    const data = new FormData(form);
+    const out = {};
+    FORM_FIELDS.concat(['note', 'stage']).forEach((f) => { if (data.has(f)) out[f] = String(data.get(f) || '').trim(); });
+    return out;
+  }
+  async function saveJobForm(form) {
+    const state = window.JobOSState;
+    const values = readJobForm(form);
+    const editing = state.jobForm && state.jobForm.id;
+    const error = form.querySelector('.job-os-error');
+    const submit = form.querySelector('button[type="submit"]');
+    if (!values.title || (!editing && !values.canonical_url)) { error.textContent = 'A job title and its link are required.'; return; }
+    if (submit) submit.disabled = true;
+    try {
+      let id;
+      if (editing) {
+        const changes = {};
+        FORM_FIELDS.filter((f) => f !== 'canonical_url').forEach((f) => { changes[f] = values[f] || ''; });
+        await window.JobOSApi.editJob(state.jobForm.id, changes, state.jobForm.revision);
+        id = state.jobForm.id;
+      } else {
+        const payload = {};
+        FORM_FIELDS.forEach((f) => { if (values[f]) payload[f] = values[f]; });
+        const created = await window.JobOSApi.create(payload);
+        id = created.job.id;
+        if (values.note) await window.JobOSApi.addNote(id, values.note);
+        if (values.stage === 'applied') await window.JobOSApi.markApplied(id, values.note || '');
+        state.importDraft = emptyDraft();
+        if (state.activeView !== 'pipeline' || state.pipelineSource === 'indeed') state.pipelineSource = 'all';
+        state.activeView = 'pipeline'; state.statusFilter = null; replaceRoute('pipeline');
+      }
+      state.jobForm = null; state.jobFormError = '';
+      flash(id);
+      if (typeof window.showToast === 'function') window.showToast(editing ? 'Job updated' : 'Job saved to your pipeline');
+      refresh();
+    } catch (err) {
+      state.jobForm = Object.assign({}, state.jobForm, values);
+      error.textContent = err.message || 'Unable to save this job.';
+      if (submit) submit.disabled = false;
+    }
+  }
+  function bindJobForms(target) {
+    const form = target.querySelector('#job-os-job-form');
+    if (form) {
+      form.addEventListener('submit', (event) => { event.preventDefault(); saveJobForm(form); });
+      form.addEventListener('input', () => { window.JobOSState.jobForm = Object.assign({}, window.JobOSState.jobForm, readJobForm(form)); });
+      const first = form.querySelector('input[name="title"]');
+      if (first && !first.value) first.focus();
+    }
+    const note = target.querySelector('#job-os-note-form');
+    if (note) note.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = note.elements.text.value.trim();
+      const job = window.JobOSState.jobDetail;
+      if (!text || !job) return;
+      note.querySelector('button').disabled = true;
+      try { await window.JobOSApi.addNote(job.id, text); }
+      catch (err) { if (typeof window.showToast === 'function') window.showToast(err.message || 'Could not save the note'); }
+      refresh();
+    });
   }
   // ---- Scout -----------------------------------------------------------------
   const ACTIVE = ['queued', 'searching', 'scraping'];
@@ -604,15 +710,21 @@
     if (needsFullRender || !state.runs.some((run) => ACTIVE.includes(run.status))) { stopScoutPolling(); refresh(); }
   }
   function formFromSearch(search) {
-    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords,
-      locations: (search.locations || []).join(', '), sites: (search.sites || []).join('\n'), remote_only: search.remote_only}
-      : {name: '', keywords: '', locations: '', sites: '', remote_only: false};
+    // A new search starts in the country of the last one made.
+    const last = (window.JobOSState.searches || []).slice(-1)[0];
+    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords, country: search.country,
+      locations: (search.locations || []).join(', '), posted_within_days: search.posted_within_days, remote_only: search.remote_only}
+      : {name: '', keywords: '', country: last ? last.country : '', locations: '', posted_within_days: 0, remote_only: false};
+  }
+  function searchPayload(form) {
+    const data = new FormData(form);
+    return {name: data.get('name') || '', keywords: data.get('keywords') || '', country: data.get('country') || '',
+      locations: data.get('locations') || '', posted_within_days: Number(data.get('posted_within_days') || 0),
+      remote_only: data.get('remote_only') === 'on'};
   }
   async function saveSearchForm(form) {
     const state = window.JobOSState;
-    const data = new FormData(form);
-    const payload = {name: data.get('name') || '', keywords: data.get('keywords') || '', locations: data.get('locations') || '',
-      sites: data.get('sites') || '', remote_only: data.get('remote_only') === 'on'};
+    const payload = searchPayload(form);
     const submit = form.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
     try {
@@ -661,7 +773,7 @@
       refresh();
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
   }
-  function mount() { applyRoute(); refresh(); }
+  function mount() { loadPrefs(); applyRoute(); refresh(); }
   function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); disposeLogistics(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
   function openJob(jobId) {
     const state = window.JobOSState;
@@ -671,6 +783,6 @@
     replaceRoute('pipeline', state.statusFilter); refresh();
     requestAnimationFrame(() => { const d = document.getElementById('job-os-detail'); if (d && d.scrollIntoView) d.scrollIntoView({block: 'nearest', behavior: 'smooth'}); });
   }
-  function resetDraft() { window.JobOSState.importDraft = emptyDraft(); }
+  function resetDraft() { window.JobOSState.importDraft = emptyDraft(); window.JobOSState.jobForm = null; }
   window.JobOS = {mount, refresh, unmount, openJob, resetDraft};
 }());

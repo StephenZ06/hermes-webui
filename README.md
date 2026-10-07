@@ -235,12 +235,13 @@ If an AI assistant is helping with install, reinstall, bootstrap, provider setup
 - Breadcrumb navigation with clickable path segments
 - Preview text, code, Markdown (rendered), and images inline
 
-### Jobs workspace (Foundation)
+### Jobs workspace
 
-- A profile-scoped Job OS workspace for keeping a researched job pipeline in one place
-- Dashboard counters for imported jobs, active work, and jobs awaiting attention
-- Manual job import with canonical-URL duplicate protection and lifecycle history
-- A responsive foundation layout for Dashboard, Scout, Pipeline, Resume Studio, and Applications; automated scouting, CV tailoring, and applying are deliberately later slices
+- A profile-scoped job tracker: Dashboard, Scout, Pipeline, Resume Studio, Logistics and Settings (see `docs/job-os.md`)
+- Scout searches Indeed for your job titles in a chosen country and cities, and reads each posting into the Pipeline
+- A manual tracker for jobs found elsewhere (link, company, country, salary, description, notes)
+- A Pipeline board with one column per stage, split into Indeed and manual jobs
+- Resume Studio scores the master resume against a job (green / yellow / red match ring) and tailors a resume and cover letter for it
 - Chat links using `workspace://path/to/file` open files in the right-side preview pane
 - Edit, create, delete, and rename files; create folders
 - Binary file download (auto-detected from server)

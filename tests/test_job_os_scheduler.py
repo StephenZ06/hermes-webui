@@ -25,16 +25,16 @@ def _set_last_run(search_id, when):
 
 
 def test_nothing_runs_while_the_schedule_is_off(store):
-    scout.create_search({"keywords": "backend"})
+    scout.create_search({"keywords": "backend", "country": "my"})
     assert scheduler.tick(start=lambda *a, **k: pytest.fail("must not start")) is None
 
 
 def test_the_most_overdue_enabled_search_runs_and_only_one_per_tick(store):
     save_settings({"scout": {"enabled": True, "schedule_hours": 6}}, expected_revision=0)
-    fresh = scout.create_search({"keywords": "fresh"})
-    old = scout.create_search({"keywords": "old"})
-    older = scout.create_search({"keywords": "older"})
-    off = scout.create_search({"keywords": "off", "enabled": False})
+    fresh = scout.create_search({"keywords": "fresh", "country": "my"})
+    old = scout.create_search({"keywords": "old", "country": "my"})
+    older = scout.create_search({"keywords": "older", "country": "my"})
+    off = scout.create_search({"keywords": "off", "country": "my", "enabled": False})
     now = 1_000_000
     _set_last_run(fresh["id"], now - 3600)
     _set_last_run(old["id"], now - 7 * 3600)

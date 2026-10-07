@@ -23,6 +23,5 @@ def test_dashboard_lists_automations_and_views_animate_in():
             same_view_again = page.evaluate("() => !!document.querySelector('.job-os-content.is-entering')")
         finally:
             browser.close()
-    assert [name for name, _ in rows] == ["Scout searches", "Luna fit analysis", "Match alert emails", "Daily digest", "Reply commands", "Auto-apply"]
-    assert dict(rows)["Auto-apply"] == "false"
+    assert [name for name, _ in rows] == ["Scout searches", "Luna fit analysis", "Match alert emails", "Daily digest", "Reply commands"]
     assert same_view_again is False  # a refresh of the same view does not replay the animation

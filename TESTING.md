@@ -32,12 +32,12 @@ Open `http://127.0.0.1:8789`, confirm `GET /health` returns `{"status":"ok"}`,
 then verify the following:
 
 1. Open **Jobs** from both the desktop rail and the mobile navigation. Confirm
-   the Dashboard, Scout, Pipeline, Resume Studio, and Applications sections
-   remain usable at desktop, narrow, and phone widths.
-2. In **Scout**, manually import a job with a title, company, and URL. Confirm
-   it appears in the pipeline and the dashboard total changes. Import the same
-   canonical URL again and confirm the duplicate is rejected without creating a
-   second record.
+   the Dashboard, Scout, Pipeline, Resume Studio, Logistics and Settings
+   sections remain usable at desktop, narrow, and phone widths.
+2. In **Pipeline**, choose **Add job** and save a job with a title, company,
+   link, country and description. Confirm it appears on the board under
+   **Manual** and the dashboard total changes. Add the same link again and
+   confirm the duplicate is rejected without creating a second record.
 3. Open the job, move it through an allowed lifecycle transition, and confirm
    its status and event history update. Select a dashboard status metric, copy
    the resulting `#jobs/pipeline?status=...` URL, and confirm it resolves to

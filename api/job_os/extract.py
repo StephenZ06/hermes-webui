@@ -16,12 +16,7 @@ import re
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
 MAX_DESCRIPTION = 20000
-ATS_HOSTS = (
-    "boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
-    "apply.workable.com", "jobs.smartrecruiters.com",
-)
 _LD_JSON = re.compile(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", re.I | re.S)
-_JOB_PATH = re.compile(r"/(jobs?|careers?|positions?|openings?|vacanc(y|ies)|o)/[^/?#]*\d[^/?#]*", re.I)
 _EMPLOYMENT = {
     "FULL_TIME": "Full time", "PART_TIME": "Part time", "CONTRACTOR": "Contract", "CONTRACT": "Contract",
     "TEMPORARY": "Temporary", "INTERN": "Internship", "INTERNSHIP": "Internship", "PER_DIEM": "Per diem",
@@ -159,44 +154,6 @@ def _strip_fragment(link: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
-def job_links_from_page(links: list[str], page_url: str, *, limit: int = 50) -> list[str]:
-    """Links on a careers page that look like single postings: on the page's own
-    host or an application-tracking site, with an id-like job path."""
-    page_host = (urlsplit(page_url).hostname or "").lower()
-    picked: list[str] = []
-    for raw in links or []:
-        link = _strip_fragment(urljoin(page_url, str(raw)))
-        parts = urlsplit(link)
-        host = (parts.hostname or "").lower()
-        if parts.scheme not in {"http", "https"} or link in picked:
-            continue
-        on_ats = any(host == ats or host.endswith("." + ats) for ats in ATS_HOSTS)
-        if not (on_ats or host == page_host):
-            continue
-        path = parts.path.rstrip("/")
-        if on_ats and path.count("/") >= 2:
-            picked.append(link)
-        elif _JOB_PATH.search(path):
-            picked.append(link)
-        if len(picked) >= limit:
-            break
-    return picked
-
-
-# ---- single-posting URL shapes on application-tracking sites ---------------
-_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-_POSTING_SHAPES = {
-    "jobs.lever.co": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
-    "jobs.eu.lever.co": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
-    "jobs.ashbyhq.com": re.compile(rf"^/[^/]+/{_UUID}/?$", re.I),
-    "boards.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
-    "job-boards.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
-    "job-boards.eu.greenhouse.io": re.compile(r"^/[^/]+/jobs/\d+/?$"),
-    "apply.workable.com": re.compile(r"^/[^/]+/j/[0-9A-Za-z]+/?$"),
-    "jobs.smartrecruiters.com": re.compile(r"^/[^/]+/\d{6,}[^/]*/?$"),
-}
-
-
 # ---- Indeed -------------------------------------------------------------------
 # Search engines index Indeed's results pages rather than single postings. A
 # posting is reached through a click link (/rc/clk?jk=<key>&bb=<token>): Indeed
@@ -241,10 +198,8 @@ def indeed_posting_links(links: list[str], page_url: str, *, limit: int = 50) ->
 
 
 def looks_like_single_posting(url: str) -> bool:
-    """False for a known site's board/listing page; True otherwise (unknown sites
-    are read and judged by their structured data)."""
+    """False for an Indeed results page; True for a posting link (and for any
+    other site, which is judged by the structured data on its page)."""
     if is_indeed(url):
         return indeed_job_key(url) is not None
-    parts = urlsplit(url)
-    shape = _POSTING_SHAPES.get((parts.hostname or "").lower())
-    return True if shape is None else bool(shape.match(parts.path))
+    return True

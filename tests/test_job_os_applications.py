@@ -47,8 +47,12 @@ def test_mark_applied_walks_the_path_and_records_how(store):
     events = applications.timeline(job.id)
     assert [e["data"].get("to") for e in events if e["type"] == "status_changed"][-3:] == ["awaiting_approval", "applying", "submitted"]
     assert events[-1] == {"type": "application_submitted", "data": {"method": "manual", "note": "via site"}, "at": events[-1]["at"]}
+    # Applied without a tailored resume: straight to submitted.
+    untailored = _job_at(JobStatus.ANALYZED)
+    assert applications.mark_applied(untailored.id)["status"] == "submitted"
+    assert [e["data"].get("to") for e in applications.timeline(untailored.id) if e["type"] == "status_changed"][-1] == "submitted"
     with pytest.raises(applications.ApplicationError):
-        applications.mark_applied(_job_at(JobStatus.ANALYZED).id)
+        applications.mark_applied(_job_at(JobStatus.TAILORING).id)  # wait for the resume first
 
 
 def test_board_columns_attention_and_follow_up(store):
@@ -62,13 +66,33 @@ def test_board_columns_attention_and_follow_up(store):
     conn.execute("UPDATE job_events SET created_at=? WHERE job_id=? AND event_type='status_changed'", (now - 9 * 86400, applied.id))
     conn.commit()
     conn.close()
+    new = _job_at(JobStatus.SCRAPED)
+    skipped = _job_at(JobStatus.SCRAPED)
+    skipped = transition_job(skipped.id, JobStatus.SKIPPED, expected_revision=skipped.revision)
     cols = {c["key"]: [j["id"] for j in c["jobs"]] for c in applications.board()["columns"]}
-    assert cols["ready"] == [ready.id] and cols["attention"] == [review.id]
-    assert cols["applied"] == [applied.id] and cols["interviewing"] == [interviewing.id]
+    assert list(cols) == ["new", "shortlisted", "resume", "ready", "applied", "interviewing", "offers", "closed"]
+    assert cols["ready"] == [ready.id] and cols["resume"] == [review.id] and cols["new"] == [new.id]
+    assert cols["applied"] == [applied.id] and cols["interviewing"] == [interviewing.id] and cols["closed"] == [skipped.id]
+    review_card = next(j for j in applications.board()["columns"][2]["jobs"] if j["id"] == review.id)
+    assert review_card["attention"] == ["A tailored document has numbers to check"]
     card = next(j for c in applications.board()["columns"] for j in c["jobs"] if j["id"] == applied.id)
     assert card["attention"] and "follow up" in card["attention"][0]
     from api.job_os.dashboard import build_dashboard
     assert build_dashboard()["needs_attention"] == 2  # the review card and the follow-up nudge
+
+
+def test_board_narrows_to_one_source_and_counts_both(store):
+    manual = _job_at(JobStatus.SCRAPED)
+    found = create_job(normalize_job_input({"title": "Found", "canonical_url": "https://malaysia.indeed.com/viewjob?jk=abc1",
+                                            "source": "indeed", "country": "Malaysia", "salary_text": "RM 5,000 / month"}),
+                       status=JobStatus.SCRAPED)
+    ids = lambda board: [j["id"] for c in board["columns"] for j in c["jobs"]]
+    assert sorted(ids(applications.board())) == sorted([manual.id, found.id])
+    indeed_board = applications.board("indeed")
+    assert ids(indeed_board) == [found.id] and ids(applications.board("manual")) == [manual.id]
+    assert indeed_board["sources"] == {"all": 2, "indeed": 1, "manual": 1}
+    card = indeed_board["columns"][0]["jobs"][0]
+    assert (card["source"], card["country"], card["salary_text"]) == ("indeed", "Malaysia", "RM 5,000 / month")
 
 
 def test_funnel_counts_progress(store):
@@ -108,7 +132,57 @@ def test_routes(store):
     assert empty.status == 400
     b = _H()
     routes.handle_get(b, urlparse("/api/job-os/applications"))
-    assert [c["key"] for c in json.loads(b.wfile.getvalue())["columns"]][:2] == ["preparing", "ready"]
+    assert [c["key"] for c in json.loads(b.wfile.getvalue())["columns"]][:2] == ["new", "shortlisted"]
+    bad = _H()
+    routes.handle_get(bad, urlparse("/api/job-os/applications?source=linkedin"))
+    assert bad.status == 400
     t = _H()
     routes.handle_get(t, urlparse(f"/api/job-os/jobs/{job.id}/timeline"))
     assert json.loads(t.wfile.getvalue())["timeline"][-1]["data"]["text"] == "Called recruiter"
+
+
+def _post(path, body):
+    h = _H(body)
+    routes.handle_post(h, urlparse(path))
+    return h, json.loads(h.wfile.getvalue() or b"{}")
+
+
+def test_the_manual_tracker_saves_details_and_a_described_job_is_ready_to_work_on(store):
+    h, data = _post("/api/job-os/jobs", {"title": "Data Analyst", "canonical_url": "https://careers.acme.test/jobs/7",
+                                          "company": "Acme", "country": "Singapore", "location": "Jurong",
+                                          "salary_text": "SGD 6,000 / month", "employment_type": "Full time",
+                                          "workplace": "hybrid", "description": "SQL, Python, dashboards",
+                                          "source": "indeed"})
+    assert h.status == 201, data
+    job = get_job(data["job"]["id"])
+    assert job.source == "manual", "the tracker can't pose as a Scout find"
+    assert job.status == JobStatus.SCRAPED and job.country == "Singapore" and job.workplace == "hybrid"
+    bare, data = _post("/api/job-os/jobs", {"title": "Later", "canonical_url": "https://careers.acme.test/jobs/8"})
+    assert get_job(data["job"]["id"]).status == JobStatus.DISCOVERED
+    bad, _ = _post("/api/job-os/jobs", {"title": "X", "canonical_url": "https://careers.acme.test/jobs/9", "workplace": "moon"})
+    assert bad.status == 400
+
+
+def test_edit_updates_details_with_a_revision_check(store):
+    job = _job_at(JobStatus.SCRAPED)
+    h, data = _post(f"/api/job-os/jobs/{job.id}/edit", {"job": {"salary_text": "RM 7,000", "country": "Malaysia"},
+                                                       "expected_revision": job.revision})
+    assert h.status == 200, data
+    edited = get_job(job.id)
+    assert (edited.salary_text, edited.country, edited.revision) == ("RM 7,000", "Malaysia", job.revision + 1)
+    assert edited.status == JobStatus.SCRAPED and edited.canonical_url == job.canonical_url
+    stale, _ = _post(f"/api/job-os/jobs/{job.id}/edit", {"job": {"salary_text": "x"}, "expected_revision": job.revision})
+    assert stale.status == 409
+    for change in ({"status": "offer"}, {"canonical_url": "https://evil.test"}, {"title": ""}):
+        refused, _ = _post(f"/api/job-os/jobs/{job.id}/edit", {"job": change, "expected_revision": edited.revision})
+        assert refused.status == 400, change
+    assert applications.timeline(job.id)[-1]["type"] == "details_edited"
+
+
+def test_cards_offer_only_the_moves_their_stage_allows(store):
+    moves = lambda status: [value for value, _label in applications.moves_for(status)]
+    assert moves(JobStatus.SCRAPED) == ["shortlisted", "submitted", "skipped"]
+    assert moves(JobStatus.RESUME_READY) == ["shortlisted", "submitted"]
+    assert moves(JobStatus.SUBMITTED) == ["screening", "rejected", "no_response", "withdrawn"]
+    assert moves(JobStatus.OFFER) == ["offer_accepted", "offer_declined", "withdrawn"]
+    assert moves(JobStatus.REJECTED) == []

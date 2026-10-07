@@ -25,8 +25,7 @@ A reply is acted on only if:
 - the code is unused, unexpired (7 days), and matches the action.
 
 Anything else is ignored and shown as *rejected* in the Notifications log.
-Codes are stored only as SHA-256 hashes. `APPLY` codes arrive with gated
-auto-apply.
+Codes are stored only as SHA-256 hashes.
 
 State: `webui_state/job_os/notify.json` (last digest date, inbox position) and
 the `reply_codes` / `email_log` tables in `job_os.db`.

@@ -20,10 +20,13 @@ class ConcurrentRevisionError(ValueError):
 
 
 _ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
-    JobStatus.DISCOVERED: frozenset({JobStatus.SCRAPED, JobStatus.SKIPPED, JobStatus.EXPIRED}),
-    JobStatus.SCRAPED: frozenset({JobStatus.ANALYZED, JobStatus.SKIPPED, JobStatus.EXPIRED}),
-    JobStatus.ANALYZED: frozenset({JobStatus.SHORTLISTED, JobStatus.SKIPPED, JobStatus.EXPIRED}),
-    JobStatus.SHORTLISTED: frozenset({JobStatus.TAILORING, JobStatus.SKIPPED, JobStatus.EXPIRED}),
+    # Any stage before applying can go straight to submitted: a tracked job
+    # is often applied for without a tailored resume.
+    JobStatus.DISCOVERED: frozenset({JobStatus.SCRAPED, JobStatus.SKIPPED, JobStatus.EXPIRED, JobStatus.SUBMITTED}),
+    JobStatus.SCRAPED: frozenset({JobStatus.ANALYZED, JobStatus.SHORTLISTED, JobStatus.SKIPPED, JobStatus.EXPIRED,
+                                  JobStatus.SUBMITTED}),
+    JobStatus.ANALYZED: frozenset({JobStatus.SHORTLISTED, JobStatus.SKIPPED, JobStatus.EXPIRED, JobStatus.SUBMITTED}),
+    JobStatus.SHORTLISTED: frozenset({JobStatus.TAILORING, JobStatus.SKIPPED, JobStatus.EXPIRED, JobStatus.SUBMITTED}),
     JobStatus.TAILORING: frozenset({JobStatus.RESUME_READY, JobStatus.SHORTLISTED}),
     JobStatus.RESUME_READY: frozenset({JobStatus.APPLICATION_READY, JobStatus.SHORTLISTED}),
     JobStatus.APPLICATION_READY: frozenset({JobStatus.AWAITING_APPROVAL}),

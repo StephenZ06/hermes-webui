@@ -86,6 +86,13 @@ def test_tailoring_needs_a_shortlisted_job_with_a_description(store):
         tailor.request_tailoring(bare.id, start_worker=False)
 
 
+def test_a_tracked_job_with_a_description_can_be_tailored_without_analysis(store):
+    job = create_job(normalize_job_input({"title": "Analyst", "canonical_url": "https://jobs.example.test/manual",
+                                          "description": "SQL and Python"}), status=JobStatus.SCRAPED)
+    assert tailor.request_tailoring(job.id, start_worker=False)["status"] == "tailoring"
+    assert get_job(job.id).status == JobStatus.TAILORING
+
+
 def test_exports_are_valid():
     docx = export.to_docx(TAILORED)
     with zipfile.ZipFile(io.BytesIO(docx)) as z:

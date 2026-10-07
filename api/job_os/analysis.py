@@ -3,7 +3,7 @@
 Requests queue in ``job_analyses`` and one background worker processes them in
 order, so a Scout run that finds 20 jobs never fires 20 model calls at once.
 A finished analysis moves the job from ``scraped`` to ``analyzed``; the user
-(or, later, auto-apply policy) decides shortlist vs skip.
+decides shortlist vs skip.
 """
 
 from __future__ import annotations

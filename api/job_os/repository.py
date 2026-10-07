@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 import uuid
@@ -50,19 +51,46 @@ def _canonicalize_url(value: str) -> str:
     return urlunsplit((parsed.scheme.lower(), netloc, path, query, ""))
 
 
+WORKPLACES = ("", "remote", "hybrid", "onsite")
+# Longest accepted value per field; anything longer is a pasted mistake.
+_LIMITS = {"title": 240, "company": 240, "location": 240, "country": 80, "salary_text": 120,
+           "employment_type": 60, "posted_at": 40, "description": 20000}
+
+
+def _bounded(payload: Mapping[str, object], key: str) -> str:
+    value = _optional_text(payload, key)
+    if len(value) > _LIMITS[key]:
+        raise JobValidationError(f"{key.replace('_', ' ')} is too long (at most {_LIMITS[key]} characters)")
+    return value
+
+
 def normalize_job_input(payload: Mapping[str, object]) -> JobInput:
-    """Validate and normalize one untrusted job payload before persistence."""
+    """Validate and normalize one untrusted job payload before persistence.
+
+    Besides the identity fields it takes the posting details a person types into
+    the manual tracker (or Scout reads from a posting)."""
     title = _required_text(payload, "title")
+    if len(title) > _LIMITS["title"]:
+        raise JobValidationError("title is too long")
     canonical_url = _canonicalize_url(_required_text(payload, "canonical_url"))
     source = _optional_text(payload, "source") or "manual"
     source_id = _optional_text(payload, "source_id") or None
+    workplace = _optional_text(payload, "workplace").lower()
+    if workplace not in WORKPLACES:
+        raise JobValidationError("workplace must be remote, hybrid or onsite")
     return JobInput(
         title=title,
         canonical_url=canonical_url,
-        company=_optional_text(payload, "company"),
-        location=_optional_text(payload, "location"),
+        company=_bounded(payload, "company"),
+        location=_bounded(payload, "location"),
         source=source,
         source_id=source_id,
+        description=_bounded(payload, "description"),
+        salary_text=_bounded(payload, "salary_text"),
+        employment_type=_bounded(payload, "employment_type"),
+        workplace=workplace,
+        posted_at=_bounded(payload, "posted_at"),
+        country=_bounded(payload, "country"),
     )
 
 
@@ -86,6 +114,7 @@ def _record_from_row(row: sqlite3.Row) -> JobRecord:
         posted_at=row["posted_at"],
         search_id=row["search_id"],
         run_id=row["run_id"],
+        country=row["country"],
     )
 
 
@@ -134,8 +163,8 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 id, canonical_url, source, source_id, title, company, location,
                 status, revision, idempotency_key, created_at, updated_at,
                 description, salary_text, employment_type, workplace, posted_at,
-                search_id, run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                search_id, run_id, country
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record_id,
@@ -157,6 +186,7 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 job.posted_at,
                 job.search_id,
                 job.run_id,
+                job.country,
             ),
         )
         connection.execute(
@@ -203,3 +233,51 @@ def list_jobs(filters: JobFilters | None = None) -> list[JobRecord]:
         return [_record_from_row(row) for row in rows]
     finally:
         connection.close()
+
+
+EDITABLE_FIELDS = ("title", "company", "location", "country", "salary_text", "employment_type", "workplace",
+                   "posted_at", "description")
+
+
+def update_job_details(job_id: str, changes: Mapping[str, object], *, expected_revision: int) -> JobRecord:
+    """Edit a job's posting details (the tracker's Edit form). The link, source
+    and stage are not editable here; every edit bumps the revision."""
+    if isinstance(expected_revision, bool) or not isinstance(expected_revision, int):
+        raise JobValidationError("expected_revision must be an integer")
+    if not isinstance(changes, Mapping) or not changes:
+        raise JobValidationError("Nothing to change")
+    unknown = sorted(set(changes) - set(EDITABLE_FIELDS))
+    if unknown:
+        raise JobValidationError(f"Not editable: {', '.join(unknown)}")
+    current = get_job(job_id)
+    if current is None:
+        raise KeyError(job_id)
+    merged = {field: getattr(current, field) for field in EDITABLE_FIELDS}
+    merged.update(changes)
+    clean = normalize_job_input({**merged, "canonical_url": current.canonical_url})
+    values = {field: getattr(clean, field) for field in EDITABLE_FIELDS}
+    connection = connect_job_os()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+        cursor = connection.execute(
+            f"UPDATE jobs SET {', '.join(f'{f} = ?' for f in EDITABLE_FIELDS)}, revision = revision + 1, updated_at = ?"
+            " WHERE id = ? AND revision = ?",
+            (*values.values(), now, job_id, expected_revision),
+        )
+        if cursor.rowcount != 1:
+            connection.rollback()
+            raise StaleJobRevision("This job changed in another tab; reload and try again")
+        connection.execute(
+            "INSERT INTO job_events (id, job_id, event_type, payload_json, created_at) VALUES (?, ?, 'details_edited', ?, ?)",
+            (str(uuid.uuid4()), job_id, json.dumps({"fields": sorted(changes)}), now),
+        )
+        row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        connection.commit()
+        return _record_from_row(row)
+    finally:
+        connection.close()
+
+
+class StaleJobRevision(ValueError):
+    """The job changed since the browser loaded it (HTTP 409)."""

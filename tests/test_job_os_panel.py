@@ -6,15 +6,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_jobs_panel_has_desktop_mobile_navigation_and_five_subpages():
+def test_jobs_panel_has_desktop_mobile_navigation_and_its_subpages():
     """Jobs is a first-class responsive panel, not an embedded external application."""
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     renderer = (ROOT / "static" / "job-os" / "render.js").read_text(encoding="utf-8")
 
     assert html.count('data-panel="jobs"') == 2
     assert 'id="panelJobs"' in html
-    for label in ("Dashboard", "Scout", "Pipeline", "Resume Studio", "Applications"):
+    for label in ("Dashboard", "Scout", "Pipeline", "Resume Studio", "Logistics", "Settings"):
         assert label in renderer
+    assert "applications: 'Applications'" not in renderer, "the Applications board became the Pipeline board"
 
 
 def test_jobs_panel_loads_its_lifecycle_modules_and_mx_icon():

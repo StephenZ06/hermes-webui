@@ -58,12 +58,16 @@ def api(tmp_path, monkeypatch):
 
 def test_search_crud_run_and_errors(api):
     get, post, started = api
-    created = post("/api/job-os/searches", {"search": {"keywords": "python", "locations": "Berlin"}})
+    assert post("/api/job-os/searches", {"search": {"keywords": "python"}}).status == 400  # no Indeed country
+    created = post("/api/job-os/searches", {"search": {"keywords": "python", "country": "de", "locations": "Berlin"}})
     assert created.status == 201
     sid = created.json()["search"]["id"]
     listing = get("/api/job-os/searches").json()
     assert [s["id"] for s in listing["searches"]] == [sid] and listing["schedule"] == {"enabled": False, "hours": 6}
     assert listing["searches"][0]["next_run_at"] is None
+    assert listing["searches"][0]["country_name"] == "Germany"
+    assert {"code": "my", "name": "Malaysia", "host": "malaysia.indeed.com"} in listing["countries"]
+    assert listing["posted_within_days"] == [0, 1, 3, 7, 14]
     assert post("/api/job-os/searches", {"search": {"keywords": ""}}).status == 400
     edit = post(f"/api/job-os/searches/{sid}", {"search": {"name": "Py"}, "expected_revision": 0})
     assert edit.status == 200 and edit.json()["search"]["name"] == "Py"
