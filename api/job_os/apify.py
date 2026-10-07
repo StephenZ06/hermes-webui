@@ -235,7 +235,7 @@ JOBSTREET_HOSTS = {"my": "my.jobstreet.com", "sg": "sg.jobstreet.com", "id": "id
 
 
 def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int,
-                    state_key: str = "") -> dict:
+                    state_key: str = "", title_filter: list[str] | None = None) -> dict:
     """``state_key``: names this search's memory on Apify. With it the actor runs
     incrementally: after the first run it returns (and charges for) only
     postings that are new or changed since the last run."""
@@ -246,6 +246,10 @@ def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, p
                "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
     if state_key:
         payload.update({"incrementalMode": True, "stateKey": state_key, "emitUnchanged": False, "emitExpired": False})
+    if title_filter:
+        # Matched against the title only, on the actor's side: other postings are not returned or charged.
+        payload.update({"includeKeywords": list(title_filter), "keywordMatchTitle": True, "keywordMatchCompany": False,
+                        "keywordMatchDescription": False, "keywordMatchCategory": False, "keywordMatchBulletPoints": False})
     return payload
 
 

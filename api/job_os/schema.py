@@ -242,8 +242,13 @@ def _migration_8(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE jobs ADD COLUMN country TEXT NOT NULL DEFAULT ''")
 
 
+def _migration_9(connection: sqlite3.Connection) -> None:
+    """Scout title filter: phrases a posting's title must contain (JSON list)."""
+    connection.execute("ALTER TABLE searches ADD COLUMN title_filter TEXT NOT NULL DEFAULT '[]'")
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
-              (6, _migration_6), (7, _migration_7), (8, _migration_8))
+              (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

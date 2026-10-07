@@ -115,6 +115,26 @@ def _split(value, *, limit: int, field: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+MAX_QUERIES = 5
+
+
+def _queries_of(keywords: str) -> list[str]:
+    """Comma-separated job titles: each is searched on its own."""
+    return list(dict.fromkeys(q.strip() for q in str(keywords or "").split(",") if q.strip()))
+
+
+_WORD = re.compile(r"[a-z0-9+#]+")
+
+
+def title_matches(title: str, phrases: list[str]) -> bool:
+    """True when the title has every word of at least one phrase (any order);
+    an empty filter keeps everything."""
+    if not phrases:
+        return True
+    words = set(_WORD.findall(str(title or "").lower()))
+    return any(set(_WORD.findall(p)) <= words for p in phrases if _WORD.findall(p))
+
+
 def normalize_search(payload: dict) -> dict:
     if not isinstance(payload, dict):
         raise ScoutError("search must be an object")
@@ -122,6 +142,11 @@ def normalize_search(payload: dict) -> dict:
     keywords = str(payload.get("keywords") or "").strip()
     if not keywords or len(keywords) > 200:
         raise ScoutError("Keywords are required (up to 200 characters)")
+    if len(_queries_of(keywords)) > MAX_QUERIES:
+        raise ScoutError(f"At most {MAX_QUERIES} job titles per search (comma-separated)")
+    title_filter = [p.lower() for p in _split(payload.get("title_filter"), limit=10, field="Title must contain")]
+    if any(len(p) > 60 for p in title_filter):
+        raise ScoutError("A title phrase is too long")
     if len(name) > 80:
         raise ScoutError("Name is too long")
     country = str(payload.get("country") or "").strip().lower()
@@ -148,6 +173,7 @@ def normalize_search(payload: dict) -> dict:
         "country": country,
         "locations": locations,
         "sites": [s for s in JOB_SITES if s in sites],
+        "title_filter": title_filter,
         "posted_within_days": posted,
         "remote_only": bool(payload.get("remote_only")),
         "enabled": bool(payload.get("enabled", True)),
@@ -160,6 +186,8 @@ def _search_row(row) -> dict:
         "locations": json.loads(row["locations"] or "[]"),
         # Older rows hold the retired application-tracking domains here; they read as Indeed.
         "sites": [s for s in JOB_SITES if s in (json.loads(row["sites"] or "[]") or [])] or ["indeed"],
+        "title_filter": json.loads(row["title_filter"] or "[]"),
+        "queries": _queries_of(row["keywords"]),
         "country": row["country"], "country_name": indeed.country_name(row["country"]),
         "posted_within_days": row["posted_within_days"],
         "remote_only": bool(row["remote_only"]), "enabled": bool(row["enabled"]),
@@ -198,9 +226,10 @@ def create_search(payload: dict) -> dict:
     conn = connect_job_os()
     try:
         conn.execute(
-            "INSERT INTO searches (id, name, keywords, locations, sites, country, posted_within_days, remote_only, enabled,"
-            " revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
-            (search_id, data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]), data["country"],
+            "INSERT INTO searches (id, name, keywords, locations, sites, title_filter, country, posted_within_days, remote_only,"
+            " enabled, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            (search_id, data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
+             json.dumps(data["title_filter"]), data["country"],
              data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), now, now))
         conn.commit()
     finally:
@@ -219,9 +248,10 @@ def update_search(search_id: str, payload: dict, *, expected_revision: int) -> d
     conn = connect_job_os()
     try:
         cur = conn.execute(
-            "UPDATE searches SET name=?, keywords=?, locations=?, sites=?, country=?, posted_within_days=?, remote_only=?,"
-            " enabled=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
-            (data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]), data["country"],
+            "UPDATE searches SET name=?, keywords=?, locations=?, sites=?, title_filter=?, country=?, posted_within_days=?,"
+            " remote_only=?, enabled=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
+            (data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
+             json.dumps(data["title_filter"]), data["country"],
              data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), int(time.time()),
              search_id, expected_revision))
         conn.commit()
@@ -607,7 +637,9 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
 
         def keep(posting: dict, canonical_url: str, source: str = "indeed") -> None:
             """Filter one read posting and save it (raises DuplicateJobError, JobValidationError)."""
-            if search["remote_only"] and not _is_remote(posting):
+            if not title_matches(posting.get("title"), search["title_filter"]):
+                counts["filtered"] += 1  # the title doesn't have the words the search asks for
+            elif search["remote_only"] and not _is_remote(posting):
                 counts["filtered"] += 1
             elif company_key(posting.get("company")) in blocked:
                 counts["blocked"] += 1
@@ -627,20 +659,21 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             # (description included), so there is nothing left to read page by page.
             locations = search["locations"] or [""]
             country_name = indeed.country_name(search["country"])
-            keywords = search["keywords"] + (" remote" if search["remote_only"] else "")
             oldest = _oldest_posted(search["posted_within_days"])
             # Jobs already saved are left out on the actor's side, so repeat runs
             # pay only for new postings (LinkedIn: a skip list; JobStreet: its own memory).
             linkedin_known = [m.group(1) for url in sorted(known) if (m := _LINKEDIN_ID.match(url))]
             runs = failures = 0
+            pairs = [(query, location) for query in search["queries"] for location in locations]
             for site in apify_sites:
-                for location in locations:
+                for query, location in pairs:
                     if _cancel_requested(run_id):
                         finish("cancelled", "Cancelled")
                         return
                     runs += 1
                     counts["queries"] += 1
-                    label = f"{apify.SITE_NAMES[site]}{' ' + location if location else ''}"
+                    keywords = query + (" remote" if search["remote_only"] else "")
+                    label = f"{apify.SITE_NAMES[site]} “{query}”{' in ' + location if location else ''}"
                     save(detail=f"Apify is searching {label}")
                     try:
                         actor_input = _site_input(
@@ -648,11 +681,13 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                             limit=int(apify_settings["results_per_city"]), posted_within_days=search["posted_within_days"])
                         if site == "linkedin" and linkedin_known:
                             actor_input["skipJobId"] = linkedin_known[-apify.MAX_SKIP_IDS:]
+                        if site == "linkedin" and search["title_filter"]:
+                            actor_input["titleInclude"] = list(search["title_filter"])
                         if site == "jobstreet":
                             actor_input.update(apify.jobstreet_input(
                                 search["country"], keywords, location, limit=int(apify_settings["results_per_city"]),
-                                posted_within_days=search["posted_within_days"],
-                                state_key=apify.state_key(search["id"][:8], search["country"], location or "all")))
+                                posted_within_days=search["posted_within_days"], title_filter=search["title_filter"],
+                                state_key=apify.state_key(search["id"][:8], search["country"], query, location or "all")))
                         items = _apify_run(apify_settings[f"{site}_actor"], actor_input)
                     except apify.ApifyError as error:
                         failures += 1
@@ -722,15 +757,16 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
 
         from api.job_os.firecrawl import FirecrawlError
 
-        # Every city gets a fair share of the quota, so the first one cannot
-        # crowd out the rest; leftovers from thin cities go to the next ones.
-        keywords = search["keywords"] + (" remote" if search["remote_only"] else "")
-        locations = search["locations"] or [""]
-        for position, location in enumerate(locations):
+        # Every title and city gets a fair share of the quota, so the first one
+        # cannot crowd out the rest; leftovers from thin ones go to the next.
+        # Each job title is searched in each city.
+        pairs = [(query, location) for query in search["queries"] for location in (search["locations"] or [""])]
+        for position, (query, location) in enumerate(pairs):
+            keywords = query + (" remote" if search["remote_only"] else "")
             room = max_results - len(candidates)
             if room <= 0:
                 break
-            share = max(1, -(-room // (len(locations) - position)))
+            share = max(1, -(-room // (len(pairs) - position)))
             counts["queries"] += 1
             before = len(candidates)
             for page_number in range(PAGES_PER_LOCATION):
@@ -761,7 +797,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 # Indeed is repeating itself.
                 if len(links) < indeed.RESULTS_PER_PAGE or len(candidates) == added or len(candidates) - before >= share:
                     break
-            save(detail=f"Searched {counts['queries']} of {len(locations)} location{'s' if len(locations) != 1 else ''}")
+            save(detail=f"Searched {counts['queries']} of {len(pairs)} title and place combination{'s' if len(pairs) != 1 else ''}")
 
         for page_url in result_pages[:MAX_INDEED_RESULT_PAGES]:
             if _cancel_requested(run_id):

@@ -458,7 +458,8 @@
     const active = run && ACTIVE_RUN.includes(run.status);
     const viaApify = !!(state.apify && state.apify.active);
     const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy');
-    const where = [...(search.locations || []), search.remote_only ? 'Remote only' : '', POSTED[search.posted_within_days] || ''].filter(Boolean);
+    const where = [...(search.locations || []), search.remote_only ? 'Remote only' : '', POSTED[search.posted_within_days] || '',
+      (search.title_filter || []).length ? `Title: ${search.title_filter.join(' / ')}` : ''].filter(Boolean);
     const country = search.country_name ? `${icon('pin', 12)}${esc(search.country_name)}` : 'Choose a country';
     const schedule = state.schedule && state.schedule.enabled && search.enabled && search.next_run_at ? `Next ${until(search.next_run_at)}` : '';
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
@@ -479,7 +480,8 @@
     const apifyOn = !!(state.apify && state.apify.active);
     return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New search'}</h2><p class="job-os-card-note">Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div></div>
       <form id="job-os-search-form" novalidate><div class="scout-form-grid">
-        <label class="job-os-field wide"><span>Job titles or keywords <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. data analyst, SQL" value="${esc(form.keywords)}"></label>
+        <label class="job-os-field wide"><span>Job titles <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. SOC Analyst, IT Analyst, Security Analyst" value="${esc(form.keywords)}"><small class="job-os-field-hint">Comma-separated; each title is searched on its own (up to 5).</small></label>
+        <label class="job-os-field wide"><span>Title must contain</span><input name="title_filter" maxlength="300" placeholder="e.g. analyst — or: soc, security analyst" value="${esc(form.title_filter)}"><small class="job-os-field-hint">Keeps a job only if its title has all the words of at least one phrase (comma-separated). Job sites match loosely, so this cuts the noise, and LinkedIn and JobStreet don’t charge for the jobs it drops. Empty = keep everything.</small></label>
         <label class="job-os-field"><span>Country <em>required</em></span><select name="country" required data-job-os-change="scout-country"><option value="">Choose…</option>${countries}</select></label>
         <label class="job-os-field"><span>Cities</span><input name="locations" placeholder="Comma-separated, e.g. Kuala Lumpur, Penang. Empty = whole country" value="${esc(form.locations)}"></label>
         <label class="job-os-field"><span>Date posted</span><select name="posted_within_days">${posted}</select></label>

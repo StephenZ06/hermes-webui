@@ -209,7 +209,7 @@ def test_one_failed_city_keeps_the_others_and_all_failing_fails_the_run(home, mo
     results += [apify.ApifyError("Apify did not answer"), [_item("ok1")]]
     search = scout.create_search({"keywords": "x", "country": "my", "locations": ["A", "B"]})
     run = _run(search)
-    assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["errors"][0]["where"] == "Apify Indeed A"
+    assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["errors"][0]["where"] == "Apify Indeed “x” in A"
     results += [apify.ApifyError("Your Apify account is out of credit for this month.")]
     failed = _run(scout.create_search({"keywords": "y", "country": "my"}))
     assert failed["status"] == "failed" and "out of credit" in failed["stage_detail"]
@@ -320,9 +320,42 @@ def test_repeat_runs_ask_apify_only_for_new_jobs(home, monkeypatch):
     assert _run(search)["counts"]["saved"] == 2
     first_li, first_js = runs[0][1], runs[1][1]
     assert "skipJobId" not in first_li
-    assert first_js["incrementalMode"] is True and first_js["stateKey"] == f"hermes-{search['id'][:8]}-my-kuala-lumpur"
+    assert first_js["incrementalMode"] is True and first_js["stateKey"] == f"hermes-{search['id'][:8]}-my-data-kuala-lumpur"
     results += [[], []]
     _run(search)
     assert runs[2][1]["skipJobId"] == ["1111111"], "LinkedIn leaves out jobs Scout already has"
     assert runs[3][1]["stateKey"] == first_js["stateKey"], "JobStreet keeps one memory per search and city"
     assert apify.state_key("ab", "my", "Petaling Jaya / SS2") == "hermes-ab-my-petaling-jaya-ss2"
+
+
+def test_title_filter_keeps_only_matching_titles_and_reaches_the_actors(home, monkeypatch):
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    today = __import__("time").strftime("%Y-%m-%d")
+    results += [
+        [_item("a1", title="SOC Analyst L1", company="A", datePublished=today), _item("a2", title="Network Engineer", company="B", datePublished=today)],
+        [_item("a3", title="Senior Security Analyst", company="C", datePublished=today), _item("a4", title="Analyst Relations Lead", company="D", datePublished=today)],
+        [_linkedin("5555555", title="Cyber Security Analyst", company="E", posted=today)],
+        [_linkedin("6666666", title="Security Operations Analyst", company="F", posted=today)],
+    ]
+    search = scout.create_search({"keywords": "SOC Analyst, Security Analyst", "country": "my", "sites": ["indeed", "linkedin"],
+                                  "title_filter": "soc, Security Analyst"})
+    assert search["title_filter"] == ["soc", "security analyst"] and search["queries"] == ["SOC Analyst", "Security Analyst"]
+    run = _run(search)
+    # One run per site and job title.
+    assert [(a.split("/")[1], i.get("title") or i.get("keywords")) for a, i in runs] == [
+        ("indeed-jobs-scraper", "SOC Analyst"), ("indeed-jobs-scraper", "Security Analyst"),
+        ("linkedin-jobs-scraper", "SOC Analyst"), ("linkedin-jobs-scraper", "Security Analyst")]
+    assert runs[2][1]["titleInclude"] == ["soc", "security analyst"], "LinkedIn drops other titles before charging"
+    saved = sorted(j.title for j in list_jobs())
+    assert saved == ["Cyber Security Analyst", "SOC Analyst L1", "Security Operations Analyst", "Senior Security Analyst"]
+    assert run["counts"]["filtered"] == 2  # Network Engineer, Analyst Relations Lead
+
+
+def test_jobstreet_gets_the_title_filter_as_title_only_keywords():
+    payload = apify.jobstreet_input("my", "SOC Analyst", "", limit=10, posted_within_days=1, title_filter=["soc", "security analyst"])
+    assert payload["includeKeywords"] == ["soc", "security analyst"]
+    assert payload["keywordMatchTitle"] is True and payload["keywordMatchDescription"] is False
+    assert scout.title_matches("Senior SOC Analyst (L2)", ["soc"]) and not scout.title_matches("Associate", ["soc"])
+    assert scout.title_matches("Analyst, Security Operations", ["security analyst"]), "all words, any order"
+    assert scout.title_matches("Anything", []), "no filter keeps everything"

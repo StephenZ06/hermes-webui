@@ -17,7 +17,15 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 1. **Scout (automated).** A search names job titles or keywords, the country,
    optional cities, a date-posted window, *remote only*, and its **job sites**:
    Indeed, LinkedIn and JobStreet (JobStreet covers Malaysia, Singapore,
-   Indonesia and the Philippines). LinkedIn and JobStreet need Apify. Each run
+   Indonesia and the Philippines). LinkedIn and JobStreet need Apify.
+   Job titles are comma-separated and each is searched on its own (up to 5).
+   **Title must contain** keeps a posting only if its title has all the words
+   of at least one phrase (`analyst`, or `soc, security analyst`): job sites
+   match keywords loosely (on 2026-10-07 LinkedIn returned 342 jobs for "IT
+   Analyst" in a day, 53 with "analyst" in the title). LinkedIn
+   (`titleInclude`) and JobStreet (title-only `includeKeywords`) apply it
+   before returning results, so dropped jobs cost nothing; Scout applies it to
+   every site as well. Each run
    reads the country's Indeed results and saves every new posting with its
    description, salary, employment type and country (source `indeed`,
    `linkedin` or `jobstreet`; one role found on two sites is saved once). See
