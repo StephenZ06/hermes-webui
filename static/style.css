@@ -6407,6 +6407,7 @@ main.main > #mainPlugin{display:none;}
 .office-project-folders{flex:0 0 auto;padding:0 8px;max-height:42%;overflow-y:auto;}
 .office-project-folders .project-folder-list{padding:0;gap:3px;}
 .office-project-folders .project-folder-sessions{margin:0 0 2px;}
+.office-project-folders .project-folder-sessions-inner::before{display:none;}
 .panel-view#panelOffice .office-project-folders .sidebar-search{padding:0 0 10px;}
 .panel-view#panelOffice .sidebar-search{padding:0 8px 6px;}
 .office-page-nav{padding:0 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
@@ -6857,8 +6858,11 @@ main.main > #mainPlugin{display:none;}
   margin-left:5px;padding-left:6px;border-left:1px solid var(--border,rgba(255,255,255,.1));
   transition:grid-template-rows .16s cubic-bezier(.2,.8,.2,1),margin .16s cubic-bezier(.2,.8,.2,1);
 }
-.agent-canvas-project-sessions.expanded{grid-template-rows:1fr;margin:2px 0 4px 5px;}
+/* Top spacing from an empty ::before plus the gap, as on .project-folder-sessions:
+   rows don't drift down while opening. */
+.agent-canvas-project-sessions.expanded{grid-template-rows:1fr;margin:0 0 4px 5px;}
 .agent-canvas-project-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
+.agent-canvas-project-sessions-inner::before{content:"";flex:none;}
 .agent-canvas-project-sessions .session-item{font-size:12px;padding:6px 8px;}
 .agent-canvas-project-empty{padding:4px 8px;font-size:11px;opacity:.75;line-height:1.4;}
 .agent-canvas-sidebar-item.loading{opacity:.55;cursor:wait;pointer-events:none;}
@@ -7762,8 +7766,13 @@ main.main > #mainPlugin{display:none;}
   margin-left:0;padding-left:6px;border-left:1px solid var(--border);
   transition:grid-template-rows .16s cubic-bezier(.2,.8,.2,1),margin .16s cubic-bezier(.2,.8,.2,1);
 }
-.project-folder-sessions.expanded{grid-template-rows:1fr;margin:2px 0 4px;}
+/* The 2px above the rows is the flex gap after an empty ::before, not an
+   animated margin-top: it lives inside the clipping inner box, so the rows sit
+   at their final height from the first frame instead of drifting 2px down as
+   the group opens. (Padding would do the same but keeps a closed group 2px tall.) */
+.project-folder-sessions.expanded{grid-template-rows:1fr;margin:0 0 4px;}
 .project-folder-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
+.project-folder-sessions-inner::before{content:"";flex:none;}
 .project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a

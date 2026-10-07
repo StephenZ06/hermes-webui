@@ -242,10 +242,11 @@ def test_trash_is_centred_and_section_dividers_have_equal_space(page):
 
 
 @pytest.mark.parametrize("panel", ["notes", "notebook"])
-def test_opening_a_workspace_does_not_slide_its_rows_sideways(page, panel):
+def test_opening_a_workspace_does_not_slide_its_rows(page, panel):
     """Work Hub and Notes share .project-folder-sessions. A collapsed 5px
     margin-left (zeroed by the expanded rule) made each open slide the child
-    rows and their icons 5px sideways while the margin transitioned."""
+    rows and their icons 5px sideways while the margin transitioned, and an
+    animated 0->2px margin-top made them drift 2px down."""
     project = _api("/api/projects/create", {"name": f"Slide {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
     _api("/api/notebook/notes/create", {"title": "Row", "project_id": project["project_id"]})
     # Two boards: a Work Hub folder with one board opens it instead of expanding.
@@ -264,9 +265,15 @@ def test_opening_a_workspace_does_not_slide_its_rows_sideways(page, panel):
       tile.click();
       const tick = () => {
         const row = group.querySelector('.work-hub-board-row');
-        if (row) xs.push(Math.round(row.getBoundingClientRect().left * 10) / 10);
+        if (row) {
+          const r = row.getBoundingClientRect();
+          xs.push([r.left, r.top - tile.getBoundingClientRect().bottom].map((v) => Math.round(v * 10) / 10));
+        }
         if (performance.now() - t0 < 400) requestAnimationFrame(tick); else resolve(xs);
       };
       requestAnimationFrame(tick);
     })""", tile)
-    assert len(xs) > 5 and max(xs) - min(xs) < 0.5, xs
+    lefts, tops = [x for x, _ in xs], [y for _, y in xs]
+    assert len(xs) > 5, xs
+    assert max(lefts) - min(lefts) < 0.5, xs
+    assert max(tops) - min(tops) < 0.5, xs
