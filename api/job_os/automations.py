@@ -24,6 +24,13 @@ def _next_digest(hour: int, last: str | None, now: float) -> int:
     return int(start)
 
 
+def _scout_when(scout: dict) -> str:
+    if scout.get("schedule_mode") == "interval":
+        return f"Every {scout['schedule_hours']} h"
+    weekend = {"saturday": ", Saturday once", "same": " daily", "none": " on weekdays"}.get(scout.get("weekend"), "")
+    return f"At {' and '.join(scout.get('run_times') or [])}{weekend}"
+
+
 def summary(*, now: float | None = None) -> list[dict]:
     from api.job_os import notify, scheduler, scout
     from api.job_os.analysis import queue_counts
@@ -40,7 +47,7 @@ def summary(*, now: float | None = None) -> list[dict]:
     queue = queue_counts()
     return [
         {"key": "scout", "label": "Scout searches", "on": bool(settings["scout"]["enabled"] and searches),
-         "schedule": f"Every {settings['scout']['schedule_hours']} h · {len(searches)} saved search{'es' if len(searches) != 1 else ''}",
+         "schedule": f"{_scout_when(settings['scout'])} · {len(searches)} saved search{'es' if len(searches) != 1 else ''}",
          "last": last_scout, "next": next_scout if settings["scout"]["enabled"] else None,
          "off_reason": "" if settings["scout"]["enabled"] else "Turn on Run Scout automatically", "view": "scout"},
         {"key": "analysis", "label": "Luna fit analysis", "on": bool(settings["ai"]["auto_analyze"]),

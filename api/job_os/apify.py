@@ -193,9 +193,18 @@ def indeed_posting(item: dict, host: str) -> dict | None:
 _LINKEDIN_AGE = {0: "", 1: "r86400", 3: "r604800", 7: "r604800", 14: "r2592000"}
 
 
-def linkedin_input(country_name: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
-    return {"keywords": keywords, "location": f"{location}, {country_name}" if location else country_name,
-            "limit": int(limit), "datePosted": _LINKEDIN_AGE.get(int(posted_within_days or 0), "")}
+MAX_SKIP_IDS = 1000
+
+
+def linkedin_input(country_name: str, keywords: str, location: str, *, limit: int, posted_within_days: int,
+                   known_ids: list[str] | None = None) -> dict:
+    """``known_ids``: LinkedIn jobs Scout already has. The actor leaves them out,
+    so a repeat run is not charged for them again."""
+    payload = {"keywords": keywords, "location": f"{location}, {country_name}" if location else country_name,
+               "limit": int(limit), "datePosted": _LINKEDIN_AGE.get(int(posted_within_days or 0), "")}
+    if known_ids:
+        payload["skipJobId"] = list(known_ids)[-MAX_SKIP_IDS:]
+    return payload
 
 
 def _workplace_from(*texts: str) -> str:
@@ -225,12 +234,25 @@ def linkedin_posting(item: dict) -> dict | None:
 JOBSTREET_HOSTS = {"my": "my.jobstreet.com", "sg": "sg.jobstreet.com", "id": "id.jobstreet.com", "ph": "ph.jobstreet.com"}
 
 
-def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
-    return {"query": keywords, "country": country.upper(), "location": location, "maxResults": int(limit),
-            # About 22-32 postings a results page.
-            "maxPages": max(1, min(10, -(-int(limit) // 20))), "sortMode": "date",
-            "dateRange": str(posted_within_days) if posted_within_days else "",
-            "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
+def jobstreet_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int,
+                    state_key: str = "") -> dict:
+    """``state_key``: names this search's memory on Apify. With it the actor runs
+    incrementally: after the first run it returns (and charges for) only
+    postings that are new or changed since the last run."""
+    payload = {"query": keywords, "country": country.upper(), "location": location, "maxResults": int(limit),
+               # About 22-32 postings a results page.
+               "maxPages": max(1, min(40, -(-int(limit) // 20))), "sortMode": "date",
+               "dateRange": str(posted_within_days) if posted_within_days else "",
+               "includeDetails": True, "includeApplicantInsights": False, "descriptionFormat": "text"}
+    if state_key:
+        payload.update({"incrementalMode": True, "stateKey": state_key, "emitUnchanged": False, "emitExpired": False})
+    return payload
+
+
+def state_key(*parts: str) -> str:
+    """A stable, safe name for an incremental actor's memory."""
+    text = "-".join(re.sub(r"[^a-z0-9]+", "-", str(p).lower()).strip("-") for p in parts if p)
+    return ("hermes-" + text)[:80]
 
 
 def jobstreet_posting(item: dict, country: str) -> dict | None:

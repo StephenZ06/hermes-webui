@@ -240,15 +240,23 @@
       ${textField('applicant.location', 'Location', v('applicant.location'), 'City, Country')}
       ${textField('applicant.linkedin_url', 'LinkedIn', v('applicant.linkedin_url'), 'https://linkedin.com/in/…', 'url')}
       ${textField('applicant.portfolio_url', 'Website / portfolio', v('applicant.portfolio_url'), 'https://…', 'url')}</div>`);
-    const scout = section('scout', 'Scout schedule', 'A scheduled job searches your saved searches on this interval.', `
+    const timesMode = v('scout.schedule_mode') !== 'interval';
+    const scout = section('scout', 'Scout schedule', 'Job ads go up in a morning wave and an afternoon wave on weekdays (Monday to Wednesday are the busiest), so by default Scout runs just after each: 12:30 and 18:30, plus one Saturday run.', `
       ${toggle('scout.enabled', 'Run Scout automatically', v('scout.enabled'))}
-      <div class="job-os-grid">${numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>
+      <div class="job-os-grid">${selectField('scout.schedule_mode', 'Run', v('scout.schedule_mode'), [['times', 'At set times'], ['interval', 'Every few hours']])}
+        ${timesMode ? `<label class="job-os-field"><span>Times</span><input type="text" data-setting="scout.run_times" value="${esc((v('scout.run_times') || []).join(', '))}" placeholder="12:30, 18:30" autocomplete="off" spellcheck="false"></label>
+        ${selectField('scout.weekend', 'Weekends', v('scout.weekend'), [['saturday', 'Saturday, first time only'], ['same', 'Same as weekdays'], ['none', 'No runs']])}
+        ${textField('scout.timezone', 'Your time zone', v('scout.timezone'), 'Asia/Kuala_Lumpur')}` : numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}
+        ${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>
+      ${timesMode ? '<p class="job-os-card-note">Times are each search’s own country time and working week: Malaysia Monday to Friday, Qatar Sunday to Thursday (UTC+3). Your time zone sets the evening update under Notifications.</p>' : ''}
+      ${timesMode ? toggle('scout.quiet_skip', 'Skip a run after a quiet one', v('scout.quiet_skip'), 'If a run finds 0–1 new jobs, the next run that day is skipped') : ''}
       <label class="job-os-field"><span>Never show jobs from</span><textarea data-setting="scout.blocked_companies" rows="3" placeholder="One company per line (e.g. your current employer)" spellcheck="false">${esc((v('scout.blocked_companies') || []).join('\n'))}</textarea></label>`);
     const notify = section('notifications', 'Notifications', gmailReady ? '' : 'Set up Gmail above to turn email on.', `
       ${toggle('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials')}
       <div class="job-os-grid">${textField('notifications.to_address', 'Send to', v('notifications.to_address'), 'you@gmail.com', 'email')}</div>
-      ${toggle('notifications.notify_new_matches', 'New matches', v('notifications.notify_new_matches'), 'When Scout finds a job at or above the score below')}
-      <div class="job-os-grid">${numberField('notifications.min_fit_score', 'Minimum fit score', v('notifications.min_fit_score'), 0, 100, '/ 100')}</div>
+      ${toggle('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best match first; the Scout page shows them either way')}
+      <div class="job-os-grid">${numberField('notifications.min_fit_score', 'Good match from', v('notifications.min_fit_score'), 0, 100, '%')}${numberField('notifications.release_count', 'Update when this many are waiting', v('notifications.release_count'), 1, 50, 'matches')}${numberField('notifications.release_cutoff_hour', 'Or at the end of the day, at', v('notifications.release_cutoff_hour'), 0, 23, ':00')}</div>
+      <p class="job-os-card-note">A good match is Luna’s fit score of your master resume against the job. 65% is a sensible bar: 75%+ is ready to apply, 65–74% has gaps that tailoring can close, and below about 60% usually misses a must-have.</p>
       ${toggle('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'))}
       <div class="job-os-grid">${numberField('notifications.digest_hour', 'Digest hour', v('notifications.digest_hour'), 0, 23, ':00')}</div>
       ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Each job in an alert has codes; reply "TAILOR 1A2B3C4D" or "SKIP 1A2B3C4D" from the Send-to address')}
@@ -487,18 +495,34 @@
       <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
       <div class="job-os-actions"><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button></div></form></section>`;
   }
+  // Good matches arrive together: they wait here until enough have collected
+  // (or the evening cut-off), then show as new until marked seen.
+  function matchInbox(state) {
+    const box = state.matches;
+    if (!box) return '';
+    const released = box.released || [];
+    const waiting = Number(box.waiting || 0);
+    const rule = `Updates when ${box.release_count} good matches (${box.min_fit_score}%+) are waiting, or at ${String(box.release_cutoff_hour).padStart(2, '0')}:00.`;
+    if (!released.length && !waiting) return '';
+    const cards = released.map((m) => jobCard({...m, analysis: {status: 'done', fit_score: m.fit_score}, updated_at: m.released_at})).join('');
+    return `<section class="job-os-card match-inbox${released.length ? ' has-new' : ''}">
+      <div class="job-os-card-head"><div><h2>${released.length ? `New good matches <span class="job-os-count">${released.length}</span>` : 'Good matches'}</h2>
+        <p class="job-os-card-note">${waiting ? `${waiting} waiting for the next update. ` : ''}${esc(rule)}</p></div>
+        ${released.length ? '<button type="button" class="job-os-btn" data-job-os-action="matches-seen">Mark all seen</button>' : ''}</div>
+      ${released.length ? `<div class="job-os-list scout-finds">${cards}</div>` : ''}</section>`;
+  }
   function scoutView(state) {
     const searches = state.searches || [];
     const fc = state.firecrawl || {};
     const provider = state.searchProvider === 'brave' ? 'Brave Search API' : 'Firecrawl search';  // used only if Indeed refuses its results page
-    const sched = state.schedule && state.schedule.enabled ? `Scheduled every ${state.schedule.hours}h` : 'Schedule off';
+    const sched = state.schedule && state.schedule.enabled ? `Scheduled: ${state.schedule.summary || `every ${state.schedule.hours}h`}` : 'Schedule off';
     const viaApify = !!(state.apify && state.apify.active);
     const banner = !viaApify && fc.state && fc.state !== 'healthy'
       ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Scout can't run until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
     const recent = (state.runs || []).filter((run) => run.counts && run.counts.saved && !ACTIVE_RUN.includes(run.status)).slice(0, 1)[0];
     const newIds = new Set(recent ? recent.new_job_ids : []);
     const finds = (state.jobs || []).filter((job) => newIds.has(job.id));
-    return `${banner}<div class="scout-bar">${viaApify ? '<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings" title="Scout runs the Indeed scraper on Apify">Source: Indeed via Apify</button>' : `<span class="job-os-chip muted" title="If Indeed refuses its results page, Scout searches the web for that Indeed site with ${esc(provider)}">Source: Indeed</span>`}<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
+    return `${banner}${matchInbox(state)}<div class="scout-bar">${viaApify ? '<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings" title="Scout runs the Indeed scraper on Apify">Source: Indeed via Apify</button>' : `<span class="job-os-chip muted" title="If Indeed refuses its results page, Scout searches the web for that Indeed site with ${esc(provider)}">Source: Indeed</span>`}<button type="button" class="job-os-chip muted as-link" data-job-os-view="settings">${esc(sched)}</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">New search</button></div>
       ${searchFormCard(state.searchForm, state)}
       ${searches.length ? `<div class="scout-searches">${searches.map((s) => searchCard(s, state)).join('')}</div>`
         : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the Indeed country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
@@ -692,10 +716,11 @@
     const view = state.activeView;
     const dashboard = dashboardOf(state);
     const byStatus = dashboard.by_status || {};
-    const counts = {pipeline: dashboard.total_jobs};
+    const fresh = state.matches ? (state.matches.released || []).length : 0;
+    const counts = {pipeline: dashboard.total_jobs, scout: fresh};
     const nav = Object.keys(labels).map((key) => {
       const active = view === key && !(key === 'pipeline' && state.statusFilter);
-      const count = counts[key] ? `<span class="job-os-side-count">${counts[key]}</span>` : '';
+      const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
       return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key)}<span>${labels[key]}</span>${count}</button>`;
     }).join('');
     const stages = statusOrder.filter((status) => byStatus[status]).map((status) => {

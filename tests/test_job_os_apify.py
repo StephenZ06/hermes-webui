@@ -309,3 +309,20 @@ def test_sites_are_validated_and_need_apify(home, monkeypatch):
         scout.create_search({"keywords": "x", "country": "us", "sites": ["jobstreet"]})
     run = _run(scout.create_search({"keywords": "x", "country": "my", "sites": ["linkedin"]}))
     assert run["status"] == "failed" and "LinkedIn need" in run["stage_detail"]
+
+
+def test_repeat_runs_ask_apify_only_for_new_jobs(home, monkeypatch):
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    today = __import__("time").strftime("%Y-%m-%d")
+    results += [[_linkedin("1111111", posted=today)], [_jobstreet("91247023", title="Data Engineer", company="Umbrella", posted=today + "T01:00:00Z")]]
+    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["linkedin", "jobstreet"], "locations": ["Kuala Lumpur"]})
+    assert _run(search)["counts"]["saved"] == 2
+    first_li, first_js = runs[0][1], runs[1][1]
+    assert "skipJobId" not in first_li
+    assert first_js["incrementalMode"] is True and first_js["stateKey"] == f"hermes-{search['id'][:8]}-my-kuala-lumpur"
+    results += [[], []]
+    _run(search)
+    assert runs[2][1]["skipJobId"] == ["1111111"], "LinkedIn leaves out jobs Scout already has"
+    assert runs[3][1]["stateKey"] == first_js["stateKey"], "JobStreet keeps one memory per search and city"
+    assert apify.state_key("ab", "my", "Petaling Jaya / SS2") == "hermes-ab-my-petaling-jaya-ss2"

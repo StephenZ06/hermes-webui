@@ -29,7 +29,8 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(profiles, "_resolve_base_hermes_home", lambda: tmp_path)
     monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: False)
     monkeypatch.setattr(mailer, "credentials", lambda: ("hermes.sender@gmail.com", "app-password"))
-    _set(email_enabled=True, to_address=ME, min_fit_score=70)
+    # These tests cover the email and its reply codes, so every good match goes out at once.
+    _set(email_enabled=True, to_address=ME, min_fit_score=70, release_count=1)
     sent = []
     yield lambda *args: sent.append(args) or args[1], sent
 
@@ -71,14 +72,47 @@ def test_match_alert_sends_strong_recent_matches_once(store):
     assert to == ME and "Strong" in subject and "Weak" not in body and "Old" not in body
     assert set(_codes(body)) == {"tailor", "skip"}
     assert notify.send_matches(send=send) == 0  # never twice for the same job
-    assert any(e for e in __import__("api.job_os.applications", fromlist=["timeline"]).timeline(strong.id) if e["type"] == "match_notified")
+    assert {e["type"] for e in __import__("api.job_os.applications", fromlist=["timeline"]).timeline(strong.id)} >= {"match_released", "match_notified"}
 
 
-def test_alert_needs_notifications_on(store):
+def test_without_email_matches_are_still_released_in_jobs(store):
     send, sent = store
     _set(email_enabled=False)
-    _analysed("Strong", 85)
-    assert notify.send_matches(send=send) == 0 and sent == []
+    job = _analysed("Strong", 85)
+    assert notify.send_matches(send=send) == 1 and sent == []
+    assert [j["id"] for j in notify.inbox()["released"]] == [job.id]
+
+
+def _at(text):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return int(datetime.strptime(text, "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("Asia/Kuala_Lumpur")).timestamp())
+
+
+def test_good_matches_wait_for_five_or_the_evening_cutoff(store, monkeypatch):
+    send, sent = store
+    _set(release_count=5, release_cutoff_hour=20, min_fit_score=65)
+    monkeypatch.setattr(time, "time", lambda: _at("2026-10-07 14:00"))
+    for i, score in enumerate((90, 80, 70, 66)):
+        _analysed(f"Good{i}", score)
+    _analysed("Weak", 60)
+    box = notify.inbox()
+    assert box["waiting"] == 4 and box["released"] == []
+    assert notify.send_matches(send=send, now=_at("2026-10-07 14:00")) == 0 and sent == []
+    _analysed("Good4", 75)
+    assert notify.send_matches(send=send, now=_at("2026-10-07 14:01")) == 5
+    _context, _to, subject, body = sent[0]
+    assert subject.startswith("5 new job matches") and "Weak" not in body
+    assert body.index("Good0") < body.index("Good1") < body.index("Good2"), "best match first"
+    released = notify.inbox()["released"]
+    assert [j["fit_score"] for j in released] == [90, 80, 75, 70, 66]
+    # One more good match waits; the 20:00 cut-off sends it, once that day.
+    _analysed("Late", 88)
+    assert notify.send_matches(send=send, now=_at("2026-10-07 19:59")) == 0
+    assert notify.send_matches(send=send, now=_at("2026-10-07 20:00")) == 1
+    _analysed("Later", 89)
+    assert notify.send_matches(send=send, now=_at("2026-10-07 21:00")) == 0, "one cut-off release a day"
+    assert notify.mark_matches_seen(now=_at("2026-10-07 21:30"))["released"] == []
 
 
 def test_reply_code_runs_once_and_ignores_quoted_text(store, monkeypatch):

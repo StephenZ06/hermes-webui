@@ -61,6 +61,38 @@ checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
 - **More sites:** `apify.SITES` maps a site to its default actor, with an
   input builder and a record mapping per site.
 
+## Schedule (Settings → Scout schedule)
+
+Job ads go up on weekdays in a morning wave and an afternoon wave, with Monday
+to Wednesday the busiest days and weekends the quietest, so by default each
+saved search runs at **12:30 and 18:30 in its own country's time**, on that
+country's working days, plus **one Saturday run**:
+
+- Malaysia (UTC+8): Monday to Friday; Saturday once; Sunday off.
+- Qatar (UTC+3): Sunday to Thursday; Saturday once; Friday off.
+- Other countries use their clock and working week from `indeed.CLOCKS`.
+
+After a run that found 0–1 new jobs, the rest of that day is skipped. *Every
+few hours* (the old interval) is still available. **Your time zone** sets the
+evening update below.
+
+## From find to tailored resume
+
+1. Scout saves each new posting with its description.
+2. Luna scores your **master resume** against it right away (Settings → AI →
+   *Analyse new finds automatically*; needs a master resume in Resume Studio,
+   and a run says so when it is missing).
+3. **Good matches** (default 65%+) wait in the Scout inbox. They are
+   announced together, once 5 are waiting or at 20:00 your time (once a
+   day): the Scout page lists them, the side panel shows a count, and, with
+   email on, one email lists them best first.
+4. You choose **Tailor resume** on the ones worth it; Luna writes the
+   tailored resume and cover letter in Resume Studio.
+
+Pay only for new jobs: JobStreet runs in the actor's incremental mode (one
+memory per search and city), and LinkedIn is given the jobs Scout already has
+to leave out. Indeed has no such option but costs $0.10 per 1,000 jobs.
+
 ## Pipeline
 
 - **Source tabs:** All · Indeed · Manual, with counts.

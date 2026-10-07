@@ -34,7 +34,7 @@ def test_everything_off_says_why(store):
 
 def test_schedules_report_last_and_next(store):
     store.setattr(mailer, "credentials", lambda: ("a@gmail.com", "pw"))
-    save_settings({"scout": {"enabled": True, "schedule_hours": 4},
+    save_settings({"scout": {"enabled": True, "schedule_mode": "interval", "schedule_hours": 4},
                    "notifications": {"email_enabled": True, "to_address": "me@gmail.com", "digest_hour": 8}}, expected_revision=0)
     search = scout.create_search({"keywords": "backend", "country": "my"})
     from api.job_os.db import connect_job_os

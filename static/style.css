@@ -6258,6 +6258,8 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .pipe-source[data-source="manual"]{background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--text);}
 .pipe-source[data-source="linkedin"]{background:color-mix(in srgb,var(--info,#60a5fa) 14%,transparent);color:var(--info,#60a5fa);}
 .pipe-source[data-source="jobstreet"]{background:color-mix(in srgb,var(--success,#4ade80) 14%,transparent);color:var(--success,#4ade80);}
+.match-inbox.has-new{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));}
+.job-os-side-count.is-new{background:var(--accent);color:var(--accent-contrast,var(--bg));font-weight:700;}
 .scout-sites{margin:0;padding:0;border:0;}
 .scout-sites legend{margin-bottom:6px;padding:0;}
 .scout-site-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}

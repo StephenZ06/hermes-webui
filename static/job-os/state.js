@@ -51,6 +51,7 @@
     gmailEditing: false,
     apifyEditing: false,
     apifyMessage: null,
+    matches: null, // Scout inbox: {waiting, released, release_count, ...}
     apify: null, // {active}: Scout runs on Apify, so Firecrawl is not needed
     gmailMessage: null,
   };

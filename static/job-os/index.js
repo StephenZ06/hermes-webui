@@ -38,7 +38,7 @@
       const wantAutomations = state.activeView === 'dashboard';
       // Countries feed the Scout form and the tracker's country list; they never change.
       const wantCountries = !state.countries.length;
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -54,6 +54,8 @@
         wantSettings ? window.JobOSApi.notifications().catch(() => null) : Promise.resolve(null),
         wantAutomations ? window.JobOSApi.automations().catch(() => null) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.timeline(state.selectedJobId).catch(() => null) : Promise.resolve(null),
+        // The Scout inbox feeds the side-panel badge on every page.
+        window.JobOSApi.matches().catch(() => null),
       ]);
       if (seq !== refreshSeq) return;
       // Resume Studio's match check reads the full analysis of one job: the
@@ -76,6 +78,7 @@
         state.apify = searches.apify || null;
       }
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
+      if (matches) state.matches = matches.matches;
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) state.resume = resume.resume;
@@ -250,6 +253,7 @@
   function readControl(form, control) {
     const path = control.dataset.setting;
     if (path === 'scout.blocked_companies') return control.value.split('\n');
+    if (path === 'scout.run_times') return control.value.split(/[,\s]+/).filter(Boolean);
     if (control.type === 'checkbox') return control.checked;
     if (control.type === 'number') return control.value === '' ? control.value : Number(control.value);
     return control.value;
@@ -322,6 +326,9 @@
         const msg = document.querySelector('#job-os-gmail .job-os-gmail-msg');
         if (msg) { msg.dataset.tone = 'error'; msg.textContent = state.gmailMessage.text; }
       }
+    } else if (name === 'matches-seen') {
+      try { const r = await window.JobOSApi.matchesSeen(); state.matches = r.matches; } catch (_) { /* the next refresh shows it */ }
+      refresh();
     } else if (name.startsWith('apify-')) {
       return apifyAction(name, button);
     } else if (name === 'gmail-edit' || name === 'gmail-cancel') {

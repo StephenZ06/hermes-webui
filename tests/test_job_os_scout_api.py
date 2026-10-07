@@ -63,7 +63,7 @@ def test_search_crud_run_and_errors(api):
     assert created.status == 201
     sid = created.json()["search"]["id"]
     listing = get("/api/job-os/searches").json()
-    assert [s["id"] for s in listing["searches"]] == [sid] and listing["schedule"] == {"enabled": False, "hours": 6}
+    assert [s["id"] for s in listing["searches"]] == [sid] and listing["schedule"] == {"enabled": False, "hours": 6, "summary": "At 12:30 and 18:30, Saturday once"}
     assert listing["searches"][0]["next_run_at"] is None
     assert listing["searches"][0]["country_name"] == "Germany"
     assert {"code": "my", "name": "Malaysia", "host": "malaysia.indeed.com"} in listing["countries"]

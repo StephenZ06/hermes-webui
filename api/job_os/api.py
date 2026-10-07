@@ -84,7 +84,7 @@ def _settings_status(settings: dict) -> dict:
 
 
 def _scout_searches_payload() -> dict:
-    from api.job_os import scheduler, scout
+    from api.job_os import automations, scheduler, scout
 
     settings = load_settings()
     searches = scout.list_searches()
@@ -100,7 +100,8 @@ def _scout_searches_payload() -> dict:
             # Apify runs need no Firecrawl, so the page lets them run without it.
             "apify": {"active": bool(settings["apify"]["enabled"] and apify.token())},
             "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
-            "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"]}}
+            "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"],
+                         "summary": automations._scout_when(settings["scout"])}}
 
 
 def _document_get(handler, parsed) -> bool:
@@ -157,6 +158,11 @@ def _scout_get(handler, parsed) -> bool:
             j(handler, applications.board(source))
         except applications.ApplicationError as error:
             return _error(handler, str(error), 400)
+        return True
+    if path == f"{_PREFIX}/matches":
+        from api.job_os import notify
+
+        j(handler, {"matches": notify.inbox()})
         return True
     if path == f"{_PREFIX}/notifications":
         from api.job_os import notify
@@ -477,6 +483,11 @@ def handle_job_os_post(handler, parsed, body) -> bool:
             return handled
     if parsed.path in {f"{_PREFIX}/notifications/digest", f"{_PREFIX}/notifications/check"}:
         return _notifications_post(handler, parsed.path)
+    if parsed.path == f"{_PREFIX}/matches/seen":
+        from api.job_os import notify
+
+        j(handler, {"matches": notify.mark_matches_seen()})
+        return True
     if parsed.path in {f"{_PREFIX}/apify", f"{_PREFIX}/apify/disconnect", f"{_PREFIX}/apify/test"}:
         return _apify_post(handler, parsed.path, body if isinstance(body, dict) else {})
     if parsed.path in {f"{_PREFIX}/gmail", f"{_PREFIX}/gmail/disconnect", f"{_PREFIX}/gmail/test"}:

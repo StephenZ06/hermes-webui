@@ -164,14 +164,20 @@ def _search_row(row) -> dict:
         "posted_within_days": row["posted_within_days"],
         "remote_only": bool(row["remote_only"]), "enabled": bool(row["enabled"]),
         "revision": row["revision"], "last_run_at": row["last_run_at"],
+        # New jobs saved by the latest finished run (the schedule skips a run after a quiet one).
+        "last_new": json.loads(row["last_counts"]).get("saved", 0) if row["last_counts"] else None,
         "created_at": row["created_at"], "updated_at": row["updated_at"],
     }
+
+
+_SEARCH_COLUMNS = ("s.*, (SELECT r.counts_json FROM discovery_runs r WHERE r.search_id = s.id AND r.status = 'completed'"
+                   " ORDER BY r.created_at DESC LIMIT 1) AS last_counts")
 
 
 def list_searches() -> list[dict]:
     conn = connect_job_os()
     try:
-        return [_search_row(r) for r in conn.execute("SELECT * FROM searches ORDER BY created_at ASC, id ASC")]
+        return [_search_row(r) for r in conn.execute(f"SELECT {_SEARCH_COLUMNS} FROM searches s ORDER BY created_at ASC, id ASC")]
     finally:
         conn.close()
 
@@ -179,7 +185,7 @@ def list_searches() -> list[dict]:
 def get_search(search_id: str) -> dict | None:
     conn = connect_job_os()
     try:
-        row = conn.execute("SELECT * FROM searches WHERE id = ?", (search_id,)).fetchone()
+        row = conn.execute(f"SELECT {_SEARCH_COLUMNS} FROM searches s WHERE id = ?", (search_id,)).fetchone()
         return _search_row(row) if row else None
     finally:
         conn.close()
@@ -393,6 +399,9 @@ def start_discovery(search_id: str, *, trigger: str = "manual", idempotency_key:
     else:
         run_discovery(run_id, factory)
     return get_run(run_id)
+
+
+_LINKEDIN_ID = re.compile(r"^https://www\.linkedin\.com/jobs/view/(\d+)$")
 
 
 def _site_input(site: str, country: str, country_name: str, keywords: str, location: str, *,
@@ -620,6 +629,9 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             country_name = indeed.country_name(search["country"])
             keywords = search["keywords"] + (" remote" if search["remote_only"] else "")
             oldest = _oldest_posted(search["posted_within_days"])
+            # Jobs already saved are left out on the actor's side, so repeat runs
+            # pay only for new postings (LinkedIn: a skip list; JobStreet: its own memory).
+            linkedin_known = [m.group(1) for url in sorted(known) if (m := _LINKEDIN_ID.match(url))]
             runs = failures = 0
             for site in apify_sites:
                 for location in locations:
@@ -631,9 +643,17 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     label = f"{apify.SITE_NAMES[site]}{' ' + location if location else ''}"
                     save(detail=f"Apify is searching {label}")
                     try:
-                        items = _apify_run(apify_settings[f"{site}_actor"], _site_input(
+                        actor_input = _site_input(
                             site, search["country"], country_name, keywords, location,
-                            limit=int(apify_settings["results_per_city"]), posted_within_days=search["posted_within_days"]))
+                            limit=int(apify_settings["results_per_city"]), posted_within_days=search["posted_within_days"])
+                        if site == "linkedin" and linkedin_known:
+                            actor_input["skipJobId"] = linkedin_known[-apify.MAX_SKIP_IDS:]
+                        if site == "jobstreet":
+                            actor_input.update(apify.jobstreet_input(
+                                search["country"], keywords, location, limit=int(apify_settings["results_per_city"]),
+                                posted_within_days=search["posted_within_days"],
+                                state_key=apify.state_key(search["id"][:8], search["country"], location or "all")))
+                        items = _apify_run(apify_settings[f"{site}_actor"], actor_input)
                     except apify.ApifyError as error:
                         failures += 1
                         note_error(f"Apify {label}", error)

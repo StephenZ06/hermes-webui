@@ -29,6 +29,7 @@ import ssl
 import threading
 import time
 import uuid
+from datetime import datetime
 from email.utils import parseaddr
 from typing import Callable
 
@@ -145,7 +146,7 @@ def pending_matches(settings: dict, *, now: int | None = None) -> list[dict]:
             "SELECT j.id, j.title, j.company, j.location, j.workplace, j.salary_text, j.canonical_url, a.fit_score, a.data_json"
             " FROM jobs j JOIN job_analyses a ON a.job_id=j.id"
             " WHERE a.status='done' AND a.fit_score>=? AND a.finished_at>=? AND j.status='analyzed'"
-            " AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id=j.id AND e.event_type='match_notified')"
+            " AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id=j.id AND e.event_type IN ('match_notified', 'match_released'))"
             " ORDER BY a.fit_score DESC, a.finished_at DESC",
             (settings["notifications"]["min_fit_score"], now - MATCH_WINDOW)).fetchall()
         return [{**dict(r), "summary": json.loads(r["data_json"] or "{}").get("summary", "")} for r in rows]
@@ -161,45 +162,100 @@ def _job_block(job: dict, codes: dict[str, str] | None) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _release_due(settings: dict, waiting: int, now: int) -> tuple[bool, str | None]:
+    """(release now?, today's date when it is the cut-off release)."""
+    from api.job_os.scheduler import _zone
+
+    n = settings["notifications"]
+    local = datetime.fromtimestamp(now, _zone(settings["scout"]))
+    today = local.date().isoformat()
+    if waiting and local.hour >= n["release_cutoff_hour"] and load_state().get("last_cutoff_release") != today:
+        return True, today
+    return waiting >= n["release_count"], None
+
+
 def send_matches(*, now: int | None = None, send: Callable = mailer.send) -> int:
-    """Email new strong matches (once each). Returns how many jobs were in the email."""
+    """Release the good matches waiting in the Scout inbox, all together, once
+    ``release_count`` are waiting or at the day's cut-off hour: they show as new
+    in Jobs, and (when email is on) go out in one email. Returns how many."""
     from api.job_os.settings import load_settings
 
     settings = load_settings()
-    if not _ready(settings, "notify_new_matches"):
-        return 0
     with _send_lock:
         now = int(time.time()) if now is None else now
-        jobs = pending_matches(settings, now=now)[:MAX_PER_ALERT]
-        if not jobs:
+        jobs = pending_matches(settings, now=now)
+        due, cutoff_day = _release_due(settings, len(jobs), now)
+        if not due:
             return 0
-        replies = settings["notifications"]["reply_actions"]
-        conn = connect_job_os()
-        try:
-            blocks = [_job_block(j, {a: issue_code(conn, j["id"], a, now) for a in REPLY_ACTIONS} if replies else None) for j in jobs]
-            conn.commit()
-        finally:
-            conn.close()
-        subject = f"{len(jobs)} new job match{'es' if len(jobs) != 1 else ''}" + (f": {jobs[0]['title']}" if len(jobs) == 1 else "")
-        intro = "Luna found these new matches for your resume."
-        how = ("\n\nTo act on one, reply to this email with its code on its own line, e.g. \"TAILOR 1A2B3C4D\". "
-               "You can send several codes in one reply. Codes work once and expire in 7 days.") if replies else ""
-        body = intro + how + "\n\n" + "\n\n---\n\n".join(blocks) + "\n\nOpen Hermes -> Jobs -> Pipeline to see everything."
-        try:
-            send(CONTEXT, settings["notifications"]["to_address"], subject, body)
-        except Exception as error:
-            _log("matches", "failed", subject, str(error))
-            raise
         conn = connect_job_os()
         try:
             for job in jobs:
-                _event(conn, job["id"], "match_notified", {"fit_score": job["fit_score"]})
+                _event(conn, job["id"], "match_released", {"fit_score": job["fit_score"]})
             conn.commit()
         finally:
             conn.close()
-        _log("matches", "sent", subject, f"{len(jobs)} job(s)")
+        _save_state(last_release_at=now, **({"last_cutoff_release": cutoff_day} if cutoff_day else {}))
+        if _ready(settings, "notify_new_matches"):
+            _email_matches(settings, jobs, now, send)
         return len(jobs)
 
+
+def _email_matches(settings: dict, jobs: list[dict], now: int, send: Callable) -> None:
+    shown = jobs[:MAX_PER_ALERT]
+    replies = settings["notifications"]["reply_actions"]
+    conn = connect_job_os()
+    try:
+        blocks = [_job_block(j, {a: issue_code(conn, j["id"], a, now) for a in REPLY_ACTIONS} if replies else None) for j in shown]
+        conn.commit()
+    finally:
+        conn.close()
+    subject = f"{len(jobs)} new job match{'es' if len(jobs) != 1 else ''}" + (f": {jobs[0]['title']}" if len(jobs) == 1 else "")
+    intro = f"Luna found {len(jobs)} new good match{'es' if len(jobs) != 1 else ''} for your resume (fit {settings['notifications']['min_fit_score']}+), best first."
+    how = ("\n\nTo act on one, reply to this email with its code on its own line, e.g. \"TAILOR 1A2B3C4D\". "
+           "You can send several codes in one reply. Codes work once and expire in 7 days.") if replies else ""
+    more = f"\n\n{len(jobs) - len(shown)} more in Hermes." if len(jobs) > len(shown) else ""
+    body = intro + how + "\n\n" + "\n\n---\n\n".join(blocks) + more + "\n\nOpen Hermes -> Jobs -> Scout to see them all."
+    try:
+        send(CONTEXT, settings["notifications"]["to_address"], subject, body)
+    except Exception as error:
+        _log("matches", "failed", subject, str(error))  # the release still stands in Jobs
+        return
+    conn = connect_job_os()
+    try:
+        for job in shown:
+            _event(conn, job["id"], "match_notified", {"fit_score": job["fit_score"]})
+        conn.commit()
+    finally:
+        conn.close()
+    _log("matches", "sent", subject, f"{len(jobs)} job(s)")
+
+
+def inbox(*, now: int | None = None) -> dict:
+    """The Scout inbox: good matches still waiting for a release, and released
+    ones not yet marked seen."""
+    from api.job_os.settings import load_settings
+
+    settings = load_settings()
+    now = int(time.time()) if now is None else now
+    seen = int(load_state().get("matches_seen_at") or 0)
+    conn = connect_job_os()
+    try:
+        released = [dict(r) for r in conn.execute(
+            "SELECT j.id, j.title, j.company, j.location, j.country, j.source, j.salary_text, j.workplace, j.status,"
+            " a.fit_score, MAX(e.created_at) AS released_at FROM job_events e JOIN jobs j ON j.id=e.job_id"
+            " JOIN job_analyses a ON a.job_id=j.id WHERE e.event_type='match_released' AND e.created_at>?"
+            " GROUP BY j.id ORDER BY a.fit_score DESC", (seen,))]
+    finally:
+        conn.close()
+    n = settings["notifications"]
+    return {"waiting": len(pending_matches(settings, now=now)), "released": released,
+            "release_count": n["release_count"], "release_cutoff_hour": n["release_cutoff_hour"],
+            "min_fit_score": n["min_fit_score"], "last_release_at": load_state().get("last_release_at")}
+
+
+def mark_matches_seen(*, now: int | None = None) -> dict:
+    _save_state(matches_seen_at=int(time.time()) if now is None else now)
+    return inbox(now=now)
 
 
 def build_digest(*, now: int | None = None) -> tuple[str, str] | None:

@@ -40,7 +40,15 @@ def default_settings() -> dict:
         # Contact details for tailored resumes and cover letters.
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         # blocked_companies: Scout never saves postings from these employers.
-        "scout": {"enabled": False, "schedule_hours": 6, "max_results_per_search": 20, "blocked_companies": []},
+        # schedule_mode "times": runs at run_times in timezone (job ads go up in
+        # morning and afternoon waves, so one run follows each); "interval": every
+        # schedule_hours. weekend: "saturday" (one run, Saturday only), "same", "none".
+        # quiet_skip: after a run with 0-1 new jobs, skip the next run that day.
+        # Run times follow each search country's clock (indeed.CLOCKS); timezone
+        # is the person's own, used for the evening release of good matches.
+        "scout": {"enabled": False, "schedule_mode": "times", "run_times": ["12:30", "18:30"], "weekend": "saturday",
+                  "quiet_skip": True, "timezone": "Asia/Kuala_Lumpur", "schedule_hours": 6,
+                  "max_results_per_search": 20, "blocked_companies": []},
         # Apify runs the job-site scraper on its own addresses (api/job_os/apify.py).
         # The token is a secret in the env files; these are the non-secret choices.
         "apify": {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper",
@@ -50,7 +58,12 @@ def default_settings() -> dict:
             "email_enabled": False,
             "to_address": "",
             "notify_new_matches": True,
-            "min_fit_score": 70,
+            # A good match: Luna's fit score of the master resume against the job.
+            # Good matches wait in the Scout inbox and go out together once
+            # release_count are waiting, or at release_cutoff_hour (scout timezone).
+            "min_fit_score": 65,
+            "release_count": 5,
+            "release_cutoff_hour": 20,
             "daily_digest": True,
             "digest_hour": 8,
             "reply_actions": True,
@@ -117,6 +130,36 @@ def _actor(value, field):
     return value.strip()
 
 
+def _run_times(value, field):
+    if not isinstance(value, list) or not 1 <= len(value) <= 6:
+        raise SettingsError(f"{field} must list 1 to 6 times")
+    times = []
+    for item in value:
+        match = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", str(item).strip())
+        if not match:
+            raise SettingsError(f"{field}: {str(item)[:10]!r} is not a time like 12:30")
+        times.append(f"{int(match.group(1)):02d}:{match.group(2)}")
+    return sorted(set(times))
+
+
+def _timezone(value, field):
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo(str(value))
+    except (ZoneInfoNotFoundError, ValueError):
+        raise SettingsError(f"{field} must be a time zone like Asia/Kuala_Lumpur") from None
+    return str(value)
+
+
+def _choice(*options):
+    def check(value, field):
+        if value not in options:
+            raise SettingsError(f"{field} must be one of: {', '.join(options)}")
+        return value
+    return check
+
+
 def _companies(value, field):
     if isinstance(value, str):
         value = value.splitlines()
@@ -153,6 +196,11 @@ _VALIDATORS = {
     },
     "scout": {
         "enabled": _bool,
+        "schedule_mode": _choice("times", "interval"),
+        "run_times": _run_times,
+        "weekend": _choice("saturday", "same", "none"),
+        "quiet_skip": _bool,
+        "timezone": _timezone,
         "schedule_hours": lambda v, f: _int(v, f, 1, 168),
         "max_results_per_search": lambda v, f: _int(v, f, 1, 100),
         "blocked_companies": _companies,
@@ -162,6 +210,8 @@ _VALIDATORS = {
         "to_address": _email,
         "notify_new_matches": _bool,
         "min_fit_score": lambda v, f: _int(v, f, 0, 100),
+        "release_count": lambda v, f: _int(v, f, 1, 50),
+        "release_cutoff_hour": lambda v, f: _int(v, f, 0, 23),
         "daily_digest": _bool,
         "digest_hour": lambda v, f: _int(v, f, 0, 23),
         "reply_actions": _bool,
