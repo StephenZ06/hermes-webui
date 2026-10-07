@@ -51,3 +51,37 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
     assert out["off"] == {"chip": "Firecrawl ready", "card": False}
     assert out["fit"] == {"gain": "+16", "rings": ["68", "84"]}
     assert out["hidden"] and out["shown"]
+
+
+def test_the_apply_kit_lists_documents_answers_and_the_apply_steps():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              const job = {id: 'j1', title: 'SOC Analyst', company: 'Ooredoo', status: 'resume_ready', source: 'bayt', description: 'x',
+                canonical_url: 'https://www.bayt.com/en/qatar/jobs/soc-analyst-1234567/', revision: 1,
+                documents: {resume: {id: 'r1', status: 'ready'}, cover_letter: {id: 'c1', status: 'ready'}},
+                apply_kit: {status: 'done', answers: [{question: 'Notice period?', answer: 'One month.'},
+                                                      {question: 'Relocate?', answer: 'Not provided — fill in before sending'}]}};
+              const base = {capability: {available: true}, dashboard: null, jobs: [], pipelineSource: 'all', pipelineMode: 'list', activeView: 'pipeline'};
+              host.innerHTML = window.JobOSRender.shell({...base, jobDetail: job});
+              const kit = host.querySelector('.apply-kit');
+              const result = {steps: [...kit.querySelectorAll('.apply-step h4')].map((h) => h.textContent),
+                docs: [...kit.querySelectorAll('a.job-os-btn')].map((a) => a.getAttribute('href')),
+                copies: [...kit.querySelectorAll('[data-copy-text]')].map((b) => b.dataset.copyText),
+                missing: kit.querySelectorAll('[data-missing="true"]').length,
+                applied: !!kit.querySelector('[data-job-os-action="board-apply"]')};
+              host.innerHTML = window.JobOSRender.shell({...base, jobDetail: {...job, status: 'submitted'}});
+              result.afterApplying = !!host.querySelector('.apply-kit');
+              return result;
+            }""")
+        finally:
+            browser.close()
+    assert out["steps"] == ["Documents", "Screening answers", "Apply on the site"]
+    assert "/api/job-os/documents/r1/export?format=docx" in out["docs"] and "/api/job-os/documents/c1/export?format=docx" in out["docs"]
+    assert "https://www.bayt.com/en/qatar/jobs/soc-analyst-1234567/" in out["docs"]
+    assert out["copies"] == ["One month.", "Not provided — fill in before sending"] and out["missing"] == 1
+    assert out["applied"] and not out["afterApplying"], "the kit is for applying; it goes once you have"

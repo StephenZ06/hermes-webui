@@ -149,8 +149,22 @@ Studio's **Match check** shows it for any job with a description; **Score my
 resume** costs one model call. Scout finds are scored automatically when
 *Analyse new finds automatically* is on.
 
-## Applying
+## Applying: the Apply kit
 
-You apply on the job's own site (**Apply** opens the posting) and record it
-here. Automated applying was removed: Indeed's own application flow needs a
-signed-in account and its terms forbid automation.
+Hermes does not submit applications. Indeed's and LinkedIn's terms forbid
+automated applying, and it would mean handing your session to a third party
+(the one Apify actor that tries, for LinkedIn Easy Apply, had 16 users and
+no reviews on 2026-10-08). Instead each job not yet applied for has an
+**Apply kit** in its side panel:
+
+1. **Documents:** the tailored resume (DOCX/PDF) and cover letter, or a
+   prompt to tailor one.
+2. **Screening answers:** Luna writes ready-to-paste answers to the usual
+   questions (why this role and company, experience, matching skills, notice
+   period, salary, work authorisation, relocation, languages) from the job,
+   your master resume and **Settings → Application answers**, which it uses
+   word for word. A question you left blank comes back as "Not provided —
+   fill in before sending", highlighted. Each answer has a Copy button.
+3. **Apply on the site:** Open posting, paste, send, then **I've applied**.
+
+Answers are stored per job (`apply_kits`); preparing them is one model call.

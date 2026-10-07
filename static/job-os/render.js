@@ -256,6 +256,14 @@
       ${textField('applicant.linkedin_url', 'LinkedIn', v('applicant.linkedin_url'), 'https://linkedin.com/in/…', 'url')}
       ${textField('applicant.portfolio_url', 'Website / portfolio', v('applicant.portfolio_url'), 'https://…', 'url')}</div>`);
     const timesMode = v('scout.schedule_mode') !== 'interval';
+    const answers = section('apply', 'Application answers', 'Your standard answers to screening questions. Each job’s Apply kit uses them word for word, and Luna fits the rest to the job from your master resume. Leave a field empty to be asked to fill it in.', `<div class="scout-form-grid">
+      ${textField('apply.notice_period', 'Notice period', v('apply.notice_period'), 'e.g. One month')}
+      ${textField('apply.expected_salary', 'Expected salary', v('apply.expected_salary'), 'e.g. Malaysia: RM 8,000/month; Qatar: QAR 15,000/month')}
+      ${textField('apply.work_authorization', 'Work authorisation', v('apply.work_authorization'), 'e.g. Malaysian citizen; needs visa sponsorship for Qatar')}
+      ${textField('apply.years_experience', 'Years of experience', v('apply.years_experience'), 'e.g. 3 years in SOC operations')}
+      ${textField('apply.relocation', 'Relocation', v('apply.relocation'), 'e.g. Open to relocating to Qatar')}
+      ${textField('apply.languages', 'Languages', v('apply.languages'), 'e.g. English, Malay')}</div>
+      <label class="job-os-field"><span>Anything else to mention</span><textarea data-setting="apply.other" rows="3" maxlength="1500" placeholder="e.g. Certifications in progress, availability for interviews">${esc(v('apply.other') || '')}</textarea></label>`);
     const scout = section('scout', 'Scout schedule', 'Job ads go up in a morning wave and an afternoon wave on weekdays (Monday to Wednesday are the busiest), so by default Scout runs just after each: 12:30 and 18:30, plus one Saturday run.', `
       ${toggle('scout.enabled', 'Run Scout automatically', v('scout.enabled'))}
       <div class="job-os-grid">${selectField('scout.schedule_mode', 'Run', v('scout.schedule_mode'), [['times', 'At set times'], ['interval', 'Every few hours']])}
@@ -279,7 +287,7 @@
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const display = section('display', 'Jobs page', '', toggle('display.show_logistics', 'Show Logistics', v('display.show_logistics'), 'The 3D view of your pipeline in the side panel'));
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${scout}${notify}${resume}${display}${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${answers}${scout}${notify}${resume}${display}${bar}</form>`;
   }
   const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
   function notifyStatus(n) {
@@ -364,6 +372,32 @@
       <form id="job-os-note-form" class="job-note-form"><textarea name="text" rows="2" maxlength="2000" placeholder="Add a note — a recruiter call, a referral, a follow-up date"></textarea><button type="submit" class="job-os-btn">Add note</button></form>
       ${rows ? `<ul class="job-activity">${rows}</ul>` : ''}</section>`;
   }
+  // Apply kit: everything to apply by hand in a minute or two. Hermes never
+  // submits applications itself (the sites forbid it); you paste and send.
+  const APPLYING = ['discovered', 'scraped', 'analyzed', 'shortlisted', 'tailoring', 'resume_ready', 'application_ready', 'awaiting_approval', 'applying'];
+  function applyKitPanel(job) {
+    if (!APPLYING.includes(job.status)) return '';
+    const docs = job.documents || {};
+    const resumeDoc = docs.resume && ['ready', 'needs_review'].includes(docs.resume.status) ? docs.resume : null;
+    const letterDoc = docs.cover_letter && ['ready', 'needs_review'].includes(docs.cover_letter.status) ? docs.cover_letter : null;
+    const exp = (doc, fmt) => `/api/job-os/documents/${encodeURIComponent(doc.id)}/export?format=${fmt}`;
+    const files = resumeDoc
+      ? `<div class="job-os-actions"><a class="job-os-btn small" href="${exp(resumeDoc, 'docx')}">Resume DOCX</a><a class="job-os-btn small" href="${exp(resumeDoc, 'pdf')}" target="_blank" rel="noopener">Resume PDF</a>${letterDoc ? `<a class="job-os-btn small" href="${exp(letterDoc, 'docx')}">Cover letter DOCX</a>` : ''}<button type="button" class="job-os-btn small" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Open in Resume Studio</button></div>${resumeDoc.status === 'needs_review' ? '<p class="board-attention">The tailored resume has numbers to check before sending.</p>' : ''}`
+      : job.status === 'tailoring' ? '<p class="job-os-card-note">Luna is tailoring your resume…</p>'
+        : `<p class="job-os-card-note">No tailored resume yet — your master resume works, but a tailored one scores better.</p>${job.description ? `<button type="button" class="job-os-btn small" data-job-os-action="job-tailor">Tailor resume</button>` : ''}`;
+    const kit = job.apply_kit;
+    let answers;
+    if (!kit) answers = `<p class="job-os-card-note">Luna writes ready-to-paste answers to the usual screening questions from this job, your master resume and your <button type="button" class="job-os-link" data-job-os-view="settings">application answers</button>.</p>${job.description ? '<button type="button" class="job-os-btn small primary" data-job-os-action="apply-kit">Prepare answers</button>' : ''}`;
+    else if (kit.status === 'running') answers = writingPanel('Luna is writing your answers…');
+    else if (kit.status === 'failed') answers = `<p class="job-os-error">${esc(kit.error || 'Preparing the answers failed.')}</p><button type="button" class="job-os-btn small" data-job-os-action="apply-kit">Try again</button>`;
+    else answers = `<ol class="apply-answers">${kit.answers.map((a) => `<li${/^Not provided/.test(a.answer) ? ' data-missing="true"' : ''}><strong>${esc(a.question)}</strong><p>${esc(a.answer)}</p><button type="button" class="job-os-btn small" data-copy-text="${esc(a.answer)}">Copy</button></li>`).join('')}</ol>
+      <button type="button" class="job-os-btn small" data-job-os-action="apply-kit">Prepare again</button>`;
+    return `<section class="job-drawer-section apply-kit"><h3>Apply kit</h3>
+      <div class="apply-step"><span class="apply-step-n">1</span><div><h4>Documents</h4>${files}</div></div>
+      <div class="apply-step"><span class="apply-step-n">2</span><div><h4>Screening answers</h4>${answers}</div></div>
+      <div class="apply-step"><span class="apply-step-n">3</span><div><h4>Apply on the site</h4><p class="job-os-card-note">Open the posting, paste, send — then record it here.</p>
+        <div class="job-os-actions"><a class="job-os-btn small primary" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">I’ve applied</button></div></div></div></section>`;
+  }
   function jobDrawer(state) {
     const job = state.jobDetail;
     if (!job) return '';
@@ -380,6 +414,7 @@
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
           ${interviewPanel(job)}
           ${analysisPanel(job)}
+          ${applyKitPanel(job)}
           ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>`
             : `<p class="job-os-card-note">No description yet. ${src === 'manual' ? 'Edit the job and paste it in to' : 'Fetch details to'} score and tailor your resume for it.</p>`}
           ${activity(state)}

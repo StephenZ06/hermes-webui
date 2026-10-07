@@ -50,6 +50,9 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         from api.job_os.interview import get_prep
 
         payload["interview"] = get_prep(job.id)
+        from api.job_os.apply_kit import get_kit
+
+        payload["apply_kit"] = get_kit(job.id)
     elif analyses is not None:
         payload["analysis"] = analyses.get(job.id)
     return payload
@@ -519,6 +522,16 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         return True
     if parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith("/edit"):
         return _edit_job(handler, parsed.path, body)
+    if parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith("/apply-kit"):
+        from api.job_os import apply_kit
+
+        try:
+            j(handler, {"apply_kit": apply_kit.request(unquote(parsed.path[len(f"{_PREFIX}/jobs/"):-len("/apply-kit")]).strip("/"))})
+        except KeyError:
+            return _error(handler, "Job not found", 404)
+        except apply_kit.ApplyKitError as error:
+            return _error(handler, str(error), 400)
+        return True
     if parsed.path != f"{_PREFIX}/jobs":
         return False
     if not isinstance(body, dict):

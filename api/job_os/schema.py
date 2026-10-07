@@ -247,8 +247,24 @@ def _migration_9(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE searches ADD COLUMN title_filter TEXT NOT NULL DEFAULT '[]'")
 
 
+def _migration_10(connection: sqlite3.Connection) -> None:
+    """Apply kit: Luna's ready-to-paste screening answers per job."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS apply_kits (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            answers_json TEXT NOT NULL DEFAULT '[]',
+            error TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
-              (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9))
+              (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

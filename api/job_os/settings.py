@@ -53,6 +53,10 @@ def default_settings() -> dict:
         # The token is a secret in the env files; these are the non-secret choices.
         # One "<site>_actor" per job site in apify.SITES (its first actor by default).
         "apify": {"enabled": False, **{f"{site}_actor": _default_actor(site) for site in _sites()}, "results_per_city": 50},
+        # Your standard answers to application screening questions; the Apply
+        # kit uses them word for word and Luna fits them to each job.
+        "apply": {"notice_period": "", "expected_salary": "", "work_authorization": "", "years_experience": "",
+                  "relocation": "", "languages": "", "other": ""},
         # Sections of the Jobs page that can be hidden.
         "display": {"show_logistics": True},
         "notifications": {
@@ -93,6 +97,12 @@ def _text(value, field, limit=64):
 def _free_text(value, field, limit):
     if not isinstance(value, str) or len(value) > limit or "\n" in value:
         raise SettingsError(f"{field} must be a single line of up to {limit} characters")
+    return value.strip()
+
+
+def _long_text(value, field, limit):
+    if not isinstance(value, str) or len(value) > limit:
+        raise SettingsError(f"{field} must be text of up to {limit} characters")
     return value.strip()
 
 
@@ -218,6 +228,15 @@ _VALIDATORS = {
         "schedule_hours": lambda v, f: _int(v, f, 1, 168),
         "max_results_per_search": lambda v, f: _int(v, f, 1, 100),
         "blocked_companies": _companies,
+    },
+    "apply": {
+        "notice_period": lambda v, f: _free_text(v, f, 120),
+        "expected_salary": lambda v, f: _free_text(v, f, 200),
+        "work_authorization": lambda v, f: _free_text(v, f, 300),
+        "years_experience": lambda v, f: _free_text(v, f, 120),
+        "relocation": lambda v, f: _free_text(v, f, 200),
+        "languages": lambda v, f: _free_text(v, f, 200),
+        "other": lambda v, f: _long_text(v, f, 1500),
     },
     "display": {"show_logistics": _bool},
     "notifications": {

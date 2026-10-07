@@ -222,6 +222,12 @@
     return anim.finished.catch(() => {}).then(() => plane.remove());
   }
   function onClick(event) {
+    const copy = event.target.closest('[data-copy-text]');
+    if (copy) {
+      const done = () => { if (typeof window.showToast === 'function') window.showToast('Copied'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(copy.dataset.copyText).then(done, () => {});
+      return;
+    }
     const action = event.target.closest('[data-job-os-action]');
     if (action) { runAction(action.dataset.jobOsAction, action); return; }
     const view = event.target.closest('[data-job-os-view]');
@@ -292,7 +298,7 @@
   async function runAction(name, button) {
     const state = window.JobOSState;
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
@@ -429,7 +435,8 @@
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
       && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring') || busy(state.jobDetail)
-        || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))))
+        || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))
+        || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')))
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
@@ -542,6 +549,12 @@
       if (el) el.disabled = true;
       try { await window.JobOSApi.tailor(id); if (typeof window.showToast === 'function') window.showToast('Luna is tailoring your resume'); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start tailoring'); }
+      return refresh();
+    }
+    if (name === 'apply-kit' && job) {
+      if (el) el.disabled = true;
+      try { await window.JobOSApi.applyKit(job.id); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not prepare the answers'); }
       return refresh();
     }
     if (name === 'card-details') {
