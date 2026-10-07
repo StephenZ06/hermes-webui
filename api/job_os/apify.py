@@ -18,6 +18,7 @@ ever say whether it is set.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import urllib.error
@@ -264,6 +265,50 @@ def linkedin_curious_posting(item: dict) -> dict | None:
     }
 
 
+# ---- Bayt (blackfalcondata/bayt-scraper) ---------------------------------------------
+# The Gulf's main job board. Scout's country codes are Bayt's in lower case.
+BAYT_COUNTRIES = ("ae", "sa", "qa", "kw", "bh", "om", "eg", "jo", "lb", "pk", "in", "iq", "ma")
+_BAYT_AGE = {0: "", 1: "past-24h", 3: "past-week", 7: "past-week", 14: "past-month"}
+
+
+def bayt_input(country: str, keywords: str, location: str, *, limit: int, posted_within_days: int) -> dict:
+    # Not descriptionFormat="text": with it the actor returned only a ~120-character
+    # teaser in "description" (checked 2026-10-08); the default carries the full text.
+    payload = {"query": keywords, "country": country.upper(), "location": location, "maxResults": int(limit),
+               "sortBy": "date", "includeDetails": True}
+    if _BAYT_AGE.get(int(posted_within_days or 0)):
+        payload["datePosted"] = _BAYT_AGE[int(posted_within_days)]
+    return payload
+
+
+_BAYT_URL = re.compile(r"^https://www\.bayt\.com/en/[a-z-]+/jobs/[a-z0-9-]*-(\d{4,12})/?$")
+
+
+def bayt_posting(item: dict) -> dict | None:
+    match = _BAYT_URL.match(str(item.get("url") or "").split("?")[0])
+    if not match:
+        return None
+    location = html.unescape(str(item.get("location") or "")).strip()
+    text = lambda key: html.unescape(str(item.get(key) or "")).strip()  # noqa: E731 - Bayt sends "&amp;" in titles
+    return {
+        "title": text("title")[:240],
+        "company": text("company")[:240],
+        "location": location[:240],
+        "salary_text": text("salaryText")[:120],
+        "employment_type": text("employmentType")[:60],
+        "workplace": "remote" if item.get("isRemote") else _workplace_from(location),
+        "posted_at": str(item.get("postedDate") or item.get("postedAt") or "")[:10],
+        "description": str(item.get("description") or "").strip()[:20000],
+        "canonical_url": match.group(0).rstrip("/") + "/",
+    }
+
+
+def state_key(*parts: str) -> str:
+    """A stable, safe name for an incremental actor's memory."""
+    text = "-".join(re.sub(r"[^a-z0-9]+", "-", str(p).lower()).strip("-") for p in parts if p)
+    return ("hermes-" + text)[:80]
+
+
 # ---- registry ------------------------------------------------------------------
 @dataclass(frozen=True)
 class Adapter:
@@ -276,6 +321,7 @@ class Adapter:
     parse: Callable[[dict, dict], dict | None]
     title_filter: str = ""  # the input field taking title phrases, if any
     skip_known: str = ""  # the input field taking known job ids, if any
+    incremental: bool = False  # remembers earlier runs itself (incrementalMode + stateKey)
 
 
 ADAPTERS: dict[str, Adapter] = {a.actor: a for a in (
@@ -291,13 +337,24 @@ ADAPTERS: dict[str, Adapter] = {a.actor: a for a in (
             lambda c: linkedin_input(c["country_name"], c["keywords"], c["location"], limit=c["limit"],
                                      posted_within_days=c["posted_within_days"]),
             lambda item, c: linkedin_posting(item), title_filter="titleInclude", skip_known="skipJobId"),
+    Adapter("blackfalcondata/bayt-scraper", "bayt", "$0.0005 a run + $0.99 per 1,000 jobs",
+            lambda c: bayt_input(c["country"], c["keywords"], c["location"], limit=c["limit"],
+                                 posted_within_days=c["posted_within_days"]),
+            lambda item, c: bayt_posting(item), incremental=True),
 )}
-# site -> (name, actors it can use; the first is the default)
-SITES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "indeed": ("Indeed", ("valig/indeed-jobs-scraper",)),
-    "linkedin": ("LinkedIn", ("curious_coder/linkedin-jobs-scraper", "valig/linkedin-jobs-scraper")),
+# site -> (name, actors it can use with the first the default, countries it
+# covers or None for any)
+SITES: dict[str, tuple[str, tuple[str, ...], tuple[str, ...] | None]] = {
+    "indeed": ("Indeed", ("valig/indeed-jobs-scraper",), None),
+    "linkedin": ("LinkedIn", ("curious_coder/linkedin-jobs-scraper", "valig/linkedin-jobs-scraper"), None),
+    "bayt": ("Bayt", ("blackfalcondata/bayt-scraper",), BAYT_COUNTRIES),
 }
-SITE_NAMES = {site: name for site, (name, _actors) in SITES.items()}
+SITE_NAMES = {site: entry[0] for site, entry in SITES.items()}
+
+
+def covers(site: str, country: str) -> bool:
+    countries = SITES[site][2]
+    return countries is None or country in countries
 
 
 def default_actor(site: str) -> str:
@@ -313,9 +370,9 @@ def adapter(site: str, actor: str) -> Adapter:
 
 def sites_payload() -> list[dict]:
     """Sites and their scrapers, for the Scout form and Settings."""
-    return [{"key": site, "name": name, "needs_apify": site != "indeed",
+    return [{"key": site, "name": name, "needs_apify": site != "indeed", "countries": list(countries) if countries else None,
              "actors": [{"actor": a, "price": ADAPTERS[a].price} for a in actors]}
-            for site, (name, actors) in SITES.items()]
+            for site, (name, actors, countries) in SITES.items()]
 
 
 # ---- usage ----------------------------------------------------------------------

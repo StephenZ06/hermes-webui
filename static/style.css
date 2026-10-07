@@ -6256,6 +6256,7 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .pipe-card-meta small{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap;}
 .pipe-source{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;background:var(--accent-bg);color:var(--accent-text,var(--accent));}
 .pipe-source[data-source="manual"]{background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--text);}
+.pipe-source[data-source="bayt"]{background:color-mix(in srgb,var(--success,#4ade80) 14%,transparent);color:var(--success,#4ade80);}
 .pipe-source[data-source="linkedin"]{background:color-mix(in srgb,var(--info,#60a5fa) 14%,transparent);color:var(--info,#60a5fa);}
 .fit-compare-row{display:flex;align-items:center;gap:12px;margin:6px 0 10px;}
 .fit-compare-row>div{display:flex;flex-direction:column;align-items:center;gap:4px;}

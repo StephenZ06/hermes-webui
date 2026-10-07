@@ -230,8 +230,8 @@ def test_apify_settings_are_validated(home):
     with pytest.raises(SettingsError, match="must be one of"):
         save_settings({"apify": {"linkedin_actor": "someone/unknown"}}, expected_revision=0)
     saved = save_settings({"apify": {"linkedin_actor": "valig/linkedin-jobs-scraper", "results_per_city": 120}}, expected_revision=0)["apify"]
-    assert saved == {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper",
-                     "linkedin_actor": "valig/linkedin-jobs-scraper", "results_per_city": 120}
+    assert saved == {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper", "linkedin_actor": "valig/linkedin-jobs-scraper",
+                     "bayt_actor": "blackfalcondata/bayt-scraper", "results_per_city": 120}
 
 
 def test_indeed_region_codes_are_dropped_from_the_location():
@@ -271,7 +271,7 @@ def test_curious_coder_linkedin_records_map_to_postings():
 
 
 def test_the_registry_offers_each_sites_scrapers_and_refuses_unknown_ones():
-    assert apify.SITE_NAMES == {"indeed": "Indeed", "linkedin": "LinkedIn"}
+    assert apify.SITE_NAMES == {"indeed": "Indeed", "linkedin": "LinkedIn", "bayt": "Bayt"}
     assert apify.default_actor("linkedin") == "curious_coder/linkedin-jobs-scraper"
     payload = {s["key"]: s for s in apify.sites_payload()}
     assert [a["actor"] for a in payload["linkedin"]["actors"]] == ["curious_coder/linkedin-jobs-scraper", "valig/linkedin-jobs-scraper"]
@@ -373,3 +373,39 @@ def test_usage_reports_spend_against_the_limit_and_is_cached(home, monkeypatch):
     assert routes.handle_get(h, urlparse("/api/job-os/apify/usage")) is True
     assert h.json()["apify"] == {"active": False, "usage": first} and TOKEN not in h.wfile.getvalue().decode()
     assert h.json()["display"] == {"show_logistics": True}
+
+
+def _bayt(job_id, title="SOC Analyst", company="Ooredoo", posted="2026-10-07T08:00:00.000Z", **extra):
+    return {"jobId": "hash", "title": title, "company": company, "location": "Doha, Qatar", "city": "Doha",
+            "country": "Qatar", "employmentType": "Full time", "description": "Monitor SIEM alerts.",
+            "isRemote": False, "url": f"https://www.bayt.com/en/qatar/jobs/soc-analyst-{job_id}/", "postedDate": posted, **extra}
+
+
+def test_bayt_records_map_and_bayt_only_covers_its_markets(home, monkeypatch):
+    b = apify.bayt_posting(_bayt("5459821"))
+    assert b["canonical_url"] == "https://www.bayt.com/en/qatar/jobs/soc-analyst-5459821/"
+    assert (b["company"], b["location"], b["posted_at"], b["description"]) == ("Ooredoo", "Doha, Qatar", "2026-10-07", "Monitor SIEM alerts.")
+    assert apify.bayt_posting(_bayt("1", url="https://evil.example/jobs/x-1234/")) is None
+    assert apify.bayt_input("qa", "SOC Analyst", "Doha", limit=30, posted_within_days=1) == {
+        "query": "SOC Analyst", "country": "QA", "location": "Doha", "maxResults": 30, "sortBy": "date",
+        "includeDetails": True, "datePosted": "past-24h"}
+    assert apify.bayt_posting(_bayt("7777777", title="Treasury &amp; Analytics"))["title"] == "Treasury & Analytics"
+    with pytest.raises(scout.ScoutError, match="Bayt doesn't cover Malaysia"):
+        scout.create_search({"keywords": "x", "country": "my", "sites": ["bayt"]})
+    payload = {s["key"]: s for s in apify.sites_payload()}
+    assert "qa" in payload["bayt"]["countries"] and payload["indeed"]["countries"] is None
+
+
+def test_a_bayt_run_asks_for_new_jobs_only_and_filters_titles(home, monkeypatch):
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    today = __import__("time").strftime("%Y-%m-%d")
+    results += [[_bayt("1111111", posted=today), _bayt("2222222", title="Sales Executive", company="X", posted=today)]]
+    search = scout.create_search({"keywords": "SOC Analyst", "country": "qa", "sites": ["bayt"], "title_filter": "analyst"})
+    run = _run(search)
+    assert run["counts"]["saved"] == 1 and run["counts"]["filtered"] == 1
+    sent = runs[0][1]
+    assert runs[0][0] == "blackfalcondata/bayt-scraper" and sent["country"] == "QA"
+    assert sent["incrementalMode"] is True and sent["stateKey"] == f"hermes-{search['id'][:8]}-bayt-soc-analyst-all"
+    job = list_jobs()[0]
+    assert job.source == "bayt" and job.country == "Qatar"

@@ -97,9 +97,11 @@
   // names to fall back on before it answers.
   let SITES = [['indeed', 'Indeed'], ['linkedin', 'LinkedIn']];
   const SOURCE_LABEL = {indeed: 'Indeed', linkedin: 'LinkedIn', manual: 'Manual'};
+  let SITE_COUNTRIES = {}; // site -> countries it covers (absent = any)
   function useSites(list) {
     if (!Array.isArray(list) || !list.length) return;
     SITES = list.map((site) => [site.key, site.name]);
+    SITE_COUNTRIES = Object.fromEntries(list.filter((site) => site.countries).map((site) => [site.key, site.countries]));
     list.forEach((site) => { SOURCE_LABEL[site.key] = site.name; });
   }
   // Scout's finds carry their job site; anything older or unknown reads as Indeed.
@@ -513,9 +515,10 @@
         <label class="job-os-field"><span>Date posted</span><select name="posted_within_days">${posted}</select></label>
         <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
         <fieldset class="job-os-field wide scout-sites"><legend>Job sites</legend><div class="scout-site-options">${SITES.map(([key, text]) => {
-          const note = key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : 'through Apify';
-          const checked = (form.sites || ['indeed']).includes(key);
-          return `<label class="scout-site${key !== 'indeed' && !apifyOn ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''}><span><strong>${text}</strong><small>${note}</small></span></label>`;
+          const covered = !SITE_COUNTRIES[key] || !form.country || SITE_COUNTRIES[key].includes(form.country);
+          const note = !covered ? 'not in this country' : key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : 'through Apify';
+          const checked = (form.sites || ['indeed']).includes(key) && covered;
+          return `<label class="scout-site${!covered || (key !== 'indeed' && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
         }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than Indeed run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
       </div>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>

@@ -165,6 +165,9 @@ def normalize_search(payload: dict) -> dict:
     unknown = [s for s in sites if s not in JOB_SITES]
     if unknown:
         raise ScoutError(f"Unknown job site: {unknown[0][:40]}. Choose {' or '.join(apify.SITE_NAMES.values())}.")
+    elsewhere = [apify.SITE_NAMES[s] for s in sites if not apify.covers(s, country)]
+    if elsewhere:
+        raise ScoutError(f"{elsewhere[0]} doesn't cover {indeed.country_name(country)}")
     return {
         "name": name or keywords[:80],
         "keywords": keywords,
@@ -671,6 +674,10 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                             actor_input[reader.title_filter] = list(search["title_filter"])
                         if reader.skip_known and (ids := _known_ids(site, known)):
                             actor_input[reader.skip_known] = ids[-apify.MAX_SKIP_IDS:]
+                        if reader.incremental:
+                            # One memory per search, title and place: later runs return only new postings.
+                            actor_input.update({"incrementalMode": True, "emitUnchanged": False, "emitExpired": False,
+                                                "stateKey": apify.state_key(search["id"][:8], site, query, location or "all")})
                         items = _apify_run(reader.actor, actor_input)
                     except apify.ApifyError as error:
                         failures += 1

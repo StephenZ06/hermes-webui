@@ -16,7 +16,8 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 
 1. **Scout (automated).** A search names job titles or keywords, the country,
    optional cities, a date-posted window, *remote only*, and its **job sites**:
-   Indeed and LinkedIn (LinkedIn needs Apify).
+   Indeed, LinkedIn and Bayt (the last two need Apify; Bayt covers the Gulf
+   and a few other markets, and is greyed out elsewhere).
    Job titles are comma-separated and each is searched on its own (up to 5).
    **Title must contain** keeps a posting only if its title has all the words
    of at least one phrase (`analyst`, or `soc, security analyst`): job sites
@@ -57,6 +58,7 @@ checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
 | Indeed | `valig/indeed-jobs-scraper` | $0.001 a run + $0.10 per 1,000 jobs | country site per search |
 | LinkedIn | `curious_coder/linkedin-jobs-scraper` | $0.00005 a run + $2.00 per 1,000 jobs | most used; no title filter or skip list on its side, so every job it returns is charged |
 | LinkedIn | `valig/linkedin-jobs-scraper` | $0.001 a run + $0.40 per 1,000 jobs | applies the title filter and skips saved jobs on its side |
+| Bayt | `blackfalcondata/bayt-scraper` | $0.0005 a run + $0.99 per 1,000 jobs | the Gulf's main board (Qatar, UAE, Saudi Arabia, Kuwait, Bahrain, Oman, ...); remembers earlier runs and returns only new jobs; Scout applies the title filter |
 
   The free plan includes $5 a month. Apify counts repeats of jobs you
   already have unless the scraper skips them. Checked on 2026-10-08,
