@@ -85,3 +85,27 @@ def test_the_apply_kit_lists_documents_answers_and_the_apply_steps():
     assert "https://www.bayt.com/en/qatar/jobs/soc-analyst-1234567/" in out["docs"]
     assert out["copies"] == ["One month.", "Not provided — fill in before sending"] and out["missing"] == 1
     assert out["applied"] and not out["afterApplying"], "the kit is for applying; it goes once you have"
+
+
+def test_settings_toggles_keep_their_hidden_checkbox_inside_the_label():
+    """Focusing a toggle's hidden checkbox must not scroll the app shell: its
+    containing block is the toggle itself, not a far-off ancestor."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              document.body.appendChild(host);
+              const settings = {revision: 1, scout: {enabled: false, schedule_mode: 'times', run_times: ['12:30'], weekend: 'saturday', blocked_companies: []},
+                notifications: {}, ai: {}, applicant: {}, apply: {}, apify: {}, firecrawl: {}, display: {}};
+              host.innerHTML = window.JobOSRender.shell({capability: {available: true}, jobs: [], activeView: 'settings', settings});
+              const inputs = [...host.querySelectorAll('.job-os-toggle input')];
+              const result = {count: inputs.length, outside: inputs.filter((i) => i.offsetParent !== i.closest('.job-os-toggle')).length};
+              host.remove();
+              return result;
+            }""")
+        finally:
+            browser.close()
+    assert out["count"] > 3 and out["outside"] == 0

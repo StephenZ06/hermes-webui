@@ -779,7 +779,7 @@
   function formFromSearch(search) {
     // A new search starts in the country of the last one made.
     const last = (window.JobOSState.searches || []).slice(-1)[0];
-    return search ? {id: search.id, revision: search.revision, name: search.name, keywords: search.keywords, country: search.country, sites: search.sites,
+    return search ? {id: search.id, revision: search.revision, name: search.name === String(search.keywords || '').slice(0, 80) ? '' : search.name, keywords: search.keywords, country: search.country, sites: search.sites,
       locations: (search.locations || []).join(', '), posted_within_days: search.posted_within_days, remote_only: search.remote_only,
       title_filter: (search.title_filter || []).join(', ')}
       : {name: '', keywords: '', country: last ? last.country : '', sites: last ? last.sites : ['indeed'], locations: '', posted_within_days: 0, remote_only: false, title_filter: ''};

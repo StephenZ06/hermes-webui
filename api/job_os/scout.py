@@ -244,7 +244,12 @@ def update_search(search_id: str, payload: dict, *, expected_revision: int) -> d
     current = get_search(search_id)
     if current is None:
         raise KeyError(search_id)
-    merged = {**current, **(payload if isinstance(payload, dict) else {})}
+    incoming = payload if isinstance(payload, dict) else {}
+    merged = {**current, **incoming}
+    # A name that was only ever the keywords follows them when they change;
+    # a name of your own is kept.
+    if current["name"] == current["keywords"][:80] and incoming.get("name", current["name"]) == current["name"]:
+        merged["name"] = ""
     data = normalize_search(merged)
     conn = connect_job_os()
     try:

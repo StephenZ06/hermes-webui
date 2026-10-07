@@ -5979,8 +5979,10 @@ button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
 .job-os-field textarea:focus{outline:none;border-color:var(--accent);}
 .job-os-field-input{display:flex;align-items:center;gap:8px;}
 .job-os-field-input em{flex-shrink:0;font-style:normal;color:var(--muted);font-size:12px;}
-.job-os-toggle{display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
-.job-os-toggle input{position:absolute;opacity:0;width:1px;height:1px;}
+/* The hidden checkbox stays inside its label: positioned against a far-off
+   ancestor, focusing it scrolled the whole app shell out of view. */
+.job-os-toggle{position:relative;display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+.job-os-toggle input{position:absolute;top:0;left:0;opacity:0;width:1px;height:1px;margin:0;}
 .job-os-toggle-track{position:relative;flex:0 0 34px;height:20px;margin-top:1px;border-radius:999px;background:var(--border2);transition:background .2s ease;}
 .job-os-toggle-track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text);transition:transform .22s cubic-bezier(.22,1,.36,1);}
 .job-os-toggle input:checked+.job-os-toggle-track{background:var(--accent);}

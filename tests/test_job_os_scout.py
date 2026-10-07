@@ -266,6 +266,20 @@ def test_update_is_revisioned_and_delete_keeps_found_jobs(store):
     assert scout.delete_search(search["id"]) and len(list_jobs()) == 1
 
 
+def test_a_name_that_was_only_the_keywords_follows_them(store):
+    search = scout.create_search({"keywords": "IT", "country": "my"})
+    assert search["name"] == "IT"
+    # The edit form sends the old name back with the new titles.
+    edited = scout.update_search(search["id"], {"name": "IT", "keywords": "SOC Analyst, IT Analyst"}, expected_revision=0)
+    assert edited["name"] == "SOC Analyst, IT Analyst"
+    # Toggling a search keeps its name; a name of your own is never replaced.
+    toggled = scout.update_search(search["id"], {"enabled": False}, expected_revision=1)
+    assert toggled["name"] == "SOC Analyst, IT Analyst"
+    named = scout.update_search(search["id"], {"name": "Analyst roles"}, expected_revision=2)
+    renamed = scout.update_search(search["id"], {"name": "Analyst roles", "keywords": "Security Analyst"}, expected_revision=3)
+    assert named["name"] == renamed["name"] == "Analyst roles"
+
+
 def test_the_quota_is_shared_across_locations(store):
     from api.job_os.settings import save_settings
     save_settings({"scout": {"max_results_per_search": 4}}, expected_revision=0)
