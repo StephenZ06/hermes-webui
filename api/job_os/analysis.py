@@ -114,6 +114,18 @@ def request_analysis(job_ids: list[str], *, force: bool = False, start_worker: b
     return queued
 
 
+def posting_text(job) -> str:
+    return (f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\nWorkplace: {job.workplace}\n"
+            f"Employment: {job.employment_type}\nPay: {job.salary_text}\n\n{job.description[:14000]}")
+
+
+def score_text(job, resume_text: str) -> dict:
+    """Luna's fit of any resume text against a job, with the same prompt and
+    scale as the master resume's analysis (so the two are comparable)."""
+    data, _model = llm.ask_json(SYSTEM, f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume_text[:14000]}\nRESUME>>>")
+    return _clean(data)
+
+
 def analyze_one(job_id: str) -> dict:
     """Run one analysis now (the worker's unit of work). Returns the stored row."""
     from api.job_os.lifecycle import transition_job
@@ -130,9 +142,7 @@ def analyze_one(job_id: str) -> dict:
     try:
         if job is None or resume is None:
             raise llm.LLMError("The job or the resume is no longer available.")
-        posting = (f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\nWorkplace: {job.workplace}\n"
-                   f"Employment: {job.employment_type}\nPay: {job.salary_text}\n\n{job.description[:14000]}")
-        data, model = llm.ask_json(SYSTEM, f"<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<RESUME\n{resume['text'][:14000]}\nRESUME>>>")
+        data, model = llm.ask_json(SYSTEM, f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume['text'][:14000]}\nRESUME>>>")
         result = _clean(data)
         conn = connect_job_os()
         try:

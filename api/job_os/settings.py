@@ -53,6 +53,8 @@ def default_settings() -> dict:
         # The token is a secret in the env files; these are the non-secret choices.
         # One "<site>_actor" per job site in apify.SITES (its first actor by default).
         "apify": {"enabled": False, **{f"{site}_actor": _default_actor(site) for site in _sites()}, "results_per_city": 50},
+        # Sections of the Jobs page that can be hidden.
+        "display": {"show_logistics": True},
         "notifications": {
             "email_enabled": False,
             "to_address": "",
@@ -217,6 +219,7 @@ _VALIDATORS = {
         "max_results_per_search": lambda v, f: _int(v, f, 1, 100),
         "blocked_companies": _companies,
     },
+    "display": {"show_logistics": _bool},
     "notifications": {
         "email_enabled": _bool,
         "to_address": _email,

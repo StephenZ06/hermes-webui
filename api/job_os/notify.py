@@ -274,18 +274,28 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
                                (now - 7 * 86400,)).fetchone()[0]
     finally:
         conn.close()
-    attention = [(card, reason) for column in board()["columns"] for card in column["jobs"] for reason in card["attention"]]
-    ready = next((c["jobs"] for c in board()["columns"] if c["key"] == "ready"), [])
-    if not (found or top or attention or ready):
+    columns = board()["columns"]
+    attention = [(card, reason) for column in columns for card in column["jobs"] for reason in card["attention"]]
+    # Applications gone quiet get their own section: they are the ones to act on today.
+    follow_ups = [(card, reason) for card, reason in attention if "follow up" in reason]
+    attention = [(card, reason) for card, reason in attention if "follow up" not in reason]
+    ready = next((c["jobs"] for c in columns if c["key"] == "ready"), [])
+    if not (found or top or attention or ready or follow_ups):
         return None
     parts = [f"Found in the last 24 hours: {found}", f"Applications sent this week: {applied}"]
+    if follow_ups:
+        parts.append("Follow up:\n" + "\n".join(
+            f"  • {c['title']} at {c['company'] or '?'} — {reason.replace(' — follow up?', '')}\n    {c['canonical_url']}"
+            for c, reason in follow_ups[:8]))
     if top:
         parts.append("Best new matches:\n" + "\n".join(f"  • {r['fit_score']} — {r['title']} at {r['company'] or '?'}\n    {r['canonical_url']}" for r in top))
     if ready:
         parts.append("Ready to apply:\n" + "\n".join(f"  • {c['title']} at {c['company'] or '?'}" for c in ready[:8]))
     if attention:
         parts.append("Needs your attention:\n" + "\n".join(f"  • {c['title']}: {reason}" for c, reason in attention[:8]))
-    return f"Daily digest — {found} found, {len(attention)} need attention", "\n\n".join(parts) + "\n\nOpen Hermes -> Jobs for details."
+    extra = f", {len(follow_ups)} to follow up" if follow_ups else ""
+    return (f"Daily digest — {found} found, {len(attention)} need attention{extra}",
+            "\n\n".join(parts) + "\n\nOpen Hermes -> Jobs for details.")
 
 
 def maybe_send_digest(*, now: float | None = None, send: Callable = mailer.send, force: bool = False) -> bool:

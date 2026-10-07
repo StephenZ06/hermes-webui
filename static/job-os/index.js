@@ -40,7 +40,7 @@
       const wantAutomations = state.activeView === 'dashboard';
       // Countries feed the Scout form and the tracker's country list; they never change.
       const wantCountries = !state.countries.length;
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage] = await Promise.all([
         window.JobOSApi.capability(), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -58,6 +58,8 @@
         wantDetail ? window.JobOSApi.timeline(state.selectedJobId).catch(() => null) : Promise.resolve(null),
         // The Scout inbox feeds the side-panel badge on every page.
         window.JobOSApi.matches().catch(() => null),
+        // Apify status and spend for the header chip and the Dashboard (cached on the server).
+        window.JobOSApi.apifyUsage().catch(() => null),
       ]);
       if (seq !== refreshSeq) return;
       // Resume Studio's match check reads the full analysis of one job: the
@@ -82,6 +84,10 @@
       }
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (matches) state.matches = matches.matches;
+      state.apifyUsage = apifyUsage ? apifyUsage.apify : null;
+      if (apifyUsage && apifyUsage.display) state.showLogistics = apifyUsage.display.show_logistics !== false;
+      // A hidden Logistics view falls back to the Dashboard.
+      if (state.activeView === 'logistics' && state.showLogistics === false) { state.activeView = 'dashboard'; replaceRoute('dashboard'); }
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) state.resume = resume.resume;
@@ -418,7 +424,8 @@
     const state = window.JobOSState;
     const sort = document.getElementById('job-os-sort');
     if (sort) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
-    const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status))
+    const docBusy = Object.values(state.studioDocs || {}).some((d) => ['pending', 'running'].includes(d.status)
+      || (d.notes && d.notes.tailored_fit && d.notes.tailored_fit.status === 'running'))
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
       && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring') || busy(state.jobDetail)
@@ -577,6 +584,13 @@
         state.studioDocs[state.studioTab] = saved.document; state.studioDraft = null;
         if (typeof window.showToast === 'function') window.showToast(saved.document.status === 'ready' ? 'Saved' : 'Saved — some numbers still need checking');
       } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not save'); }
+      return refresh();
+    }
+    if (name === 'studio-rescore') {
+      const doc = (state.studioDocs || {}).resume;
+      if (!doc) return undefined;
+      try { const r = await window.JobOSApi.rescoreDocument(doc.id); state.studioDocs.resume = r.document; }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not score it'); }
       return refresh();
     }
     if (name === 'studio-retry') {

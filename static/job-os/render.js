@@ -126,8 +126,12 @@
   function header(title, subtitle, state) {
     const ready = state.capability && state.capability.available;
     const fc = state.firecrawl;
+    const ap = state.apifyUsage;
+    // With Apify on, Scout doesn't use Firecrawl: the chip shows Apify and its spend.
     const chip = !ready
       ? '<span class="job-os-status" data-ready="false">Storage unavailable</span>'
+      : ap && ap.active
+        ? `<button type="button" class="job-os-status" data-ready="${ap.usage && ap.usage.warn ? 'false' : 'true'}" data-job-os-view="settings" title="Scout runs on Apify${ap.usage ? ` · this month $${ap.usage.used_usd} of $${ap.usage.limit_usd}` : ''}">${ap.usage ? `Apify · $${ap.usage.used_usd.toFixed(2)} of $${ap.usage.limit_usd.toFixed(0)}` : 'Apify ready'}</button>`
       : fc
         ? `<button type="button" class="job-os-status" data-ready="${fc.state === 'healthy' ? 'true' : 'false'}" data-fc-state="${esc(fc.state)}" data-job-os-view="settings" title="${esc(fc.detail || '')}">${esc(FIRECRAWL_LABELS[fc.state] || 'Firecrawl unknown')}</button>`
         : '<span class="job-os-status" data-ready="true">Ready</span>';
@@ -135,8 +139,10 @@
   }
   // Narrow screens put the side panel in a drawer, so they keep a compact
   // section switcher in the page itself.
-  function mobileNav(view) {
-    return `<nav class="job-os-tabs" aria-label="Job OS sections">${Object.keys(labels).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
+  // Sections in the side panel and the phone switcher; Logistics can be hidden in Settings.
+  const sectionsOf = (state) => Object.keys(labels).filter((key) => key !== 'logistics' || state.showLogistics !== false);
+  function mobileNav(view, state) {
+    return `<nav class="job-os-tabs" aria-label="Job OS sections">${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
   }
   function metric(name, value, label, target) {
     return `<button type="button" class="job-os-metric" ${target}><img class="job-os-metric-icon" data-metric="${name}" src="/static/job-os-metric-${name}.png" alt="" aria-hidden="true"><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${esc(value)}</strong><span>${esc(label)}</span></span></button>`;
@@ -269,8 +275,9 @@
       ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Each job in an alert has codes; reply "TAILOR 1A2B3C4D" or "SKIP 1A2B3C4D" from the Send-to address')}
       ${notifyStatus(state.notifications)}`);
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
+    const display = section('display', 'Jobs page', '', toggle('display.show_logistics', 'Show Logistics', v('display.show_logistics'), 'The 3D view of your pipeline in the side panel'));
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${scout}${notify}${resume}${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${scout}${notify}${resume}${display}${bar}</form>`;
   }
   const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
   function notifyStatus(n) {
@@ -407,6 +414,18 @@
           <p class="job-os-error" role="alert">${esc(state.jobFormError || '')}</p>
           <div class="job-form-actions"><button type="button" class="job-os-btn" data-job-os-action="job-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save changes' : 'Save job'}</button></div>
         </form></aside>`;
+  }
+  // Apify bills per job: this month's spend against the account's limit, with a
+  // warning from 80% so scheduled runs don't stop by surprise.
+  function apifyCard(info) {
+    const u = info && info.usage;
+    if (!u || !u.limit_usd) return '';
+    const pct = Math.min(100, Math.round(u.ratio * 100));
+    const left = Math.max(0, u.limit_usd - u.used_usd);
+    return `<section class="job-os-card apify-usage${u.warn ? ' is-warn' : ''}"><div class="job-os-card-head"><h2>Apify credit</h2><a class="job-os-link" href="https://console.apify.com/billing" target="_blank" rel="noopener noreferrer">Open billing</a></div>
+      <div class="apify-usage-row"><strong>$${u.used_usd.toFixed(2)}</strong><span>of $${u.limit_usd.toFixed(2)} this month${u.cycle_end ? ` · resets after ${esc(u.cycle_end)}` : ''}</span></div>
+      <div class="apify-usage-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Apify credit used"><i style="width:${Math.max(2, pct)}%"></i></div>
+      <p class="job-os-card-note">${u.warn ? `Only $${left.toFixed(2)} left: scheduled runs stop when it runs out. Lower “Results per search and city”, pause a search, or upgrade the Apify plan.` : `$${left.toFixed(2)} left.`}</p></section>`;
   }
   function funnelCard(funnel) {
     if (!funnel || !funnel.length || !funnel[0].count) return '';
@@ -574,7 +593,7 @@
         <div class="studio-grid"><div class="studio-edit"><textarea id="studio-text" spellcheck="true" aria-label="Edit document">${esc(draft)}</textarea>
           <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
           <a class="job-os-btn" href="${exportUrl('docx')}">DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
-        <aside class="studio-side">${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
+        <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}
           ${flags.length ? `<div class="studio-box"><h4>Preview</h4><div class="studio-preview">${highlightNumbers(doc.content, flags)}</div></div>` : ''}</aside></div>`;
     }
@@ -617,6 +636,24 @@
         <div class="job-os-actions">${actions}</div>
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
       </div></div></section>`;
+  }
+  // Master vs tailored: both scored by Luna with the same prompt, so the gain is real.
+  function fitCompare(notes) {
+    const fit = notes.tailored_fit || null;
+    const master = notes.master_fit;
+    const ring = (score) => (score == null ? '<span class="fit-ring"><span>—</span></span>' : fitRing({status: 'done', fit_score: score}));
+    let tailored;
+    if (!fit) tailored = '<span class="fit-ring"><span>—</span></span>';
+    else if (fit.status === 'running') tailored = '<span class="fit-ring is-busy"><span>…</span></span>';
+    else if (fit.status === 'failed') tailored = '<span class="fit-ring is-failed" title="Scoring failed"><span>!</span></span>';
+    else tailored = ring(fit.fit_score);
+    const gain = fit && fit.status === 'done' && master != null ? fit.fit_score - master : null;
+    return `<div class="studio-box fit-compare"><h4>Match with this job</h4>
+      <div class="fit-compare-row"><div>${ring(master)}<small>Master</small></div><span class="fit-compare-arrow" aria-hidden="true">→</span><div>${tailored}<small>Tailored</small></div>
+        ${gain != null ? `<strong class="fit-gain" data-up="${gain >= 0}">${gain >= 0 ? '+' : ''}${gain}</strong>` : ''}</div>
+      ${fit && fit.stale ? '<p class="job-os-card-note">Scored before your last edits.</p>' : ''}
+      ${fit && fit.status === 'failed' ? `<p class="job-os-card-note">${esc(fit.error || 'Scoring failed.')}</p>` : ''}
+      ${!fit || fit.status !== 'running' ? `<button type="button" class="job-os-btn small" data-job-os-action="studio-rescore">${fit && fit.status === 'done' ? 'Score again' : 'Score it'}</button>` : '<p class="job-os-card-note">Scoring…</p>'}</div>`;
   }
   function tailoredView(state) {
     return state.studioJobId ? studioEditor(state) : tailoredList(state);
@@ -689,6 +726,7 @@
     if (view === 'dashboard') {
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="submitted"')}</section>
+        ${apifyCard(state.apifyUsage)}
         ${funnelCard(dashboard.funnel)}
         ${automationsCard(state.automations)}
         <div class="job-os-columns">
@@ -719,7 +757,7 @@
     } else {
       body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}`;
     }
-    return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view)}<main class="job-os-content">${body}</main></div>`;
+    return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view, state)}<main class="job-os-content">${body}</main></div>`;
   }
   function sidebar(state) {
     const view = state.activeView;
@@ -727,7 +765,7 @@
     const byStatus = dashboard.by_status || {};
     const fresh = state.matches ? (state.matches.released || []).length : 0;
     const counts = {pipeline: dashboard.total_jobs, scout: fresh};
-    const nav = Object.keys(labels).map((key) => {
+    const nav = sectionsOf(state).map((key) => {
       const active = view === key && !(key === 'pipeline' && state.statusFilter);
       const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
       return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key)}<span>${labels[key]}</span>${count}</button>`;

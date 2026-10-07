@@ -316,3 +316,37 @@ def sites_payload() -> list[dict]:
     return [{"key": site, "name": name, "needs_apify": site != "indeed",
              "actors": [{"actor": a, "price": ADAPTERS[a].price} for a in actors]}
             for site, (name, actors) in SITES.items()]
+
+
+# ---- usage ----------------------------------------------------------------------
+USAGE_TTL_S = 600  # Apify's figure moves slowly; don't ask on every page refresh
+WARN_RATIO = 0.8
+_usage_cache: dict = {}
+
+
+def usage(*, now: float | None = None, fetch: Callable[[str], dict] | None = None) -> dict | None:
+    """This month's Apify spend against the account's monthly limit:
+    {used_usd, limit_usd, ratio, warn, cycle_end}, or None without a token or
+    when Apify doesn't answer. Cached for USAGE_TTL_S per token."""
+    import time
+
+    value = token()
+    if not value:
+        return None
+    now = time.time() if now is None else now
+    key = value[-8:]
+    cached = _usage_cache.get(key)
+    if cached and now - cached[0] < USAGE_TTL_S:
+        return cached[1]
+    try:
+        data = ((fetch or (lambda v: _request("GET", "/users/me/limits", v)))(value) or {}).get("data") or {}
+    except ApifyError:
+        return cached[1] if cached else None
+    used = float((data.get("current") or {}).get("monthlyUsageUsd") or 0)
+    limit = float((data.get("limits") or {}).get("maxMonthlyUsageUsd") or 0)
+    ratio = used / limit if limit else 0.0
+    result = {"used_usd": round(used, 2), "limit_usd": round(limit, 2), "ratio": round(ratio, 3),
+              "warn": ratio >= WARN_RATIO, "cycle_end": str((data.get("monthlyUsageCycle") or {}).get("endAt") or "")[:10]}
+    _usage_cache.clear()
+    _usage_cache[key] = (now, result)
+    return result

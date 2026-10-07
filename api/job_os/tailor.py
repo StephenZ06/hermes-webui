@@ -227,7 +227,9 @@ def tailor_one(job_id: str) -> dict:
         coverage = keyword_coverage(tailored, analysis.get("must_haves") or [])
         set_doc(resume_doc, status="needs_review" if flags_resume else "ready", content=tailored[:30000], model=model, error="",
                 notes_json=json.dumps({"changes": changes, "unverified": flags_resume, "coverage": coverage,
-                                       "master_revision": master.get("revision")}))
+                                       "master_revision": master.get("revision"),
+                                       "master_fit": analysis.get("fit_score"),
+                                       "tailored_fit": _fit_of(job, tailored)}))
         set_doc(letter_doc, status="needs_review" if flags_letter else "ready", content=letter[:8000], model=model, error="",
                 notes_json=json.dumps({"unverified": flags_letter}))
         finish_job(JobStatus.RESUME_READY)
@@ -237,6 +239,49 @@ def tailor_one(job_id: str) -> dict:
             set_doc(doc, status="failed", error=message[:300])
         finish_job(JobStatus.SHORTLISTED)
     return latest_documents(job_id)
+
+
+def _fit_of(job, text: str) -> dict:
+    """The tailored resume's fit, scored like the master's; a failed scoring is
+    recorded rather than failing the tailoring."""
+    from api.job_os.analysis import score_text
+
+    try:
+        result = score_text(job, text)
+        return {"status": "done", "fit_score": result["fit_score"], "summary": result["summary"], "at": int(time.time())}
+    except Exception as error:  # the tailored resume is still usable without its score
+        return {"status": "failed", "error": (str(error) if isinstance(error, llm.LLMError) else type(error).__name__)[:200]}
+
+
+def rescore_document(doc_id: str, *, run_async: bool = True) -> dict:
+    """Score the tailored resume again (after edits), in the background."""
+    doc = get_document(doc_id)
+    if doc is None:
+        raise KeyError(doc_id)
+    if doc["kind"] != "resume" or doc["status"] not in ("ready", "needs_review"):
+        raise TailorError("Only a finished tailored resume can be scored.")
+    job = get_job(doc["job_id"])
+    if job is None or not job.description:
+        raise TailorError("The job has no description to score against.")
+
+    def write(fit: dict) -> None:
+        conn = connect_job_os()
+        try:
+            row = conn.execute("SELECT notes_json FROM job_documents WHERE id=?", (doc_id,)).fetchone()
+            notes = json.loads((row["notes_json"] if row else None) or "{}")
+            notes["tailored_fit"] = fit
+            conn.execute("UPDATE job_documents SET notes_json=?, updated_at=? WHERE id=?", (json.dumps(notes), int(time.time()), doc_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    write({"status": "running"})
+    work = lambda: write(_fit_of(job, doc["content"]))  # noqa: E731
+    if run_async:
+        threading.Thread(target=work, name=f"job-os-rescore-{doc_id[:8]}", daemon=True).start()
+    else:
+        work()
+    return get_document(doc_id)
 
 
 def update_document(doc_id: str, content: str, *, expected_revision: int) -> dict:
@@ -253,6 +298,8 @@ def update_document(doc_id: str, content: str, *, expected_revision: int) -> dic
     notes = dict(doc["notes"])
     notes["unverified"] = unverified_numbers(text, master)
     notes["edited"] = True
+    if isinstance(notes.get("tailored_fit"), dict) and text != doc["content"]:
+        notes["tailored_fit"] = {**notes["tailored_fit"], "stale": True}  # scored before these edits
     conn = connect_job_os()
     try:
         conn.execute("UPDATE job_documents SET content=?, notes_json=?, status=?, revision=revision+1, updated_at=? WHERE id=?",

@@ -14,6 +14,7 @@ from api import profiles, routes
 from api.job_os import analysis, export, llm, resume, tailor
 from api.job_os.lifecycle import transition_job
 from api.job_os.models import JobStatus
+from api.job_os.db import connect_job_os
 from api.job_os.repository import create_job, get_job, normalize_job_input
 
 MASTER = ("# Jane Doe\njane@example.com\n## Experience\n- Built Python services on AWS for 8 years.\n"
@@ -58,6 +59,36 @@ def test_tailoring_moves_the_job_and_stores_both_documents(store):
     assert docs["resume"]["status"] == "ready" and docs["cover_letter"]["status"] == "ready"
     assert docs["resume"]["notes"]["changes"][0]["what"] == "Led with Python"
     assert get_job(job.id).status == JobStatus.RESUME_READY
+
+
+def test_the_tailored_resume_is_scored_like_the_master(store, monkeypatch):
+    def transport(**kw):
+        if "career analyst" in kw["system"]:  # the scoring prompt
+            return json.dumps({"fit_score": 84 if "Kafka and Postgres" in kw["user"] else 61, "verdict": "good", "summary": "Closer."})
+        return json.dumps(store)
+    monkeypatch.setattr(llm, "_transport", transport)
+    job = _shortlisted()
+    conn = connect_job_os()
+    conn.execute("INSERT INTO job_analyses (job_id, status, fit_score, verdict, data_json, requested_at, finished_at)"
+                 " VALUES (?, 'done', 68, 'stretch', '{}', 1, 1)", (job.id,))
+    conn.commit()
+    conn.close()
+    tailor.request_tailoring(job.id, start_worker=False)
+    notes = tailor.tailor_one(job.id)["resume"]["notes"]
+    assert notes["master_fit"] == 68
+    assert notes["tailored_fit"]["status"] == "done" and notes["tailored_fit"]["fit_score"] == 84
+    doc = tailor.latest_documents(job.id)["resume"]
+    edited = tailor.update_document(doc["id"], "# Jane\n\nRewritten without the services line.", expected_revision=doc["revision"])
+    assert edited["notes"]["tailored_fit"]["stale"] is True
+    again = tailor.rescore_document(doc["id"], run_async=False)
+    assert again["notes"]["tailored_fit"]["fit_score"] == 61 and "stale" not in again["notes"]["tailored_fit"]
+
+
+def test_a_failed_tailored_score_keeps_the_tailored_resume(store):
+    job = _shortlisted()
+    tailor.request_tailoring(job.id, start_worker=False)
+    docs = tailor.tailor_one(job.id)  # the stub answers the scoring prompt with the tailoring JSON (no fit_score)
+    assert docs["resume"]["status"] == "ready" and docs["resume"]["notes"]["tailored_fit"]["status"] == "failed"
 
 
 def test_invented_numbers_mark_the_resume_for_review(store):

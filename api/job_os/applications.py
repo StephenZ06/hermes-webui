@@ -136,7 +136,7 @@ def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None,
         reasons.append("A tailored document has numbers to check")
     if "failed" in docs and status == "shortlisted":
         reasons.append("Tailoring failed")
-    if status in ("submitted", "screening") and changed_at and now - changed_at > FOLLOW_UP_DAYS * 86400:
+    if status in ("submitted", "screening", "interviewing") and changed_at and now - changed_at > FOLLOW_UP_DAYS * 86400:
         reasons.append(f"No update in {int((now - changed_at) // 86400)} days — follow up?")
     return reasons
 

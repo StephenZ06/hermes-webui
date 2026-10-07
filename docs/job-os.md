@@ -106,6 +106,21 @@ Pay only for new jobs: scrapers that take a skip list (valig's LinkedIn one)
 are given the jobs Scout already has to leave out. The others return them
 again and Scout drops the repeats.
 
+## Watching the cost and the result
+
+- **Apify credit (Dashboard):** this month's spend against the account's
+  monthly limit (`GET /v2/users/me/limits`, checked at most every 10 minutes),
+  with a warning from 80%: scheduled runs stop when the credit runs out. The
+  header chip shows Apify and its spend while Apify is on.
+- **Master vs tailored (Resume Studio):** when Luna tailors a resume, the
+  tailored resume is scored against the job with the same prompt as the master
+  (`analysis.score_text`), shown as "Master 68 → Tailored 84 (+16)". After
+  edits the score is marked as older than the text; **Score again** re-scores
+  in the background.
+- **Follow-ups (daily digest):** applications with no news for 7 days
+  (Applied, Screening, Interviewing) get their own section at the top.
+- **Logistics** can be hidden under Settings → Jobs page.
+
 ## Pipeline
 
 - **Source tabs:** All · Indeed · Manual, with counts.

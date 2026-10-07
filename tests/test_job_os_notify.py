@@ -237,3 +237,18 @@ def test_empty_digest_is_skipped(store):
     send, sent = store
     assert notify.maybe_send_digest(send=send, force=True) is False and sent == []
     assert notify.recent_log()[0]["status"] == "skipped"
+
+
+def test_the_digest_lists_quiet_applications_to_follow_up_first(store):
+    job = _analysed("Quiet", 80)
+    for target in (JobStatus.SHORTLISTED, JobStatus.SUBMITTED, JobStatus.SCREENING, JobStatus.INTERVIEWING):
+        job = transition_job(job.id, target, expected_revision=job.revision)
+    conn = connect_job_os()
+    conn.execute("UPDATE job_events SET created_at=? WHERE job_id=? AND event_type='status_changed'", (int(time.time()) - 10 * 86400, job.id))
+    conn.commit()
+    conn.close()
+    subject, body = notify.build_digest()
+    assert subject.endswith("1 to follow up")
+    section = body.split("Follow up:")[1]
+    assert "Quiet at Acme — No update in 10 days" in section and "https://jobs.example.test/Quiet" in section
+    assert "Needs your attention" not in body, "a follow-up is not listed twice"

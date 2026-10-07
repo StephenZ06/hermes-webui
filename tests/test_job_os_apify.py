@@ -345,3 +345,31 @@ def test_title_filter_keeps_only_matching_titles(home, monkeypatch):
     assert scout.title_matches("Senior SOC Analyst (L2)", ["soc"]) and not scout.title_matches("Associate", ["soc"])
     assert scout.title_matches("Analyst, Security Operations", ["security analyst"]), "all words, any order"
     assert scout.title_matches("Anything", []), "no filter keeps everything"
+
+
+def test_usage_reports_spend_against_the_limit_and_is_cached(home, monkeypatch):
+    calls = []
+
+    def fetch(value):
+        calls.append(value)
+        return {"data": {"current": {"monthlyUsageUsd": 4.25}, "limits": {"maxMonthlyUsageUsd": 5},
+                         "monthlyUsageCycle": {"endAt": "2026-11-06T23:59:59.999Z"}}}
+
+    assert apify.usage(fetch=fetch) is None and calls == [], "no token, no call"
+    monkeypatch.setenv(apify.TOKEN_KEY, TOKEN)
+    apify._usage_cache.clear()
+    first = apify.usage(now=1000, fetch=fetch)
+    assert first == {"used_usd": 4.25, "limit_usd": 5.0, "ratio": 0.85, "warn": True, "cycle_end": "2026-11-06"}
+    assert apify.usage(now=1000 + apify.USAGE_TTL_S - 1, fetch=fetch) == first and len(calls) == 1
+    apify.usage(now=1000 + apify.USAGE_TTL_S + 1, fetch=fetch)
+    assert len(calls) == 2
+
+    def down(value):
+        raise apify.ApifyError("Apify did not answer")
+
+    assert apify.usage(now=10 ** 9, fetch=down) == first, "a failed check keeps the last figure"
+    h = _H()
+    monkeypatch.setattr(apify, "usage", lambda: first)
+    assert routes.handle_get(h, urlparse("/api/job-os/apify/usage")) is True
+    assert h.json()["apify"] == {"active": False, "usage": first} and TOKEN not in h.wfile.getvalue().decode()
+    assert h.json()["display"] == {"show_logistics": True}

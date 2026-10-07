@@ -161,6 +161,15 @@ def _scout_get(handler, parsed) -> bool:
         except applications.ApplicationError as error:
             return _error(handler, str(error), 400)
         return True
+    if path == f"{_PREFIX}/apify/usage":
+        from api.job_os import apify
+
+        settings = load_settings()
+        active = bool(settings["apify"]["enabled"] and apify.token())
+        # Also carries the page's display choices, read on every refresh.
+        j(handler, {"apify": {"active": active, "usage": apify.usage() if apify.token() else None},
+                    "display": settings["display"]})
+        return True
     if path == f"{_PREFIX}/matches":
         from api.job_os import notify
 
@@ -305,6 +314,9 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             from api.job_os import tailor
 
             doc_id = unquote(path[len(f"{_PREFIX}/documents/"):]).strip("/")
+            if doc_id.endswith("/score"):
+                j(handler, {"document": tailor.rescore_document(doc_id[:-len("/score")])})
+                return True
             j(handler, {"document": tailor.update_document(doc_id, body.get("content"), expected_revision=body.get("expected_revision"))})
             return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/analyze", "/details")):
