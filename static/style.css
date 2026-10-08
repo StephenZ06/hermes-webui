@@ -6745,6 +6745,24 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 .pipe-board.is-dragging .pipe-col:not(.can-drop){opacity:.55;}
 .pipe-col.drop-target{border-color:var(--stage)!important;background:color-mix(in srgb,var(--stage) 8%,var(--surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 22%,transparent);}
 .pipe-board.is-dragging .pipe-col.can-drop{border-color:color-mix(in srgb,var(--stage) 45%,var(--border2));}
+/* The board scrolls sideways from a bar pinned to the bottom of the view (its own
+   scrollbar is hidden under the tallest column), or by dragging empty space. */
+.pipe-board{scrollbar-width:none;cursor:grab;}
+.pipe-board::-webkit-scrollbar{display:none;}
+.pipe-board.is-panning{cursor:grabbing;user-select:none;scroll-snap-type:none;}
+.pipe-board.is-panning .pipe-card{pointer-events:none;}
+.pipe-card,.pipe-col-head{cursor:default;}
+.pipe-hscroll{position:sticky;bottom:-18px;z-index:3;box-sizing:border-box;height:18px;margin:-8px 0 0;padding:6px 0 0;overflow-x:scroll;overflow-y:hidden;background:linear-gradient(transparent,var(--bg) 40%);}
+@supports not selector(::-webkit-scrollbar){.pipe-hscroll{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--muted) 55%,transparent) transparent;}}
+.pipe-hscroll-track{height:1px;}
+@supports selector(::-webkit-scrollbar){.pipe-hscroll{scrollbar-color:auto;scrollbar-width:auto;}}
+.pipe-hscroll::-webkit-scrollbar-button{display:none;width:0;height:0;}
+.pipe-hscroll::-webkit-scrollbar{height:8px;}
+.pipe-hscroll::-webkit-scrollbar-track{border-radius:4px;background:color-mix(in srgb,var(--border2) 55%,transparent);}
+.pipe-hscroll::-webkit-scrollbar-thumb{border-radius:4px;background:color-mix(in srgb,var(--muted) 55%,transparent);}
+.pipe-hscroll::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+.pipe-hscroll.is-idle{visibility:hidden;}
+@media (max-width:760px){.pipe-hscroll{display:none;}.pipe-board{cursor:auto;}}
 /* Match check: the score as a ring with rounded ends, level with the details beside it. */
 .match-body{align-items:center;padding-top:22px;}
 .match-ring{--ring:var(--muted);flex:0 0 148px;width:148px;height:148px;border-radius:50%;background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--ring) 9%,transparent),transparent 68%);}

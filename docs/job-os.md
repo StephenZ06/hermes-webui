@@ -156,6 +156,8 @@ again and Scout drops the repeats.
   after). Applied asks first and records the application once. Only a job
   Luna is tailoring can't be moved. While a card is held, refreshes leave the
   board alone; the board scrolls at its edges.
+- **Scrolling sideways:** a scrollbar pinned to the bottom of the view, or
+  press on empty board space and drag left or right.
 - **List:** the same jobs sorted by newest or best match; the side-panel stage
   filters and the dashboard's *Active work* and *Applied* tiles open it.
 - Clicking a card opens a drawer with the details, the score, the

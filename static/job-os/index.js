@@ -995,7 +995,48 @@
     dragging = null;
     if (repaintAfterDrag) { repaintAfterDrag = false; setTimeout(refresh, 0); }
   }
+  // The board's own scrollbar sits under its tallest column, often off screen;
+  // a twin pinned to the bottom of the view scrolls it, and dragging empty
+  // board space with the mouse pans it.
+  function initBoardScroll(target) {
+    const board = target.querySelector('.pipe-board');
+    const bar = target.querySelector('.pipe-hscroll');
+    if (!board || !bar) return;
+    const sync = () => {
+      bar.firstElementChild.style.width = `${board.scrollWidth}px`;
+      bar.classList.toggle('is-idle', board.scrollWidth <= board.clientWidth + 1);
+      if (Math.abs(bar.scrollLeft - board.scrollLeft) > 1) bar.scrollLeft = board.scrollLeft;
+    };
+    sync();
+    if (!once(board, 'scroll')) return;
+    board.addEventListener('scroll', () => { if (Math.abs(bar.scrollLeft - board.scrollLeft) > 1) bar.scrollLeft = board.scrollLeft; }, {passive: true});
+    bar.addEventListener('scroll', () => { if (Math.abs(board.scrollLeft - bar.scrollLeft) > 1) board.scrollLeft = bar.scrollLeft; }, {passive: true});
+    if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(board);
+    let pan = null;
+    board.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'mouse' || event.button !== 0 || dragging) return;
+      if (event.target.closest('.pipe-card, button, a, input, select, textarea, label, .pipe-drop-menu')) return;
+      if (board.scrollWidth <= board.clientWidth) return;
+      pan = {x: event.clientX, left: board.scrollLeft, id: event.pointerId, moved: false};
+    });
+    board.addEventListener('pointermove', (event) => {
+      if (!pan || event.pointerId !== pan.id) return;
+      const dx = event.clientX - pan.x;
+      if (!pan.moved && Math.abs(dx) < 4) return;
+      if (!pan.moved) { pan.moved = true; board.setPointerCapture(pan.id); board.classList.add('is-panning'); }
+      board.scrollLeft = pan.left - dx;
+    });
+    const stop = (event) => {
+      if (!pan || event.pointerId !== pan.id) return;
+      if (pan.moved && board.hasPointerCapture(pan.id)) board.releasePointerCapture(pan.id);
+      board.classList.remove('is-panning');
+      pan = null;
+    };
+    board.addEventListener('pointerup', stop);
+    board.addEventListener('pointercancel', stop);
+  }
   function initBoardDrag(target) {
+    initBoardScroll(target);
     const board = target.querySelector('.pipe-board');
     if (!board || !once(board, 'drag')) return;
     // Near the board's left or right edge, a dragged card scrolls the board so

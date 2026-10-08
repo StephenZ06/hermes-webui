@@ -149,3 +149,35 @@ def test_source_tabs_and_the_add_job_form():
     assert instant and searched == {"shown": [True], "focused": True}
     notes = [e["data"]["text"] for e in _get(f"/api/job-os/jobs/{saved['id']}/timeline")["timeline"] if e["type"] == "note"]
     assert notes == ["Referred by Sam"]
+
+
+def test_the_board_scrolls_from_a_bar_at_the_bottom_of_the_view_and_by_dragging_empty_space():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    for n in range(10):  # enough cards that the board is taller than the view
+        _post("/api/job-os/jobs", {"title": f"Scroll {n} {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"], ignore_default_args=["--hide-scrollbars"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 700})
+            _open_jobs(page)
+            page.wait_for_selector(".pipe-board .pipe-card", timeout=15000)
+            page.wait_for_timeout(400)
+            bar = page.locator(".pipe-hscroll").bounding_box()
+            board_bottom = page.locator(".pipe-board").bounding_box()
+            head = page.locator('.pipe-col[data-col="ready"] .pipe-col-head').bounding_box()
+            # Press on empty column space (below the header, no card there) and drag left.
+            page.mouse.move(head["x"] + head["width"] / 2, head["y"] + 120)
+            page.mouse.down()
+            page.mouse.move(head["x"] - 150, head["y"] + 120, steps=10)
+            page.mouse.up()
+            page.wait_for_timeout(600)
+            panned = page.evaluate("() => [document.querySelector('.pipe-board').scrollLeft, document.querySelector('.pipe-hscroll').scrollLeft]")
+            page.evaluate("() => { document.querySelector('.pipe-hscroll').scrollLeft = 0; }")
+            page.wait_for_function("() => document.querySelector('.pipe-board').scrollLeft === 0", timeout=3000)
+            drawer = page.evaluate("() => !!document.querySelector('.job-drawer')")
+        finally:
+            browser.close()
+    assert board_bottom["y"] + board_bottom["height"] > 700, "the board runs below the view"
+    assert 650 < bar["y"] + bar["height"] <= 700, bar  # the bar is on screen, at the bottom
+    assert panned[0] > 100 and abs(panned[0] - panned[1]) <= 1, panned
+    assert not drawer
