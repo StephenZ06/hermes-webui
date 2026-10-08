@@ -10979,3 +10979,66 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .automation-row>.automation-title{grid-area:title;min-width:0;font-size:13px;color:var(--text);line-height:1.2;text-box:trim-both cap alphabetic;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis;white-space:nowrap;}
 .automation-row>.automation-end{align-self:center;}
 .automation-row>.automation-main{grid-area:main;align-self:stretch;justify-content:space-evenly;gap:6px;text-align:left;}
+/* Scout "Not run yet": the clock sits on the title's line and the hint runs
+   underneath from the panel's left edge, as on the Automations tiles. */
+.scout-run.is-empty{display:grid;grid-template-columns:30px minmax(0,1fr);column-gap:10px;row-gap:8px;align-items:center;}
+.scout-run.is-empty .scout-run-body{display:contents;}
+.scout-run.is-empty .scout-run-detail{grid-column:1/-1;}
+/* Work Hub and Notes side-panel scopes: labels trimmed cap-to-baseline so they
+   centre on their icons (they rode ~1.5px high in Segoe UI). */
+.work-hub-scope>span:not(.nb-scope-count){line-height:1.2;text-box:trim-both cap alphabetic;overflow-x:clip;overflow-y:visible;}
+/* ==== Jobs on a phone: laid out like a native app ==== */
+@media (max-width:767px){
+  /* Sections in a tab bar fixed along the bottom (safe-area aware); the page
+     scrolls above it. */
+  #mainJobs{padding:16px 16px calc(84px + env(safe-area-inset-bottom,0px));overscroll-behavior-y:contain;-webkit-tap-highlight-color:transparent;}
+  .job-os-tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;gap:0;overflow:visible;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border-top:1px solid var(--border2);}
+  .job-os-tabs button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:52px;padding:6px 2px;border:0;border-radius:12px;background:transparent;color:var(--muted);font:inherit;font-size:10.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;white-space:nowrap;}
+  .job-os-tabs button span{overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .job-os-tabs button .mx-icon{width:22px;height:22px;}
+  .job-os-tabs button.active{color:var(--accent-text,var(--accent));background:transparent;border:0;}
+  .job-os-tabs > .mi-pill{display:none;}
+  .job-os-tabs button:active{transform:scale(.94);}
+  /* Large title, then the description; the status chip sits under them. */
+  .job-os-header{flex-direction:column;gap:10px;}
+  .job-os-header h1{font-size:26px;}
+  /* Card titles stay on one line; their actions shrink instead. */
+  .job-os-card-head h2{white-space:nowrap;flex:0 0 auto;}
+  .job-os-card-head .card-head-actions{min-width:0;flex-wrap:wrap;justify-content:flex-end;}
+  /* Dashboard: the activity calendars swipe sideways, one at a time. */
+  .cals{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:82%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px;scroll-padding:0 20px;}
+  .cals::-webkit-scrollbar{display:none;}
+  .cals>.cal{scroll-snap-align:start;}
+  /* Pipeline: source tabs scroll in their own row; layout, search and Add job share the next. */
+  .pipe-toolbar{gap:8px;}
+  .pipe-toolbar>.seg:first-child{flex:1 1 100%;max-width:100%;overflow-x:auto;scrollbar-width:none;}
+  .pipe-toolbar>.seg:first-child::-webkit-scrollbar{display:none;}
+  .pipe-toolbar .pipe-search{flex:1 1 0;min-width:0;max-width:none;order:2;}
+  .pipe-toolbar>.seg:nth-child(2){order:1;}
+  .pipe-toolbar .pipe-add-btn{order:3;}
+  .pipe-toolbar .scout-bar-spacer{display:none;}
+  /* Pipeline board: one column a screen, swiped sideways and snapping into place. */
+  .pipe-board{display:grid!important;grid-auto-flow:column!important;grid-template-columns:none!important;grid-auto-columns:calc((100% - 32px) * .9)!important;max-width:none!important;width:calc(100% + 32px);box-sizing:border-box;align-items:start!important;overflow-x:auto!important;overflow-y:visible;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 8px;scroll-padding:0 16px;gap:12px;cursor:auto;}
+  .pipe-col,.pipe-col.is-folded{align-self:start;scroll-snap-align:start;}
+  .pipe-col.is-folded .pipe-col-cards{display:flex;}
+  .pipe-col.is-folded h3{writing-mode:horizontal-tb;}
+  .pipe-col .pipe-empty{display:flex;}
+  .pipe-col-cards{max-height:none;overflow:visible;margin-right:0;padding-right:0;}
+  /* Settings: the section menu sticks to the top while the section scrolls under it. */
+  .settings-nav.mi-tabs{position:sticky;top:-16px;z-index:5;background:var(--bg);}
+  /* Match check: two actions a row, the last one full width when alone. */
+  .match-card .match-actions{display:grid;grid-template-columns:1fr 1fr;}
+  .match-card .match-actions>*{justify-content:center;}
+  .match-card .match-actions>:last-child:nth-child(odd){grid-column:1/-1;}
+}
+@media (max-width:767px){
+  /* Job rows read like a phone list cell: avatar, title and line, status top-right,
+     then the chips in one wrapping row across the cell. */
+  .job-os-job-card{grid-template-columns:32px minmax(0,1fr) auto;grid-template-rows:auto auto auto;column-gap:10px;row-gap:3px;align-items:center;}
+  .job-os-job-card>.job-os-job-avatar{grid-row:1/3;grid-column:1;}
+  .job-os-job-card>.job-os-job-main{display:contents;}
+  .job-os-job-card>.job-os-job-main>strong{grid-row:1;grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .job-os-job-card>.job-os-job-main>span:not(.job-os-chips){grid-row:2;grid-column:2/-1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .job-os-job-card>.job-os-job-main>.job-os-chips{grid-row:3;grid-column:2/-1;flex-wrap:wrap;margin-top:5px;}
+  .job-os-job-card>.job-os-badge{grid-row:1;grid-column:3;justify-self:end;}
+}

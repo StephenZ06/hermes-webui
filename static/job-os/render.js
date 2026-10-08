@@ -228,7 +228,9 @@
   // Sections in the side panel and the phone switcher; Logistics can be hidden in Settings.
   const sectionsOf = (state) => Object.keys(labels).filter((key) => key !== 'logistics' || state.showLogistics !== false);
   function mobileNav(view, state) {
-    return `<nav class="job-os-tabs" aria-label="Job OS sections" data-mi-tabs>${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
+    // Phones: a tab bar along the bottom of the screen, as in a native app.
+    const short = {dashboard: 'Home', 'resume-studio': 'Resume'};
+    return `<nav class="job-os-tabs" aria-label="Job OS sections" data-mi-tabs>${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}"${view === key ? ' aria-current="page"' : ''}>${icon(key, 20)}<span>${short[key] || labels[key]}</span></button>`).join('')}</nav>`;
   }
   function metric(name, value, label, target) {
     return `<button type="button" class="job-os-metric" ${target}><img class="job-os-metric-icon" data-metric="${name}" src="/static/job-os-metric-${name}.png" alt="" aria-hidden="true"><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${esc(value)}</strong><span>${esc(label)}</span></span></button>`;

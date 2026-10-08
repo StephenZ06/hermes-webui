@@ -87,3 +87,30 @@ def test_jobs_settings_menu_lines_up_with_its_pane(page):
     page.wait_for_timeout(600)  # the pane's slide-in
     tops = page.evaluate("() => ['.settings-nav', '.settings-page'].map((s) => Math.round(document.querySelector('#jobOsRoot ' + s).getBoundingClientRect().top))")
     assert tops[0] == tops[1]
+
+
+@pytest.mark.parametrize("view", ["dashboard", "scout", "pipeline", "resume-studio", "settings"])
+def test_jobs_on_a_phone_fit_the_screen_with_a_bottom_tab_bar(view):
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            tab = browser.new_page(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+            tab.goto(BASE + "/#jobs/" + view, wait_until="domcontentloaded")
+            tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            tab.evaluate("async () => { await switchPanel('jobs'); }")
+            tab.wait_for_selector("#jobOsRoot .job-os-tabs", timeout=15000)
+            tab.wait_for_timeout(800)
+            out = tab.evaluate("""() => {
+              const bar = document.querySelector('#jobOsRoot .job-os-tabs').getBoundingClientRect();
+              const main = document.getElementById('mainJobs');
+              const active = document.querySelector('#jobOsRoot .job-os-tabs button.active');
+              return {bottom: Math.round(bar.bottom), height: innerHeight, wide: main.scrollWidth - main.clientWidth,
+                      page: document.documentElement.scrollWidth - innerWidth, active: active && active.dataset.jobOsView};
+            }""")
+        finally:
+            browser.close()
+    assert out["bottom"] == out["height"], "the tab bar sits on the bottom edge"
+    assert out["wide"] <= 0 and out["page"] <= 0, "nothing scrolls the page sideways"
+    assert out["active"] == view

@@ -218,6 +218,18 @@ designspells.com, ObsidianUI and Rare UI, rebuilt in plain CSS/JS):
   card, **Run now** fills the row and Edit and Delete are icons on the right.
 - A view still loading shows the app's loading bar, not text.
 - Cards on every Jobs page are 16px apart (12px on a phone).
+
+## On a phone
+
+Below 768px wide the Jobs page is laid out like a native app: the sections
+sit in a tab bar along the bottom of the screen (safe-area aware); the page
+title is large with its description and status under it; the Pipeline board
+shows one column a screen and swipes sideways, snapping into place, with the
+source tabs scrolling in their own row and layout, search and Add job sharing
+the next; the dashboard's activity calendars swipe sideways; job rows read like
+list cells (status top-right, chips wrapping across); the Settings menu sticks
+to the top; Match check's actions sit two to a row. Nothing scrolls the page
+sideways. A job's details and the Add job form open as full-screen sheets.
 - `?` opens the keyboard shortcuts, now with a Jobs group.
 
 ## Dashboard activity
