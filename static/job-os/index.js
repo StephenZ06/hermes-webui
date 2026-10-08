@@ -38,7 +38,7 @@
   // a patch keeps them where the new HTML doesn't say otherwise.
   const RUNTIME_CLASSES = ['is-entering', 'is-selected', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
     'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning',
-    'mi-tabs', 'mi-tabs-ready', 'mi-shake', 'mi-busy', 'mi-done'];
+    'is-focused', 'mi-tabs', 'mi-tabs-ready', 'mi-shake', 'mi-busy', 'mi-done'];
   // Nodes micro.js adds or holds (the tab pill, a button showing "Saved"): a patch leaves them be.
   const kept = (node) => node.nodeType === 1 && node.hasAttribute('data-mi-keep');
   const keyOf = (node) => (node.nodeType === 1 ? node.getAttribute('data-key') || node.id || null : null);
@@ -142,6 +142,8 @@
     const target = root();
     if (!target) return;
     const seq = ++refreshSeq;
+    // First open: the app's loading bar until the page has something to show.
+    if (!target.firstElementChild && !state.capability) target.innerHTML = window.JobOSRender.LOADING;
     renderSidebar();
     try {
       const wantSettings = state.activeView === 'settings';
@@ -257,9 +259,34 @@
   function showView(view) {
     const state = window.JobOSState;
     const moved = state.activeView !== view;
-    state.activeView = view; state.statusFilter = null; state.resumePreview = null; replaceRoute(view);
+    state.activeView = view; state.statusFilter = null; state.resumePreview = null; state.focusColumn = null; replaceRoute(view);
     if (moved) { paintNow(); const main = document.getElementById('mainJobs'); if (main) main.scrollTop = 0; }
     refresh();
+  }
+  // A removed card fades out, then the cards after it glide into the space it left (FLIP).
+  async function closeGap(card) {
+    if (!card || !card.isConnected) return;
+    if (typeof window.animateRemoval === 'function') await window.animateRemoval(card, {collapse: false});
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const rest = [...card.parentElement.children].filter((el) => el !== card);
+    const before = new Map(rest.map((el) => [el, el.getBoundingClientRect()]));
+    card.remove();
+    if (reduce) return;
+    await Promise.all(rest.map((el) => {
+      const a = before.get(el), b = el.getBoundingClientRect();
+      const dx = a.left - b.left, dy = a.top - b.top;
+      if (!dx && !dy) return null;
+      return el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: 'none'}],
+        {duration: 320, easing: 'cubic-bezier(.22,1,.36,1)'}).finished.catch(() => {});
+    }));
+  }
+  // A side-panel stage: the board, scrolled to that column (opened if folded), which flashes once.
+  function showStage(key) {
+    const state = window.JobOSState;
+    state.activeView = 'pipeline'; state.statusFilter = null; state.pipelineMode = 'board'; state.resumePreview = null;
+    state.focusColumn = key; state.focusPending = key;
+    state.collapsedColumns = (state.collapsedColumns || []).filter((c) => c !== key);
+    savePrefs(); replaceRoute('pipeline'); paintNow(); refresh();
   }
   // Redraw from the state already loaded (a tab, a filter, typing in a search box).
   function repaint() {
@@ -389,6 +416,8 @@
     if (action) { runAction(action.dataset.jobOsAction, action); return; }
     const view = event.target.closest('[data-job-os-view]');
     if (view) { showView(view.dataset.jobOsView); return; }
+    const stage = event.target.closest('[data-job-os-stage]');
+    if (stage) { showStage(stage.dataset.jobOsStage); return; }
     const filter = event.target.closest('[data-job-os-filter]');
     if (filter) { showStatus(filter.dataset.jobOsFilter); return; }
     if (event.target.closest('select, [data-job-os-change]')) return;
@@ -1040,6 +1069,15 @@
     const board = target.querySelector('.pipe-board');
     const bar = target.querySelector('.pipe-hscroll');
     if (!board || !bar) return;
+    const state = window.JobOSState;
+    const focus = state.focusPending && board.querySelector(`.pipe-col[data-col="${state.focusPending}"]`);
+    if (focus) {
+      state.focusPending = null;
+      const left = focus.offsetLeft - board.offsetLeft - 12;
+      board.scrollTo({left: Math.max(0, left), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+      focus.classList.remove('is-focused'); void focus.offsetWidth; focus.classList.add('is-focused');
+      setTimeout(() => focus.classList.remove('is-focused'), 1500);
+    }
     const sync = () => {
       bar.firstElementChild.style.width = `${board.scrollWidth}px`;
       bar.classList.toggle('is-idle', board.scrollWidth <= board.clientWidth + 1);
@@ -1415,7 +1453,8 @@
       const card = document.querySelector(`.scout-search[data-search-id="${CSS.escape(searchId)}"]`);
       try {
         await window.JobOSApi.deleteSearch(searchId);
-        if (typeof window.animateRemoval === 'function') await window.animateRemoval(card);
+        state.searches = (state.searches || []).filter((s) => s.id !== searchId);
+        await closeGap(card);
       } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not delete the search'); }
       refresh();
     } else if (name === 'scout-toggle') {

@@ -29,7 +29,8 @@ def test_page_navigation_icons_are_replaced_in_desktop_and_mobile():
         asset_name = f'nav-{panel}-mark.png'
         source = REPO / "icons" / source_name
         deployed = REPO / "static" / asset_name
-        assert INDEX.count(f'class="{class_name}"') == 2
+        # The rail and the mobile nav (plus the chat Workspace panel's Work Hub tab).
+        assert INDEX.count(f'class="{class_name}"') == (3 if class_name.endswith("--notes") else 2)
         assert deployed.is_file()
         # icons/ is the local, untracked design-source folder. When it is
         # present, the shipped copy must match it; a clean checkout or CI

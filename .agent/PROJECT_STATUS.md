@@ -1,5 +1,30 @@
 # Project status — hermes-webui
 
+## 2026-10-08 (night): final UI check across pages
+
+- **App:** rail/sidebar icons (separate PNG masks) are held until all have
+  loaded, then appear together (inline script after the rail in
+  `index.html`, `.nav-marks-pending`). Spaces moved to just above Insights
+  (dividers re-anchored: `data-after-panel="office"`). Zeus no longer boxes
+  assistant replies. A chat open inside a project folder keeps its row size.
+- **Chat Workspace panel:** new **Notes** tab (`registerChatPane('notes')`,
+  `renderWorkspaceNotes` in `workspace.js`; rows open the note via
+  `Notebook.openFrom`). Tabs carry an icon and a label; labels hide when the
+  panel is too narrow (`.workspace-panel-tabs.is-compact`, ResizeObserver).
+- **Office:** Dashboard/Integrations cards on the page background; Task status
+  count centred. **Work Hub:** column header inset 8px. **Notes:** compact,
+  regular-weight New note; place labels lead with the workspace/folder colour.
+- **Jobs:** all board columns as side-panel stages (open the board at that
+  column); a job being tailored is in Ready to apply (`applications.COLUMNS`);
+  Automations in two columns; Scout delete slides the rest into place;
+  icon-only Edit/Add job; match-check actions centred at the bottom; Settings
+  menu aligned with its pane (`.mi-tabs` had overridden `position:sticky`);
+  labels trimmed cap-to-baseline (Segoe UI measured: the earlier descent trim
+  left labels ~2px high); spinner instead of "Loading…"; 16px card gaps.
+- **Measuring:** screenshots with the real Segoe UI (copied from
+  `C:\Windows\Fonts` into a scratch fontconfig) — headless Linux fonts hide
+  the vertical offsets the user sees on Windows.
+
 ## 2026-10-08 (evening): Jobs pass 2 — board columns, drag back, employer replies, strict Scout titles
 
 - **Board:** columns New, Favorite (was Shortlisted; Resume column removed), Ready to apply,

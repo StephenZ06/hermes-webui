@@ -1073,7 +1073,7 @@
   :root.dark[data-skin="zeus"] .session-item.active::before{content:"";position:absolute;left:12px;top:8px;bottom:8px;width:2px;border-radius:999px;background:#FFD700;}
   :root.dark[data-skin="zeus"] .session-item:hover:not(.active){background:rgba(255,215,0,0.05);}
   :root.dark[data-skin="zeus"] .composer-box{background:#141414;border-color:rgba(255,215,0,0.2);}
-  :root.dark[data-skin="zeus"] .msg-row[data-role="assistant"] .msg-body{background:#181818;border-color:rgba(255,215,0,0.1);}
+  :root.dark[data-skin="zeus"] .msg-row[data-role="assistant"] .msg-body{background:transparent;border-color:transparent;}
   :root.dark[data-skin="zeus"] .msg-row[data-role="user"] .msg-body{background:#1C1600;border-color:rgba(255,215,0,0.25);}
   :root.dark[data-skin="zeus"] .app-dialog{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(255,215,0,0.2);}
   :root.dark[data-skin="zeus"] .app-dialog-overlay{background:rgba(0,0,0,.72);}
@@ -3814,7 +3814,8 @@
 .work-hub-board-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 .work-hub-board-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .work-hub-column.drop-target { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
-.work-hub-column header { display: flex; gap: 6px; align-items: center; flex-shrink: 0; color: var(--text); font-size: 11px; }
+/* The 8px side inset puts the dot as far from the column edge as it is from the top. */
+.work-hub-column header { display: flex; gap: 6px; align-items: center; flex-shrink: 0; color: var(--text); font-size: 11px; padding: 0 8px; }
 .work-hub-column header small { margin-left: auto; color: var(--muted); }
 .work-hub-icon-button { width: 30px; min-width: 30px; display: grid; place-items: center; padding: 5px; line-height: 0; }
 .work-hub-icon-button svg { display: block; width: 16px; height: 16px; }
@@ -6654,9 +6655,10 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 #jobOsRoot .mx-icon,#jobOsSidebar .mx-icon{display:block;flex-shrink:0;}
 .card-icon{flex-basis:28px;}
 /* Segoe UI (Windows) rides about 2px low in a flex row; trimming the line box to
-   the cap height and the font's descent puts the ink where the icon is (see
-   .composer-workspace-label above for the measurement). */
-.side-menu-label,.card-title,.settings-nav-text strong,.pipe-col-head h3,.automation-main strong,.cal-title,.activity-head h3{text-box:trim-both cap text;}
+   the cap height and the baseline centres capitals-to-baseline on the icon
+   (measured from Segoe UI screenshots: trimming to the descent instead left
+   labels without descenders ~2px high). */
+.side-menu-label,.card-title,.settings-nav-text strong,.pipe-col-head h3,.automation-main strong,.cal-title,.activity-head h3{text-box:trim-both cap alphabetic;}
 #jobOsSidebar .job-os-side-nav .side-menu-item{min-height:38px;padding:0 10px;gap:11px;}
 #jobOsSidebar .job-os-side-nav .side-menu-item svg{width:18px;height:18px;opacity:1;color:var(--muted);transition:color .15s ease;}
 #jobOsSidebar .job-os-side-nav .side-menu-item:hover svg{color:var(--text);}
@@ -6729,14 +6731,14 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 .pipe-search-clear{display:grid;place-items:center;width:24px;height:24px;margin-right:-4px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;}
 .pipe-search-clear:hover{color:var(--text);background:color-mix(in srgb,var(--border2) 50%,transparent);}
 .pipe-col{--stage:var(--muted);}
-.pipe-col[data-col="new"]{--stage:color-mix(in srgb,var(--muted) 85%,var(--text));}
-.pipe-col[data-col="favorite"]{--stage:#a78bfa;}
-.pipe-col[data-col="ready"]{--stage:var(--accent);}
-.pipe-col[data-col="applied"]{--stage:var(--info,#60a5fa);}
-.pipe-col[data-col="rejected"]{--stage:var(--error,#f07878);}
-.pipe-col[data-col="interview"]{--stage:var(--success,#4ade80);}
-.pipe-col[data-col="offers"]{--stage:#2dd4bf;}
-.pipe-col[data-col="closed"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
+.pipe-col[data-col="new"],.job-os-stage[data-col="new"]{--stage:color-mix(in srgb,var(--muted) 85%,var(--text));}
+.pipe-col[data-col="favorite"],.job-os-stage[data-col="favorite"]{--stage:#a78bfa;}
+.pipe-col[data-col="ready"],.job-os-stage[data-col="ready"]{--stage:var(--accent);}
+.pipe-col[data-col="applied"],.job-os-stage[data-col="applied"]{--stage:var(--info,#60a5fa);}
+.pipe-col[data-col="rejected"],.job-os-stage[data-col="rejected"]{--stage:var(--error,#f07878);}
+.pipe-col[data-col="interview"],.job-os-stage[data-col="interview"]{--stage:var(--success,#4ade80);}
+.pipe-col[data-col="offers"],.job-os-stage[data-col="offers"]{--stage:#2dd4bf;}
+.pipe-col[data-col="closed"],.job-os-stage[data-col="closed"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
 .pipe-col .pipe-col-dot,.pipe-col[data-col] .pipe-col-dot{background:var(--stage);opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 18%,transparent);}
 .pipe-col[data-col="offers"] .pipe-col-head h3{color:var(--muted);}
 .pipe-card[draggable="true"]{cursor:grab;}
@@ -7140,7 +7142,7 @@ main.main > #mainPlugin{display:none;}
    renderTaskStatusPanel reads the raw adapter state, not the outlet-specific
    desk view), so it never has to rebuild when Business/Projects is toggled. */
 .office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);min-height:36px;width:min(264px,calc(100% - 28px));display:flex;flex-direction:column;border:1px solid var(--border2);border-radius:12px;background:var(--surface);box-shadow:0 8px 30px rgba(0,0,0,.22);overflow:hidden;cursor:pointer;}
-.office-tasks-head{flex:0 0 auto;padding:8px 12px;}
+.office-tasks-head{flex:0 0 auto;padding:8px;}
 .office-tasks-toggle{position:relative;display:grid;grid-template-columns:minmax(20px,1fr) auto minmax(20px,1fr);align-items:center;width:100%;min-height:20px;padding:0;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;}
 .office-tasks-title-group{grid-column:2;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text);}
 .office-tasks-title-icon{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;}
@@ -7150,7 +7152,7 @@ main.main > #mainPlugin{display:none;}
 .office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;transition-duration:.26s;}
 .office-tasks-body-inner{min-height:0;display:flex;flex-direction:column;overflow:hidden;opacity:1;transition:opacity .34s cubic-bezier(.2,.8,.2,1) .1s;}
 .office-tasks.is-collapsed .office-tasks-body-inner{opacity:0;transition-delay:0s;}
-.office-tasks-count{grid-column:3;justify-self:end;align-self:center;transform:translateY(-1px);position:relative;z-index:1;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border:1px solid var(--border2);border-radius:7px;color:var(--muted);font-size:11px;font-weight:700;line-height:1;transition:color .22s ease,border-color .22s ease,background .22s ease,box-shadow .22s ease,transform .16s ease;}
+.office-tasks-count{grid-column:3;justify-self:end;align-self:center;position:relative;z-index:1;display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border:1px solid var(--border2);border-radius:7px;color:var(--muted);font-size:11px;font-weight:700;line-height:1;transition:color .22s ease,border-color .22s ease,background .22s ease,box-shadow .22s ease,transform .16s ease;}
 .office-tasks-count.is-running{border-color:#f59e0b;color:#fbbf24;background:color-mix(in srgb,#f59e0b 12%,transparent);animation:office-task-count-pulse 1.5s ease-in-out infinite;}
 .office-tasks-count.is-complete{border-color:var(--success,#3fae6a);color:var(--success,#3fae6a);background:color-mix(in srgb,var(--success,#3fae6a) 12%,transparent);}
 .office-tasks-count.is-completion-flash{font-size:0;border-color:var(--success,#3fae6a);background:color-mix(in srgb,var(--success,#3fae6a) 18%,transparent);animation:none;}
@@ -8405,7 +8407,9 @@ main.main > #mainPlugin{display:none;}
    filled background -- nested rows should stay visually flat like the
    folder row itself. !important beats the skin-scoped .active overrides,
    which all set background with !important themselves. */
-.project-folder-sessions .session-item.active{background:transparent!important;border:none!important;box-shadow:none!important;}
+.project-folder-sessions .session-item.active{background:transparent!important;border:none!important;box-shadow:none!important;padding:6px 8px!important;}
+/* Skins pad the open chat out for their accent bar; nested rows have no bar,
+   so the open one keeps the same box as its neighbours instead of growing. */
 .project-folder-sessions .session-item.active::before{display:none!important;}
 .project-folder-empty{font-size:11px;color:var(--muted);padding:4px 8px;opacity:.75;}
 @media (hover:none) and (pointer:coarse){
@@ -10867,3 +10871,100 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .mi-armed{width:auto!important;flex-basis:auto!important;padding:0 10px!important;gap:6px;color:var(--error,#f07878)!important;border-color:var(--error,#f07878)!important;background:color-mix(in srgb,var(--error,#f07878) 12%,transparent)!important;font-size:12px;font-weight:650;white-space:nowrap;}
 .mi-armed .mi-label{gap:6px;}
 .scout-search-actions .job-os-btn{white-space:nowrap;flex-shrink:0;}
+/* Rail and sidebar icons appear together once every mask image has loaded (index.html). */
+.chat-nav-mark,.office-nav-mark,.page-nav-mark{transition:opacity .18s ease;}
+.rail .rail-btn>svg,.sidebar-nav .nav-tab>svg{transition:opacity .18s ease;}
+.nav-marks-pending .chat-nav-mark,.nav-marks-pending .office-nav-mark,.nav-marks-pending .page-nav-mark,.nav-marks-pending .rail .rail-btn>svg,.nav-marks-pending .sidebar-nav .nav-tab>svg{opacity:0;}
+/* Workspace panel tabs: an icon and a label each; labels give way to the icons
+   alone when the panel is too narrow for them (.is-compact, set in workspace.js). */
+.workspace-panel-tab{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;}
+.workspace-panel-tab .wpt-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:0 0 14px;}
+.workspace-panel-tab .wpt-icon svg{width:14px;height:14px;display:block;}
+.workspace-panel-tab .wpt-icon .office-nav-mark,.workspace-panel-tab .wpt-icon .page-nav-mark{width:14px;height:14px;}
+.workspace-panel-tab .wpt-label{min-width:0;overflow:hidden;text-overflow:clip;line-height:1.2;}
+.workspace-panel-tabs.is-compact .wpt-label{display:none;}
+.workspace-panel-tabs.is-compact .workspace-panel-tab{padding-inline:4px;}
+.workspace-panel-tabs:not(.is-compact) .workspace-panel-tab:not(.workspace-graph-tab){flex:1 1 auto;}
+/* Notes pane (chat Workspace panel): rows like the Work Hub pane's boards. */
+.rightpanel[data-active-tab="notes"] .breadcrumb-bar,.rightpanel[data-active-tab="notes"] .file-tree,.rightpanel[data-active-tab="notes"] #wsEmptyState,.rightpanel[data-active-tab="notes"] .workspace-artifacts,.rightpanel[data-active-tab="notes"] .preview-area{display:none!important;}
+.rightpanel:not([data-active-tab="notes"]) .workspace-nb-pane{display:none!important;}
+.workspace-nb-head-actions{display:flex;gap:6px;flex:0 0 auto;}
+.workspace-nb-note{display:grid;grid-template-columns:14px minmax(0,1fr);align-items:center;gap:8px;width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);text-align:left;font:inherit;cursor:pointer;transition:border-color .15s ease,background-color .15s ease;}
+.workspace-nb-note:hover{border-color:var(--accent);}
+.workspace-nb-note svg{color:var(--muted);}
+.workspace-nb-note-copy{min-width:0;display:grid;gap:2px;}
+.workspace-nb-note strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.35;font-weight:600;}
+.workspace-nb-note small{color:var(--muted);font-size:10px;}
+.workspace-nb-pane{flex:1;overflow:hidden;min-height:0;display:flex;flex-direction:column;}
+.workspace-panel-tab[hidden]{display:none!important;}
+.workspace-panel-tabs .workspace-graph-tab{flex:0 0 auto;min-width:32px;}
+.workspace-panel-tabs.is-compact .workspace-panel-tab{flex:1 1 0;min-width:24px;}
+/* Office: Dashboard and Integrations cards sit on the page background, set
+   apart by their outline only. */
+.office-dashboard-metric,.office-dashboard-panel,.office-dashboard-integration,.office-integration-card,.office-integrations-intro{background:transparent;box-shadow:none;}
+/* Notes list: each note's workspace/folder label leads with its colour dot. */
+.nb-item-meta{display:flex;align-items:center;gap:6px;min-width:0;}
+.nb-place-dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px;}
+.nb-item-meta-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Notes: the empty-state New note buttons are compact and regular weight. */
+.nb-btn.primary{font-weight:500;}
+.nb-empty .nb-btn.primary{padding:4px 12px;font-size:12px;line-height:1.4;}
+/* Jobs Settings: the side menu keeps its sticky position under the sliding
+   tab pill (.mi-tabs would make it relative and push it 12px below the pane). */
+.settings-nav.mi-tabs{position:sticky;}
+.job-os-gmail-msg:empty{display:none;}
+/* The hint sits in a flex row (dot + text), so its own span carries the trim
+   the strong above has; otherwise the pair rides ~2px high beside the icon. */
+.settings-nav-hint{display:block;min-width:0;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;text-box:trim-both cap alphabetic;}
+/* ==== Jobs, final check ==== */
+/* Automations: two columns of tiles; each tile's 14-day ticks run its full width. */
+.automations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.automation-row{grid-template-columns:12px minmax(0,1fr) auto;grid-template-areas:"dot main end" "ticks ticks ticks";align-items:start;row-gap:10px;column-gap:10px;padding:12px;border:1px solid var(--border2);border-radius:10px;}
+.automation-row>.automation-dot{grid-area:dot;margin-top:3px;}
+.automation-row>.automation-main{grid-area:main;}
+.automation-row>.automation-end{grid-area:end;}
+.automation-row>.automation-ticks{grid-area:ticks;display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:3px;margin-top:0;}
+.automation-row>.automation-ticks i{width:auto;}
+.automation-row:hover,.automation-row:focus-visible{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));}
+.automation-row:last-child:nth-child(odd){grid-column:1/-1;}
+@media (max-width:640px){.automations{grid-template-columns:1fr;}}
+.automation-row{grid-template-rows:1fr auto;}
+/* Labels trimmed to cap height and baseline keep their descenders (p, g, y) visible. */
+.side-menu-label,.card-title,.pipe-col-head h3,.automation-main strong,.cal-title,.activity-head h3{overflow-x:clip;overflow-y:visible;}
+/* Pipeline stages in the side panel: every board column with its colour and count. */
+.job-os-stage-dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:var(--stage,var(--muted));box-shadow:0 0 0 3px color-mix(in srgb,var(--stage,var(--muted)) 18%,transparent);}
+.job-os-stage.is-empty .job-os-side-count{opacity:.5;}
+.pipe-col.is-focused{animation:pipe-col-focus 1.4s cubic-bezier(.22,.61,.36,1) both;}
+@keyframes pipe-col-focus{0%,55%{box-shadow:0 0 0 2px color-mix(in srgb,var(--stage) 70%,transparent);}100%{box-shadow:0 0 0 0 transparent;}}
+@media (prefers-reduced-motion:reduce){.pipe-col.is-focused{animation:none;}}
+/* Pipeline: the board sits on the page background; panning or dragging never selects card text. */
+.pipe-col{background:transparent;}
+.pipe-board{-webkit-user-select:none;user-select:none;}
+/* Add job on the board toolbar: a square icon button the height of the toolbar. */
+.pipe-toolbar .pipe-add-btn{width:38px;height:38px;min-width:38px;padding:0;display:grid;place-items:center;gap:0;}
+.pipe-toolbar .pipe-add-btn .mx-icon{width:20px;height:20px;}
+/* Scout search card: Run now takes the row, Edit and Delete are icons on the right. */
+.scout-search-actions>.job-os-btn.primary{flex:1 1 auto;justify-content:center;}
+/* Activity: the calendars end one card-padding above the card's edge, as at its sides. */
+.funnel-card .activity{margin-bottom:0;}
+/* Match check: the actions sit centred along the bottom of the card, under a rule. */
+.match-card .match-actions{justify-content:center;flex-wrap:wrap;gap:8px;margin:0;padding-top:16px;border-top:1px solid var(--border2);}
+.match-card .match-progress+.match-body{margin-top:-3px;}
+/* One gap between section cards on every Jobs page. */
+#jobOsRoot{--jobs-gap:16px;}
+#jobOsRoot .job-os-shell,#jobOsRoot .job-os-content,#jobOsRoot .job-os-metrics,#jobOsRoot .job-os-pair,#jobOsRoot .job-os-columns,#jobOsRoot .scout-overview,#jobOsRoot .scout-searches,#jobOsRoot .settings-layout,#jobOsRoot .settings-page{gap:var(--jobs-gap);}
+@media (max-width:640px){#jobOsRoot{--jobs-gap:12px;}}
+/* Jobs Settings side menu: group labels trimmed to their capitals, the first one
+   as far from the menu's top edge as from its left; hints keep their descenders. */
+.settings-nav-group{margin:18px 8px 10px;line-height:1.2;text-box:trim-both cap alphabetic;}
+.settings-nav-group:first-of-type{margin-top:8px;}
+.settings-nav-text small{overflow:visible;}
+/* The Automations tiles share out the card's height when the funnel beside it is taller. */
+.automations-card{display:flex;flex-direction:column;}
+.automations-card .automations{flex:1 1 auto;}
+/* Card titles start at the card's padding: the line box above the capitals is
+   trimmed, so the space above a title matches the space to its left. */
+.insights-card-title{text-box:trim-start cap alphabetic;}
+.office-dashboard-panel-head h2,.office-dashboard-panel-head>span{line-height:1.2;text-box:trim-both cap alphabetic;}
+/* Status pills and lines use the page font like every other label (code stays monospace). */
+.office-pill,.logs-status{font-family:var(--font-ui);}

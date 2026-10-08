@@ -240,3 +240,14 @@ def test_moves_refuse_a_stale_card_a_tailoring_job_and_an_unknown_column(store):
     assert h.status == 200 and data["status"] == "shortlisted"
     stale, _ = _post(f"/api/job-os/jobs/{job.id}/move", {"column": "new", "expected_revision": job.revision})
     assert stale.status == 409
+
+
+def test_a_job_being_tailored_is_on_ready_to_apply_and_a_failed_one_is_back_in_favorite(store):
+    # Tailor from Resume Studio moves the job to the Ready to apply column at once.
+    tailoring = _job_at(JobStatus.TAILORING)
+    favorite = _job_at(JobStatus.SHORTLISTED)
+    cols = {c["key"]: [j["id"] for j in c["jobs"]] for c in applications.board()["columns"]}
+    assert cols["ready"] == [tailoring.id] and cols["favorite"] == [favorite.id]
+    failed = transition_job(tailoring.id, JobStatus.SHORTLISTED, expected_revision=tailoring.revision)
+    cols = {c["key"]: [j["id"] for j in c["jobs"]] for c in applications.board()["columns"]}
+    assert sorted(cols["favorite"]) == sorted([favorite.id, failed.id]) and cols["ready"] == []

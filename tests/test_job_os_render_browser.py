@@ -140,7 +140,7 @@ def test_pagers_drop_targets_the_match_queue_and_idle_search_cards():
                 board: {columns: [{key: job.column, label: 'X', jobs: [job]}]}}); return host.querySelector('.pipe-card'); };
               const fresh = card({id: 'a', title: 'A', status: 'analyzed', column: 'new', has_description: true, revision: 1});
               const done = card({id: 'b', title: 'B', status: 'offer_accepted', column: 'offers', revision: 1});
-              const busy = card({id: 'c', title: 'C', status: 'tailoring', column: 'favorite', revision: 1});
+              const busy = card({id: 'c', title: 'C', status: 'tailoring', column: 'ready', revision: 1});
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'scout', searches: [{id: 's1', name: 'SOC', keywords: 'SOC Analyst',
                 enabled: true, sites: ['indeed'], locations: [], title_filter: []}], runs: []});
               return {recent, queue: [queue.length, queue[0], queue[queue.length - 1]], draggable: [fresh.draggable, done.draggable],

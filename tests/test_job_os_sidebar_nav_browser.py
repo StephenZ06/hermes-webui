@@ -51,14 +51,15 @@ def test_side_panel_navigates_sections_and_filters_by_stage():
             page.wait_for_function("() => location.hash === '#jobs/scout'", polling=100, timeout=10000)
             assert page.inner_text("#jobOsSidebar .side-menu-item.active").strip() == "Scout"
 
-            page.click(f"#jobOsSidebar [data-job-os-filter='{job['status']}']")
-            page.wait_for_function(
-                "(status) => location.hash === '#jobs/pipeline?status=' + status",
-                arg=job["status"], polling=100, timeout=10000,
-            )
-            page.wait_for_selector(f"#jobOsRoot [data-job-id='{job['id']}']", timeout=10000)
-            statuses = page.eval_on_selector_all("#jobOsRoot .job-os-job-card .job-os-badge", "els => els.map(e => e.textContent.trim().toLowerCase())")
-            assert statuses and set(statuses) == {job["status"].replace("_", " ")}
+            # Every board column is listed, in board order, with its count; a stage
+            # opens the board at that column (a new manual job sits in New).
+            stages = page.eval_on_selector_all("#jobOsSidebar [data-job-os-stage]", "els => els.map(e => e.dataset.jobOsStage)")
+            assert stages == ["new", "favorite", "ready", "applied", "rejected", "interview", "offers", "closed"]
+            page.click("#jobOsSidebar [data-job-os-stage='new']")
+            page.wait_for_function("() => location.hash === '#jobs/pipeline'", polling=100, timeout=10000)
+            page.wait_for_selector(f".pipe-col[data-col='new'] [data-job-id='{job['id']}']", timeout=10000)
+            assert page.inner_text("#jobOsSidebar .side-menu-item.active").strip().startswith("New")
+            assert page.is_visible(".pipe-col[data-col='new']")
         finally:
             browser.close()
 

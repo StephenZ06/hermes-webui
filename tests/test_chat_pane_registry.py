@@ -99,7 +99,7 @@ def test_the_built_in_panes_are_registered_on_load(browser):
     page = _page(browser)
     try:
         ids = page.evaluate("() => listChatPanes().map(p => p.id).sort()")
-        assert ids == ["artifacts", "files", "graph", "office", "plane", "preview", "todos"]
+        assert ids == ["artifacts", "files", "graph", "notes", "office", "plane", "preview", "todos"]
     finally:
         page.close()
 

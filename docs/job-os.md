@@ -146,8 +146,10 @@ again and Scout drops the repeats.
   apply, Applied, Rejected (red), Interview (green), Offer, Closed. Cards
   show the company, place, salary, workplace and type, the match ring, where
   the job came from, and the next step for the stage (Tailor resume, Review
-  resume, Apply, …). A job being tailored stays in Favorite until its resume
-  is ready.
+  resume, Apply, …). A job moves to Ready to apply as soon as Luna starts
+  tailoring for it (Tailor resume on a card or Tailor & next in Resume
+  Studio), showing *Tailoring* until the resume is ready; a failed tailoring
+  puts it back in Favorite.
 - **Drag a card** to any other column, back as well as forward
   (`applications.move_to_column`, `POST /api/job-os/jobs/{id}/move`): the job
   gets the status the column means for it (back to New is *analysed* or
@@ -170,8 +172,12 @@ again and Scout drops the repeats.
   (hover for the text). Columns have a 2px outline in their colour. A
   column shows ten cards, then scrolls; its thin scrollbar shows only while
   scrolling.
-- **List:** the same jobs sorted by newest or best match; the side-panel stage
-  filters and the dashboard's *Active work* and *Applied* tiles open it.
+- **List:** the same jobs sorted by newest or best match; the dashboard's
+  *Active work* and *Applied* tiles open it.
+- **Side panel stages:** every board column with its colour and count; a stage
+  opens the board scrolled to that column (unfolded), which flashes once.
+- The board sits on the page background and never selects card text while
+  panning or dragging. **Add job** on the toolbar is an icon button.
 - Clicking a card opens a drawer with the details, the score, the
   description, actions, and **Notes & activity** (notes and stage changes).
 - The tab and layout are remembered per browser.
@@ -204,10 +210,14 @@ designspells.com, ObsidianUI and Rare UI, rebuilt in plain CSS/JS):
   outlined until edited.
 - Luna and Scout's busy states share one shimmering "working" line that
   steps through what is happening.
-- The Automations card shows each automation's last 14 days as ticks (green
-  ran, red failed, amber both, grey nothing).
+- The Automations card is two columns of tiles; each tile's last 14 days run
+  its full width as ticks (green ran, red failed, amber both, grey nothing).
 - Deleting a saved search asks in place: the bin becomes *Delete search?* and a
   second click deletes; it settles back after 3 seconds or a click elsewhere.
+  The card fades out and the cards after it slide into its place. On a search
+  card, **Run now** fills the row and Edit and Delete are icons on the right.
+- A view still loading shows the app's loading bar, not text.
+- Cards on every Jobs page are 16px apart (12px on a phone).
 - `?` opens the keyboard shortcuts, now with a Jobs group.
 
 ## Dashboard activity
@@ -225,8 +235,8 @@ band: **75–100 Good match** (green), **50–74 Needs improvement** (yellow),
 **0–49 Terrible match** (red), with the percentage in the centre. Resume
 Studio's **Match check** steps through the jobs on the board one at a time,
 in board order (New, Favorite, Ready to apply): Previous/Next or
-the arrow keys, then **Tailor & next**. **Score my resume** costs one model
-call. Scout finds are scored automatically when *Analyse new finds
+the arrow keys, then **Tailor & next**; the actions sit centred along the
+bottom of the card. **Score my resume** costs one model call. Scout finds are scored automatically when *Analyse new finds
 automatically* is on.
 
 **Automate all** does the same for every job in the match check not yet

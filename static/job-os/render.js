@@ -56,7 +56,17 @@
     skipped: 'muted', expired: 'muted', closed: 'muted', withdrawn: 'muted', no_response: 'muted',
   };
   const APPLIED = ['submitted', 'screening', 'interviewing', 'offer', 'offer_accepted'];
-  const statusOrder = Object.keys(tones);
+  // The board's columns and the statuses each holds (api/job_os/applications.py COLUMNS).
+  const STAGES = [
+    ['new', 'New', ['discovered', 'scraped', 'analyzed']],
+    ['favorite', 'Favorite', ['shortlisted']],
+    ['ready', 'Ready to apply', ['tailoring', 'resume_ready', 'application_ready', 'awaiting_approval', 'applying']],
+    ['applied', 'Applied', ['submitted']],
+    ['rejected', 'Rejected', ['rejected']],
+    ['interview', 'Interview', ['screening', 'interviewing']],
+    ['offers', 'Offer', ['offer', 'offer_accepted', 'offer_declined']],
+    ['closed', 'Closed', ['withdrawn', 'no_response', 'closed', 'skipped', 'expired']],
+  ];
   // Names that match the board's columns ("Favorite", not "Shortlisted").
   const STATUS_NAMES = {shortlisted: 'Favorite', resume_ready: 'Resume ready', application_ready: 'Ready to apply',
     submitted: 'Applied', interviewing: 'Interview', no_response: 'No response', offer_accepted: 'Offer accepted', offer_declined: 'Offer declined'};
@@ -99,10 +109,12 @@
       const tickTip = (d) => `${fmt(d)}: ${d.state === 'none' ? 'nothing ran' : [d.ok && `${d.ok} ok`, d.failed && `${d.failed} failed`].filter(Boolean).join(', ')}`;
       const ok = days.reduce((n, d) => n + d.ok, 0), bad = days.reduce((n, d) => n + d.failed, 0);
       const ticks = days.length ? `<span class="automation-ticks" role="img" aria-label="Last ${days.length} days: ${ok} ok, ${bad} failed">${days.map((d) => `<i data-state="${esc(d.state)}" title="${esc(tickTip(d))}"></i>`).join('')}</span>` : '';
-      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}${ticks}</span><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span></button>`;
+      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span>${ticks}</button>`;
     }).join('');
     return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 18)}</button>`)}<div class="automations">${rows}</div></section>`;
   }
+  // While a view's data is on its way: the same spinner the app's other pages show.
+  const LOADING = '<div class="loading-spinner-wrap job-os-loading" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">Loading</span></div>';
   // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
   function cardHead(title, iconName, actions, count) {
     return `<div class="job-os-card-head"><h2>${iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span>` : ''}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
@@ -302,7 +314,7 @@
   }
   function settingsView(state) {
     const s = state.settingsDraft || state.settings;
-    if (!s) return '<section class="job-os-card"><p class="job-os-card-note">Loading settings…</p></section>';
+    if (!s) return LOADING;
     const status = state.settingsStatus || {};
     const fc = status.firecrawl || state.firecrawl || {};
     const gmail = status.gmail || {};
@@ -380,7 +392,7 @@
     };
     const nav = SETTINGS_NAV.map(([group, items]) => `<p class="settings-nav-group">${group}</p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
-      return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}${esc(hint)}</small></span></button>`;
+      return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span></button>`;
     }).join('')}`).join('');
     return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${pages[page]}</div></div>${bar}</form>`;
   }
@@ -463,7 +475,7 @@
   const shownOn = (state) => (job) => (state.pipelineSource === 'all' || !state.pipelineSource || sourceOf(job) === state.pipelineSource) && matchesQuery(job, state.pipelineQuery);
   function pipelineBoard(state) {
     const board = state.board;
-    if (!board) return '<section class="job-os-card"><p class="job-os-card-note">Loading…</p></section>';
+    if (!board) return LOADING;
     const keep = shownOn(state);
     const columns = board.columns.map((c) => Object.assign({}, c, {jobs: c.jobs.filter(keep)}));
     const total = columns.reduce((n, c) => n + c.jobs.length, 0);
@@ -679,7 +691,7 @@
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? statusLine([`Scoring ${busy} job${busy === 1 ? '' : 's'}…`, 'Reading postings…'], 'analysing-chip') : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? statusLine([`Scoring ${busy} job${busy === 1 ? '' : 's'}…`, 'Reading postings…'], 'analysing-chip') : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -722,7 +734,7 @@
     const fact = (label, value, muted) => `<div><dt>${label}</dt><dd${muted ? ' class="is-muted"' : ''}>${value}</dd></div>`;
     const sites = (search.sites || ['indeed']).map((k) => `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('');
     const host = (state.countries || []).find((c) => c.code === search.country);
-    return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-search-id="${esc(search.id)}">
+    return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-key="search-${esc(search.id)}" data-search-id="${esc(search.id)}">
       <div class="scout-search-head"><span class="card-icon" aria-hidden="true">${icon('radar', 16)}</span><div class="scout-search-title"><h3 title="${esc(search.name)}">${esc(search.name)}</h3><p title="${esc(search.keywords)}">${esc(search.keywords)}</p></div>
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
       <dl class="scout-facts">
@@ -735,7 +747,7 @@
       </dl>
       ${runPanel(run, search)}
       ${search.off_target ? `<div class="scout-tidy" role="status"><span>${icon('attention', 16)}<span><strong>${Number(search.off_target)}</strong> saved find${search.off_target === 1 ? '' : 's'} don’t match these titles</span></span><button type="button" class="job-os-btn small" data-job-os-action="scout-tidy" data-search-id="${esc(search.id)}">Move to Closed</button></div>` : ''}
-      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">${icon('edit', 16)}Edit</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
+      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-icon-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}" aria-label="Edit search" title="Edit search">${icon('edit', 16)}</button><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -901,7 +913,7 @@
       busyNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}">${done ? 'Score again' : 'Score my resume'}</button>`,
       retailor ? `<button type="button" class="job-os-btn" data-job-os-action="card-tailor" data-job-id="${esc(item.id)}">Tailor again</button>` : '',
       hasDocs ? `<button type="button" class="job-os-btn${retailor ? ' primary' : ''}" data-job-os-action="studio-open" data-job-id="${esc(item.id)}">Open tailored resume</button>` : '',
-      `<button type="button" class="job-os-link" data-job-id="${esc(item.id)}">Open job</button>`,
+      `<button type="button" class="job-os-btn" data-job-id="${esc(item.id)}">Open job</button>`,
     ].join('');
     const nav = (to, label, iconName) => `<button type="button" class="job-os-icon-btn match-step" data-job-os-action="match-go" data-job-id="${esc(to ? to.id : '')}" aria-label="${label}" title="${label} (${iconName === 'prev' ? '←' : '→'})" ${to ? '' : 'disabled'}>${icon(iconName, 18)}</button>`;
     const meta = [item.company, place(item), SOURCE_LABEL[sourceOf(item)]].filter(Boolean).map(esc).join(' · ');
@@ -913,9 +925,9 @@
       <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
         ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
         ${done && job ? `<div class="analysis-cols">${job.analysis.strengths && job.analysis.strengths.length ? `<div><h4>Matches</h4>${list(job.analysis.strengths, 'is-good')}</div>` : ''}${job.analysis.gaps && job.analysis.gaps.length ? `<div><h4>Missing</h4>${list(job.analysis.gaps, 'is-gap')}</div>` : ''}</div>` : ''}
-        <div class="job-os-actions">${actions}</div>
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
-      </div></div></section>`;
+      </div></div>
+      <div class="job-os-actions match-actions">${actions}</div></section>`;
   }
   // The tailoring method's working: how the resume's bullets met the job,
   // what was reworded and why it is still true, and the gaps it left alone.
@@ -1093,15 +1105,17 @@
     const fresh = state.matches ? (state.matches.released || []).length : 0;
     const counts = {pipeline: dashboard.total_jobs, scout: fresh};
     const nav = sectionsOf(state).map((key) => {
-      const active = view === key && !(key === 'pipeline' && state.statusFilter);
+      const active = view === key && !(key === 'pipeline' && (state.statusFilter || state.focusColumn));
       const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
       return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span>${count}</button>`;
     }).join('');
-    const stages = statusOrder.filter((status) => byStatus[status]).map((status) => {
-      const active = view === 'pipeline' && state.statusFilter === status;
-      return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}" data-job-os-filter="${status}"><span class="job-os-dot" data-tone="${tones[status]}" aria-hidden="true"></span><span class="side-menu-label">${esc(statusLabel(status))}</span><span class="job-os-side-count">${byStatus[status]}</span></button>`;
+    // Every board column, in board order; a click opens the board at that column.
+    const stages = STAGES.map(([key, label, statuses]) => {
+      const n = statuses.reduce((sum, status) => sum + (byStatus[status] || 0), 0);
+      const active = view === 'pipeline' && state.focusColumn === key;
+      return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}${n ? '' : ' is-empty'}" data-job-os-stage="${key}" data-col="${key}" title="Open ${esc(label)} on the board"><span class="job-os-stage-dot" aria-hidden="true"></span><span class="side-menu-label">${esc(label)}</span><span class="job-os-side-count">${n}</span></button>`;
     }).join('');
-    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
+    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf};
+  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, LOADING};
 }());

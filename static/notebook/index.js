@@ -74,6 +74,12 @@
     if (note.folder_id) { const f = folderOf(note.folder_id); return f ? f.name : 'General'; }
     return 'General';
   }
+  // The colour of the note's workspace or folder, as on their side-panel dots.
+  function placeColor(note) {
+    if (note.project_id) { const p = projectOf(note.project_id); return (p && p.color) || 'var(--accent)'; }
+    if (note.folder_id) { const f = folderOf(note.folder_id); return (f && f.color) || 'var(--muted)'; }
+    return 'var(--muted)';
+  }
   const live = (n) => !n.deleted_at;
 
   // ── scope & filtering ───────────────────────────────────────────────────────
@@ -321,7 +327,7 @@
       + notes.map((n, i) => `<button type="button" role="listitem" class="nb-item${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-open="${esc(n.id)}" style="--i:${Math.min(i, 12)}">
         <span class="nb-item-title">${n.pinned ? `<span class="nb-flag" title="Pinned">${icon('pin', 12)}</span>` : ''}${n.favorite ? `<span class="nb-flag fav" title="Favorite">${icon('star', 12)}</span>` : ''}<strong>${esc(n.title || 'Untitled')}</strong></span>
         ${n.preview ? `<span class="nb-item-preview">${esc(n.preview)}</span>` : ''}
-        <span class="nb-item-meta">${esc(placeLabel(n))} · ${esc(when(n.updated_at))}${(n.tags || []).length ? ` · ${n.tags.slice(0, 3).map((t) => '#' + esc(t)).join(' ')}` : ''}</span>
+        <span class="nb-item-meta"><span class="nb-place-dot" aria-hidden="true" style="background:${esc(placeColor(n))}"></span><span class="nb-item-meta-text">${esc(placeLabel(n))} · ${esc(when(n.updated_at))}${(n.tags || []).length ? ` · ${n.tags.slice(0, 3).map((t) => '#' + esc(t)).join(' ')}` : ''}</span></span>
       </button>`).join('');
   }
   function statusText() {
@@ -986,24 +992,37 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden && Object.keys(save.dirty).length) { writeDraft(); runSave(); } });
   }
 
+  // A note asked for from outside the page (the chat's Workspace panel) opens
+  // instead of the last-opened one.
+  let pendingOpen = null;
   async function mount() {
     bind();
+    const wanted = pendingOpen; pendingOpen = null;
     if (!S.loaded) {
       render();
       await loadBootstrap();
       render();
-      let last = null;
-      try { last = localStorage.getItem(LAST_KEY); } catch (_) {}
+      let last = wanted;
+      if (!last) { try { last = localStorage.getItem(LAST_KEY); } catch (_) {} }
       if (last && S.notes.some((n) => n.id === last && live(n))) { S.pane = window.matchMedia('(max-width: 760px)').matches ? 'list' : 'editor'; await openNote(last); }
     } else {
       render();
-      if (S.note && !editorCtl) await mountEditor(S.note, S.note.content);
+      if (wanted) await openNote(wanted);
+      else if (S.note && !editorCtl) await mountEditor(S.note, S.note.content);
     }
   }
   async function unmount() { await flushSave(); }
   async function refresh() { await loadBootstrap(); render(); }
+  // Open the Notes page on a workspace's notes, and on one note when given.
+  async function openFrom(noteId, projectId) {
+    if (projectId) { S.scope = {kind: 'project', id: projectId}; S.expanded['project:' + projectId] = true; }
+    else S.scope = {kind: 'all', id: null};
+    pendingOpen = noteId || null;
+    if (typeof window.switchPanel === 'function') await window.switchPanel('notebook');
+    else await mount();
+  }
 
-  window.Notebook = {mount, unmount, refresh, _state: S, _save: save};
+  window.Notebook = {mount, unmount, refresh, openFrom, _state: S, _save: save};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());

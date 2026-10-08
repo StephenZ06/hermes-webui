@@ -28,9 +28,11 @@ from api.job_os.repository import get_job, list_jobs
 FOLLOW_UP_DAYS = 7
 COLUMNS = (
     ("new", "New", ("discovered", "scraped", "analyzed")),
-    # Jobs you mean to go for; a resume being tailored stays here until it is ready.
-    ("favorite", "Favorite", ("shortlisted", "tailoring")),
-    ("ready", "Ready to apply", ("resume_ready", "application_ready", "awaiting_approval", "applying")),
+    # Jobs you mean to go for.
+    ("favorite", "Favorite", ("shortlisted",)),
+    # A job moves here as soon as Luna starts tailoring for it (a failed tailoring
+    # puts it back in Favorite), so Tailor in Resume Studio lands it here at once.
+    ("ready", "Ready to apply", ("tailoring", "resume_ready", "application_ready", "awaiting_approval", "applying")),
     ("applied", "Applied", ("submitted",)),
     ("rejected", "Rejected", ("rejected",)),
     ("interview", "Interview", ("screening", "interviewing")),

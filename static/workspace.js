@@ -651,6 +651,77 @@ registerChatPane({
   },
 });
 
+// ── Notes pane ────────────────────────────────────────────────────────────
+// The current chat's project notes from the Notes page, styled like the Work
+// Hub pane. The Notes page stays the editing surface: a row opens that note
+// there, New makes an empty note in this project and opens it.
+async function renderWorkspaceNotes(){
+  const list = $('workspaceNotesList'); if(!list || !window.NotebookApi) return;
+  const scope = $('workspaceNotesScope');
+  const projectId = (typeof S !== 'undefined' && S.session && S.session.project_id) || null;
+  if(!list.children.length) list.innerHTML = '<div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div></div>';
+  let data;
+  try{ data = await window.NotebookApi.bootstrap(); }
+  catch(e){ list.innerHTML = '<div class="workspace-work-hub-empty">Notes are unavailable right now.</div>'; return; }
+  const project = projectId ? (data.projects || []).find(p => p.project_id === projectId) : null;
+  const notes = (data.notes || []).filter(n => !n.deleted_at && (projectId ? n.project_id === projectId : (!n.project_id && !n.folder_id)))
+    .sort((a, b) => (b.pinned - a.pinned) || (b.updated_at - a.updated_at));
+  if(scope){
+    scope.innerHTML = '';
+    const dot = document.createElement('span'); dot.className = 'color-dot workspace-work-hub-scope-dot';
+    dot.style.background = (project && project.color) || 'var(--muted)';
+    const label = document.createElement('span');
+    label.textContent = `${projectId ? ((project && project.name) || 'Project') : 'General'} · ${notes.length} note${notes.length === 1 ? '' : 's'}`;
+    scope.append(dot, label);
+  }
+  list.innerHTML = '';
+  if(!notes.length) list.innerHTML = '<div class="workspace-work-hub-empty">No notes in this workspace yet.</div>';
+  const when = (sec) => {
+    if(!sec) return '';
+    const d = Math.max(0, Date.now() / 1000 - sec);
+    if(d < 60) return 'just now'; if(d < 3600) return Math.floor(d / 60) + 'm ago';
+    if(d < 86400) return Math.floor(d / 3600) + 'h ago'; if(d < 604800) return Math.floor(d / 86400) + 'd ago';
+    return new Date(sec * 1000).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  };
+  notes.slice(0, 100).forEach(note => {
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'workspace-nb-note';
+    row.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span class="workspace-nb-note-copy"><strong></strong><small></small></span>';
+    row.querySelector('strong').textContent = note.title || 'Untitled';
+    row.querySelector('small').textContent = (note.pinned ? 'Pinned · ' : '') + when(note.updated_at);
+    row.onclick = () => window.Notebook && window.Notebook.openFrom(note.id, projectId);
+    list.appendChild(row);
+  });
+  const open = $('workspaceNotesOpen');
+  if(open) open.onclick = () => window.Notebook && window.Notebook.openFrom(null, projectId);
+  const make = $('workspaceNotesNew');
+  if(make) make.onclick = async () => {
+    try{
+      const {note} = await window.NotebookApi.create(Object.assign({title:''}, projectId ? {project_id:projectId} : {}));
+      if(window.Notebook){ await window.Notebook.refresh(); window.Notebook.openFrom(note.id, projectId); }
+    }catch(e){ if(typeof showToast === 'function') showToast('The note could not be created', 3000, 'error'); }
+  };
+}
+
+registerChatPane({
+  id: 'notes',
+  mount: () => { renderWorkspaceNotes(); },
+});
+
+// Tab labels give way to icons alone when the panel is too narrow for them.
+(function(){
+  const strip = document.querySelector('.workspace-panel-tabs');
+  if(!strip || typeof ResizeObserver !== 'function') return;
+  const fit = () => {
+    strip.classList.remove('is-compact');
+    const labels = strip.querySelectorAll('.workspace-panel-tab:not([hidden]) .wpt-label');
+    const tight = strip.scrollWidth > strip.clientWidth + 1
+      || Array.prototype.some.call(labels, label => label.scrollWidth > label.clientWidth + 1);
+    strip.classList.toggle('is-compact', tight);
+  };
+  new ResizeObserver(fit).observe(strip);
+  fit();
+})();
+
 // ── Live preview pane (docs/rfcs/chat-split-view-panes.md, Slice 4) ──
 //
 // An iframe onto a URL the user types -- a dev server or app the agent just
@@ -868,7 +939,7 @@ function switchRightPanelPane(id){
   // Built-in tab buttons keep their existing ids; a pane registered under a
   // different id gets no tab-strip wiring yet -- that's a later slice
   // (render the strip from the registry instead of these hardcoded buttons).
-  ['files','graph','artifacts','todos','office','plane','preview'].forEach(known=>{
+  ['files','graph','artifacts','todos','office','plane','notes','preview'].forEach(known=>{
     const btn = $('workspace' + known.charAt(0).toUpperCase() + known.slice(1) + 'Tab');
     if(!btn) return;
     btn.classList.toggle('active', nextId === known);
@@ -882,6 +953,8 @@ function switchRightPanelPane(id){
   if(officePane) officePane.hidden = nextId !== 'office';
   const planePane = $('workspacePlanePane');
   if(planePane) planePane.hidden = nextId !== 'plane';
+  const notesPane = $('workspaceNotesPane');
+  if(notesPane) notesPane.hidden = nextId !== 'notes';
   const livePreviewPane = $('workspaceLivePreviewPane');
   if(livePreviewPane) livePreviewPane.hidden = nextId !== 'preview';
   const previewArea = $('previewArea');

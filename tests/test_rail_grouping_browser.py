@@ -1,18 +1,18 @@
 """The left rail's page icons sit in four groups, and the slots do not move.
 
-Work (Chat, Work Hub, Office, Spaces) | Automations (Tasks, Jobs) |
+Work (Chat, Work Hub, Notes, Office) | Automations (Tasks, Jobs) |
 Agent setup (Personas, Profiles, Skills, Memory, Knowledge) |
-Monitoring (Insights, Logs, Activity). The dividers are re-anchored at boot
+Spaces, then Monitoring (Insights, Logs, Activity). The dividers are re-anchored at boot
 by _applyTabOrder(), so this checks the rendered rail, not the HTML.
 """
 import pytest
 
 from tests._pytest_port import BASE
 
-EXPECTED = ["chat", "notes", "office", "workspaces", "|",
+EXPECTED = ["chat", "notes", "notebook", "office", "|",
             "tasks", "jobs", "|",
             "agents", "profiles", "skills", "memory", "knowledge", "|",
-            "insights", "logs", "audit"]
+            "workspaces", "insights", "logs", "audit"]
 
 
 @pytest.mark.parametrize("viewport", [(1440, 900), (390, 844)])
@@ -31,8 +31,8 @@ def test_rendered_rail_groups_pages(viewport):
         finally:
             browser.close()
     for order in orders:
-        # Kanban is feature-gated; when shown it sits next to Work Hub.
+        # Kanban is feature-gated; when shown it sits after Work Hub and Notes.
         if "kanban" in order:
-            assert order.index("kanban") == order.index("notes") + 1, order
+            assert order.index("kanban") == order.index("notebook") + 1, order
             order = [panel for panel in order if panel != "kanban"]
         assert order == EXPECTED, order

@@ -10,7 +10,8 @@ SERVICE_WORKER = (REPO / "static" / "sw.js").read_text(encoding="utf-8")
 
 
 def test_primary_office_navigation_uses_the_custom_mark_in_desktop_and_mobile():
-    assert INDEX.count('class="office-nav-mark"') == 2
+    # The rail and the mobile nav; the chat Workspace panel's Office tab reuses it.
+    assert INDEX.count('class="office-nav-mark"') == 3
     assert (REPO / "static" / "office-nav-mark.png").is_file()
     assert 'mask-image:url("office-nav-mark.png")' in CSS
     assert '-webkit-mask-image:url("office-nav-mark.png")' in CSS

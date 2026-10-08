@@ -100,7 +100,7 @@ def test_every_main_view_panel_has_a_sidebar_panel_view():
 
 
 def test_dividers_carry_anchor_panel_for_reorder_survival():
-    expected_anchors = ["workspaces", "jobs", "knowledge"]
+    expected_anchors = ["office", "jobs", "knowledge"]
     for cls in ("rail-divider", "sidebar-nav-divider"):
         anchors = []
         for chunk in HTML.split(f'class="{cls}"')[1:]:

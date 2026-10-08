@@ -299,7 +299,7 @@ def test_expanding_task_status_preserves_a_committed_grid_start_frame():
 
 
 def test_expanded_task_status_header_keeps_equal_visual_space_above_and_below_its_title():
-    assert ".office-tasks-head{flex:0 0 auto;padding:8px 12px;" in CSS
+    assert ".office-tasks-head{flex:0 0 auto;padding:8px;" in CSS
 
 
 def test_task_status_icon_and_title_are_centred_as_one_group():
@@ -313,9 +313,9 @@ def test_task_status_uses_a_coordinated_disclosure_and_content_fade():
     # The Task Status card should feel like a compact sibling of the Chat
     # project folders, rather than a separate static drawer.
     assert ".office-tasks{position:absolute;z-index:4;top:14px;right:14px;height:auto;max-height:calc(100% - 28px);min-height:36px;width:min(264px,calc(100% - 28px));" in CSS
-    assert ".office-tasks-head{flex:0 0 auto;padding:8px 12px;" in CSS
+    assert ".office-tasks-head{flex:0 0 auto;padding:8px;" in CSS
     assert ".office-tasks-toggle{position:relative;display:grid;grid-template-columns:minmax(20px,1fr) auto minmax(20px,1fr);align-items:center;width:100%;min-height:20px;" in CSS
-    assert ".office-tasks-count{grid-column:3;justify-self:end;align-self:center;transform:translateY(-1px);" in CSS
+    assert ".office-tasks-count{grid-column:3;justify-self:end;align-self:center;position:relative;" in CSS
     assert "transition:grid-template-rows .48s cubic-bezier(.2,.8,.2,1);" in CSS
     assert ".office-tasks-body-inner{min-height:0;display:flex;flex-direction:column;overflow:hidden;opacity:1;transition:opacity .34s cubic-bezier(.2,.8,.2,1) .1s;}" in CSS
     assert ".office-tasks.is-collapsed .office-tasks-body-inner{opacity:0;transition-delay:0s;}" in CSS
