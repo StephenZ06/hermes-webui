@@ -143,14 +143,19 @@
   const band = (score) => BANDS.find(([min]) => Number(score) >= min) || BANDS[BANDS.length - 1];
   // Fit score ring: the arc fills to the score, coloured by its band.
   const analysing = (job) => !!(job.analysis && (job.analysis.status === 'pending' || job.analysis.status === 'running'));
+  // The score ring drawn like Resume Studio's: a track, and the arc to the score
+  // with rounded ends in its band colour (no glow at this size).
+  const ringSvg = (fit) => `<svg class="fit-ring-svg" viewBox="0 0 40 40" aria-hidden="true"><circle class="fit-ring-track" cx="20" cy="20" r="16"/>${fit == null ? '' : `<circle class="fit-ring-arc" cx="20" cy="20" r="16" pathLength="100" style="--fit:${fit}"/>`}</svg>`;
   function fitRing(a, size) {
     if (!a) return '';
-    if (a.status === 'pending' || a.status === 'running') return `<span class="fit-ring ${size || ''} is-busy" title="Luna is scoring your resume against this job" aria-label="Scoring"><span>…</span></span>`;
-    if (a.status === 'failed') return `<span class="fit-ring ${size || ''} is-failed" title="Scoring failed" aria-label="Scoring failed"><span>!</span></span>`;
+    if (a.status === 'pending' || a.status === 'running') return `<span class="fit-ring ${size || ''} is-busy" title="Luna is scoring your resume against this job" aria-label="Scoring">${ringSvg(25)}<span>…</span></span>`;
+    if (a.status === 'failed') return `<span class="fit-ring ${size || ''} is-failed" title="Scoring failed" aria-label="Scoring failed">${ringSvg(100)}<span>!</span></span>`;
     if (a.fit_score == null) return '';
     const [, key, text] = band(a.fit_score);
-    return `<span class="fit-ring ${size || ''}" data-band="${key}" style="--fit:${Number(a.fit_score)}" title="${esc(text)} · ${Number(a.fit_score)}%" aria-label="${esc(text)}, ${Number(a.fit_score)} percent"><span>${Number(a.fit_score)}</span></span>`;
+    const score = Number(a.fit_score);
+    return `<span class="fit-ring ${size || ''}" data-band="${key}" title="${esc(text)} · ${score}%" aria-label="${esc(text)}, ${score} percent">${ringSvg(Math.max(score, 1))}<span>${score}</span></span>`;
   }
+  const emptyRing = (cls, mark) => `<span class="fit-ring${cls || ''}">${ringSvg(/is-busy/.test(cls || '') ? 25 : /is-failed/.test(cls || '') ? 100 : null)}<span>${mark}</span></span>`;
   // Job sites come from the server (api/job_os/apify.py SITES); these are the
   // names to fall back on before it answers.
   let SITES = [['indeed', 'Indeed'], ['linkedin', 'LinkedIn']];
@@ -921,11 +926,11 @@
   function fitCompare(notes) {
     const fit = notes.tailored_fit || null;
     const master = notes.master_fit;
-    const ring = (score) => (score == null ? '<span class="fit-ring"><span>—</span></span>' : fitRing({status: 'done', fit_score: score}));
+    const ring = (score) => (score == null ? emptyRing('', '—') : fitRing({status: 'done', fit_score: score}));
     let tailored;
-    if (!fit) tailored = '<span class="fit-ring"><span>—</span></span>';
-    else if (fit.status === 'running') tailored = '<span class="fit-ring is-busy"><span>…</span></span>';
-    else if (fit.status === 'failed') tailored = '<span class="fit-ring is-failed" title="Scoring failed"><span>!</span></span>';
+    if (!fit) tailored = emptyRing('', '—');
+    else if (fit.status === 'running') tailored = emptyRing(' is-busy', '…');
+    else if (fit.status === 'failed') tailored = emptyRing(' is-failed', '!');
     else tailored = ring(fit.fit_score);
     const gain = fit && fit.status === 'done' && master != null ? fit.fit_score - master : null;
     return `<div class="studio-box fit-compare"><h4>Match with this job</h4>
@@ -960,8 +965,8 @@
   function analysisPanel(job) {
     const a = job.analysis;
     if (!a) return '';
-    if (analysing(job)) return '<div class="job-os-analysis is-busy"><span class="fit-ring large is-busy"><span>…</span></span><div><strong>Luna is scoring your resume against this job…</strong><div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>';
-    if (a.status === 'failed') return `<div class="job-os-analysis is-failed"><span class="fit-ring large is-failed"><span>!</span></span><div><strong>Analysis failed</strong><p>${esc(a.error || '')}</p></div></div>`;
+    if (analysing(job)) return `<div class="job-os-analysis is-busy">${emptyRing(' large is-busy', '…')}<div><strong>Luna is scoring your resume against this job…</strong><div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>`;
+    if (a.status === 'failed') return `<div class="job-os-analysis is-failed">${emptyRing(' large is-failed', '!')}<div><strong>Analysis failed</strong><p>${esc(a.error || '')}</p></div></div>`;
     const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
     return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${band(a.fit_score)[1]}">${esc(band(a.fit_score)[2])} · ${Number(a.fit_score)}%</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
       ${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
