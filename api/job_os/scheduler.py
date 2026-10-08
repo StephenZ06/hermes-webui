@@ -80,7 +80,11 @@ def next_run_at(search: dict, settings: dict, *, now: float | None = None) -> in
         return int(last + int(scout.get("schedule_hours") or 6) * 3600) if last else int(time.time() if now is None else now)
     country = search.get("country") or ""
     if not last:
-        return next_slot(time.time() if now is None else now, scout, country=country)
+        # A search that has never run is due at the first slot after it was
+        # made. Counting from "now" moved that slot on every minute, so a new
+        # search never came due at all.
+        anchor = search.get("created_at") or (time.time() if now is None else now)
+        return next_slot(anchor, scout, country=country)
     quiet = bool(scout.get("quiet_skip")) and search.get("last_new") is not None and search["last_new"] <= QUIET_RUN
     return next_slot(last, scout, skip_same_day=quiet, country=country)
 

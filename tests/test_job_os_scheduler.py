@@ -106,3 +106,16 @@ def test_each_search_follows_its_countrys_clock_and_working_week(store):
     assert nxt(qa("2026-10-11 12:31")) == qa("2026-10-11 18:30")
     my = scheduler.next_run_at({"enabled": True, "last_run_at": _myt("2026-10-10 12:31"), "last_new": 5, "country": "my"}, TIMES)
     assert my == _myt("2026-10-12 12:30"), "Malaysia rests on Sunday"
+
+
+def test_a_search_that_never_ran_comes_due_at_the_first_slot_after_it_was_made(store):
+    save_settings({"scout": {"enabled": True}}, expected_revision=0)
+    search = scout.create_search({"keywords": "x", "country": "my"})
+    conn = connect_job_os()
+    conn.execute("UPDATE searches SET created_at=? WHERE id=?", (_myt("2026-10-07 09:00"), search["id"]))
+    conn.commit()
+    conn.close()
+    started = []
+    # Before: "next run" was counted from now, so it was always still to come.
+    assert scheduler.tick(now=_myt("2026-10-07 12:29"), start=lambda sid, trigger: started.append(sid)) is None
+    assert scheduler.tick(now=_myt("2026-10-07 13:05"), start=lambda sid, trigger: started.append(sid)) == search["id"]

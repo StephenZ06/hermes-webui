@@ -225,7 +225,10 @@ def test_digest_once_a_day_after_the_hour(store):
     send, sent = store
     _analysed("Target", 90)
     _set(digest_hour=8)
-    morning = time.mktime(time.strptime("2026-10-06 07:30", "%Y-%m-%d %H:%M"))
+    # The hour is on your clock (Asia/Kuala_Lumpur by default), whatever the server's is.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    morning = datetime(2026, 10, 6, 7, 30, tzinfo=ZoneInfo("Asia/Kuala_Lumpur")).timestamp()
     later = morning + 3600
     assert notify.maybe_send_digest(now=morning, send=send) is False
     assert notify.maybe_send_digest(now=later, send=send) is True
@@ -252,3 +255,16 @@ def test_the_digest_lists_quiet_applications_to_follow_up_first(store):
     section = body.split("Follow up:")[1]
     assert "Quiet at Acme — No update in 10 days" in section and "https://jobs.example.test/Quiet" in section
     assert "Needs your attention" not in body, "a follow-up is not listed twice"
+
+
+def test_the_digest_lists_every_job_found_today_even_unscored(store):
+    _analysed("Scored", 81)
+    for i in range(3):
+        create_job(replace(normalize_job_input({"title": f"Fresh {i}", "company": "Ooredoo", "location": "Doha",
+                                                "canonical_url": f"https://jobs.example.test/fresh{i}"}), description="x"),
+                   status=JobStatus.SCRAPED)
+    subject, body = notify.build_digest()
+    section = body.split("New jobs found (4):")[1]
+    assert "Fresh 0 at Ooredoo (Doha)" in section and "https://jobs.example.test/fresh2" in section
+    assert "Scored" not in section, "a best match is not listed twice"
+    assert "3 not scored yet" in section

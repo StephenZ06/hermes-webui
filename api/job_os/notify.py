@@ -29,9 +29,10 @@ import ssl
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parseaddr
 from typing import Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from api import mailer
 from api.job_os.db import connect_job_os
@@ -268,8 +269,14 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
     try:
         found = conn.execute("SELECT COUNT(*) FROM jobs WHERE created_at>=?", (since,)).fetchone()[0]
         top = conn.execute(
-            "SELECT j.title, j.company, j.canonical_url, a.fit_score FROM jobs j JOIN job_analyses a ON a.job_id=j.id"
+            "SELECT j.id, j.title, j.company, j.canonical_url, a.fit_score FROM jobs j JOIN job_analyses a ON a.job_id=j.id"
             " WHERE a.status='done' AND a.finished_at>=? ORDER BY a.fit_score DESC LIMIT 5", (since,)).fetchall()
+        # Every job found today, best score first, then newest: the digest is
+        # where you see them even before Luna has scored them.
+        new_jobs = conn.execute(
+            "SELECT j.id, j.title, j.company, j.location, j.canonical_url, a.fit_score FROM jobs j"
+            " LEFT JOIN job_analyses a ON a.job_id=j.id AND a.status='done' WHERE j.created_at>=?"
+            " ORDER BY a.fit_score IS NULL, a.fit_score DESC, j.created_at DESC", (since,)).fetchall()
         applied = conn.execute("SELECT COUNT(*) FROM job_events WHERE event_type='application_submitted' AND created_at>=?",
                                (now - 7 * 86400,)).fetchone()[0]
     finally:
@@ -289,6 +296,19 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
             for c, reason in follow_ups[:8]))
     if top:
         parts.append("Best new matches:\n" + "\n".join(f"  • {r['fit_score']} — {r['title']} at {r['company'] or '?'}\n    {r['canonical_url']}" for r in top))
+    listed = {r["id"] for r in top}
+    rest = [r for r in new_jobs if r["id"] not in listed]
+    if rest:
+        unscored = sum(1 for r in new_jobs if r["fit_score"] is None)
+        def line(r):
+            score = f"{r['fit_score']} — " if r["fit_score"] is not None else ""
+            where = f" ({r['location']})" if r["location"] else ""
+            return f"  • {score}{r['title']} at {r['company'] or '?'}{where}\n    {r['canonical_url']}"
+        lines = [line(r) for r in rest[:15]]
+        more = f"\n  …and {len(rest) - 15} more in Hermes -> Jobs -> Pipeline" if len(rest) > 15 else ""
+        note = (f"\n  {unscored} not scored yet: Pipeline -> Score new, or turn on Settings -> AI -> Analyse new finds automatically."
+                if unscored else "")
+        parts.append(f"New jobs found ({len(new_jobs)}):\n" + "\n".join(lines) + more + note)
     if ready:
         parts.append("Ready to apply:\n" + "\n".join(f"  • {c['title']} at {c['company'] or '?'}" for c in ready[:8]))
     if attention:
@@ -296,6 +316,13 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
     extra = f", {len(follow_ups)} to follow up" if follow_ups else ""
     return (f"Daily digest — {found} found, {len(attention)} need attention{extra}",
             "\n\n".join(parts) + "\n\nOpen Hermes -> Jobs for details.")
+
+
+def _user_zone(settings: dict):
+    try:
+        return ZoneInfo((settings.get("scout") or {}).get("timezone") or "Asia/Kuala_Lumpur")
+    except (ZoneInfoNotFoundError, ValueError):
+        return timezone.utc
 
 
 def maybe_send_digest(*, now: float | None = None, send: Callable = mailer.send, force: bool = False) -> bool:
@@ -306,9 +333,11 @@ def maybe_send_digest(*, now: float | None = None, send: Callable = mailer.send,
     if not _ready(settings, *(() if force else ("daily_digest",))):
         return False
     now = time.time() if now is None else now
-    local = time.localtime(now)
-    today = time.strftime("%Y-%m-%d", local)
-    if not force and (local.tm_hour < settings["notifications"]["digest_hour"] or load_state().get("last_digest") == today):
+    # The digest hour is on your clock (Settings -> Scout schedule -> Your time
+    # zone), not the server's.
+    local = datetime.fromtimestamp(now, _user_zone(settings))
+    today = local.strftime("%Y-%m-%d")
+    if not force and (local.hour < settings["notifications"]["digest_hour"] or load_state().get("last_digest") == today):
         return False
     with _send_lock:
         digest = build_digest(now=int(now))
