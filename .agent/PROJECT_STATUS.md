@@ -1,5 +1,18 @@
 # Project status — hermes-webui
 
+## 2026-10-09: remote.id (remotefreelance.id) as a Scout site
+
+- `api/job_os/remoteid.py` reads the site directly (no Apify/Firecrawl);
+  finds labelled remote.id, saved under the source site's link (LinkedIn
+  dedupe), Upwork kept. Searches the broadest word (site matches phrases),
+  skips saved pages, fails a run with a reason when the site's markup changes.
+- **Live:** new search "Remote analyst roles — remote.id" (sites: remote.id,
+  title filter analyst, strict + related titles copied from the Malaysia
+  search, last 7 days). Backup: `~/.hermes/backups/job_os-20261009-before-remoteid-search.db`.
+  Dry run 2026-10-09: 5 analyst jobs on the site, 1 on-target (posted
+  2026-09-25, outside 7 days), so 0 expected now.
+- Live check: `HERMES_LIVE_REMOTEID=1 ./scripts/test.sh tests/test_job_os_remoteid.py -k live`.
+
 ## 2026-10-08 (night): final UI check across pages
 
 - **App:** rail/sidebar icons (separate PNG masks) are held until all have
