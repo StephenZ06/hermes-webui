@@ -10968,3 +10968,7 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .office-dashboard-panel-head h2,.office-dashboard-panel-head>span{line-height:1.2;text-box:trim-both cap alphabetic;}
 /* Status pills and lines use the page font like every other label (code stays monospace). */
 .office-pill,.logs-status{font-family:var(--font-ui);}
+/* Automation tiles: the title, schedule and note spread evenly down the space
+   above the day ticks (at least 6px apart), instead of packing at the top. */
+.automation-row>.automation-main{align-self:stretch;justify-content:space-between;gap:6px;}
+.automation-row>.automation-main small{line-height:1.4;}
