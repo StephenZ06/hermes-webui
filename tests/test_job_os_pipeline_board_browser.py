@@ -200,14 +200,17 @@ def test_cards_share_one_height_and_a_column_shows_ten_before_it_scrolls():
               host.id = 'jobOsRoot'; host.style.width = '1100px';
               document.body.appendChild(host);
               host.innerHTML = window.JobOSRender.shell({capability: {available: true}, jobs, activeView: 'pipeline', pipelineSource: 'all', pipelineMode: 'board',
-                board: {columns: [{key: 'new', label: 'New', jobs}, {key: 'applied', label: 'Applied', jobs: [Object.assign({}, jobs[0], {id: 'x', status: 'submitted'})]}], sources: {}}});
+                board: {columns: [{key: 'new', label: 'New', jobs}, {key: 'applied', label: 'Applied', jobs: [Object.assign({}, jobs[0], {id: 'x', status: 'submitted'})]},
+                  {key: 'rejected', label: 'Rejected', jobs: []}], sources: {}}});
               const list = host.querySelector('.pipe-col[data-col="new"] .pipe-col-cards');
               const cards = [...list.querySelectorAll('.pipe-card')];
               const heights = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().height)));
               const h = cards[0].getBoundingClientRect().height;
               const btn = cards[0].querySelector('.pipe-card-actions .job-os-btn');
               const applied = host.querySelector('.pipe-col[data-col="applied"] .pipe-card-actions .job-os-btn');
-              const result = {heights: [...heights], shown: Math.round(list.clientHeight), ten: Math.round(10 * h + 90), scrolls: list.scrollHeight > list.clientHeight + 10,
+              const cols = [...host.querySelectorAll('.pipe-col')].map((c) => Math.round(c.getBoundingClientRect().height));
+              const result = {columns: new Set(cols).size, emptyFills: Math.round(host.querySelector('.pipe-col[data-col="applied"] .pipe-col-cards').getBoundingClientRect().height) > 300,
+                heights: [...heights], shown: Math.round(list.clientHeight), ten: Math.round(10 * h + 90), scrolls: list.scrollHeight > list.clientHeight + 10,
                 na: cards[0].querySelectorAll('.pipe-fact.is-na').length, buttonFills: Math.round(btn.getBoundingClientRect().width) === Math.round(btn.parentElement.getBoundingClientRect().width),
                 appliedButton: applied.textContent, colours: getComputedStyle(btn).borderColor !== getComputedStyle(applied).borderColor};
               host.remove();
@@ -218,3 +221,4 @@ def test_cards_share_one_height_and_a_column_shows_ten_before_it_scrolls():
     assert len(out["heights"]) == 1, out  # long titles, missing facts and a follow-up note don't change a card's height
     assert out["shown"] == out["ten"] and out["scrolls"]
     assert out["na"] == 3 and out["buttonFills"] and out["appliedButton"] == "Open job" and out["colours"]
+    assert out["columns"] == 1 and out["emptyFills"], "every column is as tall as the fullest, empty or not"
