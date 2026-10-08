@@ -194,6 +194,22 @@ connected Gmail, forward job replies to it with a Gmail filter (Settings →
 Forwarding, then a filter such as `subject:(application OR interview OR
 candidate)` → Forward to).
 
+## Feedback and small interactions
+
+Shared helpers in `static/micro.js` (ideas from transitions.dev,
+designspells.com, ObsidianUI and Rare UI, rebuilt in plain CSS/JS):
+- Tabs and side menus slide a pill to the active item.
+- Save, connect, test, send and run buttons show a spinner, then a drawn
+  tick; a failure restores the button and shakes it, and invalid fields are
+  outlined until edited.
+- Luna and Scout's busy states share one shimmering "working" line that
+  steps through what is happening.
+- The Automations card shows each automation's last 14 days as ticks (green
+  ran, red failed, amber both, grey nothing).
+- Deleting a saved search asks in place: the bin becomes *Delete search?* and a
+  second click deletes; it settles back after 3 seconds or a click elsewhere.
+- `?` opens the keyboard shortcuts, now with a Jobs group.
+
 ## Dashboard activity
 
 Under **Your funnel**, three month calendars on your clock (Scout schedule

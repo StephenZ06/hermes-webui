@@ -58,13 +58,17 @@ def test_scout_search_lifecycle_and_blocked_run():
             page.fill('input[name="keywords"]', "python platform")
             page.click('#job-os-search-form button[type="submit"]')
             page.wait_for_selector(f'.scout-search[data-search-id="{sid}"]:has-text("python platform")', timeout=10000)
-            page.click(f'[data-job-os-action="scout-delete"][data-search-id="{sid}"]', force=True)
-            page.wait_for_selector("#appDialogConfirm", state="visible", timeout=10000)
-            page.click("#appDialogConfirm")
+            # Delete asks in place: the first click turns the bin into "Delete search?", the second deletes.
+            delete = f'[data-job-os-action="scout-delete"][data-search-id="{sid}"]'
+            page.click(delete, force=True)
+            page.wait_for_selector(f"{delete}.mi-armed", timeout=5000)
+            asked = page.inner_text(delete)
+            page.click(delete, force=True)
             page.wait_for_selector(f'.scout-search[data-search-id="{sid}"]', state="detached", timeout=10000)
         finally:
             browser.close()
     assert "Firecrawl" in banner and run_disabled, "Run waits for a ready Firecrawl"
+    assert "Delete search?" in asked
     assert kept == "python backend"
     assert sites == {"indeed": True, "linkedin": False, "bayt": False}, "a new search starts on Indeed"
     assert all(word in chips for word in ("Malaysia", "Kuala Lumpur", "Penang", "Last 7 days"))

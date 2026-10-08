@@ -103,3 +103,29 @@ def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_li
     assert out["chip"] == "2" and out["after"] == "4"
     assert ["high", "4", "High"] in out["meters"] and ["", "0", "Default"] in out["meters"]
     assert out["steps"] == ["Tailoring your resume", "Matching the posting", "Checking the numbers"]
+
+
+def test_delete_asks_in_place_and_settles_back():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            out = page.evaluate("""async () => {
+              const b = document.createElement('button'); b.innerHTML = '<svg></svg>'; b.setAttribute('aria-label', 'Delete');
+              document.body.appendChild(b);
+              const first = window.Micro.arm(b, 'Delete search?', 300);
+              const asking = [b.textContent, b.classList.contains('mi-armed')];
+              await new Promise((r) => setTimeout(r, 400));
+              const settled = [b.textContent, b.classList.contains('mi-armed'), b.getAttribute('aria-label')];
+              window.Micro.arm(b, 'Delete search?');
+              const second = window.Micro.arm(b, 'Delete search?');
+              b.remove();
+              return {first, asking, settled, second};
+            }""")
+            page.evaluate("() => openShortcutsHelp()")
+            sheet = page.inner_text("#shortcutsHelpBody")
+        finally:
+            browser.close()
+    assert out["first"] is False and out["asking"] == ["Delete search?", True]
+    assert out["settled"] == ["", False, "Delete"] and out["second"] is True
+    assert "JOBS" in sheet.upper() and "Search the Pipeline" in sheet

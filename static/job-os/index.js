@@ -1408,10 +1408,10 @@
       el.disabled = true; el.textContent = 'Cancelling…';
       try { await window.JobOSApi.cancelRun(el.dataset.runId); } catch (_) { /* the next poll shows the real state */ }
     } else if (name === 'scout-delete') {
-      const ok = typeof window.showConfirmDialog === 'function'
-        ? await window.showConfirmDialog({title: 'Delete search', message: `Delete "${search ? search.name : 'this search'}"? Jobs it already found stay in your Pipeline.`, confirmLabel: 'Delete', danger: true})
-        : window.confirm('Delete this search?');
-      if (!ok) return;
+      // A search is small to lose and easy to make again: confirm in place (micro.js),
+      // with the dialog as the fallback. Jobs it found stay in the Pipeline either way.
+      if (window.Micro) { if (!window.Micro.arm(el, 'Delete search?')) return; }
+      else if (!window.confirm('Delete this search? Jobs it already found stay in your Pipeline.')) return;
       const card = document.querySelector(`.scout-search[data-search-id="${CSS.escape(searchId)}"]`);
       try {
         await window.JobOSApi.deleteSearch(searchId);

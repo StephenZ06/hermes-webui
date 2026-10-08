@@ -93,7 +93,13 @@
       const last = typeof a.last === 'number' ? `Last ${when(a.last)}` : a.last ? `Last ${esc(a.last)}` : '';
       const timing = [last, a.next ? `next ${until(a.next)}` : ''].filter(Boolean).join(' · ');
       const note = a.on ? [a.detail, timing].filter(Boolean).join(' · ') : a.off_reason;
-      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span></button>`;
+      // The last 14 days as a row of ticks (as on a status page): green ran fine, red failed, amber both, grey nothing.
+      const days = a.history || [];
+      const fmt = (d) => new Date(`${d.day}T12:00:00`).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+      const tickTip = (d) => `${fmt(d)}: ${d.state === 'none' ? 'nothing ran' : [d.ok && `${d.ok} ok`, d.failed && `${d.failed} failed`].filter(Boolean).join(', ')}`;
+      const ok = days.reduce((n, d) => n + d.ok, 0), bad = days.reduce((n, d) => n + d.failed, 0);
+      const ticks = days.length ? `<span class="automation-ticks" role="img" aria-label="Last ${days.length} days: ${ok} ok, ${bad} failed">${days.map((d) => `<i data-state="${esc(d.state)}" title="${esc(tickTip(d))}"></i>`).join('')}</span>` : '';
+      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}${ticks}</span><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span></button>`;
     }).join('');
     return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 18)}</button>`)}<div class="automations">${rows}</div></section>`;
   }

@@ -16235,6 +16235,15 @@ function _shortcutsHelpGroups(){
       {labelKey:'shortcut_send', keys:['Enter']},
       {labelKey:'shortcut_send_newline', keys:['Shift','Enter']},
     ]},
+    // The Jobs page is English-only, so its rows carry plain labels.
+    {title:'Jobs', rows:[
+      {label:'Search the Pipeline', keys:['/']},
+      {label:'Next / previous job (job open)', keys:['J','K']},
+      {label:'Add to Favorite / skip (job open)', keys:['S','X']},
+      {label:'Score your resume (job open)', keys:['A']},
+      {label:'Step the match check (Resume Studio)', keys:['←','→']},
+      {label:'Close the job, clear the search', keys:['Esc']},
+    ]},
   ];
 }
 
@@ -16246,9 +16255,9 @@ function _renderShortcutsHelp(){
   body.innerHTML=_shortcutsHelpGroups().map(group=>{
     const rows=group.rows.map(r=>{
       const keys=r.keys.map(k=>`<span class="shortcuts-help-key">${esc(mapKey(k))}</span>`).join('');
-      return `<div class="shortcuts-help-row"><span>${esc(t(r.labelKey))}</span><span class="shortcuts-help-keys">${keys}</span></div>`;
+      return `<div class="shortcuts-help-row"><span>${esc(r.label||t(r.labelKey))}</span><span class="shortcuts-help-keys">${keys}</span></div>`;
     }).join('');
-    return `<div class="shortcuts-help-group-title">${esc(t(group.titleKey))}</div>${rows}`;
+    return `<div class="shortcuts-help-group-title">${esc(group.title||t(group.titleKey))}</div>${rows}`;
   }).join('');
 }
 

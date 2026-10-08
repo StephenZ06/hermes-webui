@@ -51,3 +51,23 @@ def test_schedules_report_last_and_next(store):
     items = _by_key(now=morning + 2 * 3600)
     assert items["digest"]["next"] == int(morning + 3600 + 86400)
     assert items["replies"]["on"] and items["replies"]["next"] == int(morning) - 30 + notify.POLL_EVERY
+
+
+def test_history_counts_each_automation_per_day(store):
+    import time as _time
+
+    from api.job_os import automations
+    from api.job_os.db import connect_job_os
+
+    now = _time.time()
+    conn = connect_job_os()
+    conn.execute("INSERT INTO discovery_runs (id, search_id, status, created_at, finished_at) VALUES ('r1', 's', 'completed', ?, ?)", (int(now) - 3600, int(now) - 3500))
+    conn.execute("INSERT INTO discovery_runs (id, search_id, status, created_at, finished_at) VALUES ('r2', 's', 'failed', ?, ?)", (int(now) - 3000, int(now) - 2900))
+    conn.execute("INSERT INTO email_log (id, kind, status, subject, detail, created_at) VALUES ('e1', 'digest', 'sent', '', '', ?)", (int(now) - 86400 * 2,))
+    conn.commit()
+    conn.close()
+    past = automations.history(now=now)
+    assert len(past["scout"]) == 14 and past["scout"][-1]["state"] == "mixed"
+    assert past["scout"][-1]["ok"] == 1 and past["scout"][-1]["failed"] == 1
+    assert past["digest"][-3]["state"] == "ok" and past["alerts"][-1]["state"] == "none"
+    assert all("history" in item for item in automations.summary(now=now))

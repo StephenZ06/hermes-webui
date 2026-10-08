@@ -14,6 +14,7 @@
 //   Micro.fail(button)           restores the label and shakes the button
 //   Micro.shake(el)              one short horizontal shake (errors)
 //   Micro.invalid(field)         marks a field invalid until it is edited
+//   Micro.arm(button, text)      delete in place: first click asks, second confirms
 //   Micro.ghostToast(toast)      leaves the outgoing toast stacked under the new one
 //   Micro.status(messages)       HTML for a shimmering "working" line that steps
 //                                through messages (Luna scoring, Scout running)
@@ -130,6 +131,44 @@
     const clear = () => field.removeAttribute('aria-invalid');
     field.addEventListener('input', clear, { once: true });
     field.addEventListener('change', clear, { once: true });
+  }
+
+  // ---- delete in place ------------------------------------------------------------
+  // For small deletes (as in Rare UI's delete button): the first click turns
+  // the button into "Delete?"; a second click within a few seconds confirms.
+  // Clicking elsewhere, Esc or waiting puts it back. Returns true on the
+  // confirming click.
+  function disarm(button) {
+    if (!button || button.dataset.miArmed !== '1') return;
+    clearTimeout(button._miArmTimer);
+    document.removeEventListener('pointerdown', button._miArmOutside, true);
+    document.removeEventListener('keydown', button._miArmKey, true);
+    button.innerHTML = button._miArmOriginal;
+    if (button._miArmLabel == null) button.removeAttribute('aria-label'); else button.setAttribute('aria-label', button._miArmLabel);
+    delete button.dataset.miArmed;
+    button.classList.remove('mi-armed');
+    button.removeAttribute('data-mi-hold');
+    button.dispatchEvent(new CustomEvent('mi:released', { bubbles: true }));
+  }
+  function arm(button, text, ms) {
+    if (!button) return true;
+    if (button.dataset.miArmed === '1') { disarm(button); return true; }
+    button._miArmOriginal = button.innerHTML;
+    button._miArmLabel = button.getAttribute('aria-label');
+    button.dataset.miArmed = '1';
+    button.setAttribute('data-mi-hold', '');
+    button.classList.add('mi-armed');
+    button.setAttribute('aria-label', `${text || 'Delete?'} Click again to confirm`);
+    const label = document.createElement('span');
+    label.className = 'mi-label';
+    label.innerHTML = `${button._miArmOriginal}<span>${escapeHtml(text || 'Delete?')}</span>`;
+    button.replaceChildren(label);
+    button._miArmOutside = (event) => { if (!button.contains(event.target)) disarm(button); };
+    button._miArmKey = (event) => { if (event.key === 'Escape') disarm(button); };
+    document.addEventListener('pointerdown', button._miArmOutside, true);
+    document.addEventListener('keydown', button._miArmKey, true);
+    button._miArmTimer = setTimeout(() => disarm(button), ms || 3200);
+    return false;
   }
 
   // ---- toasts stack ------------------------------------------------------------
@@ -294,7 +333,7 @@
     return String(value == null ? '' : value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
   }
 
-  window.Micro = { tabs, scan, busy, done, fail, restore, shake, invalid, ghostToast, status, confetti, hideTip };
+  window.Micro = { tabs, scan, busy, done, fail, restore, shake, invalid, arm, disarm, ghostToast, status, confetti, hideTip };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => scan(document));
   else scan(document);
 }());

@@ -10856,3 +10856,14 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .scout-run-state .mi-status{font-size:12px;}
 .writing-panel .mi-status,.job-os-analysis .mi-status{font-size:13px;}
 @media (prefers-reduced-motion:reduce){.mi-effort i,.composer-reasoning-chip.mi-effort-pop .mi-effort,.mi-upload i,.count-pop{animation:none!important;transition:none!important;}}
+/* Automations: the last 14 days as a row of status ticks. */
+.automation-ticks{display:flex;gap:2px;margin-top:6px;}
+.automation-ticks i{flex:0 0 auto;width:6px;height:12px;border-radius:2px;background:color-mix(in srgb,var(--border2) 70%,transparent);transition:transform .15s ease;}
+.automation-ticks i[data-state="ok"]{background:var(--success,#4ade80);}
+.automation-ticks i[data-state="fail"]{background:var(--error,#f07878);}
+.automation-ticks i[data-state="mixed"]{background:var(--warning,#f5b84b);}
+.automation-ticks i:hover{transform:scaleY(1.25);}
+/* Delete in place: the button asks before it deletes. */
+.mi-armed{width:auto!important;flex-basis:auto!important;padding:0 10px!important;gap:6px;color:var(--error,#f07878)!important;border-color:var(--error,#f07878)!important;background:color-mix(in srgb,var(--error,#f07878) 12%,transparent)!important;font-size:12px;font-weight:650;white-space:nowrap;}
+.mi-armed .mi-label{gap:6px;}
+.scout-search-actions .job-os-btn{white-space:nowrap;flex-shrink:0;}
