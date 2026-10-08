@@ -181,3 +181,40 @@ def test_the_board_scrolls_from_a_bar_at_the_bottom_of_the_view_and_by_dragging_
     assert 650 < bar["y"] + bar["height"] <= 700, bar  # the bar is on screen, at the bottom
     assert panned[0] > 100 and abs(panned[0] - panned[1]) <= 1, panned
     assert not drawer
+
+
+def test_cards_share_one_height_and_a_column_shows_ten_before_it_scrolls():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true && window.JobOSRender", polling=100, timeout=30000)
+            out = page.evaluate("""() => {
+              const jobs = Array.from({length: 12}, (_, i) => ({id: 'j' + i, title: i % 2 ? 'A rather long job title that wraps over two lines' : 'Short',
+                company: 'Acme', status: 'analyzed', has_description: true, revision: 1, source: 'indeed', updated_at: 100 - i,
+                location: i % 3 ? 'Kuala Lumpur' : '', salary_text: i % 4 ? 'RM 5,000' : '', employment_type: i % 5 ? 'Full time' : '',
+                attention: i === 3 ? ['No update in 9 days — follow up?'] : []}));
+              const host = document.createElement('div');
+              host.id = 'jobOsRoot'; host.style.width = '1100px';
+              document.body.appendChild(host);
+              host.innerHTML = window.JobOSRender.shell({capability: {available: true}, jobs, activeView: 'pipeline', pipelineSource: 'all', pipelineMode: 'board',
+                board: {columns: [{key: 'new', label: 'New', jobs}, {key: 'applied', label: 'Applied', jobs: [Object.assign({}, jobs[0], {id: 'x', status: 'submitted'})]}], sources: {}}});
+              const list = host.querySelector('.pipe-col[data-col="new"] .pipe-col-cards');
+              const cards = [...list.querySelectorAll('.pipe-card')];
+              const heights = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().height)));
+              const h = cards[0].getBoundingClientRect().height;
+              const btn = cards[0].querySelector('.pipe-card-actions .job-os-btn');
+              const applied = host.querySelector('.pipe-col[data-col="applied"] .pipe-card-actions .job-os-btn');
+              const result = {heights: [...heights], shown: Math.round(list.clientHeight), ten: Math.round(10 * h + 90), scrolls: list.scrollHeight > list.clientHeight + 10,
+                na: cards[0].querySelectorAll('.pipe-fact.is-na').length, buttonFills: Math.round(btn.getBoundingClientRect().width) === Math.round(btn.parentElement.getBoundingClientRect().width),
+                appliedButton: applied.textContent, colours: getComputedStyle(btn).borderColor !== getComputedStyle(applied).borderColor};
+              host.remove();
+              return result;
+            }""")
+        finally:
+            browser.close()
+    assert len(out["heights"]) == 1, out  # long titles, missing facts and a follow-up note don't change a card's height
+    assert out["shown"] == out["ten"] and out["scrolls"]
+    assert out["na"] == 3 and out["buttonFills"] and out["appliedButton"] == "Open job" and out["colours"]

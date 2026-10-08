@@ -37,7 +37,7 @@
   // Classes the page adds at run time (entry, selection, drag, drawn previews):
   // a patch keeps them where the new HTML doesn't say otherwise.
   const RUNTIME_CLASSES = ['is-entering', 'is-selected', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
-    'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed'];
+    'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning'];
   const keyOf = (node) => (node.nodeType === 1 ? node.getAttribute('data-key') || node.id || null : null);
   function morphChildren(from, to) {
     const old = [...from.childNodes];
@@ -1012,6 +1012,14 @@
     board.addEventListener('scroll', () => { if (Math.abs(bar.scrollLeft - board.scrollLeft) > 1) bar.scrollLeft = board.scrollLeft; }, {passive: true});
     bar.addEventListener('scroll', () => { if (Math.abs(board.scrollLeft - bar.scrollLeft) > 1) board.scrollLeft = bar.scrollLeft; }, {passive: true});
     if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(board);
+    // A column's own scrollbar shows while it scrolls, then fades away.
+    board.addEventListener('scroll', (event) => {
+      const list = event.target.classList && event.target.classList.contains('pipe-col-cards') ? event.target : null;
+      if (!list) return;
+      list.classList.add('is-scrolling');
+      clearTimeout(list._scrollFade);
+      list._scrollFade = setTimeout(() => list.classList.remove('is-scrolling'), 900);
+    }, {capture: true, passive: true});
     let pan = null;
     board.addEventListener('pointerdown', (event) => {
       if (event.pointerType !== 'mouse' || event.button !== 0 || dragging) return;

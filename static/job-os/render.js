@@ -418,23 +418,21 @@
     const src = sourceOf(job);
     const where = place(job);
     const work = [WORKPLACE[job.workplace], job.employment_type].filter(Boolean).join(' · ');
-    const facts = [
-      where ? `<span class="pipe-fact">${icon('pin', 14)}<span>${esc(where)}</span></span>` : '',
-      job.salary_text ? `<span class="pipe-fact">${icon('pay', 14)}<span>${esc(job.salary_text)}</span></span>` : '',
-      work ? `<span class="pipe-fact">${icon('briefcase', 14)}<span>${esc(work)}</span></span>` : '',
-    ].join('');
-    const primary = cardPrimary(job);
+    // Every card has the same three facts, N/A where a posting doesn't say, so all cards are one height.
+    const fact = (iconName, text, label) => `<span class="pipe-fact${text ? '' : ' is-na'}" title="${esc(text ? '' : `${label} not given`)}">${icon(iconName, 14)}<span>${esc(text || 'N/A')}</span></span>`;
+    const facts = fact('pin', where, 'Location') + fact('pay', job.salary_text, 'Salary') + fact('briefcase', work, 'Job type');
+    const primary = cardPrimary(job) || `<button type="button" class="job-os-btn small" data-job-id="${esc(job.id)}">Open job</button>`;
+    const attention = (job.attention || [])[0];
     const applied = job.applied ? ` · applied ${esc(when(job.applied.at))}` : '';
     // A job Luna is tailoring stays put until she is done.
     const movable = job.status !== 'tailoring';
     return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><span class="pipe-card-title"><strong>${esc(job.title)}</strong><span>${esc(job.company || 'Company not set')}</span></span>${fitRing(job.analysis, 'small')}</span>
-        ${facts ? `<span class="pipe-facts">${facts}</span>` : ''}
+        <span class="pipe-facts">${facts}</span>
       </button>
-      ${(job.attention || []).map((reason) => `<p class="board-attention">${esc(reason)}</p>`).join('')}
-      <div class="pipe-card-meta"><span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span>${['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : ''}<small>${esc(when(job.updated_at))}${applied}</small></div>
-      ${primary ? `<div class="pipe-card-actions">${primary}</div>` : ''}</article>`;
+      <div class="pipe-card-meta"><span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span>${['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : ''}${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}<small>${esc(when(job.updated_at))}${applied}</small></div>
+      <div class="pipe-card-actions">${primary}</div></article>`;
   }
   // The site tab and the search box narrow what is shown; both work on what is loaded.
   function matchesQuery(job, query) {

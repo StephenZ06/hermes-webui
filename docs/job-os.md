@@ -158,6 +158,12 @@ again and Scout drops the repeats.
   board alone; the board scrolls at its edges.
 - **Scrolling sideways:** a scrollbar pinned to the bottom of the view, or
   press on empty board space and drag left or right.
+- **Cards** are all one height: the title keeps two lines, place, salary and
+  job type show *N/A* when the posting doesn't say, a follow-up note is a
+  warning icon (hover for the text), and every card ends in one full-width
+  button in its column's colour (*Open job* where there is no next step). A
+  column shows ten cards, then scrolls; its thin scrollbar shows only while
+  scrolling.
 - **List:** the same jobs sorted by newest or best match; the side-panel stage
   filters and the dashboard's *Active work* and *Applied* tiles open it.
 - Clicking a card opens a drawer with the details, the score, the
