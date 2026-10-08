@@ -180,11 +180,13 @@
   // Job sites come from the server (api/job_os/apify.py SITES); these are the
   // names to fall back on before it answers.
   let SITES = [['indeed', 'Indeed'], ['linkedin', 'LinkedIn']];
-  const SOURCE_LABEL = {indeed: 'Indeed', linkedin: 'LinkedIn', manual: 'Manual'};
+  const SOURCE_LABEL = {indeed: 'Indeed', linkedin: 'LinkedIn', remoteid: 'remote.id', manual: 'Manual'};
   let SITE_COUNTRIES = {}; // site -> countries it covers (absent = any)
+  let SITE_DIRECT = new Set(['remoteid']); // read straight from the site, with or without Apify
   function useSites(list) {
     if (!Array.isArray(list) || !list.length) return;
     SITES = list.map((site) => [site.key, site.name]);
+    SITE_DIRECT = new Set(list.filter((site) => site.key !== 'indeed' && site.needs_apify === false).map((site) => site.key));
     SITE_COUNTRIES = Object.fromEntries(list.filter((site) => site.countries).map((site) => [site.key, site.countries]));
     list.forEach((site) => { SOURCE_LABEL[site.key] = site.name; });
   }
@@ -310,7 +312,7 @@
     return section('apify', 'Apify', 'Runs the job-site scrapers on Apify’s servers instead of this machine, so Indeed can’t block your address, LinkedIn becomes searchable, and every job arrives with its full description.', `
       ${token}
       ${toggle('apify.enabled', 'Search job sites through Apify', v('apify.enabled'), ap.token ? 'Scout searches run on Apify instead of Firecrawl; needed for LinkedIn' : 'Connect a token first')}
-      <div class="job-os-grid">${(ap.sites || []).map((site) => selectField(`apify.${site.key}_actor`, `${site.name} scraper`, v(`apify.${site.key}_actor`),
+      <div class="job-os-grid">${(ap.sites || []).filter((site) => (site.actors || []).length).map((site) => selectField(`apify.${site.key}_actor`, `${site.name} scraper`, v(`apify.${site.key}_actor`),
         site.actors.map((a) => [a.actor, `${a.actor} — ${a.price}`]))).join('')}${numberField('apify.results_per_city', 'Results per search and city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
       <p class="job-os-card-note apify-cost">Each job title, site and city in a search is one run, billed per job returned (prices above, free plan). With Indeed at ${perCity} results: about <strong>$${cost}</strong> a run. Scrapers that can drop off-title or already-saved jobs on their side (the title filter, LinkedIn’s valig scraper) charge only for what Scout keeps.</p>`);
   }
@@ -730,7 +732,8 @@
     const run = latestRun(state, search.id);
     const active = run && ACTIVE_RUN.includes(run.status);
     const viaApify = !!(state.apify && state.apify.active);
-    const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy');
+    // remote.id is read directly, so a search with it can always run.
+    const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy') || [...SITE_DIRECT].some((s) => (search.sites || []).includes(s));
     const schedOn = state.schedule && state.schedule.enabled;
     const schedule = !search.enabled ? 'Paused' : !schedOn ? 'Schedule off' : search.next_run_at ? `Next ${until(search.next_run_at)}` : 'Scheduled';
     const fact = (label, value, muted) => `<div><dt>${label}</dt><dd${muted ? ' class="is-muted"' : ''}>${value}</dd></div>`;
@@ -772,10 +775,11 @@
         <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
         <fieldset class="job-os-field wide scout-sites"><legend>Job sites</legend><div class="scout-site-options">${SITES.map(([key, text]) => {
           const covered = !SITE_COUNTRIES[key] || !form.country || SITE_COUNTRIES[key].includes(form.country);
-          const note = !covered ? 'not in this country' : key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : 'through Apify';
+          const direct = SITE_DIRECT.has(key);
+          const note = !covered ? 'not in this country' : direct ? 'remote jobs, read directly' : key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : 'through Apify';
           const checked = (form.sites || ['indeed']).includes(key) && covered;
-          return `<label class="scout-site${!covered || (key !== 'indeed' && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
-        }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than Indeed run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
+          return `<label class="scout-site${!covered || (key !== 'indeed' && !direct && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
+        }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than Indeed and remote.id run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
       </div>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
       <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>

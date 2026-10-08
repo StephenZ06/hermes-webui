@@ -370,9 +370,13 @@ def adapter(site: str, actor: str) -> Adapter:
 
 def sites_payload() -> list[dict]:
     """Sites and their scrapers, for the Scout form and Settings."""
+    from api.job_os import remoteid
+
     return [{"key": site, "name": name, "needs_apify": site != "indeed", "countries": list(countries) if countries else None,
              "actors": [{"actor": a, "price": ADAPTERS[a].price} for a in actors]}
-            for site, (name, actors, countries) in SITES.items()]
+            for site, (name, actors, countries) in SITES.items()] + [
+        # Read straight from the site (remoteid.py): no scraper to choose, no Apify needed.
+        {"key": remoteid.SITE, "name": remoteid.NAME, "needs_apify": False, "countries": None, "actors": []}]
 
 
 # ---- usage ----------------------------------------------------------------------

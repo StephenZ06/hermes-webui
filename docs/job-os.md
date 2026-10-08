@@ -78,6 +78,24 @@ checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
   200), all with full descriptions; quoting the phrase did not narrow it.
   valig's LinkedIn scraper with the title filter `analyst` returned 53 for
   "IT Analyst", all analyst titles.
+
+### remote.id (remotefreelance.id)
+
+An Indonesian board of remote jobs gathered from JobStreet, LinkedIn, SEEK and
+Upwork. It has no Apify scraper, so Scout reads it directly (`remoteid.py`),
+with or without Apify and without Firecrawl:
+
+- `https://remotefreelance.id/jobs?q=<title>&page=<n>` per job title (up to 3
+  pages), then each job page, one a second. robots.txt allows `/jobs`; nothing
+  else is read (the reader refuses other hosts and paths).
+- Each find is labelled **remote.id** and saved under its source site's own
+  link (`id.jobstreet.com/job/<id>`, `linkedin.com/jobs/view/<id>`,
+  `upwork.com/jobs/~<id>`, SEEK's job link), so a LinkedIn job a LinkedIn
+  search already found is skipped as known (and the other way round).
+  Upwork gigs are kept (company "Upwork client" when the page names none).
+- The search's country is not applied (every job is remote); its titles,
+  title filter, related titles and date window are. Pay, type, place and the
+  posted date (Indonesian month names) come from the job page.
 - **Failures:** one city failing keeps the others; every city failing fails
   the run with Apify's reason (refused token, out of credit, no answer).
 - **More sites or scrapers:** add an `Adapter` (input builder, record mapping,

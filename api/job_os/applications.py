@@ -42,8 +42,9 @@ COLUMNS = (
 COLUMN_KEYS = tuple(key for key, _label, _statuses in COLUMNS)
 def _sources() -> tuple[str, ...]:
     from api.job_os.apify import SITES
+    from api.job_os.remoteid import SITE as REMOTE_ID
 
-    return (*SITES, "manual")
+    return (*SITES, REMOTE_ID, "manual")
 
 
 SOURCES = _sources()

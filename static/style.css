@@ -11042,3 +11042,5 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
   .job-os-job-card>.job-os-job-main>.job-os-chips{grid-row:3;grid-column:2/-1;flex-wrap:wrap;margin-top:5px;}
   .job-os-job-card>.job-os-badge{grid-row:1;grid-column:3;justify-self:end;}
 }
+/* remote.id finds keep the site's own lower-case name. */
+.pipe-source[data-source="remoteid"]{background:color-mix(in srgb,#f472b6 15%,transparent);color:#f472b6;text-transform:none;letter-spacing:.01em;}

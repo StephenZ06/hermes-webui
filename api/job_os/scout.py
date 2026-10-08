@@ -35,7 +35,7 @@ from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
 
-from api.job_os import apify, indeed, relevance
+from api.job_os import apify, indeed, relevance, remoteid
 from api.job_os.db import connect_job_os
 from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
                                  looks_like_single_posting)
@@ -62,7 +62,10 @@ MAX_ERRORS = 20
 MAX_LOCATIONS = 10
 # Job sites a search can cover (apify.SITES). Indeed can also be read directly;
 # the others only through Apify (LinkedIn refuses a self-hosted reader outright).
-JOB_SITES = tuple(apify.SITES)
+# remote.id is always read directly (remoteid.py), with or without Apify.
+JOB_SITES = (*apify.SITES, remoteid.SITE)
+SITE_NAMES = {**apify.SITE_NAMES, remoteid.SITE: remoteid.NAME}
+_remoteid_fetch = remoteid.fetch  # tests replace it
 _EMPTY_COUNTS = {"queries": 0, "found": 0, "candidates": 0, "scraped": 0, "saved": 0,
                  "duplicates": 0, "not_postings": 0, "filtered": 0, "blocked": 0, "unsafe": 0, "closed": 0, "errors": 0}
 _COMPANY_SUFFIX = re.compile(r"\b(inc|incorporated|ltd|limited|llc|plc|gmbh|ag|sa|bv|co|corp|corporation|company|pty)\b\.?", re.I)
@@ -175,8 +178,8 @@ def normalize_search(payload: dict) -> dict:
     sites = [str(s).strip().lower() for s in _split(payload.get("sites"), limit=len(JOB_SITES), field="sites")] or ["indeed"]
     unknown = [s for s in sites if s not in JOB_SITES]
     if unknown:
-        raise ScoutError(f"Unknown job site: {unknown[0][:40]}. Choose {' or '.join(apify.SITE_NAMES.values())}.")
-    elsewhere = [apify.SITE_NAMES[s] for s in sites if not apify.covers(s, country)]
+        raise ScoutError(f"Unknown job site: {unknown[0][:40]}. Choose {' or '.join(SITE_NAMES.values())}.")
+    elsewhere = [SITE_NAMES[s] for s in sites if s != remoteid.SITE and not apify.covers(s, country)]
     if elsewhere:
         raise ScoutError(f"{elsewhere[0]} doesn't cover {indeed.country_name(country)}")
     return {
@@ -698,27 +701,27 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         scout_settings = all_settings["scout"]
         max_results = int(scout_settings["max_results_per_search"])
         blocked = {company_key(name) for name in scout_settings.get("blocked_companies") or []}
-        client = _PacedClient(client_factory())
         if search["country"] not in indeed.COUNTRIES:
             finish("failed", "Choose the Indeed country for this search")
             return
         country_host = indeed.country_host(search["country"])
         apify_settings = all_settings["apify"]
         via_apify = bool(apify_settings["enabled"])
-        if via_apify and not apify.token():
+        sites = search["sites"]
+        direct = remoteid.SITE in sites  # read straight from the site, Apify or not
+        # Sites other than Indeed and remote.id are only reachable through Apify.
+        apify_sites = [s for s in sites if s != remoteid.SITE] if via_apify else []
+        if apify_sites and not apify.token():
             finish("failed", "Apify is on but not connected; connect it in Settings → Apify or turn it off")
             return
-        sites = search["sites"]
-        # Sites other than Indeed are only reachable through Apify.
-        apify_sites = list(sites) if via_apify else []
-        unreachable = [s for s in sites if s != "indeed" and not via_apify]
+        unreachable = [s for s in sites if s not in ("indeed", remoteid.SITE) and not via_apify]
         if unreachable and sites == unreachable:
-            finish("failed", f"{' and '.join(apify.SITE_NAMES[s] for s in unreachable)} need Apify; connect it in Settings → Apify")
+            finish("failed", f"{' and '.join(SITE_NAMES[s] for s in unreachable)} need Apify; connect it in Settings → Apify")
             return
         for site in unreachable:
-            note_error(apify.SITE_NAMES[site], "skipped: needs Apify (Settings → Apify)")
-        names = ", ".join(apify.SITE_NAMES[s] for s in sites if s not in unreachable)
-        save("searching", f"Searching {names}{' through Apify' if via_apify else ''}", started_at=int(time.time()))
+            note_error(SITE_NAMES[site], "skipped: needs Apify (Settings → Apify)")
+        names = ", ".join(SITE_NAMES[s] for s in sites if s not in unreachable)
+        save("searching", f"Searching {names}{' through Apify' if apify_sites else ''}", started_at=int(time.time()))
 
         if search["strict_titles"] and not search["related_titles"]:
             save(detail="Luna is listing titles related to yours")
@@ -746,11 +749,73 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             else:
                 job = replace(
                     normalize_job_input({**posting, "canonical_url": canonical_url, "source": source,
-                                        "country": indeed.country_name(search["country"])}),
+                                        "country": posting.get("country") or indeed.country_name(search["country"])}),
                     search_id=search["id"], run_id=run_id)
                 record = create_job(job, status=JobStatus.SCRAPED)
                 counts["saved"] += 1
                 new_ids.append(record.id)
+
+        if direct:
+            # remote.id: its results pages list job pages, each read once (a second
+            # apart). A job is stored under its source site's link, so one already
+            # found through a LinkedIn search counts as known, not saved twice.
+            oldest = _oldest_posted(search["posted_within_days"])
+            pages: set[str] = set()
+            for query in search["queries"]:
+                if _cancel_requested(run_id):
+                    finish("cancelled", "Cancelled")
+                    return
+                counts["queries"] += 1
+                save(detail=f"Searching remote.id “{query}”")
+                links, problems = remoteid.search(query, limit=max_results, seen_pages=pages, fetch_page=_remoteid_fetch,
+                                                  cancelled=lambda: _cancel_requested(run_id))
+                for problem in problems:
+                    note_error(f"remote.id “{query}”", problem)
+                for index, link in enumerate(links, start=1):
+                    if _cancel_requested(run_id):
+                        finish("cancelled", "Cancelled")
+                        return
+                    counts["found"] += 1
+                    try:
+                        posting = remoteid.read(link, fetch_page=_remoteid_fetch)
+                    except remoteid.RemoteIdError as error:
+                        note_error("remote.id", error)
+                        continue
+                    if posting is None:
+                        counts["not_postings"] += 1
+                        continue
+                    if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
+                        counts["filtered"] += 1  # older than the search's window
+                        continue
+                    try:
+                        canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
+                    except JobValidationError as error:
+                        note_error("remote.id", error)
+                        continue
+                    if canonical in seen:
+                        continue
+                    seen.add(canonical)
+                    if canonical in known:
+                        counts["duplicates"] += 1  # e.g. a LinkedIn job a LinkedIn search already found
+                        continue
+                    counts["scraped"] += 1
+                    origin, origin_name = posting.pop("origin"), posting.pop("origin_name")
+                    try:
+                        keep({**posting, "source_id": origin}, canonical, remoteid.SITE)
+                    except DuplicateJobError:
+                        counts["duplicates"] += 1
+                    except JobValidationError as error:
+                        note_error(f"remote.id ({origin_name})", error)
+                    save(detail=f"Read {index} of {len(links)} remote.id jobs for “{query}” · {counts['saved']} new")
+            if not apify_sites and "indeed" not in sites:
+                counts["candidates"] = counts["scraped"]
+                if not counts["found"] and counts["errors"]:
+                    finish("failed", f"remote.id could not be read: {errors[-1]['message'] if errors else 'unknown error'}")
+                    return
+                _mark_ran(search["id"])
+                note = _after_run(new_ids)
+                finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+                return
 
         if apify_sites:
             # One actor run per site and city returns finished postings
@@ -768,7 +833,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     runs += 1
                     counts["queries"] += 1
                     keywords = query + (" remote" if search["remote_only"] else "")
-                    label = f"{apify.SITE_NAMES[site]} “{query}”{' in ' + location if location else ''}"
+                    label = f"{SITE_NAMES[site]} “{query}”{' in ' + location if location else ''}"
                     save(detail=f"Apify is searching {label}")
                     context = {"country": search["country"], "country_name": country_name, "indeed_host": country_host,
                                "keywords": keywords, "location": location, "limit": int(apify_settings["results_per_city"]),
@@ -813,7 +878,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                         except DuplicateJobError:
                             counts["duplicates"] += 1
                         except JobValidationError as error:
-                            note_error(apify.SITE_NAMES[site], error)
+                            note_error(SITE_NAMES[site], error)
                     save(detail=f"Searched {label} · {counts['saved']} new")
             counts["candidates"] = counts["scraped"]
             if failures and failures == runs:
@@ -854,6 +919,14 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             candidates.append(safe)
 
         from api.job_os.firecrawl import FirecrawlError
+
+        if "indeed" not in sites:
+            # Only Apify sites reach here without Apify on (all reported above as skipped).
+            _mark_ran(search["id"])
+            note = _after_run(new_ids)
+            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+            return
+        client = _PacedClient(client_factory())
 
         # Every title and city gets a fair share of the quota, so the first one
         # cannot crowd out the rest; leftovers from thin ones go to the next.

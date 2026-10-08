@@ -70,7 +70,7 @@ def test_scout_search_lifecycle_and_blocked_run():
     assert "Firecrawl" in banner and run_disabled, "Run waits for a ready Firecrawl"
     assert "Delete search?" in asked
     assert kept == "python backend"
-    assert sites == {"indeed": True, "linkedin": False, "bayt": False}, "a new search starts on Indeed"
+    assert sites == {"indeed": True, "linkedin": False, "bayt": False, "remoteid": False}, "a new search starts on Indeed"
     assert all(word in chips for word in ("Malaysia", "Kuala Lumpur", "Penang", "Last 7 days"))
 
 
