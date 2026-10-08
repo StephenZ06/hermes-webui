@@ -10828,3 +10828,31 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
   .mi-status.is-stepping .mi-status-line:first-child{opacity:1;}
   details::details-content{transition:none!important;}
 }
+/* Tier 2: the reasoning-effort meter, upload progress, counts that pop in,
+   and the "working" line inside Jobs' busy states. */
+.mi-effort{display:inline-flex;align-items:flex-end;gap:2px;height:11px;margin:0 1px;}
+.mi-effort i{display:block;width:3px;border-radius:1.5px;background:currentColor;opacity:.25;transform-origin:bottom;transition:opacity .22s ease,transform .32s cubic-bezier(.34,1.56,.64,1);}
+.mi-effort i:nth-child(1){height:4px;}.mi-effort i:nth-child(2){height:5.5px;}.mi-effort i:nth-child(3){height:7px;}.mi-effort i:nth-child(4){height:9px;}.mi-effort i:nth-child(5){height:11px;}
+.mi-effort i:nth-child(2){transition-delay:30ms;}.mi-effort i:nth-child(3){transition-delay:60ms;}.mi-effort i:nth-child(4){transition-delay:90ms;}.mi-effort i:nth-child(5){transition-delay:120ms;}
+.mi-effort[data-level="1"] i:nth-child(-n+1),.mi-effort[data-level="2"] i:nth-child(-n+2),.mi-effort[data-level="3"] i:nth-child(-n+3),
+.mi-effort[data-level="4"] i:nth-child(-n+4),.mi-effort[data-level="5"] i:nth-child(-n+5){opacity:1;transform:scaleY(1.08);}
+.mi-effort[data-level="0"] i{opacity:.2;transform:scaleY(.7);}
+.composer-reasoning-chip.mi-effort-pop .mi-effort{animation:mi-effort-pop .36s cubic-bezier(.34,1.56,.64,1);}
+@keyframes mi-effort-pop{40%{transform:scale(1.2);}}
+.reasoning-option{display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.reasoning-option .mi-effort{color:var(--muted);}
+.reasoning-option.selected .mi-effort{color:var(--accent-text,var(--accent));}
+.mi-upload{position:absolute;left:14px;right:14px;bottom:12px;height:4px;border-radius:2px;background:color-mix(in srgb,var(--border2) 70%,transparent);overflow:hidden;}
+.mi-upload i{display:block;height:100%;width:0;border-radius:2px;background:var(--accent);animation:mi-upload-fill 2.4s cubic-bezier(.1,.6,.3,1) forwards;}
+@keyframes mi-upload-fill{to{width:88%;}}
+.mi-upload.is-done i{width:100%;animation:none;background:var(--success,#4ade80);transition:width .25s ease;}
+.mi-upload.is-failed i{animation:none;width:100%;background:var(--error,#f07878);}
+.resume-drop{position:relative;}
+.resume-drop strong .mi-tick{display:inline-block;vertical-align:-2px;color:var(--success,#4ade80);}
+.count-pop{display:inline-block;animation:count-pop .45s cubic-bezier(.22,1,.36,1);}
+@keyframes count-pop{from{filter:blur(4px);opacity:.3;transform:translateY(5px);}}
+.pipe-busy .mi-status{width:100%;justify-content:center;color:var(--stage,var(--accent));}
+.analysing-chip.mi-status{padding:0 4px;}
+.scout-run-state .mi-status{font-size:12px;}
+.writing-panel .mi-status,.job-os-analysis .mi-status{font-size:13px;}
+@media (prefers-reduced-motion:reduce){.mi-effort i,.composer-reasoning-chip.mi-effort-pop .mi-effort,.mi-upload i,.count-pop{animation:none!important;transition:none!important;}}

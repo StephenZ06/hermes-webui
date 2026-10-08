@@ -77,3 +77,29 @@ def test_tooltips_replace_the_native_one_and_toasts_stack():
     assert shown == ["Helpful hint", False], "the native tooltip is parked while the themed one shows"
     assert restored == "Helpful hint"
     assert ghosts == [True]
+
+
+def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_line():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            out = page.evaluate("""() => {
+              document.getElementById('composerReasoningWrap').style.display = '';
+              _applyReasoningChip('low');
+              const chip = document.querySelector('#composerReasoningChip .mi-effort').dataset.level;
+              _applyReasoningChip('high', {supported_efforts: ['low', 'medium', 'high']});
+              const meters = [...document.querySelectorAll('#composerReasoningDropdown .reasoning-option')]
+                .map((o) => [o.dataset.effort, o.querySelector('.mi-effort') && o.querySelector('.mi-effort').dataset.level, o.textContent]);
+              const html = window.JobOSRender.shell({capability: {available: true}, jobs: [], activeView: 'pipeline', pipelineSource: 'all', pipelineMode: 'board',
+                board: {columns: [{key: 'favorite', label: 'Favorite', jobs: [{id: 't', title: 'T', status: 'tailoring', revision: 1, source: 'indeed'}]}], sources: {}}});
+              const host = document.createElement('div'); host.innerHTML = html;
+              const line = host.querySelector('.pipe-busy .mi-status');
+              return {chip, after: document.querySelector('#composerReasoningChip .mi-effort').dataset.level, meters,
+                      steps: line ? [...line.querySelectorAll('.mi-status-line')].map((l) => l.textContent) : null};
+            }""")
+        finally:
+            browser.close()
+    assert out["chip"] == "2" and out["after"] == "4"
+    assert ["high", "4", "High"] in out["meters"] and ["", "0", "Default"] in out["meters"]
+    assert out["steps"] == ["Tailoring your resume", "Matching the posting", "Checking the numbers"]

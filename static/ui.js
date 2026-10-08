@@ -5604,6 +5604,14 @@ function _applyReasoningOptions(supportedEfforts){
   const supported=new Set(Array.isArray(supportedEfforts)?supportedEfforts:[]);
   dd.querySelectorAll('.reasoning-option').forEach(function(opt){
     const effort=opt.dataset.effort;
+    // Each choice shows its level as a small bar meter (micro.js styles), added once.
+    if(typeof opt.querySelector==='function'&&typeof document!=='undefined'&&!opt.querySelector('.mi-effort')){
+      const label=document.createElement('span');label.textContent=opt.textContent;
+      const meter=document.createElement('span');meter.className='mi-effort';meter.setAttribute('aria-hidden','true');
+      meter.dataset.level=String({minimal:1,low:2,medium:3,high:4,xhigh:5,max:5}[effort]||0);
+      meter.innerHTML='<i></i><i></i><i></i><i></i><i></i>';
+      opt.replaceChildren(label,meter);
+    }
     // 'none' (turn thinking off) and '' (Default = clear override, provider
     // default = thinking on) are meta-options outside the effort ladder. They
     // are always shown so a thinking-toggle-only model (GLM-4.5–5.1 on native
@@ -5671,6 +5679,14 @@ function _applyReasoningChip(eff){
   if(chip){
     const inactive=!effort||effort==='none';
     chip.classList.toggle('inactive',inactive);
+    // The bar meter fills to the level (micro.js styles); a change pops the chip once.
+    const level={minimal:1,low:2,medium:3,high:4,xhigh:5,max:5}[effort]||0;
+    const meter=typeof chip.querySelector==='function'?chip.querySelector('.mi-effort'):null;
+    if(meter){
+      const before=meter.dataset.level;
+      meter.dataset.level=String(level);
+      if(before!==undefined&&before!==String(level)){chip.classList.remove('mi-effort-pop');void chip.offsetWidth;chip.classList.add('mi-effort-pop');}
+    }
     const labelText='Reasoning effort: '+text;
     chip.title=labelText;
     chip.setAttribute('aria-label',labelText);

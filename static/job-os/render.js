@@ -73,6 +73,9 @@
     const text = String(status || '').replace(/_/g, ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
+  // The shared "working" line (micro.js): a shimmering status that steps through
+  // what Luna or Scout is doing. Plain text if micro.js did not load.
+  const statusLine = (messages, cls) => (window.Micro ? window.Micro.status(messages, cls) : `<span class="${cls || ''}">${esc([].concat(messages)[0])}</span>`);
   const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}">${esc(statusLabel(status))}</span>`;
   function until(epochSeconds) {
     const seconds = Number(epochSeconds || 0) - Math.floor(Date.now() / 1000);
@@ -412,7 +415,7 @@
       : `<button type="button" class="job-os-btn small" data-job-os-action="card-details" data-job-id="${id}">Fetch details</button>`;
     if (['scraped', 'analyzed', 'shortlisted'].includes(st)) return job.has_description
       ? `<button type="button" class="job-os-btn small" data-job-os-action="card-tailor" data-job-id="${id}">Tailor resume</button>` : '';
-    if (st === 'tailoring') return '<span class="pipe-busy"><span class="auto-dots" aria-hidden="true"><i></i><i></i><i></i></span>Tailoring</span>';
+    if (st === 'tailoring') return `<span class="pipe-busy">${statusLine(['Tailoring your resume', 'Matching the posting', 'Checking the numbers'])}</span>`;
     if (st === 'resume_ready') return `<button type="button" class="job-os-btn small" data-job-os-action="studio-open" data-job-id="${id}">Review resume</button>`;
     if (['application_ready', 'awaiting_approval', 'applying'].includes(st)) return `<button type="button" class="job-os-btn primary small" data-job-os-action="board-apply" data-job-id="${id}" data-url="${esc(job.canonical_url)}">Apply</button>`;
     return '';
@@ -670,7 +673,7 @@
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? `<span class="job-os-chip muted analysing-chip">Scoring ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? statusLine([`Scoring ${busy} job${busy === 1 ? '' : 's'}…`, 'Reading postings…'], 'analysing-chip') : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -692,7 +695,7 @@
       .map(([key, label]) => `<span class="scout-stat${key === 'saved' && c.saved ? ' is-new' : ''}"><strong data-count-key="scout-${esc(run.id)}-${key}">${Number(c[key] || 0)}</strong>${label}</span>`).join('');
     const blocked = c.blocked ? `<span class="scout-stat"><strong>${Number(c.blocked)}</strong>Blocked</span>` : '';
     const errors = c.errors ? `<span class="scout-stat is-error"><strong>${Number(c.errors)}</strong>Errors</span>` : '';
-    return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
+    return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${active ? statusLine([RUN_LABELS[run.status] || run.status]) : esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
   }
   function runPanel(run, search) {
     if (!run) {
@@ -802,7 +805,7 @@
   }
   // ---- Job detail -------------------------------------------------------------
   function writingPanel(text) {
-    return `<div class="writing-panel" role="status"><span class="writing-pen" aria-hidden="true"></span><div><strong>${esc(text)}</strong><div class="writing-lines"><i></i><i></i><i></i><i></i></div></div></div>`;
+    return `<div class="writing-panel" role="status"><span class="writing-pen" aria-hidden="true"></span><div>${statusLine([text])}<div class="writing-lines"><i></i><i></i><i></i><i></i></div></div></div>`;
   }
   const DOC_STATUS = {pending: 'Queued', running: 'Writing', ready: 'Ready', needs_review: 'Needs review', failed: 'Failed'};
   function docStatus(status) { return `<span class="doc-status" data-status="${esc(status)}">${esc(DOC_STATUS[status] || status)}</span>`; }
@@ -902,7 +905,7 @@
         <span class="match-count">${at + 1} <small>of ${queue.length}</small></span>${nav(queue[at + 1], 'Next job', 'next')}</div>
       <div class="match-progress" aria-hidden="true"><i style="width:${Math.round(100 * (at + 1) / queue.length)}%"></i></div>
       <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
-        ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? 'Luna is reading the job against your resume…' : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
+        ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
         ${done && job ? `<div class="analysis-cols">${job.analysis.strengths && job.analysis.strengths.length ? `<div><h4>Matches</h4>${list(job.analysis.strengths, 'is-good')}</div>` : ''}${job.analysis.gaps && job.analysis.gaps.length ? `<div><h4>Missing</h4>${list(job.analysis.gaps, 'is-gap')}</div>` : ''}</div>` : ''}
         <div class="job-os-actions">${actions}</div>
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
@@ -970,7 +973,7 @@
   function analysisPanel(job) {
     const a = job.analysis;
     if (!a) return '';
-    if (analysing(job)) return `<div class="job-os-analysis is-busy">${emptyRing(' large is-busy', '…')}<div><strong>Luna is scoring your resume against this job…</strong><div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>`;
+    if (analysing(job)) return `<div class="job-os-analysis is-busy">${emptyRing(' large is-busy', '…')}<div>${statusLine(['Luna is reading the posting…', 'Comparing it with your resume…', 'Scoring the match…'])}<div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>`;
     if (a.status === 'failed') return `<div class="job-os-analysis is-failed">${emptyRing(' large is-failed', '!')}<div><strong>Analysis failed</strong><p>${esc(a.error || '')}</p></div></div>`;
     const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
     return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${band(a.fit_score)[1]}">${esc(band(a.fit_score)[2])} · ${Number(a.fit_score)}%</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
