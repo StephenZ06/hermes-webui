@@ -158,10 +158,12 @@ again and Scout drops the repeats.
   board alone; the board scrolls at its edges.
 - **Scrolling sideways:** a scrollbar pinned to the bottom of the view, or
   press on empty board space and drag left or right.
-- **Cards** are all one height: the title keeps two lines, place, salary and
-  job type show *N/A* when the posting doesn't say, a follow-up note is a
-  warning icon (hover for the text), and every card ends in one full-width
-  button in its column's colour (*Open job* where there is no next step). A
+- **Cards** are compact and all one height: the title (two lines kept),
+  company and site, place and when, pay and job type side by side (*N/A*
+  when the posting doesn't say; pay shortened, e.g. "/mo"), and one
+  full-width capitalised button in its column's colour (*Open job* where
+  there is no next step). A follow-up note is a warning icon by the time
+  (hover for the text). Columns have a 2px outline in their colour. A
   column shows ten cards, then scrolls; its thin scrollbar shows only while
   scrolling.
 - **List:** the same jobs sorted by newest or best match; the side-panel stage

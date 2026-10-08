@@ -36,7 +36,7 @@ def _drag(page, card, column, *, refresh_midway=False):
     refresh_midway, the page refreshes while the card is in the air."""
     page.evaluate("""([card, column]) => { const target = document.querySelector(`.pipe-col[data-col="${column}"]`);
       target.scrollIntoView({block: 'nearest', inline: 'end'}); document.querySelector(card).scrollIntoView({block: 'nearest', inline: 'nearest'}); }""", [card, column])
-    src = page.locator(f"{card} .pipe-card-title").bounding_box()
+    src = page.locator(f"{card} .pipe-card-name").bounding_box()
     page.mouse.move(src["x"] + 10, src["y"] + 5)
     page.mouse.down()
     page.mouse.move(src["x"] + 30, src["y"] + 20, steps=4)
@@ -70,7 +70,7 @@ def test_board_apply_records_the_application_and_moves_the_card():
             page.click("#appDialogConfirm")
             page.wait_for_selector(f'.pipe-col[data-col="applied"] {card}', timeout=15000)
             opened = page.evaluate("() => window.__opened")
-            meta = page.inner_text(f"{card} .pipe-card-meta")
+            meta = page.inner_text(f"{card} .pipe-when")
             # Dragged to Interview with a refresh while it is in the air, then back to Applied.
             _drag(page, card, "interview", refresh_midway=True)
             page.wait_for_selector(f'.pipe-col[data-col="interview"] {card}', timeout=15000)
@@ -144,7 +144,7 @@ def test_source_tabs_and_the_add_job_form():
     saved = next(j for j in _get("/api/job-os/jobs")["jobs"] if j["title"] == title)
     assert saved["source"] == "manual" and saved["status"] == "scraped"
     assert (saved["country"], saved["location"], saved["salary_text"]) == ("Singapore", "Jurong", "SGD 6,000 / month")
-    assert "Jurong, Singapore" in card_text and "SGD 6,000 / month" in card_text and "MANUAL" in card_text.upper()
+    assert "Jurong, Singapore" in card_text and "SGD 6,000/mo" in card_text and "MANUAL" in card_text.upper()
     assert indeed_hidden and manual_hidden and remembered == "indeed"
     assert instant and searched == {"shown": [True], "focused": True}
     notes = [e["data"]["text"] for e in _get(f"/api/job-os/jobs/{saved['id']}/timeline")["timeline"] if e["type"] == "note"]

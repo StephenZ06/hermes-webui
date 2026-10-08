@@ -73,5 +73,5 @@ def test_a_bare_job_offers_its_next_step_and_x_skips_it():
             page.wait_for_selector(f'.pipe-col[data-col="closed"] {card(found)}', timeout=15000)
         finally:
             browser.close()
-    assert tracked_step == "Add description" and found_step == "Fetch details"
+    assert tracked_step.lower() == "add description" and found_step.lower() == "fetch details"  # shown in capitals on the card
     assert has_fetch and selected

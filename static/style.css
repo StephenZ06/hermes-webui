@@ -6764,10 +6764,9 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 @media (max-width:760px){.pipe-hscroll{display:none;}.pipe-board{cursor:auto;}}
 /* Board cards: one height everywhere (two title lines kept, three facts with
    N/A, one button row), ten to a column before the column scrolls. */
-.pipe-col{--card-h:238px;border:1px solid color-mix(in srgb,var(--stage) 42%,var(--border2));border-top-width:1px;}
+.pipe-col{--card-h:191px;border:2px solid color-mix(in srgb,var(--stage) 62%,var(--border2));}
 .pipe-card{box-sizing:border-box;height:var(--card-h);flex:0 0 auto;gap:0;justify-content:space-between;}
 .pipe-card-main{gap:10px;}
-.pipe-card .pipe-card-meta{margin-top:10px;}
 .pipe-card-title strong{min-height:calc(2em * 1.35);}
 .pipe-fact.is-na,.pipe-fact.is-na svg{color:color-mix(in srgb,var(--muted) 70%,transparent);}
 .pipe-attention{display:inline-grid;place-items:center;color:var(--warning,#f5b84b);cursor:help;}
@@ -6787,6 +6786,26 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 .pipe-col-cards::-webkit-scrollbar-thumb{border-radius:2px;background:transparent;}
 .pipe-col-cards.is-scrolling::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--stage) 60%,transparent);}
 @media (max-width:760px){.pipe-col-cards{max-height:none;overflow:visible;margin-right:0;padding-right:0;}}
+/* Compact cards: every row the same height and every gap 8px, the button row
+   set off by a rule with the same space above and below it. */
+.pipe-card{padding:12px;}
+.pipe-card-main{gap:6px;}
+.pipe-card-head{align-items:center;gap:10px;min-height:36px;}
+.pipe-card-name{flex:1;min-width:0;font-size:13.5px;font-weight:650;line-height:18px;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pipe-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;height:20px;}
+.pipe-row-split{justify-content:flex-start;gap:12px;}
+.pipe-row-split .pipe-fact{flex:0 1 auto;}
+.pipe-row-split .pipe-fact.is-na{flex-shrink:0;}
+.pipe-company{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted);}
+.pipe-tags{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;}
+.pipe-tags .job-os-badge{padding:1px 7px;font-size:10.5px;}
+.pipe-card .pipe-source{height:18px;padding:0 7px;font-size:10px;}
+.pipe-row .pipe-fact{min-width:0;font-size:12px;line-height:20px;}
+.pipe-when{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;color:var(--muted);font-size:11px;white-space:nowrap;}
+.pipe-card-actions{margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);}
+.pipe-card-actions .job-os-btn,.pipe-card-actions .job-os-btn.primary{min-height:30px;padding:0 10px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-color:color-mix(in srgb,var(--stage) 50%,transparent);background:color-mix(in srgb,var(--stage) 14%,transparent);color:color-mix(in srgb,var(--stage) 80%,var(--text));filter:none;}
+.pipe-card-actions .job-os-btn:hover,.pipe-card-actions .job-os-btn.primary:hover{border-color:var(--stage);background:color-mix(in srgb,var(--stage) 24%,transparent);color:var(--text);filter:none;}
+.pipe-card-actions .pipe-busy{min-height:30px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;}
 /* Match check: the score as a ring with rounded ends, level with the details beside it. */
 .match-body{align-items:center;padding-top:22px;}
 .match-ring{--ring:var(--muted);flex:0 0 148px;width:148px;height:148px;border-radius:50%;background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--ring) 9%,transparent),transparent 68%);}

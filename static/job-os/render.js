@@ -418,20 +418,25 @@
     const src = sourceOf(job);
     const where = place(job);
     const work = [WORKPLACE[job.workplace], job.employment_type].filter(Boolean).join(' · ');
-    // Every card has the same three facts, N/A where a posting doesn't say, so all cards are one height.
-    const fact = (iconName, text, label) => `<span class="pipe-fact${text ? '' : ' is-na'}" title="${esc(text ? '' : `${label} not given`)}">${icon(iconName, 14)}<span>${esc(text || 'N/A')}</span></span>`;
-    const facts = fact('pin', where, 'Location') + fact('pay', job.salary_text, 'Salary') + fact('briefcase', work, 'Job type');
+    // Every card has the same rows, N/A where a posting doesn't say, so all cards are one height:
+    // title and score; company and site; place and when; pay and job type; one button.
+    const fact = (iconName, text, label) => `<span class="pipe-fact${text ? '' : ' is-na'}" title="${esc(text ? `${label}: ${text}` : `${label} not given`)}">${icon(iconName, 14)}<span>${esc(text || 'N/A')}</span></span>`;
     const primary = cardPrimary(job) || `<button type="button" class="job-os-btn small" data-job-id="${esc(job.id)}">Open job</button>`;
     const attention = (job.attention || [])[0];
-    const applied = job.applied ? ` · applied ${esc(when(job.applied.at))}` : '';
+    // Pay in a card's half row: "RM 6,000 – 8,000 / month" reads as "RM 6,000–8,000/mo".
+    const pay = String(job.salary_text || '').replace(/\s*[–—-]\s*/g, '–').replace(/\s*(?:\/|a|per)\s*month\b/i, '/mo')
+      .replace(/\s*(?:\/|a|per)\s*year\b/i, '/yr').replace(/\s*(?:\/|an|per)\s*hour\b/i, '/hr').replace(/\s*(?:\/|a|per)\s*day\b/i, '/day');
+    const stamp = job.applied ? `Applied ${when(job.applied.at)}` : when(job.updated_at);
+    const status = ['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : '';
     // A job Luna is tailoring stays put until she is done.
     const movable = job.status !== 'tailoring';
     return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
-        <span class="pipe-card-head"><span class="pipe-card-title"><strong>${esc(job.title)}</strong><span>${esc(job.company || 'Company not set')}</span></span>${fitRing(job.analysis, 'small')}</span>
-        <span class="pipe-facts">${facts}</span>
+        <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
+        <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
+        <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}</small></span>
+        <span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>
       </button>
-      <div class="pipe-card-meta"><span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span>${['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : ''}${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}<small>${esc(when(job.updated_at))}${applied}</small></div>
       <div class="pipe-card-actions">${primary}</div></article>`;
   }
   // The site tab and the search box narrow what is shown; both work on what is loaded.
