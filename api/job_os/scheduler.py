@@ -10,7 +10,8 @@ is skipped. One search is started per minute at most, so a long list never
 hits a job site all at once. No AI is involved, so the schedule costs no tokens.
 
 The same loop drives Job OS email (``notify.tick``): new-match alerts, the
-daily digest, and checking for reply commands.
+daily digest, and checking for reply commands; and has Luna read employer
+replies to applications (``outcomes.tick``).
 """
 
 from __future__ import annotations
@@ -122,6 +123,12 @@ def _loop() -> None:
             notify.tick()
         except Exception:
             logger.debug("Job OS notification tick failed", exc_info=True)
+        try:
+            from api.job_os import outcomes
+
+            outcomes.tick()
+        except Exception:
+            logger.debug("Job OS outcome tick failed", exc_info=True)
 
 
 def start_scheduler() -> bool:

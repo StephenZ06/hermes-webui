@@ -95,6 +95,8 @@ def _scout_searches_payload() -> dict:
     searches = scout.list_searches()
     for search in searches:
         search["next_run_at"] = scheduler.next_run_at(search, settings)
+        search["off_target"] = len(scout.off_target(search))
+    scout.fill_related_soon(searches)
     from api.job_os.search_provider import search_provider_name
 
     from api.job_os.indeed import POSTED_WITHIN_DAYS, countries_payload
@@ -337,6 +339,17 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
             j(handler, {"interview": interview.request_prep(job_id)})
             return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/move"):
+            from api.job_os import applications
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            revision = body.get("expected_revision")
+            if isinstance(revision, bool) or not isinstance(revision, int):
+                return _error(handler, "expected_revision must be an integer", 400)
+            status = body.get("status")
+            j(handler, applications.move_to_column(job_id, str(body.get("column") or ""), expected_revision=revision,
+                                                   status=str(status) if isinstance(status, str) else None))
+            return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/applied", "/note")):
             from api.job_os import applications
 
@@ -418,6 +431,17 @@ def _scout_post(handler, path: str, body: dict) -> bool | None:
                 j(handler, {"ok": True})
             elif action == "run":
                 j(handler, {"run": scout.start_discovery(search_id, idempotency_key=body.get("idempotency_key"))})
+            elif action == "tidy":
+                j(handler, {"skipped": scout.tidy_search(search_id)})
+            elif action == "suggest":
+                from api.job_os import relevance
+
+                from api.job_os.llm import LLMError
+
+                try:
+                    j(handler, {"titles": relevance.suggest_related(str(body.get("keywords") or "")[:200])})
+                except LLMError as error:
+                    return _error(handler, f"Luna couldn't suggest titles: {error}", 400)
             else:
                 return None
             return True
@@ -549,7 +573,7 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         return True
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
-                                                                                "/interview-prep"))):
+                                                                                "/interview-prep", "/move"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled
@@ -559,6 +583,13 @@ def handle_job_os_post(handler, parsed, body) -> bool:
             return handled
     if parsed.path in {f"{_PREFIX}/notifications/digest", f"{_PREFIX}/notifications/check"}:
         return _notifications_post(handler, parsed.path)
+    if parsed.path == f"{_PREFIX}/notifications/outcomes":
+        from api.job_os import notify, outcomes
+
+        if not outcomes.enabled():
+            return _error(handler, "Connect Gmail and turn on Read employer replies first.", 400)
+        j(handler, {"moved": outcomes.check(), "notifications": notify.status()})
+        return True
     if parsed.path == f"{_PREFIX}/matches/seen":
         from api.job_os import notify
 

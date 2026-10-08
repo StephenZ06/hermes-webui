@@ -72,6 +72,9 @@ def default_settings() -> dict:
             "daily_digest": True,
             "digest_hour": 8,
             "reply_actions": True,
+            # Luna reads employer replies in the connected inbox and moves applied
+            # jobs to Rejected or Interview (api/job_os/outcomes.py).
+            "track_outcomes": True,
         },
     }
 
@@ -249,6 +252,7 @@ _VALIDATORS = {
         "daily_digest": _bool,
         "digest_hour": lambda v, f: _int(v, f, 0, 23),
         "reply_actions": _bool,
+        "track_outcomes": _bool,
     },
 }
 

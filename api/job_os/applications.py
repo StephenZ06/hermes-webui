@@ -1,13 +1,17 @@
 """Pipeline board, 'I applied' recording, notes, attention and the funnel.
 
-The board shows every job in one column per stage, from new finds to closed,
-and can be narrowed to one source (``indeed`` from Scout, ``manual`` from the
-tracker). Scout's finds carry their job site (``apify.SITES``); the board can also
-narrow to one of those. Marking a job applied walks the canonical lifecycle path to
-``submitted`` (every step lands in the event log) and records an
-``application_submitted`` event; a job applied for without a tailored resume
-goes straight to ``submitted``. Outcomes after that (screening, interview,
-offer, rejected, ...) use the normal status transitions.
+The board shows every job in one column per stage: New, Favorite, Ready to
+apply, Applied, then what came of it (Rejected, Interview, Offer) and Closed.
+It can be narrowed to one source (a job site from ``apify.SITES``, or
+``manual`` from the tracker). Marking a job applied walks the canonical
+lifecycle path to ``submitted`` (every step lands in the event log) and records
+an ``application_submitted`` event; a job applied for without a tailored resume
+goes straight to ``submitted``.
+
+Dragging a card puts the job in that column whichever way it goes, back as well
+as forward (``move_to_column``); the status it gets is the column's natural one
+for that job. Employer emails can move applied jobs to Rejected or Interview
+the same way (``api/job_os/outcomes.py``).
 """
 
 from __future__ import annotations
@@ -24,14 +28,16 @@ from api.job_os.repository import get_job, list_jobs
 FOLLOW_UP_DAYS = 7
 COLUMNS = (
     ("new", "New", ("discovered", "scraped", "analyzed")),
-    ("shortlisted", "Shortlisted", ("shortlisted",)),
-    ("resume", "Resume", ("tailoring", "resume_ready")),
-    ("ready", "Ready to apply", ("application_ready", "awaiting_approval", "applying")),
+    # Jobs you mean to go for; a resume being tailored stays here until it is ready.
+    ("favorite", "Favorite", ("shortlisted", "tailoring")),
+    ("ready", "Ready to apply", ("resume_ready", "application_ready", "awaiting_approval", "applying")),
     ("applied", "Applied", ("submitted",)),
-    ("interviewing", "Interviewing", ("screening", "interviewing")),
+    ("rejected", "Rejected", ("rejected",)),
+    ("interview", "Interview", ("screening", "interviewing")),
     ("offers", "Offer", ("offer", "offer_accepted", "offer_declined")),
-    ("closed", "Closed", ("rejected", "withdrawn", "no_response", "closed", "skipped", "expired")),
+    ("closed", "Closed", ("withdrawn", "no_response", "closed", "skipped", "expired")),
 )
+COLUMN_KEYS = tuple(key for key, _label, _statuses in COLUMNS)
 def _sources() -> tuple[str, ...]:
     from api.job_os.apify import SITES
 
@@ -39,12 +45,6 @@ def _sources() -> tuple[str, ...]:
 
 
 SOURCES = _sources()
-# What a person can move a card to by hand (tailoring and the internal apply
-# steps have their own actions). "submitted" goes through mark_applied.
-MOVES = (("shortlisted", "Shortlisted"), ("submitted", "Applied"), ("screening", "Screening"),
-         ("interviewing", "Interviewing"), ("offer", "Offer"), ("offer_accepted", "Offer accepted"),
-         ("offer_declined", "Offer declined"), ("rejected", "Rejected"), ("no_response", "No response"),
-         ("withdrawn", "Withdrawn"), ("skipped", "Skipped"))
 # Applying without a tailored resume: these go straight to submitted.
 _DIRECT_APPLY = (JobStatus.DISCOVERED, JobStatus.SCRAPED, JobStatus.ANALYZED, JobStatus.SHORTLISTED)
 _PATH = [JobStatus.SHORTLISTED, JobStatus.TAILORING, JobStatus.RESUME_READY, JobStatus.APPLICATION_READY,
@@ -141,16 +141,6 @@ def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None,
     return reasons
 
 
-def moves_for(status: JobStatus) -> list[list[str]]:
-    """The stages a card can be moved to from ``status``, as [value, label]."""
-    from api.job_os.lifecycle import _ALLOWED_TRANSITIONS
-
-    allowed = {s.value for s in _ALLOWED_TRANSITIONS.get(status, ())}
-    if status in _DIRECT_APPLY or status in (JobStatus.RESUME_READY, JobStatus.APPLICATION_READY):
-        allowed.add("submitted")
-    return [[value, label] for value, label in MOVES if value in allowed]
-
-
 def board(source: str | None = None) -> dict:
     """Every job in a column per stage, newest first; ``source`` narrows it to
     Scout's Indeed finds or the manual tracker. ``sources`` counts both."""
@@ -175,8 +165,7 @@ def board(source: str | None = None) -> dict:
                 "revision": job.revision, "canonical_url": job.canonical_url, "posted_at": job.posted_at,
                 "has_description": bool(job.description), "analysis": extra["analyses"].get(job.id),
                 "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
-                "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at,
-                "moves": moves_for(job.status)}
+                "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at}
         columns[key].append(card)
     for cards in columns.values():
         cards.sort(key=lambda c: -(c["updated_at"] or 0))
@@ -185,20 +174,83 @@ def board(source: str | None = None) -> dict:
 
 
 def funnel() -> list[dict]:
-    """How far jobs got: found -> analysed -> shortlisted -> applied -> interview -> offer."""
+    """How far jobs got: found -> analysed -> favorited -> applied -> interview -> offer."""
     jobs = list_jobs()
     _applied, _changed, _docs, extra = _signals()
     later = {s.value for s in _PATH[_PATH.index(JobStatus.SHORTLISTED):]} | {
         "screening", "interviewing", "offer", "offer_accepted", "offer_declined", "rejected", "withdrawn", "no_response"}
     applied = {"submitted", "screening", "interviewing", "offer", "offer_accepted", "offer_declined", "rejected", "no_response"}
-    interviewed = {"interviewing", "offer", "offer_accepted", "offer_declined"}
+    interviewed = {"screening", "interviewing", "offer", "offer_accepted", "offer_declined"}
     offers = {"offer", "offer_accepted", "offer_declined"}
     analysed = sum(1 for j in jobs if (extra["analyses"].get(j.id) or {}).get("status") == "done")
     return [
         {"key": "found", "label": "Found", "count": len(jobs)},
         {"key": "analysed", "label": "Analysed", "count": analysed},
-        {"key": "shortlisted", "label": "Shortlisted", "count": sum(j.status.value in later for j in jobs)},
+        {"key": "shortlisted", "label": "Favorited", "count": sum(j.status.value in later for j in jobs)},
         {"key": "applied", "label": "Applied", "count": sum(j.status.value in applied for j in jobs)},
-        {"key": "interviewing", "label": "Interviewing", "count": sum(j.status.value in interviewed for j in jobs)},
+        {"key": "interviewing", "label": "Interview", "count": sum(j.status.value in interviewed for j in jobs)},
         {"key": "offers", "label": "Offers", "count": sum(j.status.value in offers for j in jobs)},
     ]
+
+
+# Where a job lands when it is dragged to a column (or an email moves it).
+_CLOSED = {"withdrawn", "no_response", "skipped", "expired", "closed"}
+_SENT = {"submitted", "screening", "interviewing", "offer", "offer_accepted", "offer_declined", "rejected",
+         "withdrawn", "no_response"}
+
+
+def _column_status(job, column: str, status: str | None) -> JobStatus:
+    if column == "new":
+        from api.job_os.analysis import get_analysis
+
+        done = (get_analysis(job.id) or {}).get("status") == "done"
+        return JobStatus.ANALYZED if done else JobStatus.SCRAPED if (job.description or "").strip() else JobStatus.DISCOVERED
+    if column == "favorite":
+        return JobStatus.SHORTLISTED
+    if column == "ready":
+        from api.job_os.tailor import latest_documents
+
+        resume = latest_documents(job.id).get("resume") or {}
+        return JobStatus.RESUME_READY if resume.get("status") in ("ready", "needs_review") else JobStatus.APPLICATION_READY
+    if column == "closed":
+        # A closed job is skipped until it was applied for; after that it went quiet unless you say otherwise.
+        if status in _CLOSED:
+            return JobStatus(status)
+        return JobStatus.NO_RESPONSE if job.status.value in _SENT else JobStatus.SKIPPED
+    return {"applied": JobStatus.SUBMITTED, "rejected": JobStatus.REJECTED, "interview": JobStatus.INTERVIEWING,
+            "offers": JobStatus.OFFER}[column]
+
+
+def move_to_column(job_id: str, column: str, *, expected_revision: int, status: str | None = None,
+                   payload: dict | None = None) -> dict:
+    """Put a job in a board column, from any column. ``status`` picks the
+    reason a job is closed (withdrawn, no response, skipped)."""
+    from api.job_os.lifecycle import move_job
+
+    if column not in COLUMN_KEYS:
+        raise ApplicationError("Unknown column")
+    job = get_job(job_id)
+    if job is None:
+        raise KeyError(job_id)
+    if job.status == JobStatus.TAILORING:
+        raise ApplicationError("Luna is tailoring a resume for this job; it moves to Ready to apply when she is done.")
+    target = _column_status(job, column, status)
+    first_time = target == JobStatus.SUBMITTED and job.status.value not in _SENT
+    job = move_job(job_id, target, expected_revision=expected_revision, payload=payload)
+    if first_time and not _applied_before(job_id):
+        conn = connect_job_os()
+        try:
+            _event(conn, job_id, "application_submitted", {"method": "manual", "note": ""})
+            conn.commit()
+        finally:
+            conn.close()
+    return {"job_id": job_id, "status": job.status.value, "revision": job.revision}
+
+
+def _applied_before(job_id: str) -> bool:
+    conn = connect_job_os()
+    try:
+        return conn.execute("SELECT 1 FROM job_events WHERE job_id=? AND event_type='application_submitted' LIMIT 1",
+                            (job_id,)).fetchone() is not None
+    finally:
+        conn.close()

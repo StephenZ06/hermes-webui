@@ -275,9 +275,16 @@ def _migration_11(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_12(connection: sqlite3.Connection) -> None:
+    """Scout keeps only on-target titles: each search's related titles (Luna
+    suggests them) and whether the strict title match is on."""
+    connection.execute("ALTER TABLE searches ADD COLUMN related_titles TEXT NOT NULL DEFAULT '[]'")
+    connection.execute("ALTER TABLE searches ADD COLUMN strict_titles INTEGER NOT NULL DEFAULT 1")
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
               (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10),
-              (11, _migration_11))
+              (11, _migration_11), (12, _migration_12))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

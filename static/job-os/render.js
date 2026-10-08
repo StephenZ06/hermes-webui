@@ -42,19 +42,34 @@
     trash: '<path d="M21 5.97998C17.67 5.64998 14.32 5.47998 10.98 5.47998C9 5.47998 7.02 5.57998 5.04 5.77998L3 5.97998"/><path d="M8.5 4.97L8.72 3.66C8.88 2.71 9 2 10.69 2H13.31C15 2 15.13 2.75 15.28 3.67L15.5 4.97"/><path d="M18.85 9.14001L18.2 19.21C18.09 20.78 18 22 15.21 22H8.79002C6.00002 22 5.91002 20.78 5.80002 19.21L5.15002 9.14001"/><path d="M10.33 16.5H13.66"/><path d="M9.5 12.5H14.5"/>',
     close: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M9.16998 14.83L14.83 9.17004"/><path d="M14.83 14.83L9.16998 9.17004"/>',
   };
-  const icon = (name, size) => `<svg width="${size || 16}" height="${size || 16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || ''}</svg>`;
+  // mx-icons are drawn for 24px at a 1.5 stroke; smaller sizes get a heavier
+  // stroke so the line still lands at about 1.3 device pixels and stays crisp.
+  const strokeFor = (size) => (size <= 15 ? 2 : size <= 18 ? 1.8 : size <= 21 ? 1.65 : 1.5);
+  const icon = (name, size) => `<svg class="mx-icon" width="${size || 16}" height="${size || 16}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeFor(size || 16)}" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true">${icons[name] || ''}</svg>`;
   // Lifecycle statuses grouped into the tones a reader scans for.
   const tones = {
-    discovered: 'neutral', scraped: 'neutral', analyzed: 'neutral', shortlisted: 'info',
-    tailoring: 'accent', resume_ready: 'accent', application_ready: 'accent', applying: 'accent',
+    discovered: 'neutral', scraped: 'neutral', analyzed: 'neutral', shortlisted: 'favorite',
+    tailoring: 'favorite', resume_ready: 'accent', application_ready: 'accent', applying: 'accent',
     awaiting_approval: 'warn',
-    submitted: 'info', screening: 'info', interviewing: 'info',
-    offer: 'success', offer_accepted: 'success',
-    skipped: 'muted', expired: 'muted', closed: 'muted', rejected: 'muted', withdrawn: 'muted', no_response: 'muted',
+    submitted: 'info', rejected: 'danger', screening: 'success', interviewing: 'success',
+    offer: 'offer', offer_accepted: 'offer',
+    skipped: 'muted', expired: 'muted', closed: 'muted', withdrawn: 'muted', no_response: 'muted',
   };
   const APPLIED = ['submitted', 'screening', 'interviewing', 'offer', 'offer_accepted'];
   const statusOrder = Object.keys(tones);
+  // Names that match the board's columns ("Favorite", not "Shortlisted").
+  const STATUS_NAMES = {shortlisted: 'Favorite', resume_ready: 'Resume ready', application_ready: 'Ready to apply',
+    submitted: 'Applied', interviewing: 'Interview', no_response: 'No response', offer_accepted: 'Offer accepted', offer_declined: 'Offer declined'};
+  // Dashboard tiles open the Pipeline list narrowed to a group of statuses.
+  const STATUS_GROUPS = {
+    active: {label: 'Active work', statuses: ['tailoring', 'resume_ready', 'application_ready', 'awaiting_approval', 'applying'],
+      empty: 'Jobs show here while Luna tailors a resume for them and until you apply. Tailor one from Resume Studio or a job’s card.'},
+    applied: {label: 'Applied', statuses: APPLIED.concat(['offer_declined', 'rejected', 'no_response', 'withdrawn']),
+      empty: 'Jobs you have applied for show here. Drag a card to Applied on the board, or choose Mark applied on a job.'},
+  };
   const statusLabel = (status) => {
+    if (STATUS_GROUPS[status]) return STATUS_GROUPS[status].label;
+    if (STATUS_NAMES[status]) return STATUS_NAMES[status];
     const text = String(status || '').replace(/_/g, ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
@@ -75,13 +90,13 @@
       const last = typeof a.last === 'number' ? `Last ${when(a.last)}` : a.last ? `Last ${esc(a.last)}` : '';
       const timing = [last, a.next ? `next ${until(a.next)}` : ''].filter(Boolean).join(' · ');
       const note = a.on ? [a.detail, timing].filter(Boolean).join(' · ') : a.off_reason;
-      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 15)}</span></button>`;
+      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><span class="automation-main"><strong>${esc(a.label)}</strong><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span></button>`;
     }).join('');
-    return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 17)}</button>`)}<div class="automations">${rows}</div></section>`;
+    return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 18)}</button>`)}<div class="automations">${rows}</div></section>`;
   }
   // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
   function cardHead(title, iconName, actions, count) {
-    return `<div class="job-os-card-head"><h2>${iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, 15)}</span>` : ''}<span>${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
+    return `<div class="job-os-card-head"><h2>${iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span>` : ''}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
   }
   // Ten rows a page; the pager says where you are and steps through the rest.
   const PAGE = 10;
@@ -113,7 +128,7 @@
   // The API lists jobs oldest first (created_at ASC); every view here reads newest first.
   const newestFirst = (jobs) => jobs.slice().sort((a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0) || (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
   const dashboardOf = (state) => state.dashboard || {total_jobs: 0, active_work: 0, needs_attention: 0, by_status: {}};
-  const appliedCount = (byStatus) => APPLIED.reduce((sum, key) => sum + (byStatus[key] || 0), 0);
+  const appliedCount = (byStatus) => STATUS_GROUPS.applied.statuses.reduce((sum, key) => sum + (byStatus[key] || 0), 0);
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
   function jobChips(job) {
     const chips = [];
@@ -159,7 +174,7 @@
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', place(job), SOURCE_LABEL[sourceOf(job)]].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -215,7 +230,7 @@
   function pill(ok, text) {
     return `<span class="job-os-pill" data-ok="${ok ? 'true' : 'false'}">${esc(text)}</span>`;
   }
-  const SECTION_ICONS = {connections: 'cloud', apify: 'cloud', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
+  const SECTION_ICONS = {connections: 'cloud', apify: 'radar', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
     notifications: 'bell', resume: 'resume-studio', display: 'dashboard'};
   function section(id, title, note, inner, phase) {
     return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}">${cardHead(title, SECTION_ICONS[id], phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : '')}${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
@@ -319,7 +334,7 @@
       ${timesMode ? '<p class="job-os-card-note">Times are each search’s own country time and working week: Malaysia Monday to Friday, Qatar Sunday to Thursday (UTC+3). Your time zone sets the evening update under Notifications.</p>' : ''}
       ${timesMode ? toggle('scout.quiet_skip', 'Skip a run after a quiet one', v('scout.quiet_skip'), 'If a run finds 0–1 new jobs, the next run that day is skipped') : ''}
       <label class="job-os-field"><span>Never show jobs from</span><textarea data-setting="scout.blocked_companies" rows="3" placeholder="One company per line (e.g. your current employer)" spellcheck="false">${esc((v('scout.blocked_companies') || []).join('\n'))}</textarea></label>`);
-    const notify = section('notifications', 'Notifications', gmailReady ? '' : 'Set up Gmail above to turn email on.', `
+    const notify = section('notifications', 'Notifications', '', `${gmailReady ? '' : '<p class="job-os-card-note">Email needs the Gmail sender: <button type="button" class="job-os-link" data-job-os-action="settings-section" data-section="connections">connect it under Connections</button>.</p>'}
       ${toggle('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials')}
       <div class="job-os-grid">${textField('notifications.to_address', 'Send to', v('notifications.to_address'), 'you@gmail.com', 'email')}</div>
       ${toggle('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best match first; the Scout page shows them either way')}
@@ -328,13 +343,48 @@
       ${toggle('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'))}
       <div class="job-os-grid">${numberField('notifications.digest_hour', 'Digest hour', v('notifications.digest_hour'), 0, 23, ':00')}</div>
       ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Each job in an alert has codes; reply "TAILOR 1A2B3C4D" or "SKIP 1A2B3C4D" from the Send-to address')}
-      ${notifyStatus(state.notifications)}`);
+      ${notifyStatus(state.notifications)}
+      <div class="job-os-conn" id="job-os-outcomes"><div class="job-os-conn-head"><strong>Employer replies</strong>${pill(gmailReady && v('notifications.track_outcomes'), gmailReady && v('notifications.track_outcomes') ? 'Reading' : 'Off')}</div>
+        ${toggle('notifications.track_outcomes', 'Read employer replies', v('notifications.track_outcomes'), 'Every 10 minutes Luna reads new mail in the connected inbox (read-only) and moves an applied job to Rejected or Interview when the company and role match')}
+        <p class="job-os-card-note">Employers write to the address you applied with${v('applicant.email') ? ` (<strong>${esc(v('applicant.email'))}</strong>)` : ''}. If that isn’t ${gmail.address_hint ? `<strong>${esc(gmail.address_hint)}</strong>` : 'the connected Gmail'}, add a filter there that forwards job replies to it: Gmail → Settings → Forwarding, then a filter such as <code>subject:(application OR interview OR candidate)</code> → Forward to. Each move shows on the job with the email’s subject, and can be dragged back.</p>
+        ${outcomeStatus(state.notifications, gmailReady && v('notifications.track_outcomes'))}</div>`);
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
     const display = section('display', 'Jobs page', '', toggle('display.show_logistics', 'Show Logistics', v('display.show_logistics'), 'The 3D view of your pipeline in the side panel'));
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate>${firecrawl}${apifySection(state, v)}${ai}${applicant}${answers}${scout}${notify}${resume}${display}${bar}</form>`;
+    const pages = {connections: firecrawl, apify: apifySection(state, v), scout, ai, notifications: notify, applicant, apply: answers, display: resume + display};
+    const page = pages[state.settingsSection] ? state.settingsSection : 'connections';
+    const apifyOn = !!((status.apify || {}).token);
+    const hints = {
+      connections: [gmailReady && fc.state === 'healthy', gmailReady ? (fc.state === 'healthy' ? 'All connected' : 'Gmail connected') : 'Gmail not connected'],
+      apify: [apifyOn && v('apify.enabled'), apifyOn ? (v('apify.enabled') ? 'On' : 'Connected, off') : 'Not connected'],
+      scout: [v('scout.enabled'), v('scout.enabled') ? 'Runs on schedule' : 'Manual runs only'],
+      ai: [v('ai.auto_analyze'), v('ai.model')],
+      notifications: [gmailReady && v('notifications.email_enabled'), gmailReady && v('notifications.email_enabled') ? 'Email on' : 'Email off'],
+      applicant: [!!v('applicant.full_name'), v('applicant.full_name') || 'Not filled in'],
+      apply: [!!v('apply.notice_period'), v('apply.notice_period') ? 'Saved' : 'Not filled in'],
+      display: [null, 'Logistics, resume'],
+    };
+    const nav = SETTINGS_NAV.map(([group, items]) => `<p class="settings-nav-group">${group}</p>${items.map(([key, label]) => {
+      const [ok, hint] = hints[key];
+      return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}${esc(hint)}</small></span></button>`;
+    }).join('')}`).join('');
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout"><nav class="settings-nav" aria-label="Settings sections">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${pages[page]}</div></div>${bar}</form>`;
   }
-  const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply'};
+  // Settings, grouped: what Hermes connects to, what runs on its own, and you.
+  const SETTINGS_NAV = [
+    ['Accounts', [['connections', 'Connections'], ['apify', 'Apify']]],
+    ['Automation', [['scout', 'Scout schedule'], ['ai', 'Luna (AI)'], ['notifications', 'Notifications']]],
+    ['You', [['applicant', 'Your details'], ['apply', 'Application answers']]],
+    ['Page', [['display', 'Jobs page']]],
+  ];
+  // The Settings page a section is on (an automation row or a Scout tile asks for a section).
+  const settingsPageOf = (id) => ({resume: 'display'}[id] || id || 'connections');
+  const EMAIL_KINDS = {matches: 'Match alert', digest: 'Digest', reply: 'Reply', outcome: 'Employer reply'};
+  function outcomeStatus(n, on) {
+    const o = n && n.outcomes;
+    if (!o) return '';
+    return `<div class="job-os-actions"><span class="job-os-card-note">${o.checked ? `Checked ${esc(when(o.checked))}` : 'Not checked yet'}${o.error ? ` · <span class="job-os-error">${esc(o.error)}</span>` : ''}</span><button type="button" class="job-os-btn small" data-job-os-action="notify-outcomes" ${on ? '' : 'disabled'}>Check now</button></div>`;
+  }
   function notifyStatus(n) {
     if (!n) return '';
     const checked = n.last_poll ? `Replies checked ${esc(when(n.last_poll))}` : 'Replies not checked yet';
@@ -362,24 +412,8 @@
     if (['application_ready', 'awaiting_approval', 'applying'].includes(st)) return `<button type="button" class="job-os-btn primary small" data-job-os-action="board-apply" data-job-id="${id}" data-url="${esc(job.canonical_url)}">Apply</button>`;
     return '';
   }
-  function moveSelect(job) {
-    if (!(job.moves || []).length) return '';
-    return `<label class="pipe-move"><span class="sr-only">Move ${esc(job.title)} to</span><select data-job-os-change="board-move" data-job-id="${esc(job.id)}" data-revision="${Number(job.revision)}"><option value="">Move to…</option>${job.moves.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select></label>`;
-  }
-  // Where a card may be dropped on the board, and what the drop does there.
-  const CLOSED_MOVES = ['rejected', 'no_response', 'withdrawn', 'skipped'];
-  function dropTargets(job) {
-    const moves = (job.moves || []).map(([v]) => v);
-    const out = [];
-    if (moves.includes('shortlisted')) out.push('shortlisted');
-    if (job.has_description && ['scraped', 'analyzed', 'shortlisted'].includes(job.status)) out.push('resume');
-    if (job.status === 'resume_ready') out.push('ready');
-    if (moves.includes('submitted')) out.push('applied');
-    if (moves.includes('interviewing') || moves.includes('screening')) out.push('interviewing');
-    if (moves.includes('offer')) out.push('offers');
-    if (CLOSED_MOVES.some((m) => moves.includes(m))) out.push('closed');
-    return out.filter((col) => col !== job.column);
-  }
+  // Applied for (or past it): dropping such a card on Closed asks why it closed.
+  const SENT = ['submitted', 'screening', 'interviewing', 'offer', 'offer_accepted', 'offer_declined', 'rejected', 'withdrawn', 'no_response'];
   function pipeCard(job) {
     const src = sourceOf(job);
     const where = place(job);
@@ -390,24 +424,37 @@
       work ? `<span class="pipe-fact">${icon('briefcase', 14)}<span>${esc(work)}</span></span>` : '',
     ].join('');
     const primary = cardPrimary(job);
-    const move = moveSelect(job);
     const applied = job.applied ? ` · applied ${esc(when(job.applied.at))}` : '';
-    const drops = dropTargets(job);
-    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}"${drops.length ? ` draggable="true" data-drops="${drops.join(' ')}" data-moves="${esc((job.moves || []).map(([v]) => v).join(' '))}"` : ''}>
+    // A job Luna is tailoring stays put until she is done.
+    const movable = job.status !== 'tailoring';
+    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><span class="pipe-card-title"><strong>${esc(job.title)}</strong><span>${esc(job.company || 'Company not set')}</span></span>${fitRing(job.analysis, 'small')}</span>
         ${facts ? `<span class="pipe-facts">${facts}</span>` : ''}
       </button>
       ${(job.attention || []).map((reason) => `<p class="board-attention">${esc(reason)}</p>`).join('')}
-      <div class="pipe-card-meta"><span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span>${['closed', 'offers'].includes(job.column) ? badge(job.status) : ''}<small>${esc(when(job.updated_at))}${applied}</small></div>
-      ${primary || move ? `<div class="pipe-card-actions">${primary}${move}</div>` : ''}</article>`;
+      <div class="pipe-card-meta"><span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span>${['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : ''}<small>${esc(when(job.updated_at))}${applied}</small></div>
+      ${primary ? `<div class="pipe-card-actions">${primary}</div>` : ''}</article>`;
   }
+  // The site tab and the search box narrow what is shown; both work on what is loaded.
+  function matchesQuery(job, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return true;
+    const hay = `${job.title} ${job.company || ''} ${job.location || ''}`.toLowerCase();
+    return q.split(/\s+/).every((word) => hay.includes(word));
+  }
+  const shownOn = (state) => (job) => (state.pipelineSource === 'all' || !state.pipelineSource || sourceOf(job) === state.pipelineSource) && matchesQuery(job, state.pipelineQuery);
   function pipelineBoard(state) {
     const board = state.board;
     if (!board) return '<section class="job-os-card"><p class="job-os-card-note">Loading…</p></section>';
-    const total = board.columns.reduce((n, c) => n + c.jobs.length, 0);
-    if (!total) return emptyPipeline(state);
-    return `<div class="pipe-board" role="list" aria-label="Pipeline stages">${board.columns.map((c) => `<section class="pipe-col" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`).join('')}</div>`;
+    const keep = shownOn(state);
+    const columns = board.columns.map((c) => Object.assign({}, c, {jobs: c.jobs.filter(keep)}));
+    const total = columns.reduce((n, c) => n + c.jobs.length, 0);
+    if (!total) return state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
+    return `<div class="pipe-board" role="list" aria-label="Pipeline stages">${columns.map((c) => `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`).join('')}</div>`;
+  }
+  function noMatches(state) {
+    return `<section class="job-os-card job-os-empty pipe-empty-state"><strong>No jobs match “${esc(state.pipelineQuery.trim())}”</strong><p>Search looks at each job’s title, company and place${state.pipelineSource !== 'all' ? ` on the ${esc(SOURCE_LABEL[state.pipelineSource] || state.pipelineSource)} tab` : ''}.</p><div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="pipe-search-clear">Clear search</button></div></section>`;
   }
   function emptyPipeline(state) {
     const src = state.pipelineSource;
@@ -425,7 +472,9 @@
   function activity(state) {
     const items = (state.jobTimeline || []).slice().reverse().filter((e) => e.type === 'note' || e.type === 'status_changed' || EVENT_TEXT[e.type]);
     const rows = items.slice(0, 30).map((e) => {
-      const text = e.type === 'note' ? esc(e.data.text) : e.type === 'status_changed' ? `Moved to <strong>${esc(statusLabel(e.data.to))}</strong>` : esc(EVENT_TEXT[e.type]);
+      const why = e.data.by === 'email' ? ` · from an email${e.data.subject ? `: “${esc(e.data.subject)}”` : ''}${e.data.summary ? ` — ${esc(e.data.summary)}` : ''}`
+        : e.data.by === 'scout' ? ' · title off target' : '';
+      const text = e.type === 'note' ? esc(e.data.text) : e.type === 'status_changed' ? `Moved to <strong>${esc(statusLabel(e.data.to))}</strong>${why}` : esc(EVENT_TEXT[e.type]);
       return `<li data-kind="${e.type === 'note' ? 'note' : 'event'}"><span>${text}</span><time>${esc(when(e.at))}</time></li>`;
     }).join('');
     return `<section class="job-drawer-section"><h3>Notes &amp; activity</h3>
@@ -524,18 +573,68 @@
     const level = remaining <= 5 ? 'danger' : u.warn || remaining <= 20 ? 'warn' : 'normal';
     const cells = Array.from({length: 10}, (_, i) => `<span class="chat-usage-widget-battery-cell${i < filled ? ' is-filled' : ''}" style="--usage-battery-index:${i}"></span>`).join('');
     return `<section class="chat-usage-widget job-os-apify-widget${u.warn ? ' is-warn' : ''}" aria-label="Apify credit">
-      <div class="chat-usage-widget-row chat-usage-widget-title-row"><span class="chat-usage-widget-label"><span class="chat-usage-widget-label-stage">Apify credit</span></span><a class="job-os-apify-link" href="https://console.apify.com/billing" target="_blank" rel="noopener noreferrer" title="Open Apify billing" aria-label="Open Apify billing">${icon('external', 13)}</a></div>
+      <div class="chat-usage-widget-row chat-usage-widget-title-row"><span class="chat-usage-widget-label"><span class="chat-usage-widget-label-stage">Apify credit</span></span><a class="job-os-apify-link" href="https://console.apify.com/billing" target="_blank" rel="noopener noreferrer" title="Open Apify billing" aria-label="Open Apify billing">${icon('external', 14)}</a></div>
       <div class="chat-usage-widget-battery" data-level="${level}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${remaining}" aria-label="${remaining}% of the Apify credit left">${cells}</div>
       <div class="chat-usage-widget-meta"><span class="chat-usage-widget-plan">$${left.toFixed(2)} left of $${u.limit_usd.toFixed(2)}</span><span class="chat-usage-widget-percent">${remaining}%</span></div>
       <div class="chat-usage-widget-reset">${u.warn ? 'Low: scheduled runs stop when it runs out' : `$${u.used_usd.toFixed(2)} used${u.cycle_end ? ` · resets after ${esc(u.cycle_end)}` : ''}`}</div></section>`;
   }
-  function funnelCard(funnel) {
+  // Activity calendars under the funnel: one month at a time, a cell per day,
+  // coloured by what happened that day on your clock.
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const CALENDARS = [
+    {key: 'found', title: 'Jobs found', icon: 'radar', count: (d) => d.found || 0,
+      level: (n) => (n >= 30 ? 4 : n >= 10 ? 3 : n >= 3 ? 2 : n ? 1 : 0), tip: (n) => `${n} found`},
+    {key: 'applied', title: 'Applications', icon: 'applications', count: (d) => d.applied || 0,
+      level: (n) => (n >= 4 ? 4 : n >= 3 ? 3 : n >= 2 ? 2 : n ? 1 : 0), tip: (n) => `${n} sent`},
+    {key: 'replies', title: 'Replies', icon: 'mail', count: (d) => (d.interview || 0) + (d.rejected || 0),
+      tone: (d) => (d.interview && d.rejected ? 'mixed' : d.interview ? 'good' : d.rejected ? 'bad' : ''),
+      tip: (n, d) => [d.interview && `${d.interview} interview${d.interview === 1 ? '' : 's'}`, d.rejected && `${d.rejected} rejection${d.rejected === 1 ? '' : 's'}`].filter(Boolean).join(', ')},
+  ];
+  function activityCalendars(activity, back) {
+    if (!activity || !activity.today) return '';
+    const [ty, tm] = activity.today.split('-').map(Number);
+    const first = new Date(ty, tm - 1 - (back || 0), 1);
+    const year = first.getFullYear();
+    const month = first.getMonth();
+    const length = new Date(year, month + 1, 0).getDate();
+    const lead = (first.getDay() + 6) % 7; // Monday first
+    const dayKey = (day) => `${year}-${pad2(month + 1)}-${pad2(day)}`;
+    const data = (day) => (activity.days || {})[dayKey(day)] || {};
+    const monthName = first.toLocaleDateString(undefined, {month: 'long', year: 'numeric'});
+    const heads = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="cal-dow">${d}</span>`).join('');
+    const cals = CALENDARS.map((cal) => {
+      let total = 0;
+      let interviews = 0;
+      let rejections = 0;
+      const cells = Array.from({length: lead}, () => '<span class="cal-day is-blank"></span>').concat(Array.from({length: length}, (_, i) => {
+        const day = i + 1;
+        const d = data(day);
+        const n = cal.count(d);
+        total += n; interviews += d.interview || 0; rejections += d.rejected || 0;
+        const today = dayKey(day) === activity.today;
+        const future = dayKey(day) > activity.today;
+        const label = `${first.toLocaleDateString(undefined, {month: 'short'})} ${day}${n ? `: ${cal.tip(n, d)}` : ''}`;
+        return `<span class="cal-day${today ? ' is-today' : ''}${future ? ' is-future' : ''}"${n ? ` data-level="${cal.level ? cal.level(n) : 1}"${cal.tone ? ` data-tone="${cal.tone(d)}"` : ''}` : ''} title="${esc(label)}">${day}</span>`;
+      })).join('');
+      // Days in a row up to today with at least one application (this month only).
+      let streak = 0;
+      if (cal.key === 'applied' && !back) for (let day = Number(activity.today.slice(8)); day >= 1 && cal.count(data(day)); day -= 1) streak += 1;
+      const stat = cal.key === 'replies'
+        ? `<span><i class="cal-key" data-tone="good"></i>${interviews} interview${interviews === 1 ? '' : 's'}</span><span><i class="cal-key" data-tone="bad"></i>${rejections} rejected</span>`
+        : cal.key === 'applied' ? `<span><strong>${total}</strong> sent</span><span>Streak <strong>${streak}</strong> day${streak === 1 ? '' : 's'}</span>`
+          : `<span><strong>${total}</strong> this month</span>`;
+      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-icon" aria-hidden="true">${icon(cal.icon, 14)}</span>${cal.title}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
+    }).join('');
+    const step = (dir, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn small" data-job-os-action="activity-month" data-step="${dir}" aria-label="${label}" title="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 14)}</button>`;
+    return `<div class="activity"><div class="activity-head"><h3>Activity</h3><span class="activity-month">${step(1, 'Previous month', 'prev', back >= 5)}<span>${esc(monthName)}</span>${step(-1, 'Next month', 'next', !back)}</span></div><div class="cals">${cals}</div></div>`;
+  }
+  function funnelCard(funnel, activity, back) {
     const rows = funnel && funnel.length && funnel[0].count ? funnel : null;
     const max = rows ? Math.max(...rows.map((st) => st.count), 1) : 1;
     const body = rows
       ? `<div class="funnel">${rows.map((st, i) => `<div class="funnel-row"><span>${esc(st.label)}</span><div class="funnel-track"><i style="--w:${Math.max(2, Math.round(100 * st.count / max))}%;--i:${i}"></i></div><strong data-count-key="funnel-${esc(st.key)}">${st.count}</strong></div>`).join('')}</div>`
       : '<p class="job-os-card-note card-empty-note">Your funnel fills in as Scout finds jobs and you move them along.</p>';
-    return `<section class="job-os-card funnel-card">${cardHead('Your funnel', 'chart')}${body}</section>`;
+    return `<section class="job-os-card funnel-card">${cardHead('Your funnel', 'chart')}${body}${activityCalendars(activity, back)}</section>`;
   }
   // ---- Pipeline toolbar ------------------------------------------------------
   function sortJobs(jobs, by) {
@@ -555,7 +654,9 @@
       return `<button type="button" class="seg-btn icon${on ? ' active' : ''}" aria-pressed="${on}" data-job-os-action="pipe-mode" data-mode="${key}" title="${text}">${icon(key, 15)}<span class="sr-only">${text}</span></button>`;
     }).join('');
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from">${tabs}</div><div class="seg" role="group" aria-label="Layout">${modes}</div>${sort}${busy ? `<span class="job-os-chip muted analysing-chip">Scoring ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
+    const query = state.pipelineQuery || '';
+    const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from">${tabs}</div><div class="seg" role="group" aria-label="Layout">${modes}</div>${search}${sort}${busy ? `<span class="job-os-chip muted analysing-chip">Scoring ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -603,14 +704,15 @@
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
       <dl class="scout-facts">
         ${fact('Sites', `<span class="job-os-chips">${sites}</span>`)}
-        ${fact('Country', search.country_name ? `${icon('pin', 13)}<span title="Searched on ${esc(host ? host.host : 'Indeed')}">${esc(search.country_name)}</span>` : 'Choose a country', !search.country_name)}
+        ${fact('Country', search.country_name ? `${icon('pin', 14)}<span title="Searched on ${esc(host ? host.host : 'Indeed')}">${esc(search.country_name)}</span>` : 'Choose a country', !search.country_name)}
         ${fact('Cities', (search.locations || []).length ? esc(search.locations.join(', ')) : 'Whole country', !(search.locations || []).length)}
         ${fact('Posted', esc(POSTED[search.posted_within_days] || 'Any time') + (search.remote_only ? ' · Remote only' : ''))}
-        ${fact('Title has', (search.title_filter || []).length ? esc(search.title_filter.join(' / ')) : 'Any title', !(search.title_filter || []).length)}
+        ${fact('Titles', search.strict_titles === false ? 'Any title' : `<span title="${esc((search.related_titles || []).join(', ') || 'Luna adds related titles on the next run')}">Yours${(search.related_titles || []).length ? ` + ${search.related_titles.length} related` : ' only'}</span>`, search.strict_titles === false)}
         ${fact('Schedule', esc(schedule), !search.enabled || !schedOn)}
       </dl>
       ${runPanel(run, search)}
-      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 15)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">${icon('edit', 15)}Edit</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
+      ${search.off_target ? `<div class="scout-tidy" role="status"><span>${icon('attention', 16)}<span><strong>${Number(search.off_target)}</strong> saved find${search.off_target === 1 ? '' : 's'} don’t match these titles</span></span><button type="button" class="job-os-btn small" data-job-os-action="scout-tidy" data-search-id="${esc(search.id)}">Move to Closed</button></div>` : ''}
+      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}">${icon('edit', 16)}Edit</button><span class="scout-bar-spacer"></span><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -624,6 +726,8 @@
     return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New search'}</h2><p class="job-os-card-note">Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div></div>
       <form id="job-os-search-form" novalidate><div class="scout-form-grid">
         <label class="job-os-field wide"><span>Job titles <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. SOC Analyst, IT Analyst, Security Analyst" value="${esc(form.keywords)}"><small class="job-os-field-hint">Comma-separated; each title is searched on its own (up to 5).</small></label>
+        <label class="job-os-toggle wide"><input type="checkbox" name="strict_titles" ${form.strict_titles !== false ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Only keep matching titles</strong><small>Job sites return loose matches (sales roles for “IT Analyst”). Keep a job only when its title matches one of yours or a related title below.</small></span></label>
+        <label class="job-os-field wide"><span>Related titles</span><span class="field-with-action"><input name="related_titles" maxlength="900" placeholder="e.g. Threat Intelligence Analyst, Incident Response Analyst" value="${esc(form.related_titles || '')}"><button type="button" class="job-os-btn small" data-job-os-action="scout-suggest">${icon('magic', 14)}Suggest</button></span><small class="job-os-field-hint">Comma-separated, up to 15. Left empty, Luna fills it in on the next run; edit it any time.</small></label>
         <label class="job-os-field wide"><span>Title must contain</span><input name="title_filter" maxlength="300" placeholder="e.g. analyst — or: soc, security analyst" value="${esc(form.title_filter)}"><small class="job-os-field-hint">Keeps a job only if its title has all the words of at least one phrase (comma-separated). Job sites match loosely, so this cuts the noise. Empty = keep everything.</small></label>
         <label class="job-os-field"><span>Country <em>required</em></span><select name="country" required data-job-os-change="scout-country"><option value="">Choose…</option>${countries}</select></label>
         <label class="job-os-field"><span>Cities</span><input name="locations" placeholder="Comma-separated, e.g. Kuala Lumpur, Penang. Empty = whole country" value="${esc(form.locations)}"></label>
@@ -673,11 +777,11 @@
     const overview = `<section class="scout-overview" aria-label="Scout at a glance">
       ${tile('cloud', 'Source', viaApify ? 'Apify' : 'This machine', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : `Indeed, ${esc(provider)} as fallback`, ' data-job-os-action="settings-focus" data-section="apify"')}
       ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
-      ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Soonest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
+      ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Latest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
       ${tile('radar', 'Searches', `${on.length} of ${searches.length}`, last ? `Last run ${esc(when(last))}` : 'Not run yet')}</section>`;
     return `${banner}${overview}${matchInbox(state)}
       ${searchFormCard(state.searchForm, state)}
-      <div class="section-bar"><h2>Saved searches <span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 15)}New search</button></div>
+      <div class="section-bar"><h2>Saved searches <span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 16)}New search</button></div>
       ${searches.length ? `<div class="scout-searches">${searches.map((x) => searchCard(x, state)).join('')}</div>`
         : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
       ${finds.total ? `<section class="job-os-card">${cardHead('Latest finds', 'magic', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button>', finds.total)}<div class="job-os-list scout-finds">${finds.rows.map(jobCard).join('')}</div>${pager('finds', finds)}</section>` : ''}`;
@@ -690,10 +794,10 @@
   function docStatus(status) { return `<span class="doc-status" data-status="${esc(status)}">${esc(DOC_STATUS[status] || status)}</span>`; }
   function tailoredList(state) {
     const items = state.tailored || [];
-    if (!items.length) return `<section class="job-os-card"><div class="job-os-card-head"><h2>Tailored versions</h2></div><p class="job-os-card-note">Choose <strong>Tailor resume</strong> on any job with a description. Each tailored resume and cover letter appears here to review, edit and export.</p></section>`;
-    return `<section class="job-os-card"><div class="job-os-card-head"><h2>Tailored versions <span class="job-os-count">${items.length}</span></h2></div><div class="job-os-list">${items.map((d) => {
+    if (!items.length) return `<section class="job-os-card">${cardHead('Tailored versions', 'magic')}<p class="job-os-card-note">Choose <strong>Tailor resume</strong> on any job with a description. Each tailored resume and cover letter appears here to review, edit and export.</p></section>`;
+    return `<section class="job-os-card">${cardHead('Tailored versions', 'magic', '', items.length)}<div class="job-os-list">${items.map((d) => {
       const cov = d.notes && d.notes.coverage && d.notes.coverage.score;
-      return `<button type="button" class="job-os-job-card studio-item" data-job-os-action="studio-open" data-job-id="${esc(d.job_id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(String(d.job_company || d.job_title || '?').charAt(0).toUpperCase())}</span><span class="job-os-job-main"><strong>${esc(d.job_title)}</strong><span>${esc(d.job_company || '')}</span></span>${cov != null ? `<span class="job-os-chip muted" title="Must-haves the resume mentions">${cov}% keywords</span>` : ''}${docStatus(d.status)}<small class="job-os-job-when">${esc(when(d.updated_at))}</small></button>`;
+      return `<button type="button" class="job-os-job-card studio-item" data-job-os-action="studio-open" data-job-id="${esc(d.job_id)}" data-key="doc-${esc(d.job_id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(String(d.job_company || d.job_title || '?').charAt(0).toUpperCase())}</span><span class="job-os-job-main"><strong>${esc(d.job_title)}</strong><span>${esc(d.job_company || '')}</span></span><span class="studio-item-tags">${cov != null ? `<span class="job-os-chip muted" title="Must-haves the resume mentions">${cov}% keywords</span>` : ''}${docStatus(d.status)}</span><small class="job-os-job-when">${esc(when(d.updated_at))}</small></button>`;
     }).join('')}</div></section>`;
   }
   function highlightNumbers(text, flags) {
@@ -719,30 +823,34 @@
       body = `${flags.length ? `<div class="studio-warning" role="alert"><strong>Check before sending:</strong> ${flags.map((f) => `<code>${esc(f)}</code>`).join(' ')} ${flags.length === 1 ? 'is' : 'are'} not in your master resume. Fix or remove ${flags.length === 1 ? 'it' : 'them'}, then save.</div>` : ''}
         <div class="studio-grid"><div class="studio-edit"><textarea id="studio-text" spellcheck="true" aria-label="Edit document">${esc(draft)}</textarea>
           <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
-          <button type="button" class="job-os-btn" data-job-os-action="doc-preview" data-url="${exportUrl('html')}" data-title="${esc(`${state.studioTab === 'resume' ? 'Resume' : 'Cover letter'} — ${job.job_title || ''}`)}" ${state.studioDraft != null && state.studioDraft !== doc.content ? 'disabled title="Save your edits to preview them"' : ''}>${icon('eye', 15)}Preview</button>
-          <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 15)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
+          <button type="button" class="job-os-btn" data-job-os-action="doc-preview" data-url="${exportUrl('html')}" data-title="${esc(`${state.studioTab === 'resume' ? 'Resume' : 'Cover letter'} — ${job.job_title || ''}`)}" ${state.studioDraft != null && state.studioDraft !== doc.content ? 'disabled title="Save your edits to preview them"' : ''}>${icon('eye', 16)}Preview</button>
+          <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 16)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
         <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${state.studioTab === 'resume' ? reportBox(notes.report) : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}
           ${flags.length ? `<div class="studio-box"><h4>Preview</h4><div class="studio-preview">${highlightNumbers(doc.content, flags)}</div></div>` : ''}</aside></div>`;
     }
     const ready = job.job_status === 'resume_ready';
-    return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="studio-close">${icon('prev', 15)}Back to list</button>${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}</div></div>
+    return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="studio-close">${icon('prev', 16)}Back to list</button>${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}</div></div>
       <nav class="studio-tabs" aria-label="Document">${tabs}</nav>${body}</section>`;
   }
   // ---- Resume Studio: how well the master resume matches one job ----------------------
+  // The score as a ring: a soft track, the arc drawn to the score with rounded
+  // ends in its band colour, the number in the middle.
   function matchRing(a) {
-    if (!a) return '<div class="match-ring is-empty" aria-label="Not scored yet"><span><strong>—</strong><small>Not scored</small></span></div>';
-    if (['pending', 'running'].includes(a.status)) return '<div class="match-ring is-busy" aria-label="Scoring"><span><strong>…</strong><small>Scoring</small></span></div>';
-    if (a.status === 'failed' || a.fit_score == null) return '<div class="match-ring is-failed" aria-label="Scoring failed"><span><strong>!</strong><small>Failed</small></span></div>';
+    const ring = (cls, attrs, fit, inner) => `<div class="match-ring${cls}"${attrs}><svg class="match-ring-svg" viewBox="0 0 120 120" aria-hidden="true"><circle class="match-ring-halo" cx="60" cy="60" r="57"/><circle class="match-ring-track" cx="60" cy="60" r="50"/>${fit == null ? '' : `<circle class="match-ring-arc" cx="60" cy="60" r="50" pathLength="100" style="--fit:${fit}"/>`}</svg><span class="match-ring-label">${inner}</span></div>`;
+    if (!a) return ring(' is-empty', ' aria-label="Not scored yet"', null, '<strong>—</strong><small>Not scored</small>');
+    if (['pending', 'running'].includes(a.status)) return ring(' is-busy', ' aria-label="Scoring"', 22, '<strong>…</strong><small>Scoring</small>');
+    if (a.status === 'failed' || a.fit_score == null) return ring(' is-failed', ' aria-label="Scoring failed"', 100, '<strong>!</strong><small>Failed</small>');
     const [, key, text] = band(a.fit_score);
-    return `<div class="match-ring" data-band="${key}" style="--fit:${Number(a.fit_score)}" role="img" aria-label="${esc(text)}: ${Number(a.fit_score)} percent"><span><strong>${Number(a.fit_score)}%</strong><small>${esc(text)}</small></span></div>`;
+    const score = Number(a.fit_score);
+    return ring('', ` data-band="${key}" role="img" aria-label="${esc(text)}: ${score} percent"`, Math.max(score, 1), `<strong>${score}<em>%</em></strong><small>${esc(text)}</small>`);
   }
   // The match check walks the jobs on the board in board order (New, then
-  // Shortlisted, Resume, Ready to apply), newest first within a stage.
-  const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['shortlisted', ['shortlisted']], ['resume', ['tailoring', 'resume_ready']],
-    ['ready', ['application_ready', 'awaiting_approval', 'applying']]];
-  const STAGE_LABEL = {new: 'New', shortlisted: 'Shortlisted', resume: 'Resume', ready: 'Ready to apply'};
+  // Favorite, Ready to apply), newest first within a stage.
+  const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['favorite', ['shortlisted', 'tailoring']],
+    ['ready', ['resume_ready', 'application_ready', 'awaiting_approval', 'applying']]];
+  const STAGE_LABEL = {new: 'New', favorite: 'Favorite', ready: 'Ready to apply'};
   function matchQueue(jobs) {
     const fresh = newestFirst(jobs || []).filter((j) => j.has_description);
     return QUEUE_STAGES.flatMap(([stage, statuses]) => fresh.filter((j) => statuses.includes(j.status)).map((j) => Object.assign({stage}, j)));
@@ -750,7 +858,7 @@
   function matchCheck(state) {
     if (!state.resume) return '';
     const queue = matchQueue(state.jobs);
-    const automate = queue.length ? `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here, then tailor a resume for each one at 50% or more">${icon('magic', 15)}Automate all</button>` : '';
+    const automate = queue.length ? `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here, then tailor a resume for each one at 50% or more">${icon('magic', 16)}Automate all</button>` : '';
     const head = cardHead('Match check', 'eye', automate);
     if (!queue.length) return `<section class="job-os-card match-card">${head}<p class="job-os-card-note card-empty-note">Jobs on your board with a description appear here one at a time. Save one from Scout or with <button type="button" class="job-os-link" data-job-os-action="job-form-new">Add job</button> to check your resume against it.</p></section>`;
     const at = Math.max(0, queue.findIndex((j) => j.id === state.studioMatchId));
@@ -766,7 +874,7 @@
     const hasDocs = ['tailoring', 'resume_ready', 'application_ready'].includes(status) || (state.tailored || []).some((d) => d.job_id === item.id);
     const nextId = queue[at + 1] ? queue[at + 1].id : '';
     const actions = [
-      canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}">${icon('magic', 15)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '',
+      canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}">${icon('magic', 16)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '',
       busyNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}">${done ? 'Score again' : 'Score my resume'}</button>`,
       retailor ? `<button type="button" class="job-os-btn" data-job-os-action="card-tailor" data-job-id="${esc(item.id)}">Tailor again</button>` : '',
       hasDocs ? `<button type="button" class="job-os-btn${retailor ? ' primary' : ''}" data-job-os-action="studio-open" data-job-id="${esc(item.id)}">Open tailored resume</button>` : '',
@@ -832,7 +940,7 @@
     const st = job.status;
     const fresh = ['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(st);
     if (!job.description && sourceOf(job) === 'indeed') out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-details">Fetch details</button>');
-    if (['scraped', 'analyzed'].includes(st)) out.push(`<button type="button" class="job-os-btn${job.description ? '' : ' primary'}" data-job-os-action="job-status" data-status="shortlisted">Shortlist</button>`);
+    if (['scraped', 'analyzed'].includes(st)) out.push(`<button type="button" class="job-os-btn${job.description ? '' : ' primary'}" data-job-os-action="job-status" data-status="shortlisted">Add to Favorite</button>`);
     if (['scraped', 'analyzed', 'shortlisted'].includes(st) && job.description) out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-tailor">Tailor resume</button>');
     if (['resume_ready', 'application_ready'].includes(st)) out.push(`<button type="button" class="job-os-btn primary" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Open in Resume Studio</button>`);
     if (st === 'resume_ready') out.push('<button type="button" class="job-os-btn" data-job-os-action="job-ready">Ready to apply</button>');
@@ -874,10 +982,10 @@
     const kind = state.resumeOriginal === 'pdf' ? 'pdf' : 'html';
     // The first page, once drawn, is kept as an image so redraws don't flicker.
     const thumb = state.resumeThumb && state.resumeThumb.revision === r.revision && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(state.resumeThumb.url) ? state.resumeThumb.url : '';
-    return `<section class="job-os-card resume-master">${cardHead('Master resume', 'resume-studio', `${state.resumeOriginal ? `<a class="job-os-btn" href="/api/job-os/resume/original" ${state.resumeOriginal === 'pdf' ? 'target="_blank" rel="noopener"' : 'download'}>${icon('download', 15)}Original</a>` : ''}<button type="button" class="job-os-btn" data-job-os-action="resume-replace">Replace</button>`)}
+    return `<section class="job-os-card resume-master">${cardHead('Master resume', 'resume-studio', `${state.resumeOriginal ? `<a class="job-os-btn" href="/api/job-os/resume/original" ${state.resumeOriginal === 'pdf' ? 'target="_blank" rel="noopener"' : 'download'}>${icon('download', 16)}Original</a>` : ''}<button type="button" class="job-os-btn" data-job-os-action="resume-replace">Replace</button>`)}
       <div class="resume-master-body">
         <button type="button" class="resume-thumb" data-job-os-action="resume-preview" data-kind="${kind}" aria-label="Open a full preview of your master resume" title="Preview">
-          <span class="resume-thumb-page${thumb ? ' is-drawn' : ''}" id="resume-thumb" data-kind="${kind}">${kind === 'html' ? '<iframe src="/api/job-os/resume/preview" title="Resume thumbnail" tabindex="-1" aria-hidden="true" loading="lazy"></iframe>' : thumb ? `<img src="${thumb}" alt="">` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</span>
+          <span class="resume-thumb-page${thumb ? ' is-drawn' : ''}" id="resume-thumb" data-kind="${kind}" data-keep="${kind}-${Number(r.revision || 0)}">${kind === 'html' ? '<iframe src="/api/job-os/resume/preview" title="Resume thumbnail" tabindex="-1" aria-hidden="true" loading="lazy"></iframe>' : thumb ? `<img src="${thumb}" alt="">` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</span>
           <span class="resume-thumb-hint">${icon('expand', 14)}Preview</span></button>
         <div class="resume-master-info">
           <strong class="resume-file">${esc(r.filename)}</strong>
@@ -894,7 +1002,7 @@
     if (!p) return '';
     return `<div class="resume-preview" data-job-os-action="resume-preview-close" role="dialog" aria-label="Resume preview" tabindex="-1">
       <div class="resume-preview-bar"><span>${esc(p.title || 'Resume')}</span><small>Click anywhere or press Esc to close</small></div>
-      <div class="resume-preview-pages" id="resume-preview-pages" data-kind="${esc(p.kind)}">${p.kind === 'html' ? `<iframe src="${esc(p.url)}" title="${esc(p.title || 'Resume')}"></iframe>` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</div></div>`;
+      <div class="resume-preview-pages" id="resume-preview-pages" data-kind="${esc(p.kind)}" data-keep="${esc(p.kind)}:${esc(p.url)}">${p.kind === 'html' ? `<iframe src="${esc(p.url)}" title="${esc(p.title || 'Resume')}"></iframe>` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</div></div>`;
   }
   function interviewPanel(job) {
     const p = job.interview;
@@ -921,20 +1029,22 @@
     if (view === 'dashboard') {
       const recent = paged(jobs, state.recentPage);
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
-        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="tailoring"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="submitted"')}</section>
-        <div class="job-os-pair">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}${funnelCard(dashboard.funnel)}</div>
+        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"')}</section>
+        <div class="job-os-pair">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}</div>
         <div class="job-os-columns">
           <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
-          <section class="job-os-card job-os-import">${cardHead('Track a job', 'import')}<p class="job-os-card-note">Manually save jobs, tailor your resume to it, then follow through on your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 15)}Add job</button></section>
+          <section class="job-os-card job-os-import">${cardHead('Track a job', 'import')}<p class="job-os-card-note">Manually save jobs, tailor your resume to it, then follow through on your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 16)}Add job</button></section>
         </div>${jobForm(state)}`;
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
-      const src = state.pipelineSource || 'all';
-      const scoped = jobs.filter((j) => src === 'all' || sourceOf(j) === src);
+      const group = STATUS_GROUPS[filter];
+      const scoped = jobs.filter((j) => (!group || group.statuses.includes(j.status)) && shownOn(state)(j));
       const counts = state.board && state.board.sources ? state.board.sources
         : Object.fromEntries([['all', jobs.length], ...Object.keys(SOURCE_LABEL).map((k) => [k, jobs.filter((j) => sourceOf(j) === k).length])]);
       const listMode = state.pipelineMode === 'list' || filter;
-      const list = `<section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${scoped.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Show the board</button>' : ''}</div>${scoped.length ? jobList(sortJobs(scoped, state.sortBy), '', '') : emptyPipeline(state)}</section>`;
+      const empty = group ? `<div class="job-os-empty"><strong>Nothing in ${esc(group.label.toLowerCase())} yet</strong><p>${esc(group.empty)}</p></div>`
+        : state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
+      const list = `<section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${scoped.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Show the board</button>' : ''}</div>${scoped.length ? jobList(sortJobs(scoped, state.sortBy), '', '') : empty}</section>`;
       body = `${header('Pipeline', 'Every job from new find to offer — Scout’s finds from the job sites, and the ones you track yourself.', state)}
         ${pipelineBar(state, jobs, counts)}
         ${listMode ? list : pipelineBoard(state)}
@@ -943,7 +1053,7 @@
       const legend = [['strong', 'Strong fit'], ['good', 'Good fit'], ['stretch', 'Stretch'], ['poor', 'Poor fit'], ['none', 'Not scored']]
         .map(([key, text]) => `<span><i data-verdict="${key}"></i>${text}</span>`).join('');
       body = `${header('Logistics centre', 'Every job is a parcel moving through the warehouse. Click one to open it.', state)}
-        <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage" data-slide-safe></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
+        <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage" data-slide-safe data-keep="logistics"></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobForm(state)}`;
     } else if (view === 'settings') {
@@ -962,13 +1072,13 @@
     const nav = sectionsOf(state).map((key) => {
       const active = view === key && !(key === 'pipeline' && state.statusFilter);
       const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
-      return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key)}<span>${labels[key]}</span>${count}</button>`;
+      return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span>${count}</button>`;
     }).join('');
     const stages = statusOrder.filter((status) => byStatus[status]).map((status) => {
       const active = view === 'pipeline' && state.statusFilter === status;
-      return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}" data-job-os-filter="${status}"><span class="job-os-dot" data-tone="${tones[status]}" aria-hidden="true"></span><span>${esc(statusLabel(status))}</span><span class="job-os-side-count">${byStatus[status]}</span></button>`;
+      return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}" data-job-os-filter="${status}"><span class="job-os-dot" data-tone="${tones[status]}" aria-hidden="true"></span><span class="side-menu-label">${esc(statusLabel(status))}</span><span class="job-os-side-count">${byStatus[status]}</span></button>`;
     }).join('');
     return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar, runBody, matchQueue};
+  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf};
 }());

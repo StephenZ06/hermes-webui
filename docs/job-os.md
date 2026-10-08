@@ -5,12 +5,12 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 
 | Section | What it does |
 |---|---|
-| **Dashboard** | Counts, automations beside the funnel, recent jobs (ten a page), and **Add job**. |
+| **Dashboard** | Counts, automations beside the funnel and its activity calendars, recent jobs (ten a page), and **Add job**. |
 | **Scout** | Saved Indeed searches; runs find postings and add them to the Pipeline. |
 | **Pipeline** | Every job, from new find to offer: a board or a list. |
 | **Resume Studio** | The master resume, its match score against a job, and tailored versions. |
 | **Logistics** | A 3D view of the same jobs. |
-| **Settings** | Connections (Firecrawl, Gmail), AI, your details, Scout schedule, notifications. |
+| **Settings** | A side menu of sections, one shown at a time: Connections (Firecrawl, Gmail), Apify, Scout schedule, Luna (AI), Notifications, your details, application answers, the Jobs page. |
 
 ## Two ways in
 
@@ -19,6 +19,17 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
    Indeed, LinkedIn and Bayt (the last two need Apify; Bayt covers the Gulf
    and a few other markets, and is greyed out elsewhere).
    Job titles are comma-separated and each is searched on its own (up to 5).
+   **Only keep matching titles** (on by default) keeps a posting only when its
+   title carries every distinctive word of one of the search's job titles, or
+   of a **related title** (`api/job_os/relevance.py`): for "IT Analyst" a
+   "Sales Executive" or a "Business Analyst" is dropped, "Lead IT Business
+   Analyst" and "ICT Analyst" are kept. Seniority words (senior, lead, L2,
+   intern) don't count, and a word matches its usual equivalents ("security"
+   in "cybersecurity", "SOC" as "security operations"). Luna suggests the
+   related titles once, on the search's first run or when the Scout page
+   loads (**Suggest** in the form asks again); you can edit them. Finds saved
+   before a search turned strict show on its card as off-target, with
+   **Move to Closed** (they can be dragged back).
    **Title must contain** keeps a posting only if its title has all the words
    of at least one phrase (`analyst`, or `soc, security analyst`): job sites
    match keywords loosely (on 2026-10-07 LinkedIn returned 342 jobs for "IT
@@ -126,23 +137,55 @@ again and Scout drops the repeats.
 
 ## Pipeline
 
-- **Source tabs:** All · Indeed · Manual, with counts.
-- **Board:** one column per stage: New, Shortlisted, Resume, Ready to apply,
-  Applied, Interviewing, Offer, Closed. Cards show the company, place,
-  salary, workplace and type, the match ring, where the job came from, and
-  the next step for the stage (Tailor resume, Review resume, Apply, …).
-- **Drag a card** to another column: Shortlisted, Resume (tailors it),
-  Ready to apply (from a tailored resume), Applied (asks first), Interviewing,
-  Offer, or Closed (pick Rejected, No response, Withdrawn or Skipped). Columns
-  a card can't go to fade while it is dragged; the board scrolls at its edges.
-- **Move to…** on a card lists only the stages its lifecycle allows
-  (`applications.moves_for`). *Applied* records an application from any stage
-  before it, with or without a tailored resume.
+- **Source tabs:** All, each job site, Manual, with counts. The board is
+  loaded once and the tabs filter it in the page, so switching is instant.
+- **Search** (beside the layout switch, or press `/`): narrows the board or
+  the list to jobs whose title, company or place contain every word typed;
+  Esc clears it.
+- **Board:** one column per stage: New (grey), Favorite (purple), Ready to
+  apply, Applied, Rejected (red), Interview (green), Offer, Closed. Cards
+  show the company, place, salary, workplace and type, the match ring, where
+  the job came from, and the next step for the stage (Tailor resume, Review
+  resume, Apply, …). A job being tailored stays in Favorite until its resume
+  is ready.
+- **Drag a card** to any other column, back as well as forward
+  (`applications.move_to_column`, `POST /api/job-os/jobs/{id}/move`): the job
+  gets the status the column means for it (back to New is *analysed* or
+  *scraped*; Ready to apply is *resume ready* when a tailored resume exists;
+  Closed is *skipped* before applying and asks *no response* or *withdrawn*
+  after). Applied asks first and records the application once. Only a job
+  Luna is tailoring can't be moved. While a card is held, refreshes leave the
+  board alone; the board scrolls at its edges.
 - **List:** the same jobs sorted by newest or best match; the side-panel stage
-  filters open it.
+  filters and the dashboard's *Active work* and *Applied* tiles open it.
 - Clicking a card opens a drawer with the details, the score, the
   description, actions, and **Notes & activity** (notes and stage changes).
 - The tab and layout are remembered per browser.
+
+## Employer replies (Settings → Notifications)
+
+With Gmail connected and **Read employer replies** on, Luna reads new mail in
+the connected inbox every 10 minutes (`api/job_os/outcomes.py`; read-only,
+nothing is marked or changed; the first check only notes where the inbox is,
+so older mail is never acted on). Mail that talks about an application goes
+to Luna with the list of jobs you applied for; when it is clearly about one of
+them (company and role) and says **no**, the job moves to **Rejected**; when
+it asks you to go further (an interview, an assessment, details to proceed),
+it moves to **Interview**. Acknowledgements, alerts and unsure answers move
+nothing. The job's activity shows the move with the email's subject, and a
+wrong move can be dragged back. **Check now** reads the inbox at once.
+
+Employers write to the address you applied with. When that is not the
+connected Gmail, forward job replies to it with a Gmail filter (Settings →
+Forwarding, then a filter such as `subject:(application OR interview OR
+candidate)` → Forward to).
+
+## Dashboard activity
+
+Under **Your funnel**, three month calendars on your clock (Scout schedule
+time zone): **Jobs found** (shade by how many), **Applications** (with your
+current streak of days in a row) and **Replies** (green interview, red
+rejection). The arrows step back up to five months.
 
 ## Match score
 
@@ -151,7 +194,7 @@ returns a 0–100 fit score with the matches and gaps. The ring is coloured by
 band: **75–100 Good match** (green), **50–74 Needs improvement** (yellow),
 **0–49 Terrible match** (red), with the percentage in the centre. Resume
 Studio's **Match check** steps through the jobs on the board one at a time,
-in board order (New, Shortlisted, Resume, Ready to apply): Previous/Next or
+in board order (New, Favorite, Ready to apply): Previous/Next or
 the arrow keys, then **Tailor & next**. **Score my resume** costs one model
 call. Scout finds are scored automatically when *Analyse new finds
 automatically* is on.

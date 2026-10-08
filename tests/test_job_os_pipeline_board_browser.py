@@ -31,9 +31,24 @@ def _open_jobs(page, hash_="#jobs/pipeline"):
     page.evaluate("async () => { await switchPanel('jobs'); }")
 
 
-def _move(page, card, value):
-    page.evaluate("""([card, value]) => { const s = document.querySelector(card + ' select[data-job-os-change="board-move"]');
-      s.value = value; s.dispatchEvent(new Event('change', {bubbles: true})); }""", [card, value])
+def _drag(page, card, column, *, refresh_midway=False):
+    """Drag a card onto a column with the mouse, the way a person does. With
+    refresh_midway, the page refreshes while the card is in the air."""
+    page.evaluate("""([card, column]) => { const target = document.querySelector(`.pipe-col[data-col="${column}"]`);
+      target.scrollIntoView({block: 'nearest', inline: 'end'}); document.querySelector(card).scrollIntoView({block: 'nearest', inline: 'nearest'}); }""", [card, column])
+    src = page.locator(f"{card} .pipe-card-title").bounding_box()
+    page.mouse.move(src["x"] + 10, src["y"] + 5)
+    page.mouse.down()
+    page.mouse.move(src["x"] + 30, src["y"] + 20, steps=4)
+    dst = page.locator(f'.pipe-col[data-col="{column}"] .pipe-col-head').bounding_box()
+    page.mouse.move(dst["x"] + dst["width"] / 2, dst["y"] + 40, steps=12)
+    if refresh_midway:
+        # A job arrives (as from a Scout run) and the page refreshes while the card is held.
+        _post("/api/job-os/jobs", {"title": f"Arrived {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})
+        page.evaluate("() => window.JobOS.refresh()")
+        page.wait_for_timeout(700)
+        page.mouse.move(dst["x"] + dst["width"] / 2 + 4, dst["y"] + 44, steps=3)
+    page.mouse.up()
 
 
 def test_board_apply_records_the_application_and_moves_the_card():
@@ -56,8 +71,13 @@ def test_board_apply_records_the_application_and_moves_the_card():
             page.wait_for_selector(f'.pipe-col[data-col="applied"] {card}', timeout=15000)
             opened = page.evaluate("() => window.__opened")
             meta = page.inner_text(f"{card} .pipe-card-meta")
-            _move(page, card, "screening")
-            page.wait_for_selector(f'.pipe-col[data-col="interviewing"] {card}', timeout=15000)
+            # Dragged to Interview with a refresh while it is in the air, then back to Applied.
+            _drag(page, card, "interview", refresh_midway=True)
+            page.wait_for_selector(f'.pipe-col[data-col="interview"] {card}', timeout=15000)
+            page.wait_for_function(f"() => document.querySelector('{card}')?.dataset.status === 'interviewing'", timeout=15000)
+            _drag(page, card, "applied")
+            page.wait_for_function(f"() => document.querySelector('{card}')?.dataset.status === 'submitted'", timeout=15000)
+            back_in_applied = page.evaluate(f"() => !!document.querySelector('.pipe-col[data-col=\"applied\"] {card}')")
             drawer = page.evaluate("() => !!document.querySelector('.job-drawer')")
         finally:
             browser.close()
@@ -66,6 +86,10 @@ def test_board_apply_records_the_application_and_moves_the_card():
     assert "applied" in meta.lower()
     assert hash_after.startswith("#jobs/pipeline") or hash_after == "#jobs/applications"
     assert not drawer  # moving a card does not open the job
+    assert back_in_applied, "a card dragged forward can be dragged back"
+    moves = [e["data"]["to"] for e in timeline["timeline"] if e["type"] == "status_changed"]
+    assert moves[-2:] == ["interviewing", "submitted"]
+    assert [e["type"] for e in timeline["timeline"]].count("application_submitted") == 1
     assert any(e["type"] == "application_submitted" and e["data"]["method"] == "manual" for e in timeline["timeline"])
 
 
@@ -105,6 +129,16 @@ def test_source_tabs_and_the_add_job_form():
             page.wait_for_selector(f'.pipe-card[data-board-job="{found["id"]}"]', timeout=15000)
             manual_hidden = page.evaluate(f"() => ![...document.querySelectorAll('.pipe-card')].some(c => c.textContent.includes('{title}'))")
             remembered = page.evaluate("() => JSON.parse(localStorage.getItem('hermes-job-os-pipeline')).source")
+            # A site tab redraws in the same click, from the board already loaded.
+            instant = page.evaluate("""() => { document.querySelector('[data-job-os-action="pipe-source"][data-source="all"]').click();
+              return document.querySelector('[data-job-os-action="pipe-source"][data-source="all"]').classList.contains('active'); }""")
+            # The search box narrows the board as you type and keeps the focus.
+            page.fill("#job-os-pipe-search", title)
+            page.wait_for_function(f"() => !document.querySelector('.pipe-card[data-board-job=\"{found['id']}\"]')", timeout=5000)
+            searched = page.evaluate(f"""() => ({{shown: [...document.querySelectorAll('.pipe-card')].map(c => c.textContent.includes('{title}')),
+              focused: document.activeElement && document.activeElement.id === 'job-os-pipe-search'}})""")
+            page.keyboard.press("Escape")
+            page.wait_for_selector(f'.pipe-card[data-board-job="{found["id"]}"]', timeout=5000)
         finally:
             browser.close()
     saved = next(j for j in _get("/api/job-os/jobs")["jobs"] if j["title"] == title)
@@ -112,5 +146,6 @@ def test_source_tabs_and_the_add_job_form():
     assert (saved["country"], saved["location"], saved["salary_text"]) == ("Singapore", "Jurong", "SGD 6,000 / month")
     assert "Jurong, Singapore" in card_text and "SGD 6,000 / month" in card_text and "MANUAL" in card_text.upper()
     assert indeed_hidden and manual_hidden and remembered == "indeed"
+    assert instant and searched == {"shown": [True], "focused": True}
     notes = [e["data"]["text"] for e in _get(f"/api/job-os/jobs/{saved['id']}/timeline")["timeline"] if e["type"] == "note"]
     assert notes == ["Referred by Sam"]

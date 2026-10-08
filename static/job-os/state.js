@@ -31,7 +31,8 @@
     searchError: '',
     jobDetail: null,
     sortBy: 'newest', // Pipeline list: 'newest' | 'fit'
-    pipelineSource: 'all', // 'all' | 'indeed' | 'manual'
+    pipelineSource: 'all', // 'all', a job site key, or 'manual'; filtered in the page, not on the server
+    pipelineQuery: '', // Pipeline search box: jobs whose title or company contain it
     pipelineMode: 'board', // 'board' | 'list'
     jobForm: null, // the Add/Edit job drawer: null = closed
     jobFormError: '',
@@ -62,5 +63,7 @@
     resumeThumb: null, // {revision, url}: the master's first page, drawn once
     settingsFocus: '', // a Settings section to scroll to after opening Settings
     matchDirection: null, // which way the match check last stepped, for its slide
+    activityMonth: 0, // Dashboard activity calendars: months back from this one
+    settingsSection: 'connections', // Settings: the section shown
   };
 }());

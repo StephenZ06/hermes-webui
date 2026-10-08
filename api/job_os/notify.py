@@ -522,10 +522,11 @@ def tick(*, now: float | None = None) -> None:
 
 
 def status() -> dict:
+    from api.job_os import outcomes
     from api.job_os.settings import load_settings
 
     settings = load_settings()
     state = load_state()
     return {"connected": all(mailer.credentials()), "ready": _ready(settings),
             "last_digest": state.get("last_digest"), "last_poll": state.get("last_poll"),
-            "last_poll_error": state.get("last_poll_error") or "", "log": recent_log()}
+            "last_poll_error": state.get("last_poll_error") or "", "log": recent_log(), "outcomes": outcomes.status()}

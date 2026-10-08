@@ -1,5 +1,29 @@
 # Project status — hermes-webui
 
+## 2026-10-08 (evening): Jobs pass 2 — board columns, drag back, employer replies, strict Scout titles
+
+- **Board:** columns New, Favorite (was Shortlisted; Resume column removed), Ready to apply,
+  Applied, Rejected, Interview, Offer, Closed. Any card drags to any column, back too
+  (`applications.move_to_column` -> `lifecycle.move_job`, revision-checked, event logged);
+  "Move to" selects removed. Site tabs and a new search box filter the loaded board in the
+  page (no fetch).
+- **Page patching:** `paint()` now morphs the DOM in place (keyed by `data-key`/id), so
+  re-renders keep focus, listeners and running animations. Fixed: dashboard rows/bars
+  faded in twice over slow links; a drag was dropped when a refresh landed mid-drag
+  (refresh is also paused while dragging). Element binders are bound once (`once()`).
+- **Employer replies:** `outcomes.py` reads the connected Gmail read-only every 10 min;
+  Luna classifies application replies and moves applied jobs to Rejected/Interview
+  (setting `notifications.track_outcomes`, default on). The connected inbox is the Hermes
+  sender, not the address the user applies with: needs a Gmail forwarding filter.
+- **Scout relevance:** schema 12 adds `searches.related_titles`, `strict_titles` (default 1).
+  `relevance.title_relevant` drops off-target titles; Luna suggests related titles once.
+  Off-target existing finds: count on the search card + **Move to Closed** (`/tidy`).
+- **UI:** crisper icons (stroke per size, whole-pixel boxes), labels trimmed to cap height
+  (Segoe UI rode low), activity calendars under the funnel, Automations On/Off swaps to
+  edit on hover, SVG match ring, Settings side menu (one section at a time).
+- **Known:** `test_job_os_apify.py::test_a_run_through_apify_saves_each_citys_postings`
+  fails on a dated fixture (posted 2026-10-06, window 1 day); pre-existing.
+
 ## 2026-10-08 (later): Jobs round 2 — speed, layout, drag and drop, design-matched tailoring (live, not pushed)
 
 - **Fixed:** Settings toggles blanked the page (hidden checkbox positioned against a far

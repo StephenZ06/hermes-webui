@@ -184,7 +184,7 @@ def test_a_run_through_apify_saves_each_citys_postings(home, monkeypatch):
     results = _apify_on(monkeypatch, runs, results_per_city=30)
     results += [[_item("kl1"), _item("kl2", title="BI Analyst", company="Globex"), _item("old", expired=True)],
                 [_item("kl1"), _item("pg1", title="Data Engineer", company="Initech")]]
-    search = scout.create_search({"keywords": "data analyst", "country": "my", "locations": ["Kuala Lumpur", "Penang"],
+    search = scout.create_search({"strict_titles": False, "keywords": "data analyst", "country": "my", "locations": ["Kuala Lumpur", "Penang"],
                                   "posted_within_days": 1})
     run = _run(search)
     assert run["status"] == "completed", run
@@ -207,17 +207,17 @@ def test_one_failed_city_keeps_the_others_and_all_failing_fails_the_run(home, mo
     runs = []
     results = _apify_on(monkeypatch, runs)
     results += [apify.ApifyError("Apify did not answer"), [_item("ok1")]]
-    search = scout.create_search({"keywords": "x", "country": "my", "locations": ["A", "B"]})
+    search = scout.create_search({"strict_titles": False, "keywords": "x", "country": "my", "locations": ["A", "B"]})
     run = _run(search)
     assert run["status"] == "completed" and run["counts"]["saved"] == 1 and run["errors"][0]["where"] == "Apify Indeed “x” in A"
     results += [apify.ApifyError("Your Apify account is out of credit for this month.")]
-    failed = _run(scout.create_search({"keywords": "y", "country": "my"}))
+    failed = _run(scout.create_search({"strict_titles": False, "keywords": "y", "country": "my"}))
     assert failed["status"] == "failed" and "out of credit" in failed["stage_detail"]
 
 
 def test_apify_on_without_a_token_fails_clearly(home, monkeypatch):
     save_settings({"apify": {"enabled": True}}, expected_revision=0)
-    run = _run(scout.create_search({"keywords": "x", "country": "my"}))
+    run = _run(scout.create_search({"strict_titles": False, "keywords": "x", "country": "my"}))
     assert run["status"] == "failed" and "not connected" in run["stage_detail"]
 
 
@@ -245,7 +245,7 @@ def test_a_run_says_when_new_finds_were_not_scored_for_want_of_a_resume(home, mo
     runs = []
     results = _apify_on(monkeypatch, runs)
     results += [[_item("n1")]]
-    run = _run(scout.create_search({"keywords": "x", "country": "my"}))
+    run = _run(scout.create_search({"strict_titles": False, "keywords": "x", "country": "my"}))
     assert run["status"] == "completed"
     assert run["stage_detail"] == "1 new job · not scored: upload your master resume in Resume Studio"
 
@@ -288,7 +288,7 @@ def test_a_search_on_both_sites_runs_each_and_saves_a_role_once(home, monkeypatc
                 [_linkedin("1111111", title="BI Analyst", company="Globex", posted=today),
                  _linkedin("2222222", title="Data Analyst", company="Acme", posted=today),  # the same role as Indeed's
                  _linkedin("3333333", title="Old Role", company="Initech", posted="2020-01-01")]]
-    search = scout.create_search({"keywords": "data", "country": "my", "sites": ["linkedin", "indeed"], "posted_within_days": 7})
+    search = scout.create_search({"strict_titles": False, "keywords": "data", "country": "my", "sites": ["linkedin", "indeed"], "posted_within_days": 7})
     assert search["sites"] == ["indeed", "linkedin"]
     run = _run(search)
     assert run["status"] == "completed", run
@@ -302,8 +302,8 @@ def test_a_search_on_both_sites_runs_each_and_saves_a_role_once(home, monkeypatc
 
 def test_sites_are_validated_and_need_apify(home, monkeypatch):
     with pytest.raises(scout.ScoutError, match="Unknown job site"):
-        scout.create_search({"keywords": "x", "country": "my", "sites": ["jobstreet"]})
-    run = _run(scout.create_search({"keywords": "x", "country": "my", "sites": ["linkedin"]}))
+        scout.create_search({"strict_titles": False, "keywords": "x", "country": "my", "sites": ["jobstreet"]})
+    run = _run(scout.create_search({"strict_titles": False, "keywords": "x", "country": "my", "sites": ["linkedin"]}))
     assert run["status"] == "failed" and "LinkedIn need" in run["stage_detail"]
 
 
@@ -314,7 +314,7 @@ def test_scrapers_that_can_skip_known_jobs_and_off_title_ones_are_told_to(home, 
     valig = lambda job_id, title, company: {"id": job_id, "title": title, "companyName": company, "location": "Kuala Lumpur",
                                             "postedDate": today, "description": "x"}
     results += [[valig("1111111", "SOC Analyst", "A")]]
-    search = scout.create_search({"keywords": "SOC Analyst", "country": "my", "sites": ["linkedin"], "title_filter": "soc"})
+    search = scout.create_search({"strict_titles": False, "keywords": "SOC Analyst", "country": "my", "sites": ["linkedin"], "title_filter": "soc"})
     assert _run(search)["counts"]["saved"] == 1
     assert runs[0][1]["titleInclude"] == ["soc"] and "skipJobId" not in runs[0][1]
     results += [[]]
@@ -332,7 +332,7 @@ def test_title_filter_keeps_only_matching_titles(home, monkeypatch):
         [_linkedin("5555555", title="Cyber Security Analyst", company="E", posted=today)],
         [_linkedin("6666666", title="Security Operations Analyst", company="F", posted=today)],
     ]
-    search = scout.create_search({"keywords": "SOC Analyst, Security Analyst", "country": "my", "sites": ["indeed", "linkedin"],
+    search = scout.create_search({"strict_titles": False, "keywords": "SOC Analyst, Security Analyst", "country": "my", "sites": ["indeed", "linkedin"],
                                   "title_filter": "soc, Security Analyst"})
     assert search["title_filter"] == ["soc", "security analyst"] and search["queries"] == ["SOC Analyst", "Security Analyst"]
     run = _run(search)
@@ -391,7 +391,7 @@ def test_bayt_records_map_and_bayt_only_covers_its_markets(home, monkeypatch):
         "includeDetails": True, "datePosted": "past-24h"}
     assert apify.bayt_posting(_bayt("7777777", title="Treasury &amp; Analytics"))["title"] == "Treasury & Analytics"
     with pytest.raises(scout.ScoutError, match="Bayt doesn't cover Malaysia"):
-        scout.create_search({"keywords": "x", "country": "my", "sites": ["bayt"]})
+        scout.create_search({"strict_titles": False, "keywords": "x", "country": "my", "sites": ["bayt"]})
     payload = {s["key"]: s for s in apify.sites_payload()}
     assert "qa" in payload["bayt"]["countries"] and payload["indeed"]["countries"] is None
 
@@ -401,7 +401,7 @@ def test_a_bayt_run_asks_for_new_jobs_only_and_filters_titles(home, monkeypatch)
     results = _apify_on(monkeypatch, runs)
     today = __import__("time").strftime("%Y-%m-%d")
     results += [[_bayt("1111111", posted=today), _bayt("2222222", title="Sales Executive", company="X", posted=today)]]
-    search = scout.create_search({"keywords": "SOC Analyst", "country": "qa", "sites": ["bayt"], "title_filter": "analyst"})
+    search = scout.create_search({"strict_titles": False, "keywords": "SOC Analyst", "country": "qa", "sites": ["bayt"], "title_filter": "analyst"})
     run = _run(search)
     assert run["counts"]["saved"] == 1 and run["counts"]["filtered"] == 1
     sent = runs[0][1]
@@ -409,3 +409,55 @@ def test_a_bayt_run_asks_for_new_jobs_only_and_filters_titles(home, monkeypatch)
     assert sent["incrementalMode"] is True and sent["stateKey"] == f"hermes-{search['id'][:8]}-bayt-soc-analyst-all"
     job = list_jobs()[0]
     assert job.source == "bayt" and job.country == "Qatar"
+
+
+# ---- on-target titles ------------------------------------------------------------------
+
+def test_a_strict_search_keeps_on_target_titles_and_asks_luna_for_related_ones_once(home, monkeypatch):
+    from api.job_os import relevance
+
+    runs = []
+    results = _apify_on(monkeypatch, runs)
+    asked = []
+    monkeypatch.setattr(relevance, "suggest_related", lambda keywords: asked.append(keywords) or ["Threat Intelligence Analyst"])
+    results += [[_item("a1", title="SOC L2 Analyst"), _item("a2", title="Sales Executive", company="Initech"),
+                 _item("a3", title="Senior Analyst, Threat Intelligence", company="Globex"),
+                 _item("a4", title="Business Analyst", company="Umbrella")]]
+    search = scout.create_search({"keywords": "SOC Analyst", "country": "my", "sites": ["indeed"]})
+    assert search["strict_titles"] is True and search["related_titles"] == []
+    run = _run(search)
+    assert sorted(j.title for j in list_jobs()) == ["SOC L2 Analyst", "Senior Analyst, Threat Intelligence"]
+    assert run["counts"]["filtered"] == 2, run["counts"]
+    assert scout.get_search(search["id"])["related_titles"] == ["Threat Intelligence Analyst"]
+    results += [[]]
+    _run(scout.get_search(search["id"]))
+    assert asked == ["SOC Analyst"], "related titles are asked for once, not every run"
+
+
+def test_new_titles_clear_the_related_ones_and_tidy_skips_off_target_finds(home, monkeypatch):
+    from dataclasses import replace
+
+    from api.job_os.lifecycle import transition_job
+    from api.job_os.models import JobStatus
+    from api.job_os.repository import create_job, normalize_job_input
+
+    search = scout.create_search({"keywords": "SOC Analyst", "country": "my", "related_titles": "Threat Hunter"})
+    assert search["related_titles"] == ["Threat Hunter"]
+
+    def find(title, n):
+        job = normalize_job_input({"title": title, "canonical_url": f"https://www.indeed.com/viewjob?jk=t{n}", "source": "indeed"})
+        return create_job(replace(job, search_id=search["id"]), status=JobStatus.SCRAPED)
+
+    sales, soc, hunter = find("Sales Executive", 1), find("SOC Analyst (L1)", 2), find("Senior Threat Hunter", 3)
+    applied = find("Marketing Lead", 4)
+    transition_job(applied.id, JobStatus.SUBMITTED, expected_revision=applied.revision)
+    listed = routes.handle_get(h := _H(), urlparse("/api/job-os/searches")) and h.json()["searches"][0]
+    assert listed["off_target"] == 1, "an applied job is never tidied away"
+    tidy = _post(f"/api/job-os/searches/{search['id']}/tidy")
+    assert tidy.json() == {"skipped": 1}
+    assert get_job(sales.id).status == JobStatus.SKIPPED
+    assert get_job(soc.id).status == get_job(hunter.id).status == JobStatus.SCRAPED
+    renamed = scout.update_search(search["id"], {"keywords": "Security Analyst"}, expected_revision=search["revision"])
+    assert renamed["related_titles"] == []
+    loose = scout.update_search(search["id"], {"strict_titles": False}, expected_revision=renamed["revision"])
+    assert loose["strict_titles"] is False and scout.off_target(loose) == []

@@ -5946,6 +5946,10 @@ html .hermes-note-editor .bn-editor{padding-inline:54px;background:transparent;f
 .job-os-badge[data-tone="warn"],.job-os-dot[data-tone="warn"]{--tone:var(--warning,#f5b84b);}
 .job-os-badge[data-tone="success"],.job-os-dot[data-tone="success"]{--tone:var(--success,#4ade80);}
 .job-os-badge[data-tone="neutral"],.job-os-dot[data-tone="neutral"]{--tone:var(--text);}
+.job-os-badge[data-tone="favorite"],.job-os-dot[data-tone="favorite"]{--tone:#a78bfa;}
+.job-os-badge[data-tone="danger"],.job-os-dot[data-tone="danger"]{--tone:var(--error,#f07878);}
+.job-os-badge[data-tone="offer"],.job-os-dot[data-tone="offer"]{--tone:#2dd4bf;}
+.job-os-dot[data-tone="neutral"]{--tone:var(--muted);}
 .job-os-badge[data-tone="muted"]{opacity:.7;}
 .job-os-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:32px 16px;text-align:center;color:var(--muted);}
 .job-os-empty strong{color:var(--text);font-size:14px;}
@@ -6642,6 +6646,172 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 @media (prefers-reduced-motion:reduce){
   .automations-card.is-loading,.job-os-list.is-paging>*,.match-body[data-enter],.resume-preview,.resume-preview-pages,.map-bar i,.job-os-settings-section.is-focus,.pipe-drop-menu,.resume-thumb-loading{animation:none!important;}
   .automation-edit,.resume-thumb-page,.pipe-card,.match-progress i{transition:none;}
+}
+/* ==== Jobs, third pass: crisp icons and labels that sit on their icons, the
+   activity calendars, the board's columns and search, the match ring, and
+   Settings as a side menu with one section at a time. ==== */
+/* Icons land on whole pixels: even sizes in even boxes, the stroke set per size in render.js. */
+#jobOsRoot .mx-icon,#jobOsSidebar .mx-icon{display:block;flex-shrink:0;}
+.card-icon{flex-basis:28px;}
+/* Segoe UI (Windows) rides about 2px low in a flex row; trimming the line box to
+   the cap height and the font's descent puts the ink where the icon is (see
+   .composer-workspace-label above for the measurement). */
+.side-menu-label,.card-title,.settings-nav-text strong,.pipe-col-head h3,.automation-main strong,.cal-title,.activity-head h3{text-box:trim-both cap text;}
+#jobOsSidebar .job-os-side-nav .side-menu-item{min-height:38px;padding:0 10px;gap:11px;}
+#jobOsSidebar .job-os-side-nav .side-menu-item svg{width:18px;height:18px;opacity:1;color:var(--muted);transition:color .15s ease;}
+#jobOsSidebar .job-os-side-nav .side-menu-item:hover svg{color:var(--text);}
+#jobOsSidebar .job-os-side-nav .side-menu-item.active svg{color:var(--accent-text,var(--accent));}
+#jobOsSidebar .job-os-stage{min-height:32px;padding:0 10px;}
+.side-menu-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Text keeps the same room above and below: titles and notes trimmed to their ink. */
+.job-os-card-head h2{align-items:center;}
+.job-os-header h1,.job-os-header p,.section-bar h2{text-box:trim-both cap alphabetic;}
+.job-os-header>div{display:flex;flex-direction:column;gap:10px;}
+.job-os-header p{margin:0;}
+/* Automations: On/Off at the right edge; on hover it gives way to the edit icon. */
+.automation-row{grid-template-columns:12px minmax(0,1fr) auto;gap:12px;}
+.automation-end{display:grid;align-items:center;justify-items:end;min-width:46px;}
+.automation-end>*{grid-area:1/1;}
+.automation-state{transition:opacity .16s ease,transform .2s cubic-bezier(.22,1,.36,1);}
+.automation-edit{width:28px;height:28px;border-radius:8px;background:var(--accent-bg);color:var(--accent-text,var(--accent));opacity:0;transform:scale(.8);transition:opacity .16s ease,transform .2s cubic-bezier(.22,1,.36,1);}
+.automation-row:hover .automation-state,.automation-row:focus-visible .automation-state{opacity:0;transform:scale(.85);}
+.automation-row:hover .automation-edit,.automation-row:focus-visible .automation-edit{opacity:1;transform:none;}
+/* Your funnel, with the activity calendars filling the rest of the card. */
+.funnel-card{display:flex;flex-direction:column;}
+.activity{margin-top:auto;padding-top:18px;border-top:1px solid var(--border2);}
+.funnel-card .funnel,.funnel-card .card-empty-note{margin-bottom:20px;}
+.activity-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+.activity-head h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.activity-month{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text);}
+.activity-month>span{min-width:110px;text-align:center;font-variant-numeric:tabular-nums;}
+.job-os-icon-btn.small{width:26px;height:26px;flex-basis:26px;border-radius:7px;}
+.cals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.cal{--cal:var(--info,#60a5fa);display:flex;flex-direction:column;gap:10px;min-width:0;padding:12px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--surface) 55%,transparent);}
+.cal[data-cal="applied"]{--cal:var(--warning,#f5b84b);}
+.cal[data-cal="replies"]{--cal:var(--success,#4ade80);}
+.cal-head{display:flex;align-items:center;justify-content:space-between;}
+.cal-title{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:650;color:var(--text);}
+.cal-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:color-mix(in srgb,var(--cal) 16%,transparent);color:var(--cal);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;}
+.cal-dow{text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding-bottom:2px;}
+.cal-day{display:grid;place-items:center;aspect-ratio:1;border-radius:5px;background:color-mix(in srgb,var(--border2) 42%,transparent);color:color-mix(in srgb,var(--muted) 80%,transparent);font-size:9px;font-weight:600;font-variant-numeric:tabular-nums;transition:transform .15s ease,background .2s ease;}
+.cal-day.is-blank{background:transparent;}
+.cal-day.is-future{opacity:.35;}
+.cal-day.is-today{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--text);}
+.cal-day[data-level]{color:#0d0f14;font-weight:750;}
+.cal-day[data-level="1"]{background:color-mix(in srgb,var(--cal) 42%,transparent);color:var(--text);}
+.cal-day[data-level="2"]{background:color-mix(in srgb,var(--cal) 62%,transparent);}
+.cal-day[data-level="3"]{background:color-mix(in srgb,var(--cal) 82%,transparent);}
+.cal-day[data-level="4"]{background:var(--cal);}
+.cal-day[data-tone="good"]{background:var(--success,#4ade80);}
+.cal-day[data-tone="bad"]{background:var(--error,#f07878);}
+.cal-day[data-tone="mixed"]{background:linear-gradient(135deg,var(--success,#4ade80) 50%,var(--error,#f07878) 50%);}
+.cal-day[data-level]:hover{transform:scale(1.12);}
+.cal-stat{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;font-size:11px;color:var(--muted);}
+.cal-stat strong{color:var(--text);font-variant-numeric:tabular-nums;}
+.cal-stat span{display:inline-flex;align-items:center;gap:5px;}
+.cal-key{width:8px;height:8px;border-radius:2px;}
+.cal-key[data-tone="good"]{background:var(--success,#4ade80);}
+.cal-key[data-tone="bad"]{background:var(--error,#f07878);}
+@media(max-width:1280px) and (min-width:1101px){.cals{grid-template-columns:repeat(2,minmax(0,1fr));}.cal[data-cal="replies"]{grid-column:1/-1;}}
+@media(max-width:560px){.cals{grid-template-columns:1fr;}}
+/* Pipeline: a search box beside the layout switch; column colours by stage. */
+.pipe-search{position:relative;display:inline-flex;align-items:center;flex:1 1 150px;max-width:300px;min-width:140px;height:38px;padding:0 10px;gap:8px;border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--surface) 60%,transparent);color:var(--muted);transition:border-color .16s ease,box-shadow .16s ease,flex-basis .25s cubic-bezier(.22,1,.36,1);}
+.pipe-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg);color:var(--text);}
+.pipe-search input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--text);font:inherit;font-size:13px;outline:none;}
+.pipe-search input::-webkit-search-cancel-button{display:none;}
+.pipe-search input::placeholder{color:var(--muted);}
+.pipe-search kbd{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border:1px solid var(--border2);border-radius:5px;font:inherit;font-size:11px;color:var(--muted);}
+.pipe-search.has-query kbd,.pipe-search:focus-within kbd{display:none;}
+.pipe-search-clear{display:grid;place-items:center;width:24px;height:24px;margin-right:-4px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;}
+.pipe-search-clear:hover{color:var(--text);background:color-mix(in srgb,var(--border2) 50%,transparent);}
+.pipe-col{--stage:var(--muted);}
+.pipe-col[data-col="new"]{--stage:color-mix(in srgb,var(--muted) 85%,var(--text));}
+.pipe-col[data-col="favorite"]{--stage:#a78bfa;}
+.pipe-col[data-col="ready"]{--stage:var(--accent);}
+.pipe-col[data-col="applied"]{--stage:var(--info,#60a5fa);}
+.pipe-col[data-col="rejected"]{--stage:var(--error,#f07878);}
+.pipe-col[data-col="interview"]{--stage:var(--success,#4ade80);}
+.pipe-col[data-col="offers"]{--stage:#2dd4bf;}
+.pipe-col[data-col="closed"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
+.pipe-col .pipe-col-dot,.pipe-col[data-col] .pipe-col-dot{background:var(--stage);opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 18%,transparent);}
+.pipe-col[data-col="offers"] .pipe-col-head h3{color:var(--muted);}
+.pipe-col{border-top:2px solid color-mix(in srgb,var(--stage) 55%,var(--border2));}
+.pipe-card[draggable="true"]{cursor:grab;}
+.pipe-card[draggable="true"]:active{cursor:grabbing;}
+.pipe-board.is-dragging .pipe-col:not(.can-drop){opacity:.55;}
+.pipe-col.drop-target{border-color:var(--stage)!important;background:color-mix(in srgb,var(--stage) 8%,var(--surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 22%,transparent);}
+.pipe-board.is-dragging .pipe-col.can-drop{border-color:color-mix(in srgb,var(--stage) 45%,var(--border2));}
+/* Match check: the score as a ring with rounded ends, level with the details beside it. */
+.match-body{align-items:center;padding-top:22px;}
+.match-ring{--ring:var(--muted);flex:0 0 148px;width:148px;height:148px;border-radius:50%;background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--ring) 9%,transparent),transparent 68%);}
+.match-ring::before{content:none;}
+.match-ring-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+.match-ring-halo{fill:none;stroke:color-mix(in srgb,var(--ring) 14%,transparent);stroke-width:1;stroke-dasharray:1 3.2;}
+.match-ring-track{fill:none;stroke:color-mix(in srgb,var(--border2) 80%,transparent);stroke-width:9;}
+.match-ring-arc{fill:none;stroke:var(--ring);stroke-width:9;stroke-linecap:round;stroke-dasharray:var(--fit) 100;transform:rotate(-90deg);transform-origin:50% 50%;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--ring) 45%,transparent));transition:stroke-dasharray .7s cubic-bezier(.22,1,.36,1),stroke .3s ease;animation:ring-draw .9s cubic-bezier(.22,1,.36,1) backwards;}
+@keyframes ring-draw{from{stroke-dasharray:0 100;}}
+.match-ring.is-busy .match-ring-arc{stroke:var(--accent);animation:fit-spin 1.1s linear infinite;transform-box:view-box;}
+.match-ring.is-failed .match-ring-arc{stroke:color-mix(in srgb,var(--error,#f07878) 55%,transparent);filter:none;}
+.match-ring-label{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;}
+.match-ring strong{font-size:32px;font-weight:800;letter-spacing:-.02em;}
+.match-ring strong em{font-style:normal;font-size:15px;font-weight:700;margin-left:1px;color:var(--muted);}
+.match-ring small{max-width:none;white-space:nowrap;font-size:10.5px;font-weight:700;letter-spacing:.01em;}
+.match-ring{flex-basis:152px;width:152px;height:152px;}
+.match-stage[data-stage="favorite"]{background:color-mix(in srgb,#a78bfa 16%,transparent);color:#a78bfa;}
+/* Tailored versions: the keyword chip and status sit together, the time at the edge. */
+.studio-item{grid-template-columns:36px minmax(0,1fr) auto auto;}
+.studio-item-tags{display:inline-flex;align-items:center;gap:6px;}
+.studio-item .job-os-job-when{min-width:52px;}
+/* Scout: off-target finds, related titles. */
+.scout-tidy{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px 8px 12px;border:1px solid color-mix(in srgb,var(--warning,#f5b84b) 35%,var(--border2));border-radius:10px;background:color-mix(in srgb,var(--warning,#f5b84b) 7%,transparent);font-size:12.5px;color:var(--text);}
+.scout-tidy>span{display:inline-flex;align-items:center;gap:8px;min-width:0;}
+.scout-tidy svg{color:var(--warning,#f5b84b);}
+.field-with-action{display:flex;gap:8px;align-items:stretch;}
+.field-with-action input{flex:1;}
+.field-with-action .job-os-btn{white-space:nowrap;}
+.job-os-btn.is-busy{opacity:.7;pointer-events:none;}
+/* Settings: a side menu of sections, one shown at a time. */
+.settings-layout{display:grid;grid-template-columns:232px minmax(0,1fr);gap:20px;align-items:start;}
+.settings-nav{position:sticky;top:12px;display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--border2);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.05);}
+.settings-nav-group{margin:10px 8px 4px;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.settings-nav-group:first-child{margin-top:2px;}
+.settings-nav-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border:0;border-radius:9px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:background .15s ease;}
+.settings-nav-item:hover{background:color-mix(in srgb,var(--border2) 40%,transparent);}
+.settings-nav-item.active{background:var(--accent-bg);}
+.settings-nav-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.settings-nav-icon{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:8px;background:color-mix(in srgb,var(--border2) 45%,transparent);color:var(--muted);transition:background .15s ease,color .15s ease;}
+.settings-nav-item.active .settings-nav-icon{background:var(--accent);color:var(--accent-contrast,#111);}
+.settings-nav-text{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.settings-nav-text strong{font-size:13px;font-weight:600;}
+.settings-nav-item.active .settings-nav-text strong{color:var(--accent-text,var(--accent));}
+.settings-nav-text small{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.settings-nav-dot{flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:var(--muted);}
+.settings-nav-dot[data-ok="true"]{background:var(--success,#4ade80);}
+.settings-page{display:flex;flex-direction:column;gap:16px;min-width:0;animation:settings-page-in .26s cubic-bezier(.22,1,.36,1);}
+@keyframes settings-page-in{from{opacity:0;transform:translateY(6px);}}
+.job-os-settings .job-os-settings-section{gap:16px;}
+.job-os-settings .job-os-settings-section>.job-os-card-note{max-width:72ch;}
+/* Switches read as rows: what it does on the left, the switch on the right. */
+.job-os-settings .job-os-toggle{flex-direction:row-reverse;justify-content:space-between;align-items:center;gap:16px;padding:12px 14px;border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--surface) 50%,transparent);transition:border-color .15s ease;}
+.job-os-settings .job-os-toggle:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));}
+.job-os-settings .job-os-toggle-track{margin-top:0;}
+.job-os-settings .job-os-conn{gap:12px;padding:16px;border:1px solid var(--border2);border-radius:12px;background:color-mix(in srgb,var(--surface) 35%,transparent);}
+.job-os-settings .job-os-conn+.job-os-conn{padding-top:16px;border-top:1px solid var(--border2);}
+.job-os-settings .job-os-conn .job-os-toggle{align-self:stretch;}
+.job-os-settings .job-os-conn-head strong{font-size:13.5px;}
+.job-os-settings .job-os-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px 16px;}
+.job-os-settings .job-os-savebar{margin-top:4px;}
+@media(max-width:900px){
+  .settings-layout{grid-template-columns:1fr;}
+  .settings-nav{position:static;flex-direction:row;overflow-x:auto;padding:6px;scrollbar-width:none;}
+  .settings-nav-group{display:none;}
+  .settings-nav-item{flex:0 0 auto;width:auto;}
+  .settings-nav-text small{display:none;}
+}
+@media(max-width:640px){.pipe-search{flex:1 1 100%;max-width:none;}.pipe-search kbd{display:none;}.match-ring{flex-basis:124px;width:124px;height:124px;}.cal{padding:10px;}}
+@media (prefers-reduced-motion:reduce){
+  .match-ring-arc,.settings-page,.automation-edit,.automation-state,.cal-day{animation:none!important;transition:none!important;}
 }
 /* The Office is a whole-screen view with its own right-hand column (Task
    Status) -- the chat-only Files/Artifacts/Todos/Canvas/Live/Plane workspace

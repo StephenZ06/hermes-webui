@@ -93,3 +93,39 @@ def transition_job(job_id: str, target: JobStatus, *, expected_revision: int) ->
         return _record_from_row(result)
     finally:
         connection.close()
+
+
+def move_job(job_id: str, target: JobStatus, *, expected_revision: int, payload: dict | None = None) -> JobRecord:
+    """Put a job at ``target`` because a person (or an email they received) said so.
+
+    The board lets you drag a card to any stage, back as well as forward, so this
+    skips the transition graph that automation follows. It keeps the revision
+    check and records the move in the event log like any other transition.
+    """
+    connection = connect_job_os()
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            connection.rollback()
+            raise KeyError("Job not found")
+        if row["revision"] != expected_revision:
+            connection.rollback()
+            raise ConcurrentRevisionError("Job has changed; refresh before updating it")
+        current = JobStatus(row["status"])
+        if current == target:
+            connection.rollback()
+            return _record_from_row(row)
+        now = int(time.time())
+        connection.execute("UPDATE jobs SET status = ?, revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?",
+                           (target.value, now, job_id, expected_revision))
+        connection.execute(
+            "INSERT INTO job_events (id, job_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), job_id, "status_changed",
+             json.dumps({"from": current.value, "to": target.value, **(payload or {"by": "you"})}, separators=(",", ":")), now),
+        )
+        result = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        connection.commit()
+        return _record_from_row(result)
+    finally:
+        connection.close()

@@ -104,8 +104,13 @@ def test_settings_toggles_keep_their_hidden_checkbox_inside_the_label():
               document.body.appendChild(host);
               const settings = {revision: 1, scout: {enabled: false, schedule_mode: 'times', run_times: ['12:30'], weekend: 'saturday', blocked_companies: []},
                 notifications: {}, ai: {}, applicant: {}, apply: {}, apify: {}, firecrawl: {}, display: {}};
-              host.innerHTML = window.JobOSRender.shell({capability: {available: true}, jobs: [], activeView: 'settings', settings});
-              const inputs = [...host.querySelectorAll('.job-os-toggle input')];
+              // Settings shows one section at a time: check every one.
+              const inputs = [];
+              for (const section of ['connections', 'apify', 'scout', 'ai', 'notifications', 'applicant', 'apply', 'display']) {
+                host.innerHTML = window.JobOSRender.shell({capability: {available: true}, jobs: [], activeView: 'settings', settings, settingsSection: section});
+                inputs.push(...host.querySelectorAll('.job-os-toggle input'));
+              }
+              inputs.forEach((i) => { const box = document.createElement('div'); box.className = 'job-os-settings'; host.appendChild(i.closest('.job-os-toggle')); });
               const result = {count: inputs.length, outside: inputs.filter((i) => i.offsetParent !== i.closest('.job-os-toggle')).length};
               host.remove();
               return result;
@@ -133,19 +138,67 @@ def test_pagers_drop_targets_the_match_queue_and_idle_search_cards():
               const queue = window.JobOSRender.matchQueue(jobs).map((j) => j.stage + ':' + j.id);
               const card = (job) => { host.innerHTML = window.JobOSRender.shell({...base, activeView: 'pipeline',
                 board: {columns: [{key: job.column, label: 'X', jobs: [job]}]}}); return host.querySelector('.pipe-card'); };
-              const fresh = card({id: 'a', title: 'A', status: 'analyzed', column: 'new', has_description: true, revision: 1,
-                moves: [['shortlisted', 'Shortlisted'], ['submitted', 'Applied'], ['skipped', 'Skipped']]});
-              const done = card({id: 'b', title: 'B', status: 'offer_accepted', column: 'offers', revision: 1, moves: []});
+              const fresh = card({id: 'a', title: 'A', status: 'analyzed', column: 'new', has_description: true, revision: 1});
+              const done = card({id: 'b', title: 'B', status: 'offer_accepted', column: 'offers', revision: 1});
+              const busy = card({id: 'c', title: 'C', status: 'tailoring', column: 'favorite', revision: 1});
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'scout', searches: [{id: 's1', name: 'SOC', keywords: 'SOC Analyst',
                 enabled: true, sites: ['indeed'], locations: [], title_filter: []}], runs: []});
-              return {recent, queue: [queue.length, queue[0], queue[queue.length - 1]], drops: fresh.dataset.drops, draggable: fresh.draggable,
-                      fixed: done.hasAttribute('draggable'), idle: host.querySelector('.scout-run.is-empty .scout-run-state').textContent,
+              return {recent, queue: [queue.length, queue[0], queue[queue.length - 1]], draggable: [fresh.draggable, done.draggable],
+                      fixed: busy.hasAttribute('draggable'), moveMenu: !!host.querySelector('.pipe-move'), idle: host.querySelector('.scout-run.is-empty .scout-run-state').textContent,
                       facts: [...host.querySelectorAll('.scout-facts dt')].length};
             }""")
         finally:
             browser.close()
     assert out["recent"] == {"rows": 3, "range": "21–23 of 23", "current": "3", "nextDisabled": True}
-    # Board order: shortlisted jobs come after every new one; the job without a description is left out.
-    assert out["queue"] == [22, "new:j22", "shortlisted:j0"]
-    assert out["drops"] == "shortlisted resume applied closed" and out["draggable"] and not out["fixed"]
+    # Board order: favorite jobs come after every new one; the job without a description is left out.
+    assert out["queue"] == [22, "new:j22", "favorite:j0"]
+    # Any card can be dragged anywhere, back as well as forward, except one Luna is tailoring.
+    assert out["draggable"] == [True, True] and not out["fixed"] and not out["moveMenu"]
     assert out["idle"] == "Not run yet" and out["facts"] == 6
+
+
+def test_activity_calendars_tile_groups_and_the_automation_edit_slot():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              const activity = {today: '2026-10-08', days: {'2026-10-01': {found: 31}, '2026-10-06': {applied: 1}, '2026-10-07': {applied: 2, interview: 1},
+                '2026-10-08': {applied: 1, rejected: 1, interview: 1}, '2026-09-30': {found: 4}}};
+              const dashboard = {total_jobs: 3, active_work: 0, needs_attention: 0, by_status: {submitted: 1, rejected: 1}, funnel: [{key: 'found', label: 'Found', count: 3}], activity};
+              const automations = [{key: 'scout', label: 'Scout searches', schedule: 'At 12:30', on: true}];
+              const base = {capability: {available: true}, dashboard, automations, jobs: [
+                {id: 'a', title: 'Applied one', status: 'submitted', updated_at: 2}, {id: 'r', title: 'Rejected one', status: 'rejected', updated_at: 1},
+                {id: 'n', title: 'New one', status: 'scraped', updated_at: 3}], pipelineSource: 'all'};
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard'});
+              const cal = (key) => host.querySelector(`.cal[data-cal="${key}"]`);
+              const day = (key, n) => [...cal(key).querySelectorAll('.cal-day:not(.is-blank)')][n - 1];
+              const result = {
+                month: host.querySelector('.activity-month span').textContent,
+                found: [day('found', 1).dataset.level, cal('found').querySelector('.cal-stat').textContent.trim()],
+                streak: cal('applied').querySelector('.cal-stat').textContent.replace(/\\s+/g, ' ').trim(),
+                replies: [day('replies', 7).dataset.tone, day('replies', 8).dataset.tone],
+                today: day('found', 8).classList.contains('is-today'), future: day('found', 9).classList.contains('is-future'),
+                nextDisabled: host.querySelector('[data-job-os-action="activity-month"][data-step="-1"]').disabled,
+                appliedTile: host.querySelector('[data-job-os-filter="applied"] strong').textContent,
+                slot: [...host.querySelector('.automation-end').children].map((c) => c.className),
+              };
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', activityMonth: 1});
+              result.september = [host.querySelector('.activity-month span').textContent, cal('found').querySelector('.cal-stat').textContent.trim()];
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'pipeline', statusFilter: 'applied', pipelineMode: 'list'});
+              result.group = [host.querySelector('.job-os-filter-label').textContent, [...host.querySelectorAll('.job-os-job-card strong')].map((s) => s.textContent)];
+              host.innerHTML = window.JobOSRender.shell({...base, activeView: 'pipeline', statusFilter: 'active', pipelineMode: 'list'});
+              result.emptyGroup = host.querySelector('.job-os-empty strong').textContent;
+              return result;
+            }""")
+        finally:
+            browser.close()
+    assert out["month"].startswith("October") and out["found"] == ["4", "31 this month"]
+    assert out["streak"] == "4 sentStreak 3 days"  # Oct 6, 7 and 8 in a row
+    assert out["replies"] == ["good", "mixed"] and out["today"] and out["future"] and out["nextDisabled"]
+    assert out["september"][0].startswith("September") and out["september"][1] == "4 this month"
+    assert out["appliedTile"] == "2"  # applied counts every application sent, rejected ones too
+    assert out["group"] == ["Applied", ["Applied one", "Rejected one"]] and out["emptyGroup"] == "Nothing in active work yet"
+    assert out["slot"] == ["automation-state", "automation-edit"]

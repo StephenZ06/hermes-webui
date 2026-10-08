@@ -69,10 +69,13 @@ def test_board_columns_attention_and_follow_up(store):
     new = _job_at(JobStatus.SCRAPED)
     skipped = _job_at(JobStatus.SCRAPED)
     skipped = transition_job(skipped.id, JobStatus.SKIPPED, expected_revision=skipped.revision)
+    rejected = _job_at(JobStatus.SUBMITTED)
+    rejected = transition_job(rejected.id, JobStatus.REJECTED, expected_revision=rejected.revision)
     cols = {c["key"]: [j["id"] for j in c["jobs"]] for c in applications.board()["columns"]}
-    assert list(cols) == ["new", "shortlisted", "resume", "ready", "applied", "interviewing", "offers", "closed"]
-    assert cols["ready"] == [ready.id] and cols["resume"] == [review.id] and cols["new"] == [new.id]
-    assert cols["applied"] == [applied.id] and cols["interviewing"] == [interviewing.id] and cols["closed"] == [skipped.id]
+    assert list(cols) == ["new", "favorite", "ready", "applied", "rejected", "interview", "offers", "closed"]
+    assert sorted(cols["ready"]) == sorted([ready.id, review.id]) and cols["new"] == [new.id]
+    assert cols["applied"] == [applied.id] and cols["interview"] == [interviewing.id] and cols["closed"] == [skipped.id]
+    assert cols["rejected"] == [rejected.id]
     review_card = next(j for j in applications.board()["columns"][2]["jobs"] if j["id"] == review.id)
     assert review_card["attention"] == ["A tailored document has numbers to check"]
     card = next(j for c in applications.board()["columns"] for j in c["jobs"] if j["id"] == applied.id)
@@ -132,7 +135,7 @@ def test_routes(store):
     assert empty.status == 400
     b = _H()
     routes.handle_get(b, urlparse("/api/job-os/applications"))
-    assert [c["key"] for c in json.loads(b.wfile.getvalue())["columns"]][:2] == ["new", "shortlisted"]
+    assert [c["key"] for c in json.loads(b.wfile.getvalue())["columns"]][:2] == ["new", "favorite"]
     bad = _H()
     routes.handle_get(bad, urlparse("/api/job-os/applications?source=monster"))
     assert bad.status == 400
@@ -179,10 +182,61 @@ def test_edit_updates_details_with_a_revision_check(store):
     assert applications.timeline(job.id)[-1]["type"] == "details_edited"
 
 
-def test_cards_offer_only_the_moves_their_stage_allows(store):
-    moves = lambda status: [value for value, _label in applications.moves_for(status)]
-    assert moves(JobStatus.SCRAPED) == ["shortlisted", "submitted", "skipped"]
-    assert moves(JobStatus.RESUME_READY) == ["shortlisted", "submitted"]
-    assert moves(JobStatus.SUBMITTED) == ["screening", "rejected", "no_response", "withdrawn"]
-    assert moves(JobStatus.OFFER) == ["offer_accepted", "offer_declined", "withdrawn"]
-    assert moves(JobStatus.REJECTED) == []
+def test_a_card_can_be_dragged_to_any_column_and_back(store):
+    job = _job_at(JobStatus.SCRAPED)
+    moved = applications.move_to_column(job.id, "favorite", expected_revision=job.revision)
+    assert moved["status"] == "shortlisted"
+    # Back to New: a job without a fit score goes back to scraped.
+    back = applications.move_to_column(job.id, "new", expected_revision=moved["revision"])
+    assert back["status"] == "scraped"
+    applied = applications.move_to_column(job.id, "applied", expected_revision=back["revision"])
+    assert applied["status"] == "submitted"
+    events = [e["type"] for e in applications.timeline(job.id)]
+    assert events.count("application_submitted") == 1
+    # Dragged out of Applied and back again, it is still one application.
+    undo = applications.move_to_column(job.id, "favorite", expected_revision=applied["revision"])
+    again = applications.move_to_column(job.id, "applied", expected_revision=undo["revision"])
+    assert [e["type"] for e in applications.timeline(job.id)].count("application_submitted") == 1
+    rejected = applications.move_to_column(job.id, "rejected", expected_revision=again["revision"])
+    interview = applications.move_to_column(job.id, "interview", expected_revision=rejected["revision"])
+    assert (rejected["status"], interview["status"]) == ("rejected", "interviewing")
+    closed = applications.move_to_column(job.id, "closed", expected_revision=interview["revision"])
+    assert closed["status"] == "no_response", "an application that went quiet, not a skipped find"
+    moves = [e["data"] for e in applications.timeline(job.id) if e["type"] == "status_changed"]
+    assert moves[-1] == {"from": "interviewing", "to": "no_response", "by": "you"}
+
+
+def test_closed_and_ready_columns_pick_the_status_that_fits(store):
+    fresh = _job_at(JobStatus.SCRAPED)
+    assert applications.move_to_column(fresh.id, "closed", expected_revision=fresh.revision)["status"] == "skipped"
+    other = _job_at(JobStatus.SUBMITTED)
+    assert applications.move_to_column(other.id, "closed", expected_revision=other.revision, status="withdrawn")["status"] == "withdrawn"
+    plain = _job_at(JobStatus.SHORTLISTED)
+    assert applications.move_to_column(plain.id, "ready", expected_revision=plain.revision)["status"] == "application_ready"
+    tailored = _job_at(JobStatus.SHORTLISTED)
+    now = int(time.time())
+    conn = connect_job_os()
+    conn.execute("INSERT INTO job_documents (id, job_id, kind, status, created_at, updated_at) VALUES ('d9', ?, 'resume', 'ready', ?, ?)",
+                 (tailored.id, now, now))
+    conn.commit()
+    conn.close()
+    assert applications.move_to_column(tailored.id, "ready", expected_revision=tailored.revision)["status"] == "resume_ready"
+
+
+def test_moves_refuse_a_stale_card_a_tailoring_job_and_an_unknown_column(store):
+    import pytest
+
+    from api.job_os.lifecycle import ConcurrentRevisionError
+
+    job = _job_at(JobStatus.SCRAPED)
+    with pytest.raises(ConcurrentRevisionError):
+        applications.move_to_column(job.id, "favorite", expected_revision=job.revision + 5)
+    with pytest.raises(applications.ApplicationError):
+        applications.move_to_column(job.id, "resume", expected_revision=job.revision)
+    busy = _job_at(JobStatus.TAILORING)
+    with pytest.raises(applications.ApplicationError, match="tailoring"):
+        applications.move_to_column(busy.id, "new", expected_revision=busy.revision)
+    h, data = _post(f"/api/job-os/jobs/{job.id}/move", {"column": "favorite", "expected_revision": job.revision})
+    assert h.status == 200 and data["status"] == "shortlisted"
+    stale, _ = _post(f"/api/job-os/jobs/{job.id}/move", {"column": "new", "expected_revision": job.revision})
+    assert stale.status == 409

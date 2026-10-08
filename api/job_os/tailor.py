@@ -176,7 +176,7 @@ def request_tailoring(job_id: str, *, start_worker: bool = True) -> dict:
     if job.status != JobStatus.SHORTLISTED:
         if job.status == JobStatus.TAILORING:
             return {"job_id": job_id, "status": "tailoring"}
-        raise TailorError("Shortlist the job before tailoring.")
+        raise TailorError("Add the job to Favorite before tailoring.")
     transition_job(job_id, JobStatus.TAILORING, expected_revision=job.revision)
     now = int(time.time())
     conn = connect_job_os()

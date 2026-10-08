@@ -79,7 +79,7 @@ def _results(keywords="backend", location="", page=0, posted=0, code="my"):
 
 
 def _search(**extra):
-    return scout.create_search({"keywords": "backend", "country": "my", **extra})
+    return scout.create_search({"strict_titles": False, "keywords": "backend", "country": "my", **extra})
 
 
 def _run(search, fake):
@@ -98,7 +98,8 @@ def test_search_validation():
     data = scout.normalize_search({"keywords": "python dev", "country": "SG", "locations": "Singapore, Jurong",
                                    "posted_within_days": "7"})
     assert data == {"name": "python dev", "keywords": "python dev", "country": "sg", "locations": ["Singapore", "Jurong"],
-                    "sites": ["indeed"], "title_filter": [], "posted_within_days": 7, "remote_only": False, "enabled": True}
+                    "sites": ["indeed"], "title_filter": [], "related_titles": [], "strict_titles": True,
+                    "posted_within_days": 7, "remote_only": False, "enabled": True}
 
 
 def test_a_run_reads_the_countrys_results_page_and_saves_its_postings(store):
@@ -267,7 +268,7 @@ def test_update_is_revisioned_and_delete_keeps_found_jobs(store):
 
 
 def test_a_name_that_was_only_the_keywords_follows_them(store):
-    search = scout.create_search({"keywords": "IT", "country": "my"})
+    search = scout.create_search({"strict_titles": False, "keywords": "IT", "country": "my"})
     assert search["name"] == "IT"
     # The edit form sends the old name back with the new titles.
     edited = scout.update_search(search["id"], {"name": "IT", "keywords": "SOC Analyst, IT Analyst"}, expected_revision=0)
@@ -315,7 +316,7 @@ def test_a_run_stops_early_once_indeed_keeps_refusing(store):
     assert "refusing" in run["stage_detail"] and "1 new job" in run["stage_detail"]
     assert len([u for u in fake.scraped if "/rc/clk" in u]) == 1 + scout.REFUSALS_BEFORE_STOP
 
-    empty = _run(scout.create_search({"keywords": "ops", "country": "my"}),
+    empty = _run(scout.create_search({"strict_titles": False, "keywords": "ops", "country": "my"}),
                  FakeFirecrawl(links={_results(keywords="ops"): [_clk(k) for k in keys]}))
     assert empty["status"] == "failed" and "refusing" in empty["stage_detail"]
     assert scout.get_search(empty["search_id"])["last_run_at"], "the schedule waits before trying again"

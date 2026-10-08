@@ -15,11 +15,17 @@ web search restricted to that Indeed site.
 
 Flow: queued -> searching (results pages) -> scraping (each posting; read
 from its JSON-LD) -> completed | cancelled | failed | interrupted.
+
+Job sites match loosely, so a strict search (the default) keeps a posting
+only when its title matches one of the search's job titles or a related title
+Luna suggested for them (``relevance.py``); the first run of a search asks
+Luna for those once.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -29,13 +35,15 @@ from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
 
-from api.job_os import apify, indeed
+from api.job_os import apify, indeed, relevance
 from api.job_os.db import connect_job_os
 from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
                                  looks_like_single_posting)
 from api.job_os.models import DuplicateJobError, JobStatus, JobValidationError
 from api.job_os.network_policy import UnsafeJobUrl, validate_external_job_url
 from api.job_os.repository import create_job, normalize_job_input
+
+logger = logging.getLogger(__name__)
 
 ACTIVE_STATES = ("queued", "searching", "scraping")
 TERMINAL_STATES = ("completed", "cancelled", "failed", "interrupted")
@@ -147,6 +155,9 @@ def normalize_search(payload: dict) -> dict:
     title_filter = [p.lower() for p in _split(payload.get("title_filter"), limit=10, field="Title must contain")]
     if any(len(p) > 60 for p in title_filter):
         raise ScoutError("A title phrase is too long")
+    related = _split(payload.get("related_titles"), limit=relevance.MAX_RELATED, field="Related titles")
+    if any(len(p) > 60 for p in related):
+        raise ScoutError("A related title is too long")
     if len(name) > 80:
         raise ScoutError("Name is too long")
     country = str(payload.get("country") or "").strip().lower()
@@ -175,6 +186,8 @@ def normalize_search(payload: dict) -> dict:
         "locations": locations,
         "sites": [s for s in JOB_SITES if s in sites],
         "title_filter": title_filter,
+        "related_titles": relevance.clean_titles(related),
+        "strict_titles": bool(payload.get("strict_titles", True)),
         "posted_within_days": posted,
         "remote_only": bool(payload.get("remote_only")),
         "enabled": bool(payload.get("enabled", True)),
@@ -188,6 +201,8 @@ def _search_row(row) -> dict:
         # Older rows hold the retired application-tracking domains here; they read as Indeed.
         "sites": [s for s in JOB_SITES if s in (json.loads(row["sites"] or "[]") or [])] or ["indeed"],
         "title_filter": json.loads(row["title_filter"] or "[]"),
+        "related_titles": json.loads(row["related_titles"] or "[]"),
+        "strict_titles": bool(row["strict_titles"]),
         "queries": _queries_of(row["keywords"]),
         "country": row["country"], "country_name": indeed.country_name(row["country"]),
         "posted_within_days": row["posted_within_days"],
@@ -227,10 +242,10 @@ def create_search(payload: dict) -> dict:
     conn = connect_job_os()
     try:
         conn.execute(
-            "INSERT INTO searches (id, name, keywords, locations, sites, title_filter, country, posted_within_days, remote_only,"
-            " enabled, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            "INSERT INTO searches (id, name, keywords, locations, sites, title_filter, related_titles, strict_titles, country,"
+            " posted_within_days, remote_only, enabled, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
             (search_id, data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
-             json.dumps(data["title_filter"]), data["country"],
+             json.dumps(data["title_filter"]), json.dumps(data["related_titles"]), int(data["strict_titles"]), data["country"],
              data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), now, now))
         conn.commit()
     finally:
@@ -250,14 +265,18 @@ def update_search(search_id: str, payload: dict, *, expected_revision: int) -> d
     # a name of your own is kept.
     if current["name"] == current["keywords"][:80] and incoming.get("name", current["name"]) == current["name"]:
         merged["name"] = ""
+    # New job titles get new related titles (Luna suggests them on the next run)
+    # unless the related titles were edited too.
+    if _queries_of(merged.get("keywords")) != current["queries"] and "related_titles" not in incoming:
+        merged["related_titles"] = []
     data = normalize_search(merged)
     conn = connect_job_os()
     try:
         cur = conn.execute(
-            "UPDATE searches SET name=?, keywords=?, locations=?, sites=?, title_filter=?, country=?, posted_within_days=?,"
-            " remote_only=?, enabled=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
+            "UPDATE searches SET name=?, keywords=?, locations=?, sites=?, title_filter=?, related_titles=?, strict_titles=?,"
+            " country=?, posted_within_days=?, remote_only=?, enabled=?, revision=revision+1, updated_at=? WHERE id=? AND revision=?",
             (data["name"], data["keywords"], json.dumps(data["locations"]), json.dumps(data["sites"]),
-             json.dumps(data["title_filter"]), data["country"],
+             json.dumps(data["title_filter"]), json.dumps(data["related_titles"]), int(data["strict_titles"]), data["country"],
              data["posted_within_days"], int(data["remote_only"]), int(data["enabled"]), int(time.time()),
              search_id, expected_revision))
         conn.commit()
@@ -566,6 +585,83 @@ class _PacedClient:
         return self._client.scrape(url, links=links)
 
 
+def search_titles(search: dict) -> list[str]:
+    """The titles a strict search keeps: its own and the related ones (none when it is not strict)."""
+    return [*search["queries"], *search["related_titles"]] if search.get("strict_titles") else []
+
+
+def _with_related(search: dict) -> dict:
+    """Ask Luna once for titles related to the search's own and store them. A
+    failure leaves the search matching its own titles only."""
+    try:
+        related = relevance.suggest_related(search["keywords"])
+    except Exception as error:  # no model configured, provider down
+        logger.info("Related titles for %s not suggested: %s", search["id"], error)
+        return search
+    if not related:
+        return search
+    conn = connect_job_os()
+    try:
+        conn.execute("UPDATE searches SET related_titles=? WHERE id=? AND related_titles='[]'", (json.dumps(related), search["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {**search, "related_titles": related}
+
+
+_related_asked: set[str] = set()
+_related_lock = threading.Lock()
+
+
+def fill_related_soon(searches: list[dict]) -> None:
+    """Ask Luna, in the background and once per process, for the related titles
+    of strict searches that have none yet, so their off-target count is right
+    before the next run."""
+    for search in searches:
+        if not search.get("strict_titles") or search.get("related_titles"):
+            continue
+        with _related_lock:
+            if search["id"] in _related_asked:
+                continue
+            _related_asked.add(search["id"])
+        threading.Thread(target=_with_related, args=(search,), name="job-os-related", daemon=True).start()
+
+
+def off_target(search: dict) -> list[str]:
+    """Saved finds of this search, not yet acted on, whose titles don't match it."""
+    titles = search_titles(search)
+    if not titles:
+        return []
+    conn = connect_job_os()
+    try:
+        rows = conn.execute("SELECT id, title FROM jobs WHERE search_id=? AND status IN ('discovered', 'scraped', 'analyzed')",
+                            (search["id"],)).fetchall()
+    finally:
+        conn.close()
+    return [r["id"] for r in rows if not relevance.title_relevant(r["title"], titles)]
+
+
+def tidy_search(search_id: str) -> int:
+    """Skip a search's off-target finds (they move to Closed, and can be dragged back)."""
+    from api.job_os.lifecycle import move_job
+    from api.job_os.repository import get_job
+
+    search = get_search(search_id)
+    if search is None:
+        raise KeyError(search_id)
+    skipped = 0
+    for job_id in off_target(search):
+        job = get_job(job_id)
+        if job is None:
+            continue
+        try:
+            move_job(job_id, JobStatus.SKIPPED, expected_revision=job.revision, payload={"by": "scout", "reason": "off-target title"})
+            skipped += 1
+        except ValueError:
+            continue
+    return skipped
+
+
 def run_discovery(run_id: str, client_factory: Callable) -> None:
     """Do the work for one run. Never raises; every exit is a terminal state."""
     counts = dict(_EMPTY_COUNTS)
@@ -624,16 +720,23 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         names = ", ".join(apify.SITE_NAMES[s] for s in sites if s not in unreachable)
         save("searching", f"Searching {names}{' through Apify' if via_apify else ''}", started_at=int(time.time()))
 
+        if search["strict_titles"] and not search["related_titles"]:
+            save(detail="Luna is listing titles related to yours")
+            search = _with_related(search)
         candidates: list[str] = []
         stored_url: dict[str, str] = {}  # read URL -> the stable URL saved (Indeed)
         result_pages: list[str] = []  # Indeed results pages, opened for their postings
         seen: set[str] = set()
         known = _known_urls()
 
+        on_target = search_titles(search)
+
         def keep(posting: dict, canonical_url: str, source: str = "indeed") -> None:
             """Filter one read posting and save it (raises DuplicateJobError, JobValidationError)."""
             if not title_matches(posting.get("title"), search["title_filter"]):
                 counts["filtered"] += 1  # the title doesn't have the words the search asks for
+            elif on_target and not relevance.title_relevant(posting.get("title"), on_target):
+                counts["filtered"] += 1  # a different kind of job (a sales role for "IT Analyst")
             elif search["remote_only"] and not _is_remote(posting):
                 counts["filtered"] += 1
             elif company_key(posting.get("company")) in blocked:
