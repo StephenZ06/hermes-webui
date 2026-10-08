@@ -6697,7 +6697,7 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 .cal-day{display:grid;place-items:center;aspect-ratio:1;border-radius:5px;background:color-mix(in srgb,var(--border2) 42%,transparent);color:color-mix(in srgb,var(--muted) 80%,transparent);font-size:9px;font-weight:600;font-variant-numeric:tabular-nums;transition:transform .15s ease,background .2s ease;}
 .cal-day.is-blank{background:transparent;}
 .cal-day.is-future{opacity:.35;}
-.cal-day.is-today{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--text);}
+.cal-day.is-today{box-shadow:inset 0 0 0 1.5px var(--cal);color:var(--text);}
 .cal-day.is-today[data-level],.cal-day.is-today[data-tone]{box-shadow:none;}
 .cal-day[data-level]{color:#0d0f14;font-weight:750;}
 .cal-day[data-level="1"]{background:color-mix(in srgb,var(--cal) 42%,transparent);color:var(--text);}
@@ -6841,8 +6841,30 @@ button.scout-tile:hover{border-color:var(--accent);transform:translateY(-1px);}
 .pipe-col.is-folded .pipe-col-cards{display:none;}
 .pipe-board.is-dragging .pipe-col.is-folded.can-drop{background:color-mix(in srgb,var(--stage) 8%,var(--surface));}
 @media (max-width:760px){.pipe-board{grid-template-columns:none!important;}.pipe-col-fold{display:none;}.pipe-col.is-folded .pipe-col-cards{display:flex;}.pipe-col.is-folded h3{writing-mode:horizontal-tb;}}
+/* Compact buttons and cards: Track a job, Scout's searches, the match check. */
+.job-os-import .job-os-btn{align-self:stretch;min-height:34px;padding:0 12px;font-size:12.5px;}
+.section-bar .job-os-btn,.scout-search-actions .job-os-btn,.match-detail .job-os-actions .job-os-btn{min-height:32px;padding:0 12px;font-size:12.5px;gap:6px;}
+.scout-searches{grid-template-columns:repeat(auto-fill,minmax(min(100%,310px),1fr));gap:14px;}
+.scout-search{gap:12px;padding:16px;}
+.scout-search-head .card-icon{width:26px;height:26px;flex-basis:26px;}
+.scout-search-title h3{font-size:14px;line-height:18px;}
+.scout-search-title p{margin-top:2px;font-size:12px;}
+.scout-facts{gap:8px 14px;}
+.scout-facts dt{margin-bottom:1px;font-size:10px;}
+.scout-facts dd{font-size:12px;line-height:18px;}
+.scout-run{min-height:0;padding:8px 10px;gap:10px;}
+.scout-run-idle{flex-basis:30px;width:30px;height:30px;}
+.scout-run-idle svg{width:15px;height:15px;}
+.scout-run-body{gap:4px;}
+.scout-stats{gap:6px 12px;}
+.scout-search-actions{padding-top:12px;gap:6px;}
+.scout-search-actions .job-os-icon-btn{width:32px;height:32px;flex-basis:32px;}
+/* Settings side menu: both text lines trimmed to their ink, so the pair is centred on the icon. */
+.settings-nav-text{gap:6px;}
+.settings-nav-text strong,.settings-nav-text small{display:block;line-height:1.2;text-box:trim-both cap alphabetic;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis;white-space:nowrap;}
+.settings-nav-dot{display:inline-block;margin-right:6px;vertical-align:.08em;}
 /* Match check: the score as a ring with rounded ends, level with the details beside it. */
-.match-body{align-items:center;padding-top:22px;}
+.match-body{align-items:center;padding-top:0;}
 .match-ring{--ring:var(--muted);flex:0 0 148px;width:148px;height:148px;border-radius:50%;background:none;}
 .match-ring::before{content:none;}
 .match-ring-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
