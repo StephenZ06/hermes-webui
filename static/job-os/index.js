@@ -37,7 +37,10 @@
   // Classes the page adds at run time (entry, selection, drag, drawn previews):
   // a patch keeps them where the new HTML doesn't say otherwise.
   const RUNTIME_CLASSES = ['is-entering', 'is-selected', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
-    'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning'];
+    'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning',
+    'mi-tabs', 'mi-tabs-ready', 'mi-shake', 'mi-busy', 'mi-done'];
+  // Nodes micro.js adds or holds (the tab pill, a button showing "Saved"): a patch leaves them be.
+  const kept = (node) => node.nodeType === 1 && node.hasAttribute('data-mi-keep');
   const keyOf = (node) => (node.nodeType === 1 ? node.getAttribute('data-key') || node.id || null : null);
   function morphChildren(from, to) {
     const old = [...from.childNodes];
@@ -55,7 +58,7 @@
       } else {
         while (cursor < old.length) {
           const candidate = old[cursor++];
-          if (!used.has(candidate) && !keyOf(candidate) && candidate.nodeName === node.nodeName) { match = candidate; break; }
+          if (!used.has(candidate) && !keyOf(candidate) && !kept(candidate) && candidate.nodeName === node.nodeName) { match = candidate; break; }
         }
       }
       if (match) {
@@ -65,16 +68,23 @@
         else from.insertBefore(match, ref);
       } else from.insertBefore(node, ref);
     });
-    old.forEach((node) => { if (!used.has(node) && node.parentNode === from) from.removeChild(node); });
+    old.forEach((node) => { if (!used.has(node) && !kept(node) && node.parentNode === from) from.removeChild(node); });
   }
   function morphNode(from, to) {
     if (from.nodeType !== 1) { if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue; return; }
     // data-keep: the page draws inside this node itself (PDF pages, the 3D scene).
     if (from.hasAttribute('data-keep') && from.getAttribute('data-keep') === to.getAttribute('data-keep')) return;
+    if (from.hasAttribute('data-mi-hold')) return;
     const runtime = RUNTIME_CLASSES.filter((c) => from.classList.contains(c));
     // A <details> stays open or shut the way you left it.
-    [...from.attributes].forEach(({name}) => { if (!to.hasAttribute(name) && !(name === 'open' && from.nodeName === 'DETAILS')) from.removeAttribute(name); });
-    [...to.attributes].forEach(({name, value}) => { if (from.getAttribute(name) !== value) from.setAttribute(name, value); });
+    // While its tooltip shows, an element's title is parked in data-mi-title (micro.js).
+    const parked = from.hasAttribute('data-mi-title');
+    const own = (name) => (name === 'open' && from.nodeName === 'DETAILS') || (parked && (name === 'data-mi-title' || name === 'aria-describedby'));
+    [...from.attributes].forEach(({name}) => { if (!to.hasAttribute(name) && !own(name)) from.removeAttribute(name); });
+    [...to.attributes].forEach(({name, value}) => {
+      const target = parked && name === 'title' ? 'data-mi-title' : name;
+      if (from.getAttribute(target) !== value) from.setAttribute(target, value);
+    });
     runtime.forEach((c) => { if (!to.classList.contains(c)) from.classList.add(c); });
     const focused = from === document.activeElement;
     if (from.nodeName === 'TEXTAREA') {
@@ -261,6 +271,7 @@
   }
   function bindPage(target) {
     const state = window.JobOSState;
+    if (window.Micro) { window.Micro.scan(target); window.Micro.scan(sidebarRoot()); }
     bindJobForms(target);
     afterBoardRender(target);
     if (state.activeView === 'resume-studio') { bindResumeUpload(); afterStudioRender(target); }
@@ -354,10 +365,23 @@
     ], {duration: 700, easing: 'cubic-bezier(.3,.7,.2,1)'});
     return anim.finished.catch(() => {}).then(() => plane.remove());
   }
+  // Button feedback from micro.js: a spinner while working, a drawn tick when
+  // done, a shake when it failed. Without micro.js the button is only disabled.
+  function pending(button, text) {
+    if (!button) return;
+    if (window.Micro) window.Micro.busy(button, text); else button.disabled = true;
+  }
+  function finished(button, ok, text) {
+    if (!button || !window.Micro) return;
+    if (ok) window.Micro.done(button, text); else window.Micro.fail(button);
+  }
   function onClick(event) {
     const copy = event.target.closest('[data-copy-text]');
     if (copy) {
-      const done = () => { if (typeof window.showToast === 'function') window.showToast('Copied'); };
+      const done = () => {
+        if (typeof window._showCopiedFeedback === 'function') window._showCopiedFeedback(copy, 14);
+        if (typeof window.showToast === 'function') window.showToast('Copied');
+      };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(copy.dataset.copyText).then(done, () => {});
       return;
     }
@@ -378,6 +402,8 @@
     root().addEventListener('click', onClick, {signal});
     root().addEventListener('change', onChange, {signal});
     root().addEventListener('input', onInput, {signal});
+    // A button that showed "Saved" hands back to the page: draw what is current.
+    root().addEventListener('mi:released', () => { const t = root(); if (t) { t._jobOsHtml = null; repaint(); } }, {signal});
     const side = sidebarRoot();
     if (side) side.addEventListener('click', onClick, {signal});
     const settingsForm = document.getElementById('job-os-settings-form');
@@ -443,7 +469,7 @@
       const patch = clone(state.settingsDraft);
       delete patch.revision;
       const saveButton = document.querySelector('[data-job-os-action="save-settings"]');
-      if (saveButton) saveButton.disabled = true;
+      pending(saveButton, 'Saving…');
       try {
         const saved = await window.JobOSApi.saveSettings(patch, state.settings.revision);
         state.settings = saved.settings; state.settingsStatus = saved.status;
@@ -451,9 +477,11 @@
         state.settingsSavedAt = Date.now();
         forget();
         if (typeof window.showToast === 'function') window.showToast('Jobs settings saved');
+        finished(saveButton, true, 'Saved');
         refresh();
       } catch (error) {
         state.settingsError = error.message || 'Unable to save settings.';
+        finished(saveButton, false);
         syncSaveBar();
       }
     } else if (name === 'gmail-connect') {
@@ -463,7 +491,7 @@
       const address = addressEl.value;
       const password = passwordEl.value;
       passwordEl.value = '';
-      if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Checking with Gmail…'; }
+      pending(button, 'Checking with Gmail…');
       try {
         const result = await window.JobOSApi.connectGmail(address, password);
         state.settingsStatus = Object.assign({}, state.settingsStatus, {gmail: result.gmail});
@@ -473,7 +501,8 @@
         refresh();
       } catch (error) {
         state.gmailMessage = {tone: 'error', text: error.message || 'Unable to connect Gmail.'};
-        if (button) { button.disabled = false; button.classList.remove('is-busy'); button.textContent = 'Connect Gmail'; }
+        finished(button, false);
+        if (window.Micro) { window.Micro.invalid(addressEl); window.Micro.invalid(passwordEl); }
         const msg = document.querySelector('#job-os-gmail .job-os-gmail-msg');
         if (msg) { msg.dataset.tone = 'error'; msg.textContent = state.gmailMessage.text; }
       }
@@ -502,26 +531,29 @@
         refresh();
       }
     } else if (name === 'gmail-test') {
-      if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Sending…'; }
+      pending(button, 'Sending…');
       try {
         const contextEl = document.getElementById('job-os-gmail-test-context');
         const result = await window.JobOSApi.testGmail('', contextEl ? contextEl.value : 'jobs');
         state.gmailMessage = {tone: 'ok', text: `Test email from ${result.sender_name} sent to ${result.sent_to}.`};
+        finished(button, true, 'Sent');
       } catch (error) {
         state.gmailMessage = {tone: 'error', text: error.message || 'Unable to send the test email.'};
+        finished(button, false);
       }
       refresh();
     } else if (name === 'notify-outcomes') {
-      if (button) { button.disabled = true; button.classList.add('is-busy'); }
+      pending(button, 'Reading…');
       try {
         const result = await window.JobOSApi.checkOutcomes();
         state.notifications = result.notifications;
         toast(result.moved ? `Moved ${result.moved} job${result.moved === 1 ? '' : 's'} from employer replies` : 'No new employer replies');
         forget('board');
-      } catch (error) { toast(error.message || 'Could not read the inbox'); }
+        finished(button, true, 'Checked');
+      } catch (error) { toast(error.message || 'Could not read the inbox'); finished(button, false); }
       refresh();
     } else if (name === 'notify-digest' || name === 'notify-check') {
-      if (button) { button.disabled = true; button.classList.add('is-busy'); }
+      pending(button, name === 'notify-digest' ? 'Sending…' : 'Checking…');
       try {
         const result = name === 'notify-digest' ? await window.JobOSApi.sendDigest() : await window.JobOSApi.checkReplies();
         state.notifications = result.notifications;
@@ -529,17 +561,20 @@
           ? (result.sent ? 'Digest sent.' : 'Nothing new to put in a digest yet.')
           : (result.handled ? `Acted on ${result.handled} repl${result.handled === 1 ? 'y' : 'ies'}.` : 'No new replies.');
         if (typeof window.showToast === 'function') window.showToast(text);
+        finished(button, true, name === 'notify-digest' && result.sent ? 'Sent' : 'Done');
       } catch (error) {
         if (typeof window.showToast === 'function') window.showToast(error.message || 'Email step failed');
+        finished(button, false);
       }
       refresh();
     } else if (name === 'test-firecrawl') {
-      if (button) { button.disabled = true; button.classList.add('is-busy'); button.textContent = 'Testing…'; }
+      pending(button, 'Testing…');
       try {
         const result = await window.JobOSApi.settings();
         state.settingsStatus = result.status;
         state.firecrawl = result.status && result.status.firecrawl;
-      } catch (_error) { /* the status pill keeps its last value */ }
+        finished(button, !!(state.firecrawl && state.firecrawl.state === 'healthy'), 'Reachable');
+      } catch (_error) { finished(button, false); /* the status pill keeps its last value */ }
       refresh();
     }
   }
@@ -557,7 +592,7 @@
     const input = document.getElementById('job-os-apify-token');
     const value = input ? input.value : '';
     if (input) input.value = '';
-    if (button) { button.disabled = true; button.classList.add('is-busy'); }
+    pending(button, name === 'apify-connect' ? 'Checking with Apify…' : name === 'apify-test' ? 'Testing…' : 'Disconnecting…');
     try {
       let result;
       if (name === 'apify-connect') { result = await window.JobOSApi.connectApify(value); say('ok', `Connected${result.apify.username ? ` as ${result.apify.username}` : ''}. Turn on “Search Indeed through Apify” and save.`); state.apifyEditing = false; }
@@ -565,8 +600,11 @@
       else { result = await window.JobOSApi.disconnectApify(); say('ok', 'Apify disconnected.'); }
       state.settingsStatus = Object.assign({}, state.settingsStatus, {apify: result.apify});
       forget('apify', 'firecrawl');
+      finished(button, true, name === 'apify-connect' ? 'Connected' : name === 'apify-test' ? 'Works' : 'Done');
     } catch (error) {
       say('error', error.message || 'Apify request failed.');
+      finished(button, false);
+      if (name === 'apify-connect' && window.Micro) window.Micro.invalid(document.getElementById('job-os-apify-token'));
     }
     return refresh();
   }
@@ -1218,7 +1256,14 @@
     const editing = state.jobForm && state.jobForm.id;
     const error = form.querySelector('.job-os-error');
     const submit = form.querySelector('button[type="submit"]');
-    if (!values.title || (!editing && !values.canonical_url)) { error.textContent = 'A job title and its link are required.'; return; }
+    if (!values.title || (!editing && !values.canonical_url)) {
+      error.textContent = 'A job title and its link are required.';
+      if (window.Micro) {
+        if (!values.title) window.Micro.invalid(form.querySelector('input[name="title"]'));
+        if (!editing && !values.canonical_url) window.Micro.invalid(form.querySelector('input[name="canonical_url"]'));
+      }
+      return;
+    }
     if (submit) submit.disabled = true;
     try {
       let id;
@@ -1340,6 +1385,7 @@
       refresh();
     } catch (error) {
       state.searchError = error.message || 'Unable to save this search.';
+      if (window.Micro) window.Micro.shake(form.querySelector('.job-os-actions') || form);
       state.searchForm = Object.assign({}, state.searchForm, payload);
       const err = form.querySelector('.job-os-error');
       if (err) err.textContent = state.searchError;
@@ -1354,9 +1400,9 @@
     else if (name === 'scout-edit') { state.searchForm = formFromSearch(search); state.searchError = ''; refresh(); }
     else if (name === 'scout-form-close') { state.searchForm = null; state.searchError = ''; refresh(); }
     else if (name === 'scout-run') {
-      el.disabled = true; el.textContent = 'Starting…';
-      try { await window.JobOSApi.runSearch(searchId, `${searchId}:${Date.now()}`); }
-      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start Scout'); }
+      pending(el, 'Starting…');
+      try { await window.JobOSApi.runSearch(searchId, `${searchId}:${Date.now()}`); if (window.Micro) window.Micro.restore(el); }
+      catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start Scout'); finished(el, false); }
       refresh();
     } else if (name === 'scout-cancel') {
       el.disabled = true; el.textContent = 'Cancelling…';

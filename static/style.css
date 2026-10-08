@@ -10759,3 +10759,72 @@ main.main > .main-view{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) bac
 .work-hub-inspector .wh-insp-delete{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 11px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--error);font:inherit;font-size:11px;font-weight:650;cursor:pointer;transition:background .15s,border-color .15s;}
 .work-hub-inspector .wh-insp-delete:hover{background:color-mix(in srgb,var(--error) 12%,transparent);border-color:color-mix(in srgb,var(--error) 40%,transparent);}
 .work-hub-inspector .wh-insp-delete .work-hub-icon,.work-hub-inspector .wh-insp-delete svg{width:12px;height:12px;}
+/* ==== Micro-interactions (static/micro.js): sliding tab pills, button states,
+   error shake, stacked toasts, a shared "working" line, themed tooltips,
+   smooth collapsibles. Ideas from transitions.dev, designspells.com,
+   ObsidianUI and Rare UI, rebuilt in this app's tokens. ==== */
+.mi-tabs{position:relative;isolation:isolate;}
+.mi-tabs > :not(.mi-pill){position:relative;z-index:1;}
+.mi-pill{position:absolute;left:0;top:0;z-index:0;pointer-events:none;opacity:0;border-radius:8px;background:var(--accent-bg);transition:transform .32s cubic-bezier(.22,1,.36,1),width .32s cubic-bezier(.22,1,.36,1),height .32s cubic-bezier(.22,1,.36,1),opacity .2s ease;}
+.mi-pill.mi-pill-instant{transition:none;}
+.seg.mi-tabs-ready > .seg-btn.active{background:transparent;box-shadow:none;}
+.seg > .mi-pill{border-radius:7px;background:var(--card,var(--surface));box-shadow:0 0 0 1px var(--border2);}
+.studio-tabs.mi-tabs-ready > button.active{background:transparent;border-color:transparent;}
+.studio-tabs > .mi-pill{background:var(--surface);box-shadow:inset 0 0 0 1px var(--border2);}
+.settings-nav.mi-tabs-ready > .settings-nav-item.active,
+.job-os-side-nav.mi-tabs-ready > .side-menu-item.active,
+.settings-menu-items.mi-tabs-ready > .side-menu-item.active{background:transparent;}
+.settings-nav > .mi-pill{border-radius:9px;}
+.job-os-tabs > .mi-pill{border-radius:999px;}
+.job-os-tabs.mi-tabs-ready > button.active{background:transparent;}
+/* Button states: a label that blurs in, a spinner that becomes a drawn tick. */
+.mi-label{display:inline-flex;align-items:center;justify-content:center;gap:6px;animation:mi-label-in .22s cubic-bezier(.22,1,.36,1);}
+@keyframes mi-label-in{from{opacity:0;filter:blur(3px);transform:translateY(2px);}}
+.mi-spin{width:14px;height:14px;flex-shrink:0;animation:mi-rotate .8s linear infinite;}
+.mi-spin circle{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-dasharray:24 40;opacity:.85;}
+@keyframes mi-rotate{to{transform:rotate(360deg);}}
+.mi-tick{width:14px;height:14px;flex-shrink:0;}
+.mi-tick path{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:mi-draw .36s cubic-bezier(.22,1,.36,1) .05s forwards;}
+@keyframes mi-draw{to{stroke-dashoffset:0;}}
+.mi-done{color:var(--success,#4ade80)!important;border-color:color-mix(in srgb,var(--success,#4ade80) 55%,transparent)!important;}
+.job-os-btn.primary.mi-done{background:color-mix(in srgb,var(--success,#4ade80) 18%,var(--surface))!important;}
+.mi-busy{cursor:progress!important;}
+/* Errors: one short shake, and the field outlined until it is edited. */
+.mi-shake{animation:mi-shake .42s cubic-bezier(.36,.07,.19,.97);}
+@keyframes mi-shake{10%,90%{transform:translateX(-1px);}20%,80%{transform:translateX(3px);}30%,50%,70%{transform:translateX(-5px);}40%,60%{transform:translateX(5px);}}
+input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--error,#f07878)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--error,#f07878) 18%,transparent)!important;}
+/* Stacked toasts: the one being replaced slides under the new one and fades. */
+.mi-toast-ghost{position:fixed!important;margin:0!important;z-index:99;pointer-events:none!important;transform-origin:top center;transition:transform .32s cubic-bezier(.22,1,.36,1),opacity .26s ease!important;}
+/* The "working" line: one dot, one shimmering status that steps through what is happening. */
+.mi-status{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;font-weight:600;color:var(--accent-text,var(--accent));}
+.mi-status-dot{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:currentColor;animation:mi-dot 1.4s ease-in-out infinite;}
+@keyframes mi-dot{0%,100%{opacity:.35;transform:scale(.8);}50%{opacity:1;transform:scale(1);}}
+.mi-status-lines{display:grid;min-width:0;}
+.mi-status-line{grid-area:1/1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:linear-gradient(90deg,currentColor 35%,color-mix(in srgb,currentColor 35%,transparent) 50%,currentColor 65%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:mi-shimmer 2s linear infinite;}
+@keyframes mi-shimmer{from{background-position:100% 0;}to{background-position:-150% 0;}}
+.mi-status.is-stepping .mi-status-line{opacity:0;animation:mi-shimmer 2s linear infinite,mi-step calc(var(--n) * 2.6s) linear infinite;animation-delay:0s,calc(var(--i) * 2.6s);}
+@keyframes mi-step{0%{opacity:0;filter:blur(3px);transform:translateY(4px);}4%,26%{opacity:1;filter:none;transform:none;}31%,100%{opacity:0;filter:blur(3px);transform:translateY(-4px);}}
+.mi-status.is-stepping .mi-status-line[style*="--n:2"]{animation-name:mi-shimmer,mi-step2;}
+@keyframes mi-step2{0%{opacity:0;filter:blur(3px);transform:translateY(4px);}6%,44%{opacity:1;filter:none;transform:none;}50%,100%{opacity:0;filter:blur(3px);transform:translateY(-4px);}}
+/* Themed tooltips in place of the browser's own. */
+.mi-tip{position:fixed;left:0;top:0;z-index:10000;max-width:280px;padding:6px 9px;border-radius:7px;background:color-mix(in srgb,var(--text) 92%,var(--bg));color:var(--bg);font-size:12px;font-weight:500;line-height:1.35;box-shadow:0 6px 18px rgba(0,0,0,.25);pointer-events:none;opacity:0;transform:translateY(3px) scale(.98);transform-origin:bottom center;white-space:pre-line;overflow-wrap:anywhere;}
+.mi-tip.is-below{transform:translateY(-3px) scale(.98);transform-origin:top center;}
+.mi-tip.is-open{opacity:1;transform:none;transition:opacity .14s ease,transform .18s cubic-bezier(.22,1,.36,1);}
+.mi-confetti{position:fixed;z-index:10001;width:7px;height:10px;border-radius:2px;pointer-events:none;}
+/* Collapsible sections open and close smoothly; Jobs' own get a turning chevron. */
+@supports (interpolate-size: allow-keywords) and selector(::details-content){
+  details::details-content{height:0;overflow:clip;transition:height .28s cubic-bezier(.22,1,.36,1),content-visibility .28s allow-discrete;}
+  details[open]::details-content{height:auto;}
+}
+#jobOsRoot details > summary{list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;}
+#jobOsRoot details > summary::-webkit-details-marker{display:none;}
+#jobOsRoot details > summary::before{content:"";flex:0 0 10px;width:10px;height:10px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3.5 1.5 7 5l-3.5 3.5' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3.5 1.5 7 5l-3.5 3.5' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;transition:transform .22s cubic-bezier(.22,1,.36,1);}
+#jobOsRoot details[open] > summary::before{transform:rotate(90deg);}
+#jobOsRoot details.prep-q > summary::before{order:0;}
+@media (prefers-reduced-motion:reduce){
+  .mi-pill,.mi-label,.mi-spin,.mi-tick path,.mi-shake,.mi-toast-ghost,.mi-status-dot,.mi-status-line,.mi-tip.is-open,#jobOsRoot details > summary::before{animation:none!important;transition:none!important;}
+  .mi-tick path{stroke-dashoffset:0;}
+  .mi-status.is-stepping .mi-status-line{opacity:0;}
+  .mi-status.is-stepping .mi-status-line:first-child{opacity:1;}
+  details::details-content{transition:none!important;}
+}

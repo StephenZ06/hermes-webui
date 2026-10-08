@@ -207,7 +207,7 @@
   // Sections in the side panel and the phone switcher; Logistics can be hidden in Settings.
   const sectionsOf = (state) => Object.keys(labels).filter((key) => key !== 'logistics' || state.showLogistics !== false);
   function mobileNav(view, state) {
-    return `<nav class="job-os-tabs" aria-label="Job OS sections">${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
+    return `<nav class="job-os-tabs" aria-label="Job OS sections" data-mi-tabs>${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}">${labels[key]}</button>`).join('')}</nav>`;
   }
   function metric(name, value, label, target) {
     return `<button type="button" class="job-os-metric" ${target}><img class="job-os-metric-icon" data-metric="${name}" src="/static/job-os-metric-${name}.png" alt="" aria-hidden="true"><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${esc(value)}</strong><span>${esc(label)}</span></span></button>`;
@@ -373,7 +373,7 @@
       const [ok, hint] = hints[key];
       return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}${esc(hint)}</small></span></button>`;
     }).join('')}`).join('');
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout"><nav class="settings-nav" aria-label="Settings sections">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${pages[page]}</div></div>${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${pages[page]}</div></div>${bar}</form>`;
   }
   // Settings, grouped: what Hermes connects to, what runs on its own, and you.
   const SETTINGS_NAV = [
@@ -670,7 +670,7 @@
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from">${tabs}</div><div class="seg" role="group" aria-label="Layout">${modes}</div>${search}${sort}${busy ? `<span class="job-os-chip muted analysing-chip">Scoring ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? `<span class="job-os-chip muted analysing-chip">Scoring ${busy}…</span>` : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary" data-job-os-action="job-form-new">${icon('import', 14)}Add job</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -846,7 +846,7 @@
     }
     const ready = job.job_status === 'resume_ready';
     return `<section class="job-os-card studio-editor" id="studio-editor"><div class="job-os-card-head"><div><h2>${esc(job.job_title || 'Tailored documents')}</h2><p class="job-os-card-note">${esc(job.job_company || '')}</p></div><div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="studio-close">${icon('prev', 16)}Back to list</button>${ready ? '<button type="button" class="job-os-btn primary" data-job-os-action="studio-ready">Ready to apply</button>' : ''}</div></div>
-      <nav class="studio-tabs" aria-label="Document">${tabs}</nav>${body}</section>`;
+      <nav class="studio-tabs" aria-label="Document" data-mi-tabs>${tabs}</nav>${body}</section>`;
   }
   // ---- Resume Studio: how well the master resume matches one job ----------------------
   // The score as a ring: a soft track, the arc drawn to the score with rounded
@@ -1092,7 +1092,7 @@
       const active = view === 'pipeline' && state.statusFilter === status;
       return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}" data-job-os-filter="${status}"><span class="job-os-dot" data-tone="${tones[status]}" aria-hidden="true"></span><span class="side-menu-label">${esc(statusLabel(status))}</span><span class="job-os-side-count">${byStatus[status]}</span></button>`;
     }).join('');
-    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
+    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages || '<p class="job-os-side-empty">No jobs yet.</p>'}</div></div>`;
   }
   window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf};
 }());
