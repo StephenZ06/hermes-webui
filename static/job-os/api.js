@@ -21,6 +21,7 @@
     sendDigest: () => request('/api/job-os/notifications/digest', {method: 'POST', body: '{}'}),
     checkReplies: () => request('/api/job-os/notifications/check', {method: 'POST', body: '{}'}),
     checkOutcomes: () => request('/api/job-os/notifications/outcomes', {method: 'POST', body: '{}'}),
+    checkSites: () => request('/api/job-os/site-health/check', {method: 'POST', body: '{}'}),
     moveJob: (id, column, expectedRevision, status) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/move', {method: 'POST', body: JSON.stringify({column, expected_revision: expectedRevision, status: status || null})}),
     board: (source) => request('/api/job-os/applications' + (source && source !== 'all' ? '?source=' + encodeURIComponent(source) : '')),
     editJob: (id, job, expectedRevision) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/edit', {method: 'POST', body: JSON.stringify({job, expected_revision: expectedRevision})}),

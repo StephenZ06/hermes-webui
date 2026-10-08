@@ -149,6 +149,21 @@
   // The API lists jobs oldest first (created_at ASC); every view here reads newest first.
   const newestFirst = (jobs) => jobs.slice().sort((a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0) || (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
   const dashboardOf = (state) => state.dashboard || {total_jobs: 0, active_work: 0, needs_attention: 0, by_status: {}};
+  // Job sites Scout reads itself (api/job_os/site_health.py): any that no longer read correctly.
+  const siteProblems = (state) => ((dashboardOf(state).site_health) || []).filter((site) => site.state && site.state !== 'ok');
+  const SITE_STATE = {changed: 'Site changed', unreachable: 'Not reachable', ok: 'Working'};
+  function siteHealthBanner(state, where) {
+    return siteProblems(state).filter((site) => site.in_use !== false).map((site) => {
+      const changed = site.state === 'changed';
+      const since = site.since ? new Date(site.since * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short'}) : '';
+      const what = changed ? `${esc(site.name)} has changed its pages, so Scout can no longer read it. Its searches find nothing until its reader is updated.`
+        : `${esc(site.name)} has not loaded for the last few tries. It may be down; Scout keeps trying.`;
+      return `<div class="site-health-banner" data-state="${esc(site.state)}" data-key="site-health-${esc(site.site)}-${where}" role="alert">
+        <span class="site-health-icon" aria-hidden="true">${icon('close', 18)}</span>
+        <div class="site-health-text"><strong>${esc(site.name)}: ${SITE_STATE[site.state] || esc(site.state)}${since ? ` <small>since ${esc(since)}</small>` : ''}</strong><span>${what}</span></div>
+        <div class="site-health-actions"><button type="button" class="job-os-btn" data-job-os-action="site-check" data-site="${esc(site.site)}">Check now</button></div></div>`;
+    }).join('');
+  }
   const appliedCount = (byStatus) => STATUS_GROUPS.applied.statuses.reduce((sum, key) => sum + (byStatus[key] || 0), 0);
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
   function jobChips(job) {
@@ -262,6 +277,19 @@
   }
   const SECTION_ICONS = {connections: 'cloud', apify: 'radar', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
     notifications: 'bell', resume: 'resume-studio', display: 'dashboard'};
+  // Job sites Scout reads itself, with whether they still read correctly.
+  function jobSitesBlock(state) {
+    const sites = dashboardOf(state).site_health || [];
+    if (!sites.length) return '';
+    const rows = sites.map((site) => {
+      const ok = site.state === 'ok';
+      const checked = site.checked ? `checked ${when(site.checked)}` : 'not checked yet';
+      return `<div class="site-health-row"><strong>${esc(site.name)}</strong>${pill(ok, SITE_STATE[site.state] || site.state)}<span class="site-health-when">${esc(checked)}${site.in_use ? '' : ' · no search uses it'}</span>${!ok && site.detail ? `<p class="job-os-card-note">${esc(site.detail)}</p>` : ''}</div>`;
+    }).join('');
+    return `<div class="job-os-conn"><div class="job-os-conn-head"><strong>Job sites</strong></div>
+      <p class="job-os-card-note">Sites Scout reads itself. They are checked twice a day while a search uses them and on every run; a change in a site's pages shows here, on the Dashboard and in Scout, and is emailed once when Jobs email is on.</p>
+      ${rows}<button type="button" class="job-os-btn" data-job-os-action="site-check">Check now</button></div>`;
+  }
   function section(id, title, note, inner, phase) {
     return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}">${cardHead(title, SECTION_ICONS[id], phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : '')}${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
   }
@@ -332,7 +360,8 @@
         ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from your .env settings', 'url')}
         <button type="button" class="job-os-btn" data-job-os-action="test-firecrawl">Test connection</button>
       </div>
-      ${gmailBlock(state, gmail, gmailReady)}`);
+      ${gmailBlock(state, gmail, gmailReady)}
+      ${jobSitesBlock(state)}`);
     const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
       ${textField('ai.model', 'Model', v('ai.model'))}
       ${textField('ai.provider', 'Provider', v('ai.provider'))}
@@ -737,7 +766,10 @@
     const schedOn = state.schedule && state.schedule.enabled;
     const schedule = !search.enabled ? 'Paused' : !schedOn ? 'Schedule off' : search.next_run_at ? `Next ${until(search.next_run_at)}` : 'Scheduled';
     const fact = (label, value, muted) => `<div><dt>${label}</dt><dd${muted ? ' class="is-muted"' : ''}>${value}</dd></div>`;
-    const sites = (search.sites || ['indeed']).map((k) => `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('');
+    const broken = Object.fromEntries(siteProblems(state).map((site) => [site.site, site]));
+    const sites = (search.sites || ['indeed']).map((k) => broken[k]
+      ? `<span class="pipe-source is-broken" data-source="${esc(k)}" title="${esc(broken[k].name)}: ${esc(SITE_STATE[broken[k].state] || '')}">${icon('close', 12)}${esc(SOURCE_LABEL[k] || k)}</span>`
+      : `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('');
     const host = (state.countries || []).find((c) => c.code === search.country);
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-key="search-${esc(search.id)}" data-search-id="${esc(search.id)}">
       <div class="scout-search-head"><span class="card-icon" aria-hidden="true">${icon('radar', 16)}</span><div class="scout-search-title"><h3 title="${esc(search.name)}">${esc(search.name)}</h3><p title="${esc(search.keywords)}">${esc(search.keywords)}</p></div>
@@ -820,7 +852,7 @@
       ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
       ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Latest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
       ${tile('radar', 'Searches', `${on.length} of ${searches.length}`, last ? `Last run ${esc(when(last))}` : 'Not run yet')}</section>`;
-    return `${banner}${overview}${matchInbox(state)}
+    return `${siteHealthBanner(state, 'scout')}${banner}${overview}${matchInbox(state)}
       ${searchFormCard(state.searchForm, state)}
       <div class="section-bar"><h2>Saved searches <span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 16)}New search</button></div>
       ${searches.length ? `<div class="scout-searches">${searches.map((x) => searchCard(x, state)).join('')}</div>`
@@ -1069,7 +1101,7 @@
     let body;
     if (view === 'dashboard') {
       const recent = paged(jobs, state.recentPage);
-      body = `${header('Dashboard', 'Your job search at a glance.', state)}
+      body = `${header('Dashboard', 'Your job search at a glance.', state)}${siteHealthBanner(state, 'dashboard')}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"')}</section>
         <div class="job-os-pair">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}</div>
         <div class="job-os-columns">
@@ -1112,6 +1144,8 @@
     const counts = {pipeline: dashboard.total_jobs, scout: fresh};
     const nav = sectionsOf(state).map((key) => {
       const active = view === key && !(key === 'pipeline' && (state.statusFilter || state.focusColumn));
+      const alert = key === 'scout' && siteProblems(state).some((site) => site.in_use !== false);
+      if (alert) return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span><span class="job-os-side-alert" title="A job site needs attention" aria-label="A job site needs attention">!</span></button>`;
       const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
       return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span>${count}</button>`;
     }).join('');

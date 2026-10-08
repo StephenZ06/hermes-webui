@@ -473,7 +473,9 @@ def handle_job_os_get(handler, parsed) -> bool:
         j(handler, job_os_capability())
         return True
     if parsed.path == f"{_PREFIX}/dashboard":
-        j(handler, build_dashboard())
+        from api.job_os import site_health
+
+        j(handler, {**build_dashboard(), "site_health": site_health.status()})
         return True
     if parsed.path == f"{_PREFIX}/jobs":
         query = parse_qs(parsed.query or "")
@@ -583,6 +585,11 @@ def handle_job_os_post(handler, parsed, body) -> bool:
             return handled
     if parsed.path in {f"{_PREFIX}/notifications/digest", f"{_PREFIX}/notifications/check"}:
         return _notifications_post(handler, parsed.path)
+    if parsed.path == f"{_PREFIX}/site-health/check":
+        from api.job_os import site_health
+
+        j(handler, {"site_health": site_health.check(), "status": site_health.status()})
+        return True
     if parsed.path == f"{_PREFIX}/notifications/outcomes":
         from api.job_os import notify, outcomes
 

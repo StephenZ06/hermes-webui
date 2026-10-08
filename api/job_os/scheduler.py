@@ -129,6 +129,12 @@ def _loop() -> None:
             outcomes.tick()
         except Exception:
             logger.debug("Job OS outcome tick failed", exc_info=True)
+        try:
+            from api.job_os import site_health
+
+            site_health.tick()
+        except Exception:
+            logger.debug("Job OS site health tick failed", exc_info=True)
 
 
 def start_scheduler() -> bool:

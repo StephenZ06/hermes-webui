@@ -107,6 +107,16 @@ with or without Apify and without Firecrawl:
   when every search comes back empty, Scout checks the site's unfiltered job
   list, and three job pages in a row that no longer parse stop the run.
 - Live check: `HERMES_LIVE_REMOTEID=1 ./scripts/test.sh tests/test_job_os_remoteid.py -k live`.
+- **Site health** (`site_health.py`, state in `site_health.json`): every run
+  and a background check every 12 hours (while a search uses the site) record
+  whether remote.id still reads: *Working*, *Site changed* (pages load but no
+  longer parse) or *Not reachable* (3 failed loads in a row; one is only
+  noted). A problem shows as a banner on the Jobs Dashboard and Scout, a red
+  "!" on Scout in the side panel, a struck-through site chip on the search
+  card, a one-time pop-up per problem, the **Job sites** block in Settings →
+  Connections (with **Check now**, `POST /api/job-os/site-health/check`), and
+  one email when Jobs email is on. It clears by itself once the site reads
+  again.
 - **Failures:** one city failing keeps the others; every city failing fails
   the run with Apify's reason (refused token, out of credit, no answer).
 - **More sites or scrapers:** add an `Adapter` (input builder, record mapping,

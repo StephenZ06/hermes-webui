@@ -213,3 +213,54 @@ def test_the_live_site_still_parses(allow_outbound_network):
     for link in links[:2]:
         posting = remoteid.read(link)
         assert posting and posting["title"] and posting["canonical_url"].startswith("https://")
+
+
+# ---- site health: a redesign is noticed and shown --------------------------------
+
+def test_a_changed_site_is_recorded_shown_and_emailed_once_then_clears(store, monkeypatch):
+    from api.job_os import notify, site_health
+
+    sent = []
+    monkeypatch.setattr(notify, "_ready", lambda settings: True)
+    send = lambda *args: sent.append(args)
+    site_health.record("remoteid", "changed", "job list gone", now=100, send=send)
+    site_health.record("remoteid", "changed", "job list gone", now=200, send=send)
+    entry = next(s for s in site_health.status() if s["site"] == "remoteid")
+    assert entry["state"] == "changed" and entry["since"] == 100 and entry["detail"] == "job list gone"
+    assert len(sent) == 1 and "can no longer read remote.id" in sent[0][2]
+    site_health.record("remoteid", "ok", now=300)
+    entry = next(s for s in site_health.status() if s["site"] == "remoteid")
+    assert entry["state"] == "ok" and entry["recovered"] == 300 and "detail" not in entry
+
+
+def test_one_failed_load_is_not_an_alarm_but_three_in_a_row_are(store):
+    from api.job_os import site_health
+
+    for n in range(site_health.UNREACHABLE_AFTER - 1):
+        site_health.record("remoteid", "unreachable", "timeout", now=n)
+    assert next(s for s in site_health.status() if s["site"] == "remoteid")["state"] == "ok"
+    site_health.record("remoteid", "unreachable", "timeout", now=9)
+    assert next(s for s in site_health.status() if s["site"] == "remoteid")["state"] == "unreachable"
+
+
+def test_the_health_check_tells_a_changed_site_from_a_working_one(store):
+    from api.job_os import site_health
+
+    redesigned = lambda url: "<html><body>new look</body></html>"
+    working = lambda url: _listing([JOBSTREET]) if url.endswith("/jobs") else _page("job-jobstreet.html")
+    assert remoteid.health(redesigned)[0] == "changed"
+    assert remoteid.health(working) == ("ok", "")
+    out = site_health.check(fetchers={"remoteid": lambda: remoteid.health(redesigned)})
+    assert out[0]["state"] == "changed"
+
+
+def test_a_run_that_meets_a_changed_site_marks_it(store, monkeypatch):
+    from api.job_os import site_health
+
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: "<html><body>redesigned</body></html>")
+    scout.start_discovery(_search_for()["id"], client_factory=_no_firecrawl, run_async=False)
+    assert next(s for s in site_health.status() if s["site"] == "remoteid")["state"] == "changed"
+    # A later run that reads the site again clears it.
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing([JOBSTREET]) if "?" in url else _page(PAGES[url]))
+    scout.start_discovery(_search_for(name="again")["id"], client_factory=_no_firecrawl, run_async=False)
+    assert next(s for s in site_health.status() if s["site"] == "remoteid")["state"] == "ok"

@@ -197,6 +197,7 @@
       if (wantResume) state.studioMatch = match && match.job;
       state.capability = capability;
       state.dashboard = dashboard;
+      noticeSiteProblems(dashboard && dashboard.site_health);
       state.jobs = jobs.jobs || [];
       if (health) state.firecrawl = health.firecrawl;
       if (searches) {
@@ -279,6 +280,16 @@
       return el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: 'none'}],
         {duration: 320, easing: 'cubic-bezier(.22,1,.36,1)'}).finished.catch(() => {});
     }));
+  }
+  // A job site that stopped reading correctly pops up once (per problem, per
+  // browser) besides its banner: the email may be off or unread.
+  function noticeSiteProblems(sites) {
+    (sites || []).filter((site) => site.state && site.state !== 'ok' && site.in_use !== false).forEach((site) => {
+      const key = `hermes-jobs-site-notice:${site.site}:${site.since || 0}`;
+      try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (_) { return; }
+      const text = site.state === 'changed' ? `${site.name} changed its pages: Scout can no longer read it` : `${site.name} isn't loading for Scout`;
+      if (typeof window.showToast === 'function') window.showToast(text, 8000, 'error');
+    });
   }
   // A side-panel stage: the board, scrolled to that column (opened if folded), which flashes once.
   function showStage(key) {
@@ -595,6 +606,16 @@
         if (typeof window.showToast === 'function') window.showToast(error.message || 'Email step failed');
         finished(button, false);
       }
+      refresh();
+    } else if (name === 'site-check') {
+      pending(button, 'Checking…');
+      try {
+        const result = await window.JobOSApi.checkSites();
+        if (state.dashboard) state.dashboard = Object.assign({}, state.dashboard, {site_health: result.status});
+        const bad = (result.status || []).filter((site) => site.state !== 'ok');
+        finished(button, !bad.length, bad.length ? 'Still failing' : 'Working');
+        toast(bad.length ? `${bad.map((site) => site.name).join(', ')} still can't be read` : 'Every job site reads correctly');
+      } catch (error) { finished(button, false); toast(error.message || 'Could not check the job sites'); }
       refresh();
     } else if (name === 'test-firecrawl') {
       pending(button, 'Testing…');

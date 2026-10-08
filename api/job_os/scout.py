@@ -35,7 +35,7 @@ from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
 
-from api.job_os import apify, indeed, relevance, remoteid
+from api.job_os import apify, indeed, relevance, remoteid, site_health
 from api.job_os.db import connect_job_os
 from api.job_os.extract import (extract_job_posting, indeed_posting_links, indeed_posting_url, is_indeed,
                                  looks_like_single_posting)
@@ -696,6 +696,7 @@ def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known
         pages: set[str] = set()
         queries = remoteid.queries_for(search["queries"], search["title_filter"])
         links: list[str] = []
+        errors_seen: list[str] = []
         for query in queries:
             if _cancel_requested(run_id):
                 return "cancelled"
@@ -705,12 +706,17 @@ def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known
                                               fetch_page=_remoteid_fetch, cancelled=lambda: _cancel_requested(run_id))
             for problem in problems:
                 note_error(f"remote.id “{query}”", problem)
+                errors_seen.append(problem)
             links.extend(u for u in found if u not in links)
         if queries and not links and counts["errors"] < len(queries):
             problem = remoteid.check_layout(_remoteid_fetch)
             if problem:
                 note_error("remote.id", problem)
+                site_health.record(remoteid.SITE, "changed" if "changed" in problem else "unreachable", problem)
                 return "broken"
+            site_health.record(remoteid.SITE, "ok")  # nothing matched, but the site's own list reads fine
+        elif queries and not links:
+            site_health.record(remoteid.SITE, "unreachable", errors_seen[-1] if errors_seen else "no answer")
 
         fresh = []
         for link in links:
@@ -735,7 +741,9 @@ def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known
                 counts["not_postings"] += 1
                 unreadable += 1
                 if unreadable >= REMOTEID_BAD_PAGES and counts["scraped"] == 0:
-                    note_error("remote.id", "remote.id's job pages could not be read (the site's pages may have changed); Scout needs an update")
+                    problem = "remote.id's job pages could not be read (the site's pages may have changed); Scout needs an update"
+                    note_error("remote.id", problem)
+                    site_health.record(remoteid.SITE, "changed", problem)
                     return "broken"
                 continue
             if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
@@ -753,6 +761,8 @@ def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known
                 counts["duplicates"] += 1  # e.g. a LinkedIn job a LinkedIn search already found
                 continue
             counts["scraped"] += 1
+            if counts["scraped"] == 1:
+                site_health.record(remoteid.SITE, "ok")  # a page read and parsed: the site reads fine
             origin_name = posting.pop("origin_name")
             posting.pop("origin")
             try:

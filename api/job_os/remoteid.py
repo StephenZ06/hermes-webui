@@ -209,6 +209,26 @@ def check_layout(fetch_page=None) -> str:
     return ""
 
 
+def health(fetch_page=None) -> tuple[str, str]:
+    """('ok' | 'changed' | 'unreachable', why): the site's job list and one job
+    page, read and parsed as a Scout run would."""
+    fetch_page = fetch_page or fetch
+    try:
+        links, _more = listing_links(fetch_page(BASE + "/jobs"))
+    except RemoteIdError as error:
+        return "unreachable", str(error)
+    if not links:
+        return "changed", "Scout can no longer find the job list on remote.id's jobs page"
+    try:
+        _sleep(PAUSE_S)
+        posting = parse_job(fetch_page(links[0]), links[0])
+    except RemoteIdError as error:
+        return "unreachable", str(error)
+    if posting is None or not posting.get("description"):
+        return "changed", "Scout can no longer read remote.id's job pages (title, link or description)"
+    return "ok", ""
+
+
 def search(query: str, *, limit: int, seen_pages: set[str] | None = None,
            fetch_page=None, cancelled=lambda: False) -> tuple[list[str], list[str]]:
     """Job page links for one title, up to `limit`; also the errors met."""
