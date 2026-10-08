@@ -665,6 +665,108 @@ def tidy_search(search_id: str) -> int:
     return skipped
 
 
+def _known_remoteid_pages() -> set[str]:
+    conn = connect_job_os()
+    try:
+        return {row[0] for row in conn.execute("SELECT source_id FROM jobs WHERE source=? AND source_id IS NOT NULL",
+                                               (remoteid.SITE,))}
+    finally:
+        conn.close()
+
+
+# remote.id job pages read per run at most, besides the search's own result cap.
+REMOTEID_MAX_READS = 40
+# Job pages in a row that no longer parse before the site is taken to have changed.
+REMOTEID_BAD_PAGES = 3
+
+
+def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known, max_results):
+    """remote.id's part of a run (see remoteid.py). Its search matches whole
+    phrases, so it searches the broadest word of the search's titles and lets
+    Scout's own title matching keep the right jobs. A page already saved (by its
+    source site's id) is not read again, nor a LinkedIn job a LinkedIn search
+    found. An empty result everywhere, or job pages that stop parsing, is
+    checked against the site's own job list so a changed site shows as an
+    error on the search card instead of as "0 new"."""
+
+    def run() -> str:
+        oldest = _oldest_posted(search["posted_within_days"])
+        known_pages = _known_remoteid_pages()
+        linkedin_known = set(_known_ids("linkedin", known))
+        pages: set[str] = set()
+        queries = remoteid.queries_for(search["queries"], search["title_filter"])
+        links: list[str] = []
+        for query in queries:
+            if _cancel_requested(run_id):
+                return "cancelled"
+            counts["queries"] += 1
+            save(detail=f"Searching remote.id for “{query}”")
+            found, problems = remoteid.search(query, limit=REMOTEID_MAX_READS, seen_pages=pages,
+                                              fetch_page=_remoteid_fetch, cancelled=lambda: _cancel_requested(run_id))
+            for problem in problems:
+                note_error(f"remote.id “{query}”", problem)
+            links.extend(u for u in found if u not in links)
+        if queries and not links and counts["errors"] < len(queries):
+            problem = remoteid.check_layout(_remoteid_fetch)
+            if problem:
+                note_error("remote.id", problem)
+                return "broken"
+
+        fresh = []
+        for link in links:
+            counts["found"] += 1
+            key = remoteid.page_key(link) or ""
+            origin, _, origin_id = key.partition("/")
+            if key in known_pages or (origin == "linkedin" and origin_id in linkedin_known):
+                counts["duplicates"] += 1  # saved before, or a LinkedIn search already has it
+            else:
+                fresh.append(link)
+        fresh = fresh[:min(REMOTEID_MAX_READS, max_results)]
+        unreadable = 0
+        for index, link in enumerate(fresh, start=1):
+            if _cancel_requested(run_id):
+                return "cancelled"
+            try:
+                posting = remoteid.read(link, fetch_page=_remoteid_fetch)
+            except remoteid.RemoteIdError as error:
+                note_error("remote.id", error)
+                continue
+            if posting is None:
+                counts["not_postings"] += 1
+                unreadable += 1
+                if unreadable >= REMOTEID_BAD_PAGES and counts["scraped"] == 0:
+                    note_error("remote.id", "remote.id's job pages could not be read (the site's pages may have changed); Scout needs an update")
+                    return "broken"
+                continue
+            if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
+                counts["filtered"] += 1  # older than the search's window
+                continue
+            try:
+                canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
+            except JobValidationError as error:
+                note_error("remote.id", error)
+                continue
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            if canonical in known:
+                counts["duplicates"] += 1  # e.g. a LinkedIn job a LinkedIn search already found
+                continue
+            counts["scraped"] += 1
+            origin_name = posting.pop("origin_name")
+            posting.pop("origin")
+            try:
+                keep({**posting, "source_id": remoteid.page_key(link)}, canonical, remoteid.SITE)
+            except DuplicateJobError:
+                counts["duplicates"] += 1
+            except JobValidationError as error:
+                note_error(f"remote.id ({origin_name})", error)
+            save(detail=f"Read {index} of {len(fresh)} remote.id jobs · {counts['saved']} new")
+        return "done"
+
+    return run
+
+
 def run_discovery(run_id: str, client_factory: Callable) -> None:
     """Do the work for one run. Never raises; every exit is a terminal state."""
     counts = dict(_EMPTY_COUNTS)
@@ -756,61 +858,15 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 new_ids.append(record.id)
 
         if direct:
-            # remote.id: its results pages list job pages, each read once (a second
-            # apart). A job is stored under its source site's link, so one already
-            # found through a LinkedIn search counts as known, not saved twice.
-            oldest = _oldest_posted(search["posted_within_days"])
-            pages: set[str] = set()
-            for query in search["queries"]:
-                if _cancel_requested(run_id):
-                    finish("cancelled", "Cancelled")
-                    return
-                counts["queries"] += 1
-                save(detail=f"Searching remote.id “{query}”")
-                links, problems = remoteid.search(query, limit=max_results, seen_pages=pages, fetch_page=_remoteid_fetch,
-                                                  cancelled=lambda: _cancel_requested(run_id))
-                for problem in problems:
-                    note_error(f"remote.id “{query}”", problem)
-                for index, link in enumerate(links, start=1):
-                    if _cancel_requested(run_id):
-                        finish("cancelled", "Cancelled")
-                        return
-                    counts["found"] += 1
-                    try:
-                        posting = remoteid.read(link, fetch_page=_remoteid_fetch)
-                    except remoteid.RemoteIdError as error:
-                        note_error("remote.id", error)
-                        continue
-                    if posting is None:
-                        counts["not_postings"] += 1
-                        continue
-                    if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
-                        counts["filtered"] += 1  # older than the search's window
-                        continue
-                    try:
-                        canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
-                    except JobValidationError as error:
-                        note_error("remote.id", error)
-                        continue
-                    if canonical in seen:
-                        continue
-                    seen.add(canonical)
-                    if canonical in known:
-                        counts["duplicates"] += 1  # e.g. a LinkedIn job a LinkedIn search already found
-                        continue
-                    counts["scraped"] += 1
-                    origin, origin_name = posting.pop("origin"), posting.pop("origin_name")
-                    try:
-                        keep({**posting, "source_id": origin}, canonical, remoteid.SITE)
-                    except DuplicateJobError:
-                        counts["duplicates"] += 1
-                    except JobValidationError as error:
-                        note_error(f"remote.id ({origin_name})", error)
-                    save(detail=f"Read {index} of {len(links)} remote.id jobs for “{query}” · {counts['saved']} new")
+            run_remoteid = _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known, max_results)
+            outcome = run_remoteid()
+            if outcome == "cancelled":
+                finish("cancelled", "Cancelled")
+                return
             if not apify_sites and "indeed" not in sites:
                 counts["candidates"] = counts["scraped"]
-                if not counts["found"] and counts["errors"]:
-                    finish("failed", f"remote.id could not be read: {errors[-1]['message'] if errors else 'unknown error'}")
+                if outcome == "broken" or (not counts["found"] and counts["errors"]):
+                    finish("failed", errors[-1]["message"] if errors else "remote.id could not be read")
                     return
                 _mark_ran(search["id"])
                 note = _after_run(new_ids)

@@ -171,6 +171,44 @@ def parse_job(page_html: str, url: str) -> dict | None:
     }
 
 
+def page_key(url: str) -> str | None:
+    """'jobstreet/94318388' for a job page: its source site and that site's id."""
+    match = _JOB_PATH.match(urllib.parse.urlsplit(url).path)
+    return f"{match.group(1)}/{match.group(2)}" if match else None
+
+
+def queries_for(titles: list[str], title_filter: list[str]) -> list[str]:
+    """What to type into the site's search. It matches the words as one phrase
+    ("IT Analyst" misses "IT Help Desk Analyst"; "security" found nothing while
+    "analyst" found five), so Scout searches the broadest word, the search's
+    title filter or else the last word of each title, and its own title
+    matching keeps only the right jobs."""
+    from api.job_os.relevance import distinctive
+
+    words = [w for w in (title_filter or []) if str(w).strip()]
+    if not words:
+        words = [distinctive(t)[-1] for t in titles if distinctive(t)]
+    out: list[str] = []
+    for word in words:
+        word = str(word).strip().lower()
+        if word and word not in out:
+            out.append(word)
+    return out[:6]
+
+
+def check_layout(fetch_page=None) -> str:
+    """'' when the site's unfiltered job list still parses; otherwise why not.
+    Run when every search came back empty, to tell "nothing matched" from
+    "the site changed and Scout no longer understands its pages"."""
+    try:
+        links, _more = listing_links((fetch_page or fetch)(BASE + "/jobs"))
+    except RemoteIdError as error:
+        return str(error)
+    if not links:
+        return "remote.id's job list could not be read (the site's pages may have changed); Scout needs an update"
+    return ""
+
+
 def search(query: str, *, limit: int, seen_pages: set[str] | None = None,
            fetch_page=None, cancelled=lambda: False) -> tuple[list[str], list[str]]:
     """Job page links for one title, up to `limit`; also the errors met."""

@@ -96,6 +96,17 @@ with or without Apify and without Firecrawl:
 - The search's country is not applied (every job is remote); its titles,
   title filter, related titles and date window are. Pay, type, place and the
   posted date (Indonesian month names) come from the job page.
+- The site's search matches whole phrases ("IT Analyst" misses "IT Help Desk
+  Analyst"), so Scout searches the broadest word: the search's title filter,
+  or the last word of each title. Scout's title matching then keeps the
+  right jobs.
+- A job page saved before (its source site and id, kept as the job's
+  `source_id`) is not read again, nor a LinkedIn job a LinkedIn search has.
+  At most 40 pages, and no more than *results per search*, are read a run.
+- **A changed site fails the run with a reason** instead of reporting 0 new:
+  when every search comes back empty, Scout checks the site's unfiltered job
+  list, and three job pages in a row that no longer parse stop the run.
+- Live check: `HERMES_LIVE_REMOTEID=1 ./scripts/test.sh tests/test_job_os_remoteid.py -k live`.
 - **Failures:** one city failing keeps the others; every city failing fails
   the run with Apify's reason (refused token, out of credit, no answer).
 - **More sites or scrapers:** add an `Adapter` (input builder, record mapping,

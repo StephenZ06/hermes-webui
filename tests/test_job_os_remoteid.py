@@ -130,3 +130,86 @@ def test_with_indeed_too_remote_id_runs_before_the_indeed_search(store, monkeypa
 
     run = scout.start_discovery(search["id"], client_factory=Client, run_async=False)
     assert run["counts"]["queries"] >= 2 and calls, "both sites were searched"
+
+
+def test_the_site_is_searched_by_its_broadest_word():
+    # The site matches whole phrases: "IT Analyst" misses "IT Help Desk Analyst".
+    assert remoteid.queries_for(["SOC Analyst", "IT Analyst"], ["analyst"]) == ["analyst"]
+    assert remoteid.queries_for(["SOC Analyst", "Data Engineer"], []) == ["analyst", "engineer"]
+
+
+def _search_for(**extra):
+    return scout.create_search({"keywords": "SEO Specialist", "country": "my", "sites": ["remoteid"],
+                                "strict_titles": False, "posted_within_days": 0, **extra})
+
+
+def _no_firecrawl():
+    raise AssertionError("remote.id runs without Firecrawl")
+
+
+def test_a_second_run_does_not_read_saved_job_pages_again(store, monkeypatch):
+    fetched = []
+
+    def fake_fetch(url):
+        fetched.append(url)
+        return _listing([JOBSTREET, UPWORK]) if "?" in url else _page(PAGES[url])
+
+    monkeypatch.setattr(scout, "_remoteid_fetch", fake_fetch)
+    search = _search_for()
+    assert scout.start_discovery(search["id"], client_factory=_no_firecrawl, run_async=False)["counts"]["saved"] == 2
+    fetched.clear()
+    run = scout.start_discovery(search["id"], client_factory=_no_firecrawl, run_async=False)
+    assert run["status"] == "completed" and run["counts"]["duplicates"] == 2
+    assert all("?" in u for u in fetched), "only the results page is fetched"
+
+
+def test_a_changed_site_fails_the_run_with_a_reason_instead_of_finding_nothing(store, monkeypatch):
+    # Results and the site's own job list both come back without any jobs Scout can see.
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: "<html><body>redesigned</body></html>")
+    run = scout.start_discovery(_search_for()["id"], client_factory=_no_firecrawl, run_async=False)
+    assert run["status"] == "failed" and "pages may have changed" in run["stage_detail"]
+
+
+def test_nothing_matching_is_not_mistaken_for_a_changed_site(store, monkeypatch):
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing([]) if "?" in url else _listing([JOBSTREET]))
+    run = scout.start_discovery(_search_for()["id"], client_factory=_no_firecrawl, run_async=False)
+    assert run["status"] == "completed" and run["counts"]["errors"] == 0
+
+
+def test_job_pages_that_stop_parsing_are_reported(store, monkeypatch):
+    jobs = [f"{BASE}/jobs/jobstreet/9{n}000001/role-{n}" for n in range(5)]
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing(jobs) if "?" in url else "<html>new layout</html>")
+    run = scout.start_discovery(_search_for()["id"], client_factory=_no_firecrawl, run_async=False)
+    assert run["status"] == "failed" and "pages may have changed" in run["stage_detail"]
+    assert run["counts"]["not_postings"] == scout.REMOTEID_BAD_PAGES, "it stops reading once the pattern is clear"
+
+
+def test_a_run_reads_no_more_pages_than_the_search_allows(store, monkeypatch):
+    from api.job_os.settings import load_settings, save_settings
+
+    settings = load_settings()
+    settings["scout"]["max_results_per_search"] = 2
+    save_settings({"scout": settings["scout"]}, expected_revision=settings["revision"])
+    jobs = [f"{BASE}/jobs/jobstreet/9{n}000001/role-{n}" for n in range(8)]
+    reads = []
+
+    def fake_fetch(url):
+        if "?" in url:
+            return _listing(jobs)
+        reads.append(url)
+        return _page("job-jobstreet.html")
+
+    monkeypatch.setattr(scout, "_remoteid_fetch", fake_fetch)
+    scout.start_discovery(_search_for()["id"], client_factory=_no_firecrawl, run_async=False)
+    assert len(reads) == 2
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("HERMES_LIVE_REMOTEID"),
+                    reason="reads the live site; set HERMES_LIVE_REMOTEID=1 to check it still parses")
+def test_the_live_site_still_parses(allow_outbound_network):
+    assert remoteid.check_layout() == ""
+    links, problems = remoteid.search("analyst", limit=3)
+    assert not problems
+    for link in links[:2]:
+        posting = remoteid.read(link)
+        assert posting and posting["title"] and posting["canonical_url"].startswith("https://")
