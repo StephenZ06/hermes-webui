@@ -50,11 +50,16 @@ def test_the_ring_shows_the_score_and_band_of_the_picked_job():
             page.wait_for_selector(".match-ring[data-band]", timeout=20000)
             # The match check steps through the board one job at a time (Next / Previous, or the arrow keys).
             def go_to(title):
-                for _ in range(40):
-                    if page.inner_text(".match-job strong") == title:
-                        return
-                    page.keyboard.press("ArrowRight" if page.locator(".match-step[aria-label='Next job']:not([disabled])").count() else "ArrowLeft")
-                    page.wait_for_timeout(250)
+                # Sweep right to the end, then left to the start.
+                for key, step in (("ArrowRight", "Next job"), ("ArrowLeft", "Previous job")):
+                    for _ in range(400):
+                        if page.inner_text(".match-job strong") == title:
+                            return
+                        if not page.locator(f".match-step[aria-label='{step}']:not([disabled])").count():
+                            break
+                        before = page.inner_text(".match-job strong")
+                        page.keyboard.press(key)
+                        page.wait_for_function("(t) => document.querySelector('.match-job strong')?.textContent !== t", arg=before, timeout=5000)
                 raise AssertionError(f"{title} not in the match check")
             go_to(f"Fair {marker}")
             page.wait_for_selector('.match-ring[data-band="fair"]', timeout=15000)

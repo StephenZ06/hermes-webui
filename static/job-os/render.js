@@ -459,7 +459,12 @@
     const columns = board.columns.map((c) => Object.assign({}, c, {jobs: c.jobs.filter(keep)}));
     const total = columns.reduce((n, c) => n + c.jobs.length, 0);
     if (!total) return state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
-    return `<div class="pipe-board" role="list" aria-label="Pipeline stages">${columns.map((c) => `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span></header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`).join('')}</div>
+    const folded = new Set(state.collapsedColumns || []);
+    const tracks = columns.map((c) => (folded.has(c.key) ? '48px' : 'minmax(272px,1fr)')).join(' ');
+    const fold = (c, open) => `<button type="button" class="pipe-col-fold" data-job-os-action="pipe-collapse" data-col="${esc(c.key)}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(c.label)}" title="${open ? 'Collapse' : 'Expand'}" aria-expanded="${open}">${icon(open ? 'prev' : 'next', 14)}</button>`;
+    return `<div class="pipe-board" role="list" aria-label="Pipeline stages" style="grid-template-columns:${tracks}">${columns.map((c) => (folded.has(c.key)
+      ? `<section class="pipe-col is-folded" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}, collapsed"><header class="pipe-col-head">${fold(c, false)}<span class="job-os-count">${c.jobs.length}</span><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3></header><div class="pipe-col-cards"></div></section>`
+      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span>${fold(c, true)}</header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
       <div class="pipe-hscroll" aria-hidden="true"><div class="pipe-hscroll-track"></div></div>`;
   }
   function noMatches(state) {

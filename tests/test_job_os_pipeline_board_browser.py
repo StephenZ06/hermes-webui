@@ -222,3 +222,39 @@ def test_cards_share_one_height_and_a_column_shows_ten_before_it_scrolls():
     assert out["shown"] == out["ten"] and out["scrolls"]
     assert out["na"] == 3 and out["buttonFills"] and out["appliedButton"] == "Open job" and out["colours"]
     assert out["columns"] == 1 and out["emptyFills"], "every column is as tall as the fullest, empty or not"
+
+
+def test_a_held_card_takes_the_place_of_drop_a_job_here_and_columns_fold():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _post("/api/job-os/jobs", {"title": f"Hold {uuid.uuid4().hex[:6]}", "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}"})["job"]
+    card = f'.pipe-card[data-board-job="{job["id"]}"]'
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            _open_jobs(page)
+            page.wait_for_selector(card, timeout=15000)
+            # Fold Offer: a slim strip that is remembered.
+            page.evaluate("() => document.querySelector('.pipe-col[data-col=\"offers\"] .pipe-col-fold').click()")
+            page.wait_for_selector('.pipe-col.is-folded[data-col="offers"]', timeout=5000)
+            strip = page.evaluate("() => Math.round(document.querySelector('.pipe-col[data-col=\"offers\"]').getBoundingClientRect().width)")
+            remembered = page.evaluate("() => JSON.parse(localStorage.getItem('hermes-job-os-pipeline')).collapsed")
+            empty = page.evaluate("() => [...document.querySelectorAll('.pipe-col:not(.is-folded)')].find(c => c.querySelector('.pipe-empty'))?.dataset.col")
+            page.evaluate("""([card, col]) => { document.querySelector(`.pipe-col[data-col="${col}"]`).scrollIntoView({inline: 'end'});
+              document.querySelector(card).scrollIntoView({block: 'nearest', inline: 'nearest'}); }""", [card, empty])
+            box = page.locator(f"{card} .pipe-card-name").bounding_box()
+            page.mouse.move(box["x"] + 10, box["y"] + 5)
+            page.mouse.down()
+            page.mouse.move(box["x"] + 30, box["y"] + 20, steps=4)
+            head = page.locator(f'.pipe-col[data-col="{empty}"] .pipe-col-head').bounding_box()
+            page.mouse.move(head["x"] + head["width"] / 2, head["y"] + 80, steps=10)
+            page.wait_for_timeout(300)
+            held = page.evaluate(f"""() => [...document.querySelector('.pipe-col[data-col="{empty}"] .pipe-col-cards').children]
+              .map((c) => [c.className, getComputedStyle(c).display])""")
+            page.keyboard.press("Escape")
+            page.mouse.up()
+            page.evaluate("() => document.querySelector('.pipe-col[data-col=\"offers\"] .pipe-col-fold').click()")
+        finally:
+            browser.close()
+    assert strip <= 52 and remembered == ["offers"]
+    assert held[0] == ["drag-slot", "block"] and ["pipe-empty", "none"] in held, held

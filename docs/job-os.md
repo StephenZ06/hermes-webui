@@ -156,6 +156,10 @@ again and Scout drops the repeats.
   after). Applied asks first and records the application once. Only a job
   Luna is tailoring can't be moved. While a card is held, refreshes leave the
   board alone; the board scrolls at its edges.
+- **Fold a column** (the arrow in its header, on hover) to a slim strip with
+  its name and count, as in most Kanban boards; it still takes drops, and
+  folded columns are remembered per browser. While a card is held over a
+  column, a card-sized slot shows at the top where it will land.
 - **Scrolling sideways:** a scrollbar pinned to the bottom of the view, or
   press on empty board space and drag left or right.
 - **Cards** are compact and all one height: the title (two lines kept),

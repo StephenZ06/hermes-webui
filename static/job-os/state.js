@@ -32,6 +32,7 @@
     jobDetail: null,
     sortBy: 'newest', // Pipeline list: 'newest' | 'fit'
     pipelineSource: 'all', // 'all', a job site key, or 'manual'; filtered in the page, not on the server
+    collapsedColumns: [], // board columns folded to a slim strip (remembered per browser)
     pipelineQuery: '', // Pipeline search box: jobs whose title or company contain it
     pipelineMode: 'board', // 'board' | 'list'
     jobForm: null, // the Add/Edit job drawer: null = closed

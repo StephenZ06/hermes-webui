@@ -1085,7 +1085,13 @@
       if (!col.classList.contains('drop-target')) {
         board.querySelectorAll('.pipe-col.drop-target').forEach((other) => other.classList.remove('drop-target'));
         col.classList.add('drop-target');
-        if (typeof showDragSlot === 'function') showDragSlot(col.querySelector('.pipe-col-cards'), dragging.height);
+        const list = col.querySelector('.pipe-col-cards');
+        if (typeof showDragSlot === 'function' && list) {
+          showDragSlot(list, dragging.height);
+          // The slot sits where the card will land: at the top, in place of "Drop a job here".
+          const slot = list.querySelector('.drag-slot');
+          if (slot && slot !== list.firstElementChild) list.prepend(slot);
+        }
       }
     });
     board.addEventListener('dragleave', (event) => {
@@ -1159,7 +1165,7 @@
   const PREFS = 'hermes-job-os-pipeline';
   function savePrefs() {
     const state = window.JobOSState;
-    try { localStorage.setItem(PREFS, JSON.stringify({source: state.pipelineSource, mode: state.pipelineMode})); } catch (_) { /* private window */ }
+    try { localStorage.setItem(PREFS, JSON.stringify({source: state.pipelineSource, mode: state.pipelineMode, collapsed: state.collapsedColumns})); } catch (_) { /* private window */ }
   }
   function loadPrefs() {
     const state = window.JobOSState;
@@ -1167,6 +1173,7 @@
       const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
       if (typeof saved.source === 'string' && /^[a-z]{1,20}$/.test(saved.source)) state.pipelineSource = saved.source;
       if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
+      if (Array.isArray(saved.collapsed)) state.collapsedColumns = saved.collapsed.filter((c) => typeof c === 'string' && /^[a-z]{1,20}$/.test(c)).slice(0, 12);
     } catch (_) { /* defaults */ }
   }
   const FORM_FIELDS = ['title', 'company', 'canonical_url', 'country', 'location', 'salary_text', 'employment_type', 'workplace', 'description'];
@@ -1178,6 +1185,13 @@
     if (name === 'pipe-mode') {
       state.pipelineMode = el.dataset.mode; state.statusFilter = null; savePrefs(); replaceRoute('pipeline');
       return state.pipelineMode === 'board' && !state.board ? refresh() : repaint();
+    }
+    // A column folds to a slim strip (and back); it still takes drops.
+    if (name === 'pipe-collapse') {
+      const set = new Set(state.collapsedColumns || []);
+      if (set.has(el.dataset.col)) set.delete(el.dataset.col); else set.add(el.dataset.col);
+      state.collapsedColumns = [...set]; savePrefs();
+      return repaint();
     }
     if (name === 'pipe-search-clear') { state.pipelineQuery = ''; repaint(); document.getElementById('job-os-pipe-search')?.focus(); return undefined; }
     if (name === 'job-form-new') { state.jobForm = Object.assign(emptyJobForm(), window.JobOSState.importDraft || {}); state.jobFormError = ''; return refresh(); }
