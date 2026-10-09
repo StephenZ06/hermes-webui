@@ -407,7 +407,7 @@ export function createOfficeScene(canvas, options) {
       // Three layers of stars between the platforms and the nebula: nearer
       // layers are fewer, larger and brighter.
       stars = new THREE.Group();
-      [[GROUND_Y - 2, 3.2, 0.25, 11], [SPACE_Y * 0.55, 2.4, 0.4, 29], [SPACE_Y + 0.5, 1.8, 0.35, 53]].forEach(([y, size, share, seed]) => {
+      [[GROUND_Y - 2, 3.8, 0.25, 11], [SPACE_Y * 0.55, 3.0, 0.4, 29], [SPACE_Y + 0.5, 2.4, 0.35, 53]].forEach(([y, size, share, seed]) => {
         const layer = makeStarfield(halfSize + 50, Math.min(5000, Math.round(halfSize * 14 * share)), { size, seed });
         layer.position.y = y;
         stars.add(layer);

@@ -3143,15 +3143,15 @@ export function makeShootingStar() {
 /**
  * A field of faint stars scattered over the floor around the office. Each
  * twinkles on its own slow cycle (a phase and speed per star, animated in
- * the shader from one `time` uniform), dimming to about a third and back,
- * never brighter than the old static field.
+ * the shader from one `time` uniform), dimming to about half and back; one
+ * in ten is a larger, brighter star.
  */
 export function makeStarfield(halfSize, count, opts) {
   const options = opts || {};
   const n = count || 900;
   const positions = new Float32Array(n * 3);
   const colors = new Float32Array(n * 3);
-  const twinkle = new Float32Array(n * 2);
+  const twinkle = new Float32Array(n * 3);
   let seed = options.seed || 7;
   const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const blue = new THREE.Color('#7aa2ff');
@@ -3160,35 +3160,41 @@ export function makeStarfield(halfSize, count, opts) {
     positions[i * 3] = (rand() * 2 - 1) * halfSize;
     positions[i * 3 + 1] = 0.05;
     positions[i * 3 + 2] = (rand() * 2 - 1) * halfSize;
-    const c = rand() < 0.7 ? blue : white;
-    const k = 0.3 + rand() * 0.55;
+    const c = rand() < 0.6 ? blue : white;
+    // Brighter than they were (they were lost on the dark backdrop), and one
+    // in ten a larger, brighter star so the field has some that catch the eye.
+    const bright = rand() < 0.1;
+    const k = bright ? 1 : 0.55 + rand() * 0.4;
     colors[i * 3] = c.r * k; colors[i * 3 + 1] = c.g * k; colors[i * 3 + 2] = c.b * k;
-    twinkle[i * 2] = rand() * Math.PI * 2;
-    twinkle[i * 2 + 1] = 0.6 + rand() * 1.6;
+    twinkle[i * 3] = rand() * Math.PI * 2;
+    twinkle[i * 3 + 1] = 0.6 + rand() * 1.6;
+    twinkle[i * 3 + 2] = bright ? 1.9 : 1;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('twinkle', new THREE.BufferAttribute(twinkle, 2));
+  geo.setAttribute('twinkle', new THREE.BufferAttribute(twinkle, 3));
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 } },
-    vertexShader: `attribute vec3 color; attribute vec2 twinkle; uniform float time; uniform float size;
+    vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size;
       varying vec3 vColor; varying float vLight;
       void main() {
         vColor = color;
         float s = 0.5 + 0.5 * sin(time * twinkle.y + twinkle.x);
-        vLight = 0.35 + 0.65 * s * s;
-        gl_PointSize = size * (0.8 + 0.4 * s);
+        vLight = 0.55 + 0.45 * s * s;
+        gl_PointSize = size * twinkle.z * (0.85 + 0.35 * s);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: `varying vec3 vColor; varying float vLight;
       void main() {
         float d = length(gl_PointCoord - 0.5);
-        float a = smoothstep(0.5, 0.15, d);
+        // A bright centre with a soft edge, so a star reads as a point of light.
+        float a = smoothstep(0.5, 0.1, d);
         if (a <= 0.0) discard;
-        gl_FragColor = vec4(vColor * vLight * 1.15, a * 0.95);
+        float core = smoothstep(0.25, 0.0, d);
+        gl_FragColor = vec4(vColor * vLight * (1.7 + core * 0.8), a);
       }`,
   });
   const points = new THREE.Points(geo, mat);
