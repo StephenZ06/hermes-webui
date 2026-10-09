@@ -159,3 +159,34 @@ def test_idle_conductor_sits_emotes_and_drops_it_all_for_a_delegation(page):
     assert not {"work", "tool", "orchestrate"} & set(out["poses"]), "idle life never shows work"
     assert out["closest"] > 2.75, "it never walks through the pedestal"
     assert out["mode"] == "wander", "a delegation cancels whatever it was doing"
+
+
+def test_sign_wall_stands_in_the_rail_line_without_extra_posts(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const palette = { podTop: '#0d172b', deskLeg: '#2e3547', pot: '#7a5236', plant: '#3f5f45' };
+      const blocked = [{ x: 0, z: 0.62, w: 6.9, d: 5.4, rot: Math.PI / 2 }];
+      const g = b.makePodScenery('research', 12, 11, palette, '#7c8cff', { blocked, entry: { x: 6, z: 0 }, seed: 's', key: 'sign-test' });
+      const sign = g.userData.placed[0];
+      // How far the sign's centre is in from the edge it stands on.
+      const inset = Math.min(6 - Math.abs(sign.x), 5.5 - Math.abs(sign.z));
+      const rails = b.makeGuardRails(12, 11, '#7c8cff', [{ x: 6, z: 0, r: b.bridgeGapHalfWidth(1, 0) }, { x: sign.x, z: sign.z, r: 1.15, post: false }]);
+      return { inset, posts: rails.userData.markerPosts.length };
+    }""")
+    assert abs(out["inset"] - 0.32) < 0.01, "the wall stands on the rail line"
+    assert out["posts"] == 2, "the rail meets the wall with no posts; only the bridge gap has them"
+
+
+def test_bridge_from_the_hub_drops_its_first_chevron(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const palette = { bridgeDeck: '#1c2740', bridgeBeam: '#0b1020' };
+      const count = opts => {
+        const seg = b.makeBridgeSegment(14, palette, opts);
+        const group = seg.children.find(c => c.userData && c.userData.activityChevrons);
+        return group.userData.activityChevrons.map(c => c.position.z);
+      };
+      return { all: count({ railColor: '#7c8cff' }), hub: count({ railColor: '#7c8cff', skipFirstChevron: true }) };
+    }""")
+    assert len(out["hub"]) == len(out["all"]) - 1
+    assert min(out["hub"]) > min(out["all"]), "the one dropped is at the conductor's (-z) end"

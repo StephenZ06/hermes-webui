@@ -782,7 +782,7 @@ export function makeWhiteboard(palette) {
  *   segmentColor: tint for the bridge body (defaults to palette.bridgeDeck)
  *   beamColor: underside tint (defaults to palette.bridgeBeam)
  */
-export function makeBridgeActivityChevrons(length, deckHeight, activeColor, panelDividers) {
+export function makeBridgeActivityChevrons(length, deckHeight, activeColor, panelDividers, skipFirst) {
   const group = new THREE.Group();
   const shape = new THREE.Shape();
   // Filled triangular markers stay unmistakable at overview zoom.
@@ -793,7 +793,9 @@ export function makeBridgeActivityChevrons(length, deckHeight, activeColor, pane
   // at the midpoint of adjacent boundaries so it never lands on a line.
   const dividers = Array.isArray(panelDividers) ? panelDividers : [];
   const boundaries = [-length / 2, ...dividers, length / 2];
-  for (let i = 0; i < boundaries.length - 1; i += 1) {
+  // The marker at the conductor's end (-z) sits right at the hub's edge, half
+  // under it; a bridge that starts at the hub leaves it out.
+  for (let i = skipFirst ? 1 : 0; i < boundaries.length - 1; i += 1) {
     // This material is animated per marker. Clone the cached base material so
     // one inactive bridge cannot overwrite an active bridge's glow each frame.
     const chevronMat = material('#334155', { emissive: '#0b1220', ei: 0.1, transparent: true, opacity: 0.72 }).clone();
@@ -875,7 +877,7 @@ export function makeBridgeSegment(length, palette, options) {
   // Two physical cables span the full deck from platform edge to platform
   // edge. Their animated current is toggled by scene activity state, never by
   // the destination-coloured side rails.
-  group.add(makeBridgeActivityChevrons(dimensions.depth, dimensions.height, opts.railColor, panelDividers));
+  group.add(makeBridgeActivityChevrons(dimensions.depth, dimensions.height, opts.railColor, panelDividers, !!opts.skipFirstChevron));
 
   // Glowing side rails along the outer edges only. The rail colour matches
   // the destination platform; the emissive material lets them bloom gently.
@@ -2317,30 +2319,37 @@ export function makeGuardRails(slabW, slabD, tint, openings, opts) {
   const glass = material(options.glassColor || '#cfe3ff', { rough: 0.15, transparent: true, opacity: options.glassOpacity ?? 0.16 });
   const glow = glowMaterial(hex, 1.05);
   const glassTop = options.glassTop ?? 0.9;
-  const blocked = (x, z) => (openings || []).some(o => Math.hypot(x - o.x, z - o.z) < o.r);
+  const openingAt = (x, z) => (openings || []).find(o => Math.hypot(x - o.x, z - o.z) < o.r) || null;
   // The rail follows the rounded rectangle point by point (0.15 apart), so
   // its corners are true curves and the run is one piece from gap to gap.
   const shape = roundedRectShape(w, d, radius);
   const perimeter = 2 * (w + d) - (8 - 2 * Math.PI) * Math.min(radius, w / 2 - 0.05, d / 2 - 0.05);
   const count = Math.max(48, Math.round(perimeter / 0.15));
   const pts = shape.getSpacedPoints(count).slice(0, count).map(v => ({ x: v.x, z: -v.y }));
-  const open = pts.map(pt => blocked(pt.x, pt.z));
+  const openBy = pts.map(pt => openingAt(pt.x, pt.z));
   const runs = [];
-  if (!open.some(Boolean)) {
+  if (!openBy.some(Boolean)) {
     runs.push({ points: pts, closed: true });
   } else {
     // Start just after a gap so no run wraps round the end of the array.
-    const start = open.indexOf(true);
+    // Each run remembers the openings at its two ends: a bridge gap gets a
+    // marker post there, a sign wall (post: false) is what the rail meets.
+    const start = openBy.findIndex(Boolean);
     let current = null;
+    let before = null;
     for (let k = 1; k <= count; k += 1) {
       const i = (start + k) % count;
-      if (open[i]) { if (current) { runs.push({ points: current, closed: false }); current = null; } continue; }
+      if (openBy[i]) {
+        if (current) { runs.push({ points: current, closed: false, before, after: openBy[i] }); current = null; }
+        before = openBy[i];
+        continue;
+      }
       (current || (current = [])).push(pts[i]);
     }
-    if (current) runs.push({ points: current, closed: false });
+    if (current) runs.push({ points: current, closed: false, before, after: openBy[start] });
   }
   const posts = [];
-  runs.forEach(({ points, closed }) => {
+  runs.forEach(({ points, closed, before, after }) => {
     if (points.length < 2) return;
     const parts = [
       [kick, 0.06, 0, 0.34],
@@ -2361,7 +2370,10 @@ export function makeGuardRails(slabW, slabD, tint, openings, opts) {
       support.castShadow = false;
       group.add(support);
     }
-    if (!closed) posts.push(points[0], points[points.length - 1]);
+    if (!closed) {
+      if (before && before.post !== false) posts.push(points[0]);
+      if (after && after.post !== false) posts.push(points[points.length - 1]);
+    }
   });
   // A marker post at each end of every run: the bridge's docking beacons.
   posts.forEach(pt => {
@@ -2531,20 +2543,36 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
     return { x, z, w, d, rot: edge.rot };
   };
 
-  // Sign wall: on one of the two edges the camera sees (+x, +z), the spot
-  // farthest from the bridge entrance that is clear.
-  const signSpots = [...spotsFor(edges[2], 6), ...spotsFor(edges[3], 6)].map(sp => rectAt(sp, 2.5, 0.5));
+  // Sign wall: standing in the rail line itself on one of the two edges the
+  // camera sees (+x, +z), as far from the bridge as it can be, with the rail
+  // ending into its sides. It stays on the straight part of the edge, clear
+  // of the rounded corners.
+  const slabRadius = Math.min(slabW, slabD) * 0.12;
+  const SIGN_W = 2.4;
+  const signSpots = [];
+  [edges[2], edges[3]].forEach(edge => {
+    const room = edge.len / 2 - slabRadius - SIGN_W / 2 - 0.15;
+    for (let i = 0; i <= 6 && room > 0; i += 1) {
+      const t = (-1 + (2 * i) / 6) * room;
+      const x = edge.ax === 'x' ? t : edge.at + edge.nx * RAIL_INSET;
+      const z = edge.ax === 'x' ? edge.at + edge.nz * RAIL_INSET : t;
+      signSpots.push({ x, z, w: SIGN_W, d: 0.45, rot: edge.rot });
+    }
+  });
   if (entry) signSpots.sort((a, b) => Math.hypot(b.x - entry.x, b.z - entry.z) - Math.hypot(a.x - entry.x, a.z - entry.z));
   else signSpots.sort((a, b) => Math.abs(a.x) + Math.abs(a.z) - Math.abs(b.x) - Math.abs(b.z));
-  const sign = signSpots.find(fits);
+  const clearOfBridge = r => !entry || Math.hypot(r.x - entry.x, r.z - entry.z) > bridgeGapHalfWidth(entry.x, entry.z) + SIGN_W / 2 + 0.6;
+  const sign = signSpots.find(r => clearOfBridge(r) && !blocked.some(b => rectsOverlap(r, b)));
   if (sign) {
     const wall = makeSignWall(kind, tint);
     wall.position.set(sign.x, top, sign.z);
     // The sign faces outward, toward the camera.
     wall.rotation.y = sign.rot + Math.PI;
     group.add(wall);
-    placed.push({ ...sign, w: sign.w + 0.4, d: sign.d + 0.4 });
+    placed.push({ ...sign, w: sign.w + 0.4, d: sign.d + 0.8 });
     footprints.push(sign);
+    // The rail stops at the wall's two ends.
+    openings.push({ x: sign.x, z: sign.z, r: SIGN_W / 2 - 0.05, post: false });
   }
   if (!options.noRails) {
     const rails = makeGuardRails(slabW, slabD, tint, openings);
@@ -2881,77 +2909,94 @@ function makeCurvedDesk(hex) {
 }
 
 /**
- * A dark gaming chair: a five-spoke base, a bucket seat with raised side
- * bolsters, a tall winged backrest with a headrest cushion and accent
- * stripes, and padded armrests. Like makeChair, the occupant faces -z.
+ * A dark racing-style gaming chair, smaller than an office chair: a
+ * five-spoke base, a seat with accent side bolsters, and a one-piece
+ * backrest cut to the racing silhouette (flared shoulders, narrow neck, a
+ * rounded head section) with accent stripes, a headrest and a lumbar
+ * cushion. Like makeChair, the occupant faces -z.
  */
 export function makeGamingChair(accent) {
   const group = new THREE.Group();
-  const frame = '#12151c';
-  const shell = '#1a1e28';
-  const pad = '#242a37';
+  const frame = '#101318';
+  const shell = '#171a21';
+  const pad = '#232833';
   const tone = hexOf(accent, '#4f8cff');
+  const accentMat = material('#1d3566', { rough: 0.55, emissive: tone, ei: 0.25 });
   for (let i = 0; i < 5; i += 1) {
     const a = i * (Math.PI * 2 / 5);
-    const spoke = box(0.12, 0.08, 0.78, frame);
-    spoke.position.set(Math.sin(a) * 0.37, 0.16, Math.cos(a) * 0.37);
+    const spoke = box(0.1, 0.07, 0.62, frame);
+    spoke.position.set(Math.sin(a) * 0.3, 0.14, Math.cos(a) * 0.3);
     spoke.rotation.y = a;
     group.add(spoke);
-    const castor = cylinder(0.08, 0.08, 0.1, 10, frame);
+    const castor = cylinder(0.07, 0.07, 0.08, 10, frame);
     castor.rotation.z = Math.PI / 2;
-    castor.position.set(Math.sin(a) * 0.72, 0.08, Math.cos(a) * 0.72);
+    castor.position.set(Math.sin(a) * 0.58, 0.07, Math.cos(a) * 0.58);
     group.add(castor);
   }
-  const lift = cylinder(0.08, 0.11, 0.8, 14, '#3a3f4c');
-  lift.position.y = 0.55;
+  const lift = cylinder(0.065, 0.09, 0.72, 14, '#30353f');
+  lift.position.y = 0.5;
   group.add(lift);
-  const seat = roundedSlab(1.45, 0.26, 1.4, pad, 0.22);
-  seat.position.y = 1.02;
+  const seat = roundedSlab(1.0, 0.2, 0.98, pad, 0.18);
+  seat.position.y = 0.96;
   group.add(seat);
-  [-0.68, 0.68].forEach(x => {
-    const bolster = roundedSlab(0.24, 0.22, 1.3, shell, 0.1);
-    bolster.position.set(x, 1.2, 0);
+  [-0.47, 0.47].forEach(x => {
+    const bolster = new THREE.Mesh(geometry('gchair-bolster', () => {
+      const g = new THREE.CapsuleGeometry(0.09, 0.8, 4, 10);
+      g.rotateX(Math.PI / 2);
+      return g;
+    }), accentMat);
+    bolster.position.set(x, 1.1, -0.02);
     group.add(bolster);
   });
-  const back = roundedPanel(1.4, 2.1, 0.26, shell, 0.34);
-  back.position.set(0, 2.25, 0.68);
-  back.rotation.x = -0.1;
+  const back = new THREE.Group();
+  back.position.set(0, 1.04, 0.46);
+  back.rotation.x = 0.12; // reclined a little, top toward +z
+  const shellMesh = new THREE.Mesh(geometry('gchair-back', () => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.44, 0);
+    sh.lineTo(0.44, 0);
+    sh.quadraticCurveTo(0.56, 0.5, 0.54, 1.0);   // flared shoulder
+    sh.quadraticCurveTo(0.5, 1.22, 0.33, 1.3);   // into the neck
+    sh.lineTo(0.35, 1.58);
+    sh.quadraticCurveTo(0.35, 1.78, 0, 1.8);      // rounded head
+    sh.quadraticCurveTo(-0.35, 1.78, -0.35, 1.58);
+    sh.lineTo(-0.33, 1.3);
+    sh.quadraticCurveTo(-0.5, 1.22, -0.54, 1.0);
+    sh.quadraticCurveTo(-0.56, 0.5, -0.44, 0);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: 16 });
+    return g;
+  }), material(shell, { rough: 0.7 }));
+  back.add(shellMesh);
+  // Front face is at z = -0.05 (the bevel); the cushions sit just proud of it.
+  [-0.27, 0.27].forEach(x => {
+    const stripe = new THREE.Mesh(geometry('gchair-stripe', () => new THREE.BoxGeometry(0.08, 1.05, 0.03)), accentMat);
+    stripe.position.set(x, 0.62, -0.07);
+    back.add(stripe);
+  });
+  // The same stripes on the back of the shell (the side the camera mostly
+  // sees on the hub), which is at z = 0.21.
+  [-0.27, 0.27].forEach(x => {
+    const stripe = new THREE.Mesh(geometry('gchair-stripe', () => new THREE.BoxGeometry(0.08, 1.05, 0.03)), accentMat);
+    stripe.position.set(x, 0.62, 0.23);
+    back.add(stripe);
+  });
+  const head = roundedPanel(0.4, 0.2, 0.08, pad, 0.08);
+  head.position.set(0, 1.48, -0.1);
+  back.add(head);
+  const lumbar = roundedPanel(0.56, 0.2, 0.09, pad, 0.08);
+  lumbar.position.set(0, 0.32, -0.1);
+  back.add(lumbar);
   group.add(back);
-  const cushion = roundedPanel(0.92, 1.45, 0.1, pad, 0.24);
-  cushion.position.set(0, 2.1, 0.53);
-  cushion.rotation.x = -0.1;
-  group.add(cushion);
-  [-0.62, 0.62].forEach(x => {
-    const wing = roundedPanel(0.26, 1.5, 0.34, shell, 0.12);
-    wing.position.set(x, 2.35, 0.6);
-    wing.rotation.set(-0.1, x > 0 ? -0.35 : 0.35, 0);
-    group.add(wing);
-    const stripe = roundedPanel(0.12, 1.25, 0.04, material('#1b2a4a', { rough: 0.5, emissive: tone, ei: 0.55 }), 0.05);
-    stripe.position.set(x * 0.55, 2.15, 0.5);
-    stripe.rotation.x = -0.1;
-    group.add(stripe);
-  });
-  // Accent piping on the back of the shell, the side a passer-by sees.
-  [-0.4, 0.4].forEach(x => {
-    const piping = roundedPanel(0.1, 1.6, 0.04, material('#1b2a4a', { rough: 0.5, emissive: tone, ei: 0.55 }), 0.04);
-    piping.position.set(x, 2.25, 0.83);
-    piping.rotation.x = -0.1;
-    group.add(piping);
-  });
-  const head = roundedPanel(0.62, 0.32, 0.14, pad, 0.14);
-  head.position.set(0, 3.0, 0.5);
-  head.rotation.x = -0.1;
-  group.add(head);
-  [-0.82, 0.82].forEach(x => {
-    const arm = roundedSlab(0.18, 0.1, 0.85, frame, 0.05);
-    arm.position.set(x, 1.5, 0.05);
-    group.add(arm);
-    const post = box(0.1, 0.42, 0.1, frame);
-    post.position.set(x, 1.28, 0.3);
+  [-0.6, 0.6].forEach(x => {
+    const post = box(0.08, 0.34, 0.08, frame);
+    post.position.set(x, 1.15, 0.12);
     group.add(post);
+    const arm = roundedSlab(0.14, 0.08, 0.62, frame, 0.04);
+    arm.position.set(x, 1.34, 0.02);
+    group.add(arm);
   });
   group.traverse(o => { o.castShadow = false; });
-  return mergeStatic(group, `gaming-chair|${tone}`);
+  return mergeStatic(group, `gaming-chair2|${tone}`);
 }
 
 /**
@@ -3041,40 +3086,6 @@ function hubScreenTexture(hex) {
   tex.colorSpace = THREE.SRGBColorSpace;
   _iconTextures.set(key, tex);
   return tex;
-}
-
-/**
- * A soft pool of the platform's colour far beneath it, as if its glow fell
- * on haze below: in the iso view it shows offset under the platform, which
- * is what makes the platform read as floating rather than standing.
- */
-export function makeUnderGlow(width, depth, color) {
-  const hex = hexOf(color, '#4f8cff');
-  const key = `under-glow|${hex}`;
-  let mat = _materials.get(key);
-  if (!mat) {
-    let tex = _iconTextures.get('under-glow-tex');
-    if (!tex) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 128;
-      const c = canvas.getContext('2d');
-      const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
-      g.addColorStop(0, 'rgba(255,255,255,0.55)');
-      g.addColorStop(0.45, 'rgba(255,255,255,0.18)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      c.fillStyle = g;
-      c.fillRect(0, 0, 128, 128);
-      tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      _iconTextures.set('under-glow-tex', tex);
-    }
-    mat = new THREE.MeshBasicMaterial({ map: tex, color: hex, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-    _materials.set(key, mat);
-  }
-  const mesh = new THREE.Mesh(geometry(`under-glow|${width}|${depth}`, () => new THREE.PlaneGeometry(width * 1.35, depth * 1.35).rotateX(-Math.PI / 2)), mat);
-  mesh.renderOrder = -2;
-  mesh.userData.noMerge = true;
-  return mesh;
 }
 
 /**

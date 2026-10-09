@@ -21,7 +21,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
-  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, makeUnderGlow, mergeStatic,
+  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, mergeStatic,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
@@ -45,10 +45,8 @@ const GROUND_SIZE = 400;
 // The floor plane sits below the platforms' dark bases, so each pod stands as
 // a whole block (coloured top, neon band, base) rather than a slab sunk to its rim.
 const GROUND_Y = -2.6;
-// The dark theme's nebula, well below the platforms (see buildGround).
+// The dark theme's black backdrop, well below the platforms (see buildGround).
 const SPACE_Y = -26;
-// Where each platform's coloured haze hangs beneath it (platform-local y).
-const UNDERGLOW_Y = -11;
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -359,44 +357,15 @@ export function createOfficeScene(canvas, options) {
   let grid = null;
   let stars = null;
 
-  function makeNebulaMaterial() {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        base: { value: new THREE.Color('#03050d') },
-        glow: { value: new THREE.Color('#0d1836') },
-        violet: { value: new THREE.Color('#1b1140') },
-        teal: { value: new THREE.Color('#06283a') },
-      },
-      vertexShader: `varying vec2 vXZ;
-        void main() { vec4 w = modelMatrix * vec4(position, 1.0); vXZ = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: `uniform vec3 base; uniform vec3 glow; uniform vec3 violet; uniform vec3 teal; varying vec2 vXZ;
-        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float noise(vec2 p) {
-          vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-        }
-        float fbm(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
-        void main() {
-          vec2 p = vXZ / 70.0;
-          float d = length(vXZ) / 140.0;
-          vec3 c = mix(glow, base, smoothstep(0.0, 1.0, d));
-          float n1 = smoothstep(0.45, 0.85, fbm(p + vec2(3.1, 1.7)));
-          float n2 = smoothstep(0.5, 0.9, fbm(p * 1.4 - vec2(5.2, 2.3)));
-          c += violet * n1 * 0.9 + teal * n2 * 0.8;
-          gl_FragColor = vec4(c, 1.0);
-        }`,
-    });
-  }
-
   function buildGround(halfSize) {
     const space = palette === PALETTES.dark;
-    // In the dark theme there is no floor: the platforms float over deep
-    // space -- a nebula far below (SPACE_Y), no shadows cast onto it, no grid,
-    // and stars at several depths (see installGround). A floor that caught
-    // the platforms' shadows is what made the view read as flat.
+    // In the dark theme there is no floor: the platforms float over plain
+    // black space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
+    // haze or glow -- with stars at several depths (see installGround). A
+    // floor that caught the platforms' shadows is what made the view flat.
     const size = (halfSize + (space ? 60 : 0)) * 2;
     const geometry = new THREE.PlaneGeometry(size, size);
-    const material = space ? makeNebulaMaterial() : new THREE.MeshStandardMaterial({
+    const material = space ? new THREE.MeshBasicMaterial({ color: '#010104' }) : new THREE.MeshStandardMaterial({
       color: palette.ground, roughness: 0.95, metalness: 0.0,
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -504,11 +473,6 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette, null, { band: HUB_COLOR, top: palette === PALETTES.dark ? '#28324a' : '#c7cfdd' });
     group.add(pod);
-    if (palette === PALETTES.dark) {
-      const under = makeUnderGlow(CONDUCTOR_SLAB, CONDUCTOR_SLAB, HUB_COLOR);
-      under.position.y = UNDERGLOW_Y;
-      group.add(under);
-    }
     // The hub's centrepiece (scenery: it carries no state): a floor projector
     // under a floating holographic globe, and a console at each corner.
     const centrepiece = makeHubCentrepiece(CONDUCTOR_SLAB, HUB_COLOR);
@@ -611,11 +575,6 @@ export function createOfficeScene(canvas, options) {
       open: label === 'The Floor', blocked: clear.blocked, entry: clear.entry, seed: cluster, key: clear.key,
     });
     group.add(scenery);
-    if (palette === PALETTES.dark) {
-      const under = makeUnderGlow(slabWidth, slabDepth, color || (isFloor ? FLOOR_COLOR : HUB_COLOR));
-      under.position.y = UNDERGLOW_Y;
-      group.add(under);
-    }
 
     office.add(group);
     pod = {
@@ -720,8 +679,8 @@ export function createOfficeScene(canvas, options) {
       walk.renderOrder = -1;
       const bridgePalette = floorBridgePalette();
       const floorColor = '#3b82f6';
-      floorBridgeRoute(span, pod).forEach(segment => placeBridgeSegment(
-        walk, segment, bridgePalette, floorColor, true,
+      floorBridgeRoute(span, pod).forEach((segment, index) => placeBridgeSegment(
+        walk, segment, bridgePalette, floorColor, true, index === 0,
       ));
       walk.userData.singleChevronFlow = true;
       // A broader packet gives the long Floor route enough visible motion
@@ -733,6 +692,7 @@ export function createOfficeScene(canvas, options) {
       walk = makeWalkway(span.length, palette, railColor, {
         // The deck runs on under both platforms; its rails stop at their edges.
         railTrimStart: BRIDGE_DECK_PLATFORM_OVERLAP, railTrimEnd: BRIDGE_DECK_PLATFORM_OVERLAP,
+        skipFirstChevron: true,
       });
       // The marker posts either side of the landing belong to the platforms
       // (their rail gaps, and the hub's centrepiece), so both ends match.
@@ -805,7 +765,7 @@ export function createOfficeScene(canvas, options) {
     return { x: pod.x, z: pod.z + (dz >= 0 ? halfDepth : -halfDepth) };
   }
 
-  function placeBridgeSegment(parent, segment, segmentPalette = palette, railColor, isFloor = false) {
+  function placeBridgeSegment(parent, segment, segmentPalette = palette, railColor, isFloor = false, fromHub = false) {
     const dx = segment.to.x - segment.from.x;
     const dz = segment.to.z - segment.from.z;
     const length = Math.hypot(dx, dz);
@@ -820,8 +780,9 @@ export function createOfficeScene(canvas, options) {
         railTrimEnd: segment.railTrimEnd || 0,
         segmentColor: segmentPalette.bridgeDeck,
         beamColor: segmentPalette.bridgeBeam,
+        skipFirstChevron: fromHub,
       }
-      : { railColor };
+      : { railColor, skipFirstChevron: fromHub };
     const deck = makeBridgeSegment(Math.hypot(length, endCenterY - startCenterY), segmentPalette, options);
     deck.position.set(
       (segment.from.x + segment.to.x) / 2,

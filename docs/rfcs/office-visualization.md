@@ -1309,3 +1309,18 @@ Smoothness, measured headless (SwiftShader, so relative only):
   each platform's colour hanging beneath it (`makeUnderGlow`), which shows
   offset under the platform in the iso view and makes it read as floating.
 - Department cards have their coloured left edge back.
+
+### Sixth pass: plain space, the sign in the rail (2026-10-10)
+
+- The dark theme's backdrop is plain near-black (`#010104`) with the three
+  twinkling star layers; the nebula shader and each platform's coloured
+  under-haze are gone.
+- `makeGamingChair` is a smaller racing-style chair: one-piece backrest cut
+  to the racing silhouette (flared shoulders, narrow neck, rounded head),
+  accent side bolsters and stripes front and back, headrest and lumbar
+  cushions. Seat height is unchanged, so a seated figure still fits it.
+- The sign wall stands in the rail line on a straight stretch of a visible
+  edge; the rail ends into its two sides. Rail openings take `post: false`
+  for this, so only bridge gaps get marker posts.
+- A bridge that starts at the hub leaves out its first activity chevron (the
+  one at the hub's edge); `makeBridgeSegment({ skipFirstChevron })`.
