@@ -124,7 +124,7 @@ def _strip(meshes):
 
 
 def _walls(meshes):
-    """Everything standing up: panels and posts (not the flat rug)."""
+    """Everything standing up: panels, frame, glass (not the flat rug)."""
     return [m for m in meshes if m["emissive"] == "000000" and m["max"][1] > 0.5]
 
 
@@ -137,10 +137,10 @@ def test_encloses_the_desk_on_all_four_sides_at_one_height(result):
     walls = _walls(result["idle"])
     assert walls, result["idle"]
     height = max(m["max"][1] for m in walls)
-    # Low partitions (the reference look): every side reaches the same low
-    # height -- back, left, right and both sides of the opening.
-    full = [t for m in walls for t in m["tris"] if t["max"][1] > height - 0.1]
-    assert height < 1.1, "low enough that the desk and its worker show over the near walls"
+    # The full-height parts (frame and glass) top out at one height, and that
+    # top reaches every side: back, left, right and both sides of the opening.
+    full = [t for m in walls for t in m["tris"] if t["max"][1] > height - 0.05]
+    assert {round(t["max"][1], 2) for t in full} == {round(height, 2)}
     assert any(t["max"][2] < -1.5 for t in full), "back wall"
     assert any(t["min"][0] < -2.9 for t in full) and any(t["max"][0] > 2.9 for t in full), "side walls"
     assert any(t["min"][2] > 2.8 and t["max"][0] < -1.7 for t in full), "front wall, left of the opening"
@@ -162,11 +162,11 @@ def test_front_wall_leaves_an_opening_over_the_walk_in_path(result):
             assert not overlaps, f"a cubicle part stands in the walk-in path: {tri}"
 
 
-def test_nothing_is_black_and_the_walls_are_low_partitions(result):
+def test_nothing_is_black_and_the_upper_wall_is_see_through(result):
     walls = _walls(result["idle"])
     for mesh in walls:
-        assert _luminance(mesh["color"]) > 0.015, f"#{mesh['color']} is black"
-    assert all(m["max"][1] < 1.1 for m in walls), "no tall glass panels: a low partition"
+        assert _luminance(mesh["color"]) > 0.08, f"#{mesh['color']} is too close to black"
+    assert any(m["transparent"] for m in walls), "the upper wall is frosted glass"
 
 
 def test_platform_colour_is_the_rail_and_a_darker_rug(result):
@@ -192,6 +192,6 @@ def test_rail_brightens_only_while_working_and_never_blooms(result):
 
 
 def test_cubicles_are_a_few_shared_meshes(result):
-    assert len(result["idle"]) <= 4, "panels, posts, rail and rug -- not one mesh per part"
+    assert len(result["idle"]) <= 5, "panels, frame, glass, rail and rug -- not one mesh per part"
     shared = {m["uuid"] for m in _walls(result["idle"])} & {m["uuid"] for m in _walls(result["other"])}
-    assert len(shared) == 2, "two desks reuse the same wall geometry"
+    assert len(shared) == 3, "two desks reuse the same wall geometry"

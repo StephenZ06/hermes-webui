@@ -337,7 +337,8 @@ def test_the_floor_bridge_is_drawn_below_pods_with_a_dark_grey_material():
 
 
 def test_all_bridge_decks_share_the_lit_charcoal_finish():
-    assert SCENE_SRC.count("bridgeDeck: '#090a0c'") == 2
+    # Light theme keeps the charcoal deck; dark theme uses the reference's lit navy.
+    assert SCENE_SRC.count("bridgeDeck: '#090a0c'") == 1 and "bridgeDeck: '#1c2740'" in SCENE_SRC
     assert SCENE_SRC.count("floorBridgeDeck: '#090a0c'") == 2
 
 
@@ -422,7 +423,7 @@ def test_every_bridge_has_a_first_interior_transverse_panel_line():
 def test_the_floor_pod_gets_open_scenery_that_keeps_its_desk_edges_clear():
     at = SCENE_SRC.index("function ensurePod(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function setBridgeActive", at)]
-    assert "{ open: label === 'The Floor' }" in body
+    assert "open: label === 'The Floor', blocked: clear.blocked, entry: clear.entry" in body
 
 def test_task_nameplates_only_appear_for_the_focused_worker():
     # Full task strings are useful when inspecting one desk, but at overview

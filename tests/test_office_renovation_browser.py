@@ -51,3 +51,27 @@ def test_leaving_and_returning_reuses_the_scene(page):
     out = page.evaluate("() => ({ same: document.getElementById('officeCanvas') === window.__canvas, contexts: window.__contexts })")
     assert out["same"], "the same canvas comes back"
     assert out["contexts"] == before, "no new WebGL context was created"
+
+
+def test_decorations_never_overlap_a_desk_a_walkway_or_the_bridge(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const palette = { podTop: '#0d172b', deskLeg: '#2e3547', pot: '#7a5236', plant: '#3f5f45' };
+      const results = [];
+      // A desk turned 45 degrees (as Projects pods face the hub), and one square-on.
+      for (const rot of [Math.PI * 0.25, Math.PI * 0.5, Math.PI * 1.25]) {
+        const c = Math.cos(rot), s = Math.sin(rot);
+        const blocked = [{ lx: 0, lz: 0.62, w: 6.9, d: 5.4 }, { lx: 0, lz: 4.1, w: 4.2, d: 3.4 }]
+          .map(r => ({ x: r.lx * c + r.lz * s, z: -r.lx * s + r.lz * c, w: r.w, d: r.d, rot }));
+        const entry = { x: 6 * Math.sin(rot + Math.PI), z: 5.5 * Math.cos(rot + Math.PI) };
+        for (const kind of ['general', 'research', 'coding', 'documents', 'sales', 'delivery']) {
+          const g = b.makePodScenery(kind, 12, 11, palette, '#7c8cff', { blocked, entry, seed: kind + rot, key: kind + rot });
+          const placed = g.userData.placed;
+          const bad = placed.filter(p => blocked.some(r => b.rectsOverlap(p, r)));
+          results.push({ kind, rot, count: placed.length, bad: bad.length });
+        }
+      }
+      return results;
+    }""")
+    assert all(r["bad"] == 0 for r in out), out
+    assert all(r["count"] >= 3 for r in out), "each pod still gets several pieces"

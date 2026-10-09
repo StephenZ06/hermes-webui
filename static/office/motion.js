@@ -45,7 +45,26 @@ export function createWanderer(opts) {
     _pauseLeft: config.pauseMinMs,
   };
 
+  // With `minRadius` the walk keeps to a ring round something standing in the
+  // middle (the hub's pedestal): targets are on the ring and never more than
+  // `maxTurn` round it from where the walker is, so a straight walk between
+  // them never cuts across the middle.
+  const ring = config.minRadius > 0;
+  if (ring) {
+    const start = config.rand() * TAU;
+    const r0 = (config.minRadius + config.radius) / 2;
+    state.x = Math.cos(start) * r0;
+    state.z = Math.sin(start) * r0;
+  }
+
   function pickTarget() {
+    if (ring) {
+      const here = Math.atan2(state.z, state.x);
+      const turn = (config.rand() * 2 - 1) * (config.maxTurn || Math.PI / 3);
+      const r = config.minRadius + config.rand() * (config.radius - config.minRadius);
+      state._target = { x: Math.cos(here + turn) * r, z: Math.sin(here + turn) * r };
+      return;
+    }
     // Uniform over the disc: sqrt keeps the walks from clustering in the
     // middle, which is what a plain random radius would do.
     const angle = config.rand() * TAU;
@@ -99,11 +118,26 @@ export function createWanderer(opts) {
    */
   function moveTo(x, z, dtMs) {
     const dt = Math.max(0, dtMs) / 1000;
-    const dx = x - state.x;
-    const dz = z - state.z;
+    let aimX = x;
+    let aimZ = z;
+    if (ring && Math.hypot(x, z) >= config.minRadius * 0.9) {
+      // Round the ring toward the spot rather than across the middle.
+      const here = Math.atan2(state.z, state.x);
+      const there = Math.atan2(z, x);
+      let diff = there - here;
+      while (diff > Math.PI) diff -= TAU;
+      while (diff < -Math.PI) diff += TAU;
+      if (Math.abs(diff) > 0.5) {
+        const r = Math.max(config.minRadius, Math.hypot(state.x, state.z));
+        aimX = Math.cos(here + Math.sign(diff) * 0.5) * r;
+        aimZ = Math.sin(here + Math.sign(diff) * 0.5) * r;
+      }
+    }
+    const dx = aimX - state.x;
+    const dz = aimZ - state.z;
     const remaining = Math.hypot(dx, dz);
     const step = config.speed * dt;
-    if (remaining <= step || remaining < 1e-3) {
+    if ((remaining <= step || remaining < 1e-3) && aimX === x && aimZ === z) {
       state.x = x;
       state.z = z;
       state.phase += remaining;
@@ -112,10 +146,13 @@ export function createWanderer(opts) {
       state._pauseLeft = config.pauseMinMs;
       return true;
     }
-    state.x += (dx / remaining) * step;
-    state.z += (dz / remaining) * step;
-    state.phase += step;
-    state.heading = Math.atan2(dx, dz);
+    const move = Math.min(step, remaining);
+    if (remaining > 1e-6) {
+      state.x += (dx / remaining) * move;
+      state.z += (dz / remaining) * move;
+      state.heading = Math.atan2(dx, dz);
+    }
+    state.phase += move;
     state.moving = true;
     return false;
   }

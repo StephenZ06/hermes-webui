@@ -105,6 +105,12 @@ const LEVEL_BRIDGE_Y = -0.45;
 const BRIDGE_DECK_PLATFORM_OVERLAP = BRIDGE_DECK_WIDTH / 2;
 // The conductor hub's neon and hologram colour (the reference's electric blue).
 const HUB_COLOR = '#4f8cff';
+// The conductor's walking ring on the hub, between the pedestal (r 2.35) and
+// the desks' chairs, and where it stands to orchestrate: on the ring, at the
+// side facing the camera, looking at the globe.
+const HUB_WALK_INNER = 3.35;
+const HUB_WALK_OUTER = 3.55;
+const HUB_ORCHESTRATE = { x: 2.47, z: 2.47 };
 const FLOOR_COLOR = '#eab308';
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
@@ -113,7 +119,7 @@ const PALETTES = {
   light: {
     ground: '#f2efe8', grid: '#d8d3c8',
     podTop: '#ffffff', podSide: '#e4dfd4', platformBase: '#000000',
-    deskTop: '#c9a227', deskLeg: '#8b8b93',
+    deskTop: '#e2c290', deskLeg: '#4b5263',
     chair: '#5f6672',
     cubiclePanel: '#dfe2e8', cubicleFrame: '#8a92a0', cubicleGlass: '#ffffff',
     cubicleRugShade: '#2b3140', cubicleRugMix: 0.14,
@@ -133,9 +139,9 @@ const PALETTES = {
   dark: {
     ground: '#090d1a', grid: '#10172a',
     podTop: '#0d172b', podSide: '#0a101e', platformBase: '#000000',
-    deskTop: '#a05f1a', deskLeg: '#4a4a58',
+    deskTop: '#d8b483', deskLeg: '#2e3547',
     chair: '#2a2f3a',
-    cubiclePanel: '#2c3449', cubicleFrame: '#232a3c', cubicleGlass: '#dbe4f0',
+    cubiclePanel: '#8e97a6', cubicleFrame: '#4b5363', cubicleGlass: '#dbe4f0',
     cubicleRugShade: '#000000', cubicleRugMix: 0.35,
     shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20', trousers: '#2b2d36',
     screenBezel: '#0e0e14', screenBg: '#0a0a12', screenActiveBg: '#f0f0f7',
@@ -143,7 +149,7 @@ const PALETTES = {
     plateBg: 'rgba(15,23,42,0.88)', plateText: '#f2f2f7', plateAccent: '#5adeb7',
     conductor: '#e2e8f0',
     floorTitle: '#c9c9da', floorTitleStroke: 'rgba(6,6,12,0.6)',
-    pot: '#7a5236', plant: '#3f5f45', walkway: '#111827', bridgeDeck: '#090a0c', bridgeBeam: '#020304',
+    pot: '#7a5236', plant: '#3f5f45', walkway: '#111827', bridgeDeck: '#1c2740', bridgeBeam: '#0b1020',
     floorBridgeDeck: '#090a0c', floorBridgeBeam: '#020304',
     outlineIdle: '#575775', outlineActive: '#5adeb7', connector: '#41415e',
     board: '#34364a', hemiSky: '#4a5d84', hemiGround: '#0a0c14', rim: '#6d94c9',
@@ -463,17 +469,56 @@ export function createOfficeScene(canvas, options) {
     // Paces its plinth between delegations. Only ever while genuinely idle:
     // a walking figure reads as activity, and the office does not imply work
     // Hermes has not reported.
-    group.userData.wanderer = createWanderer({ radius: CONDUCTOR_RADIUS * 0.42 });
+    // The pedestal stands in the middle and desks ring it, so the conductor
+    // paces the ring between them (motion.js createWanderer's minRadius).
+    group.userData.wanderer = createWanderer({ radius: HUB_WALK_OUTER, minRadius: HUB_WALK_INNER, maxTurn: Math.PI * 0.3 });
     group.userData.person = person;
     backdrop.add(group);
     conductor = group;
     return conductor;
   }
 
-  function ensurePod(cluster, width, depth, label, color) {
+  /**
+   * Where a pod's decorations must not go, in its own coordinates: each
+   * desk's cubicle (with its rug margin) and the path its worker walks in on,
+   * and the point where the bridge lands on the slab.
+   */
+  function podClearances(layoutPod, slabWidth, slabDepth) {
+    if (!layoutPod) return { blocked: [], entry: null, key: '' };
+    const blocked = [];
+    (layoutPod.seats || []).forEach(seat => {
+      const cx = seat.x - layoutPod.x;
+      const cz = seat.z - layoutPod.z;
+      const rot = seat.rotationY || 0;
+      const c = Math.cos(rot), s = Math.sin(rot);
+      // Seat-local rectangles (x across the desk, +z toward the walk-in opening).
+      [{ lx: 0, lz: 0.62, w: 6.9, d: 5.4 }, { lx: 0, lz: 4.1, w: 4.2, d: 3.4 }].forEach(r => {
+        blocked.push({ x: cx + r.lx * c + r.lz * s, z: cz - r.lx * s + r.lz * c, w: r.w, d: r.d, rot });
+      });
+    });
+    let entry = null;
+    const halfW = slabWidth / 2;
+    const halfD = slabDepth / 2;
+    if (layoutPod.cluster === 'floor' || layoutPod.label === 'The Floor') {
+      const p = floorBridgeEntryPoint({ x: 0, z: CONDUCTOR_SLAB / 2 }, layoutPod);
+      entry = { x: p.x - layoutPod.x, z: p.z - layoutPod.z };
+    } else {
+      const len = Math.hypot(layoutPod.x, layoutPod.z) || 1;
+      const ux = -layoutPod.x / len;
+      const uz = -layoutPod.z / len;
+      const t = Math.min(Math.abs(ux) > 1e-6 ? halfW / Math.abs(ux) : Infinity, Math.abs(uz) > 1e-6 ? halfD / Math.abs(uz) : Infinity);
+      entry = { x: ux * t, z: uz * t };
+    }
+    const key = blocked.map(r => `${r.x.toFixed(1)},${r.z.toFixed(1)},${r.rot.toFixed(2)}`).join(';')
+      + `|${entry.x.toFixed(1)},${entry.z.toFixed(1)}`;
+    return { blocked, entry, key };
+  }
+
+  function ensurePod(cluster, width, depth, label, color, layoutPod) {
     let pod = pods.get(cluster);
+    const clear = podClearances(layoutPod, width + POD_SLAB_PADDING, depth + POD_SLAB_PADDING);
     if (pod && pod.width === width && pod.depth === depth && pod.label === label
-      && pod.color === color) return pod;
+      && pod.color === color && pod.clearKey === clear.key) return pod;
     if (pod) {
       office.remove(pod.group);
       disposeTree(pod.group);
@@ -496,12 +541,14 @@ export function createOfficeScene(canvas, options) {
     // mislead anyone about what Hermes is doing. The Floor's edges are lined
     // with desks, so it gets only plants and a water cooler.
     const kind = label === 'The Floor' ? 'floor' : deptKind(label || cluster);
-    const scenery = makePodScenery(kind, slabWidth, slabDepth, palette, color || HUB_COLOR, { open: label === 'The Floor' });
+    const scenery = makePodScenery(kind, slabWidth, slabDepth, palette, color || (label === 'The Floor' ? FLOOR_COLOR : HUB_COLOR), {
+      open: label === 'The Floor', blocked: clear.blocked, entry: clear.entry, seed: cluster, key: clear.key,
+    });
     group.add(scenery);
 
     office.add(group);
     pod = {
-      group, width, depth, label, color, active: false,
+      group, width, depth, label, color, active: false, clearKey: clear.key,
     };
     pods.set(cluster, pod);
     return pod;
@@ -607,8 +654,8 @@ export function createOfficeScene(canvas, options) {
       const ends = Math.max(0.5, span.length / 2 - BRIDGE_DECK_PLATFORM_OVERLAP - 0.25);
       const lamps = new THREE.Group();
       [-1, 1].forEach(end => [-1, 1].forEach(side => {
-        const lamp = makeLampPost(1.5);
-        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.05), 0.63 + 0.17, end * ends);
+        const lamp = makeLampPost(2.0);
+        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.3), 0.63 + 0.17, end * ends);
         lamps.add(lamp);
       }));
       walk.add(mergeStatic(lamps, `lamps|${ends.toFixed(2)}`));
@@ -894,7 +941,7 @@ export function createOfficeScene(canvas, options) {
       liveClusters.add(pod.cluster);
       const podLabel = pod.label
         || (pod.cluster === '__conductor__' ? 'Subagents' : '');
-      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null);
+      const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null, pod);
       record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
     });
@@ -1743,9 +1790,10 @@ export function createOfficeScene(canvas, options) {
         // Back to the middle of the plinth, then to work. It walks there
         // rather than snapping, so the change of state is something you see
         // happen.
-        const seated = wanderer.moveTo(0, 0, dtMs);
+        const seated = wanderer.moveTo(HUB_ORCHESTRATE.x, HUB_ORCHESTRATE.z, dtMs);
         person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
         if (seated) {
+          person.rotation.y = Math.atan2(-HUB_ORCHESTRATE.x, -HUB_ORCHESTRATE.z);
           poseWorker(person, 'orchestrate', t, dt, { standing: true });
         } else {
           person.rotation.y = wanderer.state.heading;

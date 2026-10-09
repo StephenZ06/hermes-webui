@@ -208,7 +208,8 @@ def test_only_an_idle_conductor_wanders():
     at = SCENE_SRC.index("const orchestrating = conductor.userData.status")
     body = SCENE_SRC[at:at + 1400]
     assert "if (orchestrating)" in body
-    assert "wanderer.moveTo(0, 0, dtMs)" in body, "returns to the middle to work"
+    # The hub's pedestal fills the middle: it walks to its spot at the globe.
+    assert "wanderer.moveTo(HUB_ORCHESTRATE.x, HUB_ORCHESTRATE.z, dtMs)" in body, "returns to the globe to work"
     assert "wanderer.update(dtMs)" in body, "and paces only in the other branch"
 
 
@@ -245,3 +246,24 @@ def test_motion_stays_free_of_the_renderer():
         assert forbidden not in MOTION_SRC, (
             f"motion.js must stay testable under node — found {forbidden!r}"
         )
+
+
+def test_a_ring_walker_keeps_off_the_middle():
+    """With minRadius the conductor paces a ring round the hub's pedestal and
+    walks round it, never across it, to reach a spot."""
+    import json, subprocess
+    script = """
+import { createWanderer } from './static/office/motion.js';
+let seed = 3; const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+const w = createWanderer({ radius: 3.55, minRadius: 3.35, maxTurn: Math.PI * 0.3, rand, pauseMinMs: 0, pauseMaxMs: 0 });
+let closest = Infinity;
+for (let i = 0; i < 4000; i += 1) { w.update(16); closest = Math.min(closest, Math.hypot(w.state.x, w.state.z)); }
+let arrived = false;
+for (let i = 0; i < 4000 && !arrived; i += 1) { arrived = w.moveTo(2.47, 2.47, 16); closest = Math.min(closest, Math.hypot(w.state.x, w.state.z)); }
+console.log(JSON.stringify({ closest, arrived }));
+"""
+    out = subprocess.run(["node", "--input-type=module", "-e", script], cwd=str(REPO), capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    result = json.loads(out.stdout)
+    assert result["arrived"]
+    assert result["closest"] > 2.75, "the pedestal (radius 2.75) is never walked through"

@@ -183,26 +183,55 @@ export function mergeStatic(group, cacheKey) {
   let index = 0;
   buckets.forEach(bucket => {
     const build = () => {
-      const positions = [];
-      const normals = [];
-      const normalMatrix = new THREE.Matrix3();
-      const v = new THREE.Vector3();
-      bucket.parts.forEach(({ geometry: source, matrix }) => {
-        const g = source.index ? source.toNonIndexed() : source;
-        const pos = g.getAttribute('position');
-        const nor = g.getAttribute('normal');
-        normalMatrix.getNormalMatrix(matrix);
-        for (let i = 0; i < pos.count; i += 1) {
-          v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
-          positions.push(v.x, v.y, v.z);
-          v.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize();
-          normals.push(v.x, v.y, v.z);
+      // Typed arrays written in place (no per-vertex objects): indexed parts
+      // keep their index, offset into the merged vertex range.
+      let vertexCount = 0;
+      let indexCount = 0;
+      bucket.parts.forEach(({ geometry: g }) => {
+        const n = g.getAttribute('position').count;
+        vertexCount += n;
+        indexCount += g.index ? g.index.count : n;
+      });
+      const positions = new Float32Array(vertexCount * 3);
+      const normals = new Float32Array(vertexCount * 3);
+      const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+      const nm = new THREE.Matrix3();
+      let vo = 0;
+      let io = 0;
+      bucket.parts.forEach(({ geometry: g, matrix }) => {
+        const pos = g.getAttribute('position').array;
+        const nor = g.getAttribute('normal').array;
+        const n = g.getAttribute('position').count;
+        const e = matrix.elements;
+        nm.getNormalMatrix(matrix);
+        const m = nm.elements;
+        for (let i = 0; i < n; i += 1) {
+          const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+          const o = (vo + i) * 3;
+          positions[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
+          positions[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+          positions[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+          const nx = nor[i * 3], ny = nor[i * 3 + 1], nz = nor[i * 3 + 2];
+          let ox = m[0] * nx + m[3] * ny + m[6] * nz;
+          let oy = m[1] * nx + m[4] * ny + m[7] * nz;
+          let oz = m[2] * nx + m[5] * ny + m[8] * nz;
+          const len = Math.hypot(ox, oy, oz) || 1;
+          normals[o] = ox / len; normals[o + 1] = oy / len; normals[o + 2] = oz / len;
         }
-        if (g !== source) g.dispose();
+        if (g.index) {
+          const idx = g.index.array;
+          for (let i = 0; i < idx.length; i += 1) indices[io + i] = idx[i] + vo;
+          io += idx.length;
+        } else {
+          for (let i = 0; i < n; i += 1) indices[io + i] = vo + i;
+          io += n;
+        }
+        vo += n;
       });
       const merged = new THREE.BufferGeometry();
-      merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      merged.setIndex(new THREE.BufferAttribute(indices, 1));
       merged.computeBoundingSphere();
       return merged;
     };
@@ -336,7 +365,9 @@ export function makePod(width, depth, palette, tint, opts) {
   // lit, so the intensity is set from the colour's own luminance.
   const bandLinear = new THREE.Color(bandColor || '#000000');
   const luminance = 0.2126 * bandLinear.r + 0.7152 * bandLinear.g + 0.0722 * bandLinear.b;
-  const idleIntensity = bandColor ? Math.min(4, Math.max(0.9, 0.82 / Math.max(0.05, luminance))) : 0;
+  // Kept just under the bloom threshold: the band is crisp at every zoom,
+  // and its soft glow is real geometry (makeBandGlow), not screen-space bloom.
+  const idleIntensity = bandColor ? Math.min(3.5, Math.max(0.8, 0.72 / Math.max(0.05, luminance))) : 0;
   bandMaterial.emissive.set(bandColor || '#000000');
   bandMaterial.emissiveIntensity = idleIntensity;
   const bandY = -topHeight / 2 - bandHeight / 2;
@@ -355,6 +386,11 @@ export function makePod(width, depth, palette, tint, opts) {
     matOpts: { rough: 0.95, metal: 0.02 },
   });
   group.userData.deliveryLayer = delivery;
+  if (bandColor) {
+    const halo = makeBandGlow(width + lip, depth + lip, radius + lip / 2, hexOf(bandColor, '#4f8cff'), Math.min(1.5, Math.max(0.9, Math.min(width, depth) * 0.09)));
+    halo.position.y = bandY;
+    group.add(halo);
+  }
   return group;
 }
 
@@ -852,9 +888,9 @@ export function makeBridgeSegment(length, palette, options) {
       height: 0.22,
       depth: Math.max(0.1, dimensions.depth - railTrimStart - railTrimEnd),
     };
+    // A solid neon edge, as in the reference (it used to be a half-clear bar).
     const railMat = material(railColor, {
-      emissive: railColor, ei: 1.8, metal: 0.1, rough: 0.35,
-      transparent: true, opacity: 0.55,
+      emissive: railColor, ei: 0.9, metal: 0.1, rough: 0.35,
     });
     const railLeft = new THREE.Mesh(
       geometry(`bridge-rail|${railSize.width}|${railSize.height}|${railSize.depth}`,
@@ -913,42 +949,72 @@ export function makeWalkway(length, palette, railColor, options) {
 export function makeDesk(palette) {
   const group = new THREE.Group();
 
-  const top = roundedSlab(4.4, 0.2, 2.4, palette.deskTop, 0.14);
+  // As in the reference: a light wood top on a dark drawer pedestal and a
+  // slim panel leg, two monitors side by side.
+  const top = roundedSlab(4.4, 0.18, 2.4, palette.deskTop, 0.12);
   top.position.y = 1.5;
   group.add(top);
 
-  [-1.9, 1.9].forEach(x => {
-    const leg = roundedSlab(0.25, 1.5, 2.0, palette.deskLeg, 0.06);
-    leg.position.set(x, 0.75, 0);
-    group.add(leg);
+  const pedestal = roundedSlab(1.2, 1.41, 2.1, palette.deskLeg, 0.06);
+  pedestal.position.set(-1.45, 0.705, 0);
+  group.add(pedestal);
+  const drawerLine = material(shadeColor(palette.deskLeg, -0.08), { rough: 0.8 });
+  [0.45, 0.95].forEach(y => {
+    const line = new THREE.Mesh(geometry('drawer-line', () => new THREE.BoxGeometry(1.0, 0.03, 0.02)), drawerLine);
+    line.position.set(-1.45, y, 1.06);
+    group.add(line);
+    const pull = box(0.32, 0.05, 0.05, palette.deskPull || '#cbd5e1');
+    pull.position.set(-1.45, y + 0.22, 1.07);
+    pull.castShadow = false;
+    group.add(pull);
   });
+  const leg = roundedSlab(0.16, 1.41, 2.1, palette.deskLeg, 0.04);
+  leg.position.set(2.0, 0.705, 0);
+  group.add(leg);
 
-  const screen = makeScreen(palette);
-  screen.position.set(0, 2.5, -0.7);
+  // The live screen (a worker's tool call) on the left, a second monitor on the right.
+  const screen = makeScreen(palette, 1.9, 1.22);
+  screen.position.set(-0.98, 2.42, -0.72);
+  screen.rotation.y = 0.14;
   group.add(screen);
   group.userData.screen = screen.userData.screen;
+  const second = roundedPanel(1.9, 1.22, 0.1, palette.screenBezel, 0.08);
+  second.position.set(0.98, 2.42, -0.72);
+  second.rotation.y = -0.14;
+  group.add(second);
+  const secondGlow = new THREE.Mesh(geometry('second-screen', () => new THREE.PlaneGeometry(1.74, 1.06)),
+    material(palette.screenBg || '#0a0a12', { emissive: palette.secondScreen || '#1e3a8a', ei: 0.55, rough: 0.4 }));
+  secondGlow.position.set(0.98 + Math.sin(-0.14) * 0.06, 2.42, -0.72 + Math.cos(-0.14) * 0.06);
+  secondGlow.rotation.y = -0.14;
+  group.add(secondGlow);
 
-  const stand = cylinder(0.12, 0.2, 0.5, 16, palette.deskLeg);
-  stand.position.set(0, 1.85, -0.7);
-  group.add(stand);
+  [-0.98, 0.98].forEach(x => {
+    const stand = cylinder(0.08, 0.08, 0.5, 10, palette.screenBezel);
+    stand.position.set(x, 1.85, -0.75);
+    group.add(stand);
+    const foot = roundedSlab(0.6, 0.05, 0.38, palette.screenBezel, 0.04);
+    foot.position.set(x, 1.615, -0.75);
+    foot.castShadow = false;
+    group.add(foot);
+  });
 
-  // Peripherals: a keyboard centred in front of the monitor and a mouse on
+  // Peripherals: a keyboard centred in front of the monitors and a mouse on
   // a small pad to one side. These are purely visual — they never carry state.
   const keyboard = makeKeyboard(palette);
-  keyboard.position.set(0, 1.62, 0.35);
+  keyboard.position.set(0, 1.6, 0.35);
   group.add(keyboard);
 
   const mousePad = box(1.1, 0.02, 0.75, palette.mousePad || '#1a1a24');
-  mousePad.position.set(1.35, 1.61, 0.35);
+  mousePad.position.set(1.35, 1.6, 0.35);
   mousePad.castShadow = false;
   group.add(mousePad);
 
   const mouse = makeMouse(palette);
-  mouse.position.set(1.35, 1.67, 0.35);
+  mouse.position.set(1.35, 1.66, 0.35);
   group.add(mouse);
 
   // One mesh per material (the live screen stays its own textured mesh).
-  return mergeStatic(group, `desk|${palette.deskTop}|${palette.screenBezel}|${palette.keyboard}`);
+  return mergeStatic(group, `desk2|${palette.deskTop}|${palette.deskLeg}|${palette.screenBezel}|${palette.keyboard}`);
 }
 
 function makeKeyboard(palette) {
@@ -985,10 +1051,12 @@ function makeMouse(palette) {
 }
 
 /** Monitor panel. Its canvas texture is redrawn by `drawScreen`. */
-function makeScreen(palette) {
+function makeScreen(palette, width, height) {
+  const w = width || 2.9;
+  const h = height || 1.8;
   const group = new THREE.Group();
 
-  const bezel = roundedPanel(2.9, 1.8, 0.12, palette.screenBezel, 0.12);
+  const bezel = roundedPanel(w, h, 0.12, palette.screenBezel, 0.1);
   group.add(bezel);
 
   const canvas = document.createElement('canvas');
@@ -999,7 +1067,7 @@ function makeScreen(palette) {
   texture.colorSpace = THREE.SRGBColorSpace;
 
   const panel = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.7, 1.6),
+    new THREE.PlaneGeometry(w - 0.18, h - 0.18),
     new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
   );
   panel.position.z = 0.07;
@@ -1090,10 +1158,10 @@ const CUBICLE_HALF_WIDTH = 3.1;
 const CUBICLE_BACK_Z = -1.75;
 const CUBICLE_FRONT_Z = 3.0;
 const CUBICLE_DOOR_HALF = 1.8;
-// Low partitions, as in the reference: one solid panel topped by the glowing
-// accent strip, low enough that the desk and its worker show over the near walls.
-const CUBICLE_HEIGHT = 0.95;
-const CUBICLE_SOLID_HEIGHT = 0.95;
+const CUBICLE_HEIGHT = 1.75;
+// Solid lower panel; frosted glass above it keeps the desk and its worker
+// visible over the near walls from the isometric camera.
+const CUBICLE_SOLID_HEIGHT = 0.9;
 const CUBICLE_POST = 0.12;
 const CUBICLE_RAIL = 0.08;
 const CUBICLE_PANEL = 0.07;
@@ -1101,8 +1169,8 @@ const CUBICLE_ACCENT_HEIGHT = 0.03;
 const CUBICLE_RUG_MARGIN = 0.25;
 // Accent glow, as emissive intensity. Both stay well under the bloom pass'
 // threshold: a crisp coloured line, never a halo competing with the pods.
-export const CUBICLE_ACCENT_IDLE = 0.45;
-export const CUBICLE_ACCENT_ACTIVE = 0.95;
+export const CUBICLE_ACCENT_IDLE = 0.12;
+export const CUBICLE_ACCENT_ACTIVE = 0.55;
 
 /** The wall runs, as [x1, z1, x2, z2] in desk-local space. */
 function cubicleWallRuns() {
@@ -1159,11 +1227,13 @@ function cubiclePart(width, height, depth, x, y, z, angle) {
 
 /** The four shared cubicle geometries: panels, frame, glass, accent. */
 function cubicleGeometries() {
-  return geometry('cubicle|v3', () => {
+  return geometry('cubicle|v2', () => {
     const panels = [];
     const frame = [];
+    const glass = [];
     const accent = [];
     const posts = new Map();
+    const glassHeight = CUBICLE_HEIGHT - CUBICLE_SOLID_HEIGHT - CUBICLE_RAIL;
     cubicleWallRuns().forEach(([x1, z1, x2, z2]) => {
       const length = Math.hypot(x2 - x1, z2 - z1);
       // Wall runs along x or z; Box width is its local x, so turn z-runs.
@@ -1171,16 +1241,20 @@ function cubicleGeometries() {
       const cx = (x1 + x2) / 2;
       const cz = (z1 + z2) / 2;
       const inner = Math.max(0.01, length - CUBICLE_POST);
-      panels.push(cubiclePart(inner, CUBICLE_SOLID_HEIGHT, CUBICLE_PANEL * 2.4, cx, CUBICLE_SOLID_HEIGHT / 2, cz, angle));
-      accent.push(cubiclePart(length + CUBICLE_POST, CUBICLE_ACCENT_HEIGHT * 2, CUBICLE_POST + 0.06, cx, CUBICLE_HEIGHT + CUBICLE_ACCENT_HEIGHT, cz, angle));
+      panels.push(cubiclePart(inner, CUBICLE_SOLID_HEIGHT, CUBICLE_PANEL, cx, CUBICLE_SOLID_HEIGHT / 2, cz, angle));
+      frame.push(cubiclePart(inner, CUBICLE_RAIL, CUBICLE_POST * 0.8, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL / 2, cz, angle));
+      glass.push(cubiclePart(inner, glassHeight, 0.03, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL + glassHeight / 2, cz, angle));
+      frame.push(cubiclePart(length + CUBICLE_POST, CUBICLE_RAIL, CUBICLE_POST, cx, CUBICLE_HEIGHT - CUBICLE_RAIL / 2, cz, angle));
+      accent.push(cubiclePart(length + CUBICLE_POST, CUBICLE_ACCENT_HEIGHT, CUBICLE_POST + 0.01, cx, CUBICLE_HEIGHT + CUBICLE_ACCENT_HEIGHT / 2, cz, angle));
       [[x1, z1], [x2, z2]].forEach(([x, z]) => posts.set(`${x}|${z}`, [x, z]));
     });
     posts.forEach(([x, z]) => {
-      frame.push(cubiclePart(CUBICLE_POST * 1.6, CUBICLE_HEIGHT + 0.02, CUBICLE_POST * 1.6, x, (CUBICLE_HEIGHT + 0.02) / 2, z, 0));
+      frame.push(cubiclePart(CUBICLE_POST, CUBICLE_HEIGHT, CUBICLE_POST, x, CUBICLE_HEIGHT / 2, z, 0));
     });
     return {
       panels: mergeParts(panels),
       frame: mergeParts(frame),
+      glass: mergeParts(glass),
       accent: mergeParts(accent),
     };
   });
@@ -1204,14 +1278,18 @@ export function makeCubicle(palette, accent) {
   const accentColor = accent || palette.cubicleAccent || '#8a96aa';
   const geos = cubicleGeometries();
 
-  const panels = new THREE.Mesh(geos.panels, material(palette.cubiclePanel || '#9aa3b2', { rough: 0.85 }));
+  const panels = new THREE.Mesh(geos.panels, material(palette.cubiclePanel || '#9aa3b2', { rough: 0.9 }));
   panels.castShadow = true;
   panels.receiveShadow = true;
   const frame = new THREE.Mesh(geos.frame, material(palette.cubicleFrame || '#4b5363', { rough: 0.55, metal: 0.25 }));
   frame.castShadow = true;
   frame.receiveShadow = true;
+  const glass = new THREE.Mesh(geos.glass, material(palette.cubicleGlass || '#dbe4f0', {
+    rough: 0.2, transparent: true, opacity: palette.cubicleGlassOpacity ?? 0.16,
+  }));
+  glass.renderOrder = 1;
   const strip = new THREE.Mesh(geos.accent, cubicleAccentMaterial(accentColor, false));
-  [panels, frame, strip].forEach(mesh => group.add(mesh));
+  [panels, frame, glass, strip].forEach(mesh => group.add(mesh));
 
   // A step darker than the platform's own top (the blend makePod paints), so
   // it reads as carpet on that floor rather than a second colour.
@@ -1237,20 +1315,45 @@ export function setCubicleActive(cubicle, active) {
 }
 
 export function makeChair(palette) {
+  // An office chair as in the reference: a five-spoke base on castors, a gas
+  // lift, a padded seat, a tall back and armrests.
   const group = new THREE.Group();
-  const seat = roundedSlab(1.5, 0.2, 1.4, palette.chair, 0.2);
-  seat.position.y = 1.0;
+  const frame = palette.chairFrame || '#1a1d26';
+  for (let i = 0; i < 5; i += 1) {
+    const a = i * (Math.PI * 2 / 5);
+    const spoke = box(0.12, 0.08, 0.75, frame);
+    spoke.position.set(Math.sin(a) * 0.36, 0.16, Math.cos(a) * 0.36);
+    spoke.rotation.y = a;
+    spoke.castShadow = false;
+    group.add(spoke);
+    const castor = cylinder(0.08, 0.08, 0.1, 8, frame);
+    castor.rotation.z = Math.PI / 2;
+    castor.position.set(Math.sin(a) * 0.7, 0.08, Math.cos(a) * 0.7);
+    castor.castShadow = false;
+    group.add(castor);
+  }
+  const lift = cylinder(0.08, 0.1, 0.8, 12, '#4b5161');
+  lift.position.y = 0.55;
+  group.add(lift);
+  const seat = roundedSlab(1.5, 0.24, 1.4, palette.chair, 0.24);
+  seat.position.y = 1.02;
   group.add(seat);
-  const back = roundedPanel(1.5, 1.2, 0.2, palette.chair, 0.22);
-  back.position.set(0, 1.6, 0.6);
+  const back = roundedPanel(1.4, 1.35, 0.2, palette.chair, 0.3);
+  back.position.set(0, 1.85, 0.66);
+  back.rotation.x = -0.08;
   group.add(back);
-  const post = cylinder(0.12, 0.12, 1.0, 16, palette.deskLeg);
-  post.position.y = 0.5;
-  group.add(post);
-  const foot = cylinder(0.7, 0.75, 0.12, 24, palette.deskLeg);
-  foot.position.y = 0.06;
-  group.add(foot);
-  return mergeStatic(group, `chair|${palette.chair}|${palette.deskLeg}`);
+  const spine = box(0.16, 0.6, 0.12, frame);
+  spine.position.set(0, 1.25, 0.66);
+  group.add(spine);
+  [-0.78, 0.78].forEach(x => {
+    const arm = roundedSlab(0.14, 0.08, 0.8, frame, 0.04);
+    arm.position.set(x, 1.45, 0.05);
+    group.add(arm);
+    const post = box(0.08, 0.38, 0.08, frame);
+    post.position.set(x, 1.25, 0.3);
+    group.add(post);
+  });
+  return mergeStatic(group, `chair2|${palette.chair}|${frame}`);
 }
 
 /* ---------- person ---------- */
@@ -1873,56 +1976,6 @@ function iconTexture(kind, color) {
 }
 const _iconTextures = new Map();
 
-/** The plaque on a pod's front face: a dark rounded tile with its glowing icon. */
-export function makeIconPlaque(kind, tint, size) {
-  const s = size || 1.5;
-  const group = new THREE.Group();
-  const tile = roundedPanel(s, s, 0.16, '#141a2a', s * 0.2);
-  tile.castShadow = false;
-  group.add(tile);
-  const glowColor = hexOf(tint, '#7dd3fc');
-  const matKey = `icon-mat|${kind}|${glowColor}`;
-  let iconMat = _materials.get(matKey);
-  if (!iconMat) {
-    iconMat = new THREE.MeshBasicMaterial({
-      map: iconTexture(kind, glowColor), transparent: true, depthWrite: false, toneMapped: false,
-    });
-    // Pushed past 1.0 so the scene's bloom pass gives the icon its soft glow.
-    iconMat.color.setScalar(1.6);
-    _materials.set(matKey, iconMat);
-  }
-  const icon = new THREE.Mesh(geometry(`icon-plane|${s}`, () => new THREE.PlaneGeometry(s * 0.82, s * 0.82)), iconMat);
-  icon.position.z = 0.1;
-  icon.renderOrder = 4;
-  group.add(icon);
-  return group;
-}
-
-/** Low partition walls along a pod's two back edges, each topped with a thin glowing strip. */
-export function makeBackWalls(slabW, slabD, tint) {
-  const group = new THREE.Group();
-  const wallColor = '#2a3247';
-  const stripMat = glowMaterial(hexOf(tint, '#7dd3fc'), 1.8);
-  const height = 1.15;
-  const inset = 0.38;
-  const runs = [
-    { w: slabW - inset * 2 - 1.2, x: -0.3, z: -slabD / 2 + inset, ry: 0 },
-    { w: slabD - inset * 2 - 1.2, x: -slabW / 2 + inset, z: -0.3, ry: Math.PI / 2 },
-  ];
-  runs.forEach(run => {
-    const wall = roundedPanel(Math.max(1, run.w), height, 0.22, wallColor, 0.08);
-    wall.castShadow = false;
-    wall.position.set(run.x, height / 2, run.z);
-    wall.rotation.y = run.ry;
-    group.add(wall);
-    const strip = new THREE.Mesh(geometry(`wall-strip|${Math.max(1, run.w)}`, () => new THREE.BoxGeometry(Math.max(1, run.w) - 0.2, 0.06, 0.24)), stripMat);
-    strip.position.set(run.x, height + 0.03, run.z);
-    strip.rotation.y = run.ry;
-    group.add(strip);
-  });
-  return group;
-}
-
 /** A bookshelf: a dark frame, three shelves and rows of chunky coloured books. */
 export function makeBookshelf(palette, width) {
   const w = width || 2.6;
@@ -2125,141 +2178,433 @@ export function makeWaterCooler() {
 /** The one prop that says what a department does. */
 function departmentProp(kind, palette, tint) {
   switch (kind) {
-    case 'coding': case 'operations': return makeServerRack(palette, tint);
-    case 'documents': return makeCabinet(palette, tint);
-    case 'emails': return makeMailCubbies(palette, tint);
-    case 'marketing': return makeChartBoard(palette, tint, true);
-    case 'sales': return makeChartBoard(palette, tint, false);
-    case 'finance': return makeSafe(palette, tint);
-    case 'delivery': return makeParcels();
-    case 'floor': return makeWaterCooler();
-    default: return makeCabinet(palette, tint);
+    case 'coding': case 'operations': return { make: () => makeServerRack(palette, tint), w: 1.0, d: 0.9 };
+    case 'documents': return { make: () => makeCabinet(palette, tint), w: 0.9, d: 0.8 };
+    case 'emails': return { make: () => makeMailCubbies(palette, tint), w: 2.0, d: 0.5 };
+    case 'marketing': return { make: () => makeChartBoard(palette, tint, true), w: 1.9, d: 0.4 };
+    case 'sales': return { make: () => makeChartBoard(palette, tint, false), w: 1.9, d: 0.4 };
+    case 'finance': return { make: () => makeSafe(palette, tint), w: 1.0, d: 0.9 };
+    case 'delivery': return { make: () => makeParcels(), w: 1.6, d: 1.4 };
+    case 'floor': return { make: () => makeWaterCooler(), w: 0.7, d: 0.7 };
+    default: return { make: () => makeCabinet(palette, tint), w: 0.9, d: 0.8 };
   }
+}
+
+/** A small potted cube shrub, for a corner a topiary is too big for. */
+export function makeCubePlant() {
+  const group = new THREE.Group();
+  const pot = roundedSlab(0.6, 0.5, 0.6, '#c98a54', 0.08);
+  pot.position.y = 0.25;
+  group.add(pot);
+  const bush = roundedSlab(0.75, 0.7, 0.75, '#56b65a', 0.2);
+  bush.position.y = 0.85;
+  group.add(bush);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A desktop printer on a low side table. */
+export function makePrinterTable() {
+  const group = new THREE.Group();
+  const table = roundedSlab(1.2, 0.9, 0.8, '#4a5266', 0.06);
+  table.position.y = 0.45;
+  group.add(table);
+  const printer = roundedSlab(0.9, 0.35, 0.65, '#e5e7eb', 0.08);
+  printer.position.y = 1.08;
+  group.add(printer);
+  const tray = box(0.6, 0.03, 0.3, '#f8fafc');
+  tray.position.set(0, 1.27, 0.12);
+  group.add(tray);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/* ---- footprints: decorations never land on a desk, a walkway or a bridge ---- */
+
+/** Corners of an oriented rectangle {x, z, w, d, rot} in 2D. */
+function rectCorners(r) {
+  const c = Math.cos(r.rot || 0), s = Math.sin(r.rot || 0);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => {
+    const lx = a * r.w / 2, lz = b * r.d / 2;
+    // three.js rotation.y: x' = x cos + z sin, z' = -x sin + z cos
+    return [r.x + lx * c + lz * s, r.z - lx * s + lz * c];
+  });
+}
+
+/** Separating-axis test between two oriented rectangles. */
+export function rectsOverlap(a, b) {
+  const pa = rectCorners(a), pb = rectCorners(b);
+  const axes = [];
+  [pa, pb].forEach(poly => { for (let i = 0; i < 2; i += 1) {
+    const [x1, z1] = poly[i], [x2, z2] = poly[i + 1];
+    axes.push([-(z2 - z1), x2 - x1]);
+  } });
+  return axes.every(([ax, az]) => {
+    const proj = poly => poly.map(([x, z]) => x * ax + z * az);
+    const A = proj(pa), B = proj(pb);
+    return Math.max(...A) > Math.min(...B) && Math.max(...B) > Math.min(...A);
+  });
+}
+
+/** Tiny seeded random so a department always gets the same arrangement. */
+function seeded(text) {
+  let h = 2166136261;
+  for (const ch of String(text)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 10000) / 10000; };
 }
 
 /**
- * A department's scenery, laid out on its pod's slab (local coordinates, the
- * slab's top at y=0.6): low walls along the two back edges with a bookshelf
- * against one, a topiary in the back corner and a palm on the other, the
- * department's own prop along the side wall, and its icon plaque on the
- * front face. The middle of the slab, where desks go, is left clear.
+ * Low guardrails round the slab's edge, as in the reference: a dark kick
+ * panel, frosted glass above it and a top rail with a thin glowing strip in
+ * the department's colour, posts between runs. The same on every side and
+ * at every angle; the bridge's entrance and the sign wall are left open.
  */
-export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
+export function makeGuardRails(slabW, slabD, tint, openings) {
   const group = new THREE.Group();
-  const top = 0.6;
-  const options = opts || {};
-  if (!options.open) {
-    const walls = makeBackWalls(slabW, slabD, tint);
-    walls.position.y = top;
-    group.add(walls);
-    const shelf = makeBookshelf(palette, Math.min(3.2, slabW * 0.32));
-    shelf.position.set(-slabW / 2 + 1.0 + Math.min(3.2, slabW * 0.32) / 2 + 0.6, top, -slabD / 2 + 0.95);
-    group.add(shelf);
-    const prop = departmentProp(kind, palette, tint);
-    prop.position.set(-slabW / 2 + 1.05, top, slabD / 2 - 2.2);
-    prop.rotation.y = Math.PI / 2;
-    group.add(prop);
-  } else {
-    const cooler = makeWaterCooler();
-    cooler.position.set(-slabW / 2 + 1.0, top, -slabD / 2 + 1.0);
-    group.add(cooler);
-  }
-  const topiary = makeTopiary(palette);
-  topiary.position.set(-slabW / 2 + 1.1, top, -slabD / 2 + 1.1);
-  if (!options.open) group.add(topiary);
-  const palm = makePalm(palette);
-  palm.position.set(slabW / 2 - 1.1, top, -slabD / 2 + 1.1);
-  group.add(palm);
-  const plaque = makeIconPlaque(kind, tint, Math.min(2.6, slabD * 0.24));
-  // The +z face is one of the two faces the isometric camera sees; the
-  // plaque stands proud of it, rising a little above the floor's edge.
-  plaque.position.set(0, 0.45, slabD / 2 + 0.12);
-  group.add(plaque);
-  group.userData.scenery = true;
-  // The plaque's glowing icon is textured, so it stays its own mesh.
-  return mergeStatic(group, `scenery|${kind}|${slabW}|${slabD}|${hexOf(tint, '#7dd3fc')}|${palette.podTop}|${options.open ? 1 : 0}`);
+  const inset = 0.32;
+  const radius = Math.min(slabW, slabD) * 0.12 + 0.25;
+  const panelLen = 1.3;
+  const kick = material('#2b3245', { rough: 0.8 });
+  const post = material('#3a4358', { rough: 0.6, metal: 0.3 });
+  const glass = material('#cfe3ff', { rough: 0.15, transparent: true, opacity: 0.16 });
+  const glow = glowMaterial(hexOf(tint, '#7dd3fc'), 1.05);
+  const edges = [
+    { axis: 'x', fixed: slabD / 2 - inset, len: slabW }, { axis: 'x', fixed: -(slabD / 2 - inset), len: slabW },
+    { axis: 'z', fixed: slabW / 2 - inset, len: slabD }, { axis: 'z', fixed: -(slabW / 2 - inset), len: slabD },
+  ];
+  const blocked = (x, z) => (openings || []).some(o => Math.hypot(x - o.x, z - o.z) < o.r);
+  edges.forEach(edge => {
+    const usable = edge.len - radius * 2;
+    const count = Math.max(1, Math.round(usable / panelLen));
+    const step = usable / count;
+    for (let i = 0; i < count; i += 1) {
+      const t = -usable / 2 + step * (i + 0.5);
+      const x = edge.axis === 'x' ? t : edge.fixed;
+      const z = edge.axis === 'x' ? edge.fixed : t;
+      if (blocked(x, z)) continue;
+      const ry = edge.axis === 'x' ? 0 : Math.PI / 2;
+      const seg = new THREE.Group();
+      seg.position.set(x, 0, z);
+      seg.rotation.y = ry;
+      const kp = new THREE.Mesh(geometry(`rail-kick|${step}`, () => new THREE.BoxGeometry(step - 0.12, 0.34, 0.12)), kick);
+      kp.position.y = 0.17;
+      const gl = new THREE.Mesh(geometry(`rail-glass|${step}`, () => new THREE.BoxGeometry(step - 0.12, 0.56, 0.04)), glass);
+      gl.position.y = 0.62;
+      const top = new THREE.Mesh(geometry(`rail-top|${step}`, () => new THREE.BoxGeometry(step + 0.02, 0.08, 0.14)), post);
+      top.position.y = 0.94;
+      const strip = new THREE.Mesh(geometry(`rail-glow|${step}`, () => new THREE.BoxGeometry(step - 0.1, 0.035, 0.15)), glow);
+      strip.position.y = 0.36;
+      const p1 = new THREE.Mesh(geometry('rail-post', () => new THREE.BoxGeometry(0.14, 1.0, 0.14)), post);
+      p1.position.set(step / 2, 0.5, 0);
+      [kp, gl, top, strip, p1].forEach(m => { m.castShadow = false; seg.add(m); });
+      group.add(seg);
+    }
+  });
+  return group;
 }
 
-/** A lamp post: a dark pillar with a warm glowing window, set at bridge ends and hub corners. */
-export function makeLampPost(height) {
-  const h = height || 1.6;
+/**
+ * The department's sign: a short freestanding wall at the slab's edge with
+ * its icon glowing on the face the camera sees (the reference's display wall).
+ */
+export function makeSignWall(kind, tint) {
   const group = new THREE.Group();
-  // A lantern: a dark pillar, a warm glowing light box above it, a cap on top.
-  const post = roundedSlab(0.42, h * 0.55, 0.42, '#252c3d', 0.08);
-  post.position.y = h * 0.275;
-  group.add(post);
-  const light = new THREE.Mesh(
-    geometry(`lamp-light|${h}`, () => new THREE.BoxGeometry(0.36, h * 0.34, 0.36)),
-    glowMaterial('#ffbf5e', 2.4),
-  );
-  light.position.y = h * 0.55 + h * 0.17;
-  group.add(light);
-  const cap = roundedSlab(0.56, 0.14, 0.56, '#2f3649', 0.05);
-  cap.position.y = h * 0.89 + 0.07;
-  group.add(cap);
+  const wall = roundedPanel(2.4, 2.3, 0.45, '#1b2234', 0.18);
+  wall.position.y = 1.15;
+  group.add(wall);
+  const trim = new THREE.Mesh(geometry('sign-trim', () => new THREE.BoxGeometry(2.3, 0.06, 0.49)), glowMaterial(hexOf(tint, '#7dd3fc'), 1.05));
+  trim.position.y = 2.31;
+  group.add(trim);
+  const glowColor = hexOf(tint, '#7dd3fc');
+  const matKey = `icon-mat|${kind}|${glowColor}`;
+  let iconMat = _materials.get(matKey);
+  if (!iconMat) {
+    iconMat = new THREE.MeshBasicMaterial({ map: iconTexture(kind, glowColor), transparent: true, depthWrite: false, toneMapped: false });
+    iconMat.color.setScalar(1.25);
+    _materials.set(matKey, iconMat);
+  }
+  const icon = new THREE.Mesh(geometry('sign-icon', () => new THREE.PlaneGeometry(1.7, 1.7)), iconMat);
+  icon.position.set(0, 1.15, 0.24);
+  icon.renderOrder = 4;
+  group.add(icon);
   group.traverse(o => { o.castShadow = false; });
   return group;
 }
 
 /**
- * The conductor hub's centrepiece: a low projector plate on the floor (flat,
- * so the pacing conductor walks over it) with a glowing holographic globe
- * floating above head height, and consoles at the hub's four corners.
+ * A department's scenery on its slab (local coordinates; the top at y=0.6):
+ * guardrails round the edge, its sign wall on an edge the camera sees, and
+ * a scattered set of decorations -- bookshelf, plants, the department's own
+ * prop, a printer -- each placed where it touches no desk, no worker's
+ * walk-in path and no bridge entrance (`opts.blocked`, oriented rectangles;
+ * `opts.entry`, the bridge's landing point). Placement is seeded by the
+ * department, so it stays put between visits but differs between pods.
+ */
+export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
+  const options = opts || {};
+  const group = new THREE.Group();
+  const top = 0.6;
+  const rand = seeded(`${kind}|${options.seed || ''}`);
+  const entry = options.entry || null;
+  const blocked = (options.blocked || []).slice();
+  const openings = [];
+  if (entry) {
+    openings.push({ x: entry.x, z: entry.z, r: 2.9 });
+    blocked.push({ x: entry.x, z: entry.z, w: 5.4, d: 5.4, rot: 0 });
+  }
+  const placed = [];   // footprints with a little spacing, so pieces don't touch
+  const footprints = []; // what each piece actually covers
+  // Inside the guardrails (they stand 0.25-0.4 in from the edge).
+  const EDGE = 0.62;
+  const fits = r => {
+    const pts = rectCorners(r);
+    const inside = pts.every(([x, z]) => Math.abs(x) <= slabW / 2 - EDGE + 1e-6 && Math.abs(z) <= slabD / 2 - EDGE + 1e-6);
+    return inside && !blocked.some(b => rectsOverlap(r, b)) && !placed.some(b => rectsOverlap(r, b));
+  };
+  // Points along the inside of each edge, each with the inward direction
+  // and the rotation that turns a piece's front (+z) to face the middle.
+  const edges = [
+    { ax: 'x', at: -slabD / 2, nx: 0, nz: 1, rot: 0, len: slabW, far: true },          // back (-z)
+    { ax: 'z', at: -slabW / 2, nx: 1, nz: 0, rot: Math.PI / 2, len: slabD, far: true }, // left (-x)
+    { ax: 'x', at: slabD / 2, nx: 0, nz: -1, rot: Math.PI, len: slabW, far: false },   // front (+z)
+    { ax: 'z', at: slabW / 2, nx: -1, nz: 0, rot: -Math.PI / 2, len: slabD, far: false }, // right (+x)
+  ];
+  const spotsFor = (edge, steps) => {
+    const out = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const t = (-0.5 + i / steps) * (edge.len - 2.2);
+      out.push({ edge, t });
+    }
+    return out;
+  };
+  const rectAt = (spot, w, d) => {
+    const { edge, t } = spot;
+    const inward = EDGE + d / 2 + 0.02;
+    const x = edge.ax === 'x' ? t : edge.at + edge.nx * inward;
+    const z = edge.ax === 'x' ? edge.at + edge.nz * inward : t;
+    return { x, z, w, d, rot: edge.rot };
+  };
+
+  // Sign wall: on one of the two edges the camera sees (+x, +z), the spot
+  // farthest from the bridge entrance that is clear.
+  const signSpots = [...spotsFor(edges[2], 6), ...spotsFor(edges[3], 6)].map(sp => rectAt(sp, 2.5, 0.5));
+  if (entry) signSpots.sort((a, b) => Math.hypot(b.x - entry.x, b.z - entry.z) - Math.hypot(a.x - entry.x, a.z - entry.z));
+  else signSpots.sort((a, b) => Math.abs(a.x) + Math.abs(a.z) - Math.abs(b.x) - Math.abs(b.z));
+  const sign = signSpots.find(fits);
+  if (sign) {
+    const wall = makeSignWall(kind, tint);
+    wall.position.set(sign.x, top, sign.z);
+    // The sign faces outward, toward the camera.
+    wall.rotation.y = sign.rot + Math.PI;
+    group.add(wall);
+    placed.push({ ...sign, w: sign.w + 0.4, d: sign.d + 0.4 });
+    footprints.push(sign);
+    openings.push({ x: sign.x, z: sign.z, r: 1.35 });
+  }
+  if (!options.noRails) {
+    const rails = makeGuardRails(slabW, slabD, tint, openings);
+    rails.position.y = top;
+    group.add(rails);
+  }
+
+  // Decorations, biggest first, each tried along the inside of the edges in
+  // a seeded order (tall pieces against the far edges first, where they hide
+  // nothing); one that fits nowhere is left out rather than clipped.
+  const prop = departmentProp(kind, palette, tint);
+  const items = options.open
+    ? [{ make: () => makeTopiary(palette), w: 1.2, d: 1.2 }, { make: () => makePalm(palette), w: 1.3, d: 1.3 },
+       { make: () => makeWaterCooler(), w: 0.7, d: 0.7 }, { make: () => makeCubePlant(), w: 0.8, d: 0.8 }]
+    : [{ make: () => makeBookshelf(palette, 2.4), w: 2.4, d: 0.7, tall: true }, { ...prop, tall: true },
+       { make: () => makeTopiary(palette), w: 1.2, d: 1.2 }, { make: () => makePalm(palette), w: 1.3, d: 1.3 },
+       { make: () => makeCubePlant(), w: 0.8, d: 0.8 },
+       rand() < 0.5 ? { make: () => makePrinterTable(), w: 1.2, d: 0.8 } : { make: () => makeCabinet(palette, tint), w: 0.9, d: 0.8 }];
+  const all = edges.flatMap(edge => spotsFor(edge, 10));
+  for (let i = all.length - 1; i > 0; i -= 1) { const j = Math.floor(rand() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+  items.forEach(item => {
+    const order = item.tall ? all.filter(sp => sp.edge.far).concat(all.filter(sp => !sp.edge.far)) : all;
+    for (const sp of order) {
+      const r = rectAt(sp, item.w, item.d);
+      if (!fits(r)) continue;
+      const mesh = item.make();
+      mesh.position.set(r.x, top, r.z);
+      mesh.rotation.y = r.rot;
+      group.add(mesh);
+      placed.push({ ...r, w: r.w + 0.35, d: r.d + 0.35 });
+      footprints.push(r);
+      break;
+    }
+  });
+  group.userData.scenery = true;
+  group.userData.placed = footprints;
+  // The sign's glowing icon is textured, so it stays its own mesh.
+  return mergeStatic(group, `scenery|${kind}|${slabW}|${slabD}|${hexOf(tint, '#7dd3fc')}|${palette.podTop}|${options.open ? 1 : 0}|${options.key || ''}`);
+}
+
+/**
+ * A light pillar as in the reference: a slim dark square column with a
+ * recessed warm light panel on each face, a footing and a cap. The light is
+ * only just bright enough to bloom: a soft warm strip, not a lamp.
+ */
+export function makeLampPost(height) {
+  const h = height || 2.2;
+  const group = new THREE.Group();
+  const base = roundedSlab(0.72, 0.22, 0.72, '#2a3144', 0.05);
+  base.position.y = 0.11;
+  group.add(base);
+  const body = roundedSlab(0.54, h, 0.54, '#3b4459', 0.06);
+  body.position.y = 0.22 + h / 2;
+  group.add(body);
+  const cap = roundedSlab(0.66, 0.16, 0.66, '#2a3144', 0.05);
+  cap.position.y = 0.22 + h + 0.08;
+  group.add(cap);
+  const panelH = h * 0.62;
+  const light = glowMaterial('#ffb54d', 1.3);
+  [[0, 0.335, 0], [0, -0.335, Math.PI], [0.335, 0, Math.PI / 2], [-0.335, 0, -Math.PI / 2]].forEach(([x, z, ry]) => {
+    const panel = new THREE.Mesh(geometry(`pillar-light|${panelH}`, () => new THREE.PlaneGeometry(0.3, panelH)), light);
+    panel.position.set(x, 0.22 + h * 0.5, z);
+    panel.rotation.y = ry;
+    group.add(panel);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/**
+ * The conductor hub's set, as in the reference: a raised rim round the
+ * deck, a stepped round pedestal with a glowing ring carrying the glass
+ * globe, and four double-monitor desks round it. The middle stays clear for
+ * the conductor, who walks the ring between pedestal and desks.
  */
 export function makeHubCentrepiece(slab, tint) {
   const group = new THREE.Group();
   const hex = hexOf(tint, '#4f8cff');
-  const color = new THREE.Color(hex);
-  const plate = new THREE.Mesh(geometry('hub-plate', () => new THREE.CylinderGeometry(2.3, 2.5, 0.16, 40)), material('#1a2133', { rough: 0.5, metal: 0.3 }));
-  plate.position.y = 0.68;
-  group.add(plate);
-  const ringMat = glowMaterial(hex, 2);
-  const ring = new THREE.Mesh(geometry('hub-ring', () => new THREE.TorusGeometry(1.9, 0.07, 8, 48)), ringMat);
+  const top = 0.6;
+  // Raised rim: four flat bars just inside the slab edge.
+  const rimMat = material('#46526e', { rough: 0.6, metal: 0.25 });
+  const inner = slab - 1.4;
+  [[0, inner / 2, inner + 0.5, 0.5], [0, -inner / 2, inner + 0.5, 0.5], [inner / 2, 0, 0.5, inner + 0.5], [-inner / 2, 0, 0.5, inner + 0.5]].forEach(([x, z, w, d]) => {
+    const bar = new THREE.Mesh(geometry(`hub-rim|${w}|${d}`, () => new THREE.BoxGeometry(w, 0.32, d)), rimMat);
+    bar.position.set(x, top + 0.16, z);
+    group.add(bar);
+  });
+  // Stepped pedestal.
+  const step1 = new THREE.Mesh(geometry('hub-step1', () => new THREE.CylinderGeometry(2.6, 2.75, 0.5, 40)), material('#252d40', { rough: 0.5, metal: 0.3 }));
+  step1.position.y = top + 0.225;
+  group.add(step1);
+  const ring = new THREE.Mesh(geometry('hub-ring', () => new THREE.TorusGeometry(2.35, 0.08, 8, 56)), glowMaterial(hex, 1.6));
   ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.78;
+  ring.position.y = top + 0.52;
   group.add(ring);
-  const beamMat = glowMaterial(hex, 0.8, { opacity: 0.12, additive: true });
-  beamMat.side = THREE.DoubleSide;
-  const beam = new THREE.Mesh(geometry('hub-beam', () => new THREE.CylinderGeometry(1.2, 1.9, 4.6, 32, 1, true)), beamMat);
-  beam.position.y = 3.1;
-  group.add(beam);
-  const globeMat = material('#9fd4ff', { physical: true, emissive: hex, ei: 1.4, rough: 0.15, metal: 0, transparent: true, opacity: 0.55, clearcoat: 1 });
-  const globe = new THREE.Mesh(geometry('hub-globe', () => new THREE.SphereGeometry(1.35, 32, 20)), globeMat);
-  globe.position.y = 6.1;
+  const step2 = new THREE.Mesh(geometry('hub-step2', () => new THREE.CylinderGeometry(1.5, 1.75, 0.8, 32)), material('#1b2233', { rough: 0.45, metal: 0.35 }));
+  step2.position.y = top + 0.5 + 0.4;
+  group.add(step2);
+  const cup = new THREE.Mesh(geometry('hub-cup', () => new THREE.TorusGeometry(1.25, 0.13, 8, 40)), glowMaterial(hex, 1.3));
+  cup.rotation.x = Math.PI / 2;
+  cup.position.y = top + 1.32;
+  group.add(cup);
+  const globeY = top + 1.3 + 1.45;
+  const globe = new THREE.Mesh(geometry('hub-globe', () => new THREE.SphereGeometry(1.5, 32, 20)),
+    material('#a9d8ff', { physical: true, emissive: hex, ei: 0.85, rough: 0.12, metal: 0, transparent: true, opacity: 0.6, clearcoat: 1 }));
+  globe.position.y = globeY;
   group.add(globe);
-  const gridMat = glowMaterial(hex, 2.2, { wireframe: true, opacity: 0.35 });
-  const grid = new THREE.Mesh(geometry('hub-globe-grid', () => new THREE.SphereGeometry(1.4, 12, 8)), gridMat);
-  grid.position.y = 6.1;
+  const grid = new THREE.Mesh(geometry('hub-globe-grid', () => new THREE.SphereGeometry(1.53, 14, 9)), glowMaterial(hex, 1.2, { wireframe: true, opacity: 0.32 }));
+  grid.position.y = globeY;
   group.add(grid);
-  const haloMat = glowMaterial(hex, 2.4);
-  const halo = new THREE.Mesh(geometry('hub-halo', () => new THREE.TorusGeometry(1.75, 0.05, 6, 48)), haloMat);
-  halo.position.y = 6.1;
-  halo.rotation.x = Math.PI / 2.4;
+  const halo = new THREE.Mesh(geometry('hub-halo', () => new THREE.TorusGeometry(1.85, 0.045, 6, 56)), glowMaterial(hex, 1.4));
+  halo.position.y = globeY;
+  halo.rotation.x = Math.PI / 2.3;
   group.add(halo);
-  // Consoles at the hub's corners, outside the conductor's pacing circle.
-  const corner = slab / 2 - 2.1;
-  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
-    const console_ = new THREE.Group();
-    const deskTop = roundedSlab(1.9, 0.9, 1.0, '#2a3247', 0.12);
-    deskTop.position.y = 0.45;
-    console_.add(deskTop);
-    const screen = roundedPanel(1.6, 1.0, 0.1, '#0f1424', 0.08);
-    screen.position.set(0, 1.55, -0.25);
-    screen.rotation.x = -0.18;
-    console_.add(screen);
-    const glow = new THREE.Mesh(geometry('console-glow', () => new THREE.PlaneGeometry(1.36, 0.78)), ringMat);
-    glow.position.set(0, 1.56, -0.18);
-    glow.rotation.x = -0.18;
-    console_.add(glow);
-    console_.position.set(sx * corner, 0.6, sz * corner);
-    console_.rotation.y = Math.atan2(-sx, -sz);
-    group.add(console_);
+  // Four desks with two monitors each, round the pedestal, facing out.
+  const screenMat = glowMaterial('#3b82f6', 0.9);
+  const radius = 5.85;
+  [0.25, 0.75, 1.25, 1.75].forEach(turn => {
+    const a = turn * Math.PI;
+    const desk = new THREE.Group();
+    const deskTop = roundedSlab(2.8, 0.14, 1.1, '#d8b483', 0.08);
+    deskTop.position.y = 1.0;
+    desk.add(deskTop);
+    const pedestal = roundedSlab(0.7, 0.95, 1.0, '#2e3547', 0.06);
+    pedestal.position.set(-1.0, 0.48, 0);
+    desk.add(pedestal);
+    const leg = roundedSlab(0.12, 0.95, 1.0, '#2e3547', 0.03);
+    leg.position.set(1.3, 0.48, 0);
+    desk.add(leg);
+    [-0.6, 0.6].forEach(x => {
+      const bezel = roundedPanel(1.1, 0.72, 0.08, '#121826', 0.06);
+      bezel.position.set(x, 1.62, -0.25);
+      bezel.rotation.y = x < 0 ? 0.12 : -0.12;
+      desk.add(bezel);
+      const glow = new THREE.Mesh(geometry('hub-screen', () => new THREE.PlaneGeometry(0.98, 0.6)), screenMat);
+      glow.position.set(x, 1.62, -0.205);
+      glow.rotation.y = bezel.rotation.y;
+      desk.add(glow);
+      const stand = roundedSlab(0.1, 0.4, 0.1, '#121826', 0.02);
+      stand.position.set(x, 1.27, -0.27);
+      desk.add(stand);
+    });
+    const chair = makeChair({ chair: '#1d2230', deskLeg: '#2e3547' });
+    chair.position.set(0, 0, 1.05);
+    chair.rotation.y = Math.PI;
+    desk.add(chair);
+    desk.position.set(Math.sin(a) * radius, top, Math.cos(a) * radius);
+    desk.scale.setScalar(1.25);
+    desk.rotation.y = a + Math.PI;
+    group.add(desk);
   });
   group.traverse(o => { o.castShadow = false; });
   grid.userData.noMerge = true;
   halo.userData.noMerge = true;
   group.userData.spin = [grid, halo];
-  return mergeStatic(group, `hub|${slab}|${hex}`);
+  return mergeStatic(group, `hub2|${slab}|${hex}`);
+}
+
+/**
+ * The glow round a platform's neon band: a flat ring just outside the band,
+ * bright at the band and fading to nothing outward (vertex colours under
+ * additive blending). Unlike bloom, which works on screen pixels and broke
+ * into dots on a thin band once zoomed out, this is geometry: it scales with
+ * the platform and looks the same at every zoom.
+ */
+export function makeBandGlow(width, depth, radius, color, spread) {
+  const s = spread || 1.6;
+  const key = `band-glow|${width}|${depth}|${radius}|${color}|${s}`;
+  const geo = geometry(key, () => {
+    const inner = roundedRectShape(width, depth, radius).getSpacedPoints(160);
+    const positions = [];
+    const colors = [];
+    const c = new THREE.Color(color);
+    const cx = 0, cz = 0;
+    const outerOf = ([x, y]) => {
+      const len = Math.hypot(x - cx, y - cz) || 1;
+      // Push out along the rounded rectangle's own normal (approximate with the
+      // direction from the centre, scaled per axis so the band stays even).
+      const nx = (x / (width / 2)), ny = (y / (depth / 2));
+      const nl = Math.hypot(nx, ny) || 1;
+      return [x + (nx / nl) * s, y + (ny / nl) * s];
+    };
+    for (let i = 0; i < inner.length - 1; i += 1) {
+      const a = [inner[i].x, inner[i].y], b = [inner[i + 1].x, inner[i + 1].y];
+      const ao = outerOf(a), bo = outerOf(b);
+      [[a, 1], [b, 1], [bo, 0], [a, 1], [bo, 0], [ao, 0]].forEach(([p, k]) => {
+        positions.push(p[0], 0, p[1]);
+        colors.push(c.r * k, c.g * k, c.b * k);
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    return g;
+  });
+  const matKey = 'band-glow-mat';
+  let mat = _materials.get(matKey);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+    _materials.set(matKey, mat);
+  }
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 2;
+  mesh.userData.bandGlow = true;
+  return mesh;
 }
 
 /** A field of faint stars scattered over the floor around the office. */

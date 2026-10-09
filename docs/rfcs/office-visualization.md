@@ -1197,3 +1197,33 @@ Smoothness, measured headless (SwiftShader, so relative only):
   canvas fades in on that frame, with a loading bar until then.
 - **Floor cards** write their position styles only when a value changes, so a
   still camera costs no layout.
+
+### Second pass, against the reference (2026-10-09)
+
+- **Light pillars** replace the lamps: a slim dark column on a footing with a
+  warm recessed light panel on each face, only just bright enough to bloom.
+- **Platform glow** is geometry, not bloom: the neon band stays under the
+  bloom threshold and a flat additive halo (`makeBandGlow`, vertex colours
+  fading outward) gives the soft spill. Bloom on a thin band broke into dots
+  once zoomed out; the halo looks the same at every zoom.
+- **Cubicles** are the original glass ones again (restored from
+  `office-before-renovation`).
+- **Guardrails** (`makeGuardRails`): kick panel, frosted glass, top rail with
+  a glowing strip, uniform on every edge and at every pod angle, left open at
+  the bridge landing and at the sign. **Sign wall** (`makeSignWall`): a
+  freestanding wall at a visible edge with the department's glowing icon,
+  replacing the plaque on the slab's side.
+- **Desks** as in the reference: light wood top, dark drawer pedestal, two
+  monitors (the live screen and a second one), a castored office chair.
+- **Decorations are scattered and never clip**: `makePodScenery` takes each
+  desk's cubicle and walk-in path (`podClearances` in scene.js) and the
+  bridge landing as blocked rectangles, and places the bookshelf, the
+  department's prop, a topiary, a palm, a cube plant and a printer or cabinet
+  in seeded positions along the inside of the rails, skipping any that would
+  overlap (separating-axis test, `rectsOverlap`).
+- **The hub**: a raised rim, a stepped pedestal with glowing rings under the
+  globe, four double-monitor desks with chairs. The conductor paces a ring
+  between pedestal and desks (`createWanderer({ minRadius, maxTurn })`, which
+  also walks round, not across, to its spot) and orchestrates at the globe.
+- Bridges: lit navy deck in the dark theme, solid neon rails.
+- `mergeStatic` now writes typed arrays and keeps indices.
