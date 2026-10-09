@@ -339,7 +339,8 @@
     const cost = (0.001 + perCity * 0.0001).toFixed(3);
     return section('apify', 'Apify', 'Runs the job-site scrapers on Apify’s servers instead of this machine, so Indeed can’t block your address, LinkedIn becomes searchable, and every job arrives with its full description.', `
       ${token}
-      ${toggle('apify.enabled', 'Search job sites through Apify', v('apify.enabled'), ap.token ? 'Scout searches run on Apify instead of Firecrawl; needed for LinkedIn' : 'Connect a token first')}
+      ${toggle('apify.enabled', 'Search job sites through Apify', v('apify.enabled'), ap.token ? 'Indeed, LinkedIn and Bayt are searched on Apify' : 'Connect a token first')}
+      ${toggle('apify.indeed_fallback', 'Read Indeed with Firecrawl when Apify is off', v('apify.indeed_fallback'), 'Off: Indeed is searched through Apify only. On: with Apify off, Scout reads Indeed itself through Firecrawl (Indeed often blocks it)')}
       <div class="job-os-grid">${(ap.sites || []).filter((site) => (site.actors || []).length).map((site) => selectField(`apify.${site.key}_actor`, `${site.name} scraper`, v(`apify.${site.key}_actor`),
         site.actors.map((a) => [a.actor, `${a.actor} — ${a.price}`]))).join('')}${numberField('apify.results_per_city', 'Results per search and city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
       <p class="job-os-card-note apify-cost">Each job title, site and city in a search is one run, billed per job returned (prices above, free plan). With Indeed at ${perCity} results: about <strong>$${cost}</strong> a run. Scrapers that can drop off-title or already-saved jobs on their side (the title filter, LinkedIn’s valig scraper) charge only for what Scout keeps.</p>`);
@@ -762,7 +763,9 @@
     const active = run && ACTIVE_RUN.includes(run.status);
     const viaApify = !!(state.apify && state.apify.active);
     // remote.id is read directly, so a search with it can always run.
-    const ready = viaApify || (state.firecrawl && state.firecrawl.state === 'healthy') || [...SITE_DIRECT].some((s) => (search.sites || []).includes(s));
+    // Indeed and the other job sites run through Apify; Firecrawl reads Indeed only with the fallback on.
+    const fallback = !!(state.apify && state.apify.indeed_fallback);
+    const ready = viaApify || (fallback && state.firecrawl && state.firecrawl.state === 'healthy') || [...SITE_DIRECT].some((s) => (search.sites || []).includes(s));
     const schedOn = state.schedule && state.schedule.enabled;
     const schedule = !search.enabled ? 'Paused' : !schedOn ? 'Schedule off' : search.next_run_at ? `Next ${until(search.next_run_at)}` : 'Scheduled';
     const fact = (label, value, muted) => `<div><dt>${label}</dt><dd${muted ? ' class="is-muted"' : ''}>${value}</dd></div>`;
@@ -784,7 +787,7 @@
       </dl>
       ${runPanel(run, search)}
       ${search.off_target ? `<div class="scout-tidy" role="status"><span>${icon('attention', 16)}<span><strong>${Number(search.off_target)}</strong> saved find${search.off_target === 1 ? '' : 's'} don’t match these titles</span></span><button type="button" class="job-os-btn small" data-job-os-action="scout-tidy" data-search-id="${esc(search.id)}">Move to Closed</button></div>` : ''}
-      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Firecrawl is not ready — see Settings, or turn on Apify'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-icon-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}" aria-label="Edit search" title="Edit search">${icon('edit', 16)}</button><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
+      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Turn on Apify in Settings to search job sites'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-icon-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}" aria-label="Edit search" title="Edit search">${icon('edit', 16)}</button><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -795,6 +798,7 @@
     const posted = (state.postedWithin || [0, 1, 3, 7, 14]).map((d) => `<option value="${d}" ${Number(form.posted_within_days) === d ? 'selected' : ''}>${esc(POSTED[d] || 'Any time')}</option>`).join('');
     const host = ((state.countries || []).find((c) => c.code === form.country) || {}).host;
     const apifyOn = !!(state.apify && state.apify.active);
+    const fallbackOn = !!(state.apify && state.apify.indeed_fallback);
     return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New search'}</h2><p class="job-os-card-note">Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div></div>
       <form id="job-os-search-form" novalidate><div class="scout-form-grid">
         <label class="job-os-field wide"><span>Job titles <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. SOC Analyst, IT Analyst, Security Analyst" value="${esc(form.keywords)}"><small class="job-os-field-hint">Comma-separated; each title is searched on its own (up to 5).</small></label>
@@ -808,10 +812,11 @@
         <fieldset class="job-os-field wide scout-sites"><legend>Job sites</legend><div class="scout-site-options">${SITES.map(([key, text]) => {
           const covered = !SITE_COUNTRIES[key] || !form.country || SITE_COUNTRIES[key].includes(form.country);
           const direct = SITE_DIRECT.has(key);
-          const note = !covered ? 'not in this country' : direct ? 'remote jobs, read directly' : key === 'indeed' ? (apifyOn ? 'through Apify' : 'read directly') : 'through Apify';
+          const indeedDirect = key === 'indeed' && !apifyOn && fallbackOn;
+          const note = !covered ? 'not in this country' : direct ? 'remote jobs, read directly' : indeedDirect ? 'read directly (Firecrawl)' : 'through Apify';
           const checked = (form.sites || ['indeed']).includes(key) && covered;
-          return `<label class="scout-site${!covered || (key !== 'indeed' && !direct && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
-        }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than Indeed and remote.id run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
+          return `<label class="scout-site${!covered || (!direct && !indeedDirect && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
+        }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than remote.id run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
       </div>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
       <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
@@ -838,8 +843,11 @@
     const provider = state.searchProvider === 'brave' ? 'Brave Search API' : 'Firecrawl search';  // used only if Indeed refuses its results page
     const schedOn = !!(state.schedule && state.schedule.enabled);
     const viaApify = !!(state.apify && state.apify.active);
-    const banner = !viaApify && fc.state && fc.state !== 'healthy'
-      ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Scout can't run until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
+    const fallback = !!(state.apify && state.apify.indeed_fallback);
+    const banner = viaApify ? ''
+      : fallback && fc.state && fc.state !== 'healthy'
+        ? `<div class="scout-banner" role="status">${esc(fc.detail || 'Firecrawl is not ready.')} Indeed can't be read until it is. <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>`
+        : !fallback ? `<div class="scout-banner" role="status">Apify is off, so Indeed, LinkedIn and Bayt searches can't run (remote.id still can). <button type="button" class="job-os-link" data-job-os-view="settings">Open Settings</button></div>` : '';
     const recent = (state.runs || []).filter((run) => run.counts && run.counts.saved && !ACTIVE_RUN.includes(run.status)).slice(0, 1)[0];
     const newIds = new Set(recent ? recent.new_job_ids : []);
     const finds = paged(newestFirst((state.jobs || []).filter((job) => newIds.has(job.id))), state.findsPage);
@@ -848,7 +856,7 @@
     const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
     const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}><span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span><span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
     const overview = `<section class="scout-overview" aria-label="Scout at a glance">
-      ${tile('cloud', 'Source', viaApify ? 'Apify' : 'This machine', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : `Indeed, ${esc(provider)} as fallback`, ' data-job-os-action="settings-focus" data-section="apify"')}
+      ${tile('cloud', 'Source', viaApify ? 'Apify' : fallback ? 'This machine' : 'Apify off', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : fallback ? `Indeed, ${esc(provider)} as fallback` : 'Only remote.id can run', ' data-job-os-action="settings-focus" data-section="apify"')}
       ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
       ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Latest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
       ${tile('radar', 'Searches', `${on.length} of ${searches.length}`, last ? `Last run ${esc(when(last))}` : 'Not run yet')}</section>`;

@@ -115,6 +115,9 @@ def test_a_run_saves_remote_id_finds_keeps_upwork_and_skips_known_linkedin_jobs(
 
 
 def test_with_indeed_too_remote_id_runs_before_the_indeed_search(store, monkeypatch):
+    from api.job_os.settings import save_settings
+
+    save_settings({"apify": {"indeed_fallback": True}}, expected_revision=0)
     monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing([]) if "?" in url else "")
     search = scout.create_search({"keywords": "SEO Specialist", "country": "my", "sites": ["indeed", "remoteid"],
                                   "strict_titles": False})

@@ -843,9 +843,12 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         if apify_sites and not apify.token():
             finish("failed", "Apify is on but not connected; connect it in Settings → Apify or turn it off")
             return
-        unreachable = [s for s in sites if s not in ("indeed", remoteid.SITE) and not via_apify]
+        # Indeed is read through Apify; only with the fallback on does Scout read it
+        # itself (Firecrawl) while Apify is off.
+        direct_indeed = not via_apify and bool(apify_settings.get("indeed_fallback"))
+        unreachable = [s for s in sites if s != remoteid.SITE and not via_apify and not (s == "indeed" and direct_indeed)]
         if unreachable and sites == unreachable:
-            finish("failed", f"{' and '.join(SITE_NAMES[s] for s in unreachable)} need Apify; connect it in Settings → Apify")
+            finish("failed", f"{' and '.join(SITE_NAMES[s] for s in unreachable)} {'needs' if len(unreachable) == 1 else 'need'} Apify; turn it on in Settings → Apify")
             return
         for site in unreachable:
             note_error(SITE_NAMES[site], "skipped: needs Apify (Settings → Apify)")
@@ -890,7 +893,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             if outcome == "cancelled":
                 finish("cancelled", "Cancelled")
                 return
-            if not apify_sites and "indeed" not in sites:
+            if not apify_sites and not ("indeed" in sites and direct_indeed):
                 counts["candidates"] = counts["scraped"]
                 if outcome == "broken" or (not counts["found"] and counts["errors"]):
                     finish("failed", errors[-1]["message"] if errors else "remote.id could not be read")
@@ -1003,7 +1006,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
 
         from api.job_os.firecrawl import FirecrawlError
 
-        if "indeed" not in sites:
+        if not ("indeed" in sites and direct_indeed):
             # Only Apify sites reach here without Apify on (all reported above as skipped).
             _mark_ran(search["id"])
             note = _after_run(new_ids)

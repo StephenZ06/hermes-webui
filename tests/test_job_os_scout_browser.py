@@ -67,7 +67,8 @@ def test_scout_search_lifecycle_and_blocked_run():
             page.wait_for_selector(f'.scout-search[data-search-id="{sid}"]', state="detached", timeout=10000)
         finally:
             browser.close()
-    assert "Firecrawl" in banner and run_disabled, "Run waits for a ready Firecrawl"
+    # Indeed is searched through Apify only (no Firecrawl fallback by default): with Apify off, Run waits.
+    assert "Apify is off" in banner and run_disabled, "Run waits for Apify"
     assert "Delete search?" in asked
     assert kept == "python backend"
     assert sites == {"indeed": True, "linkedin": False, "bayt": False, "remoteid": False}, "a new search starts on Indeed"

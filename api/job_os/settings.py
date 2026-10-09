@@ -52,7 +52,10 @@ def default_settings() -> dict:
         # Apify runs the job-site scraper on its own addresses (api/job_os/apify.py).
         # The token is a secret in the env files; these are the non-secret choices.
         # One "<site>_actor" per job site in apify.SITES (its first actor by default).
-        "apify": {"enabled": False, **{f"{site}_actor": _default_actor(site) for site in _sites()}, "results_per_city": 50},
+        # Indeed is read through Apify only; indeed_fallback lets Scout read it itself
+        # through Firecrawl while Apify is off (off by default).
+        "apify": {"enabled": False, **{f"{site}_actor": _default_actor(site) for site in _sites()}, "results_per_city": 50,
+                  "indeed_fallback": False},
         # Your standard answers to application screening questions; the Apply
         # kit uses them word for word and Luna fits them to each job.
         "apply": {"notice_period": "", "expected_salary": "", "work_authorization": "", "years_experience": "",
@@ -220,6 +223,7 @@ _VALIDATORS = {
         "enabled": _bool,
         **{f"{site}_actor": _actor_for(site) for site in _sites()},
         "results_per_city": lambda v, f: _int(v, f, 1, 1000),
+        "indeed_fallback": _bool,
     },
     "scout": {
         "enabled": _bool,

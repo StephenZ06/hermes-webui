@@ -233,7 +233,7 @@ def test_apify_settings_are_validated(home):
         save_settings({"apify": {"linkedin_actor": "someone/unknown"}}, expected_revision=0)
     saved = save_settings({"apify": {"linkedin_actor": "valig/linkedin-jobs-scraper", "results_per_city": 120}}, expected_revision=0)["apify"]
     assert saved == {"enabled": False, "indeed_actor": "valig/indeed-jobs-scraper", "linkedin_actor": "valig/linkedin-jobs-scraper",
-                     "bayt_actor": "blackfalcondata/bayt-scraper", "results_per_city": 120}
+                     "bayt_actor": "blackfalcondata/bayt-scraper", "results_per_city": 120, "indeed_fallback": False}
 
 
 def test_indeed_region_codes_are_dropped_from_the_location():

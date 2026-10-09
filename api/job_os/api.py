@@ -105,7 +105,9 @@ def _scout_searches_payload() -> dict:
 
     return {"searches": searches, "search_provider": search_provider_name(),
             # Apify runs need no Firecrawl, so the page lets them run without it.
-            "apify": {"active": bool(settings["apify"]["enabled"] and apify.token())},
+            "apify": {"active": bool(settings["apify"]["enabled"] and apify.token()),
+                      # Off by default: Indeed is read through Apify only.
+                      "indeed_fallback": bool(settings["apify"].get("indeed_fallback"))},
             "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
             "sites": apify.sites_payload(),
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"],

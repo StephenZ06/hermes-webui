@@ -56,6 +56,14 @@ and site is one run of an Apify actor on Apify's own addresses; it returns finis
 saves them like any other find (same duplicate, blocked-company and remote
 checks; same `/viewjob?jk=` identity). Firecrawl is not needed for these runs.
 
+**Indeed is searched through Apify only** (since 2026-10-09). With Apify off,
+Indeed, LinkedIn and Bayt searches don't run (the run says "Indeed needs
+Apify"; Scout shows "Apify is off"); remote.id still does. **Read Indeed with
+Firecrawl when Apify is off** (`apify.indeed_fallback`, off by default) brings
+back the older direct reading of Indeed through Firecrawl
+(`docs/job-os-firecrawl.md`), which Indeed often blocks. Firecrawl is still
+used to fill in a job saved from a link (Add job → fetch details).
+
 - **Token:** paste it under Settings → Apify. Hermes checks it with Apify
   (`GET /v2/users/me`), then saves it as `APIFY_API_TOKEN` in the env files
   (the shared secrets file when enabled). It is sent to Apify in a header,

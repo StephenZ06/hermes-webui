@@ -64,6 +64,10 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(scout, "validate_external_job_url",
                         lambda url: (_ for _ in ()).throw(scout.UnsafeJobUrl("internal")) if "internal" in url else url)
     monkeypatch.setattr(scout, "_sleep", lambda seconds: None)
+    # These tests read Indeed through Firecrawl: the fallback that is off by default.
+    from api.job_os.settings import save_settings
+
+    save_settings({"apify": {"indeed_fallback": True}}, expected_revision=0)
     return tmp_path
 
 
@@ -157,7 +161,7 @@ def test_remote_only_adds_remote_and_filters_onsite_postings(store):
 def test_blocked_companies_and_repeated_roles_are_skipped(store):
     from api.job_os.settings import save_settings
 
-    save_settings({"scout": {"blocked_companies": ["Globex Corporation"]}}, expected_revision=0)
+    save_settings({"scout": {"blocked_companies": ["Globex Corporation"]}}, expected_revision=1)
     search = _search()
     fake = FakeFirecrawl(links={_results(): [_clk("a1"), _clk("a2"), _clk("a3")]}, pages={
         _clk("a1"): _posting("Backend Engineer", company="Acme"),
@@ -283,7 +287,7 @@ def test_a_name_that_was_only_the_keywords_follows_them(store):
 
 def test_the_quota_is_shared_across_locations(store):
     from api.job_os.settings import save_settings
-    save_settings({"scout": {"max_results_per_search": 4}}, expected_revision=0)
+    save_settings({"scout": {"max_results_per_search": 4}}, expected_revision=1)
     search = _search(locations=["Kuala Lumpur", "Penang"])
     kl = [f"kl{i}" for i in range(6)]
     pg = [f"pg{i}" for i in range(6)]
@@ -320,3 +324,13 @@ def test_a_run_stops_early_once_indeed_keeps_refusing(store):
                  FakeFirecrawl(links={_results(keywords="ops"): [_clk(k) for k in keys]}))
     assert empty["status"] == "failed" and "refusing" in empty["stage_detail"]
     assert scout.get_search(empty["search_id"])["last_run_at"], "the schedule waits before trying again"
+
+
+def test_without_apify_or_the_fallback_indeed_does_not_run_through_firecrawl(store):
+    from api.job_os.settings import load_settings, save_settings
+
+    save_settings({"apify": {"indeed_fallback": False}}, expected_revision=load_settings()["revision"])
+    fake = FakeFirecrawl(links={_results(): [_clk("a1")]})
+    run = _run(_search(), fake)
+    assert run["status"] == "failed" and run["stage_detail"] == "Indeed needs Apify; turn it on in Settings → Apify"
+    assert fake.scraped == [] and fake.queries == [], "Firecrawl is never asked"
