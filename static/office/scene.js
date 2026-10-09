@@ -654,8 +654,8 @@ export function createOfficeScene(canvas, options) {
       const ends = Math.max(0.5, span.length / 2 - BRIDGE_DECK_PLATFORM_OVERLAP - 0.25);
       const lamps = new THREE.Group();
       [-1, 1].forEach(end => [-1, 1].forEach(side => {
-        const lamp = makeLampPost(2.0);
-        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.3), 0.63 + 0.17, end * ends);
+        const lamp = makeLampPost(1.5);
+        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.55), 0.63 + 0.17, end * ends);
         lamps.add(lamp);
       }));
       walk.add(mergeStatic(lamps, `lamps|${ends.toFixed(2)}`));

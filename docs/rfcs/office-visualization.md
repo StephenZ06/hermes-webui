@@ -1227,3 +1227,21 @@ Smoothness, measured headless (SwiftShader, so relative only):
   also walks round, not across, to its spot) and orchestrates at the globe.
 - Bridges: lit navy deck in the dark theme, solid neon rails.
 - `mergeStatic` now writes typed arrays and keeps indices.
+
+### Third pass, against close-up crops (2026-10-09)
+
+- **Lanterns** (`makeLampPost`): a squat pale-metal block, corner posts round
+  a recessed window on every face -- an amber lining and a warm core that only
+  just crosses the bloom threshold. Boxes, not a texture, so the bridge-end
+  lanterns still merge to two draw calls.
+- **Plants**: the topiary is four stepped green tiers on a trunk in a square
+  terracotta pot; the palm slot is now a succulent (pointed leaves in three
+  rings, lighter toward the middle) in a navy square pot (`makePalm` keeps
+  its name); the cube shrub is a green block on a terracotta block.
+- **Hub**: a wide dark plinth with a glowing ring round its top, a raised cup
+  with its own ring, and a large glass globe drawn with a small fresnel shader
+  (`globeMaterial`: clear in the middle, bright at the rim, one highlight)
+  plus a faint additive core. The wireframe grid and orbiting halo are gone.
+  The four corner desks are dark consoles with two textured blue screens
+  each, all turned toward the camera, with low teal stools instead of chairs
+  so no chair back hides a screen.

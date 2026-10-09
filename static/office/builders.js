@@ -2015,41 +2015,83 @@ export function makeBookshelf(palette, width) {
 }
 
 /** A clipped topiary: a pot and a chunky rounded green block (the reference's cube shrub). */
+/**
+ * A stepped topiary as in the reference: a square terracotta pot, a short
+ * trunk and four green tiers, each smaller than the one below.
+ */
 export function makeTopiary(palette) {
   const group = new THREE.Group();
-  const pot = roundedSlab(0.9, 0.7, 0.9, '#c98a54', 0.12);
-  pot.position.y = 0.35;
+  const pot = squarePot(0.34, 0.27, 0.5, '#b9673c');
+  pot.position.y = 0.25;
   group.add(pot);
-  const bush = roundedSlab(1.15, 1.05, 1.15, '#4caf50', 0.28);
-  bush.position.y = 1.25;
-  group.add(bush);
-  const top = roundedSlab(0.8, 0.6, 0.8, '#66c266', 0.22);
-  top.position.y = 2.0;
-  group.add(top);
+  const rim = roundedSlab(0.74, 0.08, 0.74, '#a85a33', 0.04);
+  rim.position.y = 0.5;
+  group.add(rim);
+  const trunk = box(0.14, 0.3, 0.14, '#6b4428');
+  trunk.position.y = 0.68;
+  group.add(trunk);
+  const greens = ['#4ea535', '#5cb53c', '#6ac444', '#7fd352'];
+  [0.98, 0.8, 0.62, 0.42].forEach((size, i) => {
+    const tier = roundedSlab(size, 0.36, size, greens[i], 0.07);
+    tier.position.y = 0.83 + i * 0.37 + 0.18;
+    group.add(tier);
+  });
   group.traverse(o => { o.castShadow = false; });
   return group;
 }
 
-/** A leafy potted palm: a round pot and fanned, flattened leaves. */
+/** A square pot that narrows toward the base (a four-sided cylinder). */
+function squarePot(halfTop, halfBottom, height, color) {
+  const mesh = new THREE.Mesh(
+    geometry(`square-pot|${halfTop}|${halfBottom}|${height}`, () => {
+      const g = new THREE.CylinderGeometry(halfTop * Math.SQRT2, halfBottom * Math.SQRT2, height, 4, 1);
+      g.rotateY(Math.PI / 4);
+      const flat = g.toNonIndexed();
+      flat.computeVertexNormals();
+      return flat;
+    }),
+    material(color, { rough: 0.75 }),
+  );
+  return mesh;
+}
+
+/**
+ * A potted succulent as in the reference: a dark navy square pot and a
+ * rosette of pointed leaves in three rings, lighter toward the middle.
+ * (Kept under its old name; the scenery list calls it.)
+ */
 export function makePalm(palette) {
   const group = new THREE.Group();
-  const pot = cylinder(0.5, 0.38, 0.8, 14, '#d58b4f');
-  pot.position.y = 0.4;
+  const pot = squarePot(0.36, 0.29, 0.62, '#2b3f63');
+  pot.position.y = 0.31;
   group.add(pot);
-  const leafGeo = geometry('palm-leaf', () => {
-    const g = new THREE.SphereGeometry(0.5, 10, 6);
-    g.scale(0.42, 0.12, 1.15);
-    g.translate(0, 0, 0.95);
+  const rim = roundedSlab(0.78, 0.08, 0.78, '#36527d', 0.04);
+  rim.position.y = 0.62;
+  group.add(rim);
+  const soil = box(0.6, 0.04, 0.6, '#3a2a1e');
+  soil.position.y = 0.65;
+  group.add(soil);
+  const leafGeo = geometry('succulent-leaf', () => {
+    const g = new THREE.ConeGeometry(0.24, 1, 4, 1);
+    g.rotateY(Math.PI / 4);
+    g.scale(1, 1, 0.42);
+    g.translate(0, 0.5, 0);
     return g;
   });
-  const greens = ['#3f9b4f', '#4fb35c', '#5cc068'];
-  for (let i = 0; i < 9; i += 1) {
-    const leaf = new THREE.Mesh(leafGeo, material(greens[i % 3], { rough: 0.8 }));
-    leaf.position.y = 1.0 + (i % 3) * 0.18;
-    leaf.rotation.y = i * (Math.PI * 2 / 9);
-    leaf.rotation.x = -0.35 - (i % 3) * 0.18;
-    group.add(leaf);
-  }
+  const rings = [
+    { n: 9, tilt: 1.0, len: 0.85, color: '#3f9638', turn: 0 },
+    { n: 7, tilt: 0.62, len: 0.85, color: '#55ad43', turn: 0.5 },
+    { n: 5, tilt: 0.28, len: 0.7, color: '#72c652', turn: 0.25 },
+  ];
+  rings.forEach(ring => {
+    for (let i = 0; i < ring.n; i += 1) {
+      const leaf = new THREE.Mesh(leafGeo, material(ring.color, { rough: 0.7 }));
+      leaf.position.y = 0.66;
+      leaf.scale.set(1, ring.len, 1);
+      leaf.rotation.set(ring.tilt, (i + ring.turn) * (Math.PI * 2 / ring.n), 0, 'YXZ');
+      group.add(leaf);
+    }
+  });
   group.traverse(o => { o.castShadow = false; });
   return group;
 }
@@ -2193,11 +2235,11 @@ function departmentProp(kind, palette, tint) {
 /** A small potted cube shrub, for a corner a topiary is too big for. */
 export function makeCubePlant() {
   const group = new THREE.Group();
-  const pot = roundedSlab(0.6, 0.5, 0.6, '#c98a54', 0.08);
-  pot.position.y = 0.25;
+  const pot = roundedSlab(0.66, 0.56, 0.66, '#b8693f', 0.05);
+  pot.position.y = 0.28;
   group.add(pot);
-  const bush = roundedSlab(0.75, 0.7, 0.75, '#56b65a', 0.2);
-  bush.position.y = 0.85;
+  const bush = roundedSlab(0.74, 0.62, 0.74, '#62b83c', 0.12);
+  bush.position.y = 0.56 + 0.31;
   group.add(bush);
   group.traverse(o => { o.castShadow = false; });
   return group;
@@ -2441,39 +2483,51 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
 }
 
 /**
- * A light pillar as in the reference: a slim dark square column with a
- * recessed warm light panel on each face, a footing and a cap. The light is
- * only just bright enough to bloom: a soft warm strip, not a lamp.
+ * A light pillar as in the reference: a squat, pale metal lantern block with
+ * a recessed window on every face -- an amber lining round a warm cream
+ * core. The core only just crosses the bloom threshold, so it glows softly.
+ * Built from boxes rather than a texture, so a row of them merges to two
+ * draw calls.
  */
 export function makeLampPost(height) {
-  const h = height || 2.2;
+  const h = height || 1.5;
+  const W = 0.86;
   const group = new THREE.Group();
-  const base = roundedSlab(0.72, 0.22, 0.72, '#2a3144', 0.05);
-  base.position.y = 0.11;
+  const frame = material('#a3a6ad', { rough: 0.5, metal: 0.2 });
+  const slab = () => roundedPlatform(W + 0.06, W + 0.06, 0.16, null, { radius: 0.05, bevel: 0.05, bevelSegments: 2, material: frame });
+  const base = slab();
+  base.position.y = 0.08;
   group.add(base);
-  const body = roundedSlab(0.54, h, 0.54, '#3b4459', 0.06);
-  body.position.y = 0.22 + h / 2;
-  group.add(body);
-  const cap = roundedSlab(0.66, 0.16, 0.66, '#2a3144', 0.05);
-  cap.position.y = 0.22 + h + 0.08;
+  const cap = slab();
+  cap.position.y = h - 0.08;
   group.add(cap);
-  const panelH = h * 0.62;
-  const light = glowMaterial('#ffb54d', 1.3);
-  [[0, 0.335, 0], [0, -0.335, Math.PI], [0.335, 0, Math.PI / 2], [-0.335, 0, -Math.PI / 2]].forEach(([x, z, ry]) => {
-    const panel = new THREE.Mesh(geometry(`pillar-light|${panelH}`, () => new THREE.PlaneGeometry(0.3, panelH)), light);
-    panel.position.set(x, 0.22 + h * 0.5, z);
-    panel.rotation.y = ry;
-    group.add(panel);
+  const openH = h - 0.32;
+  const post = W / 2 - 0.095;
+  [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([sx, sz]) => {
+    const p = box(0.19, openH, 0.19, frame);
+    p.position.set(sx * post, 0.16 + openH / 2, sz * post);
+    group.add(p);
   });
-  group.traverse(o => { o.castShadow = false; });
+  const lining = box(W - 0.16, openH, W - 0.16, glowMaterial('#e8701c', 0.9));
+  lining.position.y = 0.16 + openH / 2;
+  group.add(lining);
+  const core = glowMaterial('#ffb24a', 1.3);
+  const coreH = openH - 0.18;
+  [[W - 0.12, 0.36], [0.36, W - 0.12]].forEach(([w, d]) => {
+    const c = box(w, coreH, d, core);
+    c.position.y = 0.16 + openH / 2;
+    group.add(c);
+  });
+  group.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
   return group;
 }
 
 /**
  * The conductor hub's set, as in the reference: a raised rim round the
- * deck, a stepped round pedestal with a glowing ring carrying the glass
- * globe, and four double-monitor desks round it. The middle stays clear for
- * the conductor, who walks the ring between pedestal and desks.
+ * deck, a wide dark plinth with a glowing ring round its top, a big glass
+ * globe sitting in a glowing cup, and a console desk with two monitors at
+ * each corner. The ring between plinth and desks stays clear for the
+ * conductor.
  */
 export function makeHubCentrepiece(slab, tint) {
   const group = new THREE.Group();
@@ -2487,75 +2541,153 @@ export function makeHubCentrepiece(slab, tint) {
     bar.position.set(x, top + 0.16, z);
     group.add(bar);
   });
-  // Stepped pedestal.
-  const step1 = new THREE.Mesh(geometry('hub-step1', () => new THREE.CylinderGeometry(2.6, 2.75, 0.5, 40)), material('#252d40', { rough: 0.5, metal: 0.3 }));
-  step1.position.y = top + 0.225;
-  group.add(step1);
-  const ring = new THREE.Mesh(geometry('hub-ring', () => new THREE.TorusGeometry(2.35, 0.08, 8, 56)), glowMaterial(hex, 1.6));
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = top + 0.52;
-  group.add(ring);
-  const step2 = new THREE.Mesh(geometry('hub-step2', () => new THREE.CylinderGeometry(1.5, 1.75, 0.8, 32)), material('#1b2233', { rough: 0.45, metal: 0.35 }));
-  step2.position.y = top + 0.5 + 0.4;
-  group.add(step2);
-  const cup = new THREE.Mesh(geometry('hub-cup', () => new THREE.TorusGeometry(1.25, 0.13, 8, 40)), glowMaterial(hex, 1.3));
-  cup.rotation.x = Math.PI / 2;
-  cup.position.y = top + 1.32;
+  // The plinth: a wide dark drum, a glowing ring round its top edge, and a
+  // raised cup with its own ring that the globe sits in.
+  const plinthH = 1.15;
+  const plinth = new THREE.Mesh(geometry('hub-plinth', () => new THREE.CylinderGeometry(2.55, 2.7, plinthH, 48)), material('#2a3550', { rough: 0.45, metal: 0.3 }));
+  plinth.position.y = top + plinthH / 2;
+  group.add(plinth);
+  const lip = new THREE.Mesh(geometry('hub-lip', () => new THREE.TorusGeometry(2.42, 0.07, 8, 64)), glowMaterial(hex, 1.5));
+  lip.rotation.x = Math.PI / 2;
+  lip.position.y = top + plinthH + 0.02;
+  group.add(lip);
+  const cupH = 0.3;
+  const cup = new THREE.Mesh(geometry('hub-cup-base', () => new THREE.CylinderGeometry(1.35, 1.5, cupH, 40)), material('#11172a', { rough: 0.35, metal: 0.5 }));
+  cup.position.y = top + plinthH + cupH / 2;
   group.add(cup);
-  const globeY = top + 1.3 + 1.45;
-  const globe = new THREE.Mesh(geometry('hub-globe', () => new THREE.SphereGeometry(1.5, 32, 20)),
-    material('#a9d8ff', { physical: true, emissive: hex, ei: 0.85, rough: 0.12, metal: 0, transparent: true, opacity: 0.6, clearcoat: 1 }));
+  const cupRing = new THREE.Mesh(geometry('hub-cup-ring', () => new THREE.TorusGeometry(1.32, 0.06, 8, 48)), glowMaterial(hex, 1.7));
+  cupRing.rotation.x = Math.PI / 2;
+  cupRing.position.y = top + plinthH + cupH + 0.01;
+  group.add(cupRing);
+  // The globe: glass, clear in the middle and bright at the edge (a fresnel
+  // shader -- a lit transparent sphere read as a flat disc), with a soft
+  // highlight, and a faint inner glow.
+  const globeR = 2.2;
+  const globeY = top + plinthH + cupH + globeR - 0.35;
+  const globe = new THREE.Mesh(geometry('hub-globe2', () => new THREE.SphereGeometry(globeR, 48, 32)), globeMaterial(hex));
   globe.position.y = globeY;
+  globe.renderOrder = 2;
+  globe.userData.noMerge = true;
   group.add(globe);
-  const grid = new THREE.Mesh(geometry('hub-globe-grid', () => new THREE.SphereGeometry(1.53, 14, 9)), glowMaterial(hex, 1.2, { wireframe: true, opacity: 0.32 }));
-  grid.position.y = globeY;
-  group.add(grid);
-  const halo = new THREE.Mesh(geometry('hub-halo', () => new THREE.TorusGeometry(1.85, 0.045, 6, 56)), glowMaterial(hex, 1.4));
-  halo.position.y = globeY;
-  halo.rotation.x = Math.PI / 2.3;
-  group.add(halo);
-  // Four desks with two monitors each, round the pedestal, facing out.
-  const screenMat = glowMaterial('#3b82f6', 0.9);
-  const radius = 5.85;
+  const core = new THREE.Mesh(geometry('hub-core', () => new THREE.SphereGeometry(globeR * 0.55, 24, 16)), glowMaterial(hex, 0.6, { opacity: 0.35, additive: true }));
+  core.position.y = globeY - 0.25;
+  core.userData.noMerge = true;
+  group.add(core);
+  // A console desk with two monitors at each corner, facing the camera's
+  // way so every pair of screens shows.
+  let screenMat = _materials.get(`hub-ui|${hex}`);
+  if (!screenMat) {
+    screenMat = new THREE.MeshBasicMaterial({ map: hubScreenTexture(hex), toneMapped: false });
+    _materials.set(`hub-ui|${hex}`, screenMat);
+  }
+  const radius = 6.1;
   [0.25, 0.75, 1.25, 1.75].forEach(turn => {
     const a = turn * Math.PI;
     const desk = new THREE.Group();
-    const deskTop = roundedSlab(2.8, 0.14, 1.1, '#d8b483', 0.08);
-    deskTop.position.y = 1.0;
+    const body = roundedSlab(2.9, 0.92, 1.0, '#262e40', 0.08);
+    body.position.y = 0.46;
+    desk.add(body);
+    const deskTop = roundedSlab(3.05, 0.12, 1.15, '#3b465c', 0.06);
+    deskTop.position.y = 0.98;
     desk.add(deskTop);
-    const pedestal = roundedSlab(0.7, 0.95, 1.0, '#2e3547', 0.06);
-    pedestal.position.set(-1.0, 0.48, 0);
-    desk.add(pedestal);
-    const leg = roundedSlab(0.12, 0.95, 1.0, '#2e3547', 0.03);
-    leg.position.set(1.3, 0.48, 0);
-    desk.add(leg);
-    [-0.6, 0.6].forEach(x => {
-      const bezel = roundedPanel(1.1, 0.72, 0.08, '#121826', 0.06);
-      bezel.position.set(x, 1.62, -0.25);
-      bezel.rotation.y = x < 0 ? 0.12 : -0.12;
+    const strip = box(2.7, 0.05, 0.02, glowMaterial(hex, 1.1));
+    strip.position.set(0, 0.8, 0.505);
+    desk.add(strip);
+    [-0.68, 0.68].forEach(x => {
+      const turnIn = x < 0 ? 0.16 : -0.16;
+      const bezel = roundedPanel(1.25, 0.82, 0.08, '#0f1420', 0.05);
+      bezel.position.set(x, 1.66, -0.22);
+      bezel.rotation.y = turnIn;
       desk.add(bezel);
-      const glow = new THREE.Mesh(geometry('hub-screen', () => new THREE.PlaneGeometry(0.98, 0.6)), screenMat);
-      glow.position.set(x, 1.62, -0.205);
-      glow.rotation.y = bezel.rotation.y;
-      desk.add(glow);
-      const stand = roundedSlab(0.1, 0.4, 0.1, '#121826', 0.02);
-      stand.position.set(x, 1.27, -0.27);
+      const glass = new THREE.Mesh(geometry('hub-screen2', () => new THREE.PlaneGeometry(1.13, 0.7)), screenMat);
+      glass.position.set(x, 1.66, -0.175);
+      glass.rotation.y = turnIn;
+      desk.add(glass);
+      const stand = box(0.1, 0.36, 0.1, '#0f1420');
+      stand.position.set(x, 1.2, -0.26);
       desk.add(stand);
     });
-    const chair = makeChair({ chair: '#1d2230', deskLeg: '#2e3547' });
-    chair.position.set(0, 0, 1.05);
-    chair.rotation.y = Math.PI;
-    desk.add(chair);
+    // Low stools rather than office chairs: a chair back on the camera
+    // side would hide the screens.
+    [-0.68, 0.68].forEach(x => {
+      const seat = cylinder(0.32, 0.3, 0.16, 20, material('#1f9e8c', { rough: 0.6 }));
+      seat.position.set(x, 0.62, 0.95);
+      desk.add(seat);
+      const post = cylinder(0.07, 0.07, 0.5, 8, '#2e3547');
+      post.position.set(x, 0.29, 0.95);
+      desk.add(post);
+      const foot = cylinder(0.26, 0.28, 0.06, 16, '#2e3547');
+      foot.position.set(x, 0.03, 0.95);
+      desk.add(foot);
+    });
     desk.position.set(Math.sin(a) * radius, top, Math.cos(a) * radius);
-    desk.scale.setScalar(1.25);
-    desk.rotation.y = a + Math.PI;
+    desk.scale.setScalar(1.15);
+    desk.rotation.y = Math.PI / 4;
     group.add(desk);
   });
   group.traverse(o => { o.castShadow = false; });
-  grid.userData.noMerge = true;
-  halo.userData.noMerge = true;
-  group.userData.spin = [grid, halo];
-  return mergeStatic(group, `hub2|${slab}|${hex}`);
+  group.userData.spin = [];
+  return mergeStatic(group, `hub3|${slab}|${hex}`);
+}
+
+/** Glass: see-through in the middle, bright toward the rim, with a highlight. */
+function globeMaterial(hex) {
+  const key = `globe|${hex}`;
+  let mat = _materials.get(key);
+  if (mat) return mat;
+  const tint = new THREE.Color(hex);
+  mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      body: { value: tint.clone().multiplyScalar(0.55) },
+      rim: { value: new THREE.Color('#9fd2ff').multiplyScalar(1.25) },
+    },
+    vertexShader: `varying vec3 vN;
+      void main() { vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform vec3 body; uniform vec3 rim; varying vec3 vN;
+      void main() {
+        vec3 n = normalize(vN);
+        float f = pow(1.0 - clamp(n.z, 0.0, 1.0), 2.4);
+        vec3 h = normalize(vec3(-0.35, 0.55, 1.0));
+        float spec = pow(max(dot(n, h), 0.0), 90.0) * 0.9;
+        float lift = 0.5 + 0.5 * n.y;
+        vec3 c = body * (0.7 + 0.6 * lift) + rim * f + vec3(spec);
+        gl_FragColor = vec4(c, clamp(0.32 + 0.65 * f + spec, 0.0, 1.0));
+      }`,
+  });
+  _materials.set(key, mat);
+  return mat;
+}
+
+/** A blue console screen: a header bar, a chart and rows of text. */
+function hubScreenTexture(hex) {
+  const key = `hub-ui|${hex}`;
+  let tex = _iconTextures.get(key);
+  if (tex) return tex;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 80;
+  const c = canvas.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, 80);
+  g.addColorStop(0, '#1d4fa8');
+  g.addColorStop(1, '#0f2f6e');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 128, 80);
+  c.fillStyle = '#5ea8ff';
+  c.fillRect(6, 6, 116, 8);
+  c.strokeStyle = '#9fd2ff';
+  c.lineWidth = 2;
+  c.beginPath();
+  [[8, 58], [24, 46], [38, 52], [54, 32], [70, 40], [84, 26]].forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+  c.stroke();
+  c.fillStyle = '#4b8ff0';
+  for (let i = 0; i < 4; i += 1) c.fillRect(94, 22 + i * 12, 26 - (i % 2) * 8, 5);
+  c.fillRect(8, 66, 70, 5);
+  tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _iconTextures.set(key, tex);
+  return tex;
 }
 
 /**
