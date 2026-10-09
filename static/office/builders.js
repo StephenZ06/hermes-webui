@@ -1370,71 +1370,147 @@ export function makeChair(palette) {
  * @returns {THREE.Group} `userData.joints` = {shoulderL, shoulderR, head, torso}
  */
 export function makePerson(palette, tint) {
+  // An astronaut in a white suit: a helmet with a dark visor, a life-support
+  // backpack, a chest control panel, gloves and boots. The worker's own
+  // colour (`tint`) marks the shoulder patches, the backpack stripe and the
+  // chest light, so figures stay tellable apart. The joint structure (and
+  // so every pose) is the same as before; each joint's static parts are
+  // merged, so a figure costs a handful of draw calls.
+  const accent = hexOf(tint || palette.shirt, '#4f7ca8');
   const group = new THREE.Group();
-  const shirt = material(tint || palette.shirt, { rough: 0.9 });
-  const skin = material(palette.skin, { rough: 0.7 });
+  const suit = material('#eef1f6', { rough: 0.62 });
+  const trim = material('#9aa3b3', { rough: 0.5, metal: 0.25 });
+  const mark = material(accent, { rough: 0.5, emissive: accent, ei: 0.25 });
+  const visorMat = material('#16223a', { physical: true, rough: 0.12, metal: 0.55, clearcoat: 1, emissive: '#1d3b70', ei: 0.25 });
+  const merged = (key, parts) => {
+    const g = new THREE.Group();
+    parts.forEach(m => g.add(m));
+    return mergeStatic(g, `astro|${key}|${accent}`);
+  };
 
   const torso = new THREE.Group();
   torso.position.y = 1.55;
   group.add(torso);
 
-  const chest = capsule(0.42, 0.8, shirt);
+  const chest = capsule(0.44, 0.78, suit);
   chest.position.y = 0.4;
-  torso.add(chest);
+  const panel = roundedPanel(0.42, 0.28, 0.08, trim, 0.05);
+  panel.position.set(0, 0.48, 0.44);
+  const light = box(0.1, 0.07, 0.04, mark);
+  light.position.set(-0.1, 0.53, 0.5);
+  const knob = box(0.1, 0.07, 0.04, '#5b6474');
+  knob.position.set(0.1, 0.53, 0.5);
+  const belt = new THREE.Mesh(geometry('astro-belt', () => new THREE.TorusGeometry(0.43, 0.06, 8, 24)), trim);
+  belt.rotation.x = Math.PI / 2;
+  belt.position.y = -0.02;
+  const pack = roundedSlab(0.74, 0.92, 0.34, '#d6dbe3', 0.1);
+  pack.position.set(0, 0.42, -0.5);
+  const packStripe = box(0.76, 0.08, 0.36, mark);
+  packStripe.position.set(0, 0.62, -0.5);
+  const collar = new THREE.Mesh(geometry('astro-collar', () => new THREE.TorusGeometry(0.3, 0.08, 8, 24)), trim);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.86;
+  torso.add(merged('torso', [chest, panel, light, knob, belt, pack, packStripe, collar]));
 
-  const shoulderL = new THREE.Group();
-  shoulderL.position.set(-0.5, 0.72, 0);
-  const armL = capsule(0.15, 0.6, shirt);
-  armL.position.y = -0.4;
-  shoulderL.add(armL);
-  torso.add(shoulderL);
+  const arm = side => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.52, 0.72, 0);
+    const sleeve = capsule(0.16, 0.58, suit);
+    sleeve.position.y = -0.4;
+    const patch = cylinder(0.12, 0.12, 0.04, 16, mark);
+    patch.rotation.z = Math.PI / 2;
+    patch.position.set(side * 0.16, -0.08, 0);
+    const cuff = cylinder(0.17, 0.17, 0.08, 16, trim);
+    cuff.position.y = -0.72;
+    const glove = new THREE.Mesh(geometry('astro-glove', () => new THREE.SphereGeometry(0.15, 14, 10)), trim);
+    glove.position.y = -0.84;
+    shoulder.add(merged(`arm${side}`, [sleeve, patch, cuff, glove]));
+    torso.add(shoulder);
+    return shoulder;
+  };
+  const shoulderL = arm(-1);
+  const shoulderR = arm(1);
 
-  const shoulderR = new THREE.Group();
-  shoulderR.position.set(0.5, 0.72, 0);
-  const armR = capsule(0.15, 0.6, shirt);
-  armR.position.y = -0.4;
-  shoulderR.add(armR);
-  torso.add(shoulderR);
-
-  // Legs exist only so a figure can walk. Seated at a desk they are behind
-  // furniture and hidden, which is why the office got this far without them.
+  // Legs exist only so a figure can walk (or hop). Seated at a desk they are
+  // behind furniture and hidden.
   const legs = new THREE.Group();
-  const hipL = new THREE.Group();
-  hipL.position.set(-0.19, 0, 0);
-  const legL = capsule(0.155, 0.62, material(palette.trousers, { rough: 0.95 }));
-  legL.position.y = -0.42;
-  hipL.add(legL);
-  const hipR = new THREE.Group();
-  hipR.position.set(0.19, 0, 0);
-  const legR = capsule(0.155, 0.62, material(palette.trousers, { rough: 0.95 }));
-  legR.position.y = -0.42;
-  hipR.add(legR);
+  const leg = side => {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.2, 0, 0);
+    const trouser = capsule(0.165, 0.6, suit);
+    trouser.position.y = -0.42;
+    const knee = cylinder(0.17, 0.17, 0.06, 14, trim);
+    knee.position.y = -0.42;
+    const boot = roundedSlab(0.3, 0.2, 0.42, '#7d8696', 0.07);
+    boot.position.set(0, -0.86, 0.05);
+    hip.add(merged(`leg${side}`, [trouser, knee, boot]));
+    return hip;
+  };
+  const hipL = leg(-1);
+  const hipR = leg(1);
   legs.add(hipL, hipR);
   legs.position.y = 1.55;
   legs.visible = false;
   group.add(legs);
 
   const head = new THREE.Group();
-  head.position.y = 1.0;
-  const skull = new THREE.Mesh(
-    geometry('head', () => new THREE.SphereGeometry(0.45, 24, 18)), skin,
-  );
-  skull.castShadow = true;
-  head.add(skull);
-  const hair = new THREE.Mesh(
-    geometry('hair', () => new THREE.SphereGeometry(
-      0.47, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.55,
-    )),
-    material(palette.hair, { rough: 0.95 }),
-  );
-  hair.position.y = 0.05;
-  head.add(hair);
+  head.position.y = 1.02;
+  const helmet = new THREE.Mesh(geometry('astro-helmet', () => new THREE.SphereGeometry(0.5, 28, 20)), suit);
+  helmet.castShadow = true;
+  // The visor: a band of a slightly larger sphere across the front (+z).
+  const visor = new THREE.Mesh(geometry('astro-visor', () => new THREE.SphereGeometry(
+    0.505, 28, 14, Math.PI / 2 - Math.PI * 0.36, Math.PI * 0.72, Math.PI * 0.3, Math.PI * 0.36,
+  )), visorMat);
+  const ear = side => {
+    const e = cylinder(0.1, 0.1, 0.08, 14, trim);
+    e.rotation.z = Math.PI / 2;
+    e.position.set(side * 0.5, 0, 0);
+    return e;
+  };
+  head.add(merged('head', [helmet, visor, ear(-1), ear(1)]));
   torso.add(head);
 
   group.userData.joints = { torso, shoulderL, shoulderR, head, legs, hipL, hipR };
   group.userData.pose = 'work';
   group.userData.poseTargets = null;
   return group;
+}
+
+/** Hop length (distance per hop) and height for low-gravity hopping. */
+export const HOP_LENGTH = 2.0;
+export const HOP_HEIGHT = 0.85;
+
+/**
+ * Height above the floor `phase` (distance travelled) into a hop: a
+ * parabola, as under constant (moon-like) gravity, since phase advances at
+ * a steady speed.
+ */
+export function hopHeight(phase) {
+  const f = ((phase % HOP_LENGTH) + HOP_LENGTH) % HOP_LENGTH / HOP_LENGTH;
+  return 4 * HOP_HEIGHT * f * (1 - f);
+}
+
+/**
+ * A low-gravity hop instead of a stride: legs together, knees tucking a
+ * little at the top of the arc and reaching for the floor on the way down,
+ * arms floating out to the sides for balance.
+ */
+export function poseHop(person, phase) {
+  const joints = person && person.userData && person.userData.joints;
+  if (!joints) return;
+  const f = ((phase % HOP_LENGTH) + HOP_LENGTH) % HOP_LENGTH / HOP_LENGTH;
+  const air = Math.sin(Math.PI * f);
+  joints.legs.visible = true;
+  joints.hipL.rotation.x = -0.15 - 0.35 * air;
+  joints.hipR.rotation.x = -0.15 - 0.35 * air;
+  joints.shoulderL.rotation.x = -0.25 - 0.2 * air;
+  joints.shoulderR.rotation.x = -0.25 - 0.2 * air;
+  joints.shoulderL.rotation.z = -(0.35 + 0.35 * air);
+  joints.shoulderR.rotation.z = 0.35 + 0.35 * air;
+  joints.head.rotation.x = 0;
+  joints.head.rotation.y = 0;
+  joints.torso.rotation.x = 0.12 - 0.08 * air;
+  joints.torso.position.y = 1.55;
 }
 
 // Pose targets, in radians. The camera looks at the office from a fixed
@@ -2617,8 +2693,8 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
 /**
  * A neon marker post (the reference's docking beacon): a small dark
  * rounded column with a vertical warm-white light core showing through a
- * slot on every face, on a footing with a slim metal cap. The core is just
- * over the bloom threshold, so it carries a soft glow. Boxes and two
+ * slot on every face, on a footing with a slim metal cap. Only the core
+ * glows -- no halo or light pool round it. Boxes and two
  * materials, so a pod's posts merge into its scenery.
  */
 export function makeLampPost(height) {
@@ -2637,80 +2713,18 @@ export function makeLampPost(height) {
   cap.position.y = h - 0.04;
   group.add(cap);
   const coreH = h - 0.5;
-  // The core stays under the bloom threshold: bloom works on screen pixels,
-  // so a thin core lost its glow when zoomed out and smeared over the whole
-  // post when zoomed in. The glow is geometry instead (below).
-  const core = glowMaterial('#ffeccc', 0.95);
+  // Only the bar itself glows: an unlit, bright core kept under the bloom
+  // threshold (bloom works on screen pixels, so a thin core lost its glow
+  // zoomed out and smeared over the whole post zoomed in), with no halo.
+  const core = glowMaterial('#fff0d4', 1.0);
   // The body's bevel stands 0.03 proud of W, so the core reaches past it.
   [[W + 0.09, 0.14], [0.14, W + 0.09]].forEach(([cw, cd]) => {
     const c = roundedPlatform(cw, cd, coreH, null, { radius: 0.06, bevel: 0.001, bevelSegments: 1, material: core });
     c.position.y = 0.12 + (h - 0.2) / 2 + 0.02;
     group.add(c);
   });
-  // Soft glow: two crossed cards with a warm radial falloff, drawn additively.
-  // Being geometry, it scales with the post and looks the same at any zoom.
-  const halo = postGlowMaterial();
-  // Kept below the cap: a card reaching above it drew a cross over the top.
-  [0, Math.PI / 2].forEach(ry => {
-    const card = new THREE.Mesh(geometry(`post-glow|${h}`, () => new THREE.PlaneGeometry(2.3, h - 0.25)), halo);
-    card.position.y = 0.1 + (h - 0.25) / 2;
-    card.rotation.y = ry;
-    card.renderOrder = 3;
-    group.add(card);
-  });
-  // And a warm pool of light on the deck round its foot.
-  const pool = new THREE.Mesh(geometry('post-pool', () => new THREE.CircleGeometry(1.3, 32).rotateX(-Math.PI / 2)), postPoolMaterial());
-  pool.position.y = 0.02;
-  pool.renderOrder = 2;
-  group.add(pool);
   group.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
   return group;
-}
-
-function postPoolMaterial() {
-  let mat = _materials.get('post-pool');
-  if (mat) return mat;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 64;
-  const c = canvas.getContext('2d');
-  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, 'rgba(255,214,160,0.45)');
-  g.addColorStop(0.5, 'rgba(255,190,120,0.14)');
-  g.addColorStop(1, 'rgba(255,170,90,0)');
-  c.fillStyle = g;
-  c.fillRect(0, 0, 64, 64);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  mat.userData.mergeable = true;
-  _materials.set('post-pool', mat);
-  return mat;
-}
-
-function postGlowMaterial() {
-  let mat = _materials.get('post-glow');
-  if (mat) return mat;
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 96;
-  const c = canvas.getContext('2d');
-  c.save();
-  c.translate(32, 48);
-  c.scale(1, 1.5);
-  const g = c.createRadialGradient(0, 0, 0, 0, 0, 32);
-  g.addColorStop(0, 'rgba(255,226,178,0.6)');
-  g.addColorStop(0.25, 'rgba(255,204,140,0.3)');
-  g.addColorStop(0.6, 'rgba(255,180,110,0.08)');
-  g.addColorStop(1, 'rgba(255,170,90,0)');
-  c.fillStyle = g;
-  c.fillRect(-32, -32, 64, 64);
-  c.restore();
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
-  mat.userData.mergeable = true;
-  _materials.set('post-glow', mat);
-  return mat;
 }
 
 /**
@@ -3086,6 +3100,55 @@ function hubScreenTexture(hex) {
   tex.colorSpace = THREE.SRGBColorSpace;
   _iconTextures.set(key, tex);
   return tex;
+}
+
+/**
+ * A shooting star: a bright head and a tapering trail that fades toward
+ * its tail, drawn additively. `userData.place(from, dir, head, trail, fade)`
+ * puts the head `head` units from `from` along `dir` (flat, x/z), with a
+ * trail `trail` long behind it, at `fade` (0-1) brightness.
+ */
+export function makeShootingStar() {
+  const group = new THREE.Group();
+  let trailMat = _materials.get('shooting-trail');
+  if (!trailMat) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 16;
+    const c = canvas.getContext('2d');
+    for (let x = 0; x < 128; x += 1) {
+      const along = x / 127;
+      // Fainter and thinner toward the tail (x = 0).
+      const a = Math.pow(along, 1.6);
+      const half = 1 + along * 6;
+      const g = c.createLinearGradient(0, 8 - half, 0, 8 + half);
+      g.addColorStop(0, 'rgba(190,215,255,0)');
+      g.addColorStop(0.5, `rgba(235,244,255,${a.toFixed(3)})`);
+      g.addColorStop(1, 'rgba(190,215,255,0)');
+      c.fillStyle = g;
+      c.fillRect(x, 8 - half, 1, half * 2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    trailMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+    _materials.set('shooting-trail', trailMat);
+  }
+  const trail = new THREE.Mesh(geometry('shooting-trail', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), trailMat);
+  group.add(trail);
+  const headMat = glowMaterial('#eef5ff', 1.3, { opacity: 1, additive: true });
+  const head = new THREE.Mesh(geometry('shooting-head', () => new THREE.SphereGeometry(0.16, 12, 8)), headMat);
+  group.add(head);
+  group.renderOrder = -1;
+  group.userData.place = (from, dir, along, length, fade) => {
+    const angle = Math.atan2(dir.z, dir.x);
+    trail.rotation.y = -angle;
+    trail.scale.set(Math.max(0.01, length), 1, 0.28);
+    trail.position.set(from.x + dir.x * (along - length / 2), from.y, from.z + dir.z * (along - length / 2));
+    head.position.set(from.x + dir.x * along, from.y, from.z + dir.z * along);
+    trailMat.opacity = 0.75 * fade;
+    head.scale.setScalar(0.4 + 0.6 * fade);
+  };
+  return group;
 }
 
 /**

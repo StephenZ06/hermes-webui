@@ -190,3 +190,19 @@ def test_bridge_from_the_hub_drops_its_first_chevron(page):
     }""")
     assert len(out["hub"]) == len(out["all"]) - 1
     assert min(out["hub"]) > min(out["all"]), "the one dropped is at the conductor's (-z) end"
+
+
+def test_conductor_hops_in_low_gravity_and_shooting_stars_fade(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const L = b.HOP_LENGTH;
+      const heights = [0, 0.25, 0.5, 0.75, 1].map(f => b.hopHeight(f * L));
+      const star = b.makeShootingStar();
+      star.userData.place({ x: 0, y: -18, z: 0 }, { x: 1, z: 0 }, 6, 2, 1);
+      const head = star.children[1].position;
+      return { heights, max: b.HOP_HEIGHT, headX: head.x };
+    }""")
+    h = out["heights"]
+    assert h[0] == 0 and abs(h[4]) < 1e-9, "each hop starts and ends on the floor"
+    assert abs(h[2] - out["max"]) < 1e-9 and abs(h[1] - h[3]) < 1e-9, "a symmetric parabola peaking mid-hop"
+    assert out["headX"] == 6, "the shooting star's head leads its trail"

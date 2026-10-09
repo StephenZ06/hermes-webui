@@ -21,7 +21,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
-  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, mergeStatic,
+  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, makeShootingStar, mergeStatic,
+  poseHop, hopHeight,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
@@ -45,8 +46,12 @@ const GROUND_SIZE = 400;
 // The floor plane sits below the platforms' dark bases, so each pod stands as
 // a whole block (coloured top, neon band, base) rather than a slab sunk to its rim.
 const GROUND_Y = -2.6;
-// The dark theme's black backdrop, well below the platforms (see buildGround).
+// The dark theme's backdrop, well below the platforms (see buildGround): a
+// cool charcoal, the app's own dark-surface family, rather than pure black,
+// which overpowered the platforms' colours. The output pass's ACES tone
+// mapping darkens it to about #232730 on screen.
 const SPACE_Y = -26;
+const SPACE_COLOR = '#33373f';
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -360,12 +365,12 @@ export function createOfficeScene(canvas, options) {
   function buildGround(halfSize) {
     const space = palette === PALETTES.dark;
     // In the dark theme there is no floor: the platforms float over plain
-    // black space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
+    // charcoal space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
     // haze or glow -- with stars at several depths (see installGround). A
     // floor that caught the platforms' shadows is what made the view flat.
     const size = (halfSize + (space ? 60 : 0)) * 2;
     const geometry = new THREE.PlaneGeometry(size, size);
-    const material = space ? new THREE.MeshBasicMaterial({ color: '#010104' }) : new THREE.MeshStandardMaterial({
+    const material = space ? new THREE.MeshBasicMaterial({ color: SPACE_COLOR, toneMapped: false }) : new THREE.MeshStandardMaterial({
       color: palette.ground, roughness: 0.95, metalness: 0.0,
     });
     const mesh = new THREE.Mesh(geometry, material);
@@ -1772,6 +1777,58 @@ export function createOfficeScene(canvas, options) {
   let running = false;
   let lastFrameAt = 0;
 
+  // Now and then a shooting star crosses the backdrop (dark theme only):
+  // one at a time, a second or so long, every 9-20 s, low in the scene so it
+  // passes behind the platforms.
+  let shootingStar = null;
+  let nextShootingStarAt = 0;
+  const _shootCentre = new THREE.Vector3();
+  function advanceShootingStar(t) {
+    if (palette !== PALETTES.dark) {
+      if (shootingStar) shootingStar.mesh.visible = false;
+      return;
+    }
+    if (!nextShootingStarAt) nextShootingStarAt = t + 4 + Math.random() * 6;
+    if (!shootingStar) {
+      shootingStar = { mesh: makeShootingStar(), start: -1 };
+      shootingStar.mesh.visible = false;
+      scene.add(shootingStar.mesh);
+    }
+    const star = shootingStar;
+    if (star.start < 0) {
+      if (t < nextShootingStarAt) return;
+      // Pick a spot in view: the point of the y = -18 plane under the
+      // camera's target, then an offset across and up the screen.
+      const y = -18;
+      _shootCentre.copy(cameraTarget).addScaledVector(ISO_DIRECTION, (y - cameraTarget.y) / ISO_DIRECTION.y);
+      const halfH = FRUSTUM_HALF_HEIGHT / (view.zoom || 1);
+      const across = (Math.random() * 2 - 1) * halfH * 1.1;
+      const up = (0.2 + Math.random() * 0.6) * halfH;
+      const rx = Math.SQRT1_2, rz = -Math.SQRT1_2;   // screen right, on the ground
+      const ux = -Math.SQRT1_2, uz = -Math.SQRT1_2;  // screen up, on the ground
+      star.from = { x: _shootCentre.x + rx * across + ux * up * 1.3, z: _shootCentre.z + rz * across + uz * up * 1.3, y };
+      // Down the screen and to one side.
+      const sideways = (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.7);
+      let dx = rx * sideways - ux, dz = rz * sideways - uz;
+      const l = Math.hypot(dx, dz);
+      star.dir = { x: dx / l, z: dz / l };
+      star.travel = halfH * (0.6 + Math.random() * 0.4);
+      star.duration = 1.1 + Math.random() * 0.5;
+      star.start = t;
+      star.mesh.visible = true;
+    }
+    const k = (t - star.start) / star.duration;
+    if (k >= 1) {
+      star.start = -1;
+      star.mesh.visible = false;
+      nextShootingStarAt = t + 9 + Math.random() * 11;
+      return;
+    }
+    const head = star.travel * easeOutCubic(k);
+    const fade = Math.min(1, k / 0.15) * Math.min(1, (1 - k) / 0.35);
+    star.mesh.userData.place(star.from, star.dir, head, Math.min(star.travel * 0.35, head), fade);
+  }
+
   function frame(now) {
     if (!running) return;
     rafId = window.requestAnimationFrame(frame);
@@ -1854,6 +1911,7 @@ export function createOfficeScene(canvas, options) {
         hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__');
       }
       if (stars) stars.children.forEach(layer => { layer.material.uniforms.time.value = t; });
+      advanceShootingStar(t);
       const wanderer = conductor.userData.wanderer;
       const orchestrating = conductor.userData.status === 'orchestrating';
       const life = conductor.userData.life;
@@ -1872,15 +1930,21 @@ export function createOfficeScene(canvas, options) {
           poseWorker(person, 'orchestrate', t, dt, { standing: true });
         } else {
           person.rotation.y = wanderer.state.heading;
-          poseWalking(person, wanderer.state.phase, 1);
+          poseHop(person, wanderer.state.phase);
+          person.position.y = 0.6 + hopHeight(wanderer.state.phase);
         }
       } else {
         const decorChairs = (conductor.userData.centrepiece && conductor.userData.centrepiece.userData.chairs) || [];
         const now = life.step({ t, dtMs, wanderer, chairs: decorChairs });
         person.position.set(now.x, 0.6, now.z);
         person.rotation.y = now.heading;
-        if (now.walking) poseWalking(person, wanderer.state.phase, 1);
-        else poseWorker(person, now.pose, t, dt, { standing: !now.seated });
+        // In low gravity it hops rather than walks (see poseHop/hopHeight).
+        if (now.walking) {
+          poseHop(person, wanderer.state.phase);
+          person.position.y = 0.6 + hopHeight(wanderer.state.phase);
+        } else {
+          poseWorker(person, now.pose, t, dt, { standing: !now.seated });
+        }
         if (now.icon && bubble) {
           drawChatBubble(bubble, palette, now.icon);
           bubble.visible = true;
@@ -1961,6 +2025,7 @@ export function createOfficeScene(canvas, options) {
     document.removeEventListener('keydown', onKeyDown);
     clearOffice();
     if (stars) { disposeTree(stars); stars = null; }
+    if (shootingStar) { disposeTree(shootingStar.mesh); shootingStar = null; }
     disposeSharedCaches();
     scene.clear();
     ownedGeometries.forEach(g => { try { g.dispose(); } catch (_err) { /* already gone */ } });

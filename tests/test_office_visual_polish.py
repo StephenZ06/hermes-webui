@@ -159,7 +159,7 @@ def test_renderer_uses_srgb_output_for_smoother_model_gradients():
 
 def test_people_use_smooth_capsule_and_head_geometry():
     assert "new THREE.CapsuleGeometry(radius, length, 4, 12)" in BUILDERS_SRC
-    assert "new THREE.SphereGeometry(0.45, 24, 18)" in BUILDERS_SRC
+    assert "new THREE.SphereGeometry(0.5, 28, 20)" in BUILDERS_SRC, "the astronaut helmet is a smooth sphere"
 
 
 def test_platform_finish_softens_edge_specular_hotspots():

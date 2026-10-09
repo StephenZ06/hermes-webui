@@ -1324,3 +1324,25 @@ Smoothness, measured headless (SwiftShader, so relative only):
   for this, so only bridge gaps get marker posts.
 - A bridge that starts at the hub leaves out its first activity chevron (the
   one at the hub's edge); `makeBridgeSegment({ skipFirstChevron })`.
+
+### Seventh pass: astronauts in low gravity (2026-10-10)
+
+- **Backdrop**: cool charcoal (`SPACE_COLOR` `#33373f`, about `#232730` on
+  screen after ACES) instead of black, which overpowered the platforms'
+  colours; stars unchanged.
+- **Marker posts**: the glow cards and floor pool are gone; only the bar
+  glows (unlit, under the bloom threshold).
+- **Figures are astronauts** (`makePerson`): white suit, helmet with a dark
+  glossy visor and ear pieces, life-support backpack, chest control panel,
+  belt, cuffs, gloves, knee rings and boots. The worker's colour marks the
+  shoulder patches, backpack stripe and chest light. Joints and poses are
+  unchanged; each joint's static parts are merged.
+- **The conductor hops** instead of walking: a parabolic hop
+  (`hopHeight`, `HOP_LENGTH` 2.0, `HOP_HEIGHT` 0.85) driven by distance
+  travelled, so at a steady speed it rises and falls as under constant,
+  moon-like gravity; `poseHop` tucks the legs and floats the arms out.
+  Subagents still walk to their desks.
+- **Shooting stars** (dark theme): one at a time, every 9-20 s, a bright
+  head with a tapering additive trail on a plane well below the platforms,
+  placed in view under the camera's target, fading in and out over about a
+  second (`makeShootingStar`, `advanceShootingStar` in scene.js).
