@@ -75,3 +75,12 @@ def test_the_scene_uses_the_governor_and_caps_msaa():
 def test_a_very_slow_gpu_still_steps_down():
     # Software rendering: about a second per frame.
     assert _drive([(300, 1000)])["ratio"] == 1
+
+
+def test_a_gpu_on_the_edge_stops_bouncing_between_ratios():
+    # Slow at 2x, fast at 1.75x: it would drop, raise after ~4.5 s, drop
+    # again... each bounce a hitch. After the first bounce raises wait longer.
+    frames = [(300, 33.3), (400, 13), (300, 33.3), (400, 13), (300, 33.3), (400, 13)]
+    changes = _drive(frames)["changes"]
+    ups = [i for i in range(1, len(changes)) if changes[i][1] > changes[i - 1][1]]
+    assert len(ups) <= 1, changes

@@ -1345,3 +1345,22 @@ Smoothness, measured headless (SwiftShader, so relative only):
   head with a tapering additive trail on a plane well below the platforms,
   placed in view under the camera's target, fading in and out over about a
   second (`makeShootingStar`, `advanceShootingStar` in scene.js).
+
+### Smoothness: hops, bridges, resolution (2026-10-10)
+
+- **Hops are timed, not paced** (`createHopper` in motion.js): height is a
+  parabola in time and a hop once started always lands. Height used to come
+  from distance walked, and the wanderer stops at the end of each short leg,
+  so every stop mid-hop snapped the conductor to the floor and every restart
+  snapped it back up (measured: 23 jumps of up to 0.85 units in 48 s).
+  `poseHop` eases its limbs; the conductor turns toward a new heading eased
+  (`turnToward`) instead of snapping.
+- **Bridges are rebuilt only when they change** (`walkKey`). Every sync -- a
+  poll every 5 s plus each live event -- disposed and rebuilt every bridge,
+  restarting the chevrons' animation and re-uploading the decks.
+- **Resolution governor backs off** (quality.js): a drop soon after a raise
+  makes the next raise wait four times as long (up to 64 windows), so a GPU
+  on the edge stops bouncing between ratios, each bounce a render-target
+  reallocation hitch.
+- Shooting stars run most of the way across the view (1.5-2.2x the view's
+  half-height, about 2 s).

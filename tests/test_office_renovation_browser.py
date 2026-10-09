@@ -193,16 +193,29 @@ def test_bridge_from_the_hub_drops_its_first_chevron(page):
 
 
 def test_conductor_hops_in_low_gravity_and_shooting_stars_fade(page):
+    """A hop is a parabola in time and always finishes once started, so the
+    figure never snaps to the floor or back into the air when the walk it
+    rides on stops and starts (the stutter: 0.85-unit jumps between frames)."""
     out = page.evaluate("""async () => {
+      const { createWanderer, createHopper, HOP_HEIGHT } = await import('/static/office/motion.js');
       const b = await import('/static/office/builders.js');
-      const L = b.HOP_LENGTH;
-      const heights = [0, 0.25, 0.5, 0.75, 1].map(f => b.hopHeight(f * L));
+      let seed = 3; const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const w = createWanderer({ radius: 3.55, minRadius: 3.35, maxTurn: Math.PI * 0.3, rand });
+      const hop = createHopper();
+      let prev = 0, worst = 0, top = 0, landings = 0, wasUp = false;
+      for (let i = 0; i < 3000; i++) {
+        w.update(16);
+        const y = hop.update(0.016, w.state.moving);
+        worst = Math.max(worst, Math.abs(y - prev));
+        top = Math.max(top, y);
+        if (wasUp && y === 0) landings += 1;
+        wasUp = y > 0; prev = y;
+      }
       const star = b.makeShootingStar();
       star.userData.place({ x: 0, y: -18, z: 0 }, { x: 1, z: 0 }, 6, 2, 1);
-      const head = star.children[1].position;
-      return { heights, max: b.HOP_HEIGHT, headX: head.x };
+      return { worst, top, landings, max: HOP_HEIGHT, headX: star.children[1].position.x };
     }""")
-    h = out["heights"]
-    assert h[0] == 0 and abs(h[4]) < 1e-9, "each hop starts and ends on the floor"
-    assert abs(h[2] - out["max"]) < 1e-9 and abs(h[1] - h[3]) < 1e-9, "a symmetric parabola peaking mid-hop"
+    assert out["worst"] < 0.15, f"no snapping between frames (worst {out['worst']:.3f})"
+    assert abs(out["top"] - out["max"]) < 0.02, "hops reach their full height"
+    assert out["landings"] > 3, "and land between walks"
     assert out["headX"] == 6, "the shooting star's head leads its trail"

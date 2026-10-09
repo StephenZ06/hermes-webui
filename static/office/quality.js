@@ -23,6 +23,12 @@ export function createQualityGovernor({ base, min }) {
   let samples = [];
   let fastWindows = 0;
   let ignoreUntil = 0;
+  // Each step re-allocates the render targets, a visible hitch. A GPU that
+  // drops again soon after a raise is on the edge, and raising it back every
+  // few seconds was a periodic stutter: each such bounce makes the next
+  // raise wait four times as long.
+  let raiseAfter = RAISE_AFTER_WINDOWS;
+  let lastStep = '';
 
   function reset(nowMs) {
     samples = [];
@@ -50,13 +56,16 @@ export function createQualityGovernor({ base, min }) {
       const typical = sorted[Math.floor(sorted.length / 2)];
       samples = [];
       if (typical > SLOW_MS && ratio > min) {
+        if (lastStep === 'up') raiseAfter = Math.min(RAISE_AFTER_WINDOWS * 64, raiseAfter * 4);
+        lastStep = 'down';
         ratio = Math.max(min, Math.round((ratio - STEP) * 100) / 100);
         reset(nowMs);
         return ratio;
       }
       if (typical < FAST_MS && ratio < top) {
         fastWindows += 1;
-        if (fastWindows >= RAISE_AFTER_WINDOWS) {
+        if (fastWindows >= raiseAfter) {
+          lastStep = 'up';
           ratio = Math.min(top, Math.round((ratio + STEP) * 100) / 100);
           reset(nowMs);
           return ratio;

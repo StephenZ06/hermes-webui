@@ -22,13 +22,13 @@ import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
   makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, makeShootingStar, mergeStatic,
-  poseHop, hopHeight,
+  poseHop,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
 } from './builders.js';
 import {
-  createWanderer, createArrival, advanceArrival, arrivalSettle,
+  createWanderer, createArrival, advanceArrival, arrivalSettle, createHopper,
 } from './motion.js';
 import { shouldSleepWhileRunning } from './idle.js';
 import { createQualityGovernor } from './quality.js';
@@ -500,6 +500,7 @@ export function createOfficeScene(canvas, options) {
     // Between delegations it sits at a desk now and then, stretches, sips a
     // coffee (conductor-life.js); a bubble pops when it starts one.
     group.userData.life = createConductorLife();
+    group.userData.hopper = createHopper();
     const bubble = makeChatBubble(palette);
     bubble.visible = false;
     group.add(bubble);
@@ -674,6 +675,15 @@ export function createOfficeScene(canvas, options) {
       if (walk) { office.remove(walk); disposeTree(walk); walkways.delete(cluster); }
       return null;
     }
+    // Rebuilt only when it would come out different. Every sync (a poll
+    // every few seconds, plus each live event) used to dispose and rebuild
+    // every bridge, which restarted the chevrons' travelling animation and
+    // re-uploaded the decks: a visible hitch every few seconds.
+    const podRecord = pods.get(cluster);
+    const walkKey = [cluster === 'floor' ? 'floor' : 'level', span.start.toFixed(3), span.end.toFixed(3),
+      span.angle.toFixed(4), pod.x.toFixed(2), pod.z.toFixed(2), podRecord && podRecord.color,
+      palette === PALETTES.dark ? 'dark' : 'light'].join('|');
+    if (walk && walk.userData.walkKey === walkKey) return span;
     if (walk) { office.remove(walk); disposeTree(walk); }
     if (cluster === 'floor') {
       walk = new THREE.Group();
@@ -690,7 +700,6 @@ export function createOfficeScene(canvas, options) {
       // without turning every deck segment into an active indicator.
       walk.userData.flowMarkerCount = 3;
     } else {
-      const podRecord = pods.get(cluster);
       const railColor = podRecord && podRecord.color ? podRecord.color : null;
       walk = makeWalkway(span.length, palette, railColor, {
         // The deck runs on under both platforms; its rails stop at their edges.
@@ -704,6 +713,7 @@ export function createOfficeScene(canvas, options) {
       walk.rotation.y = span.angle;
       walk.userData.singleChevronFlow = true;
     }
+    walk.userData.walkKey = walkKey;
     office.add(walk);
     walkways.set(cluster, walk);
     return span;
@@ -1775,8 +1785,15 @@ export function createOfficeScene(canvas, options) {
   let running = false;
   let lastFrameAt = 0;
 
+  // Turn a figure toward a heading along the shorter way round, eased, so a
+  // new walking direction or sitting down never snaps it round in one frame.
+  function turnToward(obj, heading, dt) {
+    const diff = Math.atan2(Math.sin(heading - obj.rotation.y), Math.cos(heading - obj.rotation.y));
+    obj.rotation.y += diff * (1 - Math.exp(-Math.min(0.1, Math.max(0, dt)) * 10));
+  }
+
   // Now and then a shooting star crosses the backdrop (dark theme only):
-  // one at a time, a second or so long, every 9-20 s, low in the scene so it
+  // one at a time, two seconds or so long, every 9-20 s, low in the scene so it
   // passes behind the platforms.
   let shootingStar = null;
   let nextShootingStarAt = 0;
@@ -1801,7 +1818,8 @@ export function createOfficeScene(canvas, options) {
       _shootCentre.copy(cameraTarget).addScaledVector(ISO_DIRECTION, (y - cameraTarget.y) / ISO_DIRECTION.y);
       const halfH = FRUSTUM_HALF_HEIGHT / (view.zoom || 1);
       const across = (Math.random() * 2 - 1) * halfH * 1.1;
-      const up = (0.2 + Math.random() * 0.6) * halfH;
+      // Start high in the view, so the long run has room to cross it.
+      const up = (0.5 + Math.random() * 0.5) * halfH;
       const rx = Math.SQRT1_2, rz = -Math.SQRT1_2;   // screen right, on the ground
       const ux = -Math.SQRT1_2, uz = -Math.SQRT1_2;  // screen up, on the ground
       star.from = { x: _shootCentre.x + rx * across + ux * up * 1.3, z: _shootCentre.z + rz * across + uz * up * 1.3, y };
@@ -1810,8 +1828,9 @@ export function createOfficeScene(canvas, options) {
       let dx = rx * sideways - ux, dz = rz * sideways - uz;
       const l = Math.hypot(dx, dz);
       star.dir = { x: dx / l, z: dz / l };
-      star.travel = halfH * (0.6 + Math.random() * 0.4);
-      star.duration = 1.1 + Math.random() * 0.5;
+      // Long runs: most of the way across the view.
+      star.travel = halfH * (1.5 + Math.random() * 0.7);
+      star.duration = 1.8 + Math.random() * 0.7;
       star.start = t;
       star.mesh.visible = true;
     }
@@ -1824,7 +1843,7 @@ export function createOfficeScene(canvas, options) {
     }
     const head = star.travel * easeOutCubic(k);
     const fade = Math.min(1, k / 0.15) * Math.min(1, (1 - k) / 0.35);
-    star.mesh.userData.place(star.from, star.dir, head, Math.min(star.travel * 0.35, head), fade);
+    star.mesh.userData.place(star.from, star.dir, head, Math.min(star.travel * 0.3, head), fade);
   }
 
   function frame(now) {
@@ -1914,6 +1933,7 @@ export function createOfficeScene(canvas, options) {
       const orchestrating = conductor.userData.status === 'orchestrating';
       const life = conductor.userData.life;
       const bubble = conductor.userData.bubble;
+      const hopper = conductor.userData.hopper;
       if (orchestrating) {
         // Whatever it was doing between delegations stops at once.
         life.cancel();
@@ -1922,27 +1942,25 @@ export function createOfficeScene(canvas, options) {
         // rather than snapping, so the change of state is something you see
         // happen.
         const seated = wanderer.moveTo(HUB_ORCHESTRATE.x, HUB_ORCHESTRATE.z, dtMs);
-        person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
-        if (seated) {
-          person.rotation.y = Math.atan2(-HUB_ORCHESTRATE.x, -HUB_ORCHESTRATE.z);
+        const lift = hopper.update(dt, !seated);
+        person.position.set(wanderer.state.x, 0.6 + lift, wanderer.state.z);
+        if (seated && !hopper.state.airborne) {
+          turnToward(person, Math.atan2(-HUB_ORCHESTRATE.x, -HUB_ORCHESTRATE.z), dt);
           poseWorker(person, 'orchestrate', t, dt, { standing: true });
         } else {
-          person.rotation.y = wanderer.state.heading;
-          poseHop(person, wanderer.state.phase);
-          person.position.y = 0.6 + hopHeight(wanderer.state.phase);
+          turnToward(person, wanderer.state.heading, dt);
+          poseHop(person, hopper.state.f, dt);
         }
       } else {
         const decorChairs = (conductor.userData.centrepiece && conductor.userData.centrepiece.userData.chairs) || [];
         const now = life.step({ t, dtMs, wanderer, chairs: decorChairs });
-        person.position.set(now.x, 0.6, now.z);
-        person.rotation.y = now.heading;
-        // In low gravity it hops rather than walks (see poseHop/hopHeight).
-        if (now.walking) {
-          poseHop(person, wanderer.state.phase);
-          person.position.y = 0.6 + hopHeight(wanderer.state.phase);
-        } else {
-          poseWorker(person, now.pose, t, dt, { standing: !now.seated });
-        }
+        // In low gravity it hops rather than walks; a hop in progress always
+        // lands before it sits or stands still (motion.js createHopper).
+        const lift = hopper.update(dt, now.walking);
+        person.position.set(now.x, 0.6 + lift, now.z);
+        turnToward(person, now.heading, dt);
+        if (hopper.state.airborne) poseHop(person, hopper.state.f, dt);
+        else poseWorker(person, now.pose, t, dt, { standing: !now.seated });
         if (now.icon && bubble) {
           drawChatBubble(bubble, palette, now.icon);
           bubble.visible = true;

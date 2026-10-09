@@ -517,3 +517,11 @@ def test_the_fade_reveal_also_waits_out_a_minimum_visible_duration():
     assert "OUTLET_FADE_MIN_MS - elapsed" in body
     assert "window.setTimeout(reveal, remaining)" in body
     assert "classList.remove('is-switching-outlet')" in body
+
+
+def test_a_sync_reuses_an_unchanged_bridge():
+    # Rebuilding every bridge on every sync restarted the chevrons' travelling
+    # animation and re-uploaded the decks every few seconds.
+    at = SCENE_SRC.index("function ensureWalkway(")
+    body = SCENE_SRC[at:at + 2600]
+    assert "if (walk && walk.userData.walkKey === walkKey) return span;" in body

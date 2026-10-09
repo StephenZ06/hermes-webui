@@ -1476,41 +1476,30 @@ export function makePerson(palette, tint) {
   return group;
 }
 
-/** Hop length (distance per hop) and height for low-gravity hopping. */
-export const HOP_LENGTH = 2.0;
-export const HOP_HEIGHT = 0.85;
-
-/**
- * Height above the floor `phase` (distance travelled) into a hop: a
- * parabola, as under constant (moon-like) gravity, since phase advances at
- * a steady speed.
- */
-export function hopHeight(phase) {
-  const f = ((phase % HOP_LENGTH) + HOP_LENGTH) % HOP_LENGTH / HOP_LENGTH;
-  return 4 * HOP_HEIGHT * f * (1 - f);
-}
-
 /**
  * A low-gravity hop instead of a stride: legs together, knees tucking a
  * little at the top of the arc and reaching for the floor on the way down,
  * arms floating out to the sides for balance.
  */
-export function poseHop(person, phase) {
+export function poseHop(person, f, dt) {
   const joints = person && person.userData && person.userData.joints;
   if (!joints) return;
-  const f = ((phase % HOP_LENGTH) + HOP_LENGTH) % HOP_LENGTH / HOP_LENGTH;
-  const air = Math.sin(Math.PI * f);
+  // `f` is how far through the current hop (0-1, motion.js createHopper).
+  // Eased like poseWorker, so taking off or landing never snaps the limbs.
+  const air = Math.sin(Math.PI * Math.max(0, Math.min(1, f)));
+  const k = dt == null ? 1 : 1 - Math.exp(-Math.min(0.1, Math.max(0, dt)) * 14);
   joints.legs.visible = true;
-  joints.hipL.rotation.x = -0.15 - 0.35 * air;
-  joints.hipR.rotation.x = -0.15 - 0.35 * air;
-  joints.shoulderL.rotation.x = -0.25 - 0.2 * air;
-  joints.shoulderR.rotation.x = -0.25 - 0.2 * air;
-  joints.shoulderL.rotation.z = -(0.35 + 0.35 * air);
-  joints.shoulderR.rotation.z = 0.35 + 0.35 * air;
-  joints.head.rotation.x = 0;
-  joints.head.rotation.y = 0;
-  joints.torso.rotation.x = 0.12 - 0.08 * air;
-  joints.torso.position.y = 1.55;
+  const ease = (obj, key, target) => { obj[key] = lerp(obj[key], target, k); };
+  ease(joints.hipL.rotation, 'x', -0.15 - 0.35 * air);
+  ease(joints.hipR.rotation, 'x', -0.15 - 0.35 * air);
+  ease(joints.shoulderL.rotation, 'x', -0.25 - 0.2 * air);
+  ease(joints.shoulderR.rotation, 'x', -0.25 - 0.2 * air);
+  ease(joints.shoulderL.rotation, 'z', -(0.35 + 0.35 * air));
+  ease(joints.shoulderR.rotation, 'z', 0.35 + 0.35 * air);
+  ease(joints.head.rotation, 'x', 0);
+  ease(joints.head.rotation, 'y', 0);
+  ease(joints.torso.rotation, 'x', 0.12 - 0.08 * air);
+  ease(joints.torso.position, 'y', 1.55);
 }
 
 // Pose targets, in radians. The camera looks at the office from a fixed

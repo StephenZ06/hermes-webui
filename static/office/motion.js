@@ -223,3 +223,46 @@ export function arrivalSettle(arrival, easeOver) {
   const over = easeOver || 1.2;
   return Math.max(0, Math.min(1, arrival.offset / over));
 }
+
+/** Low-gravity hop: how long one takes and how high it goes. */
+export const HOP_PERIOD_S = 0.95;
+export const HOP_HEIGHT = 0.85;
+
+/**
+ * Hops for a figure that moves in low gravity (the conductor). Height is a
+ * parabola in *time* (constant, moon-like gravity), and a hop once started
+ * always finishes: when the walk it rides on stops, the figure lands, and
+ * when the walk starts again it takes off from the floor. Height used to
+ * follow distance walked, so every stop mid-hop snapped the figure to the
+ * floor and every restart snapped it back into the air -- the stutter.
+ */
+export function createHopper(opts) {
+  const config = Object.assign({ period: HOP_PERIOD_S, height: HOP_HEIGHT }, opts || {});
+  const state = { f: 0, airborne: false };
+  return {
+    state,
+    /**
+     * @param {number} dtS seconds since the last frame
+     * @param {boolean} moving whether the figure wants to travel
+     * @returns {number} height above the floor
+     */
+    update(dtS, moving) {
+      if (!state.airborne) {
+        if (!moving) return 0;
+        state.airborne = true;
+        state.f = 0;
+      }
+      state.f += Math.max(0, dtS) / config.period;
+      if (state.f >= 1) {
+        if (moving) {
+          state.f -= Math.floor(state.f);
+        } else {
+          state.f = 0;
+          state.airborne = false;
+          return 0;
+        }
+      }
+      return 4 * config.height * state.f * (1 - state.f);
+    },
+  };
+}
