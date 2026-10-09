@@ -434,9 +434,10 @@ def test_bridge_activity_chevrons_are_hidden_until_work_starts_then_march(result
 
 def test_only_the_two_platform_bases_use_unlit_materials(result):
     assert result["platformSlabMaterialType"] != "MeshBasicMaterial"
+    # The coloured top is physical (satin); the neon band, base and footing standard.
     assert result["platformLayerMaterialTypes"] == [
         "MeshPhysicalMaterial", "MeshStandardMaterial",
-        "MeshPhysicalMaterial", "MeshStandardMaterial",
+        "MeshStandardMaterial", "MeshStandardMaterial",
     ]
 
 

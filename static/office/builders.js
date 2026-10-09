@@ -143,8 +143,82 @@ function geometry(key, build) {
   if (!geo) {
     geo = build();
     _geometries.set(key, geo);
+    _sharedGeometries.add(geo);
   }
   return geo;
+}
+const _sharedGeometries = new WeakSet();
+
+/**
+ * Merge a static group's meshes into one mesh per material (and shadow
+ * setting), so a pod's scenery or a desk costs a handful of draw calls
+ * instead of dozens -- the Business floor drew ~1,300 a frame before this.
+ * Textured meshes (live screens, icon plaques), points, sprites and anything
+ * tagged `userData.noMerge` (it moves) are left as they are.
+ *
+ * With `cacheKey`, the merged geometries are kept in the shared cache, so the
+ * same scenery rebuilt on the next sync is not merged again; without one,
+ * they belong to this group and disposeTree releases them.
+ */
+export function mergeStatic(group, cacheKey) {
+  group.updateMatrixWorld(true);
+  const rootInverse = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const buckets = new Map();
+  const doomed = [];
+  group.traverse(obj => {
+    if (!obj.isMesh || obj === group) return;
+    let skip = false;
+    for (let o = obj; o && o !== group; o = o.parent) if (o.userData && o.userData.noMerge) skip = true;
+    const mat = obj.material;
+    if (skip || Array.isArray(mat) || mat.map || !obj.geometry.getAttribute('normal')) return;
+    const key = `${mat.uuid}|${obj.castShadow ? 1 : 0}`;
+    if (!buckets.has(key)) buckets.set(key, { material: mat, castShadow: obj.castShadow, receiveShadow: obj.receiveShadow, parts: [] });
+    buckets.get(key).parts.push({ geometry: obj.geometry, matrix: new THREE.Matrix4().multiplyMatrices(rootInverse, obj.matrixWorld) });
+    doomed.push(obj);
+  });
+  doomed.forEach(obj => {
+    obj.removeFromParent();
+    if (!_sharedGeometries.has(obj.geometry)) obj.geometry.dispose();
+  });
+  let index = 0;
+  buckets.forEach(bucket => {
+    const build = () => {
+      const positions = [];
+      const normals = [];
+      const normalMatrix = new THREE.Matrix3();
+      const v = new THREE.Vector3();
+      bucket.parts.forEach(({ geometry: source, matrix }) => {
+        const g = source.index ? source.toNonIndexed() : source;
+        const pos = g.getAttribute('position');
+        const nor = g.getAttribute('normal');
+        normalMatrix.getNormalMatrix(matrix);
+        for (let i = 0; i < pos.count; i += 1) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+          positions.push(v.x, v.y, v.z);
+          v.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize();
+          normals.push(v.x, v.y, v.z);
+        }
+        if (g !== source) g.dispose();
+      });
+      const merged = new THREE.BufferGeometry();
+      merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      merged.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      merged.computeBoundingSphere();
+      return merged;
+    };
+    const merged = cacheKey ? geometry(`merged|${cacheKey}|${index}|${bucket.material.uuid}`, build) : build();
+    const mesh = new THREE.Mesh(merged, bucket.material);
+    mesh.castShadow = bucket.castShadow;
+    mesh.receiveShadow = bucket.receiveShadow;
+    if (!cacheKey) mesh.userData.mergedGeometry = true;
+    group.add(mesh);
+    index += 1;
+  });
+  // Empty sub-groups left behind are harmless but cost a traversal each frame.
+  const empties = [];
+  group.traverse(obj => { if (obj !== group && obj.isGroup && !obj.children.length) empties.push(obj); });
+  empties.forEach(obj => obj.removeFromParent());
+  return group;
 }
 
 function box(w, h, d, color) {
@@ -214,85 +288,71 @@ function capsule(radius, length, color) {
 /**
  * A raised pod plinth.
  */
-export function makePod(width, depth, palette, tint) {
+export function makePod(width, depth, palette, tint, opts) {
+  const options = opts || {};
   const group = new THREE.Group();
-  const topColor = tint ? mixColor(palette.podTop, tint, 0.62) : palette.podTop;
+  const topColor = tint ? mixColor(palette.podTop, tint, 0.62) : (options.top || palette.podTop);
   const isUntinted = !tint;
-  // Keep the bases unmistakably dark while retaining enough contrast against
-  // the near-black office floor to make both black tiers visible.
-  const baseColor = '#242b3b';
+  // The reference look: a coloured slab on a glowing neon band, standing on
+  // a dark base. Bases stay unmistakably dark in both palettes.
+  const baseColor = '#1c2232';
+  const footColor = '#121725';
   const radius = Math.min(width, depth) * 0.12;
+  // The band glows in the department colour; an untinted platform (the
+  // conductor hub, The Floor) takes `options.band` or stays dark.
+  const bandColor = tint || options.band || null;
 
-  function addLayer(name, height, color, y, options) {
-    const layerOptions = options || {};
-    const layer = roundedPlatform(
-      layerOptions.layerWidth ?? width,
-      layerOptions.layerDepth ?? depth,
-      height,
-      color,
-      Object.assign({
-      // The rounded 2D silhouette remains, but the stacked faces themselves
-      // need virtually no bevel: a bevel at every shared edge makes the
-      // bands recess into shadow instead of reading as one flush platform.
-      radius, bevel: 0.001, bevelSegments: 1,
-      }, layerOptions),
-    );
-    layer.position.y = y;
-      // Keep every layer centered on the same footprint. The alternating
-      // widths/depths create the visible ledges without a diagonal shift.
-    layer.position.x = 0;
-      layer.position.z = 0;
+  function addLayer(name, height, color, y, layerOptions) {
+    const lo = layerOptions || {};
+    const layer = roundedPlatform(lo.layerWidth ?? width, lo.layerDepth ?? depth, height, color, Object.assign({
+      // Flush faces: a bevel at every shared edge would recess each band into shadow.
+      radius: lo.radius ?? radius, bevel: 0.001, bevelSegments: 1,
+    }, lo));
+    layer.position.set(0, y, 0);
     layer.userData.platformLayer = name;
     group.add(layer);
     return layer;
   }
 
-  // Four flush layers make the pod read as one substantial platform: coloured
-  // floor, black base, the delivery-coloured layer, then its black footing.
-  // The upper surface stays at y=0.6, preserving the existing desk, label,
-  // and bridge elevations.
-  const baseHeight = 1.2;
-  const layerHeight = baseHeight;
-  // At overview zoom a tiny footprint change is sub-pixel after isometric
-  // projection. This step is large enough to reveal each equal-height tier,
-  // while remaining a single compact stacked platform rather than terraces.
-  const step = 4;
-  // Untinted platforms (Conductor, The Floor) are dark and near-black; any
-  // glossy rim highlight reads as a white artifact against them. Give them a
-  // matte, low-metal finish while tinted department floors keep a subtle
-  // satin clearcoat.
+  // Four flush layers: coloured top (its surface at y=0.6, where desks,
+  // labels and bridges are laid out), the neon band, the dark base and its
+  // footing.
+  const topHeight = 1.2;
+  const bandHeight = 0.42;
+  const baseHeight = 1.1;
+  const footHeight = 0.8;
+  const lip = 0.12;
   const topMatOpts = isUntinted
     ? { physical: true, metal: 0.04, rough: 0.92, clearcoat: 0 }
-    : { physical: true, metal: 0.06, rough: 0.8, clearcoat: 0 };
-  const slab = addLayer('top', layerHeight, topColor, 0, { matOpts: topMatOpts });
+    : { physical: true, metal: 0.06, rough: 0.72, clearcoat: 0.25 };
+  const slab = addLayer('top', topHeight, topColor, 0, { matOpts: topMatOpts });
   slab.castShadow = true;
-  addLayer('upper-base', layerHeight, baseColor, -1.2, {
-    layerWidth: width + step * 2,
-    layerDepth: depth + step * 2,
-    matOpts: { rough: 0.92, metal: 0.04 },
-  });
 
-  // Unlike the shared top material, this lower coloured slab owns its own
-  // emissive material so a delivery can bloom at one destination only.
-  const deliveryMaterial = material(topColor, topMatOpts).clone();
-  // Un-tinted platforms (The Floor and Conductor) should not create a white
-  // specular pinprick at their rim. Their delivery tier still participates in
-  // the activity pulse, but starts dark until a real arrival wave reaches it.
-  const deliveryIdleIntensity = tint ? 2.0 : 0;
-  deliveryMaterial.emissive.set(tint || topColor).multiplyScalar(2.2);
-  deliveryMaterial.emissiveIntensity = deliveryIdleIntensity;
-  const delivery = addLayer('delivery', layerHeight, topColor, -2.4, {
-    layerWidth: width + step * 2,
-    layerDepth: depth + step * 2,
-    material: deliveryMaterial,
+  // The band owns its own material so a delivery can flare at one destination
+  // only (scene.js's advanceDeliveryGlow adds to the idle intensity).
+  const bandMaterial = material(bandColor || baseColor, { rough: 0.4, metal: 0.1 }).clone();
+  // The same glow for every colour: bright colours (amber, teal) would bloom
+  // into a halo at an intensity that leaves deep ones (purple, blue) barely
+  // lit, so the intensity is set from the colour's own luminance.
+  const bandLinear = new THREE.Color(bandColor || '#000000');
+  const luminance = 0.2126 * bandLinear.r + 0.7152 * bandLinear.g + 0.0722 * bandLinear.b;
+  const idleIntensity = bandColor ? Math.min(4, Math.max(0.9, 0.82 / Math.max(0.05, luminance))) : 0;
+  bandMaterial.emissive.set(bandColor || '#000000');
+  bandMaterial.emissiveIntensity = idleIntensity;
+  const bandY = -topHeight / 2 - bandHeight / 2;
+  const delivery = addLayer('delivery', bandHeight, bandColor || baseColor, bandY, {
+    layerWidth: width + lip, layerDepth: depth + lip, radius: radius + lip / 2, material: bandMaterial,
   });
-  delivery.userData.idleEmissiveIntensity = deliveryIdleIntensity;
-  addLayer('lower-base', layerHeight, baseColor, -3.6, {
-    // The lowest footing must be at least as wide as the coloured delivery
-    // tier above it, otherwise a dark gap/shadow shows along the bottom rim.
-    layerWidth: width + step * 2,
-    layerDepth: depth + step * 2,
-    matOpts: { rough: 0.92, metal: 0.04 },
+  delivery.castShadow = false;
+  delivery.userData.idleEmissiveIntensity = idleIntensity;
+  const baseY = bandY - bandHeight / 2 - baseHeight / 2;
+  addLayer('upper-base', baseHeight, baseColor, baseY, {
+    layerWidth: width + lip, layerDepth: depth + lip, radius: radius + lip / 2,
+    matOpts: { rough: 0.9, metal: 0.05 },
+  });
+  addLayer('lower-base', footHeight, footColor, baseY - baseHeight / 2 - footHeight / 2, {
+    layerWidth: width - 0.4, layerDepth: depth - 0.4, radius: Math.max(0.2, radius - 0.2),
+    matOpts: { rough: 0.95, metal: 0.02 },
   });
   group.userData.deliveryLayer = delivery;
   return group;
@@ -887,7 +947,8 @@ export function makeDesk(palette) {
   mouse.position.set(1.35, 1.67, 0.35);
   group.add(mouse);
 
-  return group;
+  // One mesh per material (the live screen stays its own textured mesh).
+  return mergeStatic(group, `desk|${palette.deskTop}|${palette.screenBezel}|${palette.keyboard}`);
 }
 
 function makeKeyboard(palette) {
@@ -1029,10 +1090,10 @@ const CUBICLE_HALF_WIDTH = 3.1;
 const CUBICLE_BACK_Z = -1.75;
 const CUBICLE_FRONT_Z = 3.0;
 const CUBICLE_DOOR_HALF = 1.8;
-const CUBICLE_HEIGHT = 1.75;
-// Solid lower panel; frosted glass above it keeps the desk and its worker
-// visible over the near walls from the isometric camera.
-const CUBICLE_SOLID_HEIGHT = 0.9;
+// Low partitions, as in the reference: one solid panel topped by the glowing
+// accent strip, low enough that the desk and its worker show over the near walls.
+const CUBICLE_HEIGHT = 0.95;
+const CUBICLE_SOLID_HEIGHT = 0.95;
 const CUBICLE_POST = 0.12;
 const CUBICLE_RAIL = 0.08;
 const CUBICLE_PANEL = 0.07;
@@ -1040,8 +1101,8 @@ const CUBICLE_ACCENT_HEIGHT = 0.03;
 const CUBICLE_RUG_MARGIN = 0.25;
 // Accent glow, as emissive intensity. Both stay well under the bloom pass'
 // threshold: a crisp coloured line, never a halo competing with the pods.
-export const CUBICLE_ACCENT_IDLE = 0.12;
-export const CUBICLE_ACCENT_ACTIVE = 0.55;
+export const CUBICLE_ACCENT_IDLE = 0.45;
+export const CUBICLE_ACCENT_ACTIVE = 0.95;
 
 /** The wall runs, as [x1, z1, x2, z2] in desk-local space. */
 function cubicleWallRuns() {
@@ -1098,13 +1159,11 @@ function cubiclePart(width, height, depth, x, y, z, angle) {
 
 /** The four shared cubicle geometries: panels, frame, glass, accent. */
 function cubicleGeometries() {
-  return geometry('cubicle|v2', () => {
+  return geometry('cubicle|v3', () => {
     const panels = [];
     const frame = [];
-    const glass = [];
     const accent = [];
     const posts = new Map();
-    const glassHeight = CUBICLE_HEIGHT - CUBICLE_SOLID_HEIGHT - CUBICLE_RAIL;
     cubicleWallRuns().forEach(([x1, z1, x2, z2]) => {
       const length = Math.hypot(x2 - x1, z2 - z1);
       // Wall runs along x or z; Box width is its local x, so turn z-runs.
@@ -1112,20 +1171,16 @@ function cubicleGeometries() {
       const cx = (x1 + x2) / 2;
       const cz = (z1 + z2) / 2;
       const inner = Math.max(0.01, length - CUBICLE_POST);
-      panels.push(cubiclePart(inner, CUBICLE_SOLID_HEIGHT, CUBICLE_PANEL, cx, CUBICLE_SOLID_HEIGHT / 2, cz, angle));
-      frame.push(cubiclePart(inner, CUBICLE_RAIL, CUBICLE_POST * 0.8, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL / 2, cz, angle));
-      glass.push(cubiclePart(inner, glassHeight, 0.03, cx, CUBICLE_SOLID_HEIGHT + CUBICLE_RAIL + glassHeight / 2, cz, angle));
-      frame.push(cubiclePart(length + CUBICLE_POST, CUBICLE_RAIL, CUBICLE_POST, cx, CUBICLE_HEIGHT - CUBICLE_RAIL / 2, cz, angle));
-      accent.push(cubiclePart(length + CUBICLE_POST, CUBICLE_ACCENT_HEIGHT, CUBICLE_POST + 0.01, cx, CUBICLE_HEIGHT + CUBICLE_ACCENT_HEIGHT / 2, cz, angle));
+      panels.push(cubiclePart(inner, CUBICLE_SOLID_HEIGHT, CUBICLE_PANEL * 2.4, cx, CUBICLE_SOLID_HEIGHT / 2, cz, angle));
+      accent.push(cubiclePart(length + CUBICLE_POST, CUBICLE_ACCENT_HEIGHT * 2, CUBICLE_POST + 0.06, cx, CUBICLE_HEIGHT + CUBICLE_ACCENT_HEIGHT, cz, angle));
       [[x1, z1], [x2, z2]].forEach(([x, z]) => posts.set(`${x}|${z}`, [x, z]));
     });
     posts.forEach(([x, z]) => {
-      frame.push(cubiclePart(CUBICLE_POST, CUBICLE_HEIGHT, CUBICLE_POST, x, CUBICLE_HEIGHT / 2, z, 0));
+      frame.push(cubiclePart(CUBICLE_POST * 1.6, CUBICLE_HEIGHT + 0.02, CUBICLE_POST * 1.6, x, (CUBICLE_HEIGHT + 0.02) / 2, z, 0));
     });
     return {
       panels: mergeParts(panels),
       frame: mergeParts(frame),
-      glass: mergeParts(glass),
       accent: mergeParts(accent),
     };
   });
@@ -1149,18 +1204,14 @@ export function makeCubicle(palette, accent) {
   const accentColor = accent || palette.cubicleAccent || '#8a96aa';
   const geos = cubicleGeometries();
 
-  const panels = new THREE.Mesh(geos.panels, material(palette.cubiclePanel || '#9aa3b2', { rough: 0.9 }));
+  const panels = new THREE.Mesh(geos.panels, material(palette.cubiclePanel || '#9aa3b2', { rough: 0.85 }));
   panels.castShadow = true;
   panels.receiveShadow = true;
   const frame = new THREE.Mesh(geos.frame, material(palette.cubicleFrame || '#4b5363', { rough: 0.55, metal: 0.25 }));
   frame.castShadow = true;
   frame.receiveShadow = true;
-  const glass = new THREE.Mesh(geos.glass, material(palette.cubicleGlass || '#dbe4f0', {
-    rough: 0.2, transparent: true, opacity: palette.cubicleGlassOpacity ?? 0.16,
-  }));
-  glass.renderOrder = 1;
   const strip = new THREE.Mesh(geos.accent, cubicleAccentMaterial(accentColor, false));
-  [panels, frame, glass, strip].forEach(mesh => group.add(mesh));
+  [panels, frame, strip].forEach(mesh => group.add(mesh));
 
   // A step darker than the platform's own top (the blend makePod paints), so
   // it reads as carpet on that floor rather than a second colour.
@@ -1199,7 +1250,7 @@ export function makeChair(palette) {
   const foot = cylinder(0.7, 0.75, 0.12, 24, palette.deskLeg);
   foot.position.y = 0.06;
   group.add(foot);
-  return group;
+  return mergeStatic(group, `chair|${palette.chair}|${palette.deskLeg}`);
 }
 
 /* ---------- person ---------- */
@@ -1718,6 +1769,9 @@ export function disposeTree(root) {
       bubble.texture.dispose();
     }
     if (obj.isSprite && obj.material) obj.material.dispose();
+    if (obj.userData && obj.userData.mergedGeometry && obj.geometry) obj.geometry.dispose();
+    const owned = obj.userData && obj.userData.owned;
+    if (owned) { owned.geometry.dispose(); owned.material.dispose(); }
   });
 }
 
@@ -1725,6 +1779,511 @@ export function disposeTree(root) {
 export function disposeSharedCaches() {
   _geometries.forEach(geo => { try { geo.dispose(); } catch (_err) { /* already gone */ } });
   _materials.forEach(mat => { try { mat.dispose(); } catch (_err) { /* already gone */ } });
+  _iconTextures.forEach(tex => { try { tex.dispose(); } catch (_err) { /* already gone */ } });
   _geometries.clear();
   _materials.clear();
+  _iconTextures.clear();
+}
+
+/* ---------- department scenery (the reference look) ---------- */
+//
+// Scenery only: none of it carries state, so it can never mislead anyone
+// about what Hermes is doing. Every piece is a few shared-geometry meshes in
+// the same rounded, toy-like style as the desks; nothing here casts a shadow
+// (the desks and people already do, and a prop's shadow costs a shadow-pass
+// draw every frame for no information).
+
+/** What a department is about, from its name: picks its icon and its props. */
+export function deptKind(label) {
+  const text = String(label || '').toLowerCase();
+  const rules = [
+    ['research', /research|analys|insight|study/], ['coding', /cod|dev|engineer|software|tech|build/],
+    ['documents', /doc|writ|content|paper|legal/], ['emails', /mail|inbox|message|outreach/],
+    ['marketing', /market|brand|social|campaign|ads?\b/], ['sales', /sale|deal|crm|revenue|lead/],
+    ['finance', /financ|account|budget|invoice|money|pay/], ['operations', /operat|ops|admin|process|it\b/],
+    ['delivery', /deliver|ship|logist|fulfil|support/], ['floor', /the floor/], ['general', /general|misc|other/],
+  ];
+  const hit = rules.find(([, re]) => re.test(text));
+  return hit ? hit[0] : 'general';
+}
+
+/**
+ * A shared unlit material in `color`, brightened by `boost` past 1.0 so the
+ * scene's bloom pass gives it a soft glow (tone mapping is off for it, or
+ * ACES would pull it back under the bloom threshold). Cached like material().
+ */
+export function glowMaterial(color, boost, opts) {
+  const options = opts || {};
+  const key = `glow|${color}|${boost}|${options.opacity ?? 1}|${options.wireframe ? 1 : 0}|${options.additive ? 1 : 0}`;
+  let mat = _materials.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(boost), toneMapped: false });
+    if (options.opacity != null && options.opacity < 1) { mat.transparent = true; mat.opacity = options.opacity; mat.depthWrite = false; }
+    if (options.wireframe) mat.wireframe = true;
+    if (options.additive) mat.blending = THREE.AdditiveBlending;
+    _materials.set(key, mat);
+  }
+  return mat;
+}
+
+function hexOf(color, fallback) {
+  return '#' + new THREE.Color(color || fallback).getHexString();
+}
+
+const ICON_PATHS = {
+  // Each draws in a 100x100 box, stroked (round caps) in the department colour.
+  general: (c) => { [[50, 30], [70, 50], [50, 70], [30, 50]].forEach(([x, y]) => { c.beginPath(); c.arc(x, y, 14, 0, Math.PI * 2); c.stroke(); }); c.beginPath(); c.arc(50, 50, 7, 0, Math.PI * 2); c.stroke(); },
+  research: (c) => { c.beginPath(); c.arc(44, 44, 22, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.moveTo(60, 60); c.lineTo(80, 80); c.stroke(); },
+  coding: (c) => { c.beginPath(); c.moveTo(36, 30); c.lineTo(18, 50); c.lineTo(36, 70); c.moveTo(64, 30); c.lineTo(82, 50); c.lineTo(64, 70); c.moveTo(56, 24); c.lineTo(44, 76); c.stroke(); },
+  documents: (c) => { c.beginPath(); c.moveTo(30, 16); c.lineTo(60, 16); c.lineTo(74, 30); c.lineTo(74, 84); c.lineTo(30, 84); c.closePath(); c.moveTo(60, 16); c.lineTo(60, 30); c.lineTo(74, 30); c.moveTo(40, 50); c.lineTo(64, 50); c.moveTo(40, 64); c.lineTo(58, 64); c.stroke(); },
+  emails: (c) => { c.beginPath(); c.rect(16, 28, 68, 46); c.moveTo(16, 30); c.lineTo(50, 56); c.lineTo(84, 30); c.stroke(); },
+  marketing: (c) => { c.beginPath(); c.moveTo(20, 42); c.lineTo(20, 60); c.lineTo(34, 60); c.lineTo(70, 78); c.lineTo(70, 24); c.lineTo(34, 42); c.closePath(); c.moveTo(34, 60); c.lineTo(40, 80); c.moveTo(80, 40); c.lineTo(88, 36); c.moveTo(80, 51); c.lineTo(90, 51); c.moveTo(80, 62); c.lineTo(88, 66); c.stroke(); },
+  sales: (c) => { c.beginPath(); c.moveTo(16, 82); c.lineTo(84, 82); c.moveTo(24, 70); c.lineTo(44, 50); c.lineTo(58, 60); c.lineTo(82, 30); c.moveTo(68, 30); c.lineTo(82, 30); c.lineTo(82, 44); c.stroke(); },
+  finance: (c) => { c.beginPath(); c.arc(50, 50, 32, 0, Math.PI * 2); c.moveTo(60, 36); c.bezierCurveTo(52, 28, 38, 32, 40, 42); c.bezierCurveTo(42, 52, 60, 48, 60, 58); c.bezierCurveTo(60, 70, 44, 70, 38, 62); c.moveTo(50, 24); c.lineTo(50, 76); c.stroke(); },
+  operations: (c) => { c.beginPath(); for (let i = 0; i < 8; i += 1) { const a = i * Math.PI / 4; c.moveTo(50 + Math.cos(a) * 24, 50 + Math.sin(a) * 24); c.lineTo(50 + Math.cos(a) * 34, 50 + Math.sin(a) * 34); } c.stroke(); c.beginPath(); c.arc(50, 50, 22, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.arc(50, 50, 9, 0, Math.PI * 2); c.stroke(); },
+  delivery: (c) => { c.beginPath(); c.moveTo(50, 16); c.lineTo(82, 32); c.lineTo(82, 68); c.lineTo(50, 84); c.lineTo(18, 68); c.lineTo(18, 32); c.closePath(); c.moveTo(18, 32); c.lineTo(50, 48); c.lineTo(82, 32); c.moveTo(50, 48); c.lineTo(50, 84); c.stroke(); },
+  floor: (c) => { c.beginPath(); c.arc(36, 36, 11, 0, Math.PI * 2); c.arc(66, 36, 11, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.moveTo(16, 76); c.quadraticCurveTo(36, 50, 52, 76); c.moveTo(48, 76); c.quadraticCurveTo(66, 50, 86, 76); c.stroke(); },
+};
+
+/** A canvas texture of a department's icon, glowing in its colour on a dark rounded tile. */
+function iconTexture(kind, color) {
+  const key = `icon-tex|${kind}|${color}`;
+  let tex = _iconTextures.get(key);
+  if (tex) return tex;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.save();
+  ctx.translate(28, 28);
+  ctx.scale(2, 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  (ICON_PATHS[kind] || ICON_PATHS.general)(ctx);
+  ctx.restore();
+  tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  _iconTextures.set(key, tex);
+  return tex;
+}
+const _iconTextures = new Map();
+
+/** The plaque on a pod's front face: a dark rounded tile with its glowing icon. */
+export function makeIconPlaque(kind, tint, size) {
+  const s = size || 1.5;
+  const group = new THREE.Group();
+  const tile = roundedPanel(s, s, 0.16, '#141a2a', s * 0.2);
+  tile.castShadow = false;
+  group.add(tile);
+  const glowColor = hexOf(tint, '#7dd3fc');
+  const matKey = `icon-mat|${kind}|${glowColor}`;
+  let iconMat = _materials.get(matKey);
+  if (!iconMat) {
+    iconMat = new THREE.MeshBasicMaterial({
+      map: iconTexture(kind, glowColor), transparent: true, depthWrite: false, toneMapped: false,
+    });
+    // Pushed past 1.0 so the scene's bloom pass gives the icon its soft glow.
+    iconMat.color.setScalar(1.6);
+    _materials.set(matKey, iconMat);
+  }
+  const icon = new THREE.Mesh(geometry(`icon-plane|${s}`, () => new THREE.PlaneGeometry(s * 0.82, s * 0.82)), iconMat);
+  icon.position.z = 0.1;
+  icon.renderOrder = 4;
+  group.add(icon);
+  return group;
+}
+
+/** Low partition walls along a pod's two back edges, each topped with a thin glowing strip. */
+export function makeBackWalls(slabW, slabD, tint) {
+  const group = new THREE.Group();
+  const wallColor = '#2a3247';
+  const stripMat = glowMaterial(hexOf(tint, '#7dd3fc'), 1.8);
+  const height = 1.15;
+  const inset = 0.38;
+  const runs = [
+    { w: slabW - inset * 2 - 1.2, x: -0.3, z: -slabD / 2 + inset, ry: 0 },
+    { w: slabD - inset * 2 - 1.2, x: -slabW / 2 + inset, z: -0.3, ry: Math.PI / 2 },
+  ];
+  runs.forEach(run => {
+    const wall = roundedPanel(Math.max(1, run.w), height, 0.22, wallColor, 0.08);
+    wall.castShadow = false;
+    wall.position.set(run.x, height / 2, run.z);
+    wall.rotation.y = run.ry;
+    group.add(wall);
+    const strip = new THREE.Mesh(geometry(`wall-strip|${Math.max(1, run.w)}`, () => new THREE.BoxGeometry(Math.max(1, run.w) - 0.2, 0.06, 0.24)), stripMat);
+    strip.position.set(run.x, height + 0.03, run.z);
+    strip.rotation.y = run.ry;
+    group.add(strip);
+  });
+  return group;
+}
+
+/** A bookshelf: a dark frame, three shelves and rows of chunky coloured books. */
+export function makeBookshelf(palette, width) {
+  const w = width || 2.6;
+  const group = new THREE.Group();
+  const frame = roundedSlab(w, 0.12, 0.7, '#3a3346', 0.05);
+  [0.06, 2.3].forEach(y => { const board = frame.clone(); board.position.y = y; group.add(board); });
+  [-w / 2 + 0.06, w / 2 - 0.06].forEach(x => {
+    const side = box(0.12, 2.36, 0.7, '#3a3346');
+    side.position.set(x, 1.18, 0);
+    side.castShadow = false;
+    group.add(side);
+  });
+  const back = box(w, 2.3, 0.06, '#2a2433');
+  back.position.set(0, 1.18, -0.32);
+  back.castShadow = false;
+  group.add(back);
+  const BOOKS = ['#e05d5d', '#f2b84b', '#5fa8e8', '#7ac77a', '#b07ae0', '#ef8a5b', '#4fc7c0'];
+  [0.12, 0.86, 1.6].forEach((y, shelf) => {
+    if (shelf > 0) { const board = frame.clone(); board.position.y = y; group.add(board); }
+    let x = -w / 2 + 0.2;
+    let i = shelf * 3;
+    while (x < w / 2 - 0.3) {
+      const bw = 0.14 + ((i * 37) % 5) * 0.025;
+      const bh = 0.5 + ((i * 53) % 4) * 0.06;
+      const book = box(bw, bh, 0.5, BOOKS[i % BOOKS.length]);
+      book.castShadow = false;
+      book.position.set(x + bw / 2, y + 0.06 + bh / 2, 0.02);
+      if (i % 7 === 3) book.rotation.z = 0.18;
+      group.add(book);
+      x += bw + 0.025;
+      i += 1;
+      if (i % 9 === 8) x += 0.3;  // a gap now and then, as on a real shelf
+    }
+  });
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A clipped topiary: a pot and a chunky rounded green block (the reference's cube shrub). */
+export function makeTopiary(palette) {
+  const group = new THREE.Group();
+  const pot = roundedSlab(0.9, 0.7, 0.9, '#c98a54', 0.12);
+  pot.position.y = 0.35;
+  group.add(pot);
+  const bush = roundedSlab(1.15, 1.05, 1.15, '#4caf50', 0.28);
+  bush.position.y = 1.25;
+  group.add(bush);
+  const top = roundedSlab(0.8, 0.6, 0.8, '#66c266', 0.22);
+  top.position.y = 2.0;
+  group.add(top);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A leafy potted palm: a round pot and fanned, flattened leaves. */
+export function makePalm(palette) {
+  const group = new THREE.Group();
+  const pot = cylinder(0.5, 0.38, 0.8, 14, '#d58b4f');
+  pot.position.y = 0.4;
+  group.add(pot);
+  const leafGeo = geometry('palm-leaf', () => {
+    const g = new THREE.SphereGeometry(0.5, 10, 6);
+    g.scale(0.42, 0.12, 1.15);
+    g.translate(0, 0, 0.95);
+    return g;
+  });
+  const greens = ['#3f9b4f', '#4fb35c', '#5cc068'];
+  for (let i = 0; i < 9; i += 1) {
+    const leaf = new THREE.Mesh(leafGeo, material(greens[i % 3], { rough: 0.8 }));
+    leaf.position.y = 1.0 + (i % 3) * 0.18;
+    leaf.rotation.y = i * (Math.PI * 2 / 9);
+    leaf.rotation.x = -0.35 - (i % 3) * 0.18;
+    group.add(leaf);
+  }
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A two-drawer filing cabinet. */
+export function makeCabinet(palette, tint) {
+  const group = new THREE.Group();
+  const body = roundedSlab(0.9, 1.5, 0.8, '#3b4458', 0.08);
+  body.position.y = 0.75;
+  group.add(body);
+  [0.45, 1.1].forEach(y => {
+    const handle = box(0.35, 0.06, 0.06, tint || '#cbd5e1');
+    handle.position.set(0, y, 0.42);
+    group.add(handle);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A server rack: a dark cabinet with rows of glowing status lights. */
+export function makeServerRack(palette, tint) {
+  const group = new THREE.Group();
+  const body = roundedSlab(1.0, 2.4, 0.9, '#1d2333', 0.08);
+  body.position.y = 1.2;
+  group.add(body);
+  const led = glowMaterial(hexOf(tint, '#38bdf8'), 1.7);
+  for (let r = 0; r < 6; r += 1) {
+    const strip = new THREE.Mesh(geometry('rack-led', () => new THREE.BoxGeometry(0.6, 0.05, 0.04)), led);
+    strip.position.set(-0.1, 0.45 + r * 0.33, 0.47);
+    group.add(strip);
+  }
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A standing board with a rising bar chart (sales) or a lit billboard (marketing). */
+export function makeChartBoard(palette, tint, billboard) {
+  const group = new THREE.Group();
+  [-0.75, 0.75].forEach(x => { const leg = cylinder(0.05, 0.05, 1.3, 6, '#4a5266'); leg.position.set(x, 0.65, 0); group.add(leg); });
+  const board = roundedPanel(1.9, 1.3, 0.1, billboard ? '#1b2033' : '#eef2f7', 0.1);
+  board.position.y = 1.9;
+  group.add(board);
+  const glow = glowMaterial(hexOf(tint, '#f59e0b'), billboard ? 1.5 : 1.1);
+  if (billboard) {
+    const screen = new THREE.Mesh(geometry('billboard-screen', () => new THREE.PlaneGeometry(1.6, 1.0)), glow);
+    screen.position.set(0, 1.9, 0.07);
+    group.add(screen);
+  } else {
+    [0.35, 0.6, 0.5, 0.9].forEach((h, i) => {
+      const bar = new THREE.Mesh(geometry(`chart-bar|${h}`, () => new THREE.BoxGeometry(0.26, h, 0.04)), glow);
+      bar.position.set(-0.6 + i * 0.4, 1.4 + h / 2, 0.08);
+      group.add(bar);
+    });
+  }
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A stack of cardboard parcels. */
+export function makeParcels() {
+  const group = new THREE.Group();
+  [[0, 0.35, 0, 0.9, 0.7, 0.8, 0], [0.15, 1.0, 0.05, 0.7, 0.6, 0.6, 0.3], [-0.55, 0.3, 0.6, 0.6, 0.6, 0.55, -0.2]].forEach(([x, y, z, w, h, d, ry]) => {
+    const parcel = roundedSlab(w, h, d, '#c8955b', 0.05);
+    parcel.position.set(x, y, z);
+    parcel.rotation.y = ry;
+    group.add(parcel);
+    const tape = box(w + 0.02, 0.04, 0.12, '#e8d3a8');
+    tape.position.set(x, y + h / 2, z);
+    tape.rotation.y = ry;
+    group.add(tape);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A small office safe with a dial. */
+export function makeSafe(palette, tint) {
+  const group = new THREE.Group();
+  const body = roundedSlab(1.0, 1.1, 0.9, '#4b5568', 0.1);
+  body.position.y = 0.55;
+  group.add(body);
+  const dial = cylinder(0.16, 0.16, 0.08, 16, tint || '#fbbf24');
+  dial.rotation.x = Math.PI / 2;
+  dial.position.set(0.15, 0.6, 0.47);
+  group.add(dial);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** Wall-mounted mail cubbies: a grid of pigeonholes with a few letters in them. */
+export function makeMailCubbies(palette, tint) {
+  const group = new THREE.Group();
+  const frame = roundedSlab(2.0, 1.5, 0.5, '#3a3346', 0.06);
+  frame.position.y = 1.6;
+  group.add(frame);
+  for (let r = 0; r < 3; r += 1) {
+    for (let c = 0; c < 4; c += 1) {
+      const hole = box(0.38, 0.32, 0.06, '#1c1824');
+      hole.position.set(-0.69 + c * 0.46, 1.17 + r * 0.43, 0.24);
+      group.add(hole);
+      if ((r * 4 + c) % 3 === 0) {
+        const letter = box(0.3, 0.2, 0.03, (r + c) % 2 ? '#f8fafc' : (tint || '#86efac'));
+        letter.position.set(-0.69 + c * 0.46, 1.17 + r * 0.43, 0.28);
+        group.add(letter);
+      }
+    }
+  }
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** A water cooler, for the open floor. */
+export function makeWaterCooler() {
+  const group = new THREE.Group();
+  const stand = roundedSlab(0.7, 1.2, 0.7, '#e2e8f0', 0.1);
+  stand.position.y = 0.6;
+  group.add(stand);
+  const bottle = new THREE.Mesh(geometry('cooler-bottle', () => new THREE.CylinderGeometry(0.3, 0.3, 0.8, 16)),
+    material('#7cc7f2', { transparent: true, opacity: 0.75, rough: 0.2 }));
+  bottle.position.y = 1.6;
+  group.add(bottle);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/** The one prop that says what a department does. */
+function departmentProp(kind, palette, tint) {
+  switch (kind) {
+    case 'coding': case 'operations': return makeServerRack(palette, tint);
+    case 'documents': return makeCabinet(palette, tint);
+    case 'emails': return makeMailCubbies(palette, tint);
+    case 'marketing': return makeChartBoard(palette, tint, true);
+    case 'sales': return makeChartBoard(palette, tint, false);
+    case 'finance': return makeSafe(palette, tint);
+    case 'delivery': return makeParcels();
+    case 'floor': return makeWaterCooler();
+    default: return makeCabinet(palette, tint);
+  }
+}
+
+/**
+ * A department's scenery, laid out on its pod's slab (local coordinates, the
+ * slab's top at y=0.6): low walls along the two back edges with a bookshelf
+ * against one, a topiary in the back corner and a palm on the other, the
+ * department's own prop along the side wall, and its icon plaque on the
+ * front face. The middle of the slab, where desks go, is left clear.
+ */
+export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
+  const group = new THREE.Group();
+  const top = 0.6;
+  const options = opts || {};
+  if (!options.open) {
+    const walls = makeBackWalls(slabW, slabD, tint);
+    walls.position.y = top;
+    group.add(walls);
+    const shelf = makeBookshelf(palette, Math.min(3.2, slabW * 0.32));
+    shelf.position.set(-slabW / 2 + 1.0 + Math.min(3.2, slabW * 0.32) / 2 + 0.6, top, -slabD / 2 + 0.95);
+    group.add(shelf);
+    const prop = departmentProp(kind, palette, tint);
+    prop.position.set(-slabW / 2 + 1.05, top, slabD / 2 - 2.2);
+    prop.rotation.y = Math.PI / 2;
+    group.add(prop);
+  } else {
+    const cooler = makeWaterCooler();
+    cooler.position.set(-slabW / 2 + 1.0, top, -slabD / 2 + 1.0);
+    group.add(cooler);
+  }
+  const topiary = makeTopiary(palette);
+  topiary.position.set(-slabW / 2 + 1.1, top, -slabD / 2 + 1.1);
+  if (!options.open) group.add(topiary);
+  const palm = makePalm(palette);
+  palm.position.set(slabW / 2 - 1.1, top, -slabD / 2 + 1.1);
+  group.add(palm);
+  const plaque = makeIconPlaque(kind, tint, Math.min(2.6, slabD * 0.24));
+  // The +z face is one of the two faces the isometric camera sees; the
+  // plaque stands proud of it, rising a little above the floor's edge.
+  plaque.position.set(0, 0.45, slabD / 2 + 0.12);
+  group.add(plaque);
+  group.userData.scenery = true;
+  // The plaque's glowing icon is textured, so it stays its own mesh.
+  return mergeStatic(group, `scenery|${kind}|${slabW}|${slabD}|${hexOf(tint, '#7dd3fc')}|${palette.podTop}|${options.open ? 1 : 0}`);
+}
+
+/** A lamp post: a dark pillar with a warm glowing window, set at bridge ends and hub corners. */
+export function makeLampPost(height) {
+  const h = height || 1.6;
+  const group = new THREE.Group();
+  // A lantern: a dark pillar, a warm glowing light box above it, a cap on top.
+  const post = roundedSlab(0.42, h * 0.55, 0.42, '#252c3d', 0.08);
+  post.position.y = h * 0.275;
+  group.add(post);
+  const light = new THREE.Mesh(
+    geometry(`lamp-light|${h}`, () => new THREE.BoxGeometry(0.36, h * 0.34, 0.36)),
+    glowMaterial('#ffbf5e', 2.4),
+  );
+  light.position.y = h * 0.55 + h * 0.17;
+  group.add(light);
+  const cap = roundedSlab(0.56, 0.14, 0.56, '#2f3649', 0.05);
+  cap.position.y = h * 0.89 + 0.07;
+  group.add(cap);
+  group.traverse(o => { o.castShadow = false; });
+  return group;
+}
+
+/**
+ * The conductor hub's centrepiece: a low projector plate on the floor (flat,
+ * so the pacing conductor walks over it) with a glowing holographic globe
+ * floating above head height, and consoles at the hub's four corners.
+ */
+export function makeHubCentrepiece(slab, tint) {
+  const group = new THREE.Group();
+  const hex = hexOf(tint, '#4f8cff');
+  const color = new THREE.Color(hex);
+  const plate = new THREE.Mesh(geometry('hub-plate', () => new THREE.CylinderGeometry(2.3, 2.5, 0.16, 40)), material('#1a2133', { rough: 0.5, metal: 0.3 }));
+  plate.position.y = 0.68;
+  group.add(plate);
+  const ringMat = glowMaterial(hex, 2);
+  const ring = new THREE.Mesh(geometry('hub-ring', () => new THREE.TorusGeometry(1.9, 0.07, 8, 48)), ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.78;
+  group.add(ring);
+  const beamMat = glowMaterial(hex, 0.8, { opacity: 0.12, additive: true });
+  beamMat.side = THREE.DoubleSide;
+  const beam = new THREE.Mesh(geometry('hub-beam', () => new THREE.CylinderGeometry(1.2, 1.9, 4.6, 32, 1, true)), beamMat);
+  beam.position.y = 3.1;
+  group.add(beam);
+  const globeMat = material('#9fd4ff', { physical: true, emissive: hex, ei: 1.4, rough: 0.15, metal: 0, transparent: true, opacity: 0.55, clearcoat: 1 });
+  const globe = new THREE.Mesh(geometry('hub-globe', () => new THREE.SphereGeometry(1.35, 32, 20)), globeMat);
+  globe.position.y = 6.1;
+  group.add(globe);
+  const gridMat = glowMaterial(hex, 2.2, { wireframe: true, opacity: 0.35 });
+  const grid = new THREE.Mesh(geometry('hub-globe-grid', () => new THREE.SphereGeometry(1.4, 12, 8)), gridMat);
+  grid.position.y = 6.1;
+  group.add(grid);
+  const haloMat = glowMaterial(hex, 2.4);
+  const halo = new THREE.Mesh(geometry('hub-halo', () => new THREE.TorusGeometry(1.75, 0.05, 6, 48)), haloMat);
+  halo.position.y = 6.1;
+  halo.rotation.x = Math.PI / 2.4;
+  group.add(halo);
+  // Consoles at the hub's corners, outside the conductor's pacing circle.
+  const corner = slab / 2 - 2.1;
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+    const console_ = new THREE.Group();
+    const deskTop = roundedSlab(1.9, 0.9, 1.0, '#2a3247', 0.12);
+    deskTop.position.y = 0.45;
+    console_.add(deskTop);
+    const screen = roundedPanel(1.6, 1.0, 0.1, '#0f1424', 0.08);
+    screen.position.set(0, 1.55, -0.25);
+    screen.rotation.x = -0.18;
+    console_.add(screen);
+    const glow = new THREE.Mesh(geometry('console-glow', () => new THREE.PlaneGeometry(1.36, 0.78)), ringMat);
+    glow.position.set(0, 1.56, -0.18);
+    glow.rotation.x = -0.18;
+    console_.add(glow);
+    console_.position.set(sx * corner, 0.6, sz * corner);
+    console_.rotation.y = Math.atan2(-sx, -sz);
+    group.add(console_);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  grid.userData.noMerge = true;
+  halo.userData.noMerge = true;
+  group.userData.spin = [grid, halo];
+  return mergeStatic(group, `hub|${slab}|${hex}`);
+}
+
+/** A field of faint stars scattered over the floor around the office. */
+export function makeStarfield(halfSize, count) {
+  const n = count || 900;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  let seed = 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const blue = new THREE.Color('#7aa2ff');
+  const white = new THREE.Color('#dbe6ff');
+  for (let i = 0; i < n; i += 1) {
+    positions[i * 3] = (rand() * 2 - 1) * halfSize;
+    positions[i * 3 + 1] = 0.05;
+    positions[i * 3 + 2] = (rand() * 2 - 1) * halfSize;
+    const c = rand() < 0.7 ? blue : white;
+    const k = 0.25 + rand() * 0.55;
+    colors[i * 3] = c.r * k; colors[i * 3 + 1] = c.g * k; colors[i * 3 + 2] = c.b * k;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false });
+  const points = new THREE.Points(geo, mat);
+  points.userData.owned = { geometry: geo, material: mat };
+  return points;
 }

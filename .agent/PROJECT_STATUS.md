@@ -1,5 +1,15 @@
 # Project status — hermes-webui
 
+## 2026-10-09: Office renovated after the reference render; smoother loading
+
+- Neon-banded pods standing above a starfield floor, department scenery and
+  icon plaques chosen from names (Projects and Business), low partitions,
+  lantern bridges, a holographic hub. No behaviour changed. Details:
+  docs/rfcs/office-visualization.md "Reference renovation and smoothness".
+- Leaving the Office suspends the scene (disposed after 5 min away); static
+  scenery merged per material; shadows every other frame; shaders compiled in
+  the background. Visual checks were headless (SwiftShader): look on the real GPU.
+
 ## 2026-10-09: remote.id (remotefreelance.id) as a Scout site
 
 - `api/job_os/remoteid.py` reads the site directly (no Apify/Firecrawl);

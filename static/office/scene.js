@@ -21,7 +21,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
-  makePlant, makeWhiteboard, makeChatBubble,
+  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeLampPost, makeStarfield, mergeStatic,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
@@ -41,6 +41,9 @@ const FRUSTUM_HALF_HEIGHT = 42;
 const ISO_DIRECTION = new THREE.Vector3(1, 0.92, 1).normalize();
 const CAMERA_DISTANCE = 220;
 const GROUND_SIZE = 400;
+// The floor plane sits below the platforms' dark bases, so each pod stands as
+// a whole block (coloured top, neon band, base) rather than a slab sunk to its rim.
+const GROUND_Y = -2.6;
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -100,6 +103,9 @@ const LEVEL_BRIDGE_Y = -0.45;
 // much wider. Tucking it by half that width keeps the entire squared end cap
 // beneath rounded platform rims — not just its middle — at diagonal routes.
 const BRIDGE_DECK_PLATFORM_OVERLAP = BRIDGE_DECK_WIDTH / 2;
+// The conductor hub's neon and hologram colour (the reference's electric blue).
+const HUB_COLOR = '#4f8cff';
+const FLOOR_COLOR = '#eab308';
 // Palettes are WebGL material colours rather than CSS custom properties:
 // they are handed to THREE.Color, not to a stylesheet. The panel's own
 // chrome still comes from the app's theme tokens as usual.
@@ -125,11 +131,11 @@ const PALETTES = {
     bubbleBg: 'rgba(20,20,30,0.88)', bubbleStroke: 'rgba(180,180,200,0.55)', bubbleText: '#f2f2f7',
   },
   dark: {
-    ground: '#0a0c14', grid: '#1a2133',
+    ground: '#090d1a', grid: '#10172a',
     podTop: '#0d172b', podSide: '#0a101e', platformBase: '#000000',
     deskTop: '#a05f1a', deskLeg: '#4a4a58',
     chair: '#2a2f3a',
-    cubiclePanel: '#8e97a6', cubicleFrame: '#4b5363', cubicleGlass: '#dbe4f0',
+    cubiclePanel: '#2c3449', cubicleFrame: '#232a3c', cubicleGlass: '#dbe4f0',
     cubicleRugShade: '#000000', cubicleRugMix: 0.35,
     shirt: '#4f7ca8', skin: '#c68b59', hair: '#1a1a20', trousers: '#2b2d36',
     screenBezel: '#0e0e14', screenBg: '#0a0a12', screenActiveBg: '#f0f0f7',
@@ -195,6 +201,12 @@ export function createOfficeScene(canvas, options) {
   // PCFSoftShadowMap is deprecated as of r185 and silently falls back to
   // PCFShadowMap with a console warning; ask for what we actually get.
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // The shadow map is redrawn every other frame (see frame()), not every
+  // frame: figures move a fraction of a unit per frame, so the half-frame lag
+  // is invisible, and the shadow pass is a second draw of every caster.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+  let shadowFrame = 0;
   // ACES lets the bloom pass' deliberately-over-1 glow colours (see
   // builders.js's makePodGlow) roll off softly instead of just clipping to
   // white, and reads as filmic rather than washed out for everything else.
@@ -329,6 +341,7 @@ export function createOfficeScene(canvas, options) {
   let groundGeometry = null;
   let groundMaterial = null;
   let grid = null;
+  let stars = null;
 
   function buildGround(halfSize) {
     const size = halfSize * 2;
@@ -338,6 +351,7 @@ export function createOfficeScene(canvas, options) {
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = GROUND_Y;
     mesh.receiveShadow = true;
     // Capped rather than scaled 1:1 with size: past a few hundred divisions
     // the lines are imperceptible anyway (this only grows for a very large,
@@ -345,7 +359,7 @@ export function createOfficeScene(canvas, options) {
     // into thousands of extra line segments for no visible gain.
     const divisions = Math.min(600, Math.max(20, Math.round(size / 5)));
     const gridHelper = new THREE.GridHelper(size, divisions, palette.grid, palette.grid);
-    gridHelper.position.y = 0.02;
+    gridHelper.position.y = GROUND_Y + 0.02;
     if (gridHelper.material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 1;
@@ -363,6 +377,13 @@ export function createOfficeScene(canvas, options) {
       scene.remove(grid);
       if (grid.geometry) grid.geometry.dispose();
       if (grid.material) grid.material.dispose();
+    }
+    if (stars) { scene.remove(stars); disposeTree(stars); stars = null; }
+    // Faint stars scattered over the dark floor, as in the reference (dark theme only).
+    if (palette === PALETTES.dark) {
+      stars = makeStarfield(halfSize, Math.min(2600, Math.round(halfSize * 4.5)));
+      stars.position.y = GROUND_Y;
+      scene.add(stars);
     }
     const built = buildGround(halfSize);
     groundHalfSize = halfSize;
@@ -424,8 +445,14 @@ export function createOfficeScene(canvas, options) {
     group.position.y = CONDUCTOR_PLATFORM_Y;
     // A tap on the plinth frames it, the same as a tap on any pod.
     group.userData.podCluster = '__conductor__';
-    const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette);
+    const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette, null, { band: HUB_COLOR, top: palette === PALETTES.dark ? '#28324a' : '#c7cfdd' });
     group.add(pod);
+    // The hub's centrepiece (scenery: it carries no state): a floor projector
+    // under a floating holographic globe, and a console at each corner.
+    const centrepiece = makeHubCentrepiece(CONDUCTOR_SLAB, HUB_COLOR);
+    centrepiece.position.y = 0;
+    group.add(centrepiece);
+    group.userData.spin = centrepiece.userData.spin;
     // Unlike a pod, the conductor's plinth never tints/glows with activity --
     // reported as distracting since it's the one fixed landmark on the floor,
     // there whether anything is running or not. The pacing figure (below)
@@ -453,25 +480,24 @@ export function createOfficeScene(canvas, options) {
     }
     const slabWidth = width + POD_SLAB_PADDING;
     const slabDepth = depth + POD_SLAB_PADDING;
-    const group = makePod(slabWidth, slabDepth, palette, color);
+    // Untinted platforms get a coloured neon band of their own: the open
+    // floor in its card's gold, anything else in the hub's blue.
+    const isFloor = label === 'The Floor';
+    const group = makePod(slabWidth, slabDepth, palette, color, {
+      band: isFloor ? FLOOR_COLOR : HUB_COLOR,
+      top: !color && palette === PALETTES.dark ? '#1f2739' : undefined,
+    });
     // A tap on the slab (not on a worker) frames this pod.
     group.userData.podCluster = cluster;
 
-    // One plant, on the corner facing away from the sign (the sign sits on
-    // the +z side above), plus a whiteboard on a third corner. Scenery
-    // carries no state, so it can never mislead anyone about what Hermes is
-    // doing. A second plant used to stand on the sign's own side and covered
-    // part of the text.
-    const plant = makePlant(palette);
-    plant.position.set(-(slabWidth / 2 - 1.1), 0.6, -(slabDepth / 2 - 1.1));
-    group.add(plant);
-    // The Floor's far edge is occupied by desks, so this decorative board
-    // clips against the slab rim there. Other pods retain their whiteboard.
-    if (label !== 'The Floor') {
-      const whiteboard = makeWhiteboard(palette);
-      whiteboard.position.set(slabWidth / 2 - 1.1, 0, -(slabDepth / 2 - 1.1));
-      group.add(whiteboard);
-    }
+    // The department's scenery (builders.js makePodScenery): low back walls,
+    // a bookshelf, plants, the prop that says what it does, and its icon
+    // plaque on the front face. Scenery carries no state, so it can never
+    // mislead anyone about what Hermes is doing. The Floor's edges are lined
+    // with desks, so it gets only plants and a water cooler.
+    const kind = label === 'The Floor' ? 'floor' : deptKind(label || cluster);
+    const scenery = makePodScenery(kind, slabWidth, slabDepth, palette, color || HUB_COLOR, { open: label === 'The Floor' });
+    group.add(scenery);
 
     office.add(group);
     pod = {
@@ -577,6 +603,15 @@ export function createOfficeScene(canvas, options) {
       const podRecord = pods.get(cluster);
       const railColor = podRecord && podRecord.color ? podRecord.color : null;
       walk = makeWalkway(span.length, palette, railColor);
+      // A pair of lamp posts at each end of the exposed deck.
+      const ends = Math.max(0.5, span.length / 2 - BRIDGE_DECK_PLATFORM_OVERLAP - 0.25);
+      const lamps = new THREE.Group();
+      [-1, 1].forEach(end => [-1, 1].forEach(side => {
+        const lamp = makeLampPost(1.5);
+        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.05), 0.63 + 0.17, end * ends);
+        lamps.add(lamp);
+      }));
+      walk.add(mergeStatic(lamps, `lamps|${ends.toFixed(2)}`));
       const mid = span.start + span.length / 2;
       walk.position.set(Math.sin(span.angle) * mid, LEVEL_BRIDGE_Y, Math.cos(span.angle) * mid);
       walk.rotation.y = span.angle;
@@ -1300,6 +1335,7 @@ export function createOfficeScene(canvas, options) {
     palette = next;
     groundMaterial.color.set(palette.ground);
     if (grid.material && grid.material.color) grid.material.color.set(palette.grid);
+    installGround(groundHalfSize);  // the starfield is dark-theme only
     ambient.color.set(palette.hemiSky);
     ambient.groundColor.set(palette.hemiGround);
     rimLight.color.set(palette.rim);
@@ -1585,7 +1621,7 @@ export function createOfficeScene(canvas, options) {
    */
   function renderNow() {
     if (layoutMotion) { previewLayoutMotion(); return; }
-    if (resize()) composer.render();
+    if (resize()) { renderer.shadowMap.needsUpdate = true; composer.render(); }
   }
 
   // ---- side-panel slides ------------------------------------------------
@@ -1615,7 +1651,7 @@ export function createOfficeScene(canvas, options) {
     // Drop the preview scale and draw the real frame in the same task, so
     // the settled picture replaces the scaled one without a blank frame.
     canvas.style.transform = '';
-    if (resize()) composer.render();
+    if (resize()) { renderer.shadowMap.needsUpdate = true; composer.render(); }
   }
 
   // ---- render loop ------------------------------------------------------
@@ -1699,6 +1735,8 @@ export function createOfficeScene(canvas, options) {
 
     if (conductor) {
       const person = conductor.userData.person;
+      // The hub globe's grid and halo turn slowly (scenery, no state).
+      (conductor.userData.spin || []).forEach((part, i) => { part.rotation.y += dt * (i ? -0.35 : 0.25); });
       const wanderer = conductor.userData.wanderer;
       const orchestrating = conductor.userData.status === 'orchestrating';
       if (orchestrating) {
@@ -1725,9 +1763,17 @@ export function createOfficeScene(canvas, options) {
       }
     }
 
+    shadowFrame += 1;
+    if (shadowFrame % 2 === 0) renderer.shadowMap.needsUpdate = true;
     composer.render();
   }
 
+  // The first start compiles every material's shader program in the
+  // background (KHR_parallel_shader_compile where the GPU driver has it)
+  // before the first frame, instead of all at once inside it: that frame used
+  // to block the page for hundreds of milliseconds while it compiled.
+  let warmed = false;
+  let warming = null;
   function start() {
     if (running) return;
     // A hidden tab gets no rAF callbacks anyway; not starting keeps the
@@ -1735,6 +1781,27 @@ export function createOfficeScene(canvas, options) {
     running = true;
     lastFrameAt = 0;
     quality.reset(performance.now());
+    // Only with the extension: without it three.js' compileAsync has nothing
+    // to poll (r185 throws inside its timer and never settles), and compiling
+    // is synchronous either way. A 2.5s cap means a stuck driver can only
+    // delay the first frame, never keep the floor from appearing.
+    const parallel = renderer.extensions && renderer.extensions.has
+      && renderer.extensions.has('KHR_parallel_shader_compile');
+    if (!warmed && parallel && typeof renderer.compileAsync === 'function') {
+      warmed = true;
+      const begin = () => {
+        if (!warming) return;
+        warming = null;
+        if (running && !rafId) rafId = window.requestAnimationFrame(frame);
+      };
+      warming = Promise.race([
+        renderer.compileAsync(scene, camera).catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 2500)),
+      ]).then(begin);
+      return;
+    }
+    warmed = true;
+    if (warming) return;  // the loop starts when the warm-up finishes
     rafId = window.requestAnimationFrame(frame);
   }
 
@@ -1757,6 +1824,7 @@ export function createOfficeScene(canvas, options) {
     canvas.removeEventListener('wheel', onWheel);
     document.removeEventListener('keydown', onKeyDown);
     clearOffice();
+    if (stars) { disposeTree(stars); stars = null; }
     disposeSharedCaches();
     scene.clear();
     ownedGeometries.forEach(g => { try { g.dispose(); } catch (_err) { /* already gone */ } });

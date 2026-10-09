@@ -129,16 +129,13 @@ def test_the_floor_grid_texture_was_removed():
     assert "export function makeFloorTiles" not in BUILDERS_SRC
 
 
-def test_every_pod_gets_exactly_one_whiteboard_and_one_plant():
-    # A second plant used to stand on the same corner as the floor sign and
-    # covered part of the text.
+def test_every_pod_gets_its_department_scenery():
+    # One scenery group per pod (walls, shelf, plants, the department's prop,
+    # its icon plaque), chosen from the pod's name.
     at = SCENE_SRC.index("function ensurePod(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function ", at + 10)]
-    assert body.count("makeWhiteboard(") == 1
-    assert body.count("makePlant(") == 1
-
-
-# ── disposal ─────────────────────────────────────────────────────────────────
+    assert body.count("makePodScenery(") == 1
+    assert "deptKind(label || cluster)" in body
 
 def test_disposetree_releases_every_new_userdata_tagged_resource():
     at = BUILDERS_SRC.index("export function disposeTree(")
@@ -166,13 +163,12 @@ def test_people_use_smooth_capsule_and_head_geometry():
 
 
 def test_platform_finish_softens_edge_specular_hotspots():
-    # Tinted pods keep a subtle satin finish; untinted pods (Conductor,
+    # Tinted pods keep a soft satin finish; untinted pods (Conductor,
     # The Floor) are matte so dark rims don't produce white specular dots.
     assert "isUntinted" in BUILDERS_SRC
     assert "topMatOpts = isUntinted" in BUILDERS_SRC
-    assert "clearcoat: 0" in BUILDERS_SRC
-    assert "rough: 0.8, clearcoat: 0" in BUILDERS_SRC
-
+    assert "rough: 0.92, clearcoat: 0" in BUILDERS_SRC
+    assert "rough: 0.72, clearcoat: 0.25" in BUILDERS_SRC
 
 def test_whiteboard_props_never_cast_a_shadow():
     at = BUILDERS_SRC.index("export function makeWhiteboard(")
@@ -263,7 +259,7 @@ def test_all_platform_types_reuse_the_four_layer_pod_builder():
     conductor = SCENE_SRC[conductor_at:SCENE_SRC.index("function ensurePod", conductor_at)]
     sync_at = SCENE_SRC.index("function syncOffice(")
     sync = SCENE_SRC[sync_at:SCENE_SRC.index("function frame", sync_at)]
-    assert "makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette)" in conductor
+    assert "makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette, null, { band: HUB_COLOR" in conductor
     assert "const record = ensurePod(" in sync
     assert "record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);" in sync
     assert "addLayer('top'" in BUILDERS_SRC
@@ -393,7 +389,7 @@ def test_office_platforms_cast_shadows_but_bridges_do_not():
     assert "slab.castShadow = true;" in BUILDERS_SRC
     assert "deck.castShadow = false;" in BUILDERS_SRC
     assert "beam.castShadow = false;" in BUILDERS_SRC
-    assert "const baseHeight = 1.2;" in BUILDERS_SRC
+    assert "const topHeight = 1.2;" in BUILDERS_SRC
 
 
 def test_platform_bases_use_black_in_both_office_themes():
@@ -423,11 +419,10 @@ def test_every_bridge_has_a_first_interior_transverse_panel_line():
     assert "for (let i = 1; i < panelCount - 1; i++)" in body
 
 
-def test_the_floor_pod_omits_the_whiteboard_that_clips_its_edge():
+def test_the_floor_pod_gets_open_scenery_that_keeps_its_desk_edges_clear():
     at = SCENE_SRC.index("function ensurePod(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function setBridgeActive", at)]
-    assert "if (label !== 'The Floor')" in body
-
+    assert "{ open: label === 'The Floor' }" in body
 
 def test_task_nameplates_only_appear_for_the_focused_worker():
     # Full task strings are useful when inspecting one desk, but at overview

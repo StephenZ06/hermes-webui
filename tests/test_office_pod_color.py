@@ -35,7 +35,9 @@ const input = JSON.parse(process.argv[3] || '{}');
 const pod = makePod(10, 6, palette, input.tint || null);
 const layers = pod.children.filter(child => child.userData && child.userData.platformLayer);
 const renderLayers = layers.length ? layers : pod.children;
-const [slab, skirt] = renderLayers;
+const slab = renderLayers[0];
+const skirt = renderLayers.find(layer => layer.userData.platformLayer === 'upper-base');
+const band = renderLayers.find(layer => layer.userData.platformLayer === 'delivery');
 pod.updateMatrixWorld(true);
 const slabBounds = new Box3().setFromObject(slab);
 process.stdout.write(JSON.stringify({
@@ -44,7 +46,7 @@ process.stdout.write(JSON.stringify({
   slabTop: slabBounds.max.y,
   layerNames: renderLayers.map(layer => layer.userData.platformLayer || null),
   layerColors: renderLayers.map(layer => '#' + layer.material.color.getHexString()),
-  deliveryEmissiveIntensity: renderLayers[2].material.emissiveIntensity,
+  deliveryEmissiveIntensity: band.material.emissiveIntensity,
   layerBounds: renderLayers.map(layer => {
     const bounds = new Box3().setFromObject(layer);
     return {
@@ -56,7 +58,7 @@ process.stdout.write(JSON.stringify({
       z: layer.position.z,
     };
   }),
-  deliveryLayer: pod.userData.deliveryLayer === renderLayers[2],
+  deliveryLayer: pod.userData.deliveryLayer === band,
 }));
 """
 
@@ -101,7 +103,7 @@ def run(driver, **payload):
 def test_no_tint_keeps_the_plain_palette_colour(driver):
     out = run(driver)
     assert out["slabColor"] == "#ffffff"
-    assert out["skirtColor"] == "#242b3b"
+    assert out["skirtColor"] == "#1c2232"
     assert out["deliveryEmissiveIntensity"] == 0
 
 
@@ -119,13 +121,13 @@ def test_a_tint_is_blended_not_painted_flat(driver):
     out = run(driver, tint="#c9758a")
     # Changed from the untinted palette colour...
     assert out["slabColor"] != "#ffffff"
-    assert out["layerColors"][2] != "#ffffff"
+    assert out["layerColors"][1] != "#ffffff"
     # ...but not simply replaced by the raw tint either -- a flat swap would
     # make every department's floor the same brand-colour slab regardless of
     # the active theme, instead of a tinted version of that theme's own pod
     # material.
     assert out["slabColor"] != "#c9758a"
-    assert out["layerColors"][2] != "#c9758a"
+    assert out["layerColors"][0] != "#c9758a"
 
 
 def test_two_departments_get_two_different_floor_colours(driver):
@@ -135,29 +137,21 @@ def test_two_departments_get_two_different_floor_colours(driver):
 
 
 def test_pod_has_four_flush_colored_and_black_layers(driver):
+    """The reference look: a coloured top on a glowing neon band (the delivery
+    layer, which flares on arrival), standing on a dark base and footing."""
     out = run(driver, tint="#c9758a")
-    assert out["layerNames"] == ["top", "upper-base", "delivery", "lower-base"]
-    assert out["layerColors"][0] == out["layerColors"][2]
-    assert out["layerColors"][1] == out["layerColors"][3] == "#242b3b"
+    assert out["layerNames"] == ["top", "delivery", "upper-base", "lower-base"]
+    assert out["layerColors"][2] == "#1c2232" and out["layerColors"][3] == "#121725"
     assert out["deliveryLayer"] is True
-    assert out["deliveryEmissiveIntensity"] >= 2.0
+    assert out["deliveryEmissiveIntensity"] >= 0.9
     bounds = out["layerBounds"]
-    # All four layers are deliberately identical in thickness. The visual is
-    # a repeated coloured-platform / black-base unit, not two accent strips.
     heights = [layer["top"] - layer["bottom"] for layer in bounds]
-    assert heights == pytest.approx([1.2] * 4, abs=1e-6)
-    # One visible step below the top tier reveals the equal-height layers in
-    # the isometric view; below it the platform is a single stacked block, and
-    # the black footing is never narrower than the coloured delivery tier
-    # above it (a narrower footing leaves a dark gap along the bottom rim).
+    assert heights == pytest.approx([1.2, 0.42, 1.1, 0.8], abs=1e-6)
+    # Stacked flush, top to bottom, with no gap between the layers.
+    for upper, lower in zip(bounds, bounds[1:]):
+        assert upper["bottom"] == pytest.approx(lower["top"], abs=1e-6)
     widths = [layer["width"] for layer in bounds]
-    depths = [layer["depth"] for layer in bounds]
-    assert widths[0] < widths[1] <= widths[2] <= widths[3]
-    assert depths[0] < depths[1] <= depths[2] <= depths[3]
-    assert widths[1] - widths[0] >= 3
-    assert depths[1] - depths[0] >= 3
+    # The band and base stand a small lip proud of the top; the footing tucks in.
+    assert widths[1] == pytest.approx(widths[2]) and widths[1] > widths[0] > widths[3]
     assert [layer["x"] for layer in bounds] == pytest.approx([0, 0, 0, 0])
     assert [layer["z"] for layer in bounds] == pytest.approx([0, 0, 0, 0])
-    assert bounds[0]["bottom"] == pytest.approx(bounds[1]["top"], abs=1e-6)
-    assert bounds[1]["bottom"] == pytest.approx(bounds[2]["top"], abs=1e-6)
-    assert bounds[2]["bottom"] == pytest.approx(bounds[3]["top"], abs=1e-6)

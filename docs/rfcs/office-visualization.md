@@ -1157,3 +1157,43 @@ separate security-sensitive implementation. Until then Gmail is fail-closed as
 disconnected, with search/read, summarize, and draft-reply listed as future
 approved capabilities; send requires explicit approval and archive/delete are
 not available.
+
+## Reference renovation and smoothness (2026-10-09)
+
+The floor was restyled after a reference render (cartoon 3D, not realistic);
+nothing it does changed.
+
+- **Platforms** (`makePod`): a coloured top on a glowing neon band (the
+  delivery layer, which still flares on arrival), a dark base and a tucked-in
+  footing. The ground sits at `GROUND_Y` (-2.6) so each pod stands as a whole
+  block; a faint starfield covers the dark theme's floor. The band's glow is
+  set from its colour's luminance so amber and purple glow alike.
+- **Scenery** (`makePodScenery`, chosen by `deptKind(label)`): low back walls
+  with a glowing strip, a bookshelf, a topiary and a palm, the department's
+  own prop (server rack for Coding/Operations, filing cabinet for Documents,
+  mail cubbies for Emails, a lit billboard for Marketing, a bar chart for
+  Sales, a safe for Finance, parcels for Delivery, a water cooler on The
+  Floor) and an icon plaque on the front face. Business departments get their
+  props and icons from their names, so a new department picks them up.
+- **Cubicles** are low partitions with the glowing accent strip (still the
+  "working" cue), no glass. **Bridges** keep their destination-coloured rails
+  and gain lantern posts at both ends. **The hub** has a floor projector, a
+  floating holographic globe (turning grid and halo) and corner consoles; the
+  conductor still paces and stands at the projector to orchestrate.
+- **Floor cards**: glass panels with a green dot for active and grey for done.
+
+Smoothness, measured headless (SwiftShader, so relative only):
+
+- **Draw calls**: static groups (pod scenery, desks, chairs, the hub, bridge
+  lanterns) are merged into one mesh per material (`mergeStatic`, cached), and
+  the shadow map is redrawn every other frame. Projects: 373 → 336 a frame
+  with all the new scenery; Business: 1,270 → 984.
+- **Leaving the Office suspends it** (`suspend()` behind `HermesOffice.unmount`):
+  the loop and polling stop, the scene and its compiled shaders stay, and it
+  is disposed only after 5 minutes away. Returning: 447 ms with 444 ms of
+  main-thread blocking → 175 ms with none.
+- **Shaders compile in the background** (`compileAsync` where the GPU has
+  `KHR_parallel_shader_compile`, capped at 2.5 s) before the first frame; the
+  canvas fades in on that frame, with a loading bar until then.
+- **Floor cards** write their position styles only when a value changes, so a
+  still camera costs no layout.

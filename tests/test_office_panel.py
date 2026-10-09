@@ -99,7 +99,7 @@ def test_office_platform_labels_can_switch_between_adaptive_and_fixed_scale():
     assert 'id="officeLabelScaleBtn"' in OFFICE_INDEX_JS
     assert "togglePlatformLabelScale" in OFFICE_INDEX_JS
     assert "_scene.getView().zoom" in OFFICE_INDEX_JS
-    assert "el.style.transform = `translate(-50%, -100%) scale(${scale})`;" in OFFICE_INDEX_JS
+    assert "setStyle(el, 'transform', `translate(-50%, -100%) scale(${Math.round(scale * 1000) / 1000})`);" in OFFICE_INDEX_JS
 
 
 def test_task_status_collapses_with_a_transition_instead_of_removing_content():

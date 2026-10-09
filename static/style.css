@@ -11083,3 +11083,13 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .kanban-list-item:hover{background:var(--panel);}
 .workspace-notes-note:hover{background:var(--bg);}
 .automation-row:focus-visible{box-shadow:none;}
+/* Office floor cards, as in the reference: glass panel, the department's
+   colour on its name and left edge, a green dot for active and a grey one for done. */
+.office-dept-card{background:linear-gradient(180deg,rgba(20,28,48,0.92),rgba(12,17,32,0.94));border-color:rgba(148,163,184,0.16);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.office-dept-card-stat{display:inline-flex;align-items:center;}
+.office-dept-card-stat::before{content:"";width:7px;height:7px;border-radius:50%;margin-right:6px;background:#64748b;}
+.office-dept-card-stat:first-child::before{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.6);}
+/* Office: the app's loading bar while the 3D scene builds and compiles. */
+.office-stage:has(> .office-canvas.is-mounting)::after{content:"";position:absolute;left:50%;top:50%;width:min(180px,40%);height:3px;transform:translate(-50%,-50%);border-radius:999px;background:linear-gradient(90deg,var(--border) 0%,var(--accent) 50%,var(--border) 100%);background-size:200% 100%;animation:office-loading 1.1s linear infinite;pointer-events:none;}
+@keyframes office-loading{from{background-position:100% 0;}to{background-position:-100% 0;}}
+@media (prefers-reduced-motion:reduce){.office-stage:has(> .office-canvas.is-mounting)::after{animation:none;}}

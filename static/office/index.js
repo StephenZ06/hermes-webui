@@ -577,16 +577,19 @@ function repositionDepartmentCards() {
     const rect = _labelsVisible ? _scene.podScreenRect(cluster) : null;
     plans.push({ el, rect, width: el.offsetWidth, height: el.offsetHeight, hidden: el.style.display === 'none' });
   });
+  // Runs every frame: a write only when a value changed, so a still camera
+  // costs no style recalculation or layout at all.
+  const setStyle = (el, prop, value) => { if (el.style[prop] !== value) el.style[prop] = value; };
   const place = (el, rect, width, height) => {
-    el.style.left = Math.max(width / 2 + 8, Math.min(stageWidth - width / 2 - 8, rect.x)) + 'px';
-    el.style.top = Math.max(height + 8, Math.min(stageHeight - 8, rect.y)) + 'px';
+    setStyle(el, 'left', Math.round(Math.max(width / 2 + 8, Math.min(stageWidth - width / 2 - 8, rect.x)) * 2) / 2 + 'px');
+    setStyle(el, 'top', Math.round(Math.max(height + 8, Math.min(stageHeight - 8, rect.y)) * 2) / 2 + 'px');
   };
   const shown = [];
   plans.forEach(plan => {
     const { el, rect } = plan;
-    if (!rect) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    el.style.transform = `translate(-50%, -100%) scale(${scale})`;
+    if (!rect) { setStyle(el, 'display', 'none'); return; }
+    setStyle(el, 'display', '');
+    setStyle(el, 'transform', `translate(-50%, -100%) scale(${Math.round(scale * 1000) / 1000})`);
     if (plan.hidden) shown.push(plan); // no size until displayed: measured below
     else place(el, rect, plan.width, plan.height);
   });
@@ -2014,7 +2017,120 @@ function renderUnsupported(container) {
  * Mount (or resume) the office scene inside `container`.
  * @param {HTMLElement} container the panel's wrap element
  */
+/**
+ * The panel's live hooks: adapter subscription, resize/theme/visibility
+ * observers, polling and the sidebar refresh. Attached on mount and on
+ * resume after a suspend; teardownObservers() releases them all.
+ */
+function attachLiveHooks(container) {
+  _unsubscribe = _adapter.subscribe(cmd => {
+    if (_viewMode === 'live') scheduleSync();
+    // A delegation has to show up in the sidebar the moment it starts, not on
+    // the next poll: the stored listing cannot know about it yet.
+    if (cmd && (cmd.type === 'worker.spawn' || cmd.type === 'worker.status'
+      || cmd.type === 'worker.remove' || cmd.type === 'reset')) renderSessionList();
+  });
+
+  if (typeof ResizeObserver === 'function') {
+    _resizeObserver = new ResizeObserver(() => {
+      if (!_scene) return;
+      if (!_layoutMotionPauseDepth) syncCanvasSpan();
+      // Resizing clears the WebGL drawing buffer, and this callback runs after
+      // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
+      // expand settles while the loop is still waiting to restart. It also
+      // covers a panel slide, which pauses the loop but commits its final
+      // layout up front: drawing it now lets the floor and its cards travel
+      // with the slide instead of stretching a stale frame that snaps at the end.
+      _scene.renderNow();
+      repositionDepartmentCards();
+    });
+    _resizeObserver.observe(container);
+  }
+
+  // The app toggles `dark` on <html> when the theme changes; repaint the
+  // office to match rather than leaving a dark floor on a light UI.
+  if (typeof MutationObserver === 'function') {
+    _themeObserver = new MutationObserver(() => { if (_scene) _scene.applyTheme(); });
+    _themeObserver.observe(document.documentElement, {
+      attributes: true, attributeFilter: ['class', 'data-skin'],
+    });
+  }
+
+  // A backgrounded tab already stops delivering rAF callbacks, but stopping
+  // explicitly keeps the running flag truthful and releases the loop for
+  // browsers that throttle rather than pause.
+  _visibilityHandler = () => {
+    if (!_scene) return;
+    if (document.hidden) _scene.stop();
+    else if (!_layoutMotionPauseDepth) _scene.start();
+  };
+  document.addEventListener('visibilitychange', _visibilityHandler);
+
+  // Polling only runs while the panel is up. The live SSE fan-out keeps the
+  // office current whether or not anyone is looking at it; this is just the
+  // catch-up for what the stream missed.
+  _pollTimer = setInterval(reconcile, RECONCILE_MS);
+  reconcile();
+  // Runs started under another profile, or in another tab, only reach this
+  // panel through the stored listing.
+  _sidebarTimer = setInterval(() => {
+    if (_layoutMotionPauseDepth) { _sidebarDeferredForMotion = true; return; }
+    renderSidebar();
+  }, SIDEBAR_REFRESH_MS);
+
+  // Render cached/dummy sidebar immediately so project folders show up before
+  // the first background poll completes.
+  renderSidebar();
+
+}
+
+// Leaving the Office suspends the scene instead of destroying it: the loop
+// and polling stop, the WebGL context and every built mesh and compiled
+// shader stay, so coming back within SUSPEND_MS is instant instead of a full
+// rebuild (seconds on an integrated GPU). Only one Office context ever
+// exists, so the browser's context cap is never at risk; staying away longer
+// than SUSPEND_MS releases it as before.
+const SUSPEND_MS = 5 * 60 * 1000;
+let _suspended = false;
+let _suspendTimer = null;
+
+function cancelSuspendTimer() {
+  if (_suspendTimer) clearTimeout(_suspendTimer);
+  _suspendTimer = null;
+}
+
+/** Stop drawing and polling, keep the scene; dispose it after SUSPEND_MS. */
+function suspend() {
+  if (!_scene || !_container) { unmount(); return; }
+  const reset = !_preserveOfficeNavigationOnUnmount;
+  _preserveOfficeNavigationOnUnmount = false;
+  if (reset) resetOfficeToDefault();
+  teardownObservers();
+  try { _scene.stop(); } catch (_err) { /* already stopped */ }
+  _suspended = true;
+  cancelSuspendTimer();
+  _suspendTimer = setTimeout(() => { _suspendTimer = null; if (_suspended) { _suspended = false; unmount(); } }, SUSPEND_MS);
+}
+
 function mount(container) {
+  if (!container) return;
+  if (_suspended) {
+    cancelSuspendTimer();
+    _suspended = false;
+    if (container === _container && _scene && _officeSubview === 'floor' && _canvas && container.contains(_canvas)) {
+      // Back on the same panel: the scene, its meshes and shaders are intact.
+      attachLiveHooks(container);
+      renderPauseButton();
+      renderOutletSwitch();
+      _scene.resize();
+      _scene.applyTheme();
+      _scene.syncOffice(activeAdapter().getState());
+      _scene.start();
+      scheduleSync();
+      return;
+    }
+    unmount();
+  }
   if (!container) return;
   if (_officeSubview !== 'floor') {
     renderOfficeNavigation();
@@ -2110,7 +2226,12 @@ function mount(container) {
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => id ? selectTask(id, false) : clearTaskSelection(),
-      onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
+      onTick: () => {
+        // The canvas fades in on the scene's first real frame (after its
+        // shaders have compiled), never as an empty box before it.
+        if (_canvas && _canvas.classList.contains('is-mounting')) _canvas.classList.remove('is-mounting');
+        activeAdapter().tick(); repositionDepartmentCards();
+      },
       // The expanded Task Status panel owns the right edge of the stage, so
       // keep a focused desk clear of it. A collapsed status strip needs no
       // inset and an inline task detail never creates a second overlay.
@@ -2129,74 +2250,12 @@ function mount(container) {
     return;
   }
 
-  _unsubscribe = _adapter.subscribe(cmd => {
-    if (_viewMode === 'live') scheduleSync();
-    // A delegation has to show up in the sidebar the moment it starts, not on
-    // the next poll: the stored listing cannot know about it yet.
-    if (cmd && (cmd.type === 'worker.spawn' || cmd.type === 'worker.status'
-      || cmd.type === 'worker.remove' || cmd.type === 'reset')) renderSessionList();
-  });
-
-  if (typeof ResizeObserver === 'function') {
-    _resizeObserver = new ResizeObserver(() => {
-      if (!_scene) return;
-      if (!_layoutMotionPauseDepth) syncCanvasSpan();
-      // Resizing clears the WebGL drawing buffer, and this callback runs after
-      // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
-      // expand settles while the loop is still waiting to restart. It also
-      // covers a panel slide, which pauses the loop but commits its final
-      // layout up front: drawing it now lets the floor and its cards travel
-      // with the slide instead of stretching a stale frame that snaps at the end.
-      _scene.renderNow();
-      repositionDepartmentCards();
-    });
-    _resizeObserver.observe(container);
-  }
-
-  // The app toggles `dark` on <html> when the theme changes; repaint the
-  // office to match rather than leaving a dark floor on a light UI.
-  if (typeof MutationObserver === 'function') {
-    _themeObserver = new MutationObserver(() => { if (_scene) _scene.applyTheme(); });
-    _themeObserver.observe(document.documentElement, {
-      attributes: true, attributeFilter: ['class', 'data-skin'],
-    });
-  }
-
-  // A backgrounded tab already stops delivering rAF callbacks, but stopping
-  // explicitly keeps the running flag truthful and releases the loop for
-  // browsers that throttle rather than pause.
-  _visibilityHandler = () => {
-    if (!_scene) return;
-    if (document.hidden) _scene.stop();
-    else if (!_layoutMotionPauseDepth) _scene.start();
-  };
-  document.addEventListener('visibilitychange', _visibilityHandler);
-
-  // Polling only runs while the panel is up. The live SSE fan-out keeps the
-  // office current whether or not anyone is looking at it; this is just the
-  // catch-up for what the stream missed.
-  _pollTimer = setInterval(reconcile, RECONCILE_MS);
-  reconcile();
-  // Runs started under another profile, or in another tab, only reach this
-  // panel through the stored listing.
-  _sidebarTimer = setInterval(() => {
-    if (_layoutMotionPauseDepth) { _sidebarDeferredForMotion = true; return; }
-    renderSidebar();
-  }, SIDEBAR_REFRESH_MS);
-
-  // Render cached/dummy sidebar immediately so project folders show up before
-  // the first background poll completes.
-  renderSidebar();
+  attachLiveHooks(container);
 
   _scene.resize();
   _scene.syncOffice(activeAdapter().getState());
   _scene.start();
   scheduleSync();
-  // Remove the mount-in opacity class after the first frame is painted so the
-  // canvas fades in smoothly instead of appearing already fully opaque.
-  requestAnimationFrame(() => {
-    if (_canvas) _canvas.classList.remove('is-mounting');
-  });
 }
 
 /**
@@ -2208,6 +2267,8 @@ function mount(container) {
  * session. Office *state* is untouched: the run is still going.
  */
 function unmount() {
+  cancelSuspendTimer();
+  _suspended = false;
   const reset = !_preserveOfficeNavigationOnUnmount;
   _preserveOfficeNavigationOnUnmount = false;
   if (reset) resetOfficeToDefault();
@@ -2321,7 +2382,7 @@ window.officeReturnToLive = function officeReturnToLive() {
 };
 
 window.HermesOffice = {
-  mount, unmount, isRunning, renderSidebar, returnToLive, setOutlet, setOfficeSubview,
+  mount, unmount: suspend, dispose: unmount, isRunning, renderSidebar, returnToLive, setOutlet, setOfficeSubview,
   getView, focusWorker, resetView,
   pauseForLayoutMotion, resumeAfterLayoutMotion,
   onSpawn, onToolActivity, onComplete, applySnapshot, reset, getState,
