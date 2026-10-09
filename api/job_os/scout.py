@@ -502,6 +502,23 @@ def _known_urls() -> set[str]:
         conn.close()
 
 
+def _skip(counts: dict, why: str) -> None:
+    """A found job not saved: counted as filtered, and by reason for the run's closing line."""
+    counts["filtered"] += 1
+    counts[why] = counts.get(why, 0) + 1
+
+
+def _skipped_note(counts: dict, search: dict) -> str:
+    """Why found jobs were not saved, in the run's closing line ("· 5 skipped: ...")."""
+    days = int(search.get("posted_within_days") or 0)
+    parts = [(counts.get("off_title", 0), "not your job titles"),
+             (counts.get("too_old", 0), f"posted over {days} day{'s' if days != 1 else ''} ago" if days else "too old"),
+             (counts.get("not_remote", 0), "not remote")]
+    parts = [f"{n} {why}" for n, why in parts if n]
+    total = int(counts.get("filtered") or 0)
+    return f" · {total} skipped ({', '.join(parts)})" if total and parts else (f" · {total} skipped" if total else "")
+
+
 NOT_SCORED = " · not scored: upload your master resume in Resume Studio"
 
 
@@ -747,7 +764,7 @@ def _remoteid_runner(search, run_id, counts, note_error, save, keep, seen, known
                     return "broken"
                 continue
             if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
-                counts["filtered"] += 1  # older than the search's window
+                _skip(counts, "too_old")  # older than the search's window
                 continue
             try:
                 canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
@@ -849,11 +866,11 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
         def keep(posting: dict, canonical_url: str, source: str = "indeed") -> None:
             """Filter one read posting and save it (raises DuplicateJobError, JobValidationError)."""
             if not title_matches(posting.get("title"), search["title_filter"]):
-                counts["filtered"] += 1  # the title doesn't have the words the search asks for
+                _skip(counts, "off_title")  # the title doesn't have the words the search asks for
             elif on_target and not relevance.title_relevant(posting.get("title"), on_target):
-                counts["filtered"] += 1  # a different kind of job (a sales role for "IT Analyst")
+                _skip(counts, "off_title")  # a different kind of job (a sales role for "IT Analyst")
             elif search["remote_only"] and not _is_remote(posting):
-                counts["filtered"] += 1
+                _skip(counts, "not_remote")
             elif company_key(posting.get("company")) in blocked:
                 counts["blocked"] += 1
             elif similar_job_exists(posting.get("company"), posting.get("title")):
@@ -880,7 +897,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                     return
                 _mark_ran(search["id"])
                 note = _after_run(new_ids)
-                finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+                finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{_skipped_note(counts, search)}{note}")
                 return
 
         if apify_sites:
@@ -929,7 +946,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                             counts["closed"] += 1  # expired, or not a usable record
                             continue
                         if oldest and posting["posted_at"] and posting["posted_at"] < oldest:
-                            counts["filtered"] += 1  # older than the search's window
+                            _skip(counts, "too_old")  # older than the search's window
                             continue
                         canonical = normalize_job_input({"title": "x", "canonical_url": posting["canonical_url"]}).canonical_url
                         if canonical in seen:
@@ -952,7 +969,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
                 return
             _mark_ran(search["id"])
             note = _after_run(new_ids)
-            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{_skipped_note(counts, search)}{note}")
             return
 
         def offer(url: str) -> None:
@@ -990,7 +1007,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
             # Only Apify sites reach here without Apify on (all reported above as skipped).
             _mark_ran(search["id"])
             note = _after_run(new_ids)
-            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+            finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{_skipped_note(counts, search)}{note}")
             return
         client = _PacedClient(client_factory())
 
@@ -1094,7 +1111,7 @@ def run_discovery(run_id: str, client_factory: Callable) -> None:
 
         _mark_ran(search["id"])
         note = _after_run(new_ids)
-        finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{note}")
+        finish("completed", f"{counts['saved']} new job{'s' if counts['saved'] != 1 else ''}{_skipped_note(counts, search)}{note}")
     except Exception as error:  # a crashed worker must still leave a terminal run
         note_error("scout", type(error).__name__)
         try:

@@ -11060,3 +11060,26 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .job-os-side-alert{margin-left:auto;display:grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--error,#f07878);color:#fff;font-size:11px;font-weight:800;}
 .pipe-source.is-broken{background:color-mix(in srgb,var(--error,#f07878) 16%,transparent);color:var(--error,#f07878);gap:4px;text-decoration:line-through;}
 @media (max-width:640px){.site-health-banner{grid-template-columns:32px minmax(0,1fr);}.site-health-actions{grid-column:1/-1;}}
+/* ==== Card hover, one rule for every page ====
+   Like the Jobs dashboard's top four cards: a hovered (or keyboard-focused)
+   card shows its outline in the accent colour and keeps its own background,
+   with no tint, lift or shadow. Menu rows and buttons keep their own hover. */
+.job-os-metric:hover,.job-os-metric:focus-visible,
+.automation-row:hover,.automation-row:focus-visible,
+.job-os-job-card:hover,.job-os-job-card:focus-visible,
+.office-dashboard-metric:hover,.office-dashboard-floor:hover,.office-dashboard-worker:hover,
+.office-tasks-row:hover,
+.work-hub-card:hover,.work-hub-list-row:hover,
+.kanban-list-item:hover,
+.workspace-notes-note:hover,.workspace-nb-note:hover,.workspace-work-hub-board:hover,
+.profile-card:hover,.ws-row:hover{border-color:var(--accent);outline:none;}
+button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
+.job-os-job-card:hover,.job-os-job-card:focus-visible,
+.office-dashboard-metric:hover,.profile-card:hover,.ws-row:hover{background:transparent;}
+.office-dashboard-metric:hover{transform:none;box-shadow:none;}
+.office-dashboard-floor:hover,.office-dashboard-worker:hover{background:var(--surface-subtle);}
+.office-tasks-row:hover:not(.is-selected){background:var(--surface);}
+.work-hub-card:hover,.work-hub-list-row:hover{background:var(--surface);transform:none;}
+.kanban-list-item:hover{background:var(--panel);}
+.workspace-notes-note:hover{background:var(--bg);}
+.automation-row:focus-visible{box-shadow:none;}

@@ -106,6 +106,9 @@ with or without Apify and without Firecrawl:
 - **A changed site fails the run with a reason** instead of reporting 0 new:
   when every search comes back empty, Scout checks the site's unfiltered job
   list, and three job pages in a row that no longer parse stop the run.
+- A run's card shows **Skipped** (found but not saved) next to Found, Read,
+  New and Known, and its closing line says why, e.g. "0 new jobs · 5 skipped
+  (2 not your job titles, 3 posted over 14 days ago)".
 - Live check: `HERMES_LIVE_REMOTEID=1 ./scripts/test.sh tests/test_job_os_remoteid.py -k live`.
 - **Site health** (`site_health.py`, state in `site_health.json`): every run
   and a background check every 12 hours (while a search uses the site) record

@@ -180,6 +180,8 @@ def _run(search):
 
 
 def test_a_run_through_apify_saves_each_citys_postings(home, monkeypatch):
+    # The fixture postings are dated 2026-10-06; the 1-day window is measured from then, not from today.
+    monkeypatch.setattr(scout, "_oldest_posted", lambda days: "2026-10-05" if days else "")
     runs = []
     results = _apify_on(monkeypatch, runs, results_per_city=30)
     results += [[_item("kl1"), _item("kl2", title="BI Analyst", company="Globex"), _item("old", expired=True)],

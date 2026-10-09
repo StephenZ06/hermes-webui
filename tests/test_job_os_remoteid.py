@@ -264,3 +264,13 @@ def test_a_run_that_meets_a_changed_site_marks_it(store, monkeypatch):
     monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing([JOBSTREET]) if "?" in url else _page(PAGES[url]))
     scout.start_discovery(_search_for(name="again")["id"], client_factory=_no_firecrawl, run_async=False)
     assert next(s for s in site_health.status() if s["site"] == "remoteid")["state"] == "ok"
+
+
+def test_a_run_says_why_found_jobs_were_skipped(store, monkeypatch):
+    # The SEO job is not an analyst role; the run's closing line says so, with a count.
+    monkeypatch.setattr(scout, "_remoteid_fetch", lambda url: _listing([JOBSTREET]) if "?" in url else _page(PAGES[url]))
+    search = scout.create_search({"keywords": "SOC Analyst", "country": "my", "sites": ["remoteid"],
+                                  "title_filter": ["analyst"], "strict_titles": False, "posted_within_days": 0})
+    run = scout.start_discovery(search["id"], client_factory=_no_firecrawl, run_async=False)
+    assert run["counts"]["filtered"] == 1 and run["counts"]["off_title"] == 1
+    assert run["stage_detail"].startswith("0 new jobs · 1 skipped (1 not your job titles)")

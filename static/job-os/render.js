@@ -742,11 +742,11 @@
   function runBody(run) {
     const c = run.counts || {};
     const active = ACTIVE_RUN.includes(run.status);
-    const stats = [['found', 'Found'], ['scraped', 'Read'], ['saved', 'New'], ['duplicates', 'Known'], ['closed', 'Closed']]
+    const stats = [['found', 'Found'], ['scraped', 'Read'], ['saved', 'New'], ['duplicates', 'Known'], ['filtered', 'Skipped'], ['closed', 'Closed']]
       .map(([key, label]) => `<span class="scout-stat${key === 'saved' && c.saved ? ' is-new' : ''}"><strong data-count-key="scout-${esc(run.id)}-${key}">${Number(c[key] || 0)}</strong>${label}</span>`).join('');
     const blocked = c.blocked ? `<span class="scout-stat"><strong>${Number(c.blocked)}</strong>Blocked</span>` : '';
     const errors = c.errors ? `<span class="scout-stat is-error"><strong>${Number(c.errors)}</strong>Errors</span>` : '';
-    return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${active ? statusLine([RUN_LABELS[run.status] || run.status]) : esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
+    return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${active ? statusLine([RUN_LABELS[run.status] || run.status]) : esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail" title="${esc(run.stage_detail || '')}">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
   }
   function runPanel(run, search) {
     if (!run) {
