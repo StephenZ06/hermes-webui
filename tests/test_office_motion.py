@@ -210,7 +210,10 @@ def test_only_an_idle_conductor_wanders():
     assert "if (orchestrating)" in body
     # The hub's pedestal fills the middle: it walks to its spot at the globe.
     assert "wanderer.moveTo(HUB_ORCHESTRATE.x, HUB_ORCHESTRATE.z, dtMs)" in body, "returns to the globe to work"
-    assert "wanderer.update(dtMs)" in body, "and paces only in the other branch"
+    assert "life.cancel()" in body, "a delegation drops any idle activity"
+    assert "life.step({ t, dtMs, wanderer" in body, "and paces only in the other branch"
+    life_src = (REPO / "static" / "office" / "conductor-life.js").read_text(encoding="utf-8")
+    assert "wanderer.update(dtMs)" in life_src
 
 
 def test_a_seated_worker_never_shows_legs():

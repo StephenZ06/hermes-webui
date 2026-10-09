@@ -78,9 +78,9 @@ def test_decorations_never_overlap_a_desk_a_walkway_or_the_bridge(page):
 
 
 def test_rails_run_round_the_corners_and_open_only_for_the_bridge(page):
-    """The rail is one run round the rounded slab (posts at its four corners),
-    cut once where the bridge lands, with a marker post either side of that
-    gap set symmetrically about the bridge."""
+    """The rail is one run round the rounded slab, corners included, cut once
+    where the bridge lands, with a marker post either side of that gap set
+    symmetrically about the bridge -- and no other posts."""
     out = page.evaluate("""async () => {
       const b = await import('/static/office/builders.js');
       const closed = b.makeGuardRails(12, 11, '#7c8cff', []).userData.markerPosts;
@@ -89,8 +89,8 @@ def test_rails_run_round_the_corners_and_open_only_for_the_bridge(page):
       const gap = open.filter(p => Math.abs(p.x - 6) < 1 && Math.abs(p.z) < 4);
       return { closed: closed.length, open: open.length, gapZ: gap.map(p => p.z) };
     }""")
-    assert out["closed"] == 4, "one post per corner and no gaps on a rail with no bridge"
-    assert out["open"] == 6, "four corners plus two posts at the bridge gap"
+    assert out["closed"] == 0, "a rail with no bridge has no posts (none on the corners)"
+    assert out["open"] == 2, "just the two posts at the bridge gap"
     assert len(out["gapZ"]) == 2 and abs(sum(out["gapZ"])) < 0.2, out
     assert all(abs(z) > 1.8 for z in out["gapZ"]), "the posts stand outside the deck"
 
@@ -108,12 +108,12 @@ def test_hub_posts_flank_each_bridge_and_never_double_up(page):
       const posts = g.userData.markerPosts;
       let closest = Infinity;
       posts.forEach((p, i) => posts.slice(i + 1).forEach(q => { closest = Math.min(closest, Math.hypot(p.x - q.x, p.z - q.z)); }));
-      const single = hub([0]).userData.markerPosts.filter(p => p.z > 6 && Math.abs(p.x) < 4);
+      const single = hub([0]).userData.markerPosts.filter(p => p.z > 6);
       return { orbits: g.userData.orbits.length, closest, count: posts.length, singleX: single.map(p => p.x) };
     }""")
     assert out["orbits"] == 3, "the globe carries three electron orbits"
     assert out["closest"] >= 1.0, "side-by-side landings share a post instead of doubling it"
-    assert out["count"] < 4 + 6, "the shared post was merged"
+    assert out["count"] < 6, "the side-by-side landings make one gap, not two"
     assert len(out["singleX"]) == 2 and abs(sum(out["singleX"])) < 0.05, "a bridge's posts are symmetric about it"
 
 
@@ -126,3 +126,36 @@ def test_platform_band_has_no_halo_round_it(page):
       return { halos, band: !!pod.userData.deliveryLayer };
     }""")
     assert out == {"halos": 0, "band": True}
+
+
+def test_idle_conductor_sits_emotes_and_drops_it_all_for_a_delegation(page):
+    out = page.evaluate("""async () => {
+      const { createWanderer } = await import('/static/office/motion.js');
+      const { createConductorLife } = await import('/static/office/conductor-life.js');
+      let seed = 5; const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const w = createWanderer({ radius: 3.55, minRadius: 3.35, maxTurn: Math.PI * 0.3, rand, pauseMinMs: 0, pauseMaxMs: 300 });
+      const life = createConductorLife({ rand });
+      const chairs = [{ x: 4.1, z: 4.1, facing: Math.PI / 4 }, { x: -4.1, z: -4.1, facing: -3 * Math.PI / 4 }];
+      const seen = { sat: 0, emoted: 0, icons: new Set(), poses: new Set(), satAtChair: true, closest: Infinity };
+      let t = 0;
+      for (let i = 0; i < 20000; i += 1) {
+        t += 0.05;
+        const now = life.step({ t, dtMs: 50, wanderer: w, chairs });
+        if (now.icon) seen.icons.add(now.icon);
+        if (now.seated) {
+          seen.sat += 1;
+          if (!chairs.some(c => Math.hypot(c.x - now.x, c.z - now.z) < 1e-6)) seen.satAtChair = false;
+        }
+        if (!now.walking && !now.seated && now.pose !== 'idle') seen.emoted += 1;
+        seen.poses.add(now.pose);
+        seen.closest = Math.min(seen.closest, Math.hypot(now.x, now.z));
+      }
+      life.cancel();
+      return { sat: seen.sat, emoted: seen.emoted, icons: [...seen.icons], poses: [...seen.poses],
+               satAtChair: seen.satAtChair, closest: seen.closest, mode: life.mode };
+    }""")
+    assert out["sat"] > 0 and out["satAtChair"], "it sits down, in a chair"
+    assert out["emoted"] > 0 and out["icons"], "it stretches or sips, with a bubble"
+    assert not {"work", "tool", "orchestrate"} & set(out["poses"]), "idle life never shows work"
+    assert out["closest"] > 2.75, "it never walks through the pedestal"
+    assert out["mode"] == "wander", "a delegation cancels whatever it was doing"

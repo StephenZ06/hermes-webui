@@ -170,7 +170,11 @@ export function mergeStatic(group, cacheKey) {
     let skip = false;
     for (let o = obj; o && o !== group; o = o.parent) if (o.userData && o.userData.noMerge) skip = true;
     const mat = obj.material;
-    if (skip || Array.isArray(mat) || mat.map || !obj.geometry.getAttribute('normal')) return;
+    // Textured meshes merge only when their material says it is shared and
+    // static (a glow card, a fixed console screen); live screens keep theirs.
+    const textured = !!mat.map;
+    if (skip || Array.isArray(mat) || !obj.geometry.getAttribute('normal')) return;
+    if (textured && !(mat.userData && mat.userData.mergeable && obj.geometry.getAttribute('uv'))) return;
     const key = `${mat.uuid}|${obj.castShadow ? 1 : 0}`;
     if (!buckets.has(key)) buckets.set(key, { material: mat, castShadow: obj.castShadow, receiveShadow: obj.receiveShadow, parts: [] });
     buckets.get(key).parts.push({ geometry: obj.geometry, matrix: new THREE.Matrix4().multiplyMatrices(rootInverse, obj.matrixWorld) });
@@ -194,6 +198,8 @@ export function mergeStatic(group, cacheKey) {
       });
       const positions = new Float32Array(vertexCount * 3);
       const normals = new Float32Array(vertexCount * 3);
+      const withUv = !!bucket.material.map;
+      const uvs = withUv ? new Float32Array(vertexCount * 2) : null;
       const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
       const nm = new THREE.Matrix3();
       let vo = 0;
@@ -218,6 +224,7 @@ export function mergeStatic(group, cacheKey) {
           const len = Math.hypot(ox, oy, oz) || 1;
           normals[o] = ox / len; normals[o + 1] = oy / len; normals[o + 2] = oz / len;
         }
+        if (uvs) uvs.set(g.getAttribute('uv').array.subarray(0, n * 2), vo * 2);
         if (g.index) {
           const idx = g.index.array;
           for (let i = 0; i < idx.length; i += 1) indices[io + i] = idx[i] + vo;
@@ -231,6 +238,7 @@ export function mergeStatic(group, cacheKey) {
       const merged = new THREE.BufferGeometry();
       merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      if (uvs) merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
       merged.setIndex(new THREE.BufferAttribute(indices, 1));
       merged.computeBoundingSphere();
       return merged;
@@ -2296,70 +2304,66 @@ function seeded(text) {
  * the department's colour, posts between runs. The same on every side and
  * at every angle; the bridge's entrance and the sign wall are left open.
  */
-export function makeGuardRails(slabW, slabD, tint, openings) {
+export function makeGuardRails(slabW, slabD, tint, openings, opts) {
+  const options = opts || {};
   const group = new THREE.Group();
   const inset = RAIL_INSET;
   const w = slabW - inset * 2;
   const d = slabD - inset * 2;
   const radius = Math.max(0.3, Math.min(slabW, slabD) * 0.12 - inset);
-  const kick = material('#2b3245', { rough: 0.8 });
-  const rail = material('#3a4358', { rough: 0.6, metal: 0.3 });
-  const glass = material('#cfe3ff', { rough: 0.15, transparent: true, opacity: 0.16 });
-  const glow = glowMaterial(hexOf(tint, '#7dd3fc'), 1.05);
+  const hex = hexOf(tint, '#7dd3fc');
+  const kick = material(options.kickColor || '#2b3245', { rough: 0.8 });
+  const rail = material(options.railColor || '#3a4358', { rough: 0.6, metal: 0.3 });
+  const glass = material(options.glassColor || '#cfe3ff', { rough: 0.15, transparent: true, opacity: options.glassOpacity ?? 0.16 });
+  const glow = glowMaterial(hex, 1.05);
+  const glassTop = options.glassTop ?? 0.9;
   const blocked = (x, z) => (openings || []).some(o => Math.hypot(x - o.x, z - o.z) < o.r);
-  // One continuous run round the rounded rectangle, corners included, cut
-  // only where a bridge lands. Short straight pieces follow the arcs, so the
-  // rail turns each corner instead of stopping short of it.
+  // The rail follows the rounded rectangle point by point (0.15 apart), so
+  // its corners are true curves and the run is one piece from gap to gap.
   const shape = roundedRectShape(w, d, radius);
   const perimeter = 2 * (w + d) - (8 - 2 * Math.PI) * Math.min(radius, w / 2 - 0.05, d / 2 - 0.05);
-  const count = Math.max(24, Math.round(perimeter / 0.42));
-  const pts = shape.getSpacedPoints(count).map(v => ({ x: v.x, z: -v.y }));
-  const open = [];
-  for (let i = 0; i < count; i += 1) {
-    const a = pts[i], b = pts[(i + 1) % count];
-    open.push(blocked((a.x + b.x) / 2, (a.z + b.z) / 2));
-  }
-  let sinceSupport = 0;
-  for (let i = 0; i < count; i += 1) {
-    if (open[i]) continue;
-    const a = pts[i], b = pts[(i + 1) % count];
-    const len = Math.hypot(b.x - a.x, b.z - a.z);
-    const L = (len + 0.03).toFixed(2);
-    const seg = new THREE.Group();
-    seg.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
-    seg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-    const kp = new THREE.Mesh(geometry(`rail2-kick|${L}`, () => new THREE.BoxGeometry(+L, 0.34, 0.12)), kick);
-    kp.position.y = 0.17;
-    const gl = new THREE.Mesh(geometry(`rail2-glass|${L}`, () => new THREE.BoxGeometry(+L, 0.56, 0.04)), glass);
-    gl.position.y = 0.62;
-    const top = new THREE.Mesh(geometry(`rail2-top|${L}`, () => new THREE.BoxGeometry(+L, 0.08, 0.14)), rail);
-    top.position.y = 0.94;
-    const strip = new THREE.Mesh(geometry(`rail2-glow|${L}`, () => new THREE.BoxGeometry(+L, 0.035, 0.15)), glow);
-    strip.position.y = 0.36;
-    [kp, gl, top, strip].forEach(m => { m.castShadow = false; seg.add(m); });
-    sinceSupport += 1;
-    if (sinceSupport >= 3) {
-      sinceSupport = 0;
-      const support = new THREE.Mesh(geometry('rail-post', () => new THREE.BoxGeometry(0.14, 1.0, 0.14)), rail);
-      support.position.set(len / 2, 0.5, 0);
-      support.castShadow = false;
-      seg.add(support);
+  const count = Math.max(48, Math.round(perimeter / 0.15));
+  const pts = shape.getSpacedPoints(count).slice(0, count).map(v => ({ x: v.x, z: -v.y }));
+  const open = pts.map(pt => blocked(pt.x, pt.z));
+  const runs = [];
+  if (!open.some(Boolean)) {
+    runs.push({ points: pts, closed: true });
+  } else {
+    // Start just after a gap so no run wraps round the end of the array.
+    const start = open.indexOf(true);
+    let current = null;
+    for (let k = 1; k <= count; k += 1) {
+      const i = (start + k) % count;
+      if (open[i]) { if (current) { runs.push({ points: current, closed: false }); current = null; } continue; }
+      (current || (current = [])).push(pts[i]);
     }
-    group.add(seg);
+    if (current) runs.push({ points: current, closed: false });
   }
-  // Marker posts: one at each end of every opening (the bridge's docking
-  // beacons) and one at each corner.
   const posts = [];
-  for (let i = 0; i < count; i += 1) {
-    const prev = open[(i - 1 + count) % count];
-    if (prev !== open[i]) posts.push(pts[i]);
-  }
-  const cr = Math.min(radius, w / 2 - 0.05, d / 2 - 0.05);
-  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
-    const x = sx * (w / 2 - cr + cr * Math.SQRT1_2);
-    const z = sz * (d / 2 - cr + cr * Math.SQRT1_2);
-    if (!blocked(x, z) && posts.every(p => Math.hypot(p.x - x, p.z - z) > 1.2)) posts.push({ x, z });
+  runs.forEach(({ points, closed }) => {
+    if (points.length < 2) return;
+    const parts = [
+      [kick, 0.06, 0, 0.34],
+      [glass, 0.02, 0.34, glassTop],
+      [glow, 0.075, 0.345, 0.38],
+      [rail, 0.07, glassTop, glassTop + 0.08],
+    ];
+    if (options.topGlow) parts.push([glow, 0.035, glassTop + 0.08, glassTop + 0.11]);
+    parts.forEach(([mat, half, y0, y1]) => {
+      const mesh = new THREE.Mesh(ribbonGeometry(points, closed, half, y0, y1), mat);
+      mesh.castShadow = false;
+      group.add(mesh);
+    });
+    // Slim uprights every ~1.4 along the run.
+    for (let i = 4; i < points.length - 4; i += 9) {
+      const support = new THREE.Mesh(geometry(`rail-post|${glassTop}`, () => new THREE.BoxGeometry(0.12, glassTop + 0.08, 0.12)), rail);
+      support.position.set(points[i].x, (glassTop + 0.08) / 2, points[i].z);
+      support.castShadow = false;
+      group.add(support);
+    }
+    if (!closed) posts.push(points[0], points[points.length - 1]);
   });
+  // A marker post at each end of every run: the bridge's docking beacons.
   posts.forEach(pt => {
     const post = makeLampPost();
     post.position.set(pt.x, 0, pt.z);
@@ -2367,6 +2371,68 @@ export function makeGuardRails(slabW, slabD, tint, openings) {
   });
   group.userData.markerPosts = posts;
   return group;
+}
+
+/**
+ * A rectangular profile (half-thickness `half`, from y0 to y1) swept along a
+ * flat polyline: its two sides and top, and end caps when the run is open.
+ */
+function ribbonGeometry(points, closed, half, y0, y1) {
+  const n = points.length;
+  const normals = points.map((p, i) => {
+    const a = points[closed ? (i - 1 + n) % n : Math.max(0, i - 1)];
+    const b = points[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    return { x: -(b.z - a.z) / l, z: (b.x - a.x) / l };
+  });
+  const pos = [];
+  const nor = [];
+  const idx = [];
+  const quadStrip = (verts, faceNormals) => {
+    // verts: per point [v0, v1]; joined point to point.
+    const base = pos.length / 3;
+    verts.forEach(([v0, v1], i) => {
+      pos.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z);
+      const fn = faceNormals[i];
+      nor.push(fn.x, fn.y, fn.z, fn.x, fn.y, fn.z);
+    });
+    const segs = closed ? n : n - 1;
+    for (let i = 0; i < segs; i += 1) {
+      const j = (i + 1) % n;
+      const a = base + i * 2, b = base + j * 2;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  };
+  [1, -1].forEach(side => {
+    quadStrip(points.map((p, i) => {
+      const q = { x: p.x + normals[i].x * half * side, z: p.z + normals[i].z * half * side };
+      return side > 0 ? [{ x: q.x, y: y0, z: q.z }, { x: q.x, y: y1, z: q.z }] : [{ x: q.x, y: y1, z: q.z }, { x: q.x, y: y0, z: q.z }];
+    }), normals.map(m => ({ x: m.x * side, y: 0, z: m.z * side })));
+  });
+  quadStrip(points.map((p, i) => [
+    { x: p.x + normals[i].x * half, y: y1, z: p.z + normals[i].z * half },
+    { x: p.x - normals[i].x * half, y: y1, z: p.z - normals[i].z * half },
+  ]), normals.map(() => ({ x: 0, y: 1, z: 0 })));
+  if (!closed) {
+    [[0, 1], [n - 1, n - 2]].forEach(([i, k]) => {
+      const p = points[i], m = normals[i];
+      const tx = p.x - points[k].x, tz = p.z - points[k].z;
+      const l = Math.hypot(tx, tz) || 1;
+      const base = pos.length / 3;
+      [[-1, y0], [1, y0], [1, y1], [-1, y1]].forEach(([sd, y]) => {
+        pos.push(p.x + m.x * half * sd, y, p.z + m.z * half * sd);
+        nor.push(tx / l, 0, tz / l);
+      });
+      // Wound to face outward: the start cap and the end cap face opposite ways.
+      if (i === 0) idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      else idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
 }
 
 /** How far in from a slab's edge the guardrails (and marker posts) stand. */
@@ -2543,15 +2609,80 @@ export function makeLampPost(height) {
   cap.position.y = h - 0.04;
   group.add(cap);
   const coreH = h - 0.5;
-  const core = glowMaterial('#ffeccc', 1.25);
+  // The core stays under the bloom threshold: bloom works on screen pixels,
+  // so a thin core lost its glow when zoomed out and smeared over the whole
+  // post when zoomed in. The glow is geometry instead (below).
+  const core = glowMaterial('#ffeccc', 0.95);
   // The body's bevel stands 0.03 proud of W, so the core reaches past it.
   [[W + 0.09, 0.14], [0.14, W + 0.09]].forEach(([cw, cd]) => {
     const c = roundedPlatform(cw, cd, coreH, null, { radius: 0.06, bevel: 0.001, bevelSegments: 1, material: core });
     c.position.y = 0.12 + (h - 0.2) / 2 + 0.02;
     group.add(c);
   });
+  // Soft glow: two crossed cards with a warm radial falloff, drawn additively.
+  // Being geometry, it scales with the post and looks the same at any zoom.
+  const halo = postGlowMaterial();
+  // Kept below the cap: a card reaching above it drew a cross over the top.
+  [0, Math.PI / 2].forEach(ry => {
+    const card = new THREE.Mesh(geometry(`post-glow|${h}`, () => new THREE.PlaneGeometry(2.3, h - 0.25)), halo);
+    card.position.y = 0.1 + (h - 0.25) / 2;
+    card.rotation.y = ry;
+    card.renderOrder = 3;
+    group.add(card);
+  });
+  // And a warm pool of light on the deck round its foot.
+  const pool = new THREE.Mesh(geometry('post-pool', () => new THREE.CircleGeometry(1.3, 32).rotateX(-Math.PI / 2)), postPoolMaterial());
+  pool.position.y = 0.02;
+  pool.renderOrder = 2;
+  group.add(pool);
   group.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
   return group;
+}
+
+function postPoolMaterial() {
+  let mat = _materials.get('post-pool');
+  if (mat) return mat;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const c = canvas.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,214,160,0.45)');
+  g.addColorStop(0.5, 'rgba(255,190,120,0.14)');
+  g.addColorStop(1, 'rgba(255,170,90,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  mat.userData.mergeable = true;
+  _materials.set('post-pool', mat);
+  return mat;
+}
+
+function postGlowMaterial() {
+  let mat = _materials.get('post-glow');
+  if (mat) return mat;
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 96;
+  const c = canvas.getContext('2d');
+  c.save();
+  c.translate(32, 48);
+  c.scale(1, 1.5);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 32);
+  g.addColorStop(0, 'rgba(255,226,178,0.6)');
+  g.addColorStop(0.25, 'rgba(255,204,140,0.3)');
+  g.addColorStop(0.6, 'rgba(255,180,110,0.08)');
+  g.addColorStop(1, 'rgba(255,170,90,0)');
+  c.fillStyle = g;
+  c.fillRect(-32, -32, 64, 64);
+  c.restore();
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+  mat.userData.mergeable = true;
+  _materials.set('post-glow', mat);
+  return mat;
 }
 
 /**
@@ -2626,84 +2757,102 @@ export function makeHubCentrepiece(slab, tint, opts) {
     orbits.push({ orbit, electron, radius: orbitR, angle: i * 2.1, speed: 1.1 + i * 0.25 });
     group.add(orbit);
   });
-  // Curved desks: one per corner, the curve toward the plinth and the
-  // screens and stool on the outer side, so the desk faces out.
+  // Guard rails round the deck: taller blue-tinted glass with a glowing cap,
+  // open where each bridge lands (marker posts either side of each opening).
+  const halfSlab = slab / 2;
+  const openings = bridges.map(b => {
+    const dx = Math.sin(b), dz = Math.cos(b);
+    const t = halfSlab / Math.max(Math.abs(dx), Math.abs(dz));
+    return { x: dx * t, z: dz * t, r: bridgeGapHalfWidth(dx, dz) };
+  });
+  const rails = makeGuardRails(slab, slab, hex, openings, {
+    topGlow: true, glassTop: 1.05, glassColor: '#9cc4ff', glassOpacity: 0.2, kickColor: '#1c2436', railColor: '#2f3a55',
+  });
+  rails.position.y = top;
+  group.add(rails);
+  // Curved desks: one per corner, curving outward, the operator's gaming
+  // chair on the inner side so desk and operator face out over the floor.
+  // A desk a bridge comes near slides along the edge away from it, and
+  // in toward the plinth if it would otherwise reach the rail.
   const half = slab / 2;
   const clear = 0.5; // radians a desk keeps from a bridge (and its posts)
+  const deskScale = 1.3;
+  const chairs = [];
   [0.25, 0.75, 1.25, 1.75].forEach(turn => {
     let a = turn * Math.PI;
     bridges.forEach(b => {
       const diff = Math.atan2(Math.sin(a - b), Math.cos(a - b));
       if (Math.abs(diff) < clear) a = b + Math.sign(diff || 1) * clear;
     });
+    const reach = r => {
+      let worst = 0;
+      for (let k = -6; k <= 6; k += 1) {
+        const phi = (k / 6) * DESK_HALF_SPAN;
+        // Local (sin phi * R, -cos phi * R), local -z pointing outward.
+        const lx = Math.sin(phi) * 2.15 * deskScale;
+        const lout = Math.cos(phi) * 2.15 * deskScale;
+        const x = Math.sin(a) * (r + lout) + Math.cos(a) * lx;
+        const z = Math.cos(a) * (r + lout) - Math.sin(a) * lx;
+        worst = Math.max(worst, Math.abs(x), Math.abs(z));
+      }
+      return worst;
+    };
+    // Nearest the desk's outer edge comes to a bridge's marker post.
+    const posts = rails.userData.markerPosts;
+    const postGap = r => {
+      let nearest = Infinity;
+      for (let k = -6; k <= 6; k += 1) {
+        const phi = (k / 6) * DESK_HALF_SPAN;
+        const lx = Math.sin(phi) * 2.15 * deskScale;
+        const lout = Math.cos(phi) * 2.15 * deskScale;
+        const x = Math.sin(a) * (r + lout) + Math.cos(a) * lx;
+        const z = Math.cos(a) * (r + lout) - Math.sin(a) * lx;
+        posts.forEach(pt => { nearest = Math.min(nearest, Math.hypot(pt.x - x, pt.z - z)); });
+      }
+      return nearest;
+    };
+    let r = 5.9;
+    while (r > 4.5 && (reach(r) > half - 1.15 || postGap(r) < 1.1)) r -= 0.1;
     const desk = makeCurvedDesk(hex);
-    const r = Math.min(7.2, half - 0.5);
     desk.position.set(Math.sin(a) * r, top, Math.cos(a) * r);
-    desk.rotation.y = a;
-    desk.scale.setScalar(1.3);
+    desk.rotation.y = a + Math.PI;
+    desk.scale.setScalar(deskScale);
     group.add(desk);
-  });
-  // Marker posts at the corners and either side of each bridge landing.
-  const cornerR = Math.min(slab, slab) * 0.12;
-  const cr = cornerR - RAIL_INSET;
-  const inner = half - RAIL_INSET;
-  // Two bridges landing side by side on one edge would put two posts in
-  // the same spot; those become one, halfway between.
-  const postSpots = [];
-  const postAt = (x, z) => {
-    const near = postSpots.find(p => Math.hypot(p.x - x, p.z - z) < 1.0);
-    if (near) { near.x = (near.x + x) / 2; near.z = (near.z + z) / 2; } else postSpots.push({ x, z });
-  };
-  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
-    postAt(sx * (inner - cr + cr * Math.SQRT1_2), sz * (inner - cr + cr * Math.SQRT1_2));
-  });
-  bridges.forEach(b => {
-    const dx = Math.sin(b), dz = Math.cos(b);
-    const alongX = Math.abs(dx) >= Math.abs(dz);
-    const t = half / Math.max(Math.abs(dx), Math.abs(dz));
-    const ex = dx * t, ez = dz * t;
-    const gap = bridgeGapHalfWidth(dx, dz);
-    const lateral = Math.sqrt(Math.max(0, gap * gap - RAIL_INSET * RAIL_INSET));
-    if (alongX) {
-      const x = ex - Math.sign(dx) * RAIL_INSET;
-      [-1, 1].forEach(side => postAt(x, Math.max(-inner, Math.min(inner, ez + side * lateral))));
-    } else {
-      const z = ez - Math.sign(dz) * RAIL_INSET;
-      [-1, 1].forEach(side => postAt(Math.max(-inner, Math.min(inner, ex + side * lateral)), z));
-    }
-  });
-  postSpots.forEach(({ x, z }) => {
-    const post = makeLampPost();
-    post.position.set(x, top, z);
-    group.add(post);
+    const seatR = r - 0.15 * deskScale;
+    chairs.push({ x: Math.sin(a) * seatR, z: Math.cos(a) * seatR, facing: a });
   });
   group.traverse(o => { o.castShadow = false; });
-  const merged = mergeStatic(group, `hub4|${slab}|${hex}|${bridges.map(b => b.toFixed(2)).join(',')}`);
+  const merged = mergeStatic(group, `hub5|${slab}|${hex}|${bridges.map(b => b.toFixed(2)).join(',')}`);
   merged.userData.orbits = orbits;
-  merged.userData.markerPosts = postSpots;
+  merged.userData.markerPosts = rails.userData.markerPosts;
+  merged.userData.chairs = chairs;
   return merged;
 }
 
+const DESK_HALF_SPAN = Math.PI / 3;
+
 /**
- * A curved operator desk: an arc of desk round a stool, three monitors on
- * the curve facing the stool, a glowing trim along the operator's edge. The
- * stool sits at the local origin and the curve bulges toward -z.
+ * A curved operator desk with rounded ends: an arc of desk in front of a
+ * dark gaming chair, three monitors on the curve facing the chair, and a
+ * glowing trim along the operator's edge. The chair is at the local origin
+ * and the desk curves round it toward -z.
  */
 function makeCurvedDesk(hex) {
   const group = new THREE.Group();
-  const span = Math.PI / 3; // half the arc
-  const deskTop = arcSlab(1.25, 2.1, span, 0.1, material('#3b465c', { rough: 0.45, metal: 0.25 }));
+  const span = DESK_HALF_SPAN;
+  const deskTop = arcSlab(1.3, 2.1, span, 0.1, material('#3b465c', { rough: 0.45, metal: 0.25 }));
   deskTop.position.y = 0.92;
   group.add(deskTop);
-  const body = arcSlab(1.5, 1.98, span * 0.94, 0.88, material('#232b3d', { rough: 0.6, metal: 0.2 }));
+  const body = arcSlab(1.5, 1.95, span * 0.94, 0.88, material('#232b3d', { rough: 0.6, metal: 0.2 }));
   body.position.y = 0.04;
   group.add(body);
-  const trim = arcSlab(1.22, 1.3, span, 0.05, glowMaterial(hex, 1.1));
+  const trim = arcSlab(1.27, 1.35, span * 0.97, 0.05, glowMaterial(hex, 1.1));
   trim.position.y = 0.99;
   group.add(trim);
   let screenMat = _materials.get(`hub-ui|${hex}`);
   if (!screenMat) {
     screenMat = new THREE.MeshBasicMaterial({ map: hubScreenTexture(hex), toneMapped: false });
+    screenMat.userData.mergeable = true;
     _materials.set(`hub-ui|${hex}`, screenMat);
   }
   [-0.5, 0, 0.5].forEach(theta => {
@@ -2721,33 +2870,109 @@ function makeCurvedDesk(hex) {
     mon.add(stand);
     group.add(mon);
   });
-  const seat = cylinder(0.34, 0.32, 0.16, 32, material('#1f9e8c', { rough: 0.6 }));
-  seat.position.set(0, 0.62, 0);
-  group.add(seat);
-  const post = cylinder(0.07, 0.07, 0.5, 12, '#2e3547');
-  post.position.set(0, 0.29, 0);
-  group.add(post);
-  const foot = cylinder(0.28, 0.3, 0.06, 24, '#2e3547');
-  foot.position.set(0, 0.03, 0);
-  group.add(foot);
+  // The chair faces the desk (-z); its back is toward +z, the plinth.
+  // Scaled so that, inside a desk drawn at 1.3x, it is a full-size chair a
+  // figure can sit in.
+  const chair = makeGamingChair(hex);
+  chair.scale.setScalar(1 / 1.3);
+  chair.position.set(0, 0, 0.15);
+  group.add(chair);
   return group;
 }
 
 /**
+ * A dark gaming chair: a five-spoke base, a bucket seat with raised side
+ * bolsters, a tall winged backrest with a headrest cushion and accent
+ * stripes, and padded armrests. Like makeChair, the occupant faces -z.
+ */
+export function makeGamingChair(accent) {
+  const group = new THREE.Group();
+  const frame = '#12151c';
+  const shell = '#1a1e28';
+  const pad = '#242a37';
+  const tone = hexOf(accent, '#4f8cff');
+  for (let i = 0; i < 5; i += 1) {
+    const a = i * (Math.PI * 2 / 5);
+    const spoke = box(0.12, 0.08, 0.78, frame);
+    spoke.position.set(Math.sin(a) * 0.37, 0.16, Math.cos(a) * 0.37);
+    spoke.rotation.y = a;
+    group.add(spoke);
+    const castor = cylinder(0.08, 0.08, 0.1, 10, frame);
+    castor.rotation.z = Math.PI / 2;
+    castor.position.set(Math.sin(a) * 0.72, 0.08, Math.cos(a) * 0.72);
+    group.add(castor);
+  }
+  const lift = cylinder(0.08, 0.11, 0.8, 14, '#3a3f4c');
+  lift.position.y = 0.55;
+  group.add(lift);
+  const seat = roundedSlab(1.45, 0.26, 1.4, pad, 0.22);
+  seat.position.y = 1.02;
+  group.add(seat);
+  [-0.68, 0.68].forEach(x => {
+    const bolster = roundedSlab(0.24, 0.22, 1.3, shell, 0.1);
+    bolster.position.set(x, 1.2, 0);
+    group.add(bolster);
+  });
+  const back = roundedPanel(1.4, 2.1, 0.26, shell, 0.34);
+  back.position.set(0, 2.25, 0.68);
+  back.rotation.x = -0.1;
+  group.add(back);
+  const cushion = roundedPanel(0.92, 1.45, 0.1, pad, 0.24);
+  cushion.position.set(0, 2.1, 0.53);
+  cushion.rotation.x = -0.1;
+  group.add(cushion);
+  [-0.62, 0.62].forEach(x => {
+    const wing = roundedPanel(0.26, 1.5, 0.34, shell, 0.12);
+    wing.position.set(x, 2.35, 0.6);
+    wing.rotation.set(-0.1, x > 0 ? -0.35 : 0.35, 0);
+    group.add(wing);
+    const stripe = roundedPanel(0.12, 1.25, 0.04, material('#1b2a4a', { rough: 0.5, emissive: tone, ei: 0.55 }), 0.05);
+    stripe.position.set(x * 0.55, 2.15, 0.5);
+    stripe.rotation.x = -0.1;
+    group.add(stripe);
+  });
+  // Accent piping on the back of the shell, the side a passer-by sees.
+  [-0.4, 0.4].forEach(x => {
+    const piping = roundedPanel(0.1, 1.6, 0.04, material('#1b2a4a', { rough: 0.5, emissive: tone, ei: 0.55 }), 0.04);
+    piping.position.set(x, 2.25, 0.83);
+    piping.rotation.x = -0.1;
+    group.add(piping);
+  });
+  const head = roundedPanel(0.62, 0.32, 0.14, pad, 0.14);
+  head.position.set(0, 3.0, 0.5);
+  head.rotation.x = -0.1;
+  group.add(head);
+  [-0.82, 0.82].forEach(x => {
+    const arm = roundedSlab(0.18, 0.1, 0.85, frame, 0.05);
+    arm.position.set(x, 1.5, 0.05);
+    group.add(arm);
+    const post = box(0.1, 0.42, 0.1, frame);
+    post.position.set(x, 1.28, 0.3);
+    group.add(post);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  return mergeStatic(group, `gaming-chair|${tone}`);
+}
+
+/**
  * A flat ring segment between radii r0 and r1, centred on -z and spanning
- * ±halfSpan, `height` tall from y=0 up.
+ * ±halfSpan, `height` tall from y=0 up, its two ends rounded.
  */
 function arcSlab(r0, r1, halfSpan, height, mat) {
-  const geo = geometry(`arc-slab|${r0}|${r1}|${halfSpan.toFixed(3)}|${height}`, () => {
+  const geo = geometry(`arc-slab2|${r0}|${r1}|${halfSpan.toFixed(3)}|${height}`, () => {
     // In shape space (x, y) maps to world (x, -y) once stood up, so the
     // curve centred on world -z is centred on shape +y.
     const a0 = Math.PI / 2 - halfSpan;
     const a1 = Math.PI / 2 + halfSpan;
+    const mid = (r0 + r1) / 2;
+    const cap = (r1 - r0) / 2;
     const shape = new THREE.Shape();
     shape.moveTo(Math.cos(a0) * r1, Math.sin(a0) * r1);
     shape.absarc(0, 0, r1, a0, a1, false);
-    shape.lineTo(Math.cos(a1) * r0, Math.sin(a1) * r0);
+    // Rounded end: a half circle round the end of the band.
+    shape.absarc(Math.cos(a1) * mid, Math.sin(a1) * mid, cap, a1, a1 + Math.PI, false);
     shape.absarc(0, 0, r0, a1, a0, true);
+    shape.absarc(Math.cos(a0) * mid, Math.sin(a0) * mid, cap, a0 + Math.PI, a0 + Math.PI * 2, false);
     shape.closePath();
     const bevel = Math.min(0.03, height * 0.3);
     const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.001, height - bevel * 2), bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 48 });
@@ -2755,8 +2980,7 @@ function arcSlab(r0, r1, halfSpan, height, mat) {
     g.translate(0, bevel, 0);
     return g;
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  return mesh;
+  return new THREE.Mesh(geo, mat);
 }
 
 /** Glass: see-through in the middle, bright toward the rim, with a highlight. */
@@ -2820,17 +3044,52 @@ function hubScreenTexture(hex) {
 }
 
 /**
+ * A soft pool of the platform's colour far beneath it, as if its glow fell
+ * on haze below: in the iso view it shows offset under the platform, which
+ * is what makes the platform read as floating rather than standing.
+ */
+export function makeUnderGlow(width, depth, color) {
+  const hex = hexOf(color, '#4f8cff');
+  const key = `under-glow|${hex}`;
+  let mat = _materials.get(key);
+  if (!mat) {
+    let tex = _iconTextures.get('under-glow-tex');
+    if (!tex) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 128;
+      const c = canvas.getContext('2d');
+      const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)');
+      g.addColorStop(0.45, 'rgba(255,255,255,0.18)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, 128, 128);
+      tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      _iconTextures.set('under-glow-tex', tex);
+    }
+    mat = new THREE.MeshBasicMaterial({ map: tex, color: hex, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    _materials.set(key, mat);
+  }
+  const mesh = new THREE.Mesh(geometry(`under-glow|${width}|${depth}`, () => new THREE.PlaneGeometry(width * 1.35, depth * 1.35).rotateX(-Math.PI / 2)), mat);
+  mesh.renderOrder = -2;
+  mesh.userData.noMerge = true;
+  return mesh;
+}
+
+/**
  * A field of faint stars scattered over the floor around the office. Each
  * twinkles on its own slow cycle (a phase and speed per star, animated in
  * the shader from one `time` uniform), dimming to about a third and back,
  * never brighter than the old static field.
  */
-export function makeStarfield(halfSize, count) {
+export function makeStarfield(halfSize, count, opts) {
+  const options = opts || {};
   const n = count || 900;
   const positions = new Float32Array(n * 3);
   const colors = new Float32Array(n * 3);
   const twinkle = new Float32Array(n * 2);
-  let seed = 7;
+  let seed = options.seed || 7;
   const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const blue = new THREE.Color('#7aa2ff');
   const white = new THREE.Color('#dbe6ff');
@@ -2851,7 +3110,7 @@ export function makeStarfield(halfSize, count) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    uniforms: { time: { value: 0 }, size: { value: 2.6 } },
+    uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 } },
     vertexShader: `attribute vec3 color; attribute vec2 twinkle; uniform float time; uniform float size;
       varying vec3 vColor; varying float vLight;
       void main() {

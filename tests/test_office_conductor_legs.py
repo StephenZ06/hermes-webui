@@ -84,7 +84,9 @@ def test_a_desk_worker_still_tucks_its_legs_away(result):
 def test_every_conductor_pose_is_driven_as_standing():
     scene = (REPO / "static" / "office" / "scene.js").read_text(encoding="utf-8")
     start = scene.index("if (conductor) {\n      const person = conductor.userData.person;")
-    block = scene[start:start + 1600]
+    block = scene[start:start + 4000]
     calls = re.findall(r"poseWorker\(person,[^;]*\);", block)
     assert calls, block
-    assert all("standing: true" in call for call in calls), calls
+    # Standing everywhere, except sitting in one of the hub's chairs between
+    # delegations (conductor-life.js), where the chair hides the legs.
+    assert all("standing: true" in call or "standing: !now.seated" in call for call in calls), calls

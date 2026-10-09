@@ -21,7 +21,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
-  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeLampPost, makeStarfield, mergeStatic,
+  makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, makeUnderGlow, mergeStatic,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
   poseWorker, poseWalking, hideLegs, disposeTree, disposeSharedCaches,
@@ -31,6 +31,7 @@ import {
 } from './motion.js';
 import { shouldSleepWhileRunning } from './idle.js';
 import { createQualityGovernor } from './quality.js';
+import { createConductorLife } from './conductor-life.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
 // office is authored against this so a desk keeps the same on-screen size
@@ -44,6 +45,10 @@ const GROUND_SIZE = 400;
 // The floor plane sits below the platforms' dark bases, so each pod stands as
 // a whole block (coloured top, neon band, base) rather than a slab sunk to its rim.
 const GROUND_Y = -2.6;
+// The dark theme's nebula, well below the platforms (see buildGround).
+const SPACE_Y = -26;
+// Where each platform's coloured haze hangs beneath it (platform-local y).
+const UNDERGLOW_Y = -11;
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -96,14 +101,14 @@ const POD_SLAB_PADDING = 3;
 const RAISED_PLATFORM_Y = 0.52;
 // Department, Subagents, and Conductor share the platform elevation.
 const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y;
-// Standard bridges are flush with the platform tops (deck top 0.09 below the
-// surface at y 0.6 + RAISED_PLATFORM_Y -- just enough that the activity
-// markers, 0.07 above the deck, stay inside a platform where the deck runs
-// on under it; makeWalkway lifts the deck 0.63 and it is 0.34 thick). A deck set lower tucked behind the far edge of one
-// platform but lay over the near edge of the other, so the two ends of a
-// bridge never looked alike. The ends still run on inside the platforms,
-// hidden in their top slabs. The Floor's ramp route is floorBridgeRoute()'s.
-const LEVEL_BRIDGE_Y = 0.23;
+// Standard bridges sit a step below the platform tops (deck top 0.4 under
+// the surface at y 0.6 + RAISED_PLATFORM_Y; makeWalkway lifts the deck 0.63
+// and it is 0.34 thick). Flush decks read as too high; a deck sunk ~0.8 hid
+// behind the far platform's edge but lay over the near one's, so the two
+// ends never matched. At 0.4 both ends read as the same step down. The ends
+// run on inside the platforms (activity markers included, hidden in their
+// top slabs); rails stop at the edges. The Floor's ramp is floorBridgeRoute()'s.
+const LEVEL_BRIDGE_Y = -0.08;
 // The endpoint calculation follows a bridge's centreline, but each deck is
 // much wider. Tucking it by half that width keeps the entire squared end cap
 // beneath rounded platform rims — not just its middle — at diagonal routes.
@@ -354,16 +359,50 @@ export function createOfficeScene(canvas, options) {
   let grid = null;
   let stars = null;
 
+  function makeNebulaMaterial() {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        base: { value: new THREE.Color('#03050d') },
+        glow: { value: new THREE.Color('#0d1836') },
+        violet: { value: new THREE.Color('#1b1140') },
+        teal: { value: new THREE.Color('#06283a') },
+      },
+      vertexShader: `varying vec2 vXZ;
+        void main() { vec4 w = modelMatrix * vec4(position, 1.0); vXZ = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `uniform vec3 base; uniform vec3 glow; uniform vec3 violet; uniform vec3 teal; varying vec2 vXZ;
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float noise(vec2 p) {
+          vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+        float fbm(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+        void main() {
+          vec2 p = vXZ / 70.0;
+          float d = length(vXZ) / 140.0;
+          vec3 c = mix(glow, base, smoothstep(0.0, 1.0, d));
+          float n1 = smoothstep(0.45, 0.85, fbm(p + vec2(3.1, 1.7)));
+          float n2 = smoothstep(0.5, 0.9, fbm(p * 1.4 - vec2(5.2, 2.3)));
+          c += violet * n1 * 0.9 + teal * n2 * 0.8;
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
+  }
+
   function buildGround(halfSize) {
-    const size = halfSize * 2;
+    const space = palette === PALETTES.dark;
+    // In the dark theme there is no floor: the platforms float over deep
+    // space -- a nebula far below (SPACE_Y), no shadows cast onto it, no grid,
+    // and stars at several depths (see installGround). A floor that caught
+    // the platforms' shadows is what made the view read as flat.
+    const size = (halfSize + (space ? 60 : 0)) * 2;
     const geometry = new THREE.PlaneGeometry(size, size);
-    const material = new THREE.MeshStandardMaterial({
+    const material = space ? makeNebulaMaterial() : new THREE.MeshStandardMaterial({
       color: palette.ground, roughness: 0.95, metalness: 0.0,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = GROUND_Y;
-    mesh.receiveShadow = true;
+    mesh.position.y = space ? SPACE_Y : GROUND_Y;
+    mesh.receiveShadow = !space;
     // Capped rather than scaled 1:1 with size: past a few hundred divisions
     // the lines are imperceptible anyway (this only grows for a very large,
     // very zoomed-out office), and an uncapped count would turn one big run
@@ -371,6 +410,7 @@ export function createOfficeScene(canvas, options) {
     const divisions = Math.min(600, Math.max(20, Math.round(size / 5)));
     const gridHelper = new THREE.GridHelper(size, divisions, palette.grid, palette.grid);
     gridHelper.position.y = GROUND_Y + 0.02;
+    gridHelper.visible = !space;
     if (gridHelper.material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 1;
@@ -392,8 +432,14 @@ export function createOfficeScene(canvas, options) {
     if (stars) { scene.remove(stars); disposeTree(stars); stars = null; }
     // Faint stars scattered over the dark floor, as in the reference (dark theme only).
     if (palette === PALETTES.dark) {
-      stars = makeStarfield(halfSize, Math.min(2600, Math.round(halfSize * 4.5)));
-      stars.position.y = GROUND_Y;
+      // Three layers of stars between the platforms and the nebula: nearer
+      // layers are fewer, larger and brighter.
+      stars = new THREE.Group();
+      [[GROUND_Y - 2, 3.2, 0.25, 11], [SPACE_Y * 0.55, 2.4, 0.4, 29], [SPACE_Y + 0.5, 1.8, 0.35, 53]].forEach(([y, size, share, seed]) => {
+        const layer = makeStarfield(halfSize + 50, Math.min(5000, Math.round(halfSize * 14 * share)), { size, seed });
+        layer.position.y = y;
+        stars.add(layer);
+      });
       scene.add(stars);
     }
     const built = buildGround(halfSize);
@@ -458,6 +504,11 @@ export function createOfficeScene(canvas, options) {
     group.userData.podCluster = '__conductor__';
     const pod = makePod(CONDUCTOR_SLAB, CONDUCTOR_SLAB, palette, null, { band: HUB_COLOR, top: palette === PALETTES.dark ? '#28324a' : '#c7cfdd' });
     group.add(pod);
+    if (palette === PALETTES.dark) {
+      const under = makeUnderGlow(CONDUCTOR_SLAB, CONDUCTOR_SLAB, HUB_COLOR);
+      under.position.y = UNDERGLOW_Y;
+      group.add(under);
+    }
     // The hub's centrepiece (scenery: it carries no state): a floor projector
     // under a floating holographic globe, and a console at each corner.
     const centrepiece = makeHubCentrepiece(CONDUCTOR_SLAB, HUB_COLOR);
@@ -479,6 +530,14 @@ export function createOfficeScene(canvas, options) {
     // The pedestal stands in the middle and desks ring it, so the conductor
     // paces the ring between them (motion.js createWanderer's minRadius).
     group.userData.wanderer = createWanderer({ radius: HUB_WALK_OUTER, minRadius: HUB_WALK_INNER, maxTurn: Math.PI * 0.3 });
+    // Between delegations it sits at a desk now and then, stretches, sips a
+    // coffee (conductor-life.js); a bubble pops when it starts one.
+    group.userData.life = createConductorLife();
+    const bubble = makeChatBubble(palette);
+    bubble.visible = false;
+    group.add(bubble);
+    group.userData.bubble = bubble;
+    group.userData.bubbleUntil = 0;
     group.userData.person = person;
     backdrop.add(group);
     conductor = group;
@@ -552,6 +611,11 @@ export function createOfficeScene(canvas, options) {
       open: label === 'The Floor', blocked: clear.blocked, entry: clear.entry, seed: cluster, key: clear.key,
     });
     group.add(scenery);
+    if (palette === PALETTES.dark) {
+      const under = makeUnderGlow(slabWidth, slabDepth, color || (isFloor ? FLOOR_COLOR : HUB_COLOR));
+      under.position.y = UNDERGLOW_Y;
+      group.add(under);
+    }
 
     office.add(group);
     pod = {
@@ -1414,7 +1478,7 @@ export function createOfficeScene(canvas, options) {
     const next = PALETTES[prefersDark() ? 'dark' : 'light'];
     if (next === palette) return;
     palette = next;
-    groundMaterial.color.set(palette.ground);
+    if (groundMaterial.color) groundMaterial.color.set(palette.ground);
     if (grid.material && grid.material.color) grid.material.color.set(palette.grid);
     installGround(groundHalfSize);  // the starfield is dark-theme only
     ambient.color.set(palette.hemiSky);
@@ -1828,10 +1892,15 @@ export function createOfficeScene(canvas, options) {
       if (hubBand && hubBand.material) {
         hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__');
       }
-      if (stars && stars.material.uniforms) stars.material.uniforms.time.value = t;
+      if (stars) stars.children.forEach(layer => { layer.material.uniforms.time.value = t; });
       const wanderer = conductor.userData.wanderer;
       const orchestrating = conductor.userData.status === 'orchestrating';
+      const life = conductor.userData.life;
+      const bubble = conductor.userData.bubble;
       if (orchestrating) {
+        // Whatever it was doing between delegations stops at once.
+        life.cancel();
+        conductor.userData.bubbleUntil = 0;
         // Back to the middle of the plinth, then to work. It walks there
         // rather than snapping, so the change of state is something you see
         // happen.
@@ -1845,13 +1914,26 @@ export function createOfficeScene(canvas, options) {
           poseWalking(person, wanderer.state.phase, 1);
         }
       } else {
-        wanderer.update(dtMs);
-        person.position.set(wanderer.state.x, 0.6, wanderer.state.z);
-        if (wanderer.state.moving) {
-          person.rotation.y = wanderer.state.heading;
-          poseWalking(person, wanderer.state.phase, 1);
-        } else {
-          poseWorker(person, 'idle', t, dt, { standing: true });
+        const decorChairs = (conductor.userData.centrepiece && conductor.userData.centrepiece.userData.chairs) || [];
+        const now = life.step({ t, dtMs, wanderer, chairs: decorChairs });
+        person.position.set(now.x, 0.6, now.z);
+        person.rotation.y = now.heading;
+        if (now.walking) poseWalking(person, wanderer.state.phase, 1);
+        else poseWorker(person, now.pose, t, dt, { standing: !now.seated });
+        if (now.icon && bubble) {
+          drawChatBubble(bubble, palette, now.icon);
+          bubble.visible = true;
+          conductor.userData.bubbleShownAt = t;
+          conductor.userData.bubbleUntil = t + 3.2;
+        }
+      }
+      if (bubble) {
+        if (t >= conductor.userData.bubbleUntil) bubble.visible = false;
+        if (bubble.visible) {
+          const k = easeOutCubic(Math.min(1, (t - (conductor.userData.bubbleShownAt || 0)) / 0.25));
+          const size = lod === 'far' ? 1.8 : 2.5;
+          bubble.scale.set(size * k, size * 0.76 * k, 1);
+          bubble.position.set(person.position.x, 3.7 + Math.sin(t * 3) * 0.08, person.position.z);
         }
       }
     }

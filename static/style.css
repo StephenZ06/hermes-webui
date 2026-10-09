@@ -11085,7 +11085,7 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .automation-row:focus-visible{box-shadow:none;}
 /* Office floor cards, as in the reference: glass panel, the department's
    colour on its name and left edge, a green dot for active and a grey one for done. */
-.office-dept-card{background:linear-gradient(180deg,rgba(20,28,48,0.92),rgba(12,17,32,0.94));border-color:rgba(148,163,184,0.16);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.office-dept-card{background:linear-gradient(180deg,rgba(20,28,48,0.92),rgba(12,17,32,0.94));border-color:rgba(148,163,184,0.16);border-left:3px solid var(--office-dept-color,var(--accent));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
 .office-dept-card-stat{display:inline-flex;align-items:center;}
 .office-dept-card-stat::before{content:"";width:7px;height:7px;border-radius:50%;margin-right:6px;background:#64748b;}
 .office-dept-card-stat:first-child::before{background:#22c55e;}

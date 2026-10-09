@@ -1278,3 +1278,34 @@ Smoothness, measured headless (SwiftShader, so relative only):
   to about a third and back, never brighter than before.
 - Department cards lost their coloured glow; bloom is tighter (strength 0.6,
   radius 0.2) so edges read crisper.
+
+### Fifth pass: floating in space, a living conductor (2026-10-09)
+
+- **Posts only at bridge gaps.** Corner posts are gone (pods and hub): two
+  marker posts per bridge landing, at each end of the rail's gap.
+- **Rails** are swept along the rounded rectangle (`ribbonGeometry`, points
+  0.15 apart), so corners are true curves and each run is one piece from gap
+  to gap; there are no separate corner pieces.
+- **Post glow is geometry, not bloom.** The core sits under the bloom
+  threshold; two crossed additive cards with a radial falloff and a light
+  pool on the deck give the glow. Bloom, which works on screen pixels, lost
+  a thin core when zoomed out and smeared over the post when zoomed in.
+  `mergeStatic` now merges textured meshes whose material is flagged
+  `userData.mergeable` (glow cards, fixed console screens), keeping their UVs.
+- **Hub**: guard rails (taller blue-tinted glass, a glowing cap line, open at
+  each bridge landing); curved desks with rounded ends now curve outward, the
+  operator's dark gaming chair (`makeGamingChair`) on the inner side, so desk
+  and operator face out. A desk backs off from the rail and from bridge posts.
+- **Conductor life** (`conductor-life.js`): between delegations it paces, and
+  now and then walks round to a desk and sits (leaning back, sipping, or
+  thinking), or stops to stretch, look around or drink a coffee, with an
+  emoji bubble as it starts. Idle life never uses a work pose; a delegation
+  cancels it at once and the figure walks to the globe as before.
+- **Bridges** sit one step (0.4) below the platform tops (`LEVEL_BRIDGE_Y`
+  -0.08): flush looked too high; the old 0.8 drop made the two ends differ.
+- **Deep space** (dark theme): no floor or grid. A nebula shader plane far
+  below (`SPACE_Y` -26) with no shadows on it, three star layers at different
+  depths (nearer ones fewer and larger, all twinkling), and a soft haze of
+  each platform's colour hanging beneath it (`makeUnderGlow`), which shows
+  offset under the platform in the iso view and makes it read as floating.
+- Department cards have their coloured left edge back.

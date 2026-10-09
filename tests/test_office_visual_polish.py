@@ -249,7 +249,7 @@ def test_raised_platforms_occlude_bridge_rail_ends_without_lifting_the_floor():
 
     assert "const RAISED_PLATFORM_Y = 0.52" in SCENE_SRC
     assert "const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y" in SCENE_SRC
-    assert "const LEVEL_BRIDGE_Y = 0.23" in SCENE_SRC, "bridges are flush with the platform tops"
+    assert "const LEVEL_BRIDGE_Y = -0.08" in SCENE_SRC, "bridges sit one step below the platform tops"
     assert "group.position.y = CONDUCTOR_PLATFORM_Y;" in conductor
     assert "record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);" in sync
 
