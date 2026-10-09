@@ -57,8 +57,8 @@ const SPOT_LIGHT_INTENSITY = 1.1;
 // makePodGlow, pushed past normal 0-1 colour range on purpose) actually
 // bloom — everything else in the scene sits well under 1.0 in linear space,
 // so a threshold this close to 1 leaves the rest of the office alone.
-const BLOOM_STRENGTH = 0.8;
-const BLOOM_RADIUS = 0.4;
+const BLOOM_STRENGTH = 0.6;
+const BLOOM_RADIUS = 0.2;
 const BLOOM_THRESHOLD = 1.0;
 // Camera motion. A fixed diagram-camera makes the office read as a chart; a
 // camera that travels makes it read as a place. Focusing flies to a desk and
@@ -96,9 +96,14 @@ const POD_SLAB_PADDING = 3;
 const RAISED_PLATFORM_Y = 0.52;
 // Department, Subagents, and Conductor share the platform elevation.
 const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y;
-// Standard bridges sit visibly below the raised platform tops. The Floor's
-// own ramp/deck route remains governed by floorBridgeRoute().
-const LEVEL_BRIDGE_Y = -0.45;
+// Standard bridges are flush with the platform tops (deck top 0.09 below the
+// surface at y 0.6 + RAISED_PLATFORM_Y -- just enough that the activity
+// markers, 0.07 above the deck, stay inside a platform where the deck runs
+// on under it; makeWalkway lifts the deck 0.63 and it is 0.34 thick). A deck set lower tucked behind the far edge of one
+// platform but lay over the near edge of the other, so the two ends of a
+// bridge never looked alike. The ends still run on inside the platforms,
+// hidden in their top slabs. The Floor's ramp route is floorBridgeRoute()'s.
+const LEVEL_BRIDGE_Y = 0.23;
 // The endpoint calculation follows a bridge's centreline, but each deck is
 // much wider. Tucking it by half that width keeps the entire squared end cap
 // beneath rounded platform rims — not just its middle — at diagonal routes.
@@ -458,7 +463,9 @@ export function createOfficeScene(canvas, options) {
     const centrepiece = makeHubCentrepiece(CONDUCTOR_SLAB, HUB_COLOR);
     centrepiece.position.y = 0;
     group.add(centrepiece);
-    group.userData.spin = centrepiece.userData.spin;
+    group.userData.centrepiece = centrepiece;
+    group.userData.centrepieceKey = '';
+    group.userData.hubBand = pod.userData.deliveryLayer;
     // Unlike a pod, the conductor's plinth never tints/glows with activity --
     // reported as distracting since it's the one fixed landmark on the floor,
     // there whether anything is running or not. The pacing figure (below)
@@ -548,7 +555,7 @@ export function createOfficeScene(canvas, options) {
 
     office.add(group);
     pod = {
-      group, width, depth, label, color, active: false, clearKey: clear.key,
+      group, cluster, width, depth, label, color, active: false, clearKey: clear.key,
     };
     pods.set(cluster, pod);
     return pod;
@@ -597,14 +604,24 @@ export function createOfficeScene(canvas, options) {
     return arrivalWave;
   }
 
-  function advanceDeliveryGlow(record, arrivalWave, dtMs) {
+  // Every platform's neon band breathes slowly (each a little out of step
+  // with the rest), between 70% and 100% of its idle glow.
+  function bandPulse(elapsed, key) {
+    let h = 0;
+    const k = String(key || '');
+    for (let i = 0; i < k.length; i += 1) h = (h * 31 + k.charCodeAt(i)) | 0;
+    const phase = (Math.abs(h) % 628) / 100;
+    return 0.85 + 0.15 * Math.sin((elapsed || 0) * 1.6 + phase);
+  }
+
+  function advanceDeliveryGlow(record, arrivalWave, dtMs, elapsed) {
     const layer = record && record.group && record.group.userData.deliveryLayer;
     const material = layer && layer.material;
     if (!material || !material.emissive) return;
     record.deliveryGlow = (record.deliveryGlow || 0)
       + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
     const idleIntensity = layer.userData.idleEmissiveIntensity || 0;
-    material.emissiveIntensity = idleIntensity + record.deliveryGlow * 1.45;
+    material.emissiveIntensity = idleIntensity * bandPulse(elapsed, record.cluster) + record.deliveryGlow * 1.45;
   }
 
   /**
@@ -649,16 +666,12 @@ export function createOfficeScene(canvas, options) {
     } else {
       const podRecord = pods.get(cluster);
       const railColor = podRecord && podRecord.color ? podRecord.color : null;
-      walk = makeWalkway(span.length, palette, railColor);
-      // A pair of lamp posts at each end of the exposed deck.
-      const ends = Math.max(0.5, span.length / 2 - BRIDGE_DECK_PLATFORM_OVERLAP - 0.25);
-      const lamps = new THREE.Group();
-      [-1, 1].forEach(end => [-1, 1].forEach(side => {
-        const lamp = makeLampPost(1.5);
-        lamp.position.set(side * (BRIDGE_DECK_WIDTH / 2 + 0.55), 0.63 + 0.17, end * ends);
-        lamps.add(lamp);
-      }));
-      walk.add(mergeStatic(lamps, `lamps|${ends.toFixed(2)}`));
+      walk = makeWalkway(span.length, palette, railColor, {
+        // The deck runs on under both platforms; its rails stop at their edges.
+        railTrimStart: BRIDGE_DECK_PLATFORM_OVERLAP, railTrimEnd: BRIDGE_DECK_PLATFORM_OVERLAP,
+      });
+      // The marker posts either side of the landing belong to the platforms
+      // (their rail gaps, and the hub's centrepiece), so both ends match.
       const mid = span.start + span.length / 2;
       walk.position.set(Math.sin(span.angle) * mid, LEVEL_BRIDGE_Y, Math.cos(span.angle) * mid);
       walk.rotation.y = span.angle;
@@ -923,6 +936,24 @@ export function createOfficeScene(canvas, options) {
   }
 
   /**
+   * The hub's desks and marker posts depend on where its bridges leave it,
+   * so the centrepiece is rebuilt (from cached parts) when they change.
+   */
+  function updateHubDecor(bridges) {
+    if (!conductor) return;
+    const sorted = bridges.slice().sort((a, b) => a - b);
+    const key = sorted.map(a => a.toFixed(2)).join(',');
+    if (conductor.userData.centrepieceKey === key) return;
+    const old = conductor.userData.centrepiece;
+    if (old) { conductor.remove(old); disposeTree(old); }
+    const next = makeHubCentrepiece(CONDUCTOR_SLAB, HUB_COLOR, { bridges: sorted });
+    conductor.add(next);
+    conductor.userData.centrepiece = next;
+    conductor.userData.centrepieceKey = key;
+    if (renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
+  }
+
+  /**
    * Reconcile the floor to a state snapshot from the adapter.
    * Idempotent: calling it twice with the same state changes nothing.
    */
@@ -937,6 +968,7 @@ export function createOfficeScene(canvas, options) {
     const liveClusters = new Set();
     const liveDesks = new Set();
 
+    const hubBridges = [];
     layout.pods.forEach(pod => {
       liveClusters.add(pod.cluster);
       const podLabel = pod.label
@@ -944,7 +976,9 @@ export function createOfficeScene(canvas, options) {
       const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null, pod);
       record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
+      if (span) hubBridges.push(pod.cluster === 'floor' || podLabel === 'The Floor' ? 0 : span.angle);
     });
+    updateHubDecor(hubBridges);
 
     (state.desks || []).forEach(desk => {
       const spot = layout.seats[desk.id];
@@ -1734,7 +1768,7 @@ export function createOfficeScene(canvas, options) {
     if (typeof config.onTick === 'function') config.onTick();
 
     walkways.forEach((bridge, cluster) => {
-      advanceDeliveryGlow(pods.get(cluster), advanceBridgeFade(bridge, dtMs, t), dtMs);
+      advanceDeliveryGlow(pods.get(cluster), advanceBridgeFade(bridge, dtMs, t), dtMs, t);
     });
     seats.forEach(seat => {
       // A subagent walks to its desk before it starts; only once seated does
@@ -1782,8 +1816,19 @@ export function createOfficeScene(canvas, options) {
 
     if (conductor) {
       const person = conductor.userData.person;
-      // The hub globe's grid and halo turn slowly (scenery, no state).
-      (conductor.userData.spin || []).forEach((part, i) => { part.rotation.y += dt * (i ? -0.35 : 0.25); });
+      // Scenery, no state: electrons run round the globe while their orbits
+      // slowly precess, and the hub's band breathes like every platform's.
+      const decor = conductor.userData.centrepiece;
+      (decor && decor.userData.orbits || []).forEach(o => {
+        o.angle += dt * o.speed;
+        o.electron.position.set(Math.cos(o.angle) * o.radius, Math.sin(o.angle) * o.radius, 0);
+        o.orbit.rotation.y += dt * 0.12;
+      });
+      const hubBand = conductor.userData.hubBand;
+      if (hubBand && hubBand.material) {
+        hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__');
+      }
+      if (stars && stars.material.uniforms) stars.material.uniforms.time.value = t;
       const wanderer = conductor.userData.wanderer;
       const orchestrating = conductor.userData.status === 'orchestrating';
       if (orchestrating) {

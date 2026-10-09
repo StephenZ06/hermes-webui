@@ -365,8 +365,8 @@ export function makePod(width, depth, palette, tint, opts) {
   // lit, so the intensity is set from the colour's own luminance.
   const bandLinear = new THREE.Color(bandColor || '#000000');
   const luminance = 0.2126 * bandLinear.r + 0.7152 * bandLinear.g + 0.0722 * bandLinear.b;
-  // Kept just under the bloom threshold: the band is crisp at every zoom,
-  // and its soft glow is real geometry (makeBandGlow), not screen-space bloom.
+  // Kept just under the bloom threshold: the band itself glows (and pulses,
+  // see scene.js) without spilling a halo onto the floor round the platform.
   const idleIntensity = bandColor ? Math.min(3.5, Math.max(0.8, 0.72 / Math.max(0.05, luminance))) : 0;
   bandMaterial.emissive.set(bandColor || '#000000');
   bandMaterial.emissiveIntensity = idleIntensity;
@@ -386,11 +386,6 @@ export function makePod(width, depth, palette, tint, opts) {
     matOpts: { rough: 0.95, metal: 0.02 },
   });
   group.userData.deliveryLayer = delivery;
-  if (bandColor) {
-    const halo = makeBandGlow(width + lip, depth + lip, radius + lip / 2, hexOf(bandColor, '#4f8cff'), Math.min(1.5, Math.max(0.9, Math.min(width, depth) * 0.09)));
-    halo.position.y = bandY;
-    group.add(halo);
-  }
   return group;
 }
 
@@ -2303,46 +2298,89 @@ function seeded(text) {
  */
 export function makeGuardRails(slabW, slabD, tint, openings) {
   const group = new THREE.Group();
-  const inset = 0.32;
-  const radius = Math.min(slabW, slabD) * 0.12 + 0.25;
-  const panelLen = 1.3;
+  const inset = RAIL_INSET;
+  const w = slabW - inset * 2;
+  const d = slabD - inset * 2;
+  const radius = Math.max(0.3, Math.min(slabW, slabD) * 0.12 - inset);
   const kick = material('#2b3245', { rough: 0.8 });
-  const post = material('#3a4358', { rough: 0.6, metal: 0.3 });
+  const rail = material('#3a4358', { rough: 0.6, metal: 0.3 });
   const glass = material('#cfe3ff', { rough: 0.15, transparent: true, opacity: 0.16 });
   const glow = glowMaterial(hexOf(tint, '#7dd3fc'), 1.05);
-  const edges = [
-    { axis: 'x', fixed: slabD / 2 - inset, len: slabW }, { axis: 'x', fixed: -(slabD / 2 - inset), len: slabW },
-    { axis: 'z', fixed: slabW / 2 - inset, len: slabD }, { axis: 'z', fixed: -(slabW / 2 - inset), len: slabD },
-  ];
   const blocked = (x, z) => (openings || []).some(o => Math.hypot(x - o.x, z - o.z) < o.r);
-  edges.forEach(edge => {
-    const usable = edge.len - radius * 2;
-    const count = Math.max(1, Math.round(usable / panelLen));
-    const step = usable / count;
-    for (let i = 0; i < count; i += 1) {
-      const t = -usable / 2 + step * (i + 0.5);
-      const x = edge.axis === 'x' ? t : edge.fixed;
-      const z = edge.axis === 'x' ? edge.fixed : t;
-      if (blocked(x, z)) continue;
-      const ry = edge.axis === 'x' ? 0 : Math.PI / 2;
-      const seg = new THREE.Group();
-      seg.position.set(x, 0, z);
-      seg.rotation.y = ry;
-      const kp = new THREE.Mesh(geometry(`rail-kick|${step}`, () => new THREE.BoxGeometry(step - 0.12, 0.34, 0.12)), kick);
-      kp.position.y = 0.17;
-      const gl = new THREE.Mesh(geometry(`rail-glass|${step}`, () => new THREE.BoxGeometry(step - 0.12, 0.56, 0.04)), glass);
-      gl.position.y = 0.62;
-      const top = new THREE.Mesh(geometry(`rail-top|${step}`, () => new THREE.BoxGeometry(step + 0.02, 0.08, 0.14)), post);
-      top.position.y = 0.94;
-      const strip = new THREE.Mesh(geometry(`rail-glow|${step}`, () => new THREE.BoxGeometry(step - 0.1, 0.035, 0.15)), glow);
-      strip.position.y = 0.36;
-      const p1 = new THREE.Mesh(geometry('rail-post', () => new THREE.BoxGeometry(0.14, 1.0, 0.14)), post);
-      p1.position.set(step / 2, 0.5, 0);
-      [kp, gl, top, strip, p1].forEach(m => { m.castShadow = false; seg.add(m); });
-      group.add(seg);
+  // One continuous run round the rounded rectangle, corners included, cut
+  // only where a bridge lands. Short straight pieces follow the arcs, so the
+  // rail turns each corner instead of stopping short of it.
+  const shape = roundedRectShape(w, d, radius);
+  const perimeter = 2 * (w + d) - (8 - 2 * Math.PI) * Math.min(radius, w / 2 - 0.05, d / 2 - 0.05);
+  const count = Math.max(24, Math.round(perimeter / 0.42));
+  const pts = shape.getSpacedPoints(count).map(v => ({ x: v.x, z: -v.y }));
+  const open = [];
+  for (let i = 0; i < count; i += 1) {
+    const a = pts[i], b = pts[(i + 1) % count];
+    open.push(blocked((a.x + b.x) / 2, (a.z + b.z) / 2));
+  }
+  let sinceSupport = 0;
+  for (let i = 0; i < count; i += 1) {
+    if (open[i]) continue;
+    const a = pts[i], b = pts[(i + 1) % count];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const L = (len + 0.03).toFixed(2);
+    const seg = new THREE.Group();
+    seg.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+    seg.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+    const kp = new THREE.Mesh(geometry(`rail2-kick|${L}`, () => new THREE.BoxGeometry(+L, 0.34, 0.12)), kick);
+    kp.position.y = 0.17;
+    const gl = new THREE.Mesh(geometry(`rail2-glass|${L}`, () => new THREE.BoxGeometry(+L, 0.56, 0.04)), glass);
+    gl.position.y = 0.62;
+    const top = new THREE.Mesh(geometry(`rail2-top|${L}`, () => new THREE.BoxGeometry(+L, 0.08, 0.14)), rail);
+    top.position.y = 0.94;
+    const strip = new THREE.Mesh(geometry(`rail2-glow|${L}`, () => new THREE.BoxGeometry(+L, 0.035, 0.15)), glow);
+    strip.position.y = 0.36;
+    [kp, gl, top, strip].forEach(m => { m.castShadow = false; seg.add(m); });
+    sinceSupport += 1;
+    if (sinceSupport >= 3) {
+      sinceSupport = 0;
+      const support = new THREE.Mesh(geometry('rail-post', () => new THREE.BoxGeometry(0.14, 1.0, 0.14)), rail);
+      support.position.set(len / 2, 0.5, 0);
+      support.castShadow = false;
+      seg.add(support);
     }
+    group.add(seg);
+  }
+  // Marker posts: one at each end of every opening (the bridge's docking
+  // beacons) and one at each corner.
+  const posts = [];
+  for (let i = 0; i < count; i += 1) {
+    const prev = open[(i - 1 + count) % count];
+    if (prev !== open[i]) posts.push(pts[i]);
+  }
+  const cr = Math.min(radius, w / 2 - 0.05, d / 2 - 0.05);
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+    const x = sx * (w / 2 - cr + cr * Math.SQRT1_2);
+    const z = sz * (d / 2 - cr + cr * Math.SQRT1_2);
+    if (!blocked(x, z) && posts.every(p => Math.hypot(p.x - x, p.z - z) > 1.2)) posts.push({ x, z });
   });
+  posts.forEach(pt => {
+    const post = makeLampPost();
+    post.position.set(pt.x, 0, pt.z);
+    group.add(post);
+  });
+  group.userData.markerPosts = posts;
   return group;
+}
+
+/** How far in from a slab's edge the guardrails (and marker posts) stand. */
+export const RAIL_INSET = 0.32;
+
+/**
+ * Half the width of the gap a bridge leaves in a platform's rail, measured
+ * along the edge: the deck's half-width stretched by how obliquely it meets
+ * the edge, plus room for a marker post either side.
+ */
+export function bridgeGapHalfWidth(dirX, dirZ) {
+  const len = Math.hypot(dirX, dirZ) || 1;
+  const along = Math.max(Math.abs(dirX), Math.abs(dirZ)) / len;
+  return (BRIDGE_DECK_WIDTH / 2) / Math.max(0.5, along) + 0.65;
 }
 
 /**
@@ -2391,7 +2429,7 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
   const blocked = (options.blocked || []).slice();
   const openings = [];
   if (entry) {
-    openings.push({ x: entry.x, z: entry.z, r: 2.9 });
+    openings.push({ x: entry.x, z: entry.z, r: bridgeGapHalfWidth(entry.x, entry.z) });
     blocked.push({ x: entry.x, z: entry.z, w: 5.4, d: 5.4, rot: 0 });
   }
   const placed = [];   // footprints with a little spacing, so pieces don't touch
@@ -2441,12 +2479,12 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
     group.add(wall);
     placed.push({ ...sign, w: sign.w + 0.4, d: sign.d + 0.4 });
     footprints.push(sign);
-    openings.push({ x: sign.x, z: sign.z, r: 1.35 });
   }
   if (!options.noRails) {
     const rails = makeGuardRails(slabW, slabD, tint, openings);
     rails.position.y = top;
     group.add(rails);
+    rails.userData.markerPosts.forEach(pt => placed.push({ x: pt.x, z: pt.z, w: 0.9, d: 0.9, rot: 0 }));
   }
 
   // Decorations, biggest first, each tried along the inside of the edges in
@@ -2483,39 +2521,33 @@ export function makePodScenery(kind, slabW, slabD, palette, tint, opts) {
 }
 
 /**
- * A light pillar as in the reference: a squat, pale metal lantern block with
- * a recessed window on every face -- an amber lining round a warm cream
- * core. The core only just crosses the bloom threshold, so it glows softly.
- * Built from boxes rather than a texture, so a row of them merges to two
- * draw calls.
+ * A neon marker post (the reference's docking beacon): a small dark
+ * rounded column with a vertical warm-white light core showing through a
+ * slot on every face, on a footing with a slim metal cap. The core is just
+ * over the bloom threshold, so it carries a soft glow. Boxes and two
+ * materials, so a pod's posts merge into its scenery.
  */
 export function makeLampPost(height) {
-  const h = height || 1.5;
-  const W = 0.86;
+  const h = height || 1.3;
+  const W = 0.46;
   const group = new THREE.Group();
-  const frame = material('#a3a6ad', { rough: 0.5, metal: 0.2 });
-  const slab = () => roundedPlatform(W + 0.06, W + 0.06, 0.16, null, { radius: 0.05, bevel: 0.05, bevelSegments: 2, material: frame });
-  const base = slab();
-  base.position.y = 0.08;
-  group.add(base);
-  const cap = slab();
-  cap.position.y = h - 0.08;
+  const frame = material('#262e40', { rough: 0.5, metal: 0.35 });
+  const trim = material('#4a5570', { rough: 0.4, metal: 0.5 });
+  const foot = roundedPlatform(W + 0.14, W + 0.14, 0.12, null, { radius: 0.1, bevel: 0.03, bevelSegments: 2, material: frame });
+  foot.position.y = 0.06;
+  group.add(foot);
+  const body = roundedPlatform(W, W, h - 0.2, null, { radius: 0.1, bevel: 0.03, bevelSegments: 2, material: frame });
+  body.position.y = 0.12 + (h - 0.2) / 2;
+  group.add(body);
+  const cap = roundedPlatform(W + 0.06, W + 0.06, 0.08, null, { radius: 0.11, bevel: 0.02, bevelSegments: 2, material: trim });
+  cap.position.y = h - 0.04;
   group.add(cap);
-  const openH = h - 0.32;
-  const post = W / 2 - 0.095;
-  [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([sx, sz]) => {
-    const p = box(0.19, openH, 0.19, frame);
-    p.position.set(sx * post, 0.16 + openH / 2, sz * post);
-    group.add(p);
-  });
-  const lining = box(W - 0.16, openH, W - 0.16, glowMaterial('#e8701c', 0.9));
-  lining.position.y = 0.16 + openH / 2;
-  group.add(lining);
-  const core = glowMaterial('#ffb24a', 1.3);
-  const coreH = openH - 0.18;
-  [[W - 0.12, 0.36], [0.36, W - 0.12]].forEach(([w, d]) => {
-    const c = box(w, coreH, d, core);
-    c.position.y = 0.16 + openH / 2;
+  const coreH = h - 0.5;
+  const core = glowMaterial('#ffeccc', 1.25);
+  // The body's bevel stands 0.03 proud of W, so the core reaches past it.
+  [[W + 0.09, 0.14], [0.14, W + 0.09]].forEach(([cw, cd]) => {
+    const c = roundedPlatform(cw, cd, coreH, null, { radius: 0.06, bevel: 0.001, bevelSegments: 1, material: core });
+    c.position.y = 0.12 + (h - 0.2) / 2 + 0.02;
     group.add(c);
   });
   group.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
@@ -2523,111 +2555,208 @@ export function makeLampPost(height) {
 }
 
 /**
- * The conductor hub's set, as in the reference: a raised rim round the
- * deck, a wide dark plinth with a glowing ring round its top, a big glass
- * globe sitting in a glowing cup, and a console desk with two monitors at
- * each corner. The ring between plinth and desks stays clear for the
+ * The conductor hub's set: a wide dark plinth with a glowing ring round its
+ * top, a big glass globe in a glowing cup with electrons orbiting it, a
+ * curved desk at each corner facing out, and marker posts at the corners
+ * and either side of every bridge landing.
+ *
+ * `opts.bridges` is the angle (atan2(x, z)) of each bridge leaving the hub;
+ * a desk whose corner a bridge comes too close to slides along the edge
+ * away from it. The ring between plinth and desks stays clear for the
  * conductor.
  */
-export function makeHubCentrepiece(slab, tint) {
+export function makeHubCentrepiece(slab, tint, opts) {
+  const options = opts || {};
+  const bridges = options.bridges || [];
   const group = new THREE.Group();
   const hex = hexOf(tint, '#4f8cff');
   const top = 0.6;
-  // Raised rim: four flat bars just inside the slab edge.
-  const rimMat = material('#46526e', { rough: 0.6, metal: 0.25 });
-  const inner = slab - 1.4;
-  [[0, inner / 2, inner + 0.5, 0.5], [0, -inner / 2, inner + 0.5, 0.5], [inner / 2, 0, 0.5, inner + 0.5], [-inner / 2, 0, 0.5, inner + 0.5]].forEach(([x, z, w, d]) => {
-    const bar = new THREE.Mesh(geometry(`hub-rim|${w}|${d}`, () => new THREE.BoxGeometry(w, 0.32, d)), rimMat);
-    bar.position.set(x, top + 0.16, z);
-    group.add(bar);
-  });
   // The plinth: a wide dark drum, a glowing ring round its top edge, and a
   // raised cup with its own ring that the globe sits in.
   const plinthH = 1.15;
-  const plinth = new THREE.Mesh(geometry('hub-plinth', () => new THREE.CylinderGeometry(2.55, 2.7, plinthH, 48)), material('#2a3550', { rough: 0.45, metal: 0.3 }));
+  const plinth = new THREE.Mesh(geometry('hub-plinth', () => new THREE.CylinderGeometry(2.55, 2.7, plinthH, 64)), material('#2a3550', { rough: 0.45, metal: 0.3 }));
   plinth.position.y = top + plinthH / 2;
   group.add(plinth);
-  const lip = new THREE.Mesh(geometry('hub-lip', () => new THREE.TorusGeometry(2.42, 0.07, 8, 64)), glowMaterial(hex, 1.5));
+  const lip = new THREE.Mesh(geometry('hub-lip', () => new THREE.TorusGeometry(2.42, 0.07, 10, 96)), glowMaterial(hex, 1.5));
   lip.rotation.x = Math.PI / 2;
   lip.position.y = top + plinthH + 0.02;
   group.add(lip);
   const cupH = 0.3;
-  const cup = new THREE.Mesh(geometry('hub-cup-base', () => new THREE.CylinderGeometry(1.35, 1.5, cupH, 40)), material('#11172a', { rough: 0.35, metal: 0.5 }));
+  const cup = new THREE.Mesh(geometry('hub-cup-base', () => new THREE.CylinderGeometry(1.35, 1.5, cupH, 64)), material('#11172a', { rough: 0.35, metal: 0.5 }));
   cup.position.y = top + plinthH + cupH / 2;
   group.add(cup);
-  const cupRing = new THREE.Mesh(geometry('hub-cup-ring', () => new THREE.TorusGeometry(1.32, 0.06, 8, 48)), glowMaterial(hex, 1.7));
+  const cupRing = new THREE.Mesh(geometry('hub-cup-ring', () => new THREE.TorusGeometry(1.32, 0.06, 10, 80)), glowMaterial(hex, 1.7));
   cupRing.rotation.x = Math.PI / 2;
   cupRing.position.y = top + plinthH + cupH + 0.01;
   group.add(cupRing);
   // The globe: glass, clear in the middle and bright at the edge (a fresnel
-  // shader -- a lit transparent sphere read as a flat disc), with a soft
-  // highlight, and a faint inner glow.
+  // shader), with a soft highlight and a glowing nucleus.
   const globeR = 2.2;
   const globeY = top + plinthH + cupH + globeR - 0.35;
-  const globe = new THREE.Mesh(geometry('hub-globe2', () => new THREE.SphereGeometry(globeR, 48, 32)), globeMaterial(hex));
+  const globe = new THREE.Mesh(geometry('hub-globe3', () => new THREE.SphereGeometry(globeR, 64, 40)), globeMaterial(hex));
   globe.position.y = globeY;
   globe.renderOrder = 2;
   globe.userData.noMerge = true;
   group.add(globe);
-  const core = new THREE.Mesh(geometry('hub-core', () => new THREE.SphereGeometry(globeR * 0.55, 24, 16)), glowMaterial(hex, 0.6, { opacity: 0.35, additive: true }));
+  const core = new THREE.Mesh(geometry('hub-core', () => new THREE.SphereGeometry(globeR * 0.55, 32, 20)), glowMaterial(hex, 0.6, { opacity: 0.35, additive: true }));
   core.position.y = globeY - 0.25;
   core.userData.noMerge = true;
   group.add(core);
-  // A console desk with two monitors at each corner, facing the camera's
-  // way so every pair of screens shows.
+  const nucleus = new THREE.Mesh(geometry('hub-nucleus', () => new THREE.SphereGeometry(0.42, 32, 20)), glowMaterial('#8fc4ff', 1.15));
+  nucleus.position.y = globeY;
+  nucleus.userData.noMerge = true;
+  group.add(nucleus);
+  // Electrons: three tilted orbits round the globe, each a faint ring with
+  // a bright electron running along it (animated by scene.js). The orbits
+  // stay above the plinth and inside the conductor's walking ring.
+  const orbits = [];
+  const orbitR = 2.75;
+  const ringMat = glowMaterial('#8cc8ff', 1.0, { opacity: 0.45, additive: true });
+  const electronMat = glowMaterial('#d6ecff', 2.4);
+  [0, 1, 2].forEach(i => {
+    const orbit = new THREE.Group();
+    orbit.position.y = globeY;
+    orbit.rotation.set(Math.PI / 2 - 0.55, (i * Math.PI * 2) / 3, 0, 'YXZ');
+    const ring = new THREE.Mesh(geometry('hub-orbit', () => new THREE.TorusGeometry(orbitR, 0.022, 6, 128)), ringMat);
+    ring.userData.noMerge = true;
+    orbit.add(ring);
+    const electron = new THREE.Mesh(geometry('hub-electron', () => new THREE.SphereGeometry(0.13, 16, 12)), electronMat);
+    electron.userData.noMerge = true;
+    orbit.add(electron);
+    orbits.push({ orbit, electron, radius: orbitR, angle: i * 2.1, speed: 1.1 + i * 0.25 });
+    group.add(orbit);
+  });
+  // Curved desks: one per corner, the curve toward the plinth and the
+  // screens and stool on the outer side, so the desk faces out.
+  const half = slab / 2;
+  const clear = 0.5; // radians a desk keeps from a bridge (and its posts)
+  [0.25, 0.75, 1.25, 1.75].forEach(turn => {
+    let a = turn * Math.PI;
+    bridges.forEach(b => {
+      const diff = Math.atan2(Math.sin(a - b), Math.cos(a - b));
+      if (Math.abs(diff) < clear) a = b + Math.sign(diff || 1) * clear;
+    });
+    const desk = makeCurvedDesk(hex);
+    const r = Math.min(7.2, half - 0.5);
+    desk.position.set(Math.sin(a) * r, top, Math.cos(a) * r);
+    desk.rotation.y = a;
+    desk.scale.setScalar(1.3);
+    group.add(desk);
+  });
+  // Marker posts at the corners and either side of each bridge landing.
+  const cornerR = Math.min(slab, slab) * 0.12;
+  const cr = cornerR - RAIL_INSET;
+  const inner = half - RAIL_INSET;
+  // Two bridges landing side by side on one edge would put two posts in
+  // the same spot; those become one, halfway between.
+  const postSpots = [];
+  const postAt = (x, z) => {
+    const near = postSpots.find(p => Math.hypot(p.x - x, p.z - z) < 1.0);
+    if (near) { near.x = (near.x + x) / 2; near.z = (near.z + z) / 2; } else postSpots.push({ x, z });
+  };
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+    postAt(sx * (inner - cr + cr * Math.SQRT1_2), sz * (inner - cr + cr * Math.SQRT1_2));
+  });
+  bridges.forEach(b => {
+    const dx = Math.sin(b), dz = Math.cos(b);
+    const alongX = Math.abs(dx) >= Math.abs(dz);
+    const t = half / Math.max(Math.abs(dx), Math.abs(dz));
+    const ex = dx * t, ez = dz * t;
+    const gap = bridgeGapHalfWidth(dx, dz);
+    const lateral = Math.sqrt(Math.max(0, gap * gap - RAIL_INSET * RAIL_INSET));
+    if (alongX) {
+      const x = ex - Math.sign(dx) * RAIL_INSET;
+      [-1, 1].forEach(side => postAt(x, Math.max(-inner, Math.min(inner, ez + side * lateral))));
+    } else {
+      const z = ez - Math.sign(dz) * RAIL_INSET;
+      [-1, 1].forEach(side => postAt(Math.max(-inner, Math.min(inner, ex + side * lateral)), z));
+    }
+  });
+  postSpots.forEach(({ x, z }) => {
+    const post = makeLampPost();
+    post.position.set(x, top, z);
+    group.add(post);
+  });
+  group.traverse(o => { o.castShadow = false; });
+  const merged = mergeStatic(group, `hub4|${slab}|${hex}|${bridges.map(b => b.toFixed(2)).join(',')}`);
+  merged.userData.orbits = orbits;
+  merged.userData.markerPosts = postSpots;
+  return merged;
+}
+
+/**
+ * A curved operator desk: an arc of desk round a stool, three monitors on
+ * the curve facing the stool, a glowing trim along the operator's edge. The
+ * stool sits at the local origin and the curve bulges toward -z.
+ */
+function makeCurvedDesk(hex) {
+  const group = new THREE.Group();
+  const span = Math.PI / 3; // half the arc
+  const deskTop = arcSlab(1.25, 2.1, span, 0.1, material('#3b465c', { rough: 0.45, metal: 0.25 }));
+  deskTop.position.y = 0.92;
+  group.add(deskTop);
+  const body = arcSlab(1.5, 1.98, span * 0.94, 0.88, material('#232b3d', { rough: 0.6, metal: 0.2 }));
+  body.position.y = 0.04;
+  group.add(body);
+  const trim = arcSlab(1.22, 1.3, span, 0.05, glowMaterial(hex, 1.1));
+  trim.position.y = 0.99;
+  group.add(trim);
   let screenMat = _materials.get(`hub-ui|${hex}`);
   if (!screenMat) {
     screenMat = new THREE.MeshBasicMaterial({ map: hubScreenTexture(hex), toneMapped: false });
     _materials.set(`hub-ui|${hex}`, screenMat);
   }
-  const radius = 6.1;
-  [0.25, 0.75, 1.25, 1.75].forEach(turn => {
-    const a = turn * Math.PI;
-    const desk = new THREE.Group();
-    const body = roundedSlab(2.9, 0.92, 1.0, '#262e40', 0.08);
-    body.position.y = 0.46;
-    desk.add(body);
-    const deskTop = roundedSlab(3.05, 0.12, 1.15, '#3b465c', 0.06);
-    deskTop.position.y = 0.98;
-    desk.add(deskTop);
-    const strip = box(2.7, 0.05, 0.02, glowMaterial(hex, 1.1));
-    strip.position.set(0, 0.8, 0.505);
-    desk.add(strip);
-    [-0.68, 0.68].forEach(x => {
-      const turnIn = x < 0 ? 0.16 : -0.16;
-      const bezel = roundedPanel(1.25, 0.82, 0.08, '#0f1420', 0.05);
-      bezel.position.set(x, 1.66, -0.22);
-      bezel.rotation.y = turnIn;
-      desk.add(bezel);
-      const glass = new THREE.Mesh(geometry('hub-screen2', () => new THREE.PlaneGeometry(1.13, 0.7)), screenMat);
-      glass.position.set(x, 1.66, -0.175);
-      glass.rotation.y = turnIn;
-      desk.add(glass);
-      const stand = box(0.1, 0.36, 0.1, '#0f1420');
-      stand.position.set(x, 1.2, -0.26);
-      desk.add(stand);
-    });
-    // Low stools rather than office chairs: a chair back on the camera
-    // side would hide the screens.
-    [-0.68, 0.68].forEach(x => {
-      const seat = cylinder(0.32, 0.3, 0.16, 20, material('#1f9e8c', { rough: 0.6 }));
-      seat.position.set(x, 0.62, 0.95);
-      desk.add(seat);
-      const post = cylinder(0.07, 0.07, 0.5, 8, '#2e3547');
-      post.position.set(x, 0.29, 0.95);
-      desk.add(post);
-      const foot = cylinder(0.26, 0.28, 0.06, 16, '#2e3547');
-      foot.position.set(x, 0.03, 0.95);
-      desk.add(foot);
-    });
-    desk.position.set(Math.sin(a) * radius, top, Math.cos(a) * radius);
-    desk.scale.setScalar(1.15);
-    desk.rotation.y = Math.PI / 4;
-    group.add(desk);
+  [-0.5, 0, 0.5].forEach(theta => {
+    const mon = new THREE.Group();
+    mon.position.set(Math.sin(theta) * 1.82, 0, -Math.cos(theta) * 1.82);
+    mon.rotation.y = -theta;
+    const bezel = roundedPanel(1.0, 0.66, 0.07, '#0f1420', 0.05);
+    bezel.position.y = 1.55;
+    mon.add(bezel);
+    const glass = new THREE.Mesh(geometry('hub-screen3', () => new THREE.PlaneGeometry(0.9, 0.56)), screenMat);
+    glass.position.set(0, 1.55, 0.04);
+    mon.add(glass);
+    const stand = box(0.09, 0.4, 0.09, '#0f1420');
+    stand.position.set(0, 1.2, -0.04);
+    mon.add(stand);
+    group.add(mon);
   });
-  group.traverse(o => { o.castShadow = false; });
-  group.userData.spin = [];
-  return mergeStatic(group, `hub3|${slab}|${hex}`);
+  const seat = cylinder(0.34, 0.32, 0.16, 32, material('#1f9e8c', { rough: 0.6 }));
+  seat.position.set(0, 0.62, 0);
+  group.add(seat);
+  const post = cylinder(0.07, 0.07, 0.5, 12, '#2e3547');
+  post.position.set(0, 0.29, 0);
+  group.add(post);
+  const foot = cylinder(0.28, 0.3, 0.06, 24, '#2e3547');
+  foot.position.set(0, 0.03, 0);
+  group.add(foot);
+  return group;
+}
+
+/**
+ * A flat ring segment between radii r0 and r1, centred on -z and spanning
+ * ±halfSpan, `height` tall from y=0 up.
+ */
+function arcSlab(r0, r1, halfSpan, height, mat) {
+  const geo = geometry(`arc-slab|${r0}|${r1}|${halfSpan.toFixed(3)}|${height}`, () => {
+    // In shape space (x, y) maps to world (x, -y) once stood up, so the
+    // curve centred on world -z is centred on shape +y.
+    const a0 = Math.PI / 2 - halfSpan;
+    const a1 = Math.PI / 2 + halfSpan;
+    const shape = new THREE.Shape();
+    shape.moveTo(Math.cos(a0) * r1, Math.sin(a0) * r1);
+    shape.absarc(0, 0, r1, a0, a1, false);
+    shape.lineTo(Math.cos(a1) * r0, Math.sin(a1) * r0);
+    shape.absarc(0, 0, r0, a1, a0, true);
+    shape.closePath();
+    const bevel = Math.min(0.03, height * 0.3);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.001, height - bevel * 2), bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 48 });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, bevel, 0);
+    return g;
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  return mesh;
 }
 
 /** Glass: see-through in the middle, bright toward the rim, with a highlight. */
@@ -2691,59 +2820,16 @@ function hubScreenTexture(hex) {
 }
 
 /**
- * The glow round a platform's neon band: a flat ring just outside the band,
- * bright at the band and fading to nothing outward (vertex colours under
- * additive blending). Unlike bloom, which works on screen pixels and broke
- * into dots on a thin band once zoomed out, this is geometry: it scales with
- * the platform and looks the same at every zoom.
+ * A field of faint stars scattered over the floor around the office. Each
+ * twinkles on its own slow cycle (a phase and speed per star, animated in
+ * the shader from one `time` uniform), dimming to about a third and back,
+ * never brighter than the old static field.
  */
-export function makeBandGlow(width, depth, radius, color, spread) {
-  const s = spread || 1.6;
-  const key = `band-glow|${width}|${depth}|${radius}|${color}|${s}`;
-  const geo = geometry(key, () => {
-    const inner = roundedRectShape(width, depth, radius).getSpacedPoints(160);
-    const positions = [];
-    const colors = [];
-    const c = new THREE.Color(color);
-    const cx = 0, cz = 0;
-    const outerOf = ([x, y]) => {
-      const len = Math.hypot(x - cx, y - cz) || 1;
-      // Push out along the rounded rectangle's own normal (approximate with the
-      // direction from the centre, scaled per axis so the band stays even).
-      const nx = (x / (width / 2)), ny = (y / (depth / 2));
-      const nl = Math.hypot(nx, ny) || 1;
-      return [x + (nx / nl) * s, y + (ny / nl) * s];
-    };
-    for (let i = 0; i < inner.length - 1; i += 1) {
-      const a = [inner[i].x, inner[i].y], b = [inner[i + 1].x, inner[i + 1].y];
-      const ao = outerOf(a), bo = outerOf(b);
-      [[a, 1], [b, 1], [bo, 0], [a, 1], [bo, 0], [ao, 0]].forEach(([p, k]) => {
-        positions.push(p[0], 0, p[1]);
-        colors.push(c.r * k, c.g * k, c.b * k);
-      });
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    return g;
-  });
-  const matKey = 'band-glow-mat';
-  let mat = _materials.get(matKey);
-  if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
-    _materials.set(matKey, mat);
-  }
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 2;
-  mesh.userData.bandGlow = true;
-  return mesh;
-}
-
-/** A field of faint stars scattered over the floor around the office. */
 export function makeStarfield(halfSize, count) {
   const n = count || 900;
   const positions = new Float32Array(n * 3);
   const colors = new Float32Array(n * 3);
+  const twinkle = new Float32Array(n * 2);
   let seed = 7;
   const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const blue = new THREE.Color('#7aa2ff');
@@ -2753,13 +2839,36 @@ export function makeStarfield(halfSize, count) {
     positions[i * 3 + 1] = 0.05;
     positions[i * 3 + 2] = (rand() * 2 - 1) * halfSize;
     const c = rand() < 0.7 ? blue : white;
-    const k = 0.25 + rand() * 0.55;
+    const k = 0.3 + rand() * 0.55;
     colors[i * 3] = c.r * k; colors[i * 3 + 1] = c.g * k; colors[i * 3 + 2] = c.b * k;
+    twinkle[i * 2] = rand() * Math.PI * 2;
+    twinkle[i * 2 + 1] = 0.6 + rand() * 1.6;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const mat = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false });
+  geo.setAttribute('twinkle', new THREE.BufferAttribute(twinkle, 2));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { time: { value: 0 }, size: { value: 2.6 } },
+    vertexShader: `attribute vec3 color; attribute vec2 twinkle; uniform float time; uniform float size;
+      varying vec3 vColor; varying float vLight;
+      void main() {
+        vColor = color;
+        float s = 0.5 + 0.5 * sin(time * twinkle.y + twinkle.x);
+        vLight = 0.35 + 0.65 * s * s;
+        gl_PointSize = size * (0.8 + 0.4 * s);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `varying vec3 vColor; varying float vLight;
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.15, d);
+        if (a <= 0.0) discard;
+        gl_FragColor = vec4(vColor * vLight * 1.15, a * 0.95);
+      }`,
+  });
   const points = new THREE.Points(geo, mat);
   points.userData.owned = { geometry: geo, material: mat };
   return points;

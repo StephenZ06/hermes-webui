@@ -238,7 +238,7 @@ def test_raised_pod_bridges_end_at_the_actual_rounded_platform_edges():
     assert "podRadius" in body
     assert "BRIDGE_DECK_PLATFORM_OVERLAP = BRIDGE_DECK_WIDTH / 2" in SCENE_SRC
     assert "overlap: BRIDGE_DECK_PLATFORM_OVERLAP" in body
-    assert "walk = makeWalkway(span.length, palette, railColor);" in body
+    assert "walk = makeWalkway(span.length, palette, railColor, {" in body
 
 
 def test_raised_platforms_occlude_bridge_rail_ends_without_lifting_the_floor():
@@ -249,7 +249,7 @@ def test_raised_platforms_occlude_bridge_rail_ends_without_lifting_the_floor():
 
     assert "const RAISED_PLATFORM_Y = 0.52" in SCENE_SRC
     assert "const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y" in SCENE_SRC
-    assert "const LEVEL_BRIDGE_Y = -0.45" in SCENE_SRC
+    assert "const LEVEL_BRIDGE_Y = 0.23" in SCENE_SRC, "bridges are flush with the platform tops"
     assert "group.position.y = CONDUCTOR_PLATFORM_Y;" in conductor
     assert "record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);" in sync
 

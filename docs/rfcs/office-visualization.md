@@ -1245,3 +1245,36 @@ Smoothness, measured headless (SwiftShader, so relative only):
   The four corner desks are dark consoles with two textured blue screens
   each, all turned toward the camera, with low teal stools instead of chairs
   so no chair back hides a screen.
+
+### Fourth pass: beacons, flush bridges, a breathing band (2026-10-09)
+
+- **Marker posts** (`makeLampPost`) replace the lanterns: a small dark
+  rounded column with a warm-white light core showing through a slot on each
+  face, a footing and a metal cap. They stand on the rail line at every pod
+  corner and either side of every bridge gap (the rail builder places them),
+  and at the hub's corners and either side of each bridge landing (the
+  centrepiece places them; two landings that would share a spot share one
+  post).
+- **Rails** (`makeGuardRails`) are one continuous run round the rounded slab,
+  corners included, cut only where the bridge lands. The gap's half-width
+  (`bridgeGapHalfWidth`) is the deck's half-width stretched by how obliquely
+  the bridge meets the edge, plus room for a post. The sign wall no longer
+  opens the rail.
+- **Band**: the outward halo (`makeBandGlow`) is gone; the middle layer
+  itself glows and breathes between 70% and 100% (`bandPulse` in scene.js,
+  out of step from pod to pod).
+- **Bridges are flush with the platform tops** (`LEVEL_BRIDGE_Y` 0.23, deck
+  top 0.09 below the surface). The lower deck tucked behind the hub's far
+  edge but lay over the pod's near edge, so the two ends never matched. The
+  deck still runs on under both platforms, hidden in their top slabs; its
+  rails are trimmed to the exposed span.
+- **Hub**: the raised square rim is gone; a curved desk with three monitors
+  and a stool sits at each corner facing out, sliding along the edge away
+  from any bridge that comes within 0.5 rad. The centrepiece is rebuilt
+  (from cached parts) when the hub's bridge angles change. Three tilted
+  electron orbits circle the globe round a glowing nucleus, their electrons
+  animated and the orbits slowly precessing.
+- **Stars** twinkle: a points shader with a per-star phase and speed, dimming
+  to about a third and back, never brighter than before.
+- Department cards lost their coloured glow; bloom is tighter (strength 0.6,
+  radius 0.2) so edges read crisper.

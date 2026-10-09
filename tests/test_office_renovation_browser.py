@@ -75,3 +75,54 @@ def test_decorations_never_overlap_a_desk_a_walkway_or_the_bridge(page):
     }""")
     assert all(r["bad"] == 0 for r in out), out
     assert all(r["count"] >= 3 for r in out), "each pod still gets several pieces"
+
+
+def test_rails_run_round_the_corners_and_open_only_for_the_bridge(page):
+    """The rail is one run round the rounded slab (posts at its four corners),
+    cut once where the bridge lands, with a marker post either side of that
+    gap set symmetrically about the bridge."""
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const closed = b.makeGuardRails(12, 11, '#7c8cff', []).userData.markerPosts;
+      const entry = { x: 6, z: 0 };
+      const open = b.makeGuardRails(12, 11, '#7c8cff', [{ ...entry, r: b.bridgeGapHalfWidth(1, 0) }]).userData.markerPosts;
+      const gap = open.filter(p => Math.abs(p.x - 6) < 1 && Math.abs(p.z) < 4);
+      return { closed: closed.length, open: open.length, gapZ: gap.map(p => p.z) };
+    }""")
+    assert out["closed"] == 4, "one post per corner and no gaps on a rail with no bridge"
+    assert out["open"] == 6, "four corners plus two posts at the bridge gap"
+    assert len(out["gapZ"]) == 2 and abs(sum(out["gapZ"])) < 0.2, out
+    assert all(abs(z) > 1.8 for z in out["gapZ"]), "the posts stand outside the deck"
+
+
+def test_hub_posts_flank_each_bridge_and_never_double_up(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const hub = (bridges) => {
+        const g = b.makeHubCentrepiece(15.4, '#4f8cff', { bridges });
+        return g;
+      };
+      // Two bridges landing side by side on one edge, as on the Business floor.
+      // Landings 2 x 2.43 apart along the +x edge: their inner posts coincide.
+      const g = hub([Math.PI / 2 - 0.306, Math.PI / 2 + 0.306, 0]);
+      const posts = g.userData.markerPosts;
+      let closest = Infinity;
+      posts.forEach((p, i) => posts.slice(i + 1).forEach(q => { closest = Math.min(closest, Math.hypot(p.x - q.x, p.z - q.z)); }));
+      const single = hub([0]).userData.markerPosts.filter(p => p.z > 6 && Math.abs(p.x) < 4);
+      return { orbits: g.userData.orbits.length, closest, count: posts.length, singleX: single.map(p => p.x) };
+    }""")
+    assert out["orbits"] == 3, "the globe carries three electron orbits"
+    assert out["closest"] >= 1.0, "side-by-side landings share a post instead of doubling it"
+    assert out["count"] < 4 + 6, "the shared post was merged"
+    assert len(out["singleX"]) == 2 and abs(sum(out["singleX"])) < 0.05, "a bridge's posts are symmetric about it"
+
+
+def test_platform_band_has_no_halo_round_it(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const pod = b.makePod(12, 11, { podTop: '#0d172b' }, '#7c8cff');
+      let halos = 0;
+      pod.traverse(o => { if (o.userData && o.userData.bandGlow) halos += 1; });
+      return { halos, band: !!pod.userData.deliveryLayer };
+    }""")
+    assert out == {"halos": 0, "band": True}
