@@ -1327,9 +1327,8 @@ Smoothness, measured headless (SwiftShader, so relative only):
 
 ### Seventh pass: astronauts in low gravity (2026-10-10)
 
-- **Backdrop**: cool charcoal (`SPACE_COLOR` `#33373f`, about `#232730` on
-  screen after ACES) instead of black, which overpowered the platforms'
-  colours; stars unchanged.
+- **Backdrop**: a cool charcoal was tried and turned back; it stays
+  near-black (`SPACE_COLOR` `#010104`) with the stars.
 - **Marker posts**: the glow cards and floor pool are gone; only the bar
   glows (unlit, under the bloom threshold).
 - **Figures are astronauts** (`makePerson`): white suit, helmet with a dark

@@ -46,12 +46,10 @@ const GROUND_SIZE = 400;
 // The floor plane sits below the platforms' dark bases, so each pod stands as
 // a whole block (coloured top, neon band, base) rather than a slab sunk to its rim.
 const GROUND_Y = -2.6;
-// The dark theme's backdrop, well below the platforms (see buildGround): a
-// cool charcoal, the app's own dark-surface family, rather than pure black,
-// which overpowered the platforms' colours. The output pass's ACES tone
-// mapping darkens it to about #232730 on screen.
+// The dark theme's backdrop, well below the platforms (see buildGround):
+// near-black space. (A charcoal grey was tried and turned back.)
 const SPACE_Y = -26;
-const SPACE_COLOR = '#33373f';
+const SPACE_COLOR = '#010104';
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -365,7 +363,7 @@ export function createOfficeScene(canvas, options) {
   function buildGround(halfSize) {
     const space = palette === PALETTES.dark;
     // In the dark theme there is no floor: the platforms float over plain
-    // charcoal space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
+    // black space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
     // haze or glow -- with stars at several depths (see installGround). A
     // floor that caught the platforms' shadows is what made the view flat.
     const size = (halfSize + (space ? 60 : 0)) * 2;
