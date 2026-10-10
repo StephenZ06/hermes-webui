@@ -1383,9 +1383,11 @@ Smoothness, measured headless (SwiftShader, so relative only):
 
 ### Business balance, a living floor, cleaner switching (2026-10-10)
 
-- **Business layout** (layout.js): the departments sit evenly round one ring
-  with one slot left empty toward the camera; The Floor sits out in that gap,
-  pushed out until it clears its neighbours. Its bridge is a straight lower
+- **Business layout** (layout.js): the departments keep their ring slots
+  (an even ring with a camera-facing gap was tried and turned back). Only
+  The Floor moves: from its far default slot on ring two into the middle of
+  the nearest gap between two ring-one departments, as close to the hub as
+  it fits (89 -> 53 units for six departments). Its bridge is a straight lower
   deck under both platforms (`floorBridgeRoute`, `FLOOR_BRIDGE_TOP_Y` -1.0),
   so it passes no department and opens no gap in either rail.
 - **Bridge rails reach the edges**: each rail is trimmed where it actually
