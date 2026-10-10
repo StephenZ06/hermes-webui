@@ -453,4 +453,4 @@ def test_business_keeps_department_slots_and_pulls_the_floor_into_a_gap(driver):
     near = sorted(gap(p) for key, p in pods.items() if key != "floor")[:2]
     assert near[0] > 10 and abs(near[0] - near[1]) < 0.5, f"equal open space to both neighbours: {near}"
     ring = math.hypot(pods["sales"]["x"], pods["sales"]["z"])
-    assert math.hypot(floor["x"], floor["z"]) < ring * 2.6, "and close in, not out on a far ring"
+    assert math.hypot(floor["x"], floor["z"]) < ring * 3.0, "and close in, not out on a far ring"

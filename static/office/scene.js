@@ -577,6 +577,8 @@ export function createOfficeScene(canvas, options) {
     const isFloor = label === 'The Floor';
     const group = makePod(slabWidth, slabDepth, palette, color, {
       band: isFloor ? FLOOR_COLOR : HUB_COLOR,
+      // The Floor's band is plain gold, not lit.
+      glow: !isFloor,
       top: !color && palette === PALETTES.dark ? '#1f2739' : undefined,
     });
     // A tap on the slab (not on a worker) frames this pod.
@@ -668,7 +670,7 @@ export function createOfficeScene(canvas, options) {
     if (outletTransition.active) return;
     const layer = record && record.group && record.group.userData.deliveryLayer;
     const material = layer && layer.material;
-    if (!material || !material.emissive) return;
+    if (!material || !material.emissive || layer.userData.noGlow) return;
     record.deliveryGlow = (record.deliveryGlow || 0)
       + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
     const idleIntensity = layer.userData.idleEmissiveIntensity || 0;

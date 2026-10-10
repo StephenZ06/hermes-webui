@@ -1387,8 +1387,8 @@ Smoothness, measured headless (SwiftShader, so relative only):
   (an even ring with a camera-facing gap was tried and turned back). Only
   The Floor moves: from its far default slot on ring two into the middle of
   the nearest gap between two ring-one departments, at the direction where
-  it sits the same distance (a POD_GAP x 1.3 lane) from both neighbours, as
-  close in as that allows. Its band does not pulse. Its bridge is a straight lower
+  it sits the same distance (a POD_GAP x 2 lane) from both neighbours, as
+  close in as that allows. Its band is plain gold: no glow or pulse. Its bridge is a straight lower
   deck under both platforms (`floorBridgeRoute`, `FLOOR_BRIDGE_TOP_Y` -1.0),
   so it passes no department and opens no gap in either rail.
 - **Bridge rails reach the edges**: each rail is trimmed where it actually

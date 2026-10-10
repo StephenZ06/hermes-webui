@@ -30,7 +30,7 @@ const RING_BASE_CAPACITY = 6;
 const CUBICLE_CENTRE_Z = 0.625;
 /** The open lane between The Floor and its neighbouring departments, as a
  * share of POD_GAP. */
-const FLOOR_CLEARANCE = 1.3;
+const FLOOR_CLEARANCE = 2.0;
 /**
  * Seats across a pod. Small pods stay narrow so a two-subagent branch reads
  * as a pair rather than a row; large ones widen toward square, because a

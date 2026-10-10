@@ -483,7 +483,8 @@ export function makePod(width, depth, palette, tint, opts) {
   const luminance = 0.2126 * bandLinear.r + 0.7152 * bandLinear.g + 0.0722 * bandLinear.b;
   // Kept just under the bloom threshold: the band itself glows (and pulses,
   // see scene.js) without spilling a halo onto the floor round the platform.
-  const idleIntensity = bandColor ? Math.min(3.5, Math.max(0.8, 0.72 / Math.max(0.05, luminance))) : 0;
+  // `glow: false` keeps the band's colour but lights nothing (The Floor).
+  const idleIntensity = bandColor && options.glow !== false ? Math.min(3.5, Math.max(0.8, 0.72 / Math.max(0.05, luminance))) : 0;
   bandMaterial.emissive.set(bandColor || '#000000');
   bandMaterial.emissiveIntensity = idleIntensity;
   const bandY = -topHeight / 2 - bandHeight / 2;
@@ -492,6 +493,7 @@ export function makePod(width, depth, palette, tint, opts) {
   });
   delivery.castShadow = false;
   delivery.userData.idleEmissiveIntensity = idleIntensity;
+  delivery.userData.noGlow = options.glow === false;
   const baseY = bandY - bandHeight / 2 - baseHeight / 2;
   addLayer('upper-base', baseHeight, baseColor, baseY, {
     layerWidth: width + lip, layerDepth: depth + lip, radius: radius + lip / 2,
