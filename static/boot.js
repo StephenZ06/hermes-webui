@@ -3917,6 +3917,9 @@ function _syncThemeColorMeta(){
       meta.setAttribute('content',bg);
       meta.removeAttribute('media');
     });
+    // Remembered for the next launch: the head script applies it before the
+    // stylesheet loads, so the iPhone status bar opens in the bar's colour.
+    try{localStorage.setItem('hermes-theme-color',bg);}catch(_){}
   }catch(e){}
 }
 

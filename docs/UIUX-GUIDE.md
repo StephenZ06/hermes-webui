@@ -170,10 +170,13 @@ the Home Screen. Shared rules live in the "Phone foundation" block at the end
 of `static/style.css`; page blocks after it only add what is particular to a
 page.
 
-- **Status bar.** Opaque (`black`, or `default` in the light theme), never
-  `black-translucent`: on iOS 26 a Home Screen app with black-translucent is
-  drawn from y=0 but its web view is sized one status bar short, leaving a
-  dead black band under the app that no CSS can paint (measured 59px on an
+- **Status bar.** Opaque `default`, tinted by `theme-color`, which boot.js
+  keeps equal to the top bar's colour (`--sidebar`, remembered in
+  localStorage for the next launch), so the band behind the clock and the
+  Dynamic Island reads as part of the bar. Never `black-translucent`: on
+  iOS 26 (WebKit bug 301108) a Home Screen app drawn under the status bar
+  gets a web view one status bar short, and the band left at the bottom is
+  outside the web view (no CSS or JS can paint it; measured 59px on an
   iPhone 15 Pro Max). Existing installs may need removing and re-adding.
 - **Safe areas.** `viewport-fit=cover` is on, and `:root` exposes
   `--app-titlebar-safe-top`, `--app-safe-bottom`, `--app-safe-left` and
