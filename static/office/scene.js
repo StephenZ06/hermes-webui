@@ -387,6 +387,10 @@ export function createOfficeScene(canvas, options) {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = SPACE_Y;
     mesh.receiveShadow = false;
+    // A backdrop: drawn first and writing no depth, so the screen-space
+    // stars (at the far plane) show over it and behind everything else.
+    mesh.material.depthWrite = false;
+    mesh.renderOrder = -20;
     // Capped rather than scaled 1:1 with size: past a few hundred divisions
     // the lines are imperceptible anyway (this only grows for a very large,
     // very zoomed-out office), and an uncapped count would turn one big run
@@ -419,9 +423,11 @@ export function createOfficeScene(canvas, options) {
       // Three layers of stars between the platforms and the nebula: nearer
       // layers are fewer, larger and brighter.
       stars = new THREE.Group();
-      [[GROUND_Y - 2, 3.8, 0.25, 11], [SPACE_Y * 0.55, 3.0, 0.4, 29], [SPACE_Y + 0.5, 2.4, 0.35, 53]].forEach(([y, size, share, seed]) => {
-        const layer = makeStarfield(halfSize + 50, Math.min(5000, Math.round(halfSize * 14 * share)), { size, seed });
-        layer.position.y = y;
+      // Screen-space layers (see makeStarfield): a fixed count each, so the
+      // sky looks the same at every zoom; nearer layers drift more on a pan.
+      [[3.8, 140, 11, 0.012], [3.0, 320, 29, 0.006], [2.4, 520, 53, 0.003]].forEach(([size, count, seed, drift]) => {
+        const layer = makeStarfield(1, count, { size, seed });
+        layer.userData.drift = drift;
         stars.add(layer);
       });
       scene.add(stars);
@@ -2177,6 +2183,11 @@ export function createOfficeScene(canvas, options) {
         stars.children.forEach(layer => {
           layer.material.uniforms.time.value = t;
           layer.material.uniforms.pixelRatio.value = ratio;
+          // Screen right and up on the ground for this iso camera.
+          const d = layer.userData.drift || 0;
+          layer.material.uniforms.offset.value.set(
+            (view.x - view.z) * 0.7071 * d, (-view.x - view.z) * 0.7071 * d * -1,
+          );
         });
       }
       advanceShootingStar(t);

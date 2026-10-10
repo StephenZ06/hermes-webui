@@ -3470,9 +3470,10 @@ export function makeStarfield(halfSize, count, opts) {
   const blue = new THREE.Color('#7aa2ff');
   const white = new THREE.Color('#dbe6ff');
   for (let i = 0; i < n; i += 1) {
-    positions[i * 3] = (rand() * 2 - 1) * halfSize;
-    positions[i * 3 + 1] = 0.05;
-    positions[i * 3 + 2] = (rand() * 2 - 1) * halfSize;
+    // Screen space: x, y in [0, 1), wrapped round the view (see the shader).
+    positions[i * 3] = rand();
+    positions[i * 3 + 1] = rand();
+    positions[i * 3 + 2] = 0;
     const c = rand() < 0.6 ? blue : white;
     // Brighter than they were (they were lost on the dark backdrop), and one
     // in ten a larger, brighter star so the field has some that catch the eye.
@@ -3490,8 +3491,8 @@ export function makeStarfield(halfSize, count, opts) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 }, pixelRatio: { value: 1 } },
-    vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size; uniform float pixelRatio;
+    uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 }, pixelRatio: { value: 1 }, offset: { value: new THREE.Vector2() } },
+    vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size; uniform float pixelRatio; uniform vec2 offset;
       varying vec3 vColor; varying float vLight; varying float vBright;
       void main() {
         vColor = color;
@@ -3505,7 +3506,11 @@ export function makeStarfield(halfSize, count, opts) {
         // keeps every star a few pixels wide, so its soft edge stays smooth.
         float css = size * (vBright > 0.5 ? 7.0 : 1.0) * (0.85 + 0.35 * s);
         gl_PointSize = max(css, vBright > 0.5 ? 14.0 : 2.4) * pixelRatio;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        // A backdrop, not scenery: drawn in screen space at the far plane, so
+        // zooming never changes how many stars there are or how big they
+        // look; panning slides each layer a little (parallax, via offset).
+        vec2 q = fract(position.xy + offset) * 2.2 - 1.1;
+        gl_Position = vec4(q, 0.99999, 1.0);
       }`,
     fragmentShader: `varying vec3 vColor; varying float vLight; varying float vBright;
       void main() {
@@ -3535,6 +3540,8 @@ export function makeStarfield(halfSize, count, opts) {
       }`,
   });
   const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  points.renderOrder = -10;
   points.userData.owned = { geometry: geo, material: mat };
   return points;
 }
