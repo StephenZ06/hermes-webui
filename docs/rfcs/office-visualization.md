@@ -1419,3 +1419,26 @@ Smoothness, measured headless (SwiftShader, so relative only):
   solid when it ends.
 - **Phones**: department cards shrink to name and count.
 - Draw calls (SwiftShader, incl. shadow and bloom): Projects 236, Business 645.
+
+### Smooth handling, a proper loader, centred cubicles (2026-10-10)
+
+- **Wheel zoom eases** to its target about the pointer (`advanceZoom`)
+  instead of jumping a notch per wheel tick; a **drag glides** on and eases
+  to a stop after release (`advanceGlide`); **hover raycasts** run at most
+  once a frame (`advanceHover`).
+- **The resolution governor holds still while the view is moving** (and for
+  1.5 s after): a resolution step mid-gesture was both a hitch and a visible
+  change in how sharp the models looked.
+- **Bloom renders at half resolution**: a soft blur looks the same and costs
+  a quarter of the fill.
+- **Loader**: an orbiting atom (the conductor's globe) with an "Assembling
+  the office" caption. The canvas, the floating cards and the Task Status
+  panel stay hidden until the scene has really drawn two frames
+  (`config.onReady`, after the shader-compiling first frame) -- and on
+  Business until the real roster is in -- then all fade in as the loader
+  fades out. The old reveal fired on the first tick, before anything had
+  been drawn, so the cards appeared over an empty canvas.
+- **Cubicles are centred** on their platforms: a cubicle reaches further
+  toward the chair than behind the desk, so each seat is set back by that
+  much (`CUBICLE_CENTRE_Z` 0.625 in layout.js); decorations already keep
+  clear of seats and cubicles.

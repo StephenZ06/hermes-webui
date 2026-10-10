@@ -25,6 +25,9 @@ export const POD_GAP = 10;
 export const CONDUCTOR_RADIUS = 11;
 /** Pods per ring. Ring 1 takes 6, ring 2 takes 12, and so on. */
 const RING_BASE_CAPACITY = 6;
+/** Where a cubicle's footprint is centred, in seat-local z (builders.js's
+ * CUBICLE_BACK_Z -1.75 to CUBICLE_FRONT_Z 3.0). */
+const CUBICLE_CENTRE_Z = 0.625;
 /** The open lane between The Floor and its neighbouring departments, as a
  * share of POD_GAP. */
 const FLOOR_CLEARANCE = 1.3;
@@ -358,15 +361,20 @@ export function computeLayout(desks, options) {
       const col = seatIndex % cols;
       const row = Math.floor(seatIndex / cols);
       // Centre the grid on the pod so a pod of one desk is not lopsided.
+      // Desks face the conductor, so a worker seen from the camera is
+      // working "into" the middle of the office rather than off the edge.
+      const rotationY = Math.atan2(x, z) + Math.PI;
+      // The cubicle round a desk is not centred on the desk: it reaches
+      // further toward the chair (seat-local +z) than behind the desk. Shift
+      // each seat back by that much so the cubicles, not the desks, are
+      // centred on the platform.
       const seat = {
         deskId: desk.id,
         workerId: desk.workerId || null,
         cluster,
-        x: x + (col - (cols - 1) / 2) * config.seatSpacingX,
-        z: z + (row - (rows - 1) / 2) * config.seatSpacingZ,
-        // Desks face the conductor, so a worker seen from the camera is
-        // working "into" the middle of the office rather than off the edge.
-        rotationY: Math.atan2(x, z) + Math.PI,
+        x: x + (col - (cols - 1) / 2) * config.seatSpacingX - Math.sin(rotationY) * CUBICLE_CENTRE_Z,
+        z: z + (row - (rows - 1) / 2) * config.seatSpacingZ - Math.cos(rotationY) * CUBICLE_CENTRE_Z,
+        rotationY,
       };
       pod.seats.push(seat);
       seats[desk.id] = seat;

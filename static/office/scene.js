@@ -346,6 +346,11 @@ export function createOfficeScene(canvas, options) {
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
   composer.addPass(bloomPass);
+  // Bloom is a soft blur; drawn at half resolution it looks the same and
+  // costs a quarter of the fill -- the biggest single saving on an
+  // integrated GPU, which is where dragging felt slow.
+  const bloomSetSize = bloomPass.setSize.bind(bloomPass);
+  bloomPass.setSize = (width, height) => bloomSetSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
   composer.addPass(new OutputPass());
   // Bloom is a soft, blurred effect, but rendering the whole composer at 1x
   // on a high-DPR display makes every edge look blurry once the camera zooms
@@ -1376,6 +1381,8 @@ export function createOfficeScene(canvas, options) {
   }
 
   function startTween(to) {
+    glide = null;
+    zoomGoal = null;
     tween = {
       t0: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
       dur: TWEEN_MS,
@@ -1630,6 +1637,7 @@ export function createOfficeScene(canvas, options) {
   }
 
   function takeManualControl() {
+    noteInteraction();
     tween = null;
     focusedId = null;
     manualZoom = true;
@@ -1652,6 +1660,8 @@ export function createOfficeScene(canvas, options) {
 
   function onPointerDown(event) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    glide = null;
+    zoomGoal = null;
     try { canvas.setPointerCapture(event.pointerId); } catch (_err) { /* not supported */ }
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 1) {
@@ -1669,6 +1679,17 @@ export function createOfficeScene(canvas, options) {
     }
   }
 
+  let hoverAt = null;
+  function advanceHover() {
+    if (!hoverAt || pointers.size) return;
+    const { x, y } = hoverAt;
+    hoverAt = null;
+    const worker = workerIdAt(x, y);
+    const cluster = worker ? null : podClusterAt(x, y);
+    canvas.style.cursor = worker || cluster ? 'pointer' : 'grab';
+    setHoveredCluster(cluster);
+  }
+
   // The platform under the pointer: its band brightens (advanceDeliveryGlow)
   // and the page highlights its card (config.onHoverPod).
   function setHoveredCluster(cluster) {
@@ -1681,12 +1702,9 @@ export function createOfficeScene(canvas, options) {
     const prev = pointers.get(event.pointerId);
     if (!prev) {
       // hover with no button: just the cursor hint
-      if (event.pointerType === 'mouse') {
-        const worker = workerIdAt(event.clientX, event.clientY);
-        const cluster = worker ? null : podClusterAt(event.clientX, event.clientY);
-        canvas.style.cursor = worker || cluster ? 'pointer' : 'grab';
-        setHoveredCluster(cluster);
-      }
+      // Raycast at most once a frame (see advanceHover): mouse moves arrive
+      // faster than frames, and each raycast walks the whole floor.
+      if (event.pointerType === 'mouse') hoverAt = { x: event.clientX, y: event.clientY };
       return;
     }
     const cur = { x: event.clientX, y: event.clientY };
@@ -1696,6 +1714,7 @@ export function createOfficeScene(canvas, options) {
       const p = Array.from(pointers.values());
       const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
       const mid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+      noteInteraction();
       if (pinchDist > 0) {
         zoomAbout(mid.x, mid.y, view.zoom * (dist / pinchDist));
       }
@@ -1718,8 +1737,30 @@ export function createOfficeScene(canvas, options) {
     if (gesture === 'pan') {
       const a = groundPoint(prev.x, prev.y);
       const b = groundPoint(cur.x, cur.y);
-      applyView({ x: view.x - (b.x - a.x), z: view.z - (b.z - a.z), zoom: view.zoom });
+      const dx = -(b.x - a.x), dz = -(b.z - a.z);
+      applyView({ x: view.x + dx, z: view.z + dz, zoom: view.zoom });
+      // Remember the drag's speed (smoothed) for the glide after release.
+      const now = performance.now();
+      const ms = Math.max(1, now - (panVelocity.at || now - 16));
+      panVelocity.x = panVelocity.x * 0.6 + (dx / ms) * 0.4;
+      panVelocity.z = panVelocity.z * 0.6 + (dz / ms) * 0.4;
+      panVelocity.at = now;
+      noteInteraction();
     }
+  }
+
+  // After a drag the view glides on and eases to a stop (advanceGlide), the
+  // way a map does, instead of halting dead under a lifted finger.
+  const panVelocity = { x: 0, z: 0, at: 0 };
+  let glide = null;
+  function advanceGlide(dt) {
+    if (!glide) return;
+    const decay = Math.exp(-dt * 6);
+    glide.x *= decay;
+    glide.z *= decay;
+    if (Math.hypot(glide.x, glide.z) < 0.002) { glide = null; return; }
+    applyView({ x: view.x + glide.x * dt * 1000, z: view.z + glide.z * dt * 1000, zoom: view.zoom });
+    noteInteraction();
   }
 
   function endPointer(event) {
@@ -1733,6 +1774,13 @@ export function createOfficeScene(canvas, options) {
       if (wasSingle && gesture == null && travelled <= TAP_SLOP && dt <= TAP_MS && downClient) {
         handleTap(downClient.x, downClient.y);
       }
+      // A drag released while still moving glides on; one that had stopped
+      // (no movement in the last 80 ms) stays put.
+      if (gesture === 'pan' && performance.now() - panVelocity.at < 80
+          && Math.hypot(panVelocity.x, panVelocity.z) > 0.004) {
+        glide = { x: panVelocity.x, z: panVelocity.z };
+      }
+      panVelocity.x = 0; panVelocity.z = 0; panVelocity.at = 0;
       gesture = null;
       pinchMid = null;
     } else if (pointers.size === 1) {
@@ -1765,10 +1813,28 @@ export function createOfficeScene(canvas, options) {
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
 
+  // Wheel zoom eases toward its target over a few frames (advanceZoom)
+  // instead of jumping a notch per wheel tick, about the pointer.
+  let zoomGoal = null;
   function onWheel(event) {
     event.preventDefault();
     takeManualControl();
-    zoomAbout(event.clientX, event.clientY, view.zoom * Math.exp(-event.deltaY * 0.0015));
+    glide = null;
+    const from = zoomGoal ? zoomGoal.zoom : view.zoom;
+    zoomGoal = { zoom: clampZoom(from * Math.exp(-event.deltaY * 0.0015)), x: event.clientX, y: event.clientY };
+    noteInteraction();
+  }
+  function advanceZoom(dt) {
+    if (!zoomGoal) return;
+    const k = 1 - Math.exp(-dt * 16);
+    const next = view.zoom + (zoomGoal.zoom - view.zoom) * k;
+    if (Math.abs(zoomGoal.zoom - next) < zoomGoal.zoom * 0.002) {
+      zoomAbout(zoomGoal.x, zoomGoal.y, zoomGoal.zoom);
+      zoomGoal = null;
+      return;
+    }
+    zoomAbout(zoomGoal.x, zoomGoal.y, next);
+    noteInteraction();
   }
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -2000,6 +2066,14 @@ export function createOfficeScene(canvas, options) {
     star.mesh.userData.place(star.from, star.dir, head, Math.min(star.travel * 0.3, head), fade);
   }
 
+  // While the view is being dragged, zoomed or gliding the resolution
+  // governor holds still: a resolution step mid-gesture is both a hitch and
+  // a visible change in how sharp the models look.
+  let interactingUntil = 0;
+  function noteInteraction() {
+    interactingUntil = performance.now() + 1500;
+  }
+
   function frame(now) {
     if (!running) return;
     rafId = window.requestAnimationFrame(frame);
@@ -2009,8 +2083,15 @@ export function createOfficeScene(canvas, options) {
     const frameMs = lastFrameAt ? (t - lastFrameAt) * 1000 : 0;
     const dt = lastFrameAt ? Math.min(0.1, t - lastFrameAt) : 0.016;
     lastFrameAt = t;
-    const nextRatio = quality.sample(frameMs, now || 0);
-    if (nextRatio) setRenderPixelRatio(nextRatio);
+    if ((now || 0) < interactingUntil) {
+      quality.reset(now || 0);
+    } else {
+      const nextRatio = quality.sample(frameMs, now || 0);
+      if (nextRatio) setRenderPixelRatio(nextRatio);
+    }
+    advanceZoom(dt);
+    advanceGlide(dt);
+    advanceHover();
 
     if (tween) advanceTween(now || 0);
     advanceOutletTransition(now || 0);
@@ -2158,7 +2239,15 @@ export function createOfficeScene(canvas, options) {
     shadowFrame += 1;
     if (shadowFrame % 2 === 0) renderer.shadowMap.needsUpdate = true;
     composer.render();
+    // Ready once two frames have really been drawn (the first one compiles
+    // every shader and can take a while): only then may the page reveal the
+    // canvas and its cards, so the whole floor appears at once.
+    if (renderedFrames < 2) {
+      renderedFrames += 1;
+      if (renderedFrames === 2 && typeof config.onReady === 'function') config.onReady();
+    }
   }
+  let renderedFrames = 0;
 
   // The first start compiles every material's shader program in the
   // background (KHR_parallel_shader_compile where the GPU driver has it)

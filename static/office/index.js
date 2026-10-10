@@ -2126,6 +2126,19 @@ function suspend() {
   _suspendTimer = setTimeout(() => { _suspendTimer = null; if (_suspended) { _suspended = false; unmount(); } }, SUSPEND_MS);
 }
 
+function revealMountedFloor(startedAt) {
+  if (!_canvas || !_canvas.classList.contains('is-mounting')) return;
+  if (_outlet === 'business' && !_rosterReady && performance.now() - startedAt < OUTLET_ROSTER_WAIT_MS) {
+    window.setTimeout(() => revealMountedFloor(startedAt), 120);
+    return;
+  }
+  // Two frames: one for the cards to take their positions, one to paint.
+  repositionDepartmentCards();
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    if (_canvas) _canvas.classList.remove('is-mounting');
+  }));
+}
+
 function mount(container) {
   if (!container) return;
   if (_suspended) {
@@ -2180,6 +2193,14 @@ function mount(container) {
       <div class="office-stage" data-slide-safe>
         <canvas class="office-canvas is-mounting" id="officeCanvas" role="img"
                 aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
+        <div class="office-loader" aria-hidden="true">
+          <svg class="office-loader-atom" viewBox="0 0 160 160" aria-hidden="true">
+            <defs><radialGradient id="officeLoaderCore"><stop offset="0" stop-color="#e0efff"/><stop offset=".45" stop-color="#6ea8ff"/><stop offset="1" stop-color="#2b5fd9" stop-opacity="0"/></radialGradient></defs>
+            <circle cx="80" cy="80" r="30" fill="url(#officeLoaderCore)" class="office-loader-core"/>
+            <g class="office-loader-orbits"><g transform="rotate(0 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="1.6s" begin="0s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g><g transform="rotate(60 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="2.1s" begin="-0.4s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g><g transform="rotate(120 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="1.85s" begin="-0.9s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g></g>
+          </svg>
+          <div class="office-loader-caption">Assembling the office<span class="office-loader-dots"><i>.</i><i>.</i><i>.</i></span></div>
+        </div>
         <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>
         <div class="sr-only" id="officeSummary" role="status" aria-live="polite"></div>
         <div class="office-tasks" id="officeTasks">
@@ -2244,12 +2265,12 @@ function mount(container) {
       onHoverPod: cluster => {
         _deptCardEls.forEach((el, key) => el.classList.toggle('is-hovered', key === cluster));
       },
-      onTick: () => {
-        // The canvas fades in on the scene's first real frame (after its
-        // shaders have compiled), never as an empty box before it.
-        if (_canvas && _canvas.classList.contains('is-mounting')) _canvas.classList.remove('is-mounting');
-        activeAdapter().tick(); repositionDepartmentCards();
-      },
+      onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
+      // The canvas, its cards and the loader's fade-out all wait for the
+      // scene's first frames to have really been drawn -- and on Business
+      // for the real roster (the first floor is a placeholder) -- so the
+      // floor appears at once instead of labels over an empty canvas.
+      onReady: () => revealMountedFloor(performance.now()),
       // The expanded Task Status panel owns the right edge of the stage, so
       // keep a focused desk clear of it. A collapsed status strip needs no
       // inset and an inline task detail never creates a second overlay.
