@@ -2172,7 +2172,13 @@ export function createOfficeScene(canvas, options) {
         hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__')
           * (1 + 0.18 * conductor.userData.hoverGlow);
       }
-      if (stars) stars.children.forEach(layer => { layer.material.uniforms.time.value = t; });
+      if (stars) {
+        const ratio = renderer.getPixelRatio();
+        stars.children.forEach(layer => {
+          layer.material.uniforms.time.value = t;
+          layer.material.uniforms.pixelRatio.value = ratio;
+        });
+      }
       advanceShootingStar(t);
       advancePackets(dt);
       // The globe's core breathes faster and fuller the more platforms have

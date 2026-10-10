@@ -3490,8 +3490,8 @@ export function makeStarfield(halfSize, count, opts) {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 } },
-    vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size;
+    uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 }, pixelRatio: { value: 1 } },
+    vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size; uniform float pixelRatio;
       varying vec3 vColor; varying float vLight; varying float vBright;
       void main() {
         vColor = color;
@@ -3499,7 +3499,12 @@ export function makeStarfield(halfSize, count, opts) {
         vLight = 0.55 + 0.45 * s * s;
         vBright = twinkle.z > 1.0 ? 1.0 : 0.0;
         // Bright stars get a big sprite so their spikes have room.
-        gl_PointSize = size * (vBright > 0.5 ? 7.0 : 1.0) * (0.85 + 0.35 * s);
+        // Sized in CSS pixels, then scaled by the renderer's pixel ratio:
+        // the ratio changes with the quality governor, and a star sized in
+        // raw device pixels shrank and turned jagged when it dropped. A floor
+        // keeps every star a few pixels wide, so its soft edge stays smooth.
+        float css = size * (vBright > 0.5 ? 7.0 : 1.0) * (0.85 + 0.35 * s);
+        gl_PointSize = max(css, vBright > 0.5 ? 14.0 : 2.4) * pixelRatio;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: `varying vec3 vColor; varying float vLight; varying float vBright;
