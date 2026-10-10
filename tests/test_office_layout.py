@@ -433,3 +433,19 @@ def test_a_pod_at_the_origin_gets_no_walkway(driver):
     out = geom(driver, pod={"x": 0, "z": 0, "halfWidth": 5, "halfDepth": 5},
                hubHalf=7.7)["span"]
     assert out is None
+
+
+def test_business_departments_ring_the_hub_with_the_floor_in_the_front_gap(driver):
+    depts = ["sales", "operations", "finance", "delivery", "marketing", "emails", "research"]
+    desks = [{"id": f"d{i}", "index": i, "workerId": None, "cluster": key,
+              "clusterLabel": key.title(), "clusterColor": "#888888"} for i, key in enumerate(depts)]
+    desks += [{"id": f"f{i}", "index": 100 + i, "workerId": None, "cluster": "floor",
+               "clusterLabel": "The Floor", "clusterColor": None} for i in range(14)]
+    pods = {pod["cluster"]: pod for pod in layout(driver, desks)["pods"]}
+    floor = pods.pop("floor")
+    radii = [math.hypot(p["x"], p["z"]) for p in pods.values()]
+    assert max(radii) - min(radii) < 1e-6, "every department on one ring"
+    angles = sorted(math.atan2(p["z"], p["x"]) % (2 * math.pi) for p in pods.values())
+    gaps = [(b - a) for a, b in zip(angles, angles[1:] + [angles[0] + 2 * math.pi])]
+    assert max(gaps) - min(gaps[:-1] or gaps) > 0.5, "one wider gap"
+    assert floor["x"] > 0 and floor["z"] > 0 and floor["x"] == pytest.approx(floor["z"]), "The Floor sits in the front (+x,+z) gap"

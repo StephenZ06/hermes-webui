@@ -236,3 +236,19 @@ def test_figures_and_scenery_stay_cheap_to_draw(page):
     }""")
     assert out["person"] <= 8, out
     assert out["scenery"] <= 14, out
+
+
+def test_close_bridge_gaps_leave_no_rail_stub_and_beacons_follow_status(page):
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const gap = b.bridgeGapHalfWidth(1, 0);
+      // Two landings on one edge, a little more than two gaps apart: the scrap
+      // of rail between them is dropped along with its two posts.
+      const rails = b.makeGuardRails(15.4, 15.4, '#4f8cff', [
+        { x: 7.7, z: -gap - 0.5, r: gap }, { x: 7.7, z: gap + 0.5, r: gap },
+      ]);
+      const status = ['running', 'completed', 'failed', 'idle'].map(b.beaconColor);
+      return { posts: rails.userData.markerPosts.length, status };
+    }""")
+    assert out["posts"] == 2, "one opening's worth of posts, no stub between the two landings"
+    assert out["status"] == ["#22c55e", "#60a5fa", "#ef4444", None]

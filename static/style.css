@@ -11087,6 +11087,20 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
    colour on its name and left edge, a green dot for active and a grey one for done. */
 .office-dept-card{background:linear-gradient(180deg,rgba(20,28,48,0.92),rgba(12,17,32,0.94));border-color:rgba(148,163,184,0.16);border-left:3px solid var(--office-dept-color,var(--accent));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
 .office-dept-card-stat{display:inline-flex;align-items:center;}
+.office-dept-card{transition:border-color 160ms ease,box-shadow 160ms ease;}
+.office-dept-card.is-hovered{border-color:color-mix(in srgb,var(--office-dept-color,var(--accent)) 55%,transparent);border-left-color:var(--office-dept-color,var(--accent));box-shadow:0 0 0 1px color-mix(in srgb,var(--office-dept-color,var(--accent)) 45%,transparent),0 2px 6px rgba(0,0,0,0.3);}
+/* Phones: compact cards (name and count only) so they don't cover the platforms. */
+@media (max-width: 640px){
+  .office-dept-card{min-width:0;padding:5px 8px;border-radius:9px;font-size:10px;}
+  .office-dept-card-name{font-size:9px;margin-bottom:1px;}
+  .office-dept-card-count{font-size:13px;}
+  .office-dept-card-stats{display:none;}
+}
+/* Light theme: light cards over the pale sky, the department colour kept on the left edge. */
+:root:not(.dark) .office-dept-card{background:linear-gradient(180deg,rgba(255,255,255,0.94),rgba(244,246,250,0.94));border-color:rgba(15,23,42,0.1);border-left:3px solid var(--office-dept-color,var(--accent));box-shadow:0 2px 8px rgba(15,23,42,0.12);}
+:root:not(.dark) .office-dept-card-count{color:#0f172a;}
+:root:not(.dark) .office-dept-card-count span,:root:not(.dark) .office-dept-card-stats{color:#64748b;}
+:root:not(.dark) .office-dept-card-stat strong{color:#1e293b;}
 .office-dept-card-stat::before{content:"";width:7px;height:7px;border-radius:50%;margin-right:6px;background:#64748b;}
 .office-dept-card-stat:first-child::before{background:#22c55e;}
 /* Office: the app's loading bar while the 3D scene builds and compiles. */

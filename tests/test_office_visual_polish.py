@@ -283,25 +283,6 @@ def test_the_floor_always_has_a_platform_seat_even_when_empty():
 
 
 
-def test_the_floor_uses_a_lowered_ramp_then_a_single_straight_bridge():
-    assert "function floorBridgeRoute(" in SCENE_SRC
-    at = SCENE_SRC.index("function ensureWalkway(")
-    body = SCENE_SRC[at:SCENE_SRC.index("\n  function maxDistanceInsidePod", at)]
-    assert "cluster === 'floor'" in body
-    assert "floorBridgeRoute(span, pod)" in body
-    assert "placeBridgeSegment" in body
-    assert "floorBridgeSegments" not in SCENE_SRC
-    route_at = SCENE_SRC.index("function floorBridgeRoute(")
-    route = SCENE_SRC[route_at:SCENE_SRC.index("\n  function placeBridgeSegment", route_at)]
-    assert "const exit = { x: 0, z: CONDUCTOR_SLAB / 2 - 0.6 }" in route
-    assert "destination = floorBridgeEntryPoint(rampEnd, pod)" in route
-    assert "const FLOOR_RAMP_ANGLE = 120 * Math.PI / 180" in route
-    assert "Math.sin(FLOOR_RAMP_ANGLE) * rampLength" in route
-    assert "Math.cos(FLOOR_RAMP_ANGLE) * rampLength" in route
-    assert "fromTopY: 0.46" in route
-    assert "toTopY: 0.18" in route
-
-
 def test_the_floor_flow_trace_reuses_the_decks_exact_route():
     at = SCENE_SRC.index("function ensureWalkway(")
     body = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeRoute", at)]
@@ -347,29 +328,6 @@ def test_bridge_decks_do_not_select_destination_colored_rails():
     assert "bridgeEdgeColor(" not in SCENE_SRC
     assert "makeBridgeTube(" not in SCENE_SRC
     assert "makeConnector(" not in SCENE_SRC
-
-
-def test_floor_bridge_retracts_its_rail_and_deck_three_units_from_the_conductor():
-    at = SCENE_SRC.index("function floorBridgeRoute(")
-    route = SCENE_SRC[at:SCENE_SRC.index("\n  function floorBridgeEntryPoint", at)]
-    assert "const FLOOR_CONDUCTOR_TRIM = 3" in route
-    assert "const rampStart" in route
-    assert "from: rampStart, to: rampEnd" in route
-    assert "railTrimStart" not in route
-    assert "railTrimEnd" not in route
-    at = SCENE_SRC.index("function placeBridgeSegment(")
-    body = SCENE_SRC[at:SCENE_SRC.index("\n  function maxDistanceInsidePod", at)]
-    assert "railTrimStart: segment.railTrimStart || 0" in body
-    assert "railTrimEnd: segment.railTrimEnd || 0" in body
-
-
-def test_the_floor_bridge_terminates_at_the_middle_of_its_approached_edge():
-    assert "function floorBridgeEntryPoint(from, pod)" in SCENE_SRC
-    at = SCENE_SRC.index("function floorBridgeEntryPoint(from, pod)")
-    body = SCENE_SRC[at:SCENE_SRC.index("\n  function placeBridgeSegment", at)]
-    assert "halfWidth" in body and "halfDepth" in body
-    assert "z: pod.z" in body
-    assert "x: pod.x" in body
 
 
 def test_the_ground_keeps_its_normal_depth_layer_when_the_floor_bridge_is_visible():
@@ -525,3 +483,14 @@ def test_a_sync_reuses_an_unchanged_bridge():
     at = SCENE_SRC.index("function ensureWalkway(")
     body = SCENE_SRC[at:at + 2600]
     assert "if (walk && walk.userData.walkKey === walkKey) return span;" in body
+
+
+def test_the_floor_bridge_runs_straight_under_both_platforms():
+    # It used to rise out of the conductor's side on a ramp; now it is one
+    # straight lower deck from beneath the hub's base to beneath The Floor's,
+    # so it opens no gap in either platform's rail.
+    at = SCENE_SRC.index("function floorBridgeRoute(")
+    route = SCENE_SRC[at:SCENE_SRC.index("\n  function placeBridgeSegment", at)]
+    assert "fromTopY: FLOOR_BRIDGE_TOP_Y" in route and "toTopY: FLOOR_BRIDGE_TOP_Y" in route
+    assert "const FLOOR_BRIDGE_TOP_Y = -1.0;" in SCENE_SRC
+    assert "if (span && pod.cluster !== 'floor' && podLabel !== 'The Floor') hubBridges.push(span.angle);" in SCENE_SRC

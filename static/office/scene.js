@@ -22,6 +22,7 @@ import { computeLayout, walkwaySpan, CONDUCTOR_RADIUS } from './layout.js';
 import {
   makePod, makeDesk, makeChair, makeCubicle, setCubicleActive, makePerson, makeNameplate,
   makeChatBubble, makePodScenery, deptKind, makeHubCentrepiece, makeStarfield, makeShootingStar, mergeStatic,
+  drawStandbyScreen, makePacket, makeBeacon, beaconColor, beaconMaterial,
   poseHop,
   makeWalkway, makeBridgeSegment, BRIDGE_DECK_WIDTH, drawNameplate, drawScreen,
   drawActiveScreen, drawChatBubble, MOOD_ICONS, easeOutCubic,
@@ -50,6 +51,8 @@ const GROUND_Y = -2.6;
 // near-black space. (A charcoal grey was tried and turned back.)
 const SPACE_Y = -26;
 const SPACE_COLOR = '#010104';
+// The light theme's pale sky below the platforms.
+const LIGHT_SKY_COLOR = '#e6ebf2';
 const KEY_LIGHT_INTENSITY = 2.25;
 const FILL_LIGHT_INTENSITY = 0.82;
 // A low, cool light from behind the key light, so a pod's far side isn't
@@ -108,8 +111,11 @@ const CONDUCTOR_PLATFORM_Y = RAISED_PLATFORM_Y;
 // behind the far platform's edge but lay over the near one's, so the two
 // ends never matched. At 0.4 both ends read as the same step down. The ends
 // run on inside the platforms (activity markers included, hidden in their
-// top slabs); rails stop at the edges. The Floor's ramp is floorBridgeRoute()'s.
+// top slabs); rails stop at the edges. The Floor's lower deck is floorBridgeRoute()'s.
 const LEVEL_BRIDGE_Y = -0.08;
+// The Floor's bridge deck top, under the platforms: below the conductor's
+// neon band, in its dark base (see floorBridgeRoute).
+const FLOOR_BRIDGE_TOP_Y = -1.0;
 // The endpoint calculation follows a bridge's centreline, but each deck is
 // much wider. Tucking it by half that width keeps the entire squared end cap
 // beneath rounded platform rims — not just its middle — at diagonal routes.
@@ -362,19 +368,20 @@ export function createOfficeScene(canvas, options) {
 
   function buildGround(halfSize) {
     const space = palette === PALETTES.dark;
+    // The light theme floats too: a pale, plain sky far below, no shadows on
+    // it and no grid (the floor grid made the light office read as flat).
+    const sky = !space;
     // In the dark theme there is no floor: the platforms float over plain
     // black space far below (SPACE_Y) -- no shadows cast onto it, no grid, no
     // haze or glow -- with stars at several depths (see installGround). A
     // floor that caught the platforms' shadows is what made the view flat.
-    const size = (halfSize + (space ? 60 : 0)) * 2;
+    const size = (halfSize + 60) * 2;
     const geometry = new THREE.PlaneGeometry(size, size);
-    const material = space ? new THREE.MeshBasicMaterial({ color: SPACE_COLOR, toneMapped: false }) : new THREE.MeshStandardMaterial({
-      color: palette.ground, roughness: 0.95, metalness: 0.0,
-    });
+    const material = new THREE.MeshBasicMaterial({ color: space ? SPACE_COLOR : LIGHT_SKY_COLOR, toneMapped: false });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = space ? SPACE_Y : GROUND_Y;
-    mesh.receiveShadow = !space;
+    mesh.position.y = SPACE_Y;
+    mesh.receiveShadow = false;
     // Capped rather than scaled 1:1 with size: past a few hundred divisions
     // the lines are imperceptible anyway (this only grows for a very large,
     // very zoomed-out office), and an uncapped count would turn one big run
@@ -382,7 +389,7 @@ export function createOfficeScene(canvas, options) {
     const divisions = Math.min(600, Math.max(20, Math.round(size / 5)));
     const gridHelper = new THREE.GridHelper(size, divisions, palette.grid, palette.grid);
     gridHelper.position.y = GROUND_Y + 0.02;
-    gridHelper.visible = !space;
+    gridHelper.visible = !space && !sky;
     if (gridHelper.material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 1;
@@ -464,6 +471,7 @@ export function createOfficeScene(canvas, options) {
   /** deskId -> {group, person, plate, screen, workerId, pose, tint} */
   let seats = new Map();
   let conductor = null;
+  let hoveredCluster = null;
   let lastState = null;
   let framedRadius = 0;
   fitShadowToOffice();
@@ -534,8 +542,8 @@ export function createOfficeScene(canvas, options) {
     const halfW = slabWidth / 2;
     const halfD = slabDepth / 2;
     if (layoutPod.cluster === 'floor' || layoutPod.label === 'The Floor') {
-      const p = floorBridgeEntryPoint({ x: 0, z: CONDUCTOR_SLAB / 2 }, layoutPod);
-      entry = { x: p.x - layoutPod.x, z: p.z - layoutPod.z };
+      // Its bridge arrives underneath: no landing on the deck.
+      entry = null;
     } else {
       const len = Math.hypot(layoutPod.x, layoutPod.z) || 1;
       const ux = -layoutPod.x / len;
@@ -544,7 +552,7 @@ export function createOfficeScene(canvas, options) {
       entry = { x: ux * t, z: uz * t };
     }
     const key = blocked.map(r => `${r.x.toFixed(1)},${r.z.toFixed(1)},${r.rot.toFixed(2)}`).join(';')
-      + `|${entry.x.toFixed(1)},${entry.z.toFixed(1)}`;
+      + (entry ? `|${entry.x.toFixed(1)},${entry.z.toFixed(1)}` : '|under');
     return { blocked, entry, key };
   }
 
@@ -602,7 +610,7 @@ export function createOfficeScene(canvas, options) {
   }
 
   function advanceBridgeFade(bridge, dtMs, elapsed) {
-    if (!bridge) return;
+    if (!bridge || outletTransition.active) return 0;
     let arrivalWave = 0;
     eachActivityChevron(bridge, (chevron, index, count, root) => {
       const singlePacket = root.userData.singleChevronFlow;
@@ -648,13 +656,21 @@ export function createOfficeScene(canvas, options) {
   }
 
   function advanceDeliveryGlow(record, arrivalWave, dtMs, elapsed) {
+    // The outlet fade owns every colour until it ends.
+    if (outletTransition.active) return;
     const layer = record && record.group && record.group.userData.deliveryLayer;
     const material = layer && layer.material;
     if (!material || !material.emissive) return;
     record.deliveryGlow = (record.deliveryGlow || 0)
       + ((arrivalWave || 0) - (record.deliveryGlow || 0)) * Math.min(1, dtMs * 0.012);
     const idleIntensity = layer.userData.idleEmissiveIntensity || 0;
-    material.emissiveIntensity = idleIntensity * bandPulse(elapsed, record.cluster) + record.deliveryGlow * 1.45;
+    // A platform with work under way glows a little brighter, and one under
+    // the pointer brighter again; both ease in and out.
+    const ease = Math.min(1, dtMs * 0.008);
+    record.activeGlow = (record.activeGlow || 0) + ((record.active ? 1 : 0) - (record.activeGlow || 0)) * ease;
+    record.hoverGlow = (record.hoverGlow || 0) + ((hoveredCluster === record.cluster ? 1 : 0) - (record.hoverGlow || 0)) * ease;
+    material.emissiveIntensity = idleIntensity * bandPulse(elapsed, record.cluster)
+      * (1 + 0.35 * record.activeGlow + 0.18 * record.hoverGlow) + record.deliveryGlow * 1.45;
   }
 
   /**
@@ -708,8 +724,10 @@ export function createOfficeScene(canvas, options) {
     } else {
       const railColor = podRecord && podRecord.color ? podRecord.color : null;
       walk = makeWalkway(span.length, palette, railColor, {
-        // The deck runs on under both platforms; its rails stop at their edges.
-        railTrimStart: BRIDGE_DECK_PLATFORM_OVERLAP, railTrimEnd: BRIDGE_DECK_PLATFORM_OVERLAP,
+        // The deck runs on under both platforms; each rail stops exactly at
+        // the platform edges it meets (an oblique bridge's two rails meet
+        // them at different points, so each gets its own trim).
+        railTrims: bridgeRailTrims(span, pod),
         skipFirstChevron: true,
       });
       // The marker posts either side of the landing belong to the platforms
@@ -720,9 +738,53 @@ export function createOfficeScene(canvas, options) {
       walk.userData.singleChevronFlow = true;
     }
     walk.userData.walkKey = walkKey;
+    walk.userData.span = span;
     office.add(walk);
     walkways.set(cluster, walk);
     return span;
+  }
+
+  // Signed distance from a point to a rounded rectangle (negative inside).
+  function roundedRectSdf(px, pz, halfW, halfD, radius) {
+    const qx = Math.abs(px) - (halfW - radius);
+    const qz = Math.abs(pz) - (halfD - radius);
+    return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - radius;
+  }
+
+  /**
+   * Where each of a bridge's two rails leaves the hub and reaches the pod,
+   * as trims from the deck's two ends. A trim taken along the centreline
+   * left oblique bridges' rails short of (or over) the platform edges.
+   */
+  function bridgeRailTrims(span, pod) {
+    const dirX = Math.sin(span.angle);
+    const dirZ = Math.cos(span.angle);
+    // Local +x of the walkway (rotation.y = angle).
+    const perpX = Math.cos(span.angle);
+    const perpZ = -Math.sin(span.angle);
+    const hubHalf = CONDUCTOR_SLAB / 2;
+    const hubR = CONDUCTOR_SLAB * 0.12;
+    const podHalfW = (pod.width + POD_SLAB_PADDING) / 2;
+    const podHalfD = (pod.depth + POD_SLAB_PADDING) / 2;
+    const podR = Math.min(podHalfW, podHalfD) * 2 * 0.12;
+    const lateral = BRIDGE_DECK_WIDTH / 2 - 0.09;
+    const trimsFor = side => {
+      let first = null;
+      let last = null;
+      for (let s = span.start; s <= span.end; s += 0.04) {
+        const x = dirX * s + perpX * lateral * side;
+        const z = dirZ * s + perpZ * lateral * side;
+        const inHub = roundedRectSdf(x, z, hubHalf, hubHalf, hubR) < 0;
+        const inPod = roundedRectSdf(x - pod.x, z - pod.z, podHalfW, podHalfD, podR) < 0;
+        if (!inHub && !inPod) {
+          if (first === null) first = s;
+          last = s;
+        }
+      }
+      if (first === null) return [BRIDGE_DECK_PLATFORM_OVERLAP, BRIDGE_DECK_PLATFORM_OVERLAP];
+      return [first - span.start, span.end - last];
+    };
+    return { left: trimsFor(-1), right: trimsFor(1) };
   }
 
   function floorBridgePalette() {
@@ -734,54 +796,19 @@ export function createOfficeScene(canvas, options) {
   }
 
   function floorBridgeRoute(span, pod) {
-    // The Floor is physically below the office pods. Its bridge exits through
-    // the conductor's underside, slopes down once, then stays on one direct
-    // lower deck to the floor slab. That clears every pod instead of turning
-    // into an L-shaped surface in the middle of the office.
-    // This is deliberately the screen-facing bottom edge of the conductor,
-    // not its radial edge toward The Floor. It makes the first ramp leg read
-    // as descending out of the plinth before the long diagonal begins.
-    const exit = { x: 0, z: CONDUCTOR_SLAB / 2 - 0.6 };
-    const length = Math.hypot(pod.x - exit.x, pod.z - exit.z) || 1;
-    const rampLength = Math.min(6.4, length * 0.18);
-    // A fixed 120-degree first leg gives the visible drop its intended
-    // steeper diagonal before the second, straight span goes to The Floor.
-    const FLOOR_RAMP_ANGLE = 120 * Math.PI / 180;
-    const rampEnd = {
-      x: exit.x + Math.sin(FLOOR_RAMP_ANGLE) * rampLength,
-      z: exit.z + Math.cos(FLOOR_RAMP_ANGLE) * rampLength,
-    };
-    // Retract the Floor ramp as one physical unit: its deck edge and rails
-    // begin together, two units clear of the conductor platform.
-    const FLOOR_CONDUCTOR_TRIM = 3;
-    const rampStart = {
-      x: exit.x + Math.sin(FLOOR_RAMP_ANGLE) * FLOOR_CONDUCTOR_TRIM,
-      z: exit.z + Math.cos(FLOOR_RAMP_ANGLE) * FLOOR_CONDUCTOR_TRIM,
-    };
-    // Meet the midpoint of the facing Floor edge, never a corner or a desk
-    // inside the platform. The approach direction selects the facing side.
-    const destination = floorBridgeEntryPoint(rampEnd, pod);
-    return [
-      // This stays visibly below the pod tops while remaining above the
-      // scene ground, so it is a physical lower deck rather than disappearing.
-      {
-        from: rampStart, to: rampEnd, fromTopY: 0.46, toTopY: 0.18,
-      },
-      {
-        from: rampEnd, to: destination, fromTopY: 0.18, toTopY: 0.18,
-      },
-    ];
-  }
-
-  function floorBridgeEntryPoint(from, pod) {
-    const halfWidth = (pod.width + POD_SLAB_PADDING) / 2;
-    const halfDepth = (pod.depth + POD_SLAB_PADDING) / 2;
-    const dx = from.x - pod.x;
-    const dz = from.z - pod.z;
-    if (Math.abs(dx) / halfWidth >= Math.abs(dz) / halfDepth) {
-      return { x: pod.x + (dx >= 0 ? halfWidth : -halfWidth), z: pod.z };
-    }
-    return { x: pod.x, z: pod.z + (dz >= 0 ? halfDepth : -halfDepth) };
+    // The Floor's bridge runs under both platforms: a straight lower deck
+    // from beneath the conductor's base to beneath The Floor's, along the
+    // empty slot the Business layout leaves for it (layout.js), so it passes
+    // no department. Both ends are hidden inside the platforms' dark bases;
+    // the platforms' rails need no gap for it.
+    const dirX = Math.sin(span.angle);
+    const dirZ = Math.cos(span.angle);
+    return [{
+      from: { x: dirX * span.start, z: dirZ * span.start },
+      to: { x: dirX * span.end, z: dirZ * span.end },
+      fromTopY: FLOOR_BRIDGE_TOP_Y,
+      toTopY: FLOOR_BRIDGE_TOP_Y,
+    }];
   }
 
   function placeBridgeSegment(parent, segment, segmentPalette = palette, railColor, isFloor = false, fromHub = false) {
@@ -907,6 +934,9 @@ export function createOfficeScene(canvas, options) {
 
     const bubble = makeChatBubble(palette);
     group.add(bubble);
+    const beacon = makeBeacon();
+    beacon.position.set(0, 3.75, 1.9);
+    group.add(beacon);
 
     // Marks the whole subtree as belonging to a worker so a raycast hit on
     // any child resolves back to one id.
@@ -914,7 +944,7 @@ export function createOfficeScene(canvas, options) {
     plate.visible = false;
     office.add(group);
     seat = {
-      group, person, plate, screen: desk.userData.screen, arrival: null, bubble,
+      group, person, plate, screen: desk.userData.screen, arrival: null, bubble, beacon,
       arrivalConfigured: false,
       workerId: null, pose: 'idle', label: '', status: '', toolKey: '',
       mood: '', moodUntil: 0, moodIcon: '', lastToolAt: 0, celebrateUntil: 0,
@@ -1020,7 +1050,8 @@ export function createOfficeScene(canvas, options) {
       const record = ensurePod(pod.cluster, pod.width, pod.depth, podLabel, pod.color || null, pod);
       record.group.position.set(pod.x, CONDUCTOR_PLATFORM_Y, pod.z);
       const span = ensureWalkway(pod.cluster, pod);
-      if (span) hubBridges.push(pod.cluster === 'floor' || podLabel === 'The Floor' ? 0 : span.angle);
+      // The Floor's bridge runs under the hub, so it opens no gap in the rail.
+      if (span && pod.cluster !== 'floor' && podLabel !== 'The Floor') hubBridges.push(span.angle);
     });
     updateHubDecor(hubBridges);
 
@@ -1098,10 +1129,33 @@ export function createOfficeScene(canvas, options) {
         seat.toolKey = toolKey;
         if (worker && worker.status === 'running' && (pose === 'work' || pose === 'tool' || pose === 'sleep')) {
           drawActiveScreen(seat.screen, palette, nowMs / 1000, seat.screenSeed);
+        } else if (!worker) {
+          drawStandbyScreen(seat.screen, palette);
         } else {
           drawScreen(seat.screen, palette, screenLines(worker));
         }
       }
+
+      // The status beacon over the figure, and a delegation packet when a
+      // subagent sits down (out from the globe) or finishes (back to it).
+      const beaconHex = worker ? beaconColor(worker.status) : null;
+      if (seat.beacon) {
+        seat.beacon.visible = !!beaconHex;
+        if (beaconHex && seat.beaconHex !== beaconHex) seat.beacon.material = beaconMaterial(beaconHex);
+        seat.beaconHex = beaconHex;
+        seat.beaconRunning = !!worker && worker.status === 'running';
+      }
+      const prevWorker = seat.packetWorker || null;
+      const prevStatus = seat.packetStatus || '';
+      // The first time a seat is seen (page load, outlet switch) only records
+      // what is there: a packet means something just happened.
+      if (seat.packetSeen) {
+        if (worker && worker.id !== prevWorker) launchPacket(desk.cluster, spot, false);
+        else if (worker && worker.status === 'completed' && prevStatus === 'running') launchPacket(desk.cluster, spot, true);
+      }
+      seat.packetSeen = true;
+      seat.packetWorker = worker ? worker.id : null;
+      seat.packetStatus = worker ? worker.status : '';
     });
 
     Array.from(seats.keys()).forEach(id => { if (!liveDesks.has(id)) removeSeat(id); });
@@ -1154,53 +1208,76 @@ export function createOfficeScene(canvas, options) {
       if (!obj.material) return;
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       const clones = materials.map(m => {
-        if (m.userData.baseOpacity !== undefined) return m;
+        // Each fade starts from what the surface looks like now (a band or
+        // chevron may have changed since the last fade): drop old bases.
+        if (m.userData.originalMaterial) {
+          const u = m.userData;
+          delete u.baseOpacity; delete u.baseColor; delete u.baseEmissive; delete u.baseEmissiveIntensity;
+          return m;
+        }
         const clone = m.clone();
-        clone.userData.baseOpacity = m.opacity;
-        clone.userData.baseTransparent = m.transparent;
-        clone.userData.originalMaterial = m;
+        clone.userData = { originalMaterial: m };
         return clone;
       });
       obj.material = Array.isArray(obj.material) ? clones : clones[0];
     });
   }
 
+  // The fade blends each surface's colour toward the backdrop rather than
+  // making it see-through. Transparency showed a platform's own inner layers
+  // (The Floor went gold mid-fade) and every solid part snapped back to
+  // opaque the moment the fade ended -- the stutter after the fade-in. An
+  // opaque surface whose lit colour scales by k and whose emissive carries
+  // the rest as backdrop colour renders as the backdrop at k = 0 and as
+  // itself at k = 1, with nothing to sort or snap. Parts that are already
+  // transparent (glass, sprites) simply fade their opacity.
+  const _fadeBackdrop = new THREE.Color();
   function applyContentOpacity(k) {
-    const fullOpaque = k >= 0.998;
-    const fullTransparent = k <= 0.002;
+    _fadeBackdrop.set(palette === PALETTES.dark ? SPACE_COLOR : LIGHT_SKY_COLOR);
+    const done = k >= 0.998;
     office.traverse(obj => {
       if (!obj.material) return;
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       materials.forEach(m => {
-        if (m.userData.baseOpacity === undefined) {
-          m.userData.baseOpacity = m.opacity;
-          m.userData.baseTransparent = m.transparent;
+        const u = m.userData;
+        if (u.baseOpacity === undefined) {
+          u.baseOpacity = m.opacity;
+          u.baseTransparent = m.transparent;
+          if (m.color) u.baseColor = m.color.clone();
+          if (m.emissive) { u.baseEmissive = m.emissive.clone(); u.baseEmissiveIntensity = m.emissiveIntensity; }
         }
-        const base = m.userData.baseOpacity;
-        if (fullOpaque) {
-          m.opacity = base;
-          if (m.userData.baseTransparent !== undefined) m.transparent = m.userData.baseTransparent;
-        } else if (fullTransparent) {
-          m.opacity = 0;
-          m.transparent = true;
+        if (done) { restoreMaterial(m); return; }
+        if (u.baseTransparent || m.isSpriteMaterial || !m.color) {
+          m.opacity = u.baseOpacity * k;
+          return;
+        }
+        if (m.emissive) {
+          m.color.copy(u.baseColor).multiplyScalar(k);
+          m.emissive.copy(u.baseEmissive).multiplyScalar(u.baseEmissiveIntensity * k)
+            .add(_fadeTmp.copy(_fadeBackdrop).multiplyScalar(1 - k));
+          m.emissiveIntensity = 1;
         } else {
-          m.transparent = true;
-          m.opacity = base * k;
+          // Unlit: blend the colour itself toward the backdrop.
+          m.color.copy(_fadeBackdrop).lerp(u.baseColor, k);
         }
       });
     });
+  }
+  const _fadeTmp = new THREE.Color();
+
+  function restoreMaterial(m) {
+    const u = m.userData;
+    if (u.baseOpacity === undefined) return;
+    m.opacity = u.baseOpacity;
+    m.transparent = u.baseTransparent;
+    if (u.baseColor && m.color) m.color.copy(u.baseColor);
+    if (u.baseEmissive && m.emissive) { m.emissive.copy(u.baseEmissive); m.emissiveIntensity = u.baseEmissiveIntensity; }
   }
 
   function restoreContentOpacity() {
     office.traverse(obj => {
       if (!obj.material) return;
-      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-      materials.forEach(m => {
-        if (m.userData.baseOpacity !== undefined) {
-          m.opacity = m.userData.baseOpacity;
-          m.transparent = m.userData.baseTransparent;
-        }
-      });
+      (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(restoreMaterial);
     });
   }
 
@@ -1458,7 +1535,6 @@ export function createOfficeScene(canvas, options) {
     const next = PALETTES[prefersDark() ? 'dark' : 'light'];
     if (next === palette) return;
     palette = next;
-    if (groundMaterial.color) groundMaterial.color.set(palette.ground);
     if (grid.material && grid.material.color) grid.material.color.set(palette.grid);
     installGround(groundHalfSize);  // the starfield is dark-theme only
     ambient.color.set(palette.hemiSky);
@@ -1472,6 +1548,7 @@ export function createOfficeScene(canvas, options) {
   }
 
   function clearOffice() {
+    packets.length = 0;
     seats.forEach(seat => disposeTree(seat.group));
     pods.forEach(pod => disposeTree(pod.group));
     walkways.forEach(walk => disposeTree(walk));
@@ -1589,13 +1666,23 @@ export function createOfficeScene(canvas, options) {
     }
   }
 
+  // The platform under the pointer: its band brightens (advanceDeliveryGlow)
+  // and the page highlights its card (config.onHoverPod).
+  function setHoveredCluster(cluster) {
+    if (hoveredCluster === cluster) return;
+    hoveredCluster = cluster;
+    if (typeof config.onHoverPod === 'function') config.onHoverPod(cluster);
+  }
+
   function onPointerMoveGesture(event) {
     const prev = pointers.get(event.pointerId);
     if (!prev) {
       // hover with no button: just the cursor hint
       if (event.pointerType === 'mouse') {
-        canvas.style.cursor = workerIdAt(event.clientX, event.clientY)
-          || podClusterAt(event.clientX, event.clientY) ? 'pointer' : 'grab';
+        const worker = workerIdAt(event.clientX, event.clientY);
+        const cluster = worker ? null : podClusterAt(event.clientX, event.clientY);
+        canvas.style.cursor = worker || cluster ? 'pointer' : 'grab';
+        setHoveredCluster(cluster);
       }
       return;
     }
@@ -1791,6 +1878,64 @@ export function createOfficeScene(canvas, options) {
   let running = false;
   let lastFrameAt = 0;
 
+  // Delegation packets: a glowing orb runs from the globe along the bridge to
+  // a subagent's desk as it sits down, and back when it finishes. Driven
+  // only by real events (a worker appearing, a worker completing).
+  const packets = [];
+  function launchPacket(cluster, spot, back) {
+    if (!conductor || !spot || packets.length >= 8) return;
+    const walk = walkways.get(cluster);
+    const span = walk && walk.userData.span;
+    const top = CONDUCTOR_PLATFORM_Y + 0.6;
+    const globe = { x: 0, y: CONDUCTOR_PLATFORM_Y + 3.9, z: 0 };
+    const desk = { x: spot.x, y: top + 2.6, z: spot.z };
+    const route = [globe];
+    if (span) {
+      const dx = Math.sin(span.angle), dz = Math.cos(span.angle);
+      const deckY = cluster === 'floor' ? FLOOR_BRIDGE_TOP_Y + 0.6 : LEVEL_BRIDGE_Y + 0.8 + 0.6;
+      const hubEdge = span.start + BRIDGE_DECK_PLATFORM_OVERLAP;
+      const podEdge = span.end - BRIDGE_DECK_PLATFORM_OVERLAP;
+      route.push({ x: dx * hubEdge, y: deckY, z: dz * hubEdge }, { x: dx * podEdge, y: deckY, z: dz * podEdge });
+    }
+    route.push(desk);
+    if (back) route.reverse();
+    let length = 0;
+    const lengths = [0];
+    for (let i = 1; i < route.length; i += 1) {
+      length += Math.hypot(route[i].x - route[i - 1].x, route[i].y - route[i - 1].y, route[i].z - route[i - 1].z);
+      lengths.push(length);
+    }
+    const mesh = makePacket(back ? '#93c5fd' : '#a7f3d0');
+    office.add(mesh);
+    packets.push({ mesh, route, lengths, length, t: 0, duration: Math.min(2.6, 0.9 + length / 22) });
+  }
+  const _packetAt = (packet, k, out) => {
+    const d = k * packet.length;
+    let i = 1;
+    while (i < packet.lengths.length - 1 && packet.lengths[i] < d) i += 1;
+    const a = packet.route[i - 1], b = packet.route[i];
+    const seg = packet.lengths[i] - packet.lengths[i - 1] || 1;
+    const f = Math.max(0, Math.min(1, (d - packet.lengths[i - 1]) / seg));
+    out.set(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f);
+    return out;
+  };
+  function advancePackets(dt) {
+    for (let i = packets.length - 1; i >= 0; i -= 1) {
+      const packet = packets[i];
+      packet.t += dt / packet.duration;
+      if (packet.t >= 1) {
+        office.remove(packet.mesh);
+        packets.splice(i, 1);
+        continue;
+      }
+      const k = packet.t < 0.5 ? 4 * packet.t ** 3 : 1 - (-2 * packet.t + 2) ** 3 / 2;
+      _packetAt(packet, k, packet.mesh.position);
+      packet.mesh.userData.trail.forEach((tail, j) => {
+        _packetAt(packet, Math.max(0, k - 0.025 * (j + 1)), tail.position).sub(packet.mesh.position);
+      });
+    }
+  }
+
   // Turn a figure toward a heading along the shorter way round, eased, so a
   // new walking direction or sitting down never snaps it round in one frame.
   function turnToward(obj, heading, dt) {
@@ -1900,6 +2045,11 @@ export function createOfficeScene(canvas, options) {
 
     // Keep active screens shimmering and chat bubbles popping.
     seats.forEach(seat => {
+      if (seat.beacon && seat.beacon.visible) {
+        seat.beacon.rotation.y += dt * 1.6;
+        seat.beacon.position.y = 3.75 + Math.sin(t * 2.2 + seat.screenSeed) * 0.08;
+        seat.beacon.scale.setScalar(seat.beaconRunning ? 1 + 0.18 * Math.sin(t * 4 + seat.screenSeed) : 1);
+      }
       if (seat.bubble && seat.bubble.visible) {
         const elapsed = Math.min(1, ((t * 1000) - (seat.moodUntil - 3200)) / 250);
         const k = easeOutCubic(elapsed);
@@ -1931,10 +2081,27 @@ export function createOfficeScene(canvas, options) {
       });
       const hubBand = conductor.userData.hubBand;
       if (hubBand && hubBand.material) {
-        hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__');
+        conductor.userData.hoverGlow = (conductor.userData.hoverGlow || 0)
+          + ((hoveredCluster === '__conductor__' ? 1 : 0) - (conductor.userData.hoverGlow || 0)) * Math.min(1, dtMs * 0.008);
+        hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__')
+          * (1 + 0.18 * conductor.userData.hoverGlow);
       }
       if (stars) stars.children.forEach(layer => { layer.material.uniforms.time.value = t; });
       advanceShootingStar(t);
+      advancePackets(dt);
+      // The globe's core breathes faster and fuller the more platforms have
+      // work under way.
+      const decorNow = conductor.userData.centrepiece;
+      if (decorNow && decorNow.userData.core) {
+        let busy = 0;
+        pods.forEach(record => { if (record.active) busy += 1; });
+        conductor.userData.energy = (conductor.userData.energy || 0) + (Math.min(1, busy / 3) - (conductor.userData.energy || 0)) * Math.min(1, dt * 1.5);
+        const energy = conductor.userData.energy;
+        conductor.userData.corePhase = (conductor.userData.corePhase || 0) + dt * (1.2 + energy * 2.4);
+        const beat = Math.sin(conductor.userData.corePhase);
+        decorNow.userData.core.scale.setScalar(1 + (0.04 + energy * 0.12) * beat);
+        decorNow.userData.nucleus.scale.setScalar(1 + (0.06 + energy * 0.2) * beat);
+      }
       const wanderer = conductor.userData.wanderer;
       const orchestrating = conductor.userData.status === 'orchestrating';
       const life = conductor.userData.life;

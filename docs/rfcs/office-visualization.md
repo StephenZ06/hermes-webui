@@ -1380,3 +1380,39 @@ Smoothness, measured headless (SwiftShader, so relative only):
   floor was 373 / 1,270.
 - Stars are brighter (bright core, soft edge, larger points), one in ten a
   larger, brighter star.
+
+### Business balance, a living floor, cleaner switching (2026-10-10)
+
+- **Business layout** (layout.js): the departments sit evenly round one ring
+  with one slot left empty toward the camera; The Floor sits out in that gap,
+  pushed out until it clears its neighbours. Its bridge is a straight lower
+  deck under both platforms (`floorBridgeRoute`, `FLOOR_BRIDGE_TOP_Y` -1.0),
+  so it passes no department and opens no gap in either rail.
+- **Bridge rails reach the edges**: each rail is trimmed where it actually
+  leaves the hub and reaches the pod (`bridgeRailTrims`, a rounded-rectangle
+  distance test along each rail), so oblique bridges' rails no longer stop
+  short or run over a platform.
+- **Rails**: a scrap of rail between two close bridge landings is left open
+  rather than drawn with a post at each end.
+- **The Floor** has rails and its sign, and a lounge sofa, vending machine,
+  bookshelf, server rack, coolers, printer and plants round its edge.
+- **Emails**' pigeonholes stand on a cabinet instead of hanging in mid-air.
+- **Sign icons** are centred on their walls by their drawn ink.
+- **Light theme** floats too: a pale plain sky (`LIGHT_SKY_COLOR`), no grid,
+  light department cards.
+- **Live state**: a working platform's band glows a little brighter; the
+  platform under the pointer brightens and its card highlights
+  (`onHoverPod`); a status gem floats over each working figure (green
+  running, blue done, red failed); idle desks show a dim standby screen; the
+  globe's core breathes faster and fuller the more platforms have work.
+- **Delegation packets**: a glowing orb runs from the globe along the bridge
+  to a subagent's desk when it sits down, and back when it finishes -- only
+  on those real events, never on load.
+- **Deck tiles**: a faint tile pattern on every platform top.
+- **Outlet switch**: the reveal waits for the Business roster (at most 3 s),
+  so the floor is not shown from a placeholder roster and rebuilt a moment
+  later; and the fade blends colours toward the backdrop instead of making
+  surfaces see-through, so nothing shows its inner layers mid-fade or snaps
+  solid when it ends.
+- **Phones**: department cards shrink to name and count.
+- Draw calls (SwiftShader, incl. shadow and bloom): Projects 236, Business 645.

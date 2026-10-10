@@ -104,6 +104,9 @@ let _spawnPaused = false;
 let _gatewayEnabled = true;
 let _outlet = readOutlet();
 let _roster = buildRoster([]);
+// Whether the real roster (/api/personalities) has arrived; until it has, the
+// Business floor is a placeholder (see scheduleSync's reveal hold).
+let _rosterReady = false;
 let _rosterLoaded = false;
 let _outletBtnEls = {};
 let _labelsVisible = true;
@@ -375,12 +378,22 @@ function scheduleSync() {
     renderDepartmentCards(view, scheduledState);
     if (!_taskStatusDisclosureAnimating && !_tasksCollapseAnimating) renderTaskStatusPanel(scheduledState);
     else renderTaskStatusPanel(scheduledState, { skipListUpdate: true });
-    if (_outletFadePending) {
+    // Business is first drawn from a placeholder roster while the real one
+    // loads; revealing that and then rebuilding every platform a moment later
+    // was the pop after the fade-in. Hold the reveal for the real roster (or
+    // at most OUTLET_ROSTER_WAIT_MS).
+    const rosterPending = _outlet === 'business' && !_rosterReady
+      && performance.now() - _outletFadeStartedAt < OUTLET_ROSTER_WAIT_MS;
+    if (_outletFadePending && !rosterPending) {
       _outletFadePending = false;
       revealAfterOutletFade();
+    } else if (_outletFadePending) {
+      window.setTimeout(scheduleSync, 120);
     }
   });
 }
+
+const OUTLET_ROSTER_WAIT_MS = 3000;
 
 function scheduledTaskState(state) {
   const scheduledWorkers = _scheduledTasks.map(task => ({
@@ -1415,6 +1428,7 @@ async function loadRoster() {
   } catch (_err) {
     _roster = buildRoster([]);
   }
+  _rosterReady = true;
   if (_outlet === 'business') scheduleSync();
 }
 
@@ -2226,6 +2240,10 @@ function mount(container) {
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => id ? selectTask(id, false) : clearTaskSelection(),
+      // Hovering a platform highlights its card (the scene brightens its band).
+      onHoverPod: cluster => {
+        _deptCardEls.forEach((el, key) => el.classList.toggle('is-hovered', key === cluster));
+      },
       onTick: () => {
         // The canvas fades in on the scene's first real frame (after its
         // shaders have compiled), never as an empty box before it.

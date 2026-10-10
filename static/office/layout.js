@@ -256,6 +256,41 @@ export function computeLayout(desks, options) {
     return ringRadii[ring];
   }
 
+  // The Business outlet (departments plus The Floor): the departments sit
+  // evenly round one ring with one slot left empty toward the camera (+x,+z),
+  // and The Floor -- far bigger than any department -- sits out in that gap,
+  // so its bridge runs straight to the hub without passing any department
+  // and the office is balanced round its middle rather than trailing off to
+  // one side.
+  const floorIndex = clusters.findIndex(([cluster]) => cluster === 'floor');
+  const isBusiness = floorIndex >= 0 && clusters.length > 1 && !fixedProjects
+    && list.every(desk => desk && Object.prototype.hasOwnProperty.call(desk, 'clusterColor'));
+  let businessSlots = null;
+  if (isBusiness) {
+    const depts = clusters.map((_, i) => i).filter(i => i !== floorIndex);
+    const slotCount = depts.length + 1;
+    const extent = Math.max(...depts.map(i => Math.max(sizes[i].width, sizes[i].depth)));
+    const ring = Math.max(
+      CONDUCTOR_RADIUS + extent / 2 + config.podGap,
+      (extent + config.podGap) / (2 * Math.sin(Math.PI / slotCount)),
+    );
+    const gapAngle = Math.PI / 4;
+    businessSlots = new Map();
+    depts.forEach((i, k) => {
+      const a = gapAngle + ((k + 1) * 2 * Math.PI) / slotCount;
+      businessSlots.set(i, { x: Math.cos(a) * ring, z: Math.sin(a) * ring, angle: a });
+    });
+    const floor = sizes[floorIndex];
+    const clearOf = (x, z) => depts.every(i => {
+      const p = businessSlots.get(i);
+      return Math.abs(p.x - x) >= (floor.width + sizes[i].width) / 2 + config.podGap * 0.6
+        || Math.abs(p.z - z) >= (floor.depth + sizes[i].depth) / 2 + config.podGap * 0.6;
+    });
+    let r = CONDUCTOR_RADIUS + Math.max(floor.width, floor.depth) / 2 + config.podGap;
+    while (!clearOf(Math.cos(gapAngle) * r, Math.sin(gapAngle) * r) && r < 1000) r += 1;
+    businessSlots.set(floorIndex, { x: Math.cos(gapAngle) * r, z: Math.sin(gapAngle) * r, angle: gapAngle });
+  }
+
   const pods = [];
   const seats = {};
 
@@ -268,8 +303,9 @@ export function computeLayout(desks, options) {
     // Odd rings start at angle 0, even rings are offset half a slot, so pods
     // on adjacent rings do not line up into radial corridors.
     const offset = (ring % 2 === 0) ? Math.PI / capacity : 0;
-    const angle = (2 * Math.PI * dynamicIndex) / capacity + offset;
-    const fixedSlot = fixedProjects ? PROJECT_FLOOR_SLOTS[cluster] : null;
+    const businessSlot = businessSlots ? businessSlots.get(podIndex) : null;
+    const angle = businessSlot ? businessSlot.angle : (2 * Math.PI * dynamicIndex) / capacity + offset;
+    const fixedSlot = fixedProjects ? PROJECT_FLOOR_SLOTS[cluster] : businessSlot;
     const x = fixedSlot ? fixedSlot.x : Math.cos(angle) * ringRadius;
     const z = fixedSlot ? fixedSlot.z : Math.sin(angle) * ringRadius;
 
