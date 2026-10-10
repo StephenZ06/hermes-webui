@@ -11173,8 +11173,14 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 
   /* Drawer clears the Dynamic Island and the home indicator. */
   :root{--mobile-rail-w:calc(52px + var(--app-safe-left));}
-  .sidebar{padding-top:var(--app-titlebar-safe-top);padding-bottom:var(--app-safe-bottom);padding-left:var(--app-safe-left);}
-  .sidebar > .sidebar-nav{top:var(--app-titlebar-safe-top);bottom:var(--app-safe-bottom);left:var(--app-safe-left);}
+  /* The drawer's own backgrounds run to the very bottom edge; only its
+     content stops short of the home indicator (padding inside the icon
+     column and the panel), so no band of another colour shows under it. */
+  .sidebar{padding-top:var(--app-titlebar-safe-top);padding-bottom:0;padding-left:var(--app-safe-left);}
+  .sidebar > .sidebar-nav{top:var(--app-titlebar-safe-top);bottom:0;left:var(--app-safe-left);padding-bottom:calc(6px + var(--app-bottom-gap));gap:2px;}
+  .sidebar > .sidebar-nav .sidebar-nav-divider{margin:3px 0;}
+  .sidebar .panel-view{box-sizing:border-box;padding-bottom:var(--app-bottom-gap);}
+  .sidebar .hermes-cli-card{margin-bottom:8px;}
   /* Three drawer stages. Closed: only the icon strip's width is kept (clip)
      and it sits just off the left edge. Icons (first swipe): the strip slides
      in. Open: the clip widens and the panel unrolls to the right of the strip.
