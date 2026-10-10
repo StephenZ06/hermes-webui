@@ -11247,8 +11247,6 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
      instead of running into the next column; the on/off switch sits a few
      px in from the card edge. */
   .scout-search{min-width:0;max-width:100%;}
-  .scout-search-head{padding-right:4px;}
-  .scout-search-head .job-os-toggle.compact{margin-right:2px;}
   .scout-facts dd:has(> .job-os-chips){white-space:normal;overflow:visible;}
   .scout-facts .job-os-chips{flex-wrap:wrap;overflow:visible;row-gap:5px;}
 }
@@ -11329,3 +11327,11 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 /* A short window (a phone held sideways) must not squeeze the Jobs section
    list to a sliver: the side panel scrolls instead. */
 #jobOsSidebar .job-os-side-nav{flex-shrink:0;}
+
+/* Scout card head as a grid: icon | title (may shrink to nothing) | switch.
+   As a flex row, WebKit on the iPhone let the title block keep its full
+   text width, which pushed the on/off switch ~30px past the card edge. A
+   minmax(0,1fr) track can't be widened by its content in any engine. */
+.scout-search-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:12px;}
+.scout-search-head > .scout-search-title{min-width:0;overflow:hidden;}
+.scout-search-head > .job-os-toggle{justify-self:end;margin-right:2px;}
