@@ -1,5 +1,5 @@
 """Rendered pieces of the Jobs page, from the real renderer with a given state:
-the Apify credit card and header chip, the master-vs-tailored score, and
+the Apify credit card (side panel only), the master-vs-tailored score, and
 hiding Logistics."""
 
 import pytest
@@ -26,11 +26,11 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
               const side = document.createElement('div');
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', apifyUsage: usage(1.19)});
               side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null, apifyUsage: usage(1.19)});
-              const calm = {chip: host.querySelector('.job-os-status').textContent, warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'),
-                            ready: host.querySelector('.job-os-status').dataset.ready, onDashboard: !!host.querySelector('.job-os-apify-widget')};
+              const calm = {chip: !!host.querySelector('.job-os-status'), warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'),
+                            onDashboard: !!host.querySelector('.job-os-apify-widget'), dollars: host.textContent.includes('$1.19')};
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'dashboard', apifyUsage: usage(4.4)});
               side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null, apifyUsage: usage(4.4)});
-              const tight = {warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'), ready: host.querySelector('.job-os-status').dataset.ready,
+              const tight = {warn: side.querySelector('.job-os-apify-widget').classList.contains('is-warn'),
                              cells: side.querySelectorAll('.chat-usage-widget-battery-cell.is-filled').length,
                              level: side.querySelector('.chat-usage-widget-battery').dataset.level,
                              note: side.querySelector('.job-os-apify-widget').textContent};
@@ -49,8 +49,10 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
             }""")
         finally:
             browser.close()
-    assert out["calm"] == {"chip": "Apify · $1.19 of $5", "warn": False, "ready": "true", "onDashboard": False}
-    assert out["tight"]["warn"] and out["tight"]["ready"] == "false" and "$0.60 left of $5.00" in out["tight"]["note"]
+    # Apify's credit is shown once, in the side panel: the page has no chip
+    # and no dollar figure for it.
+    assert out["calm"] == {"chip": False, "warn": False, "onDashboard": False, "dollars": False}
+    assert out["tight"]["warn"] and "$0.60 left of $5.00" in out["tight"]["note"]
     assert out["tight"]["cells"] == 1 and out["tight"]["level"] == "warn"
     assert out["off"] == {"chip": "Firecrawl ready", "card": False}
     assert out["fit"] == {"gain": "+16", "rings": ["68", "84"]}

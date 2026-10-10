@@ -396,6 +396,61 @@ function _closeMobileSidebarAfterPanelSelection(){
   closeMobileSidebar();
 }
 
+// ── Page route in the URL hash ──────────────────────────────────────────────
+// The open page lives in the hash (`#office`, `#jobs/scout`, `#office/dashboard`)
+// so a reload -- including the installed iPhone app's pull-to-refresh and
+// reload button -- comes back to the same page instead of Chat. Chat has no
+// hash; its conversation is already in the path. replaceState only: page
+// switches are not history entries, so Back never walks through them.
+function _panelFromRouteHash(hash) {
+  const m = /^#([a-z]+)(?:[\/?].*)?$/.exec(String(hash || ''));
+  if (!m) return null;
+  return MAIN_VIEW_PANELS.includes(m[1]) && m[1] !== 'plugin' ? m[1] : null;
+}
+function _syncPanelRoute(panel) {
+  if (typeof window === 'undefined' || !window.history || !window.location) return;
+  const base = window.location.pathname + window.location.search;
+  const current = window.location.hash || '';
+  try {
+    if (!panel || panel === 'chat' || !MAIN_VIEW_PANELS.includes(panel)) {
+      if (_panelFromRouteHash(current)) window.history.replaceState(window.history.state, '', base);
+      return;
+    }
+    // A deeper route for the same page (#jobs/scout) is kept as it is.
+    if (_panelFromRouteHash(current) === panel) return;
+    window.history.replaceState(window.history.state, '', base + '#' + panel);
+  } catch (_) {}
+}
+// Called once boot has restored the conversation: reopen the page the hash
+// names. Jobs reads its own section from the hash when it mounts; the Office
+// page's sub-page is reapplied here.
+async function restorePanelFromRoute() {
+  const hash = (typeof window !== 'undefined' && window.location) ? window.location.hash : '';
+  const panel = _panelFromRouteHash(hash);
+  if (!panel || panel === _currentPanel) return false;
+  const ok = await switchPanel(panel, { bypassSettingsGuard: true });
+  const sub = /^#office\/(dashboard|integrations)$/.exec(hash);
+  if (panel === 'office' && sub && typeof window.officeSetSubview === 'function') window.officeSetSubview(sub[1]);
+  return ok !== false;
+}
+
+// Rows in the phone drawer that change what the main view shows (a Jobs
+// section or board stage, an Office page, a Work Hub scope or board, a Notes
+// scope or note). Once one is chosen the drawer folds away so the destination
+// is what the user sees. Filters and toggles inside the drawer are not listed:
+// they change the drawer itself and keep it open.
+const MOBILE_DRAWER_NAV_SELECTOR = '[data-job-os-view],[data-job-os-stage],[data-office-subview],'
+  + '[data-nb-open],.nb-scope[data-nb-scope],.work-hub-scope[data-scope],[data-board-id]';
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const target = e.target && e.target.closest ? e.target : null;
+    if (!target || !target.closest('.sidebar .panel-view')) return;
+    if (!target.closest(MOBILE_DRAWER_NAV_SELECTOR)) return;
+    if (target.closest('[data-rename-board],[data-delete-board]')) return;
+    setTimeout(_closeMobileSidebarAfterPanelSelection, 0);
+  }, true); // capture: some rows re-render the drawer in their own handler
+}
+
 function _panelFromCurrentMainView(){
   const mainEl=document.querySelector('main.main');
   if(!mainEl)return _currentPanel||'chat';
@@ -507,6 +562,7 @@ async function switchPanel(name, opts = {}) {
     window.JobOS.unmount();
   }
   _currentPanel = nextPanel;
+  _syncPanelRoute(nextPanel);
   if (typeof _syncWorkspacesPanelAutoRefresh === 'function') _syncWorkspacesPanelAutoRefresh();
   // Mobile drawer visibility: a rail/tab click on a phone should surface the
   // panel synchronously, NOT after the panel's async data load. If the re-open
@@ -6042,7 +6098,7 @@ function _renderInsights(d, box, wikiStatus, skillUsage) {
   if (d.activity_by_hour) {
     const maxHod = Math.max(...d.activity_by_hour.map(x => x.sessions), 1);
     const peakHour = d.activity_by_hour.reduce((a, b) => b.sessions > a.sessions ? b : a, {hour:0,sessions:0});
-    hodHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('insights_activity_by_hour'))} <span style="font-weight:400;font-size:11px;color:var(--muted)">${esc(t('insights_peak_hour').replace('{hour}', peakHour.hour + ':00'))}</span></div><div class="insights-bars">` +
+    hodHtml = `<div class="insights-card"><div class="insights-card-title">${esc(t('insights_activity_by_hour'))} <span style="font-weight:400;font-size:11px;color:var(--muted)">${esc(t('insights_peak_hour').replace('{hour}', peakHour.hour + ':00'))}</span></div><div class="insights-bars insights-bars--hours">` +
       d.activity_by_hour.map(r => {
         const pct = (r.sessions / maxHod * 100).toFixed(0);
         const isPeak = r.hour === peakHour.hour && peakHour.sessions > 0;

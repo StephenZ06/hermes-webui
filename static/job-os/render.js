@@ -41,6 +41,9 @@
     ai: '<path d="M9.6 20H14.4C18.4 20 20 18.4 20 14.4V9.6C20 5.6 18.4 4 14.4 4H9.6C5.6 4 4 5.6 4 9.6V14.4C4 18.4 5.6 20 9.6 20Z"/><path d="M10.5 17H13.5C16 17 17 16 17 13.5V10.5C17 8 16 7 13.5 7H10.5C8 7 7 8 7 10.5V13.5C7 16 8 17 10.5 17Z"/><path d="M8.01001 4V2"/><path d="M12 4V2"/><path d="M16 4V2"/><path d="M20 8H22"/><path d="M20 12H22"/><path d="M20 16H22"/><path d="M16 20V22"/><path d="M12.01 20V22"/><path d="M8.01001 20V22"/><path d="M2 8H4"/><path d="M2 12H4"/><path d="M2 16H4"/><path d="M12 9.69995L11.06 11.34C10.85 11.7 11.02 12 11.44 12H12.56C12.98 12 13.15 12.3 12.94 12.66L12 14.3"/>',
     trash: '<path d="M21 5.97998C17.67 5.64998 14.32 5.47998 10.98 5.47998C9 5.47998 7.02 5.57998 5.04 5.77998L3 5.97998"/><path d="M8.5 4.97L8.72 3.66C8.88 2.71 9 2 10.69 2H13.31C15 2 15.13 2.75 15.28 3.67L15.5 4.97"/><path d="M18.85 9.14001L18.2 19.21C18.09 20.78 18 22 15.21 22H8.79002C6.00002 22 5.91002 20.78 5.80002 19.21L5.15002 9.14001"/><path d="M10.33 16.5H13.66"/><path d="M9.5 12.5H14.5"/>',
     close: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M9.16998 14.83L14.83 9.17004"/><path d="M14.83 14.83L9.16998 9.17004"/>',
+    // mx-icons search-zoom-in / search-zoom-out (same outline set as Scout's magnifier).
+    'zoom-in': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/><path d="M11.5 9V14"/>',
+    'zoom-out': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/>',
   };
   // mx-icons are drawn for 24px at a 1.5 stroke; smaller sizes get a heavier
   // stroke so the line still lands at about 1.3 device pixels and stays crisp.
@@ -230,11 +233,12 @@
     const ready = state.capability && state.capability.available;
     const fc = state.firecrawl;
     const ap = state.apifyUsage;
-    // With Apify on, Scout doesn't use Firecrawl: the chip shows Apify and its spend.
+    // With Apify on, Scout doesn't use Firecrawl, and Apify's credit already
+    // has its own meter at the top of the side panel: the page shows no chip.
     const chip = !ready
       ? '<span class="job-os-status" data-ready="false">Storage unavailable</span>'
       : ap && ap.active
-        ? `<button type="button" class="job-os-status" data-ready="${ap.usage && ap.usage.warn ? 'false' : 'true'}" data-job-os-view="settings" title="Scout runs on Apify${ap.usage ? ` · this month $${ap.usage.used_usd} of $${ap.usage.limit_usd}` : ''}">${ap.usage ? `Apify · $${ap.usage.used_usd.toFixed(2)} of $${ap.usage.limit_usd.toFixed(0)}` : 'Apify ready'}</button>`
+        ? ''
       : fc
         ? `<button type="button" class="job-os-status" data-ready="${fc.state === 'healthy' ? 'true' : 'false'}" data-fc-state="${esc(fc.state)}" data-job-os-view="settings" title="${esc(fc.detail || '')}">${esc(FIRECRAWL_LABELS[fc.state] || 'Firecrawl unknown')}</button>`
         : '<span class="job-os-status" data-ready="true">Ready</span>';
@@ -1081,8 +1085,13 @@
   function resumePreview(state) {
     const p = state.resumePreview;
     if (!p) return '';
-    return `<div class="resume-preview" data-job-os-action="resume-preview-close" role="dialog" aria-label="Resume preview" tabindex="-1">
-      <div class="resume-preview-bar"><span>${esc(p.title || 'Resume')}</span><small>Click anywhere or press Esc to close</small></div>
+    // Zoom: the buttons, Ctrl/⌘ +/−, or a pinch on a phone. Zoomed in, the
+    // page pans instead of a tap closing it; the close button always closes.
+    const zoom = Math.round((Number(state.previewZoom) || 1) * 100);
+    const ctl = (step, label, glyph) => `<button type="button" class="resume-preview-ctl" data-job-os-action="preview-zoom" data-step="${step}" aria-label="${label}" title="${label}">${glyph}</button>`;
+    return `<div class="resume-preview${zoom > 100 ? ' is-zoomed' : ''}" data-job-os-action="resume-preview-close" role="dialog" aria-label="Resume preview" tabindex="-1" style="--preview-zoom:${zoom / 100}">
+      <div class="resume-preview-bar"><span>${esc(p.title || 'Resume')}</span><small class="resume-preview-tip">Click anywhere or press Esc to close</small>
+        <div class="resume-preview-tools" role="group" aria-label="Zoom">${ctl('out', 'Zoom out', icon('zoom-out', 18))}${ctl('reset', 'Actual size', `<span class="resume-preview-level">${zoom}%</span>`)}${ctl('in', 'Zoom in', icon('zoom-in', 18))}<button type="button" class="resume-preview-ctl is-close" data-job-os-action="resume-preview-close" aria-label="Close preview" title="Close">${icon('close', 18)}</button></div></div>
       <div class="resume-preview-pages" id="resume-preview-pages" data-kind="${esc(p.kind)}" data-keep="${esc(p.kind)}:${esc(p.url)}">${p.kind === 'html' ? `<iframe src="${esc(p.url)}" title="${esc(p.title || 'Resume')}"></iframe>` : '<span class="resume-thumb-loading" aria-hidden="true"></span>'}</div></div>`;
   }
   function interviewPanel(job) {

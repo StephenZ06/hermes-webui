@@ -488,8 +488,12 @@ def handle_job_os_get(handler, parsed) -> bool:
         except ValueError:
             return _error(handler, "Unknown job status", 400)
         jobs = list_jobs(JobFilters(status=status, source=raw_source))
+        from api.job_os import analysis as job_analysis, tailor as job_tailor
         from api.job_os.analysis import analyses_by_job
 
+        # Work a restart left half-done is picked up again by the page that shows it.
+        job_analysis.resume_if_stalled()
+        job_tailor.resume_if_stalled()
         analyses = analyses_by_job()
         j(handler, {"jobs": [_job_payload(job, analyses=analyses) for job in jobs]})
         return True

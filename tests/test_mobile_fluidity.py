@@ -37,11 +37,18 @@ class TestDrawerFollowsTheFinger:
         # The move handler measures the finger; the write itself is coalesced into
         # rAF so a burst of touchmoves costs one style write per painted frame.
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
-        assert "Math.min(dx,width)" in body.replace(" ", ""), "travel must be clamped to the viewport"
+        assert "Math.min(reach,width)" in body.replace(" ", ""), "travel must be clamped to the viewport"
         assert "_scheduleSidebarDragFrame(swipe)" in body
         frame = _fn(BOOT_JS, "_scheduleSidebarDragFrame")
         assert "requestAnimationFrame" in frame
-        assert "translate3d(calc(-100% + " in frame, "the drawer must be pinned to the finger"
+        assert "_applyDrawerTravel(swipe.el,swipe.pendingTravel" in frame.replace(" ", ""), (
+            "the drawer must be pinned to the finger"
+        )
+        # One number drives both compositor-only properties: the strip slides
+        # in (transform), then the panel unrolls beside it (clip-path).
+        apply = _fn(BOOT_JS, "_applyDrawerTravel")
+        assert "style.transform='translate3d('" in apply.replace(" ", "")
+        assert "style.clipPath='inset(0'" in apply.replace(" ", "")
 
     def test_css_transition_is_suspended_while_dragging(self):
         # A transition during the drag would make the drawer trail the finger.
@@ -78,8 +85,10 @@ class TestDrawerFollowsTheFinger:
 
     def test_cancel_restores_the_closed_state(self):
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeCancel")
-        assert "style.transform=''" in body.replace(" ", "")
+        assert "_clearDrawerInline(swipe.el)" in body.replace(" ", "")
         assert "is-dragging" in body
+        clear = _fn(BOOT_JS, "_clearDrawerInline")
+        assert "style.transform=''" in clear.replace(" ", "") and "style.clipPath=''" in clear.replace(" ", "")
 
     def test_velocity_is_smoothed(self):
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
@@ -200,6 +209,8 @@ class TestHorizontalAxisIsNeverConceded:
         ".project-chip",
         ".agent-canvas-card", ".agent-canvas-sidebar-item",
         ".agent-canvas-project-row", ".agent-canvas-pause-btn",
+        # The zoomed-in resume preview pans both ways (pan-y only at 100%).
+        ".resume-preview.is-zoomed",
     }
 
     @staticmethod

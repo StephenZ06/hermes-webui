@@ -497,7 +497,7 @@
   }
   async function runAction(name, button) {
     const state = window.JobOSState;
-    if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview'].includes(name)) return studioAction(name, button);
+    if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
@@ -660,6 +660,7 @@
   }
   // ---- Pipeline: analysis polling, triage, resume ---------------------------
   let analysisTimer = null;
+  let dashboardTimer = null;
   const busy = (job) => !!(job && job.analysis && ['pending', 'running'].includes(job.analysis.status));
   function afterPipelineRender(target, changed) {
     const state = window.JobOSState;
@@ -673,6 +674,12 @@
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
+    // The dashboard also checks in every 30s while nothing is busy, so a score
+    // or a job that Scout or the analysis queue added in the background shows
+    // up on its own instead of after a reload.
+    const idle = state.activeView === 'dashboard' && !watching;
+    if (idle && !dashboardTimer) dashboardTimer = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+    if (!idle && dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; }
     if (!changed) return;
     const sort = document.getElementById('job-os-sort');
     if (once(sort, 'sort')) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
@@ -956,10 +963,78 @@
       state.resumePreview = {kind: 'html', url: el.dataset.url, title: el.dataset.title || 'Preview'};
       return openPreview();
     }
-    if (name === 'resume-preview-close') return closePreview();
+    if (name === 'resume-preview-close') {
+      // Zoomed in, a tap on the page is a pan, not a close: only the close
+      // button (or Esc) closes then.
+      if ((state.previewZoom || 1) > 1 && !el.classList.contains('resume-preview-ctl')) return undefined;
+      return closePreview();
+    }
+    if (name === 'preview-zoom') {
+      const step = el.dataset.step;
+      const now = state.previewZoom || 1;
+      setPreviewZoom(step === 'reset' ? 1 : now * (step === 'in' ? 1.25 : 0.8));
+      return undefined;
+    }
     return undefined;
   }
+  // Preview zoom is applied in place (CSS zoom on the pages), never by a
+  // re-render, so the drawn PDF pages and the scroll position survive it.
+  const PREVIEW_ZOOM_MIN = 1;
+  const PREVIEW_ZOOM_MAX = 4;
+  function setPreviewZoom(value, anchor) {
+    const state = window.JobOSState;
+    const overlay = document.querySelector('.resume-preview');
+    const before = state.previewZoom || 1;
+    const next = Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, Math.round(value * 100) / 100));
+    state.previewZoom = next;
+    if (!overlay) return;
+    // Keep the point under the fingers (or the centre) where it is.
+    const ax = anchor ? anchor.x : overlay.clientWidth / 2;
+    const ay = anchor ? anchor.y : overlay.clientHeight / 2;
+    const cx = (overlay.scrollLeft + ax) / before;
+    const cy = (overlay.scrollTop + ay) / before;
+    overlay.style.setProperty('--preview-zoom', String(next));
+    overlay.classList.toggle('is-zoomed', next > 1);
+    const level = overlay.querySelector('.resume-preview-level');
+    if (level) level.textContent = `${Math.round(next * 100)}%`;
+    fitPreviewFrame(overlay);
+    overlay.scrollLeft = cx * next - ax;
+    overlay.scrollTop = cy * next - ay;
+  }
+  // An HTML resume (same-origin frame) is magnified inside its frame and the
+  // frame grows to its full height, so the overlay, not the frame, scrolls.
+  function fitPreviewFrame(scope) {
+    const frame = scope && scope.querySelector('.resume-preview-pages iframe');
+    if (!frame) return;
+    try {
+      const doc = frame.contentDocument;
+      doc.documentElement.style.zoom = String(window.JobOSState.previewZoom || 1);
+      frame.style.height = `${doc.documentElement.scrollHeight * (window.JobOSState.previewZoom || 1) + 8}px`;
+    } catch (_) { /* cross-origin: leave the frame as it is */ }
+  }
+  // Two-finger pinch on the preview (phones). The app behind never zooms:
+  // the overlay is touch-action:pan-x pan-y and the pinch is handled here.
+  let pinch = null;
+  const touchGap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  document.addEventListener('touchstart', (event) => {
+    const overlay = event.touches.length === 2 && event.target.closest ? event.target.closest('.resume-preview') : null;
+    if (!overlay) return;
+    const box = overlay.getBoundingClientRect();
+    pinch = {gap: touchGap(event.touches) || 1, zoom: window.JobOSState.previewZoom || 1,
+      x: (event.touches[0].clientX + event.touches[1].clientX) / 2 - box.left,
+      y: (event.touches[0].clientY + event.touches[1].clientY) / 2 - box.top};
+  }, {passive: true});
+  document.addEventListener('touchmove', (event) => {
+    if (!pinch || event.touches.length !== 2) return;
+    if (event.cancelable) event.preventDefault();
+    setPreviewZoom(pinch.zoom * (touchGap(event.touches) / pinch.gap), pinch);
+  }, {passive: false});
+  document.addEventListener('touchend', (event) => { if (event.touches.length < 2) pinch = null; }, {passive: true});
+  document.addEventListener('touchcancel', () => { pinch = null; }, {passive: true});
+  // Safari's own pinch would zoom the whole app behind the preview.
+  document.addEventListener('gesturestart', (event) => { if (event.target.closest && event.target.closest('.resume-preview')) event.preventDefault(); });
   function openPreview() {
+    window.JobOSState.previewZoom = 1;
     paint(root(), window.JobOSRender.shell(window.JobOSState));
     root()._jobOsHtml = null;
     afterStudioRender(root());
@@ -978,6 +1053,11 @@
   document.addEventListener('keydown', (event) => {
     const state = window.JobOSState;
     if (event.key === 'Escape' && state.resumePreview) { event.preventDefault(); closePreview(); return; }
+    if (state.resumePreview && (event.metaKey || event.ctrlKey) && ['=', '+', '-', '0'].includes(event.key)) {
+      event.preventDefault();
+      setPreviewZoom(event.key === '0' ? 1 : (state.previewZoom || 1) * (event.key === '-' ? 0.8 : 1.25));
+      return;
+    }
     if (state.activeView !== 'resume-studio' || state.studioJobId || state.resumePreview || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
     const step = document.querySelector(`.match-step[aria-label="${event.key === 'ArrowLeft' ? 'Previous job' : 'Next job'}"]:not([disabled])`);
@@ -1047,7 +1127,7 @@
     // HTML previews grow to their full height so the overlay scrolls, not the frame.
     if (pages && pages.dataset.kind === 'html') {
       const frame = pages.querySelector('iframe');
-      if (once(frame, 'fit')) frame.addEventListener('load', () => { try { frame.style.height = `${frame.contentDocument.documentElement.scrollHeight + 8}px`; } catch (_) { /* cross-origin */ } }, {once: true});
+      if (once(frame, 'fit')) frame.addEventListener('load', () => fitPreviewFrame(pages.parentElement), {once: true});
     }
     const match = target.querySelector('.match-body');
     if (match && window.JobOSState.matchDirection) {
@@ -1509,7 +1589,7 @@
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
   }
   function mount() { loadPrefs(); applyRoute(); refresh(); }
-  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); disposeLogistics(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
+  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); disposeLogistics(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; } }
   function openJob(jobId) {
     const state = window.JobOSState;
     // Stay in the current Pipeline filter when opening jobs from it (and with J/K).

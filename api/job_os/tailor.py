@@ -109,9 +109,21 @@ def keyword_coverage(text: str, must_haves: list[str]) -> dict:
     return {"found": found, "missing": missing, "score": round(100 * len(found) / total) if total else None}
 
 
+# A rescore runs on a thread of this process: one still marked 'running' from
+# before this module loaded died with the old process and will never finish.
+_LOADED_AT = int(time.time())
+
+
+def _settle_orphaned_fit(notes: dict) -> dict:
+    fit = notes.get("tailored_fit")
+    if isinstance(fit, dict) and fit.get("status") == "running" and int(fit.get("at") or 0) < _LOADED_AT:
+        notes = {**notes, "tailored_fit": {"status": "failed", "error": "Scoring was interrupted by a restart. Score it again."}}
+    return notes
+
+
 def _doc_row(row) -> dict:
     return {"id": row["id"], "job_id": row["job_id"], "kind": row["kind"], "status": row["status"],
-            "content": row["content"], "notes": json.loads(row["notes_json"] or "{}"), "error": row["error"],
+            "content": row["content"], "notes": _settle_orphaned_fit(json.loads(row["notes_json"] or "{}")), "error": row["error"],
             "model": row["model"], "revision": row["revision"], "created_at": row["created_at"], "updated_at": row["updated_at"]}
 
 
@@ -330,7 +342,7 @@ def rescore_document(doc_id: str, *, run_async: bool = True) -> dict:
         finally:
             conn.close()
 
-    write({"status": "running"})
+    write({"status": "running", "at": int(time.time())})
     work = lambda: write(_fit_of(job, doc["content"]))  # noqa: E731
     if run_async:
         threading.Thread(target=work, name=f"job-os-rescore-{doc_id[:8]}", daemon=True).start()
@@ -402,6 +414,21 @@ def _work() -> None:
             _worker = None
         if _next_pending():
             ensure_worker()
+
+
+def resume_if_stalled() -> None:
+    """Restart tailoring if documents are waiting and no worker is running (a
+    restart leaves them 'running' with no thread behind them)."""
+    with _lock:
+        if _worker is not None and _worker.is_alive():
+            return
+    conn = connect_job_os()
+    try:
+        waiting = conn.execute("SELECT 1 FROM job_documents WHERE status IN ('pending', 'running') LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if waiting:
+        ensure_worker()
 
 
 def ensure_worker() -> None:

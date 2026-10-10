@@ -143,3 +143,36 @@ def test_routes_upload_resume_and_queue_analysis(store, monkeypatch):
     lst = _H()
     routes.handle_get(lst, urlparse("/api/job-os/jobs"))
     assert json.loads(lst.wfile.getvalue())["jobs"][0]["analysis"] == {"status": "pending", "fit_score": None, "verdict": ""}
+
+
+def test_work_queued_before_a_restart_resumes_when_the_jobs_are_read(store, monkeypatch):
+    """A restart kills the worker thread mid-analysis: the row stays 'running'
+    and the score ring spins forever, because only a new request used to start
+    a worker. Reading the job list now restarts the queue."""
+    resume.save_resume(filename="cv.md", text=RESUME)
+    job = _job()
+    analysis.request_analysis([job.id], start_worker=False)
+    from api.job_os.db import connect_job_os
+    conn = connect_job_os()
+    conn.execute("UPDATE job_analyses SET status='running'")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(analysis, "_worker", None)  # the old process's worker is gone
+    started = []
+    real_ensure = analysis.ensure_worker
+    monkeypatch.setattr(analysis, "ensure_worker", lambda: started.append(1) or real_ensure())
+    h = _H()
+    h.path = "/api/job-os/jobs"
+    from api.job_os import api as job_api
+    job_api.handle_job_os_get(h, urlparse(h.path))
+    assert started, "listing jobs with an orphaned analysis must restart the worker"
+    for _ in range(100):
+        if analysis.get_analysis(job.id)["status"] == "done":
+            break
+        import time as _t
+        _t.sleep(0.05)
+    assert analysis.get_analysis(job.id)["status"] == "done"
+    # Nothing waiting: reading does not start a worker.
+    started.clear()
+    analysis.resume_if_stalled()
+    assert not started

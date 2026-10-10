@@ -1,5 +1,34 @@
 # Project status — hermes-webui
 
+## 2026-10-10: iPhone (Home Screen app) pass across every page
+
+- **Foundation:** safe areas everywhere (`viewport-fit=cover`, `--app-safe-*`
+  tokens), centred top bar with uniform 44px actions, profile switcher in the
+  top bar on phones, no selection callout on chrome, no sideways page drag,
+  last item of every scroller clears the home indicator / Jobs tab bar.
+  Details: docs/UIUX-GUIDE.md "Phones".
+- **Drawer:** closed → icon strip → full drawer (two swipes), strip folds after
+  5 s idle; swipe over a button never presses it; edge guard stays on while the
+  drawer is out (no swipe-back); choosing a drawer page closes it.
+- **Reload keeps the page:** route in the hash (`restorePanelFromRoute` in
+  panels.js, Office sub-page included).
+- **Office:** subtitles gone on phones, back button beside the title, 2×2
+  headline cards, two-row floor header. **Insights:** stats first, stacked
+  model-health rows, two-column hour chart, readable date axis.
+- **Jobs:** Apify credit only in the side panel; Scout chips wrap and the
+  page can't drag sideways; resume preview zoom (buttons, Ctrl/⌘ ±, pinch);
+  Match Check label wraps inside the ring; Settings save bar balanced and
+  right-aligned above the tab bar.
+- **Fixed (root cause):** analysis, tailoring and tailored-resume rescoring
+  stayed "running" forever after a server restart (worker thread died, nothing
+  restarted it), so a score ring could spin indefinitely. The jobs list now
+  restarts stalled queues (`resume_if_stalled`), and an orphaned rescore reads
+  as failed. The dashboard also refreshes every 30 s while idle.
+- **Not verified on a real iPhone:** WebKit can't run here (system libs);
+  checks were Chromium with emulated safe areas. The original "toggle past the
+  card edge" report did not reproduce in Chromium; fixed defensively (chip
+  wrap, no horizontal scroll on #mainJobs, inset toggle).
+
 ## 2026-10-09: Office renovated after the reference render; smoother loading
 
 - Neon-banded pods standing above a starfield floor, department scenery and

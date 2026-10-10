@@ -1373,6 +1373,13 @@ function setOfficeSubview(name) {
   renderOfficeNavigation();
   const container = document.getElementById('officeWrap');
   if (container) renderOfficeSubview(container);
+  // Keep the sub-page in the URL so a reload reopens it (panels.js restores it).
+  try {
+    if (/^#office(\/|$)/.test(window.location.hash || '')) {
+      const route = next === 'floor' ? '#office' : '#office/' + next;
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search + route);
+    }
+  } catch (_) {}
 }
 
 // Set while a fade-out is waiting on the *next* scheduleSync to actually

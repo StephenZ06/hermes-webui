@@ -163,6 +163,41 @@ For UI changes, verify the relevant states:
 Controls should remain usable at touch sizes, and mobile navigation should not
 steal chat height unnecessarily.
 
+### Phones (installed iPhone app first)
+
+The reference device is an iPhone 15 Pro Max (430×932) running the app from
+the Home Screen. Shared rules live in the "Phone foundation" block at the end
+of `static/style.css`; page blocks after it only add what is particular to a
+page.
+
+- **Safe areas.** `viewport-fit=cover` is on, and `:root` exposes
+  `--app-titlebar-safe-top`, `--app-safe-bottom`, `--app-safe-left` and
+  `--app-safe-right` (env() values, 0 in a browser tab that has its own
+  chrome). Every page except chat (the composer pads itself) and Jobs (its own
+  bottom tab bar) ends above the home indicator. Landscape pads `.layout`.
+- **Top bar.** A 7-column grid: three 44px cells each side, the logo + title
+  in the true centre. Right-side actions share one footprint (44px, 20px
+  icon). The profile switcher sits beside the menu button on phones.
+- **Drawer.** Three stages: closed → icon strip (first left-to-right swipe;
+  folds itself after 5 s idle or a tap elsewhere) → full drawer (second swipe).
+  The strip slides in with `transform`; the panel unrolls with `clip-path`.
+  While the drawer is out, the left-edge guard covers the whole edge so a
+  swipe can never become Back. A swipe that crosses the claim threshold wins
+  over the button it started on (its click is swallowed); a still tap presses
+  the button. Choosing a page or section in the drawer closes it.
+- **Routes.** The open page lives in the URL hash (`#office`,
+  `#office/dashboard`, `#jobs/scout`), written with `replaceState`, so a
+  reload returns to the same page and page switches never add Back entries.
+- **No sideways drag.** Main views clip the horizontal axis; only explicit
+  horizontal scrollers (chip rows, boards, a zoomed preview) scroll sideways.
+- **Selection.** Chrome (buttons, bars, tabs, nav) never shows the selection
+  callout; inputs, editable text and the transcript keep normal selection.
+
+QA harness pattern: Playwright Chromium with `is_mobile`, `has_touch` and CDP
+`Emulation.setSafeAreaInsetsOverride` (top 59, bottom 34; landscape left/right
+59). It cannot show iOS font metrics or WebKit-only behaviour, so check the
+real device for those.
+
 ## Themes and skins
 
 Theme and skin work should use the existing variable system. `THEMES.md` points

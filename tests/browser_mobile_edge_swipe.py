@@ -172,24 +172,66 @@ def main():
             if page.evaluate("() => window.__probe.prevented") != [False]:
                 failures.append("a mid-screen touchstart was prevented; only the edge strip may be")
 
-            # 3. a real edge drag opens the drawer and leaves nothing behind
-            page.evaluate("() => document.querySelector('.sidebar').classList.remove('mobile-open')")
-            touch("touchStart", 6, strip_y)
-            for x in range(20, 320, 18):
-                touch("touchMove", x, strip_y)
-                time.sleep(0.012)
-            touch("touchEnd", 310, strip_y)
-            time.sleep(1.0)
-            after = page.evaluate("""() => {
+            # 3. a first edge drag shows the icon strip, a second opens the whole
+            #    drawer, and neither leaves drag state behind
+            page.evaluate("() => closeMobileSidebar()")
+            state = """() => {
               const s = document.querySelector('.sidebar');
-              return {open: s.classList.contains('mobile-open'),
+              return {icons: s.classList.contains('mobile-icons') && !s.classList.contains('mobile-open'),
+                      open: s.classList.contains('mobile-open'),
                       dragging: s.classList.contains('is-dragging'),
-                      inline: s.style.transform};
-            }""")
+                      inline: s.style.transform + s.style.clipPath};
+            }"""
+            def edge_drag():
+                touch("touchStart", 6, strip_y)
+                for x in range(20, 320, 18):
+                    touch("touchMove", x, strip_y)
+                    time.sleep(0.012)
+                touch("touchEnd", 310, strip_y)
+                time.sleep(1.0)
+            edge_drag()
+            first = page.evaluate(state)
+            if not first["icons"]:
+                failures.append(f"a first edge drag did not show the icon strip: {first}")
+            edge_drag()
+            after = page.evaluate(state)
             if not after["open"]:
-                failures.append("an edge drag to the right did not open the mobile drawer")
-            if after["dragging"] or after["inline"]:
-                failures.append(f"the drawer drag left state behind after settling: {after}")
+                failures.append("a second edge drag did not open the whole mobile drawer")
+            for label, st in (("first", first), ("second", after)):
+                if st["dragging"] or st["inline"]:
+                    failures.append(f"the {label} drawer drag left state behind after settling: {st}")
+
+            # 3b. with the drawer out, the left edge (top included) is still the
+            #     app's: a further left-to-right swipe can never become Back
+            page.evaluate("() => window.__probe.prevented = []")
+            touch("touchStart", 8, 30)
+            touch("touchEnd", 8, 30)
+            if page.evaluate("() => window.__probe.prevented") != [True]:
+                failures.append("with the drawer open, a touch at the left edge was not prevented")
+
+            # 3c. a swipe-left that starts on a drawer nav row closes the drawer
+            #     and does not press the row
+            row = page.evaluate("""() => {
+              const b = [...document.querySelectorAll('.sidebar .panel-view.active button')]
+                .find(x => x.offsetParent && x.getBoundingClientRect().width > 120);
+              if (!b) return null;
+              window.__probe.rowClicks = 0;
+              b.addEventListener('click', () => { window.__probe.rowClicks += 1; });
+              const r = b.getBoundingClientRect();
+              return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+            }""")
+            if row:
+                touch("touchStart", row["x"], row["y"])
+                for k in range(1, 12):
+                    touch("touchMove", row["x"] - k * 16, row["y"] + 1)
+                    time.sleep(0.012)
+                touch("touchEnd", row["x"] - 176, row["y"] + 1)
+                time.sleep(0.6)
+                swiped = page.evaluate("() => [document.querySelector('.sidebar').classList.contains('mobile-open'), window.__probe.rowClicks]")
+                if swiped[0]:
+                    failures.append("a swipe-left starting on a drawer row did not close the drawer")
+                if swiped[1]:
+                    failures.append("a swipe starting on a drawer row also pressed the row")
 
             page.evaluate("() => closeMobileSidebar()")
             time.sleep(0.4)

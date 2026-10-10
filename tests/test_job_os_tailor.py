@@ -173,3 +173,24 @@ def test_routes_tailor_export_and_ready(store, monkeypatch):
     again = _H()
     routes.handle_post(again, urlparse(f"/api/job-os/jobs/{job.id}/ready"))
     assert again.status == 400
+
+
+def test_a_rescore_cut_off_by_a_restart_reads_as_failed_not_running(store, monkeypatch):
+    """A rescore thread dies with its process; its 'running' mark used to stay
+    forever, so Resume Studio polled and spun on a score that never came."""
+    job = _shortlisted()
+    tailor.request_tailoring(job.id, start_worker=False)
+    tailor.tailor_one(job.id)
+    doc = tailor.latest_documents(job.id)["resume"]
+    from api.job_os.db import connect_job_os
+    conn = connect_job_os()
+    notes = {**doc["notes"], "tailored_fit": {"status": "running", "at": tailor._LOADED_AT - 60}}
+    conn.execute("UPDATE job_documents SET notes_json=? WHERE id=?", (json.dumps(notes), doc["id"]))
+    conn.commit()
+    conn.close()
+    stale = tailor.get_document(doc["id"])["notes"]["tailored_fit"]
+    assert stale["status"] == "failed" and "restart" in stale["error"]
+    # A rescore started by this process is still running.
+    monkeypatch.setattr(tailor.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: None})())
+    fresh = tailor.rescore_document(doc["id"])["notes"]["tailored_fit"]
+    assert fresh["status"] == "running"

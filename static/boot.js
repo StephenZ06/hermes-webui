@@ -439,9 +439,99 @@ function toggleMobileSidebar(){
 function closeMobileSidebar(){
   const sidebar=document.querySelector('.sidebar');
   const overlay=$('mobileOverlay');
-  if(sidebar)sidebar.classList.remove('mobile-open','mobile-session-page','mobile-panel-drawer');
+  _clearDrawerIconsTimer();
+  if(sidebar)sidebar.classList.remove('mobile-open','mobile-icons','mobile-session-page','mobile-panel-drawer');
   if(overlay)overlay.classList.remove('visible');
 }
+
+// ── Progressive phone drawer: closed → icons → open ─────────────────────────
+// A first left-to-right swipe shows only the icon strip (.sidebar-nav); it
+// folds away by itself after a few idle seconds. A second swipe while the
+// strip is out opens the whole drawer. `mobile-icons` is the strip state;
+// `mobile-open` (set by many callers) always wins over it in CSS, so code that
+// opens the full drawer directly needs no change.
+const _MOBILE_DRAWER_ICONS_IDLE_MS=5000;
+let _drawerIconsTimer=0;
+function _clearDrawerIconsTimer(){
+  if(_drawerIconsTimer){clearTimeout(_drawerIconsTimer);_drawerIconsTimer=0;}
+}
+function _mobileDrawerState(){
+  const sidebar=document.querySelector('.sidebar');
+  if(!sidebar)return 'closed';
+  if(sidebar.classList.contains('mobile-open'))return 'open';
+  if(sidebar.classList.contains('mobile-icons'))return 'icons';
+  return 'closed';
+}
+// Right edge of the icon strip, safe-area inset included.
+function _mobileRailWidth(){
+  const nav=document.querySelector('.sidebar > .sidebar-nav');
+  const right=nav?nav.getBoundingClientRect().width+(parseFloat(getComputedStyle(nav).left)||0):0;
+  return Math.round(right>0?right:52);
+}
+// Any touch on the strip counts as activity and restarts the idle fold.
+function _armDrawerIconsTimer(){
+  _clearDrawerIconsTimer();
+  _drawerIconsTimer=setTimeout(function(){
+    _drawerIconsTimer=0;
+    if(_mobileDrawerState()!=='icons')return;
+    if(_pwaSidebarSwipe&&_pwaSidebarSwipe.dragging){_armDrawerIconsTimer();return;}
+    closeMobileSidebar();
+  },_MOBILE_DRAWER_ICONS_IDLE_MS);
+}
+function _setMobileDrawerState(sidebar,state){
+  if(!sidebar)return;
+  if(state==='open'){
+    _clearDrawerIconsTimer();
+    sidebar.classList.remove('mobile-icons');
+    sidebar.classList.add('mobile-panel-drawer','mobile-open');
+  }else if(state==='icons'){
+    sidebar.classList.remove('mobile-open');
+    sidebar.classList.add('mobile-panel-drawer','mobile-icons');
+    _armDrawerIconsTimer();
+  }else{
+    _clearDrawerIconsTimer();
+    sidebar.classList.remove('mobile-open','mobile-icons');
+  }
+}
+// After a horizontal swipe has been claimed, the click the browser may still
+// synthesise for the button the finger started on is swallowed: a swipe that
+// crosses the threshold never also presses what it started on.
+let _swipeClickSuppressUntil=0;
+function _suppressClickAfterSwipe(){
+  _swipeClickSuppressUntil=Date.now()+500;
+}
+// A synthesised click lands after touchend without a new touch; a new touch
+// is a new intent, so it lifts the suppression.
+window.addEventListener('touchstart',function(){_swipeClickSuppressUntil=0;},{capture:true,passive:true});
+window.addEventListener('click',function(e){
+  if(Date.now()>_swipeClickSuppressUntil)return;
+  _swipeClickSuppressUntil=0;
+  e.preventDefault();
+  e.stopPropagation();
+  if(typeof e.stopImmediatePropagation==='function')e.stopImmediatePropagation();
+},true);
+// Strip out: touching the strip keeps it out; a tap anywhere else folds it.
+let _drawerIconsOutsideTap=null;
+function _onDrawerIconsTouchStart(e){
+  if(_mobileDrawerState()!=='icons')return;
+  if(_isTouchPointerEvent(e))return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(!point)return;
+  if(point.clientX<=_mobileRailWidth()){_armDrawerIconsTimer();_drawerIconsOutsideTap=null;return;}
+  _drawerIconsOutsideTap={x:point.clientX,y:point.clientY};
+}
+function _onDrawerIconsTouchEnd(e){
+  if(_isTouchPointerEvent(e))return;
+  const tap=_drawerIconsOutsideTap;
+  _drawerIconsOutsideTap=null;
+  if(!tap||_mobileDrawerState()!=='icons')return;
+  const point=_pwaSidebarSwipePoint(e);
+  if(point&&Math.abs(point.clientX-tap.x)<10&&Math.abs(point.clientY-tap.y)<10)closeMobileSidebar();
+}
+window.addEventListener('touchstart',_onDrawerIconsTouchStart,{capture:true,passive:true});
+window.addEventListener('touchend',_onDrawerIconsTouchEnd,{capture:true,passive:true});
+window.addEventListener('pointerdown',_onDrawerIconsTouchStart,{passive:true});
+window.addEventListener('pointerup',_onDrawerIconsTouchEnd,{passive:true});
 
 const _PWA_SIDEBAR_SWIPE_EDGE=80;
 const _PWA_SIDEBAR_SWIPE_CLAIM=10;
@@ -512,12 +602,24 @@ function _onPwaSidebarSwipeStart(e){
   if(_isDesktopWidth())return;
   if(_isTouchPointerEvent(e))return;
   if(e.pointerType==='mouse'||(e.pointerType&&e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
-  if(document.querySelector('.sidebar')?.classList.contains('mobile-open'))return;
+  const stage=_mobileDrawerState();
+  if(stage==='open')return;
   const point=_pwaSidebarSwipePoint(e);
   if(!point)return;
-  if(point.clientX>_PWA_SIDEBAR_SWIPE_EDGE)return;
-  if(_isInteractiveSwipeTarget(e.target))return;
-  _pwaSidebarSwipe={startX:point.clientX,startY:point.clientY,active:true,opened:false};
+  const railW=_mobileRailWidth();
+  if(stage==='icons'){
+    // Second swipe: from the strip itself (its buttons included -- the swipe
+    // wins once it crosses the claim threshold) or just past its edge.
+    if(point.clientX>railW+_PWA_SIDEBAR_SWIPE_EDGE*0.5)return;
+    const t=e.target;
+    if(t&&t.closest&&t.closest('input,textarea,select,[contenteditable="true"]'))return;
+    if(point.clientX>railW&&_isInteractiveSwipeTarget(t))return;
+  }else{
+    if(point.clientX>_PWA_SIDEBAR_SWIPE_EDGE)return;
+    if(_isInteractiveSwipeTarget(e.target))return;
+  }
+  _pwaSidebarSwipe={startX:point.clientX,startY:point.clientY,active:true,opened:false,
+    stage,railW,base:stage==='icons'?railW:0};
 }
 
 function _onPwaSidebarSwipeMove(e){
@@ -541,12 +643,20 @@ function _onPwaSidebarSwipeMove(e){
       // gesture rather than snapping open once a threshold is crossed.
       swipe.dragging=true;
       swipe.el=_prepareMobileSidebarForDrag();
+      _clearDrawerIconsTimer();
+      _suppressClickAfterSwipe();
     }
   }
   if(swipe.dragging&&swipe.el){
     if(e.cancelable)e.preventDefault();
+    _swipeClickSuppressUntil=Date.now()+500;
     const width=window.innerWidth||1;
-    const travel=Math.max(0,Math.min(dx,width));
+    // From closed, the first swipe reveals the icon strip only: past the strip
+    // the drawer follows the finger with heavy resistance, so it reads as "one
+    // more swipe for the rest".
+    const rail=swipe.railW||52;
+    const reach=swipe.stage==='closed'&&dx>rail?rail+(dx-rail)*0.18:(swipe.base||0)+dx;
+    const travel=Math.max(0,Math.min(reach,width));
     const now=(window.performance&&performance.now)?performance.now():Date.now();
     if(swipe.lastT!=null&&now>swipe.lastT){
       // px/ms, smoothed a little so one jittery sample cannot decide the fling.
@@ -569,10 +679,25 @@ function _scheduleSidebarDragFrame(swipe){
   swipe.frame=requestAnimationFrame(function(){
     swipe.frame=0;
     if(!swipe.dragging||!swipe.el)return;
-    // translate3d keeps this on the compositor; the drawer is already
-    // will-change:transform in the phone block, so no layer thrash per frame.
-    swipe.el.style.transform='translate3d(calc(-100% + '+swipe.pendingTravel+'px),0,0)';
+    _applyDrawerTravel(swipe.el,swipe.pendingTravel,swipe.railW);
   });
+}
+// One number describes the whole drawer: how far its right edge has come in.
+// Up to the strip's width the strip slides in (transform); past it the strip
+// stays put and the panel unrolls to the right of it (clip-path). Both are
+// compositor-only, so a drag or a settle never re-lays-out the drawer.
+function _applyDrawerTravel(el,travel,railW){
+  if(!el)return;
+  const rail=railW||_mobileRailWidth();
+  const width=window.innerWidth||1;
+  const t=Math.max(0,Math.min(Number(travel)||0,width));
+  el.style.transform='translate3d('+Math.min(0,t-rail)+'px,0,0)';
+  el.style.clipPath='inset(0 '+Math.max(0,width-Math.max(rail,t))+'px 0 0)';
+}
+function _clearDrawerInline(el){
+  if(!el)return;
+  el.style.transform='';
+  el.style.clipPath='';
 }
 function _cancelSidebarDragFrame(swipe){
   if(swipe&&swipe.frame){try{cancelAnimationFrame(swipe.frame);}catch(_){}swipe.frame=0;}
@@ -600,17 +725,24 @@ function _settleMobileSidebarDrag(swipe){
   const width=window.innerWidth||1;
   const travelled=swipe.lastTravel||0;
   const velocity=swipe.vx||0;
-  const shouldOpen=velocity>_PWA_SIDEBAR_FLING_VELOCITY
-    ? true
-    : (velocity<-_PWA_SIDEBAR_FLING_VELOCITY ? false : travelled>width*_PWA_SIDEBAR_SETTLE_FRACTION);
+  const rail=swipe.railW||52;
+  const flingOut=velocity>_PWA_SIDEBAR_FLING_VELOCITY;
+  const flingIn=velocity<-_PWA_SIDEBAR_FLING_VELOCITY;
+  let target;
+  if(swipe.stage==='icons'){
+    target=flingOut?'open':(flingIn?'closed':(travelled>rail+(width-rail)*_PWA_SIDEBAR_SETTLE_FRACTION?'open':'icons'));
+  }else{
+    target=flingOut?'icons':(flingIn?'closed':(travelled>rail*0.5?'icons':'closed'));
+  }
+  const shouldOpen=target!=='closed';
+  const toTravel=target==='open'?width:(target==='icons'?rail:0);
   // The state class flips now, not when the motion lands, so anything reading
   // drawer state mid-settle sees the outcome. is-dragging stays on until the
   // spring finishes, keeping the CSS transition out of the spring's way.
-  if(shouldOpen)el.classList.add('mobile-open');
-  else el.classList.remove('mobile-open');
-  const anim=_springDrawerTo(el,travelled-width,shouldOpen?0:-width,velocity);
+  _setMobileDrawerState(el,target);
+  const anim=_springDrawerTo(el,travelled,toTravel,velocity,rail);
   if(!anim){
-    el.style.transform='';
+    _clearDrawerInline(el);
     el.classList.remove('is-dragging'); // hands the settle back to the CSS transition
     if(!shouldOpen)el.classList.remove('mobile-panel-drawer');
     return;
@@ -620,7 +752,7 @@ function _settleMobileSidebarDrag(swipe){
     // A settle superseded by a new drag must not clear that drag's transform.
     if(_sidebarSettleAnim!==anim)return;
     _sidebarSettleAnim=null;
-    el.style.transform='';
+    _clearDrawerInline(el);
     el.classList.remove('is-dragging');
     if(!shouldOpen)el.classList.remove('mobile-panel-drawer');
   };
@@ -630,7 +762,7 @@ function _settleMobileSidebarDrag(swipe){
 // px/ms measured off the finger, converted to Motion's px/s and seeded into the
 // spring's initial velocity. Returns null when Motion is unavailable or motion
 // is reduced, so callers fall back to the CSS transition.
-function _springDrawerTo(el,fromX,toX,velocityPxPerMs){
+function _springDrawerTo(el,fromTravel,toTravel,velocityPxPerMs,railW){
   const M=(typeof window!=='undefined'&&window.Motion)||null;
   if(!M||typeof M.animate!=='function')return null;
   try{
@@ -638,8 +770,9 @@ function _springDrawerTo(el,fromX,toX,velocityPxPerMs){
       &&window.MotionUI.prefersReducedMotion())return null;
   }catch(_){}
   try{
-    el.style.transform='translate3d('+fromX+'px,0,0)';
-    return M.animate(el,{x:[fromX,toX]},{
+    _applyDrawerTravel(el,fromTravel,railW);
+    return M.animate(fromTravel,toTravel,{
+      onUpdate:function(v){_applyDrawerTravel(el,v,railW);},
       type:'spring',
       velocity:(Number(velocityPxPerMs)||0)*1000,
       stiffness:520,
@@ -657,9 +790,9 @@ function _clearStrandedSidebarDrag(){
   if(_sidebarSettleAnim)return; // a spring is mid-flight; it owns the transform
   const stuck=document.querySelector('.sidebar.is-dragging');
   if(!stuck)return;
-  stuck.style.transform='';
+  _clearDrawerInline(stuck);
   stuck.classList.remove('is-dragging');
-  if(!stuck.classList.contains('mobile-open')) stuck.classList.remove('mobile-panel-drawer');
+  if(!stuck.classList.contains('mobile-open')&&!stuck.classList.contains('mobile-icons')) stuck.classList.remove('mobile-panel-drawer');
 }
 function _onPwaSidebarSwipeEnd(e){
   if(_isTouchPointerEvent(e))return;
@@ -675,9 +808,10 @@ function _onPwaSidebarSwipeCancel(e){
   if(swipe&&swipe.dragging&&swipe.el){
     _cancelSidebarDragFrame(swipe);
     _stopSidebarSettle();
-    swipe.el.style.transform='';
+    _clearDrawerInline(swipe.el);
     swipe.el.classList.remove('is-dragging');
-    swipe.el.classList.remove('mobile-open','mobile-panel-drawer');
+    if(swipe.stage==='icons')_setMobileDrawerState(swipe.el,'icons');
+    else swipe.el.classList.remove('mobile-open','mobile-icons','mobile-panel-drawer');
   }
   _clearStrandedSidebarDrag();
 }
@@ -857,7 +991,10 @@ function _isInteractiveSidebarCloseTarget(target){
   // a project) — a touch starting on one must never also be claimed by
   // this drawer-close gesture, or a delete-swipe closes the whole sidebar
   // instead of revealing the delete action.
-  try{return !!(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],.session-item,.session-child-session-fork'));}
+  // Buttons and links are NOT excluded: a swipe that starts on a nav row
+  // closes the drawer once it crosses the claim threshold (the click it would
+  // have made is swallowed); a touch that stays put still presses it.
+  try{return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable="true"],.session-item,.session-child-session-fork'));}
   catch(_){return false;}
 }
 
@@ -866,7 +1003,7 @@ function _onSidebarSwipeCloseStart(e){
   if(_isTouchPointerEvent(e))return;
   if(e.pointerType==='mouse'||(e.pointerType&&e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
   const sidebar=document.querySelector('.sidebar');
-  if(!sidebar||!sidebar.classList.contains('mobile-open'))return;
+  if(!sidebar||!(sidebar.classList.contains('mobile-open')||sidebar.classList.contains('mobile-icons')))return;
   const point=_pwaSidebarSwipePoint(e);
   if(!point)return;
   if(_isInteractiveSidebarCloseTarget(e.target))return;
@@ -885,6 +1022,7 @@ function _onSidebarSwipeCloseMove(e){
   const adx=-dx;
   if(adx>=_PWA_SIDEBAR_SWIPE_CLAIM&&adx>Math.abs(dy)*1.2){
     if(e.cancelable)e.preventDefault();
+    _suppressClickAfterSwipe();
   }
   if(adx>=_PWA_SIDEBAR_SWIPE_TRIGGER&&Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL&&adx>Math.abs(dy)*1.5){
     if(e.cancelable)e.preventDefault();
@@ -4913,7 +5051,10 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
   await renderSessionList();await _finalizeComposerPrefillOnBoot(prefillIntent);
   // Start real-time gateway session sync if setting is enabled
   if(typeof startGatewaySSE==='function') startGatewaySSE();
-})().catch(e=>{
+})().then(()=>{
+  // Reload lands on the page the URL names (#office, #jobs/scout, ...), not Chat.
+  if(typeof restorePanelFromRoute==='function') return restorePanelFromRoute();
+}).catch(e=>{
   console.error('[hermes] boot failed', e);
   try{S._bootReady=true;}catch(_){}
   try{syncTopbar();}catch(_){}

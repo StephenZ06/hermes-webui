@@ -232,6 +232,25 @@ def _work() -> None:
             ensure_worker()
 
 
+def resume_if_stalled() -> None:
+    """Restart the queue if work is waiting and no worker is running.
+
+    A server restart kills the worker thread mid-analysis: its row stays
+    'running' (or 'pending') and nothing restarts the queue until the next
+    request, so the score ring in the page spins forever. Read paths call this,
+    so a page that is showing "scoring" also drives the queue on."""
+    with _worker_lock:
+        if _worker is not None and _worker.is_alive():
+            return
+    conn = connect_job_os()
+    try:
+        waiting = conn.execute("SELECT 1 FROM job_analyses WHERE status IN ('pending', 'running') LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if waiting:
+        ensure_worker()
+
+
 def ensure_worker() -> None:
     global _worker
     with _worker_lock:
