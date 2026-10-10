@@ -3917,9 +3917,17 @@ function _syncThemeColorMeta(){
       meta.setAttribute('content',bg);
       meta.removeAttribute('media');
     });
-    // Remembered for the next launch: the head script applies it before the
-    // stylesheet loads, so the iPhone status bar opens in the bar's colour.
-    try{localStorage.setItem('hermes-theme-color',bg);}catch(_){}
+    // Remembered per theme + skin for the next launch: the head script
+    // applies it before the stylesheet loads, so the iPhone status bar (which
+    // iOS tints from theme-color once, at launch) opens in this bar's colour.
+    // Keyed so a dark colour can never tint a light launch.
+    try{
+      const key=(document.documentElement.classList.contains('dark')?'dark':'light')+'|'+(localStorage.getItem('hermes-skin')||'default');
+      let map={};
+      try{map=JSON.parse(localStorage.getItem('hermes-theme-colors')||'{}')||{};}catch(_){map={};}
+      if(map[key]!==bg){map[key]=bg;localStorage.setItem('hermes-theme-colors',JSON.stringify(map));}
+      localStorage.removeItem('hermes-theme-color');
+    }catch(_){}
   }catch(e){}
 }
 

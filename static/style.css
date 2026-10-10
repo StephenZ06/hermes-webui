@@ -1491,9 +1491,10 @@
   /* Safe areas are read everywhere, not only in display-mode standalone: iOS
      Safari reports 0 for the top inset while its own chrome is showing, and the
      installed app reports the Dynamic Island / home indicator. Needs
-     viewport-fit=cover in index.html. --app-safe-bottom pads every bottom-fixed
-     bar and the end of each scroller. */
-  :root{--app-titlebar-safe-top:env(safe-area-inset-top,0px);--app-safe-bottom:env(safe-area-inset-bottom,0px);--app-safe-left:env(safe-area-inset-left,0px);--app-safe-right:env(safe-area-inset-right,0px);}
+     viewport-fit=cover in index.html. --app-safe-bottom is the full home
+     indicator inset; --app-bottom-gap is what bottom bars actually leave under
+     themselves (the indicator needs ~22px, not all 34, to stay clear). */
+  :root{--app-titlebar-safe-top:env(safe-area-inset-top,0px);--app-safe-bottom:env(safe-area-inset-bottom,0px);--app-bottom-gap:max(10px,calc(env(safe-area-inset-bottom,0px) - 12px));--app-safe-left:env(safe-area-inset-left,0px);--app-safe-right:env(safe-area-inset-right,0px);}
   .pwa-standalone{overscroll-behavior:none;}
   .pwa-standalone body{-webkit-tap-highlight-color:transparent;}
   .app-titlebar-new-chat{display:none;}
@@ -11196,8 +11197,8 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   /* Every page except chat (its composer pads itself) and Jobs (its own
      bottom tab bar) ends above the home indicator, so the last card of any
      scroller is fully visible. */
-  main.main[class*="showing-"]:not(.showing-jobs){padding-bottom:var(--app-safe-bottom);box-sizing:border-box;}
-  .composer-wrap{padding-bottom:calc(12px + max(var(--keyboard-bottom-inset,0px),var(--app-safe-bottom)))!important;}
+  main.main[class*="showing-"]:not(.showing-jobs){padding-bottom:var(--app-bottom-gap);box-sizing:border-box;}
+  .composer-wrap{padding-bottom:max(var(--app-bottom-gap),calc(10px + var(--keyboard-bottom-inset,0px)))!important;}
   /* Pages never drag sideways; only explicit horizontal scrollers (boards,
      chip rows) scroll on that axis. */
   main.main,main.main > *{overflow-x:clip;}
@@ -11335,3 +11336,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .scout-search-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:12px;}
 .scout-search-head > .scout-search-title{min-width:0;overflow:hidden;}
 .scout-search-head > .job-os-toggle{justify-self:end;margin-right:2px;}
+
+/* Jobs tab bar and its page: the same tighter bottom gap as the composer. */
+@media (max-width:767px){
+  .job-os-tabs{padding-bottom:var(--app-bottom-gap);}
+  #mainJobs{padding-bottom:calc(76px + var(--app-bottom-gap));}
+  .job-os-savebar{bottom:calc(68px + var(--app-bottom-gap));}
+}
