@@ -446,7 +446,11 @@ def test_business_keeps_department_slots_and_pulls_the_floor_into_a_gap(driver):
     for key in depts:
         assert (pods[key]["x"], pods[key]["z"]) == pytest.approx((alone[key]["x"], alone[key]["z"])), "departments stay put"
     floor = pods["floor"]
-    angle = math.degrees(math.atan2(floor["z"], floor["x"])) % 60
-    assert 30 <= angle <= 38 + 1e-6, "in a gap between two departments, turned a little toward the camera"
+    def gap(p):
+        gx = abs(floor["x"] - p["x"]) - (floor["width"] + p["width"]) / 2
+        gz = abs(floor["z"] - p["z"]) - (floor["depth"] + p["depth"]) / 2
+        return math.hypot(gx, gz) if gx > 0 and gz > 0 else max(gx, gz)
+    near = sorted(gap(p) for key, p in pods.items() if key != "floor")[:2]
+    assert near[0] > 10 and abs(near[0] - near[1]) < 0.5, f"equal open space to both neighbours: {near}"
     ring = math.hypot(pods["sales"]["x"], pods["sales"]["z"])
     assert math.hypot(floor["x"], floor["z"]) < ring * 2.6, "and close in, not out on a far ring"

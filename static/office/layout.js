@@ -25,10 +25,9 @@ export const POD_GAP = 10;
 export const CONDUCTOR_RADIUS = 11;
 /** Pods per ring. Ring 1 takes 6, ring 2 takes 12, and so on. */
 const RING_BASE_CAPACITY = 6;
-/** The Floor's clearance from departments, as a share of POD_GAP, and how far
- * (radians) it turns from its gap's middle toward the camera. */
+/** The open lane between The Floor and its neighbouring departments, as a
+ * share of POD_GAP. */
 const FLOOR_CLEARANCE = 1.3;
-const FLOOR_TURN_TO_CAMERA = 8 * Math.PI / 180;
 /**
  * Seats across a pod. Small pods stay narrow so a two-subagent branch reads
  * as a pair rather than a row; large ones widen toward square, because a
@@ -285,20 +284,35 @@ export function computeLayout(desks, options) {
     const defaultAngle = (2 * Math.PI * fIndex) / fCap + ((fRing % 2 === 0) ? Math.PI / fCap : 0);
     const step = (2 * Math.PI) / RING_BASE_CAPACITY;
     const gapMiddle = (Math.floor(defaultAngle / step) + 0.5) * step;
-    // Turned a little toward the camera (+x,+z: straight down the screen),
-    // which on screen is a little to the left, but never so far that its
-    // bridge would pass under a neighbouring department.
-    const toCamera = Math.PI / 4 - gapMiddle;
-    const angle = gapMiddle + Math.max(-FLOOR_TURN_TO_CAMERA, Math.min(FLOOR_TURN_TO_CAMERA, toCamera));
     const floor = sizes[floorIndex];
-    // A clear lane of open space between it and its neighbours.
-    const margin = config.podGap * FLOOR_CLEARANCE;
-    const clearOf = (x, z) => placed.every(({ i, x: px, z: pz }) => (
-      Math.abs(px - x) >= (floor.width + sizes[i].width) / 2 + margin
-      || Math.abs(pz - z) >= (floor.depth + sizes[i].depth) / 2 + margin
-    ));
-    let r = CONDUCTOR_RADIUS + Math.max(floor.width, floor.depth) / 2 + config.podGap;
-    while (!clearOf(Math.cos(angle) * r, Math.sin(angle) * r) && r < 1000) r += 1;
+    // Equal space to its two neighbours. Slabs are square to the world axes,
+    // so the gap to a department is the distance between the two rectangles;
+    // search the directions across the gap for the one where the floor, put
+    // as close in as the lane allows, sits the same distance from both
+    // neighbours.
+    const lane = config.podGap * FLOOR_CLEARANCE;
+    const gapTo = (cx, cz, p) => {
+      const gx = Math.abs(cx - p.x) - (floor.width + sizes[p.i].width) / 2;
+      const gz = Math.abs(cz - p.z) - (floor.depth + sizes[p.i].depth) / 2;
+      return gx > 0 && gz > 0 ? Math.hypot(gx, gz) : Math.max(gx, gz);
+    };
+    const angleOff = p => Math.abs(Math.atan2(Math.sin(Math.atan2(p.z, p.x) - gapMiddle), Math.cos(Math.atan2(p.z, p.x) - gapMiddle)));
+    const neighbours = placed.slice().sort((p, q) => angleOff(p) - angleOff(q)).slice(0, 2);
+    const nearestFor = theta => {
+      const dx = Math.cos(theta), dz = Math.sin(theta);
+      let r = CONDUCTOR_RADIUS + Math.max(floor.width, floor.depth) / 2;
+      while (r < 1000 && placed.some(p => gapTo(dx * r, dz * r, p) < lane)) r += 0.25;
+      return { theta, r, x: dx * r, z: dz * r };
+    };
+    let best = null;
+    for (let k = -120; k <= 120; k += 1) {
+      const c = nearestFor(gapMiddle + (k * Math.PI) / 720);
+      const d = neighbours.map(n => gapTo(c.x, c.z, n));
+      c.score = Math.abs(d[0] - d[1]) + c.r * 0.002;
+      if (!best || c.score < best.score) best = c;
+    }
+    const angle = best.theta;
+    const r = best.r;
     businessSlots = new Map([[floorIndex, { x: Math.cos(angle) * r, z: Math.sin(angle) * r, angle }]]);
   }
 

@@ -648,6 +648,9 @@ export function createOfficeScene(canvas, options) {
   // Every platform's neon band breathes slowly (each a little out of step
   // with the rest), between 70% and 100% of its idle glow.
   function bandPulse(elapsed, key) {
+    // The Floor's band holds steady (asked for: the pulse read as noise on
+    // the biggest platform).
+    if (key === 'floor') return 1;
     let h = 0;
     const k = String(key || '');
     for (let i = 0; i < k.length; i += 1) h = (h * 31 + k.charCodeAt(i)) | 0;
