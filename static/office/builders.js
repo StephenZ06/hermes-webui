@@ -3492,22 +3492,41 @@ export function makeStarfield(halfSize, count, opts) {
     depthWrite: false,
     uniforms: { time: { value: 0 }, size: { value: options.size || 2.6 } },
     vertexShader: `attribute vec3 color; attribute vec3 twinkle; uniform float time; uniform float size;
-      varying vec3 vColor; varying float vLight;
+      varying vec3 vColor; varying float vLight; varying float vBright;
       void main() {
         vColor = color;
         float s = 0.5 + 0.5 * sin(time * twinkle.y + twinkle.x);
         vLight = 0.55 + 0.45 * s * s;
-        gl_PointSize = size * twinkle.z * (0.85 + 0.35 * s);
+        vBright = twinkle.z > 1.0 ? 1.0 : 0.0;
+        // Bright stars get a big sprite so their spikes have room.
+        gl_PointSize = size * (vBright > 0.5 ? 7.0 : 1.0) * (0.85 + 0.35 * s);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
-    fragmentShader: `varying vec3 vColor; varying float vLight;
+    fragmentShader: `varying vec3 vColor; varying float vLight; varying float vBright;
       void main() {
-        float d = length(gl_PointCoord - 0.5);
-        // A bright centre with a soft edge, so a star reads as a point of light.
-        float a = smoothstep(0.5, 0.1, d);
-        if (a <= 0.0) discard;
-        float core = smoothstep(0.25, 0.0, d);
-        gl_FragColor = vec4(vColor * vLight * (1.7 + core * 0.8), a);
+        vec2 p = gl_PointCoord - 0.5;
+        float d = length(p);
+        if (vBright < 0.5) {
+          // A bright centre with a soft edge, so a star reads as a point of light.
+          float a = smoothstep(0.5, 0.1, d);
+          if (a <= 0.0) discard;
+          float core = smoothstep(0.25, 0.0, d);
+          gl_FragColor = vec4(vColor * vLight * (1.7 + core * 0.8), a);
+          return;
+        }
+        // A starburst: a hot core, a faint halo, four long spikes and four
+        // shorter diagonal ones, all fading toward the tips.
+        vec2 q = abs(p);
+        vec2 r = abs(vec2(p.x + p.y, p.x - p.y)) * 0.7071;
+        float core = exp(-d * d * 900.0);
+        float halo = exp(-d * d * 60.0) * 0.18;
+        float spikes = exp(-q.y * 260.0) * (1.0 - smoothstep(0.0, 0.5, q.x))
+                     + exp(-q.x * 260.0) * (1.0 - smoothstep(0.0, 0.5, q.y));
+        float diag = (exp(-r.y * 320.0) * (1.0 - smoothstep(0.0, 0.3, r.x))
+                    + exp(-r.x * 320.0) * (1.0 - smoothstep(0.0, 0.3, r.y))) * 0.55;
+        float a = clamp(core + halo + (spikes + diag) * vLight, 0.0, 1.0);
+        if (a <= 0.01) discard;
+        gl_FragColor = vec4(mix(vColor, vec3(1.0), core) * (1.2 + core), a);
       }`,
   });
   const points = new THREE.Points(geo, mat);
