@@ -25,6 +25,10 @@ export const POD_GAP = 10;
 export const CONDUCTOR_RADIUS = 11;
 /** Pods per ring. Ring 1 takes 6, ring 2 takes 12, and so on. */
 const RING_BASE_CAPACITY = 6;
+/** The Floor's clearance from departments, as a share of POD_GAP, and how far
+ * (radians) it turns from its gap's middle toward the camera. */
+const FLOOR_CLEARANCE = 1.3;
+const FLOOR_TURN_TO_CAMERA = 8 * Math.PI / 180;
 /**
  * Seats across a pod. Small pods stay narrow so a two-subagent branch reads
  * as a pair rather than a row; large ones widen toward square, because a
@@ -280,11 +284,18 @@ export function computeLayout(desks, options) {
     const { ring: fRing, indexInRing: fIndex, capacity: fCap } = ringSlot(floorIndex);
     const defaultAngle = (2 * Math.PI * fIndex) / fCap + ((fRing % 2 === 0) ? Math.PI / fCap : 0);
     const step = (2 * Math.PI) / RING_BASE_CAPACITY;
-    const angle = (Math.floor(defaultAngle / step) + 0.5) * step;
+    const gapMiddle = (Math.floor(defaultAngle / step) + 0.5) * step;
+    // Turned a little toward the camera (+x,+z: straight down the screen),
+    // which on screen is a little to the left, but never so far that its
+    // bridge would pass under a neighbouring department.
+    const toCamera = Math.PI / 4 - gapMiddle;
+    const angle = gapMiddle + Math.max(-FLOOR_TURN_TO_CAMERA, Math.min(FLOOR_TURN_TO_CAMERA, toCamera));
     const floor = sizes[floorIndex];
+    // A clear lane of open space between it and its neighbours.
+    const margin = config.podGap * FLOOR_CLEARANCE;
     const clearOf = (x, z) => placed.every(({ i, x: px, z: pz }) => (
-      Math.abs(px - x) >= (floor.width + sizes[i].width) / 2 + config.podGap * 0.6
-      || Math.abs(pz - z) >= (floor.depth + sizes[i].depth) / 2 + config.podGap * 0.6
+      Math.abs(px - x) >= (floor.width + sizes[i].width) / 2 + margin
+      || Math.abs(pz - z) >= (floor.depth + sizes[i].depth) / 2 + margin
     ));
     let r = CONDUCTOR_RADIUS + Math.max(floor.width, floor.depth) / 2 + config.podGap;
     while (!clearOf(Math.cos(angle) * r, Math.sin(angle) * r) && r < 1000) r += 1;

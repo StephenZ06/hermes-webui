@@ -447,6 +447,6 @@ def test_business_keeps_department_slots_and_pulls_the_floor_into_a_gap(driver):
         assert (pods[key]["x"], pods[key]["z"]) == pytest.approx((alone[key]["x"], alone[key]["z"])), "departments stay put"
     floor = pods["floor"]
     angle = math.degrees(math.atan2(floor["z"], floor["x"])) % 60
-    assert angle == pytest.approx(30), "The Floor sits in the middle of a gap between two departments"
+    assert 30 <= angle <= 38 + 1e-6, "in a gap between two departments, turned a little toward the camera"
     ring = math.hypot(pods["sales"]["x"], pods["sales"]["z"])
-    assert math.hypot(floor["x"], floor["z"]) < ring * 2.2, "and close in, not out on a far ring"
+    assert math.hypot(floor["x"], floor["z"]) < ring * 2.6, "and close in, not out on a far ring"
