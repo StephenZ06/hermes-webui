@@ -98,6 +98,17 @@ const out = {
     isGroup: !!desk.isGroup,
     hasScreen: !!desk.userData.screen,
     childCount: desk.children.length,
+    // Plain-coloured parts are merged into one vertex-coloured mesh; its
+    // distinct colours stand for the separate parts (top, legs, keyboard...).
+    partColours: (() => {
+      const seen = new Set();
+      desk.children.forEach(c => {
+        const col = c.geometry && c.geometry.getAttribute && c.geometry.getAttribute('color');
+        if (!col) return;
+        for (let i = 0; i < col.count; i += 1) seen.add(`${col.getX(i).toFixed(3)},${col.getY(i).toFixed(3)},${col.getZ(i).toFixed(3)}`);
+      });
+      return seen.size;
+    })(),
   },
   bubble: {
     isSprite: !!bubble.isSprite,
@@ -186,8 +197,11 @@ def test_desk_has_a_screen_and_peripherals(driver):
     out = run(driver)["desk"]
     assert out["isGroup"]
     assert out["hasScreen"]
-    assert out["childCount"] >= 7, (
-        "desk should include top, legs, screen, stand, keyboard, mouse pad and mouse"
+    # Merged per colour since the furniture merge (one draw call for all its
+    # plain colours), so count the parts by their colours, not by meshes.
+    assert out["childCount"] >= 3, "the merged body, the live screen and the second monitor"
+    assert out["partColours"] >= 4, (
+        "desk should include top, legs/pedestal, stand, keyboard, mouse pad and mouse"
     )
 
 

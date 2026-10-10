@@ -188,9 +188,7 @@ out.bridgeSegmentTops = bridgeSegments.map(segment => {
   segment.geometry.computeBoundingBox();
   return segment.position.y + segment.geometry.boundingBox.max.y;
 });
-out.bridgePanelZs = bridge.children
-  .filter(child => child.userData && child.userData.bridgePanel)
-  .map(panel => panel.position.z);
+out.bridgePanelZs = bridge.userData.panelDividers;
 const walkway = builders.makeWalkway(12, palette);
 const walkwayDeck = walkway.children[0];
 walkwayDeck.geometry.computeBoundingBox();

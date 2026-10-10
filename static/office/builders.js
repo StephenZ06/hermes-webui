@@ -177,13 +177,29 @@ export function mergeStatic(group, cacheKey) {
     if (textured && !(mat.userData && mat.userData.mergeable && obj.geometry.getAttribute('uv'))) return;
     const key = `${mat.uuid}|${obj.castShadow ? 1 : 0}`;
     if (!buckets.has(key)) buckets.set(key, { material: mat, castShadow: obj.castShadow, receiveShadow: obj.receiveShadow, parts: [] });
-    buckets.get(key).parts.push({ geometry: obj.geometry, matrix: new THREE.Matrix4().multiplyMatrices(rootInverse, obj.matrixWorld) });
+    buckets.get(key).parts.push({ geometry: obj.geometry, color: mat.color, matrix: new THREE.Matrix4().multiplyMatrices(rootInverse, obj.matrixWorld) });
     doomed.push(obj);
   });
   doomed.forEach(obj => {
     obj.removeFromParent();
     if (!_sharedGeometries.has(obj.geometry)) obj.geometry.dispose();
   });
+  // Every plain opaque colour (no glow, glass, texture or clearcoat) folds
+  // into one vertex-coloured mesh per shadow setting, so a desk or a pod's
+  // scenery costs a draw call or two for all its colours, not one each. The
+  // parts keep their colours; only their individual roughness is averaged
+  // away, which at this scale does not show.
+  const plain = m => m.isMeshStandardMaterial && !m.isMeshPhysicalMaterial && !m.transparent && !m.map
+    && !m.vertexColors && (!m.emissive || m.emissive.getHex() === 0 || !m.emissiveIntensity);
+  const colored = new Map();
+  [...buckets].forEach(([key, bucket]) => {
+    if (!plain(bucket.material)) return;
+    buckets.delete(key);
+    const ck = `colored|${bucket.castShadow ? 1 : 0}`;
+    if (!colored.has(ck)) colored.set(ck, { material: vertexColoredMaterial(), castShadow: bucket.castShadow, receiveShadow: true, parts: [], colored: true });
+    colored.get(ck).parts.push(...bucket.parts);
+  });
+  colored.forEach((bucket, key) => buckets.set(key, bucket));
   let index = 0;
   buckets.forEach(bucket => {
     const build = () => {
@@ -198,13 +214,14 @@ export function mergeStatic(group, cacheKey) {
       });
       const positions = new Float32Array(vertexCount * 3);
       const normals = new Float32Array(vertexCount * 3);
+      const colors = bucket.colored ? new Float32Array(vertexCount * 3) : null;
       const withUv = !!bucket.material.map;
       const uvs = withUv ? new Float32Array(vertexCount * 2) : null;
       const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
       const nm = new THREE.Matrix3();
       let vo = 0;
       let io = 0;
-      bucket.parts.forEach(({ geometry: g, matrix }) => {
+      bucket.parts.forEach(({ geometry: g, matrix, color }) => {
         const pos = g.getAttribute('position').array;
         const nor = g.getAttribute('normal').array;
         const n = g.getAttribute('position').count;
@@ -224,6 +241,7 @@ export function mergeStatic(group, cacheKey) {
           const len = Math.hypot(ox, oy, oz) || 1;
           normals[o] = ox / len; normals[o + 1] = oy / len; normals[o + 2] = oz / len;
         }
+        if (colors) for (let i = 0; i < n; i += 1) { colors[(vo + i) * 3] = color.r; colors[(vo + i) * 3 + 1] = color.g; colors[(vo + i) * 3 + 2] = color.b; }
         if (uvs) uvs.set(g.getAttribute('uv').array.subarray(0, n * 2), vo * 2);
         if (g.index) {
           const idx = g.index.array;
@@ -239,11 +257,12 @@ export function mergeStatic(group, cacheKey) {
       merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       if (uvs) merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      if (colors) merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       merged.setIndex(new THREE.BufferAttribute(indices, 1));
       merged.computeBoundingSphere();
       return merged;
     };
-    const merged = cacheKey ? geometry(`merged|${cacheKey}|${index}|${bucket.material.uuid}`, build) : build();
+    const merged = cacheKey ? geometry(`merged2|${cacheKey}|${index}|${bucket.material.uuid}`, build) : build();
     const mesh = new THREE.Mesh(merged, bucket.material);
     mesh.castShadow = bucket.castShadow;
     mesh.receiveShadow = bucket.receiveShadow;
@@ -256,6 +275,93 @@ export function mergeStatic(group, cacheKey) {
   group.traverse(obj => { if (obj !== group && obj.isGroup && !obj.children.length) empties.push(obj); });
   empties.forEach(obj => obj.removeFromParent());
   return group;
+}
+
+function vertexColoredMaterial() {
+  let mat = _materials.get('vertex-colored');
+  if (!mat) {
+    mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.08 });
+    _materials.set('vertex-colored', mat);
+  }
+  return mat;
+}
+
+/**
+ * Merge a static group into ONE mesh, whatever its colours: each part's
+ * material colour is baked into vertex colours and drawn with one shared
+ * vertex-coloured material. For small multi-coloured things that move as a
+ * unit (a figure's limb), where mergeStatic would still leave one draw per
+ * colour. Textures, emissive and per-part finish are given up for that.
+ */
+export function mergeColored(group, cacheKey, opts) {
+  const options = opts || {};
+  group.updateMatrixWorld(true);
+  const rootInverse = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const parts = [];
+  group.traverse(obj => {
+    if (!obj.isMesh || obj === group) return;
+    parts.push({ geometry: obj.geometry, color: obj.material.color || new THREE.Color('#ffffff'), matrix: new THREE.Matrix4().multiplyMatrices(rootInverse, obj.matrixWorld) });
+  });
+  const build = () => {
+    let vertexCount = 0;
+    let indexCount = 0;
+    parts.forEach(({ geometry: g }) => {
+      const n = g.getAttribute('position').count;
+      vertexCount += n;
+      indexCount += g.index ? g.index.count : n;
+    });
+    const positions = new Float32Array(vertexCount * 3);
+    const normals = new Float32Array(vertexCount * 3);
+    const colors = new Float32Array(vertexCount * 3);
+    const indices = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+    const nm = new THREE.Matrix3();
+    let vo = 0;
+    let io = 0;
+    parts.forEach(({ geometry: g, color, matrix }) => {
+      const pos = g.getAttribute('position').array;
+      const nor = g.getAttribute('normal').array;
+      const n = g.getAttribute('position').count;
+      const e = matrix.elements;
+      nm.getNormalMatrix(matrix);
+      const m = nm.elements;
+      for (let i = 0; i < n; i += 1) {
+        const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+        const o = (vo + i) * 3;
+        positions[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
+        positions[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+        positions[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        const nx = nor[i * 3], ny = nor[i * 3 + 1], nz = nor[i * 3 + 2];
+        const ox = m[0] * nx + m[3] * ny + m[6] * nz;
+        const oy = m[1] * nx + m[4] * ny + m[7] * nz;
+        const oz = m[2] * nx + m[5] * ny + m[8] * nz;
+        const len = Math.hypot(ox, oy, oz) || 1;
+        normals[o] = ox / len; normals[o + 1] = oy / len; normals[o + 2] = oz / len;
+        colors[o] = color.r; colors[o + 1] = color.g; colors[o + 2] = color.b;
+      }
+      if (g.index) {
+        const idx = g.index.array;
+        for (let i = 0; i < idx.length; i += 1) indices[io + i] = idx[i] + vo;
+        io += idx.length;
+      } else {
+        for (let i = 0; i < n; i += 1) indices[io + i] = vo + i;
+        io += n;
+      }
+      vo += n;
+    });
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    merged.setIndex(new THREE.BufferAttribute(indices, 1));
+    merged.computeBoundingSphere();
+    return merged;
+  };
+  const geo = geometry(`colored|${cacheKey}`, build);
+  parts.forEach(({ geometry: g }) => { if (!_sharedGeometries.has(g)) g.dispose(); });
+  const mesh = new THREE.Mesh(geo, vertexColoredMaterial());
+  mesh.castShadow = options.castShadow !== false;
+  mesh.receiveShadow = false;
+  return mesh;
 }
 
 function box(w, h, d, color) {
@@ -857,6 +963,9 @@ export function makeBridgeSegment(length, palette, options) {
   const panelColor = shadeColor(deckColor, -0.12);
   const panelMat = material(panelColor, { metal: 0.1, rough: 0.7 });
   const panelDividers = [];
+  // The dividers are merged into one mesh (one draw call per bridge, not one
+  // per divider); their positions stay on `userData.panelDividers`.
+  const panels = new THREE.Group();
   // Start at the first interior divider to complete the conductor-side deck
   // rectangle, while keeping the far platform-edge divider clear.
   for (let i = 1; i < panelCount - 1; i++) {
@@ -868,11 +977,12 @@ export function makeBridgeSegment(length, palette, options) {
     const z = (t - 0.5) * dimensions.depth;
     panel.position.set(0, dimensions.height / 2 + 0.015, z);
     panelDividers.push(z);
-    panel.userData.bridgePanel = true;
     panel.castShadow = false;
     panel.receiveShadow = true;
-    group.add(panel);
+    panels.add(panel);
   }
+  group.add(mergeStatic(panels, `bridge-panels|${dimensions.depth.toFixed(3)}|${panelColor}`));
+  group.userData.panelDividers = panelDividers;
 
   // Two physical cables span the full deck from platform edge to platform
   // edge. Their animated current is toggled by scene activity state, never by
@@ -1382,10 +1492,12 @@ export function makePerson(palette, tint) {
   const trim = material('#9aa3b3', { rough: 0.5, metal: 0.25 });
   const mark = material(accent, { rough: 0.5, emissive: accent, ei: 0.25 });
   const visorMat = material('#16223a', { physical: true, rough: 0.12, metal: 0.55, clearcoat: 1, emissive: '#1d3b70', ei: 0.25 });
+  // Each joint's parts become one vertex-coloured mesh: a figure costs
+  // seven draw calls (and six shadow draws), not one per colour per joint.
   const merged = (key, parts) => {
     const g = new THREE.Group();
     parts.forEach(m => g.add(m));
-    return mergeStatic(g, `astro|${key}|${accent}`);
+    return mergeColored(g, `astro|${key}|${accent}`);
   };
 
   const torso = new THREE.Group();
@@ -1467,7 +1579,9 @@ export function makePerson(palette, tint) {
     e.position.set(side * 0.5, 0, 0);
     return e;
   };
-  head.add(merged('head', [helmet, visor, ear(-1), ear(1)]));
+  head.add(merged('head', [helmet, ear(-1), ear(1)]));
+  visor.castShadow = false;
+  head.add(visor);
   torso.add(head);
 
   group.userData.joints = { torso, shoulderL, shoulderR, head, legs, hipL, hipR };

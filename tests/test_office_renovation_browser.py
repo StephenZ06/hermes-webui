@@ -219,3 +219,20 @@ def test_conductor_hops_in_low_gravity_and_shooting_stars_fade(page):
     assert abs(out["top"] - out["max"]) < 0.02, "hops reach their full height"
     assert out["landings"] > 3, "and land between walks"
     assert out["headX"] == 6, "the shooting star's head leads its trail"
+
+
+def test_figures_and_scenery_stay_cheap_to_draw(page):
+    """Each colour used to be its own draw call: an astronaut was ~20 meshes
+    and a pod's scenery dozens. Plain colours now share one vertex-coloured
+    mesh per merge."""
+    out = page.evaluate("""async () => {
+      const b = await import('/static/office/builders.js');
+      const count = root => { let n = 0; root.traverse(o => { if (o.isMesh) n += 1; }); return n; };
+      const person = b.makePerson({ shirt: '#4f7ca8' }, '#e0527d');
+      person.userData.joints.legs.visible = true;
+      const palette = { podTop: '#0d172b', deskLeg: '#2e3547', pot: '#7a5236', plant: '#3f5f45' };
+      const scenery = b.makePodScenery('research', 12, 11, palette, '#7c8cff', { entry: { x: 6, z: 0 }, seed: 'cost', key: 'cost' });
+      return { person: count(person), scenery: count(scenery) };
+    }""")
+    assert out["person"] <= 8, out
+    assert out["scenery"] <= 14, out

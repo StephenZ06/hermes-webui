@@ -619,7 +619,13 @@ export function createOfficeScene(canvas, options) {
       // illuminated row. Between wave crests each triangle returns to idle.
       const target = 0.72 + wave * 0.28;
       chevron.material.opacity += (target - chevron.material.opacity) * Math.min(1, dtMs * 0.012);
-      chevron.material.emissive.set(wave > 0.02 ? chevron.userData.activeColor : '#0b1220');
+      // Only when it flips: parsing a colour string per chevron per frame is
+      // wasted work on a floor with many bridges.
+      const lit = wave > 0.02;
+      if (chevron.userData.lit !== lit) {
+        chevron.userData.lit = lit;
+        chevron.material.emissive.set(lit ? chevron.userData.activeColor : '#0b1220');
+      }
       chevron.material.emissiveIntensity = wave * 2;
       const pulse = chevron.userData.active ? 1 + wave * 0.28 : 1;
       chevron.scale.set(pulse, pulse, 1);

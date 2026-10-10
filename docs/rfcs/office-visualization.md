@@ -1364,3 +1364,19 @@ Smoothness, measured headless (SwiftShader, so relative only):
   reallocation hitch.
 - Shooting stars run most of the way across the view (1.5-2.2x the view's
   half-height, about 2 s).
+
+### Efficiency pass: one draw call for all plain colours (2026-10-10)
+
+- `mergeStatic` folds every plain opaque colour of a merge (no glow, glass,
+  texture or clearcoat) into one vertex-coloured mesh per shadow setting,
+  sharing one material. Glowing, transparent, textured and clearcoat parts
+  still merge per material. Individual roughness is averaged away.
+- Astronaut joints use `mergeColored` (one mesh per joint; the visor stays
+  separate), so a figure is 7 meshes instead of ~20.
+- Bridge dividers merge into one mesh (`userData.panelDividers` keeps their
+  positions); chevrons set their emissive colour only when it flips.
+- Measured (SwiftShader, draw calls per frame including shadow and bloom
+  passes): Projects 526 -> 237, Business 1,741 -> 688; the pre-renovation
+  floor was 373 / 1,270.
+- Stars are brighter (bright core, soft edge, larger points), one in ten a
+  larger, brighter star.
