@@ -796,6 +796,12 @@ _installPwaSidebarSwipeGesture();
 // click handler, and movement before the hold threshold remains normal scrolling.
 const _SIDEBAR_NAV_HOLD_MS=320;
 const _SIDEBAR_NAV_SLOP=10;
+// WebKit's swipe-back recognizer lives in roughly the first 30px of the left
+// edge and decides during touchstart. While the rail is out the edge guard is
+// only a sliver (so icon centres take real touches), so a touch that starts
+// on an icon inside this zone is cancelled here instead; a still tap on it is
+// replayed as a click, and vertical drags are already scrolled by hand below.
+const _SIDEBAR_NAV_EDGE_ZONE=30;
 let _sidebarNavScrub=null;
 let _sidebarNavSuppressClickUntil=0;
 
@@ -861,7 +867,11 @@ function _onSidebarNavScrubStart(e){
   _clearSidebarNavScrub();
   const now=(window.performance&&performance.now)?performance.now():Date.now();
   const state={startX:point.clientX,startY:point.clientY,lastY:point.clientY,lastT:now,vy:0,
-    startTab:tab,target:null,active:false,scrolling:false,timer:0};
+    startTab:tab,target:null,active:false,scrolling:false,timer:0,replayTap:false};
+  if(e.type==='touchstart'&&point.clientX<=_SIDEBAR_NAV_EDGE_ZONE){
+    if(e.cancelable)e.preventDefault();
+    state.replayTap=true;
+  }
   _sidebarNavScrub=state;
   state.timer=setTimeout(_activateSidebarNavScrub,_SIDEBAR_NAV_HOLD_MS);
 }
@@ -903,8 +913,11 @@ function _onSidebarNavScrubEnd(e){
   if(!state.active){
     const nav=state.scrolling?document.querySelector('.sidebar-nav'):null;
     const velocity=state.vy;
+    const tap=state.replayTap&&!state.scrolling?state.startTab:null;
     _clearSidebarNavScrub();
     if(nav)_flingScroller(nav,velocity);
+    // The touchstart was cancelled, so the browser makes no click of its own.
+    if(tap){if(e.cancelable)e.preventDefault();try{tap.click();}catch(_){}}
     return;
   }
   if(e.cancelable)e.preventDefault();
@@ -917,7 +930,8 @@ function _onSidebarNavScrubEnd(e){
 function _installSidebarNavScrub(){
   const nav=document.querySelector('.sidebar-nav');
   if(!nav)return;
-  nav.addEventListener('touchstart',_onSidebarNavScrubStart,{passive:true});
+  // passive:false: a touch inside the edge zone must be cancelled in touchstart.
+  nav.addEventListener('touchstart',_onSidebarNavScrubStart,{passive:false});
   nav.addEventListener('touchmove',_onSidebarNavScrubMove,{passive:false});
   nav.addEventListener('touchend',_onSidebarNavScrubEnd,{passive:false});
   nav.addEventListener('touchcancel',_clearSidebarNavScrub,{passive:true});

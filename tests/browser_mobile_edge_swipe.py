@@ -251,6 +251,31 @@ def main():
             page.evaluate("() => closeMobileSidebar()")
             time.sleep(0.4)
 
+            # 3b'. with the icon rail out, a touch that starts on an icon inside
+            #      WebKit's edge zone (~30px) is still cancelled, so a second
+            #      left-to-right swipe can never become Back; a still tap on that
+            #      icon must still navigate (replayed as a click).
+            page.evaluate("() => closeMobileSidebar()")
+            touch("touchStart", 6, strip_y)
+            touch("touchMove", 22, strip_y)
+            touch("touchEnd", 22, strip_y)
+            time.sleep(0.4)
+            icon = page.evaluate("""() => {
+              const r = document.querySelector(".sidebar-nav .nav-tab[data-panel='insights']").getBoundingClientRect();
+              return {x: 20, y: r.top + r.height / 2};
+            }""")
+            page.evaluate("() => window.__probe.prevented = []")
+            touch("touchStart", icon["x"], icon["y"])
+            touch("touchEnd", icon["x"], icon["y"])
+            time.sleep(0.6)
+            rail_edge = page.evaluate("() => [window.__probe.prevented, document.querySelector('main.main').classList.contains('showing-insights')]")
+            if rail_edge[0] != [True]:
+                failures.append(f"with the icon rail out, a touch on an icon at x=20 was not prevented ({rail_edge[0]}) -- WebKit can turn the swipe into Back")
+            if not rail_edge[1]:
+                failures.append("a still tap on a rail icon inside the edge zone did not navigate")
+            page.evaluate("() => closeMobileSidebar()")
+            time.sleep(0.4)
+
             # 3c. Icons in the compact rail are real navigation controls.
             touch("touchStart", 6, strip_y)
             touch("touchMove", 22, strip_y)
