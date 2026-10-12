@@ -403,9 +403,23 @@ function _closeMobileSidebarAfterPanelSelection(){
 // hash; its conversation is already in the path. replaceState only: page
 // switches are not history entries, so Back never walks through them.
 function _panelFromRouteHash(hash) {
-  const m = /^#([a-z]+)(?:[\/?].*)?$/.exec(String(hash || ''));
+  const route = String(hash || '');
+  const m = /^#([a-z]+)$/.exec(route)
+    || /^#(office)\/(dashboard|integrations)$/.exec(route)
+    || /^#(jobs)\/(dashboard|scout|pipeline|resume-studio|applications|logistics|settings)(?:\?status=[^&]+)?$/.exec(route);
   if (!m) return null;
   return MAIN_VIEW_PANELS.includes(m[1]) && m[1] !== 'plugin' ? m[1] : null;
+}
+function _preferredPanelRoute(panel) {
+  if (panel === 'jobs' && typeof window !== 'undefined' && window.JobOSState) {
+    const view = String(window.JobOSState.activeView || 'dashboard');
+    const allowed = new Set(['dashboard','scout','pipeline','resume-studio','logistics','settings']);
+    if (allowed.has(view)) {
+      const status = view === 'pipeline' ? window.JobOSState.statusFilter : null;
+      return '#jobs/' + view + (status ? '?status=' + encodeURIComponent(status) : '');
+    }
+  }
+  return '#' + panel;
 }
 function _syncPanelRoute(panel) {
   if (typeof window === 'undefined' || !window.history || !window.location) return;
@@ -418,7 +432,7 @@ function _syncPanelRoute(panel) {
     }
     // A deeper route for the same page (#jobs/scout) is kept as it is.
     if (_panelFromRouteHash(current) === panel) return;
-    window.history.replaceState(window.history.state, '', base + '#' + panel);
+    window.history.replaceState(window.history.state, '', base + _preferredPanelRoute(panel));
   } catch (_) {}
 }
 // Called once boot has restored the conversation: reopen the page the hash
@@ -572,8 +586,13 @@ async function switchPanel(name, opts = {}) {
   if (opts.fromRailClick && typeof _isDesktopWidth === 'function' && !_isDesktopWidth()) {
     const sidebar = document.querySelector('.sidebar');
     if (sidebar) {
-      sidebar.classList.remove('mobile-session-page');
-      sidebar.classList.add('mobile-panel-drawer', 'mobile-open');
+      const revealDestination = sidebar.classList.contains('mobile-icons') || opts.mobileScrub;
+      if (revealDestination && typeof closeMobileSidebar === 'function') {
+        closeMobileSidebar();
+      } else {
+        sidebar.classList.remove('mobile-session-page');
+        sidebar.classList.add('mobile-panel-drawer', 'mobile-open');
+      }
     }
   }
   // Update nav tabs (rail + mobile sidebar-nav share data-panel)

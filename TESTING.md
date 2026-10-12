@@ -13,6 +13,8 @@
 >
 > Local regression focus: verify that a previously closed workspace panel stays visually closed from first paint through boot completion on desktop refresh; there should be no brief open-then-close flash.
 
+> Mobile shell focus: run `./scripts/test.sh tests/test_mobile_pwa_chrome.py tests/test_mobile_navigation_browser.py tests/test_mobile_all_pages_browser.py tests/test_pwa_sidebar_swipe.py tests/test_mobile_fluidity.py`. Run `./.venv/bin/python tests/browser_mobile_edge_swipe.py` separately to exercise synthesized Chromium touch input. Verify first edge swipe = compact clickable rail, second swipe = full drawer, compact/full hold-and-scrub navigation, centered title bars, route restoration, portrait/landscape containment, and pre-paint theme-color synchronization. Chromium touch emulation is not a substitute for a final physical-iPhone Safari check.
+
 ---
 
 ## Job OS Foundation
@@ -34,6 +36,9 @@ then verify the following:
 1. Open **Jobs** from both the desktop rail and the mobile navigation. Confirm
    the Dashboard, Scout, Pipeline, Resume Studio, Logistics and Settings
    sections remain usable at desktop, narrow, and phone widths.
+   Open a generated resume preview on a phone-sized viewport and verify the
+   44px zoom-out, zoom-in, and close controls, two-finger pinch zoom, vertical
+   page scrolling across the preview, and bottom safe-area clearance.
 2. In **Pipeline**, choose **Add job** and save a job with a title, company,
    link, country and description. Confirm it appears on the board under
    **Manual** and the dashboard total changes. Add the same link again and

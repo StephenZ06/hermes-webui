@@ -85,26 +85,16 @@ def test_edge_guard_gives_back_the_default_behaviour_it_swallows():
     )
 
 
-def test_drawer_settle_is_a_velocity_seeded_spring_with_css_fallback():
-    settle = BOOT_JS[
-        BOOT_JS.find("function _settleMobileSidebarDrag"):
-        BOOT_JS.find("function _springDrawerTo")
+def test_progressive_drawer_uses_discrete_composited_stages():
+    move = BOOT_JS[
+        BOOT_JS.find("function _onPwaSidebarSwipeMove"):
+        BOOT_JS.find("function _onPwaSidebarSwipeEnd")
     ]
-    assert "_springDrawerTo(" in settle
-    spring = BOOT_JS[BOOT_JS.find("function _springDrawerTo"):]
-    assert "type:'spring'" in spring
-    assert "velocity:(Number(velocityPxPerMs)||0)*1000" in spring, (
-        "the flick's own velocity must seed the spring, or the settle restarts from rest"
+    assert "_setMobileDrawerState(sidebar,swipe.stage==='icons'?'open':'icons')" in move.replace(" ", "")
+    assert "style.transform" not in move, (
+        "the first gesture must not drag the full drawer through the viewport"
     )
-    assert "prefersReducedMotion()" in spring and "return null" in spring, (
-        "no Motion / reduced motion must fall back to the CSS transition"
-    )
-    assert "_scheduleSidebarDragFrame" in BOOT_JS and "requestAnimationFrame" in BOOT_JS, (
-        "drag transform writes must be coalesced to one per painted frame"
-    )
-    assert "if(_sidebarSettleAnim)return;" in BOOT_JS, (
-        "an in-flight settle must not be cleaned up as a stranded drag"
-    )
+    assert "clip-path" in STYLE_CSS
 
 
 def test_pwa_sidebar_swipe_opens_existing_mobile_drawer_without_desktop_collapse():
@@ -114,6 +104,53 @@ def test_pwa_sidebar_swipe_opens_existing_mobile_drawer_without_desktop_collapse
     body = BOOT_JS[BOOT_JS.find("function _openMobileSidebarFromGesture"):BOOT_JS.find("function _installPwaSidebarSwipeGesture")]
     assert "overlay.classList.add('visible')" not in body
     assert "toggleSidebar(" not in BOOT_JS[BOOT_JS.find("function _openMobileSidebarFromGesture"):BOOT_JS.find("function _installPwaSidebarSwipeGesture")]
+
+
+def test_pwa_sidebar_swipe_progresses_from_compact_rail_to_full_drawer():
+    """A first edge swipe opens only navigation icons and auto-closes after
+    inactivity; a second swipe promotes that rail to the full panel."""
+    assert "_MOBILE_DRAWER_ICONS_IDLE_MS=5000" in BOOT_JS.replace(" ", "")
+    assert "mobile-icons" in BOOT_JS
+    assert "function _armDrawerIconsTimer" in BOOT_JS
+    assert "swipe.stage==='icons'?'open':'icons'" in BOOT_JS
+    assert "sidebar.classList.contains('mobile-icons')" in BOOT_JS
+    assert ".sidebar.mobile-icons:not(.mobile-open)" in STYLE_CSS
+
+
+def test_first_swipe_commits_only_the_compact_rail_without_dragging_full_drawer():
+    """Once horizontal intent is established, the first gesture is a discrete
+    navigation-stage transition.  It must never paint/drag the full panel and
+    then throw it away on release (the visible half-swipe flash regression)."""
+    move = BOOT_JS[
+        BOOT_JS.find("function _onPwaSidebarSwipeMove"):
+        BOOT_JS.find("function _onPwaSidebarSwipeEnd")
+    ]
+    assert "_setMobileDrawerState" in move
+    assert "_prepareMobileSidebarForDrag()" not in move
+    assert "_scheduleSidebarDragFrame(swipe)" not in move
+
+
+def test_compact_rail_click_navigates_and_reveals_destination():
+    panels = (ROOT / "static" / "panels.js").read_text(encoding="utf-8")
+    assert "mobile-icons" in panels
+    assert "closeMobileSidebar()" in panels[panels.find("async function switchPanel"):panels.find("// Update nav tabs")]
+
+
+def test_sidebar_nav_supports_hold_and_vertical_scrub_selection():
+    assert "function _installSidebarNavScrub" in BOOT_JS
+    assert "_SIDEBAR_NAV_HOLD_MS" in BOOT_JS
+    assert "sidebar-nav-scrubbing" in BOOT_JS
+    assert "scrub-target" in BOOT_JS
+    assert "mobileScrub" in BOOT_JS
+    assert ".sidebar-nav-scrub-preview" in STYLE_CSS
+
+
+def test_sidebar_nav_vertical_drag_scrolls_before_hold_activation():
+    move = BOOT_JS[BOOT_JS.find("function _onSidebarNavScrubMove"):BOOT_JS.find("function _onSidebarNavScrubEnd")]
+    end = BOOT_JS[BOOT_JS.find("function _onSidebarNavScrubEnd"):BOOT_JS.find("function _installSidebarNavScrub")]
+    assert "state.scrolling" in move
+    assert "nav.scrollTop-=step" in move.replace(" ", "")
+    assert "_flingScroller(nav,velocity)" in end.replace(" ", "")
 
 
 def test_pwa_sidebar_swipe_does_not_disable_horizontal_scrollers_globally():

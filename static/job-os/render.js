@@ -1081,7 +1081,9 @@
         </div>
       </div></section>`;
   }
-  // Full-size preview of the master (or a tailored) resume: click anywhere to close.
+  // Full-size preview of the master (or a tailored) resume. The explicit
+  // controls make zoom discoverable on a phone; index.js also maps a two-finger
+  // pinch onto the same state so neither input path can drift from the other.
   function resumePreview(state) {
     const p = state.resumePreview;
     if (!p) return '';

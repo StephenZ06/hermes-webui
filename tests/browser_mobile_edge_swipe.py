@@ -116,6 +116,10 @@ def main():
                 has_touch=True, is_mobile=True, user_agent=IPHONE_UA,
             )
             page = ctx.new_page()
+            page.add_init_script("""() => {
+              localStorage.setItem('hermes-theme', 'dark');
+              localStorage.setItem('hermes-skin', 'teal-neumorphic');
+            }""")
             errors = []
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.goto("/", wait_until="domcontentloaded")
@@ -125,6 +129,17 @@ def main():
             page.evaluate("() => { const o=document.getElementById('appTourOverlay'); if(o) o.remove(); }")
 
             cdp = ctx.new_cdp_session(page)
+
+            chrome = page.evaluate("""() => ({
+              meta: document.querySelector('meta[name="theme-color"]')?.content,
+              sidebar: getComputedStyle(document.documentElement).getPropertyValue('--sidebar').trim(),
+              title: document.getElementById('appTitlebarTitle')?.textContent,
+            })""")
+            if chrome["meta"] != chrome["sidebar"]:
+                failures.append(
+                    f"startup status-bar paint {chrome['meta']!r} does not match the active skin "
+                    f"chrome {chrome['sidebar']!r}"
+                )
 
             def touch(kind, x, y):
                 cdp.send("Input.dispatchTouchEvent", {
@@ -235,6 +250,54 @@ def main():
 
             page.evaluate("() => closeMobileSidebar()")
             time.sleep(0.4)
+
+            # 3c. Icons in the compact rail are real navigation controls.
+            touch("touchStart", 6, strip_y)
+            touch("touchMove", 22, strip_y)
+            touch("touchEnd", 22, strip_y)
+            time.sleep(0.4)
+            page.locator(".sidebar-nav .nav-tab[data-panel='office']").tap()
+            page.wait_for_function("() => document.querySelector('main.main').classList.contains('showing-office')")
+            compact_click = page.evaluate("() => document.querySelector('.sidebar').classList.contains('mobile-open')")
+            if compact_click:
+                failures.append("clicking a compact-rail icon did not reveal the selected destination")
+            time.sleep(1.0)
+
+            # 3d. Hold, slide vertically, release: selects exactly the icon under
+            # the finger and works in both compact and full drawer states.
+            def scrub_to(panel, full=False):
+                page.evaluate("() => closeMobileSidebar()")
+                touch("touchStart", 6, strip_y)
+                touch("touchMove", 22, strip_y)
+                touch("touchEnd", 22, strip_y)
+                time.sleep(0.4)
+                if full:
+                    touch("touchStart", 6, strip_y)
+                    touch("touchMove", 24, strip_y)
+                    touch("touchEnd", 24, strip_y)
+                    time.sleep(0.4)
+                start = page.locator(".sidebar-nav .nav-tab[data-panel='chat']").bounding_box()
+                target = page.locator(f".sidebar-nav .nav-tab[data-panel='{panel}']").bounding_box()
+                touch("touchStart", start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
+                time.sleep(0.38)
+                touch("touchMove", target["x"] + target["width"] / 2, target["y"] + target["height"] / 2)
+                time.sleep(0.08)
+                active = page.evaluate("() => document.querySelector('.sidebar-nav .scrub-target')?.dataset.panel")
+                touch("touchEnd", target["x"] + target["width"] / 2, target["y"] + target["height"] / 2)
+                time.sleep(0.55)
+                return active, page.evaluate("""(p) => ({
+                  selected: document.querySelector(`.sidebar-nav .nav-tab[data-panel='${p}']`)?.classList.contains('active'),
+                  open: document.querySelector('.sidebar').classList.contains('mobile-open'),
+                  scrubbing: document.querySelector('.sidebar').classList.contains('sidebar-nav-scrubbing')
+                })""", panel)
+
+            for panel, full in (("office", False), ("tasks", True)):
+                active, result = scrub_to(panel, full=full)
+                if active != panel or not result["selected"] or result["open"] or result["scrubbing"]:
+                    failures.append(
+                        f"hold-and-scrub failed in {'full' if full else 'compact'} mode: "
+                        f"target={active!r}, result={result}"
+                    )
 
             # 4. a motionless touch is replayed onto whatever is underneath
             page.evaluate("""() => {

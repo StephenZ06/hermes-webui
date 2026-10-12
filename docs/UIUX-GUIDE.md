@@ -152,6 +152,20 @@ Mobile is not an afterthought. The repository documents a responsive layout with
 a hamburger sidebar, mobile-accessible top tabs, a right-edge file slide-over,
 full-height chat/composer behavior on phones, and touch-friendly controls.
 
+On phone-sized standalone/PWA views, the left navigation is progressive: the
+first edge swipe reveals only the clickable icon rail, and a second edge swipe
+promotes it to the full sidebar. Do not expose a partially dragged full panel on
+the first gesture. Both compact and full navigation support press-and-hold,
+vertical scrub selection with a visible target preview; release activates the
+selected destination. Drawer motion should preserve spatial continuity using
+composited transforms or clipping, respect reduced-motion preferences, and keep
+every navigation target at least 44 by 44 CSS pixels.
+
+Mobile title bars reserve balanced space on both sides so the active page title
+is centered in the viewport, not merely centered in the leftover flex space.
+The profile switcher remains available on mobile, and browser/status-bar colors
+must be synchronized before first paint to avoid a startup chrome flash.
+
 For UI changes, verify the relevant states:
 
 - wide desktop,

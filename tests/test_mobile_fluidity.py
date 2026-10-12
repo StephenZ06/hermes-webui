@@ -25,74 +25,24 @@ def _fn(src: str, name: str) -> str:
     return src[start:nxt] if nxt != -1 else src[start:]
 
 
-class TestDrawerFollowsTheFinger:
-    def test_drag_state_is_prepared_without_opening(self):
-        # The drawer has to be laid out and paintable while it is being dragged,
-        # but must not be "open" until the gesture is released.
-        body = _fn(BOOT_JS, "_prepareMobileSidebarForDrag")
-        assert "is-dragging" in body
-        assert "mobile-open" not in body, "preparing a drag must not open the drawer"
-
-    def test_transform_tracks_the_pointer(self):
-        # The move handler measures the finger; the write itself is coalesced into
-        # rAF so a burst of touchmoves costs one style write per painted frame.
+class TestProgressiveDrawerStages:
+    def test_first_swipe_never_drags_the_full_panel_through_the_viewport(self):
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
-        assert "Math.min(reach,width)" in body.replace(" ", ""), "travel must be clamped to the viewport"
-        assert "_scheduleSidebarDragFrame(swipe)" in body
-        frame = _fn(BOOT_JS, "_scheduleSidebarDragFrame")
-        assert "requestAnimationFrame" in frame
-        assert "_applyDrawerTravel(swipe.el,swipe.pendingTravel" in frame.replace(" ", ""), (
-            "the drawer must be pinned to the finger"
-        )
-        # One number drives both compositor-only properties: the strip slides
-        # in (transform), then the panel unrolls beside it (clip-path).
-        apply = _fn(BOOT_JS, "_applyDrawerTravel")
-        assert "style.transform='translate3d('" in apply.replace(" ", "")
-        assert "style.clipPath='inset(0'" in apply.replace(" ", "")
+        assert "_setMobileDrawerState(sidebar,swipe.stage==='icons'?'open':'icons')" in body.replace(" ", "")
+        assert "style.transform" not in body
+        assert "pendingTravel" not in body
 
-    def test_css_transition_is_suspended_while_dragging(self):
-        # A transition during the drag would make the drawer trail the finger.
-        assert ".sidebar.is-dragging{transition:none!important;}" in STYLE_CSS
+    def test_compact_to_full_reveal_is_composited(self):
+        phone = STYLE_CSS[STYLE_CSS.index("@media(max-width:640px)"):]
+        assert "clip-path" in phone
+        assert ".sidebar.mobile-icons:not(.mobile-open)" in phone
+        assert "visibility:hidden" in phone
 
-    def test_release_settles_on_velocity_as_well_as_position(self):
-        body = _fn(BOOT_JS, "_settleMobileSidebarDrag")
-        assert "_PWA_SIDEBAR_FLING_VELOCITY" in body, "a fast flick must open regardless of distance"
-        assert "_PWA_SIDEBAR_SETTLE_FRACTION" in body
-        assert "classList.remove('is-dragging')" in body, "the settle is handed back to CSS"
-
-    def test_a_backwards_fling_closes_even_past_the_distance_threshold(self):
-        body = _fn(BOOT_JS, "_settleMobileSidebarDrag")
-        assert "velocity<-_PWA_SIDEBAR_FLING_VELOCITY" in body.replace(" ", "")
-
-    def test_a_live_drag_is_only_ended_by_release(self):
-        # Abandoning mid-drag used to drop the gesture state while leaving the
-        # inline transform in place, freezing the drawer wherever the finger
-        # was. A small backwards wobble or a bit of vertical drift was enough.
+    def test_recognised_short_swipe_commits_immediately(self):
         body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
-        bail = body[body.index("if(!swipe.dragging){") :]
-        assert "_pwaSidebarSwipe=null" in bail.split("if(dx>=")[0], (
-            "the bail-out must sit inside the not-yet-dragging branch"
-        )
-        before_branch = body[: body.index("if(!swipe.dragging){")]
-        assert "_pwaSidebarSwipe=null" not in before_branch, (
-            "no unconditional bail-out may run once the drawer is being dragged"
-        )
-
-    def test_a_stranded_drag_is_always_cleaned_up(self):
-        assert "function _clearStrandedSidebarDrag" in BOOT_JS
-        for handler in ("_onPwaSidebarSwipeEnd", "_onPwaSidebarSwipeCancel"):
-            assert "_clearStrandedSidebarDrag()" in _fn(BOOT_JS, handler), handler
-
-    def test_cancel_restores_the_closed_state(self):
-        body = _fn(BOOT_JS, "_onPwaSidebarSwipeCancel")
-        assert "_clearDrawerInline(swipe.el)" in body.replace(" ", "")
-        assert "is-dragging" in body
-        clear = _fn(BOOT_JS, "_clearDrawerInline")
-        assert "style.transform=''" in clear.replace(" ", "") and "style.clipPath=''" in clear.replace(" ", "")
-
-    def test_velocity_is_smoothed(self):
-        body = _fn(BOOT_JS, "_onPwaSidebarSwipeMove")
-        assert "swipe.vx*0.4" in body.replace(" ", ""), "one jittery sample must not decide the fling"
+        claim = "dx>=_PWA_SIDEBAR_SWIPE_CLAIM"
+        assert claim in body.replace(" ", "")
+        assert "_PWA_SIDEBAR_SETTLE_FRACTION" not in body
 
 
 class TestTouchResponsiveness:
