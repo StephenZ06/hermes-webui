@@ -74,7 +74,8 @@ def test_office_sidebar_includes_empty_project_folders_across_profiles():
 
 
 def test_sidebar_action_cards_inherit_the_sidebar_background():
-    assert ".hermes-cli-card{flex:0 0 auto;margin:6px 8px 8px;padding:8px;border-radius:8px;background:var(--sidebar);" in CSS
+    # One full-width button, 12px from the left, right and bottom edges.
+    assert ".hermes-cli-card{flex:0 0 auto;margin:0;padding:8px 12px 12px;border-radius:0;background:var(--sidebar);border:0;" in CSS
 
 
 def test_office_filter_uses_a_compact_vertical_inset():

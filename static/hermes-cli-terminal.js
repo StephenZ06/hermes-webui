@@ -221,7 +221,7 @@ function _syncHermesCliButtonState(){
   const label=$('hermesCliInteractLabel');
   const status=$('hermesCliStatus');
   if(btn)btn.classList.toggle('running',HERMES_CLI_UI.open);
-  if(label)label.textContent=HERMES_CLI_UI.open?'Close':'Initialize';
+  if(label)label.textContent=HERMES_CLI_UI.open?'Close Hermes CLI':'Initialize Hermes CLI';
   if(status)status.hidden=!HERMES_CLI_UI.open;
 }
 

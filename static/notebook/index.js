@@ -92,9 +92,11 @@
   const projectOf = (id) => S.projects.find((p) => p.project_id === id) || null;
   const folderOf = (id) => S.folders.find((f) => f.id === id) || null;
   function placeLabel(note) {
-    const root = isVaultNote(note) ? 'Vault root' : 'General';
+    // Named for the view it is shown in: the main view's General is the
+    // vault's 00 Inbox; only the Obsidian side says "Vault root".
+    const root = S.side === 'vault' ? 'Vault root' : 'General';
     if (note.project_id) { const p = projectOf(note.project_id); return p ? p.name : root; }
-    if (note.folder_id) { const f = W[isVaultNote(note) ? 'vault' : 'notes'].folders.find((x) => x.id === note.folder_id); return f ? f.name : root; }
+    if (note.folder_id) { const f = W[S.side].folders.find((x) => x.id === note.folder_id); return f ? f.name : root; }
     return root;
   }
   // The colour of the note's workspace or folder, as on their side-panel dots.
