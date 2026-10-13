@@ -33,6 +33,7 @@ import {
 } from './motion.js';
 import { shouldSleepWhileRunning } from './idle.js';
 import { createQualityGovernor } from './quality.js';
+import { compileInBackground } from './warmup.js';
 import { createConductorLife } from './conductor-life.js';
 
 // Half-height of the orthographic frustum at zoom 1, in world units. The
@@ -2281,13 +2282,14 @@ export function createOfficeScene(canvas, options) {
     running = true;
     lastFrameAt = 0;
     quality.reset(performance.now());
-    // Only with the extension: without it three.js' compileAsync has nothing
-    // to poll (r185 throws inside its timer and never settles), and compiling
-    // is synchronous either way. A 2.5s cap means a stuck driver can only
-    // delay the first frame, never keep the floor from appearing.
+    // Only with the extension: without it there is nothing to wait for, as
+    // compiling is synchronous either way. warmup.js polls safely (three's own
+    // compileAsync throws in its timer when a material has no program). A
+    // 2.5s cap means a stuck driver can only delay the first frame, never keep
+    // the floor from appearing.
     const parallel = renderer.extensions && renderer.extensions.has
       && renderer.extensions.has('KHR_parallel_shader_compile');
-    if (!warmed && parallel && typeof renderer.compileAsync === 'function') {
+    if (!warmed && parallel) {
       warmed = true;
       const begin = () => {
         if (!warming) return;
@@ -2295,7 +2297,7 @@ export function createOfficeScene(canvas, options) {
         if (running && !rafId) rafId = window.requestAnimationFrame(frame);
       };
       warming = Promise.race([
-        renderer.compileAsync(scene, camera).catch(() => {}),
+        compileInBackground(renderer, scene, camera),
         new Promise(resolve => setTimeout(resolve, 2500)),
       ]).then(begin);
       return;
