@@ -11550,7 +11550,11 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
     background:color-mix(in srgb,var(--sidebar,var(--surface)) 94%,transparent);
     -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);
     box-shadow:none;}
-  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{width:auto;align-self:stretch;margin:1px 8px;}
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{width:auto;align-self:stretch;margin:5px 8px;}
+  /* 6px clear above and below each divider, so a highlighted button never
+     touches it; the buttons give up 1px of height (icons unchanged) so all
+     18 still fit the bar without scrolling. */
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{flex-basis:43px;height:43px;min-height:43px;}
   /* The panel is hidden whenever the sidebar is not fully open. Going from
      closed to the icon bar it therefore never shows through the widening
      clip; collapsing from the full sidebar it still hides after the slide. */

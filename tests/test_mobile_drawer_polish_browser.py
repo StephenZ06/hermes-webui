@@ -273,3 +273,15 @@ def test_icon_bar_dividers_are_centred(phone):
     gaps = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const a = n.getBoundingClientRect();
         return [...n.querySelectorAll('.sidebar-nav-divider')].map(d => { const b = d.getBoundingClientRect(); return [Math.round(b.left - a.left), Math.round(a.right - b.right)]; }); }""")
     assert gaps and all(left == right for left, right in gaps)
+
+
+def test_icon_bar_dividers_leave_room_around_highlighted_buttons(phone):
+    page, _ = phone
+    _boot(page)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.7)
+    gaps, fits = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav');
+        const g = [...n.querySelectorAll('.sidebar-nav-divider')].map(d => { const b = d.getBoundingClientRect();
+          return [b.top - d.previousElementSibling.getBoundingClientRect().bottom, d.nextElementSibling.getBoundingClientRect().top - b.bottom]; });
+        return [g, n.scrollHeight <= n.clientHeight]; }""")
+    assert fits and all(above >= 6 and below >= 6 for above, below in gaps)
