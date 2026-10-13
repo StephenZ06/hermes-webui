@@ -103,7 +103,9 @@ def test_batch_action_bar_is_sidebar_inline_not_global_footer():
         js = f.read()
     with open('static/style.css', encoding="utf-8") as f:
         css = f.read()
-    assert "list.appendChild(batchBar)" in js, \
+    # Inserted above the persistent Workspaces section (or appended when there
+    # is none yet) -- inside the session list either way.
+    assert "_appendAboveWorkspaces(batchBar)" in js and "list.insertBefore(el,keepWorkspacesSection)" in js, \
         "Batch action bar should be rendered inside the session list"
     assert "document.body.appendChild(batchBar)" not in js, \
         "Batch action bar must not be mounted as a global footer"

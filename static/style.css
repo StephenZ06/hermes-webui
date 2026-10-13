@@ -11605,3 +11605,33 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 @media (max-width:640px) and (prefers-reduced-motion:reduce){
   .sidebar.mobile-icons-leaving{transition-duration:.01s!important;}
 }
+
+/* Chat sidebar select bar ("✕ Select all"): the WORKSPACES heading below it
+   brings a 16px top margin, so the bar takes the same above it -- equal space
+   over and under the row. */
+.session-select-bar{margin:16px 0 0;}
+
+/* Composer options panel (phones): Workspace / Model / Effort text centres on
+   its icon by its letters, not its line box. The old fixed 3px nudge was
+   tuned to one font's metrics and sat off on iOS's system font. text-box
+   trims the line to cap height and baseline, so flexbox centring is optical
+   on any font; browsers without text-box fall back to a tight line box. */
+.composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-value{top:0;line-height:1.15;text-box:trim-both cap alphabetic;}
+.composer-mobile-config-action > span[aria-hidden="true"]{display:inline-flex;align-items:center;justify-content:center;line-height:0;}
+
+/* Chat sidebar: the highlight ring on a pressed / long-pressed / swiping row
+   was drawn outside the row, which is exactly as wide as its date group, and
+   the group clips (overflow:hidden for its collapse animation) -- so the ring
+   was cut off at the sides. Drawn inside the row instead. */
+.session-item.long-pressing,.session-child-session-fork.long-pressing{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 38%,transparent);}
+.session-item.swiping-right{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warning) 48%,transparent);}
+.session-item.swiping-left{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--error) 48%,transparent);}
+.session-item.archived.swiping-right,.session-item.archived.dragging.swiping-right{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--success) 48%,transparent);}
+
+/* Phones: chat project folder rows match Work Hub / Notes (40px). The ⋮ menu
+   button (26px tall, a size Work Hub's rows do not have) made them 46px; it
+   keeps its 26px tap area but overlaps 3px above and below instead of
+   growing the row. */
+@media (max-width:640px){
+  #sessionList .project-chip .project-folder-kebab{margin-block:-3px;}
+}

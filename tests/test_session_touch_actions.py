@@ -134,7 +134,8 @@ def test_session_swipes_route_archive_restore_and_delete():
     assert "const actionThreshold=signedDx>0?SESSION_ARCHIVE_SWIPE_THRESHOLD_PX:SESSION_DELETE_SWIPE_THRESHOLD_PX;" in SESSIONS_JS
     assert "if(Math.abs(signedDx)<actionThreshold) return false;" in SESSIONS_JS
     assert "const _updateSessionGesture=(clientX,clientY)=>{" in SESSIONS_JS
-    assert "if(_isSessionSwipeTarget()&&(_swipeTracking||dx>dy)) _paintSessionSwipe(signedDx)" in SESSIONS_JS
+    # Rows swipe right only (archive); a leftward swipe closes the phone drawer.
+    assert "if(_isSessionSwipeTarget()&&signedDx>0&&(_swipeTracking||dx>dy)) _paintSessionSwipe(signedDx)" in SESSIONS_JS
     assert "if(_updateSessionGesture(touch.clientX,touch.clientY)) e.preventDefault();" in SESSIONS_JS
     assert "_beginSessionGesture(touch.clientX,touch.clientY,'touch');" in SESSIONS_JS
     restore_start = swipe_block.find("if(s.archived){")

@@ -1639,7 +1639,7 @@ async function newSession(flash, options={}){
 function _clearStuckSessionOnBoot(sid, currentSid){
   if(!currentSid){
     try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
-    try{ history.replaceState(null,'',_appRootPath()+(window.location.hash||'')); }catch(_){ }
+    try{ history.replaceState(null,'',_appRootPath()+((typeof location!=='undefined'&&location.hash)||'')); }catch(_){ }
   }
 }
 
@@ -1956,7 +1956,7 @@ async function loadSession(sid){
         // through to empty-state; mid-session there is no boot path to reach.
         if(!currentSid || currentSid===sid){
           try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
-          try{ history.replaceState(null,'',_appRootPath()+(window.location.hash||'')); }catch(_){ }
+          try{ history.replaceState(null,'',_appRootPath()+((typeof location!=='undefined'&&location.hash)||'')); }catch(_){ }
           if (_isCurrentLoad()) _loadingSessionId = null;
           if(!currentSid){
             throw e;
@@ -5438,6 +5438,7 @@ function showSessionListSkeleton(targetProfile){
   _sessionListSkeletonActive = true;
 }
 
+let _chatWorkspacesSection=null;
 function _isOptimisticFirstTurnSessionRow(s){
   if(!s||!s.session_id||s.archived) return false;
   const messageCount=Number(s.message_count||0);
@@ -7972,7 +7973,20 @@ function renderSessionListFromCache(){
   const committedSwipeDuration=_sessionPrefersReducedMotion()?0:SESSION_SWIPE_DURATION_MS;
   const committedSwipeReflowDelay=Math.max(0,committedSwipeDuration-SESSION_SWIPE_REFLOW_LEAD_MS);
   const listScrollTopBeforeRender=list.scrollTop||0;
-  list.innerHTML='';
+  // The Workspaces section (heading + conversation filter) survives renders as
+  // the same node, and is never taken out of the page: removing a focused
+  // field blurs it, which on a phone closes the keyboard after every letter
+  // typed into the filter (iOS cannot reopen it from code outside a tap).
+  const keepWorkspacesSection=(_chatWorkspacesSection&&_chatWorkspacesSection.parentElement===list)?_chatWorkspacesSection:null;
+  if(keepWorkspacesSection){
+    for(const child of Array.from(list.children)) if(child!==keepWorkspacesSection) child.remove();
+  }else{
+    list.innerHTML='';
+  }
+  const _appendAboveWorkspaces=(el)=>{
+    if(keepWorkspacesSection) list.insertBefore(el,keepWorkspacesSection);
+    else list.appendChild(el);
+  };
   // #4671: belt-and-suspenders. The authoritative skeleton-clear happens in
   // _applySessionListPayload (once fresh data is in hand) BEFORE this function is
   // reached, and the guard at the top of renderSessionListFromCache bails while the
@@ -7991,17 +8005,17 @@ function renderSessionListFromCache(){
     selectAllBtn.textContent=t('session_select_all');
     selectAllBtn.onclick=(e)=>{e.stopPropagation();selectAllSessions();};
     selectBar.appendChild(selectAllBtn);
-    list.appendChild(selectBar);
+    _appendAboveWorkspaces(selectBar);
   }
   // Ensure batch action bar exists in DOM
   let batchBar=$('batchActionBar');
   if(!batchBar){batchBar=document.createElement('div');batchBar.id='batchActionBar';batchBar.className='batch-action-bar';}
-  list.appendChild(batchBar);
+  _appendAboveWorkspaces(batchBar);
   if(_sessionSelectMode&&_selectedSessions.size>0){batchBar.style.display='flex';_renderBatchActionBar();}
   else{batchBar.style.display='none';}
   if(_sessionListLoadError){
     const note=_renderSessionListLoadErrorNote();
-    if(note) list.appendChild(note);
+    if(note) _appendAboveWorkspaces(note);
   }
   // Collapsed/expanded state per project, persisted the same way the
   // date-group sections do it (JSON blob in localStorage, re-read/re-saved
@@ -8030,13 +8044,21 @@ function renderSessionListFromCache(){
       }
     }
   }
-  const workspacesSection=document.createElement('section');
+  let workspacesSection=keepWorkspacesSection;
+  if(workspacesSection){
+    for(const child of Array.from(workspacesSection.children)){
+      if(child!==sessionSearchWrap&&!child.classList.contains('chat-sidebar-section-heading')) child.remove();
+    }
+  }else{
+  workspacesSection=document.createElement('section');
   workspacesSection.className='chat-sidebar-section chat-sidebar-section--workspaces';
   const workspacesHeading=document.createElement('div');
   workspacesHeading.className='chat-sidebar-section-heading';
   workspacesHeading.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>WORKSPACES</span>';
   workspacesSection.appendChild(workspacesHeading);
-  if(sessionSearchWrap) workspacesSection.appendChild(sessionSearchWrap);
+  }
+  _chatWorkspacesSection=workspacesSection;
+  if(sessionSearchWrap&&sessionSearchWrap.parentElement!==workspacesSection) workspacesSection.appendChild(sessionSearchWrap);
   // Work Hub projects stay on the Work Hub page; a chat filed under one (or
   // under a project that no longer exists) shows in the main list instead of
   // disappearing with a folder that is not drawn here.
@@ -8206,7 +8228,7 @@ function renderSessionListFromCache(){
     }
     workspacesSection.appendChild(bar);
   }
-  list.appendChild(workspacesSection);
+  if(workspacesSection.parentElement!==list) list.appendChild(workspacesSection);
   const conversationsSection=document.createElement('section');
   conversationsSection.className='chat-sidebar-section chat-sidebar-section--conversations';
   const conversationsHeading=document.createElement('div');
@@ -9593,6 +9615,9 @@ async function deleteSession(sid, beforeDelete=null){
     danger:true
   });
   if(!ok)return false;
+  // A delete ends selecting: the list goes back to its normal view instead of
+  // keeping the checkboxes and the "Select all" bar open.
+  if(_sessionSelectMode) exitSessionSelectMode();
   const reflowPositions=_captureSessionReflowPositions();
   const beforeDeleteHold=beforeDelete?Promise.resolve().then(beforeDelete):null;
   const previousSessions=_allSessions;
