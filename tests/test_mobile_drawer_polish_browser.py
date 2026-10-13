@@ -263,3 +263,13 @@ def test_icon_bar_collapse_is_unhurried(phone):
         closeMobileSidebar(); setTimeout(() => res(n.getBoundingClientRect().left), 250); })""")
     # Still on screen a quarter-second in (it used to be gone by ~170ms).
     assert left_at_250 > -56
+
+
+def test_icon_bar_dividers_are_centred(phone):
+    page, _ = phone
+    _boot(page)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.7)
+    gaps = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const a = n.getBoundingClientRect();
+        return [...n.querySelectorAll('.sidebar-nav-divider')].map(d => { const b = d.getBoundingClientRect(); return [Math.round(b.left - a.left), Math.round(a.right - b.right)]; }); }""")
+    assert gaps and all(left == right for left, right in gaps)

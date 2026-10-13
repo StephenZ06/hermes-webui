@@ -11550,7 +11550,7 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
     background:color-mix(in srgb,var(--sidebar,var(--surface)) 94%,transparent);
     -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);
     box-shadow:none;}
-  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{margin:1px 8px;}
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{width:auto;align-self:stretch;margin:1px 8px;}
   /* The panel is hidden whenever the sidebar is not fully open. Going from
      closed to the icon bar it therefore never shows through the widening
      clip; collapsing from the full sidebar it still hides after the slide. */
