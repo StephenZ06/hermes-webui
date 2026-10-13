@@ -60,8 +60,8 @@ def test_bootstrap_lists_the_vaults_notes_and_folders_not_symlinks(vault):
     folders = {f["name"]: f["id"] for f in data["folders"]}
     assert set(folders) == {"01 Projects"}, "hidden, symlinked and attachment-only folders are not Notes folders"
     honeypot = next(n for n in data["notes"] if n["title"] == "Honeypot")
-    assert honeypot["folder_id"] == folders["01 Projects"] and honeypot["tags"] == ["security"]
-    assert next(n for n in data["notes"] if n["title"] == "Inbox note")["folder_id"] is None
+    assert honeypot["vault_folder_id"] == folders["01 Projects"] and honeypot["tags"] == ["security"]
+    assert next(n for n in data["notes"] if n["title"] == "Inbox note")["vault_folder_id"] is None
     assert data["vault"]["name"] == "Vault"
 
 
@@ -109,7 +109,7 @@ def test_create_rename_move_trash_restore_purge(vault):
     assert (vault / "01 Projects" / "Plan Q4 next.md").read_text() == "Hello\n", "unsafe characters are dropped"
     renamed = notebook_vault.update_note(note["id"], {"expected_revision": note["revision"], "title": "Roadmap"})
     assert renamed["id"] == note["id"] and (vault / "01 Projects" / "Roadmap.md").is_file()
-    moved = notebook_vault.update_note(note["id"], {"expected_revision": renamed["revision"], "folder_id": None, "tags": ["Plan"]})
+    moved = notebook_vault.update_note(note["id"], {"expected_revision": renamed["revision"], "folder_id": None, "view": "vault", "tags": ["Plan"]})
     assert moved["path"] == "Roadmap.md" and moved["tags"] == ["plan"]
     assert (vault / "Roadmap.md").read_text().startswith("---\ntags:\n  - plan\n---\n")
     trashed = notebook_vault.trash_note(note["id"])
@@ -164,6 +164,66 @@ class _H:
         pass
 
 
+WORKSPACES = [{"project_id": "p-triple", "name": "Triple S", "color": "#fc0"}, {"project_id": "p-saas", "name": "SaaS - Temani", "color": ""}]
+
+
+def test_connected_every_note_is_in_the_vault_laid_out_para_style(vault, monkeypatch):
+    """The main view keeps its structure but lives in the vault: General is
+    00 Inbox, a workspace is 01 Projects/<workspace>, a Notes folder is
+    03 Resources/<folder>; the Obsidian view sees the same files, two folder
+    levels deep, so "01 Projects / Triple S" is a section there too."""
+    monkeypatch.setattr("api.models.load_projects", lambda *a, **k: WORKSPACES)
+    _connect(vault)
+    general = notebook_vault.create_note({"title": "Idea", "view": "notes"})
+    triple = notebook_vault.create_note({"title": "Till spec", "view": "notes", "project_id": "p-triple"})
+    folder = notebook_vault.create_folder({"name": "Recipes", "view": "notes"})
+    recipe = notebook_vault.create_note({"title": "Soup", "view": "notes", "folder_id": folder["id"]})
+    assert (vault / "00 Inbox" / "Idea.md").is_file()
+    assert (vault / "01 Projects" / "Triple S" / "Till spec.md").is_file()
+    assert (vault / "03 Resources" / "Recipes" / "Soup.md").is_file()
+    main = notebook_vault.main_bootstrap()
+    assert [w["name"] for w in main["projects"]] == ["Triple S", "SaaS - Temani"]
+    assert [f["name"] for f in main["folders"]] == ["Recipes"]
+    places = {n["title"]: (n["project_id"], n["folder_id"]) for n in main["notes"]}
+    assert places == {"Idea": (None, None), "Till spec": ("p-triple", None), "Soup": (None, folder["id"])}, \
+        "only notes in the main view's places are in it (Honeypot, Inbox note stay Obsidian-only)"
+    side = notebook_vault.bootstrap()
+    names = [f["name"] for f in side["folders"]]
+    assert "01 Projects / Triple S" in names and "03 Resources / Recipes" in names
+    sub = next(f["id"] for f in side["folders"] if f["name"] == "01 Projects / Triple S")
+    assert next(n for n in side["notes"] if n["id"] == triple["id"])["vault_folder_id"] == sub
+    # Moving between places moves the file; a renamed workspace keeps its folder.
+    moved = notebook_vault.update_note(general["id"], {"expected_revision": general["revision"], "project_id": "p-saas", "folder_id": None, "view": "notes"})
+    assert moved["path"] == "01 Projects/SaaS - Temani/Idea.md" and moved["project_id"] == "p-saas"
+    WORKSPACES[0]["name"] = "Triple S POS"
+    try:
+        assert next(n for n in notebook_vault.main_bootstrap()["notes"] if n["id"] == triple["id"])["project_id"] == "p-triple"
+    finally:
+        WORKSPACES[0]["name"] = "Triple S"
+    # The main view's trash and search only cover its own places.
+    notebook_vault.trash_note(recipe["id"])
+    assert [n["title"] for n in notebook_vault.search_notes("", include_deleted=True, main_only=True)] == ["Soup"]
+    notebook_vault.trash_note(next(n["id"] for n in side["notes"] if n["title"] == "Inbox note"))
+    assert notebook_vault.empty_trash(main_only=True)["removed"] == 1
+    assert (vault / ".trash" / "Inbox note.md").is_file(), "the Obsidian side's trash is left alone"
+
+
+def test_hermes_notes_move_into_the_vault_in_their_place(vault, monkeypatch):
+    monkeypatch.setattr("api.models.load_projects", lambda *a, **k: WORKSPACES)
+    doc = [{"type": "heading", "props": {"level": 2}, "content": [{"type": "text", "text": "Plan", "styles": {}}], "children": []},
+           {"type": "checkListItem", "props": {"checked": True}, "content": [{"type": "text", "text": "Buy till", "styles": {"bold": True}}], "children": []}]
+    project_note = notebook.create_note({"title": "Till", "project_id": "p-triple"})
+    notebook.update_note(project_note["id"], {"expected_revision": 1, "content": doc, "tags": ["pos"]})
+    notebook.create_note({"title": "Loose"})
+    notebook.create_note({"title": ""})  # empty: left out
+    _connect(vault)
+    out = notebook_vault.import_from_store()
+    assert sorted(out["moved"]) == ["00 Inbox/Loose.md", "01 Projects/Triple S/Till.md"] and out["skipped_empty"] == 1
+    assert (vault / "01 Projects" / "Triple S" / "Till.md").read_text() == "---\ntags:\n  - pos\n---\n## Plan\n\n- [x] **Buy till**\n"
+    assert notebook_vault.import_from_store()["moved"] == [], "never written twice"
+    assert notebook.bootstrap()["notes"], "Hermes' own store is kept as a backup"
+
+
 def test_both_stores_run_side_by_side_routed_by_id(vault, monkeypatch):
     """Hermes' own notes stay the main store; the vault's notes come alongside
     (bootstrap "vault"), and every call is routed by the note's id ("v…")."""
@@ -177,7 +237,7 @@ def test_both_stores_run_side_by_side_routed_by_id(vault, monkeypatch):
     _connect(vault)
     notebook_api.handle_notebook_get(_H(), urlparse("/api/notebook/bootstrap"))
     data = sent[-1][1]
-    assert [n["title"] for n in data["notes"]] == ["Hermes note"], "Hermes' notes stay the main list"
+    assert data["notes"] == [], "connected, the main view comes from the vault (nothing in 00 Inbox yet)"
     vault_notes = data["vault"]["notes"]
     assert sorted(n["title"] for n in vault_notes) == ["Honeypot", "Inbox note"]
     assert all(n["id"].startswith("v") and n["store"] == "vault" for n in vault_notes)
@@ -185,7 +245,7 @@ def test_both_stores_run_side_by_side_routed_by_id(vault, monkeypatch):
     notebook_api.handle_notebook_get(_H(), urlparse(f"/api/notebook/notes/{vid}"))
     assert sent[-1][1]["note"]["format"] == "markdown"
     notebook_api.handle_notebook_get(_H(), urlparse(f"/api/notebook/notes/{own['id']}"))
-    assert sent[-1][1]["note"]["title"] == "Hermes note"
+    assert sent[-1][1]["note"]["title"] == "Hermes note", "an old Hermes id still opens from the backup store"
     notebook_api.handle_notebook_post(_H(), urlparse("/api/notebook/notes/create"), {"title": "In vault", "store": "vault"})
     assert sent[-1][1]["note"]["store"] == "vault" and (vault / "In vault.md").is_file()
     notebook_api.handle_notebook_get(_H(), urlparse("/api/notebook/notes?q=vault&store=vault"))

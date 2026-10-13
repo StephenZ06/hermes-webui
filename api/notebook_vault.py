@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS vault_notes (
     restore_to TEXT,
     UNIQUE(vault, relpath)
 );
+CREATE TABLE IF NOT EXISTS vault_places (
+    vault TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    relpath TEXT NOT NULL,
+    PRIMARY KEY(vault, kind, key)
+);
 CREATE TABLE IF NOT EXISTS vault_folders (
     id TEXT PRIMARY KEY,
     vault TEXT NOT NULL,
@@ -417,18 +424,96 @@ def _revision(path: Path) -> int:
         return 0
 
 
+# ── where the main Notes view lives in the vault ────────────────────────────────
+#
+# With a vault connected every note is a vault file. The main Notes view keeps
+# its own structure, laid out PARA-style in the vault (the vault's own
+# .hermes-brain-rules.md): General is 00 Inbox/, each Hermes workspace is
+# 01 Projects/<workspace>/, and a folder made on the Notes page is
+# 03 Resources/<folder>/. The Obsidian view shows the whole vault, two folder
+# levels deep, so "01 Projects / Triple S" is a section there too: one note,
+# one file, seen from both sides.
+
+INBOX = "00 Inbox"
+PROJECTS = "01 Projects"
+RESOURCES = "03 Resources"
+
+
+def _workspaces() -> list[dict[str, Any]]:
+    from api.notebook import _projects
+
+    try:
+        return _projects()
+    except Exception:
+        return []
+
+
+def _place_row(conn: sqlite3.Connection, vault: str, kind: str, key: str):
+    return conn.execute("SELECT relpath FROM vault_places WHERE vault=? AND kind=? AND key=?", (vault, kind, key)).fetchone()
+
+
+def _project_dirs(conn: sqlite3.Connection, root: Path) -> dict[str, str]:
+    """workspace id -> its folder (as first laid out; a later rename of the
+    workspace keeps the folder it already has)."""
+    out = {}
+    for ws in _workspaces():
+        row = _place_row(conn, str(root), "project", ws["project_id"])
+        out[ws["project_id"]] = row["relpath"] if row else f"{PROJECTS}/{_file_name(ws['name'])}"
+    return out
+
+
+def _main_folders(conn: sqlite3.Connection, root: Path) -> list[dict[str, Any]]:
+    rows = conn.execute("SELECT relpath FROM vault_places WHERE vault=? AND kind='folder' ORDER BY relpath", (str(root),)).fetchall()
+    out = []
+    for row in rows:
+        try:
+            if not _inside(root, row["relpath"]).is_dir():
+                continue
+        except NotebookError:
+            continue
+        out.append({"id": _folder_id(conn, str(root), row["relpath"]), "name": row["relpath"].rsplit("/", 1)[-1],
+                    "color": "", "path": row["relpath"], "store": "vault"})
+    return out
+
+
+def _context(conn: sqlite3.Connection, root: Path) -> dict[str, Any]:
+    return {"projects": _project_dirs(conn, root), "folders": _main_folders(conn, root)}
+
+
+def _main_place(rel: str, ctx: dict[str, Any]) -> tuple[bool, str | None, str | None]:
+    """(in the main view, workspace id, main folder id) for a vault path."""
+    for project_id, folder in ctx["projects"].items():
+        if rel.startswith(folder + "/"):
+            return True, project_id, None
+    for folder in ctx["folders"]:
+        if rel.startswith(folder["path"] + "/"):
+            return True, None, folder["id"]
+    if rel.startswith(INBOX + "/"):
+        return True, None, None
+    return False, None, None
+
+
+def _vault_folder_rel(rel: str) -> str | None:
+    """The Obsidian view's folder for a note: its first two folder levels."""
+    parts = rel.split("/")[:-1]
+    if not parts or parts[0] == TRASH:
+        return None
+    return "/".join(parts[:2])
+
+
 # ── notes ──────────────────────────────────────────────────────────────────────
 
-def _summary(conn: sqlite3.Connection, root: Path, path: Path, folders: dict[str, str] | None = None) -> dict[str, Any]:
+def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     vault = str(root)
+    ctx = ctx or _context(conn, root)
     rel = _rel(root, path)
     note_id = _note_id(conn, vault, rel)
     row = conn.execute("SELECT * FROM vault_notes WHERE id=?", (note_id,)).fetchone()
     in_trash = rel.split("/", 1)[0] == TRASH
-    folder_id = None
-    if not in_trash and "/" in rel:
-        top = rel.split("/", 1)[0]
-        folder_id = (folders or {}).get(top) or _folder_id(conn, vault, top)
+    # A trashed note belongs where it is restored to.
+    placed = (row["restore_to"] or rel) if in_trash else rel
+    in_main, project_id, folder_id = _main_place(placed, ctx)
+    vault_rel = _vault_folder_rel(rel)
     text = _read(path)
     front, body = _split(text)
     stat = path.stat()
@@ -437,7 +522,10 @@ def _summary(conn: sqlite3.Connection, root: Path, path: Path, folders: dict[str
         deleted_at = stat.st_mtime
     return {
         "id": note_id, "title": path.stem, "preview": _plain(body)[:160],
-        "project_id": None, "folder_id": folder_id, "tags": _frontmatter_tags(front),
+        # The main Notes view's place for it, and the Obsidian view's folder.
+        "in_main": in_main, "project_id": project_id, "folder_id": folder_id,
+        "vault_folder_id": _folder_id(conn, vault, vault_rel) if vault_rel else None,
+        "tags": _frontmatter_tags(front),
         "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]), "archived": False,
         "deleted_at": deleted_at, "revision": _revision(path),
         "created_at": getattr(stat, "st_birthtime", stat.st_ctime), "updated_at": stat.st_mtime,
@@ -481,20 +569,69 @@ def _folder_dir(conn: sqlite3.Connection, root: Path, folder_id: object) -> Path
     return path
 
 
+def _place_dir(conn: sqlite3.Connection, root: Path, payload: dict[str, Any]) -> Path:
+    """The folder a note goes to: its workspace's, a folder, or (from the main
+    view) 00 Inbox / (from the Obsidian view) the vault root."""
+    project_id = payload.get("project_id")
+    if project_id:
+        dirs = _project_dirs(conn, root)
+        if project_id not in dirs:
+            raise NotebookError("Workspace not found", 404)
+        rel = dirs[project_id]
+        path = _inside(root, rel)
+        path.mkdir(parents=True, exist_ok=True)
+        if _place_row(conn, str(root), "project", project_id) is None:
+            with conn:
+                conn.execute("INSERT INTO vault_places(vault, kind, key, relpath) VALUES (?, 'project', ?, ?)", (str(root), project_id, rel))
+        return path
+    if payload.get("folder_id"):
+        return _folder_dir(conn, root, payload.get("folder_id"))
+    if payload.get("view") == "notes":
+        path = root / INBOX
+        path.mkdir(exist_ok=True)
+        return path
+    return root
+
+
+def _visible_folders(conn: sqlite3.Connection, root: Path) -> list[dict[str, Any]]:
+    """The Obsidian view's folders: each top-level folder, then the folders
+    inside it ("01 Projects / Triple S")."""
+    attachments = _attachments_dir(root)
+    out = []
+    for top in _top_folders(root):
+        if top == attachments and not any(top.rglob("*.md")):
+            continue
+        out.append({"id": _folder_id(conn, str(root), top.name), "name": top.name, "color": "", "path": top.name, "store": "vault"})
+        for sub in _top_folders(top):
+            rel = f"{top.name}/{sub.name}"
+            out.append({"id": _folder_id(conn, str(root), rel), "name": f"{top.name} / {sub.name}", "color": "",
+                        "path": rel, "parent": top.name, "store": "vault"})
+    return out
+
+
 def bootstrap() -> dict[str, Any]:
+    """The Obsidian view: every folder (two levels) and every note."""
     root = _root()
     with _LOCK, _connect() as conn:
-        # The attachment folder holds images, not notes: not a Notes folder
-        # unless someone keeps notes in it.
-        attachments = _attachments_dir(root)
-        folders = [{"id": _folder_id(conn, str(root), p.name), "name": p.name, "color": "", "path": p.name, "store": "vault"}
-                   for p in _top_folders(root) if p != attachments or any(p.rglob("*.md"))]
-        by_name = {f["name"]: f["id"] for f in folders}
-        notes = [_summary(conn, root, p, by_name) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
+        ctx = _context(conn, root)
+        folders = _visible_folders(conn, root)
+        notes = [_summary(conn, root, p, ctx) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
     notes.sort(key=lambda n: (not n["pinned"], -n["updated_at"]))
     cfg = config()
     return {"projects": [], "folders": folders, "notes": notes,
             "vault": {"name": cfg["name"], "path": cfg["path"]}}
+
+
+def main_bootstrap() -> dict[str, Any]:
+    """The main Notes view, from the vault: workspaces, Notes folders and the
+    notes that live in them (or in 00 Inbox, its General)."""
+    root = _root()
+    with _LOCK, _connect() as conn:
+        ctx = _context(conn, root)
+        notes = [_summary(conn, root, p, ctx) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
+    notes = [n for n in notes if n["in_main"]]
+    notes.sort(key=lambda n: (not n["pinned"], -n["updated_at"]))
+    return {"projects": _workspaces(), "folders": ctx["folders"], "notes": notes}
 
 
 def get_note(note_id: str) -> dict[str, Any]:
@@ -505,9 +642,10 @@ def get_note(note_id: str) -> dict[str, Any]:
 
 def note_context(note_id: str) -> dict[str, Any]:
     note = get_note(note_id)
-    folder = note["path"].split("/", 1)[0] if "/" in note["path"] else None
+    folder = note["path"].rsplit("/", 1)[0] if "/" in note["path"] else None
+    project = next(({"project_id": w["project_id"], "name": w["name"]} for w in _workspaces() if w["project_id"] == note["project_id"]), None)
     return {"id": note["id"], "title": note["title"] or "Untitled", "text": _plain(note["markdown"]),
-            "tags": note["tags"], "project": None, "folder": folder,
+            "tags": note["tags"], "project": project, "folder": folder,
             "updated_at": note["updated_at"], "revision": note["revision"], "path": note["path"]}
 
 
@@ -516,7 +654,7 @@ def create_note(payload: dict[str, Any]) -> dict[str, Any]:
         raise NotebookError("Note must be an object")
     root = _root()
     with _LOCK, _connect() as conn:
-        folder = _folder_dir(conn, root, payload.get("folder_id"))
+        folder = _place_dir(conn, root, payload)
         title = _clean_title(payload.get("title"))
         path = _unique(folder, _file_name(title))
         tags = _tags(payload.get("tags"))
@@ -556,11 +694,11 @@ def update_note(note_id: str, payload: dict[str, Any]) -> dict[str, Any]:
                     conn.execute(f"UPDATE vault_notes SET {flag}=? WHERE id=?", (int(payload[flag]), note_id))
         target_dir = path.parent
         if "folder_id" in payload or "project_id" in payload:
-            target_dir = _folder_dir(conn, root, payload.get("folder_id"))
+            target_dir = _place_dir(conn, root, payload)
         stem = path.stem
         if "title" in payload:
             stem = _file_name(_clean_title(payload.get("title")))
-        target = path.parent / f"{stem}.md" if target_dir == path.parent else target_dir / f"{stem}.md"
+        target = target_dir / f"{stem}.md"
         if target != path:
             target = _unique(target_dir, stem, skip=path)
             if target != path:
@@ -618,11 +756,16 @@ def purge_note(note_id: str) -> dict[str, Any]:
     return {"ok": True, "id": note_id}
 
 
-def empty_trash() -> dict[str, Any]:
+def empty_trash(*, main_only: bool = False) -> dict[str, Any]:
+    """Empty the vault's trash; from the main view, only the notes that came
+    from its places (the rest is the Obsidian side's)."""
     root = _root()
     removed = 0
     with _LOCK, _connect() as conn:
+        ctx = _context(conn, root)
         for path in _walk_notes(root, trash=True):
+            if main_only and not _summary(conn, root, path, ctx)["in_main"]:
+                continue
             rel = _rel(root, path)
             path.unlink()
             removed += 1
@@ -641,15 +784,18 @@ def duplicate_note(note_id: str) -> dict[str, Any]:
         return _full(conn, root, target)
 
 
-def search_notes(query: str, *, include_deleted: bool = False) -> list[dict[str, Any]]:
+def search_notes(query: str, *, include_deleted: bool = False, main_only: bool = False) -> list[dict[str, Any]]:
     root = _root()
     words = [w for w in str(query or "").lower().split() if w]
     out: list[dict[str, Any]] = []
     with _LOCK, _connect() as conn:
+        ctx = _context(conn, root)
         for path in _walk_notes(root, trash=include_deleted):
             hay = (path.stem + "\n" + _read(path)).lower()
             if all(w in hay for w in words):
-                out.append(_summary(conn, root, path))
+                note = _summary(conn, root, path, ctx)
+                if not main_only or note["in_main"]:
+                    out.append(note)
             if len(out) >= 200:
                 break
     out.sort(key=lambda n: -n["updated_at"])
@@ -667,14 +813,22 @@ def _folder_name(value: object) -> str:
 
 
 def create_folder(payload: dict[str, Any]) -> dict[str, Any]:
+    """A folder made on the main Notes page goes under 03 Resources/; one made
+    on the Obsidian side at the top of the vault."""
     root = _root()
-    name = _folder_name((payload or {}).get("name"))
-    path = root / name
+    payload = payload or {}
+    name = _folder_name(payload.get("name"))
+    main = payload.get("view") == "notes"
+    rel = f"{RESOURCES}/{name}" if main else name
+    path = _inside(root, rel)
     if path.exists():
         raise NotebookError("A folder with that name is already in your vault", 409)
-    path.mkdir()
+    path.mkdir(parents=True)
     with _LOCK, _connect() as conn:
-        return {"id": _folder_id(conn, str(root), name), "name": name, "color": "", "path": name, "store": "vault"}
+        if main:
+            with conn:
+                conn.execute("INSERT OR REPLACE INTO vault_places(vault, kind, key, relpath) VALUES (?, 'folder', ?, ?)", (str(root), rel, rel))
+        return {"id": _folder_id(conn, str(root), rel), "name": name, "color": "", "path": rel, "store": "vault"}
 
 
 def rename_folder(folder_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -682,16 +836,19 @@ def rename_folder(folder_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     name = _folder_name((payload or {}).get("name"))
     with _LOCK, _connect() as conn:
         path = _folder_dir(conn, root, folder_id)
-        target = root / name
+        target = path.parent / name
         if target.exists() and target != path:
             raise NotebookError("A folder with that name is already in your vault", 409)
-        old = path.name
+        old, new = _rel(root, path), _rel(root, target)
         path.rename(target)
+        vault = str(root)
         with conn:
-            conn.execute("UPDATE vault_folders SET relpath=? WHERE id=?", (name, folder_id))
-            for row in conn.execute("SELECT id, relpath FROM vault_notes WHERE vault=? AND relpath LIKE ?", (str(root), old + "/%")).fetchall():
-                conn.execute("UPDATE vault_notes SET relpath=? WHERE id=?", (name + row["relpath"][len(old):], row["id"]))
-        return {"id": folder_id, "name": name, "color": "", "path": name, "store": "vault"}
+            for table in ("vault_folders", "vault_notes"):
+                for row in conn.execute(f"SELECT id, relpath FROM {table} WHERE vault=? AND (relpath=? OR relpath LIKE ?)", (vault, old, old + "/%")).fetchall():
+                    conn.execute(f"UPDATE {table} SET relpath=? WHERE id=?", (new + row["relpath"][len(old):], row["id"]))
+            for row in conn.execute("SELECT kind, key, relpath FROM vault_places WHERE vault=? AND (relpath=? OR relpath LIKE ?)", (vault, old, old + "/%")).fetchall():
+                conn.execute("UPDATE vault_places SET relpath=? WHERE vault=? AND kind=? AND key=?", (new + row["relpath"][len(old):], vault, row["kind"], row["key"]))
+        return {"id": folder_id, "name": name, "color": "", "path": new, "store": "vault"}
 
 
 def delete_folder(folder_id: str) -> dict[str, Any]:
@@ -702,10 +859,113 @@ def delete_folder(folder_id: str) -> dict[str, Any]:
         path = _folder_dir(conn, root, folder_id)
         if any(p.is_file() or p.is_symlink() for p in path.rglob("*")):
             raise NotebookError("This folder still has files in your vault. Move or delete them in Obsidian first.", 409)
+        rel = _rel(root, path)
         shutil.rmtree(path)
         with conn:
             conn.execute("DELETE FROM vault_folders WHERE id=?", (folder_id,))
+            conn.execute("DELETE FROM vault_places WHERE vault=? AND relpath=?", (str(root), rel))
     return {"ok": True, "id": folder_id}
+
+
+# ── moving Hermes' own notes in ────────────────────────────────────────────────
+
+def _blocks_markdown(blocks: object, depth: int = 0) -> str:
+    """Plain Markdown from BlockNote blocks (headings, paragraphs, lists,
+    checklists, quotes, code): enough to carry a note over into the vault."""
+    lines: list[str] = []
+    numbered = 0
+
+    def inline(content: object) -> str:
+        if isinstance(content, str):
+            return content
+        out = []
+        for item in content if isinstance(content, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "link":
+                out.append(f"[{inline(item.get('content'))}]({item.get('href', '')})")
+                continue
+            text = str(item.get("text") or "")
+            styles = item.get("styles") or {}
+            if styles.get("code"):
+                text = f"`{text}`"
+            if styles.get("bold"):
+                text = f"**{text}**"
+            if styles.get("italic"):
+                text = f"*{text}*"
+            out.append(text)
+        return "".join(out)
+
+    pad = "  " * depth
+    for block in blocks if isinstance(blocks, list) else []:
+        if not isinstance(block, dict):
+            continue
+        kind = block.get("type")
+        props = block.get("props") or {}
+        text = inline(block.get("content"))
+        numbered = numbered + 1 if kind == "numberedListItem" else 0
+        if kind == "heading":
+            lines.append("#" * int(props.get("level") or 1) + " " + text)
+        elif kind == "bulletListItem":
+            lines.append(f"{pad}- {text}")
+        elif kind == "numberedListItem":
+            lines.append(f"{pad}{numbered}. {text}")
+        elif kind == "checkListItem":
+            lines.append(f"{pad}- [{'x' if props.get('checked') else ' '}] {text}")
+        elif kind == "quote":
+            lines.append("> " + text)
+        elif kind == "codeBlock":
+            lines.append(f"```{props.get('language') or ''}\n{text}\n```")
+        elif kind == "image" and props.get("url"):
+            lines.append(f"![{props.get('caption') or ''}]({props.get('url')})")
+        else:
+            lines.append(pad + text if text else "")
+        children = block.get("children") or []
+        if children:
+            lines.append(_blocks_markdown(children, depth + 1).rstrip("\n"))
+        if kind in ("heading", "paragraph", "quote", "codeBlock", "image", None):
+            lines.append("")
+    return "\n".join(lines).strip("\n") + "\n"
+
+
+def import_from_store(*, skip_empty: bool = True) -> dict[str, Any]:
+    """Write Hermes' own notes into the vault, each in its place (workspace,
+    Notes folder or General). Hermes' store is left as it is, as a backup;
+    a note already brought over is not written twice."""
+    from api import notebook
+
+    root = _root()
+    moved, skipped = [], 0
+    with notebook._LOCK, notebook._connect() as source:
+        rows = source.execute("SELECT * FROM notebook_notes WHERE deleted_at IS NULL").fetchall()
+        folders = {r["id"]: r["name"] for r in source.execute("SELECT id, name FROM notebook_folders")}
+    with _LOCK, _connect() as conn:
+        for row in rows:
+            content = json.loads(row["content"] or "[]")
+            if skip_empty and not (row["title"] or "").strip() and not (row["plain_text"] or "").strip():
+                skipped += 1
+                continue
+            if conn.execute("SELECT 1 FROM vault_places WHERE vault=? AND kind='imported' AND key=?", (str(root), row["id"])).fetchone():
+                continue
+            place: dict[str, Any] = {"view": "notes"}
+            if row["project_id"] and row["project_id"] in _project_dirs(conn, root):
+                place["project_id"] = row["project_id"]
+            elif row["folder_id"] and row["folder_id"] in folders:
+                rel = f"{RESOURCES}/{_folder_name(folders[row['folder_id']])}"
+                _inside(root, rel).mkdir(parents=True, exist_ok=True)
+                with conn:
+                    conn.execute("INSERT OR REPLACE INTO vault_places(vault, kind, key, relpath) VALUES (?, 'folder', ?, ?)", (str(root), rel, rel))
+                place["folder_id"] = _folder_id(conn, str(root), rel)
+            folder = _place_dir(conn, root, place)
+            path = _unique(folder, _file_name(row["title"] or "Untitled"))
+            tags = json.loads(row["tags"] or "[]")
+            _write(path, _with_tags("", tags) + _blocks_markdown(content))
+            note_id = _note_id(conn, str(root), _rel(root, path))
+            with conn:
+                conn.execute("UPDATE vault_notes SET pinned=?, favorite=? WHERE id=?", (row["pinned"], row["favorite"], note_id))
+                conn.execute("INSERT INTO vault_places(vault, kind, key, relpath) VALUES (?, 'imported', ?, ?)", (str(root), row["id"], _rel(root, path)))
+            moved.append(_rel(root, path))
+    return {"moved": moved, "skipped_empty": skipped}
 
 
 # ── attachments ────────────────────────────────────────────────────────────────

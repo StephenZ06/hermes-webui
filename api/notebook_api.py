@@ -24,11 +24,16 @@ def _by_id(item_id: str):
     return notebook_vault if str(item_id or "").startswith("v") else notebook
 
 
-def _by_flag(body_or_query) -> object:
-    value = body_or_query.get("store") if isinstance(body_or_query, dict) else None
+def _flag(body_or_query, key: str):
+    value = body_or_query.get(key) if isinstance(body_or_query, dict) else None
     if isinstance(value, list):
         value = value[0] if value else None
-    return notebook_vault if value == "vault" else notebook
+    return value
+
+
+def _by_flag(body_or_query) -> object:
+    """Connected, every note is in the vault (the main view's too)."""
+    return notebook_vault if (_flag(body_or_query, "store") == "vault" or notebook_vault.enabled()) else notebook
 
 
 def _send_image(handler, data: bytes, mime: str, cache: str) -> None:
@@ -58,9 +63,15 @@ def handle_notebook_get(handler, parsed) -> bool:
             _send_image(handler, data, mime, "private, no-cache")
             return True
         if path == f"{_PREFIX}/bootstrap":
-            # Hermes' own notes, plus the connected vault's alongside them.
-            data = notebook.bootstrap()
-            data["vault"] = notebook_vault.bootstrap() if notebook_vault.enabled() else None
+            # Connected: the main view laid out from the vault (00 Inbox,
+            # 01 Projects/<workspace>, 03 Resources/<folder>), plus the whole
+            # vault for the Obsidian view. Otherwise Hermes' own store.
+            if notebook_vault.enabled():
+                data = notebook_vault.main_bootstrap()
+                data["vault"] = notebook_vault.bootstrap()
+            else:
+                data = notebook.bootstrap()
+                data["vault"] = None
             data["vault_config"] = notebook_vault.config()
             j(handler, data)
             return True
@@ -68,7 +79,12 @@ def handle_notebook_get(handler, parsed) -> bool:
             query = parse_qs(parsed.query or "")
             q = str(query.get("q", [""])[0])
             trash = str(query.get("trash", [""])[0]) == "1"
-            j(handler, {"notes": _by_flag(query).search_notes(q, include_deleted=trash)})
+            store = _by_flag(query)
+            if store is notebook_vault:
+                notes = store.search_notes(q, include_deleted=trash, main_only=_flag(query, "view") == "notes")
+            else:
+                notes = store.search_notes(q, include_deleted=trash)
+            j(handler, {"notes": notes})
             return True
         if path.startswith(f"{_PREFIX}/notes/"):
             parts = _tail(path, f"{_PREFIX}/notes/")
@@ -98,12 +114,15 @@ def handle_notebook_post(handler, parsed, body) -> bool:
         if path == f"{_PREFIX}/vault":
             j(handler, {"vault": notebook_vault.set_config(body)})
             return True
+        if path == f"{_PREFIX}/vault/import":
+            j(handler, notebook_vault.import_from_store())
+            return True
         if path == f"{_PREFIX}/notes/create":
-            store = notebook_vault if (body.get("store") == "vault" or str(body.get("folder_id") or "").startswith("v")) else notebook
-            j(handler, {"note": store.create_note(body)}, status=201)
+            j(handler, {"note": _by_flag(body).create_note(body)}, status=201)
             return True
         if path == f"{_PREFIX}/trash/empty":
-            j(handler, _by_flag(body).empty_trash())
+            store = _by_flag(body)
+            j(handler, store.empty_trash(main_only=body.get("view") == "notes") if store is notebook_vault else store.empty_trash())
             return True
         if path == f"{_PREFIX}/uploads":
             j(handler, _by_id(body.get("note_id")).save_upload(body), status=201)

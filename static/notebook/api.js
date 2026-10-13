@@ -22,7 +22,8 @@
   const id = (value) => encodeURIComponent(value);
   window.NotebookApi = {
     bootstrap: () => request('/api/notebook/bootstrap'),
-    search: (q, trash, store) => request('/api/notebook/notes?q=' + encodeURIComponent(q || '') + (trash ? '&trash=1' : '') + (store === 'vault' ? '&store=vault' : '')),
+    // side: 'notes' (the main view) or 'vault' (the Obsidian side).
+    search: (q, trash, side) => request('/api/notebook/notes?q=' + encodeURIComponent(q || '') + (trash ? '&trash=1' : '') + (side === 'vault' ? '&store=vault&view=vault' : '&view=notes')),
     get: (noteId) => request('/api/notebook/notes/' + id(noteId)),
     create: (body) => post('/api/notebook/notes/create', body),
     update: (noteId, body) => post('/api/notebook/notes/' + id(noteId) + '/update', body),
@@ -30,8 +31,9 @@
     restore: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/restore'),
     purge: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/purge'),
     duplicate: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/duplicate'),
-    emptyTrash: (store) => post('/api/notebook/trash/empty', store === 'vault' ? {store} : {}),
-    createFolder: (name, store) => post('/api/notebook/folders/create', store === 'vault' ? {name, store} : {name}),
+    emptyTrash: (side) => post('/api/notebook/trash/empty', side === 'vault' ? {store: 'vault', view: 'vault'} : {view: 'notes'}),
+    createFolder: (name, side) => post('/api/notebook/folders/create', side === 'vault' ? {name, store: 'vault', view: 'vault'} : {name, view: 'notes'}),
+    importFromStore: () => post('/api/notebook/vault/import'),
     renameFolder: (folderId, name) => post('/api/notebook/folders/' + id(folderId) + '/rename', {name}),
     deleteFolder: (folderId) => post('/api/notebook/folders/' + id(folderId) + '/delete'),
     upload: (body) => post('/api/notebook/uploads', body),

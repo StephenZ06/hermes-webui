@@ -43,6 +43,10 @@
     get: () => W[S.side][key], set: (value) => { W[S.side][key] = value; }, enumerable: true,
   }));
   const isVaultNote = (note) => !!note && (note.store === 'vault' || String(note.id || '').startsWith('v'));
+  // One vault note, seen from the Obsidian side: its place there is its
+  // folder in the vault (two levels: "01 Projects / Triple S"), not the main
+  // view's workspace or Notes folder.
+  const asVaultView = (note) => Object.assign({}, note, {project_id: null, folder_id: note.vault_folder_id || null});
   function useSide(side) {
     S.side = side === 'vault' && S.vault ? 'vault' : 'notes';
     S.scope = S.side === 'vault' ? {kind: 'all', id: null} : {kind: 'general', id: null};
@@ -126,7 +130,9 @@
   }
   // Where a note created in the current scope goes.
   function placeForScope() {
-    const store = S.side === 'vault' ? {store: 'vault'} : {};
+    // view: where a note made here goes in the vault ("notes": the main
+    // view's places, 00 Inbox for General; "vault": the Obsidian side).
+    const store = S.side === 'vault' ? {store: 'vault', view: 'vault'} : {view: 'notes'};
     if (S.scope.kind === 'project') return Object.assign({project_id: S.scope.id}, store);
     if (S.scope.kind === 'folder') return Object.assign({folder_id: S.scope.id}, store);
     return store;
@@ -139,7 +145,7 @@
       const data = await window.NotebookApi.bootstrap();
       W.notes = {projects: data.projects || [], folders: data.folders || [], notes: data.notes || []};
       const v = data.vault || null;
-      W.vault = {projects: [], folders: (v && v.folders) || [], notes: (v && v.notes) || []};
+      W.vault = {projects: [], folders: (v && v.folders) || [], notes: ((v && v.notes) || []).map(asVaultView)};
       S.vault = v ? (v.vault || {name: 'Vault'}) : null;
       S.vaultConfig = data.vault_config || null;
       if (S.side === 'vault' && !S.vault) useSide('notes');
@@ -152,10 +158,21 @@
   function upsertSummary(note) {
     const summary = Object.assign({}, note);
     delete summary.content;
-    const list = W[isVaultNote(note) ? 'vault' : 'notes'].notes;
-    const index = list.findIndex((n) => n.id === note.id);
-    if (index >= 0) list[index] = Object.assign(list[index], summary);
-    else list.unshift(summary);
+    // Connected, a note can be in both lists (main view and Obsidian side),
+    // each with its own place; it leaves the main list once it is moved out
+    // of the main view's places in the vault.
+    const put = (list, item) => {
+      const index = list.findIndex((n) => n.id === item.id);
+      if (index >= 0) list[index] = Object.assign(list[index], item);
+      else list.unshift(item);
+    };
+    if (isVaultNote(note) && 'vault_folder_id' in note) {
+      put(W.vault.notes, asVaultView(summary));
+      if (note.in_main) put(W.notes.notes, summary);
+      else W.notes.notes = W.notes.notes.filter((n) => n.id !== note.id);
+    } else {
+      put(W[isVaultNote(note) ? 'vault' : 'notes'].notes, summary);
+    }
     if (S.searchResults) {
       const i = S.searchResults.findIndex((n) => n.id === note.id);
       if (i >= 0) S.searchResults[i] = Object.assign(S.searchResults[i], summary);
@@ -215,7 +232,11 @@
     </nav>`;
     side.querySelectorAll('.nb-place-btn').forEach((button) => {
       const item = folderOf(button.dataset.nbId);
-      button.querySelector('.project-folder-name').textContent = (item && item.name) || 'Untitled';
+      // A folder inside a top-level one ("01 Projects / Triple S") sits
+      // indented under it, by its own name.
+      const sub = !!(item && item.parent);
+      button.querySelector('.project-folder-name').textContent = item ? (sub ? item.name.split(' / ').pop() : item.name) : 'Untitled';
+      if (sub) { button.classList.add('nb-subfolder'); button.title = item.name; }
     });
     if (S.deleteMode) decorateDeleteMode(side);
   }
@@ -611,7 +632,7 @@
       else body.content = editorCtl.getBlocks();
     }
     if (fields.tags) body.tags = note.tags || [];
-    if (fields.place) { body.project_id = note.project_id || null; body.folder_id = note.folder_id || null; }
+    if (fields.place) { body.project_id = note.project_id || null; body.folder_id = note.folder_id || null; body.view = S.side; }
     ['pinned', 'favorite', 'archived'].forEach((flag) => { if (fields[flag]) body[flag] = !!note[flag]; });
     return body;
   }
@@ -676,6 +697,7 @@
     render();
     try {
       const {note} = await window.NotebookApi.get(noteId);
+      if (S.side === 'vault' && isVaultNote(note)) Object.assign(note, asVaultView(note));
       S.note = note;
       try { localStorage.setItem(LAST_KEY, noteId); } catch (_) {}
       let content = note.content;
@@ -882,6 +904,10 @@
     if (!name || !name.trim()) return;
     try {
       const {folder} = await window.NotebookApi.createFolder(name.trim(), S.side);
+      if (S.vault && S.side === 'notes') {
+        // It is also a folder on the Obsidian side (03 Resources / <name>).
+        W.vault.folders.push(Object.assign({}, folder, {name: folder.path.split('/').join(' / ')}));
+      }
       S.folders.push(folder);
       S.scope = {kind: 'folder', id: folder.id};
       render();
@@ -893,7 +919,7 @@
     const folder = folderOf(folderId); if (!folder) return;
     const n = S.notes.filter((x) => x.folder_id === folderId && live(x)).length;
     const ok = typeof window.showConfirmDialog === 'function'
-      ? await window.showConfirmDialog({title: 'Delete folder?', message: S.side === 'vault'
+      ? await window.showConfirmDialog({title: 'Delete folder?', message: S.vault
         ? (n ? 'It still has notes in your vault: only an empty folder can be deleted.' : 'The empty folder is removed from your vault.')
         : n ? `Its ${n} note${n === 1 ? '' : 's'} will move to General.` : 'The folder is empty.', confirmLabel: 'Delete folder', danger: true})
       : window.confirm('Delete folder?');
@@ -964,7 +990,7 @@
       try {
         const {notes} = await window.NotebookApi.search(S.search, S.scope.kind === 'trash', S.side);
         if (seq !== S.searchSeq) return;
-        S.searchResults = notes;
+        S.searchResults = S.side === 'vault' ? notes.map(asVaultView) : notes;
       } catch (error) {
         if (seq !== S.searchSeq) return;
         S.searchResults = [];

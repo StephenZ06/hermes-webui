@@ -71,12 +71,30 @@ directory is named after the version, so caches don't serve the old bundle.
 
 ## Obsidian vault (`api/notebook_vault.py`)
 
-Notes can also open an Obsidian vault's Markdown files, alongside its own
-notes, so the same notes are open in Obsidian and Hermes at once. Hermes' own
-notes stay the main view (General, Pinned, Favorites, Workspaces, Folders);
-**Obsidian Notes** at the top of the side panel switches it to the vault (All
-notes, Vault root, its folders, tags, trash), and **‹ Notes** comes back. Each
-request is routed by the note's or folder's id: vault ids start with `v`. The setting
+With an Obsidian vault connected, **every note is a file in the vault**. The
+main view keeps its structure (General, Pinned, Favorites, Workspaces,
+Folders), laid out PARA-style in the vault as its `.hermes-brain-rules.md`
+asks:
+
+| Main view | Vault folder |
+|---|---|
+| General | `00 Inbox/` |
+| a workspace (e.g. Triple S) | `01 Projects/<workspace>/` (kept if the workspace is renamed later) |
+| a folder made on the Notes page | `03 Resources/<folder>/` |
+
+**Obsidian Notes** at the top of the side panel switches to the whole vault
+(All notes, Vault root, its folders two levels deep — `01 Projects / Triple S`
+sits indented under `01 Projects` — tags, trash), and **‹ Notes** comes back.
+It is the same file either way: an edit in one view is the edit in the other.
+Notes outside the main view's places (the rest of your vault) appear only on
+the Obsidian side. The main view's search, trash and Empty trash cover only
+its own places.
+
+Hermes' own notes from before were moved in once (`POST
+/api/notebook/vault/import`: notes with content, each in its place; empty ones
+left out; never written twice); the old store is kept as a backup and an old
+note id still opens from it. Vault ids start with `v`, which is how each
+request is routed. The setting
 is **Settings → Preferences → Notes · Obsidian vault**: it shows the status,
 pre-fills a vault it finds among your saved workspaces (a folder containing
 `.obsidian`), and **Connect** / **Change** / **Disconnect** apply at once (an

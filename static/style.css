@@ -11462,3 +11462,4 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .nb-vault-title strong{font-size:12px;font-weight:650;color:var(--text);}
 .nb-vault-title small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nb-vault-mark{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:8px;background:color-mix(in srgb,#a78bfa 22%,transparent);color:#c4b5fd;}
+#notebookSidebar .nb-place-btn.nb-subfolder{margin-left:16px;width:calc(100% - 16px);}
