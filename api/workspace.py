@@ -469,6 +469,36 @@ def save_workspaces(workspaces: list) -> None:
     _GLOBAL_WS_FILE.write_text(json.dumps(workspaces, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def pinned_default_workspace(terminal_cfg=None) -> str | None:
+    """The settings ``default_workspace`` when new chats are pinned to it.
+
+    ``new_chat_inherits_workspace: false`` makes every non-project New Chat (and
+    every profile's default) start in the configured default workspace instead
+    of the last one used. Returns None when inheritance is on, the path is not
+    a directory, or the profile's terminal is remote (a local path means
+    nothing on the target host). *terminal_cfg* names the profile being
+    resolved; omitted, the active profile's config is used.
+    """
+    try:
+        from api.config import get_config, load_settings
+
+        if terminal_cfg is None:
+            terminal_cfg = get_config().get('terminal', {})
+        if isinstance(terminal_cfg, dict) and _is_remote_terminal_backend(terminal_cfg):
+            return None
+        settings = load_settings()
+        if settings.get('new_chat_inherits_workspace') is not False:
+            return None
+        raw = str(settings.get('default_workspace') or '').strip()
+        if not raw:
+            return None
+        path = Path(raw).expanduser()
+        return str(path.resolve()) if path.is_dir() else None
+    except Exception:
+        logger.debug("Failed to resolve pinned default workspace", exc_info=True)
+        return None
+
+
 def get_profile_default_workspace() -> str:
     """Resolve the ACTIVE PROFILE's default workspace, never the global file.
 
@@ -497,6 +527,9 @@ def get_profile_default_workspace() -> str:
             return raw
         return None
 
+    pinned = pinned_default_workspace()
+    if pinned:
+        return pinned
     lw_file = _last_workspace_file()
     if lw_file.exists():
         try:

@@ -1808,8 +1808,13 @@ def switch_profile(name: str, *, process_wide: bool = True) -> dict:
     default_workspace = None
     try:
         from api.config import DEFAULT_WORKSPACE as _DW
+        # new_chat_inherits_workspace=false pins every profile's new chats to
+        # the configured default workspace rather than the last one used.
+        from api.workspace import pinned_default_workspace
+        _tc_pin = cfg.get('terminal', {}) if isinstance(cfg, dict) else {}
+        default_workspace = pinned_default_workspace(_tc_pin if isinstance(_tc_pin, dict) else {})
         lw_file = home / 'webui_state' / 'last_workspace.txt'
-        if lw_file.exists():
+        if default_workspace is None and lw_file.exists():
             _p = lw_file.read_text(encoding='utf-8').strip()
             if _p:
                 _pp = Path(_p).expanduser()

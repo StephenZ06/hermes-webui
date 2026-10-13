@@ -98,7 +98,11 @@ def _cleanup_state_dir(state_dir: Path):
     no longer exists or doesn't match their pytest-managed state dir."""
     import shutil
     shutil.rmtree(state_dir, ignore_errors=True)
-    os.environ.pop("HERMES_WEBUI_STATE_DIR", None)
+    # Restore the conftest value, never just pop it: without it, later
+    # subprocesses resolve the REAL state dir (see conftest
+    # _restore_test_state_env).
+    from tests.conftest import TEST_STATE_DIR
+    os.environ["HERMES_WEBUI_STATE_DIR"] = str(TEST_STATE_DIR)
 
     # Restore api.config / mcp_server / api.models module constants.
     saved = _SAVED_CONSTANTS

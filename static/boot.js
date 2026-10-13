@@ -4452,6 +4452,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     // Persist default workspace so the blank new-chat page can show it
     // and workspace actions (New file/folder) work before the first session (#804).
     if(s.default_workspace) S._profileDefaultWorkspace=s.default_workspace;
+    window._newChatInheritsWorkspace=s.new_chat_inherits_workspace!==false;
     window._showTokenUsage=!!s.show_token_usage;
     window._showQuotaChip=s.show_quota_chip===true;
     window._showConversationOutline=s.show_conversation_outline===true;

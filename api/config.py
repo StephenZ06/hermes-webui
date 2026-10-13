@@ -10034,6 +10034,10 @@ def _alias_session_agent_lock(
 
 _SETTINGS_DEFAULTS = {
     "default_workspace": str(DEFAULT_WORKSPACE),
+    # True: New Chat opens in the current conversation's workspace. False: a
+    # new chat outside a project always starts in default_workspace (project
+    # chats keep their project's bound workspace either way).
+    "new_chat_inherits_workspace": True,
     "onboarding_completed": False,
     "tour_completed": False,  # guided UI walkthrough (static/tour.js) shown once, or replayed from Settings -> Help
     "send_key": "enter",  # 'enter', 'ctrl+enter', or 'shift+enter'
@@ -10385,6 +10389,7 @@ _SETTINGS_FLOAT_RANGES = {
     "tts_pitch": (0.0, 2.0),
 }
 _SETTINGS_BOOL_KEYS = {
+    "new_chat_inherits_workspace",
     "onboarding_completed",
     "tour_completed",
     "show_token_usage",

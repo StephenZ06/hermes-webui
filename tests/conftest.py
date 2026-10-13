@@ -231,6 +231,21 @@ def _isolate_hermes_config_path():
 
 
 @pytest.fixture(autouse=True)
+def _restore_test_state_env():
+    """Re-pin the test state dir / default workspace after every test.
+
+    A test that pops HERMES_WEBUI_STATE_DIR (rather than restoring it) leaves
+    later subprocesses importing api.config against the REAL ~/.hermes/webui
+    while still carrying the test HERMES_WEBUI_DEFAULT_WORKSPACE, and startup
+    reconciliation then writes that /tmp path into the user's settings.json.
+    """
+    yield
+    os.environ['HERMES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
+    os.environ['HERMES_WEBUI_TEST_STATE_DIR'] = str(TEST_STATE_DIR)
+    os.environ['HERMES_WEBUI_DEFAULT_WORKSPACE'] = str(TEST_WORKSPACE)
+
+
+@pytest.fixture(autouse=True)
 def _reset_password_hash_cache():
     """Reset the memoized password-hash cache around every test (#5588).
 

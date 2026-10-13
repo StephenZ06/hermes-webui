@@ -1414,7 +1414,11 @@ async function newSession(flash, options={}){
     // Provenance lets the server recover only a deleted inherited path; explicit paths stay strict.
     const switchWs=S._profileSwitchWorkspace;
     S._profileSwitchWorkspace=null;
-    const sessionWs=(!switchWs&&S.session)?S.session.workspace:null;
+    // new_chat_inherits_workspace=false: a non-project New Chat starts in the
+    // default workspace instead of the current conversation's (a project
+    // binding below still wins for project chats).
+    const _inheritWs=window._newChatInheritsWorkspace!==false;
+    const sessionWs=(!switchWs&&S.session&&_inheritWs)?S.session.workspace:null;
     const inheritWs=switchWs||sessionWs||(S._profileDefaultWorkspace||null);
     const reqBody={
       workspace:inheritWs,
