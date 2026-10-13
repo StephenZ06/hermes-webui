@@ -43,7 +43,9 @@ from api.config import STATE_DIR
 from api.notebook import CONTENT_MAX_BYTES, IMAGE_TYPES, NotebookError, TITLE_MAX_CHARS, UPLOAD_MAX_BYTES, _SIGNATURES, _tags
 
 _LOCK = threading.RLock()
-_ID = re.compile(r"^[0-9a-f]{32}$")
+# Vault ids carry a "v" so a request can be routed to the right store by its
+# id alone (Hermes' own notes and folders use bare 32-hex ids).
+_ID = re.compile(r"^v[0-9a-f]{32}$")
 MAX_FILES = 5000
 TRASH = ".trash"
 FILE_ROUTE = "/api/notebook/vault/file?path="
@@ -163,6 +165,10 @@ def _connect() -> Generator[sqlite3.Connection, None, None]:
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(_SCHEMA)
+        # Ids from before the "v" prefix keep working, prefixed.
+        with conn:
+            conn.execute("UPDATE vault_notes SET id='v'||id WHERE id NOT LIKE 'v%'")
+            conn.execute("UPDATE vault_folders SET id='v'||id WHERE id NOT LIKE 'v%'")
         yield conn
     finally:
         conn.close()
@@ -172,7 +178,7 @@ def _note_id(conn: sqlite3.Connection, vault: str, rel: str) -> str:
     row = conn.execute("SELECT id FROM vault_notes WHERE vault=? AND relpath=?", (vault, rel)).fetchone()
     if row:
         return row["id"]
-    note_id = uuid.uuid4().hex
+    note_id = "v" + uuid.uuid4().hex
     with conn:
         conn.execute("INSERT INTO vault_notes(id, vault, relpath) VALUES (?, ?, ?)", (note_id, vault, rel))
     return note_id
@@ -182,7 +188,7 @@ def _folder_id(conn: sqlite3.Connection, vault: str, rel: str) -> str:
     row = conn.execute("SELECT id FROM vault_folders WHERE vault=? AND relpath=?", (vault, rel)).fetchone()
     if row:
         return row["id"]
-    folder_id = uuid.uuid4().hex
+    folder_id = "v" + uuid.uuid4().hex
     with conn:
         conn.execute("INSERT INTO vault_folders(id, vault, relpath) VALUES (?, ?, ?)", (folder_id, vault, rel))
     return folder_id
@@ -435,7 +441,7 @@ def _summary(conn: sqlite3.Connection, root: Path, path: Path, folders: dict[str
         "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]), "archived": False,
         "deleted_at": deleted_at, "revision": _revision(path),
         "created_at": getattr(stat, "st_birthtime", stat.st_ctime), "updated_at": stat.st_mtime,
-        "path": rel, "format": "markdown",
+        "path": rel, "format": "markdown", "store": "vault",
     }
 
 
@@ -481,7 +487,7 @@ def bootstrap() -> dict[str, Any]:
         # The attachment folder holds images, not notes: not a Notes folder
         # unless someone keeps notes in it.
         attachments = _attachments_dir(root)
-        folders = [{"id": _folder_id(conn, str(root), p.name), "name": p.name, "color": "", "path": p.name}
+        folders = [{"id": _folder_id(conn, str(root), p.name), "name": p.name, "color": "", "path": p.name, "store": "vault"}
                    for p in _top_folders(root) if p != attachments or any(p.rglob("*.md"))]
         by_name = {f["name"]: f["id"] for f in folders}
         notes = [_summary(conn, root, p, by_name) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
@@ -668,7 +674,7 @@ def create_folder(payload: dict[str, Any]) -> dict[str, Any]:
         raise NotebookError("A folder with that name is already in your vault", 409)
     path.mkdir()
     with _LOCK, _connect() as conn:
-        return {"id": _folder_id(conn, str(root), name), "name": name, "color": "", "path": name}
+        return {"id": _folder_id(conn, str(root), name), "name": name, "color": "", "path": name, "store": "vault"}
 
 
 def rename_folder(folder_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -685,7 +691,7 @@ def rename_folder(folder_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             conn.execute("UPDATE vault_folders SET relpath=? WHERE id=?", (name, folder_id))
             for row in conn.execute("SELECT id, relpath FROM vault_notes WHERE vault=? AND relpath LIKE ?", (str(root), old + "/%")).fetchall():
                 conn.execute("UPDATE vault_notes SET relpath=? WHERE id=?", (name + row["relpath"][len(old):], row["id"]))
-        return {"id": folder_id, "name": name, "color": "", "path": name}
+        return {"id": folder_id, "name": name, "color": "", "path": name, "store": "vault"}
 
 
 def delete_folder(folder_id: str) -> dict[str, Any]:

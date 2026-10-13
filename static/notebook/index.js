@@ -25,15 +25,31 @@
 
   const S = {
     loaded: false, loading: false, error: '',
-    projects: [], folders: [], notes: [],
     vault: null, vaultConfig: null, // connected Obsidian vault (api/notebook_vault.py)
-    scope: {kind: 'all', id: null},
+    // Which notes the side panel shows: Hermes' own ('notes', the main view)
+    // or the Obsidian vault's ('vault', opened from "Obsidian Notes").
+    side: 'notes',
+    scope: {kind: 'general', id: null},
     search: '', searchResults: null, searchSeq: 0,
     expanded: {}, tagFilter: null,
     note: null, noteLoading: false, noteError: '',
     pane: 'list', // narrow screens: 'list' | 'editor'
   };
   const save = {timer: 0, retry: 0, inflight: null, dirty: {}, again: false, status: 'idle', error: '', conflict: null};
+  // The two stores, side by side. S.projects / S.folders / S.notes are the
+  // active one's, so the tree, list, search and delete code work unchanged.
+  const W = {notes: {projects: [], folders: [], notes: []}, vault: {projects: [], folders: [], notes: []}};
+  ['projects', 'folders', 'notes'].forEach((key) => Object.defineProperty(S, key, {
+    get: () => W[S.side][key], set: (value) => { W[S.side][key] = value; }, enumerable: true,
+  }));
+  const isVaultNote = (note) => !!note && (note.store === 'vault' || String(note.id || '').startsWith('v'));
+  function useSide(side) {
+    S.side = side === 'vault' && S.vault ? 'vault' : 'notes';
+    S.scope = S.side === 'vault' ? {kind: 'all', id: null} : {kind: 'general', id: null};
+    S.search = ''; S.searchResults = null; S.tagFilter = null;
+    if (S.deleteMode && deleteModeRef) deleteModeRef.exit();
+    const search = $('nbSearch'); if (search) search.value = '';
+  }
   let editorModule = null;
   let editorCtl = null;
   let editorNoteId = null;
@@ -56,6 +72,7 @@
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     back: '<path d="m15 18-6-6 6-6"/>',
     tag: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
+    vault: '<path d="M12 2.5 4.5 7v10L12 21.5l7.5-4.5V7z"/><path d="M12 2.5v19M4.5 7l7.5 4.5L19.5 7"/>',
   };
   const icon = (name, size) => `<svg width="${size || 14}" height="${size || 14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -71,9 +88,10 @@
   const projectOf = (id) => S.projects.find((p) => p.project_id === id) || null;
   const folderOf = (id) => S.folders.find((f) => f.id === id) || null;
   function placeLabel(note) {
-    if (note.project_id) { const p = projectOf(note.project_id); return p ? p.name : 'General'; }
-    if (note.folder_id) { const f = folderOf(note.folder_id); return f ? f.name : 'General'; }
-    return 'General';
+    const root = isVaultNote(note) ? 'Vault root' : 'General';
+    if (note.project_id) { const p = projectOf(note.project_id); return p ? p.name : root; }
+    if (note.folder_id) { const f = W[isVaultNote(note) ? 'vault' : 'notes'].folders.find((x) => x.id === note.folder_id); return f ? f.name : root; }
+    return root;
   }
   // The colour of the note's workspace or folder, as on their side-panel dots.
   function placeColor(note) {
@@ -103,13 +121,15 @@
     const k = S.scope.kind;
     if (k === 'project') return (projectOf(S.scope.id) || {}).name || 'Workspace';
     if (k === 'folder') return (folderOf(S.scope.id) || {}).name || 'Folder';
+    if (S.side === 'vault') return {all: 'Obsidian notes', general: 'Vault root', trash: 'Vault trash'}[k] || 'Obsidian notes';
     return {all: 'All notes', general: 'General', pinned: 'Pinned', favorites: 'Favorites', trash: 'Trash'}[k] || 'Notes';
   }
   // Where a note created in the current scope goes.
   function placeForScope() {
-    if (S.scope.kind === 'project') return {project_id: S.scope.id};
-    if (S.scope.kind === 'folder') return {folder_id: S.scope.id};
-    return {};
+    const store = S.side === 'vault' ? {store: 'vault'} : {};
+    if (S.scope.kind === 'project') return Object.assign({project_id: S.scope.id}, store);
+    if (S.scope.kind === 'folder') return Object.assign({folder_id: S.scope.id}, store);
+    return store;
   }
 
   // ── data ───────────────────────────────────────────────────────────────────
@@ -117,8 +137,12 @@
     S.loading = true; S.error = '';
     try {
       const data = await window.NotebookApi.bootstrap();
-      S.projects = data.projects || []; S.folders = data.folders || []; S.notes = data.notes || [];
-      S.vault = data.vault || null; S.vaultConfig = data.vault_config || null;
+      W.notes = {projects: data.projects || [], folders: data.folders || [], notes: data.notes || []};
+      const v = data.vault || null;
+      W.vault = {projects: [], folders: (v && v.folders) || [], notes: (v && v.notes) || []};
+      S.vault = v ? (v.vault || {name: 'Vault'}) : null;
+      S.vaultConfig = data.vault_config || null;
+      if (S.side === 'vault' && !S.vault) useSide('notes');
       S.loaded = true;
     } catch (error) {
       S.error = error.message || 'Notes could not be loaded';
@@ -128,9 +152,10 @@
   function upsertSummary(note) {
     const summary = Object.assign({}, note);
     delete summary.content;
-    const index = S.notes.findIndex((n) => n.id === note.id);
-    if (index >= 0) S.notes[index] = Object.assign(S.notes[index], summary);
-    else S.notes.unshift(summary);
+    const list = W[isVaultNote(note) ? 'vault' : 'notes'].notes;
+    const index = list.findIndex((n) => n.id === note.id);
+    if (index >= 0) list[index] = Object.assign(list[index], summary);
+    else list.unshift(summary);
     if (S.searchResults) {
       const i = S.searchResults.findIndex((n) => n.id === note.id);
       if (i >= 0) S.searchResults[i] = Object.assign(S.searchResults[i], summary);
@@ -168,9 +193,31 @@
   // the open note, which belongs to the old store, and load the new one.
   async function vaultChanged() {
     await flushSave();
-    S.note = null; destroyEditor(); S.scope = {kind: 'all', id: null}; S.searchResults = null;
+    S.note = null; destroyEditor(); useSide('notes');
     if (!S.loaded) return;
     await loadBootstrap(); render();
+  }
+  // The Obsidian side: the vault's folders and notes, with the way back.
+  function renderVaultSidebar(side, liveNotes, tags, dm) {
+    side.innerHTML = `<nav class="work-hub-nav nb-nav nb-nav-vault" aria-label="Obsidian notes">
+      <button type="button" class="nb-vault-back" data-nb-action="vault-close">${icon('back', 14)}<span>Notes</span></button>
+      <div class="nb-vault-title" title="${esc((S.vaultConfig && S.vaultConfig.path) || '')}"><span class="nb-vault-mark" aria-hidden="true">${icon('vault', 14)}</span><span><strong>Obsidian</strong><small>${esc((S.vault && S.vault.name) || 'Vault')}</small></span></div>
+      ${scopeButton('all', 'All notes', 'all', count((n) => live(n)))}
+      ${scopeButton('general', 'Vault root', 'general', count((n) => live(n) && !n.folder_id))}
+      <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
+      <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
+      <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
+        ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'
+        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
+      ${tags.length ? `<div class="work-hub-nav-label work-hub-projects-heading"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+      <div class="nb-nav-spacer"></div>
+      ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at), 'nb-trash-scope')}
+    </nav>`;
+    side.querySelectorAll('.nb-place-btn').forEach((button) => {
+      const item = folderOf(button.dataset.nbId);
+      button.querySelector('.project-folder-name').textContent = (item && item.name) || 'Untitled';
+    });
+    if (S.deleteMode) decorateDeleteMode(side);
   }
   function renderSidebar() {
     const side = $('notebookSidebar');
@@ -179,13 +226,15 @@
     const liveNotes = S.notes.filter(live);
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
     const dm = S.deleteMode ? ' is-delete-mode' : '';
+    if (S.side === 'vault') { renderVaultSidebar(side, liveNotes, tags, dm); return; }
+    const vaultCount = W.vault.notes.filter(live).length;
     side.innerHTML = `<nav class="work-hub-nav nb-nav" aria-label="Notes navigation">
-      ${scopeButton('all', 'All notes', 'all', count((n) => live(n) && !n.archived))}
+      <button type="button" class="work-hub-scope nb-scope nb-obsidian-scope" data-nb-action="vault-open" title="${S.vault ? 'Your Obsidian vault: ' + esc(S.vault.name || '') : 'Connect your Obsidian vault in Settings'}">${icon('vault')}<span>Obsidian Notes</span>${S.vault ? `<span class="nb-scope-count">${vaultCount}</span>` : '<span class="nb-scope-hint">Connect</span>'}<span class="nb-scope-chevron" aria-hidden="true">›</span></button>
       ${scopeButton('general', 'General', 'general', count((n) => live(n) && !n.project_id && !n.folder_id))}
       ${scopeButton('pinned', 'Pinned', 'pin', count((n) => live(n) && n.pinned))}
       ${scopeButton('favorites', 'Favorites', 'star', count((n) => live(n) && n.favorite))}
-      ${S.vault ? '' : `<div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
-      <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>`}
+      <div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
+      <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>
       <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
       <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
@@ -660,7 +709,7 @@
     try {
       const {note} = await window.NotebookApi.create(Object.assign({title: ''}, placeForScope(), extra || {}));
       upsertSummary(note); sortNotes();
-      if (S.scope.kind === 'trash' || S.scope.kind === 'pinned' || S.scope.kind === 'favorites') S.scope = {kind: 'all', id: null};
+      if (S.scope.kind === 'trash' || S.scope.kind === 'pinned' || S.scope.kind === 'favorites') S.scope = {kind: S.side === 'vault' ? 'all' : 'general', id: null};
       const key = note.project_id ? 'project:' + note.project_id : note.folder_id ? 'folder:' + note.folder_id : null;
       if (key) S.expanded[key] = true;
       await openNote(note.id, {force: true});
@@ -711,7 +760,7 @@
       : window.confirm('Empty trash?');
     if (!ok) return;
     try {
-      await window.NotebookApi.emptyTrash();
+      await window.NotebookApi.emptyTrash(S.side);
       S.notes = S.notes.filter((x) => !x.deleted_at);
       if (S.note && S.note.deleted_at) { destroyEditor(); S.note = null; }
       render();
@@ -832,7 +881,7 @@
       : window.prompt('Folder name');
     if (!name || !name.trim()) return;
     try {
-      const {folder} = await window.NotebookApi.createFolder(name.trim());
+      const {folder} = await window.NotebookApi.createFolder(name.trim(), S.side);
       S.folders.push(folder);
       S.scope = {kind: 'folder', id: folder.id};
       render();
@@ -844,7 +893,9 @@
     const folder = folderOf(folderId); if (!folder) return;
     const n = S.notes.filter((x) => x.folder_id === folderId && live(x)).length;
     const ok = typeof window.showConfirmDialog === 'function'
-      ? await window.showConfirmDialog({title: 'Delete folder?', message: n ? `Its ${n} note${n === 1 ? '' : 's'} will move to General.` : 'The folder is empty.', confirmLabel: 'Delete folder', danger: true})
+      ? await window.showConfirmDialog({title: 'Delete folder?', message: S.side === 'vault'
+        ? (n ? 'It still has notes in your vault: only an empty folder can be deleted.' : 'The empty folder is removed from your vault.')
+        : n ? `Its ${n} note${n === 1 ? '' : 's'} will move to General.` : 'The folder is empty.', confirmLabel: 'Delete folder', danger: true})
       : window.confirm('Delete folder?');
     if (!ok) return;
     try {
@@ -911,7 +962,7 @@
     searchTimer = setTimeout(async () => {
       const seq = ++S.searchSeq;
       try {
-        const {notes} = await window.NotebookApi.search(S.search, S.scope.kind === 'trash');
+        const {notes} = await window.NotebookApi.search(S.search, S.scope.kind === 'trash', S.side);
         if (seq !== S.searchSeq) return;
         S.searchResults = notes;
       } catch (error) {
@@ -992,6 +1043,14 @@
       case 'conflict-theirs': await resolveConflict(false); break;
       case 'back': S.pane = 'list'; ensureShell(); break;
       case 'reload': await loadBootstrap(); render(); break;
+      case 'vault-open':
+        if (!S.vault) {
+          toast('Connect your Obsidian vault in Settings → Preferences');
+          if (typeof window.switchPanel === 'function') { await window.switchPanel('settings'); if (typeof window.switchSettingsSection === 'function') window.switchSettingsSection('preferences'); }
+          break;
+        }
+        useSide('vault'); S.pane = 'list'; render(); break;
+      case 'vault-close': useSide('notes'); S.pane = 'list'; render(); break;
       default: break;
     }
   }

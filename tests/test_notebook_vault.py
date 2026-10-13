@@ -164,12 +164,32 @@ class _H:
         pass
 
 
-def test_routes_use_the_vault_only_when_connected(vault):
-    assert notebook_api._store() is notebook, "not connected: Hermes' own notes"
+def test_both_stores_run_side_by_side_routed_by_id(vault, monkeypatch):
+    """Hermes' own notes stay the main store; the vault's notes come alongside
+    (bootstrap "vault"), and every call is routed by the note's id ("v…")."""
+    monkeypatch.setattr("api.models.load_projects", lambda *a, **k: [])
+    own = notebook.create_note({"title": "Hermes note"})
+    sent = []
+    monkeypatch.setattr(notebook_api, "j", lambda handler, payload, status=200: sent.append((status, payload)))
+    notebook_api.handle_notebook_get(_H(), urlparse("/api/notebook/bootstrap"))
+    data = sent[-1][1]
+    assert [n["title"] for n in data["notes"]] == ["Hermes note"] and data["vault"] is None, "not connected: no vault notes"
     _connect(vault)
-    assert notebook_api._store() is notebook_vault
+    notebook_api.handle_notebook_get(_H(), urlparse("/api/notebook/bootstrap"))
+    data = sent[-1][1]
+    assert [n["title"] for n in data["notes"]] == ["Hermes note"], "Hermes' notes stay the main list"
+    vault_notes = data["vault"]["notes"]
+    assert sorted(n["title"] for n in vault_notes) == ["Honeypot", "Inbox note"]
+    assert all(n["id"].startswith("v") and n["store"] == "vault" for n in vault_notes)
+    vid = vault_notes[0]["id"]
+    notebook_api.handle_notebook_get(_H(), urlparse(f"/api/notebook/notes/{vid}"))
+    assert sent[-1][1]["note"]["format"] == "markdown"
+    notebook_api.handle_notebook_get(_H(), urlparse(f"/api/notebook/notes/{own['id']}"))
+    assert sent[-1][1]["note"]["title"] == "Hermes note"
+    notebook_api.handle_notebook_post(_H(), urlparse("/api/notebook/notes/create"), {"title": "In vault", "store": "vault"})
+    assert sent[-1][1]["note"]["store"] == "vault" and (vault / "In vault.md").is_file()
+    notebook_api.handle_notebook_get(_H(), urlparse("/api/notebook/notes?q=vault&store=vault"))
+    assert [n["title"] for n in sent[-1][1]["notes"]] == ["In vault"]
     h = _H()
     assert notebook_api.handle_notebook_get(h, urlparse("/api/notebook/vault/file?path=Attachments/diagram.png")) is True
     assert h.status == 200 and h.headers_out["Content-Type"] == "image/png" and h.wfile.getvalue() == PNG
-    notebook_vault.set_config({"enabled": False})
-    assert notebook_api._store() is notebook and notebook_vault.config()["path"] == str(vault)

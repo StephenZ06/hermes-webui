@@ -71,22 +71,26 @@ directory is named after the version, so caches don't serve the old bundle.
 
 ## Obsidian vault (`api/notebook_vault.py`)
 
-Notes can read and write an Obsidian vault's Markdown files instead of its own
-store, so the same notes are open in Obsidian and Hermes at once. The setting
+Notes can also open an Obsidian vault's Markdown files, alongside its own
+notes, so the same notes are open in Obsidian and Hermes at once. Hermes' own
+notes stay the main view (General, Pinned, Favorites, Workspaces, Folders);
+**Obsidian Notes** at the top of the side panel switches it to the vault (All
+notes, Vault root, its folders, tags, trash), and **‹ Notes** comes back. Each
+request is routed by the note's or folder's id: vault ids start with `v`. The setting
 is **Settings → Preferences → Notes · Obsidian vault**: it shows the status,
 pre-fills a vault it finds among your saved workspaces (a folder containing
 `.obsidian`), and **Connect** / **Change** / **Disconnect** apply at once (an
 open Notes page reloads onto the new store). Nothing switches until you press
 Connect (config: `notebook_vault.json` in the WebUI state directory,
-`{path, enabled}`; Disconnect returns to Hermes' own store, which is left
-untouched either way).
+`{path, enabled}`; Disconnect hides the vault's notes again, and Hermes' own
+notes are never affected).
 
-Connected:
+In the vault:
 
 - a note is a `.md` file and its title is the file name; the vault root is
-  **General**, each top-level folder is a Notes folder (deeper sub-folders stay
-  where they are and show under their top-level folder). Workspaces are not
-  used. The attachment folder is not listed as a folder;
+  **Vault root**, each top-level folder is a folder (deeper sub-folders stay
+  where they are and show under their top-level folder). The attachment
+  folder is not listed as a folder;
 - the editor gets the Markdown body; YAML frontmatter is never shown and is
   written back exactly as it was. Tags are the frontmatter `tags:`;
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in

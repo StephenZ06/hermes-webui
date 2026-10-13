@@ -18,9 +18,17 @@ def _fail(handler, error: notebook.NotebookError) -> bool:
     return True
 
 
-def _store():
-    """The connected Obsidian vault when there is one, else Hermes' own store."""
-    return notebook_vault if notebook_vault.enabled() else notebook
+def _by_id(item_id: str):
+    """Hermes' own notes and the Obsidian vault run side by side: vault note
+    and folder ids start with "v" (api/notebook_vault.py)."""
+    return notebook_vault if str(item_id or "").startswith("v") else notebook
+
+
+def _by_flag(body_or_query) -> object:
+    value = body_or_query.get("store") if isinstance(body_or_query, dict) else None
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return notebook_vault if value == "vault" else notebook
 
 
 def _send_image(handler, data: bytes, mime: str, cache: str) -> None:
@@ -49,10 +57,10 @@ def handle_notebook_get(handler, parsed) -> bool:
             data, mime = notebook_vault.read_file(rel)
             _send_image(handler, data, mime, "private, no-cache")
             return True
-        store = _store()
         if path == f"{_PREFIX}/bootstrap":
-            data = store.bootstrap()
-            data.setdefault("vault", None)
+            # Hermes' own notes, plus the connected vault's alongside them.
+            data = notebook.bootstrap()
+            data["vault"] = notebook_vault.bootstrap() if notebook_vault.enabled() else None
             data["vault_config"] = notebook_vault.config()
             j(handler, data)
             return True
@@ -60,16 +68,16 @@ def handle_notebook_get(handler, parsed) -> bool:
             query = parse_qs(parsed.query or "")
             q = str(query.get("q", [""])[0])
             trash = str(query.get("trash", [""])[0]) == "1"
-            j(handler, {"notes": store.search_notes(q, include_deleted=trash)})
+            j(handler, {"notes": _by_flag(query).search_notes(q, include_deleted=trash)})
             return True
         if path.startswith(f"{_PREFIX}/notes/"):
             parts = _tail(path, f"{_PREFIX}/notes/")
             if len(parts) == 2 and parts[1] == "context":
-                j(handler, {"context": store.note_context(parts[0])})
+                j(handler, {"context": _by_id(parts[0]).note_context(parts[0])})
                 return True
             if len(parts) != 1:
                 return bool(bad(handler, "Not found", 404)) or True
-            j(handler, {"note": store.get_note(parts[0])})
+            j(handler, {"note": _by_id(parts[0]).get_note(parts[0])})
             return True
         if path.startswith(f"{_PREFIX}/files/"):
             parts = _tail(path, f"{_PREFIX}/files/")
@@ -90,21 +98,22 @@ def handle_notebook_post(handler, parsed, body) -> bool:
         if path == f"{_PREFIX}/vault":
             j(handler, {"vault": notebook_vault.set_config(body)})
             return True
-        store = _store()
         if path == f"{_PREFIX}/notes/create":
+            store = notebook_vault if (body.get("store") == "vault" or str(body.get("folder_id") or "").startswith("v")) else notebook
             j(handler, {"note": store.create_note(body)}, status=201)
             return True
         if path == f"{_PREFIX}/trash/empty":
-            j(handler, store.empty_trash())
+            j(handler, _by_flag(body).empty_trash())
             return True
         if path == f"{_PREFIX}/uploads":
-            j(handler, store.save_upload(body), status=201)
+            j(handler, _by_id(body.get("note_id")).save_upload(body), status=201)
             return True
         if path == f"{_PREFIX}/folders/create":
-            j(handler, {"folder": store.create_folder(body)}, status=201)
+            j(handler, {"folder": _by_flag(body).create_folder(body)}, status=201)
             return True
         if path.startswith(f"{_PREFIX}/folders/"):
             parts = _tail(path, f"{_PREFIX}/folders/")
+            store = _by_id(parts[0] if parts else "")
             if len(parts) == 2 and parts[1] == "rename":
                 j(handler, {"folder": store.rename_folder(parts[0], body)})
                 return True
@@ -114,6 +123,7 @@ def handle_notebook_post(handler, parsed, body) -> bool:
             return bool(bad(handler, "Not found", 404)) or True
         if path.startswith(f"{_PREFIX}/notes/"):
             parts = _tail(path, f"{_PREFIX}/notes/")
+            store = _by_id(parts[0] if parts else "")
             actions = {
                 "update": lambda note_id: {"note": store.update_note(note_id, body)},
                 "trash": lambda note_id: {"note": store.trash_note(note_id)},

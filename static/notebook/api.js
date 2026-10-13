@@ -22,7 +22,7 @@
   const id = (value) => encodeURIComponent(value);
   window.NotebookApi = {
     bootstrap: () => request('/api/notebook/bootstrap'),
-    search: (q, trash) => request('/api/notebook/notes?q=' + encodeURIComponent(q || '') + (trash ? '&trash=1' : '')),
+    search: (q, trash, store) => request('/api/notebook/notes?q=' + encodeURIComponent(q || '') + (trash ? '&trash=1' : '') + (store === 'vault' ? '&store=vault' : '')),
     get: (noteId) => request('/api/notebook/notes/' + id(noteId)),
     create: (body) => post('/api/notebook/notes/create', body),
     update: (noteId, body) => post('/api/notebook/notes/' + id(noteId) + '/update', body),
@@ -30,8 +30,8 @@
     restore: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/restore'),
     purge: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/purge'),
     duplicate: (noteId) => post('/api/notebook/notes/' + id(noteId) + '/duplicate'),
-    emptyTrash: () => post('/api/notebook/trash/empty'),
-    createFolder: (name) => post('/api/notebook/folders/create', {name}),
+    emptyTrash: (store) => post('/api/notebook/trash/empty', store === 'vault' ? {store} : {}),
+    createFolder: (name, store) => post('/api/notebook/folders/create', store === 'vault' ? {name, store} : {name}),
     renameFolder: (folderId, name) => post('/api/notebook/folders/' + id(folderId) + '/rename', {name}),
     deleteFolder: (folderId) => post('/api/notebook/folders/' + id(folderId) + '/delete'),
     upload: (body) => post('/api/notebook/uploads', body),
