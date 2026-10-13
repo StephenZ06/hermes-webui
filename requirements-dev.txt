@@ -16,3 +16,8 @@ mcp>=1.28,<2
 python-docx
 openpyxl
 python-pptx
+# Browser automation: the Job OS auto-apply flow and the browser UI tests
+# (tests/*_browser.py) drive Chromium through Playwright. Without it those
+# tests skip and auto-apply reports "Browser automation isn't installed".
+# Run `python -m playwright install chromium` once after installing.
+playwright==1.62.0

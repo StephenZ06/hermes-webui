@@ -1192,7 +1192,7 @@
       const active = view === key && !(key === 'pipeline' && (state.statusFilter || state.focusColumn));
       const alert = key === 'scout' && siteProblems(state).some((site) => site.in_use !== false);
       if (alert) return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span><span class="job-os-side-alert" title="A job site needs attention" aria-label="A job site needs attention">!</span></button>`;
-      const count = counts[key] ? `<span class="job-os-side-count${key === 'scout' ? ' is-new' : ''}"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
+      const count = counts[key] ? `<span class="job-os-side-count"${key === 'scout' ? ` title="${counts[key]} new good match${counts[key] === 1 ? '' : 'es'}"` : ''}>${counts[key]}</span>` : '';
       return `<button type="button" class="side-menu-item${active ? ' active' : ''}" data-job-os-view="${key}"${active ? ' aria-current="page"' : ''}>${icon(key, 18)}<span class="side-menu-label">${labels[key]}</span>${count}</button>`;
     }).join('');
     // Every board column, in board order; a click opens the board at that column.
