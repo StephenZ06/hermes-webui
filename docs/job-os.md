@@ -9,7 +9,7 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 | **Scout** | Saved Indeed searches; runs find postings and add them to the Pipeline. |
 | **Pipeline** | Every job, from new find to offer: a board or a list. |
 | **Resume Studio** | The master resume, its match score against a job, and tailored versions. |
-| **Settings** | A side menu of sections, one shown at a time: Connections (Firecrawl, Gmail), Apify, Scout schedule, Luna (AI), Notifications, your details, application answers, the Jobs page. |
+| **Settings** | Sections grouped as Accounts (Connections: Firecrawl, Gmail; Apify), Automation (Scout schedule, Luna (AI), Notifications) and You (your details, application answers, master resume). Desktop: a side menu, one section at a time. Phone: a grouped list; a section opens on its own with ‹ Settings to go back. |
 
 ## Two ways in
 
