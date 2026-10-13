@@ -1,5 +1,22 @@
 # Project status — hermes-webui
 
+## 2026-10-13: Notes on the Obsidian vault, Logistics removed, Jobs fixes
+
+- **Notes ↔ Obsidian:** `api/notebook_vault.py`; live vault connected:
+  `/mnt/c/Users/Z014/Documents/Obsidian-Vault` (`~/.hermes/webui/notebook_vault.json`).
+  The old SQLite notes (10, mostly empty tests) are untouched; Disconnect in
+  the Notes side panel returns to them. Details: docs/notes.md "Obsidian vault".
+- **Logistics centre removed**; the Pipeline shows Luna's work per card and in
+  the toolbar. Old `#jobs/logistics` links open the Pipeline.
+- **Automate all** tailors every job (no 50% bar); Tailor/Score again lock with
+  a spinner while Luna works; tailored jobs leave Match check.
+- **Fixed:** three.js `reading 'isReady'` console error (Office warm-up,
+  `static/office/warmup.js`); busy rings turn smoothly; Settings restructured
+  (desktop page + phone grouped list); dictation punctuation
+  (`static/punctuate.js`); Office stars 980 → 430.
+- **Harness note:** headless screenshots here need
+  `--disable-gpu --disable-software-rasterizer` and CDP `Page.captureScreenshot`.
+
 ## 2026-10-10: iPhone (Home Screen app) pass across every page
 
 - **Foundation:** safe areas everywhere (`viewport-fit=cover`, `--app-safe-*`
