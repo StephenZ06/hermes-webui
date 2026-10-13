@@ -113,6 +113,15 @@ environment. Create or manage keys at `https://aimlapi.com/app/keys`. Model
 discovery comes from the live `/v1/models` response for that endpoint, not from
 a static WebUI-maintained model list.
 
+9router is available from the Profile model picker as a named custom
+OpenAI-compatible provider. Its local default is
+`http://127.0.0.1:20128/v1`; enter the 9router API key when saving the
+profile. Hermes stores that key in the profile secret environment as
+`NINE_ROUTER_API_KEY`, while `config.yaml` keeps only a reference to it.
+This flow uses a 9router API key and does not import, proxy, or reuse Claude
+subscription/OAuth credentials. Once the router is reachable, use its live
+model list as the source of truth for the models it exposes.
+
 Advanced provider flows such as Nous Portal and GitHub Copilot are still
 terminal-first. OpenAI Codex and Anthropic Claude Code OAuth can be started in
 the onboarding flow when your Hermes config selects the corresponding provider.

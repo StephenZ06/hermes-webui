@@ -9668,16 +9668,15 @@ async function _populateProfileFormModelSelect(editProfile){
     const data = await api('/api/models/cross_profile');
   const groups = (Array.isArray(data && data.groups) && data.groups.length) ? [...data.groups] : [];
     // Provider discovery intentionally excludes credentials that have not
-    // been configured yet.  Profile creation is where a NeuralWatt key is
-    // first supplied, so retain its curated choices on that initial setup.
-    if (!groups.some(g => g && g.provider_id === 'neuralwatt')) {
+    // been configured yet. Profile creation is where a 9router key is first
+    // supplied, so retain a small curated starter choice for that first setup.
+    if (!groups.some(g => g && g.provider_id === 'custom:9router')) {
       groups.push({
-        provider: 'NeuralWatt Basic',
-        provider_id: 'neuralwatt',
+        provider: '9router (local)',
+        provider_id: 'custom:9router',
         models: [
-          { id: 'glm-5.3', label: 'GLM-5.3' },
-          { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
-          { id: 'kimi-k3', label: 'Kimi K3' },
+          { id: 'cc/claude-sonnet-4-5-20251101', label: 'Claude Sonnet via 9router' },
+          { id: 'cc/claude-opus-4-5-20251101', label: 'Claude Opus via 9router' },
         ],
       });
     }
@@ -9700,8 +9699,8 @@ async function _populateProfileFormModelSelect(editProfile){
       const state = typeof _modelStateForSelect === 'function'
         ? _modelStateForSelect(sel, selected) : null;
       if (state && baseEl && !baseEl.value.trim()) {
-        if (state.model_provider === 'neuralwatt') {
-          baseEl.value = 'https://api.neuralwatt.com/v1';
+        if (state.model_provider === 'custom:9router') {
+          baseEl.value = 'http://127.0.0.1:20128/v1';
         } else if (state.model_provider === 'lmstudio') {
           baseEl.value = (window._lmStudioConfiguredBaseUrl || 'http://localhost:1234/v1');
         }

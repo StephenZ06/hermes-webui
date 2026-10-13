@@ -2450,6 +2450,81 @@ _PROVIDER_ENV_MAP: dict[str, str] = {
 }
 
 _NEURALWATT_BASE_URL = "https://api.neuralwatt.com/v1"
+_NINE_ROUTER_PROVIDER_ID = "custom:9router"
+_NINE_ROUTER_BASE_URL = "http://127.0.0.1:20128/v1"
+_NINE_ROUTER_KEY_ENV = "NINE_ROUTER_API_KEY"
+# These are only the no-credential profile-picker choices. Once 9router is
+# configured, its own /v1/models response remains authoritative.
+_NINE_ROUTER_PROFILE_MODELS = (
+    "cc/claude-sonnet-4-5-20251101",
+    "cc/claude-opus-4-5-20251101",
+)
+
+
+def _is_9router_provider(provider: Optional[str]) -> bool:
+    return str(provider or "").strip().lower() == _NINE_ROUTER_PROVIDER_ID
+
+
+def _configure_9router_custom_provider(
+    profile_dir: Path, *, base_url: str, default_model: Optional[str]
+) -> None:
+    """Upsert the named 9router provider without touching unrelated gateways.
+
+    9router speaks the OpenAI-compatible API. This stores only an environment
+    variable reference in config.yaml; the credential itself is written to the
+    profile secret store by ``_write_api_key_to_dotenv``.
+    """
+    config_path = Path(profile_dir) / "config.yaml"
+    cfg: dict = {}
+    if config_path.exists():
+        try:
+            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except Exception:
+            logger.debug("Failed to load config from %s", config_path)
+
+    custom_providers = cfg.get("custom_providers")
+    if not isinstance(custom_providers, list):
+        custom_providers = []
+        cfg["custom_providers"] = custom_providers
+
+    entry = None
+    try:
+        from api.config import _custom_provider_slug_from_name
+
+        for candidate in custom_providers:
+            if isinstance(candidate, dict) and _custom_provider_slug_from_name(
+                candidate.get("name")
+            ) == _NINE_ROUTER_PROVIDER_ID:
+                entry = candidate
+                break
+    except Exception:
+        logger.debug("Could not identify configured 9router provider", exc_info=True)
+    if entry is None:
+        entry = {"name": "9router"}
+        custom_providers.append(entry)
+
+    existing_models = entry.get("models")
+    models = [str(model).strip() for model in existing_models] if isinstance(existing_models, list) else []
+    models = [model for model in models if model]
+    if default_model and default_model not in models:
+        models.append(default_model)
+    entry.update(
+        {
+            "name": "9router",
+            "base_url": base_url,
+            "api_mode": "openai_compatible",
+            "key_env": _NINE_ROUTER_KEY_ENV,
+            "api_key": "${" + _NINE_ROUTER_KEY_ENV + "}",
+            "models": models,
+        }
+    )
+    _atomic_write_text(
+        config_path,
+        yaml.dump(cfg, default_flow_style=False, allow_unicode=True),
+        encoding="utf-8",
+    )
 
 
 def _lmstudio_base_url_from_config() -> Optional[str]:
@@ -2701,11 +2776,16 @@ def _is_unconfigured_profile_provider_model(
 ) -> bool:
     """Allow the deliberate new-profile catalog before its key is configured.
 
-    ``/api/models`` only advertises providers with credentials.  A profile
-    creator needs to pick NeuralWatt *before* saving its first credential, so
-    accept only the small, server-owned NeuralWatt catalog on that cold path.
+    ``/api/models`` only advertises providers with credentials. A profile
+    creator needs to pick a 9router starter model before saving its first key;
+    retain legacy NeuralWatt support for existing profile workflows too.
     """
-    if not default_model or str(model_provider or "").strip().lower() != "neuralwatt":
+    provider_id = str(model_provider or "").strip().lower()
+    if not default_model:
+        return False
+    if provider_id == _NINE_ROUTER_PROVIDER_ID:
+        return default_model in _NINE_ROUTER_PROFILE_MODELS
+    if provider_id != "neuralwatt":
         return False
     from api.config import _PROVIDER_MODELS
 
@@ -2968,6 +3048,8 @@ def create_profile_api(name: str, clone_from: str = None,
     default_model, model_provider = _split_webui_provider_model_value(default_model, model_provider)
     if model_provider == "neuralwatt" and not base_url:
         base_url = _NEURALWATT_BASE_URL
+    if _is_9router_provider(model_provider) and not base_url:
+        base_url = _NINE_ROUTER_BASE_URL
     if model_provider == "lmstudio" and not base_url:
         base_url = _lmstudio_base_url_from_config()
     _validate_profile_model_selection(default_model, model_provider)
@@ -3021,6 +3103,12 @@ def create_profile_api(name: str, clone_from: str = None,
                 exc_info=True,
             )
 
+    if _is_9router_provider(model_provider):
+        _configure_9router_custom_provider(
+            profile_path,
+            base_url=base_url or _NINE_ROUTER_BASE_URL,
+            default_model=default_model,
+        )
     _write_endpoint_to_config(profile_path, base_url=base_url)
     if api_key:
         _write_api_key_to_dotenv(
@@ -3104,9 +3192,19 @@ def update_profile_api(name: str,
     if profile_path is None or not profile_path.is_dir():
         raise ValueError(f"Profile '{name}' does not exist.")
 
-    if base_url or (model_provider == "lmstudio"):
-        effective_base_url = base_url if base_url else _lmstudio_base_url_from_config()
+    if base_url or (model_provider == "lmstudio") or _is_9router_provider(model_provider):
+        effective_base_url = base_url
+        if not effective_base_url and model_provider == "lmstudio":
+            effective_base_url = _lmstudio_base_url_from_config()
+        if not effective_base_url and _is_9router_provider(model_provider):
+            effective_base_url = _NINE_ROUTER_BASE_URL
         if effective_base_url:
+            if _is_9router_provider(model_provider):
+                _configure_9router_custom_provider(
+                    profile_path,
+                    base_url=effective_base_url,
+                    default_model=default_model,
+                )
             _write_endpoint_to_config(profile_path, base_url=effective_base_url)
     if api_key:
         _write_api_key_to_dotenv(
