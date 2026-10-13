@@ -212,3 +212,15 @@ def test_left_swipe_on_a_chat_row_closes_the_drawer_and_never_deletes(phone):
     assert page.evaluate("() => _mobileDrawerState()") == "closed"
     gone = page.evaluate("(sid) => fetch('/api/session?session_id=' + sid).then(r => r.status)", sid)
     assert gone != 404
+
+
+def test_phone_top_bar_glyphs_are_equally_inset_and_the_icon_bar_casts_no_shadow(phone):
+    page, _ = phone
+    _boot(page)
+    ham, reload = page.evaluate("""() => ['.app-titlebar-hamburger', '.app-titlebar-reload'].map(s => {
+        const r = document.querySelector(s + ' svg').getBoundingClientRect(); return [r.left, r.top, innerWidth - r.right]; })""")
+    assert round(ham[0]) == round(ham[1]) == round(reload[1]) == round(reload[2])
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.6)
+    # A blurred drop shadow spilled up into the top bar / status-bar area.
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.sidebar > .sidebar-nav')).boxShadow") == "none"
