@@ -11382,3 +11382,12 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   #mainJobs{padding-bottom:calc(76px + var(--app-bottom-gap));}
   .job-os-savebar{bottom:calc(68px + var(--app-bottom-gap));}
 }
+
+/* Busy score rings (job cards and Match Check): one seamless full turn. The
+   arc rests at rotate(-90deg) (12 o'clock); spinning it with fit-spin's
+   `to: rotate(360deg)` swept 450° and snapped back 90° every loop, which read
+   as a stuttering half turn. This turns exactly -90° → 270°. */
+@keyframes ring-busy-spin{from{transform:rotate(-90deg);}to{transform:rotate(270deg);}}
+.fit-ring.is-busy .fit-ring-arc,
+.match-ring.is-busy .match-ring-arc{transform-box:fill-box;transform-origin:center;animation:ring-busy-spin 1.2s linear infinite;}
+@media (prefers-reduced-motion:reduce){.fit-ring.is-busy .fit-ring-arc,.match-ring.is-busy .match-ring-arc{animation-duration:2.4s;}}
