@@ -11390,3 +11390,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 @keyframes pipe-activity-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,currentColor 55%,transparent);}80%,100%{box-shadow:0 0 0 6px transparent;}}
 @keyframes pipe-activity-run{from{background-position:-40% 0;}to{background-position:140% 0;}}
 @media (prefers-reduced-motion:reduce){.pipe-activity i,.pipe-activity-summary i,.pipe-card.is-working::after{animation:none;}}
+
+/* A button whose work is under way (Tailoring…): locked, with a small spinner. */
+.btn-spinner{display:inline-block;flex:0 0 14px;width:14px;height:14px;margin-right:6px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85;animation:btn-spinner-turn .8s linear infinite;vertical-align:-2px;}
+.job-os-btn.is-loading{cursor:progress;opacity:.86;}
+.job-os-btn.is-loading:disabled{opacity:.86;}
+@keyframes btn-spinner-turn{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.btn-spinner{animation-duration:1.6s;}}

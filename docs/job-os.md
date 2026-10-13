@@ -295,15 +295,19 @@ returns a 0–100 fit score with the matches and gaps. The ring is coloured by
 band: **75–100 Good match** (green), **50–74 Needs improvement** (yellow),
 **0–49 Terrible match** (red), with the percentage in the centre. Resume
 Studio's **Match check** steps through the jobs on the board one at a time,
-in board order (New, Favorite, Ready to apply): Previous/Next or
+in board order (New, then Favorite; a tailored job has moved on to Ready to
+apply and leaves the check): Previous/Next or
 the arrow keys, then **Tailor & next**; the actions sit centred along the
 bottom of the card. **Score my resume** costs one model call. Scout finds are scored automatically when *Analyse new finds
 automatically* is on.
 
-**Automate all** does the same for every job in the match check not yet
-tailored: jobs already scored 50% or more are tailored now, unscored ones are
-scored first and tailored if they reach 50% (`autopilot.py`, table
-`auto_tailor`). Nothing is sent; you review and apply.
+**Automate all** tailors every job in the match check not yet tailored,
+whatever its score: scored jobs now, unscored ones as soon as their score
+comes back (or scoring fails) (`autopilot.py`, table `auto_tailor`). Luna
+works one job at a time; while she does, the job's **Tailor** button shows a
+spinner and is locked with **Score again**, and Automate all shows the work
+left ("Tailoring 3…"). Each finished job moves to Ready to apply. Nothing is
+sent; you review and apply.
 
 ## Tailoring in your resume's own design
 

@@ -948,17 +948,24 @@
   }
   // The match check walks the jobs on the board in board order (New, then
   // Favorite, Ready to apply), newest first within a stage.
-  const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['favorite', ['shortlisted', 'tailoring']],
-    ['ready', ['resume_ready', 'application_ready', 'awaiting_approval', 'applying']]];
+  // Tailored jobs have moved on to Ready to apply and leave the match check;
+  // a job being tailored stays (locked, with its progress) until it is done.
+  const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['favorite', ['shortlisted', 'tailoring']]];
   const STAGE_LABEL = {new: 'New', favorite: 'Favorite', ready: 'Ready to apply'};
   function matchQueue(jobs) {
     const fresh = newestFirst(jobs || []).filter((j) => j.has_description);
     return QUEUE_STAGES.flatMap(([stage, statuses]) => fresh.filter((j) => statuses.includes(j.status)).map((j) => Object.assign({stage}, j)));
   }
+  const spinnerDot = () => '<span class="btn-spinner" aria-hidden="true"></span>';
   function matchCheck(state) {
     if (!state.resume) return '';
     const queue = matchQueue(state.jobs);
-    const automate = queue.length ? `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here, then tailor a resume for each one at 50% or more">${icon('magic', 16)}Automate all</button>` : '';
+    // While Luna scores or tailors any of these, Automate all shows the work
+    // left and can't be pressed again.
+    const working = queue.filter((j) => j.status === 'tailoring' || analysing(j)).length;
+    const automate = !queue.length ? '' : working
+      ? `<button type="button" class="job-os-btn is-loading" disabled aria-busy="true" title="Luna is tailoring these one at a time">${spinnerDot()}Tailoring ${working}…</button>`
+      : `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here that has no score yet, then tailor a resume for every one">${icon('magic', 16)}Automate all</button>`;
     const head = cardHead('Match check', 'eye', automate);
     if (!queue.length) return `<section class="job-os-card match-card">${head}<p class="job-os-card-note card-empty-note">Jobs on your board with a description appear here one at a time. Save one from Scout or with <button type="button" class="job-os-link" data-job-os-action="job-form-new">Add job</button> to check your resume against it.</p></section>`;
     const at = Math.max(0, queue.findIndex((j) => j.id === state.studioMatchId));
@@ -973,9 +980,16 @@
     const retailor = ['resume_ready', 'application_ready'].includes(status);
     const hasDocs = ['tailoring', 'resume_ready', 'application_ready'].includes(status) || (state.tailored || []).some((d) => d.job_id === item.id);
     const nextId = queue[at + 1] ? queue[at + 1].id : '';
+    // Being tailored (or scored first by Automate all): both buttons are
+    // locked, and Tailor shows that the work is under way.
+    const tailoringNow = status === 'tailoring';
+    const locked = tailoringNow || busyNow;
+    const tailorBtn = tailoringNow
+      ? `<button type="button" class="job-os-btn primary is-loading" disabled aria-busy="true">${spinnerDot()}Tailoring…</button>`
+      : canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}"${locked ? ' disabled' : ''}>${icon('magic', 16)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '';
     const actions = [
-      canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}">${icon('magic', 16)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '',
-      busyNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}">${done ? 'Score again' : 'Score my resume'}</button>`,
+      tailorBtn,
+      busyNow && !tailoringNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}"${locked ? ' disabled' : ''}>${done ? 'Score again' : 'Score my resume'}</button>`,
       retailor ? `<button type="button" class="job-os-btn" data-job-os-action="card-tailor" data-job-id="${esc(item.id)}">Tailor again</button>` : '',
       hasDocs ? `<button type="button" class="job-os-btn${retailor ? ' primary' : ''}" data-job-os-action="studio-open" data-job-id="${esc(item.id)}">Open tailored resume</button>` : '',
       `<button type="button" class="job-os-btn" data-job-id="${esc(item.id)}">Open job</button>`,

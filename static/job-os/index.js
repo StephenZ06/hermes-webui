@@ -627,7 +627,8 @@
       && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring' || j.status === 'applying') || busy(state.jobDetail)
         || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))
         || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')))
-      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
+      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)
+        || (state.jobs || []).some((j) => busy(j) || j.status === 'tailoring')) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
     // The dashboard also checks in every 30s while nothing is busy, so a score
@@ -898,13 +899,13 @@
       if (!queue.length) { toast('Every job here is already tailored or under way'); return undefined; }
       const ok = typeof window.showConfirmDialog === 'function'
         ? await window.showConfirmDialog({title: 'Automate all?', confirmLabel: 'Automate all',
-          message: `Luna scores the ${queue.length} job${queue.length === 1 ? '' : 's'} not yet tailored, then tailors a resume for each one that scores 50% or more. It runs in the background, one job at a time; nothing is sent. Review and apply when you have time.`})
+          message: `Luna tailors a resume for all ${queue.length} job${queue.length === 1 ? '' : 's'} here not yet tailored, scoring any without a score first. It runs in the background, one job at a time, and each finished job moves to Ready to apply. Nothing is sent; you apply when you have time.`})
         : window.confirm('Score and tailor every job here?');
       if (!ok) return undefined;
       el.disabled = true;
       try {
         const r = (await window.JobOSApi.automate(queue.map((j) => j.id))).automate;
-        const parts = [r.tailoring && `${r.tailoring} tailoring now`, r.scoring && `${r.scoring} being scored first`, r.below && `${r.below} below 50% left for you`].filter(Boolean);
+        const parts = [r.tailoring && `${r.tailoring} tailoring now`, r.scoring && `${r.scoring} being scored first`].filter(Boolean);
         toast(parts.length ? parts.join(' · ') : 'Nothing to automate');
       } catch (error) { toast(error.message || 'Could not start'); }
       return refresh();

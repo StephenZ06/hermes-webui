@@ -232,3 +232,37 @@ def test_the_pipeline_shows_what_luna_is_working_on():
     assert out["c"] == "applying:Applying…"
     assert out["d"] is None
     assert out["summary"] == "Luna is working · 1 scoring · 1 tailoring · 1 applying"
+
+
+def test_match_check_locks_while_tailoring_and_drops_tailored_jobs():
+    """During Automate all, the job being tailored shows a busy, locked Tailor
+    button and a locked Score again; Automate all shows the work left; a job
+    already tailored (Ready to apply) is no longer in the match check."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              const job = (id, status, score) => ({id, title: 'Job ' + id, company: 'Co', status, revision: 1, source: 'indeed',
+                has_description: true, analysis: {status: 'done', fit_score: score}, updated_at: 1791000000});
+              const jobs = [job('t', 'tailoring', 40), job('n', 'analyzed', 30), job('r', 'resume_ready', 70)];
+              const base = {capability: {available: true}, dashboard: null, jobs, activeView: 'resume-studio',
+                resume: {filename: 'cv.md', text: 'x'}, tailored: [], studioDocs: {}};
+              host.innerHTML = window.JobOSRender.shell({...base, studioMatchId: 't'});
+              const tailor = host.querySelector('.match-actions .is-loading');
+              const score = host.querySelector('.match-actions [data-job-os-action="match-score"]');
+              const automate = host.querySelector('.match-card .job-os-card-head .is-loading');
+              const busy = {tailor: tailor && tailor.disabled && tailor.textContent.trim(), score: score && score.disabled,
+                automate: automate && automate.disabled && automate.textContent.trim(),
+                count: host.querySelector('.match-count').textContent.replace(/\\s+/g, ' ').trim()};
+              host.innerHTML = window.JobOSRender.shell({...base, jobs: [job('n', 'analyzed', 30), job('r', 'resume_ready', 70)], studioMatchId: 'n'});
+              const idle = {tailor: !host.querySelector('[data-job-os-action="match-tailor"]').disabled,
+                automate: !!host.querySelector('[data-job-os-action="automate-all"]')};
+              return {busy, idle};
+            }""")
+        finally:
+            browser.close()
+    assert out["busy"] == {"tailor": "Tailoring…", "score": True, "automate": "Tailoring 1…", "count": "2 of 2"}
+    assert out["idle"] == {"tailor": True, "automate": True}

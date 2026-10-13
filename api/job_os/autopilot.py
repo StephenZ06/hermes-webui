@@ -1,12 +1,12 @@
 """Automate all: score and tailor a batch of jobs without reviewing each one.
 
 Resume Studio's match check walks the jobs on the Pipeline board one by one;
-"Automate all" does the same work in the background for the jobs not yet
-done. A job that already has its fit score is tailored now if it reaches the
-bar; one without a score is queued for analysis first and remembered in
-``auto_tailor``, and the analysis worker tailors it when its score comes back
-at or above the bar (``after_analysis``). Jobs below the bar are left for you.
-Nothing is ever sent: applying stays a person's step.
+"Automate all" does the same work in the background for every job not yet
+tailored, whatever its score: a job that already has its fit score is
+tailored now; one without a score is queued for analysis first and
+remembered in ``auto_tailor``, and the analysis worker tailors it when its
+score comes back, or when scoring fails (``after_analysis``). A tailored job
+moves to Ready to apply. Nothing is ever sent: applying stays a person's step.
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ from api.job_os.models import JobStatus
 from api.job_os.repository import get_job
 
 logger = logging.getLogger(__name__)
-# "Needs improvement" and up: the band tailoring helps most. Below it a job
-# usually misses a must-have no rewording can supply.
-MIN_FIT = 50
+# No score bar: the user asked for every job to be tailored and decides
+# afterwards which to apply for (it used to stop at 50%).
+MIN_FIT = 0
 _TAILORABLE = (JobStatus.SCRAPED, JobStatus.ANALYZED, JobStatus.SHORTLISTED)
 
 
@@ -36,7 +36,7 @@ def automate(job_ids: list[str], *, start_workers: bool = True) -> dict:
 
     if not load_resume():
         raise AutopilotError("Upload your master resume in Resume Studio first.")
-    out = {"tailoring": 0, "scoring": 0, "below": 0, "skipped": 0}
+    out = {"tailoring": 0, "scoring": 0, "skipped": 0}
     scores = analysis.analyses_by_job()
     to_score: list[str] = []
     now = int(time.time())
@@ -46,10 +46,7 @@ def automate(job_ids: list[str], *, start_workers: bool = True) -> dict:
             out["skipped"] += 1
             continue
         state = scores.get(job_id) or {}
-        if state.get("status") == "done" and state.get("fit_score") is not None:
-            if state["fit_score"] < MIN_FIT:
-                out["below"] += 1
-                continue
+        if state.get("status") in ("done", "failed"):
             try:
                 tailor.request_tailoring(job_id, start_worker=False)
                 out["tailoring"] += 1
@@ -86,7 +83,7 @@ def waiting() -> set[str]:
 
 def after_analysis(job_id: str, fit_score: int | None, *, start_worker: bool = True) -> bool:
     """Called when an analysis finishes (or fails): tailor the job if Automate
-    all was waiting on it and it reached the bar. Returns whether it started."""
+    all was waiting on it, whatever the score. Returns whether it started."""
     from api.job_os import tailor
 
     conn = connect_job_os()
@@ -97,7 +94,7 @@ def after_analysis(job_id: str, fit_score: int | None, *, start_worker: bool = T
             return False
     finally:
         conn.close()
-    if fit_score is None or fit_score < MIN_FIT:
+    if fit_score is not None and fit_score < MIN_FIT:
         return False
     try:
         tailor.request_tailoring(job_id, start_worker=start_worker)

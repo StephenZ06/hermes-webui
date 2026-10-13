@@ -1,5 +1,7 @@
-"""Automate all: scored jobs at the bar are tailored now, unscored ones once
-their score comes back at the bar, everything else is left alone."""
+"""Automate all tailors every job in the Match check: scored jobs now,
+unscored ones as soon as their score comes back (whatever it is, even when
+scoring fails). Jobs without a description or already past tailoring are
+left alone."""
 
 from __future__ import annotations
 
@@ -27,33 +29,33 @@ def _job(slug, *, description="SOC monitoring with a SIEM", status=JobStatus.SCR
     return job
 
 
-def test_automate_all_tailors_scores_and_skips(store, monkeypatch):  # noqa: F811
+def test_automate_all_tailors_every_job_whatever_its_score(store, monkeypatch):  # noqa: F811
     good, low, fresh, bare = _job("good", score=72), _job("low", score=31), _job("fresh"), _job("bare", description="")
     applied = _job("applied", score=90)
     applications.mark_applied(applied.id)
     out = autopilot.automate([good.id, low.id, fresh.id, bare.id, applied.id, "missing"], start_workers=False)
-    assert out == {"tailoring": 1, "scoring": 1, "below": 1, "skipped": 3}
-    assert get_job(good.id).status == JobStatus.TAILORING and get_job(low.id).status == JobStatus.SCRAPED
+    assert out == {"tailoring": 2, "scoring": 1, "skipped": 3}
+    assert get_job(good.id).status == JobStatus.TAILORING
+    assert get_job(low.id).status == JobStatus.TAILORING, "a low score is no longer a reason to skip"
     assert analysis.get_analysis(fresh.id)["status"] == "pending" and autopilot.waiting() == {fresh.id}
 
-    # The score comes back at the bar: the job is tailored, and no longer waiting.
-    monkeypatch.setattr(llm, "_transport", lambda **kw: json.dumps({"fit_score": 64, "verdict": "stretch", "summary": "ok"}))
+    # The score comes back (low, even): the job is tailored, and no longer waiting.
+    monkeypatch.setattr(llm, "_transport", lambda **kw: json.dumps({"fit_score": 22, "verdict": "poor", "summary": "ok"}))
     monkeypatch.setattr(tailor, "ensure_worker", lambda: None)
     analysis.analyze_one(fresh.id)
     assert get_job(fresh.id).status == JobStatus.TAILORING and autopilot.waiting() == set()
 
 
-def test_a_low_or_failed_score_is_not_tailored(store, monkeypatch):  # noqa: F811
-    low, broken = _job("low2"), _job("broken")
-    autopilot.automate([low.id, broken.id], start_workers=False)
-    monkeypatch.setattr(llm, "_transport", lambda **kw: json.dumps({"fit_score": 40, "verdict": "poor"}))
-    analysis.analyze_one(low.id)
+def test_a_failed_score_is_still_tailored(store, monkeypatch):  # noqa: F811
+    broken = _job("broken")
+    autopilot.automate([broken.id], start_workers=False)
+    monkeypatch.setattr(tailor, "ensure_worker", lambda: None)
     monkeypatch.setattr(llm, "_transport", lambda **kw: "not json")
     analysis.analyze_one(broken.id)
-    assert get_job(low.id).status == JobStatus.ANALYZED and get_job(broken.id).status == JobStatus.SCRAPED
-    assert autopilot.waiting() == set()
+    assert get_job(broken.id).status == JobStatus.TAILORING and autopilot.waiting() == set()
     # An analysis nobody was waiting on tailors nothing.
-    assert autopilot.after_analysis(low.id, 99, start_worker=False) is False
+    other = _job("other", score=80)
+    assert autopilot.after_analysis(other.id, 99, start_worker=False) is False
 
 
 def test_automate_all_needs_a_resume(tmp_path, monkeypatch):
