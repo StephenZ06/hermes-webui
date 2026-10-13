@@ -3060,7 +3060,7 @@
 /* The side panel's bottom action (Chat: Initialize Hermes CLI, Office: Live
    Office) is one full-width button, the same distance from the left, right
    and bottom edges. */
-.hermes-cli-card{flex:0 0 auto;margin:0;padding:6px 10px 10px;border-radius:0;background:var(--sidebar);border:0;display:flex;flex-direction:column;gap:0;}
+.hermes-cli-card{flex:0 0 auto;margin:0;padding:0 8px 8px;border-radius:0;background:var(--sidebar);border:0;display:flex;flex-direction:column;gap:0;}
   /* Mobile keeps a larger bottom gap to clear the browser/nav chrome. */
   .hermes-cli-card-label{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
   .hermes-cli-status{color:var(--success);font-weight:600;letter-spacing:0;text-transform:none;}
@@ -11482,7 +11482,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .nb-vault-mark{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:8px;background:color-mix(in srgb,#a78bfa 22%,transparent);color:#c4b5fd;}
 #notebookSidebar .nb-place-btn.nb-subfolder{margin-left:16px;width:calc(100% - 16px);}
 
-.hermes-cli-interact-btn{min-height:30px;font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;}
+/* Side-panel action buttons (Initialize Hermes CLI, Live Office) share the
+   Work Hub "Plan goal" look: dashed accent outline, transparent fill. */
+.hermes-cli-interact-btn{min-height:34px;padding:6px 8px;gap:8px;border:1px dashed var(--accent);border-radius:7px;background:transparent;color:var(--accent);font-size:12px;font-weight:700;line-height:1;letter-spacing:.06em;text-transform:uppercase;transition:background .18s ease,color .18s ease,transform .18s ease;}
+.hermes-cli-interact-btn:hover{background:var(--accent-bg);color:var(--accent-text);}
 
 /* Every page except Chat uses the full width of the main area, with the same
    padding left and right; its grids and cards adapt to the width (they used
