@@ -26,6 +26,7 @@
   const S = {
     loaded: false, loading: false, error: '',
     projects: [], folders: [], notes: [],
+    vault: null, vaultConfig: null, // connected Obsidian vault (api/notebook_vault.py)
     scope: {kind: 'all', id: null},
     search: '', searchResults: null, searchSeq: 0,
     expanded: {}, tagFilter: null,
@@ -55,6 +56,7 @@
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     back: '<path d="m15 18-6-6 6-6"/>',
     tag: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
+    vault: '<path d="M12 2.5 4.5 7v10L12 21.5l7.5-4.5V7z"/><path d="M12 2.5v19M4.5 7l7.5 4.5L19.5 7"/>',
   };
   const icon = (name, size) => `<svg width="${size || 14}" height="${size || 14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -117,6 +119,7 @@
     try {
       const data = await window.NotebookApi.bootstrap();
       S.projects = data.projects || []; S.folders = data.folders || []; S.notes = data.notes || [];
+      S.vault = data.vault || null; S.vaultConfig = data.vault_config || null;
       S.loaded = true;
     } catch (error) {
       S.error = error.message || 'Notes could not be loaded';
@@ -162,6 +165,27 @@
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
       + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}</div></div>`;
   }
+  // Where the notes live: the connected Obsidian vault, or a one-tap offer to
+  // connect the vault Hermes found among your workspaces.
+  function vaultBanner() {
+    const cfg = S.vaultConfig || {};
+    if (S.vault) {
+      return `<div class="nb-vault" title="${esc(cfg.path || '')}"><span class="nb-vault-mark" aria-hidden="true">${icon('vault', 14)}</span><span class="nb-vault-text"><strong>Obsidian</strong><small>${esc(S.vault.name || 'Vault')}</small></span><button type="button" class="nb-vault-btn" data-nb-action="vault-disconnect" title="Use Hermes' own notes instead">Disconnect</button></div>`;
+    }
+    const offer = cfg.detected || cfg.path;
+    if (!offer) return '';
+    const name = String(offer).split(/[\\/]/).filter(Boolean).pop() || 'vault';
+    return `<div class="nb-vault is-offer"><span class="nb-vault-mark" aria-hidden="true">${icon('vault', 14)}</span><span class="nb-vault-text"><strong>Obsidian vault found</strong><small>${esc(name)}</small></span><button type="button" class="nb-vault-btn primary" data-nb-action="vault-connect" data-path="${esc(offer)}">Connect</button></div>`;
+  }
+  async function setVault(body) {
+    await flushSave();
+    try {
+      await window.NotebookApi.setVault(body);
+      S.note = null; destroyEditor(); S.scope = {kind: 'all', id: null};
+      await loadBootstrap(); render();
+      toast(S.vault ? `Notes now read and write your Obsidian vault "${S.vault.name}"` : "Notes use Hermes' own store");
+    } catch (error) { toast(error.message || 'The vault could not be connected'); }
+  }
   function renderSidebar() {
     const side = $('notebookSidebar');
     if (!side) return;
@@ -170,12 +194,13 @@
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
     const dm = S.deleteMode ? ' is-delete-mode' : '';
     side.innerHTML = `<nav class="work-hub-nav nb-nav" aria-label="Notes navigation">
+      ${vaultBanner()}
       ${scopeButton('all', 'All notes', 'all', count((n) => live(n) && !n.archived))}
       ${scopeButton('general', 'General', 'general', count((n) => live(n) && !n.project_id && !n.folder_id))}
       ${scopeButton('pinned', 'Pinned', 'pin', count((n) => live(n) && n.pinned))}
       ${scopeButton('favorites', 'Favorites', 'star', count((n) => live(n) && n.favorite))}
-      <div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
-      <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>
+      ${S.vault ? '' : `<div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
+      <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>`}
       <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
       <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
@@ -365,7 +390,7 @@
       return;
     }
     const trashed = !!note.deleted_at;
-    const conflict = save.conflict ? `<div class="nb-banner warn" role="alert"><span>This note was changed in another window.</span><button type="button" class="nb-btn small" data-nb-action="conflict-mine">Keep mine</button><button type="button" class="nb-btn small" data-nb-action="conflict-theirs">Load theirs</button></div>` : '';
+    const conflict = save.conflict ? `<div class="nb-banner warn" role="alert"><span>${S.vault ? 'This note was changed in Obsidian or another window.' : 'This note was changed in another window.'}</span><button type="button" class="nb-btn small" data-nb-action="conflict-mine">Keep mine</button><button type="button" class="nb-btn small" data-nb-action="conflict-theirs">Load theirs</button></div>` : '';
     const failed = save.status === 'error' ? `<div class="nb-banner" role="status"><span>${esc(save.error || 'Saving failed')}. Your changes are kept here and retried.</span><button type="button" class="nb-btn small" data-nb-action="retry">Retry now</button></div>` : '';
     head.innerHTML = `${trashed ? '<div class="nb-banner"><span>This note is in the trash.</span><button type="button" class="nb-btn small" data-nb-action="restore">Restore</button><button type="button" class="nb-btn small danger" data-nb-action="purge">Delete forever</button></div>' : ''}${conflict}${failed}
       <div class="nb-head-row">
@@ -480,15 +505,39 @@
     const mountPoint = document.createElement('div');
     mountPoint.className = 'nb-editor-mount';
     host.appendChild(mountPoint);
+    // A vault note arrives as Markdown: the editor parses it once mounted, and
+    // the changes that parse makes are not edits (the file is only written
+    // when the user changes something).
+    const fromMarkdown = note.format === 'markdown' && !(Array.isArray(content) && content.length);
+    let settling = fromMarkdown;
+    let baseline = null; // the loaded note as the editor writes it back
     editorCtl = mod.mountNoteEditor(mountPoint, {
-      content,
+      content: fromMarkdown ? [] : content,
       theme: theme(),
       editable: !note.deleted_at,
       placeholder: "Write, or type '/' for commands",
       uploadFile,
-      onChange: () => { if (editorNoteId === note.id) queueSave('content'); },
+      onChange: () => {
+        if (settling || editorNoteId !== note.id) return;
+        if (baseline !== null) {
+          // Re-rendering the parsed note is not an edit: only a real change is.
+          try { if (editorCtl.toMarkdown() === baseline) return; } catch (_) {}
+          baseline = null;
+        }
+        queueSave('content');
+      },
     });
     editorNoteId = note.id;
+    if (fromMarkdown) {
+      try {
+        const blocks = await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''));
+        if (editorNoteId === note.id && Array.isArray(blocks) && blocks.length) editorCtl.replaceAll(blocks);
+        baseline = editorCtl.toMarkdown();
+      } catch (error) {
+        toast('This note could not be read as Markdown');
+      }
+      setTimeout(() => { settling = false; }, 0);
+    }
   }
 
   // ── saving ──────────────────────────────────────────────────────────────────
@@ -522,7 +571,11 @@
   function payloadFor(note, fields) {
     const body = {expected_revision: note.revision};
     if (fields.title) body.title = note.title || '';
-    if (fields.content && editorCtl && editorNoteId === note.id) body.content = editorCtl.getBlocks();
+    if (fields.content && editorCtl && editorNoteId === note.id) {
+      // A vault note is saved as Markdown (its file); Hermes' own as blocks.
+      if (note.format === 'markdown') body.markdown = editorCtl.toMarkdown();
+      else body.content = editorCtl.getBlocks();
+    }
     if (fields.tags) body.tags = note.tags || [];
     if (fields.place) { body.project_id = note.project_id || null; body.folder_id = note.folder_id || null; }
     ['pinned', 'favorite', 'archived'].forEach((flag) => { if (fields[flag]) body[flag] = !!note[flag]; });
@@ -954,6 +1007,8 @@
       case 'conflict-theirs': await resolveConflict(false); break;
       case 'back': S.pane = 'list'; ensureShell(); break;
       case 'reload': await loadBootstrap(); render(); break;
+      case 'vault-connect': await setVault({path: action.dataset.path, enabled: true}); break;
+      case 'vault-disconnect': await setVault({enabled: false}); break;
       default: break;
     }
   }

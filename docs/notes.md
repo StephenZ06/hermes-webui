@@ -69,6 +69,40 @@ Versions are pinned exactly in `tools/blocknote/package.json` (the repo does not
 rebuild, and update `EDITOR_VERSION` in `static/notebook/index.js`. The output
 directory is named after the version, so caches don't serve the old bundle.
 
+## Obsidian vault (`api/notebook_vault.py`)
+
+Notes can read and write an Obsidian vault's Markdown files instead of its own
+store, so the same notes are open in Obsidian and Hermes at once. Notes
+**offers** a vault it finds among your saved workspaces (a folder containing
+`.obsidian`) with a **Connect** button in the side panel; nothing switches
+until you press it (config: `notebook_vault.json` in the WebUI state
+directory, `{path, enabled}`; **Disconnect** returns to Hermes' own store,
+which is left untouched either way).
+
+Connected:
+
+- a note is a `.md` file and its title is the file name; the vault root is
+  **General**, each top-level folder is a Notes folder (deeper sub-folders stay
+  where they are and show under their top-level folder). Workspaces are not
+  used. The attachment folder is not listed as a folder;
+- the editor gets the Markdown body; YAML frontmatter is never shown and is
+  written back exactly as it was. Tags are the frontmatter `tags:`;
+- `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
+  Obsidian's syntax; images in notes are served from the vault
+  (`/api/notebook/vault/file?path=`), and pasted images are saved to the
+  vault's attachment folder (`attachmentFolderPath`, default `Attachments`);
+- **opening a note never writes it** — the file changes only after a real edit
+  (the editor compares its Markdown with what was loaded). Bullets are written
+  as `-`;
+- the revision is the file's modification time: an edit made in Obsidian
+  meanwhile is a conflict ("changed in Obsidian or another window": keep mine
+  or load theirs), never silently overwritten;
+- trash is the vault's `.trash` folder (restore puts the note back where it
+  was); deleting a folder that still holds files is refused;
+- hidden folders and symlinks are never followed, and every path is checked
+  to stay inside the vault. Pinned/favourite and stable note ids live in
+  `notebook_vault.db` next to the WebUI state, not in your files.
+
 ## Data model (`notebook.db` in the WebUI state directory)
 
 | Table | Columns |

@@ -35,5 +35,7 @@
     renameFolder: (folderId, name) => post('/api/notebook/folders/' + id(folderId) + '/rename', {name}),
     deleteFolder: (folderId) => post('/api/notebook/folders/' + id(folderId) + '/delete'),
     upload: (body) => post('/api/notebook/uploads', body),
+    vault: () => request('/api/notebook/vault'),
+    setVault: (body) => post('/api/notebook/vault', body),
   };
 }());
