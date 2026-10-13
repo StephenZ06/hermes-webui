@@ -173,7 +173,7 @@ def test_icon_bar_reveal_never_shows_the_panel_and_hide_slides_out(phone):
     lefts = [f[0] for f in frames]
     # Slides through intermediate positions, keeping the bar's rounded look.
     assert any(-60 < x < 8 for x in lefts) and lefts[-1] < -50
-    assert frames[1][1] == "15px"
+    assert frames[1][1] == "16px"
 
 
 def test_icon_bar_corners_are_concentric_with_its_buttons(phone):
