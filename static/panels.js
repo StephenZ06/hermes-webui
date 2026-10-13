@@ -421,11 +421,20 @@ function _preferredPanelRoute(panel) {
   }
   return '#' + panel;
 }
+// The hash can be lost by code that rewrites the URL (a stale conversation
+// being cleared resets it to the app root), so the route is also kept for the
+// tab in sessionStorage, which survives a reload but not a fresh launch.
+const _PANEL_ROUTE_KEY = 'hermes-webui-panel-route';
+function _rememberPanelRoute(route) {
+  try { sessionStorage.setItem(_PANEL_ROUTE_KEY, route || ''); } catch (_) {}
+}
 function _syncPanelRoute(panel) {
   if (typeof window === 'undefined' || !window.history || !window.location) return;
   const base = window.location.pathname + window.location.search;
   const current = window.location.hash || '';
   try {
+    _rememberPanelRoute(!panel || panel === 'chat' || !MAIN_VIEW_PANELS.includes(panel)
+      ? '' : (_panelFromRouteHash(current) === panel ? current : _preferredPanelRoute(panel)));
     if (!panel || panel === 'chat' || !MAIN_VIEW_PANELS.includes(panel)) {
       if (_panelFromRouteHash(current)) window.history.replaceState(window.history.state, '', base);
       return;
@@ -439,7 +448,15 @@ function _syncPanelRoute(panel) {
 // names. Jobs reads its own section from the hash when it mounts; the Office
 // page's sub-page is reapplied here.
 async function restorePanelFromRoute() {
-  const hash = (typeof window !== 'undefined' && window.location) ? window.location.hash : '';
+  let hash = (typeof window !== 'undefined' && window.location) ? window.location.hash : '';
+  if (!_panelFromRouteHash(hash)) {
+    let saved = '';
+    try { saved = sessionStorage.getItem(_PANEL_ROUTE_KEY) || ''; } catch (_) {}
+    if (_panelFromRouteHash(saved)) {
+      hash = saved;
+      try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search + saved); } catch (_) {}
+    }
+  }
   const panel = _panelFromRouteHash(hash);
   if (!panel || panel === _currentPanel) return false;
   const ok = await switchPanel(panel, { bypassSettingsGuard: true });

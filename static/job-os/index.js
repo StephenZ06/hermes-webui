@@ -18,6 +18,7 @@
   function replaceRoute(view, status) {
     const suffix = status ? '?status=' + encodeURIComponent(status) : '';
     window.history.replaceState(window.history.state || null, '', window.location.pathname + window.location.search + '#jobs/' + view + suffix);
+    try { sessionStorage.setItem('hermes-webui-panel-route', '#jobs/' + view + suffix); } catch (_) {}
   }
   // Each container keeps the HTML it last drew: polling that changes nothing
   // leaves the DOM alone. A change is patched into the page node by node

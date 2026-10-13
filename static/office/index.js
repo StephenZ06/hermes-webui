@@ -1378,6 +1378,7 @@ function setOfficeSubview(name) {
     if (/^#office(\/|$)/.test(window.location.hash || '')) {
       const route = next === 'floor' ? '#office' : '#office/' + next;
       window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search + route);
+      sessionStorage.setItem('hermes-webui-panel-route', route);
     }
   } catch (_) {}
 }

@@ -1639,7 +1639,7 @@ async function newSession(flash, options={}){
 function _clearStuckSessionOnBoot(sid, currentSid){
   if(!currentSid){
     try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
-    try{ history.replaceState(null,'',_appRootPath()); }catch(_){ }
+    try{ history.replaceState(null,'',_appRootPath()+(window.location.hash||'')); }catch(_){ }
   }
 }
 
@@ -1956,7 +1956,7 @@ async function loadSession(sid){
         // through to empty-state; mid-session there is no boot path to reach.
         if(!currentSid || currentSid===sid){
           try{ localStorage.removeItem('hermes-webui-session'); }catch(_){ }
-          try{ history.replaceState(null,'',_appRootPath()); }catch(_){ }
+          try{ history.replaceState(null,'',_appRootPath()+(window.location.hash||'')); }catch(_){ }
           if (_isCurrentLoad()) _loadingSessionId = null;
           if(!currentSid){
             throw e;

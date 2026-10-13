@@ -207,9 +207,25 @@ page.
   swipe can never become Back. A swipe that crosses the claim threshold wins
   over the button it started on (its click is swallowed); a still tap presses
   the button. Choosing a page or section in the drawer closes it.
+  The icon strip is a floating bar (inset 8px, rounded, translucent with a
+  blur) rather than a full-height column; a short leftward flick (24px) folds
+  it, the full drawer needs 64px. Once a drawer swipe is claimed, boot.js
+  sets `html.drawer-gesture`: the page (opening) or the drawer contents
+  (closing) stop taking pointer events and selection until the finger lifts,
+  and drawer contents only pan vertically. In the open drawer any touch in
+  the first 30px of the rail — on an icon or between two — is cancelled in
+  touchstart so it cannot become Back.
+- **Toasts.** On phones they drop in below the top bar (never inside the
+  status-bar area) and carry a shadow only while showing.
+- **Microphone.** On touch devices the granted stream is kept for the page
+  and muted between recordings (released after 10 idle minutes or on
+  `pagehide`), because WebKit asks again for every new `getUserMedia` after
+  a stop.
 - **Routes.** The open page lives in the URL hash (`#office`,
   `#office/dashboard`, `#jobs/scout`), written with `replaceState`, so a
   reload returns to the same page and page switches never add Back entries.
+  The route is also kept in `sessionStorage` for the tab, so code that resets
+  the URL (clearing a stale conversation) cannot lose the page on reload.
 - **No sideways drag.** Main views clip the horizontal axis; only explicit
   horizontal scrollers (chip rows, boards, a zoomed preview) scroll sideways.
 - **Selection.** Chrome (buttons, bars, tabs, nav) never shows the selection

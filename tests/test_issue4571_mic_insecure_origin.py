@@ -75,7 +75,8 @@ def test_dictation_preflights_insecure_origin_before_speech_or_media_capture():
     )
     insecure_idx = body.index("_micOriginNeedsSecureContext()")
     speech_idx = body.index("recognition.start()")
-    media_idx = body.index("navigator.mediaDevices.getUserMedia")
+    # Capture goes through _acquireMicStream(), which reuses the granted stream.
+    media_idx = body.index("_acquireMicStream()")
 
     assert insecure_idx < speech_idx
     assert insecure_idx < media_idx

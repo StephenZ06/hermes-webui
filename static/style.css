@@ -11515,3 +11515,55 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
    bottom padding). */
 #settingsMenu .settings-search .sidebar-search-icon{left:10px;top:calc(50% - 4px);}
 .sidebar .skills-search .sidebar-search-icon{left:18px;}
+
+/* Phones: toasts drop in below the top bar instead of sitting at 24px, which
+   is inside the status bar / Dynamic Island area, where the toast's blurred
+   shadow read as a dark band across the top of the page. The shadow only
+   exists while a toast is actually showing. */
+@media (max-width:640px){
+  .toast{top:calc(var(--app-titlebar-safe-top) + 52px + 8px);left:12px;right:12px;max-width:none;justify-content:flex-start;box-shadow:none;}
+  .toast.show{box-shadow:0 4px 14px rgba(0,0,0,.18);}
+  .toast:not(.show){visibility:hidden;transition:opacity .2s,transform .32s cubic-bezier(.22,1,.36,1),visibility 0s .32s;}
+}
+
+/* Phones, icon-only sidebar: the rail is a floating bar (rounded, inset 8px
+   from the edges, translucent with a blur, hairline border, soft shadow) in
+   the iOS sidebar / tab-bar style, instead of a full-height column with a
+   divider line down the page. Icon size and spacing are unchanged. The full
+   sidebar keeps the flush rail. */
+@media (max-width:640px){
+  :root{--mobile-rail-float:8px;}
+  .sidebar > .sidebar-nav{transition:top .3s cubic-bezier(.22,1,.36,1),bottom .3s cubic-bezier(.22,1,.36,1),left .3s cubic-bezier(.22,1,.36,1),border-radius .3s ease,background-color .3s ease,box-shadow .3s ease;}
+  /* Closed: slide far enough that the bar's inset and shadow are off-screen too. */
+  .sidebar:not(.mobile-open):not(.mobile-icons){transform:translate3d(calc(-1 * var(--mobile-rail-w) - 3 * var(--mobile-rail-float)),0,0);}
+  :root .sidebar.mobile-icons:not(.mobile-open){background:transparent;border-right-color:transparent;box-shadow:none;
+    clip-path:inset(0 calc(100% - var(--mobile-rail-w) - 3 * var(--mobile-rail-float)) 0 0);}
+  .sidebar.mobile-icons:not(.mobile-open) > .sidebar-nav{
+    top:calc(var(--app-titlebar-safe-top) + var(--mobile-rail-float));
+    bottom:var(--app-bottom-gap);
+    left:calc(var(--app-safe-left) + var(--mobile-rail-float));
+    padding-top:5px;padding-bottom:5px;gap:1px;border:1px solid color-mix(in srgb,var(--text) 10%,transparent);border-radius:22px;
+    background:color-mix(in srgb,var(--sidebar,var(--surface)) 94%,transparent);
+    -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);
+    box-shadow:0 10px 30px rgba(0,0,0,.28),0 1px 2px rgba(0,0,0,.18);}
+  .sidebar.mobile-icons:not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{margin:1px 8px;}
+}
+
+/* Phones: a drawer swipe owns the finger (boot.js adds .drawer-gesture once
+   it is claimed). The page under an opening swipe and the drawer contents
+   under a closing one stop reacting -- no pressed highlight, no selection --
+   and drawer contents only ever pan vertically, so a closing swipe never
+   drags a row or list sideways with it. */
+@media (max-width:640px){
+  html.drawer-gesture main.main,
+  html.drawer-gesture .sidebar .panel-view{pointer-events:none;-webkit-user-select:none;user-select:none;}
+  html.drawer-gesture *{-webkit-tap-highlight-color:transparent;}
+  .sidebar.mobile-open .panel-view,
+  .sidebar.mobile-open .panel-view *{touch-action:pan-y;overscroll-behavior-x:none;}
+}
+
+/* Work Hub List view: the list was taller than #workHubCanvas, which clips
+   (overflow:hidden) for the Board view whose columns scroll themselves, so
+   on a phone the last rows could not be reached at all. Any view without its
+   own column scrollers scrolls the canvas instead. */
+#workHubCanvas:has(> .work-hub-list){overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;padding-bottom:12px;}

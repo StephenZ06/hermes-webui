@@ -34,7 +34,9 @@ def test_pwa_sidebar_swipe_is_edge_gated_standalone_and_horizontal():
     assert "clientX>_PWA_SIDEBAR_SWIPE_EDGE" in BOOT_JS.replace(" ", "")
     assert "dx>=_PWA_SIDEBAR_SWIPE_CLAIM" in BOOT_JS.replace(" ", "")
     assert "e.preventDefault()" in BOOT_JS[BOOT_JS.find("function _onPwaSidebarSwipeMove"):BOOT_JS.find("function _onPwaSidebarSwipeEnd")]
-    assert "dx>=_PWA_SIDEBAR_SWIPE_TRIGGER" in BOOT_JS.replace(" ", "")
+    # Closing: the full drawer needs the 64px trigger, the ~60px icon bar a short flick.
+    assert "trigger=sidebar.classList.contains('mobile-open')?_PWA_SIDEBAR_SWIPE_TRIGGER:_PWA_SIDEBAR_ICONS_CLOSE_TRIGGER" in BOOT_JS.replace(" ", "")
+    assert "adx>=swipe.trigger" in BOOT_JS.replace(" ", "")
     assert "Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL" in BOOT_JS.replace(" ", "")
     assert "dx>Math.abs(dy)*1.5" in BOOT_JS.replace(" ", "")
 

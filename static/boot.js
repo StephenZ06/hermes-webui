@@ -496,6 +496,27 @@ function _setMobileDrawerState(sidebar,state){
 // After a horizontal swipe has been claimed, the click the browser may still
 // synthesise for the button the finger started on is swallowed: a swipe that
 // crosses the threshold never also presses what it started on.
+// While a drawer swipe owns the finger, nothing under it reacts: the page
+// (open swipe) or the drawer's contents (close swipe) lose their pressed /
+// highlighted state, text selection and scrolling until the finger lifts.
+function _beginDrawerGesture(){
+  const root=document.documentElement;
+  if(root.classList.contains('drawer-gesture'))return;
+  root.classList.add('drawer-gesture');
+  try{const sel=window.getSelection&&window.getSelection();if(sel&&sel.rangeCount)sel.removeAllRanges();}catch(_){}
+  try{const a=document.activeElement;if(a&&a!==document.body&&!a.matches('input,textarea,[contenteditable="true"]')&&a.blur)a.blur();}catch(_){}
+}
+function _endDrawerGesture(){
+  document.documentElement.classList.remove('drawer-gesture');
+}
+// A lost touchend must never leave the page frozen: a new touch or leaving
+// the app clears it too.
+window.addEventListener('touchstart',_endDrawerGesture,{capture:true,passive:true});
+document.addEventListener('visibilitychange',_endDrawerGesture);
+window.addEventListener('touchend',_endDrawerGesture,{capture:true,passive:true});
+window.addEventListener('touchcancel',_endDrawerGesture,{capture:true,passive:true});
+window.addEventListener('pointerup',_endDrawerGesture,{passive:true});
+window.addEventListener('pointercancel',_endDrawerGesture,{passive:true});
 let _swipeClickSuppressUntil=0;
 function _suppressClickAfterSwipe(){
   _swipeClickSuppressUntil=Date.now()+500;
@@ -537,6 +558,7 @@ const _PWA_SIDEBAR_SWIPE_EDGE=80;
 const _PWA_SIDEBAR_SWIPE_CLAIM=10;
 const _PWA_SIDEBAR_SWIPE_TRIGGER=64;
 const _PWA_SIDEBAR_SWIPE_MAX_VERTICAL=56;
+const _PWA_SIDEBAR_ICONS_CLOSE_TRIGGER=24;
 let _pwaSidebarSwipe=null;
 
 function _isPwaStandalone(){
@@ -614,6 +636,7 @@ function _onPwaSidebarSwipeMove(e){
     if(e.cancelable)e.preventDefault();
     const sidebar=document.querySelector('.sidebar');
     if(sidebar){
+      _beginDrawerGesture();
       _suppressClickAfterSwipe();
       _setMobileDrawerState(sidebar,swipe.stage==='icons'?'open':'icons');
     }
@@ -860,10 +883,14 @@ function _onSidebarNavScrubStart(e){
   if(_isDesktopWidth()||_isTouchPointerEvent(e))return;
   const sidebar=document.querySelector('.sidebar');
   if(!sidebar||!(sidebar.classList.contains('mobile-open')||sidebar.classList.contains('mobile-icons')))return;
-  const tab=e.target&&e.target.closest&&e.target.closest('.sidebar-nav .nav-tab[data-panel]');
-  if(!tab||tab.hidden)return;
+  const found=e.target&&e.target.closest&&e.target.closest('.sidebar-nav .nav-tab[data-panel]');
+  const tab=found&&!found.hidden?found:null;
   const point=_pwaSidebarSwipePoint(e);
   if(!point)return;
+  // Off an icon (padding, a divider, the gap between two) only the edge zone
+  // matters: it is still cancelled so WebKit cannot start swipe-back from it,
+  // and a vertical drag there still scrolls the rail.
+  if(!tab&&!(e.type==='touchstart'&&point.clientX<=_SIDEBAR_NAV_EDGE_ZONE))return;
   _clearSidebarNavScrub();
   const now=(window.performance&&performance.now)?performance.now():Date.now();
   const state={startX:point.clientX,startY:point.clientY,lastY:point.clientY,lastT:now,vy:0,
@@ -873,7 +900,7 @@ function _onSidebarNavScrubStart(e){
     state.replayTap=true;
   }
   _sidebarNavScrub=state;
-  state.timer=setTimeout(_activateSidebarNavScrub,_SIDEBAR_NAV_HOLD_MS);
+  if(tab)state.timer=setTimeout(_activateSidebarNavScrub,_SIDEBAR_NAV_HOLD_MS);
 }
 
 function _onSidebarNavScrubMove(e){
@@ -981,7 +1008,10 @@ function _onSidebarSwipeCloseStart(e){
   const point=_pwaSidebarSwipePoint(e);
   if(!point)return;
   if(_isInteractiveSidebarCloseTarget(e.target))return;
-  _sidebarSwipeClose={startX:point.clientX,startY:point.clientY,active:true,closed:false};
+  // The icon bar is only ~60px wide, so a swipe that starts on it cannot
+  // travel the open drawer's 64px; it folds away after a short flick.
+  const trigger=sidebar.classList.contains('mobile-open')?_PWA_SIDEBAR_SWIPE_TRIGGER:_PWA_SIDEBAR_ICONS_CLOSE_TRIGGER;
+  _sidebarSwipeClose={startX:point.clientX,startY:point.clientY,active:true,closed:false,trigger};
 }
 
 function _onSidebarSwipeCloseMove(e){
@@ -996,9 +1026,13 @@ function _onSidebarSwipeCloseMove(e){
   const adx=-dx;
   if(adx>=_PWA_SIDEBAR_SWIPE_CLAIM&&adx>Math.abs(dy)*1.2){
     if(e.cancelable)e.preventDefault();
+    _beginDrawerGesture();
     _suppressClickAfterSwipe();
+    // A rail hold-scrub or rail scroll that was starting under this finger
+    // gives way to the close.
+    if(typeof _clearSidebarNavScrub==='function'&&_sidebarNavScrub&&!_sidebarNavScrub.active)_clearSidebarNavScrub();
   }
-  if(adx>=_PWA_SIDEBAR_SWIPE_TRIGGER&&Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL&&adx>Math.abs(dy)*1.5){
+  if(adx>=swipe.trigger&&Math.abs(dy)<=_PWA_SIDEBAR_SWIPE_MAX_VERTICAL&&adx>Math.abs(dy)*1.5){
     if(e.cancelable)e.preventDefault();
     swipe.closed=true;
     closeMobileSidebar();
@@ -1883,9 +1917,53 @@ function _micToastKeyForRecognitionError(error){
     }
   }
 
+  // WebKit (iOS Safari and the installed iPhone app) asks for the microphone
+  // again every time a page calls getUserMedia after its previous stream was
+  // stopped. So the granted stream is kept for the page and only muted between
+  // recordings: one prompt per app session. It is really released after a
+  // long idle spell and when the page goes away; if iOS ends it while the app
+  // is in the background, the next recording simply asks for a new one.
+  const _MIC_STREAM_IDLE_MS=10*60*1000;
+  let _parkedMicStream=null;
+  let _parkedMicTimer=null;
+  function _micStreamLive(stream){
+    return !!(stream&&stream.getTracks().length&&stream.getTracks().every(tr=>tr.readyState==='live'));
+  }
+  function _releaseParkedMicStream(){
+    if(_parkedMicTimer){clearTimeout(_parkedMicTimer);_parkedMicTimer=null;}
+    const parked=_parkedMicStream;
+    _parkedMicStream=null;
+    if(parked) parked.getTracks().forEach(track=>track.stop());
+  }
+  // Only phones and tablets: there the prompt repeats; on a desktop browser a
+  // kept stream would just leave the "microphone in use" indicator showing.
+  function _micKeepsStream(){
+    try{return window.matchMedia('(pointer:coarse)').matches;}catch(_){return false;}
+  }
+  async function _acquireMicStream(){
+    if(!_micKeepsStream()) return navigator.mediaDevices.getUserMedia({audio:true});
+    if(_parkedMicTimer){clearTimeout(_parkedMicTimer);_parkedMicTimer=null;}
+    if(_micStreamLive(_parkedMicStream)){
+      const stream=_parkedMicStream;
+      stream.getTracks().forEach(track=>{track.enabled=true;});
+      return stream;
+    }
+    _releaseParkedMicStream();
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _parkedMicStream=stream;
+    return stream;
+  }
+  window.addEventListener('pagehide',_releaseParkedMicStream);
   function _stopTracks(stream=mediaStream){
     if(stream){
-      stream.getTracks().forEach(track=>track.stop());
+      if(stream===_parkedMicStream&&_micStreamLive(stream)){
+        stream.getTracks().forEach(track=>{track.enabled=false;});
+        if(_parkedMicTimer) clearTimeout(_parkedMicTimer);
+        _parkedMicTimer=setTimeout(_releaseParkedMicStream,_MIC_STREAM_IDLE_MS);
+      }else{
+        stream.getTracks().forEach(track=>track.stop());
+        if(stream===_parkedMicStream) _parkedMicStream=null;
+      }
       if(mediaStream===stream) mediaStream=null;
     }
   }
@@ -2193,7 +2271,7 @@ function _micToastKeyForRecognitionError(error){
       return;
     }
     try{
-      const captureStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const captureStream=await _acquireMicStream();
       if(startSeq!==_micStartSeq||!_micButtonAvailable()||(holdRequired&&!_micHoldActive)){
         _isRecording=false;
         _stopTracks(captureStream);
