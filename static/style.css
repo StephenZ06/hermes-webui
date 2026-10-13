@@ -11537,7 +11537,9 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   /* Closed: slide far enough that the bar's inset and shadow are off-screen too. */
   .sidebar:not(.mobile-open):not(.mobile-icons){transform:translate3d(calc(-1 * var(--mobile-rail-w) - 3 * var(--mobile-rail-float)),0,0);}
   :root .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open){background:transparent;border-right-color:transparent;box-shadow:none;
-    clip-path:inset(0 calc(100% - var(--mobile-rail-w) - 3 * var(--mobile-rail-float)) 0 0);}
+    /* Clipped to exactly the bar's rounded outline: whatever a skin paints on
+       the sidebar (background, pseudo-elements) can never show beside it. */
+    clip-path:inset(calc(var(--app-titlebar-safe-top) + var(--mobile-rail-float)) calc(100% - var(--app-safe-left) - var(--mobile-rail-float) - 56px) var(--app-bottom-gap) calc(var(--app-safe-left) + var(--mobile-rail-float)) round 16px);}
   .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav{
     top:calc(var(--app-titlebar-safe-top) + var(--mobile-rail-float));
     bottom:var(--app-bottom-gap);

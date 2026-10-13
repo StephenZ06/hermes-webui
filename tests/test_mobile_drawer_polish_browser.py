@@ -234,3 +234,21 @@ def test_icon_bar_top_button_has_equal_space_above_and_beside_it(phone):
     top, left, right = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const t = n.querySelector('.nav-tab');
         const a = n.getBoundingClientRect(), b = t.getBoundingClientRect(); return [b.top - a.top, b.left - a.left, a.right - b.right]; }""")
     assert round(top) == round(left) == round(right)
+
+
+def test_nothing_beside_the_icon_bar_even_on_a_skin_that_paints_the_sidebar():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_context(**PHONE).new_page()
+            # graphite gives .sidebar its own background at a higher specificity.
+            page.add_init_script("try{localStorage.setItem('hermes-skin','graphite');localStorage.setItem('hermes-theme','dark')}catch(e){}")
+            _boot(page)
+            page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+            time.sleep(0.7)
+            right = page.evaluate("() => document.querySelector('.sidebar > .sidebar-nav').getBoundingClientRect().right")
+            beside = page.evaluate("(x) => !!document.elementFromPoint(x, 400).closest('.sidebar')", right + 4)
+            assert beside is False
+        finally:
+            browser.close()
