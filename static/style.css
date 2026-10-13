@@ -11592,3 +11592,12 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 @media (max-width:640px){
   .app-titlebar{padding-left:max(4px,var(--app-safe-left));padding-right:max(4px,var(--app-safe-right));}
 }
+
+/* Phones: the icon bar slides away at an unhurried pace (0.55s, ease-in-out:
+   eases in, then out) instead of the drawer's quick 0.3s snap. */
+@media (max-width:640px){
+  .sidebar.mobile-icons-leaving:not(.mobile-open){transition:transform .55s cubic-bezier(.4,0,.2,1),clip-path .55s cubic-bezier(.4,0,.2,1);}
+}
+@media (max-width:640px) and (prefers-reduced-motion:reduce){
+  .sidebar.mobile-icons-leaving{transition-duration:.01s!important;}
+}

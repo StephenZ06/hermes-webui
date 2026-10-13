@@ -444,7 +444,7 @@ function _markIconsLeaving(sidebar){
   if(!sidebar||!sidebar.classList.contains('mobile-icons')||sidebar.classList.contains('mobile-open'))return;
   sidebar.classList.add('mobile-icons-leaving');
   if(_iconsLeavingTimer)clearTimeout(_iconsLeavingTimer);
-  _iconsLeavingTimer=setTimeout(function(){_iconsLeavingTimer=0;sidebar.classList.remove('mobile-icons-leaving');},380);
+  _iconsLeavingTimer=setTimeout(function(){_iconsLeavingTimer=0;sidebar.classList.remove('mobile-icons-leaving');},600);
 }
 function _clearIconsLeaving(sidebar){
   if(_iconsLeavingTimer){clearTimeout(_iconsLeavingTimer);_iconsLeavingTimer=0;}

@@ -169,7 +169,7 @@ def test_icon_bar_reveal_never_shows_the_panel_and_hide_slides_out(phone):
     frames = page.evaluate("""() => new Promise(res => { const sb = document.querySelector('.sidebar'); const nav = sb.querySelector('.sidebar-nav');
         closeMobileSidebar(); const out = []; const t0 = performance.now();
         (function f() { out.push([nav.getBoundingClientRect().left, getComputedStyle(nav).borderTopLeftRadius]);
-          if (performance.now() - t0 < 300) requestAnimationFrame(f); else res(out); })(); })""")
+          if (performance.now() - t0 < 600) requestAnimationFrame(f); else res(out); })(); })""")
     lefts = [f[0] for f in frames]
     # Slides through intermediate positions, keeping the bar's rounded look.
     assert any(-60 < x < 8 for x in lefts) and lefts[-1] < -50
@@ -252,3 +252,14 @@ def test_nothing_beside_the_icon_bar_even_on_a_skin_that_paints_the_sidebar():
             assert beside is False
         finally:
             browser.close()
+
+
+def test_icon_bar_collapse_is_unhurried(phone):
+    page, _ = phone
+    _boot(page)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.7)
+    left_at_250 = page.evaluate("""() => new Promise(res => { const n = document.querySelector('.sidebar > .sidebar-nav');
+        closeMobileSidebar(); setTimeout(() => res(n.getBoundingClientRect().left), 250); })""")
+    # Still on screen a quarter-second in (it used to be gone by ~170ms).
+    assert left_at_250 > -56
