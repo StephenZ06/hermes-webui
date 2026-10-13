@@ -11507,3 +11507,6 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .sidebar .panel-head-sub{padding:8px;}
 .logs-control-panel{padding:8px;}
 #settingsMenu .settings-search.sidebar-search{padding:0 0 8px;}
+#jobOsSidebar .job-os-apify-widget{margin:8px;}
+#jobOsSidebar .job-os-side-stages{padding:8px 0 0;}
+.work-hub-nav{padding:8px;}
