@@ -123,10 +123,22 @@ def test_messages_remains_the_transcript_scroll_container():
 def test_overflow_x_clip_is_the_chosen_horizontal_clip():
     """Affirm the fix is in place: the mobile .messages-inner clips horizontally
     with `clip` (not `hidden`). Anchors the #4856/#4898 resolution."""
-    mobile = re.search(r"@media\(max-width:640px\)\{", CSS)
-    assert mobile, "@media(max-width:640px) block not found"
-    window = CSS[mobile.start(): mobile.start() + 12000]
-    m = re.search(r"\.messages-inner\{([^}]*)\}", window)
+    # Several @media(max-width:640px) blocks exist; use the one that styles
+    # .messages-inner (whole block, not a fixed window after the first one).
+    m = None
+    for mobile in re.finditer(r"@media\(max-width:640px\)\{", CSS):
+        depth, end = 0, len(CSS)
+        for i in range(mobile.end() - 1, len(CSS)):
+            if CSS[i] == "{":
+                depth += 1
+            elif CSS[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        m = re.search(r"\.messages-inner\{([^}]*)\}", CSS[mobile.start():end])
+        if m:
+            break
     assert m, "mobile .messages-inner rule not found"
     assert "overflow-x:clip" in m.group(0), (
         "mobile .messages-inner must use overflow-x:clip (the #4856 fix)"

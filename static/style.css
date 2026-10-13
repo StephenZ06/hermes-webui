@@ -11536,17 +11536,21 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   .sidebar > .sidebar-nav{transition:top .3s cubic-bezier(.22,1,.36,1),bottom .3s cubic-bezier(.22,1,.36,1),left .3s cubic-bezier(.22,1,.36,1),border-radius .3s ease,background-color .3s ease,box-shadow .3s ease;}
   /* Closed: slide far enough that the bar's inset and shadow are off-screen too. */
   .sidebar:not(.mobile-open):not(.mobile-icons){transform:translate3d(calc(-1 * var(--mobile-rail-w) - 3 * var(--mobile-rail-float)),0,0);}
-  :root .sidebar.mobile-icons:not(.mobile-open){background:transparent;border-right-color:transparent;box-shadow:none;
+  :root .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open){background:transparent;border-right-color:transparent;box-shadow:none;
     clip-path:inset(0 calc(100% - var(--mobile-rail-w) - 3 * var(--mobile-rail-float)) 0 0);}
-  .sidebar.mobile-icons:not(.mobile-open) > .sidebar-nav{
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav{
     top:calc(var(--app-titlebar-safe-top) + var(--mobile-rail-float));
     bottom:var(--app-bottom-gap);
     left:calc(var(--app-safe-left) + var(--mobile-rail-float));
-    padding-top:5px;padding-bottom:5px;gap:1px;border:1px solid color-mix(in srgb,var(--text) 10%,transparent);border-radius:22px;
+    padding-top:5px;padding-bottom:5px;gap:1px;border:1px solid color-mix(in srgb,var(--text) 10%,transparent);border-radius:15px;
     background:color-mix(in srgb,var(--sidebar,var(--surface)) 94%,transparent);
     -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);
     box-shadow:0 10px 30px rgba(0,0,0,.28),0 1px 2px rgba(0,0,0,.18);}
-  .sidebar.mobile-icons:not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{margin:1px 8px;}
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{margin:1px 8px;}
+  /* The panel is hidden whenever the sidebar is not fully open. Going from
+     closed to the icon bar it therefore never shows through the widening
+     clip; collapsing from the full sidebar it still hides after the slide. */
+  .sidebar:not(.mobile-open):not(.is-dragging) .panel-view{visibility:hidden;transition:visibility 0s .36s;}
 }
 
 /* Phones: a drawer swipe owns the finger (boot.js adds .drawer-gesture once
@@ -11567,3 +11571,12 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
    on a phone the last rows could not be reached at all. Any view without its
    own column scrollers scrolls the canvas instead. */
 #workHubCanvas:has(> .work-hub-list){overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;padding-bottom:12px;}
+
+/* Phones: iOS 26 paints the status bar, and the soft fade at the top edge of
+   the web view, from the page background. body used --bg while the top bar is
+   --sidebar, so a darker band faded down into the bar like a shadow. body now
+   carries the bar's colour; everything under the bar keeps --bg on .layout. */
+@media (max-width:640px){
+  body{background:var(--sidebar);}
+  .layout{background:var(--bg);}
+}

@@ -207,14 +207,22 @@ page.
   swipe can never become Back. A swipe that crosses the claim threshold wins
   over the button it started on (its click is swallowed); a still tap presses
   the button. Choosing a page or section in the drawer closes it.
-  The icon strip is a floating bar (inset 8px, rounded, translucent with a
-  blur) rather than a full-height column; a short leftward flick (24px) folds
-  it, the full drawer needs 64px. Once a drawer swipe is claimed, boot.js
+  The icon strip is a floating bar (inset 8px, translucent with a blur, corner
+  radius concentric with its buttons: button radius + inset = 15px) rather
+  than a full-height column; the panel stays hidden unless the drawer is fully
+  open, and the bar keeps its floating look while it slides away
+  (`.mobile-icons-leaving`). A short leftward flick (24px) folds it, the full
+  drawer needs 64px. Chat rows swipe right only (archive); there is no
+  swipe-left-to-delete, so a leftward swipe anywhere in the drawer closes it. Once a drawer swipe is claimed, boot.js
   sets `html.drawer-gesture`: the page (opening) or the drawer contents
   (closing) stop taking pointer events and selection until the finger lifts,
   and drawer contents only pan vertically. In the open drawer any touch in
   the first 30px of the rail — on an icon or between two — is cancelled in
   touchstart so it cannot become Back.
+- **Page background.** On phones `body` uses the top bar's colour (`--sidebar`)
+  and `.layout` carries `--bg`: iOS 26 paints the status bar and its soft top
+  fade from the page background, so a mismatch shows as a dark band fading
+  into the bar.
 - **Toasts.** On phones they drop in below the top bar (never inside the
   status-bar area) and carry a shadow only while showing.
 - **Microphone.** On touch devices the granted stream is kept for the page

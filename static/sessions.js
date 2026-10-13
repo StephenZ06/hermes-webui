@@ -8782,7 +8782,7 @@ function renderSessionListFromCache(){
         };
         const _canSwipeDeleteFork=()=>_isForkSwipeTarget()&&!_isMessagingSession(childSession)&&!_isCliSession(childSession);
         const _handleForkSwipe=(signedDx,signedDy)=>{
-          if(_gestureState==='committed'||!_isForkSwipeTarget()) return false;
+          if(_gestureState==='committed'||!_isForkSwipeTarget()||signedDx<=0) return false;
           const actionThreshold=signedDx>0?SESSION_ARCHIVE_SWIPE_THRESHOLD_PX:SESSION_DELETE_SWIPE_THRESHOLD_PX;
           if(Math.abs(signedDx)<actionThreshold) return false;
           if(Math.abs(signedDy)>Math.abs(signedDx)*SESSION_SWIPE_CANCEL_RATIO) return false;
@@ -8842,13 +8842,15 @@ function renderSessionListFromCache(){
           const signedDy=e.clientY-_pointerDownY;
           const dx=Math.abs(signedDx);
           const dy=Math.abs(signedDy);
-          if(dx>8&&dx>dy*1.1) _swipeTracking=true;
+          // Rows only swipe right (archive). Swipe-left-to-delete was removed:
+          // on a phone it fought the swipe that closes the drawer.
+          if(signedDx>8&&dx>dy*1.1) _swipeTracking=true;
           if(_gestureState==='pressing'&&(dx>5||dy>5)){
             _clearForkLongPressTimer();
             _gestureState='dragging';
             rowEl.classList.add('dragging');
           }
-          if(_isForkSwipeTarget()&&(_swipeTracking||dx>dy)) _paintForkSwipe(signedDx);
+          if(_isForkSwipeTarget()&&signedDx>0&&(_swipeTracking||dx>dy)) _paintForkSwipe(signedDx);
         };
         rowEl.onpointerup=(e)=>{
           if(e.pointerType==='mouse'||e.button!==0) return;
@@ -9148,8 +9150,10 @@ function renderSessionListFromCache(){
       const dx=Math.abs(signedDx);
       const dy=Math.abs(signedDy);
       _promoteSessionDrag(dx,dy);
-      _trackHorizontalSwipe(dx,dy);
-      if(_isSessionSwipeTarget()&&(_swipeTracking||dx>dy)) _paintSessionSwipe(signedDx);
+      // Rows only swipe right (archive). Swipe-left-to-delete was removed: on
+      // a phone it fought the swipe that closes the drawer.
+      if(signedDx>0)_trackHorizontalSwipe(dx,dy);
+      if(_isSessionSwipeTarget()&&signedDx>0&&(_swipeTracking||dx>dy)) _paintSessionSwipe(signedDx);
       return _swipeTracking;
     };
     const _canSwipeDeleteSession=()=>{
@@ -9210,7 +9214,7 @@ function renderSessionListFromCache(){
       requestAnimationFrame(()=>el.classList.add('swipe-removing'));
     };
     const _handleSessionSwipe=(signedDx,signedDy)=>{
-      if(_gestureState==='committed'||!_isSessionSwipeTarget()) return false;
+      if(_gestureState==='committed'||!_isSessionSwipeTarget()||signedDx<=0) return false;
       const actionThreshold=signedDx>0?SESSION_ARCHIVE_SWIPE_THRESHOLD_PX:SESSION_DELETE_SWIPE_THRESHOLD_PX;
       if(Math.abs(signedDx)<actionThreshold) return false;
       if(Math.abs(signedDy)>Math.abs(signedDx)*SESSION_SWIPE_CANCEL_RATIO) return false;

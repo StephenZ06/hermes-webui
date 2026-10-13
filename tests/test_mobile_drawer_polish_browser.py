@@ -88,7 +88,7 @@ def test_icon_bar_floats_and_fits_without_scrolling(phone):
     nav = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const s = getComputedStyle(n);
         return {left: n.getBoundingClientRect().left, radius: parseFloat(s.borderTopLeftRadius), fits: n.scrollHeight <= n.clientHeight,
                 sidebarBg: getComputedStyle(document.querySelector('.sidebar')).backgroundColor}; }""")
-    assert nav["left"] >= 8 and nav["radius"] >= 16 and nav["fits"]
+    assert nav["left"] >= 8 and nav["radius"] >= 12 and nav["fits"]
     assert nav["sidebarBg"] == "rgba(0, 0, 0, 0)"
 
 
@@ -156,3 +156,59 @@ def test_mic_asks_for_the_microphone_once_per_page_on_a_phone():
             assert page.evaluate("() => window.__gum") == 1
         finally:
             browser.close()
+
+
+def test_icon_bar_reveal_never_shows_the_panel_and_hide_slides_out(phone):
+    page, _ = phone
+    _boot(page)
+    seen = page.evaluate("""() => new Promise(res => { const sb = document.querySelector('.sidebar');
+        const pv = [...sb.querySelectorAll('.panel-view')].find(p => getComputedStyle(p).display !== 'none');
+        _setMobileDrawerState(sb, 'icons'); const out = []; const t0 = performance.now();
+        (function f() { out.push(getComputedStyle(pv).visibility); if (performance.now() - t0 < 450) requestAnimationFrame(f); else res([...new Set(out)]); })(); })""")
+    assert seen == ["hidden"]
+    frames = page.evaluate("""() => new Promise(res => { const sb = document.querySelector('.sidebar'); const nav = sb.querySelector('.sidebar-nav');
+        closeMobileSidebar(); const out = []; const t0 = performance.now();
+        (function f() { out.push([nav.getBoundingClientRect().left, getComputedStyle(nav).borderTopLeftRadius]);
+          if (performance.now() - t0 < 300) requestAnimationFrame(f); else res(out); })(); })""")
+    lefts = [f[0] for f in frames]
+    # Slides through intermediate positions, keeping the bar's rounded look.
+    assert any(-60 < x < 8 for x in lefts) and lefts[-1] < -50
+    assert frames[1][1] == "15px"
+
+
+def test_icon_bar_corners_are_concentric_with_its_buttons(phone):
+    page, _ = phone
+    _boot(page)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.6)
+    radius, btn, inset = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const t = n.querySelector('.nav-tab');
+        return [parseFloat(getComputedStyle(n).borderTopLeftRadius), parseFloat(getComputedStyle(t).borderTopLeftRadius),
+                t.getBoundingClientRect().left - n.getBoundingClientRect().left]; }""")
+    assert abs(radius - (btn + inset)) <= 1
+
+
+def test_phone_body_matches_the_top_bar_so_the_status_bar_has_no_band(phone):
+    page, _ = phone
+    _boot(page)
+    body, bar = page.evaluate("() => [getComputedStyle(document.body).backgroundColor, getComputedStyle(document.querySelector('.app-titlebar')).backgroundColor]")
+    assert body == bar
+
+
+def test_left_swipe_on_a_chat_row_closes_the_drawer_and_never_deletes(phone):
+    page, cdp = phone
+    body = {"title": "Keep me", "messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]}
+    req = urllib.request.Request(BASE + "/api/session/import", method="POST", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    sid = json.loads(urllib.request.urlopen(req, timeout=10).read())["session"]["session_id"]
+    _boot(page)
+    page.wait_for_function("(sid) => !!document.querySelector('.session-item[data-session-id=\"' + sid + '\"]') || !!document.querySelector('.session-item')", arg=sid, timeout=15000)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'open')")
+    time.sleep(0.6)
+    row = page.evaluate("""(sid) => { const r = document.querySelector('.session-item[data-session-id="' + sid + '"]') || document.querySelector('.session-item');
+        if (!r) return null; const b = r.getBoundingClientRect(); return [b.left + b.width * 0.7, b.top + b.height / 2]; }""", sid)
+    if row is None:
+        pytest.skip("no session row rendered in this state")
+    x, y = int(row[0]), int(row[1])
+    _swipe(page, cdp, x, x - 140, y=y)
+    assert page.evaluate("() => _mobileDrawerState()") == "closed"
+    gone = page.evaluate("(sid) => fetch('/api/session?session_id=' + sid).then(r => r.status)", sid)
+    assert gone != 404

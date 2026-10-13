@@ -32,12 +32,22 @@ CSS = (Path(__file__).resolve().parent.parent / "static" / "style.css").read_tex
 
 
 def _mobile_messages_inner_rule() -> str:
-    media = re.search(r"@media\(max-width:640px\)\{", CSS)
-    assert media, "@media(max-width:640px) block not found"
-    window = CSS[media.start(): media.start() + 8000]
-    m = re.search(r"\.messages-inner\{([^}]*)\}", window)
-    assert m, ".messages-inner rule not found in mobile media block"
-    return m.group(0)
+    # Several @media(max-width:640px) blocks exist (pages add their own); use
+    # the whole block that styles .messages-inner, not the first block only.
+    for media in re.finditer(r"@media\(max-width:640px\)\{", CSS):
+        depth, end = 0, len(CSS)
+        for i in range(media.end() - 1, len(CSS)):
+            if CSS[i] == "{":
+                depth += 1
+            elif CSS[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        m = re.search(r"\.messages-inner\{([^}]*)\}", CSS[media.start():end])
+        if m:
+            return m.group(0)
+    raise AssertionError(".messages-inner rule not found in any mobile media block")
 
 
 def test_mobile_inner_does_not_become_scroll_container():

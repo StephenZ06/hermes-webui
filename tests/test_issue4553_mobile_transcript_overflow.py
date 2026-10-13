@@ -22,28 +22,25 @@ def test_messages_inner_mobile_has_containment():
     css_file = Path(__file__).resolve().parent.parent / "static" / "style.css"
     content = css_file.read_text()
 
-    # Find the @media(max-width:640px) block and then .messages-inner within a reasonable window
-    media_match = re.search(r'@media\(max-width:640px\)\{', content)
-    assert media_match, "@media(max-width:640px) block not found"
-
-    # Scan the whole media block rather than a fixed character window: the
-    # block keeps growing, and a lookahead cap turns any unrelated rule added
-    # above .messages-inner into a spurious failure.
-    depth = 0
-    block_end = media_match.end()
-    for i in range(media_match.end() - 1, len(content)):
-        if content[i] == "{":
-            depth += 1
-        elif content[i] == "}":
-            depth -= 1
-            if depth == 0:
-                block_end = i
-                break
-    remaining_content = content[media_match.start():block_end]
-
-    # Find .messages-inner rule within this section
-    messages_inner_match = re.search(r'\.messages-inner\{([^}]*)\}', remaining_content)
-    assert messages_inner_match, ".messages-inner rule not found in @media(max-width:640px) block"
+    # The stylesheet has several @media(max-width:640px) blocks (pages add
+    # their own), so look in each whole block -- not only the first one, and
+    # not in a fixed character window -- for the one that styles .messages-inner.
+    messages_inner_match = None
+    for media_match in re.finditer(r'@media\(max-width:640px\)\{', content):
+        depth = 0
+        block_end = media_match.end()
+        for i in range(media_match.end() - 1, len(content)):
+            if content[i] == "{":
+                depth += 1
+            elif content[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    block_end = i
+                    break
+        messages_inner_match = re.search(r'\.messages-inner\{([^}]*)\}', content[media_match.start():block_end])
+        if messages_inner_match:
+            break
+    assert messages_inner_match, ".messages-inner rule not found in any @media(max-width:640px) block"
 
     messages_inner_rule = messages_inner_match.group(0)
 

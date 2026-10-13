@@ -436,10 +436,25 @@ function toggleMobileSidebar(){
     sidebar.classList.remove('mobile-session-page');sidebar.classList.add('mobile-panel-drawer','mobile-open');
   }
 }
+// The floating icon bar keeps its look while it slides off-screen; without
+// this it turned back into the flush, full-height column the instant the
+// close began, so it seemed to vanish instead of sliding away.
+let _iconsLeavingTimer=0;
+function _markIconsLeaving(sidebar){
+  if(!sidebar||!sidebar.classList.contains('mobile-icons')||sidebar.classList.contains('mobile-open'))return;
+  sidebar.classList.add('mobile-icons-leaving');
+  if(_iconsLeavingTimer)clearTimeout(_iconsLeavingTimer);
+  _iconsLeavingTimer=setTimeout(function(){_iconsLeavingTimer=0;sidebar.classList.remove('mobile-icons-leaving');},380);
+}
+function _clearIconsLeaving(sidebar){
+  if(_iconsLeavingTimer){clearTimeout(_iconsLeavingTimer);_iconsLeavingTimer=0;}
+  if(sidebar)sidebar.classList.remove('mobile-icons-leaving');
+}
 function closeMobileSidebar(){
   const sidebar=document.querySelector('.sidebar');
   const overlay=$('mobileOverlay');
   _clearDrawerIconsTimer();
+  _markIconsLeaving(sidebar);
   if(sidebar)sidebar.classList.remove('mobile-open','mobile-icons','mobile-session-page','mobile-panel-drawer');
   if(overlay)overlay.classList.remove('visible');
 }
@@ -480,6 +495,7 @@ function _armDrawerIconsTimer(){
 }
 function _setMobileDrawerState(sidebar,state){
   if(!sidebar)return;
+  if(state!=='closed')_clearIconsLeaving(sidebar);
   if(state==='open'){
     _clearDrawerIconsTimer();
     sidebar.classList.remove('mobile-icons');
@@ -490,6 +506,7 @@ function _setMobileDrawerState(sidebar,state){
     _armDrawerIconsTimer();
   }else{
     _clearDrawerIconsTimer();
+    _markIconsLeaving(sidebar);
     sidebar.classList.remove('mobile-open','mobile-icons');
   }
 }
@@ -987,15 +1004,13 @@ _installSidebarNavScrub();
 let _sidebarSwipeClose=null;
 
 function _isInteractiveSidebarCloseTarget(target){
-  // Session rows (and their fork/child rows) own their own horizontal
-  // swipe gesture (swipe-left-to-delete, swipe-right-to-archive, drag onto
-  // a project) — a touch starting on one must never also be claimed by
-  // this drawer-close gesture, or a delete-swipe closes the whole sidebar
-  // instead of revealing the delete action.
-  // Buttons and links are NOT excluded: a swipe that starts on a nav row
-  // closes the drawer once it crosses the claim threshold (the click it would
-  // have made is swallowed); a touch that stays put still presses it.
-  try{return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable="true"],.session-item,.session-child-session-fork'));}
+  // Only text fields are excluded. Buttons and links are not: a swipe that
+  // starts on a nav row closes the drawer once it crosses the claim threshold
+  // (the click it would have made is swallowed); a touch that stays put still
+  // presses it.
+  // Session rows only swipe right now (archive), so a leftward swipe that
+  // starts on one closes the drawer like anywhere else.
+  try{return !!(target&&target.closest&&target.closest('input,textarea,select,[contenteditable="true"]'));}
   catch(_){return false;}
 }
 
