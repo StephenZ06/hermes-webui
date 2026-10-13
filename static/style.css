@@ -11438,14 +11438,14 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   .settings-page > .job-os-settings-section > .job-os-card-head .card-title{font-size:20px;}
 }
 
-/* Notes: which store the notes live in (the connected Obsidian vault). */
-.nb-vault{display:flex;align-items:center;gap:9px;margin:2px 4px 10px;padding:8px 8px 8px 10px;border:1px solid color-mix(in srgb,#a78bfa 40%,var(--border2));border-radius:11px;background:color-mix(in srgb,#a78bfa 9%,transparent);}
-.nb-vault.is-offer{border-style:dashed;}
-.nb-vault-mark{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:8px;background:color-mix(in srgb,#a78bfa 22%,transparent);color:#c4b5fd;}
-.nb-vault-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
-.nb-vault-text strong{font-size:12px;font-weight:650;color:var(--text);}
-.nb-vault-text small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.nb-vault-btn{flex:0 0 auto;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
-.nb-vault-btn:hover{color:var(--text);border-color:var(--accent);}
-.nb-vault-btn.primary{background:#a78bfa;border-color:#a78bfa;color:#140b2b;}
-.nb-vault-btn.primary:hover{filter:brightness(1.08);color:#140b2b;}
+/* Settings → Preferences → Notes · Obsidian vault. */
+.notes-vault-setting{display:flex;flex-direction:column;gap:8px;}
+.notes-vault-status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);}
+.notes-vault-status i{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--muted);}
+.notes-vault-status[data-on="true"] i{background:var(--success,#4ade80);box-shadow:0 0 0 3px color-mix(in srgb,var(--success,#4ade80) 20%,transparent);}
+.notes-vault-status small{color:var(--muted);font-size:11.5px;}
+.notes-vault-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.notes-vault-row .settings-input{flex:1 1 260px;min-width:0;}
+.notes-vault-row .settings-btn{font-size:12px;padding:6px 12px;border-radius:6px;white-space:nowrap;}
+.notes-vault-error{font-size:11.5px;color:var(--error,#f07878);}
+.notes-vault-error:empty{display:none;}

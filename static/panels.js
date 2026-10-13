@@ -10511,8 +10511,43 @@ function switchSettingsSection(name,opts){
     if(section==='providers') loadProvidersPanel();
     if(section==='plugins') loadPluginsPanel();
     if(section==='extensions') loadExtensionsPanel();
+    if(section==='preferences') loadNotesVaultSetting();
   }
   if(opts&&opts.fromSidebarItem)_closeMobileSidebarAfterPanelSelection();
+}
+
+// Settings → Preferences → Notes · Obsidian vault (api/notebook_vault.py).
+// Connect/disconnect apply at once (not through the Save button); an open
+// Notes page reloads onto the new store.
+async function loadNotesVaultSetting(){
+  const host=$('settingsNotesVault');
+  if(!host||!window.NotebookApi) return;
+  let cfg;
+  try{ cfg=(await window.NotebookApi.vault()).vault||{}; }
+  catch(e){ host.innerHTML='<div class="notes-vault-error">'+esc(e.message||'Could not read the vault setting')+'</div>'; return; }
+  const on=!!(cfg.enabled&&cfg.available);
+  const path=cfg.path||cfg.detected||'';
+  const status=on
+    ? 'Connected to <strong>'+esc(cfg.name||'vault')+'</strong>'
+    : (cfg.detected&&!cfg.path ? 'Not connected <small>· found one among your workspaces</small>' : 'Not connected');
+  host.innerHTML='<div class="notes-vault-status" data-on="'+on+'"><i aria-hidden="true"></i><span>'+status+'</span></div>'
+    +'<div class="notes-vault-row"><input type="text" id="settingsNotesVaultPath" class="settings-input" spellcheck="false" autocomplete="off" placeholder="/path/to/your/Obsidian vault" value="'+esc(path)+'">'
+    +(on?'<button type="button" class="settings-btn" id="settingsNotesVaultApply">Change</button><button type="button" class="settings-btn" id="settingsNotesVaultOff">Disconnect</button>'
+        :'<button type="button" class="settings-btn" id="settingsNotesVaultApply">Connect</button>')
+    +'</div><div class="notes-vault-error" id="settingsNotesVaultError" role="alert"></div>';
+  const apply=async(body)=>{
+    const err=$('settingsNotesVaultError');
+    try{
+      await window.NotebookApi.setVault(body);
+      if(window.Notebook&&typeof window.Notebook.vaultChanged==='function') await window.Notebook.vaultChanged();
+      if(typeof showToast==='function') showToast(body.enabled===false?"Notes use Hermes' own store":'Notes now use your Obsidian vault');
+      loadNotesVaultSetting();
+    }catch(e){ if(err) err.textContent=e.message||'The vault could not be connected'; }
+  };
+  const applyBtn=$('settingsNotesVaultApply');
+  if(applyBtn) applyBtn.onclick=()=>apply({path:($('settingsNotesVaultPath').value||'').trim(),enabled:true});
+  const offBtn=$('settingsNotesVaultOff');
+  if(offBtn) offBtn.onclick=()=>apply({enabled:false});
 }
 
 function _normalizeSettingsSearchText(value) {

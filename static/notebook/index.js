@@ -56,7 +56,6 @@
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     back: '<path d="m15 18-6-6 6-6"/>',
     tag: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
-    vault: '<path d="M12 2.5 4.5 7v10L12 21.5l7.5-4.5V7z"/><path d="M12 2.5v19M4.5 7l7.5 4.5L19.5 7"/>',
   };
   const icon = (name, size) => `<svg width="${size || 14}" height="${size || 14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
@@ -165,26 +164,13 @@
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
       + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}</div></div>`;
   }
-  // Where the notes live: the connected Obsidian vault, or a one-tap offer to
-  // connect the vault Hermes found among your workspaces.
-  function vaultBanner() {
-    const cfg = S.vaultConfig || {};
-    if (S.vault) {
-      return `<div class="nb-vault" title="${esc(cfg.path || '')}"><span class="nb-vault-mark" aria-hidden="true">${icon('vault', 14)}</span><span class="nb-vault-text"><strong>Obsidian</strong><small>${esc(S.vault.name || 'Vault')}</small></span><button type="button" class="nb-vault-btn" data-nb-action="vault-disconnect" title="Use Hermes' own notes instead">Disconnect</button></div>`;
-    }
-    const offer = cfg.detected || cfg.path;
-    if (!offer) return '';
-    const name = String(offer).split(/[\\/]/).filter(Boolean).pop() || 'vault';
-    return `<div class="nb-vault is-offer"><span class="nb-vault-mark" aria-hidden="true">${icon('vault', 14)}</span><span class="nb-vault-text"><strong>Obsidian vault found</strong><small>${esc(name)}</small></span><button type="button" class="nb-vault-btn primary" data-nb-action="vault-connect" data-path="${esc(offer)}">Connect</button></div>`;
-  }
-  async function setVault(body) {
+  // The store changed (Settings → Preferences → Notes · Obsidian vault): drop
+  // the open note, which belongs to the old store, and load the new one.
+  async function vaultChanged() {
     await flushSave();
-    try {
-      await window.NotebookApi.setVault(body);
-      S.note = null; destroyEditor(); S.scope = {kind: 'all', id: null};
-      await loadBootstrap(); render();
-      toast(S.vault ? `Notes now read and write your Obsidian vault "${S.vault.name}"` : "Notes use Hermes' own store");
-    } catch (error) { toast(error.message || 'The vault could not be connected'); }
+    S.note = null; destroyEditor(); S.scope = {kind: 'all', id: null}; S.searchResults = null;
+    if (!S.loaded) return;
+    await loadBootstrap(); render();
   }
   function renderSidebar() {
     const side = $('notebookSidebar');
@@ -194,7 +180,6 @@
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
     const dm = S.deleteMode ? ' is-delete-mode' : '';
     side.innerHTML = `<nav class="work-hub-nav nb-nav" aria-label="Notes navigation">
-      ${vaultBanner()}
       ${scopeButton('all', 'All notes', 'all', count((n) => live(n) && !n.archived))}
       ${scopeButton('general', 'General', 'general', count((n) => live(n) && !n.project_id && !n.folder_id))}
       ${scopeButton('pinned', 'Pinned', 'pin', count((n) => live(n) && n.pinned))}
@@ -1007,8 +992,6 @@
       case 'conflict-theirs': await resolveConflict(false); break;
       case 'back': S.pane = 'list'; ensureShell(); break;
       case 'reload': await loadBootstrap(); render(); break;
-      case 'vault-connect': await setVault({path: action.dataset.path, enabled: true}); break;
-      case 'vault-disconnect': await setVault({enabled: false}); break;
       default: break;
     }
   }
@@ -1077,7 +1060,7 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, _state: S, _save: save};
+  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());

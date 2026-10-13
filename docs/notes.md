@@ -72,12 +72,14 @@ directory is named after the version, so caches don't serve the old bundle.
 ## Obsidian vault (`api/notebook_vault.py`)
 
 Notes can read and write an Obsidian vault's Markdown files instead of its own
-store, so the same notes are open in Obsidian and Hermes at once. Notes
-**offers** a vault it finds among your saved workspaces (a folder containing
-`.obsidian`) with a **Connect** button in the side panel; nothing switches
-until you press it (config: `notebook_vault.json` in the WebUI state
-directory, `{path, enabled}`; **Disconnect** returns to Hermes' own store,
-which is left untouched either way).
+store, so the same notes are open in Obsidian and Hermes at once. The setting
+is **Settings → Preferences → Notes · Obsidian vault**: it shows the status,
+pre-fills a vault it finds among your saved workspaces (a folder containing
+`.obsidian`), and **Connect** / **Change** / **Disconnect** apply at once (an
+open Notes page reloads onto the new store). Nothing switches until you press
+Connect (config: `notebook_vault.json` in the WebUI state directory,
+`{path, enabled}`; Disconnect returns to Hermes' own store, which is left
+untouched either way).
 
 Connected:
 
