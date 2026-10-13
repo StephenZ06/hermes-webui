@@ -11542,7 +11542,9 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
     top:calc(var(--app-titlebar-safe-top) + var(--mobile-rail-float));
     bottom:var(--app-bottom-gap);
     left:calc(var(--app-safe-left) + var(--mobile-rail-float));
-    padding-top:5px;padding-bottom:5px;gap:1px;border:1px solid color-mix(in srgb,var(--text) 10%,transparent);border-radius:15px;
+    /* 44px buttons + 5px padding + 1px border = 6px clear on the top, left
+       and right of every button; the corner is concentric (10px + 6px). */
+    width:56px;padding:5px;gap:1px;border:1px solid color-mix(in srgb,var(--text) 10%,transparent);border-radius:16px;
     background:color-mix(in srgb,var(--sidebar,var(--surface)) 94%,transparent);
     -webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);
     box-shadow:none;}

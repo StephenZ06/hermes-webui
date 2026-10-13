@@ -224,3 +224,13 @@ def test_phone_top_bar_glyphs_are_equally_inset_and_the_icon_bar_casts_no_shadow
     time.sleep(0.6)
     # A blurred drop shadow spilled up into the top bar / status-bar area.
     assert page.evaluate("() => getComputedStyle(document.querySelector('.sidebar > .sidebar-nav')).boxShadow") == "none"
+
+
+def test_icon_bar_top_button_has_equal_space_above_and_beside_it(phone):
+    page, _ = phone
+    _boot(page)
+    page.evaluate("() => _setMobileDrawerState(document.querySelector('.sidebar'), 'icons')")
+    time.sleep(0.6)
+    top, left, right = page.evaluate("""() => { const n = document.querySelector('.sidebar > .sidebar-nav'); const t = n.querySelector('.nav-tab');
+        const a = n.getBoundingClientRect(), b = t.getBoundingClientRect(); return [b.top - a.top, b.left - a.left, a.right - b.right]; }""")
+    assert round(top) == round(left) == round(right)
