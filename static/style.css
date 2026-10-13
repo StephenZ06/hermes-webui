@@ -11494,3 +11494,16 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .settings-main{max-width:none;}
 .settings-page{max-width:none;}
 .nb-editor-head,.nb-editor-host{max-width:none;}
+
+/* Side-panel gutter: every page's side panel follows Work Hub — content sits
+   8px from the panel's left and right edges, and the first boxed element
+   (search field, select, card, button row) sits 8px under the panel header,
+   so the gap above it equals the gap beside it. */
+.chat-usage-widget{margin:8px 8px 0;}
+#sessionList .session-search.sidebar-search{padding:0 0 8px;}
+#sessionList .project-folder-list{padding-left:0;padding-right:0;}
+.office-page-nav{padding:8px 8px 0;}
+.sidebar .skills-search.sidebar-search{padding:8px 8px 8px;}
+.sidebar .panel-head-sub{padding:8px;}
+.logs-control-panel{padding:8px;}
+#settingsMenu .settings-search.sidebar-search{padding:0 0 8px;}

@@ -402,7 +402,6 @@
       <div class="panel-head">
         <span data-i18n="tab_office">Office</span>
       </div>
-      <div class="office-sidebar-section-title office-tools-title"><span>TOOLS</span></div>
       <div class="office-page-nav" id="officePageNav" aria-label="Office pages">
         <button type="button" class="office-page-nav-btn" data-office-subview="dashboard" onclick="officeSetSubview('dashboard')"></button>
         <button type="button" class="office-page-nav-btn" data-office-subview="integrations" onclick="officeSetSubview('integrations')"></button>
@@ -1411,6 +1410,13 @@
                 <div class="model-dropdown settings-model-dropdown" id="settingsModelDropdown"></div>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_model">Used for new conversations. Existing conversations keep their selected model.</div>
+            </div>
+            <div class="settings-field">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="settingsNewChatDefaultWorkspace" style="width:15px;height:15px;accent-color:var(--accent)">
+                <span data-i18n="settings_label_new_chat_default_workspace">Start new chats in the default workspace</span>
+              </label>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px"><span data-i18n="settings_desc_new_chat_default_workspace">When on, a new chat outside a project always opens in the default workspace (on every profile). When off, it opens in the workspace of the chat you were in. Project chats always use their project's folder.</span> <code id="settingsNewChatDefaultWorkspacePath" style="font-size:10.5px;word-break:break-all"></code></div>
             </div>
             <div class="settings-field">
               <label data-i18n="settings_label_approval_modes">Profile Approval Mode</label>

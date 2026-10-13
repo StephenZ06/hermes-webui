@@ -74,7 +74,7 @@ def test_task_status_is_viewport_bounded_but_not_artificially_height_capped():
 
 
 def test_office_and_work_hub_use_the_shared_section_heading_pattern():
-    assert 'class="office-sidebar-section-title office-tools-title"' in HTML
+    assert 'office-tools-title' not in HTML  # Dashboard/Integrations sit directly under the head
     assert 'class="office-sidebar-section-title office-history-title"' in HTML
     assert ".office-page-nav{padding:0 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));" in CSS
     assert "officeIcon('workspace-heading')" not in OFFICE

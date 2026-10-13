@@ -11275,6 +11275,8 @@ function _preferencesPayloadFromUi(){
   if(showQuotaChipCb) payload.show_quota_chip=showQuotaChipCb.checked;
   const showConversationOutlineCb=$('settingsShowConversationOutline');
   if(showConversationOutlineCb) payload.show_conversation_outline=showConversationOutlineCb.checked;
+  const newChatDefaultWsCb=$('settingsNewChatDefaultWorkspace');
+  if(newChatDefaultWsCb) payload.new_chat_inherits_workspace=!newChatDefaultWsCb.checked;
   const hideSuggestionsCb=$('settingsHideSuggestions');
   if(hideSuggestionsCb) payload.hide_empty_state_suggestions=hideSuggestionsCb.checked;
   const hideEmptyStatePanelCb=$('settingsHideEmptyStatePanel');
@@ -11473,6 +11475,9 @@ async function _autosavePreferencesSettings(payload){
     if(payload&&payload.hide_empty_state_panel!==undefined){
       window._hideEmptyStatePanel=!!(saved&&saved.hide_empty_state_panel);
       if(typeof applyEmptyStatePanelPref==='function') applyEmptyStatePanelPref();
+    }
+    if(payload&&payload.new_chat_inherits_workspace!==undefined){
+      window._newChatInheritsWorkspace=!(saved&&saved.new_chat_inherits_workspace===false);
     }
     if(payload&&payload.show_conversation_outline!==undefined){
       window._showConversationOutline=!!(saved&&saved.show_conversation_outline);
@@ -12059,6 +12064,16 @@ async function loadSettingsPanel(){
         if(typeof renderMessages==='function'){ try{ renderMessages({preserveScroll:true}); }catch(e){ console.warn('[virtualize_transcript] renderMessages failed on toggle:',e); } }
         _schedulePreferencesAutosave();
       },{once:false});
+    }
+    const newChatDefaultWsCb=$('settingsNewChatDefaultWorkspace');
+    if(newChatDefaultWsCb){
+      newChatDefaultWsCb.checked=settings.new_chat_inherits_workspace===false;
+      const wsPath=$('settingsNewChatDefaultWorkspacePath');
+      if(wsPath) wsPath.textContent=settings.default_workspace||'';
+      newChatDefaultWsCb.onchange=()=>{
+        window._newChatInheritsWorkspace=!newChatDefaultWsCb.checked;
+        _schedulePreferencesAutosave();
+      };
     }
     const showConversationOutlineCb=$('settingsShowConversationOutline');
     if(showConversationOutlineCb){
@@ -15375,6 +15390,7 @@ async function saveSettings(andClose){
   const showTokenUsage=!!($('settingsShowTokenUsage')||{}).checked;
   const showQuotaChip=!!($('settingsShowQuotaChip')||{}).checked;
   const showConversationOutline=!!($('settingsShowConversationOutline')||{}).checked;
+  const newChatDefaultWsCb=$('settingsNewChatDefaultWorkspace');
   const showTps=!!($('settingsShowTps')||{}).checked;
   const fadeTextEffect=!!($('settingsFadeTextEffect')||{}).checked;
   const showCliSessions=!!($('settingsShowCliSessions')||{}).checked;
@@ -15425,6 +15441,7 @@ async function saveSettings(andClose){
   }
   body.show_quota_chip=showQuotaChip===true;
   body.show_conversation_outline=showConversationOutline===true;
+  if(newChatDefaultWsCb) body.new_chat_inherits_workspace=!newChatDefaultWsCb.checked;
   body.show_busy_placeholder_hint=showBusyPlaceholderHint===true;
   body.show_tps=showTps;
   body.fade_text_effect=fadeTextEffect;
