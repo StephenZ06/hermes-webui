@@ -15850,6 +15850,12 @@ def _route_get_api_gateway_status(handler, parsed):
     return j(handler, _gateway_status_payload())
 
 
+def _route_get_api_system_services(handler, parsed):
+    from api.managed_services import managed_services_status
+
+    return j(handler, managed_services_status())
+
+
 # ── MCP Servers (GET) ──
 def _route_get_api_mcp_servers(handler, parsed):
     return _handle_mcp_servers_list(handler)
@@ -15983,6 +15989,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/health"), _route_get_health),
         (Exact("/api/health/agent"), _route_get_api_health_agent),
         (Exact("/api/system/health"), _route_get_api_system_health),
+        (Exact("/api/system/services"), _route_get_api_system_services),
         (Exact("/api/models"), _route_get_api_models),
         (Exact("/api/models/cross_profile"), _route_get_api_models_cross_profile),
         (Exact("/api/models/live"), _route_get_api_models_live),
@@ -18749,6 +18756,19 @@ def _route_post_api_gateway_restart(handler, parsed, body, diag):
     return _handle_gateway_lifecycle(handler, parsed.path.rsplit("/", 1)[-1], body)
 
 
+def _route_post_api_system_service_control(handler, parsed, body, diag):
+    from api.managed_services import control_managed_service
+
+    service = str(body.get("service") or "").strip().lower()
+    action = str(body.get("action") or "").strip().lower()
+    try:
+        return j(handler, control_managed_service(service, action))
+    except ValueError as exc:
+        return bad(handler, str(exc), 400)
+    except RuntimeError as exc:
+        return bad(handler, str(exc), 409)
+
+
 # ── Profile API (POST) ──
 def _profile_storage_unavailable(handler, action: str) -> bool:
     """503 for a filesystem failure in profile storage, without leaking paths."""
@@ -20156,6 +20176,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/memory/entry/delete"), _route_post_api_memory_entry_delete),
         (Exact("/api/memory/entry/append"), _route_post_api_memory_entry_append),
         (Exact("/api/gateway/restart", "/api/gateway/start", "/api/gateway/stop"), _route_post_api_gateway_restart),
+        (Exact("/api/system/services/control"), _route_post_api_system_service_control),
         (Exact("/api/profile/switch"), _route_post_api_profile_switch),
         (Exact("/api/profile/create"), _route_post_api_profile_create),
         (Exact("/api/profile/update"), _route_post_api_profile_update),

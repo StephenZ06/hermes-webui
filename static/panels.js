@@ -15988,12 +15988,73 @@ async function _gatewayAction(action){
     await loadGatewayStatus();
   }
 }
+
+const MANAGED_SERVICES_INTERVAL_MS=5000;
+let _managedServiceActionInFlight=false;
+let _managedServicesTimer=null;
+function _managedServiceLabel(id){
+  return id==='firecrawl'?'Firecrawl':id==='9router'?'9router':'Service';
+}
+function _renderManagedServices(payload){
+  const list=$('managedServicesList');
+  if(!list) return;
+  const services=payload&&Array.isArray(payload.services)?payload.services:[];
+  if(!services.length){
+    list.innerHTML='<div class="managed-services-empty">No managed services are configured.</div>';
+    return;
+  }
+  list.innerHTML=services.map(service=>{
+    const id=String(service.id||'');
+    const state=String(service.state||'unavailable');
+    const active=state==='running'||state==='starting';
+    const actions=state==='running'?['restart','stop']:state==='stopped'?['start']:[];
+    const actionButtons=actions.map(action=>`<button type="button" class="sm-btn managed-service-action" data-service="${esc(id)}" onclick="controlManagedService('${esc(id)}','${action}')" ${_managedServiceActionInFlight?'disabled':''}>${esc(action[0].toUpperCase()+action.slice(1))}</button>`).join('');
+    const dotClass=active?'is-running':state==='stopped'?'is-stopped':'is-unavailable';
+    return `<article class="managed-service-card" data-managed-service="${esc(id)}">
+      <div class="managed-service-card-head"><div><div class="managed-service-name">${esc(_managedServiceLabel(id))}</div><div class="managed-service-detail"><span class="managed-service-dot ${dotClass}" aria-hidden="true"></span>${esc(service.detail||'Unavailable')}</div></div><span class="managed-service-state ${dotClass}">${esc(state)}</span></div>
+      ${actionButtons?`<div class="managed-service-actions">${actionButtons}</div>`:''}
+    </article>`;
+  }).join('');
+}
+async function loadManagedServices(){
+  const list=$('managedServicesList');
+  if(!list) return;
+  try{_renderManagedServices(await api('/api/system/services',{timeoutToast:false}));}
+  catch(_){list.innerHTML='<div class="managed-services-empty">Service status is unavailable.</div>';}
+}
+function _syncManagedServicesPolling(){
+  const visible=_currentPanel==='settings'&&_settingsSection==='system'&&document.visibilityState==='visible';
+  if(visible&&_managedServicesTimer===null){
+    void loadManagedServices();
+    _managedServicesTimer=setInterval(loadManagedServices,MANAGED_SERVICES_INTERVAL_MS);
+  }else if(!visible&&_managedServicesTimer!==null){
+    clearInterval(_managedServicesTimer);
+    _managedServicesTimer=null;
+  }
+}
+document.addEventListener('visibilitychange',_syncManagedServicesPolling);
+async function controlManagedService(service, action){
+  if(_managedServiceActionInFlight) return;
+  if(action==='stop'&&!confirm(`Stop ${_managedServiceLabel(service)}? Active work using it will be interrupted.`)) return;
+  _managedServiceActionInFlight=true;
+  document.querySelectorAll('.managed-service-action').forEach(button=>{button.disabled=true;});
+  try{
+    await api('/api/system/services/control',{method:'POST',body:JSON.stringify({service,action}),timeoutMs:100000,timeoutToast:false});
+    if(typeof showToast==='function') showToast(`${_managedServiceLabel(service)} ${action} completed.`,3000,'success');
+  }catch(error){
+    if(typeof showToast==='function') showToast(error&&error.message?error.message:'Service action failed.',5000,'error');
+  }finally{
+    _managedServiceActionInFlight=false;
+    await loadManagedServices();
+  }
+}
 // Load MCP servers when system settings tab opens
 const _origSwitchSettings=switchSettingsSection;
 switchSettingsSection=function(name, opts){
   _origSwitchSettings(name, opts);
   if(name==='preferences') updateNotificationPermissionStatus();
   if(name==='system'){loadMcpServers();loadMcpTools();loadGatewayStatus();}
+  _syncManagedServicesPolling();
 };
 
 // ── Checkpoints / Rollback ──────────────────────────────────────────────────
