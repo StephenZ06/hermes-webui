@@ -56,5 +56,7 @@ def test_side_panels_use_the_work_hub_gutter():
                  "#settingsMenu .settings-search.sidebar-search{padding:0 0 8px;}",
                  "#jobOsSidebar .job-os-apify-widget{margin:8px;}",
                  "#jobOsSidebar .job-os-side-stages{padding:8px 0 0;}",
-                 ".work-hub-nav{padding:8px;}"):
+                 ".work-hub-nav{padding:8px;}",
+                 "#settingsMenu .settings-search .sidebar-search-icon{left:10px;top:calc(50% - 4px);}",
+                 ".sidebar .skills-search .sidebar-search-icon{left:18px;}"):
         assert rule in block, rule

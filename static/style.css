@@ -11510,3 +11510,8 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 #jobOsSidebar .job-os-apify-widget{margin:8px;}
 #jobOsSidebar .job-os-side-stages{padding:8px 0 0;}
 .work-hub-nav{padding:8px;}
+/* The search icon is positioned against the wrapper, so it follows the new
+   gutter: 10px into the field, centred on the field (not the wrapper's
+   bottom padding). */
+#settingsMenu .settings-search .sidebar-search-icon{left:10px;top:calc(50% - 4px);}
+.sidebar .skills-search .sidebar-search-icon{left:18px;}
