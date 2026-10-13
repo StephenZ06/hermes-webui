@@ -426,7 +426,8 @@ export function createOfficeScene(canvas, options) {
       stars = new THREE.Group();
       // Screen-space layers (see makeStarfield): a fixed count each, so the
       // sky looks the same at every zoom; nearer layers drift more on a pan.
-      [[3.8, 140, 11, 0.012], [3.0, 320, 29, 0.006], [2.4, 520, 53, 0.003]].forEach(([size, count, seed, drift]) => {
+      // 430 stars in all (was 980): a calmer sky behind the floor.
+      [[3.8, 60, 11, 0.012], [3.0, 140, 29, 0.006], [2.4, 230, 53, 0.003]].forEach(([size, count, seed, drift]) => {
         const layer = makeStarfield(1, count, { size, seed });
         layer.userData.drift = drift;
         stars.add(layer);
