@@ -29,7 +29,7 @@ def test_configure_9router_provider_preserves_custom_providers_and_uses_profile_
     profiles._configure_9router_custom_provider(
         tmp_path,
         base_url="http://127.0.0.1:20128/v1",
-        default_model="cc/claude-sonnet-4-5-20251101",
+        default_model="cc/claude-sonnet-4-5-20250929",
     )
 
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -39,14 +39,14 @@ def test_configure_9router_provider_preserves_custom_providers_and_uses_profile_
     assert router["api_mode"] == "openai_compatible"
     assert router["key_env"] == "NINE_ROUTER_API_KEY"
     assert router["api_key"] == "${NINE_ROUTER_API_KEY}"
-    assert router["models"] == ["cc/claude-sonnet-4-5-20251101"]
+    assert router["models"] == ["cc/claude-sonnet-4-5-20250929"]
     assert profiles._resolve_env_var_for_provider("custom:9router", tmp_path) == "NINE_ROUTER_API_KEY"
 
 
 def test_unconfigured_9router_catalog_model_is_accepted_before_key_exists():
     """A new 9router profile can be saved before its first API key is stored."""
     profiles._validate_profile_model_selection(
-        "cc/claude-sonnet-4-5-20251101",
+        "cc/claude-sonnet-4-5-20250929",
         "custom:9router",
         available_models={"groups": []},
     )
@@ -69,7 +69,7 @@ def test_profile_update_sets_up_9router_with_its_own_secret_key(monkeypatch, tmp
 
     profiles.update_profile_api(
         "research",
-        default_model="cc/claude-sonnet-4-5-20251101",
+        default_model="cc/claude-sonnet-4-5-20250929",
         model_provider="custom:9router",
         api_key="test-router-key",
     )

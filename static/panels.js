@@ -9675,7 +9675,7 @@ async function _populateProfileFormModelSelect(editProfile){
         provider: '9router (local)',
         provider_id: 'custom:9router',
         models: [
-          { id: 'cc/claude-sonnet-4-5-20251101', label: 'Claude Sonnet via 9router' },
+          { id: 'cc/claude-sonnet-4-5-20250929', label: 'Claude Sonnet via 9router' },
           { id: 'cc/claude-opus-4-5-20251101', label: 'Claude Opus via 9router' },
         ],
       });

@@ -2456,7 +2456,7 @@ _NINE_ROUTER_KEY_ENV = "NINE_ROUTER_API_KEY"
 # These are only the no-credential profile-picker choices. Once 9router is
 # configured, its own /v1/models response remains authoritative.
 _NINE_ROUTER_PROFILE_MODELS = (
-    "cc/claude-sonnet-4-5-20251101",
+    "cc/claude-sonnet-4-5-20250929",
     "cc/claude-opus-4-5-20251101",
 )
 
