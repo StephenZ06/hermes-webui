@@ -54,6 +54,19 @@ def test_unknown_service_or_action_never_spawns_a_command(monkeypatch):
             raise AssertionError("unknown target must be rejected")
 
 
+def test_9router_service_unit_adds_the_detected_node_directory_to_its_path(monkeypatch):
+    from api import managed_services
+
+    executable = Path("/mnt/c/Users/Z014/AppData/Roaming/npm/9router")
+    node = Path("/home/z014/.hermes/node/bin/node")
+    monkeypatch.setattr(managed_services, "_nine_router_node_path", lambda: node)
+
+    content = managed_services._nine_router_unit_content(executable)
+
+    assert "ExecStart=/mnt/c/Users/Z014/AppData/Roaming/npm/9router --host 127.0.0.1 --no-browser --tray" in content
+    assert "Environment=PATH=/home/z014/.hermes/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" in content
+
+
 def test_systems_page_includes_managed_service_cards_and_stop_confirmation():
     root = Path(__file__).resolve().parents[1]
     panels = (root / "static" / "panels.js").read_text(encoding="utf-8")

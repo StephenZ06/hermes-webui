@@ -22,6 +22,7 @@ _NINE_ROUTER_UNIT = "9router.service"
 _NINE_ROUTER_PORT = 20128
 _VALID_SERVICES = {"firecrawl", "9router"}
 _VALID_ACTIONS = {"start", "stop", "restart"}
+_SYSTEMD_BASE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
 def _firecrawl_compose_files() -> list[Path]:
@@ -94,6 +95,35 @@ def _nine_router_executable() -> Path | None:
     return None
 
 
+def _nine_router_node_path() -> Path | None:
+    raw = shutil.which("node")
+    if not raw:
+        return None
+    path = Path(raw).resolve()
+    try:
+        if path.is_relative_to(Path.home().resolve()):
+            return path
+    except ValueError:
+        pass
+    return None
+
+
+def _nine_router_unit_content(executable: Path) -> str:
+    node = _nine_router_node_path()
+    if node is None:
+        raise RuntimeError("9router requires a local Node.js runtime")
+    path = f"{node.parent}:{_SYSTEMD_BASE_PATH}"
+    return (
+        "# Managed by Hermes WebUI\n"
+        "[Unit]\nDescription=9router local gateway\n\n"
+        "[Service]\nType=simple\n"
+        f"Environment=PATH={path}\n"
+        f"ExecStart={executable} --host 127.0.0.1 --no-browser --tray\n"
+        "Restart=on-failure\nRestartSec=3\n\n"
+        "[Install]\nWantedBy=default.target\n"
+    )
+
+
 def _nine_router_status() -> dict[str, Any]:
     reachable = _http_reachable("127.0.0.1", _NINE_ROUTER_PORT)
     if reachable:
@@ -113,21 +143,20 @@ def _ensure_9router_unit() -> None:
     if executable is None:
         raise RuntimeError("9router is not installed")
     unit_path = Path.home() / ".config" / "systemd" / "user" / _NINE_ROUTER_UNIT
+    content = _nine_router_unit_content(executable)
+    should_reload = False
     if unit_path.exists():
         existing = unit_path.read_text(encoding="utf-8", errors="replace")
         if "Managed by Hermes WebUI" not in existing:
             return
+        if existing != content:
+            unit_path.write_text(content, encoding="utf-8")
+            should_reload = True
     else:
         unit_path.parent.mkdir(parents=True, exist_ok=True)
-        unit_path.write_text(
-            "# Managed by Hermes WebUI\n"
-            "[Unit]\nDescription=9router local gateway\n\n"
-            "[Service]\nType=simple\n"
-            f"ExecStart={executable}\n"
-            "Restart=on-failure\nRestartSec=3\n\n"
-            "[Install]\nWantedBy=default.target\n",
-            encoding="utf-8",
-        )
+        unit_path.write_text(content, encoding="utf-8")
+        should_reload = True
+    if should_reload:
         _run(["systemctl", "--user", "daemon-reload"])
 
 
