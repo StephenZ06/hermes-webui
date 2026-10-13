@@ -1783,6 +1783,16 @@ function _micToastKeyForRecognitionError(error){
     }
   }
 
+  // Dictated text gets punctuation (static/punctuate.js): Whisper drops it on
+  // short clips and browser recognition never adds any. `before` is what the
+  // composer already holds, so a continued sentence is not capitalised.
+  function _punctuateDictation(text, before){
+    try{
+      const p=window.HermesPunctuate;
+      return p&&typeof p.punctuateDictation==='function'?p.punctuateDictation(text,before):String(text||'');
+    }catch(_){return String(text||'');}
+  }
+
   function _commitTranscript(text, prefixOverride){
     // `prefixOverride` is the composer content captured at recording start,
     // passed only by the async server-STT path (recorder.onstop → _transcribeBlob).
@@ -1799,7 +1809,8 @@ function _micToastKeyForRecognitionError(error){
     //
     // Resolution: when prefixOverride IS provided (server-STT path), trust live
     // ta.value unconditionally — even when empty. Otherwise fall back to _prefix.
-    const clean=(text||'').trim();
+    const rawBase=_dictationAppend?(prefixOverride !== undefined ? ta.value : (ta.value || _prefix)):'';
+    const clean=_punctuateDictation((text||'').trim(), rawBase);
     let committed;
     if(!clean){
       committed = ta.value;
@@ -2009,6 +2020,7 @@ function _micToastKeyForRecognitionError(error){
 
     sr.onend=()=>{
       _clearSrWatchdog();
+      if(_finalText&&typeof _punctuateDictation==='function') _finalText=_punctuateDictation(_finalText,_prefix);
       const committed=_finalText
         ? (_prefix&&!_prefix.endsWith(' ')&&!_prefix.endsWith('\n')
             ? _prefix+' '+_finalText.trimStart()
@@ -2712,7 +2724,8 @@ window.renderTranscript=function(container, messages, opts){
 
   function _voiceModeSend(){
     if(!_voiceModeActive) return;
-    const text=(ta.value||'').trim();
+    const text=_punctuateDictation((ta.value||'').trim(),'');
+    if(text) ta.value=text;
     if(!text){
       ta.value='';
       setTimeout(()=>{ if(_voiceModeActive) _startListening(); },300);
