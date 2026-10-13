@@ -2,6 +2,8 @@
 
 import io
 import json
+import sys
+import types
 from urllib.parse import urlparse
 
 import api.routes as routes
@@ -58,3 +60,42 @@ def test_profile_delete_returns_safe_json_for_filesystem_failure(monkeypatch):
     handler = _post_with_failing(monkeypatch, "delete_profile_api", "/api/profile/delete", {"name": "newprofile"})
     assert handler.status == 503
     assert json.loads(handler.wfile.getvalue()) == {"error": "Profile storage is temporarily unavailable. Please try again."}
+
+
+def test_profile_delete_settles_post_delete_identity_retry(monkeypatch):
+    """A CLI partial-settlement result is still a successful delete when retrying it works."""
+    import api.profiles as profiles
+
+    class ProfileIdentitySettlementPending(RuntimeError):
+        pass
+
+    calls = []
+    cli_profiles = types.ModuleType("hermes_cli.profiles")
+
+    def delete_profile(name, *, yes):
+        calls.append(("delete", name, yes))
+        raise ProfileIdentitySettlementPending(name)
+
+    cli_profiles.delete_profile = delete_profile
+    cli_profiles.ProfileIdentitySettlementPending = ProfileIdentitySettlementPending
+    cli_identity = types.ModuleType("hermes_cli.profile_identity")
+    cli_identity.purge_profile_identity = lambda name: calls.append(("purge", name)) or True
+    cli_package = types.ModuleType("hermes_cli")
+
+    monkeypatch.setitem(sys.modules, "hermes_cli", cli_package)
+    monkeypatch.setitem(sys.modules, "hermes_cli.profiles", cli_profiles)
+    monkeypatch.setitem(sys.modules, "hermes_cli.profile_identity", cli_identity)
+    monkeypatch.setattr(profiles, "_is_isolated_profile_mode", lambda: False)
+    monkeypatch.setattr(profiles, "_is_root_profile", lambda _name: False)
+    monkeypatch.setattr(profiles, "_validate_profile_name", lambda _name: None)
+    monkeypatch.setattr(profiles, "_invalidate_list_profiles_cache", lambda: None)
+    monkeypatch.setattr(profiles, "_invalidate_root_profile_cache", lambda: None)
+    monkeypatch.setattr(profiles, "_mark_profile_deleted", lambda name: calls.append(("tombstone", name)))
+    monkeypatch.setattr(profiles, "_active_profile", "default")
+
+    assert profiles.delete_profile_api("removed-profile") == {"ok": True, "name": "removed-profile"}
+    assert calls == [
+        ("delete", "removed-profile", True),
+        ("purge", "removed-profile"),
+        ("tombstone", "removed-profile"),
+    ]

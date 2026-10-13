@@ -3259,8 +3259,21 @@ def delete_profile_api(name: str) -> dict:
             )
 
     try:
-        from hermes_cli.profiles import delete_profile
-        delete_profile(name, yes=True)
+        from hermes_cli.profiles import (
+            ProfileIdentitySettlementPending,
+            delete_profile,
+        )
+        try:
+            delete_profile(name, yes=True)
+        except ProfileIdentitySettlementPending:
+            # The CLI has already removed the profile directory. Its first
+            # identity purge can run too early, while the tombstone still
+            # makes the named home unavailable. Retry after the deletion has
+            # completed so a successful cleanup is not reported as a 409.
+            from hermes_cli.profile_identity import purge_profile_identity
+
+            if not purge_profile_identity(name):
+                raise
     except ImportError:
         # Manual fallback: just remove the directory
         import shutil
