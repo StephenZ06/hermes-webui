@@ -221,9 +221,7 @@ def _scout_get(handler, parsed) -> bool:
 
         settings = load_settings()
         active = bool(settings["apify"]["enabled"] and apify.token())
-        # Also carries the page's display choices, read on every refresh.
-        j(handler, {"apify": {"active": active, "usage": apify.usage() if apify.token() else None},
-                    "display": settings["display"]})
+        j(handler, {"apify": {"active": active, "usage": apify.usage() if apify.token() else None}})
         return True
     if path == f"{_PREFIX}/matches":
         from api.job_os import notify

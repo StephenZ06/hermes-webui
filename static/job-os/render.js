@@ -1,6 +1,6 @@
 (function () {
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
-  const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', logistics: 'Logistics', settings: 'Settings'};
+  const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', settings: 'Settings'};
   // Linear icons from mx-icons (MIT; see static/vendor/mx-icons/LICENSE), 24px grid.
   const icons = {
     dashboard: '<path d="M22 10.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V10.9C13.5 12.4 14.14 13 15.73 13H19.77C21.36 13 22 12.4 22 10.9Z"/><path d="M22 19.9V18.1C22 16.6 21.36 16 19.77 16H15.73C14.14 16 13.5 16.6 13.5 18.1V19.9C13.5 21.4 14.14 22 15.73 22H19.77C21.36 22 22 21.4 22 19.9Z"/><path d="M10.5 13.1V19.9C10.5 21.4 9.86 22 8.27 22H4.23C2.64 22 2 21.4 2 19.9V13.1C2 11.6 2.64 11 4.23 11H8.27C9.86 11 10.5 11.6 10.5 13.1Z"/><path d="M10.5 4.1V5.9C10.5 7.4 9.86 8 8.27 8H4.23C2.64 8 2 7.4 2 5.9V4.1C2 2.6 2.64 2 4.23 2H8.27C9.86 2 10.5 2.6 10.5 4.1Z"/>',
@@ -8,7 +8,6 @@
     pipeline: '<path d="M10.5 19.9V4.1C10.5 2.6 9.86 2 8.27 2H4.23C2.64 2 2 2.6 2 4.1V19.9C2 21.4 2.64 22 4.23 22H8.27C9.86 22 10.5 21.4 10.5 19.9Z"/><path d="M22 12.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V12.9C13.5 14.4 14.14 15 15.73 15H19.77C21.36 15 22 14.4 22 12.9Z"/>',
     'resume-studio': '<path d="M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14"/><path d="M22 10H18C15 10 14 9 14 6V2L22 10Z"/><path d="M7 13H13"/><path d="M7 17H11"/>',
     applications: '<path d="M7.39999 6.32003L15.89 3.49003C19.7 2.22003 21.77 4.30003 20.51 8.11003L17.68 16.6C15.78 22.31 12.66 22.31 10.76 16.6L9.91999 14.08L7.39999 13.24C1.68999 11.34 1.68999 8.23003 7.39999 6.32003Z"/><path d="M10.11 13.6501L13.69 10.0601"/>',
-    logistics: '<path d="M3.17004 7.43994L12 12.5499L20.77 7.46991"/><path d="M12 21.6099V12.5399"/><path d="M9.92999 2.48L4.59 5.45003C3.38 6.12003 2.39001 7.80001 2.39001 9.18001V14.83C2.39001 16.21 3.38 17.89 4.59 18.56L9.92999 21.53C11.07 22.16 12.94 22.16 14.08 21.53L19.42 18.56C20.63 17.89 21.62 16.21 21.62 14.83V9.18001C21.62 7.80001 20.63 6.12003 19.42 5.45003L14.08 2.48C12.93 1.84 11.07 1.84 9.92999 2.48Z"/><path d="M17 13.24V9.58002L7.51001 4.09998"/>',
     settings: '<path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"/><path d="M2 12.8799V11.1199C2 10.0799 2.85 9.21994 3.9 9.21994C5.71 9.21994 6.45 7.93994 5.54 6.36994C5.02 5.46994 5.33 4.29994 6.24 3.77994L7.97 2.78994C8.76 2.31994 9.78 2.59994 10.25 3.38994L10.36 3.57994C11.26 5.14994 12.74 5.14994 13.65 3.57994L13.76 3.38994C14.23 2.59994 15.25 2.31994 16.04 2.78994L17.77 3.77994C18.68 4.29994 18.99 5.46994 18.47 6.36994C17.56 7.93994 18.3 9.21994 20.11 9.21994C21.15 9.21994 22.01 10.0699 22.01 11.1199V12.8799C22.01 13.9199 21.16 14.7799 20.11 14.7799C18.3 14.7799 17.56 16.0599 18.47 17.6299C18.99 18.5399 18.68 19.6999 17.77 20.2199L16.04 21.2099C15.25 21.6799 14.23 21.3999 13.76 20.6099L13.65 20.4199C12.75 18.8499 11.27 18.8499 10.36 20.4199L10.25 20.6099C9.78 21.3999 8.76 21.6799 7.97 21.2099L6.24 20.2199C5.33 19.6999 5.02 18.5299 5.54 17.6299C6.45 16.0599 5.71 14.7799 3.9 14.7799C2.85 14.7799 2 13.9199 2 12.8799Z"/>',
     total: '<path d="M7.99995 22H15.9999C20.0199 22 20.7399 20.39 20.9499 18.43L21.6999 10.43C21.9699 7.99 21.2699 6 16.9999 6H6.99995C2.72995 6 2.02995 7.99 2.29995 10.43L3.04995 18.43C3.25995 20.39 3.97995 22 7.99995 22Z"/><path d="M8 6V5.2C8 3.43 8 2 11.2 2H12.8C16 2 16 3.43 16 5.2V6"/><path d="M14 13V14C14 14.01 14 14.01 14 14.02C14 15.11 13.99 16 12 16C10.02 16 10 15.12 10 14.03V13C10 12 10 12 11 12H13C14 12 14 12 14 13Z"/><path d="M21.65 11C19.34 12.68 16.7 13.68 14 14.02"/><path d="M2.62 11.27C4.87 12.81 7.41 13.74 10 14.03"/>',
     active: '<path d="M9 22H15C20 22 22 20 22 15V9C22 4 20 2 15 2H9C4 2 2 4 2 9V15C2 20 4 22 9 22Z"/><path d="M7.33008 14.49L9.71008 11.4C10.0501 10.96 10.6801 10.88 11.1201 11.22L12.9501 12.66C13.3901 13 14.0201 12.92 14.3601 12.49L16.6701 9.51001"/>',
@@ -220,7 +219,7 @@
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', place(job), SOURCE_LABEL[sourceOf(job)]].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${activityOf(job) ? activityLine(activityOf(job)) : esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -246,8 +245,8 @@
   }
   // Narrow screens put the side panel in a drawer, so they keep a compact
   // section switcher in the page itself.
-  // Sections in the side panel and the phone switcher; Logistics can be hidden in Settings.
-  const sectionsOf = (state) => Object.keys(labels).filter((key) => key !== 'logistics' || state.showLogistics !== false);
+  // Sections in the side panel and the phone switcher.
+  const sectionsOf = () => Object.keys(labels);
   function mobileNav(view, state) {
     // Phones: a tab bar along the bottom of the screen, as in a native app.
     const short = {dashboard: 'Home', 'resume-studio': 'Resume'};
@@ -413,9 +412,8 @@
         <p class="job-os-card-note">Employers write to the address you applied with${v('applicant.email') ? ` (<strong>${esc(v('applicant.email'))}</strong>)` : ''}. If that isn’t ${gmail.address_hint ? `<strong>${esc(gmail.address_hint)}</strong>` : 'the connected Gmail'}, add a filter there that forwards job replies to it: Gmail → Settings → Forwarding, then a filter such as <code>subject:(application OR interview OR candidate)</code> → Forward to. Each move shows on the job with the email’s subject, and can be dragged back.</p>
         ${outcomeStatus(state.notifications, gmailReady && v('notifications.track_outcomes'))}</div>`);
     const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
-    const display = section('display', 'Jobs page', '', toggle('display.show_logistics', 'Show Logistics', v('display.show_logistics'), 'The 3D view of your pipeline in the side panel'));
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    const pages = {connections: firecrawl, apify: apifySection(state, v), scout, ai, notifications: notify, applicant, apply: answers, display: resume + display};
+    const pages = {connections: firecrawl, apify: apifySection(state, v), scout, ai, notifications: notify, applicant, apply: answers, display: resume};
     const page = pages[state.settingsSection] ? state.settingsSection : 'connections';
     const apifyOn = !!((status.apify || {}).token);
     const hints = {
@@ -426,7 +424,7 @@
       notifications: [gmailReady && v('notifications.email_enabled'), gmailReady && v('notifications.email_enabled') ? 'Email on' : 'Email off'],
       applicant: [!!v('applicant.full_name'), v('applicant.full_name') || 'Not filled in'],
       apply: [!!v('apply.notice_period'), v('apply.notice_period') ? 'Saved' : 'Not filled in'],
-      display: [null, 'Logistics, resume'],
+      display: [null, 'Master resume'],
     };
     const nav = SETTINGS_NAV.map(([group, items]) => `<p class="settings-nav-group">${group}</p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
@@ -478,6 +476,23 @@
   }
   // Applied for (or past it): dropping such a card on Closed asks why it closed.
   const SENT = ['submitted', 'screening', 'interviewing', 'offer', 'offer_accepted', 'offer_declined', 'rejected', 'withdrawn', 'no_response'];
+  // What Luna is doing to a job right now. The Pipeline shows it on the card
+  // (in place of the old Logistics centre): a live line and a moving bar.
+  const ACTIVITY = {scoring: 'Scoring fit', tailoring: 'Tailoring resume', applying: 'Applying'};
+  function activityOf(job) {
+    if (!job) return null;
+    if (job.status === 'tailoring') return 'tailoring';
+    if (job.status === 'applying') return 'applying';
+    if (analysing(job)) return 'scoring';
+    return null;
+  }
+  const activityLine = (kind) => (kind ? `<span class="pipe-activity" data-kind="${kind}" role="status"><i aria-hidden="true"></i>${ACTIVITY[kind]}…</span>` : '');
+  function activitySummary(jobs) {
+    const counts = {};
+    (jobs || []).forEach((job) => { const kind = activityOf(job); if (kind) counts[kind] = (counts[kind] || 0) + 1; });
+    const parts = Object.keys(ACTIVITY).filter((k) => counts[k]).map((k) => `${counts[k]} ${({scoring: 'scoring', tailoring: 'tailoring', applying: 'applying'})[k]}`);
+    return parts.length ? `<span class="pipe-activity-summary" role="status" aria-live="polite"><i aria-hidden="true"></i>Luna is working · ${parts.join(' · ')}</span>` : '';
+  }
   function pipeCard(job) {
     const src = sourceOf(job);
     const where = place(job);
@@ -494,11 +509,12 @@
     const status = ['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : '';
     // A job Luna is tailoring stays put until she is done.
     const movable = job.status !== 'tailoring';
-    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}" data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
+    const working = activityOf(job);
+    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}${working ? ' is-working' : ''}"${working ? ` data-activity="${working}"` : ''} data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
         <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
-        <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}</small></span>
+        <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${working ? activityLine(working) : `${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}`}</small></span>
         <span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>
       </button>
       <div class="pipe-card-actions">${primary}</div></article>`;
@@ -717,7 +733,6 @@
   }
   function pipelineBar(state, jobs, counts) {
     const unanalysed = jobs.filter((j) => j.status === 'scraped' && j.has_description && !j.analysis).length;
-    const busy = jobs.filter(analysing).length;
     const tabs = [['all', 'All'], ...SITES, ['manual', 'Manual']].map(([key, text]) => {
       const on = state.pipelineSource === key;
       return `<button type="button" role="tab" aria-selected="${on}" class="seg-btn${on ? ' active' : ''}" data-job-os-action="pipe-source" data-source="${key}">${text}<span class="seg-count">${Number(counts[key] || 0)}</span></button>`;
@@ -729,7 +744,7 @@
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${busy ? statusLine([`Scoring ${busy} job${busy === 1 ? '' : 's'}…`, 'Reading postings…'], 'analysing-chip') : ''}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${activitySummary(jobs)}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -1141,11 +1156,6 @@
         ${pipelineBar(state, jobs, counts)}
         ${listMode ? list : pipelineBoard(state)}
         ${jobDrawer(state)}${jobForm(state)}`;
-    } else if (view === 'logistics') {
-      const legend = [['strong', 'Strong fit'], ['good', 'Good fit'], ['stretch', 'Stretch'], ['poor', 'Poor fit'], ['none', 'Not scored']]
-        .map(([key, text]) => `<span><i data-verdict="${key}"></i>${text}</span>`).join('');
-      body = `${header('Logistics centre', 'Every job is a parcel moving through the warehouse. Click one to open it.', state)}
-        <section class="logistics-wrap"><div id="job-os-logistics-slot" class="logistics-stage" data-slide-safe data-keep="logistics"></div><div class="logistics-legend" aria-label="Parcel colours">${legend}<span class="logistics-legend-hint">Scroll to zoom</span></div></section>`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobForm(state)}`;
     } else if (view === 'settings') {

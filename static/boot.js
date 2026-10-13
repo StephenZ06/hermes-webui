@@ -1297,7 +1297,7 @@ function _layoutSlideEligible(main,prop){
     // iframe, video, terminal) must not be resized every frame -- unless it
     // marks itself [data-slide-safe]: it keeps its surface fixed while
     // .layout.panel-sliding is set and only the visible window changes
-    // (the Office stage and the Logistics scene do exactly that).
+    // (the Office stage does exactly that).
     const heavy=views[i].querySelectorAll('canvas,iframe,video,.xterm');
     for(let j=0;j<heavy.length;j++){
       if(!heavy[j].closest('[data-slide-safe]'))return false;

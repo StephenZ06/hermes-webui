@@ -6224,25 +6224,6 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 @keyframes automation-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--success,#4ade80) 55%,transparent);}70%,100%{box-shadow:0 0 0 7px transparent;}}
 .job-os-content.is-entering{animation:page-view-in .26s cubic-bezier(.22,1,.36,1) backwards;}
 @media (prefers-reduced-motion:reduce){.automation-row,.automation-row[data-on="true"] .automation-dot,.job-os-content.is-entering{animation:none;}}
-/* ---- Logistics centre ---- */
-.logistics-wrap{display:flex;flex-direction:column;gap:10px;}
-.logistics-stage{position:relative;height:min(68vh,640px);min-height:340px;border:1px solid var(--border2);border-radius:14px;overflow:hidden;background:var(--bg);}
-.logistics-host{position:absolute;inset:0;}
-.logistics-canvas{display:block;width:100%;height:100%;outline:none;}
-.logistics-overlay{position:absolute;inset:0;pointer-events:none;}
-.logistics-label{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;padding:4px 9px;border-radius:8px;background:color-mix(in srgb,var(--surface) 82%,transparent);border:1px solid var(--border2);white-space:nowrap;}
-.logistics-label strong{font-size:12px;color:var(--text);}
-.logistics-label small{font-size:10.5px;color:var(--muted);}
-.logistics-tip{position:absolute;z-index:2;max-width:260px;padding:7px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 8px 22px rgba(0,0,0,.35);pointer-events:none;display:flex;flex-direction:column;gap:2px;}
-.logistics-tip strong{font-size:12.5px;color:var(--text);}
-.logistics-tip small{font-size:11.5px;color:var(--muted);}
-.logistics-fallback{margin:0;padding:40px 20px;text-align:center;color:var(--muted);}
-.logistics-legend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;color:var(--muted);}
-.logistics-legend i{display:inline-block;width:11px;height:11px;margin-right:6px;border-radius:3px;vertical-align:-1px;background:#9aa3b2;}
-.logistics-legend i[data-verdict="strong"]{background:#4ade80;}.logistics-legend i[data-verdict="good"]{background:#ffd21f;}
-.logistics-legend i[data-verdict="stretch"]{background:#f5a524;}.logistics-legend i[data-verdict="poor"]{background:#f07878;}
-.logistics-legend-hint{margin-left:auto;}
-@media (max-width:760px){.logistics-stage{height:58vh;}.logistics-label{padding:2px 6px;}.logistics-label strong{font-size:10.5px;}.logistics-label small{display:none;}.logistics-legend-hint{display:none;}}
 /* ---- Applications board ---- */
 .auto-dots{display:inline-flex;gap:3px;}
 .auto-dots i{width:5px;height:5px;border-radius:50%;background:currentColor;animation:auto-dot 1s ease-in-out infinite;}
@@ -11391,3 +11372,21 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .fit-ring.is-busy .fit-ring-arc,
 .match-ring.is-busy .match-ring-arc{transform-box:fill-box;transform-origin:center;animation:ring-busy-spin 1.2s linear infinite;}
 @media (prefers-reduced-motion:reduce){.fit-ring.is-busy .fit-ring-arc,.match-ring.is-busy .match-ring-arc{animation-duration:2.4s;}}
+
+/* ---- Pipeline activity (replaces the Logistics centre) ----
+   A job Luna is working on says so on its card, in the timestamp slot (cards
+   keep one height), with a thin bar running along the card's bottom edge; the
+   toolbar sums it up. Colours: scoring = accent, tailoring = violet,
+   applying = green. */
+.pipe-activity{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:650;letter-spacing:.01em;color:var(--pipe-activity,var(--accent));white-space:nowrap;}
+.pipe-activity i,.pipe-activity-summary i{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 0 currentColor;animation:pipe-activity-pulse 1.4s ease-out infinite;}
+.pipe-activity[data-kind="tailoring"],.pipe-card[data-activity="tailoring"]{--pipe-activity:#a78bfa;}
+.pipe-activity[data-kind="applying"],.pipe-card[data-activity="applying"]{--pipe-activity:var(--success,#4ade80);}
+.pipe-card.is-working{position:relative;border-color:color-mix(in srgb,var(--pipe-activity,var(--accent)) 45%,var(--border2));}
+.pipe-card.is-working::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;border-radius:2px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--pipe-activity,var(--accent)),transparent) no-repeat;background-size:38% 100%;animation:pipe-activity-run 1.7s linear infinite;}
+.pipe-activity-summary{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border2));border-radius:999px;background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--text);font-size:12px;font-weight:600;white-space:nowrap;}
+.pipe-activity-summary i{color:var(--accent);}
+@keyframes pipe-activity-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,currentColor 55%,transparent);}80%,100%{box-shadow:0 0 0 6px transparent;}}
+@keyframes pipe-activity-run{from{background-position:-40% 0;}to{background-position:140% 0;}}
+@media (prefers-reduced-motion:reduce){.pipe-activity i,.pipe-activity-summary i,.pipe-card.is-working::after{animation:none;}}

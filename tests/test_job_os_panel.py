@@ -13,8 +13,10 @@ def test_jobs_panel_has_desktop_mobile_navigation_and_its_subpages():
 
     assert html.count('data-panel="jobs"') == 2
     assert 'id="panelJobs"' in html
-    for label in ("Dashboard", "Scout", "Pipeline", "Resume Studio", "Logistics", "Settings"):
+    for label in ("Dashboard", "Scout", "Pipeline", "Resume Studio", "Settings"):
         assert label in renderer
+    assert "logistics: 'Logistics'" not in renderer, "the Logistics centre was removed; progress shows on the Pipeline"
+    assert not (ROOT / "static" / "job-os" / "logistics.js").exists()
     assert "applications: 'Applications'" not in renderer, "the Applications board became the Pipeline board"
 
 

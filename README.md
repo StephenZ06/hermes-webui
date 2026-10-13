@@ -237,7 +237,7 @@ If an AI assistant is helping with install, reinstall, bootstrap, provider setup
 
 ### Jobs workspace
 
-- A profile-scoped job tracker: Dashboard, Scout, Pipeline, Resume Studio, Logistics and Settings (see `docs/job-os.md`)
+- A profile-scoped job tracker: Dashboard, Scout, Pipeline, Resume Studio and Settings (see `docs/job-os.md`)
 - Scout searches Indeed for your job titles in a chosen country and cities, and reads each posting into the Pipeline
 - A manual tracker for jobs found elsewhere (link, company, country, salary, description, notes)
 - A Pipeline board with one column per stage, split into Indeed and manual jobs

@@ -9,7 +9,6 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 | **Scout** | Saved Indeed searches; runs find postings and add them to the Pipeline. |
 | **Pipeline** | Every job, from new find to offer: a board or a list. |
 | **Resume Studio** | The master resume, its match score against a job, and tailored versions. |
-| **Logistics** | A 3D view of the same jobs. |
 | **Settings** | A side menu of sections, one shown at a time: Connections (Firecrawl, Gmail), Apify, Scout schedule, Luna (AI), Notifications, your details, application answers, the Jobs page. |
 
 ## Two ways in
@@ -183,7 +182,7 @@ again and Scout drops the repeats.
   in the background.
 - **Follow-ups (daily digest):** applications with no news for 7 days
   (Applied, Screening, Interviewing) get their own section at the top.
-- **Logistics** can be hidden under Settings → Jobs page.
+- **Pipeline activity**: a job Luna is scoring, tailoring or applying for says so on its card (with a moving bar), and the Pipeline toolbar sums it up ("Luna is working · 2 scoring · 1 tailoring"). This replaced the 3D Logistics centre; old `#jobs/logistics` links open the Pipeline.
 
 ## Pipeline
 

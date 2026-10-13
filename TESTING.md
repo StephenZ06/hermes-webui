@@ -34,7 +34,7 @@ Open `http://127.0.0.1:8789`, confirm `GET /health` returns `{"status":"ok"}`,
 then verify the following:
 
 1. Open **Jobs** from both the desktop rail and the mobile navigation. Confirm
-   the Dashboard, Scout, Pipeline, Resume Studio, Logistics and Settings
+   the Dashboard, Scout, Pipeline, Resume Studio and Settings
    sections remain usable at desktop, narrow, and phone widths.
    Open a generated resume preview on a phone-sized viewport and verify the
    44px zoom-out, zoom-in, and close controls, two-finger pinch zoom, vertical

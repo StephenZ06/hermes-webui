@@ -374,7 +374,7 @@ def test_usage_reports_spend_against_the_limit_and_is_cached(home, monkeypatch):
     monkeypatch.setattr(apify, "usage", lambda: first)
     assert routes.handle_get(h, urlparse("/api/job-os/apify/usage")) is True
     assert h.json()["apify"] == {"active": False, "usage": first} and TOKEN not in h.wfile.getvalue().decode()
-    assert h.json()["display"] == {"show_logistics": True}
+    assert "display" not in h.json(), "the Logistics toggle went with the Logistics centre"
 
 
 def _bayt(job_id, title="SOC Analyst", company="Ooredoo", posted="2026-10-07T08:00:00.000Z", **extra):

@@ -413,7 +413,7 @@ function _panelFromRouteHash(hash) {
 function _preferredPanelRoute(panel) {
   if (panel === 'jobs' && typeof window !== 'undefined' && window.JobOSState) {
     const view = String(window.JobOSState.activeView || 'dashboard');
-    const allowed = new Set(['dashboard','scout','pipeline','resume-studio','logistics','settings']);
+    const allowed = new Set(['dashboard','scout','pipeline','resume-studio','settings']);
     if (allowed.has(view)) {
       const status = view === 'pipeline' ? window.JobOSState.statusFilter : null;
       return '#jobs/' + view + (status ? '?status=' + encodeURIComponent(status) : '');

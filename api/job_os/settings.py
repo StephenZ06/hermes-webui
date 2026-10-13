@@ -60,8 +60,6 @@ def default_settings() -> dict:
         # kit uses them word for word and Luna fits them to each job.
         "apply": {"notice_period": "", "expected_salary": "", "work_authorization": "", "years_experience": "",
                   "relocation": "", "languages": "", "other": ""},
-        # Sections of the Jobs page that can be hidden.
-        "display": {"show_logistics": True},
         "notifications": {
             "email_enabled": False,
             "to_address": "",
@@ -245,7 +243,6 @@ _VALIDATORS = {
         "languages": lambda v, f: _free_text(v, f, 200),
         "other": lambda v, f: _long_text(v, f, 1500),
     },
-    "display": {"show_logistics": _bool},
     "notifications": {
         "email_enabled": _bool,
         "to_address": _email,

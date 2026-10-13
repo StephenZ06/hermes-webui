@@ -13,7 +13,7 @@ def _render(page, script):
     return page.evaluate(script)
 
 
-def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
+def test_apify_credit_card_chip_fit_compare_and_no_logistics():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -42,10 +42,9 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
               host.innerHTML = window.JobOSRender.shell({...base, activeView: 'resume-studio', resume: {filename: 'cv.md', text: 'x'},
                 studioJobId: 'j1', studioDocs: {resume: doc}, studioTab: 'resume', tailored: []});
               const fit = {gain: host.querySelector('.fit-gain').textContent, rings: [...host.querySelectorAll('.fit-compare .fit-ring')].map((r) => r.textContent)};
-              side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', showLogistics: false, dashboard: null});
-              const hidden = !side.querySelector('[data-job-os-view="logistics"]');
               side.innerHTML = window.JobOSRender.sidebar({activeView: 'dashboard', dashboard: null});
-              return {calm, tight, off, fit, hidden, shown: !!side.querySelector('[data-job-os-view="logistics"]')};
+              const gone = !side.querySelector('[data-job-os-view="logistics"]') && !!side.querySelector('[data-job-os-view="pipeline"]');
+              return {calm, tight, off, fit, gone};
             }""")
         finally:
             browser.close()
@@ -56,7 +55,7 @@ def test_apify_credit_card_chip_fit_compare_and_hidden_logistics():
     assert out["tight"]["cells"] == 1 and out["tight"]["level"] == "warn"
     assert out["off"] == {"chip": "Firecrawl ready", "card": False}
     assert out["fit"] == {"gain": "+16", "rings": ["68", "84"]}
-    assert out["hidden"] and out["shown"]
+    assert out["gone"], "Logistics is no longer a Jobs section"
 
 
 def test_the_apply_kit_lists_documents_answers_and_the_apply_steps():
@@ -204,3 +203,32 @@ def test_activity_calendars_tile_groups_and_the_automation_edit_slot():
     assert out["appliedTile"] == "2"  # applied counts every application sent, rejected ones too
     assert out["group"] == ["Applied", ["Applied one", "Rejected one"]] and out["emptyGroup"] == "Nothing in active work yet"
     assert out["slot"] == ["automation-state", "automation-edit"]
+
+
+def test_the_pipeline_shows_what_luna_is_working_on():
+    """With the Logistics centre gone, progress shows on the Pipeline: each job
+    Luna is scoring, tailoring or applying for says so, and the toolbar sums it up."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            out = _render(page, """() => {
+              const host = document.createElement('div');
+              const job = (id, status, analysis) => ({id, title: 'Job ' + id, company: 'Co', status, revision: 1, source: 'indeed',
+                has_description: true, analysis, updated_at: 1791000000});
+              const jobs = [job('a', 'scraped', {status: 'running'}), job('b', 'tailoring', {status: 'done', fit_score: 70}),
+                            job('c', 'applying', {status: 'done', fit_score: 80}), job('d', 'analyzed', {status: 'done', fit_score: 60})];
+              host.innerHTML = window.JobOSRender.shell({capability: {available: true}, dashboard: null, jobs, activeView: 'pipeline',
+                pipelineSource: 'all', pipelineMode: 'list'});
+              const line = (id) => { const c = host.querySelector(`.job-os-job-card[data-job-id="${id}"] .pipe-activity`); return c ? c.dataset.kind + ':' + c.textContent : null; };
+              return {a: line('a'), b: line('b'), c: line('c'), d: line('d'),
+                      summary: (host.querySelector('.pipe-activity-summary') || {}).textContent || ''};
+            }""")
+        finally:
+            browser.close()
+    assert out["a"] == "scoring:Scoring fit…"
+    assert out["b"] == "tailoring:Tailoring resume…"
+    assert out["c"] == "applying:Applying…"
+    assert out["d"] is None
+    assert out["summary"] == "Luna is working · 1 scoring · 1 tailoring · 1 applying"

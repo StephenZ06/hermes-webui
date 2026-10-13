@@ -10,8 +10,9 @@
   function applyRoute() {
     const match = String(window.location.hash || '').match(/^#jobs\/(dashboard|scout|pipeline|resume-studio|applications|logistics|settings)(?:\?status=([^&]+))?$/);
     if (!match) return;
-    // The Applications board became the Pipeline board; old links still land there.
-    window.JobOSState.activeView = match[1] === 'applications' ? 'pipeline' : match[1];
+    // The Applications board became the Pipeline board, and the Logistics
+    // centre was removed (its progress shows on the Pipeline): old links land there.
+    window.JobOSState.activeView = ['applications', 'logistics'].includes(match[1]) ? 'pipeline' : match[1];
     window.JobOSState.statusFilter = match[2] ? decodeURIComponent(match[2]) : null;
   }
   function replaceRoute(view, status) {
@@ -209,9 +210,6 @@
       state.jobTimeline = timeline ? timeline.timeline || [] : [];
       if (matches) state.matches = matches.matches;
       if (apifyUsage) state.apifyUsage = apifyUsage.apify;
-      if (apifyUsage && apifyUsage.display) state.showLogistics = apifyUsage.display.show_logistics !== false;
-      // A hidden Logistics view falls back to the Dashboard.
-      if (state.activeView === 'logistics' && state.showLogistics === false) { state.activeView = 'dashboard'; replaceRoute('dashboard'); }
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) { state.resume = resume.resume; state.resumeOriginal = resume.original || null; }
@@ -243,8 +241,6 @@
       if (wantScout) afterScoutRender(target, changed);
       else stopScoutPolling();
       afterPipelineRender(target, changed);
-      if (state.activeView === 'logistics') afterLogisticsRender(target);
-      else disposeLogistics();
       renderSidebar();
       bind();
     } catch (error) {
@@ -340,46 +336,6 @@
   // After a board move, the card glows in its new column.
   let flashId = null;
   function flash(jobId) { flashId = jobId; }
-  // ---- Logistics centre: a WebGL scene that must survive re-renders ----
-  // The page is rebuilt with innerHTML on every refresh, so the canvas lives
-  // in one persistent host that is moved into each new slot; leaving the view
-  // disposes the scene (and its GPU context).
-  let logistics = null;
-  let logisticsHost = null;
-  let logisticsLoading = null;
-  let logisticsPoll = null;
-  function moduleUrl(name) {
-    const own = document.querySelector('script[src*="job-os/index.js"]');
-    const query = own ? (own.getAttribute('src').split('?')[1] || '') : '';
-    return new URL(`static/job-os/${name}${query ? '?' + query : ''}`, document.baseURI).href;
-  }
-  function afterLogisticsRender(target) {
-    const slot = target.querySelector('#job-os-logistics-slot');
-    if (!slot) return;
-    if (!logisticsHost) { logisticsHost = document.createElement('div'); logisticsHost.className = 'logistics-host'; }
-    slot.appendChild(logisticsHost);
-    const jobs = window.JobOSState.jobs || [];
-    if (logistics) logistics.update(jobs);
-    else if (!logisticsLoading) {
-      logisticsLoading = import(moduleUrl('logistics.js')).then((mod) => {
-        logisticsLoading = null;
-        if (window.JobOSState.activeView !== 'logistics') return;
-        logistics = mod.mountLogistics(logisticsHost, {onOpenJob: openJob});
-        logistics.update(window.JobOSState.jobs || []);
-      }).catch((error) => {
-        logisticsLoading = null;
-        logisticsHost.innerHTML = `<p class="logistics-fallback">The 3D view could not load (${String(error && error.message || error).slice(0, 120)}).</p>`;
-      });
-    }
-    clearTimeout(logisticsPoll);
-    // Live floor: pick up Scout finds, analysis and tailoring as they happen.
-    logisticsPoll = setTimeout(() => { if (window.JobOSState.activeView === 'logistics' && !document.hidden) refresh(); else if (window.JobOSState.activeView === 'logistics') afterLogisticsRender(root()); }, 8000);
-  }
-  function disposeLogistics() {
-    clearTimeout(logisticsPoll);
-    if (logistics) { logistics.dispose(); logistics = null; }
-    logisticsHost = null;
-  }
   function afterBoardRender(target) {
     if (!flashId) return;
     const card = target.querySelector(`.pipe-card[data-board-job="${CSS.escape(flashId)}"]`);
@@ -668,7 +624,7 @@
       || (d.notes && d.notes.tailored_fit && d.notes.tailored_fit.status === 'running'))
       || (state.tailored || []).some((d) => ['pending', 'running'].includes(d.status));
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
-      && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring') || busy(state.jobDetail)
+      && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring' || j.status === 'applying') || busy(state.jobDetail)
         || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))
         || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')))
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)) && state.studioDraft == null);
@@ -1589,7 +1545,7 @@
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
   }
   function mount() { loadPrefs(); applyRoute(); refresh(); }
-  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); disposeLogistics(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; } }
+  function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; } }
   function openJob(jobId) {
     const state = window.JobOSState;
     // Stay in the current Pipeline filter when opening jobs from it (and with J/K).
