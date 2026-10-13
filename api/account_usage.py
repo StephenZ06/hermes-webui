@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import httpx
+
+
+_NINE_ROUTER_CLI_SECRET = Path.home() / ".9router" / "auth" / "cli-secret"
+_NINE_ROUTER_MACHINE_ID = Path.home() / ".9router" / "machine-id"
+_NINE_ROUTER_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 @dataclass(frozen=True)
@@ -135,6 +143,121 @@ def fetch_neuralwatt_account_usage(base_url: str, api_key: str) -> AccountUsageS
         if exc.code == 429:
             raise NeuralWattQuotaRateLimited() from exc
         return None
+    except Exception:
+        return None
+
+
+def _nine_router_dashboard_url(base_url: str) -> str | None:
+    """Return a loopback 9router dashboard origin for a configured API URL."""
+    try:
+        parsed = urlparse(str(base_url or "").strip())
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return None
+    if parsed.scheme != "http" or host not in _NINE_ROUTER_LOOPBACK_HOSTS:
+        return None
+    if parsed.port != 20128:
+        return None
+    return f"http://{host}:20128"
+
+
+def _nine_router_usage_percent(quota: dict[str, Any]) -> float | None:
+    remaining = _number(quota.get("remaining"))
+    if remaining is None:
+        remaining = _number(quota.get("remainingPercentage"))
+    if remaining is not None:
+        return max(0.0, min(100.0, 100.0 - remaining))
+    total = _number(quota.get("total"))
+    used = _number(quota.get("used"))
+    if total is None or total <= 0 or used is None:
+        return None
+    return max(0.0, min(100.0, used / total * 100.0))
+
+
+def _nine_router_claude_usage_snapshot(payload: object) -> AccountUsageSnapshot | None:
+    """Convert 9router's Claude Code quota shape to sidebar usage windows."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("quotas"), dict):
+        return None
+    labels = (
+        ("five_hour", "5 hours"),
+        ("session (5h)", "5 hours"),
+        ("seven_day", "Weekly"),
+        ("weekly (7d)", "Weekly"),
+        ("seven_day_overage_included", "Weekly"),
+        ("seven_day_opus", "Opus weekly"),
+        ("seven_day_sonnet", "Sonnet weekly"),
+    )
+    windows: list[AccountUsageWindow] = []
+    seen_labels: set[str] = set()
+    for key, label in labels:
+        quota = payload["quotas"].get(key)
+        if not isinstance(quota, dict) or label in seen_labels:
+            continue
+        used_percent = _nine_router_usage_percent(quota)
+        if used_percent is None:
+            continue
+        windows.append(AccountUsageWindow(
+            label=label,
+            used_percent=used_percent,
+            reset_at=_parse_datetime(quota.get("resetAt") or quota.get("reset_at")),
+        ))
+        seen_labels.add(label)
+    if not windows:
+        return None
+    return AccountUsageSnapshot(
+        provider="9router-claude",
+        windows=tuple(windows),
+        plan="Claude via 9router",
+    )
+
+
+def fetch_9router_claude_account_usage(base_url: str) -> AccountUsageSnapshot | None:
+    """Fetch Claude Code limits from a local 9router instance.
+
+    9router's normal API key only authorizes model requests. Its local CLI
+    token is intentionally scoped by the managed gateway to read-only usage
+    routes, so no Claude OAuth credential or dashboard session is copied into
+    Hermes.
+    """
+    dashboard_url = _nine_router_dashboard_url(base_url)
+    if dashboard_url is None:
+        return None
+    try:
+        cli_secret = _NINE_ROUTER_CLI_SECRET.read_text(encoding="utf-8").strip()
+        machine_id = _NINE_ROUTER_MACHINE_ID.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not cli_secret or not machine_id:
+        return None
+    cli_token = hashlib.sha256(
+        f"{machine_id}9r-cli-auth{cli_secret}".encode("utf-8")
+    ).hexdigest()[:16]
+    headers = {"X-9r-cli-token": cli_token, "Accept": "application/json"}
+    try:
+        request = Request(
+            f"{dashboard_url}/api/providers/client?page=1&pageSize=100&accountStatus=active&sort=priority",
+            headers=headers,
+        )
+        with urlopen(request, timeout=8) as response:
+            providers = json.load(response)
+        connections = providers.get("connections") if isinstance(providers, dict) else None
+        if not isinstance(connections, list):
+            return None
+        connection_id = next((
+            str(connection.get("id") or "").strip()
+            for connection in connections
+            if isinstance(connection, dict)
+            and str(connection.get("provider") or "").strip().lower() == "claude"
+            and connection.get("isActive") is not False
+            and str(connection.get("id") or "").strip()
+        ), "")
+        if not connection_id:
+            return None
+        request = Request(
+            f"{dashboard_url}/api/usage/{connection_id}", headers=headers,
+        )
+        with urlopen(request, timeout=8) as response:
+            return _nine_router_claude_usage_snapshot(json.load(response))
     except Exception:
         return None
 

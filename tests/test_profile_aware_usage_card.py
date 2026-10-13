@@ -165,6 +165,33 @@ def test_neuralwatt_profile_reports_neuralwatt_usage(monkeypatch, tmp_path):
     assert pool_calls == []
 
 
+def test_each_9router_claude_profile_reports_the_shared_claude_subscription_usage(monkeypatch, tmp_path):
+    """Any cc/ Claude profile uses the same authenticated 9router allowance."""
+    profile_home = _write_profile(tmp_path, "custom:9router", "http://127.0.0.1:20128/v1")
+    (profile_home / "config.yaml").write_text(
+        "model:\n  provider: custom:9router\n  base_url: http://127.0.0.1:20128/v1\n  default: cc/claude-haiku-4-5-20251001\n",
+        encoding="utf-8",
+    )
+    seen = _install(
+        monkeypatch,
+        tmp_path,
+        profile_home,
+        resolver={"provider": "custom:9router", "base_url": "http://127.0.0.1:20128/v1", "api_key": "router-key"},
+    )
+    _install_agent_fetch(monkeypatch, [])
+    monkeypatch.setattr(
+        "api.account_usage.fetch_9router_claude_account_usage",
+        lambda base: AccountUsageSnapshot("9router-claude", (AccountUsageWindow("5 hours", 37),), "Claude via 9router")
+        if base == "http://127.0.0.1:20128/v1" else None,
+    )
+
+    routes._handle_account_usage(object(), SimpleNamespace(query="profile=coding-claude"))
+
+    assert seen[-1]["provider"] == "9router-claude"
+    assert seen[-1]["plan"] == "Claude via 9router"
+    assert seen[-1]["windows"][0]["label"] == "5 hours"
+
+
 def test_usage_widget_hides_itself_on_a_local_response():
     """The client honours the `local` marker so a local profile never paints."""
     js = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")

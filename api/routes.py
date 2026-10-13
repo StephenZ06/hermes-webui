@@ -12204,6 +12204,22 @@ def _handle_account_usage(handler, parsed) -> bool:
                 j(handler, {"available": False, "provider": "neuralwatt"})
                 return True
 
+            # Claude Code plans routed through 9router expose their actual
+            # subscription limits through the managed local usage bridge. This
+            # is intentionally model-scoped: other 9router providers retain
+            # their own quota semantics and must not inherit Claude usage.
+            configured_model = str(model_cfg.get("default") or model_cfg.get("model") or "").strip().lower()
+            if (
+                provider_raw.lower() == "custom:9router"
+                and configured_model.startswith("cc/claude-")
+            ):
+                snapshot = _webui_account_usage.fetch_9router_claude_account_usage(base_url or "")
+                if snapshot is not None and getattr(snapshot, "available", False):
+                    _render_account_usage_response(handler, snapshot)
+                    return True
+                j(handler, {"available": False, "provider": "9router-claude"})
+                return True
+
             # Codex path: prefer the read-only Codex CLI desktop token account.
             if effective_provider == "openai-codex":
                 try:

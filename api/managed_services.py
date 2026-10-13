@@ -20,6 +20,8 @@ _FIRECRAWL_COMPOSE_DIR = Path.home() / "firecrawl"
 _FIRECRAWL_PROJECT = "firecrawl"
 _NINE_ROUTER_UNIT = "9router.service"
 _NINE_ROUTER_PORT = 20128
+_NINE_ROUTER_USAGE_ROUTE = 'aL=["/api/usage/","/api/providers/client","/api/shutdown",'
+_NINE_ROUTER_PREVIOUS_USAGE_ROUTE = 'aL=["/api/usage/","/api/shutdown",'
 _VALID_SERVICES = {"firecrawl", "9router"}
 _VALID_ACTIONS = {"start", "stop", "restart"}
 _SYSTEMD_BASE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -124,6 +126,41 @@ def _nine_router_unit_content(executable: Path) -> str:
     )
 
 
+def _enable_9router_usage_cli_access(middleware_path: Path) -> bool:
+    """Grant 9router's existing CLI token access to usage routes only.
+
+    The gateway remains loopback-bound and the patch deliberately targets the
+    middleware's existing ``aL`` CLI-only list.  It never opens the dashboard,
+    model routes, or provider credentials to Hermes.
+    """
+    source = middleware_path.read_text(encoding="utf-8")
+    if _NINE_ROUTER_USAGE_ROUTE in source:
+        return False
+    if _NINE_ROUTER_PREVIOUS_USAGE_ROUTE in source:
+        temporary_path = middleware_path.with_suffix(".tmp")
+        temporary_path.write_text(
+            source.replace(_NINE_ROUTER_PREVIOUS_USAGE_ROUTE, _NINE_ROUTER_USAGE_ROUTE, 1),
+            encoding="utf-8",
+        )
+        temporary_path.replace(middleware_path)
+        return True
+    marker = 'aL=["/api/shutdown",'
+    if source.count(marker) != 1:
+        raise RuntimeError("9router usage bridge could not verify its middleware target")
+    updated = source.replace(marker, _NINE_ROUTER_USAGE_ROUTE, 1)
+    temporary_path = middleware_path.with_suffix(".tmp")
+    temporary_path.write_text(updated, encoding="utf-8")
+    temporary_path.replace(middleware_path)
+    return True
+
+
+def _ensure_9router_usage_bridge(executable: Path) -> None:
+    middleware = executable.parent / "node_modules" / "9router" / "app" / ".next-cli-build" / "server" / "middleware.js"
+    if not middleware.is_file():
+        raise RuntimeError("9router usage bridge is unavailable for this installation")
+    _enable_9router_usage_cli_access(middleware)
+
+
 def _nine_router_status() -> dict[str, Any]:
     reachable = _http_reachable("127.0.0.1", _NINE_ROUTER_PORT)
     if reachable:
@@ -142,6 +179,7 @@ def _ensure_9router_unit() -> None:
     executable = _nine_router_executable()
     if executable is None:
         raise RuntimeError("9router is not installed")
+    _ensure_9router_usage_bridge(executable)
     unit_path = Path.home() / ".config" / "systemd" / "user" / _NINE_ROUTER_UNIT
     content = _nine_router_unit_content(executable)
     should_reload = False

@@ -67,6 +67,23 @@ def test_9router_service_unit_adds_the_detected_node_directory_to_its_path(monke
     assert "Environment=PATH=/home/z014/.hermes/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" in content
 
 
+def test_9router_usage_bridge_only_allows_the_local_cli_token_on_usage_routes(tmp_path):
+    """The bridge must be narrow, idempotent, and never make dashboard routes public."""
+    from api import managed_services
+
+    middleware = tmp_path / "middleware.js"
+    middleware.write_text(
+        'let aL=["/api/shutdown","/api/settings/database"],aM=[];',
+        encoding="utf-8",
+    )
+
+    assert managed_services._enable_9router_usage_cli_access(middleware) is True
+    content = middleware.read_text(encoding="utf-8")
+    assert 'aL=["/api/usage/","/api/providers/client","/api/shutdown"' in content
+    assert "/dashboard" not in content
+    assert managed_services._enable_9router_usage_cli_access(middleware) is False
+
+
 def test_systems_page_includes_managed_service_cards_and_stop_confirmation():
     root = Path(__file__).resolve().parents[1]
     panels = (root / "static" / "panels.js").read_text(encoding="utf-8")

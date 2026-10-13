@@ -1,5 +1,10 @@
 import api.account_usage as local_usage
-from api.account_usage import AccountUsageSnapshot, AccountUsageWindow, neuralwatt_quota_snapshot
+from api.account_usage import (
+    AccountUsageSnapshot,
+    AccountUsageWindow,
+    fetch_9router_claude_account_usage,
+    neuralwatt_quota_snapshot,
+)
 from types import SimpleNamespace
 import sys
 import types
@@ -31,6 +36,52 @@ def test_neuralwatt_fetch_defaults_to_documented_v1_endpoint(monkeypatch):
         "url": "https://api.neuralwatt.com/v1/quota",
         "auth": "Bearer test-key",
     }
+
+
+def test_9router_claude_usage_uses_only_the_local_cli_token_and_preserves_windows(monkeypatch, tmp_path):
+    """Claude subscription usage comes from 9router, never from a Claude OAuth token."""
+    cli_secret = tmp_path / "cli-secret"
+    cli_secret.write_text("local-cli-token\n", encoding="utf-8")
+    machine_id = tmp_path / "machine-id"
+    machine_id.write_text("machine-identity\n", encoding="utf-8")
+    seen = []
+
+    class Response:
+        def __init__(self, payload): self.payload = payload
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self):
+            import json
+            return json.dumps(self.payload).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        seen.append((request.full_url, request.get_header("X-9r-cli-token")))
+        if request.full_url.startswith("http://127.0.0.1:20128/api/providers/client"):
+            return Response({"connections": [{"id": "claude-connection", "provider": "claude", "isActive": True}]})
+        return Response({"quotas": {
+            "session (5h)": {"remaining": 75, "resetAt": "2026-10-14T18:00:00Z"},
+            "weekly (7d)": {"remaining": 60, "resetAt": "2026-10-20T18:00:00Z"},
+        }})
+
+    monkeypatch.setattr(local_usage, "_NINE_ROUTER_CLI_SECRET", cli_secret)
+    monkeypatch.setattr(local_usage, "_NINE_ROUTER_MACHINE_ID", machine_id)
+    monkeypatch.setattr(local_usage, "urlopen", fake_urlopen)
+
+    snapshot = fetch_9router_claude_account_usage("http://127.0.0.1:20128/v1")
+
+    assert snapshot is not None
+    assert snapshot.provider == "9router-claude"
+    assert snapshot.plan == "Claude via 9router"
+    assert [(window.label, window.used_percent) for window in snapshot.windows] == [
+        ("5 hours", 25.0), ("Weekly", 40.0),
+    ]
+    import hashlib
+    expected_token = hashlib.sha256(b"machine-identity9r-cli-authlocal-cli-token").hexdigest()[:16]
+    assert all(token == expected_token for _url, token in seen)
+    assert [url for url, _token in seen] == [
+        "http://127.0.0.1:20128/api/providers/client?page=1&pageSize=100&accountStatus=active&sort=priority",
+        "http://127.0.0.1:20128/api/usage/claude-connection",
+    ]
 
 
 def test_neuralwatt_weekly_allowance_is_rendered_as_a_percent_window():
