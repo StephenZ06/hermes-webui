@@ -9670,15 +9670,21 @@ async function _populateProfileFormModelSelect(editProfile){
     // Provider discovery intentionally excludes credentials that have not
     // been configured yet. Profile creation is where a 9router key is first
     // supplied, so retain a small curated starter choice for that first setup.
-    if (!groups.some(g => g && g.provider_id === 'custom:9router')) {
-      groups.push({
-        provider: '9router (local)',
-        provider_id: 'custom:9router',
-        models: [
-          { id: 'cc/claude-sonnet-4-5-20250929', label: 'Claude Sonnet via 9router' },
-          { id: 'cc/claude-opus-4-5-20251101', label: 'Claude Opus via 9router' },
-        ],
-      });
+    const nineRouterStarterModels = [
+      { id: 'cc/claude-opus-5-5', label: 'Claude Opus 5.5 via 9router' },
+      { id: 'cc/claude-opus-5', label: 'Claude Opus 5 via 9router' },
+      { id: 'cc/claude-fable-5-1', label: 'Claude Fable 5.1 via 9router' },
+      { id: 'cc/claude-fable-5', label: 'Claude Fable 5 via 9router' },
+      { id: 'cc/claude-sonnet-5-5', label: 'Claude Sonnet 5.5 via 9router' },
+      { id: 'cc/claude-sonnet-5', label: 'Claude Sonnet 5 via 9router' },
+      { id: 'cc/claude-haiku-4-5-20251001', label: 'Claude Haiku via 9router' },
+    ];
+    const nineRouterGroup = groups.find(g => g && g.provider_id === 'custom:9router');
+    if (nineRouterGroup) {
+      const existingIds = new Set([...(Array.isArray(nineRouterGroup.models) ? nineRouterGroup.models : []), ...(Array.isArray(nineRouterGroup.extra_models) ? nineRouterGroup.extra_models : [])].map(m => m && m.id));
+      nineRouterGroup.models = [...(Array.isArray(nineRouterGroup.models) ? nineRouterGroup.models : []), ...nineRouterStarterModels.filter(m => !existingIds.has(m.id))];
+    } else {
+      groups.push({ provider: '9router (local)', provider_id: 'custom:9router', models: nineRouterStarterModels });
     }
     for (const g of groups) {
       const og = document.createElement('optgroup');

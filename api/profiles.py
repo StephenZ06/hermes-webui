@@ -2456,8 +2456,13 @@ _NINE_ROUTER_KEY_ENV = "NINE_ROUTER_API_KEY"
 # These are only the no-credential profile-picker choices. Once 9router is
 # configured, its own /v1/models response remains authoritative.
 _NINE_ROUTER_PROFILE_MODELS = (
-    "cc/claude-sonnet-4-5-20250929",
-    "cc/claude-opus-4-5-20251101",
+    "cc/claude-opus-5-5",
+    "cc/claude-opus-5",
+    "cc/claude-fable-5-1",
+    "cc/claude-fable-5",
+    "cc/claude-sonnet-5-5",
+    "cc/claude-sonnet-5",
+    "cc/claude-haiku-4-5-20251001",
 )
 
 
@@ -2505,9 +2510,7 @@ def _configure_9router_custom_provider(
         entry = {"name": "9router"}
         custom_providers.append(entry)
 
-    existing_models = entry.get("models")
-    models = [str(model).strip() for model in existing_models] if isinstance(existing_models, list) else []
-    models = [model for model in models if model]
+    models = list(_NINE_ROUTER_PROFILE_MODELS)
     if default_model and default_model not in models:
         models.append(default_model)
     entry.update(

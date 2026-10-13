@@ -7,6 +7,17 @@ import yaml
 import api.profiles as profiles
 
 
+NINE_ROUTER_MODELS = (
+    "cc/claude-opus-5-5",
+    "cc/claude-opus-5",
+    "cc/claude-fable-5-1",
+    "cc/claude-fable-5",
+    "cc/claude-sonnet-5-5",
+    "cc/claude-sonnet-5",
+    "cc/claude-haiku-4-5-20251001",
+)
+
+
 def test_configure_9router_provider_preserves_custom_providers_and_uses_profile_key(tmp_path):
     """9router is a named OpenAI-compatible provider, not a Claude token proxy."""
     config_path = tmp_path / "config.yaml"
@@ -29,7 +40,7 @@ def test_configure_9router_provider_preserves_custom_providers_and_uses_profile_
     profiles._configure_9router_custom_provider(
         tmp_path,
         base_url="http://127.0.0.1:20128/v1",
-        default_model="cc/claude-sonnet-4-5-20250929",
+        default_model="cc/claude-sonnet-5",
     )
 
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -39,14 +50,14 @@ def test_configure_9router_provider_preserves_custom_providers_and_uses_profile_
     assert router["api_mode"] == "openai_compatible"
     assert router["key_env"] == "NINE_ROUTER_API_KEY"
     assert router["api_key"] == "${NINE_ROUTER_API_KEY}"
-    assert router["models"] == ["cc/claude-sonnet-4-5-20250929"]
+    assert router["models"] == list(NINE_ROUTER_MODELS)
     assert profiles._resolve_env_var_for_provider("custom:9router", tmp_path) == "NINE_ROUTER_API_KEY"
 
 
 def test_unconfigured_9router_catalog_model_is_accepted_before_key_exists():
     """A new 9router profile can be saved before its first API key is stored."""
     profiles._validate_profile_model_selection(
-        "cc/claude-sonnet-4-5-20250929",
+        "cc/claude-haiku-4-5-20251001",
         "custom:9router",
         available_models={"groups": []},
     )
@@ -69,7 +80,7 @@ def test_profile_update_sets_up_9router_with_its_own_secret_key(monkeypatch, tmp
 
     profiles.update_profile_api(
         "research",
-        default_model="cc/claude-sonnet-4-5-20250929",
+        default_model="cc/claude-sonnet-5",
         model_provider="custom:9router",
         api_key="test-router-key",
     )
@@ -92,3 +103,6 @@ def test_profile_picker_seeds_9router_instead_of_neuralwatt_catalog():
         panel_source.index("function cancelProfileForm")
     ]
     assert "provider_id: 'neuralwatt'" not in picker
+    assert profiles._NINE_ROUTER_PROFILE_MODELS == NINE_ROUTER_MODELS
+    for model in NINE_ROUTER_MODELS:
+        assert model in picker
