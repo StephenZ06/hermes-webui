@@ -65,6 +65,6 @@
     settingsFocus: '', // a Settings section to scroll to after opening Settings
     matchDirection: null, // which way the match check last stepped, for its slide
     activityMonth: 0, // Dashboard activity calendars: months back from this one
-    settingsSection: 'connections', // Settings: the section shown
+    settingsSection: null, // Settings: the section shown (null: the list on a phone, Connections on desktop)
   };
 }());

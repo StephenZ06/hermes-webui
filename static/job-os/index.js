@@ -256,6 +256,9 @@
   function showView(view) {
     const state = window.JobOSState;
     const moved = state.activeView !== view;
+    // Opening Settings from elsewhere starts at its section list on a phone
+    // (the first section on desktop) unless a row asked for a section.
+    if (moved && view === 'settings' && !state.settingsFocus) state.settingsSection = null;
     state.activeView = view; state.statusFilter = null; state.resumePreview = null; state.focusColumn = null; replaceRoute(view);
     if (moved) { paintNow(); const main = document.getElementById('mainJobs'); if (main) main.scrollTop = 0; }
     refresh();
@@ -453,7 +456,7 @@
   }
   async function runAction(name, button) {
     const state = window.JobOSState;
-    if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
+    if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'settings-list', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
@@ -868,6 +871,13 @@
       state.settingsFocus = el.dataset.section || '';
       if (state.settingsFocus) state.settingsSection = window.JobOSRender.settingsPageOf(state.settingsFocus);
       return showView('settings');
+    }
+    if (name === 'settings-list') {
+      state.settingsSection = null;
+      repaint();
+      const main = document.getElementById('mainJobs');
+      if (main) main.scrollTo({top: 0, behavior: 'smooth'});
+      return undefined;
     }
     if (name === 'settings-section') {
       state.settingsSection = el.dataset.section || 'connections';

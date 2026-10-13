@@ -11397,3 +11397,43 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .job-os-btn.is-loading:disabled{opacity:.86;}
 @keyframes btn-spinner-turn{to{transform:rotate(360deg);}}
 @media (prefers-reduced-motion:reduce){.btn-spinner{animation-duration:1.6s;}}
+
+/* ---- Jobs Settings, restructured ----
+   Desktop: a sticky side menu and one section at a time beside it. The
+   section is the page itself (its heading reads as the page title), not a
+   card wrapping more cards; its groups (connections, toggles, fields) are the
+   cards. Reading width is capped. Phones: an iOS-style grouped list of
+   sections; a section opens on its own with "‹ Settings" to go back. */
+.settings-page{max-width:880px;}
+.settings-page > .job-os-settings-section{padding:0;border:0;border-radius:0;background:none;box-shadow:none;gap:14px;}
+.settings-page > .job-os-settings-section > .job-os-card-head{padding:2px 0 14px;margin:0;border-bottom:1px solid var(--border);}
+.settings-page > .job-os-settings-section > .job-os-card-head .card-title{font-size:18px;}
+.settings-page > .job-os-settings-section > .job-os-card-note{margin:0;max-width:68ch;}
+.settings-back{display:none;}
+.settings-nav-chevron{display:none;}
+@media (max-width:767px){
+  .settings-layout{display:block;}
+  .settings-layout:not(.has-section) .settings-page{display:none;}
+  .settings-layout.has-section .settings-nav{display:none;}
+  /* Section list: grouped rows, full width, with a chevron. */
+  .settings-nav,.settings-nav.mi-tabs{position:static;display:flex;flex-direction:column;overflow:visible;gap:0;padding:0;border:0;background:none;box-shadow:none;}
+  .settings-nav > .mi-pill{display:none!important;}
+  .settings-nav-group{display:block;margin:18px 4px 8px;}
+  .settings-nav-group:first-of-type{margin-top:4px;}
+  .settings-nav-item{flex:none;width:100%;min-height:60px;padding:10px 12px;border-radius:0;background:var(--card);border:1px solid var(--border2);border-bottom-width:0;}
+  .settings-nav-group + .settings-nav-item{border-radius:14px 14px 0 0;}
+  .settings-nav-item:has(+ .settings-nav-group),.settings-nav-item:last-child{border-bottom-width:1px;border-radius:0 0 14px 14px;}
+  .settings-nav-group + .settings-nav-item:has(+ .settings-nav-group),.settings-nav-group + .settings-nav-item:last-child{border-radius:14px;}
+  .settings-nav-item.active{background:var(--card);}
+  .settings-nav-item.active .settings-nav-icon{background:color-mix(in srgb,var(--border2) 45%,transparent);color:var(--muted);}
+  .settings-nav-item.active .settings-nav-text strong{color:var(--text);}
+  .settings-nav-item:active{background:var(--hover-bg);}
+  .settings-nav-text{flex:1 1 auto;}
+  .settings-nav-text small{display:flex;}
+  .settings-nav-chevron{display:grid;place-items:center;margin-left:auto;color:var(--muted);flex:0 0 auto;}
+  /* A section on its own. */
+  .settings-back{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;margin:0 0 4px -6px;padding:8px 10px 8px 4px;border:0;border-radius:10px;background:none;color:var(--accent-text,var(--accent));font:inherit;font-size:14px;font-weight:600;cursor:pointer;min-height:40px;}
+  .settings-back:active{background:var(--hover-bg);}
+  .settings-page{max-width:none;}
+  .settings-page > .job-os-settings-section > .job-os-card-head .card-title{font-size:20px;}
+}

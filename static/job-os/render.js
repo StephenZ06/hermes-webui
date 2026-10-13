@@ -279,7 +279,7 @@
     return `<span class="job-os-pill" data-ok="${ok ? 'true' : 'false'}">${esc(text)}</span>`;
   }
   const SECTION_ICONS = {connections: 'cloud', apify: 'radar', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
-    notifications: 'bell', resume: 'resume-studio', display: 'dashboard'};
+    notifications: 'bell', resume: 'resume-studio', display: 'resume-studio'};
   // Job sites Scout reads itself, with whether they still read correctly.
   function jobSitesBlock(state) {
     const sites = dashboardOf(state).site_health || [];
@@ -424,20 +424,23 @@
       notifications: [gmailReady && v('notifications.email_enabled'), gmailReady && v('notifications.email_enabled') ? 'Email on' : 'Email off'],
       applicant: [!!v('applicant.full_name'), v('applicant.full_name') || 'Not filled in'],
       apply: [!!v('apply.notice_period'), v('apply.notice_period') ? 'Saved' : 'Not filled in'],
-      display: [null, 'Master resume'],
+      display: [!!state.resume, state.resume ? 'In Resume Studio' : 'Not uploaded'],
     };
     const nav = SETTINGS_NAV.map(([group, items]) => `<p class="settings-nav-group">${group}</p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
-      return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span></button>`;
+      return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span><span class="settings-nav-chevron" aria-hidden="true">${icon('next', 16)}</span></button>`;
     }).join('')}`).join('');
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${pages[page]}</div></div>${bar}</form>`;
+    // Phones: the sections as a grouped list first; a section opens on its
+    // own with a way back (has-section). Desktop always shows both.
+    const chosen = state.settingsSection && pages[state.settingsSection];
+    const back = `<button type="button" class="settings-back" data-job-os-action="settings-list">${icon('prev', 16)}Settings</button>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout${chosen ? ' has-section' : ''}"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${back}${pages[page]}</div></div>${bar}</form>`;
   }
   // Settings, grouped: what Hermes connects to, what runs on its own, and you.
   const SETTINGS_NAV = [
     ['Accounts', [['connections', 'Connections'], ['apify', 'Apify']]],
     ['Automation', [['scout', 'Scout schedule'], ['ai', 'Luna (AI)'], ['notifications', 'Notifications']]],
-    ['You', [['applicant', 'Your details'], ['apply', 'Application answers']]],
-    ['Page', [['display', 'Jobs page']]],
+    ['You', [['applicant', 'Your details'], ['apply', 'Application answers'], ['display', 'Master resume']]],
   ];
   // The Settings page a section is on (an automation row or a Scout tile asks for a section).
   const settingsPageOf = (id) => ({resume: 'display'}[id] || id || 'connections');
