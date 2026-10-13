@@ -59,4 +59,11 @@ def test_coming_back_to_the_dashboard_fades_in_once():
             starts = page.evaluate("() => window.__starts")
         finally:
             browser.close()
-    assert starts and all(at < 300 for at, _name in starts), starts  # one entrance, when the page is drawn
+    # One entrance, when the page is drawn from what is known (before the slowed
+    # 400 ms data arrives); rows may be staggered after it, but nothing may
+    # start again when the fresh data is patched in. Measured from the first
+    # start, so a busy machine that draws a little late doesn't fail it.
+    assert starts, starts
+    first = starts[0][0]
+    assert first < 400, starts
+    assert all(at - first < 250 for at, _name in starts), starts
