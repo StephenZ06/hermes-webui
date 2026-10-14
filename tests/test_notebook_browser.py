@@ -295,3 +295,51 @@ def test_opening_a_workspace_does_not_slide_its_rows(page, panel):
     assert len(xs) > 5, xs
     assert max(lefts) - min(lefts) < 0.5, xs
     assert max(tops) - min(tops) < 0.5, xs
+
+
+@pytest.fixture
+def touch_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            ctx = browser.new_context(viewport={"width": 393, "height": 852}, has_touch=True, is_mobile=True)
+            yield ctx.new_page()
+        finally:
+            browser.close()
+
+
+def _block_texts(page):
+    return page.evaluate("() => Notebook.editor.getBlocks().map(b => (b.content || []).map(c => c.text).join(''))")
+
+
+def test_touch_block_bar_moves_and_edits_lines(touch_page):
+    page = touch_page
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    page.wait_for_selector(".nb-blockbar", timeout=10000)
+    page.click(".hermes-note-editor .bn-editor")
+    page.keyboard.type("one")
+    page.keyboard.press("Enter")
+    page.keyboard.type("two")
+    assert _block_texts(page)[:2] == ["one", "two"]
+    page.click(".nb-blockbar [data-nb-block=up]")
+    assert _block_texts(page)[:2] == ["two", "one"]
+    page.click(".nb-blockbar [data-nb-block=down]")
+    assert _block_texts(page)[:2] == ["one", "two"]
+    page.click(".nb-blockbar [data-nb-block=add]")
+    assert len(_block_texts(page)) >= 3
+    page.click(".nb-blockbar [data-nb-block=remove]")
+    assert _block_texts(page)[:2] == ["one", "two"]
+
+
+def test_desktop_has_no_touch_block_bar(page):
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    assert page.query_selector(".nb-blockbar") is None

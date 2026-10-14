@@ -11708,3 +11708,25 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 @media (hover:none) and (pointer:coarse){
   .work-hub-column-filter input, .work-hub-column-filter select { font-size: 12px !important; }
 }
+
+/* Notes: touch polish */
+.nb-tag-input{font-size:11px;}
+.nb-tag-input::placeholder{font-size:11px;}
+.nb-blockbar{position:sticky;top:0;z-index:5;display:flex;gap:4px;justify-content:space-between;margin:0 0 6px;padding:4px;border:1px solid var(--border);border-radius:10px;background:var(--surface,var(--bg));}
+.nb-blockbar button{flex:1;min-height:36px;border:0;border-radius:7px;background:transparent;color:var(--text);font:inherit;font-size:17px;line-height:1;cursor:pointer;}
+.nb-blockbar button:active{background:var(--accent-bg);color:var(--accent-text);}
+.nb-blockbar button[data-nb-block="remove"]{color:var(--error,#e5484d);}
+/* A finger leaves :hover behind on touch screens, so a tapped-then-removed row
+   (e.g. "Obsidian Notes") stayed lit. Hover only paints where hover exists. */
+@media (hover:none){
+  #notebookSidebar .work-hub-scope:hover:not(.active){background:transparent;color:var(--muted);}
+  #notebookSidebar .work-hub-project-tile:hover:not(.active){background:transparent;color:var(--text);border-color:transparent;}
+  #notebookSidebar .work-hub-board-row:not(.active)>button:first-child:hover{background:transparent;color:var(--muted);}
+  #notebookSidebar .nb-tag:hover:not(.active){border-color:var(--border);background:transparent;color:var(--muted);}
+  #notebookRoot .nb-item:hover:not(.active){background:transparent;}
+  #notebookRoot .nb-icon-btn:hover:not(:disabled):not(.on){background:transparent;color:inherit;}
+  #notebookSidebar .nb-vault-back:hover{background:none;}
+}
+@media (hover:none) and (pointer:coarse){
+  .nb-tag-input, .nb-tag-input::placeholder{font-size:11px !important;}
+}

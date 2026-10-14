@@ -197,7 +197,7 @@
   // Same markup and classes as the Work Hub's workspace folders, so the two
   // side panels look and move the same: a whole-tile click selects the place
   // and opens/closes it in place (the grid-rows transition animates).
-  function placeGroup(kind, item, notes) {
+  function placeGroup(kind, item, notes, childrenHtml) {
     const key = kind + ':' + item.id;
     const expanded = !!S.expanded[key] || (S.deleteMode && notes.length > 0);
     const active = S.scope.kind === kind && S.scope.id === item.id ? ' active' : '';
@@ -206,7 +206,7 @@
       + `<span class="project-folder-chevron work-hub-project-chevron${expanded ? ' expanded' : ''}">▸</span>`
       + `<span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span>`
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
-      + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}</div></div>`;
+      + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}${childrenHtml || ''}</div></div>`;
   }
   // The store changed (Settings → Preferences → Notes · Obsidian vault): drop
   // the open note, which belongs to the old store, and load the new one.
@@ -216,6 +216,13 @@
     if (!S.loaded) return;
     await loadBootstrap(); render();
   }
+  // A vault sub-folder ("01 Projects / Triple S") lives inside its parent's
+  // collapsible group, so folding the parent hides it.
+  function vaultFolderGroups(liveNotes) {
+    const group = (f, kids) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id), kids);
+    const isChild = (f) => !!f.parent && S.folders.some((p) => !p.parent && p.name === f.parent);
+    return S.folders.filter((f) => !isChild(f)).map((f) => group(f, S.folders.filter((c) => isChild(c) && c.parent === f.name).map((c) => group(c, '')).join(''))).join('');
+  }
   // The Obsidian side: the vault's folders and notes, with the way back.
   function renderVaultSidebar(side, liveNotes, tags, dm) {
     side.innerHTML = `<nav class="work-hub-nav nb-nav nb-nav-vault" aria-label="Obsidian notes">
@@ -224,7 +231,7 @@
       ${scopeButton('all', 'All notes', 'all', count((n) => live(n)))}
       ${scopeButton('general', 'Vault root', 'general', count((n) => live(n) && !n.folder_id))}
       <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
-      <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
+      <div class="project-folder-list work-hub-projects nb-folders${dm}">${vaultFolderGroups(liveNotes)}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
         ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'
         : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
@@ -549,6 +556,45 @@
       throw error;
     }
   }
+  // Touch screens have no hover, so the editor's block handle (the grip that
+  // drags a line up or down on desktop) never appears there. This bar gives
+  // the same moves to a thumb: it acts on the block holding the cursor, and
+  // pointerdown is cancelled so the editor keeps focus and the keyboard.
+  function mountBlockBar(host, note) {
+    const old = host.querySelector('.nb-blockbar'); if (old) old.remove();
+    if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
+    const bar = document.createElement('div');
+    bar.className = 'nb-blockbar';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Edit the current line');
+    const actions = [
+      ['up', '↑', 'Move line up'], ['down', '↓', 'Move line down'],
+      ['outdent', '⇤', 'Outdent'], ['indent', '⇥', 'Indent'],
+      ['add', '+', 'Add a line below'], ['remove', '×', 'Delete line'],
+    ];
+    bar.innerHTML = actions.map(([id, glyph, label]) => `<button type="button" data-nb-block="${id}" aria-label="${label}" title="${label}">${glyph}</button>`).join('');
+    host.insertBefore(bar, host.firstChild);
+    const run = (id) => {
+      const editor = editorCtl && editorCtl.editor; if (!editor) return;
+      try {
+        const block = editor.getTextCursorPosition().block;
+        if (id === 'up') editor.moveBlocksUp();
+        else if (id === 'down') editor.moveBlocksDown();
+        else if (id === 'indent') { if (editor.canNestBlock()) editor.nestBlock(); }
+        else if (id === 'outdent') { if (editor.canUnnestBlock()) editor.unnestBlock(); }
+        else if (id === 'add') {
+          const inserted = editor.insertBlocks([{type: 'paragraph'}], block, 'after');
+          if (inserted && inserted[0]) editor.setTextCursorPosition(inserted[0], 'start');
+        } else if (id === 'remove') {
+          if (editor.document.length > 1) editor.removeBlocks([block]);
+          else editor.updateBlock(block, {type: 'paragraph', content: ''});
+        }
+        editor.focus();
+      } catch (_) {}
+    };
+    bar.addEventListener('pointerdown', (event) => { if (event.target.closest('button')) event.preventDefault(); });
+    bar.addEventListener('click', (event) => { const b = event.target.closest('[data-nb-block]'); if (b) run(b.dataset.nbBlock); });
+  }
   async function mountEditor(note, content) {
     const host = $('nbEditorHost');
     if (!host) return;
@@ -585,6 +631,7 @@
       },
     });
     editorNoteId = note.id;
+    mountBlockBar(host, note);
     if (fromMarkdown) {
       try {
         const blocks = await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''));
