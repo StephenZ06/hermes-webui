@@ -74,7 +74,14 @@ def test_buttons_dip_while_pressed_and_page_views_fade_in():
             btn = page.locator("#cronRefreshBtn").bounding_box()
             page.mouse.move(btn["x"] + btn["width"] / 2, btn["y"] + btn["height"] / 2)
             page.mouse.down()
-            page.wait_for_timeout(150)
+            # Wait for the 80ms dip to finish while still held: a single sample
+            # at a fixed delay caught it mid-transition on slow CI runners.
+            try:
+                page.wait_for_function(
+                    "() => getComputedStyle(document.getElementById('cronRefreshBtn')).transform.startsWith('matrix(0.96')",
+                    timeout=3000)
+            except Exception:
+                pass
             pressed = page.evaluate("() => getComputedStyle(document.getElementById('cronRefreshBtn')).transform")
             page.mouse.up()
         finally:
@@ -161,6 +168,7 @@ def test_dashboard_numbers_roll_only_when_they_change():
               const values = new Set();
               animateCounts(host);
               const sample = () => { values.add(el.textContent); };
+              sample();  // the starting value, before a slow runner's first timer tick
               const timer = setInterval(sample, 16);
               setTimeout(() => {
                 clearInterval(timer);
