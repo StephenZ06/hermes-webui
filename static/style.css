@@ -11760,3 +11760,17 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
      portal puts them. */
   .mantine-Menu-dropdown, .mantine-Popover-dropdown, .mantine-Select-dropdown{position:fixed !important;transform:translateY(-100%) !important;bottom:auto !important;right:auto !important;left:8px !important;top:calc(var(--nb-bar-top,100vh) - 6px) !important;max-height:min(280px,42vh) !important;height:auto !important;overflow-y:auto;}
 }
+
+/* Notes: image resize corners */
+.nb-img-resize{position:absolute;z-index:7;box-sizing:border-box;border:2px solid var(--accent);border-radius:4px;pointer-events:none;}
+.nb-img-resize[hidden]{display:none;}
+.nb-img-handle{position:absolute;width:32px;height:32px;margin:0;padding:0;border:0;background:transparent;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;display:grid;place-items:center;}
+.nb-img-handle i{display:block;width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);background:var(--bg,#fff);box-shadow:0 1px 4px rgba(0,0,0,.35);}
+/* Inside the corners, not straddling them: a picture sits near the screen's left
+   edge on a phone, where the swipe-for-sidebar guard would swallow a handle. */
+.nb-img-handle[data-corner="nw"]{left:0;top:0;cursor:nwse-resize;}
+.nb-img-handle[data-corner="ne"]{right:0;top:0;cursor:nesw-resize;}
+.nb-img-handle[data-corner="sw"]{left:0;bottom:0;cursor:nesw-resize;}
+.nb-img-handle[data-corner="se"]{right:0;bottom:0;cursor:nwse-resize;}
+.nb-img-resize.dragging .nb-img-handle i{background:var(--accent);}
+.hermes-note-editor .bn-visual-media{max-width:100%;}

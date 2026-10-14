@@ -345,7 +345,9 @@ def _to_editor(root: Path, body: str, note_rel: str) -> str:
         rel = resolve_image(target, note_rel) if Path(target).suffix.lower() in _IMAGE_EXT else ""
         if not rel:
             return match.group(0)
-        return f"![{Path(target).name}]({FILE_ROUTE}{quote(rel)}{_SRC}{quote(match.group(0), safe='')})"
+        size = match.group(1).split("|", 2)[1].strip() if match.group(1).count("|") else ""
+        alt = Path(target).name + (f"|{size}" if size.isdigit() else "")  # "|300" is Obsidian's width
+        return f"![{alt}]({FILE_ROUTE}{quote(rel)}{_SRC}{quote(match.group(0), safe='')})"
 
     def link(match: re.Match) -> str:
         alt, target = match.group(1), match.group(2).strip()
@@ -371,8 +373,20 @@ def _from_editor(markdown: str) -> str:
     def image(match: re.Match) -> str:
         alt, route = match.group(1), match.group(2)
         path, _, src = route.partition(_SRC)
+        width = re.search(r"\|(\d+)$", alt)
         if src:
-            return unquote(src)
+            original = unquote(src)
+            if not width:
+                return original
+            # Resized in the editor: the original spelling, with the new width.
+            if original.startswith("![["):
+                name = original[3:-2].split("|")[0]
+                return f"![[{name}|{width.group(1)}]]"
+            parts = re.match(r"^!\[([^\]]*)\]\((.*)\)$", original, re.S)
+            if parts:
+                caption = re.sub(r"\|\d+$", "", parts.group(1))
+                return f"![{caption}|{width.group(1)}]({parts.group(2)})"
+            return original
         return f"![{alt}]({unquote(path).replace(' ', '%20')})"
 
     text = re.sub(r"!\[([^\]]*)\]\(" + re.escape(FILE_ROUTE) + r"([^)\s]+)\)", image, text)

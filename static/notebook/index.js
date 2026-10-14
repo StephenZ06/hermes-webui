@@ -770,6 +770,97 @@
     grip.addEventListener('pointercancel', () => finish(false));
     grip.addEventListener('contextmenu', (event) => event.preventDefault());
   }
+  // Drag a corner of a picture to resize it (a finger or a mouse). BlockNote's
+  // own handles are hover-only and sit on the sides; these corners show when the
+  // picture is tapped or clicked. The size is the block's previewWidth.
+  function mountImageResize(host, note) {
+    if (note.deleted_at) return;
+    const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
+    host.classList.add('nb-has-grip'); // the overlay is positioned against the host
+    const box = document.createElement('div');
+    box.className = 'nb-img-resize'; box.hidden = true;
+    box.innerHTML = ['nw', 'ne', 'sw', 'se'].map((c) => `<button type="button" class="nb-img-handle" data-corner="${c}" aria-label="Drag to resize the image" tabindex="-1"><i></i></button>`).join('');
+    host.appendChild(box);
+    let img = null, drag = null;
+    const fit = () => {
+      if (!img || !img.isConnected) { box.hidden = true; img = null; return; }
+      const m = host.getBoundingClientRect(), r = img.getBoundingClientRect();
+      box.style.cssText = `left:${r.left - m.left}px;top:${r.top - m.top}px;width:${r.width}px;height:${r.height}px`;
+      box.hidden = false;
+    };
+    const select = (el) => { img = el; fit(); };
+    // Tap/click on a picture selects it; anywhere else lets go.
+    document.addEventListener('click', (event) => {
+      if (!mount.isConnected) return;
+      const hit = event.target.closest && event.target.closest('.bn-visual-media');
+      if (hit && mount.contains(hit)) select(hit);
+      else if (!(event.target.closest && event.target.closest('.nb-img-resize')) && !drag) { img = null; box.hidden = true; }
+    });
+    if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
+    mount.addEventListener('load', () => requestAnimationFrame(fit), true);
+    mount.addEventListener('input', () => requestAnimationFrame(fit));
+    box.addEventListener('pointerdown', (event) => {
+      const handle = event.target.closest('.nb-img-handle');
+      if (!handle || !img) return;
+      event.preventDefault(); event.stopPropagation();
+      const outer = img.closest('.bn-block-outer');
+      const rect = img.getBoundingClientRect();
+      const room = (img.closest('.bn-block-group') || mount).getBoundingClientRect().width;
+      drag = {handle, id: outer && outer.dataset.id, x: event.clientX, y: event.clientY, width: rect.width, aspect: rect.height / Math.max(1, rect.width), room, now: rect.width,
+        sx: handle.dataset.corner.includes('e') ? 1 : -1, sy: handle.dataset.corner.includes('s') ? 1 : -1};
+      handle.setPointerCapture(event.pointerId);
+      box.classList.add('dragging');
+    });
+    box.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      const dx = (event.clientX - drag.x) * drag.sx, dy = (event.clientY - drag.y) * drag.sy / Math.max(0.1, drag.aspect);
+      const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+      drag.now = Math.max(48, Math.min(drag.room, drag.width + delta));
+      img.style.width = drag.now + 'px'; img.style.height = 'auto'; // live; the block takes it on release
+      const wrap = img.closest('.bn-visual-media-wrapper'); if (wrap) wrap.style.width = drag.now + 'px';
+      fit();
+    });
+    const finish = (commit) => {
+      if (!drag) return;
+      const d = drag; drag = null; box.classList.remove('dragging');
+      const editor = editorCtl && editorCtl.editor;
+      if (img) { img.style.width = ''; img.style.height = ''; const wrap = img.closest('.bn-visual-media-wrapper'); if (wrap) wrap.style.width = ''; }
+      if (commit && editor && d.id) {
+        try { editor.updateBlock(d.id, {props: {previewWidth: Math.round(d.now)}}); } catch (_) {}
+      }
+      requestAnimationFrame(() => { const el = d.id && mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(d.id)}"] .bn-visual-media`); if (el) select(el); else fit(); });
+    };
+    box.addEventListener('pointerup', () => finish(true));
+    box.addEventListener('pointercancel', () => finish(false));
+  }
+  // A vault note is Markdown, which has no width for a picture; Obsidian's way is
+  // "![caption|300](url)". These carry previewWidth through that spelling.
+  const imageBlocks = (blocks, out = []) => { (blocks || []).forEach((b) => { if (b.type === 'image') out.push(b); imageBlocks(b.children, out); }); return out; };
+  function editorMarkdown() {
+    let md = editorCtl.toMarkdown();
+    let from = 0;
+    imageBlocks(editorCtl.getBlocks()).forEach((b) => {
+      if (!b.props.url) return;
+      const at = md.indexOf('](' + b.props.url + ')', from);
+      if (at < 0) return;
+      const open = md.lastIndexOf('![', at);
+      if (open < from) return;
+      from = at + 1;
+      if (!b.props.previewWidth) return;
+      const caption = md.slice(open + 2, at).replace(/\|\d+$/, '');
+      md = md.slice(0, open + 2) + caption + '|' + Math.round(b.props.previewWidth) + md.slice(at);
+      from += String(Math.round(b.props.previewWidth)).length + 1;
+    });
+    return md;
+  }
+  function withImageWidths(blocks) {
+    // Parsed Markdown puts a picture's alt text in `name` ("shot.png|300").
+    imageBlocks(blocks).forEach((b) => {
+      const m = /^(.*)\|(\d+)$/.exec(b.props.name || '');
+      if (m) { b.props.name = m[1]; b.props.previewWidth = Number(m[2]); }
+    });
+    return blocks;
+  }
   async function mountEditor(note, content) {
     const host = $('nbEditorHost');
     if (!host) return;
@@ -799,7 +890,7 @@
         if (settling || editorNoteId !== note.id) return;
         if (baseline !== null) {
           // Re-rendering the parsed note is not an edit: only a real change is.
-          try { if (editorCtl.toMarkdown() === baseline) return; } catch (_) {}
+          try { if (editorMarkdown() === baseline) return; } catch (_) {}
           baseline = null;
         }
         queueSave('content');
@@ -807,11 +898,12 @@
     });
     editorNoteId = note.id;
     mountBlockGrip(host, note);
+    mountImageResize(host, note);
     if (fromMarkdown) {
       try {
-        const blocks = await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''));
+        const blocks = withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || '')));
         if (editorNoteId === note.id && Array.isArray(blocks) && blocks.length) editorCtl.replaceAll(blocks);
-        baseline = editorCtl.toMarkdown();
+        baseline = editorMarkdown();
       } catch (error) {
         toast('This note could not be read as Markdown');
       }
@@ -852,7 +944,7 @@
     if (fields.title) body.title = note.title || '';
     if (fields.content && editorCtl && editorNoteId === note.id) {
       // A vault note is saved as Markdown (its file); Hermes' own as blocks.
-      if (note.format === 'markdown') body.markdown = editorCtl.toMarkdown();
+      if (note.format === 'markdown') body.markdown = editorMarkdown();
       else body.content = editorCtl.getBlocks();
     }
     if (fields.tags) body.tags = note.tags || [];
@@ -1323,22 +1415,33 @@
   const isShowing = () => !!document.querySelector('main.main.showing-notebook');
   function onBeforeUnload() { if (Object.keys(save.dirty).length) writeDraft(); }
 
+  // Anything that holds a text caret (the editor, the title, the tag box, a
+  // search field) owns the keyboard. A tap on a button elsewhere -- the note
+  // header, the list, the sidebar, the app's top bar -- first blurs it on iOS:
+  // the keyboard folds, the page re-lays out under the finger, and the click
+  // never lands, so every button needed a second tap. Cancelling the mousedown
+  // keeps the focus where it is and lets the click through. Document-wide, in
+  // the capture phase, because the top bar is outside the Notes page.
+  let focusKeeperInstalled = false;
+  function installFocusKeeper() {
+    if (focusKeeperInstalled || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
+    focusKeeperInstalled = true;
+    const typing = (el) => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|checkbox|radio|submit|reset|file|range|color|image)$/i.test(el.type)));
+    document.addEventListener('mousedown', (event) => {
+      if (!isShowing() || !typing(document.activeElement)) return;
+      const target = event.target;
+      if (!target.closest || typing(target) || target.closest('.hermes-note-editor, select, label, textarea, input')) return;
+      const tap = target.closest('button, [role="button"], a[href], [data-nb-open]');
+      if (!tap || tap.dataset.nbAction === 'back') return;
+      event.preventDefault();
+    }, true);
+  }
   let bound = false;
   function bind() {
     if (bound) return;
     bound = true;
     const root = $('notebookRoot'); const side = $('notebookSidebar');
-    // A tap on a button blurs the editor on iOS: the keyboard folds, the page
-    // re-lays out under the finger, and the click never lands, so the button
-    // needed a second tap. Buttons keep the editor focused; 'back' lets go.
-    const keepFocus = (event) => {
-      const button = event.target.closest && event.target.closest('button');
-      if (!button || button.closest('.hermes-note-editor') || button.dataset.nbAction === 'back') return;
-      const active = document.activeElement;
-      if (active && active.closest && active.closest('.hermes-note-editor')) event.preventDefault();
-    };
-    if (root) root.addEventListener('mousedown', keepFocus);
-    if (side) side.addEventListener('mousedown', keepFocus);
+    installFocusKeeper();
     if (root) root.addEventListener('click', onClick);
     if (side) side.addEventListener('click', onClick);
     if (side) side.addEventListener('contextmenu', (event) => {
@@ -1382,7 +1485,7 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save};
+  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _widths: {write: () => editorMarkdown(), read: withImageWidths}};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());

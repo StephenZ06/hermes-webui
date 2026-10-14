@@ -267,3 +267,19 @@ def test_documents_go_to_the_attachment_folder_and_link_back(vault):
         notebook_vault.save_upload({"filename": "x.html", "content_base64": base64.b64encode(b"<script>").decode()})
     with pytest.raises(notebook.NotebookError):
         notebook_vault.read_file("Doc.md")
+
+
+def test_image_width_round_trips_in_obsidian_syntax(vault):
+    _connect(vault)
+    (vault / "Attachments").mkdir(exist_ok=True)
+    (vault / "Attachments" / "shot.png").write_bytes(PNG)
+    note = notebook_vault.create_note({"title": "Sized", "markdown": "![[shot.png|300]]\n\n![alt](Attachments/shot.png)"})
+    markdown = notebook_vault.get_note(note["id"])["markdown"]
+    assert "![shot.png|300](" + notebook_vault.FILE_ROUTE in markdown and "![alt](" + notebook_vault.FILE_ROUTE in markdown
+    # Untouched, a save writes both back exactly as they were.
+    notebook_vault.update_note(note["id"], {"markdown": markdown, "expected_revision": notebook_vault.get_note(note["id"])["revision"]})
+    assert (vault / "Sized.md").read_text() == "![[shot.png|300]]\n\n![alt](Attachments/shot.png)\n"
+    # Resized in the editor: the width in the alt text becomes Obsidian's width.
+    resized = markdown.replace("![shot.png|300](", "![shot.png|180](").replace("![alt](", "![alt|240](")
+    notebook_vault.update_note(note["id"], {"markdown": resized, "expected_revision": notebook_vault.get_note(note["id"])["revision"]})
+    assert (vault / "Sized.md").read_text() == "![[shot.png|180]]\n\n![alt|240](Attachments/shot.png)\n"

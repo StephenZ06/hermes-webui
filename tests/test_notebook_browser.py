@@ -467,3 +467,92 @@ def test_documents_download_and_images_show_inline():
     assert doc.headers["X-Content-Type-Options"] == "nosniff" and "sandbox" in doc.headers["Content-Security-Policy"]
     assert doc.headers["Content-Type"] == "application/pdf"
     assert urllib.request.urlopen(BASE + png["url"], timeout=10).headers["Content-Disposition"] == "inline"
+
+
+def _png(width, height):
+    import struct
+    import zlib
+    raw = b"".join(b"\x00" + b"\x40\x80\xc0" * width for _ in range(height))
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def _resize_roundtrip(tab, corner, dx):
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "wide.png", "mimeType": "image/png", "buffer": _png(600, 300)}])
+    tab.wait_for_function("() => { const i = document.querySelector('.bn-visual-media'); return i && i.complete && i.naturalWidth > 0; }", timeout=15000)
+    tab.click(".bn-visual-media")
+    tab.wait_for_selector(".nb-img-resize:not([hidden])", timeout=5000)
+    before = tab.locator(".bn-visual-media").bounding_box()["width"]
+    handle = tab.locator(f".nb-img-handle[data-corner={corner}]").bounding_box()
+    x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    tab.mouse.move(x, y)
+    tab.mouse.down()
+    tab.mouse.move(x + dx, y, steps=6)
+    tab.mouse.up()
+    tab.wait_for_function("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth > 0", timeout=5000)
+    width = tab.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth")
+    return before, width
+
+
+def test_image_corner_drag_resizes_the_picture_desktop(page):
+    before, width = _resize_roundtrip(page, "se", -120)
+    assert width < before and abs(width - (before - 120)) <= 3, (before, width)
+    page.wait_for_function("(w) => Math.abs(document.querySelector('.bn-visual-media').getBoundingClientRect().width - w) < 3", arg=width, timeout=5000)
+
+
+def test_image_corner_drag_resizes_the_picture_touch(touch_page):
+    before, width = _resize_roundtrip(touch_page, "nw", 60)  # left corner: dragging right shrinks
+    assert width < before and abs(width - (before - 60)) <= 3, (before, width)
+
+
+def test_picture_width_survives_the_markdown_round_trip_used_for_vault_notes(page):
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    result = page.evaluate("""async () => {
+        const editor = Notebook.editor.editor;
+        editor.replaceBlocks(editor.document, [
+            {type: 'image', props: {url: '/api/notebook/files/aa', name: 'one.png', previewWidth: 222}},
+            {type: 'image', props: {url: '/api/notebook/files/bb', name: 'two.png'}},
+        ]);
+        const markdown = Notebook._widths.write();
+        const blocks = Notebook._widths.read(await Notebook.editor.parseMarkdown(markdown));
+        return {markdown, images: blocks.filter(b => b.type === 'image').map(b => [b.props.name, b.props.previewWidth || null])};
+    }""")
+    assert "![one.png|222](/api/notebook/files/aa)" in result["markdown"] and "![two.png](/api/notebook/files/bb)" in result["markdown"]
+    assert result["images"] == [["one.png", 222], ["two.png", None]]
+
+
+def test_touch_taps_on_buttons_do_not_steal_focus_from_the_editor(touch_page):
+    page = touch_page
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    probe = """(selector) => {
+        const el = document.querySelector(selector);
+        const event = new MouseEvent('mousedown', {bubbles: true, cancelable: true});
+        el.dispatchEvent(event);
+        return event.defaultPrevented;
+    }"""
+    page.evaluate("() => document.activeElement && document.activeElement.blur()")
+    assert page.evaluate(probe, ".nb-editor-head [data-nb-action=toggle-pinned]") is False  # nothing is typing: leave it alone
+    page.click(".hermes-note-editor .bn-editor")
+    # The editor holds the keyboard: header buttons, the list and the app's top bar must not blur it.
+    for target in (".nb-editor-head [data-nb-action=toggle-pinned]", ".nb-editor-head [data-nb-action=add-files]", ".topbar button, header button"):
+        assert page.evaluate(probe, target) is True, target
+    assert page.evaluate(probe, ".nb-editor-head [data-nb-action=back]") is False  # back lets go of the keyboard
+    assert page.evaluate("() => !!document.activeElement.closest('.hermes-note-editor')")
