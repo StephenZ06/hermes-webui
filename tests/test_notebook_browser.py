@@ -365,7 +365,7 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     page.evaluate("() => document.documentElement.style.setProperty('--nb-kb', '300px')")
     box = page.locator(".bn-formatting-toolbar").bounding_box()
     height = page.evaluate("() => window.innerHeight")
-    assert abs((box["y"] + box["height"]) - (height - 300 - 6)) <= 2, (box, height)
+    assert abs((box["y"] + box["height"]) - (height - 300)) <= 2, (box, height)
     page.click(".bn-formatting-toolbar button.mantine-Button-root")
     page.wait_for_selector(".mantine-Menu-dropdown", timeout=5000)
     page.wait_for_timeout(300)

@@ -11747,11 +11747,11 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
    of chasing the selection (its scroll tracking stuttered). --nb-kb is the
    keyboard height, kept current by trackKeyboard() in notebook/index.js. */
 @media (hover:none){
-  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:8px !important;right:8px !important;top:auto !important;bottom:calc(var(--nb-kb,0px) + 6px) !important;justify-content:center;pointer-events:none;}
-  .hermes-note-editor div:has(> .bn-formatting-toolbar) > *{pointer-events:auto;}
+  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:8px !important;right:8px !important;top:auto !important;bottom:var(--nb-kb,0px) !important;justify-content:center;}
   .hermes-note-editor .bn-formatting-toolbar{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
   .hermes-note-editor .bn-formatting-toolbar::-webkit-scrollbar{display:none;}
-  /* Menus open upward: downward they land under the keyboard. */
+  /* Menus open upward, anchored to the screen just above the toolbar (not to
+     the toolbar's own geometry): downward they land under the keyboard. */
   .hermes-note-editor div:has(> .bn-formatting-toolbar) .mantine-Menu-dropdown,
-  .hermes-note-editor div:has(> .bn-formatting-toolbar) .mantine-Popover-dropdown{top:auto !important;bottom:0 !important;max-height:min(280px,42vh) !important;overflow-y:auto;}
+  .hermes-note-editor div:has(> .bn-formatting-toolbar) .mantine-Popover-dropdown{position:fixed !important;transform:none !important;top:auto !important;right:auto !important;left:8px !important;bottom:calc(var(--nb-kb,0px) + 38px) !important;max-height:min(280px,42vh) !important;overflow-y:auto;}
 }
