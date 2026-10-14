@@ -812,39 +812,48 @@
     grip.addEventListener('contextmenu', (event) => event.preventDefault());
   }
   // A tapped or clicked picture gets an outline in the theme's accent colour.
-  // Resizing is BlockNote's own pair of side bars (shown on tap), which saves the
-  // size as the block's previewWidth; the outline just follows the picture while
-  // it grows or shrinks.
+  // On a touch screen the resize bars (BlockNote's own, which save the size as the
+  // block's previewWidth) stay hidden until the already-selected picture is tapped
+  // again, and then stay put -- BlockNote itself hides them whenever the pointer
+  // leaves, and rebuilds them (hidden) every time a resize is saved. The outline
+  // follows the picture while it grows or shrinks.
   function mountImageOutline(host, note) {
     const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
     host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
     box.className = 'nb-img-outline'; box.hidden = true;
     host.appendChild(box);
-    let img = null, watch = null, blockId = null;
+    let img = null, watch = null, blockId = null, resizing = false;
     const observe = (el) => {
       if (watch) watch.disconnect();
       if (window.ResizeObserver) { watch = new ResizeObserver(fit); watch.observe(el); } // every frame of a resize
     };
-    const fit = () => {
+    const markBars = () => {
+      mount.querySelectorAll('.bn-resize-handle[data-nb-on]').forEach((h) => { if (!resizing || !h.closest(`.bn-block-outer[data-id="${CSS.escape(blockId || '')}"]`)) h.removeAttribute('data-nb-on'); });
+      if (resizing && blockId) mount.querySelectorAll(`.bn-block-outer[data-id="${CSS.escape(blockId)}"] .bn-resize-handle`).forEach((h) => h.setAttribute('data-nb-on', ''));
+    };
+    function fit() {
       if (img && !img.isConnected && blockId) { // the block re-rendered (a resize is saved): same picture, new element
         const again = mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(blockId)}"] .bn-visual-media`);
         if (again) { img = again; observe(again); }
       }
-      if (!img || !img.isConnected) { box.hidden = true; img = null; return; }
+      if (!img || !img.isConnected) { box.hidden = true; img = null; resizing = false; markBars(); return; }
       const m = host.getBoundingClientRect(), r = img.getBoundingClientRect();
       box.style.cssText = `left:${r.left - m.left}px;top:${r.top - m.top}px;width:${r.width}px;height:${r.height}px`;
       box.hidden = false;
-    };
-    const select = (el) => {
-      img = el; blockId = (el.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
-      fit(); observe(el);
-    };
+      markBars();
+    }
+    const clear = () => { img = null; blockId = null; resizing = false; box.hidden = true; if (watch) watch.disconnect(); markBars(); };
     document.addEventListener('click', (event) => {
       if (!mount.isConnected) return;
-      const hit = event.target.closest && event.target.closest('.bn-visual-media');
-      if (hit && mount.contains(hit)) select(hit);
-      else if (!(event.target.closest && event.target.closest('.bn-resize-handle'))) { img = null; box.hidden = true; if (watch) watch.disconnect(); }
+      const target = event.target;
+      const hit = target.closest && target.closest('.bn-visual-media');
+      if (hit && mount.contains(hit)) {
+        // Tapping the picture that is already selected switches the bars on (and off).
+        resizing = hit === img ? !resizing : false;
+        img = hit; blockId = (hit.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
+        fit(); observe(hit);
+      } else if (!(target.closest && target.closest('.bn-resize-handle'))) clear();
     });
     if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
     new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});

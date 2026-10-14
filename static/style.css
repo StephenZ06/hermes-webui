@@ -11765,8 +11765,21 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
    changes ease instead of jumping (BlockNote sets the width on every drag step). */
 .nb-img-outline{position:absolute;z-index:6;box-sizing:border-box;border:2px solid var(--accent);border-radius:6px;pointer-events:none;}
 .nb-img-outline[hidden]{display:none;}
-.hermes-note-editor .bn-file-block-content-wrapper:has(.bn-visual-media){transition:width .16s ease-out;}
+.hermes-note-editor .bn-file-block-content-wrapper:has(.bn-visual-media){transition:width .24s cubic-bezier(.22,1,.36,1);will-change:width;max-width:100%;}
+.hermes-note-editor .bn-visual-media{height:auto;}
 @media (prefers-reduced-motion:reduce){.hermes-note-editor .bn-file-block-content-wrapper:has(.bn-visual-media){transition:none;}}
+/* Phone: a picture or clip with no size of its own fills the width. */
+@media (max-width:760px){
+  .hermes-note-editor .bn-file-block-content-wrapper[style*="fit-content"]:has(.bn-visual-media){width:100% !important;}
+  .hermes-note-editor .bn-visual-media-wrapper{width:100%;}
+  .hermes-note-editor .bn-visual-media{width:100%;}
+}
+/* Touch: the resize bars wait for a second tap on the picture (see mountImageOutline),
+   and are big enough for a finger. */
+@media (hover:none){
+  .hermes-note-editor .bn-resize-handle{display:none !important;width:12px;height:48px;border-radius:6px;}
+  .hermes-note-editor .bn-resize-handle[data-nb-on]{display:block !important;}
+}
 .hermes-note-editor .bn-visual-media{max-width:100%;}
 
 /* Notes: upload progress, audio/video blocks */
