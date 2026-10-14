@@ -27,6 +27,13 @@ def _open(page):
 def _new_note(page, title):
     page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    # newNote() creates the note on the server, opens it, then focuses its
+    # empty title. With a note already open the editor selector above matches
+    # at once, so on a slow runner the title used to land in the previous note
+    # (and the new one never reached "saved"). Wait for the new, empty title.
+    page.wait_for_function(
+        "() => { const t = document.getElementById('nbTitle'); return !!t && document.activeElement === t && t.value === ''; }",
+        timeout=30000)
     page.fill("#nbTitle", title)
 
 
