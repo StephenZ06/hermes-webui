@@ -41,12 +41,28 @@ TAG_MAX_CHARS = 40
 TAGS_MAX = 20
 UPLOAD_MAX_BYTES = 8 * 1024 * 1024
 SEARCH_LIMIT = 200
+FILE_MAX_BYTES = 12 * 1024 * 1024  # the request body cap is 20 MB and base64 adds a third
 IMAGE_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/gif": ".gif",
     "image/webp": ".webp",
 }
+# Documents a note can carry. They are only ever downloaded, never shown inline.
+FILE_TYPES = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/zip": ".zip",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/csv": ".csv",
+    "application/json": ".json",
+}
+UPLOAD_TYPES = {**IMAGE_TYPES, **FILE_TYPES}
+_ZIP_BASED = {".docx", ".xlsx", ".pptx", ".zip"}
+_TEXT_BASED = {".txt", ".md", ".csv", ".json"}
 _LOCK = threading.RLock()
 _ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -389,7 +405,7 @@ def purge_note(note_id: str) -> dict[str, Any]:
         row = _row(conn, note_id)
         if row["deleted_at"] is None:
             raise NotebookError("Move the note to the trash first")
-        files = [r["id"] + IMAGE_TYPES.get(r["mime"], "") for r in conn.execute("SELECT id, mime FROM notebook_files WHERE note_id=?", (row["id"],))]
+        files = [r["id"] + UPLOAD_TYPES.get(r["mime"], "") for r in conn.execute("SELECT id, mime FROM notebook_files WHERE note_id=?", (row["id"],))]
         with conn:
             conn.execute("DELETE FROM notebook_files WHERE note_id=?", (row["id"],))
             conn.execute("DELETE FROM notebook_notes WHERE id=?", (row["id"],))
@@ -495,6 +511,34 @@ _SIGNATURES = {
 }
 
 
+def classify_upload(data: bytes, filename: str) -> str:
+    """The MIME type of an upload, decided from its own bytes (and, for
+    documents that share a container, its extension). Anything else is refused:
+    the client's claimed type is never trusted."""
+    mime = next((m for m, sigs in _SIGNATURES.items() if any(data.startswith(sig) for sig in sigs)), None)
+    if mime == "image/webp" and data[8:12] != b"WEBP":
+        mime = None
+    if mime:
+        if len(data) > UPLOAD_MAX_BYTES:
+            raise NotebookError("Images can be at most 8 MB", 413)
+        return mime
+    if len(data) > FILE_MAX_BYTES:
+        raise NotebookError("Files can be at most 12 MB", 413)
+    ext = Path(str(filename or "")).suffix.lower()
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+    if data.startswith(b"PK\x03\x04") and ext in _ZIP_BASED:
+        return next(m for m, e in FILE_TYPES.items() if e == ext)
+    if ext in _TEXT_BASED and b"\x00" not in data:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        else:
+            return next(m for m, e in FILE_TYPES.items() if e == ext)
+    raise NotebookError("Only images (PNG, JPEG, GIF, WebP), PDF, Word, Excel, PowerPoint, ZIP, text, CSV and JSON files can be added to notes", 415)
+
+
 def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
     """Store an image pasted or dropped into a note. The type is checked from
     the file's own bytes; the client's name is kept only as a label."""
@@ -506,32 +550,27 @@ def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
         raise NotebookError("The file could not be read") from error
     if not data:
         raise NotebookError("The file is empty")
-    if len(data) > UPLOAD_MAX_BYTES:
-        raise NotebookError("Images can be at most 8 MB", 413)
-    mime = next((m for m, sigs in _SIGNATURES.items() if any(data.startswith(s) for s in sigs)), None)
-    if mime == "image/webp" and data[8:12] != b"WEBP":
-        mime = None
-    if mime is None:
-        raise NotebookError("Only PNG, JPEG, GIF and WebP images can be added to notes", 415)
-    filename = re.sub(r"[^A-Za-z0-9._ -]+", "_", str(payload.get("filename") or "image"))[:120] or "image"
+    mime = classify_upload(data, str(payload.get("filename") or ""))
+    filename = re.sub(r"[^A-Za-z0-9._ -]+", "_", Path(str(payload.get("filename") or "image")).name)[:120] or "image"
     note_id = payload.get("note_id")
     note_id = note_id if isinstance(note_id, str) and _ID.match(note_id) else None
     file_id = uuid.uuid4().hex
-    (files_dir() / (file_id + IMAGE_TYPES[mime])).write_bytes(data)
+    (files_dir() / (file_id + UPLOAD_TYPES[mime])).write_bytes(data)
     with _LOCK, _connect() as conn:
         with conn:
             conn.execute("INSERT INTO notebook_files(id, note_id, filename, mime, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                          (file_id, note_id, filename, mime, len(data), _now()))
-    return {"id": file_id, "url": f"/api/notebook/files/{file_id}", "mime": mime, "size": len(data)}
+    return {"id": file_id, "url": f"/api/notebook/files/{file_id}", "mime": mime, "size": len(data), "name": filename}
 
 
-def read_upload(file_id: str) -> tuple[bytes, str]:
+def read_upload(file_id: str) -> tuple[bytes, str, str]:
+    """(bytes, MIME type, the name it was uploaded under)."""
     file_id = _check_id(file_id, "File")
     with _LOCK, _connect() as conn:
-        row = conn.execute("SELECT mime FROM notebook_files WHERE id=?", (file_id,)).fetchone()
-    if row is None or row["mime"] not in IMAGE_TYPES:
+        row = conn.execute("SELECT mime, filename FROM notebook_files WHERE id=?", (file_id,)).fetchone()
+    if row is None or row["mime"] not in UPLOAD_TYPES:
         raise NotebookError("File not found", 404)
     try:
-        return (files_dir() / (file_id + IMAGE_TYPES[row["mime"]])).read_bytes(), row["mime"]
+        return (files_dir() / (file_id + UPLOAD_TYPES[row["mime"]])).read_bytes(), row["mime"], row["filename"]
     except OSError as error:
         raise NotebookError("File not found", 404) from error

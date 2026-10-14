@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, quote, unquote
 
 from api import notebook, notebook_vault
 from api.helpers import bad, j
@@ -36,12 +36,20 @@ def _by_flag(body_or_query) -> object:
     return notebook_vault if (_flag(body_or_query, "store") == "vault" or notebook_vault.enabled()) else notebook
 
 
-def _send_image(handler, data: bytes, mime: str, cache: str) -> None:
+def _send_image(handler, data: bytes, mime: str, cache: str, name: str = "") -> None:
+    """An uploaded image is shown inline; any other file is only ever offered as
+    a download, with no way to run or render in the page's origin."""
+    inline = mime in notebook.IMAGE_TYPES
     handler.send_response(200)
-    handler.send_header("Content-Type", mime)
+    handler.send_header("Content-Type", mime if inline else mime + ("; charset=utf-8" if mime.startswith("text/") else ""))
     handler.send_header("Content-Length", str(len(data)))
     handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Content-Disposition", "inline")
+    if inline:
+        handler.send_header("Content-Disposition", "inline")
+    else:
+        safe = quote(name or "download", safe="")
+        handler.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{safe}")
+        handler.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
     handler.send_header("Cache-Control", cache)
     handler.end_headers()
     handler.wfile.write(data)
@@ -59,8 +67,8 @@ def handle_notebook_get(handler, parsed) -> bool:
             return True
         if path == f"{_PREFIX}/vault/file":
             rel = str(parse_qs(parsed.query or "").get("path", [""])[0])
-            data, mime = notebook_vault.read_file(rel)
-            _send_image(handler, data, mime, "private, no-cache")
+            data, mime, name = notebook_vault.read_file(rel)
+            _send_image(handler, data, mime, "private, no-cache", name)
             return True
         if path == f"{_PREFIX}/bootstrap":
             # Connected: the main view laid out from the vault (00 Inbox,
@@ -99,8 +107,8 @@ def handle_notebook_get(handler, parsed) -> bool:
             parts = _tail(path, f"{_PREFIX}/files/")
             if len(parts) != 1:
                 return bool(bad(handler, "Not found", 404)) or True
-            data, mime = notebook.read_upload(parts[0])
-            _send_image(handler, data, mime, "private, max-age=31536000, immutable")
+            data, mime, name = notebook.read_upload(parts[0])
+            _send_image(handler, data, mime, "private, max-age=31536000, immutable", name)
             return True
     except notebook.NotebookError as error:
         return _fail(handler, error)

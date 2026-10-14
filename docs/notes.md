@@ -111,12 +111,16 @@ In the vault:
   folder is not listed as a folder;
 - the editor gets the Markdown body; YAML frontmatter is never shown and is
   written back exactly as it was. Tags are the frontmatter `tags:`;
-- Images can be added four ways, on desktop and phone: the image button in the
-  note header (one or many; photo library or camera on a phone), the `/image`
-  slash command, paste, and drag-and-drop. A photo the store would refuse (over
-  7 MB, or a HEIC the browser can decode) is redrawn as a JPEG (longest side
-  2560 px) in the browser first. Only PNG, JPEG, GIF and WebP are stored; other
-  file types are not supported.
+- Images and files can be added on desktop and phone: the attach button in the
+  note header (one or many; photo library, camera and Files on a phone), the
+  `/image` and `/file` slash commands, paste, and drag-and-drop. A photo the
+  store would refuse (over 7 MB, or a HEIC the browser can decode) is redrawn as
+  a JPEG (longest side 2560 px) in the browser first. Accepted by content, not
+  by name: PNG, JPEG, GIF, WebP (images, 8 MB) and PDF, Word, Excel, PowerPoint,
+  ZIP, text, Markdown, CSV and JSON (files, 12 MB). Images show inline; every
+  other file is only ever sent as a download (`Content-Disposition: attachment`,
+  `nosniff`, a sandboxing CSP). Audio and video are not supported. In a vault,
+  documents are read back only from the attachment folder.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
   Obsidian's syntax; images in notes are served from the vault
   (`/api/notebook/vault/file?path=`), and pasted images are saved to the
@@ -169,13 +173,13 @@ In the vault:
 | GET | `notes?q=…[&trash=1]` | search: every word must match the title, text, `#tag`, workspace or folder name |
 | GET | `notes/{id}` | full note (with `content`) |
 | GET | `notes/{id}/context` | note as agent context: title, plain text, tags, workspace, folder |
-| GET | `files/{id}` | an uploaded image |
+| GET | `files/{id}` | an uploaded image (inline) or file (download) |
 | POST | `notes/create` | `{title?, content?, project_id? \| folder_id?, tags?}` |
 | POST | `notes/{id}/update` | partial update + `expected_revision` |
 | POST | `notes/{id}/trash` · `restore` · `purge` · `duplicate` | |
 | POST | `trash/empty` | |
 | POST | `folders/create` · `folders/{id}/rename` · `folders/{id}/delete` | |
-| POST | `uploads` | `{filename, content_base64, note_id?}`: PNG/JPEG/GIF/WebP only, checked by content, at most 8 MB |
+| POST | `uploads` | `{filename, content_base64, note_id?}`: images (at most 8 MB) and documents (at most 12 MB), checked by content; the reply carries `url`, `mime`, `size`, `name` |
 
 ## Hermes integration points
 

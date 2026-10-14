@@ -432,12 +432,16 @@ def _add_images_roundtrip(tab):
     tab.click(".hermes-note-editor .bn-editor")
     tab.keyboard.type("before")
     with tab.expect_file_chooser() as chooser:
-        tab.click(".nb-editor-head [data-nb-action=add-image]")
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
     chooser.value.set_files([
         {"name": "one.png", "mimeType": "image/png", "buffer": png},
         {"name": "two.png", "mimeType": "image/png", "buffer": png},
+        {"name": "Plan.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4\n%%EOF"},
     ])
-    tab.wait_for_function("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').length === 2", timeout=15000)
+    tab.wait_for_function("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').length === 2 && Notebook.editor.getBlocks().filter(b => b.type === 'file').length === 1", timeout=15000)
+    document = tab.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'file').props")
+    assert document["name"] == "Plan.pdf" and document["url"].startswith("/api/notebook/files/")
+    tab.wait_for_selector(".hermes-note-editor [data-content-type=file]", timeout=10000)
     urls = tab.evaluate("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').map(b => b.props.url)")
     assert all(u.startswith("/api/notebook/files/") for u in urls) and urls[0] != urls[1]
     # They are drawn, not just stored: both images are in the page and decoded.
@@ -451,3 +455,15 @@ def test_add_images_button_inserts_each_picked_image_desktop(page):
 
 def test_add_images_button_inserts_each_picked_image_touch(touch_page):
     _add_images_roundtrip(touch_page)
+
+
+def test_documents_download_and_images_show_inline():
+    import base64
+    import urllib.request
+    pdf = _api("/api/notebook/uploads", {"filename": "Plan.pdf", "content_base64": base64.b64encode(b"%PDF-1.4\n%%EOF").decode()})
+    png = _api("/api/notebook/uploads", {"filename": "dot.png", "content_base64": _PNG_1PX})
+    doc = urllib.request.urlopen(BASE + pdf["url"], timeout=10)
+    assert doc.headers["Content-Disposition"].startswith("attachment; filename*=UTF-8''Plan.pdf")
+    assert doc.headers["X-Content-Type-Options"] == "nosniff" and "sandbox" in doc.headers["Content-Security-Policy"]
+    assert doc.headers["Content-Type"] == "application/pdf"
+    assert urllib.request.urlopen(BASE + png["url"], timeout=10).headers["Content-Disposition"] == "inline"

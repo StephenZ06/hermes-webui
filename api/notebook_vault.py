@@ -40,7 +40,7 @@ from typing import Any, Generator
 from urllib.parse import quote, unquote
 
 from api.config import STATE_DIR
-from api.notebook import CONTENT_MAX_BYTES, IMAGE_TYPES, NotebookError, TITLE_MAX_CHARS, UPLOAD_MAX_BYTES, _SIGNATURES, _tags
+from api.notebook import CONTENT_MAX_BYTES, IMAGE_TYPES, NotebookError, TITLE_MAX_CHARS, UPLOAD_MAX_BYTES, UPLOAD_TYPES, _SIGNATURES, _tags, classify_upload
 
 _LOCK = threading.RLock()
 # Vault ids carry a "v" so a request can be routed to the right store by its
@@ -376,6 +376,8 @@ def _from_editor(markdown: str) -> str:
         return f"![{alt}]({unquote(path).replace(' ', '%20')})"
 
     text = re.sub(r"!\[([^\]]*)\]\(" + re.escape(FILE_ROUTE) + r"([^)\s]+)\)", image, text)
+    # A document uploaded as a file block: a plain vault-relative link.
+    text = re.sub(r"(?<!!)\[([^\]]*)\]\(" + re.escape(FILE_ROUTE) + r"([^)\s]+)\)", lambda m: f"[{m.group(1)}](" + unquote(m.group(2)).replace(" ", "%20") + ")", text)
     # The editor writes "*" bullets; Obsidian's (and most vaults') style is "-".
     text = re.sub(r"(?m)^(\s*)\* (?=\S)", r"\1- ", text)
     return text if text.endswith("\n") or not text else text + "\n"
@@ -918,12 +920,14 @@ def _blocks_markdown(blocks: object, depth: int = 0) -> str:
             lines.append(f"```{props.get('language') or ''}\n{text}\n```")
         elif kind == "image" and props.get("url"):
             lines.append(f"![{props.get('caption') or ''}]({props.get('url')})")
+        elif kind == "file" and props.get("url"):
+            lines.append(f"[{props.get('name') or 'file'}]({props.get('url')})")
         else:
             lines.append(pad + text if text else "")
         children = block.get("children") or []
         if children:
             lines.append(_blocks_markdown(children, depth + 1).rstrip("\n"))
-        if kind in ("heading", "paragraph", "quote", "codeBlock", "image", None):
+        if kind in ("heading", "paragraph", "quote", "codeBlock", "image", "file", None):
             lines.append("")
     return "\n".join(lines).strip("\n") + "\n"
 
@@ -992,30 +996,33 @@ def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
         raise NotebookError("The file could not be read") from error
     if not data:
         raise NotebookError("The file is empty")
-    if len(data) > UPLOAD_MAX_BYTES:
-        raise NotebookError("Images can be at most 8 MB", 413)
-    mime = next((m for m, sigs in _SIGNATURES.items() if any(data.startswith(s) for s in sigs)), None)
-    if mime == "image/webp" and data[8:12] != b"WEBP":
-        mime = None
-    if mime is None:
-        raise NotebookError("Only PNG, JPEG, GIF and WebP images can be added to notes", 415)
+    mime = classify_upload(data, str(payload.get("filename") or ""))
     root = _root()
     folder = _attachments_dir(root)
     folder.mkdir(parents=True, exist_ok=True)
     stem = _file_name(Path(str(payload.get("filename") or "image")).stem)
-    target = _unique(folder, stem, IMAGE_TYPES[mime])
+    target = _unique(folder, stem, UPLOAD_TYPES[mime])
     target.write_bytes(data)
     rel = _rel(root, target)
-    return {"id": rel, "url": FILE_ROUTE + quote(rel), "path": rel, "mime": mime, "size": len(data)}
+    return {"id": rel, "url": FILE_ROUTE + quote(rel), "path": rel, "mime": mime, "size": len(data), "name": target.name}
 
 
-def read_file(rel: str) -> tuple[bytes, str]:
+def read_file(rel: str) -> tuple[bytes, str, str]:
+    """(bytes, MIME type, file name) of an attachment in the vault."""
     root = _root()
     path = _inside(root, unquote(str(rel or "")))
-    mime = next((m for m, ext in IMAGE_TYPES.items() if path.suffix.lower() in (ext, ".jpeg" if ext == ".jpg" else ext)), None)
-    if mime is None or not path.is_file():
+    suffix = ".jpg" if path.suffix.lower() == ".jpeg" else path.suffix.lower()
+    mime = next((m for m, ext in UPLOAD_TYPES.items() if suffix == ext), None)
+    if mime is None or not path.is_file() or path.is_symlink():
         raise NotebookError("File not found", 404)
-    return path.read_bytes(), mime
+    # Images may sit anywhere in the vault (notes embed them from their own
+    # folders); a document only ever comes from the attachment folder, so the
+    # route cannot be used to read the vault's notes or settings as files.
+    if mime not in IMAGE_TYPES:
+        attachments = _attachments_dir(root).resolve()
+        if attachments not in path.resolve().parents:
+            raise NotebookError("File not found", 404)
+    return path.read_bytes(), mime, path.name
 
 
 def resolve_image(rel_from_note: str, note_path: str) -> str:

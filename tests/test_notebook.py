@@ -111,8 +111,8 @@ def test_search_covers_title_content_tags_and_places(store):
 
 def test_image_uploads_are_checked_by_content(store):
     saved = notebook.save_upload({"filename": "../../shot.png", "content_base64": base64.b64encode(PNG).decode()})
-    data, mime = notebook.read_upload(saved["id"])
-    assert data == PNG and mime == "image/png" and saved["url"].endswith(saved["id"])
+    data, mime, name = notebook.read_upload(saved["id"])
+    assert data == PNG and mime == "image/png" and name == "shot.png" and saved["url"].endswith(saved["id"])
     for bad in (b"<svg onload=alert(1)>", b"<html><script>", b"GIF89"[:3]):
         with pytest.raises(notebook.NotebookError) as refused:
             notebook.save_upload({"filename": "x.png", "content_base64": base64.b64encode(bad).decode()})
@@ -122,6 +122,26 @@ def test_image_uploads_are_checked_by_content(store):
     assert too_big.value.status == 413
     with pytest.raises(notebook.NotebookError):
         notebook.read_upload("../etc/passwd")
+
+
+def test_documents_are_accepted_by_content_and_never_trusted_by_name(store):
+    pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF"
+    saved = notebook.save_upload({"filename": "Plan.pdf", "content_base64": base64.b64encode(pdf).decode()})
+    data, mime, name = notebook.read_upload(saved["id"])
+    assert (data, mime, name) == (pdf, "application/pdf", "Plan.pdf") and saved["name"] == "Plan.pdf"
+    note = notebook.save_upload({"filename": "todo.txt", "content_base64": base64.b64encode(b"a, b\n").decode()})
+    assert notebook.read_upload(note["id"])[1] == "text/plain"
+    office = notebook.save_upload({"filename": "Report.docx", "content_base64": base64.b64encode(b"PK\x03\x04rest").decode()})
+    assert notebook.read_upload(office["id"])[1].endswith("wordprocessingml.document")
+    for name, body in (("page.html", b"<script>alert(1)</script>"), ("evil.pdf", b"<html>not a pdf"),
+                       ("notes.txt", b"bin\x00ary"), ("a.docx", b"not a zip"), ("run.exe", b"MZ\x90\x00"),
+                       ("pic.png", b"%PDF-"[:3])):
+        with pytest.raises(notebook.NotebookError) as refused:
+            notebook.save_upload({"filename": name, "content_base64": base64.b64encode(body).decode()})
+        assert refused.value.status in (400, 415), name
+    with pytest.raises(notebook.NotebookError) as too_big:
+        notebook.save_upload({"filename": "big.pdf", "content_base64": base64.b64encode(b"%PDF-" + b"0" * notebook.FILE_MAX_BYTES).decode()})
+    assert too_big.value.status == 413
 
 
 def test_purging_a_note_removes_its_images(store):

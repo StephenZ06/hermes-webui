@@ -467,7 +467,7 @@
         <button type="button" class="nb-icon-btn nb-back" data-nb-action="back" aria-label="Back to notes">${icon('back', 16)}</button>
         <input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title" ${trashed ? 'disabled' : ''}>
         <span class="nb-status" data-status="${esc(save.status)}" aria-live="polite">${esc(statusText())}</span>
-        <button type="button" class="nb-icon-btn" data-nb-action="add-image" aria-label="Add images" title="Add images" ${trashed ? 'disabled' : ''}>${icon('image', 16)}</button>
+        <button type="button" class="nb-icon-btn" data-nb-action="add-files" aria-label="Add images or files" title="Add images or files" ${trashed ? 'disabled' : ''}>${icon('image', 16)}</button>
         <button type="button" class="nb-icon-btn${note.pinned ? ' on' : ''}" data-nb-action="toggle-pinned" aria-pressed="${note.pinned}" aria-label="${note.pinned ? 'Unpin' : 'Pin'}" title="${note.pinned ? 'Unpin' : 'Pin'}" ${trashed ? 'disabled' : ''}>${icon('pin', 15)}</button>
         <button type="button" class="nb-icon-btn fav${note.favorite ? ' on' : ''}" data-nb-action="toggle-favorite" aria-pressed="${note.favorite}" aria-label="${note.favorite ? 'Remove from favorites' : 'Add to favorites'}" title="Favorite" ${trashed ? 'disabled' : ''}>${icon('star', 15)}</button>
         <button type="button" class="nb-icon-btn" data-nb-action="menu" aria-label="More actions" aria-haspopup="menu" title="More">${icon('more', 16)}</button>
@@ -583,14 +583,16 @@
     } catch (_) {}
     return file;
   }
-  // The "Add images" button: the system picker (photo library / camera on a
-  // phone, files on desktop), one or many images, each placed under the cursor.
-  function pickImages() {
+  // The "Add images or files" button: the system picker (photo library, camera
+  // and Files on a phone), one or many items, each placed under the cursor:
+  // images as pictures, documents as a file block that downloads.
+  const FILE_ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.md,.csv,.json';
+  function pickFiles() {
     if (!editorCtl || !S.note || S.note.deleted_at) return;
     document.querySelectorAll('.nb-file-input').forEach((old) => old.remove());
     const input = document.createElement('input');
     input.className = 'nb-file-input';
-    input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    input.type = 'file'; input.accept = FILE_ACCEPT; input.multiple = true;
     // Safari drops the change event of a file input that is not in the page.
     input.hidden = true; document.body.appendChild(input);
     input.addEventListener('cancel', () => input.remove());
@@ -598,7 +600,7 @@
       const files = [...input.files]; input.remove(); if (!files.length || !editorCtl) return;
       const editor = editorCtl.editor;
       const noteId = editorNoteId;
-      toast(files.length === 1 ? 'Adding image…' : `Adding ${files.length} images…`);
+      toast(files.length === 1 ? 'Adding…' : `Adding ${files.length} items…`);
       let anchor = null;
       try { anchor = editor.getTextCursorPosition().block; } catch (_) {}
       if (!anchor) { const doc = editor.document; anchor = doc[doc.length - 1]; }
@@ -607,16 +609,18 @@
         if (editorNoteId !== noteId) return; // switched notes while uploading
         try {
           const url = await uploadFile(file);
-          const [block] = editor.insertBlocks([{type: 'image', props: {url, name: file.name || 'image', caption: ''}}], anchor, 'after');
+          const isImage = /^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name || '');
+          const name = file.name || (isImage ? 'image' : 'file');
+          const [block] = editor.insertBlocks([isImage ? {type: 'image', props: {url, name, caption: ''}} : {type: 'file', props: {url, name}}], anchor, 'after');
           anchor = block || anchor; added += 1;
         } catch (_) { /* uploadFile already told the user why */ }
       }
-      if (added) toast(added === 1 ? 'Image added' : `${added} images added`);
+      if (added) toast(added === 1 ? 'Added' : `${added} items added`);
     });
     input.click();
   }
   async function uploadFile(file) {
-    file = await prepareImage(file);
+    if (/^image\//.test(file.type)) file = await prepareImage(file);
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
@@ -1279,7 +1283,7 @@
       case 'create-menu': openCreateMenu(action); break;
       case 'delete-done': if (deleteModeRef) deleteModeRef.exit(); break;
       case 'menu': noteMenu(action); break;
-      case 'add-image': pickImages(); break;
+      case 'add-files': pickFiles(); break;
       case 'toggle-pinned': await setFlag('pinned'); break;
       case 'toggle-favorite': await setFlag('favorite'); break;
       case 'restore': await restoreCurrent(); break;

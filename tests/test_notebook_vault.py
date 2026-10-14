@@ -144,7 +144,7 @@ def test_uploads_go_to_the_attachment_folder(vault):
     _connect(vault)
     up = notebook_vault.save_upload({"filename": "shot.png", "content_base64": base64.b64encode(PNG).decode()})
     assert up["path"] == "Attachments/shot.png" and (vault / "Attachments" / "shot.png").read_bytes() == PNG
-    assert notebook_vault.read_file("Attachments/shot.png") == (PNG, "image/png")
+    assert notebook_vault.read_file("Attachments/shot.png") == (PNG, "image/png", "shot.png")
     note = notebook_vault.create_note({"title": "Pic", "markdown": f"![shot]({up['url']})"})
     assert (vault / "Pic.md").read_text() == "![shot](Attachments/shot.png)\n"
     assert notebook_vault.get_note(note["id"])["markdown"].startswith("![shot](" + notebook_vault.FILE_ROUTE)
@@ -253,3 +253,17 @@ def test_both_stores_run_side_by_side_routed_by_id(vault, monkeypatch):
     h = _H()
     assert notebook_api.handle_notebook_get(h, urlparse("/api/notebook/vault/file?path=Attachments/diagram.png")) is True
     assert h.status == 200 and h.headers_out["Content-Type"] == "image/png" and h.wfile.getvalue() == PNG
+
+
+def test_documents_go_to_the_attachment_folder_and_link_back(vault):
+    _connect(vault)
+    pdf = b"%PDF-1.4\n%%EOF"
+    up = notebook_vault.save_upload({"filename": "Plan v2.pdf", "content_base64": base64.b64encode(pdf).decode()})
+    assert up["path"] == "Attachments/Plan v2.pdf" and up["mime"] == "application/pdf" and up["name"] == "Plan v2.pdf"
+    assert notebook_vault.read_file("Attachments/Plan v2.pdf") == (pdf, "application/pdf", "Plan v2.pdf")
+    note = notebook_vault.create_note({"title": "Doc", "markdown": f"[Plan v2.pdf]({up['url']})"})
+    assert (vault / "Doc.md").read_text() == "[Plan v2.pdf](Attachments/Plan%20v2.pdf)\n"
+    with pytest.raises(notebook.NotebookError):
+        notebook_vault.save_upload({"filename": "x.html", "content_base64": base64.b64encode(b"<script>").decode()})
+    with pytest.raises(notebook.NotebookError):
+        notebook_vault.read_file("Doc.md")
