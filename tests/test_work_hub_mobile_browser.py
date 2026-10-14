@@ -121,3 +121,35 @@ def test_hold_and_drag_moves_a_card_to_another_column(phone, seeded):
     _touch(cdp, "touchEnd", target_x, y)
     page.wait_for_function(f"() => (document.querySelector(\"{sel}\") || {{closest: () => null}}).closest('.work-hub-column')?.dataset.status === 'backlog'", timeout=10000)
     assert page.evaluate("() => !document.querySelector('.work-hub-card-ghost')")
+
+
+def test_save_confirms_then_closes_the_details_panel(phone, seeded):
+    page, _ = phone
+    page.evaluate("() => { document.querySelector('[data-scope=all]') && document.querySelector('[data-scope=all]').click(); }")
+    time.sleep(0.6)
+    page.click(f".work-hub-card[data-item-id='{seeded['item']}']")
+    page.wait_for_selector("#workHubSave", timeout=5000)
+    page.fill("#workHubTitle", f"Saved {seeded['tag']}")
+    page.click("#workHubSave")
+    page.wait_for_function("() => (document.getElementById('workHubSave') || {dataset: {}}).dataset.state === 'saved'", timeout=10000)
+    page.wait_for_function("() => !document.querySelector('.work-hub').classList.contains('has-selection')", timeout=5000)
+    assert page.evaluate(f"() => document.querySelector(\".work-hub-card[data-item-id='{seeded['item']}']\").textContent.includes('Saved {seeded['tag']}')")
+
+
+def test_delete_confirm_is_compact_with_a_red_outline_button(phone, seeded):
+    page, _ = phone
+    page.evaluate("() => { window.__dlg = showConfirmDialog({title: 'Delete work item', message: 'Sure?', confirmLabel: 'Delete', danger: true}); }")
+    time.sleep(0.5)
+    buttons = page.evaluate("""() => [...document.querySelectorAll('.app-dialog-btn')].filter(b => b.offsetParent).map(b => {
+        const r = b.getBoundingClientRect(), s = getComputedStyle(b);
+        return {text: b.textContent.trim(), top: Math.round(r.top), width: r.width, height: r.height, color: s.color, border: s.borderTopColor, bg: s.backgroundColor}; })""")
+    cancel = next(b for b in buttons if b["text"] == "Cancel")
+    delete = next(b for b in buttons if b["text"] == "Delete")
+    assert cancel["top"] == delete["top"], "side by side, not stacked"
+    assert delete["width"] < 200 and delete["height"] <= 40
+    assert delete["color"] != "rgb(255, 255, 255)" and delete["bg"] != "rgba(0, 0, 0, 0)"
+
+
+def test_phone_top_bar_is_sticky_for_ios_status_bar_tinting(phone, seeded):
+    page, _ = phone
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.app-titlebar')).position") == "sticky"

@@ -11658,3 +11658,44 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 @media (hover:none){
   .work-hub-board-rename,.work-hub-board-delete,.project-bind-row .project-bind-use{opacity:.6;}
 }
+
+/* Work Hub save: "Saving…" spinner, a green "Saved" beat, then the details
+   panel slides away (a sheet on phones, a fade in the desktop column). */
+.work-hub-inspector .wh-insp-foot .work-hub-save{display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:background-color .2s ease,color .2s ease,opacity .15s,filter .15s,transform .2s cubic-bezier(.2,.8,.2,1);}
+.work-hub-inspector .wh-insp-foot .work-hub-save[data-state="saving"]{opacity:.85;cursor:progress;}
+.work-hub-inspector .wh-insp-foot .work-hub-save[data-state="saved"]{opacity:1;background:color-mix(in srgb,var(--success,#4ade80) 22%,transparent);color:var(--success,#4ade80);border-color:color-mix(in srgb,var(--success,#4ade80) 55%,transparent);animation:wh-saved-pop .32s cubic-bezier(.2,.8,.2,1);}
+.work-hub-save .work-hub-icon,.work-hub-save svg{width:15px;height:15px;}
+.wh-save-spinner{width:13px;height:13px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:wh-spin .7s linear infinite;}
+@keyframes wh-spin{to{transform:rotate(360deg);}}
+@keyframes wh-saved-pop{0%{transform:scale(.96);}55%{transform:scale(1.03);}100%{transform:scale(1);}}
+.work-hub-inspector.is-closing{animation:wh-insp-out .26s cubic-bezier(.4,0,.2,1) forwards;pointer-events:none;}
+@keyframes wh-insp-out{to{opacity:0;}}
+@media (max-width:620px){
+  .work-hub-inspector.is-closing{animation-name:wh-sheet-out;}
+  @keyframes wh-sheet-out{to{opacity:0;transform:translateY(28px);}}
+  .work-hub.has-selection .work-hub-inspector:not(.is-closing){animation:wh-sheet-in .28s cubic-bezier(.2,.8,.2,1);}
+  @keyframes wh-sheet-in{from{opacity:0;transform:translateY(24px);}}
+}
+@media (prefers-reduced-motion:reduce){.work-hub-inspector.is-closing,.work-hub.has-selection .work-hub-inspector,.work-hub-inspector .wh-insp-foot .work-hub-save[data-state="saved"]{animation:none;}}
+
+/* Confirm dialogs: compact buttons side by side (right-aligned, also on
+   phones); a destructive confirm is a red outline button with red text on a
+   light translucent red, and its focus ring is red rather than the accent. */
+.app-dialog-actions{gap:8px;}
+.app-dialog-btn{min-width:84px;min-height:36px;padding:7px 16px;border-radius:9px;font-size:13px;}
+.app-dialog-btn.confirm.danger{border:1px solid color-mix(in srgb,var(--error) 70%,transparent);background:color-mix(in srgb,var(--error) 10%,transparent);color:var(--error);}
+.app-dialog-btn.confirm.danger:hover{background:color-mix(in srgb,var(--error) 18%,transparent);border-color:var(--error);}
+.app-dialog-btn.confirm.danger:focus-visible{outline:2px solid color-mix(in srgb,var(--error) 45%,transparent);outline-offset:2px;}
+@media (max-width:640px){
+  .app-dialog-actions{flex-direction:row;justify-content:flex-end;align-items:center;}
+  .app-dialog-btn{width:auto;min-height:38px;}
+}
+
+/* Phones: the top bar is sticky to the top edge. iOS 26 Safari tints the
+   status bar from a fixed/sticky element touching the top edge and otherwise
+   draws its own soft fade over the page under the status bar -- the
+   "shadow" that went away only while the full drawer (a fixed element at
+   the top) was open. The page never scrolls the bar, so nothing moves. */
+@media (max-width:640px){
+  .app-titlebar{position:sticky;top:0;}
+}

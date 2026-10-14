@@ -44,7 +44,8 @@ def test_phone_board_is_full_width_and_details_open_as_a_sheet():
                 page.wait_for_selector("#workHubTitle", timeout=10000)
                 selected = page.evaluate(measure)
                 page.click("#workHubClose")
-                page.wait_for_timeout(200)
+                # The sheet slides away (~260ms) before it is removed.
+                page.wait_for_function("() => !document.querySelector('.work-hub').classList.contains('has-selection')", timeout=5000)
                 closed = page.evaluate(measure)
             finally:
                 browser.close()

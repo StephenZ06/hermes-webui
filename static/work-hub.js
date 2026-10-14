@@ -202,7 +202,7 @@
       ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" title="Delete work item">${icon('close')}<span>Delete</span></button><button id="workHubSave" class="work-hub-save" type="button" disabled>Save changes</button></footer>`}
     </div>`;
     el('workHubTitle').value = item.title; panel.querySelector('#workHubDescription').value = item.description || '';
-    el('workHubClose').onclick = () => { store.selectedItemId = null; renderInspector(); };
+    el('workHubClose').onclick = () => { closeInspectorAnimated(); };
     const deleteButton = el('workHubDelete'); if (deleteButton) deleteButton.onclick = () => deleteItem(item.id);
     const linkChat = el('workHubLinkChat');
     if (linkChat) linkChat.onclick = () => updateItem(item.id, { linked_session_ids: [...new Set([...(item.linked_session_ids || []), currentSessionId])] });
@@ -217,7 +217,19 @@
       const dot = el('workHubStatusDot'); if (dot) dot.className = `work-hub-status status-${el('workHubStatus').value}`;
     };
     fields.forEach(field => { field.addEventListener('input', syncDirty); field.addEventListener('change', syncDirty); });
-    const save = () => { if (!saveButton || saveButton.disabled) return; updateItem(item.id, { title: el('workHubTitle').value, status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }); };
+    // Save: "Saving…", then a "Saved" check, then the panel closes and the
+    // card flashes where it now sits. A failed save keeps the panel open.
+    const save = async () => {
+      if (!saveButton || saveButton.disabled || saveButton.dataset.state) return;
+      const label = saveButton.innerHTML;
+      saveButton.dataset.state = 'saving'; saveButton.disabled = true; saveButton.innerHTML = '<span class="wh-save-spinner" aria-hidden="true"></span>Saving…';
+      const ok = await updateItem(item.id, { title: el('workHubTitle').value, status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }, { deferRender: true });
+      if (!ok) { delete saveButton.dataset.state; saveButton.innerHTML = label; syncDirty(); if (typeof showToast === 'function') showToast('Could not save the work item', 4000, 'error'); return; }
+      saveButton.dataset.state = 'saved'; saveButton.innerHTML = `${icon('check')}<span>Saved</span>`;
+      await new Promise(resolve => setTimeout(resolve, 650));
+      await closeInspectorAnimated();
+      markLanded(document.querySelector(`.work-hub-card[data-item-id="${CSS.escape(item.id)}"], .work-hub-list-row[data-item-id="${CSS.escape(item.id)}"]`));
+    };
     if (saveButton) saveButton.onclick = save;
     // Ctrl/Cmd+Enter saves from anywhere in the panel.
     panel.onkeydown = event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); } };
@@ -409,7 +421,16 @@
       if (typeof showToast === 'function') showToast('Could not add the work item: ' + (error && error.message ? error.message : 'unknown error'), 5000, 'error');
     }
   }
-  async function updateItem(itemId, item) { try { const result = await request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); render(); } catch (error) { store.stale = true; render(); } }
+  async function updateItem(itemId, item, options = {}) { try { const result = await request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); if (!options.deferRender) render(); return true; } catch (error) { store.stale = true; render(); return false; } }
+  // The details panel slides away (sheet on phones, fades on the desktop
+  // column) before it clears, instead of vanishing.
+  function closeInspectorAnimated() {
+    const panel = el('workHubInspector');
+    const done = () => { if (panel) panel.classList.remove('is-closing'); store.selectedItemId = null; render(); };
+    if (!panel || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return Promise.resolve(); }
+    panel.classList.add('is-closing');
+    return new Promise(resolve => setTimeout(() => { done(); resolve(); }, 260));
+  }
   async function changeWorkflow(workflowId, action) { try { const result = await request(`/api/work_hub/workflows/${workflowId}/${action}`, { method: 'POST', body: JSON.stringify({ expected_revision: store.revision }) }); store.revision = result.revision; await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); } }
   function initResizer(wrap) {
     const resizer = wrap.querySelector('.work-hub-resizer'); if (!resizer) return;
