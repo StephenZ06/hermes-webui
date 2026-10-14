@@ -11774,3 +11774,11 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 .nb-img-handle[data-corner="se"]{right:0;bottom:0;cursor:nwse-resize;}
 .nb-img-resize.dragging .nb-img-handle i{background:var(--accent);}
 .hermes-note-editor .bn-visual-media{max-width:100%;}
+
+/* Notes: upload progress, audio/video blocks */
+.nb-upload{position:fixed;left:50%;bottom:calc(20px + var(--keyboard-bottom-inset,0px));transform:translateX(-50%);z-index:9500;display:grid;gap:6px;min-width:220px;max-width:min(86vw,420px);padding:10px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface,var(--bg));color:var(--text);font-size:12px;box-shadow:0 8px 28px rgba(0,0,0,.35);}
+.nb-upload span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nb-upload i{display:block;height:4px;border-radius:2px;background:var(--hover-bg);overflow:hidden;}
+.nb-upload b{display:block;height:100%;width:0;background:var(--accent);transition:width .15s linear;}
+.hermes-note-editor [data-content-type="video"] video,.hermes-note-editor [data-content-type="audio"] audio{max-width:100%;}
+.hermes-note-editor [data-content-type="video"] video{border-radius:8px;}

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -60,7 +61,32 @@ FILE_TYPES = {
     "text/csv": ".csv",
     "application/json": ".json",
 }
-UPLOAD_TYPES = {**IMAGE_TYPES, **FILE_TYPES}
+# Audio and video play inline, so (unlike documents) they are served with byte
+# ranges, which iOS needs before it will play a file at all.
+MEDIA_TYPES = {
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/wav": ".wav",
+    "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
+    "audio/webm": ".weba",
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+}
+
+
+def _media_limit() -> int:
+    try:
+        megabytes = int(os.environ.get("HERMES_WEBUI_NOTES_MEDIA_MB", "") or 200)
+    except ValueError:
+        megabytes = 200
+    return max(1, megabytes) * 1024 * 1024
+
+
+MEDIA_MAX_BYTES = _media_limit()
+UPLOAD_TYPES = {**IMAGE_TYPES, **FILE_TYPES, **MEDIA_TYPES}
+HEAD_BYTES = 64 * 1024
 _ZIP_BASED = {".docx", ".xlsx", ".pptx", ".zip"}
 _TEXT_BASED = {".txt", ".md", ".csv", ".json"}
 _LOCK = threading.RLock()
@@ -511,20 +537,52 @@ _SIGNATURES = {
 }
 
 
-def classify_upload(data: bytes, filename: str) -> str:
+def _media_type(head: bytes, ext: str) -> str | None:
+    """Audio/video from the file's own first bytes (the extension only settles
+    which of a container's two kinds it is)."""
+    if head.startswith(b"ID3") or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0 and ext in (".mp3", ".mp2")):
+        return "audio/mpeg"
+    if head.startswith(b"RIFF") and head[8:12] == b"WAVE":
+        return "audio/wav"
+    if head.startswith(b"OggS"):
+        return "audio/ogg"
+    if head.startswith(b"fLaC"):
+        return "audio/flac"
+    if head.startswith(b"\x1a\x45\xdf\xa3"):
+        return "audio/webm" if ext in (".weba", ".mka") else "video/webm"
+    if head[4:8] == b"ftyp":
+        brand = head[8:12]
+        if brand == b"qt  ":
+            return "video/quicktime"
+        if brand in (b"M4A ", b"M4B ") or ext in (".m4a", ".aac"):
+            return "audio/mp4"
+        return "video/mp4"
+    return None
+
+
+def classify_upload(data: bytes, filename: str, *, size: int | None = None) -> str:
     """The MIME type of an upload, decided from its own bytes (and, for
     documents that share a container, its extension). Anything else is refused:
-    the client's claimed type is never trusted."""
+    the client's claimed type is never trusted. ``data`` may be just the start
+    of the file when ``size`` says how big the whole is (a streamed upload)."""
+    size = len(data) if size is None else size
+    ext = Path(str(filename or "")).suffix.lower()
     mime = next((m for m, sigs in _SIGNATURES.items() if any(data.startswith(sig) for sig in sigs)), None)
     if mime == "image/webp" and data[8:12] != b"WEBP":
         mime = None
     if mime:
-        if len(data) > UPLOAD_MAX_BYTES:
+        if size > UPLOAD_MAX_BYTES:
             raise NotebookError("Images can be at most 8 MB", 413)
         return mime
-    if len(data) > FILE_MAX_BYTES:
+    media = _media_type(data, ext)
+    if media:
+        if size > MEDIA_MAX_BYTES:
+            raise NotebookError(f"Audio and video can be at most {MEDIA_MAX_BYTES // (1024 * 1024)} MB", 413)
+        return media
+    if size > FILE_MAX_BYTES:
         raise NotebookError("Files can be at most 12 MB", 413)
-    ext = Path(str(filename or "")).suffix.lower()
+    if size != len(data):
+        raise NotebookError("Only audio and video can be sent this way", 415)
     if data.startswith(b"%PDF-"):
         return "application/pdf"
     if data.startswith(b"PK\x03\x04") and ext in _ZIP_BASED:
@@ -536,7 +594,7 @@ def classify_upload(data: bytes, filename: str) -> str:
             pass
         else:
             return next(m for m, e in FILE_TYPES.items() if e == ext)
-    raise NotebookError("Only images (PNG, JPEG, GIF, WebP), PDF, Word, Excel, PowerPoint, ZIP, text, CSV and JSON files can be added to notes", 415)
+    raise NotebookError("Only images, audio, video, PDF, Word, Excel, PowerPoint, ZIP, text, CSV and JSON files can be added to notes", 415)
 
 
 def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -563,14 +621,61 @@ def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
     return {"id": file_id, "url": f"/api/notebook/files/{file_id}", "mime": mime, "size": len(data), "name": filename}
 
 
-def read_upload(file_id: str) -> tuple[bytes, str, str]:
-    """(bytes, MIME type, the name it was uploaded under)."""
+def save_stream(rfile, length: int, filename: str, note_id: Any) -> dict[str, Any]:
+    """Store audio or video sent as a raw request body, a megabyte at a time
+    (these are too big to hold as base64 JSON). The type is decided from the
+    first bytes; the rest is written to a part file that only becomes the upload
+    when every promised byte has arrived."""
+    if not isinstance(length, int) or length <= 0:
+        raise NotebookError("The file is empty")
+    if length > MEDIA_MAX_BYTES:
+        raise NotebookError(f"Audio and video can be at most {MEDIA_MAX_BYTES // (1024 * 1024)} MB", 413)
+    head = rfile.read(min(length, HEAD_BYTES))
+    mime = classify_upload(head, str(filename or ""), size=length)
+    if mime not in MEDIA_TYPES:
+        raise NotebookError("Only audio and video can be sent this way", 415)
+    label = re.sub(r"[^A-Za-z0-9._ -]+", "_", Path(str(filename or "media")).name)[:120] or "media"
+    note_id = note_id if isinstance(note_id, str) and _ID.match(note_id) else None
+    file_id = uuid.uuid4().hex
+    final = files_dir() / (file_id + UPLOAD_TYPES[mime])
+    part = final.with_suffix(final.suffix + ".part")
+    try:
+        with part.open("wb") as out:
+            out.write(head)
+            left = length - len(head)
+            while left > 0:
+                chunk = rfile.read(min(1024 * 1024, left))
+                if not chunk:
+                    raise NotebookError("The upload was interrupted")
+                out.write(chunk)
+                left -= len(chunk)
+        part.replace(final)
+    finally:
+        part.unlink(missing_ok=True)
+    with _LOCK, _connect() as conn:
+        with conn:
+            conn.execute("INSERT INTO notebook_files(id, note_id, filename, mime, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                         (file_id, note_id, label, mime, length, _now()))
+    return {"id": file_id, "url": f"/api/notebook/files/{file_id}", "mime": mime, "size": length, "name": label}
+
+
+def upload_path(file_id: str) -> tuple[Path, str, str]:
+    """(path on disk, MIME type, the name it was uploaded under)."""
     file_id = _check_id(file_id, "File")
     with _LOCK, _connect() as conn:
         row = conn.execute("SELECT mime, filename FROM notebook_files WHERE id=?", (file_id,)).fetchone()
     if row is None or row["mime"] not in UPLOAD_TYPES:
         raise NotebookError("File not found", 404)
+    path = files_dir() / (file_id + UPLOAD_TYPES[row["mime"]])
+    if not path.is_file():
+        raise NotebookError("File not found", 404)
+    return path, row["mime"], row["filename"]
+
+
+def read_upload(file_id: str) -> tuple[bytes, str, str]:
+    """(bytes, MIME type, the name it was uploaded under)."""
+    path, mime, name = upload_path(file_id)
     try:
-        return (files_dir() / (file_id + UPLOAD_TYPES[row["mime"]])).read_bytes(), row["mime"], row["filename"]
+        return path.read_bytes(), mime, name
     except OSError as error:
         raise NotebookError("File not found", 404) from error

@@ -283,3 +283,25 @@ def test_image_width_round_trips_in_obsidian_syntax(vault):
     resized = markdown.replace("![shot.png|300](", "![shot.png|180](").replace("![alt](", "![alt|240](")
     notebook_vault.update_note(note["id"], {"markdown": resized, "expected_revision": notebook_vault.get_note(note["id"])["revision"]})
     assert (vault / "Sized.md").read_text() == "![[shot.png|180]]\n\n![alt|240](Attachments/shot.png)\n"
+
+
+def test_streamed_media_goes_to_attachments_and_plays_from_anywhere(vault):
+    import io
+
+    _connect(vault)
+    mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x01" * 2048
+    up = notebook_vault.save_stream(io.BytesIO(mp4), len(mp4), "Clip 1.mp4", None)
+    assert up["path"] == "Attachments/Clip 1.mp4" and up["mime"] == "video/mp4" and (vault / "Attachments" / "Clip 1.mp4").read_bytes() == mp4
+    assert not [p for p in (vault / "Attachments").iterdir() if p.name.endswith(".part")]
+    with pytest.raises(notebook.NotebookError):
+        notebook_vault.save_stream(io.BytesIO(mp4), len(mp4) + 5, "cut.mp4", None)
+    assert not [p for p in (vault / "Attachments").iterdir() if p.name.startswith(".hermes-")] and not (vault / "Attachments" / "cut.mp4").exists()
+    # A note embeds media from its own folder too (images already can); documents only come from attachments.
+    (vault / "Elsewhere").mkdir()
+    (vault / "Elsewhere" / "v.mp4").write_bytes(mp4)
+    (vault / "Elsewhere" / "d.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
+    assert notebook_vault.file_path("Elsewhere/v.mp4")[1] == "video/mp4"
+    with pytest.raises(notebook.NotebookError):
+        notebook_vault.file_path("Elsewhere/d.pdf")
+    note = notebook_vault.create_note({"title": "Media", "markdown": "![[Clip 1.mp4]]"})
+    assert "![Clip 1.mp4](" + notebook_vault.FILE_ROUTE in notebook_vault.get_note(note["id"])["markdown"]

@@ -586,7 +586,7 @@
   // The "Add images or files" button: the system picker (photo library, camera
   // and Files on a phone), one or many items, each placed under the cursor:
   // images as pictures, documents as a file block that downloads.
-  const FILE_ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.md,.csv,.json';
+  const FILE_ACCEPT = 'image/*,audio/*,video/*,.mp3,.m4a,.wav,.ogg,.flac,.mp4,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.md,.csv,.json';
   function pickFiles() {
     if (!editorCtl || !S.note || S.note.deleted_at) return;
     document.querySelectorAll('.nb-file-input').forEach((old) => old.remove());
@@ -600,7 +600,7 @@
       const files = [...input.files]; input.remove(); if (!files.length || !editorCtl) return;
       const editor = editorCtl.editor;
       const noteId = editorNoteId;
-      toast(files.length === 1 ? 'Adding…' : `Adding ${files.length} items…`);
+      if (!files.some((f) => mediaKind(f.name, f.type))) toast(files.length === 1 ? 'Adding…' : `Adding ${files.length} items…`);
       let anchor = null;
       try { anchor = editor.getTextCursorPosition().block; } catch (_) {}
       if (!anchor) { const doc = editor.document; anchor = doc[doc.length - 1]; }
@@ -609,9 +609,11 @@
         if (editorNoteId !== noteId) return; // switched notes while uploading
         try {
           const url = await uploadFile(file);
-          const isImage = /^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name || '');
-          const name = file.name || (isImage ? 'image' : 'file');
-          const [block] = editor.insertBlocks([isImage ? {type: 'image', props: {url, name, caption: ''}} : {type: 'file', props: {url, name}}], anchor, 'after');
+          const media = mediaKind(file.name, file.type);
+          const isImage = !media && (/^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name || ''));
+          const name = file.name || (media || (isImage ? 'image' : 'file'));
+          const spec = media ? {type: media, props: {url, name}} : isImage ? {type: 'image', props: {url, name, caption: ''}} : {type: 'file', props: {url, name}};
+          const [block] = editor.insertBlocks([spec], anchor, 'after');
           anchor = block || anchor; added += 1;
         } catch (_) { /* uploadFile already told the user why */ }
       }
@@ -619,7 +621,41 @@
     });
     input.click();
   }
+  // Audio and video are too big to send as JSON: the raw file goes up as the
+  // request body, with a progress bar (a phone video can take a while).
+  const MEDIA_EXT = /\.(mp3|m4a|wav|ogg|flac|weba|mp4|mov|webm)$/i;
+  const VIDEO_EXT = /\.(mp4|mov|webm)$/i;
+  const mediaKind = (name, type) => /^video\//.test(type || '') || (!/^audio\//.test(type || '') && VIDEO_EXT.test(name || '')) ? 'video'
+    : (/^audio\//.test(type || '') || MEDIA_EXT.test(name || '')) ? 'audio' : null;
+  function uploadMedia(file) {
+    return new Promise((resolve, reject) => {
+      const bar = document.createElement('div');
+      bar.className = 'nb-upload'; bar.setAttribute('role', 'status');
+      bar.innerHTML = '<span></span><i><b></b></i>';
+      const label = bar.firstChild, fill = bar.querySelector('b');
+      const show = (text, fraction) => { label.textContent = text; fill.style.width = Math.round(fraction * 100) + '%'; };
+      show(`Uploading ${file.name}… 0%`, 0);
+      document.body.appendChild(bar);
+      const xhr = new XMLHttpRequest();
+      const query = new URLSearchParams({filename: file.name || 'media', note_id: (S.note && S.note.id) || ''});
+      xhr.open('POST', '/api/notebook/uploads/stream?' + query.toString());
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = (event) => { if (event.lengthComputable) show(`Uploading ${file.name}… ${Math.round(event.loaded / event.total * 100)}%`, event.loaded / event.total); };
+      const done = () => setTimeout(() => bar.remove(), 400);
+      xhr.onload = () => {
+        let payload = {};
+        try { payload = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300 && payload.url) { show('Uploaded', 1); done(); resolve(payload); return; }
+        bar.remove();
+        const error = new Error(payload.error || 'The file could not be uploaded');
+        toast(error.message); reject(error);
+      };
+      xhr.onerror = () => { bar.remove(); const error = new Error('Hermes could not be reached'); toast(error.message); reject(error); };
+      xhr.send(file);
+    });
+  }
   async function uploadFile(file) {
+    if (mediaKind(file.name, file.type)) return (await uploadMedia(file)).url;
     if (/^image\//.test(file.type)) file = await prepareImage(file);
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -838,6 +874,13 @@
   const imageBlocks = (blocks, out = []) => { (blocks || []).forEach((b) => { if (b.type === 'image') out.push(b); imageBlocks(b.children, out); }); return out; };
   function editorMarkdown() {
     let md = editorCtl.toMarkdown();
+    // The editor writes an audio block as an <audio> tag; Obsidian (and the vault's
+    // own Markdown) spells audio and video alike, as an embed link.
+    const names = {};
+    const blocks = editorCtl.getBlocks();
+    const walk = (list) => (list || []).forEach((b) => { if (b.type === 'audio' && b.props.url) names[b.props.url] = b.props.name || 'audio'; walk(b.children); });
+    walk(blocks);
+    md = md.replace(/<audio src="([^"]*)" controls><\/audio>/g, (all, url) => `![${names[url] || 'audio'}](${url})`);
     let from = 0;
     imageBlocks(editorCtl.getBlocks()).forEach((b) => {
       if (!b.props.url) return;
@@ -852,6 +895,20 @@
       from += String(Math.round(b.props.previewWidth)).length + 1;
     });
     return md;
+  }
+  // Parsed Markdown reads an embedded recording or clip as a picture; the file's
+  // extension says what it really is.
+  function withMediaBlocks(blocks) {
+    (blocks || []).forEach((b) => {
+      if (b.type === 'image') {
+        let path = b.props.url || '';
+        try { path = decodeURIComponent((new URL(path, location.origin).searchParams.get('path')) || path); } catch (_) {}
+        const kind = mediaKind(path, '') || mediaKind(b.props.name || '', '');
+        if (kind) { b.type = kind; b.props = {url: b.props.url, name: b.props.name || path.split('/').pop()}; }
+      }
+      withMediaBlocks(b.children);
+    });
+    return blocks;
   }
   function withImageWidths(blocks) {
     // Parsed Markdown puts a picture's alt text in `name` ("shot.png|300").
@@ -901,7 +958,7 @@
     mountImageResize(host, note);
     if (fromMarkdown) {
       try {
-        const blocks = withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || '')));
+        const blocks = withMediaBlocks(withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''))));
         if (editorNoteId === note.id && Array.isArray(blocks) && blocks.length) editorCtl.replaceAll(blocks);
         baseline = editorMarkdown();
       } catch (error) {
@@ -1485,7 +1542,7 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _widths: {write: () => editorMarkdown(), read: withImageWidths}};
+  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());

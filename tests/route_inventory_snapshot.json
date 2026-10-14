@@ -153,6 +153,7 @@
     "exact /api/health/restart",
     "exact /api/upload",
     "exact /api/upload/extract",
+    "exact /api/notebook/uploads/stream",
     "exact /api/workspace/upload",
     "exact /api/work_hub/plan/uploads",
     "exact /api/transcribe",

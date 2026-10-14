@@ -165,3 +165,49 @@ def test_note_context_is_plain_text_with_its_place(store):
     context = notebook.note_context(note["id"])
     assert context["text"].startswith("Bridge redesign\nWhite artifacts around platforms")
     assert context["project"] == {"project_id": "p1", "name": "Hermes WebUI"} and context["tags"] == ["office"]
+
+
+MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x01" * 4096
+MP3 = b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\x02" * 2048
+
+
+def test_audio_and_video_are_recognised_by_their_bytes(store):
+    import io
+
+    cases = {
+        ("clip.mp4", MP4): "video/mp4",
+        ("clip.mov", b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 64): "video/quicktime",
+        ("voice.m4a", b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 64): "audio/mp4",
+        ("song.mp3", MP3): "audio/mpeg",
+        ("beep.wav", b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 64): "audio/wav",
+        ("a.ogg", b"OggS" + b"\x00" * 64): "audio/ogg",
+        ("a.flac", b"fLaC" + b"\x00" * 64): "audio/flac",
+        ("v.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 64): "video/webm",
+    }
+    for (name, data), mime in cases.items():
+        saved = notebook.save_stream(io.BytesIO(data), len(data), name, None)
+        assert saved["mime"] == mime and saved["size"] == len(data) and saved["name"] == name, name
+        path, found_mime, label = notebook.upload_path(saved["id"])
+        assert path.read_bytes() == data and found_mime == mime and label == name
+    # Small media also pass through the JSON route.
+    assert notebook.save_upload({"filename": "s.mp3", "content_base64": base64.b64encode(MP3).decode()})["mime"] == "audio/mpeg"
+
+
+def test_streamed_uploads_are_refused_when_wrong_short_or_too_big(store, monkeypatch):
+    import io
+
+    for name, data in (("a.mp4", b"<html><script>alert(1)</script>"), ("a.pdf", b"%PDF-1.4\n%%EOF"), ("a.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64),
+                       ("noise.mp3", b"\xfb" + b"\x00" * 64)):
+        with pytest.raises(notebook.NotebookError) as refused:
+            notebook.save_stream(io.BytesIO(data), len(data), name, None)
+        assert refused.value.status == 415, name
+    with pytest.raises(notebook.NotebookError):
+        notebook.save_stream(io.BytesIO(b""), 0, "a.mp4", None)
+    # The body ends before the promised length: nothing is kept.
+    with pytest.raises(notebook.NotebookError):
+        notebook.save_stream(io.BytesIO(MP4), len(MP4) + 100, "a.mp4", None)
+    assert not list(notebook.files_dir().iterdir())
+    monkeypatch.setattr(notebook, "MEDIA_MAX_BYTES", 1024)
+    with pytest.raises(notebook.NotebookError) as big:
+        notebook.save_stream(io.BytesIO(MP4), len(MP4), "a.mp4", None)
+    assert big.value.status == 413

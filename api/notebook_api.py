@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote
 
 from api import notebook, notebook_vault
@@ -36,23 +38,82 @@ def _by_flag(body_or_query) -> object:
     return notebook_vault if (_flag(body_or_query, "store") == "vault" or notebook_vault.enabled()) else notebook
 
 
-def _send_image(handler, data: bytes, mime: str, cache: str, name: str = "") -> None:
-    """An uploaded image is shown inline; any other file is only ever offered as
-    a download, with no way to run or render in the page's origin."""
-    inline = mime in notebook.IMAGE_TYPES
-    handler.send_response(200)
-    handler.send_header("Content-Type", mime if inline else mime + ("; charset=utf-8" if mime.startswith("text/") else ""))
-    handler.send_header("Content-Length", str(len(data)))
+_RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
+_CHUNK = 256 * 1024
+
+
+def _send_file(handler, path: Path, mime: str, cache: str, name: str = "") -> None:
+    """An uploaded image or audio/video is shown inline; any other file is only
+    ever offered as a download, with no way to run or render in the page's
+    origin. Audio and video honour single byte ranges (iOS will not play a file
+    it cannot seek in)."""
+    inline = mime in notebook.IMAGE_TYPES or mime in notebook.MEDIA_TYPES
+    size = path.stat().st_size
+    start, end, status = 0, size - 1, 200
+    wanted = handler.headers.get("Range") if mime in notebook.MEDIA_TYPES else None
+    if wanted:
+        match = _RANGE.match(wanted.strip())
+        if match and (match.group(1) or match.group(2)):
+            if match.group(1):
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else size - 1
+            else:  # "bytes=-N": the last N bytes
+                start, end = max(0, size - int(match.group(2))), size - 1
+            end = min(end, size - 1)
+            if start > end or start >= size:
+                handler.send_response(416)
+                handler.send_header("Content-Range", f"bytes */{size}")
+                handler.send_header("Content-Length", "0")
+                handler.end_headers()
+                return
+            status = 206
+    handler.send_response(status)
+    handler.send_header("Content-Type", mime + ("; charset=utf-8" if mime.startswith("text/") else ""))
+    handler.send_header("Content-Length", str(end - start + 1))
     handler.send_header("X-Content-Type-Options", "nosniff")
+    if mime in notebook.MEDIA_TYPES:
+        handler.send_header("Accept-Ranges", "bytes")
+    if status == 206:
+        handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
     if inline:
         handler.send_header("Content-Disposition", "inline")
     else:
-        safe = quote(name or "download", safe="")
-        handler.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{safe}")
+        handler.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(name or 'download', safe='')}")
         handler.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
     handler.send_header("Cache-Control", cache)
     handler.end_headers()
-    handler.wfile.write(data)
+    try:
+        with path.open("rb") as source:
+            source.seek(start)
+            left = end - start + 1
+            while left > 0:
+                chunk = source.read(min(_CHUNK, left))
+                if not chunk:
+                    break
+                handler.wfile.write(chunk)
+                left -= len(chunk)
+    except (BrokenPipeError, ConnectionResetError):
+        pass  # the player moved on (a seek opens a new request)
+
+
+def handle_notebook_upload_stream(handler, parsed) -> bool:
+    """POST /api/notebook/uploads/stream?filename=&note_id=: the raw bytes of an
+    audio or video file as the body. The body is read here, in pieces, so it can
+    be bigger than a JSON request is allowed to be."""
+    query = parse_qs(parsed.query or "")
+    one = lambda key: str((query.get(key) or [""])[0])  # noqa: E731
+    try:
+        length = int(handler.headers.get("Content-Length", "") or 0)
+    except ValueError:
+        length = 0
+    try:
+        store = _by_id(one("note_id"))
+        j(handler, store.save_stream(handler.rfile, length, one("filename"), one("note_id") or None), status=201)
+    except notebook.NotebookError as error:
+        # Part of the body is unread; the connection cannot be reused.
+        handler.close_connection = True
+        return _fail(handler, error)
+    return True
 
 
 def _tail(path: str, prefix: str) -> list[str]:
@@ -67,8 +128,8 @@ def handle_notebook_get(handler, parsed) -> bool:
             return True
         if path == f"{_PREFIX}/vault/file":
             rel = str(parse_qs(parsed.query or "").get("path", [""])[0])
-            data, mime, name = notebook_vault.read_file(rel)
-            _send_image(handler, data, mime, "private, no-cache", name)
+            path, mime, name = notebook_vault.file_path(rel)
+            _send_file(handler, path, mime, "private, no-cache", name)
             return True
         if path == f"{_PREFIX}/bootstrap":
             # Connected: the main view laid out from the vault (00 Inbox,
@@ -107,8 +168,8 @@ def handle_notebook_get(handler, parsed) -> bool:
             parts = _tail(path, f"{_PREFIX}/files/")
             if len(parts) != 1:
                 return bool(bad(handler, "Not found", 404)) or True
-            data, mime, name = notebook.read_upload(parts[0])
-            _send_image(handler, data, mime, "private, max-age=31536000, immutable", name)
+            path, mime, name = notebook.upload_path(parts[0])
+            _send_file(handler, path, mime, "private, max-age=31536000, immutable", name)
             return True
     except notebook.NotebookError as error:
         return _fail(handler, error)

@@ -119,8 +119,16 @@ In the vault:
   by name: PNG, JPEG, GIF, WebP (images, 8 MB) and PDF, Word, Excel, PowerPoint,
   ZIP, text, Markdown, CSV and JSON (files, 12 MB). Images show inline; every
   other file is only ever sent as a download (`Content-Disposition: attachment`,
-  `nosniff`, a sandboxing CSP). Audio and video are not supported. In a vault,
-  documents are read back only from the attachment folder.
+  `nosniff`, a sandboxing CSP). Audio (MP3, M4A, WAV, OGG, FLAC, WebM) and video
+  (MP4, MOV, WebM) play inline: they go up as a raw request body to
+  `POST uploads/stream` (not JSON, so up to `HERMES_WEBUI_NOTES_MEDIA_MB`, default
+  200 MB, with a progress bar) and are served with byte ranges, which iOS needs to
+  play or seek. In a vault, media is written to the attachment folder and linked
+  as `![name](path)` (Obsidian embeds it); media may be played from anywhere in the
+  vault, documents are read back only from the attachment folder.
+- A picture can be resized by dragging its corners (a finger or a mouse); the width
+  is saved as the block's `previewWidth`, and in a vault as Obsidian's
+  `![alt|300](...)` / `![[x.png|300]]`.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
   Obsidian's syntax; images in notes are served from the vault
   (`/api/notebook/vault/file?path=`), and pasted images are saved to the
@@ -179,6 +187,7 @@ In the vault:
 | POST | `notes/{id}/trash` · `restore` · `purge` · `duplicate` | |
 | POST | `trash/empty` | |
 | POST | `folders/create` · `folders/{id}/rename` · `folders/{id}/delete` | |
+| POST | `uploads/stream` | `?filename=&note_id=`, body = the raw bytes of an audio/video file (`Content-Length` required); reply as `uploads` |
 | POST | `uploads` | `{filename, content_base64, note_id?}`: images (at most 8 MB) and documents (at most 12 MB), checked by content; the reply carries `url`, `mime`, `size`, `name` |
 
 ## Hermes integration points

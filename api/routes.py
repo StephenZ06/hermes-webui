@@ -16534,6 +16534,12 @@ def _route_post_api_upload_extract(handler, parsed, diag):
     return handle_upload_extract(handler)
 
 
+def _route_post_api_notebook_upload_stream(handler, parsed, diag):
+    from api.notebook_api import handle_notebook_upload_stream
+
+    return handle_notebook_upload_stream(handler, parsed)
+
+
 def _route_post_api_workspace_upload(handler, parsed, diag):
     return handle_workspace_upload(handler)
 
@@ -16577,6 +16583,7 @@ _POST_RAW_BODY = RouteTable(
         (Exact("/api/health/restart"), _route_post_api_health_restart),
         (Exact("/api/upload"), _route_post_api_upload),
         (Exact("/api/upload/extract"), _route_post_api_upload_extract),
+        (Exact("/api/notebook/uploads/stream"), _route_post_api_notebook_upload_stream),
         (Exact("/api/workspace/upload"), _route_post_api_workspace_upload),
         (Exact("/api/work_hub/plan/uploads"), _route_post_api_work_hub_plan_uploads),
         (Exact("/api/transcribe"), _route_post_api_transcribe),

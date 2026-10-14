@@ -40,7 +40,7 @@ from typing import Any, Generator
 from urllib.parse import quote, unquote
 
 from api.config import STATE_DIR
-from api.notebook import CONTENT_MAX_BYTES, IMAGE_TYPES, NotebookError, TITLE_MAX_CHARS, UPLOAD_MAX_BYTES, UPLOAD_TYPES, _SIGNATURES, _tags, classify_upload
+from api.notebook import CONTENT_MAX_BYTES, HEAD_BYTES, IMAGE_TYPES, MEDIA_MAX_BYTES, MEDIA_TYPES, NotebookError, TITLE_MAX_CHARS, UPLOAD_MAX_BYTES, UPLOAD_TYPES, _SIGNATURES, _tags, classify_upload
 
 _LOCK = threading.RLock()
 # Vault ids carry a "v" so a request can be routed to the right store by its
@@ -51,6 +51,7 @@ TRASH = ".trash"
 FILE_ROUTE = "/api/notebook/vault/file?path="
 _FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+_EMBED_EXT = _IMAGE_EXT | {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".weba", ".mp4", ".mov", ".webm"}
 _BAD_NAME = re.compile(r'[\\/:*?"<>|#^\[\]\x00-\x1f]')
 
 _SCHEMA = """
@@ -342,7 +343,7 @@ def _to_editor(root: Path, body: str, note_rel: str) -> str:
     they were."""
     def embed(match: re.Match) -> str:
         target = match.group(1).split("|", 1)[0].strip()
-        rel = resolve_image(target, note_rel) if Path(target).suffix.lower() in _IMAGE_EXT else ""
+        rel = resolve_image(target, note_rel) if Path(target).suffix.lower() in _EMBED_EXT else ""
         if not rel:
             return match.group(0)
         size = match.group(1).split("|", 2)[1].strip() if match.group(1).count("|") else ""
@@ -1021,22 +1022,62 @@ def save_upload(payload: dict[str, Any]) -> dict[str, Any]:
     return {"id": rel, "url": FILE_ROUTE + quote(rel), "path": rel, "mime": mime, "size": len(data), "name": target.name}
 
 
-def read_file(rel: str) -> tuple[bytes, str, str]:
-    """(bytes, MIME type, file name) of an attachment in the vault."""
+def save_stream(rfile, length: int, filename: str, note_id: Any = None) -> dict[str, Any]:
+    """Audio or video sent as a raw body: streamed into the vault's attachment
+    folder, and only named once every promised byte has arrived."""
+    if not isinstance(length, int) or length <= 0:
+        raise NotebookError("The file is empty")
+    if length > MEDIA_MAX_BYTES:
+        raise NotebookError(f"Audio and video can be at most {MEDIA_MAX_BYTES // (1024 * 1024)} MB", 413)
+    head = rfile.read(min(length, HEAD_BYTES))
+    mime = classify_upload(head, str(filename or ""), size=length)
+    if mime not in MEDIA_TYPES:
+        raise NotebookError("Only audio and video can be sent this way", 415)
+    root = _root()
+    folder = _attachments_dir(root)
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, temp = tempfile.mkstemp(prefix=".hermes-", suffix=".part", dir=str(folder))
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(head)
+            left = length - len(head)
+            while left > 0:
+                chunk = rfile.read(min(1024 * 1024, left))
+                if not chunk:
+                    raise NotebookError("The upload was interrupted")
+                out.write(chunk)
+                left -= len(chunk)
+        stem = _file_name(Path(str(filename or "media")).stem)
+        target = _unique(folder, stem, UPLOAD_TYPES[mime])
+        os.replace(temp, target)
+    finally:
+        Path(temp).unlink(missing_ok=True)
+    rel = _rel(root, target)
+    return {"id": rel, "url": FILE_ROUTE + quote(rel), "path": rel, "mime": mime, "size": length, "name": target.name}
+
+
+def file_path(rel: str) -> tuple[Path, str, str]:
+    """(path, MIME type, file name) of a file in the vault that a note shows or
+    links: images and audio/video wherever a note embeds them from; documents
+    only from the attachment folder, so the route cannot read the vault's notes
+    or settings as files."""
     root = _root()
     path = _inside(root, unquote(str(rel or "")))
     suffix = ".jpg" if path.suffix.lower() == ".jpeg" else path.suffix.lower()
     mime = next((m for m, ext in UPLOAD_TYPES.items() if suffix == ext), None)
     if mime is None or not path.is_file() or path.is_symlink():
         raise NotebookError("File not found", 404)
-    # Images may sit anywhere in the vault (notes embed them from their own
-    # folders); a document only ever comes from the attachment folder, so the
-    # route cannot be used to read the vault's notes or settings as files.
-    if mime not in IMAGE_TYPES:
+    if mime not in IMAGE_TYPES and mime not in MEDIA_TYPES:
         attachments = _attachments_dir(root).resolve()
         if attachments not in path.resolve().parents:
             raise NotebookError("File not found", 404)
-    return path.read_bytes(), mime, path.name
+    return path, mime, path.name
+
+
+def read_file(rel: str) -> tuple[bytes, str, str]:
+    """(bytes, MIME type, file name) of an attachment in the vault."""
+    path, mime, name = file_path(rel)
+    return path.read_bytes(), mime, name
 
 
 def resolve_image(rel_from_note: str, note_path: str) -> str:

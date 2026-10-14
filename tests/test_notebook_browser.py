@@ -556,3 +556,88 @@ def test_touch_taps_on_buttons_do_not_steal_focus_from_the_editor(touch_page):
         assert page.evaluate(probe, target) is True, target
     assert page.evaluate(probe, ".nb-editor-head [data-nb-action=back]") is False  # back lets go of the keyboard
     assert page.evaluate("() => !!document.activeElement.closest('.hermes-note-editor')")
+
+
+def test_media_streams_up_and_plays_back_with_byte_ranges():
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    clip = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + bytes(range(256)) * 4096  # ~1 MB, not JSON-sized
+    req = urllib.request.Request(BASE + "/api/notebook/uploads/stream?" + urllib.parse.urlencode({"filename": "clip.mp4"}), data=clip,
+                                 headers={"Content-Type": "application/octet-stream", "Origin": BASE})
+    saved = json.loads(urllib.request.urlopen(req, timeout=20).read())
+    assert saved["mime"] == "video/mp4" and saved["size"] == len(clip) and saved["name"] == "clip.mp4"
+
+    def get(range_header=None):
+        headers = {"Range": range_header} if range_header else {}
+        try:
+            return urllib.request.urlopen(urllib.request.Request(BASE + saved["url"], headers=headers), timeout=10)
+        except urllib.error.HTTPError as error:
+            return error
+
+    whole = get()
+    assert whole.status == 200 and whole.headers["Accept-Ranges"] == "bytes" and whole.headers["Content-Disposition"] == "inline"
+    assert whole.read() == clip
+    part = get("bytes=100-199")
+    assert part.status == 206 and part.headers["Content-Range"] == f"bytes 100-199/{len(clip)}" and part.read() == clip[100:200]
+    assert get("bytes=-10").read() == clip[-10:]
+    assert get(f"bytes={len(clip) - 5}-").read() == clip[-5:]
+    assert get(f"bytes={len(clip) + 10}-").status == 416
+    # A refused body (not media) is a clean error, not a hung connection.
+    bad = urllib.request.Request(BASE + "/api/notebook/uploads/stream?filename=x.mp4", data=b"<html>nope</html>" * 100,
+                                 headers={"Content-Type": "application/octet-stream", "Origin": BASE})
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(bad, timeout=10)
+    assert refused.value.code == 415
+
+
+_MP4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x01" * 4096
+_MP3 = b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\x02" * 2048
+
+
+def _add_media_roundtrip(tab):
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([
+        {"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4},
+        {"name": "Voice.mp3", "mimeType": "audio/mpeg", "buffer": _MP3},
+    ])
+    tab.wait_for_function("() => { const t = Notebook.editor.getBlocks().map(b => b.type); return t.includes('video') && t.includes('audio'); }", timeout=15000)
+    blocks = tab.evaluate("() => Notebook.editor.getBlocks().filter(b => b.type === 'video' || b.type === 'audio').map(b => [b.type, b.props.name, b.props.url])")
+    assert {(kind, name) for kind, name, _ in blocks} == {("video", "Clip.mp4"), ("audio", "Voice.mp3")}
+    assert all(url.startswith("/api/notebook/files/") for _, _, url in blocks)
+    tab.wait_for_selector(".hermes-note-editor video", timeout=10000)
+    tab.wait_for_selector(".hermes-note-editor audio", timeout=10000)
+
+
+def test_add_audio_and_video_desktop(page):
+    _add_media_roundtrip(page)
+
+
+def test_add_audio_and_video_touch(touch_page):
+    _add_media_roundtrip(touch_page)
+
+
+def test_audio_and_video_survive_the_markdown_round_trip_used_for_vault_notes(page):
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    result = page.evaluate("""async () => {
+        const editor = Notebook.editor.editor;
+        editor.replaceBlocks(editor.document, [
+            {type: 'audio', props: {url: '/api/notebook/vault/file?path=Attachments%2Fa.mp3', name: 'a.mp3'}},
+            {type: 'video', props: {url: '/api/notebook/vault/file?path=Attachments%2Fv.mov', name: 'v.mov'}},
+        ]);
+        const markdown = Notebook._widths.write();
+        const blocks = Notebook._widths.read(await Notebook.editor.parseMarkdown(markdown));
+        return {markdown, kinds: blocks.map(b => [b.type, b.props.name])};
+    }""")
+    assert "![a.mp3](/api/notebook/vault/file?path=Attachments%2Fa.mp3)" in result["markdown"] and "<audio" not in result["markdown"]
+    assert result["kinds"] == [["audio", "a.mp3"], ["video", "v.mov"]]
