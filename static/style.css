@@ -11751,8 +11751,9 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
   /* The wrapper is a zero-height fixed anchor; the toolbar itself is moved with a
      compositor-only transform (no layout per frame), so it neither stutters
      nor drags the dropdown's containing block along. */
-  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:36px !important;right:8px !important;bottom:auto !important;top:0 !important;height:0 !important;overflow:visible !important;visibility:visible !important;display:flex;align-items:flex-start;justify-content:center;}
-  .hermes-note-editor .bn-formatting-toolbar{transform:translate3d(0,var(--nb-bar-top,0px),0);will-change:transform;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:0 0 auto;height:auto;min-height:36px;box-sizing:border-box;}
+  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:36px !important;right:8px !important;bottom:auto !important;top:0 !important;height:0 !important;overflow:visible !important;visibility:visible !important;display:block;}
+  .hermes-note-editor .bn-formatting-toolbar{transform:translate3d(0,var(--nb-bar-top,0px),0);will-change:transform;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:0 0 auto;height:40px;min-height:40px;box-sizing:border-box;}
+  .hermes-note-editor .bn-formatting-toolbar > *{flex:0 0 auto;}   /* the buttons keep their size; the bar scrolls sideways to reach them */
   .hermes-note-editor .bn-formatting-toolbar::-webkit-scrollbar{display:none;}
   /* Menus open upward from just above the toolbar (placed on the screen, not
      relative to the toolbar's own geometry): downward they land under the

@@ -372,7 +372,15 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     page.wait_for_timeout(400)
     box = page.locator(".bn-formatting-toolbar").bounding_box()
-    assert box["height"] >= 30, box   # not squashed to a sliver (a collapsed flex child once hid it)
+    assert 36 <= box["height"] <= 48, box   # a fixed, finger-sized height (a collapsed flex child once squashed it to a sliver)
+    width = page.evaluate("() => innerWidth")
+    assert box["x"] >= 30 and box["x"] + box["width"] <= width - 7, (box, width)     # inside the screen, clear of the edge guard
+    scroll = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return [t.scrollWidth, t.clientWidth, getComputedStyle(t).overflowX]; }")
+    assert scroll[0] > scroll[1] and scroll[2] == "auto", scroll                     # more buttons than fit: it scrolls sideways
+    page.evaluate("() => { document.querySelector('.bn-formatting-toolbar').scrollLeft = 9999; }")
+    page.wait_for_timeout(100)
+    last = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); const r = t.getBoundingClientRect(); const b = [...t.children].pop().getBoundingClientRect(); return [b.right, r.right]; }")
+    assert last[0] <= last[1] + 1, last                                              # the last button can be brought into view
     assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('.bn-formatting-toolbar')", [box["x"] + 14, box["y"] + box["height"] / 2])   # clear of the sidebar's 30px edge guard
     height = page.evaluate("() => window.innerHeight")
     # No keyboard here: the visual viewport is the window, so the toolbar sits on its bottom edge.
