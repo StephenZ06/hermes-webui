@@ -11643,3 +11643,18 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 @media (max-width:640px){
   #sessionList .project-chip .project-folder-kebab{margin-block:-3px;}
 }
+
+/* Work Hub touch drag (hold a card, drag it to another column). */
+.work-hub-card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+.work-hub-card.touch-drag-source{opacity:.35;}
+.work-hub-card-ghost{position:fixed;left:0;top:0;z-index:9000;margin:0;pointer-events:none;box-shadow:0 14px 34px rgba(0,0,0,.38);border-color:var(--accent)!important;transition:none;will-change:transform;}
+html.work-hub-touch-dragging,html.work-hub-touch-dragging *{-webkit-user-select:none!important;user-select:none!important;}
+html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
+
+/* Touch screens: row actions that appear only on :hover cost a tap on iOS
+   (the first tap is spent revealing them as "hover", so a board in the Work
+   Hub drawer needed two taps to open). Without hover they stay visible,
+   dimmed, and nothing changes on touch. */
+@media (hover:none){
+  .work-hub-board-rename,.work-hub-board-delete,.project-bind-row .project-bind-use{opacity:.6;}
+}

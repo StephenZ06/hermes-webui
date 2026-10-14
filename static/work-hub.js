@@ -228,7 +228,7 @@
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
     const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
@@ -259,6 +259,7 @@
       });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
     });
+    initTouchDrag(board);
     board.querySelectorAll('.work-hub-column').forEach(column => {
       column.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -287,6 +288,105 @@
       });
     });
   }
+  // Touch: hold a card to pick it up, then drag it to another column. Native
+  // HTML drag-and-drop never starts from a touch on iOS, so phones had no way
+  // to move a card. A movement before the hold fires is an ordinary scroll; a
+  // still tap still opens the card.
+  const TOUCH_DRAG_HOLD_MS = 380;
+  const TOUCH_DRAG_SLOP = 8;
+  const TOUCH_DRAG_EDGE = 48;
+  function initTouchDrag(board) {
+    const wrap = board.closest('.work-hub-board-wrap') || board.parentElement;
+    let drag = null;
+    const columnAt = (x, y) => {
+      // Clamped into the board: a finger held at the screen edge (where the
+      // board auto-scrolls) is past its padding but still means that column.
+      const r = wrap.getBoundingClientRect();
+      const cx = Math.min(Math.max(x, r.left + 2), r.right - 14);
+      const hit = document.elementFromPoint(cx, y);
+      return hit && hit.closest ? hit.closest('.work-hub-column') : null;
+    };
+    const clearTargets = () => board.querySelectorAll('.work-hub-column.drop-target').forEach(c => c.classList.remove('drop-target'));
+    const end = async (commit) => {
+      const state = drag; drag = null;
+      if (!state) return;
+      clearTimeout(state.timer);
+      if (state.raf) cancelAnimationFrame(state.raf);
+      if (!state.active) return;
+      state.card.classList.remove('touch-drag-source');
+      state.ghost.remove();
+      document.documentElement.classList.remove('work-hub-touch-dragging');
+      hideDragSlot(); clearTargets();
+      // The touch ends on the card: swallow the click it would make.
+      state.card.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, once: true });
+      const column = commit ? state.column : null;
+      const status = column && column.dataset.status;
+      const item = store.items.find(i => i.id === state.itemId);
+      if (item && status && item.status !== status) {
+        await updateItem(state.itemId, { status });
+        markLanded(document.querySelector(`.work-hub-card[data-item-id="${CSS.escape(state.itemId)}"]`));
+      }
+    };
+    const autoScroll = () => {
+      if (!drag || !drag.active) return;
+      const r = wrap.getBoundingClientRect();
+      const dx = drag.x < r.left + TOUCH_DRAG_EDGE ? -1 : drag.x > r.right - TOUCH_DRAG_EDGE ? 1 : 0;
+      if (dx) { wrap.scrollLeft += dx * 9; track(); }
+      drag.raf = requestAnimationFrame(autoScroll);
+    };
+    const track = () => {
+      if (!drag || !drag.active) return;
+      drag.ghost.style.transform = `translate3d(${drag.x - drag.offsetX}px,${drag.y - drag.offsetY}px,0) rotate(1.5deg) scale(1.03)`;
+      const column = columnAt(drag.x, drag.y);
+      if (column !== drag.column) {
+        clearTargets(); hideDragSlot();
+        drag.column = column;
+        if (column) {
+          column.classList.add('drop-target');
+          if (column.dataset.status !== drag.status) showDragSlot(column.querySelector('.work-hub-cards'), drag.height);
+        }
+      }
+    };
+    board.querySelectorAll('.work-hub-card').forEach(card => {
+      card.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const itemId = card.dataset.itemId;
+        drag = { card, itemId, startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, active: false, column: null, raf: 0,
+          status: (store.items.find(i => i.id === itemId) || {}).status || null, height: card.offsetHeight };
+        drag.timer = setTimeout(() => {
+          if (!drag || drag.card !== card) return;
+          const r = card.getBoundingClientRect();
+          const ghost = card.cloneNode(true);
+          ghost.classList.add('work-hub-card-ghost'); ghost.removeAttribute('id');
+          ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
+          document.body.appendChild(ghost);
+          Object.assign(drag, { active: true, ghost, offsetX: drag.x - r.left, offsetY: drag.y - r.top });
+          card.classList.add('touch-drag-source');
+          document.documentElement.classList.add('work-hub-touch-dragging');
+          try { if (navigator.vibrate) navigator.vibrate(8); } catch (_) {}
+          track();
+          drag.raf = requestAnimationFrame(autoScroll);
+        }, TOUCH_DRAG_HOLD_MS);
+      }, { passive: true });
+      card.addEventListener('touchmove', (e) => {
+        if (!drag || drag.card !== card) return;
+        const t = e.touches[0];
+        drag.x = t.clientX; drag.y = t.clientY;
+        if (!drag.active) {
+          // Moved before the hold: this is a scroll, not a pick-up.
+          if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) > TOUCH_DRAG_SLOP) { clearTimeout(drag.timer); drag = null; }
+          return;
+        }
+        if (e.cancelable) e.preventDefault();
+        track();
+      }, { passive: false });
+      card.addEventListener('touchend', () => { if (drag && drag.card === card) end(true); });
+      card.addEventListener('touchcancel', () => { if (drag && drag.card === card) end(false); });
+      // Long-press would otherwise open the iOS callout / text selection.
+      card.addEventListener('contextmenu', (e) => { if (drag && drag.active) e.preventDefault(); });
+    });
+  }
   async function deleteItem(itemId) {
     if (!await showConfirmDialog({ title: 'Delete work item', message: 'Are you sure you want to delete this work item? This cannot be undone.', confirmLabel: 'Delete', danger: true })) return;
     try {
@@ -297,14 +397,17 @@
   }
   async function createItem() {
     try {
-      const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: { title: 'New work item', status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, expected_revision: store.revision }) });
+      const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: Object.assign({ title: 'New work item', status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, store.activeBoardId ? { board_id: store.activeBoardId } : {}), expected_revision: store.revision }) });
       store.items.push(result.item); store.revision = result.revision; store.selectedItemId = result.item.id; notifyWorkHubChanged(); render();
       // Flash the new card
       setTimeout(() => {
         const card = document.querySelector(`.work-hub-card[data-item-id="${result.item.id}"], .work-hub-list-row[data-item-id="${result.item.id}"]`);
         if (card) { card.classList.add('work-hub-new'); setTimeout(() => card.classList.remove('work-hub-new'), 1200); }
       }, 50);
-    } catch (error) { store.stale = true; render(); }
+    } catch (error) {
+      store.stale = true; render();
+      if (typeof showToast === 'function') showToast('Could not add the work item: ' + (error && error.message ? error.message : 'unknown error'), 5000, 'error');
+    }
   }
   async function updateItem(itemId, item) { try { const result = await request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); render(); } catch (error) { store.stale = true; render(); } }
   async function changeWorkflow(workflowId, action) { try { const result = await request(`/api/work_hub/workflows/${workflowId}/${action}`, { method: 'POST', body: JSON.stringify({ expected_revision: store.revision }) }); store.revision = result.revision; await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); } }
