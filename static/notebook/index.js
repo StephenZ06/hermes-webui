@@ -844,20 +844,36 @@
       markBars();
     }
     const clear = () => { img = null; blockId = null; resizing = false; box.hidden = true; if (watch) watch.disconnect(); markBars(); };
-    document.addEventListener('click', (event) => {
+    // One tap handler for both ways a tap can arrive. On a phone a quick second tap
+    // on a picture starts iOS's own text/image selection, which can swallow the
+    // click; the pointer events still arrive, so a tap is read from them, and the
+    // click that follows (or the click of a mouse) is ignored as a duplicate.
+    let lastTapAt = 0, skipClick = false, down = null;
+    const tap = (target) => {
       if (!mount.isConnected) return;
-      const target = event.target;
       const hit = target.closest && target.closest('.bn-visual-media');
       if (hit && mount.contains(hit)) {
         // Tapping the picture that is already selected switches the bars on (and off).
         // "Already selected" is the same block, not the same element: the editor
-        // re-renders a tapped picture a moment later, so on a real phone the
-        // second tap often lands on a fresh element.
+        // re-renders a tapped picture a moment later.
         const id = (hit.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
         resizing = !!id && id === blockId ? !resizing : false;
         img = hit; blockId = id;
         fit(); observe(hit);
       } else if (!(target.closest && target.closest('.bn-resize-handle'))) clear();
+    };
+    document.addEventListener('pointerdown', (event) => { down = {x: event.clientX, y: event.clientY, target: event.target}; }, true);
+    document.addEventListener('pointerup', (event) => {
+      const start = down; down = null;
+      if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return; // a drag or a scroll, not a tap
+      if (!(start.target.closest && start.target.closest('.bn-visual-media')) && event.pointerType !== 'touch') return; // a mouse click arrives as a click
+      lastTapAt = Date.now(); skipClick = true;
+      tap(event.target);
+    }, true);
+    document.addEventListener('click', (event) => {
+      const duplicate = skipClick && Date.now() - lastTapAt < 700; // the click that follows a tap already read from its pointer events
+      skipClick = false;
+      if (!duplicate) tap(event.target);
     });
     if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
     new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});

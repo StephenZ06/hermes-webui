@@ -689,13 +689,21 @@ def test_on_a_phone_pictures_fill_the_width_and_the_bars_wait_for_a_second_tap(t
     shown = tab.evaluate("() => { const i = document.querySelector('.bn-visual-media').getBoundingClientRect(), e = document.querySelector('.hermes-note-editor .bn-editor').getBoundingClientRect(); return [Math.round(i.width), Math.round(e.width)]; }")
     assert shown[0] >= shown[1] - 70 and shown[0] <= shown[1], shown   # editor padding is 24 + 36
     assert not _bars_shown(tab)
+    # A picture is not selectable like text (it has its own outline).
+    assert tab.evaluate("() => { const s = getComputedStyle(document.querySelector('.bn-visual-media')); return [s.userSelect, s.webkitUserSelect]; }") == ["none", "none"]
     tab.tap(".bn-visual-media")                       # first tap: outline only
     tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
     tab.wait_for_timeout(300)
     assert not _bars_shown(tab)
-    # The editor re-renders a tapped picture a moment later: the second tap lands on a new element.
-    # (replaced and tapped in the same tick, before anything has caught up with it)
-    tab.evaluate("""() => { const i = document.querySelector('.bn-visual-media'); const copy = i.cloneNode(true); i.replaceWith(copy); copy.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); }""")
+    # iOS can swallow the click of a quick second tap (it starts its own selection), and the
+    # editor re-renders a tapped picture a moment later: send the second tap as pointer events
+    # only, onto a replaced element, in one tick, with no click at all.
+    tab.evaluate("""() => {
+        const i = document.querySelector('.bn-visual-media'); const copy = i.cloneNode(true); i.replaceWith(copy);
+        const r = copy.getBoundingClientRect(), at = {clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: 'touch', bubbles: true, cancelable: true, composed: true};
+        copy.dispatchEvent(new PointerEvent('pointerdown', at));
+        copy.dispatchEvent(new PointerEvent('pointerup', at));
+    }""")
     tab.wait_for_function("() => [...document.querySelectorAll('.bn-resize-handle')].some(h => getComputedStyle(h).display !== 'none')", timeout=5000)
     before = tab.locator(".bn-visual-media").bounding_box()["width"]
     handle = tab.locator(".bn-resize-handle[data-nb-on]").first.bounding_box()

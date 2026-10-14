@@ -11791,3 +11791,11 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 .nb-upload b{display:block;height:100%;width:0;background:var(--accent);transition:width .15s linear;}
 .hermes-note-editor [data-content-type="video"] video,.hermes-note-editor [data-content-type="audio"] audio{max-width:100%;}
 .hermes-note-editor [data-content-type="video"] video{border-radius:8px;}
+
+/* A picture has its own selection (the outline and bars); it must not also be
+   selected like text, which on a phone paints a blue wash over it and pops the
+   copy/look-up callout. */
+.hermes-note-editor .bn-visual-media{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none;-webkit-tap-highlight-color:transparent;}
+.hermes-note-editor .bn-visual-media::selection{background:transparent;}
+.hermes-note-editor .ProseMirror-selectednode,.hermes-note-editor .ProseMirror-selectednode .bn-visual-media{outline:none !important;}
+.hermes-note-editor [data-file-block] .bn-visual-media-wrapper,.hermes-note-editor [data-file-block] .bn-file-block-content-wrapper{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
