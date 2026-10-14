@@ -228,7 +228,7 @@
       saveButton.dataset.state = 'saved'; saveButton.innerHTML = `${icon('check')}<span>Saved</span>`;
       await new Promise(resolve => setTimeout(resolve, 650));
       await closeInspectorAnimated();
-      markLanded(document.querySelector(`.work-hub-card[data-item-id="${CSS.escape(item.id)}"], .work-hub-list-row[data-item-id="${CSS.escape(item.id)}"]`));
+      revealItem(item.id);
     };
     if (saveButton) saveButton.onclick = save;
     // Ctrl/Cmd+Enter saves from anywhere in the panel.
@@ -415,6 +415,7 @@
       setTimeout(() => {
         const card = document.querySelector(`.work-hub-card[data-item-id="${result.item.id}"], .work-hub-list-row[data-item-id="${result.item.id}"]`);
         if (card) { card.classList.add('work-hub-new'); setTimeout(() => card.classList.remove('work-hub-new'), 1200); }
+        revealItem(result.item.id);
       }, 50);
     } catch (error) {
       store.stale = true; render();
@@ -424,6 +425,23 @@
   async function updateItem(itemId, item, options = {}) { try { const result = await request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); if (!options.deferRender) render(); return true; } catch (error) { store.stale = true; render(); return false; } }
   // The details panel slides away (sheet on phones, fades on the desktop
   // column) before it clears, instead of vanishing.
+  // Bring a card into view and flash it. On a phone only one column fits, so a
+  // card saved into another column (Backlog, the default) landed off-screen
+  // and looked as if it had vanished.
+  function revealItem(itemId) {
+    const card = document.querySelector(`.work-hub-card[data-item-id="${CSS.escape(itemId)}"], .work-hub-list-row[data-item-id="${CSS.escape(itemId)}"]`);
+    if (!card) return;
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    const wrap = card.closest('.work-hub-board-wrap');
+    const column = card.closest('.work-hub-column');
+    if (wrap && column) {
+      const w = wrap.getBoundingClientRect(), c = column.getBoundingClientRect();
+      if (c.left < w.left || c.right > w.right) wrap.scrollTo({ left: wrap.scrollLeft + (c.left - w.left) - 4, behavior });
+    }
+    const list = card.closest('.work-hub-cards') || card.closest('#workHubCanvas');
+    if (list) { const l = list.getBoundingClientRect(), r = card.getBoundingClientRect(); if (r.top < l.top || r.bottom > l.bottom) card.scrollIntoView({ block: 'nearest', behavior }); }
+    markLanded(card);
+  }
   function closeInspectorAnimated() {
     const panel = el('workHubInspector');
     const done = () => { if (panel) panel.classList.remove('is-closing'); store.selectedItemId = null; render(); };

@@ -153,3 +153,21 @@ def test_delete_confirm_is_compact_with_a_red_outline_button(phone, seeded):
 def test_phone_top_bar_is_sticky_for_ios_status_bar_tinting(phone, seeded):
     page, _ = phone
     assert page.evaluate("() => getComputedStyle(document.querySelector('.app-titlebar')).position") == "sticky"
+
+
+def test_a_new_item_saved_as_backlog_is_scrolled_into_view(phone, seeded):
+    page, _ = phone
+    page.evaluate("() => { document.querySelector('[data-scope=all]') && document.querySelector('[data-scope=all]').click(); }")
+    time.sleep(0.6)
+    page.evaluate("() => { document.querySelector('.work-hub-board-wrap').scrollLeft = 0; }")
+    page.tap("#workHubCreate")
+    page.wait_for_selector("#workHubSave", timeout=5000)
+    title = f"Backlog item {seeded['tag']}"
+    page.fill("#workHubTitle", title)
+    assert page.evaluate("() => document.getElementById('workHubStatus').value") == "backlog"
+    page.click("#workHubSave")
+    page.wait_for_function("() => !document.querySelector('.work-hub').classList.contains('has-selection')", timeout=10000)
+    time.sleep(0.9)
+    visible = page.evaluate("""(title) => { const card = [...document.querySelectorAll('.work-hub-card')].find(c => c.textContent.includes(title));
+        if (!card) return 'missing'; const r = card.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1; }""", title)
+    assert visible is True
