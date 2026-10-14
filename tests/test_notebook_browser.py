@@ -372,7 +372,8 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     page.wait_for_timeout(400)
     box = page.locator(".bn-formatting-toolbar").bounding_box()
-    assert 36 <= box["height"] <= 48, box   # a fixed, finger-sized height (a collapsed flex child once squashed it to a sliver)
+    assert 36 <= box["height"] <= 64, box   # its whole height, not a sliver (a collapsed flex child once squashed it) and not clipped
+    assert page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return t.scrollHeight <= t.clientHeight + 1; }")   # nothing cut off at the bottom
     width = page.evaluate("() => innerWidth")
     assert box["x"] >= 30 and box["x"] + box["width"] <= width - 7, (box, width)     # inside the screen, clear of the edge guard
     scroll = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return [t.scrollWidth, t.clientWidth, getComputedStyle(t).overflowX]; }")
@@ -1127,6 +1128,7 @@ FAKE_VIEWPORT = """
   const vv = new EventTarget();
   Object.assign(vv, {height: innerHeight, width: innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1});
   Object.defineProperty(window, 'visualViewport', {value: vv, configurable: true});
+  window.__visible = (width, left = 0) => { vv.width = width; vv.offsetLeft = left; vv.dispatchEvent(new Event('resize')); };
   window.__keyboard = (height, pan = 0) => { vv.height = innerHeight - height; vv.offsetTop = pan; vv.dispatchEvent(new Event('resize')); vv.dispatchEvent(new Event('scroll')); };
 })();
 """
@@ -1164,3 +1166,27 @@ def test_the_app_is_fitted_above_the_keyboard_and_the_format_bar_stays_put_as_th
     # A big jump slides (the keyboard closing), then the fit is undone.
     tab.evaluate("() => { document.activeElement.blur(); window.__keyboard(0); }")
     tab.wait_for_function("() => !document.documentElement.classList.contains('nb-kb-fit')", timeout=3000)
+
+
+def test_the_format_bar_is_laid_out_inside_the_visible_width_not_the_layout_width(touch_page):
+    tab = touch_page
+    tab.add_init_script(FAKE_VIEWPORT)
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    tab.evaluate("() => window.__visible(340, 0)")   # what can be seen is narrower than the layout viewport (393)
+    tab.click(".hermes-note-editor .bn-editor")
+    tab.keyboard.type("hello world")
+    tab.keyboard.press("Control+a")
+    tab.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
+    tab.wait_for_timeout(500)
+    box = tab.locator(".bn-formatting-toolbar").bounding_box()
+    assert box["x"] >= 35 and box["x"] + box["width"] <= 340 - 7, box           # inside the visible 340, with its margin
+    tab.evaluate("() => window.__visible(340, 20)")                               # panned sideways: it follows the visible area
+    tab.wait_for_timeout(300)
+    box = tab.locator(".bn-formatting-toolbar").bounding_box()
+    assert abs(box["x"] - (20 + 36)) <= 1 and box["x"] + box["width"] <= 20 + 340 - 7, box

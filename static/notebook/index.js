@@ -825,6 +825,12 @@
       }
       last = top; root.style.setProperty('--nb-bar-top', top + 'px');
     };
+    // The bar is laid out inside what is actually visible: on iOS the layout viewport can be wider
+    // than the visual one, and a box placed from the layout viewport's right edge ran off the screen.
+    const place = () => {
+      root.style.setProperty('--nb-vvw', Math.round(vv.width) + 'px');
+      root.style.setProperty('--nb-vvl', Math.round(vv.offsetLeft) + 'px');
+    };
     // While the keyboard is up for the editor, the app is fitted to the visible area. Left
     // full height, iOS pans the page under the keyboard to keep the caret in view, and every
     // pan moves the format bar (it is placed from the visible area's edge) a frame late,
@@ -840,14 +846,14 @@
       root.classList.toggle('nb-kb-fit', on);
       if (on && (vv.offsetTop > 0 || window.scrollY > 0)) window.scrollTo(0, 0);
     };
-    const loop = () => { read(); raf = requestAnimationFrame(loop); };
+    const loop = () => { read(); place(); raf = requestAnimationFrame(loop); };
     document.addEventListener('focusin', (event) => { if (inEditor(event.target)) { fit(); if (!raf) loop(); } });
     document.addEventListener('focusout', () => setTimeout(() => {
       fit();
       if (!inEditor(document.activeElement)) { cancelAnimationFrame(raf); raf = 0; read(); }
     }, 250));
-    vv.addEventListener('resize', () => { fit(); read(); }); vv.addEventListener('scroll', () => { fit(); read(); });
-    read();
+    vv.addEventListener('resize', () => { place(); fit(); read(); }); vv.addEventListener('scroll', () => { place(); fit(); read(); });
+    place(); read();
   }
   function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
