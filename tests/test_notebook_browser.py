@@ -375,14 +375,18 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     assert 36 <= box["height"] <= 64, box   # its whole height, not a sliver (a collapsed flex child once squashed it) and not clipped
     assert page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return t.scrollHeight <= t.clientHeight + 1; }")   # nothing cut off at the bottom
     width = page.evaluate("() => innerWidth")
-    assert box["x"] >= 30 and box["x"] + box["width"] <= width - 7, (box, width)     # inside the screen, clear of the edge guard
+    assert abs(box["x"] - 8) <= 1 and abs((width - (box["x"] + box["width"])) - 8) <= 1, (box, width)   # the same gap on both sides
+    first = page.evaluate("() => document.querySelector('.bn-formatting-toolbar').firstElementChild.getBoundingClientRect().x")
+    assert first >= 31, first                                                          # its first button is clear of the sidebar's 30px edge guard
     scroll = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return [t.scrollWidth, t.clientWidth, getComputedStyle(t).overflowX]; }")
     assert scroll[0] > scroll[1] and scroll[2] == "auto", scroll                     # more buttons than fit: it scrolls sideways
     page.evaluate("() => { document.querySelector('.bn-formatting-toolbar').scrollLeft = 9999; }")
     page.wait_for_timeout(100)
     last = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); const r = t.getBoundingClientRect(); const b = [...t.children].pop().getBoundingClientRect(); return [b.right, r.right]; }")
     assert last[0] <= last[1] + 1, last                                              # the last button can be brought into view
-    assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('.bn-formatting-toolbar')", [box["x"] + 14, box["y"] + box["height"] / 2])   # clear of the sidebar's 30px edge guard
+    page.evaluate("() => { document.querySelector('.bn-formatting-toolbar').scrollLeft = 0; }")
+    page.wait_for_timeout(100)
+    assert page.evaluate("() => { const b = document.querySelector('.bn-formatting-toolbar').firstElementChild.getBoundingClientRect(); return !!document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2).closest('.bn-formatting-toolbar'); }")   # the first button can be tapped (clear of the sidebar's 30px edge guard)
     height = page.evaluate("() => window.innerHeight")
     # No keyboard here: the visual viewport is the window, so the toolbar sits on its bottom edge.
     assert abs((box["y"] + box["height"]) - height) <= 2, (box, height)
@@ -1152,6 +1156,8 @@ def test_the_app_is_fitted_above_the_keyboard_and_the_format_bar_stays_put_as_th
     tab.wait_for_function("() => document.documentElement.classList.contains('nb-kb-fit')", timeout=3000)
     layout = tab.evaluate("() => { const l = document.querySelector('.layout').getBoundingClientRect(); return [Math.round(l.top + l.height), innerHeight]; }")
     assert layout[0] == layout[1] - 300, layout                                    # the app ends where the keyboard starts
+    # ...with no blank gap kept at its foot (it would sit as a bar over the note, behind the format bar)
+    assert tab.evaluate("() => getComputedStyle(document.querySelector('main.main')).paddingBottom") == "0px"
     tab.keyboard.press("Control+a")
     tab.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     tab.wait_for_timeout(500)
@@ -1185,8 +1191,8 @@ def test_the_format_bar_is_laid_out_inside_the_visible_width_not_the_layout_widt
     tab.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     tab.wait_for_timeout(500)
     box = tab.locator(".bn-formatting-toolbar").bounding_box()
-    assert box["x"] >= 35 and box["x"] + box["width"] <= 340 - 7, box           # inside the visible 340, with its margin
+    assert abs(box["x"] - 8) <= 1 and abs((340 - (box["x"] + box["width"])) - 8) <= 1, box   # inside the visible 340, the same gap each side
     tab.evaluate("() => window.__visible(340, 20)")                               # panned sideways: it follows the visible area
     tab.wait_for_timeout(300)
     box = tab.locator(".bn-formatting-toolbar").bounding_box()
-    assert abs(box["x"] - (20 + 36)) <= 1 and box["x"] + box["width"] <= 20 + 340 - 7, box
+    assert abs(box["x"] - (20 + 8)) <= 1 and abs((20 + 340 - (box["x"] + box["width"])) - 8) <= 1, box
