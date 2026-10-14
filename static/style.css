@@ -11702,3 +11702,9 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 @media (max-width:640px){
   .app-titlebar{position:sticky;top:0;}
 }
+
+/* Work Hub column filter: the touch-wide 16px input floor made the filter text
+   larger than its neighbouring selects; hold the whole row at one compact size. */
+@media (hover:none) and (pointer:coarse){
+  .work-hub-column-filter input, .work-hub-column-filter select { font-size: 12px !important; }
+}
