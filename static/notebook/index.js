@@ -880,9 +880,30 @@
     // beat behind and make it feel rubbery. html.nb-img-dragging switches it off.
     const root = document.documentElement;
     const grab = (event) => { if (event.target.closest && event.target.closest('.bn-resize-handle')) root.classList.add('nb-img-dragging'); };
-    const release = () => root.classList.remove('nb-img-dragging');
+    // A resize ends with the picture let go of: no outline, no bars, no selection
+    // left over (it was still "highlighted" afterwards, and the leftover bars made
+    // the next attempt feel stuck). A cancelled touch (iOS takes the finger for a
+    // scroll) is passed on to the editor as a touchend, because it only listens
+    // for that and would otherwise stay mid-resize.
+    const release = (event) => {
+      if (!root.classList.contains('nb-img-dragging')) return;
+      root.classList.remove('nb-img-dragging');
+      if (event && event.type === 'touchcancel') {
+        const end = new Event('touchend', {bubbles: true});
+        Object.assign(end, {touches: [], targetTouches: [], changedTouches: []}); // the page's other touch handlers read these
+        document.dispatchEvent(end);
+      }
+      setTimeout(() => {
+        clear();
+        const sel = window.getSelection && window.getSelection();
+        if (sel && sel.removeAllRanges && mount.contains(sel.anchorNode)) sel.removeAllRanges();
+      }, 120); // after the editor has saved the new width and re-rendered
+    };
     ['touchstart', 'mousedown'].forEach((type) => document.addEventListener(type, grab, {capture: true, passive: true}));
-    ['touchend', 'touchcancel', 'mouseup', 'blur'].forEach((type) => (type === 'blur' ? window : document).addEventListener(type, release, true));
+    ['touchend', 'touchcancel', 'mouseup'].forEach((type) => document.addEventListener(type, release, true));
+    window.addEventListener('blur', () => release(null));
+    // A press anywhere but on a bar while a drag is somehow still marked: it is over.
+    document.addEventListener('pointerdown', (event) => { if (root.classList.contains('nb-img-dragging') && !(event.target.closest && event.target.closest('.bn-resize-handle'))) release(null); }, true);
     if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
     new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});
     mount.addEventListener('load', () => requestAnimationFrame(fit), true);

@@ -713,15 +713,25 @@ def test_on_a_phone_pictures_fill_the_width_and_the_bars_wait_for_a_second_tap(t
     tab.mouse.move(x + 90, y, steps=6)   # the left bar: dragging right shrinks
     tab.mouse.up()
     tab.wait_for_function("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth > 0", timeout=5000)
-    tab.wait_for_timeout(500)
-    # The saved resize rebuilt the bars; they are still there while the picture is selected.
-    assert _bars_shown(tab)
-    assert tab.locator(".bn-visual-media").bounding_box()["width"] < before - 60
-    tab.tap(".bn-visual-media")                       # tapping it again puts them away
-    tab.wait_for_timeout(200)
-    assert not _bars_shown(tab)
-    tab.tap(".nb-editor-head .nb-title")
+    # Let go of the picture after a resize: no outline, bars or selection left behind.
     tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)
+    assert not _bars_shown(tab)
+    assert tab.evaluate("() => { const s = getSelection(); return s.rangeCount === 0 || s.isCollapsed || !document.querySelector('.hermes-note-editor').contains(s.anchorNode); }")
+    assert tab.locator(".bn-visual-media").bounding_box()["width"] < before - 60
+    # ...and it can be picked up and resized again (nothing is stuck).
+    tab.tap(".bn-visual-media")
+    tab.tap(".bn-visual-media")
+    tab.wait_for_function("() => [...document.querySelectorAll('.bn-resize-handle')].some(h => getComputedStyle(h).display !== 'none')", timeout=5000)
+    narrowed = tab.locator(".bn-visual-media").bounding_box()["width"]
+    handle = tab.locator(".bn-resize-handle[data-nb-on]").last.bounding_box()
+    x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    tab.mouse.move(x, y)
+    tab.mouse.down()
+    tab.mouse.move(x + 50, y, steps=5)   # the right bar: dragging right grows
+    tab.mouse.up()
+    tab.wait_for_function("(w) => document.querySelector('.bn-visual-media').getBoundingClientRect().width > w + 30", arg=narrowed, timeout=5000)
+    tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)
+    assert not tab.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
 
 
 def test_a_resize_drag_follows_the_pointer_one_to_one_and_eases_only_on_release(page):
@@ -745,3 +755,21 @@ def test_a_resize_drag_follows_the_pointer_one_to_one_and_eases_only_on_release(
     page.mouse.up()
     assert not page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
     assert page.evaluate(wrapper.replace("() =>", "() => getComputedStyle(") + ").transitionProperty") == "width"
+
+
+def test_a_cancelled_touch_ends_the_resize_instead_of_leaving_it_stuck(page):
+    _picture_in_note(page)
+    page.click(".bn-visual-media")
+    page.wait_for_selector(".bn-resize-handle", state="visible", timeout=5000)
+    handle = page.locator(".bn-resize-handle").last.bounding_box()
+    page.mouse.move(handle["x"] + 4, handle["y"] + 10)
+    page.mouse.down()
+    assert page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
+    seen = page.evaluate("""() => new Promise((resolve) => {
+        window.addEventListener('touchend', () => resolve('touchend'), {once: true});
+        document.dispatchEvent(new Event('touchcancel', {bubbles: true}));  // iOS took the finger for a scroll
+        setTimeout(() => resolve('nothing'), 500);
+    })""")
+    assert seen == "touchend"   # the editor only listens for touchend: it is told the drag is over
+    assert not page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
+    page.mouse.up()
