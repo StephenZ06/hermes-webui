@@ -11815,6 +11815,26 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor .ProseMirror-selectednode > .bn-block-content[data-file-block] > *::after,
 .hermes-note-editor [data-file-block] .ProseMirror-selectednode::after{content:none !important;display:none !important;}
 
-/* Notes: our own play button on a paused clip (the native one proved unreliable on iOS). */
-.hermes-note-editor .bn-file-block-content-wrapper:has(video) .nb-play{position:absolute;left:50%;top:50%;z-index:5;transform:translate(-50%,-50%);display:grid;place-items:center;width:64px;height:64px;padding:0 0 0 4px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;box-shadow:0 2px 14px rgba(0,0,0,.4);-webkit-tap-highlight-color:transparent;cursor:pointer;}
-.hermes-note-editor .bn-file-block-content-wrapper .nb-play[hidden]{display:none !important;}
+/* Notes: a clip's own controls (see addVideoControls). They sit over the video: shown while it
+   is paused or finished, faded out a moment after it plays, back on a tap. */
+.hermes-note-editor .nb-vc{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+.hermes-note-editor .nb-vc button{border:0;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+.hermes-note-editor .nb-vc-big{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:rgba(0,0,0,.55);box-shadow:0 2px 14px rgba(0,0,0,.4);pointer-events:auto;transition:opacity .2s ease;}
+.hermes-note-editor .nb-vc-big[hidden]{display:none;}
+.hermes-note-editor .nb-vc-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:6px;padding:18px 8px 4px;background:linear-gradient(transparent,rgba(0,0,0,.7));border-radius:0 0 6px 6px;pointer-events:auto;transition:opacity .25s ease;}
+.hermes-note-editor .nb-vc[data-ui="hidden"] .nb-vc-bar,.hermes-note-editor .nb-vc[data-ui="hidden"] .nb-vc-big{opacity:0;pointer-events:none;}
+.hermes-note-editor .nb-vc-bar button{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;border-radius:8px;}
+.hermes-note-editor .nb-vc-time{flex:0 0 auto;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.hermes-note-editor .nb-vc-seek,.hermes-note-editor .nb-vc-volume{-webkit-appearance:none;appearance:none;height:32px;margin:0;background:transparent;cursor:pointer;touch-action:none;}
+.hermes-note-editor .nb-vc-seek{flex:1 1 auto;min-width:40px;}
+.hermes-note-editor .nb-vc-volume{flex:0 0 70px;width:70px;}
+.hermes-note-editor .nb-vc-seek::-webkit-slider-runnable-track,.hermes-note-editor .nb-vc-volume::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--p,100%),rgba(255,255,255,.35) var(--p,100%));}
+.hermes-note-editor .nb-vc-seek::-moz-range-track,.hermes-note-editor .nb-vc-volume::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,255,255,.35);}
+.hermes-note-editor .nb-vc-seek::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent);}
+.hermes-note-editor .nb-vc-seek::-webkit-slider-thumb,.hermes-note-editor .nb-vc-volume::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;border:0;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+.hermes-note-editor .nb-vc-seek::-moz-range-thumb,.hermes-note-editor .nb-vc-volume::-moz-range-thumb{width:16px;height:16px;border-radius:50%;border:0;background:#fff;}
+@media (hover:none){.hermes-note-editor .nb-vc-volume{display:none;}}   /* iOS cannot set a page's volume; mute is enough */
+@media (max-width:420px){.hermes-note-editor .nb-vc-time{font-size:11px;}.hermes-note-editor .nb-vc-bar{gap:2px;padding-inline:4px;}}
+:fullscreen .nb-vc-bar{padding-bottom:max(8px,env(safe-area-inset-bottom));}
+.hermes-note-editor .bn-file-block-content-wrapper:fullscreen,.hermes-note-editor .bn-file-block-content-wrapper:-webkit-full-screen{width:100% !important;height:100%;background:#000;display:grid;place-items:center;}
+.hermes-note-editor .bn-file-block-content-wrapper:fullscreen video{max-height:100%;width:100%;}

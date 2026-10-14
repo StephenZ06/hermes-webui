@@ -129,7 +129,10 @@ In the vault:
 - A picture or clip is outlined in the accent colour when tapped. On a phone it
   fills the text width until resized, the resize bars appear on a second tap (a
   quick double tap for a clip, since taps also play and pause it) and go away once
-  a resize ends. Taps on a player never reach the editor, so one tap plays. The
+  a resize ends. Taps on a player never reach the editor. A clip has its own controls (the browser's
+  were unreliable for taps here): a play button, and a bar with play/pause, time, seek,
+  mute (volume on a desktop) and full screen. They show while it is paused or finished,
+  fade a moment after it starts, and return on a tap; starting one clip stops the others. The
   width is saved as the block's `previewWidth`, and for a vault picture as
   Obsidian's `![alt|300](...)` / `![[x.png|300]]`.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in

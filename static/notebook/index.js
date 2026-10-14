@@ -676,29 +676,101 @@
       throw error;
     }
   }
-  // The player's own play button did nothing on a phone (and said nothing). This one is
-  // ours: it calls play() itself, inside the tap, so a clip that can be played plays, and
-  // one that cannot says why. It shows while the clip is not playing; the native controls
-  // stay for seeking, volume and full screen.
-  function addPlayButton(video) {
+  // The browser's own controls did not work for taps in this editor on a phone (pause,
+  // volume and full screen were dead, and play was unreliable), so a clip gets controls of
+  // its own: a play button, and a bar with play/pause, time, seek, mute (and volume on a
+  // desktop) and full screen. They show while the clip is paused or finished, fade away a
+  // moment after it starts playing, and come back when it is tapped.
+  const ICON = {
+    play: '<path d="M8 5v14l11-7z"/>',
+    pause: '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>',
+    replay: '<path d="M12 5V2L7 6.5 12 11V8a5 5 0 1 1-5 5H5a7 7 0 1 0 7-8z"/>',
+    sound: '<path d="M3 9v6h4l5 4V5L7 9zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 9v6h4l5 4V5L7 9z"/>',
+    mute: '<path d="M3 9v6h4l5 4V5L7 9z"/><path d="m16 9 5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  };
+  const svg = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true">${ICON[name]}</svg>`;
+  const clock = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const whole = Math.floor(seconds), m = Math.floor(whole / 60), h = Math.floor(m / 60);
+    const ss = String(whole % 60).padStart(2, '0');
+    return h ? `${h}:${String(m % 60).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  };
+  function addVideoControls(video) {
     const box = video.closest('.bn-file-block-content-wrapper');
-    if (!box || box.querySelector('.nb-play')) return;
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'nb-play'; button.contentEditable = 'false';
-    button.setAttribute('aria-label', 'Play');
-    button.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
-    box.appendChild(button);
-    const sync = () => { button.hidden = !video.paused; };
-    ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata'].forEach((name) => video.addEventListener(name, sync));
-    sync();
-    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => button.addEventListener(type, (event) => event.stopPropagation()));
-    button.addEventListener('click', () => {
+    if (!box) return;
+    box.querySelectorAll('.nb-vc').forEach((old) => old.remove());
+    video.controls = false; video.removeAttribute('controls');
+    const ui = document.createElement('div');
+    ui.className = 'nb-vc'; ui.contentEditable = 'false'; ui.dataset.ui = 'shown';
+    ui.innerHTML = `<button type="button" class="nb-vc-big" aria-label="Play">${svg('play', 34)}</button>
+      <div class="nb-vc-bar">
+        <button type="button" class="nb-vc-toggle" aria-label="Play">${svg('play')}</button>
+        <span class="nb-vc-time">0:00 / 0:00</span>
+        <input class="nb-vc-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+        <button type="button" class="nb-vc-mute" aria-label="Mute">${svg('sound')}</button>
+        <input class="nb-vc-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume">
+        <button type="button" class="nb-vc-full" aria-label="Full screen">${svg('full')}</button>
+      </div>`;
+    box.appendChild(ui);
+    const $ = (selector) => ui.querySelector(selector);
+    const big = $('.nb-vc-big'), toggle = $('.nb-vc-toggle'), time = $('.nb-vc-time'), seek = $('.nb-vc-seek'), mute = $('.nb-vc-mute'), volume = $('.nb-vc-volume'), full = $('.nb-vc-full');
+    let hideTimer = 0, scrubbing = false;
+    const playing = () => !video.paused && !video.ended;
+    const show = () => { ui.dataset.ui = 'shown'; clearTimeout(hideTimer); if (playing() && !scrubbing) hideTimer = setTimeout(() => { if (playing() && !scrubbing) ui.dataset.ui = 'hidden'; }, 2500); };
+    const paint = () => {
+      const dur = Number.isFinite(video.duration) ? video.duration : 0;
+      if (!scrubbing) { seek.value = dur ? Math.round(video.currentTime / dur * 1000) : 0; }
+      seek.style.setProperty('--p', (Number(seek.value) / 10) + '%');
+      time.textContent = `${clock(video.currentTime)} / ${clock(dur)}`;
+    };
+    const state = () => {
+      const label = video.ended ? 'Replay' : playing() ? 'Pause' : 'Play';
+      toggle.innerHTML = svg(video.ended ? 'replay' : playing() ? 'pause' : 'play'); toggle.setAttribute('aria-label', label);
+      big.innerHTML = svg(video.ended ? 'replay' : 'play', 34); big.setAttribute('aria-label', label);
+      big.hidden = playing();
+      mute.innerHTML = svg(video.muted || video.volume === 0 ? 'mute' : 'sound'); mute.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
+      volume.value = video.muted ? 0 : video.volume; volume.style.setProperty('--p', (Number(volume.value) * 100) + '%');
+      if (playing()) show(); else { clearTimeout(hideTimer); ui.dataset.ui = 'shown'; }
+      paint();
+    };
+    const failed = (error) => {
+      toast(`This video could not be played (${error && error.name ? error.name : 'error'}).`);
+      try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: 'play-rejected', url_path: location.pathname, reason: `${error && error.name}: ${error && error.message}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
+    };
+    const playPause = () => {
+      if (playing()) { video.pause(); return; }
+      if (video.ended) video.currentTime = 0;
       const started = video.play();
-      if (started && started.catch) started.catch((error) => {
-        toast(`This video could not be played (${error && error.name ? error.name : 'error'}).`);
-        try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: 'play-rejected', url_path: location.pathname, reason: `${error && error.name}: ${error && error.message}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
-      });
+      if (started && started.catch) started.catch(failed);
+    };
+    ['play', 'playing', 'pause', 'ended', 'emptied', 'volumechange', 'loadedmetadata', 'durationchange'].forEach((name) => video.addEventListener(name, state));
+    video.addEventListener('timeupdate', paint);
+    video.addEventListener('click', () => { if (ui.dataset.ui === 'hidden') show(); else if (playing()) { ui.dataset.ui = 'hidden'; clearTimeout(hideTimer); } else show(); });
+    big.addEventListener('click', playPause);
+    toggle.addEventListener('click', () => { playPause(); show(); });
+    mute.addEventListener('click', () => { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 1; show(); });
+    volume.addEventListener('input', () => { video.volume = Number(volume.value); video.muted = video.volume === 0; show(); });
+    seek.addEventListener('input', () => {
+      scrubbing = true; clearTimeout(hideTimer);
+      if (Number.isFinite(video.duration)) video.currentTime = Number(seek.value) / 1000 * video.duration;
+      paint();
     });
+    seek.addEventListener('change', () => { scrubbing = false; show(); });
+    seek.addEventListener('pointerup', () => { scrubbing = false; show(); });
+    full.addEventListener('click', () => {
+      show();
+      if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      // Elsewhere the whole box goes full screen, so these controls come along. An iPhone only
+      // full-screens a video itself (with the system player).
+      const ask = box.requestFullscreen || box.webkitRequestFullscreen;
+      if (ask) { const done = ask.call(box); if (done && done.catch) done.catch(failed); }
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    });
+    // Nothing on the controls may reach the editor (it would select the block around the player).
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => ui.addEventListener(type, (event) => event.stopPropagation()));
+    ui.addEventListener('pointermove', () => { if (playing()) show(); });
+    state();
   }
   // A clip that will not play says why: the player's own state goes to the server log
   // (the browser's client-event route, a few small fields) and a failure is shown.
@@ -880,7 +952,9 @@
       const src = video.getAttribute('src') || '';
       if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
       reportVideo(video);
-      addPlayButton(video);
+      addVideoControls(video);
+      // One clip at a time: starting one stops the others.
+      video.addEventListener('play', () => mount.querySelectorAll('video').forEach((other) => { if (other !== video && !other.paused) other.pause(); }));
     });
     const tidy = () => { isolate(); prepare(); };
     tidy();

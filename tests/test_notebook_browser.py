@@ -793,7 +793,7 @@ def _video_in_note(tab):
         tab.click(".nb-editor-head [data-nb-action=add-files]")
     chooser.value.set_files([{"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4}])
     tab.wait_for_selector(".hermes-note-editor video", timeout=15000)
-    tab.wait_for_selector(".hermes-note-editor .nb-play", timeout=5000)
+    tab.wait_for_selector(".hermes-note-editor .nb-vc-big", timeout=5000)
     tab.wait_for_timeout(900)   # the placeholder file fails to load and the box settles
 
 
@@ -900,8 +900,7 @@ def test_a_clips_player_state_is_reported_so_a_failure_can_be_diagnosed(real_web
     assert any(json.loads(body)["source"] == "error" for body in seen if body and '"notes_video"' in body)
 
 
-def test_our_play_button_plays_a_clip_with_one_tap_and_hides_while_it_plays(real_webm, touch_page):
-    tab = touch_page
+def _clip_in_note(tab, clip):
     tab.goto(BASE + "/", wait_until="domcontentloaded")
     tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
     tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
@@ -911,15 +910,76 @@ def test_our_play_button_plays_a_clip_with_one_tap_and_hides_while_it_plays(real
     tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     with tab.expect_file_chooser() as chooser:
         tab.click(".nb-editor-head [data-nb-action=add-files]")
-    chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": real_webm}])
+    chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": clip}])
     tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return v && v.readyState >= 1 && v.duration > 0; }", timeout=20000)
     tab.evaluate("() => { document.querySelector('.hermes-note-editor video').muted = true; }")
-    tab.wait_for_selector(".hermes-note-editor .nb-play:not([hidden])", timeout=5000)
-    tab.tap(".hermes-note-editor .nb-play")                                    # one tap
+    tab.wait_for_selector(".hermes-note-editor .nb-vc", timeout=5000)
+
+
+VIDEO = "() => document.querySelector('.hermes-note-editor video')"
+
+
+def test_a_clip_has_one_set_of_working_controls_that_hide_while_it_plays(real_webm, touch_page):
+    tab = touch_page
+    _clip_in_note(tab, real_webm)
+    # One set of controls: the browser's own are off, ours are the only play button.
+    assert tab.evaluate(VIDEO + ".controls") is False
+    assert tab.evaluate("() => document.querySelectorAll('.hermes-note-editor .nb-vc-big').length") == 1
+    ui = ".hermes-note-editor .nb-vc"
+    assert tab.get_attribute(ui, "data-ui") == "shown"
+    tab.tap(ui + " .nb-vc-big")                                                    # one tap plays
     tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.paused && v.currentTime > 0; }", timeout=8000)
-    tab.wait_for_selector(".hermes-note-editor .nb-play", state="hidden", timeout=5000)
-    # and it did not select or re-render the block
-    assert tab.evaluate("() => document.querySelectorAll('.hermes-note-editor video').length") == 1
+    tab.wait_for_selector(ui + " .nb-vc-big", state="hidden", timeout=3000)       # the big button goes
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor .nb-vc').dataset.ui === 'hidden'", timeout=6000)   # ...and the bar fades away
+    tab.wait_for_function(f"() => getComputedStyle(document.querySelector('{ui} .nb-vc-bar')).opacity === '0'", timeout=2000)
+    box = tab.locator(".hermes-note-editor video").bounding_box()
+    tab.touchscreen.tap(box["x"] + box["width"] * 0.2, box["y"] + box["height"] * 0.25)   # a tap on the picture brings it back
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor .nb-vc').dataset.ui === 'shown'", timeout=3000)
+    tab.tap(ui + " .nb-vc-toggle")                                                # pause works
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor video').paused", timeout=3000)
+    assert tab.get_attribute(ui, "data-ui") == "shown" and tab.is_visible(ui + " .nb-vc-big")
+    assert not tab.evaluate("() => document.querySelector('.hermes-note-editor video').ended")
+
+
+def test_the_clip_controls_seek_mute_and_full_screen_and_come_back_at_the_end(real_webm, touch_page):
+    tab = touch_page
+    _clip_in_note(tab, real_webm)
+    ui = ".hermes-note-editor .nb-vc"
+    duration = tab.evaluate(VIDEO + ".duration")
+    tab.evaluate("() => { const s = document.querySelector('.hermes-note-editor .nb-vc-seek'); s.value = 500; s.dispatchEvent(new Event('input', {bubbles: true})); }")
+    tab.wait_for_function("(d) => Math.abs(document.querySelector('.hermes-note-editor video').currentTime - d / 2) < 0.3", arg=duration, timeout=3000)
+    assert "/" in tab.inner_text(ui + " .nb-vc-time")
+    tab.evaluate("() => { document.querySelector('.hermes-note-editor video').muted = false; }")
+    tab.tap(ui + " .nb-vc-mute")
+    assert tab.evaluate(VIDEO + ".muted") is True
+    tab.tap(ui + " .nb-vc-mute")
+    assert tab.evaluate(VIDEO + ".muted") is False
+    tab.evaluate("() => { document.querySelector('.hermes-note-editor video').muted = true; }")
+    tab.evaluate("() => { window.__fs = []; Element.prototype.requestFullscreen = function () { window.__fs.push(this.className); return Promise.resolve(); }; }")
+    tab.tap(ui + " .nb-vc-full")
+    assert any("bn-file-block-content-wrapper" in name for name in tab.evaluate("() => window.__fs"))   # the box, so the controls come along
+    # Play to the end: the controls return, offering a replay.
+    tab.evaluate("() => { const v = document.querySelector('.hermes-note-editor video'); v.currentTime = Math.max(0, v.duration - 0.4); v.play(); }")
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor video').ended", timeout=8000)
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor .nb-vc').dataset.ui === 'shown'", timeout=3000)
+    assert tab.is_visible(ui + " .nb-vc-big") and tab.get_attribute(ui + " .nb-vc-big", "aria-label") == "Replay"
+    tab.tap(ui + " .nb-vc-big")
+    tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.ended && !v.paused; }", timeout=5000)
+
+
+def test_starting_one_clip_stops_the_others(real_webm, touch_page):
+    tab = touch_page
+    _clip_in_note(tab, real_webm)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "again.webm", "mimeType": "video/webm", "buffer": real_webm}])
+    tab.wait_for_function("() => document.querySelectorAll('.hermes-note-editor video').length === 2 && [...document.querySelectorAll('.hermes-note-editor video')].every(v => v.readyState >= 1)", timeout=20000)
+    tab.evaluate("() => document.querySelectorAll('.hermes-note-editor video').forEach(v => { v.muted = true; })")
+    bigs = tab.locator(".hermes-note-editor .nb-vc-big")
+    bigs.nth(0).tap()
+    tab.wait_for_function("() => !document.querySelectorAll('.hermes-note-editor video')[0].paused", timeout=5000)
+    bigs.nth(1).tap()
+    tab.wait_for_function("() => { const v = document.querySelectorAll('.hermes-note-editor video'); return !v[1].paused && v[0].paused; }", timeout=5000)
 
 
 def test_a_clip_that_cannot_be_played_says_so(page):
@@ -933,7 +993,7 @@ def test_a_clip_that_cannot_be_played_says_so(page):
     with page.expect_file_chooser() as chooser:
         page.click(".nb-editor-head [data-nb-action=add-files]")
     chooser.value.set_files([{"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4}])
-    page.wait_for_selector(".hermes-note-editor .nb-play", timeout=15000)
+    page.wait_for_selector(".hermes-note-editor .nb-vc-big", timeout=15000)
     page.wait_for_timeout(600)
-    page.click(".hermes-note-editor .nb-play")
+    page.click(".hermes-note-editor .nb-vc-big")
     page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be played/i.test(t.textContent))", timeout=8000)
