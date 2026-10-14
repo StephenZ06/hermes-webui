@@ -313,7 +313,7 @@ def _block_texts(page):
     return page.evaluate("() => Notebook.editor.getBlocks().map(b => (b.content || []).map(c => c.text).join(''))")
 
 
-def test_touch_block_bar_moves_and_edits_lines(touch_page):
+def test_touch_grip_drags_a_line_to_a_new_place(touch_page):
     page = touch_page
     page.goto(BASE + "/", wait_until="domcontentloaded")
     page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
@@ -322,24 +322,27 @@ def test_touch_block_bar_moves_and_edits_lines(touch_page):
     page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
     page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
-    page.wait_for_selector(".nb-blockbar", timeout=10000)
     page.click(".hermes-note-editor .bn-editor")
-    page.keyboard.type("one")
-    page.keyboard.press("Enter")
-    page.keyboard.type("two")
-    assert _block_texts(page)[:2] == ["one", "two"]
-    page.click(".nb-blockbar [data-nb-block=up]")
-    assert _block_texts(page)[:2] == ["two", "one"]
-    page.click(".nb-blockbar [data-nb-block=down]")
-    assert _block_texts(page)[:2] == ["one", "two"]
-    page.click(".nb-blockbar [data-nb-block=add]")
-    assert len(_block_texts(page)) >= 3
-    page.click(".nb-blockbar [data-nb-block=remove]")
-    assert _block_texts(page)[:2] == ["one", "two"]
+    for word in ("one", "two", "three"):
+        page.keyboard.type(word)
+        page.keyboard.press("Enter")
+    page.keyboard.press("Backspace")
+    assert _block_texts(page)[:3] == ["one", "two", "three"]
+    # Cursor is in "three": drag its grip up above "one".
+    page.wait_for_selector(".nb-grip:not([hidden])", timeout=5000)
+    grip = page.locator(".nb-grip").bounding_box()
+    first = page.locator(".hermes-note-editor .bn-block-content").first.bounding_box()
+    page.mouse.move(grip["x"] + 10, grip["y"] + 10)
+    page.mouse.down()
+    page.mouse.move(grip["x"] + 10, (grip["y"] + first["y"]) / 2, steps=5)
+    page.mouse.move(grip["x"] + 10, first["y"] + 2, steps=5)
+    page.mouse.up()
+    page.wait_for_function("() => Notebook.editor.getBlocks()[0].content[0].text === 'three'", timeout=5000)
+    assert _block_texts(page)[:3] == ["three", "one", "two"]
 
 
-def test_desktop_has_no_touch_block_bar(page):
+def test_desktop_has_no_touch_grip(page):
     _open(page)
     page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
-    assert page.query_selector(".nb-blockbar") is None
+    assert page.query_selector(".nb-grip") is None

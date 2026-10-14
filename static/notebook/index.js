@@ -31,7 +31,7 @@
     side: 'notes',
     scope: {kind: 'general', id: null},
     search: '', searchResults: null, searchSeq: 0,
-    expanded: {}, tagFilter: null,
+    expanded: {}, more: {}, tagFilter: null,
     note: null, noteLoading: false, noteError: '',
     pane: 'list', // narrow screens: 'list' | 'editor'
   };
@@ -190,9 +190,14 @@
     const active = S.scope.kind === kind ? ' active' : '';
     return `<button type="button" class="work-hub-scope nb-scope${extraClass ? ' ' + extraClass : ''}${active}" data-nb-scope="${kind}">${icon(iconName)}<span>${esc(label)}</span>${n ? `<span class="nb-scope-count">${n}</span>` : ''}</button>`;
   }
-  function noteRows(notes) {
+  const TREE_LIMIT = 50;
+  function noteRows(notes, key) {
     if (!notes.length) return '<p class="nb-tree-empty">No notes yet</p>';
-    return notes.slice(0, 50).map((n) => `<div class="work-hub-board-row nb-tree-note${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('');
+    const all = !!(key && S.more[key]);
+    const shown = all ? notes : notes.slice(0, TREE_LIMIT);
+    const more = notes.length > TREE_LIMIT && key
+      ? `<button type="button" class="nb-tree-more" data-nb-action="more" data-nb-more="${esc(key)}">${all ? 'Show fewer' : `Show ${notes.length - TREE_LIMIT} more`}</button>` : '';
+    return shown.map((n) => `<div class="work-hub-board-row nb-tree-note${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('') + more;
   }
   // Same markup and classes as the Work Hub's workspace folders, so the two
   // side panels look and move the same: a whole-tile click selects the place
@@ -206,7 +211,7 @@
       + `<span class="project-folder-chevron work-hub-project-chevron${expanded ? ' expanded' : ''}">▸</span>`
       + `<span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span>`
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
-      + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes)}${childrenHtml || ''}</div></div>`;
+      + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes, key)}${childrenHtml || ''}</div></div>`;
   }
   // The store changed (Settings → Preferences → Notes · Obsidian vault): drop
   // the open note, which belongs to the old store, and load the new one.
@@ -556,44 +561,101 @@
       throw error;
     }
   }
-  // Touch screens have no hover, so the editor's block handle (the grip that
-  // drags a line up or down on desktop) never appears there. This bar gives
-  // the same moves to a thumb: it acts on the block holding the cursor, and
-  // pointerdown is cancelled so the editor keeps focus and the keyboard.
-  function mountBlockBar(host, note) {
-    const old = host.querySelector('.nb-blockbar'); if (old) old.remove();
+  // Touch screens have no hover, so the editor's drag handle (the grip that
+  // moves a line on desktop) never shows there. On touch a grip sits beside
+  // the line holding the cursor, on the right (the left edge belongs to the
+  // swipe-for-sidebar guard); drag it with a finger to move the line. The
+  // grip cancels pointerdown, so the editor keeps focus and the keyboard.
+  function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
-    const bar = document.createElement('div');
-    bar.className = 'nb-blockbar';
-    bar.setAttribute('role', 'toolbar');
-    bar.setAttribute('aria-label', 'Edit the current line');
-    const actions = [
-      ['up', '↑', 'Move line up'], ['down', '↓', 'Move line down'],
-      ['outdent', '⇤', 'Outdent'], ['indent', '⇥', 'Indent'],
-      ['add', '+', 'Add a line below'], ['remove', '×', 'Delete line'],
-    ];
-    bar.innerHTML = actions.map(([id, glyph, label]) => `<button type="button" data-nb-block="${id}" aria-label="${label}" title="${label}">${glyph}</button>`).join('');
-    host.insertBefore(bar, host.firstChild);
-    const run = (id) => {
-      const editor = editorCtl && editorCtl.editor; if (!editor) return;
-      try {
-        const block = editor.getTextCursorPosition().block;
-        if (id === 'up') editor.moveBlocksUp();
-        else if (id === 'down') editor.moveBlocksDown();
-        else if (id === 'indent') { if (editor.canNestBlock()) editor.nestBlock(); }
-        else if (id === 'outdent') { if (editor.canUnnestBlock()) editor.unnestBlock(); }
-        else if (id === 'add') {
-          const inserted = editor.insertBlocks([{type: 'paragraph'}], block, 'after');
-          if (inserted && inserted[0]) editor.setTextCursorPosition(inserted[0], 'start');
-        } else if (id === 'remove') {
-          if (editor.document.length > 1) editor.removeBlocks([block]);
-          else editor.updateBlock(block, {type: 'paragraph', content: ''});
-        }
-        editor.focus();
-      } catch (_) {}
+    const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
+    mount.classList.add('has-grip'); host.classList.add('nb-has-grip');
+    const grip = document.createElement('button');
+    grip.type = 'button'; grip.className = 'nb-grip'; grip.hidden = true;
+    grip.setAttribute('aria-label', 'Drag to move this line'); grip.title = 'Drag to move this line';
+    grip.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>';
+    const line = document.createElement('div'); line.className = 'nb-drop-line'; line.hidden = true;
+    host.append(grip, line); // React owns the mount's children, so these sit beside it
+    const blockEl = (id) => mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
+    let current = null; // id of the block holding the cursor
+    const place = () => {
+      const editor = editorCtl && editorCtl.editor;
+      if (!editor || !mount.isConnected) return;
+      let id = null;
+      try { id = editor.getTextCursorPosition().block.id; } catch (_) {}
+      const el = id && blockEl(id);
+      if (!el || !mount.contains(document.activeElement)) { if (!drag) grip.hidden = true; return; }
+      current = id;
+      const box = el.querySelector('.bn-block-content') || el;
+      const m = host.getBoundingClientRect(), r = box.getBoundingClientRect();
+      grip.style.top = (r.top - m.top + Math.max(0, (Math.min(r.height, 30) - 28) / 2)) + 'px';
+      grip.hidden = false;
     };
-    bar.addEventListener('pointerdown', (event) => { if (event.target.closest('button')) event.preventDefault(); });
-    bar.addEventListener('click', (event) => { const b = event.target.closest('[data-nb-block]'); if (b) run(b.dataset.nbBlock); });
+    document.addEventListener('selectionchange', place);
+    mount.addEventListener('focusin', place);
+    mount.addEventListener('input', () => requestAnimationFrame(place));
+    // Where the dragged line would land: before/after the block under the finger.
+    let drag = null;
+    const targetAt = (y) => {
+      let best = null;
+      mount.querySelectorAll('.bn-block-outer').forEach((el) => {
+        if (drag.el.contains(el)) return;
+        const box = (el.querySelector('.bn-block-content') || el).getBoundingClientRect();
+        const dist = y < box.top ? box.top - y : (y > box.bottom ? y - box.bottom : 0);
+        if (!best || dist < best.dist) best = {el, box, dist, after: y > box.top + box.height / 2};
+      });
+      return best;
+    };
+    const scroller = () => { let n = mount.parentElement; while (n && n !== document.body) { const o = getComputedStyle(n).overflowY; if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n; n = n.parentElement; } return document.scrollingElement; };
+    const showLine = (t) => {
+      if (!t) { line.hidden = true; return; }
+      const m = host.getBoundingClientRect();
+      line.style.top = ((t.after ? t.box.bottom : t.box.top) - m.top - 1) + 'px';
+      line.hidden = false;
+    };
+    grip.addEventListener('pointerdown', (event) => {
+      if (!current || !blockEl(current)) return;
+      event.preventDefault();
+      drag = {id: current, el: blockEl(current), target: null, y: event.clientY, scroll: 0, raf: 0};
+      grip.setPointerCapture(event.pointerId);
+      grip.classList.add('dragging'); drag.el.classList.add('nb-block-lifted');
+      const tick = () => {
+        if (!drag) return;
+        const sc = scroller(); const h = window.innerHeight;
+        const edge = drag.y < 90 ? -10 : (drag.y > h - 150 ? 10 : 0);
+        if (edge && sc) { sc.scrollTop += edge; drag.target = targetAt(drag.y); showLine(drag.target); }
+        drag.raf = requestAnimationFrame(tick);
+      };
+      drag.raf = requestAnimationFrame(tick);
+      drag.target = targetAt(event.clientY); showLine(drag.target);
+    });
+    grip.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      drag.y = event.clientY; drag.target = targetAt(event.clientY); showLine(drag.target);
+      const m = host.getBoundingClientRect(); grip.style.top = (event.clientY - m.top - 14) + 'px';
+    });
+    const finish = (commit) => {
+      if (!drag) return;
+      const d = drag; drag = null;
+      cancelAnimationFrame(d.raf); grip.classList.remove('dragging'); d.el.classList.remove('nb-block-lifted'); line.hidden = true;
+      const editor = editorCtl && editorCtl.editor;
+      const targetId = d.target && d.target.el.dataset.id;
+      if (commit && editor && targetId && targetId !== d.id) {
+        try {
+          const block = editor.getBlock(d.id);
+          const move = (b) => { const {id, children, ...rest} = b; return Object.assign({}, rest, {children: (children || []).map(move)}); };
+          const copy = move(block);
+          editor.removeBlocks([d.id]);
+          const [moved] = editor.insertBlocks([copy], targetId, d.target.after ? 'after' : 'before');
+          if (moved) editor.setTextCursorPosition(moved, 'end');
+        } catch (_) {}
+      }
+      if (editor) editor.focus();
+      requestAnimationFrame(place);
+    };
+    grip.addEventListener('pointerup', () => finish(true));
+    grip.addEventListener('pointercancel', () => finish(false));
+    grip.addEventListener('contextmenu', (event) => event.preventDefault());
   }
   async function mountEditor(note, content) {
     const host = $('nbEditorHost');
@@ -631,7 +693,7 @@
       },
     });
     editorNoteId = note.id;
-    mountBlockBar(host, note);
+    mountBlockGrip(host, note);
     if (fromMarkdown) {
       try {
         const blocks = await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''));
@@ -1125,6 +1187,7 @@
           break;
         }
         useSide('vault'); S.pane = 'list'; render(); break;
+      case 'more': S.more[action.dataset.nbMore] = !S.more[action.dataset.nbMore]; renderSidebar(); break;
       case 'vault-close': useSide('notes'); S.pane = 'list'; render(); break;
       default: break;
     }
