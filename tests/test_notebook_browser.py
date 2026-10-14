@@ -773,3 +773,55 @@ def test_a_cancelled_touch_ends_the_resize_instead_of_leaving_it_stuck(page):
     assert seen == "touchend"   # the editor only listens for touchend: it is told the drag is over
     assert not page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
     page.mouse.up()
+
+
+def _video_in_note(tab):
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4}])
+    tab.wait_for_selector(".hermes-note-editor video", timeout=15000)
+    tab.wait_for_timeout(400)
+
+
+def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(touch_page):
+    tab = touch_page
+    _video_in_note(tab)
+    sized = tab.evaluate("() => { const v = document.querySelector('video').getBoundingClientRect(), e = document.querySelector('.hermes-note-editor .bn-editor').getBoundingClientRect(); return [Math.round(v.width), Math.round(e.width)]; }")
+    assert sized[0] >= sized[1] - 70 and sized[0] <= sized[1], sized          # fills the phone's text width
+    # A tap on the clip must not reach the editor (it would select the block and re-render around the
+    # player, and the first tap never got to play): count what arrives at the editor's own element.
+    tab.evaluate("""() => { window.__reached = 0; const editor = document.querySelector('.hermes-note-editor .bn-editor');
+        ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((t) => editor.addEventListener(t, (e) => { if (e.target.tagName === 'VIDEO') window.__reached++; })); }""")
+    def centre():   # the clip's box changes as the (placeholder) file fails to load
+        box = tab.locator("video").bounding_box()
+        return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    tab.touchscreen.tap(*centre())
+    tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
+    assert tab.evaluate("() => window.__reached") == 0
+    assert not _bars_shown(tab)
+    tab.wait_for_timeout(700)
+    tab.touchscreen.tap(*centre())          # a second tap, but slow: play/pause, not the bars
+    tab.wait_for_timeout(300)
+    assert not _bars_shown(tab)
+    tab.wait_for_timeout(700)
+    tab.touchscreen.tap(*centre())          # a quick pair is the double tap
+    tab.touchscreen.tap(*centre())
+    tab.wait_for_function("() => [...document.querySelectorAll('.bn-resize-handle')].some(h => getComputedStyle(h).display !== 'none')", timeout=5000)
+    before = tab.locator("video").bounding_box()["width"]
+    handle = tab.locator(".bn-resize-handle[data-nb-on]").first.bounding_box()
+    x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    tab.mouse.move(x, y)
+    tab.mouse.down()
+    tab.mouse.move(x + 90, y, steps=6)
+    tab.mouse.up()
+    tab.wait_for_function("() => Notebook.editor.getBlocks().find(b => b.type === 'video').props.previewWidth > 0", timeout=5000)
+    tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)   # let go after a resize
+    assert not _bars_shown(tab)
+    assert tab.locator("video").bounding_box()["width"] < before - 60

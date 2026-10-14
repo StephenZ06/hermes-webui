@@ -126,9 +126,12 @@ In the vault:
   play or seek. In a vault, media is written to the attachment folder and linked
   as `![name](path)` (Obsidian embeds it); media may be played from anywhere in the
   vault, documents are read back only from the attachment folder.
-- A picture can be resized by dragging its corners (a finger or a mouse); the width
-  is saved as the block's `previewWidth`, and in a vault as Obsidian's
-  `![alt|300](...)` / `![[x.png|300]]`.
+- A picture or clip is outlined in the accent colour when tapped. On a phone it
+  fills the text width until resized, the resize bars appear on a second tap (a
+  quick double tap for a clip, since taps also play and pause it) and go away once
+  a resize ends. Taps on a player never reach the editor, so one tap plays. The
+  width is saved as the block's `previewWidth`, and for a vault picture as
+  Obsidian's `![alt|300](...)` / `![[x.png|300]]`.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
   Obsidian's syntax; images in notes are served from the vault
   (`/api/notebook/vault/file?path=`), and pasted images are saved to the

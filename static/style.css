@@ -11805,4 +11805,4 @@ html.nb-img-dragging .hermes-note-editor .bn-file-block-content-wrapper{transiti
 html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor [data-file-block] .bn-resize-handle{touch-action:none;}
 /* Rescale the picture on the GPU instead of re-rasterising it each frame. */
-.hermes-note-editor .bn-visual-media{transform:translateZ(0);backface-visibility:hidden;}
+.hermes-note-editor img.bn-visual-media{transform:translateZ(0);backface-visibility:hidden;}

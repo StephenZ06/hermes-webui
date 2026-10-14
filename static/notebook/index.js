@@ -819,6 +819,13 @@
   // follows the picture while it grows or shrinks.
   function mountImageOutline(host, note) {
     const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
+    // A tap on a clip or recording belongs to the player. If it reaches the editor,
+    // ProseMirror selects the block, focuses the editor and re-renders around the
+    // player, and on iOS that first tap never reaches the play button, so playing
+    // took two. Nothing is cancelled: the player still gets the event.
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => mount.addEventListener(type, (event) => {
+      if (event.target && /^(VIDEO|AUDIO)$/.test(event.target.tagName)) event.stopPropagation();
+    }, true));
     host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
     box.className = 'nb-img-outline'; box.hidden = true;
@@ -848,16 +855,19 @@
     // on a picture starts iOS's own text/image selection, which can swallow the
     // click; the pointer events still arrive, so a tap is read from them, and the
     // click that follows (or the click of a mouse) is ignored as a duplicate.
-    let lastTapAt = 0, skipClick = false, down = null;
+    let lastTapAt = 0, lastHitAt = 0, skipClick = false, down = null;
     const tap = (target) => {
       if (!mount.isConnected) return;
       const hit = target.closest && target.closest('.bn-visual-media');
       if (hit && mount.contains(hit)) {
         // Tapping the picture that is already selected switches the bars on (and off).
         // "Already selected" is the same block, not the same element: the editor
-        // re-renders a tapped picture a moment later.
+        // re-renders a tapped picture a moment later. A clip's taps also play and
+        // pause it, so only a quick pair counts as the double tap for the bars.
         const id = (hit.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
-        resizing = !!id && id === blockId ? !resizing : false;
+        const now = Date.now(), quick = now - lastHitAt < 450;
+        resizing = !!id && id === blockId ? (hit.tagName === 'VIDEO' && !quick ? resizing : !resizing) : false;
+        lastHitAt = now;
         img = hit; blockId = id;
         fit(); observe(hit);
       } else if (!(target.closest && target.closest('.bn-resize-handle'))) clear();
