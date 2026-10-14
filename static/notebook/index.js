@@ -593,7 +593,7 @@
     let last = null, raf = 0;
     const read = () => {
       const bar = document.querySelector('.hermes-note-editor .bn-formatting-toolbar');
-      const height = bar ? (bar.parentElement.offsetHeight || bar.offsetHeight) : 0;
+      const height = bar ? bar.offsetHeight : 0;
       const top = Math.round(vv.offsetTop + vv.height - height);
       if (top !== last) { last = top; root.style.setProperty('--nb-bar-top', top + 'px'); }
     };
