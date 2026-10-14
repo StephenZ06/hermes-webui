@@ -11777,8 +11777,10 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 /* Touch: the resize bars wait for a second tap on the picture (see mountImageOutline),
    and are big enough for a finger. */
 @media (hover:none){
-  .hermes-note-editor .bn-resize-handle{display:none !important;width:12px;height:48px;border-radius:6px;}
-  .hermes-note-editor .bn-resize-handle[data-nb-on]{display:block !important;}
+  .hermes-note-editor [data-file-block] .bn-resize-handle{display:none !important;width:12px;height:48px;margin-top:-9px;border-radius:6px;}
+  .hermes-note-editor [data-file-block] .bn-resize-handle[data-nb-on]{display:block !important;}
+  /* No double-tap-to-zoom on a picture: it would swallow the second tap. */
+  .hermes-note-editor .bn-visual-media,.hermes-note-editor .bn-visual-media-wrapper,.hermes-note-editor .bn-file-block-content-wrapper{touch-action:manipulation;}
 }
 .hermes-note-editor .bn-visual-media{max-width:100%;}
 

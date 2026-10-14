@@ -693,7 +693,9 @@ def test_on_a_phone_pictures_fill_the_width_and_the_bars_wait_for_a_second_tap(t
     tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
     tab.wait_for_timeout(300)
     assert not _bars_shown(tab)
-    tab.tap(".bn-visual-media")                       # second tap: the bars
+    # The editor re-renders a tapped picture a moment later: the second tap lands on a new element.
+    # (replaced and tapped in the same tick, before anything has caught up with it)
+    tab.evaluate("""() => { const i = document.querySelector('.bn-visual-media'); const copy = i.cloneNode(true); i.replaceWith(copy); copy.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); }""")
     tab.wait_for_function("() => [...document.querySelectorAll('.bn-resize-handle')].some(h => getComputedStyle(h).display !== 'none')", timeout=5000)
     before = tab.locator(".bn-visual-media").bounding_box()["width"]
     handle = tab.locator(".bn-resize-handle[data-nb-on]").first.bounding_box()

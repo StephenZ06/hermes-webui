@@ -850,8 +850,12 @@
       const hit = target.closest && target.closest('.bn-visual-media');
       if (hit && mount.contains(hit)) {
         // Tapping the picture that is already selected switches the bars on (and off).
-        resizing = hit === img ? !resizing : false;
-        img = hit; blockId = (hit.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
+        // "Already selected" is the same block, not the same element: the editor
+        // re-renders a tapped picture a moment later, so on a real phone the
+        // second tap often lands on a fresh element.
+        const id = (hit.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
+        resizing = !!id && id === blockId ? !resizing : false;
+        img = hit; blockId = id;
         fit(); observe(hit);
       } else if (!(target.closest && target.closest('.bn-resize-handle'))) clear();
     });
