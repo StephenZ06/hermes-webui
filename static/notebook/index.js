@@ -489,6 +489,7 @@
       queueSave('place', true);
     });
     const tagInput = $('nbTagInput');
+    if (tagInput) { fitTagInput(tagInput); tagInput.addEventListener('input', () => fitTagInput(tagInput)); }
     if (tagInput) tagInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ',') return;
       event.preventDefault();
@@ -499,6 +500,16 @@
       renderEditorHead();
       const again = $('nbTagInput'); if (again) again.focus();
     });
+  }
+  // The tag box is as wide as what it holds: its placeholder, then the text typed.
+  let fitCanvas = null;
+  function fitTagInput(input) {
+    const cs = getComputedStyle(input);
+    fitCanvas = fitCanvas || document.createElement('canvas');
+    const ctx = fitCanvas.getContext('2d'); if (!ctx) return;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const chrome = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+    input.style.width = Math.ceil(ctx.measureText(input.value || input.placeholder).width + chrome + 6) + 'px';
   }
   function syncStatus() {
     const el = document.querySelector('#nbEditorHead .nb-status');
@@ -566,21 +577,25 @@
   // the line holding the cursor, on the right (the left edge belongs to the
   // swipe-for-sidebar guard); drag it with a finger to move the line. The
   // grip cancels pointerdown, so the editor keeps focus and the keyboard.
-  // Keyboard height as --nb-kb: the visual viewport shrinks (and iOS pans it)
-  // when the keyboard opens, while fixed-position boxes stay laid out against
-  // the full layout viewport. Read it every frame while the editor has focus,
-  // not just on viewport events, which arrive a frame or more late and made the
-  // pinned format toolbar visibly trail the keyboard.
+  // --nb-bar-top: where the format toolbar's top edge goes so its bottom sits
+  // on the keyboard. Fixed boxes are laid out against the layout viewport,
+  // which iOS pans under the visual viewport as the page scrolls with the
+  // keyboard up; the visual viewport's bottom edge (offsetTop + height) is the
+  // one stable reference, so the toolbar is placed by `top` from that, with
+  // its own height measured, and never from innerHeight. It is re-read every
+  // frame while the editor has focus: viewport events arrive late.
   let keyboardTracked = false;
   function trackKeyboard() {
     const vv = window.visualViewport;
     if (keyboardTracked || !vv) return;
     keyboardTracked = true;
     const root = document.documentElement;
-    let last = -1, raf = 0;
+    let last = null, raf = 0;
     const read = () => {
-      const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      if (kb !== last) { last = kb; root.style.setProperty('--nb-kb', kb + 'px'); }
+      const bar = document.querySelector('.hermes-note-editor .bn-formatting-toolbar');
+      const height = bar ? (bar.parentElement.offsetHeight || bar.offsetHeight) : 0;
+      const top = Math.round(vv.offsetTop + vv.height - height);
+      if (top !== last) { last = top; root.style.setProperty('--nb-bar-top', top + 'px'); }
     };
     const loop = () => { read(); raf = requestAnimationFrame(loop); };
     const inEditor = (el) => !!(el && el.closest && el.closest('.hermes-note-editor'));
@@ -601,6 +616,11 @@
     grip.setAttribute('aria-label', 'Drag to move this line'); grip.title = 'Drag to move this line';
     grip.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>';
     const line = document.createElement('div'); line.className = 'nb-drop-line'; line.hidden = true;
+    // BlockNote hides the format toolbar on every pointerdown and, after a
+    // touch scroll (which ends in pointercancel, never pointerup), keeps it
+    // hidden. A finger scrolling the page is not a selection gesture, so touch
+    // pointers never reach BlockNote's listeners; the selection still drives it.
+    ['pointerdown', 'pointercancel'].forEach((type) => mount.addEventListener(type, (event) => { if (event.pointerType === 'touch') event.stopPropagation(); }, true));
     host.append(grip, line); // React owns the mount's children, so these sit beside it
     const blockEl = (id) => mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
     let current = null; // id of the block holding the cursor

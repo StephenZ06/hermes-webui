@@ -362,13 +362,44 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     page.keyboard.press("Control+a")
     page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     page.wait_for_timeout(400)
-    page.evaluate("() => document.documentElement.style.setProperty('--nb-kb', '300px')")
     box = page.locator(".bn-formatting-toolbar").bounding_box()
     height = page.evaluate("() => window.innerHeight")
-    assert abs((box["y"] + box["height"]) - (height - 300)) <= 2, (box, height)
+    # No keyboard here: the visual viewport is the window, so the toolbar sits on its bottom edge.
+    assert abs((box["y"] + box["height"]) - height) <= 2, (box, height)
+    page.evaluate("() => window.scrollBy(0, 40)")
+    page.wait_for_timeout(200)
+    again = page.locator(".bn-formatting-toolbar").bounding_box()
+    assert abs(again["y"] - box["y"]) <= 1, (box, again)
     page.click(".bn-formatting-toolbar button.mantine-Button-root")
     page.wait_for_selector(".mantine-Menu-dropdown", timeout=5000)
     page.wait_for_timeout(300)
     menu = page.locator(".mantine-Menu-dropdown").bounding_box()
     bar = page.locator(".bn-formatting-toolbar").bounding_box()
     assert menu["y"] + menu["height"] <= bar["y"] + 2, (menu, bar)
+
+
+def test_touch_scroll_does_not_hide_the_format_toolbar_and_tag_box_fits_its_text(touch_page):
+    page = touch_page
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    width = page.evaluate("() => document.getElementById('nbTagInput').getBoundingClientRect().width")
+    placeholder = page.evaluate("() => { const i = document.getElementById('nbTagInput'); const c = document.createElement('canvas').getContext('2d'); const s = getComputedStyle(i); c.font = s.fontStyle + ' ' + s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily; return c.measureText(i.placeholder).width; }")
+    assert placeholder < width < placeholder + 40, (width, placeholder)
+    page.click(".hermes-note-editor .bn-editor")
+    page.keyboard.type("hello world")
+    page.keyboard.press("Control+a")
+    page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
+    # A finger that starts scrolling: pointerdown, then pointercancel.
+    page.evaluate("""() => {
+        const el = document.querySelector('.hermes-note-editor .bn-editor');
+        const opts = {pointerType: 'touch', bubbles: true, cancelable: true, composed: true};
+        el.dispatchEvent(new PointerEvent('pointerdown', opts));
+        el.dispatchEvent(new PointerEvent('pointercancel', opts));
+    }""")
+    page.wait_for_timeout(500)
+    assert page.query_selector(".bn-formatting-toolbar") is not None
