@@ -478,7 +478,7 @@ def _png(width, height):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def _resize_roundtrip(tab, corner, dx):
+def _picture_in_note(tab):
     tab.goto(BASE + "/", wait_until="domcontentloaded")
     tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
     tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
@@ -490,29 +490,45 @@ def _resize_roundtrip(tab, corner, dx):
         tab.click(".nb-editor-head [data-nb-action=add-files]")
     chooser.value.set_files([{"name": "wide.png", "mimeType": "image/png", "buffer": _png(600, 300)}])
     tab.wait_for_function("() => { const i = document.querySelector('.bn-visual-media'); return i && i.complete && i.naturalWidth > 0; }", timeout=15000)
-    tab.click(".bn-visual-media")
-    tab.wait_for_selector(".nb-img-resize:not([hidden])", timeout=5000)
-    before = tab.locator(".bn-visual-media").bounding_box()["width"]
-    handle = tab.locator(f".nb-img-handle[data-corner={corner}]").bounding_box()
+
+
+def test_a_tapped_picture_gets_a_themed_outline_and_no_corner_dots_desktop(page):
+    _picture_in_note(page)
+    assert page.query_selector(".nb-img-outline:not([hidden])") is None  # nothing selected yet
+    page.click(".bn-visual-media")
+    page.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
+    outline = page.evaluate("""() => {
+        const box = document.querySelector('.nb-img-outline').getBoundingClientRect();
+        const img = document.querySelector('.bn-visual-media').getBoundingClientRect();
+        const style = getComputedStyle(document.querySelector('.nb-img-outline'));
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+        const probe = Object.assign(document.createElement('i'), {}); probe.style.color = accent; document.body.appendChild(probe);
+        const expected = getComputedStyle(probe).color; probe.remove();
+        return {same: Math.abs(box.width - img.width) < 2 && Math.abs(box.height - img.height) < 2, color: style.borderTopColor, expected, width: style.borderTopWidth};
+    }""")
+    assert outline["same"] and outline["color"] == outline["expected"] and outline["width"] == "2px", outline
+    assert page.query_selector(".nb-img-handle") is None  # the side bars are the only resize handles
+    # Growing eases as shrinking does: the picture's wrapper transitions its width.
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.bn-visual-media').closest('.bn-file-block-content-wrapper')).transitionProperty") == "width"
+    page.click(".nb-editor-head .nb-title")
+    page.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)
+
+
+def test_the_side_bars_resize_the_picture_and_the_outline_follows(page):
+    _picture_in_note(page)
+    page.click(".bn-visual-media")
+    page.wait_for_selector(".bn-resize-handle", state="visible", timeout=5000)
+    before = page.locator(".bn-visual-media").bounding_box()["width"]
+    handle = page.locator(".bn-resize-handle").last.bounding_box()
     x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
-    tab.mouse.move(x, y)
-    tab.mouse.down()
-    tab.mouse.move(x + dx, y, steps=6)
-    tab.mouse.up()
-    tab.wait_for_function("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth > 0", timeout=5000)
-    width = tab.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth")
-    return before, width
-
-
-def test_image_corner_drag_resizes_the_picture_desktop(page):
-    before, width = _resize_roundtrip(page, "se", -120)
-    assert width < before and abs(width - (before - 120)) <= 3, (before, width)
-    page.wait_for_function("(w) => Math.abs(document.querySelector('.bn-visual-media').getBoundingClientRect().width - w) < 3", arg=width, timeout=5000)
-
-
-def test_image_corner_drag_resizes_the_picture_touch(touch_page):
-    before, width = _resize_roundtrip(touch_page, "nw", 60)  # left corner: dragging right shrinks
-    assert width < before and abs(width - (before - 60)) <= 3, (before, width)
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x - 150, y, steps=6)
+    page.mouse.up()
+    page.wait_for_function("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth > 0", timeout=5000)
+    width = page.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'image').props.previewWidth")
+    assert abs(width - (before - 150)) <= 4, (before, width)
+    page.wait_for_function("() => { const o = document.querySelector('.nb-img-outline').getBoundingClientRect(), i = document.querySelector('.bn-visual-media').getBoundingClientRect(); return Math.abs(o.width - i.width) < 2; }", timeout=5000)
 
 
 def test_picture_width_survives_the_markdown_round_trip_used_for_vault_notes(page):
@@ -641,3 +657,22 @@ def test_audio_and_video_survive_the_markdown_round_trip_used_for_vault_notes(pa
     }""")
     assert "![a.mp3](/api/notebook/vault/file?path=Attachments%2Fa.mp3)" in result["markdown"] and "<audio" not in result["markdown"]
     assert result["kinds"] == [["audio", "a.mp3"], ["video", "v.mov"]]
+
+
+def test_media_upload_carries_the_csrf_token_like_fetch_does(page):
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    seen = page.evaluate("""async () => {
+        window.__HERMES_CONFIG__ = Object.assign({}, window.__HERMES_CONFIG__, {csrfToken: 'tok-123'});
+        const headers = {};
+        const original = XMLHttpRequest.prototype.setRequestHeader;
+        XMLHttpRequest.prototype.setRequestHeader = function (name, value) { headers[name] = value; return original.call(this, name, value); };
+        const file = new File([new Uint8Array([0,0,0,24,102,116,121,112,109,112,52,50,0,0,0,0,109,112,52,50,105,115,111,109,1,1,1,1])], 'c.mp4', {type: 'video/mp4'});
+        // the same path the slash menu and paste use: BlockNote's uploadFile hook
+        const url = await Notebook._upload(file);
+        XMLHttpRequest.prototype.setRequestHeader = original;
+        return {headers, url};
+    }""")
+    assert seen["headers"].get("X-Hermes-CSRF-Token") == "tok-123", seen
+    assert seen["url"].startswith("/api/notebook/files/")

@@ -640,6 +640,11 @@
       const query = new URLSearchParams({filename: file.name || 'media', note_id: (S.note && S.note.id) || ''});
       xhr.open('POST', '/api/notebook/uploads/stream?' + query.toString());
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      // fetch() gets the CSRF token from the page's global wrapper; XMLHttpRequest
+      // does not, and a signed-in server answers its token-less POST with
+      // "Session expired - reload the page".
+      const csrf = (window.__HERMES_CONFIG__ && window.__HERMES_CONFIG__.csrfToken) || '';
+      if (csrf) xhr.setRequestHeader('X-Hermes-CSRF-Token', csrf);
       xhr.upload.onprogress = (event) => { if (event.lengthComputable) show(`Uploading ${file.name}… ${Math.round(event.loaded / event.total * 100)}%`, event.loaded / event.total); };
       const done = () => setTimeout(() => bar.remove(), 400);
       xhr.onload = () => {
@@ -806,68 +811,44 @@
     grip.addEventListener('pointercancel', () => finish(false));
     grip.addEventListener('contextmenu', (event) => event.preventDefault());
   }
-  // Drag a corner of a picture to resize it (a finger or a mouse). BlockNote's
-  // own handles are hover-only and sit on the sides; these corners show when the
-  // picture is tapped or clicked. The size is the block's previewWidth.
-  function mountImageResize(host, note) {
-    if (note.deleted_at) return;
+  // A tapped or clicked picture gets an outline in the theme's accent colour.
+  // Resizing is BlockNote's own pair of side bars (shown on tap), which saves the
+  // size as the block's previewWidth; the outline just follows the picture while
+  // it grows or shrinks.
+  function mountImageOutline(host, note) {
     const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
-    host.classList.add('nb-has-grip'); // the overlay is positioned against the host
+    host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
-    box.className = 'nb-img-resize'; box.hidden = true;
-    box.innerHTML = ['nw', 'ne', 'sw', 'se'].map((c) => `<button type="button" class="nb-img-handle" data-corner="${c}" aria-label="Drag to resize the image" tabindex="-1"><i></i></button>`).join('');
+    box.className = 'nb-img-outline'; box.hidden = true;
     host.appendChild(box);
-    let img = null, drag = null;
+    let img = null, watch = null, blockId = null;
+    const observe = (el) => {
+      if (watch) watch.disconnect();
+      if (window.ResizeObserver) { watch = new ResizeObserver(fit); watch.observe(el); } // every frame of a resize
+    };
     const fit = () => {
+      if (img && !img.isConnected && blockId) { // the block re-rendered (a resize is saved): same picture, new element
+        const again = mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(blockId)}"] .bn-visual-media`);
+        if (again) { img = again; observe(again); }
+      }
       if (!img || !img.isConnected) { box.hidden = true; img = null; return; }
       const m = host.getBoundingClientRect(), r = img.getBoundingClientRect();
       box.style.cssText = `left:${r.left - m.left}px;top:${r.top - m.top}px;width:${r.width}px;height:${r.height}px`;
       box.hidden = false;
     };
-    const select = (el) => { img = el; fit(); };
-    // Tap/click on a picture selects it; anywhere else lets go.
+    const select = (el) => {
+      img = el; blockId = (el.closest('.bn-block-outer') || {dataset: {}}).dataset.id || null;
+      fit(); observe(el);
+    };
     document.addEventListener('click', (event) => {
       if (!mount.isConnected) return;
       const hit = event.target.closest && event.target.closest('.bn-visual-media');
       if (hit && mount.contains(hit)) select(hit);
-      else if (!(event.target.closest && event.target.closest('.nb-img-resize')) && !drag) { img = null; box.hidden = true; }
+      else if (!(event.target.closest && event.target.closest('.bn-resize-handle'))) { img = null; box.hidden = true; if (watch) watch.disconnect(); }
     });
     if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
+    new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});
     mount.addEventListener('load', () => requestAnimationFrame(fit), true);
-    mount.addEventListener('input', () => requestAnimationFrame(fit));
-    box.addEventListener('pointerdown', (event) => {
-      const handle = event.target.closest('.nb-img-handle');
-      if (!handle || !img) return;
-      event.preventDefault(); event.stopPropagation();
-      const outer = img.closest('.bn-block-outer');
-      const rect = img.getBoundingClientRect();
-      const room = (img.closest('.bn-block-group') || mount).getBoundingClientRect().width;
-      drag = {handle, id: outer && outer.dataset.id, x: event.clientX, y: event.clientY, width: rect.width, aspect: rect.height / Math.max(1, rect.width), room, now: rect.width,
-        sx: handle.dataset.corner.includes('e') ? 1 : -1, sy: handle.dataset.corner.includes('s') ? 1 : -1};
-      handle.setPointerCapture(event.pointerId);
-      box.classList.add('dragging');
-    });
-    box.addEventListener('pointermove', (event) => {
-      if (!drag) return;
-      const dx = (event.clientX - drag.x) * drag.sx, dy = (event.clientY - drag.y) * drag.sy / Math.max(0.1, drag.aspect);
-      const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
-      drag.now = Math.max(48, Math.min(drag.room, drag.width + delta));
-      img.style.width = drag.now + 'px'; img.style.height = 'auto'; // live; the block takes it on release
-      const wrap = img.closest('.bn-visual-media-wrapper'); if (wrap) wrap.style.width = drag.now + 'px';
-      fit();
-    });
-    const finish = (commit) => {
-      if (!drag) return;
-      const d = drag; drag = null; box.classList.remove('dragging');
-      const editor = editorCtl && editorCtl.editor;
-      if (img) { img.style.width = ''; img.style.height = ''; const wrap = img.closest('.bn-visual-media-wrapper'); if (wrap) wrap.style.width = ''; }
-      if (commit && editor && d.id) {
-        try { editor.updateBlock(d.id, {props: {previewWidth: Math.round(d.now)}}); } catch (_) {}
-      }
-      requestAnimationFrame(() => { const el = d.id && mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(d.id)}"] .bn-visual-media`); if (el) select(el); else fit(); });
-    };
-    box.addEventListener('pointerup', () => finish(true));
-    box.addEventListener('pointercancel', () => finish(false));
   }
   // A vault note is Markdown, which has no width for a picture; Obsidian's way is
   // "![caption|300](url)". These carry previewWidth through that spelling.
@@ -955,7 +936,7 @@
     });
     editorNoteId = note.id;
     mountBlockGrip(host, note);
-    mountImageResize(host, note);
+    mountImageOutline(host, note);
     if (fromMarkdown) {
       try {
         const blocks = withMediaBlocks(withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''))));
@@ -1542,7 +1523,7 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
+  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _upload: (file) => uploadFile(file), _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());
