@@ -107,6 +107,7 @@ def test_removed_rows_collapse_and_new_rows_glow_in():
 
 def test_deleting_a_job_animates_its_own_row_away():
     import json
+    import urllib.error
     import urllib.request
     import uuid
 
@@ -115,7 +116,13 @@ def test_deleting_a_job_animates_its_own_row_away():
     req = urllib.request.Request(BASE + "/api/crons/create",
                                  data=json.dumps({"name": name, "schedule": "0 9 * * *", "prompt": "hi"}).encode(),
                                  headers={"Content-Type": "application/json", "Origin": BASE})
-    job = json.loads(urllib.request.urlopen(req, timeout=20).read())
+    try:
+        job = json.loads(urllib.request.urlopen(req, timeout=20).read())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        if "No module named 'cron'" in body:
+            pytest.skip("scheduled jobs need hermes-agent's cron module (not installed on this server)")
+        raise
     job_id = (job.get("job") or job)["id"]
     with sync_api.sync_playwright() as pw:
         browser, page = _open(pw)

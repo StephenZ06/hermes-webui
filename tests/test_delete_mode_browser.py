@@ -102,6 +102,8 @@ def test_scheduled_jobs_delete_mode():
     jobs = []
     for name in (f"Job keep {tag}", f"Job drop {tag}"):
         data, status = _call("/api/crons/create", {"name": name, "schedule": "0 9 * * *", "prompt": "say hi"})
+        if status != 200 and "No module named 'cron'" in str(data):
+            pytest.skip("scheduled jobs need hermes-agent's cron module (not installed on this server)")
         assert status == 200, data
         jobs.append((data.get("job") or data)["id"])
     try:

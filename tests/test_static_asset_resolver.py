@@ -7,7 +7,6 @@ from urllib.parse import quote
 
 import api.config as api_config
 import api.routes as routes
-from api.updates import WEBUI_VERSION
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,7 +81,10 @@ def test_service_worker_and_favicon_follow_selected_static_root(tmp_path, monkey
 
     sw_handler = _get("/sw.js")
     expected = sw_path.read_text(encoding="utf-8").replace(
-        "__WEBUI_VERSION__", quote(WEBUI_VERSION, safe="")
+        # The server's own token, read now: WEBUI_VERSION captured at import
+        # can differ by a character from a later recomputation (other tests
+        # reload api.updates; a git short hash grows when it stops being unique).
+        "__WEBUI_VERSION__", quote(routes._static_asset_version_token(), safe="")
     ).encode("utf-8")
     assert sw_handler.status == 200
     assert sw_handler.header("Service-Worker-Allowed") == "/"

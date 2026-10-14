@@ -12127,8 +12127,10 @@ def _handle_account_usage(handler, parsed) -> bool:
         return True
 
     effective_provider = provider_raw
+    # Bound before the try: any early failure (no agent installed, a provider
+    # helper raising) must answer "unavailable", not crash on an unset name.
+    snapshot = None
     try:
-        from agent.account_usage import fetch_account_usage
         with cron_profile_context_for_home(profile_home):
             resolved_runtime: dict[str, Any] | None = None
             runtime_provider: str | None = None
@@ -12235,7 +12237,10 @@ def _handle_account_usage(handler, parsed) -> bool:
                         "Codex desktop usage fetch failed for %r", profile_name, exc_info=True
                     )
 
-            # Generic agent path for providers with a native usage API.
+            # Generic agent path for providers with a native usage API. Imported
+            # here, not up front: the WebUI-only paths above (NeuralWatt,
+            # 9router Claude, Codex desktop) must work without the agent.
+            from agent.account_usage import fetch_account_usage
             snapshot = fetch_account_usage(
                 effective_provider,
                 base_url=base_url,

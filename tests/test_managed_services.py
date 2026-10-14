@@ -92,6 +92,9 @@ def test_systems_page_includes_managed_service_cards_and_stop_confirmation():
     assert 'id="managedServicesList"' in index
     assert "loadManagedServices" in panels
     assert "/api/system/services" in panels
-    assert "confirm(" in panels
+    # Stopping a service asks first, through the app's own dialog (native
+    # confirm() is banned in static JS -- see test_sprint33).
+    start = panels.index("async function controlManagedService(")
+    assert "showConfirmDialog(" in panels[start:start + 600]
     assert "MANAGED_SERVICES_INTERVAL_MS" in panels
     assert "_syncManagedServicesPolling" in panels

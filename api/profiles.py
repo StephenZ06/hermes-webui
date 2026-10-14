@@ -2400,6 +2400,27 @@ def _resolve_named_profile_home(name: str) -> Path:
     return candidate
 
 
+def _profile_dict_without_cli(name: str, profile_path: Path) -> dict:
+    """A complete profile row for a named profile when hermes_cli is not
+    importable, so list_profiles_api() falls back to the default-only stub
+    and cannot describe it."""
+    return {
+        'name': name,
+        'path': str(profile_path),
+        'is_default': False,
+        'is_active': _active_profile == name,
+        'gateway_running': False,
+        'model': None,
+        'provider': None,
+        'has_env': (profile_path / '.env').exists(),
+        'skill_count': 0,
+        'enabled_skills': 0,
+        'total_skills': 0,
+        'reasoning_effort': _read_profile_reasoning_effort(profile_path),
+        'base_url': _read_profile_base_url(profile_path),
+    }
+
+
 def _create_profile_fallback(name: str, clone_from: str = None,
                               clone_config: bool = False) -> Path:
     """Create a profile directory without hermes_cli (Docker/standalone fallback)."""
@@ -3144,21 +3165,7 @@ def create_profile_api(name: str, clone_from: str = None,
     for p in list_profiles_api():
         if p['name'] == name:
             return p
-    return {
-        'name': name,
-        'path': str(profile_path),
-        'is_default': False,
-        'is_active': _active_profile == name,
-        'gateway_running': False,
-        'model': None,
-        'provider': None,
-        'has_env': (profile_path / '.env').exists(),
-        'skill_count': 0,
-        'enabled_skills': 0,
-        'total_skills': 0,
-        'reasoning_effort': _read_profile_reasoning_effort(profile_path),
-        'base_url': _read_profile_base_url(profile_path),
-    }
+    return _profile_dict_without_cli(name, profile_path)
 
 
 def update_profile_api(name: str,
@@ -3197,6 +3204,17 @@ def update_profile_api(name: str,
             except Exception:
                 profile_path = None
             break
+    if (profile_path is None or not profile_path.is_dir()) and name != 'default':
+        # Without hermes_cli, list_profiles_api() knows only the default
+        # profile, but _create_profile_fallback() still creates named ones
+        # under the profiles root -- find those the same way (validated name,
+        # contained path) so a profile the WebUI made can also be edited.
+        try:
+            candidate = _resolve_named_profile_home(name)
+            if candidate.is_dir():
+                profile_path = candidate
+        except (ValueError, OSError):
+            pass
     if profile_path is None or not profile_path.is_dir():
         raise ValueError(f"Profile '{name}' does not exist.")
 
@@ -3239,7 +3257,9 @@ def update_profile_api(name: str,
     for p in list_profiles_api():
         if p['name'] == name:
             return p
-    raise ValueError(f"Profile '{name}' does not exist.")
+    # Without hermes_cli the list holds only the default profile (see the
+    # lookup at the top of this function).
+    return _profile_dict_without_cli(name, profile_path)
 
 
 def delete_profile_api(name: str) -> dict:

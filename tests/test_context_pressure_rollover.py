@@ -87,12 +87,21 @@ def messages():
     return [{"role": "user", "content": "x" * 200} for _ in range(50)]
 
 
+def _require_coordinator():
+    """The coordinator is hermes-agent code (gateway/api_session_rollover.py, a
+    locally carried module). Tests that drive it for real need it installed;
+    CI runs without the agent. Checked at run time: the agent directory joins
+    sys.path only once api.config has been imported."""
+    pytest.importorskip("gateway.api_session_rollover", reason="hermes-agent gateway.api_session_rollover not installed")
+
+
 def _high_pressure(agent):
     """Token count comfortably over any sane threshold for this context size."""
     return int(agent.context_compressor.context_length * 0.9)
 
 
 def test_rollover_rotates_and_reports_attempted(enabled_policy, messages):
+    _require_coordinator()
     agent = _StubAgent()
 
     attempted, new_messages, new_system = cpr._evaluate_session_rollover(
@@ -111,6 +120,7 @@ def test_in_place_compaction_is_forced_off_then_restored(enabled_policy, message
     nothing rotates; leaving it false afterwards would silently change every
     later 50% fallback compaction on the same agent.
     """
+    _require_coordinator()
     agent = _StubAgent()
 
     attempted, _, _ = cpr._evaluate_session_rollover(

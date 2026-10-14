@@ -11,7 +11,11 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-import httpx
+
+try:  # httpx ships with the agent, not the WebUI: optional here, so the usage
+    import httpx  # endpoint (and every page that polls it) works without it.
+except ImportError:  # pragma: no cover - depends on the environment
+    httpx = None
 
 
 _NINE_ROUTER_CLI_SECRET = Path.home() / ".9router" / "auth" / "cli-secret"
@@ -301,6 +305,8 @@ def fetch_codex_cli_account_usage(tokens: object) -> AccountUsageSnapshot | None
         }
         if account_id:
             headers["ChatGPT-Account-Id"] = account_id
+        if httpx is None:
+            return None
         with httpx.Client(timeout=15) as client:
             response = client.get("https://chatgpt.com/backend-api/wham/usage", headers=headers)
             response.raise_for_status()

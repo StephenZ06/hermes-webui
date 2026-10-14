@@ -100,3 +100,5 @@ attachments/
 
 # Windows "downloaded from the internet" markers copied in from NTFS
 *:Zone.Identifier
+# Local symlink to graphify-out/projects (served by api/graphify_static.py).
+static/graphify-projects

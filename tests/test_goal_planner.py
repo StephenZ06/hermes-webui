@@ -111,6 +111,15 @@ class TestGoalPlannerModule:
         monkeypatch.setattr("api.config.resolve_model_provider", lambda _value: ("model", "provider", None))
         monkeypatch.setattr("api.config.model_with_provider_context", lambda model, _provider: model)
         monkeypatch.setattr("api.oauth.resolve_runtime_provider_with_anthropic_env_lock", lambda *_args, **_kwargs: {})
+        # plan_goal_with_ai imports the agent's resolver; CI runs without the
+        # agent installed, so stand in for that module as for the others.
+        import sys
+        import types
+        fake_runtime = types.ModuleType("hermes_cli.runtime_provider")
+        fake_runtime.resolve_runtime_provider = lambda *_args, **_kwargs: {}
+        monkeypatch.setitem(sys.modules, "hermes_cli.runtime_provider", fake_runtime)
+        if "hermes_cli" not in sys.modules:
+            monkeypatch.setitem(sys.modules, "hermes_cli", types.ModuleType("hermes_cli"))
 
         goal_planner.plan_goal_with_ai("Build API", "model")
         assert "Keep each field brief" in captured["system_message"]

@@ -10,20 +10,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-# hermes-agent >= 0.21.7 re-execs foreign interpreters as
-# `python -I -c "runpy.run_path(<this file>)"`; neither -I nor run_path puts
-# this directory on sys.path, so the `api` package must be added explicitly.
-_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-if _REPO_DIR not in sys.path:
-    sys.path.insert(0, _REPO_DIR)
-# That re-exec also moves the process onto the agent's managed interpreter,
-# whose dependencies only exist after the agent's own bootstrap has run, so
-# the WebUI (yaml, cryptography, ...) cannot start there. Stay on the
-# interpreter we were launched with; an operator can still override this.
-os.environ.setdefault("HERMES_DISABLE_LAZY_INSTALLS", "1")
-
-
+sys.path[:0] = [d for d in [os.path.dirname(os.path.abspath(__file__))] if d not in sys.path]; os.environ.setdefault("HERMES_DISABLE_LAZY_INSTALLS", "1")  # agent >=0.21.7 re-execs with -I: keep api importable, stay on this interpreter (tests/test_server_relaunch_sys_path.py)
 def _ignore_sigpipe() -> None:
     """Keep broken client writes from terminating the server process."""
     if (sigpipe := getattr(signal, "SIGPIPE", None)) is not None:

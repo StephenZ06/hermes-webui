@@ -16075,7 +16075,10 @@ function _syncManagedServicesPolling(){
 document.addEventListener('visibilitychange',_syncManagedServicesPolling);
 async function controlManagedService(service, action){
   if(_managedServiceActionInFlight) return;
-  if(action==='stop'&&!confirm(`Stop ${_managedServiceLabel(service)}? Active work using it will be interrupted.`)) return;
+  if(action==='stop'){
+    const ok=await showConfirmDialog({title:`Stop ${_managedServiceLabel(service)}?`,message:'Active work using it will be interrupted.',confirmLabel:'Stop',danger:true,focusCancel:true});
+    if(!ok) return;
+  }
   _managedServiceActionInFlight=true;
   document.querySelectorAll('.managed-service-action').forEach(button=>{button.disabled=true;});
   try{
