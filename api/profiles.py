@@ -1964,7 +1964,13 @@ def _compute_profile_skills_stats(profile_dir: Path) -> tuple[int, int]:
         except Exception:
             pass
 
-    from agent.skill_utils import iter_skill_index_files, parse_frontmatter, skill_matches_platform
+    try:
+        from agent.skill_utils import iter_skill_index_files, parse_frontmatter, skill_matches_platform
+    except ImportError:
+        # No agent installed: nothing can be counted. This is reached from the
+        # no-hermes_cli fallbacks (_default_profile_dict), which must not raise
+        # -- the Work Hub bootstrap and the profile list depend on them.
+        return (0, 0)
 
     seen_names = set()
     enabled_count = 0
