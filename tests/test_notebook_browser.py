@@ -339,6 +339,15 @@ def test_touch_grip_drags_a_line_to_a_new_place(touch_page):
     page.mouse.up()
     page.wait_for_function("() => Notebook.editor.getBlocks()[0].content[0].text === 'three'", timeout=5000)
     assert _block_texts(page)[:3] == ["three", "one", "two"]
+    # After the move the grip follows the line the cursor is really in.
+    for index in (1, 2, 0):
+        block = page.locator(".hermes-note-editor .bn-block-content").nth(index)
+        block.click()
+        page.wait_for_timeout(250)
+        line = block.bounding_box()
+        mark = page.locator(".nb-grip").bounding_box()
+        centre = mark["y"] + mark["height"] / 2
+        assert line["y"] - 4 <= centre <= line["y"] + line["height"] + 4, (index, line, mark)
 
 
 def test_desktop_has_no_touch_grip(page):
@@ -387,6 +396,8 @@ def test_touch_scroll_does_not_hide_the_format_toolbar_and_tag_box_fits_its_text
     page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
     page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    page.evaluate("() => document.fonts.ready")
+    page.wait_for_timeout(300)
     width = page.evaluate("() => document.getElementById('nbTagInput').getBoundingClientRect().width")
     placeholder = page.evaluate("() => { const i = document.getElementById('nbTagInput'); const c = document.createElement('canvas').getContext('2d'); const s = getComputedStyle(i); c.font = s.fontStyle + ' ' + s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily; return c.measureText(i.placeholder).width; }")
     assert placeholder < width < placeholder + 40, (width, placeholder)
@@ -418,6 +429,8 @@ def _add_images_roundtrip(tab):
     tab.click(".nb-list-head [data-nb-action=new]")
     tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     png = base64.b64decode(_PNG_1PX)
+    tab.click(".hermes-note-editor .bn-editor")
+    tab.keyboard.type("before")
     with tab.expect_file_chooser() as chooser:
         tab.click(".nb-editor-head [data-nb-action=add-image]")
     chooser.value.set_files([
@@ -427,6 +440,9 @@ def _add_images_roundtrip(tab):
     tab.wait_for_function("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').length === 2", timeout=15000)
     urls = tab.evaluate("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').map(b => b.props.url)")
     assert all(u.startswith("/api/notebook/files/") for u in urls) and urls[0] != urls[1]
+    # They are drawn, not just stored: both images are in the page and decoded.
+    tab.wait_for_function("() => { const m = [...document.querySelectorAll('.hermes-note-editor .bn-visual-media')]; return m.length === 2 && m.every(i => i.complete && i.naturalWidth > 0); }", timeout=15000)
+    assert tab.evaluate("() => Notebook.editor.getBlocks()[0].content[0].text") == "before"
 
 
 def test_add_images_button_inserts_each_picked_image_desktop(page):

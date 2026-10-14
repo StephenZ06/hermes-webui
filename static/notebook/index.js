@@ -491,7 +491,10 @@
       queueSave('place', true);
     });
     const tagInput = $('nbTagInput');
-    if (tagInput) { fitTagInput(tagInput); tagInput.addEventListener('input', () => fitTagInput(tagInput)); }
+    if (tagInput) {
+      fitTagInput(tagInput); tagInput.addEventListener('input', () => fitTagInput(tagInput));
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (tagInput.isConnected) fitTagInput(tagInput); });
+    }
     if (tagInput) tagInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ',') return;
       event.preventDefault();
@@ -584,10 +587,15 @@
   // phone, files on desktop), one or many images, each placed under the cursor.
   function pickImages() {
     if (!editorCtl || !S.note || S.note.deleted_at) return;
+    document.querySelectorAll('.nb-file-input').forEach((old) => old.remove());
     const input = document.createElement('input');
+    input.className = 'nb-file-input';
     input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    // Safari drops the change event of a file input that is not in the page.
+    input.hidden = true; document.body.appendChild(input);
+    input.addEventListener('cancel', () => input.remove());
     input.addEventListener('change', async () => {
-      const files = [...input.files]; if (!files.length || !editorCtl) return;
+      const files = [...input.files]; input.remove(); if (!files.length || !editorCtl) return;
       const editor = editorCtl.editor;
       const noteId = editorNoteId;
       toast(files.length === 1 ? 'Adding image…' : `Adding ${files.length} images…`);
@@ -675,14 +683,17 @@
     host.append(grip, line); // React owns the mount's children, so these sit beside it
     const blockEl = (id) => mount.querySelector(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
     let current = null; // id of the block holding the cursor
+    // The line to hold the grip is read from the DOM selection itself, not from
+    // the editor's cursor state, which trails the selection by a beat and (after
+    // a line was moved) pointed at the wrong row.
     const place = () => {
-      const editor = editorCtl && editorCtl.editor;
-      if (!editor || !mount.isConnected) return;
-      let id = null;
-      try { id = editor.getTextCursorPosition().block.id; } catch (_) {}
-      const el = id && blockEl(id);
-      if (!el || !mount.contains(document.activeElement)) { if (!drag) grip.hidden = true; return; }
-      current = id;
+      if (!mount.isConnected) return;
+      const sel = window.getSelection();
+      const node = sel && sel.rangeCount ? sel.anchorNode : null;
+      const origin = node && (node.nodeType === 1 ? node : node.parentElement);
+      const el = origin && origin.closest ? origin.closest('.bn-block-outer') : null;
+      if (!el || !mount.contains(el) || !mount.contains(document.activeElement)) { if (!drag) grip.hidden = true; return; }
+      current = el.dataset.id;
       const box = el.querySelector('.bn-block-content') || el;
       const m = host.getBoundingClientRect(), r = box.getBoundingClientRect();
       grip.style.top = (r.top - m.top + Math.max(0, (Math.min(r.height, 30) - 28) / 2)) + 'px';
@@ -691,6 +702,7 @@
     document.addEventListener('selectionchange', place);
     mount.addEventListener('focusin', place);
     mount.addEventListener('input', () => requestAnimationFrame(place));
+    if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(place)).observe(mount); // lines re-flow (images load, a line moved)
     // Where the dragged line would land: before/after the block under the finger.
     let drag = null;
     const targetAt = (y) => {
@@ -748,7 +760,7 @@
         } catch (_) {}
       }
       if (editor) editor.focus();
-      requestAnimationFrame(place);
+      requestAnimationFrame(place); setTimeout(place, 120);
     };
     grip.addEventListener('pointerup', () => finish(true));
     grip.addEventListener('pointercancel', () => finish(false));
@@ -1276,7 +1288,7 @@
       case 'retry': await runSave(); renderEditorHead(); break;
       case 'conflict-mine': await resolveConflict(true); break;
       case 'conflict-theirs': await resolveConflict(false); break;
-      case 'back': S.pane = 'list'; ensureShell(); break;
+      case 'back': if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); S.pane = 'list'; ensureShell(); break;
       case 'reload': await loadBootstrap(); render(); break;
       case 'vault-open':
         if (!S.vault) {
@@ -1312,6 +1324,17 @@
     if (bound) return;
     bound = true;
     const root = $('notebookRoot'); const side = $('notebookSidebar');
+    // A tap on a button blurs the editor on iOS: the keyboard folds, the page
+    // re-lays out under the finger, and the click never lands, so the button
+    // needed a second tap. Buttons keep the editor focused; 'back' lets go.
+    const keepFocus = (event) => {
+      const button = event.target.closest && event.target.closest('button');
+      if (!button || button.closest('.hermes-note-editor') || button.dataset.nbAction === 'back') return;
+      const active = document.activeElement;
+      if (active && active.closest && active.closest('.hermes-note-editor')) event.preventDefault();
+    };
+    if (root) root.addEventListener('mousedown', keepFocus);
+    if (side) side.addEventListener('mousedown', keepFocus);
     if (root) root.addEventListener('click', onClick);
     if (side) side.addEventListener('click', onClick);
     if (side) side.addEventListener('contextmenu', (event) => {
