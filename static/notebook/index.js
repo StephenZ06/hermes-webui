@@ -768,7 +768,15 @@
       else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
     });
     // Nothing on the controls may reach the editor (it would select the block around the player).
-    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => ui.addEventListener(type, (event) => event.stopPropagation()));
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => ui.addEventListener(type, (event) => {
+      event.stopPropagation();
+      // iOS does not focus a <button>, so a press on one inside the editable area lands on the
+      // editor itself and raises the keyboard. Cancelling the press stops that; the sliders keep
+      // theirs (they take focus on their own, and need it to be dragged).
+      if (type === 'mousedown' && !(event.target.closest && event.target.closest('input'))) event.preventDefault();
+      // Using a player is not typing: if the keyboard is up from before, put it away.
+      if (type === 'click') { const typing = document.activeElement; if (typing && typing.isContentEditable && typing.blur) typing.blur(); }
+    }));
     ui.addEventListener('pointermove', () => { if (playing()) show(); });
     state();
   }

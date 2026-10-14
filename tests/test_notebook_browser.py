@@ -854,9 +854,9 @@ def real_webm(tmp_path):
         context = browser.new_context(record_video_dir=str(tmp_path), record_video_size={"width": 320, "height": 240})
         tab = context.new_page()
         tab.set_content("<body style='background:#08f'><h1>clip</h1>")
-        tab.wait_for_timeout(1500)
+        tab.wait_for_timeout(3000)   # long enough that the controls' 2.5s fade happens while it is still playing, even on a busy machine
         tab.evaluate("document.body.style.background = '#f80'")
-        tab.wait_for_timeout(1500)
+        tab.wait_for_timeout(3000)
         path = tab.video.path()
         context.close()
         browser.close()
@@ -1087,3 +1087,27 @@ def test_touching_a_picture_never_focuses_the_editor_so_the_keyboard_stays_down(
     tab.wait_for_timeout(500)
     assert tab.evaluate("() => window.__focus") == 0                                   # at no point was the editor focused
     assert tab.evaluate("() => !document.activeElement || !document.activeElement.isContentEditable")
+
+
+def test_pressing_a_clips_controls_does_not_hand_the_press_to_the_editor(real_webm, touch_page):
+    """iOS does not focus a <button>: a press on one inside the editable area lands on the editor and
+    raises the keyboard. So the press is cancelled, except on the sliders (they need it)."""
+    tab = touch_page
+    _clip_in_note(tab, real_webm)
+    probe = """(selector) => { const el = document.querySelector(selector);
+        const event = new MouseEvent('mousedown', {bubbles: true, cancelable: true}); el.dispatchEvent(event); return event.defaultPrevented; }"""
+    ui = ".hermes-note-editor .nb-vc "
+    for button in (".nb-vc-big", ".nb-vc-toggle", ".nb-vc-mute", ".nb-vc-full"):
+        assert tab.evaluate(probe, ui + button) is True, button
+    assert tab.evaluate(probe, ui + ".nb-vc-seek") is False            # a slider is dragged with the press
+    assert tab.evaluate(probe, ".hermes-note-editor video") is True      # and so is the picture itself
+
+
+def test_using_a_players_controls_puts_the_keyboard_away(real_webm, touch_page):
+    tab = touch_page
+    _clip_in_note(tab, real_webm)
+    tab.click(".hermes-note-editor .bn-block-content[data-content-type=paragraph]")
+    tab.keyboard.type("note")
+    assert tab.evaluate("() => !!document.activeElement.isContentEditable")
+    tab.tap(".hermes-note-editor .nb-vc-big")
+    tab.wait_for_function("() => !document.activeElement || !document.activeElement.isContentEditable", timeout=3000)
