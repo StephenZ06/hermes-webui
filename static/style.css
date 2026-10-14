@@ -11852,3 +11852,11 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
    drag to move the caret or the selection by character. Notes leaves touch handling to the browser;
    the sidebar swipes are JS and start at the screen edge. */
 .main.showing-notebook,.main.showing-notebook .nb-editor-scroll{touch-action:auto;}
+
+/* Notes, keyboard up: the app is the size of what is left above it (see trackKeyboard), so the page
+   has nothing to pan and the format bar, placed from the visible area's edge, does not move
+   while the note scrolls. A big jump of the bar (the keyboard opening) slides. */
+html.nb-kb-fit,html.nb-kb-fit body{overflow:hidden;overscroll-behavior:none;}
+html.nb-kb-fit .layout{height:var(--nb-vvh) !important;max-height:var(--nb-vvh) !important;min-height:0 !important;}
+.main.showing-notebook .nb-editor-scroll{overscroll-behavior:contain;}
+html.nb-bar-glide .hermes-note-editor .bn-formatting-toolbar{transition:transform .22s cubic-bezier(.22,1,.36,1);}

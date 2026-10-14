@@ -1111,3 +1111,48 @@ def test_using_a_players_controls_puts_the_keyboard_away(real_webm, touch_page):
     assert tab.evaluate("() => !!document.activeElement.isContentEditable")
     tab.tap(".hermes-note-editor .nb-vc-big")
     tab.wait_for_function("() => !document.activeElement || !document.activeElement.isContentEditable", timeout=3000)
+
+
+FAKE_VIEWPORT = """
+(() => {
+  // A stand-in visual viewport, so the keyboard can be "opened" without a phone.
+  const vv = new EventTarget();
+  Object.assign(vv, {height: innerHeight, width: innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1});
+  Object.defineProperty(window, 'visualViewport', {value: vv, configurable: true});
+  window.__keyboard = (height, pan = 0) => { vv.height = innerHeight - height; vv.offsetTop = pan; vv.dispatchEvent(new Event('resize')); vv.dispatchEvent(new Event('scroll')); };
+})();
+"""
+
+
+def test_the_app_is_fitted_above_the_keyboard_and_the_format_bar_stays_put_as_the_note_scrolls(touch_page):
+    tab = touch_page
+    tab.add_init_script(FAKE_VIEWPORT)
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    tab.click(".hermes-note-editor .bn-editor")
+    for word in range(40):
+        tab.keyboard.type(f"line {word}")
+        tab.keyboard.press("Enter")
+    tab.evaluate("() => window.__keyboard(300)")                                   # the keyboard opens
+    tab.wait_for_function("() => document.documentElement.classList.contains('nb-kb-fit')", timeout=3000)
+    layout = tab.evaluate("() => { const l = document.querySelector('.layout').getBoundingClientRect(); return [Math.round(l.top + l.height), innerHeight]; }")
+    assert layout[0] == layout[1] - 300, layout                                    # the app ends where the keyboard starts
+    tab.keyboard.press("Control+a")
+    tab.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
+    tab.wait_for_timeout(500)
+    positions = []
+    for offset in (0, 300, 900, 300, 0):                                           # scroll the note up and down
+        tab.evaluate("(y) => { document.querySelector('.nb-editor-scroll').scrollTop = y; }", offset)
+        tab.wait_for_timeout(120)
+        box = tab.locator(".bn-formatting-toolbar").bounding_box()
+        positions.append(round(box["y"] + box["height"]))
+    assert len(set(positions)) == 1, positions                                    # it does not move
+    assert abs(positions[0] - (layout[1] - 300)) <= 2, positions                  # and sits on the keyboard
+    # A big jump slides (the keyboard closing), then the fit is undone.
+    tab.evaluate("() => { document.activeElement.blur(); window.__keyboard(0); }")
+    tab.wait_for_function("() => !document.documentElement.classList.contains('nb-kb-fit')", timeout=3000)

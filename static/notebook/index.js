@@ -811,20 +811,42 @@
     if (keyboardTracked || !vv) return;
     keyboardTracked = true;
     const root = document.documentElement;
-    let last = null, raf = 0;
+    let last = null, raf = 0, glideTimer = 0;
     const read = () => {
       const bar = document.querySelector('.hermes-note-editor .bn-formatting-toolbar');
       const height = bar ? bar.offsetHeight : 0;
       const top = Math.round(vv.offsetTop + vv.height - height);
-      if (top !== last) { last = top; root.style.setProperty('--nb-bar-top', top + 'px'); }
+      if (top === last) return;
+      // A big jump (the keyboard opening or closing) slides; small corrections while
+      // scrolling are applied at once, an ease there would only chase them.
+      if (last !== null && Math.abs(top - last) > 40) {
+        root.classList.add('nb-bar-glide'); clearTimeout(glideTimer);
+        glideTimer = setTimeout(() => root.classList.remove('nb-bar-glide'), 260);
+      }
+      last = top; root.style.setProperty('--nb-bar-top', top + 'px');
+    };
+    // While the keyboard is up for the editor, the app is fitted to the visible area. Left
+    // full height, iOS pans the page under the keyboard to keep the caret in view, and every
+    // pan moves the format bar (it is placed from the visible area's edge) a frame late,
+    // which showed as stutter. Fitted, there is nothing to pan: the bar stays where it is.
+    const inEditor = (el) => !!(el && el.closest && el.closest('.hermes-note-editor'));
+    const fit = () => {
+      const kb = window.innerHeight - vv.height;
+      const on = inEditor(document.activeElement) && kb > 80;
+      // The app's height is what lies between the top of the app area and the keyboard.
+      const area = document.querySelector('.layout');
+      const above = area ? area.getBoundingClientRect().top : 0;
+      root.style.setProperty('--nb-vvh', Math.round(vv.offsetTop + vv.height - above) + 'px');
+      root.classList.toggle('nb-kb-fit', on);
+      if (on && (vv.offsetTop > 0 || window.scrollY > 0)) window.scrollTo(0, 0);
     };
     const loop = () => { read(); raf = requestAnimationFrame(loop); };
-    const inEditor = (el) => !!(el && el.closest && el.closest('.hermes-note-editor'));
-    document.addEventListener('focusin', (event) => { if (inEditor(event.target) && !raf) loop(); });
+    document.addEventListener('focusin', (event) => { if (inEditor(event.target)) { fit(); if (!raf) loop(); } });
     document.addEventListener('focusout', () => setTimeout(() => {
+      fit();
       if (!inEditor(document.activeElement)) { cancelAnimationFrame(raf); raf = 0; read(); }
     }, 250));
-    vv.addEventListener('resize', read); vv.addEventListener('scroll', read);
+    vv.addEventListener('resize', () => { fit(); read(); }); vv.addEventListener('scroll', () => { fit(); read(); });
     read();
   }
   function mountBlockGrip(host, note) {
