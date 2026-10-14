@@ -1066,3 +1066,24 @@ def test_tapping_a_picture_puts_the_keyboard_away_and_the_notes_page_leaves_touc
     tab.wait_for_function("() => !document.activeElement || !document.activeElement.isContentEditable", timeout=3000)   # nothing to type into
     # The loupe (hold on a word, drag to place the caret) needs the browser's own touch handling.
     assert tab.evaluate("() => getComputedStyle(document.querySelector('main.main.showing-notebook')).touchAction") == "auto"
+
+
+def test_touching_a_picture_never_focuses_the_editor_so_the_keyboard_stays_down(touch_page):
+    tab = touch_page
+    _picture_in_note(tab)
+    tab.evaluate("() => document.activeElement && document.activeElement.blur()")
+    tab.evaluate("""() => { window.__focus = 0; document.querySelector('.hermes-note-editor').addEventListener('focusin', () => { window.__focus++; }); }""")
+    tab.tap(".bn-visual-media")                       # select it
+    tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
+    tab.tap(".bn-visual-media")                       # the resize bars
+    tab.wait_for_function("() => [...document.querySelectorAll('.bn-resize-handle')].some(h => getComputedStyle(h).display !== 'none')", timeout=5000)
+    handle = tab.locator(".bn-resize-handle[data-nb-on]").first.bounding_box()
+    x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    tab.mouse.move(x, y)
+    tab.mouse.down()
+    tab.mouse.move(x + 60, y, steps=4)
+    tab.mouse.up()
+    tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)
+    tab.wait_for_timeout(500)
+    assert tab.evaluate("() => window.__focus") == 0                                   # at no point was the editor focused
+    assert tab.evaluate("() => !document.activeElement || !document.activeElement.isContentEditable")

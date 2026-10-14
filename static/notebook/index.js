@@ -934,13 +934,22 @@
     // took two. It must be stopped on the way UP, after the player (whose controls
     // are listeners inside the element) has had it: stopping it on the way down
     // starved the controls and the clip could not be played at all.
+    // The same goes for a picture: a tap on it is not editing, and if the editor sees it,
+    // ProseMirror selects the block and focuses the editor, which is what raises the keyboard.
+    // So the taps on a picture, clip or recording (and the controls and resize bars around it)
+    // stop at its box, after the element and its own handlers have had them.
     const isolate = () => mount.querySelectorAll('.bn-file-block-content-wrapper').forEach((box) => {
-      if (box.__nbIsolated || !box.querySelector('video, audio')) return;
+      if (box.__nbIsolated || !box.querySelector('video, audio, .bn-visual-media')) return;
       box.__nbIsolated = true;
       ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => box.addEventListener(type, (event) => {
-        if (event.target && /^(VIDEO|AUDIO)$/.test(event.target.tagName)) event.stopPropagation();
+        event.stopPropagation();
+        // Inside an editable area the browser itself focuses the editor on a press (that is
+        // what shows the keyboard), whatever the editor's own code does. Cancelling the
+        // press stops that; the player's controls and the resize bars are left alone.
+        if (type === 'mousedown' && !(event.target.closest && event.target.closest('.nb-vc, .bn-resize-handle'))) event.preventDefault();
       }));
     });
+    isolate();
     // iOS draws a clip as a black box until it is played unless it has been told to
     // fetch the start (preload) and is asked for a frame (#t=0.001); playsinline keeps
     // it in the page. DOM only: the saved address is untouched.
@@ -1016,7 +1025,9 @@
       const start = down; down = null;
       if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return; // a drag or a scroll, not a tap
       if (!(start.target.closest && start.target.closest('.bn-visual-media')) && event.pointerType !== 'touch') return; // a mouse click arrives as a click
-      lastTapAt = Date.now(); skipClick = true;
+      lastTapAt = Date.now();
+      // (a tap on a picture/clip box never produces a document click: the box keeps it from the editor)
+      skipClick = !(start.target.closest && start.target.closest('.bn-file-block-content-wrapper'));
       tap(event.target);
     }, true);
     document.addEventListener('click', (event) => {
