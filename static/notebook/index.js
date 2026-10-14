@@ -821,11 +821,19 @@
     const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
     // A tap on a clip or recording belongs to the player. If it reaches the editor,
     // ProseMirror selects the block, focuses the editor and re-renders around the
-    // player, and on iOS that first tap never reaches the play button, so playing
-    // took two. Nothing is cancelled: the player still gets the event.
-    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => mount.addEventListener(type, (event) => {
-      if (event.target && /^(VIDEO|AUDIO)$/.test(event.target.tagName)) event.stopPropagation();
-    }, true));
+    // player, and on iOS that first tap never reached the play button, so playing
+    // took two. It must be stopped on the way UP, after the player (whose controls
+    // are listeners inside the element) has had it: stopping it on the way down
+    // starved the controls and the clip could not be played at all.
+    const isolate = () => mount.querySelectorAll('.bn-file-block-content-wrapper').forEach((box) => {
+      if (box.__nbIsolated || !box.querySelector('video, audio')) return;
+      box.__nbIsolated = true;
+      ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => box.addEventListener(type, (event) => {
+        if (event.target && /^(VIDEO|AUDIO)$/.test(event.target.tagName)) event.stopPropagation();
+      }));
+    });
+    isolate();
+    new MutationObserver(isolate).observe(mount, {childList: true, subtree: true});
     host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
     box.className = 'nb-img-outline'; box.hidden = true;

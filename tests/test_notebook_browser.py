@@ -825,3 +825,41 @@ def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(
     tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)   # let go after a resize
     assert not _bars_shown(tab)
     assert tab.locator("video").bounding_box()["width"] < before - 60
+
+
+@pytest.fixture
+def real_webm(tmp_path):
+    """A few seconds of real, decodable video: Chromium's own screen recording."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox"])
+        context = browser.new_context(record_video_dir=str(tmp_path), record_video_size={"width": 320, "height": 240})
+        tab = context.new_page()
+        tab.set_content("<body style='background:#08f'><h1>clip</h1>")
+        tab.wait_for_timeout(1500)
+        tab.evaluate("document.body.style.background = '#f80'")
+        tab.wait_for_timeout(1500)
+        path = tab.video.path()
+        context.close()
+        browser.close()
+    return open(path, "rb").read()
+
+
+def test_one_click_on_a_clip_really_plays_it(real_webm, page):   # the clip is recorded before the page's browser starts
+    clip = real_webm
+    tab = page
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": clip}])
+    tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return v && v.readyState >= 1 && v.duration > 0; }", timeout=20000)
+    tab.evaluate("() => { const v = document.querySelector('.hermes-note-editor video'); v.muted = true; }")
+    box = tab.locator(".hermes-note-editor video").bounding_box()
+    tab.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)   # one click
+    tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.paused && v.currentTime > 0; }", timeout=8000)
