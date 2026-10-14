@@ -3863,7 +3863,8 @@
 .work-hub-board-filter { width: 24px; height: 24px; display: grid; place-items: center; padding: 4px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); line-height: 0; cursor: pointer; }
 .work-hub-board-filter:hover { background: var(--hover-bg); color: var(--text); }
 .work-hub-board-filter svg { width: 14px; height: 14px; }
-.work-hub-column-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; padding: 8px 0 2px; }
+.work-hub-column-filter { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; padding: 8px 0 2px; }
+.work-hub-column-filter input { grid-column: 1 / -1; }
 .work-hub-column-filter input, .work-hub-column-filter select { min-width: 0; padding: 5px 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--input-bg); color: var(--text); font: inherit; font-size: 11px; }
 .work-hub-status { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .status-in_progress { background: var(--info); }.status-done { background: var(--success); }.status-blocked { background: var(--error); }.status-triage { background: var(--accent); }

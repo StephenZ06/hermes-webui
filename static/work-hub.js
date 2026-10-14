@@ -133,29 +133,67 @@
   async function createWorkHubBoard(anchor) { const projectId = await showWorkHubBoardProjectPicker(anchor); if (!projectId) return; const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = result.board.id; store.expandedProjects[projectId] = true; await loadWorkHubPanel(); notifyWorkHubChanged(); const newBoard = document.querySelector(`[data-board-id="${CSS.escape(result.board.id)}"]`); markArrival(newBoard && newBoard.closest('.work-hub-board-row')); } catch (error) { store.stale = true; render(); } }
   async function renameWorkHubBoard(boardId) { const board = store.boards.find(row => row.id === boardId); if (!board) return; const name = await showPromptDialog({ title: 'Rename board', message: 'Choose a new board name.', placeholder: 'Board name', value: board.name || '', selectAll: true, confirmLabel: 'Rename' }); if (!name || !name.trim() || name.trim() === board.name) return; try { await request('/api/work_hub/boards/rename', { method: 'POST', body: JSON.stringify({ board_id: boardId, board: { name: name.trim() }, expected_revision: store.revision }) }); await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board rename failed: ${error.message || error}`); } }
   async function deleteWorkHubBoard(boardId) { const board = store.boards.find(entry => entry.id === boardId); const message = board?.default ? 'This clears every work item from the main board. The board itself stays as an empty board.' : 'This permanently removes the board and every work item on it.'; if (!await showConfirmDialog({ title: 'Delete board', message, confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); const boardRow = document.querySelector(`[data-board-id="${CSS.escape(boardId)}"]`); if (!board?.default || store.boards.filter(entry => entry.project_id === board.project_id).length > 1) await animateRemoval(boardRow && boardRow.closest('.work-hub-board-row')); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); notifyWorkHubChanged(); if (store.deleteMode && !workHubHasDeletables()) exitProjectDeleteMode(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board delete failed: ${error.message || error}`); } }
+  function workHubColumnItems(items, statusId) {
+    const filter = store.boardFilters[statusId] || {};
+    const rows = items.filter(item => item.status === statusId && (!filter.priority || item.priority === filter.priority) && (!filter.query || item.title.toLowerCase().includes(filter.query)));
+    const stamp = (item, key) => Number(item[key] || item.created_at || 0);
+    const sorters = { newest: (a, b) => stamp(b, 'created_at') - stamp(a, 'created_at'), oldest: (a, b) => stamp(a, 'created_at') - stamp(b, 'created_at'), updated: (a, b) => stamp(b, 'updated_at') - stamp(a, 'updated_at'), title: (a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }) };
+    return sorters[filter.sort] ? rows.slice().sort(sorters[filter.sort]) : rows;
+  }
+  function fillWorkHubCards(cards, columnItems) {
+    cards.textContent = '';
+    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card'; card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+  }
+  // Typing in a column filter updates that column's cards in place. Replacing
+  // the input would drop focus, and the iOS keyboard with it.
+  function refreshWorkHubColumn(statusId) {
+    const column = document.querySelector(`.work-hub-column[data-status="${CSS.escape(statusId)}"]`);
+    if (!column) return renderCanvas(scopedItems());
+    const columnItems = workHubColumnItems(scopedItems(), statusId);
+    const count = column.querySelector('header small'); if (count) count.textContent = columnItems.length;
+    fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
+    document.querySelectorAll('[data-item-id]').forEach(button => { if (button.closest('.work-hub-cards') === column.querySelector('.work-hub-cards')) button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); }; });
+    const board = column.closest('.work-hub-board'); if (board && board._bindCard) column.querySelectorAll('.work-hub-card').forEach(board._bindCard);
+  }
   function renderCanvas(items) {
     const canvas = el('workHubCanvas'); if (!canvas) return;
+    const oldWrap = canvas.querySelector('.work-hub-board-wrap');
+    let prevBoardWrap = null;
+    if (oldWrap) {
+      const tops = {}; oldWrap.querySelectorAll('.work-hub-column').forEach(col => { const cards = col.querySelector('.work-hub-cards'); if (cards) tops[col.dataset.status] = cards.scrollTop; });
+      prevBoardWrap = { left: oldWrap.scrollLeft, tops };
+    }
+    canvas.dataset.keepScroll = store.keepBoardScroll === false ? '0' : '1';
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
       items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row'; row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${esc(item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
       canvas.appendChild(table); return;
     }
+    // Rebuilding the board must not throw away where the user is: keep the
+    // horizontal scroll (else a far-right column jumps back to Triage) and each
+    // column's vertical scroll.
+    const prevWrap = canvas.dataset.keepScroll === '1' ? prevBoardWrap : null;
     const boardWrap = document.createElement('div'); boardWrap.className = 'work-hub-board-wrap';
     const board = document.createElement('div'); board.className = 'work-hub-board';
     store.statuses.forEach(status => {
       const filter = store.boardFilters[status.id] || {};
-      const columnItems = items.filter(item => item.status === status.id && (!filter.priority || item.priority === filter.priority) && (!filter.query || item.title.toLowerCase().includes(filter.query)));
-      const priorityOption = value => `<option value="${value}" ${filter.priority === value ? 'selected' : ''}>${value[0].toUpperCase() + value.slice(1)}</option>`;
-      const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="search" placeholder="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}"><option value="">All priorities</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select></div>` : '';
+      const columnItems = workHubColumnItems(items, status.id);
+      const priorityOption = value => `<option value="${value}" ${filter.priority === value ? 'selected' : ''}>${value === 'none' ? 'No priority' : value[0].toUpperCase() + value.slice(1)}</option>`;
+      const sortOption = ([value, label]) => `<option value="${value}" ${(filter.sort || '') === value ? 'selected' : ''}>${label}</option>`;
+      const sorts = [['', 'Default order'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['updated', 'Recently updated'], ['title', 'Title A–Z']];
+      const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="search" placeholder="Filter items" aria-label="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}" aria-label="Filter by priority"><option value="">All priorities</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select><select data-board-filter-sort="${esc(status.id)}" aria-label="Sort items">${sorts.map(sortOption).join('')}</select></div>` : '';
       const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id;
       column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small><button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
-      const cards = column.querySelector('.work-hub-cards');
-      columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card'; card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+      fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
       board.appendChild(column);
     });
     boardWrap.appendChild(board);
     canvas.appendChild(boardWrap);
+    if (prevWrap) {
+      boardWrap.scrollLeft = prevWrap.left;
+      boardWrap.querySelectorAll('.work-hub-column').forEach(col => { const cards = col.querySelector('.work-hub-cards'); if (cards && prevWrap.tops[col.dataset.status]) cards.scrollTop = prevWrap.tops[col.dataset.status]; });
+    }
     initDragAndDrop(board);
   }
   function workHubRelativeTime(epoch) {
@@ -252,7 +290,8 @@
     const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); bind(); };
     const create = el('workHubCreate'); if (create) create.onclick = createItem;
     document.querySelectorAll('[data-board-filter]').forEach(button => button.onclick = () => { store.boardFilterOpen = store.boardFilterOpen === button.dataset.boardFilter ? null : button.dataset.boardFilter; renderCanvas(scopedItems()); bind(); });
-    document.querySelectorAll('[data-board-filter-query]').forEach(input => input.oninput = () => { const status = input.dataset.boardFilterQuery; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), query: input.value.toLowerCase() }; renderCanvas(scopedItems()); bind(); });
+    document.querySelectorAll('[data-board-filter-query]').forEach(input => input.oninput = () => { const status = input.dataset.boardFilterQuery; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), query: input.value.toLowerCase() }; refreshWorkHubColumn(status); });
+    document.querySelectorAll('[data-board-filter-sort]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterSort; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), sort: select.value }; renderCanvas(scopedItems()); bind(); });
     document.querySelectorAll('[data-board-filter-priority]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterPriority; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), priority: select.value }; renderCanvas(scopedItems()); bind(); });
   }
   function initDragAndDrop(board) {
@@ -260,7 +299,7 @@
     let draggedId = null;
     let draggedHeight = 40;
     let draggedStatus = null;
-    board.querySelectorAll('.work-hub-card').forEach(card => {
+    const bindCard = card => {
       card.addEventListener('dragstart', (e) => {
         draggedId = card.dataset.itemId;
         draggedHeight = card.offsetHeight;
@@ -270,7 +309,9 @@
         card.classList.add('dragging');
       });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
-    });
+    };
+    board.querySelectorAll('.work-hub-card').forEach(bindCard);
+    board._bindCard = bindCard;
     initTouchDrag(board);
     board.querySelectorAll('.work-hub-column').forEach(column => {
       column.addEventListener('dragover', (e) => {
