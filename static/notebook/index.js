@@ -676,6 +676,19 @@
       throw error;
     }
   }
+  // A clip that will not play says why: the player's own state goes to the server log
+  // (the browser's client-event route, a few small fields) and a failure is shown.
+  function reportVideo(video) {
+    const note = (name) => {
+      const e = video.error;
+      const reason = `${name} err=${e ? e.code : '-'} net=${video.networkState} rdy=${video.readyState} t=${(video.currentTime || 0).toFixed(1)}/${Number.isFinite(video.duration) ? video.duration.toFixed(1) : video.duration} ${video.videoWidth}x${video.videoHeight} paused=${video.paused} ${(video.currentSrc || '').split('/').pop().slice(-30)}`;
+      try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: name, visibility_state: document.visibilityState, url_path: location.pathname, reason: reason.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
+    };
+    ['loadedmetadata', 'canplay', 'play', 'playing', 'pause', 'waiting', 'stalled', 'abort', 'error', 'ended'].forEach((name) => video.addEventListener(name, () => {
+      note(name);
+      if (name === 'error') toast(`This video could not be played (${video.error ? ['', 'aborted', 'network', 'decode', 'format not supported'][video.error.code] || video.error.code : 'error'}).`);
+    }));
+  }
   // Touch screens have no hover, so the editor's drag handle (the grip that
   // moves a line on desktop) never shows there. On touch a grip sits beside
   // the line holding the cursor, on the right (the left edge belongs to the
@@ -842,6 +855,7 @@
       video.preload = 'metadata';
       const src = video.getAttribute('src') || '';
       if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
+      reportVideo(video);
     });
     const tidy = () => { isolate(); prepare(); };
     tidy();

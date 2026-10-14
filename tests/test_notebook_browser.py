@@ -878,3 +878,22 @@ def test_one_click_on_a_clip_really_plays_it(real_webm, page):   # the clip is r
     box = tab.locator(".hermes-note-editor video").bounding_box()
     tab.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)   # one click
     tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.paused && v.currentTime > 0; }", timeout=8000)
+
+
+def test_a_clips_player_state_is_reported_so_a_failure_can_be_diagnosed(real_webm, page):
+    seen = []
+    page.route("**/api/client-events/log", lambda route: (seen.append(route.request.post_data), route.fulfill(status=200, content_type="application/json", body='{"ok":true}')))
+    _open(page)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with page.expect_file_chooser() as chooser:
+        page.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": real_webm}])
+    page.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return v && v.readyState >= 1; }", timeout=20000)
+    page.wait_for_timeout(400)
+    events = [json.loads(body) for body in seen if body and '"notes_video"' in body]
+    assert any(e["source"] == "loadedmetadata" and "rdy=" in e["reason"] and "320x240" in e["reason"] for e in events), events
+    # A failure is reported too, and shown.
+    page.evaluate("() => { const v = document.querySelector('.hermes-note-editor video'); v.dispatchEvent(new Event('error')); }")
+    page.wait_for_timeout(300)
+    assert any(json.loads(body)["source"] == "error" for body in seen if body and '"notes_video"' in body)
