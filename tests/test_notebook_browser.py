@@ -722,3 +722,26 @@ def test_on_a_phone_pictures_fill_the_width_and_the_bars_wait_for_a_second_tap(t
     assert not _bars_shown(tab)
     tab.tap(".nb-editor-head .nb-title")
     tab.wait_for_selector(".nb-img-outline", state="hidden", timeout=5000)
+
+
+def test_a_resize_drag_follows_the_pointer_one_to_one_and_eases_only_on_release(page):
+    _picture_in_note(page)
+    page.click(".bn-visual-media")
+    page.wait_for_selector(".bn-resize-handle", state="visible", timeout=5000)
+    wrapper = "() => document.querySelector('.bn-visual-media').closest('.bn-file-block-content-wrapper')"
+    start = page.evaluate(wrapper + ".offsetWidth")
+    handle = page.locator(".bn-resize-handle").last.bounding_box()
+    x, y = handle["x"] + handle["width"] / 2, handle["y"] + handle["height"] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    assert page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
+    errors = []
+    for step in (-20, -45, -80, -50, -10, 25, 60):  # smaller and larger than where it started
+        page.mouse.move(x + step, y)
+        width = page.evaluate(wrapper + ".offsetWidth")   # read at once: an ease in flight would still be on its way
+        errors.append(abs(width - min(start + step, 10_000)))
+    assert max(errors) <= 2, errors
+    assert page.evaluate(wrapper.replace("() =>", "() => getComputedStyle(") + ").transitionDuration") in ("0s",)
+    page.mouse.up()
+    assert not page.evaluate("() => document.documentElement.classList.contains('nb-img-dragging')")
+    assert page.evaluate(wrapper.replace("() =>", "() => getComputedStyle(") + ").transitionProperty") == "width"

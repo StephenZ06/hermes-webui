@@ -875,6 +875,14 @@
       skipClick = false;
       if (!duplicate) tap(event.target);
     });
+    // While a resize bar is held the picture must follow the finger exactly: the
+    // ease that smooths a release (or a programmatic change) would chase it a
+    // beat behind and make it feel rubbery. html.nb-img-dragging switches it off.
+    const root = document.documentElement;
+    const grab = (event) => { if (event.target.closest && event.target.closest('.bn-resize-handle')) root.classList.add('nb-img-dragging'); };
+    const release = () => root.classList.remove('nb-img-dragging');
+    ['touchstart', 'mousedown'].forEach((type) => document.addEventListener(type, grab, {capture: true, passive: true}));
+    ['touchend', 'touchcancel', 'mouseup', 'blur'].forEach((type) => (type === 'blur' ? window : document).addEventListener(type, release, true));
     if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
     new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});
     mount.addEventListener('load', () => requestAnimationFrame(fit), true);

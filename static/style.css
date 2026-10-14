@@ -11799,3 +11799,10 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
 .hermes-note-editor .bn-visual-media::selection{background:transparent;}
 .hermes-note-editor .ProseMirror-selectednode,.hermes-note-editor .ProseMirror-selectednode .bn-visual-media{outline:none !important;}
 .hermes-note-editor [data-file-block] .bn-visual-media-wrapper,.hermes-note-editor [data-file-block] .bn-file-block-content-wrapper{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+
+/* Resize: 1:1 with the finger while a bar is held; eased only when released. */
+html.nb-img-dragging .hermes-note-editor .bn-file-block-content-wrapper{transition:none !important;}
+html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
+.hermes-note-editor [data-file-block] .bn-resize-handle{touch-action:none;}
+/* Rescale the picture on the GPU instead of re-rasterising it each frame. */
+.hermes-note-editor .bn-visual-media{transform:translateZ(0);backface-visibility:hidden;}
