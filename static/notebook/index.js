@@ -832,8 +832,20 @@
         if (event.target && /^(VIDEO|AUDIO)$/.test(event.target.tagName)) event.stopPropagation();
       }));
     });
-    isolate();
-    new MutationObserver(isolate).observe(mount, {childList: true, subtree: true});
+    // iOS draws a clip as a black box until it is played unless it has been told to
+    // fetch the start (preload) and is asked for a frame (#t=0.001); playsinline keeps
+    // it in the page. DOM only: the saved address is untouched.
+    const prepare = () => mount.querySelectorAll('video').forEach((video) => {
+      if (video.__nbPrepared && video.isConnected) return;
+      video.__nbPrepared = true;
+      video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
+      video.preload = 'metadata';
+      const src = video.getAttribute('src') || '';
+      if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
+    });
+    const tidy = () => { isolate(); prepare(); };
+    tidy();
+    new MutationObserver(tidy).observe(mount, {childList: true, subtree: true});
     host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
     box.className = 'nb-img-outline'; box.hidden = true;
@@ -938,6 +950,15 @@
     const walk = (list) => (list || []).forEach((b) => { if (b.type === 'audio' && b.props.url) names[b.props.url] = b.props.name || 'audio'; walk(b.children); });
     walk(blocks);
     md = md.replace(/<audio src="([^"]*)" controls><\/audio>/g, (all, url) => `![${names[url] || 'audio'}](${url})`);
+    let tagFrom = 0;
+    const tagged = (list) => (list || []).forEach((b) => {
+      if ((b.type === 'video' || b.type === 'audio') && b.props.url && mediaTags.has(b.props.url)) {
+        const at = md.indexOf('](' + b.props.url + ')', tagFrom);
+        if (at >= 0) { const end = at + 2 + b.props.url.length; md = md.slice(0, end) + mediaTags.get(b.props.url) + md.slice(end); tagFrom = end; }
+      }
+      tagged(b.children);
+    });
+    tagged(blocks);
     let from = 0;
     imageBlocks(editorCtl.getBlocks()).forEach((b) => {
       if (!b.props.url) return;
@@ -955,13 +976,22 @@
   }
   // Parsed Markdown reads an embedded recording or clip as a picture; the file's
   // extension says what it really is.
+  const mediaTags = new Map(); // media url -> the "#hermes-src=..." tag the server added
   function withMediaBlocks(blocks) {
     (blocks || []).forEach((b) => {
       if (b.type === 'image') {
         let path = b.props.url || '';
         try { path = decodeURIComponent((new URL(path, location.origin).searchParams.get('path')) || path); } catch (_) {}
         const kind = mediaKind(path, '') || mediaKind(b.props.name || '', '');
-        if (kind) { b.type = kind; b.props = {url: b.props.url, name: b.props.name || path.split('/').pop()}; }
+        if (kind) {
+          // The server tags a vault link with "#hermes-src=<its original spelling>" so a save can
+          // restore it. That is no part of a media address (Safari is strict about what follows
+          // a media URL's #), so it is kept aside and put back when the note is written.
+          const at = b.props.url.indexOf('#hermes-src=');
+          let url = b.props.url;
+          if (at >= 0) { url = b.props.url.slice(0, at); mediaTags.set(url, b.props.url.slice(at)); }
+          b.type = kind; b.props = {url, name: b.props.name || path.split('/').pop()};
+        }
       }
       withMediaBlocks(b.children);
     });

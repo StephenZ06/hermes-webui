@@ -11806,3 +11806,11 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor [data-file-block] .bn-resize-handle{touch-action:none;}
 /* Rescale the picture on the GPU instead of re-rasterising it each frame. */
 .hermes-note-editor img.bn-visual-media{transform:translateZ(0);backface-visibility:hidden;}
+
+/* BlockNote paints a selected picture/clip/file with a translucent blue wash and a
+   thick blue border (an ::after overlay). A node is selected by default after a
+   reload and by any tap, and the overlay hides a clip's first frame; the accent
+   outline (tap) is the only selection marker here. */
+.hermes-note-editor .bn-block-content[data-file-block].ProseMirror-selectednode > *::after,
+.hermes-note-editor .ProseMirror-selectednode > .bn-block-content[data-file-block] > *::after,
+.hermes-note-editor [data-file-block] .ProseMirror-selectednode::after{content:none !important;display:none !important;}

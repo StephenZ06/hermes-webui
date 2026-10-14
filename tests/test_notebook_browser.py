@@ -653,10 +653,16 @@ def test_audio_and_video_survive_the_markdown_round_trip_used_for_vault_notes(pa
         ]);
         const markdown = Notebook._widths.write();
         const blocks = Notebook._widths.read(await Notebook.editor.parseMarkdown(markdown));
-        return {markdown, kinds: blocks.map(b => [b.type, b.props.name])};
+        // As the server sends a vault embed: tagged with "#hermes-src=" so a save can restore its spelling.
+        const tag = '#hermes-src=%21%5B%5Bv.mov%5D%5D';
+        const served = Notebook._widths.read(await Notebook.editor.parseMarkdown('![v.mov](/api/notebook/vault/file?path=Attachments%2Fv.mov' + tag + ')'));
+        editor.replaceBlocks(editor.document, served);
+        return {markdown, kinds: blocks.map(b => [b.type, b.props.name]), url: served[0].props.url, written: Notebook._widths.write(), tag};
     }""")
     assert "![a.mp3](/api/notebook/vault/file?path=Attachments%2Fa.mp3)" in result["markdown"] and "<audio" not in result["markdown"]
     assert result["kinds"] == [["audio", "a.mp3"], ["video", "v.mov"]]
+    # The tag is kept out of the clip's address (Safari is strict about it) and put back on save.
+    assert "#" not in result["url"] and result["written"].strip() == f"![v.mov]({result['url']}{result['tag']})"
 
 
 def test_media_upload_carries_the_csrf_token_like_fetch_does(page):
@@ -793,6 +799,15 @@ def _video_in_note(tab):
 def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(touch_page):
     tab = touch_page
     _video_in_note(tab)
+    prepared = tab.evaluate("() => { const v = document.querySelector('video'); return [v.playsInline, v.preload, v.getAttribute('src').endsWith('#t=0.001')]; }")
+    assert prepared == [True, "metadata", True], prepared      # iOS: show the first frame, stay in the page
+    assert tab.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'video').props.url.includes('#')") is False
+    # BlockNote's blue "selected" wash must not be painted over a clip.
+    wash = tab.evaluate("""() => { const outer = document.querySelector('video').closest('.bn-block-outer'); outer.classList.add('ProseMirror-selectednode');
+        const content = outer.querySelector('.bn-block-content'); content.classList.add('ProseMirror-selectednode');
+        const out = [content, ...content.children].map((e) => getComputedStyle(e, '::after').content);
+        outer.classList.remove('ProseMirror-selectednode'); content.classList.remove('ProseMirror-selectednode'); return out; }""")
+    assert all(c in ("none", "normal") for c in wash), wash
     sized = tab.evaluate("() => { const v = document.querySelector('video').getBoundingClientRect(), e = document.querySelector('.hermes-note-editor .bn-editor').getBoundingClientRect(); return [Math.round(v.width), Math.round(e.width)]; }")
     assert sized[0] >= sized[1] - 70 and sized[0] <= sized[1], sized          # fills the phone's text width
     # A tap on the clip must not reach the editor (it would select the block and re-render around the
