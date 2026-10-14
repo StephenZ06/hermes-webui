@@ -111,6 +111,12 @@ In the vault:
   folder is not listed as a folder;
 - the editor gets the Markdown body; YAML frontmatter is never shown and is
   written back exactly as it was. Tags are the frontmatter `tags:`;
+- Images can be added four ways, on desktop and phone: the image button in the
+  note header (one or many; photo library or camera on a phone), the `/image`
+  slash command, paste, and drag-and-drop. A photo the store would refuse (over
+  7 MB, or a HEIC the browser can decode) is redrawn as a JPEG (longest side
+  2560 px) in the browser first. Only PNG, JPEG, GIF and WebP are stored; other
+  file types are not supported.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
   Obsidian's syntax; images in notes are served from the vault
   (`/api/notebook/vault/file?path=`), and pasted images are saved to the

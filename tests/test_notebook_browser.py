@@ -403,3 +403,35 @@ def test_touch_scroll_does_not_hide_the_format_toolbar_and_tag_box_fits_its_text
     }""")
     page.wait_for_timeout(500)
     assert page.query_selector(".bn-formatting-toolbar") is not None
+
+
+_PNG_1PX = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+
+def _add_images_roundtrip(tab):
+    import base64
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    png = base64.b64decode(_PNG_1PX)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-image]")
+    chooser.value.set_files([
+        {"name": "one.png", "mimeType": "image/png", "buffer": png},
+        {"name": "two.png", "mimeType": "image/png", "buffer": png},
+    ])
+    tab.wait_for_function("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').length === 2", timeout=15000)
+    urls = tab.evaluate("() => Notebook.editor.getBlocks().filter(b => b.type === 'image').map(b => b.props.url)")
+    assert all(u.startswith("/api/notebook/files/") for u in urls) and urls[0] != urls[1]
+
+
+def test_add_images_button_inserts_each_picked_image_desktop(page):
+    _add_images_roundtrip(page)
+
+
+def test_add_images_button_inserts_each_picked_image_touch(touch_page):
+    _add_images_roundtrip(touch_page)

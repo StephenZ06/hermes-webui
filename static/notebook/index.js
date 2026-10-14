@@ -65,6 +65,7 @@
   const toast = (message) => { if (typeof window.showToast === 'function') window.showToast(message); };
   const ICONS = {
     note: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>',
     all: '<path d="M4 6h16M4 12h16M4 18h10"/>',
     general: '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>',
     folder: '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>',
@@ -466,6 +467,7 @@
         <button type="button" class="nb-icon-btn nb-back" data-nb-action="back" aria-label="Back to notes">${icon('back', 16)}</button>
         <input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title" ${trashed ? 'disabled' : ''}>
         <span class="nb-status" data-status="${esc(save.status)}" aria-live="polite">${esc(statusText())}</span>
+        <button type="button" class="nb-icon-btn" data-nb-action="add-image" aria-label="Add images" title="Add images" ${trashed ? 'disabled' : ''}>${icon('image', 16)}</button>
         <button type="button" class="nb-icon-btn${note.pinned ? ' on' : ''}" data-nb-action="toggle-pinned" aria-pressed="${note.pinned}" aria-label="${note.pinned ? 'Unpin' : 'Pin'}" title="${note.pinned ? 'Unpin' : 'Pin'}" ${trashed ? 'disabled' : ''}>${icon('pin', 15)}</button>
         <button type="button" class="nb-icon-btn fav${note.favorite ? ' on' : ''}" data-nb-action="toggle-favorite" aria-pressed="${note.favorite}" aria-label="${note.favorite ? 'Remove from favorites' : 'Add to favorites'}" title="Favorite" ${trashed ? 'disabled' : ''}>${icon('star', 15)}</button>
         <button type="button" class="nb-icon-btn" data-nb-action="menu" aria-label="More actions" aria-haspopup="menu" title="More">${icon('more', 16)}</button>
@@ -557,7 +559,56 @@
     const host = $('nbEditorHost');
     if (host) host.innerHTML = '';
   }
+  // Images are sent as they are when the store accepts them; a photo it would
+  // refuse (too large, or a HEIC the browser can decode) is redrawn as a JPEG
+  // first, so a phone's camera roll works without thinking about formats.
+  const STORE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  const STORE_LIMIT = 7 * 1024 * 1024;
+  const MAX_SIDE = 2560;
+  async function prepareImage(file) {
+    if (STORE_TYPES.includes(file.type) && file.size <= STORE_LIMIT) return file;
+    if (file.type === 'image/gif') return file; // redrawing would freeze it; the store reports the size
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      if (bitmap.close) bitmap.close();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+      if (blob && blob.size <= STORE_LIMIT) return new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'});
+    } catch (_) {}
+    return file;
+  }
+  // The "Add images" button: the system picker (photo library / camera on a
+  // phone, files on desktop), one or many images, each placed under the cursor.
+  function pickImages() {
+    if (!editorCtl || !S.note || S.note.deleted_at) return;
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    input.addEventListener('change', async () => {
+      const files = [...input.files]; if (!files.length || !editorCtl) return;
+      const editor = editorCtl.editor;
+      const noteId = editorNoteId;
+      toast(files.length === 1 ? 'Adding image…' : `Adding ${files.length} images…`);
+      let anchor = null;
+      try { anchor = editor.getTextCursorPosition().block; } catch (_) {}
+      if (!anchor) { const doc = editor.document; anchor = doc[doc.length - 1]; }
+      let added = 0;
+      for (const file of files) {
+        if (editorNoteId !== noteId) return; // switched notes while uploading
+        try {
+          const url = await uploadFile(file);
+          const [block] = editor.insertBlocks([{type: 'image', props: {url, name: file.name || 'image', caption: ''}}], anchor, 'after');
+          anchor = block || anchor; added += 1;
+        } catch (_) { /* uploadFile already told the user why */ }
+      }
+      if (added) toast(added === 1 ? 'Image added' : `${added} images added`);
+    });
+    input.click();
+  }
   async function uploadFile(file) {
+    file = await prepareImage(file);
     const data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
@@ -1216,6 +1267,7 @@
       case 'create-menu': openCreateMenu(action); break;
       case 'delete-done': if (deleteModeRef) deleteModeRef.exit(); break;
       case 'menu': noteMenu(action); break;
+      case 'add-image': pickImages(); break;
       case 'toggle-pinned': await setFlag('pinned'); break;
       case 'toggle-favorite': await setFlag('favorite'); break;
       case 'restore': await restoreCurrent(); break;
