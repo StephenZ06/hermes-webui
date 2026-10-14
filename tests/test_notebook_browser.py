@@ -793,7 +793,8 @@ def _video_in_note(tab):
         tab.click(".nb-editor-head [data-nb-action=add-files]")
     chooser.value.set_files([{"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4}])
     tab.wait_for_selector(".hermes-note-editor video", timeout=15000)
-    tab.wait_for_timeout(400)
+    tab.wait_for_selector(".hermes-note-editor .nb-play", timeout=5000)
+    tab.wait_for_timeout(900)   # the placeholder file fails to load and the box settles
 
 
 def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(touch_page):
@@ -816,7 +817,7 @@ def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(
         ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((t) => editor.addEventListener(t, (e) => { if (e.target.tagName === 'VIDEO') window.__reached++; })); }""")
     def centre():   # the clip's box changes as the (placeholder) file fails to load
         box = tab.locator("video").bounding_box()
-        return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        return box["x"] + box["width"] * 0.2, box["y"] + box["height"] * 0.25   # clear of the play button in the middle
     tab.touchscreen.tap(*centre())
     tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
     assert tab.evaluate("() => window.__reached") == 0
@@ -897,3 +898,42 @@ def test_a_clips_player_state_is_reported_so_a_failure_can_be_diagnosed(real_web
     page.evaluate("() => { const v = document.querySelector('.hermes-note-editor video'); v.dispatchEvent(new Event('error')); }")
     page.wait_for_timeout(300)
     assert any(json.loads(body)["source"] == "error" for body in seen if body and '"notes_video"' in body)
+
+
+def test_our_play_button_plays_a_clip_with_one_tap_and_hides_while_it_plays(real_webm, touch_page):
+    tab = touch_page
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": real_webm}])
+    tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return v && v.readyState >= 1 && v.duration > 0; }", timeout=20000)
+    tab.evaluate("() => { document.querySelector('.hermes-note-editor video').muted = true; }")
+    tab.wait_for_selector(".hermes-note-editor .nb-play:not([hidden])", timeout=5000)
+    tab.tap(".hermes-note-editor .nb-play")                                    # one tap
+    tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.paused && v.currentTime > 0; }", timeout=8000)
+    tab.wait_for_selector(".hermes-note-editor .nb-play", state="hidden", timeout=5000)
+    # and it did not select or re-render the block
+    assert tab.evaluate("() => document.querySelectorAll('.hermes-note-editor video').length") == 1
+
+
+def test_a_clip_that_cannot_be_played_says_so(page):
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with page.expect_file_chooser() as chooser:
+        page.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "Clip.mp4", "mimeType": "video/mp4", "buffer": _MP4}])
+    page.wait_for_selector(".hermes-note-editor .nb-play", timeout=15000)
+    page.wait_for_timeout(600)
+    page.click(".hermes-note-editor .nb-play")
+    page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be played/i.test(t.textContent))", timeout=8000)

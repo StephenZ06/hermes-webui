@@ -11814,3 +11814,7 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor .bn-block-content[data-file-block].ProseMirror-selectednode > *::after,
 .hermes-note-editor .ProseMirror-selectednode > .bn-block-content[data-file-block] > *::after,
 .hermes-note-editor [data-file-block] .ProseMirror-selectednode::after{content:none !important;display:none !important;}
+
+/* Notes: our own play button on a paused clip (the native one proved unreliable on iOS). */
+.hermes-note-editor .bn-file-block-content-wrapper:has(video) .nb-play{position:absolute;left:50%;top:50%;z-index:5;transform:translate(-50%,-50%);display:grid;place-items:center;width:64px;height:64px;padding:0 0 0 4px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;box-shadow:0 2px 14px rgba(0,0,0,.4);-webkit-tap-highlight-color:transparent;cursor:pointer;}
+.hermes-note-editor .bn-file-block-content-wrapper .nb-play[hidden]{display:none !important;}

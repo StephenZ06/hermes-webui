@@ -6651,7 +6651,10 @@ def _handle_client_event_log(handler, body: dict) -> bool:
         )
         return j(handler, {"ok": False, "error": "rate_limited"}, status=429) or True
     payload = _sanitize_client_event_payload(body)
-    _CLIENT_EVENT_LOGGER.info("Client event from %s: %s", _client_ip_for_rate_limit(handler), payload)
+    # Notes' media diagnostics ("notes_*": why a clip would not play on a phone) are
+    # worth seeing in the server log; the transport diagnostics stay at INFO.
+    level = logging.WARNING if str(payload.get("event", "")).startswith("notes_") else logging.INFO
+    _CLIENT_EVENT_LOGGER.log(level, "Client event from %s: %s", _client_ip_for_rate_limit(handler), payload)
     return j(handler, {"ok": True, "event": payload.get("event")}) or True
 
 

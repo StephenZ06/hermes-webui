@@ -676,6 +676,30 @@
       throw error;
     }
   }
+  // The player's own play button did nothing on a phone (and said nothing). This one is
+  // ours: it calls play() itself, inside the tap, so a clip that can be played plays, and
+  // one that cannot says why. It shows while the clip is not playing; the native controls
+  // stay for seeking, volume and full screen.
+  function addPlayButton(video) {
+    const box = video.closest('.bn-file-block-content-wrapper');
+    if (!box || box.querySelector('.nb-play')) return;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'nb-play'; button.contentEditable = 'false';
+    button.setAttribute('aria-label', 'Play');
+    button.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    box.appendChild(button);
+    const sync = () => { button.hidden = !video.paused; };
+    ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata'].forEach((name) => video.addEventListener(name, sync));
+    sync();
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((type) => button.addEventListener(type, (event) => event.stopPropagation()));
+    button.addEventListener('click', () => {
+      const started = video.play();
+      if (started && started.catch) started.catch((error) => {
+        toast(`This video could not be played (${error && error.name ? error.name : 'error'}).`);
+        try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: 'play-rejected', url_path: location.pathname, reason: `${error && error.name}: ${error && error.message}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
+      });
+    });
+  }
   // A clip that will not play says why: the player's own state goes to the server log
   // (the browser's client-event route, a few small fields) and a failure is shown.
   function reportVideo(video) {
@@ -856,6 +880,7 @@
       const src = video.getAttribute('src') || '';
       if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
       reportVideo(video);
+      addPlayButton(video);
     });
     const tidy = () => { isolate(); prepare(); };
     tidy();
