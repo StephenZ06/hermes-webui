@@ -109,3 +109,24 @@ def test_composer_option_text_is_centred_on_its_icon(phone):
         const b = document.getElementById(id); const v = b.querySelector('.composer-mobile-config-value').getBoundingClientRect();
         const i = b.querySelector('svg').getBoundingClientRect(); return Math.abs((v.top + v.height / 2) - (i.top + i.height / 2)); })""")
     assert all(o <= 1 for o in offsets)
+
+
+def test_select_all_row_has_10px_above_and_below(phone):
+    page = phone
+    page.evaluate("() => toggleSessionSelectMode()")
+    time.sleep(0.4)
+    above, below = page.evaluate("""() => { const head = [...document.querySelectorAll('.panel-head')].find(h => h.offsetParent).getBoundingClientRect();
+        const x = document.querySelector('.batch-exit-btn').getBoundingClientRect();
+        const h = document.querySelector('.chat-sidebar-section--workspaces .chat-sidebar-section-heading').getBoundingClientRect();
+        return [Math.round(x.top - head.bottom), Math.round(h.top - x.bottom)]; }""")
+    assert (above, below) == (10, 10)
+
+
+def test_composer_option_text_descenders_are_not_clipped(phone):
+    page = phone
+    page.evaluate("""() => { closeMobileSidebar(); openMobileComposerConfig();
+        document.querySelector('#composerMobileReasoningAction .composer-mobile-config-value').textContent = 'High'; }""")
+    time.sleep(0.6)
+    clip, glyphs = page.evaluate("""() => { const v = document.querySelector('#composerMobileReasoningAction .composer-mobile-config-value');
+        const r = document.createRange(); r.selectNodeContents(v); return [v.getBoundingClientRect().bottom, r.getBoundingClientRect().bottom]; }""")
+    assert clip >= glyphs

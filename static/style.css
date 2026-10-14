@@ -11609,14 +11609,22 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 /* Chat sidebar select bar ("✕ Select all"): the WORKSPACES heading below it
    brings a 16px top margin, so the bar takes the same above it -- equal space
    over and under the row. */
-.session-select-bar{margin:16px 0 0;}
+.session-select-bar{margin:4px 0 0;}
+/* 10px above and below the row: the bar's 6px padding plus 4px each side
+   (the WORKSPACES heading after it drops its usual 16px top margin to 4px). */
+.session-select-bar ~ .chat-sidebar-section--workspaces > .chat-sidebar-section-heading{margin-top:4px;}
 
 /* Composer options panel (phones): Workspace / Model / Effort text centres on
    its icon by its letters, not its line box. The old fixed 3px nudge was
    tuned to one font's metrics and sat off on iOS's system font. text-box
    trims the line to cap height and baseline, so flexbox centring is optical
    on any font; browsers without text-box fall back to a tight line box. */
-.composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-value{top:0;line-height:1.15;text-box:trim-both cap alphabetic;}
+.composer-mobile-config-action:not(.composer-mobile-context-action) .composer-mobile-config-value{top:0;line-height:1.15;text-box:trim-both cap alphabetic;
+  /* The trimmed box ends at the baseline and the value clips (ellipsis), which
+     cut off descenders -- the g of "High". Equal padding above and below
+     widens the clip area without moving the centre; the negative margins
+     keep the layout unchanged. */
+  padding-block:5px;margin-block:-5px;}
 .composer-mobile-config-action > span[aria-hidden="true"]{display:inline-flex;align-items:center;justify-content:center;line-height:0;}
 
 /* Chat sidebar: the highlight ring on a pressed / long-pressed / swiping row
