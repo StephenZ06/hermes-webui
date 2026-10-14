@@ -630,7 +630,7 @@ def _add_media_roundtrip(tab):
     assert {(kind, name) for kind, name, _ in blocks} == {("video", "Clip.mp4"), ("audio", "Voice.mp3")}
     assert all(url.startswith("/api/notebook/files/") for _, _, url in blocks)
     tab.wait_for_selector(".hermes-note-editor video", timeout=10000)
-    tab.wait_for_selector(".hermes-note-editor audio", timeout=10000)
+    tab.wait_for_selector(".hermes-note-editor audio", state="attached", timeout=10000)
 
 
 def test_add_audio_and_video_desktop(page):
@@ -997,3 +997,57 @@ def test_a_clip_that_cannot_be_played_says_so(page):
     page.wait_for_timeout(600)
     page.click(".hermes-note-editor .nb-vc-big")
     page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be played/i.test(t.textContent))", timeout=8000)
+
+
+def _wav(seconds=3):
+    import io
+    import math
+    import struct
+    import wave
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / 8000))) for i in range(8000 * seconds)))
+    return out.getvalue()
+
+
+AUDIO = "() => document.querySelector('.hermes-note-editor audio')"
+
+
+def test_a_recording_gets_the_same_controls_in_a_bar_that_stays_in_view(touch_page):
+    tab = touch_page
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    with tab.expect_file_chooser() as chooser:
+        tab.click(".nb-editor-head [data-nb-action=add-files]")
+    chooser.value.set_files([{"name": "Voice.wav", "mimeType": "audio/wav", "buffer": _wav(8)}])
+    tab.wait_for_function("() => { const a = document.querySelector('.hermes-note-editor audio'); return a && a.readyState >= 1 && a.duration > 0; }", timeout=20000)
+    tab.evaluate("() => { document.querySelector('.hermes-note-editor audio').muted = true; }")
+    ui = ".hermes-note-editor .nb-vc-audio"
+    tab.wait_for_selector(ui, timeout=5000)
+    assert tab.evaluate(AUDIO + ".controls") is False                      # the browser's own bar is off
+    assert tab.query_selector(ui + " .nb-vc-big") is None and tab.query_selector(ui + " .nb-vc-full") is None   # no picture: no big button, no full screen
+    assert tab.is_visible(ui + " .nb-vc-bar") and tab.evaluate(f"() => document.querySelector('{ui}').getBoundingClientRect().height") > 30
+    tab.tap(ui + " .nb-vc-toggle")                                          # one tap plays
+    tab.wait_for_function("() => { const a = document.querySelector('.hermes-note-editor audio'); return !a.paused && a.currentTime > 0; }", timeout=8000)
+    tab.wait_for_timeout(3200)                                              # it does not fade away like a clip's bar
+    assert tab.get_attribute(ui, "data-ui") == "shown"
+    assert tab.evaluate(f"() => getComputedStyle(document.querySelector('{ui} .nb-vc-bar')).opacity") == "1"
+    tab.tap(ui + " .nb-vc-toggle")                                          # and pauses
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor audio').paused", timeout=3000)
+    duration = tab.evaluate(AUDIO + ".duration")
+    tab.evaluate("() => { const s = document.querySelector('.hermes-note-editor .nb-vc-audio .nb-vc-seek'); s.value = 800; s.dispatchEvent(new Event('input', {bubbles: true})); }")
+    tab.wait_for_function("(d) => Math.abs(document.querySelector('.hermes-note-editor audio').currentTime - d * 0.8) < 0.3", arg=duration, timeout=3000)
+    tab.tap(ui + " .nb-vc-mute")
+    assert tab.evaluate(AUDIO + ".muted") is False
+    # It plays out and offers a replay.
+    tab.evaluate("() => { const a = document.querySelector('.hermes-note-editor audio'); a.muted = true; a.currentTime = Math.max(0, a.duration - 0.3); a.play(); }")
+    tab.wait_for_function("() => document.querySelector('.hermes-note-editor audio').ended", timeout=8000)
+    assert tab.get_attribute(ui + " .nb-vc-toggle", "aria-label") == "Replay"

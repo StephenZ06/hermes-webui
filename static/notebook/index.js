@@ -699,25 +699,26 @@
   function addVideoControls(video) {
     const box = video.closest('.bn-file-block-content-wrapper');
     if (!box) return;
+    const isAudio = video.tagName === 'AUDIO'; // a recording: the bar only, always in view, no picture to cover
     box.querySelectorAll('.nb-vc').forEach((old) => old.remove());
     video.controls = false; video.removeAttribute('controls');
     const ui = document.createElement('div');
-    ui.className = 'nb-vc'; ui.contentEditable = 'false'; ui.dataset.ui = 'shown';
-    ui.innerHTML = `<button type="button" class="nb-vc-big" aria-label="Play">${svg('play', 34)}</button>
+    ui.className = 'nb-vc' + (isAudio ? ' nb-vc-audio' : ''); ui.contentEditable = 'false'; ui.dataset.ui = 'shown';
+    ui.innerHTML = `${isAudio ? '' : `<button type="button" class="nb-vc-big" aria-label="Play">${svg('play', 34)}</button>`}
       <div class="nb-vc-bar">
         <button type="button" class="nb-vc-toggle" aria-label="Play">${svg('play')}</button>
         <span class="nb-vc-time">0:00 / 0:00</span>
         <input class="nb-vc-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
         <button type="button" class="nb-vc-mute" aria-label="Mute">${svg('sound')}</button>
         <input class="nb-vc-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume">
-        <button type="button" class="nb-vc-full" aria-label="Full screen">${svg('full')}</button>
+        ${isAudio ? '' : `<button type="button" class="nb-vc-full" aria-label="Full screen">${svg('full')}</button>`}
       </div>`;
     box.appendChild(ui);
     const $ = (selector) => ui.querySelector(selector);
     const big = $('.nb-vc-big'), toggle = $('.nb-vc-toggle'), time = $('.nb-vc-time'), seek = $('.nb-vc-seek'), mute = $('.nb-vc-mute'), volume = $('.nb-vc-volume'), full = $('.nb-vc-full');
     let hideTimer = 0, scrubbing = false;
     const playing = () => !video.paused && !video.ended;
-    const show = () => { ui.dataset.ui = 'shown'; clearTimeout(hideTimer); if (playing() && !scrubbing) hideTimer = setTimeout(() => { if (playing() && !scrubbing) ui.dataset.ui = 'hidden'; }, 2500); };
+    const show = () => { ui.dataset.ui = 'shown'; clearTimeout(hideTimer); if (!isAudio && playing() && !scrubbing) hideTimer = setTimeout(() => { if (playing() && !scrubbing) ui.dataset.ui = 'hidden'; }, 2500); };
     const paint = () => {
       const dur = Number.isFinite(video.duration) ? video.duration : 0;
       if (!scrubbing) { seek.value = dur ? Math.round(video.currentTime / dur * 1000) : 0; }
@@ -727,8 +728,7 @@
     const state = () => {
       const label = video.ended ? 'Replay' : playing() ? 'Pause' : 'Play';
       toggle.innerHTML = svg(video.ended ? 'replay' : playing() ? 'pause' : 'play'); toggle.setAttribute('aria-label', label);
-      big.innerHTML = svg(video.ended ? 'replay' : 'play', 34); big.setAttribute('aria-label', label);
-      big.hidden = playing();
+      if (big) { big.innerHTML = svg(video.ended ? 'replay' : 'play', 34); big.setAttribute('aria-label', label); big.hidden = playing(); }
       mute.innerHTML = svg(video.muted || video.volume === 0 ? 'mute' : 'sound'); mute.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
       volume.value = video.muted ? 0 : video.volume; volume.style.setProperty('--p', (Number(volume.value) * 100) + '%');
       if (playing()) show(); else { clearTimeout(hideTimer); ui.dataset.ui = 'shown'; }
@@ -746,8 +746,8 @@
     };
     ['play', 'playing', 'pause', 'ended', 'emptied', 'volumechange', 'loadedmetadata', 'durationchange'].forEach((name) => video.addEventListener(name, state));
     video.addEventListener('timeupdate', paint);
-    video.addEventListener('click', () => { if (ui.dataset.ui === 'hidden') show(); else if (playing()) { ui.dataset.ui = 'hidden'; clearTimeout(hideTimer); } else show(); });
-    big.addEventListener('click', playPause);
+    if (!isAudio) video.addEventListener('click', () => { if (ui.dataset.ui === 'hidden') show(); else if (playing()) { ui.dataset.ui = 'hidden'; clearTimeout(hideTimer); } else show(); });
+    if (big) big.addEventListener('click', playPause);
     toggle.addEventListener('click', () => { playPause(); show(); });
     mute.addEventListener('click', () => { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 1; show(); });
     volume.addEventListener('input', () => { video.volume = Number(volume.value); video.muted = video.volume === 0; show(); });
@@ -758,7 +758,7 @@
     });
     seek.addEventListener('change', () => { scrubbing = false; show(); });
     seek.addEventListener('pointerup', () => { scrubbing = false; show(); });
-    full.addEventListener('click', () => {
+    if (full) full.addEventListener('click', () => {
       show();
       if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
       // Elsewhere the whole box goes full screen, so these controls come along. An iPhone only
@@ -944,17 +944,19 @@
     // iOS draws a clip as a black box until it is played unless it has been told to
     // fetch the start (preload) and is asked for a frame (#t=0.001); playsinline keeps
     // it in the page. DOM only: the saved address is untouched.
-    const prepare = () => mount.querySelectorAll('video').forEach((video) => {
+    const prepare = () => mount.querySelectorAll('video, audio').forEach((video) => {
       if (video.__nbPrepared && video.isConnected) return;
       video.__nbPrepared = true;
-      video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
       video.preload = 'metadata';
-      const src = video.getAttribute('src') || '';
-      if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
+      if (video.tagName === 'VIDEO') {
+        video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
+        const src = video.getAttribute('src') || '';
+        if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
+      }
       reportVideo(video);
       addVideoControls(video);
-      // One clip at a time: starting one stops the others.
-      video.addEventListener('play', () => mount.querySelectorAll('video').forEach((other) => { if (other !== video && !other.paused) other.pause(); }));
+      // One clip or recording at a time: starting one stops the others.
+      video.addEventListener('play', () => mount.querySelectorAll('video, audio').forEach((other) => { if (other !== video && !other.paused) other.pause(); }));
     });
     const tidy = () => { isolate(); prepare(); };
     tidy();

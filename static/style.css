@@ -11838,3 +11838,11 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 :fullscreen .nb-vc-bar{padding-bottom:max(8px,env(safe-area-inset-bottom));}
 .hermes-note-editor .bn-file-block-content-wrapper:fullscreen,.hermes-note-editor .bn-file-block-content-wrapper:-webkit-full-screen{width:100% !important;height:100%;background:#000;display:grid;place-items:center;}
 .hermes-note-editor .bn-file-block-content-wrapper:fullscreen video{max-height:100%;width:100%;}
+
+/* A recording: the same controls as a clip, as a bar of their own that stays in view. */
+.hermes-note-editor .nb-vc.nb-vc-audio{position:relative;inset:auto;z-index:auto;pointer-events:auto;color:var(--text);background:var(--hover-bg);border:1px solid var(--border);border-radius:10px;}
+.hermes-note-editor .nb-vc-audio .nb-vc-bar{position:static;padding:4px 8px;background:none;border-radius:0;}
+.hermes-note-editor .nb-vc-audio .nb-vc-time{text-shadow:none;}
+.hermes-note-editor .nb-vc-audio .nb-vc-seek::-webkit-slider-runnable-track,.hermes-note-editor .nb-vc-audio .nb-vc-volume::-webkit-slider-runnable-track{background:linear-gradient(to right,var(--accent) var(--p,100%),color-mix(in srgb,var(--muted) 45%,transparent) var(--p,100%));}
+.hermes-note-editor .nb-vc-audio .nb-vc-seek::-webkit-slider-thumb,.hermes-note-editor .nb-vc-audio .nb-vc-volume::-webkit-slider-thumb{background:var(--accent);box-shadow:none;}
+.hermes-note-editor .bn-file-block-content-wrapper:has(audio){width:100%;}

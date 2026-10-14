@@ -132,7 +132,9 @@ In the vault:
   a resize ends. Taps on a player never reach the editor. A clip has its own controls (the browser's
   were unreliable for taps here): a play button, and a bar with play/pause, time, seek,
   mute (volume on a desktop) and full screen. They show while it is paused or finished,
-  fade a moment after it starts, and return on a tap; starting one clip stops the others. The
+  fade a moment after it starts, and return on a tap; starting one clip stops the others.
+  A recording gets the same bar (play/pause, time, seek, mute), always in view, with no
+  big button or full screen. The
   width is saved as the block's `previewWidth`, and for a vault picture as
   Obsidian's `![alt|300](...)` / `![[x.png|300]]`.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
