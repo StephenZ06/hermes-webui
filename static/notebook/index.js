@@ -566,8 +566,21 @@
   // the line holding the cursor, on the right (the left edge belongs to the
   // swipe-for-sidebar guard); drag it with a finger to move the line. The
   // grip cancels pointerdown, so the editor keeps focus and the keyboard.
+  // Keyboard height as --nb-kb: the visual viewport shrinks when the iOS
+  // keyboard opens while fixed-position boxes stay laid out under it.
+  let keyboardTracked = false;
+  function trackKeyboard() {
+    const vv = window.visualViewport;
+    if (keyboardTracked || !vv) return;
+    keyboardTracked = true;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty('--nb-kb', Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px');
+    vv.addEventListener('resize', update); vv.addEventListener('scroll', update);
+    update();
+  }
   function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
+    trackKeyboard();
     const mount = host.querySelector('.nb-editor-mount'); if (!mount) return;
     mount.classList.add('has-grip'); host.classList.add('nb-has-grip');
     const grip = document.createElement('button');

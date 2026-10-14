@@ -346,3 +346,29 @@ def test_desktop_has_no_touch_grip(page):
     page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     assert page.query_selector(".nb-grip") is None
+
+
+def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
+    page = touch_page
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    page.click(".nb-list-head [data-nb-action=new]")
+    page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    page.click(".hermes-note-editor .bn-editor")
+    page.keyboard.type("hello world")
+    page.keyboard.press("Control+a")
+    page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
+    page.wait_for_timeout(400)
+    page.evaluate("() => document.documentElement.style.setProperty('--nb-kb', '300px')")
+    box = page.locator(".bn-formatting-toolbar").bounding_box()
+    height = page.evaluate("() => window.innerHeight")
+    assert abs((box["y"] + box["height"]) - (height - 300 - 6)) <= 2, (box, height)
+    page.click(".bn-formatting-toolbar button.mantine-Button-root")
+    page.wait_for_selector(".mantine-Menu-dropdown", timeout=5000)
+    page.wait_for_timeout(300)
+    menu = page.locator(".mantine-Menu-dropdown").bounding_box()
+    bar = page.locator(".bn-formatting-toolbar").bounding_box()
+    assert menu["y"] + menu["height"] <= bar["y"] + 2, (menu, bar)
