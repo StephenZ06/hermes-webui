@@ -161,6 +161,9 @@ class TestHorizontalAxisIsNeverConceded:
         ".agent-canvas-project-row", ".agent-canvas-pause-btn",
         # The zoomed-in resume preview pans both ways (pan-y only at 100%).
         ".resume-preview.is-zoomed",
+        # Notes' text-format bar is a row of buttons wider than the screen that scrolls sideways. It sits
+        # beneath the sidebar's edge guard, so the left 30px stays covered and the back gesture unclaimed.
+        ".hermes-note-editor .bn-formatting-toolbar",
     }
 
     @staticmethod

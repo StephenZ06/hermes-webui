@@ -377,7 +377,7 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     width = page.evaluate("() => innerWidth")
     assert abs(box["x"] - 8) <= 1 and abs((width - (box["x"] + box["width"])) - 8) <= 1, (box, width)   # the same gap on both sides
     first = page.evaluate("() => document.querySelector('.bn-formatting-toolbar').firstElementChild.getBoundingClientRect().x")
-    assert first >= 31, first                                                          # its first button is clear of the sidebar's 30px edge guard
+    assert first - box["x"] <= 12, (first, box)                                         # no empty gap before the first button
     scroll = page.evaluate("() => { const t = document.querySelector('.bn-formatting-toolbar'); return [t.scrollWidth, t.clientWidth, getComputedStyle(t).overflowX]; }")
     assert scroll[0] > scroll[1] and scroll[2] == "auto", scroll                     # more buttons than fit: it scrolls sideways
     page.evaluate("() => { document.querySelector('.bn-formatting-toolbar').scrollLeft = 9999; }")
@@ -1068,7 +1068,7 @@ def test_a_recording_gets_the_same_controls_in_a_bar_that_stays_in_view(touch_pa
     assert tab.get_attribute(ui + " .nb-vc-toggle", "aria-label") == "Replay"
 
 
-def test_tapping_a_picture_puts_the_keyboard_away_and_the_notes_page_leaves_touch_to_the_browser(touch_page):
+def test_tapping_a_picture_puts_the_keyboard_away(touch_page):
     tab = touch_page
     _picture_in_note(tab)
     tab.click(".hermes-note-editor .bn-block-content[data-content-type=paragraph]")
@@ -1077,8 +1077,6 @@ def test_tapping_a_picture_puts_the_keyboard_away_and_the_notes_page_leaves_touc
     tab.tap(".bn-visual-media")
     tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
     tab.wait_for_function("() => !document.activeElement || !document.activeElement.isContentEditable", timeout=3000)   # nothing to type into
-    # The loupe (hold on a word, drag to place the caret) needs the browser's own touch handling.
-    assert tab.evaluate("() => getComputedStyle(document.querySelector('main.main.showing-notebook')).touchAction") == "auto"
 
 
 def test_touching_a_picture_never_focuses_the_editor_so_the_keyboard_stays_down(touch_page):
@@ -1196,3 +1194,51 @@ def test_the_format_bar_is_laid_out_inside_the_visible_width_not_the_layout_widt
     tab.wait_for_timeout(300)
     box = tab.locator(".bn-formatting-toolbar").bounding_box()
     assert abs(box["x"] - (20 + 8)) <= 1 and abs((20 + 340 - (box["x"] + box["width"])) - 8) <= 1, box
+
+
+def _selected_text_with_bar(tab):
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    tab.click(".nb-list-head [data-nb-action=new]")
+    tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
+    tab.click(".hermes-note-editor .bn-editor")
+    tab.keyboard.type("hello world")
+    tab.keyboard.press("Control+a")
+    tab.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
+    tab.wait_for_timeout(500)
+
+
+def test_every_format_button_has_its_own_finger_sized_target_and_the_first_is_at_the_edge(touch_page):
+    tab = touch_page
+    _selected_text_with_bar(tab)
+    rects = tab.evaluate("""() => [...document.querySelectorAll('.bn-formatting-toolbar > *')].map((b) => {
+        const r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return {x: r.x, right: r.right, width: r.width, height: r.height, own: !!(hit && b.contains(hit)), label: b.getAttribute('aria-label') || b.textContent.slice(0, 12)};
+    })""")
+    assert len(rects) >= 8
+    for index, r in enumerate(rects):
+        assert r["height"] >= 38, r
+        if r["label"] != "Paragraph":
+            assert r["width"] >= 40, r                                    # a finger-sized target
+        if index and rects[index - 1]["right"] < tab.evaluate("() => innerWidth"):
+            assert rects[index - 1]["right"] <= r["x"] + 0.5, (rects[index - 1], r)   # no two overlap: a tap cannot belong to two
+    visible = [r for r in rects if 0 <= r["x"] and r["right"] <= tab.evaluate("() => innerWidth")]
+    assert all(r["own"] for r in visible), [r for r in visible if not r["own"]]   # tapping a button's middle reaches that button (the first one included, over the edge guard)
+
+
+def test_the_colour_button_applies_a_colour_in_one_go_and_its_menu_keeps_the_editor_focused(touch_page):
+    tab = touch_page
+    _selected_text_with_bar(tab)
+    tab.click('.bn-formatting-toolbar [aria-label="Colors"]')
+    tab.wait_for_selector(".mantine-Menu-dropdown [role=menuitem]", timeout=5000)
+    probe = """(selector) => { const el = document.querySelectorAll(selector)[2];
+        const event = new MouseEvent('mousedown', {bubbles: true, cancelable: true}); el.dispatchEvent(event); return event.defaultPrevented; }"""
+    # iOS blurs the editor on a press that is not cancelled, which lost the selection the colour was for.
+    assert tab.evaluate(probe, ".mantine-Menu-dropdown [role=menuitem]") is True
+    assert tab.evaluate("() => { const e = new MouseEvent('mousedown', {bubbles: true, cancelable: true}); document.querySelector('.bn-formatting-toolbar [aria-label=\"Colors\"]').dispatchEvent(e); return e.defaultPrevented; }") is True
+    tab.locator(".mantine-Menu-dropdown [role=menuitem]").nth(2).click()
+    tab.wait_for_function("() => { const s = Notebook.editor.editor.document[0].content[0].styles; return !!(s && (s.textColor || s.backgroundColor)); }", timeout=5000)

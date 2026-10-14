@@ -464,7 +464,7 @@
     const failed = save.status === 'error' ? `<div class="nb-banner" role="status"><span>${esc(save.error || 'Saving failed')}. Your changes are kept here and retried.</span><button type="button" class="nb-btn small" data-nb-action="retry">Retry now</button></div>` : '';
     head.innerHTML = `${trashed ? '<div class="nb-banner"><span>This note is in the trash.</span><button type="button" class="nb-btn small" data-nb-action="restore">Restore</button><button type="button" class="nb-btn small danger" data-nb-action="purge">Delete forever</button></div>' : ''}${conflict}${failed}
       <div class="nb-head-row">
-        <button type="button" class="nb-icon-btn nb-back" data-nb-action="back" aria-label="Back to notes">${icon('back', 16)}</button>
+        <button type="button" class="nb-icon-btn nb-back" data-nb-action="back" data-allow-blur aria-label="Back to notes">${icon('back', 16)}</button>
         <input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title" ${trashed ? 'disabled' : ''}>
         <span class="nb-status" data-status="${esc(save.status)}" aria-live="polite">${esc(statusText())}</span>
         <button type="button" class="nb-icon-btn" data-nb-action="add-files" aria-label="Add images or files" title="Add images or files" ${trashed ? 'disabled' : ''}>${icon('image', 16)}</button>
@@ -811,11 +811,14 @@
     if (keyboardTracked || !vv) return;
     keyboardTracked = true;
     const root = document.documentElement;
-    let last = null, raf = 0, glideTimer = 0;
+    let last = null, raf = 0, glideTimer = 0, lastBarHeight = 44;
     const read = () => {
       const bar = document.querySelector('.hermes-note-editor .bn-formatting-toolbar');
-      const height = bar ? bar.offsetHeight : 0;
-      const top = Math.round(vv.offsetTop + vv.height - height);
+      // The bar and its menus are re-rendered by the editor on a press; with no bar for a moment the
+      // position would jump by its height, moving a menu item from under the finger between press
+      // and release (and the click is lost: the colour button needed pressing twice).
+      if (bar) lastBarHeight = bar.offsetHeight || lastBarHeight;
+      const top = Math.round(vv.offsetTop + vv.height - lastBarHeight);
       if (top === last) return;
       // A big jump (the keyboard opening or closing) slides; small corrections while
       // scrolling are applied at once, an ease there would only chase them.
@@ -854,6 +857,21 @@
     }, 250));
     vv.addEventListener('resize', () => { place(); fit(); read(); }); vv.addEventListener('scroll', () => { place(); fit(); read(); });
     place(); read();
+    // A tap on the format bar that lands on the wrong button is reported (what was under the finger
+    // against what received the click), so a hit-testing fault can be seen rather than guessed at.
+    const label = (el) => { const b = el && el.closest && el.closest('button, [role="menuitem"]'); return b ? (b.getAttribute('aria-label') || b.textContent || b.className).toString().trim().slice(0, 24) : '-'; };
+    let pending = null;
+    document.addEventListener('pointerup', (event) => {
+      const bar = event.target.closest && event.target.closest('.bn-formatting-toolbar');
+      pending = bar ? {under: label(document.elementFromPoint(event.clientX, event.clientY)), x: Math.round(event.clientX), at: Date.now(), scroll: Math.round(bar.scrollLeft), left: Math.round(bar.getBoundingClientRect().left)} : null;
+    }, true);
+    document.addEventListener('click', (event) => {
+      const tapped = pending; pending = null;
+      if (!tapped || Date.now() - tapped.at > 500 || !(event.target.closest && event.target.closest('.bn-formatting-toolbar'))) return;
+      const got = label(event.target);
+      if (got === tapped.under) return;
+      try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_bar', source: 'wrong-button', url_path: location.pathname, reason: `finger=${tapped.under} click=${got} x=${tapped.x} scroll=${tapped.scroll} left=${tapped.left}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
+    }, true);
   }
   function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
@@ -1725,33 +1743,38 @@
   const isShowing = () => !!document.querySelector('main.main.showing-notebook');
   function onBeforeUnload() { if (Object.keys(save.dirty).length) writeDraft(); }
 
-  // Anything that holds a text caret (the editor, the title, the tag box, a
-  // search field) owns the keyboard. A tap on a button elsewhere -- the note
-  // header, the list, the sidebar, the app's top bar -- first blurs it on iOS:
-  // the keyboard folds, the page re-lays out under the finger, and the click
-  // never lands, so every button needed a second tap. Cancelling the mousedown
-  // keeps the focus where it is and lets the click through. Document-wide, in
-  // the capture phase, because the top bar is outside the Notes page.
-  let focusKeeperInstalled = false;
-  function installFocusKeeper() {
-    if (focusKeeperInstalled || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
-    focusKeeperInstalled = true;
-    const typing = (el) => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|checkbox|radio|submit|reset|file|range|color|image)$/i.test(el.type)));
-    document.addEventListener('mousedown', (event) => {
-      if (!isShowing() || !typing(document.activeElement)) return;
-      const target = event.target;
-      if (!target.closest || typing(target) || target.closest('.hermes-note-editor, select, label, textarea, input')) return;
-      const tap = target.closest('button, [role="button"], a[href], [data-nb-open]');
-      if (!tap || tap.dataset.nbAction === 'back') return;
-      event.preventDefault();
+  // (Taps on buttons keep a text caret's focus app-wide now: see the focus keeper in boot.js.)
+  // The editor's floating menus (colours, block type) are rebuilt by the editor in the instant between
+  // pressing an item and releasing it; the release then lands on a new element, the browser sees no
+  // click (it needs both ends on the same element) and the item "did nothing" until pressed again.
+  // A press and release on the same item that produced no click is passed on, to the rebuilt item.
+  function installMenuPressGuard() {
+    if (menuPressGuard) return;
+    menuPressGuard = true;
+    const ITEM = '.mantine-Menu-dropdown [role="menuitem"]';
+    const key = (el) => { const item = el && el.closest && el.closest(ITEM); return item ? {test: item.dataset.test || '', text: (item.textContent || '').trim()} : null; };
+    const same = (a, b) => !!a && !!b && a.test === b.test && a.text === b.text;
+    let press = null;
+    document.addEventListener('pointerdown', (event) => { const k = key(event.target); press = k ? Object.assign(k, {clicked: false}) : null; }, true);
+    document.addEventListener('click', () => { if (press) press.clicked = true; }, true);
+    document.addEventListener('pointerup', (event) => {
+      const started = press;
+      if (!started || !same(started, key(event.target))) return;
+      setTimeout(() => {
+        if (started.clicked) return;
+        const again = [...document.querySelectorAll(ITEM)].find((item) => same(started, {test: item.dataset.test || '', text: (item.textContent || '').trim()}));
+        started.clicked = true;
+        if (again) again.click();
+      }, 120);
     }, true);
   }
+  let menuPressGuard = false;
   let bound = false;
   function bind() {
     if (bound) return;
     bound = true;
+    installMenuPressGuard();
     const root = $('notebookRoot'); const side = $('notebookSidebar');
-    installFocusKeeper();
     if (root) root.addEventListener('click', onClick);
     if (side) side.addEventListener('click', onClick);
     if (side) side.addEventListener('contextmenu', (event) => {

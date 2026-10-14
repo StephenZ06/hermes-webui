@@ -11748,12 +11748,15 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
    when the selection scrolled out of view). --nb-bar-top is its top edge, kept
    current every frame by trackKeyboard() in notebook/index.js. */
 @media (hover:none){
-  /* The wrapper is a zero-height fixed anchor; the toolbar itself is moved with a
-     compositor-only transform (no layout per frame), so it neither stutters
-     nor drags the dropdown's containing block along. */
-  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:calc(var(--nb-vvl,0px) + 8px) !important;right:auto !important;width:calc(var(--nb-vvw,100vw) - 16px) !important;max-width:calc(100vw - 16px) !important;bottom:auto !important;top:0 !important;height:0 !important;overflow:visible !important;visibility:visible !important;display:block;}
-  .hermes-note-editor .bn-formatting-toolbar{transform:translate3d(0,var(--nb-bar-top,0px),0);will-change:transform;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:0 0 auto;height:auto;min-height:40px;box-sizing:border-box;padding-left:24px !important;}   /* the bar is as far from the left edge as from the right; its first button starts clear of the sidebar edge guard (30px) */
-  .hermes-note-editor .bn-formatting-toolbar > *{flex:0 0 auto;}   /* the buttons keep their size; the bar scrolls sideways to reach them */
+  /* The wrapper is the bar's fixed box, placed with `top` (a transform on the scrolling bar made iOS
+     test taps against the wrong button). It stays beneath the sidebar's 30px edge guard, which keeps the
+     left-edge swipe from being claimed by WebKit's back gesture: only the first button's outer edge is
+     covered, and that button (the block type) is wide enough to be tapped by its text. */
+  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:calc(var(--nb-vvl,0px) + 8px) !important;right:auto !important;width:calc(var(--nb-vvw,100vw) - 16px) !important;max-width:calc(100vw - 16px) !important;bottom:auto !important;top:var(--nb-bar-top,0px) !important;height:auto !important;overflow:visible !important;visibility:visible !important;display:block;}
+  .hermes-note-editor .bn-formatting-toolbar{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;flex:0 0 auto;height:auto;min-height:44px;box-sizing:border-box;gap:2px !important;padding-inline:2px !important;}
+  /* Finger-sized, separated buttons: a tap near the line between two small ones went to the neighbour. */
+  .hermes-note-editor .bn-formatting-toolbar > *{flex:0 0 auto;min-height:40px;}
+  .hermes-note-editor .bn-formatting-toolbar > button.bn-button,.hermes-note-editor .bn-formatting-toolbar > .mantine-ActionIcon-root{min-width:44px;}
   .hermes-note-editor .bn-formatting-toolbar::-webkit-scrollbar{display:none;}
   /* Menus open upward from just above the toolbar (placed on the screen, not
      relative to the toolbar's own geometry): downward they land under the
@@ -11781,7 +11784,7 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
   .hermes-note-editor [data-file-block] .bn-resize-handle{display:none !important;width:12px;height:48px;margin-top:-9px;border-radius:6px;}
   .hermes-note-editor [data-file-block] .bn-resize-handle[data-nb-on]{display:block !important;}
   /* No double-tap-to-zoom on a picture: it would swallow the second tap. */
-  .hermes-note-editor .bn-visual-media,.hermes-note-editor .bn-visual-media-wrapper,.hermes-note-editor .bn-file-block-content-wrapper{touch-action:manipulation;}
+  .hermes-note-editor .bn-visual-media,.hermes-note-editor .bn-visual-media-wrapper,.hermes-note-editor .bn-file-block-content-wrapper{touch-action:pan-y pinch-zoom;}
 }
 .hermes-note-editor .bn-visual-media{max-width:100%;}
 
@@ -11819,7 +11822,7 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 /* Notes: a clip's own controls (see addVideoControls). They sit over the video: shown while it
    is paused or finished, faded out a moment after it plays, back on a tap. */
 .hermes-note-editor .nb-vc{position:absolute;inset:0;z-index:5;pointer-events:none;color:#fff;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
-.hermes-note-editor .nb-vc button{border:0;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+.hermes-note-editor .nb-vc button{border:0;background:none;color:inherit;font:inherit;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:pan-y pinch-zoom;}
 .hermes-note-editor .nb-vc-big{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:68px;height:68px;border-radius:50%;background:rgba(0,0,0,.55);box-shadow:0 2px 14px rgba(0,0,0,.4);pointer-events:auto;transition:opacity .2s ease;}
 .hermes-note-editor .nb-vc-big[hidden]{display:none;}
 .hermes-note-editor .nb-vc-bar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:6px;padding:18px 8px 4px;background:linear-gradient(transparent,rgba(0,0,0,.7));border-radius:0 0 6px 6px;pointer-events:auto;transition:opacity .25s ease;}
@@ -11848,11 +11851,7 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor .nb-vc-audio .nb-vc-seek::-webkit-slider-thumb,.hermes-note-editor .nb-vc-audio .nb-vc-volume::-webkit-slider-thumb{background:var(--accent);box-shadow:none;}
 .hermes-note-editor .bn-file-block-content-wrapper:has(audio){width:100%;}
 
-/* The app limits touch panning on the whole main area to vertical (it uses horizontal swipes for the
-   sidebar). In the Notes editor that also gets in the way of the text loupe: hold on a word and
-   drag to move the caret or the selection by character. Notes leaves touch handling to the browser;
-   the sidebar swipes are JS and start at the screen edge. */
-.main.showing-notebook,.main.showing-notebook .nb-editor-scroll{touch-action:auto;}
+
 
 /* Notes, keyboard up: the app is the size of what is left above it (see trackKeyboard), so the page
    has nothing to pan and the format bar, placed from the visible area's edge, does not move
@@ -11860,7 +11859,7 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 html.nb-kb-fit,html.nb-kb-fit body{overflow:hidden;overscroll-behavior:none;}
 html.nb-kb-fit .layout{height:var(--nb-vvh) !important;max-height:var(--nb-vvh) !important;min-height:0 !important;}
 .main.showing-notebook .nb-editor-scroll{overscroll-behavior:contain;}
-html.nb-bar-glide .hermes-note-editor .bn-formatting-toolbar{transition:transform .22s cubic-bezier(.22,1,.36,1);}
+html.nb-bar-glide .hermes-note-editor div:has(> .bn-formatting-toolbar){transition:top .22s cubic-bezier(.22,1,.36,1);}
 
 /* With the keyboard up the app ends at its top edge: the bottom gap kept above the home indicator would
    only be a blank bar over the note, behind the format bar. */

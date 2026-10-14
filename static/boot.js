@@ -5225,3 +5225,28 @@ function _showServerStopped() {
   var stoppedMsg = (typeof t === 'function' ? t('settings_shutdown_stopped_message') : 'Server stopped. You can close this tab.');
   document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:var(--muted);font-family:var(--font-ui);font-size:14px"><p>' + stoppedMsg + '</p></div>';
 }
+
+
+// ── Buttons must not cost a second tap while a keyboard is up ────────────────
+// Anything holding a text caret (a textarea, an input, a contenteditable editor) owns the
+// keyboard. On iOS a tap on a button (which it never focuses) first blurs the field: the
+// keyboard folds, the page re-lays out under the finger and the tap is lost, or the
+// selection a toolbar was about to act on is gone, so the button needed pressing twice.
+// Cancelling the mousedown keeps the focus where it is and lets the click through. Taps on
+// the field's own text, on other fields, selects, labels and anything marked
+// data-allow-blur (a button whose job is to put the keyboard away) are left alone. Inside
+// an editor only its floating UI (format bar, menus) is covered, never its text.
+(function(){
+  if(!window.matchMedia||!window.matchMedia('(hover: none)').matches)return;
+  const typing=(el)=>!!el&&(el.isContentEditable||el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!/^(button|checkbox|radio|submit|reset|file|range|color|image)$/i.test(el.type)));
+  const FLOATING='.bn-toolbar,.bn-formatting-toolbar,.mantine-Menu-dropdown,.mantine-Popover-dropdown,.bn-suggestion-menu';
+  document.addEventListener('mousedown',(event)=>{
+    if(!typing(document.activeElement))return;
+    const target=event.target;
+    if(!target||!target.closest||typing(target)||target.closest('select,label,textarea,input,[data-allow-blur]'))return;
+    const floating=target.closest(FLOATING);
+    if(target.closest('[contenteditable="true"]')&&!floating)return;
+    if(!floating&&!target.closest('button,[role="button"],[role="menuitem"],a[href],summary,[data-nb-open]'))return;
+    event.preventDefault();
+  },true);
+})();
