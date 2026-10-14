@@ -566,17 +566,30 @@
   // the line holding the cursor, on the right (the left edge belongs to the
   // swipe-for-sidebar guard); drag it with a finger to move the line. The
   // grip cancels pointerdown, so the editor keeps focus and the keyboard.
-  // Keyboard height as --nb-kb: the visual viewport shrinks when the iOS
-  // keyboard opens while fixed-position boxes stay laid out under it.
+  // Keyboard height as --nb-kb: the visual viewport shrinks (and iOS pans it)
+  // when the keyboard opens, while fixed-position boxes stay laid out against
+  // the full layout viewport. Read it every frame while the editor has focus,
+  // not just on viewport events, which arrive a frame or more late and made the
+  // pinned format toolbar visibly trail the keyboard.
   let keyboardTracked = false;
   function trackKeyboard() {
     const vv = window.visualViewport;
     if (keyboardTracked || !vv) return;
     keyboardTracked = true;
     const root = document.documentElement;
-    const update = () => root.style.setProperty('--nb-kb', Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px');
-    vv.addEventListener('resize', update); vv.addEventListener('scroll', update);
-    update();
+    let last = -1, raf = 0;
+    const read = () => {
+      const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      if (kb !== last) { last = kb; root.style.setProperty('--nb-kb', kb + 'px'); }
+    };
+    const loop = () => { read(); raf = requestAnimationFrame(loop); };
+    const inEditor = (el) => !!(el && el.closest && el.closest('.hermes-note-editor'));
+    document.addEventListener('focusin', (event) => { if (inEditor(event.target) && !raf) loop(); });
+    document.addEventListener('focusout', () => setTimeout(() => {
+      if (!inEditor(document.activeElement)) { cancelAnimationFrame(raf); raf = 0; read(); }
+    }, 250));
+    vv.addEventListener('resize', read); vv.addEventListener('scroll', read);
+    read();
   }
   function mountBlockGrip(host, note) {
     if (note.deleted_at || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;

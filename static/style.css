@@ -11743,15 +11743,16 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
   .nb-tag-input, .nb-tag-input::placeholder{font-size:11px !important;}
 }
 
-/* Notes, touch: the text-format toolbar rides just above the keyboard instead
-   of chasing the selection (its scroll tracking stuttered). --nb-kb is the
-   keyboard height, kept current by trackKeyboard() in notebook/index.js. */
+/* Notes, touch: the text-format toolbar rides on top of the keyboard instead
+   of chasing the selection (its scroll tracking stuttered, and it hid itself
+   when the selection scrolled out of view). --nb-kb is the keyboard height,
+   kept current by trackKeyboard() in notebook/index.js. */
 @media (hover:none){
-  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:8px !important;right:8px !important;top:auto !important;bottom:var(--nb-kb,0px) !important;justify-content:center;}
+  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:8px !important;right:8px !important;top:auto !important;bottom:var(--nb-kb,0px) !important;visibility:visible !important;justify-content:center;}
   .hermes-note-editor .bn-formatting-toolbar{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
   .hermes-note-editor .bn-formatting-toolbar::-webkit-scrollbar{display:none;}
   /* Menus open upward, anchored to the screen just above the toolbar (not to
-     the toolbar's own geometry): downward they land under the keyboard. */
-  .hermes-note-editor div:has(> .bn-formatting-toolbar) .mantine-Menu-dropdown,
-  .hermes-note-editor div:has(> .bn-formatting-toolbar) .mantine-Popover-dropdown{position:fixed !important;transform:none !important;top:auto !important;right:auto !important;left:8px !important;bottom:calc(var(--nb-kb,0px) + 38px) !important;max-height:min(280px,42vh) !important;overflow-y:auto;}
+     the toolbar's own geometry): downward they land under the keyboard. Not
+     scoped through the toolbar, so they match wherever the portal puts them. */
+  .mantine-Menu-dropdown, .mantine-Popover-dropdown, .mantine-Select-dropdown{position:fixed !important;transform:none !important;top:auto !important;right:auto !important;left:8px !important;bottom:calc(var(--nb-kb,0px) + 38px) !important;max-height:min(280px,42vh) !important;height:auto !important;overflow-y:auto;}
 }
