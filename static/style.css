@@ -11751,14 +11751,14 @@ html.work-hub-touch-dragging .work-hub-board-wrap{scroll-snap-type:none;}
   /* The wrapper is a zero-height fixed anchor; the toolbar itself is moved with a
      compositor-only transform (no layout per frame), so it neither stutters
      nor drags the dropdown's containing block along. */
-  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:8px !important;right:8px !important;bottom:auto !important;top:0 !important;height:0 !important;overflow:visible !important;visibility:visible !important;display:flex;justify-content:center;}
-  .hermes-note-editor .bn-formatting-toolbar{transform:translate3d(0,var(--nb-bar-top,0px),0);will-change:transform;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:0 1 auto;}
+  .hermes-note-editor div:has(> .bn-formatting-toolbar){position:fixed !important;transform:none !important;left:36px !important;right:8px !important;bottom:auto !important;top:0 !important;height:0 !important;overflow:visible !important;visibility:visible !important;display:flex;align-items:flex-start;justify-content:center;}
+  .hermes-note-editor .bn-formatting-toolbar{transform:translate3d(0,var(--nb-bar-top,0px),0);will-change:transform;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:0 0 auto;height:auto;min-height:36px;box-sizing:border-box;}
   .hermes-note-editor .bn-formatting-toolbar::-webkit-scrollbar{display:none;}
   /* Menus open upward from just above the toolbar (placed on the screen, not
      relative to the toolbar's own geometry): downward they land under the
      keyboard. Not scoped through the toolbar, so they match wherever the
      portal puts them. */
-  .mantine-Menu-dropdown, .mantine-Popover-dropdown, .mantine-Select-dropdown{position:fixed !important;transform:translateY(-100%) !important;bottom:auto !important;right:auto !important;left:8px !important;top:calc(var(--nb-bar-top,100vh) - 6px) !important;max-height:min(280px,42vh) !important;height:auto !important;overflow-y:auto;}
+  .mantine-Menu-dropdown, .mantine-Popover-dropdown, .mantine-Select-dropdown{position:fixed !important;transform:translateY(-100%) !important;bottom:auto !important;right:auto !important;left:36px !important;top:calc(var(--nb-bar-top,100vh) - 6px) !important;max-height:min(280px,42vh) !important;height:auto !important;overflow-y:auto;}
 }
 
 /* Notes: a tapped picture is outlined in the theme's accent colour; its size
@@ -11846,3 +11846,9 @@ html.nb-img-dragging{-webkit-user-select:none;user-select:none;}
 .hermes-note-editor .nb-vc-audio .nb-vc-seek::-webkit-slider-runnable-track,.hermes-note-editor .nb-vc-audio .nb-vc-volume::-webkit-slider-runnable-track{background:linear-gradient(to right,var(--accent) var(--p,100%),color-mix(in srgb,var(--muted) 45%,transparent) var(--p,100%));}
 .hermes-note-editor .nb-vc-audio .nb-vc-seek::-webkit-slider-thumb,.hermes-note-editor .nb-vc-audio .nb-vc-volume::-webkit-slider-thumb{background:var(--accent);box-shadow:none;}
 .hermes-note-editor .bn-file-block-content-wrapper:has(audio){width:100%;}
+
+/* The app limits touch panning on the whole main area to vertical (it uses horizontal swipes for the
+   sidebar). In the Notes editor that also gets in the way of the text loupe: hold on a word and
+   drag to move the caret or the selection by character. Notes leaves touch handling to the browser;
+   the sidebar swipes are JS and start at the screen edge. */
+.main.showing-notebook,.main.showing-notebook .nb-editor-scroll{touch-action:auto;}

@@ -372,6 +372,8 @@ def test_touch_format_toolbar_is_pinned_and_menus_open_upward(touch_page):
     page.wait_for_selector(".bn-formatting-toolbar", timeout=5000)
     page.wait_for_timeout(400)
     box = page.locator(".bn-formatting-toolbar").bounding_box()
+    assert box["height"] >= 30, box   # not squashed to a sliver (a collapsed flex child once hid it)
+    assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('.bn-formatting-toolbar')", [box["x"] + 14, box["y"] + box["height"] / 2])   # clear of the sidebar's 30px edge guard
     height = page.evaluate("() => window.innerHeight")
     # No keyboard here: the visual viewport is the window, so the toolbar sits on its bottom edge.
     assert abs((box["y"] + box["height"]) - height) <= 2, (box, height)
@@ -1051,3 +1053,16 @@ def test_a_recording_gets_the_same_controls_in_a_bar_that_stays_in_view(touch_pa
     tab.evaluate("() => { const a = document.querySelector('.hermes-note-editor audio'); a.muted = true; a.currentTime = Math.max(0, a.duration - 0.3); a.play(); }")
     tab.wait_for_function("() => document.querySelector('.hermes-note-editor audio').ended", timeout=8000)
     assert tab.get_attribute(ui + " .nb-vc-toggle", "aria-label") == "Replay"
+
+
+def test_tapping_a_picture_puts_the_keyboard_away_and_the_notes_page_leaves_touch_to_the_browser(touch_page):
+    tab = touch_page
+    _picture_in_note(tab)
+    tab.click(".hermes-note-editor .bn-block-content[data-content-type=paragraph]")
+    tab.keyboard.type("text")
+    assert tab.evaluate("() => !!document.activeElement.closest('.hermes-note-editor')")      # typing: the keyboard is up
+    tab.tap(".bn-visual-media")
+    tab.wait_for_selector(".nb-img-outline:not([hidden])", timeout=5000)
+    tab.wait_for_function("() => !document.activeElement || !document.activeElement.isContentEditable", timeout=3000)   # nothing to type into
+    # The loupe (hold on a word, drag to place the caret) needs the browser's own touch handling.
+    assert tab.evaluate("() => getComputedStyle(document.querySelector('main.main.showing-notebook')).touchAction") == "auto"

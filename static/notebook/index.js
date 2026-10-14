@@ -995,6 +995,10 @@
       if (!mount.isConnected) return;
       const hit = target.closest && target.closest('.bn-visual-media');
       if (hit && mount.contains(hit)) {
+        // A picture or clip is not typed into: let the editor go, so the keyboard folds.
+        // (the editor takes focus back as it handles the tap, so this is repeated a moment later)
+        const letGo = () => { const typing = document.activeElement; if (typing && typing.isContentEditable && mount.contains(typing) && typing.blur) typing.blur(); };
+        letGo(); setTimeout(letGo, 60); setTimeout(letGo, 300);
         // Tapping the picture that is already selected switches the bars on (and off).
         // "Already selected" is the same block, not the same element: the editor
         // re-renders a tapped picture a moment later. A clip's taps also play and
