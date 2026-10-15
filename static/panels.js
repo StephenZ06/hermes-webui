@@ -10553,8 +10553,9 @@ async function loadNotesVaultSetting(){
     ? 'Connected to <strong>'+esc(cfg.name||'vault')+'</strong>'
     : (cfg.detected&&!cfg.path ? 'Not connected <small>· found one among your workspaces</small>' : 'Not connected');
   host.innerHTML='<div class="notes-vault-status" data-on="'+on+'"><i aria-hidden="true"></i><span>'+status+'</span></div>'
-    +'<div class="notes-vault-row"><input type="text" id="settingsNotesVaultPath" class="settings-input" spellcheck="false" autocomplete="off" placeholder="/path/to/your/Obsidian vault" value="'+esc(path)+'">'
-    +(on?'<button type="button" class="settings-btn" id="settingsNotesVaultApply">Change</button><button type="button" class="settings-btn" id="settingsNotesVaultOff">Disconnect</button>'
+    +'<div class="notes-vault-row"><input type="text" id="settingsNotesVaultPath" class="settings-input" spellcheck="false" autocomplete="off" placeholder="/path/to/your/Obsidian vault" value="'+esc(path)+'"></div>'
+    +'<div class="notes-vault-actions">'
+    +(on?'<button type="button" class="settings-btn" id="settingsNotesVaultApply">Change</button><button type="button" class="settings-btn danger" id="settingsNotesVaultOff">Disconnect</button>'
         :'<button type="button" class="settings-btn" id="settingsNotesVaultApply">Connect</button>')
     +'</div><div class="notes-vault-error" id="settingsNotesVaultError" role="alert"></div>';
   const apply=async(body)=>{
