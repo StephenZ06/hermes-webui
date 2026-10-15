@@ -100,24 +100,30 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     assert shut["w"] <= 90 and shut["h"] <= 46, shut                                 # small: icon and count, whatever its list holds
     assert shut["right"] <= 12 and shut["bottom"] <= 14, shut                        # bottom-right
     phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
-    phone.wait_for_timeout(300)
-    widening = phone.evaluate(measure)
-    phone.wait_for_timeout(300)           # ~0.6s: the widening has finished, the unfolding has only just begun
-    widened = phone.evaluate(measure)
-    phone.wait_for_timeout(1500)
+    phone.wait_for_timeout(200)
+    early = phone.evaluate(measure)
+    phone.wait_for_timeout(400)           # ~0.6s: the widening is done and the list is already unfolding
+    later = phone.evaluate(measure)
+    phone.wait_for_timeout(1700)
     open_ = phone.evaluate(measure)
-    # Opening is two moves: first it widens to the left across the stage (the height stays a pill)...
-    assert shut["w"] < widening["w"] < open_["w"], (shut, widening, open_)
-    assert widening["h"] <= shut["h"] + 4, (shut, widening)
-    assert widened["w"] >= open_["w"] - 8 and widened["h"] <= shut["h"] + 40, (shut, widened, open_)
-    # ...then it unfolds upward, by the desktop card's own grid-rows disclosure, only afterwards.
-    assert shut["h"] < open_["h"], (shut, open_)
+    # Opening flows in one go: it widens to the left, and the list begins to unfold upward as that finishes,
+    # with no standing pause in between...
+    assert shut["w"] < early["w"] < open_["w"], (shut, early, open_)
+    assert early["h"] <= shut["h"] + 6, (shut, early)                                   # (the height has barely begun)
+    assert later["w"] >= open_["w"] - 8 and shut["h"] + 6 < later["h"] < open_["h"], (shut, later, open_)
+    assert shut["h"] < open_["h"]
     assert "grid-template-rows" in phone.evaluate("() => getComputedStyle(document.getElementById('officeTasksBody')).transitionProperty")
-    assert open_["left"] == open_["right"] == 10 and open_["bottom"] <= 14, open_     # evenly inset, still anchored to the corner
-    assert open_["h"] <= open_["stageH"] * 0.66, open_                                # it leaves the floor in view
-    # Closing runs the other way: the list folds first, the card narrows after.
+    assert open_["left"] == open_["right"] == 10 and open_["bottom"] <= 14, open_       # evenly inset, still anchored to the corner
+    assert open_["h"] <= open_["stageH"] * 0.66, open_                                  # it leaves the floor in view
+    # Closing: the text FADES (it does not vanish) while the list folds, and the card narrows as that finishes.
     phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
-    phone.wait_for_timeout(350)
+    phone.wait_for_timeout(140)
+    fading = phone.evaluate("""() => ({
+        list: parseFloat(getComputedStyle(document.querySelector('.office-tasks-body-inner')).opacity),
+        title: parseFloat(getComputedStyle(document.querySelector('.office-tasks-title')).opacity)})""")
+    assert 0.05 < fading["list"] < 0.95, fading                                         # mid-fade, not gone
+    assert 0.05 < fading["title"] < 0.95, fading
+    phone.wait_for_timeout(250)
     folding = phone.evaluate(measure)
     assert folding["w"] >= open_["w"] - 8 and folding["h"] < open_["h"], (open_, folding)
     phone.wait_for_timeout(1800)
