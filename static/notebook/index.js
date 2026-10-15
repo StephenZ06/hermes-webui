@@ -56,6 +56,11 @@
   }
   let editorModule = null;
   let editorCtl = null;
+  // What an open note's helpers attach to the page (document listeners, observers) is released when
+  // the editor is destroyed; otherwise every note opened would leave another set running.
+  let editorCleanup = [];
+  const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); editorCleanup.push(() => target.removeEventListener(type, fn, options)); };
+  const watching = (observer) => { editorCleanup.push(() => observer.disconnect()); return observer; };
   let editorNoteId = null;
   let themeObserver = null;
   let searchTimer = 0;
@@ -557,6 +562,7 @@
     return editorModule;
   }
   function destroyEditor() {
+    editorCleanup.splice(0).forEach((undo) => { try { undo(); } catch (_) {} });
     if (editorCtl) { try { editorCtl.destroy(); } catch (_) {} }
     editorCtl = null; editorNoteId = null;
     const host = $('nbEditorHost');
@@ -735,7 +741,8 @@
       paint();
     };
     const failed = (error) => {
-      toast(`This video could not be played (${error && error.name ? error.name : 'error'}).`);
+      if (error && error.name === 'AbortError') return; // a play() cut short by a pause or a reload is not a failure
+      toast(error && error.name === 'NotAllowedError' ? 'The phone would not start the video: tap play again.' : error && error.name === 'NotSupportedError' ? MEDIA_ERRORS[4] : `This video could not be played (${error && error.name ? error.name : 'error'}).`);
       try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: 'play-rejected', url_path: location.pathname, reason: `${error && error.name}: ${error && error.message}`.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
     };
     const playPause = () => {
@@ -780,18 +787,38 @@
     ui.addEventListener('pointermove', () => { if (playing()) show(); });
     state();
   }
-  // A clip that will not play says why: the player's own state goes to the server log
-  // (the browser's client-event route, a few small fields) and a failure is shown.
+  // A clip that will not play says why: a failure (not the ordinary events) goes to the server log
+  // in one short line, and is shown in words. A network or decode error is often a hiccup (a
+  // connection dropping, the phone's video decoder busy with something else), so the clip is
+  // loaded once more before the user is told; only an error that comes back is shown.
+  const MEDIA_ERRORS = {
+    2: 'The video could not be loaded: check the connection and try again.',
+    3: 'The video could not be decoded. Its file may be damaged, or the phone could not start its decoder just now: try again.',
+    4: "This device can't play this video's format (for example HEVC or WebM on a browser without it).",
+  };
   function reportVideo(video) {
-    const note = (name) => {
+    const note = (name, extra) => {
       const e = video.error;
-      const reason = `${name} err=${e ? e.code : '-'} net=${video.networkState} rdy=${video.readyState} t=${(video.currentTime || 0).toFixed(1)}/${Number.isFinite(video.duration) ? video.duration.toFixed(1) : video.duration} ${video.videoWidth}x${video.videoHeight} paused=${video.paused} ${(video.currentSrc || '').split('/').pop().slice(-30)}`;
+      const reason = `${name} err=${e ? e.code : '-'} net=${video.networkState} rdy=${video.readyState} t=${(video.currentTime || 0).toFixed(1)}/${Number.isFinite(video.duration) ? video.duration.toFixed(1) : video.duration} ${video.videoWidth}x${video.videoHeight} ${(video.currentSrc || '').split('/').pop().slice(-24)}${extra ? ' ' + extra : ''}`;
       try { fetch('/api/client-events/log', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({event: 'notes_video', source: name, visibility_state: document.visibilityState, url_path: location.pathname, reason: reason.slice(0, 158)}), keepalive: true}).catch(() => {}); } catch (_) {}
     };
-    ['loadedmetadata', 'canplay', 'play', 'playing', 'pause', 'waiting', 'stalled', 'abort', 'error', 'ended'].forEach((name) => video.addEventListener(name, () => {
-      note(name);
-      if (name === 'error') toast(`This video could not be played (${video.error ? ['', 'aborted', 'network', 'decode', 'format not supported'][video.error.code] || video.error.code : 'error'}).`);
-    }));
+    let retried = false;
+    video.addEventListener('playing', () => { retried = false; });
+    video.addEventListener('error', () => {
+      const code = video.error ? video.error.code : 0;
+      note(retried ? 'error-again' : 'error');
+      if ((code === 2 || code === 3) && !retried) {
+        retried = true;
+        const at = video.currentTime || 0, wasPlaying = !video.paused;
+        setTimeout(() => {
+          if (!video.isConnected) return;
+          video.load();
+          video.addEventListener('loadedmetadata', () => { try { if (at) video.currentTime = at; } catch (_) {} if (wasPlaying) { const again = video.play(); if (again && again.catch) again.catch(() => {}); } }, {once: true});
+        }, 400);
+        return;
+      }
+      if (code && code !== 1) toast(MEDIA_ERRORS[code] || `This video could not be played (error ${code}).`);
+    });
   }
   // Touch screens have no hover, so the editor's drag handle (the grip that
   // moves a line on desktop) never shows there. On touch a grip sits beside
@@ -849,7 +876,7 @@
       root.classList.toggle('nb-kb-fit', on);
       if (on && (vv.offsetTop > 0 || window.scrollY > 0)) window.scrollTo(0, 0);
     };
-    const loop = () => { read(); place(); raf = requestAnimationFrame(loop); };
+    const loop = () => { read(); raf = requestAnimationFrame(loop); };
     document.addEventListener('focusin', (event) => { if (inEditor(event.target)) { fit(); if (!raf) loop(); } });
     document.addEventListener('focusout', () => setTimeout(() => {
       fit();
@@ -907,10 +934,10 @@
       grip.style.top = (r.top - m.top + Math.max(0, (Math.min(r.height, 30) - 28) / 2)) + 'px';
       grip.hidden = false;
     };
-    document.addEventListener('selectionchange', place);
+    listen(document, 'selectionchange', place);
     mount.addEventListener('focusin', place);
     mount.addEventListener('input', () => requestAnimationFrame(place));
-    if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(place)).observe(mount); // lines re-flow (images load, a line moved)
+    if (window.ResizeObserver) watching(new ResizeObserver(() => requestAnimationFrame(place))).observe(mount); // lines re-flow (images load, a line moved)
     // Where the dragged line would land: before/after the block under the finger.
     let drag = null;
     const targetAt = (y) => {
@@ -1005,7 +1032,7 @@
     });
     isolate();
     // iOS draws a clip as a black box until it is played unless it has been told to
-    // fetch the start (preload) and is asked for a frame (#t=0.001); playsinline keeps
+    // fetch the start (preload) and is asked for a frame (a seek to 0.001); playsinline keeps
     // it in the page. DOM only: the saved address is untouched.
     const prepare = () => mount.querySelectorAll('video, audio').forEach((video) => {
       if (video.__nbPrepared && video.isConnected) return;
@@ -1013,8 +1040,10 @@
       video.preload = 'metadata';
       if (video.tagName === 'VIDEO') {
         video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
-        const src = video.getAttribute('src') || '';
-        if (src && !/#/.test(src)) video.setAttribute('src', src + '#t=0.001');
+        // iOS paints a clip's first frame only once it has been asked for one. Asking for a position
+        // after the metadata is in costs nothing; rewriting the address ("#t=") restarted a load already
+        // under way, which showed up now and then as a decode error.
+        video.addEventListener('loadedmetadata', () => { if (!video.currentTime) { try { video.currentTime = 0.001; } catch (_) {} } }, {once: true});
       }
       reportVideo(video);
       addVideoControls(video);
@@ -1023,7 +1052,7 @@
     });
     const tidy = () => { isolate(); prepare(); };
     tidy();
-    new MutationObserver(tidy).observe(mount, {childList: true, subtree: true});
+    watching(new MutationObserver(tidy)).observe(mount, {childList: true, subtree: true});
     host.classList.add('nb-has-grip'); // the outline is positioned against the host
     const box = document.createElement('div');
     box.className = 'nb-img-outline'; box.hidden = true;
@@ -1031,7 +1060,7 @@
     let img = null, watch = null, blockId = null, resizing = false;
     const observe = (el) => {
       if (watch) watch.disconnect();
-      if (window.ResizeObserver) { watch = new ResizeObserver(fit); watch.observe(el); } // every frame of a resize
+      if (window.ResizeObserver) { watch = new ResizeObserver(fit); watch.observe(el); } // every frame of a resize (released with the editor, below)
     };
     const markBars = () => {
       mount.querySelectorAll('.bn-resize-handle[data-nb-on]').forEach((h) => { if (!resizing || !h.closest(`.bn-block-outer[data-id="${CSS.escape(blockId || '')}"]`)) h.removeAttribute('data-nb-on'); });
@@ -1074,8 +1103,8 @@
         fit(); observe(hit);
       } else if (!(target.closest && target.closest('.bn-resize-handle'))) clear();
     };
-    document.addEventListener('pointerdown', (event) => { down = {x: event.clientX, y: event.clientY, target: event.target}; }, true);
-    document.addEventListener('pointerup', (event) => {
+    listen(document, 'pointerdown', (event) => { down = {x: event.clientX, y: event.clientY, target: event.target}; }, true);
+    listen(document, 'pointerup', (event) => {
       const start = down; down = null;
       if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return; // a drag or a scroll, not a tap
       if (!(start.target.closest && start.target.closest('.bn-visual-media')) && event.pointerType !== 'touch') return; // a mouse click arrives as a click
@@ -1084,7 +1113,7 @@
       skipClick = !(start.target.closest && start.target.closest('.bn-file-block-content-wrapper'));
       tap(event.target);
     }, true);
-    document.addEventListener('click', (event) => {
+    listen(document, 'click', (event) => {
       const duplicate = skipClick && Date.now() - lastTapAt < 700; // the click that follows a tap already read from its pointer events
       skipClick = false;
       if (!duplicate) tap(event.target);
@@ -1113,13 +1142,14 @@
         if (sel && sel.removeAllRanges && mount.contains(sel.anchorNode)) sel.removeAllRanges();
       }, 120); // after the editor has saved the new width and re-rendered
     };
-    ['touchstart', 'mousedown'].forEach((type) => document.addEventListener(type, grab, {capture: true, passive: true}));
-    ['touchend', 'touchcancel', 'mouseup'].forEach((type) => document.addEventListener(type, release, true));
-    window.addEventListener('blur', () => release(null));
+    ['touchstart', 'mousedown'].forEach((type) => listen(document, type, grab, {capture: true, passive: true}));
+    ['touchend', 'touchcancel', 'mouseup'].forEach((type) => listen(document, type, release, true));
+    listen(window, 'blur', () => release(null));
     // A press anywhere but on a bar while a drag is somehow still marked: it is over.
-    document.addEventListener('pointerdown', (event) => { if (root.classList.contains('nb-img-dragging') && !(event.target.closest && event.target.closest('.bn-resize-handle'))) release(null); }, true);
-    if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fit)).observe(mount);
-    new MutationObserver(() => requestAnimationFrame(fit)).observe(mount, {childList: true, subtree: true});
+    listen(document, 'pointerdown', (event) => { if (root.classList.contains('nb-img-dragging') && !(event.target.closest && event.target.closest('.bn-resize-handle'))) release(null); }, true);
+    if (window.ResizeObserver) watching(new ResizeObserver(() => requestAnimationFrame(fit))).observe(mount);
+    watching(new MutationObserver(() => requestAnimationFrame(fit))).observe(mount, {childList: true, subtree: true});
+    editorCleanup.push(() => { if (watch) watch.disconnect(); root.classList.remove('nb-img-dragging'); });
     mount.addEventListener('load', () => requestAnimationFrame(fit), true);
   }
   // A vault note is Markdown, which has no width for a picture; Obsidian's way is

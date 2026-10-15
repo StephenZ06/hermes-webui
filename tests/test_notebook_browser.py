@@ -815,8 +815,8 @@ def _video_in_note(tab):
 def test_a_clip_is_taken_by_its_player_and_gets_the_same_outline_bars_and_width(touch_page):
     tab = touch_page
     _video_in_note(tab)
-    prepared = tab.evaluate("() => { const v = document.querySelector('video'); return [v.playsInline, v.preload, v.getAttribute('src').endsWith('#t=0.001')]; }")
-    assert prepared == [True, "metadata", True], prepared      # iOS: show the first frame, stay in the page
+    prepared = tab.evaluate("() => { const v = document.querySelector('video'); return [v.playsInline, v.preload, v.getAttribute('src').includes('#')]; }")
+    assert prepared == [True, "metadata", False], prepared      # iOS: stay in the page; the address is left as it is (rewriting it restarted loads)
     assert tab.evaluate("() => Notebook.editor.getBlocks().find(b => b.type === 'video').props.url.includes('#')") is False
     # BlockNote's blue "selected" wash must not be painted over a clip.
     wash = tab.evaluate("""() => { const outer = document.querySelector('video').closest('.bn-block-outer'); outer.classList.add('ProseMirror-selectednode');
@@ -896,7 +896,7 @@ def test_one_click_on_a_clip_really_plays_it(real_webm, page):   # the clip is r
     tab.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return !v.paused && v.currentTime > 0; }", timeout=8000)
 
 
-def test_a_clips_player_state_is_reported_so_a_failure_can_be_diagnosed(real_webm, page):
+def test_only_a_clips_failures_are_reported_and_a_decode_hiccup_is_retried_once(real_webm, page):
     seen = []
     page.route("**/api/client-events/log", lambda route: (seen.append(route.request.post_data), route.fulfill(status=200, content_type="application/json", body='{"ok":true}')))
     _open(page)
@@ -907,12 +907,19 @@ def test_a_clips_player_state_is_reported_so_a_failure_can_be_diagnosed(real_web
     chooser.value.set_files([{"name": "rec.webm", "mimeType": "video/webm", "buffer": real_webm}])
     page.wait_for_function("() => { const v = document.querySelector('.hermes-note-editor video'); return v && v.readyState >= 1; }", timeout=20000)
     page.wait_for_timeout(400)
-    events = [json.loads(body) for body in seen if body and '"notes_video"' in body]
-    assert any(e["source"] == "loadedmetadata" and "rdy=" in e["reason"] and "320x240" in e["reason"] for e in events), events
-    # A failure is reported too, and shown.
-    page.evaluate("() => { const v = document.querySelector('.hermes-note-editor video'); v.dispatchEvent(new Event('error')); }")
-    page.wait_for_timeout(300)
-    assert any(json.loads(body)["source"] == "error" for body in seen if body and '"notes_video"' in body)
+    assert not [b for b in seen if b and '"notes_video"' in b], seen        # ordinary playback is not logged
+    # A decode error (code 3), as iOS gives when its decoder is busy: the clip is loaded again, quietly...
+    page.evaluate("""() => { const v = document.querySelector('.hermes-note-editor video');
+        window.__loads = 0; const load = v.load.bind(v); v.load = () => { window.__loads++; return load(); };
+        Object.defineProperty(v, 'error', {configurable: true, get: () => ({code: 3})});
+        v.dispatchEvent(new Event('error')); }""")
+    page.wait_for_function("() => window.__loads === 1", timeout=3000)
+    assert not page.evaluate("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be/i.test(t.textContent))")
+    # ...and if it comes back, it is shown, in words, and logged.
+    page.evaluate("() => document.querySelector('.hermes-note-editor video').dispatchEvent(new Event('error'))")
+    page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be decoded/i.test(t.textContent))", timeout=3000)
+    sources = [json.loads(b)["source"] for b in seen if b and '"notes_video"' in b]
+    assert sources == ["error", "error-again"], sources
 
 
 def _clip_in_note(tab, clip):
@@ -1011,7 +1018,7 @@ def test_a_clip_that_cannot_be_played_says_so(page):
     page.wait_for_selector(".hermes-note-editor .nb-vc-big", timeout=15000)
     page.wait_for_timeout(600)
     page.click(".hermes-note-editor .nb-vc-big")
-    page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /could not be played/i.test(t.textContent))", timeout=8000)
+    page.wait_for_function("() => [...document.querySelectorAll('.toast, [class*=toast]')].some(t => /can't play|could not be/i.test(t.textContent))", timeout=8000)
 
 
 def _wav(seconds=3):
@@ -1242,3 +1249,42 @@ def test_the_colour_button_applies_a_colour_in_one_go_and_its_menu_keeps_the_edi
     assert tab.evaluate("() => { const e = new MouseEvent('mousedown', {bubbles: true, cancelable: true}); document.querySelector('.bn-formatting-toolbar [aria-label=\"Colors\"]').dispatchEvent(e); return e.defaultPrevented; }") is True
     tab.locator(".mantine-Menu-dropdown [role=menuitem]").nth(2).click()
     tab.wait_for_function("() => { const s = Notebook.editor.editor.document[0].content[0].styles; return !!(s && (s.textColor || s.backgroundColor)); }", timeout=5000)
+
+
+def test_opening_notes_does_not_pile_up_listeners_on_the_page(touch_page):
+    tab = touch_page
+    tab.add_init_script("""
+    (() => {   // count what is attached to the page by anything, net of what is removed
+      const live = new Map();
+      const key = (t, fn, o) => [t === document ? 'doc' : t === window ? 'win' : 'el', t, fn, !!(o === true || (o && o.capture))];
+      for (const target of [document, window]) {
+        const add = target.addEventListener.bind(target), remove = target.removeEventListener.bind(target);
+        target.addEventListener = (type, fn, o) => { const k = type + (target === document ? 'D' : 'W') + (o === true || (o && o.capture) ? 'c' : ''); if (fn) { const s = live.get(k) || new Set(); s.add(fn); live.set(k, s); if (o && o.signal) o.signal.addEventListener('abort', () => s.delete(fn)); } return add(type, fn, o); };   // (a listener bound to an AbortSignal leaves with it)
+        target.removeEventListener = (type, fn, o) => { const k = type + (target === document ? 'D' : 'W') + (o === true || (o && o.capture) ? 'c' : ''); const s = live.get(k); if (s) s.delete(fn); return remove(type, fn, o); };
+      }
+      window.__listeners = () => [...live.values()].reduce((n, s) => n + s.size, 0);
+      window.__listenerKeys = () => Object.fromEntries([...live].map(([k, s]) => [k, s.size]));
+    })();
+    """)
+    tab.goto(BASE + "/", wait_until="domcontentloaded")
+    tab.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    tab.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    tab.evaluate("async () => { await switchPanel('notebook'); }")
+    tab.wait_for_selector(".nb-list-head [data-nb-action=new]", timeout=15000)
+    ids = []
+    for n in range(4):
+        made = _api("/api/notebook/notes/create", {"title": f"Listener {n}"})
+        ids.append(made["note"]["id"])
+    tab.evaluate("async () => { await Notebook.refresh(); }")
+    counts = []
+    for note in ids * 2:
+        tab.evaluate("async (id) => { await Notebook.openFrom(id); }", note)
+        tab.wait_for_selector(".hermes-note-editor .bn-editor", timeout=15000)
+        tab.wait_for_timeout(250)
+        counts.append(tab.evaluate("() => window.__listeners()"))
+        if len(counts) == 2:
+            first = tab.evaluate("() => window.__listenerKeys()")
+    # The first mount may add some (installed once); after that opening more notes adds none.
+    last = tab.evaluate("() => window.__listenerKeys()")
+    grew = {k: (first.get(k, 0), v) for k, v in last.items() if v > first.get(k, 0)}
+    assert counts[-1] <= counts[1] + 2, (counts, grew)

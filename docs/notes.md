@@ -134,7 +134,16 @@ In the vault:
   mute (volume on a desktop) and full screen. They show while it is paused or finished,
   fade a moment after it starts, and return on a tap; starting one clip stops the others.
   A recording gets the same bar (play/pause, time, seek, mute), always in view, with no
-  big button or full screen. The
+  big button or full screen. A clip that errors is loaded once more before the user is
+  told (a network or decode error is often a hiccup); a repeat is shown in words and the
+  failure (only failures) goes to the server log as a `notes_video` client event.
+- On a phone, while the keyboard is up for the editor the app is fitted to the space above
+  it (`html.nb-kb-fit`), so iOS has nothing to pan and the text-format bar, placed from the
+  visible area's edge, stays put as the note scrolls. The bar spans the visible width with
+  equal 8px gaps, at its natural height, and scrolls sideways; it sits beneath the sidebar's
+  edge guard. Taps on buttons, links and menu items never take the keyboard's focus away
+  (`boot.js`), and an editor menu item rebuilt between press and release still receives the
+  press (colour and block-type menus). The
   width is saved as the block's `previewWidth`, and for a vault picture as
   Obsidian's `![alt|300](...)` / `![[x.png|300]]`.
 - `[[wikilinks]]`, `#tags` and `![[image.png]]` embeds survive a save in
