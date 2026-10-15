@@ -1873,8 +1873,15 @@ function renderSessionList() {
       // stored run to replay yet, so clicking it returns to the live view.
       if (row.dataset.liveEntry) returnToLive();
       else showHistory(row.dataset.parentId);
+      foldPhoneSidebar();
     };
   });
+}
+
+// Picking a chat on a phone puts the drawer away so the run it opened is what you see, as on the Chat page
+// (the drawer shows on a desktop all the time, so nothing is folded there).
+function foldPhoneSidebar() {
+  if (typeof window._closeMobileSidebarAfterPanelSelection === 'function') setTimeout(window._closeMobileSidebarAfterPanelSelection, 0);
 }
 
 function renderProjectFolders(projects, parents) {
@@ -1938,7 +1945,7 @@ function renderProjectFolders(projects, parents) {
     };
   });
   host.querySelectorAll('.office-session-row').forEach(row => {
-    row.onclick = () => showHistory(row.dataset.parentId);
+    row.onclick = () => { showHistory(row.dataset.parentId); foldPhoneSidebar(); };
   });
 }
 

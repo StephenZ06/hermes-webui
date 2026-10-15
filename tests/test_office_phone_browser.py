@@ -239,3 +239,24 @@ def test_the_toggle_is_painted_by_the_switch_so_its_middle_is_a_straight_line(ph
             assert all(near(px, column[len(column) // 2]) for px in column), (active, side, column[:6], column[-6:])
         divider = [rows[y][mid] for y in range(top, bottom)]
         assert all(near(px, divider[len(divider) // 2]) for px in divider), (active, divider[:3])   # one unbroken line
+
+
+def test_picking_a_chat_in_the_office_sidebar_puts_the_phone_drawer_away():
+    # Both lists of chats (a workspace folder's and the history) fold the drawer, as the Chat page does; a
+    # folder row (which only expands) does not.
+    assert "setTimeout(window._closeMobileSidebarAfterPanelSelection, 0)" in OFFICE_JS
+    history = OFFICE_JS[OFFICE_JS.index("      if (row.dataset.liveEntry) returnToLive();"):]
+    assert history[:200].count("foldPhoneSidebar();") == 1
+    folders = OFFICE_JS[OFFICE_JS.index("host.querySelectorAll('.office-session-row').forEach(row => {"):]
+    assert "row.onclick = () => { showHistory(row.dataset.parentId); foldPhoneSidebar(); };" in folders[:200]
+    toggle = OFFICE_JS[OFFICE_JS.index("host.querySelectorAll('.office-project-folder').forEach(row => {"):OFFICE_JS.index("host.querySelectorAll('.office-session-row').forEach(row => {")]
+    assert "foldPhoneSidebar" not in toggle
+
+
+def test_the_real_drawer_closes_when_a_chat_row_is_chosen(phone):
+    _open_office(phone)
+    phone.wait_for_function("() => typeof window._closeMobileSidebarAfterPanelSelection === 'function' && typeof closeMobileSidebar === 'function'", timeout=15000)
+    phone.evaluate("() => document.querySelector('.sidebar').classList.add('mobile-open')")
+    assert phone.evaluate("() => document.querySelector('.sidebar').classList.contains('mobile-open')")
+    phone.evaluate("() => setTimeout(window._closeMobileSidebarAfterPanelSelection, 0)")   # what the rows now do
+    phone.wait_for_function("() => !document.querySelector('.sidebar').classList.contains('mobile-open')", timeout=5000)
