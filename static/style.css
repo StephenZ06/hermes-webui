@@ -12011,10 +12011,9 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
 }
 
 /* The column filter eases open (and folds away); the cards below slide with it. */
-.pipe-col-filter{overflow:hidden;padding:2px 2px 4px;margin:-2px -2px 0;animation:pipe-filter-in .24s cubic-bezier(.22,1,.36,1);transform-origin:top;}
+.pipe-col-filter{overflow:hidden;padding:2px 2px 4px;margin:-2px -2px 0;transform-origin:top;}
 .pipe-col-filter.is-leaving{animation:pipe-filter-out .17s cubic-bezier(.4,0,1,1) forwards;}
 .pipe-col-filtered{animation:pipe-filter-fade .22s ease-out;}
-@keyframes pipe-filter-in{from{opacity:0;transform:translateY(-6px);max-height:0;padding-top:0;padding-bottom:0}to{opacity:1;transform:none;max-height:160px}}
 @keyframes pipe-filter-out{from{opacity:1;transform:none;max-height:160px}to{opacity:0;transform:translateY(-6px);max-height:0;padding-top:0;padding-bottom:0}}
 @keyframes pipe-filter-fade{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.pipe-col-filter,.pipe-col-filter.is-leaving,.pipe-col-filtered{animation:none;}}

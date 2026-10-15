@@ -345,8 +345,12 @@ def test_the_column_filter_eases_open_and_folds_away():
             page.wait_for_selector(col + " .pipe-card", timeout=15000)
             page.locator(col + " .pipe-col-filter-btn").tap()
             page.wait_for_selector(col + " .pipe-col-filter")
-            early = page.evaluate("(c) => { const e = document.querySelector(c + ' .pipe-col-filter'); return [getComputedStyle(e).animationName, parseFloat(getComputedStyle(e).opacity)]; }", col)
-            assert early[0] == "pipe-filter-in" and early[1] < 1, early
+            early = page.evaluate("(c) => { const e = document.querySelector(c + ' .pipe-col-filter'); return [e.getAnimations().length, parseFloat(getComputedStyle(e).opacity)]; }", col)
+            assert early[0] >= 1 and early[1] < 1, early
+            # A refresh landing mid-animation (focus, viewport or polling work) must not cut it short.
+            page.evaluate("() => JobOS.refresh()")
+            page.wait_for_timeout(60)
+            assert page.evaluate("(c) => document.querySelector(c + ' .pipe-col-filter').getAnimations().length", col) >= 1
             page.wait_for_timeout(450)
             assert page.evaluate("(c) => parseFloat(getComputedStyle(document.querySelector(c + ' .pipe-col-filter')).opacity)", col) == 1
             page.locator(col + " .pipe-col-filter-btn").tap()

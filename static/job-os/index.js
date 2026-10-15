@@ -1519,7 +1519,17 @@
       }
       state.colFilterOpen = closing ? null : el.dataset.col;
       repaint();
-      if (state.colFilterOpen) document.querySelector(`.pipe-col[data-col="${CSS.escape(state.colFilterOpen)}"] [data-col-filter="query"]`)?.focus({preventScroll: true});
+      const opened = state.colFilterOpen && document.querySelector(`.pipe-col[data-col="${CSS.escape(state.colFilterOpen)}"] .pipe-col-filter`);
+      if (opened && !matchMedia('(prefers-reduced-motion: reduce)').matches && typeof opened.animate === 'function') {
+        // Explicit animation: a keyframe rule on the freshly inserted node was lost to the focus and
+        // viewport work that follows a tap on iOS.
+        opened.animate([
+          {opacity: 0, transform: 'translateY(-6px)', maxHeight: '0px', paddingTop: '0px', paddingBottom: '0px'},
+          {opacity: 1, transform: 'none', maxHeight: '160px', paddingTop: '2px', paddingBottom: '4px'},
+        ], {duration: 260, easing: 'cubic-bezier(.22,1,.36,1)'});
+      }
+      // A finger gets the filter without a keyboard flying up over it; a keyboard user lands in the box.
+      if (opened && matchMedia('(hover: hover)').matches) opened.querySelector('[data-col-filter="query"]')?.focus({preventScroll: true});
       return undefined;
     }
     if (name === 'pipe-col-filter-clear') { if (state.colFilters) delete state.colFilters[el.dataset.col]; savePrefs(); repaint(); return undefined; }
