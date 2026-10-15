@@ -85,6 +85,8 @@ const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 3.2;
 // Breathing room left around the office when the camera frames it.
 const FRAME_MARGIN = 1.15;
+// On a phone-wide stage the office is framed this much closer (see zoomForRadius).
+const PHONE_FRAME_BOOST = 1.24;
 // Extra world units of headroom for the parts that stand up off the floor —
 // figures, monitors, nameplates — which the floor radius alone does not
 // account for.
@@ -217,8 +219,12 @@ export function createOfficeScene(canvas, options) {
   // (an integrated GPU, a 4K panel) gets less: the quality governor
   // (quality.js) steps the ratio down to 1x while frames run slow, and back
   // up after a sustained stretch of headroom.
-  const preferredPixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2);
-  const quality = createQualityGovernor({ base: preferredPixelRatio, min: 1 });
+  // A phone (touch screen) is looked at from a hand's length and zoomed with the fingers, so it gets more
+  // resolution than a desktop panel (up to 2.5x of a 3x screen) and its governor may not step below 1.5x:
+  // at 1x the models turned soft and jagged the moment the camera zoomed in.
+  const touchScreen = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  const preferredPixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1.5), touchScreen ? 2.5 : 2);
+  const quality = createQualityGovernor({ base: preferredPixelRatio, min: touchScreen ? Math.min(preferredPixelRatio, 1.5) : 1 });
   renderer.setPixelRatio(preferredPixelRatio);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
@@ -1366,7 +1372,11 @@ export function createOfficeScene(canvas, options) {
     const viewportCoverage = Math.min(1.1, Math.max(0.92, shortEdge / 840));
     // Fit the floor in both axes: its full radius across, its foreshortened
     // radius (plus standing headroom) down. Whichever is tighter wins.
-    return viewportCoverage * Math.min(
+    // A phone's stage is tall and narrow: the width is what limits the fit, and the office then sat as a
+    // small island with wide empty bands either side. Frame it tighter there; the margin it gives up is
+    // still more than the labels need.
+    const phoneFit = width <= 640 && aspect < 0.9 ? PHONE_FRAME_BOOST : 1;
+    return viewportCoverage * phoneFit * Math.min(
       2.2,
       halfWidth / radius,
       FRUSTUM_HALF_HEIGHT / (radius * ISO_VERTICAL_SCALE + FRAME_HEADROOM),
@@ -1667,6 +1677,9 @@ export function createOfficeScene(canvas, options) {
   let travelled = 0;
   let pinchDist = 0;
   let pinchMid = null;
+  // A press that ever had a second finger is a pinch, whatever its length: the last finger to lift after
+  // a quick pinch looked like a tap on empty ground, which pulls the camera back out to the overview.
+  let multiTouch = false;
 
   function onPointerDown(event) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -1679,12 +1692,14 @@ export function createOfficeScene(canvas, options) {
       downClient = { x: event.clientX, y: event.clientY };
       travelled = 0;
       gesture = null;
+      multiTouch = false;
       if (event.pointerType === 'mouse') canvas.style.cursor = 'grabbing';
     } else if (pointers.size === 2) {
       const p = Array.from(pointers.values());
       pinchDist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
       pinchMid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
       gesture = 'pinch';
+      multiTouch = true;
       takeManualControl();
     }
   }
@@ -1781,7 +1796,7 @@ export function createOfficeScene(canvas, options) {
     if (pointers.size === 0) {
       if (event.pointerType === 'mouse') canvas.style.cursor = 'grab';
       const dt = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - downAt;
-      if (wasSingle && gesture == null && travelled <= TAP_SLOP && dt <= TAP_MS && downClient) {
+      if (wasSingle && !multiTouch && gesture == null && travelled <= TAP_SLOP && dt <= TAP_MS && downClient) {
         handleTap(downClient.x, downClient.y);
       }
       // A drag released while still moving glides on; one that had stopped
@@ -1793,6 +1808,7 @@ export function createOfficeScene(canvas, options) {
       panVelocity.x = 0; panVelocity.z = 0; panVelocity.at = 0;
       gesture = null;
       pinchMid = null;
+      multiTouch = false;
     } else if (pointers.size === 1) {
       // Second finger lifted mid-pinch: keep panning with the one that's left.
       gesture = null;

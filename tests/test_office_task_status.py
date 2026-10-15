@@ -215,9 +215,11 @@ def test_the_panel_is_a_floating_stage_card_with_equal_expanded_insets():
     body_at = OFFICE_SRC.index('<div class="office-tasks-body"')
     body_end = OFFICE_SRC.index('</div>\n    </div>`;', stage_at)
     assert stage_at < tasks_at < body_at < body_end
-    # Hidden rather than squeezed on a phone -- the isometric floor needs the
-    # room, and a floating card would otherwise cover it.
-    assert "@media (max-width:640px){.office-tasks{display:none;}}" in CSS
+    # On a phone it is neither squeezed beside the floor nor gone: a small pill in the stage's corner
+    # that opens as a sheet along the bottom of the stage.
+    assert "@media (max-width:640px){.office-tasks{display:none;}}" not in CSS
+    assert ".office-tasks:not(.is-collapsed){top:auto;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));" in CSS
+    assert ".office-tasks.is-collapsed .office-tasks-title{display:none;}" in CSS
 
 
 # ── collapsible ──────────────────────────────────────────────────────────────

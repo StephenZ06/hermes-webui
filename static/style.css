@@ -7155,7 +7155,7 @@ main.main > #mainPlugin{display:none;}
 .office-dashboard-panel-focus{animation:office-dashboard-panel-focus 1.45s cubic-bezier(.22,.61,.36,1) both;}
 @keyframes office-dashboard-panel-focus{0%{border-color:var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.08);}20%,58%{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent),0 12px 30px color-mix(in srgb,var(--accent) 13%,transparent);}100%{border-color:var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.08);}}
 .office-dashboard-empty{padding:14px 0;color:var(--muted);font-size:12px;line-height:1.5;}.office-dashboard-integration{grid-column:1 / -1;display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:14px 15px;color:var(--text);font:inherit;text-align:left;cursor:pointer;}.office-dashboard-integration:hover{border-color:var(--accent);}.office-dashboard-integration .work-hub-icon{width:18px;height:18px;color:var(--accent);}.office-dashboard-integration strong,.office-dashboard-integration small{display:block;}.office-dashboard-integration small{margin-top:3px;color:var(--muted);font-size:11px;}
-.office-integrations-intro{width:100%;margin:0 0 16px;padding:14px 16px;border:1px solid var(--border2);border-radius:12px;background:var(--surface-subtle);}.office-integrations-intro span{color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.1em;}.office-integrations-intro p{margin-top:5px;color:var(--muted);font-size:12px;line-height:1.5;}.office-integrations-grid{width:100%;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}.office-integration-card{min-height:214px;padding:18px;border:1px solid var(--border2);border-radius:12px;background:var(--surface);display:flex;flex-direction:column;}.office-integration-card-head{display:flex;align-items:center;gap:12px;}
+.office-integrations-intro{width:100%;margin:0 0 16px;padding:14px 16px;border:1px solid var(--border2);border-radius:12px;background:var(--surface-subtle);}.office-integrations-intro span{display:block;color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.1em;line-height:1;}.office-integrations-intro p{margin:7px 0 -4px;color:var(--muted);font-size:12px;line-height:1.5;}.office-integrations-grid{width:100%;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}.office-integration-card{min-height:214px;padding:18px;border:1px solid var(--border2);border-radius:12px;background:var(--surface);display:flex;flex-direction:column;}.office-integration-card-head{display:flex;align-items:center;gap:12px;}
 /* The icon is exactly as tall as the title + subtitle beside it: fixed line
    heights (18px + 3px gap + 15px) make that block a known 36px. */
 .office-integration-card-head h2{line-height:18px;}.office-integration-card-head p{line-height:15px;}
@@ -7235,7 +7235,24 @@ main.main > #mainPlugin{display:none;}
 .office-tasks-row-detail .office-detail-actions{margin-top:8px;gap:6px;}
 .office-tasks-row-detail .office-detail-action{font-size:10px;padding:5px 8px;}
 @media (prefers-reduced-motion:reduce){.office-tasks,.office-tasks-body,.office-tasks-title,.office-tasks-row,.office-tasks-row-detail{transition-duration:.01ms!important;}.office-tasks-count.is-running,.office-tasks-count.is-completion-flash{animation-duration:.01ms!important;animation-iteration-count:1!important;}}
-@media (max-width:640px){.office-tasks{display:none;}}
+@media (max-width:640px){
+  /* Task Status on a phone: collapsed it is a small pill in the stage's corner (icon, count); open it is
+     a sheet along the bottom of the stage. */
+  .office-tasks{top:10px;right:10px;width:auto;min-width:0;max-height:min(58%,420px);border-radius:12px;}
+  .office-tasks.is-collapsed{min-height:0;width:80px;}   /* a fixed pill: its (hidden) list must not widen it */
+  .office-tasks-head{padding:0;}
+  .office-tasks-toggle{display:flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 10px;}
+  .office-tasks-title-group{grid-column:auto;}
+  .office-tasks.is-collapsed .office-tasks-title{display:none;}
+  .office-tasks-count{grid-column:auto;justify-self:auto;}
+  .office-tasks:not(.is-collapsed){top:auto;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;max-height:min(62%,460px);}
+  .office-tasks:not(.is-collapsed) .office-tasks-toggle{justify-content:space-between;padding:0 12px;}
+  .office-tasks-filters{padding:0 12px 8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .office-tasks-filters::-webkit-scrollbar{display:none;}
+  .office-tasks-filter{flex:0 0 auto;padding:5px 11px;}
+  .office-tasks-list{padding:2px 10px calc(12px + env(safe-area-inset-bottom,0px));}
+  .office-tasks-row-select{padding:10px 12px;}
+}
 /* As wide as the stage gets with the sidebar collapsed (--office-canvas-span, set by
    static/office/index.js), centred, overflow clipped by .office-stage: a sidebar slide
    then never resizes the WebGL drawing buffer. */
@@ -11259,7 +11276,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
      the right of the title block, centred on it. */
   .office-subview-head{flex-direction:row;align-items:center;gap:12px;}
   .office-subview-head p{display:none;}
-  .office-subview-back{align-self:center;flex:0 0 40px;width:40px;height:40px;border-radius:11px;}
+  .office-subview-back{align-self:center;flex:0 0 30px;width:30px;height:30px;border-radius:8px;}
+  .office-subview-back .work-hub-icon{width:15px;height:15px;}
+  /* Integration cards hold their content on a phone; the desktop minimum height only left a blank band. */
+  .office-integration-card{min-height:0;padding:16px;}
   /* The four headline cards as a 2×2 grid. */
   .office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
   .office-dashboard-metric{padding:13px 13px 12px;gap:6px;min-width:0;}
@@ -11271,10 +11291,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
      controls on a second row with the floor switch taking the free width. */
   .office-header{flex-wrap:wrap;row-gap:10px;column-gap:8px;padding:10px 14px 12px;}
   .office-hint{flex:1 1 0;min-width:0;font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-  .office-header > .office-labels-btn{order:3;width:40px;height:36px;border-radius:10px;}
-  .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:10px;}
-  .office-header > .office-outlet .office-outlet-btn{flex:1 1 0;min-height:36px;font-size:12px;}
-  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;min-height:36px;border-radius:10px;padding:0 12px;font-size:12px;}
+  .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:8px;}
+  .office-header > .office-outlet{order:4;flex:0 0 auto;border-radius:8px;}
+  .office-header > .office-outlet .office-outlet-btn{flex:0 0 auto;height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
+  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;margin-left:auto;height:30px;min-height:0;border-radius:8px;padding:0 10px;font-size:11px;line-height:1;}
   .office-header > .office-labels-btn:first-of-type{flex-basis:auto;}
   .office-header::after{content:"";order:2;flex-basis:100%;height:0;}
 }
@@ -11864,3 +11884,10 @@ html.nb-bar-glide .hermes-note-editor div:has(> .bn-formatting-toolbar){transiti
 /* With the keyboard up the app ends at its top edge: the bottom gap kept above the home indicator would
    only be a blank bar over the note, behind the format bar. */
 html.nb-kb-fit .main{padding-bottom:0 !important;}
+
+/* iOS Safari draws a <button> with its own rounded corners unless told not to (a segmented control's
+   active segment showed a rounded inner edge there, a straight one on desktop). A zero-specificity reset,
+   so any button that sets its own radius keeps it. */
+@media (hover:none) and (pointer:coarse){
+  :where(button,input[type="button"],input[type="submit"],input[type="reset"]){-webkit-appearance:none;appearance:none;border-radius:0;}
+}

@@ -66,7 +66,8 @@ def test_it_raises_again_only_after_sustained_headroom():
 
 
 def test_the_scene_uses_the_governor_and_caps_msaa():
-    assert "createQualityGovernor({ base: preferredPixelRatio, min: 1 })" in SCENE_SRC
+    # a desktop panel may step down to 1x; a touch screen never below 1.5x (see the comment at the call)
+    assert "createQualityGovernor({ base: preferredPixelRatio, min: touchScreen ? Math.min(preferredPixelRatio, 1.5) : 1 })" in SCENE_SRC
     assert "quality.sample(frameMs, now || 0)" in SCENE_SRC
     assert "samples: Math.min(4," in SCENE_SRC
     assert "SCREEN_REDRAW_S" in SCENE_SRC

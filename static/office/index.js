@@ -179,10 +179,14 @@ function writeOutlet(mode) {
 }
 
 function readTasksCollapsed() {
+  // On a phone the panel starts as a small pill (until the user has opened it once): it is a sheet over
+  // the floor there, not a column beside it.
+  const phone = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
   try {
-    return localStorage.getItem(TASKS_COLLAPSED_STORAGE_KEY) === '1';
+    const stored = localStorage.getItem(TASKS_COLLAPSED_STORAGE_KEY);
+    return stored === null ? phone : stored === '1';
   } catch (_err) {
-    return false;
+    return phone;
   }
 }
 
@@ -2284,6 +2288,7 @@ function mount(container) {
       // inset and an inline task detail never creates a second overlay.
       panelInset: () => {
         if (!_tasksEl || _tasksCollapsed) return 0;
+        if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) return 0; // a sheet along the bottom there, not a column
         const measured = _tasksEl.getBoundingClientRect().width;
         if (measured) return measured + 28;
         const stage = _canvas ? _canvas.getBoundingClientRect().width : 0;

@@ -372,17 +372,19 @@ def test_office_entry_publishes_the_global_the_panel_calls():
 
 
 def test_scene_caps_pixel_ratio():
-    # A 1x display is rendered at 1.5x for smoother edges; the 2x ceiling is
-    # the invariant that matters.
+    # A 1x display is rendered at 1.5x for smoother edges; the ceiling is the
+    # invariant that matters: 2x on a desktop panel, 2.5x on a touch screen (a
+    # phone is zoomed with the fingers, and at lower resolutions the models went
+    # soft the moment it was).
     # The quality governor may lower it (static/office/quality.js), never raise it.
     line = next(l for l in OFFICE_SCENE_JS.splitlines() if "const preferredPixelRatio =" in l)
-    assert line.strip().startswith("const preferredPixelRatio = Math.min(") and line.rstrip().endswith(", 2);"), (
+    assert line.strip().startswith("const preferredPixelRatio = Math.min(") and line.rstrip().endswith(", touchScreen ? 2.5 : 2);"), (
         "uncapped DPR on a 3x display quadruples fragment cost for no visible "
         "gain and is the quickest way to make this panel drop frames"
     )
     calls = [l.strip() for l in OFFICE_SCENE_JS.splitlines() if "renderer.setPixelRatio(" in l]
     assert calls == ["renderer.setPixelRatio(preferredPixelRatio);", "renderer.setPixelRatio(ratio);"]
-    assert "createQualityGovernor({ base: preferredPixelRatio, min: 1 })" in OFFICE_SCENE_JS
+    assert "createQualityGovernor({ base: preferredPixelRatio, min: touchScreen ? Math.min(preferredPixelRatio, 1.5) : 1 })" in OFFICE_SCENE_JS
 
 
 def test_scene_dispose_releases_gpu_resources_and_the_context():
