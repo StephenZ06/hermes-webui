@@ -1,9 +1,28 @@
 (function () {
+  // A read that fails because the server is restarting (agent updates restart
+  // it hourly) or the network blinked is tried again before the page gives up.
+  const RETRY_DELAYS = [350, 900, 1800];
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   async function request(path, options) {
-    const response = await fetch(path, Object.assign({headers: {'Content-Type': 'application/json'}}, options || {}));
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'Job OS request failed');
-    return payload;
+    const init = Object.assign({headers: {'Content-Type': 'application/json'}}, options || {});
+    const safeToRepeat = !init.method || String(init.method).toUpperCase() === 'GET';
+    for (let attempt = 0; ; attempt += 1) {
+      const retry = safeToRepeat && attempt < RETRY_DELAYS.length;
+      let response;
+      try {
+        response = await fetch(path, init);
+      } catch (error) {
+        if (retry) { await sleep(RETRY_DELAYS[attempt]); continue; }
+        throw new Error('Job OS could not reach Hermes. Check your connection and try again.');
+      }
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload) return payload;
+      if (retry && (response.status >= 500 || response.ok)) { await sleep(RETRY_DELAYS[attempt]); continue; }
+      if (payload && payload.error) throw new Error(payload.error);
+      throw new Error(response.status >= 500
+        ? 'Hermes is restarting. Try again in a moment.'
+        : 'Job OS request failed (' + response.status + ')');
+    }
   }
   window.JobOSApi = {
     capability: () => request('/api/job-os/capability'),

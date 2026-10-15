@@ -139,6 +139,7 @@
     if (content && moved) { content.classList.add('is-entering'); lastView = window.JobOSState.activeView; }
     if (moved) bindPage(target);
   }
+  let refreshRetries = 0;
   async function refresh() {
     const state = window.JobOSState;
     const target = root();
@@ -244,14 +245,26 @@
       afterPipelineRender(target, changed);
       renderSidebar();
       bind();
+      refreshRetries = 0;
     } catch (error) {
       if (seq !== refreshSeq) return;
+      // A page already on screen stays put (the next refresh heals it); only a
+      // first open with nothing to show gets the error, with a way to retry.
+      refreshRetries += 1;
+      if (refreshRetries <= 2) { setTimeout(() => { if (seq === refreshSeq) refresh(); }, 2500 * refreshRetries); }
+      if (state.capability && target.firstElementChild) return;
       const message = document.createElement('p');
       message.className = 'job-os-error';
       message.textContent = String(error.message || 'Unable to load Job OS.');
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'job-os-btn job-os-error-retry';
+      retry.textContent = 'Try again';
+      retry.addEventListener('click', () => { refreshRetries = 0; refresh(); });
       target.innerHTML = '<div class="job-os-shell"></div>';
       target._jobOsHtml = null;
       target.firstChild.appendChild(message);
+      target.firstChild.appendChild(retry);
     }
   }
   function showView(view) {
