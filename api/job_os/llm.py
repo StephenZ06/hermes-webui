@@ -24,6 +24,8 @@ def _default_transport(*, system: str, user: str, max_tokens: int, provider: str
     try:
         import api.config  # noqa: F401 - puts the hermes-agent checkout on sys.path
         from agent.auxiliary_client import call_llm
+        from api.agent_runtime import keep_server_interpreter_packages
+        keep_server_interpreter_packages()
     except ImportError as error:
         raise LLMError("The Hermes agent is not available to run the AI model.") from error
     try:
