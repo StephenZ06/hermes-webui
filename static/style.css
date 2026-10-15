@@ -12031,3 +12031,12 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
   .job-os-savebar-note{font-size:11.5px;}
   .job-os-savebar .job-os-btn{min-height:32px;padding:0 12px;font-size:12.5px;border-radius:8px;}
 }
+
+/* Final pass: links inside a sentence read as part of it, a drawer's actions share their rows, banners align their link with their text. */
+.job-os-card-note .job-os-link,.job-drawer-body p .job-os-link,.scout-banner .job-os-link{display:inline;padding:0;font-size:inherit;line-height:inherit;vertical-align:baseline;}
+.scout-banner .job-os-link{margin-left:2px;font-weight:600;}
+@media (max-width:767px){
+  .job-drawer-body .job-os-actions{gap:8px;}
+  .job-drawer-body .job-os-actions>.job-os-btn{flex:1 1 auto;}
+  .job-drawer-body{padding-bottom:max(24px,calc(16px + env(safe-area-inset-bottom,0px)));}
+}

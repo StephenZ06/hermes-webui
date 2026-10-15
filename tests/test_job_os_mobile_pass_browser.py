@@ -382,3 +382,23 @@ def test_test_buttons_are_violet_disconnect_is_red_and_the_save_bar_is_slim():
             assert h <= 46, h
         finally:
             browser.close()
+
+
+def test_drawer_actions_share_their_rows_and_in_sentence_links_have_no_padding():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _job()
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/pipeline")
+        try:
+            page.evaluate("(id) => JobOS.openJob(id)", job["id"])
+            page.wait_for_selector("#job-os-detail")
+            page.wait_for_timeout(500)
+            rows = page.evaluate("""() => { const a = [...document.querySelectorAll('#job-os-detail .job-os-actions')][0];
+              const bs = [...a.children].map((b) => { const r = b.getBoundingClientRect(); return {top: Math.round(r.top), right: r.right, left: r.left}; });
+              const box = a.getBoundingClientRect(); const byRow = {}; bs.forEach((b) => { (byRow[b.top] = byRow[b.top] || []).push(b); });
+              return Object.values(byRow).map((row) => Math.abs(Math.max(...row.map((b) => b.right)) - box.right)); }""")
+            assert all(r <= 1.5 for r in rows), rows
+            pad = page.evaluate("() => { const l = document.querySelector('#job-os-detail p .job-os-link'); return l ? getComputedStyle(l).paddingLeft : '0px'; }")
+            assert pad == "0px", pad
+        finally:
+            browser.close()
