@@ -7056,7 +7056,7 @@ main.main > #mainPlugin{display:none;}
 .office-pill.is-live{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,transparent);animation:office-live-pulse 2s ease-in-out infinite;}
 @keyframes office-live-pulse{0%,100%{opacity:1;}50%{opacity:.6;}}
 .office-hint{flex:1;font-size:12px;color:var(--muted);}
-.office-header-btn{flex:0 0 auto;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--surface-subtle);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.office-header-btn{flex:0 0 auto;font-size:11px;font-weight:600;padding:5px 10px;border-radius:var(--office-control-radius,8px);border:1px solid var(--border2);background:var(--surface-subtle);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
 .office-header-btn:hover{color:var(--text);border-color:var(--accent);}
 .office-labels-btn{display:grid;place-items:center;width:30px;padding:5px;}
 .office-labels-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
@@ -7064,7 +7064,7 @@ main.main > #mainPlugin{display:none;}
 /* A two-way switch (Projects / Business). The buttons carry no background and no corner of their own: the
    switch paints the active half itself and draws the divider, so there is no button shape whose corners
    could show at the join (iOS drew a rounded inner edge on each button there). The two halves are equal. */
-.office-outlet{--outlet-on:color-mix(in srgb,var(--accent) 18%,transparent);position:relative;flex:0 0 auto;display:inline-grid;grid-template-columns:1fr 1fr;border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--surface-subtle);}
+.office-outlet{--outlet-on:color-mix(in srgb,var(--accent) 18%,transparent);position:relative;flex:0 0 auto;display:inline-grid;grid-template-columns:1fr 1fr;border:1px solid var(--border2);border-radius:var(--office-control-radius,8px);overflow:hidden;background:var(--surface-subtle);}
 .office-outlet:has(> .office-outlet-btn:first-child.is-active){background:linear-gradient(to right,var(--outlet-on) 0 50%,transparent 50%),var(--surface-subtle);}
 .office-outlet:has(> .office-outlet-btn:last-child.is-active){background:linear-gradient(to left,var(--outlet-on) 0 50%,transparent 50%),var(--surface-subtle);}
 .office-outlet::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--border2);pointer-events:none;}
@@ -7265,7 +7265,7 @@ main.main > #mainPlugin{display:none;}
   .office-tasks-filters{padding:0 12px 8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
   .office-tasks-filters::-webkit-scrollbar{display:none;}
   .office-tasks-filter{flex:0 0 auto;padding:5px 11px;}
-  .office-tasks-list{padding:2px 10px 12px;}
+  .office-tasks-list{padding:2px 10px 10px;}   /* the same gap below the last row as at its left and right */
   .office-tasks-row-select{padding:10px 12px;}
 }
 /* As wide as the stage gets with the sidebar collapsed (--office-canvas-span, set by
@@ -11306,10 +11306,10 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
      controls on a second row with the floor switch taking the free width. */
   .office-header{flex-wrap:wrap;row-gap:10px;column-gap:8px;padding:10px 14px 12px;}
   .office-hint{flex:1 1 0;min-width:0;font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-  .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:8px;}
-  .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:8px;}
+  .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:var(--office-control-radius,8px);}
+  .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:var(--office-control-radius,8px);}
   .office-header > .office-outlet .office-outlet-btn{height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
-  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;margin-left:auto;height:30px;min-height:0;border-radius:8px;padding:0 10px;font-size:11px;line-height:1;}
+  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;margin-left:auto;height:30px;min-height:0;border-radius:var(--office-control-radius,8px);padding:0 10px;font-size:11px;line-height:1;}
   .office-header > .office-labels-btn:first-of-type{flex-basis:auto;}
   .office-header::after{content:"";order:2;flex-basis:100%;height:0;}
 }

@@ -74,6 +74,12 @@ def test_the_floor_controls_are_compact_and_the_toggle_has_a_flat_middle(phone):
     assert max(ys) - min(ys) <= 2, ys
     # The segments are flat where they meet: no rounding of its own on either (iOS gives a <button> one unless reset).
     assert all(b["radius"] == "0px" for b in sizes["buttons"]), sizes["buttons"]
+    # One corner radius across the row: the switch is no rounder than the buttons beside it.
+    radii = phone.evaluate("""() => ({
+        labels: [...document.querySelectorAll('.office-header > .office-labels-btn')].map((b) => getComputedStyle(b).borderTopLeftRadius),
+        outlet: getComputedStyle(document.querySelector('.office-outlet')).borderTopLeftRadius,
+        pause: getComputedStyle(document.getElementById('officePauseBtn')).borderTopLeftRadius })""")
+    assert set(radii["labels"]) == {radii["outlet"]} == {radii["pause"]}, radii
     assert all(b["appearance"] == "none" for b in sizes["buttons"]), sizes["buttons"]
 
 
@@ -83,7 +89,7 @@ def test_every_plain_button_on_a_touch_screen_has_no_native_rounding(phone):
         const c = getComputedStyle(b); const out = [c.webkitAppearance || c.appearance, c.borderRadius]; b.remove(); return out; }""") == ["none", "0px"]
     # ...but a button that sets its own radius keeps it.
     assert phone.evaluate("""() => { const b = document.createElement('button'); b.className = 'office-header-btn'; document.body.appendChild(b);
-        const r = getComputedStyle(b).borderRadius; b.remove(); return r; }""") == "7px"
+        const r = getComputedStyle(b).borderRadius; b.remove(); return r; }""") == "8px"
 
 
 def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animation(phone):
@@ -285,3 +291,18 @@ def test_the_conductors_label_goes_behind_the_task_status_card(phone):
     scale = len(rows[0]) / box["w"]
     mid = rows[int(box["h"] * scale / 2)][int(box["w"] * scale / 2)]
     assert not (mid[0] > 200 and mid[1] < 60 and mid[2] > 200), f"the conductor's label painted over the Task Status card: {mid}"
+
+
+def test_an_open_task_status_card_has_the_same_gap_below_its_last_task_as_at_the_sides(phone):
+    _with_floor_chrome(phone)
+    phone.evaluate("""() => {
+        document.getElementById('officeTasksList').innerHTML = ['Research the vendor options', 'Draft the summary'].map((g) =>
+            '<div class="office-tasks-row"><button class="office-tasks-row-select"><span class="office-tasks-row-status status-running"></span><span class="office-tasks-row-body"><span class="office-tasks-row-goal">' + g + '</span><span class="office-tasks-row-meta">running · 2m</span></span></button></div>').join('');
+        document.getElementById('officeTasks').classList.remove('is-collapsed'); }""")
+    phone.wait_for_timeout(1500)
+    gaps = phone.evaluate("""() => {
+        const card = document.getElementById('officeTasks').getBoundingClientRect();
+        const rows = [...document.querySelectorAll('.office-tasks-row')], first = rows[0].getBoundingClientRect(), last = rows[rows.length - 1].getBoundingClientRect();
+        return {left: first.left - card.left, right: card.right - first.right, below: card.bottom - last.bottom};
+    }""")
+    assert abs(gaps["below"] - gaps["left"]) <= 1 and abs(gaps["below"] - gaps["right"]) <= 1, gaps
