@@ -1550,7 +1550,7 @@ function taskStatusDetailHtml(worker, workers) {
   return `
     <div class="office-tasks-row-detail-head">
       <span class="office-detail-title">${esc(worker.label)}</span>
-      <button type="button" class="office-tasks-row-detail-close" aria-label="Close task details">×</button>
+      <button type="button" class="office-tasks-row-detail-close" aria-label="Close task details"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     ${rows.join('')}
     ${worker.goal ? `<div class="office-detail-block"><div class="office-detail-label">Goal</div><div class="office-detail-goal">${esc(worker.goal)}</div></div>` : ''}

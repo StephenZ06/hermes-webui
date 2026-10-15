@@ -1,4 +1,6 @@
 (function () {
+  // A finger cannot start the browser's own drag-and-drop; touch screens move cards by hold-and-drag instead (index.js).
+  const TOUCH_ONLY = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
   const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', settings: 'Settings'};
   // Linear icons from mx-icons (MIT; see static/vendor/mx-icons/LICENSE), 24px grid.
@@ -216,10 +218,12 @@
     if (job.country && !parts.some((p) => p.toLowerCase() === String(job.country).toLowerCase())) parts.push(job.country);
     return parts.join(', ');
   }
+  // The job whose drawer is open: its card is marked from the page's state, so the mark can never outlive the drawer.
+  let openJobId = null;
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', place(job), SOURCE_LABEL[sourceOf(job)]].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${activityOf(job) ? activityLine(activityOf(job)) : esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${activityOf(job) ? activityLine(activityOf(job)) : esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -305,7 +309,8 @@
       return `<div class="job-os-conn" id="job-os-gmail">
         <div class="job-os-conn-head"><strong>Gmail sender</strong>${pill(true, 'Connected')}</div>
         <p class="job-os-card-note">Hermes sends from <strong>${esc(gmail.address_hint || 'your account')}</strong>, named after the part of Hermes writing (<em>Hermes Jobs</em>, <em>Hermes Business</em>), to the <em>Send to</em> address under Notifications (this account if that is empty). ${gmail.scope === 'shared' ? 'Saved once for every profile.' : 'Saved for this profile.'}</p>
-        <div class="job-os-actions"><label class="job-os-inline-select">Send test as <select id="job-os-gmail-test-context" aria-label="Sender name for the test email"><option value="jobs">Hermes Jobs</option><option value="business">Hermes Business</option></select></label><button type="button" class="job-os-btn" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
+        <label class="job-os-inline-select">Send test as <select id="job-os-gmail-test-context" aria-label="Sender name for the test email"><option value="jobs">Hermes Jobs</option><option value="business">Hermes Business</option></select></label>
+        <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
         ${msg}
       </div>`;
     }
@@ -513,7 +518,7 @@
     // A job Luna is tailoring stays put until she is done.
     const movable = job.status !== 'tailoring';
     const working = activityOf(job);
-    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}${working ? ' is-working' : ''}"${working ? ` data-activity="${working}"` : ''} data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? ' draggable="true"' : ''}>
+    return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}${working ? ' is-working' : ''}"${working ? ` data-activity="${working}"` : ''} data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? (TOUCH_ONLY ? ' data-movable="true"' : ' draggable="true" data-movable="true"') : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
         <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
@@ -608,7 +613,7 @@
     return `<div class="job-drawer-backdrop" data-job-os-action="job-close"></div>
       <aside class="job-drawer" id="job-os-detail" role="dialog" aria-label="${esc(job.title)}">
         <header class="job-drawer-head"><div class="job-drawer-title"><div class="job-drawer-tags">${badge(job.status)}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></div><h2>${esc(job.title)}</h2>${meta ? `<p>${meta}</p>` : ''}</div>
-          <button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details">×</button></header>
+          <button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <div class="job-drawer-body">
           ${jobChips(job)}
           <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}">${icon('edit', 14)}Edit</button></div>
@@ -633,7 +638,7 @@
     return `<div class="job-drawer-backdrop" data-job-os-action="job-form-close"></div>
       <aside class="job-drawer job-form-drawer" role="dialog" aria-label="${editing ? 'Edit job' : 'Add a job'}">
         <header class="job-drawer-head"><div class="job-drawer-title"><h2>${editing ? 'Edit job' : 'Add a job'}</h2><p>${editing ? 'Correct the details or paste in the description.' : 'Track a job you found yourself. With its description, Luna can score your resume against it and tailor one for it.'}</p></div>
-          <button type="button" class="wh-insp-close" data-job-os-action="job-form-close" aria-label="Close">×</button></header>
+          <button type="button" class="wh-insp-close" data-job-os-action="job-form-close" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <form id="job-os-job-form" class="job-drawer-body job-form" novalidate>
           <div class="job-form-grid">
             ${field('title', 'Job title <em>required</em>', 'required maxlength="240" placeholder="e.g. Data Analyst"', true)}
@@ -1143,6 +1148,7 @@
       <div class="analysis-cols">${block('Ask them', p.ask_them)}${block('Research', p.research)}${block('Watch-outs', p.watch_outs)}</div></section>`;
   }
   function shell(state) {
+    openJobId = state.jobDetail ? state.jobDetail.id : null;
     useSites(state.sites || (state.settingsStatus && state.settingsStatus.apify && state.settingsStatus.apify.sites));
     const view = state.activeView;
     const dashboard = dashboardOf(state);
@@ -1158,7 +1164,7 @@
         <div class="job-os-columns">
           <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
           <section class="job-os-card job-os-import">${cardHead('Track a job', 'import')}<p class="job-os-card-note">Manually save jobs, tailor your resume to it, then follow through on your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 16)}Add job</button></section>
-        </div>${jobForm(state)}`;
+        </div>${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
       const group = STATUS_GROUPS[filter];
@@ -1174,7 +1180,7 @@
         ${listMode ? list : pipelineBoard(state)}
         ${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'scout') {
-      body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobForm(state)}`;
+      body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {

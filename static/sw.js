@@ -48,6 +48,7 @@ const SHELL_ASSETS = [
   './static/vendor/smd.min.js' + VQ,
   './static/vendor/motion/13.1.1/motion.min.js' + VQ,
   './static/motion-ui.js' + VQ,
+  './static/scroll-fade.js' + VQ,
   './static/vendor/katex/0.16.22/katex.min.css' + VQ,
   './static/vendor/katex/0.16.22/katex.min.js' + VQ,
   './static/chat-nav-mark.png',

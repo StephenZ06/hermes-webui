@@ -38,7 +38,7 @@
   }
   // Classes the page adds at run time (entry, selection, drag, drawn previews):
   // a patch keeps them where the new HTML doesn't say otherwise.
-  const RUNTIME_CLASSES = ['is-entering', 'is-selected', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
+  const RUNTIME_CLASSES = ['is-entering', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
     'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning',
     'is-focused', 'mi-tabs', 'mi-tabs-ready', 'mi-shake', 'mi-busy', 'mi-done'];
   // Nodes micro.js adds or holds (the tab pill, a button showing "Saved"): a patch leaves them be.
@@ -140,6 +140,20 @@
     if (moved) bindPage(target);
   }
   let refreshRetries = 0;
+  // Everything that makes a freshly drawn page live: counts, listeners, Scout polling, drag.
+  function afterPaint(target, changed) {
+    const state = window.JobOSState;
+    if (changed) {
+      if (typeof window.animateCounts === 'function') window.animateCounts(target);
+      bindPage(target);
+    }
+    if (state.activeView === 'scout') afterScoutRender(target, changed);
+    else stopScoutPolling();
+    afterPipelineRender(target, changed);
+    renderSidebar();
+    bind();
+    if (window.ScrollFade) window.ScrollFade.scan(target);
+  }
   async function refresh() {
     const state = window.JobOSState;
     const target = root();
@@ -148,10 +162,14 @@
     // First open: the app's loading bar until the page has something to show.
     if (!target.firstElementChild && !state.capability) target.innerHTML = window.JobOSRender.LOADING;
     renderSidebar();
+    // A tap that changed the page's state shows its result now, from what is
+    // already loaded; the fetch below only fills in what is new. Without this a
+    // slow link makes every button look dead and gets pressed twice.
+    if (state.capability && target.firstElementChild && !dragging) afterPaint(target, paint(target, window.JobOSRender.shell(state), false));
     try {
       const wantSettings = state.activeView === 'settings';
       const wantScout = state.activeView === 'scout';
-      const wantDetail = state.activeView === 'pipeline' && state.selectedJobId;
+      const wantDetail = ['pipeline', 'scout', 'dashboard'].includes(state.activeView) && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
       const wantStudioDocs = wantResume && state.studioJobId;
       // A remembered tab for a job site that is no longer offered falls back to All.
@@ -229,6 +247,9 @@
       // While a card is being dragged the board is left alone: the next refresh after the drop draws it.
       if (dragging && !dragging.card.isConnected) dragging = null;
       if (dragging) { repaintAfterDrag = true; return; }
+      // A job drawer is still sliding in: patching the page under it now would stutter it.
+      const settle = (state.drawerUntil || 0) - Date.now();
+      if (settle > 0) { await new Promise((resolve) => setTimeout(resolve, settle)); if (seq !== refreshSeq) return; if (dragging) { repaintAfterDrag = true; return; } }
       const moved = lastView !== state.activeView;
       const changed = paint(target, window.JobOSRender.shell(state), moved);
       if (moved) {
@@ -236,15 +257,7 @@
         if (content) content.classList.add('is-entering');
         lastView = state.activeView;
       }
-      if (changed) {
-        if (typeof window.animateCounts === 'function') window.animateCounts(target);
-        bindPage(target);
-      }
-      if (wantScout) afterScoutRender(target, changed);
-      else stopScoutPolling();
-      afterPipelineRender(target, changed);
-      renderSidebar();
-      bind();
+      afterPaint(target, changed);
       refreshRetries = 0;
     } catch (error) {
       if (seq !== refreshSeq) return;
@@ -274,6 +287,7 @@
     // (the first section on desktop) unless a row asked for a section.
     if (moved && view === 'settings' && !state.settingsFocus) state.settingsSection = null;
     state.activeView = view; state.statusFilter = null; state.resumePreview = null; state.focusColumn = null; replaceRoute(view);
+    if (moved) { state.selectedJobId = null; state.jobDetail = null; }
     if (moved) { paintNow(); const main = document.getElementById('mainJobs'); if (main) main.scrollTop = 0; }
     refresh();
   }
@@ -665,8 +679,6 @@
       const doc = (state.studioDocs || {})[state.studioTab];
       if (save) save.disabled = !doc || editor.value === doc.content;
     });
-    const card = state.jobDetail && target.querySelector(`.job-os-job-card[data-job-id="${CSS.escape(state.jobDetail.id)}"], .pipe-card[data-board-job="${CSS.escape(state.jobDetail.id)}"]`);
-    if (card) card.classList.add('is-selected');
   }
   function orderedJobIds() {
     return [...document.querySelectorAll('#jobOsRoot .job-os-fill .job-os-job-card[data-job-id]')].map((el) => el.dataset.jobId);
@@ -686,7 +698,7 @@
   }
   function onTriageKey(event) {
     const state = window.JobOSState;
-    if (state.activeView !== 'pipeline' || !state.jobDetail || state.jobForm || event.metaKey || event.ctrlKey || event.altKey) return;
+    if ((state.activeView !== 'pipeline' && event.key.toLowerCase() !== 'escape') || !state.jobDetail || state.jobForm || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
     const key = event.key.toLowerCase();
     const ids = orderedJobIds();
@@ -811,6 +823,7 @@
       if (state.studioDraft != null && !window.confirm('Discard unsaved edits?')) return undefined;
       state.studioDraft = null;
       if (name === 'studio-close') { state.studioJobId = null; state.studioDocs = null; } else state.studioTab = el.dataset.tab;
+      paintNow();
       return refresh();
     }
     if (name === 'studio-save') {
@@ -1268,6 +1281,123 @@
       endDrag(board);
       dropOn(card, col.dataset.col, col);
     });
+    initTouchDrag(board);
+  }
+  // Touch: hold a card to pick it up, then drag it onto another column. A move
+  // before the hold fires is an ordinary scroll; a still tap still opens the card.
+  const TOUCH_HOLD_MS = 380;
+  const TOUCH_SLOP = 8;
+  const TOUCH_EDGE = 64;
+  function scrollParent(node) {
+    for (let el = node.parentElement; el; el = el.parentElement) {
+      const y = getComputedStyle(el).overflowY;
+      if ((y === 'auto' || y === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el;
+    }
+    return document.scrollingElement;
+  }
+  function initTouchDrag(board) {
+    let hold = null;
+    // Geometry, not what is under the finger: a short column grows and shrinks
+    // as the drop slot opens in it, and a hit test would flicker between the
+    // column and the board behind it.
+    const target = (x, y) => {
+      const cols = [...board.querySelectorAll('.pipe-col')];
+      if (!cols.length) return null;
+      const rects = cols.map((col) => col.getBoundingClientRect());
+      const stacked = cols.length > 1 && rects[1].top > rects[0].top + 4;
+      const frame = board.getBoundingClientRect();
+      if (x < frame.left - 12 || x > frame.right + 12 || y < frame.top - 12 || y > frame.bottom + 12) return null;
+      const at = rects.findIndex((r) => (stacked ? y >= r.top - 6 && y <= r.bottom + 6 : x >= r.left - 6 && x <= r.right + 6));
+      const col = at < 0 ? null : cols[at];
+      return col && hold && col.dataset.col !== hold.from ? col : null;
+    };
+    const aim = (col) => {
+      if (col === hold.col) return;
+      board.querySelectorAll('.pipe-col.drop-target').forEach((other) => other.classList.remove('drop-target'));
+      if (typeof hideDragSlot === 'function') hideDragSlot();
+      hold.col = col;
+      if (!col) return;
+      col.classList.add('drop-target');
+      const list = col.querySelector('.pipe-col-cards');
+      if (typeof showDragSlot === 'function' && list) {
+        showDragSlot(list, hold.height);
+        const slot = list.querySelector('.drag-slot');
+        if (slot && slot !== list.firstElementChild) list.prepend(slot);
+      }
+    };
+    const follow = () => {
+      if (!hold || !hold.active) return;
+      hold.ghost.style.transform = `translate3d(${hold.x - hold.offsetX}px,${hold.y - hold.offsetY}px,0) rotate(1.5deg) scale(1.03)`;
+      aim(target(hold.x, hold.y));
+    };
+    const autoScroll = () => {
+      if (!hold || !hold.active) return;
+      const box = hold.scroller === document.scrollingElement ? {top: 0, bottom: innerHeight} : hold.scroller.getBoundingClientRect();
+      const dy = hold.y < box.top + TOUCH_EDGE ? -1 : hold.y > box.bottom - TOUCH_EDGE ? 1 : 0;
+      const wide = board.getBoundingClientRect();
+      const dx = board.scrollWidth > board.clientWidth + 1 ? (hold.x < wide.left + TOUCH_EDGE ? -1 : hold.x > wide.right - TOUCH_EDGE ? 1 : 0) : 0;
+      if (dy) hold.scroller.scrollTop += dy * 10;
+      if (dx) board.scrollLeft += dx * 10;
+      if (dy || dx) follow();
+      hold.raf = requestAnimationFrame(autoScroll);
+    };
+    const finish = (commit) => {
+      const current = hold; hold = null;
+      if (!current) return;
+      clearTimeout(current.timer);
+      if (!current.active) return;
+      cancelAnimationFrame(current.raf);
+      current.ghost.remove();
+      document.documentElement.classList.remove('job-os-touch-dragging');
+      const col = commit ? current.col : null;
+      // The finger lifts on the card: swallow the click it would make.
+      const swallow = (event) => { event.preventDefault(); event.stopImmediatePropagation(); };
+      board.addEventListener('click', swallow, {capture: true, once: true});
+      setTimeout(() => board.removeEventListener('click', swallow, true), 450);
+      board.querySelectorAll('.pipe-col.drop-target').forEach((el) => el.classList.remove('drop-target'));
+      endDrag(board);
+      if (col) dropOn(current.card, col.dataset.col, col);
+    };
+    board.addEventListener('touchstart', (event) => {
+      const card = event.target.closest && event.target.closest('.pipe-card[data-movable="true"]');
+      if (!card || event.touches.length !== 1 || dragging) return;
+      const touch = event.touches[0];
+      const from = card.closest('.pipe-col').dataset.col;
+      hold = {card, from, height: card.offsetHeight, startX: touch.clientX, startY: touch.clientY, x: touch.clientX, y: touch.clientY, active: false, col: null, raf: 0, scroller: scrollParent(board)};
+      hold.timer = setTimeout(() => {
+        if (!hold || hold.card !== card) return;
+        const box = card.getBoundingClientRect();
+        const ghost = card.cloneNode(true);
+        ghost.classList.add('pipe-card-ghost'); ghost.removeAttribute('data-key'); ghost.removeAttribute('data-board-job');
+        ghost.style.width = `${box.width}px`; ghost.style.height = `${box.height}px`;
+        document.body.appendChild(ghost);
+        Object.assign(hold, {active: true, ghost, offsetX: hold.x - box.left, offsetY: hold.y - box.top});
+        dragging = {id: card.dataset.boardJob, from, height: hold.height, card};
+        card.classList.add('dragging');
+        board.classList.add('is-dragging');
+        board.querySelectorAll('.pipe-col').forEach((col) => col.classList.toggle('can-drop', col.dataset.col !== from));
+        document.documentElement.classList.add('job-os-touch-dragging');
+        try { if (navigator.vibrate) navigator.vibrate(8); } catch (_) { /* not everywhere */ }
+        follow();
+        hold.raf = requestAnimationFrame(autoScroll);
+      }, TOUCH_HOLD_MS);
+    }, {passive: true});
+    board.addEventListener('touchmove', (event) => {
+      if (!hold) return;
+      const touch = event.touches[0];
+      hold.x = touch.clientX; hold.y = touch.clientY;
+      if (!hold.active) {
+        // Moved before the hold: a scroll, not a pick-up.
+        if (Math.hypot(hold.x - hold.startX, hold.y - hold.startY) > TOUCH_SLOP) { clearTimeout(hold.timer); hold = null; }
+        return;
+      }
+      if (event.cancelable) event.preventDefault();
+      follow();
+    }, {passive: false});
+    board.addEventListener('touchend', () => finish(true));
+    board.addEventListener('touchcancel', () => finish(false));
+    // Long-press would otherwise open the iOS callout or select text.
+    board.addEventListener('contextmenu', (event) => { if (hold && (hold.active || event.target.closest('.pipe-card'))) event.preventDefault(); });
   }
   const CLOSE_LABELS = {no_response: 'No response', withdrawn: 'Withdrawn', skipped: 'Not for me'};
   function pickClosed(col) {
@@ -1361,7 +1491,7 @@
       state.jobFormError = '';
       return refresh();
     }
-    if (name === 'job-form-close') { state.jobForm = null; state.jobFormError = ''; return refresh(); }
+    if (name === 'job-form-close') { state.jobForm = null; state.jobFormError = ''; paintNow(); return refresh(); }
     return undefined;
   }
   function readJobForm(form) {
@@ -1518,7 +1648,7 @@
     const search = (state.searches || []).find((s) => s.id === searchId);
     if (name === 'scout-new') { state.searchForm = formFromSearch(null); state.searchError = ''; refresh(); }
     else if (name === 'scout-edit') { state.searchForm = formFromSearch(search); state.searchError = ''; refresh(); }
-    else if (name === 'scout-form-close') { state.searchForm = null; state.searchError = ''; refresh(); }
+    else if (name === 'scout-form-close') { state.searchForm = null; state.searchError = ''; paintNow(); refresh(); }
     else if (name === 'scout-run') {
       pending(el, 'Starting…');
       try { await window.JobOSApi.runSearch(searchId, `${searchId}:${Date.now()}`); if (window.Micro) window.Micro.restore(el); }
@@ -1567,17 +1697,25 @@
         state.searchForm = Object.assign({}, state.searchForm, searchPayload(form));
       } catch (error) { toast(error.message || 'Luna could not suggest titles'); }
       el.disabled = false; el.classList.remove('is-busy');
-    } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; refresh(); }
+    } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; paintNow(); refresh(); }
   }
   function mount() { loadPrefs(); applyRoute(); refresh(); }
   function unmount() { if (aborter) aborter.abort(); aborter = null; stopScoutPolling(); if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; } }
+  // The job opens over the page it was tapped on (Dashboard, Scout or Pipeline)
+  // at once, from what the list already knows; the full record fills in after
+  // the drawer has finished sliding in.
   function openJob(jobId) {
     const state = window.JobOSState;
-    // Stay in the current Pipeline filter when opening jobs from it (and with J/K).
-    if (state.activeView !== 'pipeline') state.statusFilter = null;
-    state.selectedJobId = jobId; state.activeView = 'pipeline';
-    replaceRoute('pipeline', state.statusFilter); refresh();
-    requestAnimationFrame(() => { const d = document.getElementById('job-os-detail'); if (d && d.scrollIntoView) d.scrollIntoView({block: 'nearest', behavior: 'smooth'}); });
+    const keep = ['dashboard', 'scout', 'pipeline'].includes(state.activeView);
+    if (!keep) { state.activeView = 'pipeline'; state.statusFilter = null; }
+    const known = (state.jobs || []).find((job) => job.id === jobId)
+      || ((state.matches && state.matches.released) || []).find((job) => job.id === jobId);
+    if (!state.jobDetail || state.jobDetail.id !== jobId) state.jobTimeline = [];
+    state.selectedJobId = jobId;
+    if (known && !(state.jobDetail && state.jobDetail.id === jobId)) state.jobDetail = Object.assign({}, known);
+    state.drawerUntil = state.jobDetail && !document.getElementById('job-os-detail') ? Date.now() + 300 : 0;
+    replaceRoute(state.activeView, state.activeView === 'pipeline' ? state.statusFilter : undefined);
+    refresh();
   }
   function resetDraft() { window.JobOSState.importDraft = emptyDraft(); window.JobOSState.jobForm = null; }
   window.JobOS = {mount, refresh, unmount, openJob, resetDraft};

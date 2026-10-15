@@ -665,7 +665,7 @@
       <div class="agent-canvas-detail-head">
         ${statusDotHtml(node.status)}
         <span class="agent-canvas-detail-title">${node._isRoot ? 'Conductor' : esc(node.goal || node.subagent_id)}</span>
-        <button type="button" class="agent-canvas-detail-close" aria-label="Close">×</button>
+        <button type="button" class="agent-canvas-detail-close" aria-label="Close"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="agent-canvas-detail-row"><span>Status</span><span>${esc(STATUS_LABEL[node.status] || node.status)}</span></div>
       ${node.model ? `<div class="agent-canvas-detail-row"><span>Model</span><span>${esc(node.model)}</span></div>` : ''}

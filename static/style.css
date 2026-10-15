@@ -6339,7 +6339,7 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .job-drawer-title h2{margin:0;font-size:18px;line-height:1.3;color:var(--text);}
 .job-drawer-title p{margin:0;color:var(--muted);font-size:13px;line-height:1.45;}
 .job-drawer-tags{display:flex;align-items:center;gap:8px;}
-.job-drawer-head .wh-insp-close{flex:0 0 auto;width:30px;height:30px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;}
+.job-drawer-head .wh-insp-close{flex:0 0 auto;display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;}
 .job-drawer-head .wh-insp-close:hover{color:var(--text);border-color:var(--accent);}
 .job-drawer-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:18px 22px 24px;}
 .job-drawer-body a.job-os-btn{text-decoration:none;}
@@ -6407,7 +6407,7 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .job-os-detail-head h2{margin:0;font-size:18px;color:var(--text);}
 .job-os-detail-head p{margin:4px 0 0;color:var(--muted);font-size:13px;}
 .job-os-detail-side{display:flex;align-items:flex-start;gap:8px;flex-shrink:0;}
-.job-os-detail-close{width:30px;height:30px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;}
+.job-os-detail-close{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;}
 .job-os-detail-close:hover{color:var(--text);border-color:var(--accent);}
 .job-os-detail a.job-os-btn{text-decoration:none;}
 .job-os-description{max-height:420px;overflow:auto;white-space:pre-wrap;color:var(--text);font-size:13px;line-height:1.6;padding-right:6px;}
@@ -7229,7 +7229,7 @@ main.main > #mainPlugin{display:none;}
 .office-tasks-row-detail-inner{min-height:0;padding:0 10px 8px;border-top:1px solid var(--border2);}
 .office-tasks-row.is-selected .office-tasks-row-detail-inner{padding-top:2px;opacity:1;transform:translateY(0);transition:opacity .28s ease .08s,transform .38s cubic-bezier(.22,.61,.36,1) .06s,padding-top .38s cubic-bezier(.22,.61,.36,1);}
 .office-tasks-row-detail-head{display:flex;align-items:center;gap:8px;padding:7px 0 5px;}
-.office-tasks-row-detail-close{margin-left:auto;border:0;background:none;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;padding:0 2px;}
+.office-tasks-row-detail-close{margin-left:auto;display:grid;place-items:center;width:22px;height:22px;border:0;background:none;color:var(--muted);cursor:pointer;padding:0;}
 .office-tasks-row-detail-close:hover{color:var(--text);}
 .office-tasks-row-detail .office-detail-title{font-size:12px;}
 .office-tasks-row-detail .office-detail-row{padding:2px 0;}
@@ -7457,7 +7457,7 @@ main.main > #mainPlugin{display:none;}
 .agent-canvas-detail-empty{color:var(--muted);font-size:12px;padding:4px 0;}
 .agent-canvas-detail-head{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
 .agent-canvas-detail-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;color:var(--text);}
-.agent-canvas-detail-close{flex:0 0 auto;width:20px;height:20px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center;}
+.agent-canvas-detail-close{flex:0 0 auto;width:20px;height:20px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;}
 .agent-canvas-detail-close:hover{background:var(--hover-bg);color:var(--text);}
 .agent-canvas-detail-row{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted);padding:3px 0;border-bottom:1px solid var(--border);}
 .agent-canvas-detail-row span:last-child{color:var(--text);text-align:right;font-family:var(--font-mono);font-size:11px;}
@@ -11417,7 +11417,8 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 @media (max-width:767px){
   .job-os-tabs{padding-bottom:var(--app-bottom-gap);}
   #mainJobs{padding-bottom:calc(76px + var(--app-bottom-gap));}
-  .job-os-savebar{bottom:calc(68px + var(--app-bottom-gap));}
+  /* Sticky insets count from the content box, which #mainJobs' bottom padding already lifts above the tab bar: a larger inset here pulled the bar up over the last fields. */
+  .job-os-savebar{bottom:8px;}
 }
 
 /* Busy score rings (job cards and Match Check): one seamless full turn. The
@@ -11906,3 +11907,50 @@ html.nb-kb-fit .main{padding-bottom:0 !important;}
 @media (hover:none) and (pointer:coarse){
   :where(button,input[type="button"],input[type="submit"],input[type="reset"]){-webkit-appearance:none;appearance:none;border-radius:0;}
 }
+
+/* Pipeline on a touch screen: hold a card to lift it, drag it onto a column. */
+.pipe-card-ghost{position:fixed;left:0;top:0;z-index:9000;margin:0;pointer-events:none;box-shadow:0 14px 34px rgba(0,0,0,.38);border-color:var(--accent)!important;transition:none!important;will-change:transform;opacity:.96;}
+html.job-os-touch-dragging,html.job-os-touch-dragging *{-webkit-user-select:none!important;user-select:none!important;}
+html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
+@media (hover:none) and (pointer:coarse){.pipe-card[data-movable="true"]{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}}
+
+/* Jobs on a phone: no description under the page title; Settings' connection
+   cards run the full card width (buttons share a row evenly, fields stretch). */
+@media (max-width:767px){
+  .job-os-header p{display:none;}
+  .job-os-settings .job-os-conn{align-items:stretch;}
+  .job-os-settings .job-os-conn>.job-os-btn{width:100%;}
+  .job-os-settings .job-os-actions{display:flex;flex-wrap:wrap;gap:8px;align-self:stretch;}
+  .job-os-settings .job-os-actions>.job-os-btn{flex:1 1 auto;}
+  .job-os-settings .job-os-conn .job-os-btn,.job-os-settings .job-os-inline-select select,.job-os-settings .job-os-inline-select .themed-select-trigger{min-height:40px;height:40px;box-sizing:border-box;border-radius:8px;}
+  .job-os-settings .job-os-inline-select .themed-select-wrap{flex:1 1 auto;min-width:0;width:auto;}
+  .job-os-settings .job-os-inline-select{display:flex;align-self:stretch;width:100%;gap:12px;white-space:nowrap;}
+  .job-os-settings .job-os-inline-select select{flex:1 1 auto;min-width:0;height:40px;box-sizing:border-box;padding:0 10px;}
+  .job-os-settings .site-health-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 10px;align-self:stretch;}
+  .job-os-settings .site-health-row .site-health-when{grid-column:1/-1;margin:0;}
+}
+
+/* A finger leaves :hover behind where it last touched, so a card that appears
+   or moves under that spot (a job just added, a refresh after an action) looked
+   highlighted. Jobs' hover paint belongs to devices that can hover. */
+@media (hover:none){
+  .job-os-metric:hover{border-color:var(--border2);}
+  .job-os-job-card:hover{border-color:transparent;background:transparent;}
+  .job-os-job-card.is-selected:hover{border-color:var(--accent);}
+  .pipe-card:hover{border-color:var(--border2);box-shadow:none;}
+  .pipe-card.is-selected:hover{border-color:var(--stage,var(--accent));box-shadow:0 0 0 1px var(--stage,var(--accent));}
+  button.scout-tile:hover{border-color:var(--border2);transform:none;}
+  .automation-row:hover{border-color:var(--border2);}
+  .job-os-btn:hover:not(.primary):not(.job-os-btn-danger){border-color:var(--border2);color:var(--text);}
+  .job-os-btn.primary:hover{filter:none;}
+  .pipe-card-actions .job-os-btn:hover{border-color:color-mix(in srgb,var(--stage) 50%,transparent);background:color-mix(in srgb,var(--stage) 14%,transparent);color:color-mix(in srgb,var(--stage) 80%,var(--text));}
+  .pipe-card-actions .job-os-btn.primary:hover{filter:none;}
+  .job-os-settings .job-os-toggle:hover{border-color:var(--border2);}
+  .job-os-link:hover{background:transparent;}
+  .job-os-chip.as-link:hover{border-color:var(--border2);}
+}
+
+/* Sideways strips fade where more lies beyond the edge (static/scroll-fade.js sets --fade-l / --fade-r as the strip scrolls). */
+[data-scroll-fading]{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);}
+.pipe-toolbar .job-os-inline-select select,.pipe-toolbar .job-os-inline-select .themed-select-trigger{height:38px;min-height:38px;box-sizing:border-box;border-radius:8px;}
+.pipe-toolbar .job-os-inline-select .themed-select-wrap{width:auto;}
