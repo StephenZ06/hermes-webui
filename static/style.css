@@ -11950,7 +11950,45 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
   .job-os-chip.as-link:hover{border-color:var(--border2);}
 }
 
-/* Sideways strips fade where more lies beyond the edge (static/scroll-fade.js sets --fade-l / --fade-r as the strip scrolls). */
-[data-scroll-fading]{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);}
+/* Sideways strips fade their lettering (not the buttons) where more lies beyond the edge (static/scroll-fade.js sets --sf-mask per text span). */
+.sf-text{display:inline-block;max-width:100%;}
+.sf-text[data-sf]{-webkit-mask-image:var(--sf-mask);mask-image:var(--sf-mask);}
 .pipe-toolbar .job-os-inline-select select,.pipe-toolbar .job-os-inline-select .themed-select-trigger{height:38px;min-height:38px;box-sizing:border-box;border-radius:8px;}
 .pipe-toolbar .job-os-inline-select .themed-select-wrap{width:auto;}
+
+/* The left-edge guard (boot.js) is what stops WebKit's swipe-back gesture, so it
+   has to sit above every overlay that can cover the left edge: the job drawer,
+   forms, previews and dialogs all sit higher than its old z-index of 198, which
+   left a swipe from the edge going back a page. A drawer that fills the screen
+   also covers the top strip the guard normally leaves for the title bar. */
+@media (max-width:767px){
+  .pwa-sidebar-edge-guard{z-index:10001;}
+  html:has(.job-drawer) .pwa-sidebar-edge-guard,
+  html:has(.resume-preview) .pwa-sidebar-edge-guard{top:0;}
+}
+
+/* Settings on a phone: every option block (field, switch, note, card) sits the
+   same 16px from the next, and the page ends with room to spare above the tab bar. */
+@media (max-width:767px){
+  .job-os-settings .job-os-settings-section,
+  .settings-page>.job-os-settings-section{gap:16px;}
+  .job-os-settings .job-os-grid,
+  .job-os-settings .scout-form-grid{gap:16px;}
+  .job-os-settings .job-os-conn{gap:16px;}
+  .job-os-settings .job-os-conn+.job-os-conn{margin-top:0;}
+  .settings-page{gap:16px;padding-bottom:20px;}
+}
+
+/* Pipeline board: a funnel beside each column's count opens that column's own filter. */
+.pipe-col-head .pipe-col-filter-btn{margin-left:auto;display:grid;place-items:center;flex:0 0 22px;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;line-height:0;}
+.pipe-col-head .pipe-col-filter-btn+.job-os-count{margin-left:0;}
+.pipe-col-filter-btn:hover{background:color-mix(in srgb,var(--border2) 50%,transparent);color:var(--text);}
+.pipe-col-filter-btn[aria-expanded="true"],.pipe-col-filter-btn.is-active{color:var(--stage,var(--accent));}
+.pipe-col-filter-btn.is-active{background:color-mix(in srgb,var(--stage,var(--accent)) 16%,transparent);}
+.pipe-col-filter{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:0 0 2px;}
+.pipe-col-filter input[type="search"]{grid-column:1/-1;}
+.pipe-col-filter input,.pipe-col-filter select,.pipe-col-filter .themed-select-trigger{box-sizing:border-box;width:100%;height:32px;min-height:32px;min-width:0;padding:0 8px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg,var(--bg));color:var(--text);font:inherit;font-size:12.5px;-webkit-appearance:none;appearance:none;}
+.pipe-col-filter input::-webkit-search-cancel-button{-webkit-appearance:none;display:none;}
+.pipe-col-filter .themed-select-wrap{min-width:0;}
+.pipe-col-filter .job-os-link{grid-column:1/-1;justify-self:start;}
+@media (hover:none){.pipe-col-filter-btn:hover:not([aria-expanded="true"]):not(.is-active){background:transparent;color:var(--muted);}}

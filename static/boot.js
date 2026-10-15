@@ -620,6 +620,8 @@ function _onPwaSidebarSwipeStart(e){
   if(_isDesktopWidth())return;
   if(_isTouchPointerEvent(e))return;
   if(e.pointerType==='mouse'||(e.pointerType&&e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
+  // The drawer would open behind a full-screen job drawer or preview, unseen.
+  if(document.querySelector('.job-drawer,.resume-preview'))return;
   const stage=_mobileDrawerState();
   if(stage==='open')return;
   const point=_pwaSidebarSwipePoint(e);
@@ -783,6 +785,8 @@ function _replayEdgeGuardTap(x,y){
   if(!el)return;
   try{
     el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));
+    // A synthetic click does not focus a field the way a real tap does.
+    if(el.matches&&el.matches('input:not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable="true"]'))el.focus();
   }catch(_){}
 }
 

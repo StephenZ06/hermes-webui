@@ -202,24 +202,79 @@ def test_page_titles_have_no_description_on_a_phone():
             browser.close()
 
 
-def test_the_pipeline_filter_strip_fades_where_more_lies_beyond_the_edge():
+def test_the_pipeline_filter_strip_fades_its_text_not_its_buttons():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser, page = _open(pw, "#jobs/pipeline")
         try:
             strip = ".pipe-toolbar > .seg:first-child"
             page.wait_for_selector(strip + "[data-scroll-fading]", timeout=10000)
-            read = lambda: page.evaluate("""(sel) => { const e = document.querySelector(sel); const s = getComputedStyle(e);
-              return [parseFloat(e.style.getPropertyValue('--fade-l')), parseFloat(e.style.getPropertyValue('--fade-r')), (s.maskImage || s.webkitMaskImage || '').slice(0, 15)]; }""", strip)
-            left, right, mask = read()
-            assert left == 0 and right > 20 and mask.startswith("linear-gradient"), (left, right, mask)
-            page.evaluate("(sel) => { const e = document.querySelector(sel); e.scrollLeft = 10; }", strip)
-            page.wait_for_timeout(100)
-            left, right, _ = read()
-            assert 8 < left < 12 and right > 20, (left, right)
+            read = lambda: page.evaluate("""(sel) => { const e = document.querySelector(sel);
+              const strip = getComputedStyle(e);
+              const masked = [...e.querySelectorAll('.sf-text[data-sf]')].map((s) => s.textContent.trim());
+              const buttons = [...e.querySelectorAll('.seg-btn')].map((b) => { const c = getComputedStyle(b); return c.maskImage || c.webkitMaskImage || 'none'; });
+              return {stripMask: strip.maskImage || strip.webkitMaskImage || 'none', masked, buttons, last: e.querySelector('.seg-btn:last-child .sf-text')?.textContent.trim()}; }""", strip)
+            at_start = read()
+            assert at_start["stripMask"] == "none" and set(at_start["buttons"]) == {"none"}, at_start
+            assert at_start["masked"] and at_start["last"] in at_start["masked"], at_start
             page.evaluate("(sel) => { const e = document.querySelector(sel); e.scrollLeft = e.scrollWidth; }", strip)
-            page.wait_for_timeout(100)
-            left, right, _ = read()
-            assert left > 20 and right == 0, (left, right)
+            page.wait_for_timeout(200)
+            at_end = read()
+            assert at_end["masked"] and at_end["last"] not in at_end["masked"], at_end
+            assert "All" in at_end["masked"], "the first label fades at the left once scrolled"
+        finally:
+            browser.close()
+
+
+def test_edge_swipe_is_claimed_over_the_job_drawer_so_it_cannot_go_back_a_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _job()
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/scout")
+        try:
+            page.evaluate("(id) => JobOS.openJob(id)", job["id"])
+            page.wait_for_selector("#job-os-detail")
+            page.wait_for_timeout(500)
+            cdp = page.context.new_cdp_session(page)
+            page.evaluate("() => { window.__probe = []; window.addEventListener('touchstart', (e) => window.__probe.push(e.defaultPrevented), {passive: true}); }")
+            for y in (20, 300, 700):
+                _touch(cdp, "touchStart", 10, y)
+                _touch(cdp, "touchEnd", 0, 0)
+            assert page.evaluate("() => window.__probe") == [True, True, True]
+            assert page.evaluate("() => !!document.getElementById('job-os-detail')"), "swiping did not slide a hidden sidebar over the drawer"
+            assert page.evaluate("() => !document.querySelector('.sidebar.mobile-open')")
+        finally:
+            browser.close()
+
+
+def test_each_pipeline_column_has_its_own_filter_beside_its_count():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    tag = uuid.uuid4().hex[:6]
+    _job(f"Alpha {tag}")
+    _job(f"Beta {tag}")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/pipeline")
+        try:
+            page.wait_for_selector('.pipe-col[data-col="new"] .pipe-card', timeout=15000)
+            geo = page.evaluate("""() => { const h = document.querySelector('.pipe-col[data-col="new"] .pipe-col-head');
+              const b = h.querySelector('.pipe-col-filter-btn').getBoundingClientRect(); const c = h.querySelector('.job-os-count').getBoundingClientRect();
+              const t = h.querySelector('h3').getBoundingClientRect(); return {bRight: b.right, cLeft: c.left, tRight: t.right, bh: b.height, bTop: b.top, bBottom: b.bottom, hTop: h.getBoundingClientRect().top, hBottom: h.getBoundingClientRect().bottom}; }""")
+            assert page.locator('.pipe-col[data-col="new"] .pipe-col-filter-btn svg path').count() >= 1, "the funnel icon is drawn"
+            assert geo["tRight"] <= geo["bRight"] <= geo["cLeft"] + 1, geo
+            assert geo["bh"] <= geo["hBottom"] - geo["hTop"] + 1, geo
+            names = "[...document.querySelectorAll(\"[data-col='new'] .pipe-card-name\")].map((e) => e.textContent)"
+            page.locator('.pipe-col[data-col="new"] .pipe-col-filter-btn').tap()
+            page.wait_for_selector('.pipe-col[data-col="new"] .pipe-col-filter')
+            page.fill('.pipe-col[data-col="new"] [data-col-filter="query"]', f"alpha {tag}")
+            page.wait_for_function(f"(tag) => {{ const n = {names}; return n.length === 1 && n[0] === 'Alpha ' + tag; }}", arg=tag, timeout=5000)
+            assert page.locator('.pipe-col[data-col="favorite"] .pipe-col-filter').count() == 0, "other columns are untouched"
+            page.fill('.pipe-col[data-col="new"] [data-col-filter="query"]', tag)
+            page.select_option('.pipe-col[data-col="new"] select[data-col-filter="min"]', "85")
+            page.wait_for_function(f"(tag) => !{names}.some((t) => t.endsWith(tag))", arg=tag, timeout=5000)
+            page.select_option('.pipe-col[data-col="new"] select[data-col-filter="min"]', "none")
+            page.select_option('.pipe-col[data-col="new"] select[data-col-filter="sort"]', "oldest")
+            page.wait_for_function(f"(tag) => {{ const n = {names}; return n.length === 2 && n.includes('Alpha ' + tag) && n.includes('Beta ' + tag); }}", arg=tag, timeout=5000)
+            page.click('.pipe-col[data-col="new"] [data-job-os-action="pipe-col-filter-clear"]')
+            page.wait_for_function("() => !document.querySelector('.pipe-col-filter-btn.is-active')", timeout=5000)
         finally:
             browser.close()

@@ -345,8 +345,18 @@
   function showStatus(status) { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = status || null; replaceRoute('pipeline', window.JobOSState.statusFilter); paintNow(); refresh(); }
   // One delegated listener per container: the page and the side-panel nav
   // re-render on every refresh, so per-button listeners would be rebuilt anyway.
+  // A column's filter (text, minimum match, order) redraws that board from what is loaded.
+  function setColumnFilter(control) {
+    const state = window.JobOSState;
+    const col = control.dataset.col;
+    state.colFilters = state.colFilters || {};
+    state.colFilters[col] = Object.assign({}, state.colFilters[col], {[control.dataset.colFilter]: control.value});
+    repaint();
+  }
   async function onChange(event) {
     const state = window.JobOSState;
+    const colControl = event.target.closest('[data-col-filter]');
+    if (colControl) { setColumnFilter(colControl); return; }
     const country = event.target.closest('[data-job-os-change="scout-country"]');
     if (country) {
       const form = country.form;
@@ -358,6 +368,8 @@
   // The Pipeline search box filters as you type (a frame at a time, never a fetch).
   let searchFrame = 0;
   function onInput(event) {
+    const colBox = event.target.closest('input[data-col-filter]');
+    if (colBox) { cancelAnimationFrame(searchFrame); searchFrame = requestAnimationFrame(() => setColumnFilter(colBox)); return; }
     const box = event.target.closest('#job-os-pipe-search');
     if (!box) return;
     window.JobOSState.pipelineQuery = box.value;
@@ -1481,6 +1493,13 @@
       state.collapsedColumns = [...set]; savePrefs();
       return repaint();
     }
+    if (name === 'pipe-col-filter') {
+      state.colFilterOpen = state.colFilterOpen === el.dataset.col ? null : el.dataset.col;
+      repaint();
+      if (state.colFilterOpen) document.querySelector(`.pipe-col[data-col="${CSS.escape(state.colFilterOpen)}"] [data-col-filter="query"]`)?.focus({preventScroll: true});
+      return undefined;
+    }
+    if (name === 'pipe-col-filter-clear') { if (state.colFilters) delete state.colFilters[el.dataset.col]; repaint(); return undefined; }
     if (name === 'pipe-search-clear') { state.pipelineQuery = ''; repaint(); document.getElementById('job-os-pipe-search')?.focus(); return undefined; }
     if (name === 'job-form-new') { state.jobForm = Object.assign(emptyJobForm(), window.JobOSState.importDraft || {}); state.jobFormError = ''; return refresh(); }
     if (name === 'job-form-edit') {

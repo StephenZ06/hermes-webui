@@ -5,6 +5,7 @@
   const labels = {dashboard: 'Dashboard', scout: 'Scout', pipeline: 'Pipeline', 'resume-studio': 'Resume Studio', settings: 'Settings'};
   // Linear icons from mx-icons (MIT; see static/vendor/mx-icons/LICENSE), 24px grid.
   const icons = {
+    filter: '<path d="M4 5h16l-6.3 7.1v5.4l-3.4 1.8v-7.2Z"/>',
     dashboard: '<path d="M22 10.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V10.9C13.5 12.4 14.14 13 15.73 13H19.77C21.36 13 22 12.4 22 10.9Z"/><path d="M22 19.9V18.1C22 16.6 21.36 16 19.77 16H15.73C14.14 16 13.5 16.6 13.5 18.1V19.9C13.5 21.4 14.14 22 15.73 22H19.77C21.36 22 22 21.4 22 19.9Z"/><path d="M10.5 13.1V19.9C10.5 21.4 9.86 22 8.27 22H4.23C2.64 22 2 21.4 2 19.9V13.1C2 11.6 2.64 11 4.23 11H8.27C9.86 11 10.5 11.6 10.5 13.1Z"/><path d="M10.5 4.1V5.9C10.5 7.4 9.86 8 8.27 8H4.23C2.64 8 2 7.4 2 5.9V4.1C2 2.6 2.64 2 4.23 2H8.27C9.86 2 10.5 2.6 10.5 4.1Z"/>',
     scout: '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/>',
     pipeline: '<path d="M10.5 19.9V4.1C10.5 2.6 9.86 2 8.27 2H4.23C2.64 2 2 2.6 2 4.1V19.9C2 21.4 2.64 22 4.23 22H8.27C9.86 22 10.5 21.4 10.5 19.9Z"/><path d="M22 12.9V4.1C22 2.6 21.36 2 19.77 2H15.73C14.14 2 13.5 2.6 13.5 4.1V12.9C13.5 14.4 14.14 15 15.73 15H19.77C21.36 15 22 14.4 22 12.9Z"/>',
@@ -535,19 +536,46 @@
     return q.split(/\s+/).every((word) => hay.includes(word));
   }
   const shownOn = (state) => (job) => (state.pipelineSource === 'all' || !state.pipelineSource || sourceOf(job) === state.pipelineSource) && matchesQuery(job, state.pipelineQuery);
+  // A column's own filter (the funnel beside its count): text, minimum match, order.
+  const COL_MIN = [['', 'Any match'], ['85', '85%+ match'], ['75', '75%+ match'], ['65', '65%+ match'], ['none', 'Not scored yet']];
+  const COL_SORT = [['', 'Default order'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['best', 'Best match first'], ['updated', 'Recently updated']];
+  const colFilterOn = (f) => !!(f && (String(f.query || '').trim() || f.min || f.sort));
+  function filterColumn(jobs, f) {
+    if (!colFilterOn(f)) return jobs;
+    const q = String(f.query || '').trim().toLowerCase();
+    const score = (j) => (j.analysis && j.analysis.fit_score != null ? Number(j.analysis.fit_score) : null);
+    const rows = jobs.filter((j) => (!q || `${j.title || ''} ${j.company || ''} ${j.location || ''}`.toLowerCase().includes(q))
+      && (!f.min || (f.min === 'none' ? score(j) == null : score(j) != null && score(j) >= Number(f.min))));
+    const by = {
+      newest: (a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0),
+      oldest: (a, b) => (Number(a.created_at) || 0) - (Number(b.created_at) || 0),
+      updated: (a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0),
+      best: (a, b) => (score(b) == null ? -1 : score(b)) - (score(a) == null ? -1 : score(a)),
+    }[f.sort];
+    return by ? rows.slice().sort(by) : rows;
+  }
+  function colFilterPanel(c, f) {
+    const opt = (list, current) => list.map(([v, label]) => `<option value="${v}"${(current || '') === v ? ' selected' : ''}>${esc(label)}</option>`).join('');
+    return `<div class="pipe-col-filter" data-key="colf-${esc(c.key)}"><input type="search" data-col-filter="query" data-col="${esc(c.key)}" placeholder="Filter jobs" aria-label="Filter ${esc(c.label)} by title or company" autocomplete="off" spellcheck="false" enterkeyhint="search" value="${esc(f.query || '')}">`
+      + `<select data-col-filter="min" data-col="${esc(c.key)}" aria-label="Minimum match">${opt(COL_MIN, f.min)}</select>`
+      + `<select data-col-filter="sort" data-col="${esc(c.key)}" aria-label="Order">${opt(COL_SORT, f.sort)}</select>`
+      + (colFilterOn(f) ? `<button type="button" class="job-os-link" data-job-os-action="pipe-col-filter-clear" data-col="${esc(c.key)}">Clear filter</button>` : '') + '</div>';
+  }
   function pipelineBoard(state) {
     const board = state.board;
     if (!board) return LOADING;
     const keep = shownOn(state);
-    const columns = board.columns.map((c) => Object.assign({}, c, {jobs: c.jobs.filter(keep)}));
+    const filters = state.colFilters || {};
+    const columns = board.columns.map((c) => Object.assign({}, c, {jobs: filterColumn(c.jobs.filter(keep), filters[c.key])}));
     const total = columns.reduce((n, c) => n + c.jobs.length, 0);
     if (!total) return state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
     const folded = new Set(state.collapsedColumns || []);
     const tracks = columns.map((c) => (folded.has(c.key) ? '48px' : 'minmax(272px,1fr)')).join(' ');
+    const filterBtn = (c) => `<button type="button" class="pipe-col-filter-btn${colFilterOn(filters[c.key]) ? ' is-active' : ''}" data-job-os-action="pipe-col-filter" data-col="${esc(c.key)}" aria-label="Filter ${esc(c.label)}" title="Filter ${esc(c.label)}" aria-expanded="${state.colFilterOpen === c.key}">${icon('filter', 13)}</button>`;
     const fold = (c, open) => `<button type="button" class="pipe-col-fold" data-job-os-action="pipe-collapse" data-col="${esc(c.key)}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(c.label)}" title="${open ? 'Collapse' : 'Expand'}" aria-expanded="${open}">${icon(open ? 'prev' : 'next', 14)}</button>`;
     return `<div class="pipe-board" role="list" aria-label="Pipeline stages" style="grid-template-columns:${tracks}">${columns.map((c) => (folded.has(c.key)
       ? `<section class="pipe-col is-folded" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}, collapsed"><header class="pipe-col-head">${fold(c, false)}<span class="job-os-count">${c.jobs.length}</span><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3></header><div class="pipe-col-cards"></div></section>`
-      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3><span class="job-os-count">${c.jobs.length}</span>${fold(c, true)}</header><div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
+      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3>${filterBtn(c)}<span class="job-os-count">${c.jobs.length}</span>${fold(c, true)}</header>${state.colFilterOpen === c.key ? colFilterPanel(c, filters[c.key] || {}) : ''}<div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
       <div class="pipe-hscroll" aria-hidden="true"><div class="pipe-hscroll-track"></div></div>`;
   }
   function noMatches(state) {
