@@ -983,6 +983,45 @@ def print_startup_config() -> None:
         )
 
 
+def keep_server_interpreter_packages() -> None:
+    """Undo the agent bootstrap's switch to its managed Python's packages.
+
+    Importing any agent module runs ``hermes_bootstrap``, which replaces every
+    ``site-packages`` entry on ``sys.path`` (and ``PYTHONPATH``) with the
+    committed managed environment under ``<HERMES_HOME>/installs``. That
+    environment belongs to another interpreter (3.14); this server runs from
+    the agent's ``venv/`` (3.11), so the first lazy import of a compiled
+    package afterwards fails with ``ModuleNotFoundError`` (``pydantic_core``
+    through ``openai``). Drop the foreign entries and put this interpreter's
+    own ``site-packages`` back. Idempotent; cheap enough to call after each
+    agent import.
+    """
+    import sysconfig
+
+    def foreign(entry: str) -> bool:
+        parts = Path(entry).parts
+        return (
+            "installs" in parts
+            and "environments" in parts
+            and entry.rstrip("/\\").endswith(("site-packages", "dist-packages"))
+            and f"python{sys.version_info.major}.{sys.version_info.minor}" not in parts
+        )
+
+    kept = [entry for entry in sys.path if not (isinstance(entry, str) and foreign(entry))]
+    if len(kept) != len(sys.path):
+        sys.path[:] = kept
+    own = sysconfig.get_paths().get("purelib")
+    if own and own not in sys.path and Path(own).is_dir():
+        sys.path.append(own)
+    pythonpath = os.environ.get("PYTHONPATH")
+    if pythonpath:
+        remaining = [entry for entry in pythonpath.split(os.pathsep) if entry and not foreign(entry)]
+        if remaining:
+            os.environ["PYTHONPATH"] = os.pathsep.join(remaining)
+        else:
+            os.environ.pop("PYTHONPATH", None)
+
+
 def verify_hermes_imports() -> tuple:
     """
     Attempt to import the key Hermes modules.
@@ -999,6 +1038,7 @@ def verify_hermes_imports() -> tuple:
             # Capture the full error message so startup logs show WHY
             # (e.g. pydantic_core .so mismatch) instead of just the name.
             errors[mod] = f"{type(e).__name__}: {e}"
+    keep_server_interpreter_packages()
     return (len(missing) == 0), missing, errors
 
 

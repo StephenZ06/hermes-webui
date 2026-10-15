@@ -3,7 +3,7 @@ import os
 import sys
 import sysconfig
 
-from api import agent_runtime
+from api import config as agent_runtime
 
 
 def _managed_entry(tmp_path):

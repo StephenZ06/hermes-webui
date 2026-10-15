@@ -16,6 +16,7 @@ import threading
 # Retain the discovered path as a diagnostic/test-visible compatibility value;
 # runtime identity is deliberately captured from the loaded module below.
 from api.config import _AGENT_DIR  # noqa: F401
+from api.config import keep_server_interpreter_packages
 from api.subprocess_utils import windows_hide_flags
 
 _RESTART_MESSAGE = (
@@ -141,46 +142,6 @@ def ensure_agent_runtime_current() -> None:
         != _AGENT_REVISION
     ):
         raise AgentRuntimeChangedError(_RESTART_MESSAGE)
-
-
-def keep_server_interpreter_packages() -> None:
-    """Undo the agent bootstrap's switch to its managed Python's packages.
-
-    Importing any agent module runs ``hermes_bootstrap``, which replaces every
-    ``site-packages`` entry on ``sys.path`` (and ``PYTHONPATH``) with the
-    committed managed environment under ``<HERMES_HOME>/installs``. That
-    environment belongs to another interpreter (3.14); this server runs from
-    the agent's ``venv/`` (3.11), so the first lazy import of a compiled
-    package afterwards fails with ``ModuleNotFoundError`` (``pydantic_core``
-    through ``openai``). Drop the foreign entries and put this interpreter's
-    own ``site-packages`` back. Idempotent; cheap enough to call after each
-    agent import.
-    """
-    import os
-    import sysconfig
-
-    def foreign(entry: str) -> bool:
-        parts = Path(entry).parts
-        return (
-            "installs" in parts
-            and "environments" in parts
-            and entry.rstrip("/\\").endswith(("site-packages", "dist-packages"))
-            and f"python{sys.version_info.major}.{sys.version_info.minor}" not in parts
-        )
-
-    kept = [entry for entry in sys.path if not (isinstance(entry, str) and foreign(entry))]
-    if len(kept) != len(sys.path):
-        sys.path[:] = kept
-    own = sysconfig.get_paths().get("purelib")
-    if own and own not in sys.path and Path(own).is_dir():
-        sys.path.append(own)
-    pythonpath = os.environ.get("PYTHONPATH")
-    if pythonpath:
-        remaining = [entry for entry in pythonpath.split(os.pathsep) if entry and not foreign(entry)]
-        if remaining:
-            os.environ["PYTHONPATH"] = os.pathsep.join(remaining)
-        else:
-            os.environ.pop("PYTHONPATH", None)
 
 
 def require_ai_agent_class():
