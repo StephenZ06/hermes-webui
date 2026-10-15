@@ -39,7 +39,7 @@
   // Classes the page adds at run time (entry, selection, drag, drawn previews):
   // a patch keeps them where the new HTML doesn't say otherwise.
   const RUNTIME_CLASSES = ['is-entering', 'dragging', 'drop-target', 'can-drop', 'is-dragging',
-    'is-focus', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning',
+    'is-focus', 'is-leaving', 'is-paging', 'is-sent', 'is-over', 'is-closing', 'item-arrive', 'card-landed', 'is-scrolling', 'is-panning',
     'is-focused', 'mi-tabs', 'mi-tabs-ready', 'mi-shake', 'mi-busy', 'mi-done'];
   // Nodes micro.js adds or holds (the tab pill, a button showing "Saved"): a patch leaves them be.
   const kept = (node) => node.nodeType === 1 && node.hasAttribute('data-mi-keep');
@@ -1508,7 +1508,16 @@
       return repaint();
     }
     if (name === 'pipe-col-filter') {
-      state.colFilterOpen = state.colFilterOpen === el.dataset.col ? null : el.dataset.col;
+      const closing = state.colFilterOpen === el.dataset.col;
+      const panel = closing ? document.querySelector(`.pipe-col[data-col="${CSS.escape(el.dataset.col)}"] .pipe-col-filter`) : null;
+      if (panel && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        // Fold away first, then redraw without it.
+        panel.classList.add('is-leaving');
+        const col = el.dataset.col;
+        setTimeout(() => { if (state.colFilterOpen === col) { state.colFilterOpen = null; repaint(); } }, 180);
+        return undefined;
+      }
+      state.colFilterOpen = closing ? null : el.dataset.col;
       repaint();
       if (state.colFilterOpen) document.querySelector(`.pipe-col[data-col="${CSS.escape(state.colFilterOpen)}"] [data-col-filter="query"]`)?.focus({preventScroll: true});
       return undefined;

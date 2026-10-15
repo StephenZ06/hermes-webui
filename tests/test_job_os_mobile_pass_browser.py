@@ -333,3 +333,25 @@ def test_settings_sections_are_separate_cards_with_a_gap_between():
             assert all(r["radius"] >= 12 and r["bw"] >= 1 for r in rects), rects
         finally:
             browser.close()
+
+
+def test_the_column_filter_eases_open_and_folds_away():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    _job()
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/pipeline")
+        try:
+            col = '.pipe-col[data-col="new"]'
+            page.wait_for_selector(col + " .pipe-card", timeout=15000)
+            page.locator(col + " .pipe-col-filter-btn").tap()
+            page.wait_for_selector(col + " .pipe-col-filter")
+            early = page.evaluate("(c) => { const e = document.querySelector(c + ' .pipe-col-filter'); return [getComputedStyle(e).animationName, parseFloat(getComputedStyle(e).opacity)]; }", col)
+            assert early[0] == "pipe-filter-in" and early[1] < 1, early
+            page.wait_for_timeout(450)
+            assert page.evaluate("(c) => parseFloat(getComputedStyle(document.querySelector(c + ' .pipe-col-filter')).opacity)", col) == 1
+            page.locator(col + " .pipe-col-filter-btn").tap()
+            leaving = page.evaluate("(c) => document.querySelector(c + ' .pipe-col-filter')?.classList.contains('is-leaving')", col)
+            assert leaving, "folds away instead of vanishing"
+            page.wait_for_function("(c) => !document.querySelector(c + ' .pipe-col-filter')", arg=col, timeout=3000)
+        finally:
+            browser.close()
