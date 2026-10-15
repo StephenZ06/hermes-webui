@@ -359,3 +359,26 @@ def test_the_column_filter_eases_open_and_folds_away():
             page.wait_for_function("(c) => !document.querySelector(c + ' .pipe-col-filter')", arg=col, timeout=3000)
         finally:
             browser.close()
+
+
+def test_test_buttons_are_violet_disconnect_is_red_and_the_save_bar_is_slim():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/settings")
+        try:
+            _connections(page)
+            colours = page.evaluate("""() => { const c = (sel) => { const e = document.querySelector(sel); const s = getComputedStyle(e); return [s.color, s.borderTopColor]; };
+              return {firecrawl: c('[data-job-os-action="test-firecrawl"]'), gmailTest: c('[data-job-os-action="gmail-test"]'), disconnect: c('[data-job-os-action="gmail-disconnect"]'), replace: c('[data-job-os-action="gmail-edit"]')}; }""")
+            violet = "rgb(139, 92, 246)"
+            assert colours["firecrawl"] == [violet, violet] and colours["gmailTest"] == [violet, violet], colours
+            assert colours["disconnect"][0] == colours["disconnect"][1] and colours["disconnect"][0] != colours["replace"][0], colours
+            page.evaluate("""async () => { JobOSState.settingsSection = 'apify'; document.getElementById('jobOsRoot').innerHTML = JobOSRender.shell(JobOSState); }""")
+            assert page.evaluate("() => getComputedStyle(document.querySelector('[data-job-os-action=\"apify-edit\"], [data-job-os-action=\"apify-connect\"]')) && true")
+            page.evaluate("""async () => { JobOSState.settingsSection = 'notifications'; document.getElementById('jobOsRoot').innerHTML = JobOSRender.shell(JobOSState); }""")
+            assert page.evaluate("() => getComputedStyle(document.querySelector('[data-job-os-action=\"notify-digest\"]')).color") == violet
+            page.evaluate("() => { JobOSState.settingsDirty = true; document.getElementById('jobOsRoot').innerHTML = JobOSRender.shell(JobOSState); }")
+            page.wait_for_timeout(400)
+            h = page.evaluate("() => document.querySelector('.job-os-savebar').getBoundingClientRect().height")
+            assert h <= 46, h
+        finally:
+            browser.close()

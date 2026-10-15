@@ -311,7 +311,7 @@
         <div class="job-os-conn-head"><strong>Gmail sender</strong>${pill(true, 'Connected')}</div>
         <p class="job-os-card-note">Hermes sends from <strong>${esc(gmail.address_hint || 'your account')}</strong>, named after the part of Hermes writing (<em>Hermes Jobs</em>, <em>Hermes Business</em>), to the <em>Send to</em> address under Notifications (this account if that is empty). ${gmail.scope === 'shared' ? 'Saved once for every profile.' : 'Saved for this profile.'}</p>
         <label class="job-os-inline-select">Send test as <select id="job-os-gmail-test-context" aria-label="Sender name for the test email"><option value="jobs">Hermes Jobs</option><option value="business">Hermes Business</option></select></label>
-        <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
+        <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
         ${msg}
       </div>`;
     }
@@ -336,7 +336,7 @@
       ? `<div class="job-os-conn" id="job-os-apify">
           <div class="job-os-conn-head"><strong>API token</strong>${pill(true, 'Connected')}</div>
           <p class="job-os-card-note">Token ending <code>${esc(ap.token_hint || '')}</code>, saved ${where}. It is never shown again.</p>
-          <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="apify-test">Test token</button><button type="button" class="job-os-btn" data-job-os-action="apify-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="apify-disconnect">Disconnect</button></div>
+          <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="apify-test">Test token</button><button type="button" class="job-os-btn" data-job-os-action="apify-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="apify-disconnect">Disconnect</button></div>
           ${msg}</div>`
       : `<div class="job-os-conn" id="job-os-apify">
           <div class="job-os-conn-head"><strong>API token</strong>${pill(false, 'Not connected')}</div>
@@ -368,7 +368,7 @@
         <div class="job-os-conn-head"><strong>Firecrawl</strong>${pill(fc.state === 'healthy', FIRECRAWL_LABELS[fc.state] || 'Unknown')}</div>
         <p class="job-os-card-note">${esc(fc.detail || '')}${fc.base_url ? ` Using <code>${esc(fc.base_url)}</code>${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from your .env settings)' : ''}.` : ''}${fc.latency_ms != null ? ` ${esc(fc.latency_ms)} ms.` : ''}</p>
         ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from your .env settings', 'url')}
-        <button type="button" class="job-os-btn" data-job-os-action="test-firecrawl">Test connection</button>
+        <button type="button" class="job-os-btn is-purple" data-job-os-action="test-firecrawl">Test connection</button>
       </div>
       ${gmailBlock(state, gmail, gmailReady)}
       ${jobSitesBlock(state)}`);
@@ -462,7 +462,7 @@
     const log = (n.log || []).slice(0, 6);
     return `<div class="job-os-notify-status">
       <p class="job-os-card-note">${n.last_digest ? `Last digest ${esc(n.last_digest)}. ` : ''}${checked}.${n.last_poll_error ? ` <span class="job-os-error">${esc(n.last_poll_error)}</span>` : ''}</p>
-      <div class="job-os-actions"><button type="button" class="job-os-btn" data-job-os-action="notify-digest" ${n.ready ? '' : 'disabled'}>Send digest now</button><button type="button" class="job-os-btn" data-job-os-action="notify-check" ${n.ready ? '' : 'disabled'}>Check replies now</button></div>
+      <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="notify-digest" ${n.ready ? '' : 'disabled'}>Send digest now</button><button type="button" class="job-os-btn" data-job-os-action="notify-check" ${n.ready ? '' : 'disabled'}>Check replies now</button></div>
       ${log.length ? `<ul class="job-os-email-log">${log.map((e) => `<li data-status="${esc(e.status)}"><strong>${esc(EMAIL_KINDS[e.kind] || e.kind)}</strong> ${esc(e.status)}${e.subject ? ` · ${esc(e.subject)}` : ''}${e.detail ? `<small>${esc(e.detail)}</small>` : ''}<time>${esc(when(e.created_at))}</time></li>`).join('')}</ul>` : ''}
     </div>`;
   }
