@@ -11992,3 +11992,20 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
 .pipe-col-filter .themed-select-wrap{min-width:0;}
 .pipe-col-filter .job-os-link{grid-column:1/-1;justify-self:start;}
 @media (hover:none){.pipe-col-filter-btn:hover:not([aria-expanded="true"]):not(.is-active){background:transparent;color:var(--muted);}}
+
+/* A filtered column says so: filled funnel with a dot, a "shown/all" count, and a bar under the title that reopens the filter. */
+.pipe-col-filter-btn{position:relative;}
+.pipe-col-filter-btn.is-active svg{fill:currentColor;}
+.pipe-col-filter-btn.is-active::after{content:"";position:absolute;top:1px;right:1px;width:7px;height:7px;border-radius:50%;background:var(--stage,var(--accent));box-shadow:0 0 0 2px var(--card,var(--surface));}
+.pipe-col-head .job-os-count.is-filtered{color:var(--stage,var(--accent));background:color-mix(in srgb,var(--stage,var(--accent)) 16%,transparent);}
+.pipe-col-filtered{display:flex;align-items:center;gap:6px;width:100%;min-height:28px;padding:0 8px;border:1px solid color-mix(in srgb,var(--stage,var(--accent)) 45%,transparent);border-radius:8px;background:color-mix(in srgb,var(--stage,var(--accent)) 10%,transparent);color:var(--stage,var(--accent));font:inherit;font-size:11.5px;font-weight:600;text-align:left;cursor:pointer;}
+.pipe-col-filtered span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pipe-col-filtered svg{flex:0 0 auto;fill:currentColor;}
+
+/* Settings list on a phone: every section is its own card with a gap between. */
+@media (max-width:767px){
+  .settings-nav,.settings-nav.mi-tabs{gap:10px;}
+  .settings-nav .settings-nav-item,.settings-nav-group+.settings-nav-item,.settings-nav-item:has(+ .settings-nav-group),.settings-nav-item:last-child{border-width:1px;border-radius:14px;}
+  .settings-nav-group{margin:14px 4px 0;}
+  .settings-nav-group:first-of-type{margin-top:4px;}
+}

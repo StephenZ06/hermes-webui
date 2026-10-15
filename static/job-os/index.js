@@ -351,6 +351,7 @@
     const col = control.dataset.col;
     state.colFilters = state.colFilters || {};
     state.colFilters[col] = Object.assign({}, state.colFilters[col], {[control.dataset.colFilter]: control.value});
+    savePrefs();
     repaint();
   }
   async function onChange(event) {
@@ -1465,7 +1466,7 @@
   const PREFS = 'hermes-job-os-pipeline';
   function savePrefs() {
     const state = window.JobOSState;
-    try { localStorage.setItem(PREFS, JSON.stringify({source: state.pipelineSource, mode: state.pipelineMode, collapsed: state.collapsedColumns})); } catch (_) { /* private window */ }
+    try { localStorage.setItem(PREFS, JSON.stringify({source: state.pipelineSource, mode: state.pipelineMode, collapsed: state.collapsedColumns, filters: state.colFilters || {}})); } catch (_) { /* private window */ }
   }
   function loadPrefs() {
     const state = window.JobOSState;
@@ -1473,6 +1474,19 @@
       const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
       if (typeof saved.source === 'string' && /^[a-z]{1,20}$/.test(saved.source)) state.pipelineSource = saved.source;
       if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
+      if (saved.filters && typeof saved.filters === 'object') {
+        const MIN = ['85', '75', '65', 'none'];
+        const SORT = ['newest', 'oldest', 'best', 'updated'];
+        state.colFilters = {};
+        Object.entries(saved.filters).slice(0, 16).forEach(([col, f]) => {
+          if (!/^[a-z_]{1,20}$/.test(col) || !f || typeof f !== 'object') return;
+          const clean = {};
+          if (typeof f.query === 'string' && f.query.trim()) clean.query = f.query.slice(0, 80);
+          if (MIN.includes(f.min)) clean.min = f.min;
+          if (SORT.includes(f.sort)) clean.sort = f.sort;
+          if (Object.keys(clean).length) state.colFilters[col] = clean;
+        });
+      }
       if (Array.isArray(saved.collapsed)) state.collapsedColumns = saved.collapsed.filter((c) => typeof c === 'string' && /^[a-z]{1,20}$/.test(c)).slice(0, 12);
     } catch (_) { /* defaults */ }
   }
@@ -1499,7 +1513,7 @@
       if (state.colFilterOpen) document.querySelector(`.pipe-col[data-col="${CSS.escape(state.colFilterOpen)}"] [data-col-filter="query"]`)?.focus({preventScroll: true});
       return undefined;
     }
-    if (name === 'pipe-col-filter-clear') { if (state.colFilters) delete state.colFilters[el.dataset.col]; repaint(); return undefined; }
+    if (name === 'pipe-col-filter-clear') { if (state.colFilters) delete state.colFilters[el.dataset.col]; savePrefs(); repaint(); return undefined; }
     if (name === 'pipe-search-clear') { state.pipelineQuery = ''; repaint(); document.getElementById('job-os-pipe-search')?.focus(); return undefined; }
     if (name === 'job-form-new') { state.jobForm = Object.assign(emptyJobForm(), window.JobOSState.importDraft || {}); state.jobFormError = ''; return refresh(); }
     if (name === 'job-form-edit') {

@@ -554,6 +554,15 @@
     }[f.sort];
     return by ? rows.slice().sort(by) : rows;
   }
+  // Collapsed, a filtered column still says so: a bar under the title that reopens the filter.
+  function filteredNote(c, f) {
+    if (!colFilterOn(f)) return '';
+    const bits = [];
+    if (String(f.query || '').trim()) bits.push(`“${esc(String(f.query).trim().slice(0, 24))}”`);
+    if (f.min) bits.push(esc((COL_MIN.find(([v]) => v === f.min) || ['', f.min])[1]));
+    if (f.sort) bits.push(esc((COL_SORT.find(([v]) => v === f.sort) || ['', f.sort])[1]));
+    return `<button type="button" class="pipe-col-filtered" data-key="colfn-${esc(c.key)}" data-job-os-action="pipe-col-filter" data-col="${esc(c.key)}" aria-label="Filter is on for ${esc(c.label)}; open it">${icon('filter', 12)}<span>Filtered · ${bits.join(' · ')}</span></button>`;
+  }
   function colFilterPanel(c, f) {
     const opt = (list, current) => list.map(([v, label]) => `<option value="${v}"${(current || '') === v ? ' selected' : ''}>${esc(label)}</option>`).join('');
     return `<div class="pipe-col-filter" data-key="colf-${esc(c.key)}"><input type="search" data-col-filter="query" data-col="${esc(c.key)}" placeholder="Filter jobs" aria-label="Filter ${esc(c.label)} by title or company" autocomplete="off" spellcheck="false" enterkeyhint="search" value="${esc(f.query || '')}">`
@@ -566,7 +575,7 @@
     if (!board) return LOADING;
     const keep = shownOn(state);
     const filters = state.colFilters || {};
-    const columns = board.columns.map((c) => Object.assign({}, c, {jobs: filterColumn(c.jobs.filter(keep), filters[c.key])}));
+    const columns = board.columns.map((c) => { const all = c.jobs.filter(keep); return Object.assign({}, c, {jobs: filterColumn(all, filters[c.key]), all: all.length}); });
     const total = columns.reduce((n, c) => n + c.jobs.length, 0);
     if (!total) return state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
     const folded = new Set(state.collapsedColumns || []);
@@ -575,7 +584,7 @@
     const fold = (c, open) => `<button type="button" class="pipe-col-fold" data-job-os-action="pipe-collapse" data-col="${esc(c.key)}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(c.label)}" title="${open ? 'Collapse' : 'Expand'}" aria-expanded="${open}">${icon(open ? 'prev' : 'next', 14)}</button>`;
     return `<div class="pipe-board" role="list" aria-label="Pipeline stages" style="grid-template-columns:${tracks}">${columns.map((c) => (folded.has(c.key)
       ? `<section class="pipe-col is-folded" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}, collapsed"><header class="pipe-col-head">${fold(c, false)}<span class="job-os-count">${c.jobs.length}</span><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3></header><div class="pipe-col-cards"></div></section>`
-      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3>${filterBtn(c)}<span class="job-os-count">${c.jobs.length}</span>${fold(c, true)}</header>${state.colFilterOpen === c.key ? colFilterPanel(c, filters[c.key] || {}) : ''}<div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
+      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3>${filterBtn(c)}<span class="job-os-count${colFilterOn(filters[c.key]) ? ' is-filtered' : ''}"${colFilterOn(filters[c.key]) ? ` title="Showing ${c.jobs.length} of ${c.all}"` : ''}>${colFilterOn(filters[c.key]) ? `${c.jobs.length}/${c.all}` : c.jobs.length}</span>${fold(c, true)}</header>${state.colFilterOpen === c.key ? colFilterPanel(c, filters[c.key] || {}) : filteredNote(c, filters[c.key])}<div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
       <div class="pipe-hscroll" aria-hidden="true"><div class="pipe-hscroll-track"></div></div>`;
   }
   function noMatches(state) {

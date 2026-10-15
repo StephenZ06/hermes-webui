@@ -278,3 +278,58 @@ def test_each_pipeline_column_has_its_own_filter_beside_its_count():
             page.wait_for_function("() => !document.querySelector('.pipe-col-filter-btn.is-active')", timeout=5000)
         finally:
             browser.close()
+
+
+def test_a_column_filter_is_remembered_and_the_column_says_it_is_filtered():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    tag = uuid.uuid4().hex[:6]
+    _job(f"Alpha {tag}")
+    _job(f"Beta {tag}")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/pipeline")
+        try:
+            col = '.pipe-col[data-col="new"]'
+            page.wait_for_selector(col + " .pipe-card", timeout=15000)
+            page.locator(col + " .pipe-col-filter-btn").tap()
+            page.fill(col + ' [data-col-filter="query"]', f"alpha {tag}")
+            page.wait_for_function("() => !!document.querySelector('.pipe-col[data-col=\"new\"] .job-os-count.is-filtered')", timeout=5000)
+            page.locator(col + " .pipe-col-filter-btn").tap()  # close the panel
+            page.wait_for_selector(col + " .pipe-col-filtered", timeout=5000)
+            assert page.inner_text(col + " .job-os-count").split("/")[0] == "1"
+            assert page.evaluate("(c) => getComputedStyle(document.querySelector(c + ' .pipe-col-filter-btn'), '::after').content", col) != "none"
+            assert page.locator('.pipe-col[data-col="favorite"] .pipe-col-filtered').count() == 0
+            # A fresh load keeps it.
+            page.reload(wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("async () => { document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove()); await switchPanel('jobs'); }")
+            page.wait_for_selector(col + " .pipe-col-filtered", timeout=15000)
+            assert "alpha" in page.inner_text(col + " .pipe-col-filtered").lower()
+            names = page.evaluate("(c) => [...document.querySelectorAll(c + ' .pipe-card-name')].map((e) => e.textContent)", col)
+            assert names == [f"Alpha {tag}"], names
+            page.locator(col + " .pipe-col-filtered").tap()
+            page.click(col + ' [data-job-os-action="pipe-col-filter-clear"]')
+            page.wait_for_function("() => !document.querySelector('.pipe-col-filtered')", timeout=5000)
+            page.reload(wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("async () => { await switchPanel('jobs'); }")
+            page.wait_for_selector(col + " .pipe-card", timeout=15000)
+            assert page.locator(".pipe-col-filtered").count() == 0, "clearing is remembered too"
+        finally:
+            browser.close()
+
+
+def test_settings_sections_are_separate_cards_with_a_gap_between():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw, "#jobs/settings")
+        try:
+            page.evaluate("async () => { JobOSState.activeView = 'settings'; JobOSState.settingsSection = null; await JobOS.refresh(); }")
+            page.wait_for_selector(".settings-nav-item")
+            rects = page.evaluate("""() => [...document.querySelectorAll('.settings-nav-item')].map((e) => { const r = e.getBoundingClientRect(); const c = getComputedStyle(e);
+              return {top: r.top, bottom: r.bottom, radius: parseFloat(c.borderTopLeftRadius), bw: parseFloat(c.borderBottomWidth)}; })""")
+            assert len(rects) >= 7
+            for before, after in zip(rects, rects[1:]):
+                assert after["top"] - before["bottom"] >= 9, (before, after)
+            assert all(r["radius"] >= 12 and r["bw"] >= 1 for r in rects), rects
+        finally:
+            browser.close()
