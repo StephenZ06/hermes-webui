@@ -142,6 +142,11 @@
     const sorters = { newest: (a, b) => stamp(b, 'created_at') - stamp(a, 'created_at'), oldest: (a, b) => stamp(a, 'created_at') - stamp(b, 'created_at'), updated: (a, b) => stamp(b, 'updated_at') - stamp(a, 'updated_at'), title: (a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' }) };
     return sorters[filter.sort] ? rows.slice().sort(sorters[filter.sort]) : rows;
   }
+  // Beside a column's count: how many of its items a chat is working on now.
+  function workingColumnBadge(columnItems) {
+    const working = columnItems.filter(item => item.working).length;
+    return working ? `<span class="work-hub-column-badge" title="${working} item${working === 1 ? '' : 's'} being worked on by a chat"><span class="work-hub-spinner" aria-hidden="true"></span>${working} working</span>` : '';
+  }
   function fillWorkHubCards(cards, columnItems) {
     cards.textContent = '';
     columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
@@ -153,6 +158,8 @@
     if (!column) return renderCanvas(scopedItems());
     const columnItems = workHubColumnItems(scopedItems(), statusId);
     const count = column.querySelector('header small'); if (count) count.textContent = columnItems.length;
+    const oldBadge = column.querySelector('.work-hub-column-badge'); if (oldBadge) oldBadge.remove();
+    if (count) count.insertAdjacentHTML('afterend', workingColumnBadge(columnItems));
     fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
     document.querySelectorAll('[data-item-id]').forEach(button => { if (button.closest('.work-hub-cards') === column.querySelector('.work-hub-cards')) button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); }; });
     const board = column.closest('.work-hub-board'); if (board && board._bindCard) column.querySelectorAll('.work-hub-card').forEach(board._bindCard);
@@ -186,7 +193,7 @@
       const sorts = [['', 'Default order'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['updated', 'Recently updated'], ['title', 'Title A–Z']];
       const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="text" enterkeyhint="search" autocomplete="off" placeholder="Filter items" aria-label="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}" aria-label="Filter by priority"><option value="">All priorities</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select><select data-board-filter-sort="${esc(status.id)}" aria-label="Sort items">${sorts.map(sortOption).join('')}</select></div>` : '';
       const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id;
-      column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small><button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
+      column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small>${workingColumnBadge(columnItems)}<button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
       fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
       board.appendChild(column);
     });

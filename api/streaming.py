@@ -9286,10 +9286,21 @@ def _run_agent_streaming(
 
     _success_writeback_committed = False
 
+    _work_hub_settled = [False]
+
     def put(event, data):
         # If cancelled, drop all further events except the cancel event itself
         if cancel_event.is_set() and not _success_writeback_committed and event not in ('cancel', 'apperror'):
             return
+        # The turn's first terminal event settles the Work Hub items this chat
+        # started during the turn (done / blocked / back where they were).
+        if event in ('done', 'cancel', 'apperror') and not _work_hub_settled[0]:
+            _work_hub_settled[0] = True
+            try:
+                from api.work_hub_agent_tool import settle_turn as _settle_work_hub_turn
+                _settle_work_hub_turn(session_id, {'done': 'completed', 'cancel': 'cancelled'}.get(event, 'failed'))
+            except Exception:
+                logger.debug("Work Hub turn settle failed", exc_info=True)
         event_id = None
         if run_journal is not None:
             try:

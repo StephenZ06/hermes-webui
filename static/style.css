@@ -12073,3 +12073,9 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
 .lf-work-item .work-hub-spinner{width:11px;height:11px;vertical-align:0;}
 .lf-work-item-text{min-width:0;max-width:min(320px,45vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 @media (prefers-reduced-motion:reduce){.work-hub-spinner{animation-duration:2.4s;}}
+/* Column header: "N working" pill beside the item count while a chat works on
+   items in that column. */
+.work-hub-column-badge{display:inline-flex;align-items:center;gap:4px;flex:none;padding:2px 7px 2px 5px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-size:10px;font-weight:600;line-height:1.2;white-space:nowrap;animation:work-hub-badge-in .25s ease-out;}
+.work-hub-column-badge .work-hub-spinner{width:8px;height:8px;}
+@keyframes work-hub-badge-in{from{opacity:0;transform:scale(.85);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.work-hub-column-badge{animation:none;}}

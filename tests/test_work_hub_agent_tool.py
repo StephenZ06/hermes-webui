@@ -121,3 +121,40 @@ def test_the_tool_registers_into_the_todo_toolset(monkeypatch):
 
     assert registered["name"] == "work_hub" and registered["toolset"] == "todo"
     assert registered["schema"]["parameters"]["properties"]["action"]["enum"] == ["list", "create", "update"]
+
+
+@pytest.fixture()
+def fresh_turns(monkeypatch):
+    from api import work_hub_agent_tool
+
+    monkeypatch.setattr(work_hub_agent_tool, "_TURN_STARTED", {})
+
+
+@pytest.mark.parametrize("outcome,expected", [("completed", "done"), ("failed", "blocked"), ("cancelled", "todo")])
+def test_items_left_in_progress_settle_when_the_turn_ends(hub, fresh_turns, outcome, expected):
+    from api.work_hub_agent_tool import settle_turn
+
+    work_hub, _ = hub
+    item_id = work_hub.create_item({"title": "Do it", "status": "todo"}, None)["item"]["id"]
+    _call({"action": "update", "item_id": item_id, "status": "in_progress"})
+
+    assert settle_turn("chat-1", outcome) == [item_id]
+    assert work_hub.get_item(item_id)["status"] == expected
+    assert settle_turn("chat-1", outcome) == []  # once per turn
+
+
+def test_settling_leaves_items_the_chat_finished_or_the_user_moved(hub, fresh_turns):
+    from api.work_hub_agent_tool import settle_turn
+
+    work_hub, _ = hub
+    finished = work_hub.create_item({"title": "Finished by chat"}, None)["item"]["id"]
+    moved = work_hub.create_item({"title": "Moved by user"}, None)["item"]["id"]
+    other_chat = work_hub.create_item({"title": "Other chat"}, None)["item"]["id"]
+    for item_id in (finished, moved):
+        _call({"action": "update", "item_id": item_id, "status": "in_progress"})
+    _call({"action": "update", "item_id": other_chat, "status": "in_progress"}, "chat-p1")
+    _call({"action": "update", "item_id": finished, "status": "blocked"})
+    work_hub.update_item(moved, {"status": "triage"}, work_hub.current_revision())
+
+    assert settle_turn("chat-1", "completed") == []
+    assert [work_hub.get_item(i)["status"] for i in (finished, moved, other_chat)] == ["blocked", "triage", "in_progress"]

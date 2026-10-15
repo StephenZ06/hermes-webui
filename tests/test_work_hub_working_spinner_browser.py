@@ -58,9 +58,12 @@ def test_a_card_spins_while_a_chat_works_on_it_and_stops_after(page):
     page.route("**/api/work_hub/items", items)
     page.wait_for_selector(f"{card} .work-hub-spinner", timeout=8000)
     assert page.evaluate(f"() => document.querySelector(\"{card}\").classList.contains('is-working')")
+    badge = page.evaluate(f"() => {{ const h = document.querySelector(\"{card}\").closest('.work-hub-column').querySelector('header'); const b = h.querySelector('.work-hub-column-badge'); return b && [b.textContent.trim(), !!b.querySelector('.work-hub-spinner'), b.previousElementSibling.tagName]; }}")
+    assert badge == ["1 working", True, "SMALL"]
 
     working["on"] = False
     page.wait_for_function(f"() => !document.querySelector(\"{card} .work-hub-spinner\")", timeout=8000)
+    assert page.evaluate(f"() => !document.querySelector(\"{card}\").closest('.work-hub-column').querySelector('.work-hub-column-badge')")
 
 
 def test_the_board_picks_up_an_item_a_chat_moved(page):
