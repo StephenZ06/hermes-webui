@@ -7061,11 +7061,16 @@ main.main > #mainPlugin{display:none;}
 .office-labels-btn{display:grid;place-items:center;width:30px;padding:5px;}
 .office-labels-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
 .office-header-btn.is-paused{color:var(--warning,#d08a3a);border-color:color-mix(in srgb,var(--warning,#d08a3a) 45%,transparent);}
-.office-outlet{flex:0 0 auto;display:inline-flex;border:1px solid var(--border2);border-radius:8px;overflow:hidden;}
-.office-outlet-btn{-webkit-appearance:none;appearance:none;border-radius:0;font-size:11px;font-weight:600;padding:5px 11px;border:0;background:var(--surface-subtle);color:var(--muted);cursor:pointer;}
-.office-outlet-btn + .office-outlet-btn{border-left:1px solid var(--border2);}
+/* A two-way switch (Projects / Business). The buttons carry no background and no corner of their own: the
+   switch paints the active half itself and draws the divider, so there is no button shape whose corners
+   could show at the join (iOS drew a rounded inner edge on each button there). The two halves are equal. */
+.office-outlet{--outlet-on:color-mix(in srgb,var(--accent) 18%,transparent);position:relative;flex:0 0 auto;display:inline-grid;grid-template-columns:1fr 1fr;border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--surface-subtle);}
+.office-outlet:has(> .office-outlet-btn:first-child.is-active){background:linear-gradient(to right,var(--outlet-on) 0 50%,transparent 50%),var(--surface-subtle);}
+.office-outlet:has(> .office-outlet-btn:last-child.is-active){background:linear-gradient(to left,var(--outlet-on) 0 50%,transparent 50%),var(--surface-subtle);}
+.office-outlet::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--border2);pointer-events:none;}
+.office-outlet-btn{-webkit-appearance:none;appearance:none;border-radius:0;font-size:11px;font-weight:600;padding:5px 11px;border:0;background:transparent;color:var(--muted);cursor:pointer;}
 .office-outlet-btn:hover{color:var(--text);}
-.office-outlet-btn.is-active{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);}
+.office-outlet-btn.is-active{background:transparent;color:var(--accent);}
 .office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;display:flex;flex-direction:column;gap:2px;}
 .office-sidebar-section-title,.office-project-folders-title{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;text-transform:uppercase;flex:0 0 auto;}
 .office-sidebar-section-title{margin:20px 8px;}
@@ -7238,12 +7243,19 @@ main.main > #mainPlugin{display:none;}
 @media (max-width:640px){
   /* Task Status on a phone: a pill in the stage's bottom-right corner (icon, count) that opens in place,
      widening across the stage and growing upward, with the same grid-rows disclosure the desktop card uses. */
-  .office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .34s cubic-bezier(.2,.8,.2,1);}
-  .office-tasks.is-collapsed{min-height:0;width:84px;}   /* a fixed pill: its (hidden) list must not widen it */
+  .office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .56s cubic-bezier(.4,0,.2,1);}
+  .office-tasks.is-collapsed{min-height:0;width:84px;transition:width .56s cubic-bezier(.4,0,.2,1) .5s;}   /* a fixed pill: its (hidden) list must not widen it */
+  /* In two moves, so it reads cleanly: opening, the pill first widens to the left across the stage, and only
+     then does the list unfold upward; closing runs the other way round (the list folds, then the card narrows). */
+  .office-tasks:not(.is-collapsed) .office-tasks-body{transition:grid-template-rows .7s cubic-bezier(.4,0,.2,1) .56s;}
+  .office-tasks.is-collapsed .office-tasks-body{transition:grid-template-rows .5s cubic-bezier(.4,0,.2,1) 0s;}
+  .office-tasks:not(.is-collapsed) .office-tasks-body-inner{transition:opacity .45s ease .8s;}
+  .office-tasks.is-collapsed .office-tasks-body-inner{transition:opacity .25s ease 0s;}
   .office-tasks-head{padding:0;}
   .office-tasks-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:38px;padding:0 12px;}
   .office-tasks-title-group{grid-column:auto;}
-  .office-tasks-title{max-width:160px;opacity:1;transition:max-width .34s cubic-bezier(.2,.8,.2,1),opacity .22s ease;}
+  .office-tasks-title{max-width:160px;opacity:1;transition:max-width .56s cubic-bezier(.4,0,.2,1),opacity .4s ease .15s;}
+  .office-tasks.is-collapsed .office-tasks-title{transition-delay:.5s,0s;}
   .office-tasks.is-collapsed .office-tasks-title{max-width:0;opacity:0;}
   .office-tasks.is-collapsed .office-tasks-title-group{gap:0;}
   .office-tasks.is-collapsed .office-tasks-toggle{justify-content:center;padding:0 10px;}
@@ -11294,7 +11306,7 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   .office-hint{flex:1 1 0;min-width:0;font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:8px;}
   .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:8px;}
-  .office-header > .office-outlet .office-outlet-btn{flex:1 1 0;height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
+  .office-header > .office-outlet .office-outlet-btn{height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
   .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;margin-left:auto;height:30px;min-height:0;border-radius:8px;padding:0 10px;font-size:11px;line-height:1;}
   .office-header > .office-labels-btn:first-of-type{flex-basis:auto;}
   .office-header::after{content:"";order:2;flex-basis:100%;height:0;}

@@ -245,7 +245,7 @@ def test_task_status_refresh_lock_matches_the_full_unfold_transition():
     assert "const TASK_STATUS_TRANSITION_MS = 480;" in OFFICE_SRC
     at = OFFICE_SRC.index("function toggleTasksCollapsed()")
     body = OFFICE_SRC[at:OFFICE_SRC.index("\n}\n", at) + 2]
-    assert "}, TASK_STATUS_TRANSITION_MS);" in body
+    assert "}, taskStatusTransitionMs());" in body   # 480ms on a desktop; longer on a phone, where it moves in two steps
     assert "scheduleSync();" in body
 
 

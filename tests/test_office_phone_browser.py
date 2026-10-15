@@ -89,7 +89,7 @@ def test_every_plain_button_on_a_touch_screen_has_no_native_rounding(phone):
 def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animation(phone):
     _with_floor_chrome(phone)
     phone.evaluate("() => { document.getElementById('officeTasksList').innerHTML = '<div class=\"office-tasks-row\"><button class=\"office-tasks-row-select\"><span class=\"office-tasks-row-body\"><span class=\"office-tasks-row-goal\">A long task title that would, left alone, stretch the card beyond the pill it is shut into</span></span></button></div>'; document.getElementById('officeTasks').classList.add('is-collapsed'); }")
-    phone.wait_for_timeout(900)    # (the card eases shut)
+    phone.wait_for_timeout(1900)    # (the card folds, then narrows)
     measure = """() => {
         const tasks = document.getElementById('officeTasks');
         const stage = document.querySelector('.office-stage').getBoundingClientRect(); const r = tasks.getBoundingClientRect();
@@ -100,19 +100,29 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     assert shut["w"] <= 90 and shut["h"] <= 46, shut                                 # small: icon and count, whatever its list holds
     assert shut["right"] <= 12 and shut["bottom"] <= 14, shut                        # bottom-right
     phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
-    phone.wait_for_timeout(120)
-    mid = phone.evaluate(measure)
-    phone.wait_for_timeout(900)
+    phone.wait_for_timeout(300)
+    widening = phone.evaluate(measure)
+    phone.wait_for_timeout(300)           # ~0.6s: the widening has finished, the unfolding has only just begun
+    widened = phone.evaluate(measure)
+    phone.wait_for_timeout(1500)
     open_ = phone.evaluate(measure)
-    assert shut["w"] < mid["w"] < open_["w"], (shut, mid, open_)                      # it widens across the stage, not in one jump
-    assert shut["h"] < open_["h"], (shut, open_)                                    # and grows upward, by the desktop card's own disclosure (grid rows)
+    # Opening is two moves: first it widens to the left across the stage (the height stays a pill)...
+    assert shut["w"] < widening["w"] < open_["w"], (shut, widening, open_)
+    assert widening["h"] <= shut["h"] + 4, (shut, widening)
+    assert widened["w"] >= open_["w"] - 8 and widened["h"] <= shut["h"] + 40, (shut, widened, open_)
+    # ...then it unfolds upward, by the desktop card's own grid-rows disclosure, only afterwards.
+    assert shut["h"] < open_["h"], (shut, open_)
     assert "grid-template-rows" in phone.evaluate("() => getComputedStyle(document.getElementById('officeTasksBody')).transitionProperty")
     assert open_["left"] == open_["right"] == 10 and open_["bottom"] <= 14, open_     # evenly inset, still anchored to the corner
     assert open_["h"] <= open_["stageH"] * 0.66, open_                                # it leaves the floor in view
+    # Closing runs the other way: the list folds first, the card narrows after.
     phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
-    phone.wait_for_timeout(120)
-    closing = phone.evaluate(measure)
-    assert shut["w"] < closing["w"] < open_["w"], (shut, closing, open_)              # and eases shut the same way
+    phone.wait_for_timeout(350)
+    folding = phone.evaluate(measure)
+    assert folding["w"] >= open_["w"] - 8 and folding["h"] < open_["h"], (open_, folding)
+    phone.wait_for_timeout(1800)
+    closed = phone.evaluate(measure)
+    assert closed["w"] <= shut["w"] + 2 and closed["h"] <= shut["h"] + 2, (shut, closed)
 
 
 def test_task_status_starts_collapsed_on_a_phone():
@@ -153,3 +163,73 @@ def test_the_integrations_note_has_the_same_space_above_its_title_as_below_its_s
             return {above, below};
         }""")
         assert abs(gaps["above"] - gaps["below"]) <= 3, (width, gaps)
+
+
+def _png_rgba(data):
+    """Decode a Chromium screenshot (8-bit RGB/RGBA, no interlace) to rows of (r, g, b, a)."""
+    import struct
+    import zlib
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    pos, chunks, width, height, depth, kind = 8, [], 0, 0, 0, 0
+    while pos < len(data):
+        (length,) = struct.unpack(">I", data[pos:pos + 4])
+        tag, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + length]
+        if tag == b"IHDR":
+            width, height, depth, kind = struct.unpack(">IIBB", body[:10])
+        elif tag == b"IDAT":
+            chunks.append(body)
+        pos += 12 + length
+    assert depth == 8 and kind in (2, 6)
+    step = 4 if kind == 6 else 3
+    raw = zlib.decompress(b"".join(chunks))
+    stride, rows, prev = width * step, [], bytearray(width * step)
+    for y in range(height):
+        base = y * (stride + 1)
+        mode, line = raw[base], bytearray(raw[base + 1:base + 1 + stride])
+        for i in range(stride):
+            a = line[i - step] if i >= step else 0
+            b = prev[i]
+            c = prev[i - step] if i >= step else 0
+            if mode == 1:
+                line[i] = (line[i] + a) & 255
+            elif mode == 2:
+                line[i] = (line[i] + b) & 255
+            elif mode == 3:
+                line[i] = (line[i] + (a + b) // 2) & 255
+            elif mode == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append([tuple(line[x * step:x * step + 3]) for x in range(width)])
+        prev = line
+    return rows
+
+
+def test_the_toggle_is_painted_by_the_switch_so_its_middle_is_a_straight_line(phone):
+    """No button shape sits at the join, so there is nothing to round: the active half is a straight-edged
+    block, and the divider is one straight 1px line, from the top of the switch to its bottom."""
+    for active in ("projects", "business"):
+        _with_floor_chrome(phone)
+        phone.evaluate("(a) => { document.querySelectorAll('.office-outlet-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.outlet === a)); }", active)
+        phone.wait_for_timeout(200)
+        info = phone.evaluate("""() => {
+            const sw = document.querySelector('.office-outlet').getBoundingClientRect();
+            const after = getComputedStyle(document.querySelector('.office-outlet'), '::after');
+            const buttons = [...document.querySelectorAll('.office-outlet-btn')].map((b) => getComputedStyle(b).backgroundColor);
+            return {x: sw.x, y: sw.y, w: sw.width, h: sw.height, after: [after.width, after.height, after.left], buttons};
+        }""")
+        assert all(b in ("rgba(0, 0, 0, 0)", "transparent") for b in info["buttons"]), info      # the buttons paint nothing
+        assert info["after"][0] == "1px"
+        shot = phone.screenshot(clip={"x": info["x"] - 2, "y": info["y"] - 2, "width": info["w"] + 4, "height": info["h"] + 4})
+        rows = _png_rgba(shot)
+        scale = len(rows[0]) / (info["w"] + 4)
+        mid = int((2 + info["w"] / 2) * scale)
+        top, bottom = int(3 * scale) + 2, int((info["h"] + 1) * scale) - 2   # just inside the switch's own border (a few device pixels of margin)
+        near = lambda a, b: all(abs(x - y) <= 4 for x, y in zip(a, b))
+        for side in (-int(3 * scale), int(3 * scale)):                       # the active half and the inactive half, beside the divider
+            column = [rows[y][mid + side] for y in range(top, bottom)]
+            # a straight edge: the colour beside the divider is the same from top to bottom (a rounded inner
+            # corner would show the other half's colour in the first and last few pixels)
+            assert all(near(px, column[len(column) // 2]) for px in column), (active, side, column[:6], column[-6:])
+        divider = [rows[y][mid] for y in range(top, bottom)]
+        assert all(near(px, divider[len(divider) // 2]) for px in divider), (active, divider[:3])   # one unbroken line
