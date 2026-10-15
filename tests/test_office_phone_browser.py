@@ -49,7 +49,8 @@ def _with_floor_chrome(page):
     _open_office(page)
     # (the panel is mounted without WebGL here: replace its message with the real floor markup)
     page.evaluate("(html) => { const w = document.getElementById('officeWrap'); w.innerHTML = html; w.querySelector('#officeCanvas').remove(); }", _floor_markup())
-    page.evaluate("() => { document.querySelector('.office-outlet-btn[data-outlet=projects]').classList.add('is-active'); }")
+    # (as in the live view: no "View live" button until a past moment is being shown)
+    page.evaluate("() => { document.querySelector('.office-outlet-btn[data-outlet=projects]').classList.add('is-active'); document.getElementById('officePauseBtn').hidden = true; }")
     page.wait_for_timeout(300)
 
 
@@ -61,15 +62,15 @@ def test_the_floor_controls_are_compact_and_the_toggle_has_a_flat_middle(phone):
             labels: [...document.querySelectorAll('.office-header > .office-labels-btn')].map(box),
             outlet: box(document.querySelector('.office-outlet')),
             buttons: [...document.querySelectorAll('.office-outlet-btn')].map((b) => { const c = getComputedStyle(b); return {box: box(b), radius: c.borderRadius, appearance: c.webkitAppearance || c.appearance}; }),
-            pause: box(document.getElementById('officePauseBtn')),
             width: innerWidth,
         };
     }""")
     assert all(b[3] == 30 for b in sizes["labels"]) and all(b[2] <= 34 for b in sizes["labels"]), sizes["labels"]     # the two buttons beside the toggle
-    assert sizes["outlet"][3] <= 32 and sizes["outlet"][2] <= sizes["width"] * 0.55, sizes["outlet"]                  # a compact toggle, not a full-width bar
-    assert sizes["pause"][3] == 30, sizes["pause"]
+    assert sizes["outlet"][3] <= 32, sizes["outlet"]                                                                  # compact in height...
+    assert sizes["outlet"][0] + sizes["outlet"][2] >= sizes["width"] - 20, sizes["outlet"]                            # ...and it runs on to the row's edge again
+
     # They all share a row and a height.
-    ys = {b[1] for b in sizes["labels"]} | {sizes["outlet"][1] - 0} | {sizes["pause"][1]}
+    ys = {b[1] for b in sizes["labels"]} | {sizes["outlet"][1]}
     assert max(ys) - min(ys) <= 2, ys
     # The segments are flat where they meet: no rounding of its own on either (iOS gives a <button> one unless reset).
     assert all(b["radius"] == "0px" for b in sizes["buttons"]), sizes["buttons"]
@@ -85,28 +86,33 @@ def test_every_plain_button_on_a_touch_screen_has_no_native_rounding(phone):
         const r = getComputedStyle(b).borderRadius; b.remove(); return r; }""") == "7px"
 
 
-def test_task_status_is_a_pill_on_a_phone_that_opens_as_a_sheet_along_the_bottom(phone):
+def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animation(phone):
     _with_floor_chrome(phone)
     phone.evaluate("() => { document.getElementById('officeTasksList').innerHTML = '<div class=\"office-tasks-row\"><button class=\"office-tasks-row-select\"><span class=\"office-tasks-row-body\"><span class=\"office-tasks-row-goal\">A long task title that would, left alone, stretch the card beyond the pill it is shut into</span></span></button></div>'; document.getElementById('officeTasks').classList.add('is-collapsed'); }")
     phone.wait_for_timeout(900)    # (the card eases shut)
-    state = phone.evaluate("""() => {
-        const tasks = document.getElementById('officeTasks');
-        const stage = document.querySelector('.office-stage').getBoundingClientRect();
-        const r = tasks.getBoundingClientRect();
-        return {display: getComputedStyle(tasks).display, pill: [Math.round(r.width), Math.round(r.height)], right: Math.round(stage.right - r.right), top: Math.round(r.top - stage.top), title: getComputedStyle(document.querySelector('.office-tasks-title')).display};
-    }""")
-    assert state["display"] != "none", state                                    # it exists on a phone now
-    assert state["pill"][0] <= 90 and state["pill"][1] <= 46, state              # small: icon and count, whatever its list holds
-    assert state["title"] == "none" and state["right"] <= 12 and state["top"] <= 12, state
-    phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
-    phone.wait_for_timeout(900)
-    open_state = phone.evaluate("""() => {
+    measure = """() => {
         const tasks = document.getElementById('officeTasks');
         const stage = document.querySelector('.office-stage').getBoundingClientRect(); const r = tasks.getBoundingClientRect();
-        return {left: Math.round(r.left - stage.left), right: Math.round(stage.right - r.right), bottom: Math.round(stage.bottom - r.bottom), width: Math.round(r.width), stage: Math.round(stage.width), height: Math.round(r.height), stageHeight: Math.round(stage.height)};
-    }""")
-    assert open_state["left"] == open_state["right"] == 10 and open_state["bottom"] <= 14, open_state         # a sheet, evenly inset, at the bottom
-    assert open_state["height"] <= open_state["stageHeight"] * 0.66, open_state                               # it leaves the floor in view
+        return {display: getComputedStyle(tasks).display, w: Math.round(r.width), h: Math.round(r.height), right: Math.round(stage.right - r.right), bottom: Math.round(stage.bottom - r.bottom), left: Math.round(r.left - stage.left), top: Math.round(r.top - stage.top), stage: Math.round(stage.width), stageH: Math.round(stage.height)};
+    }"""
+    shut = phone.evaluate(measure)
+    assert shut["display"] != "none", shut                                            # it exists on a phone now
+    assert shut["w"] <= 90 and shut["h"] <= 46, shut                                 # small: icon and count, whatever its list holds
+    assert shut["right"] <= 12 and shut["bottom"] <= 14, shut                        # bottom-right
+    phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
+    phone.wait_for_timeout(120)
+    mid = phone.evaluate(measure)
+    phone.wait_for_timeout(900)
+    open_ = phone.evaluate(measure)
+    assert shut["w"] < mid["w"] < open_["w"], (shut, mid, open_)                      # it widens across the stage, not in one jump
+    assert shut["h"] < open_["h"], (shut, open_)                                    # and grows upward, by the desktop card's own disclosure (grid rows)
+    assert "grid-template-rows" in phone.evaluate("() => getComputedStyle(document.getElementById('officeTasksBody')).transitionProperty")
+    assert open_["left"] == open_["right"] == 10 and open_["bottom"] <= 14, open_     # evenly inset, still anchored to the corner
+    assert open_["h"] <= open_["stageH"] * 0.66, open_                                # it leaves the floor in view
+    phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
+    phone.wait_for_timeout(120)
+    closing = phone.evaluate(measure)
+    assert shut["w"] < closing["w"] < open_["w"], (shut, closing, open_)              # and eases shut the same way
 
 
 def test_task_status_starts_collapsed_on_a_phone():
