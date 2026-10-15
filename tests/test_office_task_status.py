@@ -219,7 +219,7 @@ def test_the_panel_is_a_floating_stage_card_with_equal_expanded_insets():
     # corner that opens in place (widening across the stage, growing upward) with the desktop's disclosure.
     assert "@media (max-width:640px){.office-tasks{display:none;}}" not in CSS
     assert ".office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);" in CSS
-    assert ".office-tasks.is-collapsed .office-tasks-title{max-width:0;opacity:0;transition:opacity .3s ease 0s," in CSS   # the title fades, then closes up
+    assert ".office-tasks.is-collapsed .office-tasks-title{max-width:0;opacity:0;transition:opacity .24s ease 0s," in CSS   # the title fades, then closes up
 
 
 # ── collapsible ──────────────────────────────────────────────────────────────

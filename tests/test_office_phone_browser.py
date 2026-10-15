@@ -100,11 +100,11 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     assert shut["w"] <= 90 and shut["h"] <= 46, shut                                 # small: icon and count, whatever its list holds
     assert shut["right"] <= 12 and shut["bottom"] <= 14, shut                        # bottom-right
     phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
-    phone.wait_for_timeout(200)
+    phone.wait_for_timeout(150)
     early = phone.evaluate(measure)
-    phone.wait_for_timeout(400)           # ~0.6s: the widening is done and the list is already unfolding
+    phone.wait_for_timeout(300)           # ~0.45s: the widening is done and the list is already unfolding
     later = phone.evaluate(measure)
-    phone.wait_for_timeout(1700)
+    phone.wait_for_timeout(1500)
     open_ = phone.evaluate(measure)
     # Opening flows in one go: it widens to the left, and the list begins to unfold upward as that finishes,
     # with no standing pause in between...
@@ -117,13 +117,13 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     assert open_["h"] <= open_["stageH"] * 0.66, open_                                  # it leaves the floor in view
     # Closing: the text FADES (it does not vanish) while the list folds, and the card narrows as that finishes.
     phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
-    phone.wait_for_timeout(140)
+    phone.wait_for_timeout(110)
     fading = phone.evaluate("""() => ({
         list: parseFloat(getComputedStyle(document.querySelector('.office-tasks-body-inner')).opacity),
         title: parseFloat(getComputedStyle(document.querySelector('.office-tasks-title')).opacity)})""")
     assert 0.05 < fading["list"] < 0.95, fading                                         # mid-fade, not gone
     assert 0.05 < fading["title"] < 0.95, fading
-    phone.wait_for_timeout(250)
+    phone.wait_for_timeout(200)
     folding = phone.evaluate(measure)
     assert folding["w"] >= open_["w"] - 8 and folding["h"] < open_["h"], (open_, folding)
     phone.wait_for_timeout(1800)

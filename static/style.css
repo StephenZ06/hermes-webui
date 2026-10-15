@@ -7243,22 +7243,22 @@ main.main > #mainPlugin{display:none;}
 @media (max-width:640px){
   /* Task Status on a phone: a pill in the stage's bottom-right corner (icon, count) that opens in place,
      widening across the stage and growing upward, with the same grid-rows disclosure the desktop card uses. */
-  .office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .5s cubic-bezier(.33,0,.15,1);}
-  .office-tasks.is-collapsed{min-height:0;width:84px;transition:width .5s cubic-bezier(.33,0,.15,1) .38s;}   /* a fixed pill: its (hidden) list must not widen it */
+  .office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .4s cubic-bezier(.33,0,.15,1);}
+  .office-tasks.is-collapsed{min-height:0;width:84px;transition:width .4s cubic-bezier(.33,0,.15,1) .3s;}   /* a fixed pill: its (hidden) list must not widen it */
   /* One continuous move in two directions: opening, the pill widens to the left and the list begins to
      unfold upward as the widening is finishing (no standing pause between them); closing runs it backwards,
      the list fading and folding first, the card narrowing as that finishes. */
   .office-tasks-body{grid-template-rows:1fr;}   /* (1fr <-> 0fr interpolates; minmax(0,1fr) <-> 0fr does not, so the unfolding used to jump)
   */
-  .office-tasks:not(.is-collapsed) .office-tasks-body{transition:grid-template-rows .85s cubic-bezier(.25,.1,.25,1) .3s;}
-  .office-tasks.is-collapsed .office-tasks-body{transition:grid-template-rows .62s cubic-bezier(.45,0,.25,1) 0s;}
-  .office-tasks:not(.is-collapsed) .office-tasks-body-inner{transition:opacity .5s ease .5s;}
-  .office-tasks.is-collapsed .office-tasks-body-inner{transition:opacity .42s ease 0s;}
+  .office-tasks:not(.is-collapsed) .office-tasks-body{transition:grid-template-rows .66s cubic-bezier(.25,.1,.25,1) .24s;}
+  .office-tasks.is-collapsed .office-tasks-body{transition:grid-template-rows .5s cubic-bezier(.45,0,.25,1) 0s;}
+  .office-tasks:not(.is-collapsed) .office-tasks-body-inner{transition:opacity .4s ease .4s;}
+  .office-tasks.is-collapsed .office-tasks-body-inner{transition:opacity .34s ease 0s;}
   .office-tasks-head{padding:0;}
   .office-tasks-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:38px;padding:0 12px;}
   .office-tasks-title-group{grid-column:auto;}
-  .office-tasks-title{max-width:160px;opacity:1;transition:max-width .5s cubic-bezier(.33,0,.15,1),opacity .4s ease .12s;}
-  .office-tasks.is-collapsed .office-tasks-title{max-width:0;opacity:0;transition:opacity .3s ease 0s,max-width .5s cubic-bezier(.33,0,.15,1) .2s;}
+  .office-tasks-title{max-width:160px;opacity:1;transition:max-width .4s cubic-bezier(.33,0,.15,1),opacity .32s ease .1s;}
+  .office-tasks.is-collapsed .office-tasks-title{max-width:0;opacity:0;transition:opacity .24s ease 0s,max-width .4s cubic-bezier(.33,0,.15,1) .16s;}
   .office-tasks.is-collapsed .office-tasks-title-group{gap:0;}
   .office-tasks.is-collapsed .office-tasks-toggle{justify-content:center;padding:0 10px;}
   .office-tasks-count{grid-column:auto;justify-self:auto;}

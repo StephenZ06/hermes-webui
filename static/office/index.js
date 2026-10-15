@@ -1046,7 +1046,7 @@ function loadOfficeIntegrations() {
 const TASK_STATUS_TRANSITION_MS = 480;
 // On a phone the card moves in two steps (widen, then unfold; see style.css), so it takes about three times
 // as long before a live refresh may repaint it.
-const TASK_STATUS_PHONE_TRANSITION_MS = 1300;
+const TASK_STATUS_PHONE_TRANSITION_MS = 1000;
 function taskStatusTransitionMs() {
   return window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? TASK_STATUS_PHONE_TRANSITION_MS : TASK_STATUS_TRANSITION_MS;
 }
