@@ -537,6 +537,10 @@ _SIGNATURES = {
 }
 
 
+# ISO media brands that hold still pictures (AVIF, HEIC/HEIF), not audio or video.
+_STILL_IMAGE_BRANDS = {b"avif", b"avis", b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1"}
+
+
 def _media_type(head: bytes, ext: str) -> str | None:
     """Audio/video from the file's own first bytes (the extension only settles
     which of a container's two kinds it is)."""
@@ -552,6 +556,8 @@ def _media_type(head: bytes, ext: str) -> str | None:
         return "audio/webm" if ext in (".weba", ".mka") else "video/webm"
     if head[4:8] == b"ftyp":
         brand = head[8:12]
+        if brand in _STILL_IMAGE_BRANDS:
+            return None  # AVIF/HEIC: a picture in the same box as MP4, not a video
         if brand == b"qt  ":
             return "video/quicktime"
         if brand in (b"M4A ", b"M4B ") or ext in (".m4a", ".aac"):
