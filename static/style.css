@@ -11051,7 +11051,9 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
    schedule and note below start at the tile's left edge, under the dot. */
 .automation-row{grid-template-columns:12px minmax(0,1fr) auto;grid-template-rows:auto 1fr auto;grid-template-areas:"dot title end" "main main main" "ticks ticks ticks";align-items:center;}
 .automation-row>.automation-dot{margin-top:0;align-self:center;}
-.automation-row>.automation-title{grid-area:title;min-width:0;font-size:13px;color:var(--text);line-height:1.2;text-box:trim-both cap alphabetic;overflow-x:clip;overflow-y:visible;text-overflow:ellipsis;white-space:nowrap;}
+/* A title too long for a half-width tile wraps onto a second line rather than
+   losing its end ("Luna fit analy…"). */
+.automation-row>.automation-title{grid-area:title;min-width:0;font-size:13px;color:var(--text);line-height:1.25;text-box:trim-both cap alphabetic;overflow-wrap:anywhere;text-wrap:balance;}
 .automation-row>.automation-end{align-self:center;}
 .automation-row>.automation-main{grid-area:main;align-self:stretch;justify-content:space-evenly;gap:6px;text-align:left;}
 /* Scout "Not run yet": the clock sits on the title's line and the hint runs

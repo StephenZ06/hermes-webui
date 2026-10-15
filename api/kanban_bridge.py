@@ -13,6 +13,7 @@ Supported operations:
 
 from __future__ import annotations
 
+import importlib
 import json
 from api.sse_chunked import begin_sse_response, write_sse_comment
 import time
@@ -30,7 +31,23 @@ def _kb():
     """Lazily import hermes_cli.kanban_db to avoid circular imports at module load."""
     from hermes_cli import kanban_db as kb
 
+    # Newer agents split kanban_db into sibling modules and stopped re-exporting
+    # these from it; point the names back at their new homes.
+    for name, home in _KB_MOVED:
+        if not hasattr(kb, name):
+            try:
+                moved = getattr(importlib.import_module(f"hermes_cli.{home}"), name)
+            except (ImportError, AttributeError):
+                continue
+            setattr(kb, name, moved)
     return kb
+
+
+_KB_MOVED = (
+    ("connect", "kanban_db_connect"),
+    ("connect_closing", "kanban_db_connect"),
+    ("dispatch_once", "kanban_db_dispatch"),
+)
 
 
 def _resolve_board(parsed):

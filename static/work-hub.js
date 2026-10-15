@@ -311,8 +311,9 @@
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
     };
     board.querySelectorAll('.work-hub-card').forEach(bindCard);
-    board._bindCard = bindCard;
-    initTouchDrag(board);
+    // Cards redrawn in place by a column filter need both kinds of drag again.
+    const bindTouchCard = initTouchDrag(board);
+    board._bindCard = card => { bindCard(card); bindTouchCard(card); };
     board.querySelectorAll('.work-hub-column').forEach(column => {
       column.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -400,7 +401,7 @@
         }
       }
     };
-    board.querySelectorAll('.work-hub-card').forEach(card => {
+    const bindTouchCard = card => {
       card.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
         const t = e.touches[0];
@@ -438,7 +439,9 @@
       card.addEventListener('touchcancel', () => { if (drag && drag.card === card) end(false); });
       // Long-press would otherwise open the iOS callout / text selection.
       card.addEventListener('contextmenu', (e) => { if (drag && drag.active) e.preventDefault(); });
-    });
+    };
+    board.querySelectorAll('.work-hub-card').forEach(bindTouchCard);
+    return bindTouchCard;
   }
   async function deleteItem(itemId) {
     if (!await showConfirmDialog({ title: 'Delete work item', message: 'Are you sure you want to delete this work item? This cannot be undone.', confirmLabel: 'Delete', danger: true })) return;

@@ -171,3 +171,26 @@ def test_a_new_item_saved_as_backlog_is_scrolled_into_view(phone, seeded):
     visible = page.evaluate("""(title) => { const card = [...document.querySelectorAll('.work-hub-card')].find(c => c.textContent.includes(title));
         if (!card) return 'missing'; const r = card.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1; }""", title)
     assert visible is True
+
+
+def test_a_card_can_still_be_held_and_dragged_after_filtering_its_column(phone, seeded):
+    page, cdp = phone
+    page.evaluate("() => { document.querySelector('[data-scope=all]') && document.querySelector('[data-scope=all]').click(); }")
+    time.sleep(0.8)
+    sel = f".work-hub-card[data-item-id='{seeded['item']}']"
+    status = page.evaluate(f"() => document.querySelector(\"{sel}\").closest('.work-hub-column').dataset.status")
+    page.evaluate(f"() => document.querySelector('[data-board-filter=\"{status}\"]').click()")
+    time.sleep(0.4)
+    # Typing redraws just this column's cards in place.
+    page.evaluate(f"""() => {{ const input = document.querySelector('[data-board-filter-query="{status}"]');
+        input.value = ' '; input.dispatchEvent(new Event('input')); input.value = ''; input.dispatchEvent(new Event('input')); input.blur(); }}""")
+    time.sleep(0.3)
+    page.evaluate("() => { document.querySelector('.work-hub-board-wrap').scrollLeft = 0; }")
+    page.evaluate(f"() => document.querySelector(\"{sel}\").scrollIntoView({{block: 'center'}})")
+    time.sleep(0.3)
+    x, y = page.evaluate(f"() => {{ const r = document.querySelector(\"{sel}\").getBoundingClientRect(); return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; }}")
+    _touch(cdp, "touchStart", x, y)
+    time.sleep(0.6)
+    picked_up = page.evaluate("() => !!document.querySelector('.work-hub-card-ghost')")
+    _touch(cdp, "touchEnd", x, y)
+    assert picked_up
