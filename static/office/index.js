@@ -1282,11 +1282,15 @@ function renderPill(state) {
   if (_pauseBtnEl) _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
   if (_hintEl) {
     if (_scene && _scene.isFocused()) {
-      _hintEl.textContent = 'Focused on one desk — Esc, or click the floor, to pull back out.';
+      _hintEl.textContent = touchScreen()
+        ? 'Focused on one desk — tap the floor to pull back out.'
+        : 'Focused on one desk — Esc, or click the floor, to pull back out.';
     } else {
+      // (a touch screen has no click and no Esc; it taps and pinches)
+      const act = touchScreen() ? 'Tap a worker to fly to it, pinch to zoom.' : 'Click a worker to fly to it.';
       _hintEl.textContent = _viewMode === 'history'
-        ? 'A finished run, rebuilt from what Hermes recorded. Click a worker to fly to it.'
-        : "Hermes' real delegation tree, live. Click a worker to fly to it.";
+        ? 'A finished run, rebuilt from what Hermes recorded. ' + act
+        : "Hermes' real delegation tree, live. " + act;
     }
   }
 }
@@ -1882,6 +1886,10 @@ function renderSessionList() {
 // (the drawer shows on a desktop all the time, so nothing is folded there).
 function foldPhoneSidebar() {
   if (typeof window._closeMobileSidebarAfterPanelSelection === 'function') setTimeout(window._closeMobileSidebarAfterPanelSelection, 0);
+}
+
+function touchScreen() {
+  return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 }
 
 function renderProjectFolders(projects, parents) {
