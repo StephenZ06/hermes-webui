@@ -12063,3 +12063,13 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
 @media (max-width:767px){
   .main-view-body{overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
 }
+/* A chat is working on this Work Hub item: a small spinning ring on its card,
+   its list row and the chat's running footer ("Working on “…”"). */
+.work-hub-spinner{display:inline-block;flex:none;width:9px;height:9px;box-sizing:border-box;border:1.5px solid color-mix(in srgb,var(--accent) 30%,transparent);border-top-color:var(--accent);border-radius:50%;vertical-align:-1px;animation:work-hub-spin .8s linear infinite;}
+@keyframes work-hub-spin{to{transform:rotate(360deg);}}
+.work-hub-card small .work-hub-spinner,.work-hub-list-row small .work-hub-spinner{margin-right:5px;}
+.work-hub-card.is-working{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));}
+.lf-work-item{display:inline-flex;align-items:center;gap:6px;min-width:0;color:var(--text);opacity:.85;}
+.lf-work-item .work-hub-spinner{width:11px;height:11px;vertical-align:0;}
+.lf-work-item-text{min-width:0;max-width:min(320px,45vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+@media (prefers-reduced-motion:reduce){.work-hub-spinner{animation-duration:2.4s;}}

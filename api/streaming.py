@@ -9526,6 +9526,11 @@ def _run_agent_streaming(
         ensure_agent_runtime_current()
         _prewarm_skill_tool_modules()
         _install_streaming_cronjob_profile_wrapper()
+        try:
+            from api.work_hub_agent_tool import install as _install_work_hub_tool
+            _install_work_hub_tool()
+        except Exception:
+            logger.debug("work_hub tool install failed", exc_info=True)
 
         # Full-turn serialization is only needed for static/legacy skill-module
         # resolution, where process-global skill-module globals are still used.

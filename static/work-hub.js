@@ -11,6 +11,8 @@
   const esc = (value) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const scopedItems = () => { const projectBoardIds = store.activeFolderId ? new Set(store.boards.filter(board => board.project_id === store.activeFolderId).map(board => board.id)) : null; return store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : projectBoardIds ? projectBoardIds.has(item.board_id) : item.project_id === store.activeScope) && (!store.activeBoardId || item.board_id === store.activeBoardId) && (!store.search || item.title.toLowerCase().includes(store.search))); };
 
+  // A chat is working on this item right now (see api/work_hub.mark_working).
+  const WORKING_BADGE = '<span class="work-hub-spinner" role="img" aria-label="A chat is working on this" title="A chat is working on this"></span>';
   async function request(path, options) { return api(path, options); }
   function notifyWorkHubChanged() { document.dispatchEvent(new CustomEvent('work-hub-changed')); }
   async function loadWorkHubPanel() {
@@ -142,7 +144,7 @@
   }
   function fillWorkHubCards(cards, columnItems) {
     cards.textContent = '';
-    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card'; card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
   }
   // Typing in a column filter updates that column's cards in place. Replacing
   // the input would drop focus, and the iOS keyboard with it.
@@ -167,7 +169,7 @@
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
-      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row'; row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${esc(item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
+      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row' + (item.working ? ' is-working' : ''); row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${item.working ? WORKING_BADGE : ''}${esc(item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
       canvas.appendChild(table); return;
     }
     // Rebuilding the board must not throw away where the user is: keep the
@@ -571,6 +573,35 @@
   document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel(); });
   document.addEventListener('work-hub-changed', () => { if (el('workspaceWorkHubList')) renderWorkspaceWorkHub(); });
   window.addEventListener('focus', () => { if (el('workHub')) loadWorkHubPanel(); });
+  // Chats change items from the server side (the work_hub tool), so while the
+  // board is on screen it checks for changes every few seconds and redraws
+  // the cards only. It holds off while the user is dragging or typing on the
+  // board, so a refresh never drops a drag or the keyboard.
+  const WORK_HUB_POLL_MS = 3000;
+  let workHubPolling = false;
+  const workingSignature = items => items.filter(item => item.working).map(item => item.id).sort().join(',');
+  async function pollWorkHub() {
+    const canvas = el('workHubCanvas');
+    if (workHubPolling || document.hidden || !canvas || !canvas.offsetParent) return;
+    if (document.documentElement.classList.contains('work-hub-touch-dragging') || document.querySelector('.work-hub-card.dragging')) return;
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && el('workHub') && el('workHub').contains(focused) && focused.matches('input,textarea,select,[contenteditable="true"]')) return;
+    workHubPolling = true;
+    try {
+      const data = await request('/api/work_hub/items');
+      const items = data.items || [];
+      const newer = (data.revision || 0) > store.revision;
+      if (!newer && workingSignature(items) === workingSignature(store.items)) return;
+      if ((data.revision || 0) < store.revision) return;
+      store.items = items; store.revision = data.revision || store.revision;
+      if (newer) notifyWorkHubChanged();
+      const visible = scopedItems();
+      renderCanvas(visible); bind();
+      const live = document.querySelector('#workHub .work-hub-live'); if (live && !store.stale) live.textContent = `${visible.length} work item${visible.length === 1 ? '' : 's'}`;
+    } catch (_) { /* the next tick retries */ } finally { workHubPolling = false; }
+  }
+  // unref: under Node (the panel's script tests) the timer must not keep the process alive.
+  { const timer = setInterval(pollWorkHub, WORK_HUB_POLL_MS); if (timer && typeof timer.unref === 'function') timer.unref(); }
 })();
 
 /* Goal Planner dialog UI. */

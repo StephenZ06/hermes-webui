@@ -1398,7 +1398,51 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
             items = [_row_to_item(row) for row in conn.execute(sql, params)]
-            return {"items": items, "revision": _revision(conn)}
+            revision = _revision(conn)
+    return {"items": mark_working(items), "revision": revision}
+
+
+def current_revision() -> int:
+    with _STATE_LOCK:
+        _maybe_migrate_from_json()
+        with _connect() as conn:
+            return _revision(conn)
+
+
+def board_names() -> dict[str, str]:
+    """Board id -> name, for every Work Hub board."""
+    with _STATE_LOCK:
+        with _connect() as conn:
+            names = {}
+            for row in conn.execute("SELECT * FROM planning_entities WHERE collection = 'views'"):
+                if _decode_json(row["content"], {}).get("kind") == "work_hub_board":
+                    board = _board_from_row(row)
+                    names[board["id"]] = board.get("name")
+            return names
+
+
+def _running_session_ids() -> set[str]:
+    """Chats with a turn in flight right now."""
+    try:
+        from api.config import STREAM_SESSION_OWNERS, STREAM_SESSION_OWNERS_LOCK
+    except Exception:
+        return set()
+    with STREAM_SESSION_OWNERS_LOCK:
+        return {str(owner) for owner in STREAM_SESSION_OWNERS.values() if owner}
+
+
+def mark_working(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Flag in-progress items whose linked chat is running a turn, so the
+    board can show that a chat is working on them. Derived on every read and
+    never stored: a chat that stops, fails or is cancelled clears it."""
+    running = _running_session_ids()
+    for item in items:
+        item["working"] = bool(
+            running
+            and item.get("status") == "in_progress"
+            and any(sid in running for sid in item.get("linked_session_ids") or [])
+        )
+    return items
 
 
 def _projects_with_deletable(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:

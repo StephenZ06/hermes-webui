@@ -5206,6 +5206,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         : _stripXmlToolCalls(assistantText.slice(segmentStart));
       if(String(pendingDisplayTextBeforeComplete||'').trim()) _upsertAnchorProcessProse(pendingDisplayTextBeforeComplete,{sealed:true});
       _applyToAnchor('tool_complete',{...d,...tc,is_error:!!d.is_error},e);
+      if(d.name==='work_hub'&&typeof noteWorkHubToolResult==='function') noteWorkHubToolResult(activeSid,d);
       if(typeof noteWorkspaceMutationsFromToolCall==='function') noteWorkspaceMutationsFromToolCall(tc);
       if(S.session&&S.session.session_id===activeSid&&typeof scheduleRenderSessionArtifacts==='function') scheduleRenderSessionArtifacts();
       if(!S.session||S.session.session_id!==activeSid) return;

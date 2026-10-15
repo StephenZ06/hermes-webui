@@ -15339,13 +15339,34 @@ function showLiveRunStatus(sid,opts){
   _renderLiveRunStatusContent(el,startedAt);
   _startLiveRunStatusTimer(sid,startedAt);
 }
+// The Work Hub item a running turn has started (via the work_hub tool), shown
+// in the footer with a spinner until the turn ends or the item leaves "In
+// progress". Keyed by session and tied to the stream that started it, so a
+// finished or replaced turn never shows a stale item.
+const _liveWorkHubItems={};
+function noteWorkHubToolResult(sid,d){
+  if(!sid||!d||d.is_error)return;
+  let result=null;
+  try{result=JSON.parse(d.preview||d.snippet||'');}catch(_){return;}
+  const item=result&&(result.updated||result.created);
+  if(!item||!item.id)return;
+  const current=_liveWorkHubItems[sid];
+  if(item.status==='in_progress') _liveWorkHubItems[sid]={id:item.id,title:String(item.title||''),streamId:S.activeStreamId||null};
+  else if(current&&current.id===item.id) delete _liveWorkHubItems[sid];
+  if(typeof updateLiveRunStatus==='function') updateLiveRunStatus({sessionId:sid});
+}
+function _liveWorkHubItemHtml(){
+  const entry=_liveRunStatusSessionId&&_liveWorkHubItems[_liveRunStatusSessionId];
+  if(!entry||!entry.title||(entry.streamId&&S.activeStreamId&&entry.streamId!==S.activeStreamId))return '';
+  return `<span class="lf-sep">·</span><span class="lf-work-item" title="${esc(entry.title)}"><span class="work-hub-spinner" aria-hidden="true"></span><span class="lf-work-item-text">Working on “${esc(entry.title)}”</span></span>`;
+}
 function _renderLiveRunStatusContent(el,startedAt){
   if(!el)return;
   const now=Date.now()/1000;
   const elapsed=startedAt?Math.max(0,now-startedAt):0;
   const timeStr=_formatRunElapsed(elapsed);
   const tokens=_liveRunStatusTokens;
-  el.innerHTML=`<span class="live-run-status-dot tool-card-running-dot"></span><span class="live-run-status-text lf-time">${timeStr}</span>${tokens?`<span class="lf-sep">·</span><span class="lf-tokens">${_fmtTokens(tokens)} tokens</span>`:''}<span class="lf-sep">·</span><span class="lf-status">Running</span>`;
+  el.innerHTML=`<span class="live-run-status-dot tool-card-running-dot"></span><span class="live-run-status-text lf-time">${timeStr}</span>${tokens?`<span class="lf-sep">·</span><span class="lf-tokens">${_fmtTokens(tokens)} tokens</span>`:''}<span class="lf-sep">·</span><span class="lf-status">Running</span>${_liveWorkHubItemHtml()}`;
 }
 function updateLiveRunStatus(opts){
   if(opts&&opts.sessionId&&_liveRunStatusSessionId&&opts.sessionId!==_liveRunStatusSessionId) return;
@@ -19217,8 +19238,28 @@ function _toolQueryTitle(query){
   const normalized=String(query||'').replace(/\s+/g,' ').trim();
   return _shortToolLabel(normalized,72);
 }
+// work_hub steps read as what happened to the board: "Started “Fix login”".
+function _workHubToolLabel(tc,opts){
+  const args=(tc&&tc.args)||{};
+  const done=tc.done!==false;
+  if(tc.is_error)return 'Work Hub change failed';
+  let item=null;
+  try{const r=JSON.parse(tc.snippet||tc.preview||'');item=r&&(r.updated||r.created)||null;}catch(_){}
+  const title=item&&item.title?`“${item.title}”`:(args.title?`“${args.title}”`:'a work item');
+  if(opts.generic)return done?'Updated Work Hub':'Updating Work Hub';
+  if(args.action==='list')return done?'Checked the Work Hub':'Checking the Work Hub';
+  if(args.action==='create')return done?`Added ${title}`:`Adding ${title}`;
+  if(args.action==='update'){
+    const status=args.status||'';
+    if(status==='in_progress')return done?`Started ${title}`:`Starting ${title}`;
+    if(status==='done')return done?`Completed ${title}`:`Completing ${title}`;
+    return done?`Updated ${title}`:`Updating ${title}`;
+  }
+  return '';
+}
 function _toolActionLabelText(tc, opts){
   opts=opts||{};
+  if(tc&&tc.name==='work_hub'){const label=_workHubToolLabel(tc,opts);if(label)return label;}
   const kind=_toolActionKind(tc);
   const done=tc&&tc.done!==false;
   const isErr=tc&&tc.is_error;
