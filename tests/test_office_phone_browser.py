@@ -98,7 +98,7 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     shut = phone.evaluate(measure)
     assert shut["display"] != "none", shut                                            # it exists on a phone now
     assert shut["w"] <= 90 and shut["h"] <= 46, shut                                 # small: icon and count, whatever its list holds
-    assert shut["right"] <= 12 and shut["bottom"] <= 14, shut                        # bottom-right
+    assert shut["right"] == shut["bottom"] == 10, shut                               # bottom-right, the same gap below as at the side
     phone.evaluate("() => document.getElementById('officeTasks').classList.remove('is-collapsed')")
     phone.wait_for_timeout(150)
     early = phone.evaluate(measure)
@@ -113,7 +113,7 @@ def test_task_status_is_a_bottom_right_pill_that_opens_in_place_with_an_animatio
     assert later["w"] >= open_["w"] - 8 and shut["h"] + 6 < later["h"] < open_["h"], (shut, later, open_)
     assert shut["h"] < open_["h"]
     assert "grid-template-rows" in phone.evaluate("() => getComputedStyle(document.getElementById('officeTasksBody')).transitionProperty")
-    assert open_["left"] == open_["right"] == 10 and open_["bottom"] <= 14, open_       # evenly inset, still anchored to the corner
+    assert open_["left"] == open_["right"] == open_["bottom"] == 10, open_              # evenly inset, still anchored to the corner
     assert open_["h"] <= open_["stageH"] * 0.66, open_                                  # it leaves the floor in view
     # Closing: the text FADES (it does not vanish) while the list folds, and the card narrows as that finishes.
     phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
@@ -266,3 +266,22 @@ def test_the_floor_hint_speaks_of_taps_and_pinching_on_a_touch_screen():
     assert "const act = touchScreen() ? 'Tap a worker to fly to it, pinch to zoom.' : 'Click a worker to fly to it.';" in OFFICE_JS
     assert "'Focused on one desk — tap the floor to pull back out.'" in OFFICE_JS      # no Esc on a phone
     assert "'Focused on one desk — Esc, or click the floor, to pull back out.'" in OFFICE_JS
+
+
+def test_the_conductors_label_goes_behind_the_task_status_card(phone):
+    _with_floor_chrome(phone)
+    phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")
+    phone.wait_for_timeout(1500)
+    # (elementsFromPoint ignores the pointer-events:none cards, so the paint order is read from a screenshot)
+    box = phone.evaluate("""() => {
+        const tasks = document.getElementById('officeTasks'), r = tasks.getBoundingClientRect(), host = document.getElementById('officeDeptCards');
+        const h = host.getBoundingClientRect();
+        // the conductor's card is given an inline z-index of 100 (static/office/index.js); here, a solid magenta slab over the pill
+        host.innerHTML = '<div class="office-dept-card" style="z-index:100;min-width:0;width:60px;height:24px;padding:0;background:#ff00ff;border:0;left:' + (r.left - h.left + 40) + 'px;top:' + (r.top - h.top + 30) + 'px"></div>';
+        return {x: r.left, y: r.top, w: r.width, h: r.height};
+    }""")
+    phone.wait_for_timeout(300)
+    rows = _png_rgba(phone.screenshot(clip={"x": box["x"], "y": box["y"], "width": box["w"], "height": box["h"]}))
+    scale = len(rows[0]) / box["w"]
+    mid = rows[int(box["h"] * scale / 2)][int(box["w"] * scale / 2)]
+    assert not (mid[0] > 200 and mid[1] < 60 and mid[2] > 200), f"the conductor's label painted over the Task Status card: {mid}"

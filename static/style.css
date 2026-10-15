@@ -7243,7 +7243,7 @@ main.main > #mainPlugin{display:none;}
 @media (max-width:640px){
   /* Task Status on a phone: a pill in the stage's bottom-right corner (icon, count) that opens in place,
      widening across the stage and growing upward, with the same grid-rows disclosure the desktop card uses. */
-  .office-tasks{top:auto;left:auto;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .4s cubic-bezier(.33,0,.15,1);}
+  .office-tasks{top:auto;left:auto;right:10px;bottom:10px;width:calc(100% - 20px);min-width:0;max-height:min(62%,460px);border-radius:12px;transition:width .4s cubic-bezier(.33,0,.15,1);}
   .office-tasks.is-collapsed{min-height:0;width:84px;transition:width .4s cubic-bezier(.33,0,.15,1) .3s;}   /* a fixed pill: its (hidden) list must not widen it */
   /* One continuous move in two directions: opening, the pill widens to the left and the list begins to
      unfold upward as the widening is finishing (no standing pause between them); closing runs it backwards,
@@ -7265,7 +7265,7 @@ main.main > #mainPlugin{display:none;}
   .office-tasks-filters{padding:0 12px 8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
   .office-tasks-filters::-webkit-scrollbar{display:none;}
   .office-tasks-filter{flex:0 0 auto;padding:5px 11px;}
-  .office-tasks-list{padding:2px 10px calc(12px + env(safe-area-inset-bottom,0px));}
+  .office-tasks-list{padding:2px 10px 12px;}
   .office-tasks-row-select{padding:10px 12px;}
 }
 /* As wide as the stage gets with the sidebar collapsed (--office-canvas-span, set by
@@ -7280,7 +7280,7 @@ main.main > #mainPlugin{display:none;}
    frame (static/office/index.js's repositionDepartmentCards) to track its
    pod as the camera pans/zooms, so the cards themselves only need `left`/
    `top` set inline -- everything else here is the fixed look of one card. */
-.office-dept-cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.office-dept-cards{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;isolation:isolate;}   /* (own stacking context: the conductor's card carries z-index:100 and must not rise over the Task Status card) */
 .office-dept-cards.is-fading-out .office-dept-card{opacity:0;transition:none;}
 .office-dept-cards.is-fading-in .office-dept-card{opacity:1;transition:opacity 1200ms ease-out;}
 /* No backdrop-filter: these cards sit over the animated WebGL floor, so a blur
