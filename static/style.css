@@ -12657,3 +12657,68 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg .rpg-stats{grid-template-columns:repeat(auto-fill,minmax(155px,1fr));}
 .dash.is-rpg .rpg-stat span{min-width:0;}
 .dash.is-rpg .rpg-stat small{overflow-wrap:anywhere;}
+/* ==== Dashboard round 4: compact like the Work Hub ==== */
+.dash.is-rpg .dash-head{align-items:center;}
+.dash.is-rpg .dash-head h1{font-size:16px;line-height:1.2;letter-spacing:.04em;text-box:trim-both cap alphabetic;}
+/* Text: the pixel font's crisp 8px for body and captions, 9px for card titles. */
+.dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection,.dash-connect-hint){font-size:8px;line-height:1.75;letter-spacing:.02em;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-row-main strong,.dash.is-rpg .dash-quest-open strong,.dash.is-rpg .dash-goal-head strong,.dash.is-rpg .rpg-reward strong,.dash.is-rpg .rpg-member strong{font-size:8px;line-height:1.7;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(small,.dash-hint,.dash-empty,p){font-size:8px;line-height:1.75;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head) h3{font-size:9px;line-height:1.7;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head){margin-bottom:10px;padding-bottom:8px;}
+.dash.is-rpg .dash-row-main,.dash.is-rpg .dash-quest-open{gap:3px;}
+.dash.is-rpg :is(.dash-row,.dash-quest-row,.dash-habit,.rpg-reward){padding-top:8px;padding-bottom:8px;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-xp-gain,.dash-num,.dash-chip){font-size:8px;}
+.dash.is-rpg .dash-pill{padding:4px 8px;}
+.dash.is-rpg .dash-area-tag{font-size:7px;padding:3px 5px;}
+.dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon).is-pixel,.dash-pix-icon{width:20px;height:20px;}
+.dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon):not(.is-pixel){width:24px;height:24px;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head){min-height:20px;}
+/* Controls: Work Hub height (28px). */
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn,.dash.is-rpg .dash-btn.is-small{height:28px;padding:0 10px;font-size:8px;gap:5px;}
+.dash.is-rpg .dash-btn svg{width:12px;height:12px;}
+.dash.is-rpg .dash-btn.is-ghost{width:28px;}
+.dash.is-rpg .dash-link{font-size:8px;padding:6px 4px;}
+.dash.is-rpg .dash-inline-form{gap:8px;padding:10px;}
+.dash.is-rpg .dash-inline-form :is(input[type=text],input[type=number],input[type=date],input[type=password]),.dash.is-rpg .themed-select-wrap select,.dash.is-rpg .dash-select{height:28px;}
+.dash.is-rpg .themed-select-wrap select,.dash.is-rpg .dash-select,.dash.is-rpg .dash-inline-form input,.dash.is-rpg .dash-inline-form input::placeholder{font-size:8px!important;}
+.dash.is-rpg .dash-chip{height:26px;padding:0 10px;}
+.dash.is-rpg .dash-tabs,.dash.is-rpg .dash-char-btn{height:34px;}
+.dash.is-rpg .dash-tabs button{font-size:8px;padding:0 12px;}
+.dash.is-rpg .dash-char-btn{font-size:8px;padding:0 12px;gap:7px;}
+.dash.is-rpg .dash-char-btn svg{width:13px;height:13px;}
+.dash.is-rpg .rpg-buy{height:28px;font-size:8px;}
+.dash.is-rpg .dash-habit-check{width:24px;height:24px;}
+.dash.is-rpg .rpg-reward-icon,.dash.is-rpg .rpg-member-avatar{width:30px;height:30px;font-size:15px;}
+.dash.is-rpg .rpg-member-avatar{width:44px;height:44px;}
+/* Stat tiles: content centred so the space above and below is equal. */
+.dash.is-rpg .dash-stat{justify-content:center;gap:8px;padding:14px 16px;}
+.dash.is-rpg .dash-stat > *{text-box:trim-both cap alphabetic;line-height:1.2;}
+.dash.is-rpg .dash-stat small{font-size:8px;}
+.dash.is-rpg .dash-stat b{font-size:18px;}
+.dash.is-rpg .dash-stat span{font-size:8px;}
+/* Character sheet to the same scale. */
+.dash.is-rpg .rpg-title h2{font-size:15px;}
+.dash.is-rpg .rpg-stat strong{font-size:8px;}
+.dash.is-rpg .rpg-stat b{width:30px;height:30px;font-size:10px;}
+.dash.is-rpg .rpg-stat{padding:6px;}
+.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-xpline{font-size:8px;}
+.dash.is-rpg .rpg-badges b{font-size:11px;}
+.dash.is-rpg .rpg-badges div{padding:8px 4px;}
+.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong{font-size:8px;}
+.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small{font-size:7px;}
+.dash.is-rpg .rpg-ach-icon,.dash.is-rpg .dash-badge-icon{width:30px;height:30px;font-size:16px;}
+.dash.is-rpg .rpg-purse b{font-size:13px;}
+.dash.is-rpg .dash-connect-copy h3{font-size:11px;}
+.dash-side-nav .side-menu-item{min-height:30px;font-size:12.5px;}
+@media (max-width:620px){
+  .dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat){font-size:8px;}
+  .dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:8px;}
+  .dash.is-rpg .dash-stat b{font-size:15px;}
+  .dash.is-rpg .dash-head h1{font-size:13px;}
+}
+/* The app draws its own trigger button over a hidden native select: style that one. */
+.dash.is-rpg .themed-select-trigger{display:inline-flex;align-items:center;gap:8px;height:28px;min-width:120px;box-sizing:border-box;padding:0 10px;border:2px solid var(--rpg-frame);border-radius:4px;background:color-mix(in srgb,var(--bg) 75%,#000);color:var(--text);font:8px/1 var(--rpg-pixel)!important;letter-spacing:.02em;}
+.dash.is-rpg .themed-select-trigger-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;text-box:trim-both cap alphabetic;}
+.dash.is-rpg .themed-select-trigger:focus-visible,.dash.is-rpg .themed-select-trigger[aria-expanded="true"]{border-color:var(--rpg-gold);outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-gold) 30%,transparent);}
+.dash.is-rpg .dash-row .themed-select-trigger{min-width:0;width:100%;}

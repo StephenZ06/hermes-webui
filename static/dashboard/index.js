@@ -40,8 +40,7 @@
     {key: 'business', label: 'Business'},
   ];
   const VIEWS = ['character', 'personal', 'career', 'business', 'settings'];
-  const VIEW_TITLE = {character: 'Character', personal: 'Personal Dashboard', career: 'Career Dashboard', business: 'Business Dashboard', settings: 'Settings'};
-  const VIEW_SUB = {character: 'Everything you finish, as an adventure.', personal: 'Habits, learning and your projects.', career: 'Your job search, levelled up.', business: 'Sales, goals and milestones.', settings: 'Connections for the dashboard.'};
+  const VIEW_TITLE = {character: 'CHARACTER', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};
   // Card icons drawn as pixel art (static/dashboard/icons), by card.
   const PIX = (name) => `<img class="dash-pix-icon" src="static/dashboard/icons/${name}.png" alt="" width="24" height="24" draggable="false">`;
   const AREA = {personal: 'Personal', career: 'Career', business: 'Business'};
@@ -531,7 +530,7 @@
     const scroll = scroller ? scroller.scrollTop : 0;
     const entering = state.entering; state.entering = false;
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
-      <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1><p>${esc(VIEW_SUB[state.tab])}</p></div>
+      <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
         <div class="dash-head-right">
         <button type="button" class="dash-char-btn${isChar ? ' on' : ''}" data-dash-tab="character">${svg('character', 15)}<span>Character</span>${levelBadge()}</button>
         <div class="dash-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-dash-tab="${t.key}" aria-selected="${t.key === state.tab}" class="${t.key === state.tab ? 'on' : ''}"><span>${t.label}</span></button>`).join('')}</div></div>

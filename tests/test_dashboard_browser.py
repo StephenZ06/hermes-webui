@@ -50,7 +50,7 @@ def test_dashboard_tabs_switch_and_are_remembered(browser):
     page.evaluate("() => document.querySelector('.dash-tabs [data-dash-tab=personal]').click()")
     page.wait_for_selector("#dashboardRoot .dash-stats", timeout=15000)
     assert page.evaluate("() => document.querySelector('.dash-tabs .on').textContent") == "Personal"
-    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "Personal Dashboard"
+    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "PERSONAL DASHBOARD"
 
     page.evaluate("() => document.querySelector('.dash-tabs [data-dash-tab=career]').click()")
     page.wait_for_function("() => document.querySelector('.dash-body')?.dataset.tab === 'career' && document.querySelector('.dash-stats')", polling=100, timeout=15000)
@@ -218,7 +218,7 @@ def test_the_sales_connection_lives_in_settings(browser):
     assert not page.evaluate("() => !!document.querySelector('form[data-form=connect]')")
     page.evaluate("() => document.querySelector('.dash-connect-hint').click()")
     page.wait_for_selector("form[data-form=connect]", timeout=15000)
-    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "Settings"
+    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "SETTINGS"
 
 
 def test_header_controls_share_a_height_and_cards_have_equal_padding(browser):
