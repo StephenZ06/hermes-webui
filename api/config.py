@@ -10150,7 +10150,7 @@ _SETTINGS_DEFAULTS = {
     "inflight_state_max_tool_calls": 48,  # max recent tool-call records kept per recovery snapshot
     "inflight_state_max_string_chars": 60000,  # max string length kept inside a recovery snapshot field
     "inflight_state_max_json_chars": 1500000,  # max serialized recovery snapshot payload before pruning
-    "hidden_tabs": [],  # sidebar tab panel names hidden by user (e.g. ["tasks","kanban"]); chat and settings are always visible
+    "hidden_tabs": [],  # sidebar tab panel names hidden by user (e.g. ["tasks","kanban"]); dashboard, chat and settings are always visible
     "workspace_hidden_folders": [],  # folder names/globs to omit from workspace folder pickers (e.g. ["ecc","ecc-*"]); matched case-insensitively against the directory name only, never a path. Hides nothing on disk and does not affect the file tree.
     "tab_order": [],  # user-defined sidebar/rail tab order for reorderable tabs; chat/settings stay fixed
     "composer_control_order": [],  # user-defined composer footer control order; invalid/duplicate keys are ignored
@@ -10703,7 +10703,7 @@ def save_settings(settings: dict) -> dict:
                     s = s.strip()
                     if not s or s in seen:
                         continue
-                    if k in {"hidden_tabs", "tab_order"} and s in {"chat", "settings"}:
+                    if k in {"hidden_tabs", "tab_order"} and s in {"dashboard", "chat", "settings"}:
                         continue
                     if k == "composer_control_order" and s not in _COMPOSER_CONTROL_ORDER_KEYS:
                         continue

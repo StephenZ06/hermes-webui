@@ -13492,6 +13492,10 @@ def _render_index_shell_base() -> str:
     label = re.sub(r"[^A-Za-z0-9 _-]", "", os.getenv("HERMES_WEBUI_INSTANCE_LABEL", ""))[:16].strip()
     if label:
         base = base.replace("<body", f'<body data-instance-label="{label}"', 1)
+    # Which page a fresh launch opens on (a reload or a chat link keeps its own).
+    start = os.getenv("HERMES_WEBUI_START_PAGE", "dashboard").strip().lower()
+    start = start if start in ("dashboard", "chat") else "dashboard"
+    base = base.replace("<body", f'<body data-start-page="{start}"', 1)
     with _INDEX_SHELL_CACHE_LOCK:
         _INDEX_SHELL_CACHE["base"] = (sig, base)
     return base

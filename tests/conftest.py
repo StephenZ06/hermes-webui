@@ -1058,6 +1058,9 @@ def test_server():
     # Without this, the subprocess can make outbound requests that the
     # pytest-side block can't see.
     env["HERMES_WEBUI_TEST_NETWORK_BLOCK"] = "1"
+    # The app opens on the Dashboard on a fresh launch; most browser tests drive
+    # Chat straight after boot, so the test server keeps Chat as the start page.
+    env.setdefault("HERMES_WEBUI_START_PAGE", "chat")
     env.update({
         "HERMES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
         # Small archive-extraction cap so the zip-bomb guard is exercisable

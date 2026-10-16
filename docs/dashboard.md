@@ -1,6 +1,6 @@
 # Dashboard
 
-The Dashboard page (rail button after Chat) has three tabs, Personal, Career
+The Dashboard page (first in the rail, above Chat) has three tabs, Personal, Career
 and Business, plus a Character page that turns what you finish into an RPG
 character. Everything is stored per state directory in `dashboard.db`; the
 Work Hub, Jobs and Notes stay the owners of their own data.
@@ -56,3 +56,10 @@ the last ~35 days. Sales can also be entered by hand.
 Thinking orbs, border beams, bot avatars and liquid metal come from the
 vendored Libraries.dev bundle (`static/vendor/libraries-dev/`), loaded only
 when the Dashboard is shown. Reduced motion pauses them.
+
+## Start page
+
+A fresh launch opens the Dashboard. A reload keeps the page you were on
+(Chat included), and a chat link (`/session/<id>`) or a launch shortcut
+(`?action=...`) opens Chat. `HERMES_WEBUI_START_PAGE=chat` makes Chat the
+start page instead. Dashboard, Chat and Settings are always shown in the rail.

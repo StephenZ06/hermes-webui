@@ -433,7 +433,9 @@ function _syncPanelRoute(panel) {
   const base = window.location.pathname + window.location.search;
   const current = window.location.hash || '';
   try {
-    _rememberPanelRoute(!panel || panel === 'chat' || !MAIN_VIEW_PANELS.includes(panel)
+    // Chat is remembered too ('chat'), so a reload in Chat stays in Chat
+    // rather than falling through to the start page.
+    _rememberPanelRoute(!panel || panel === 'chat' ? 'chat' : !MAIN_VIEW_PANELS.includes(panel)
       ? '' : (_panelFromRouteHash(current) === panel ? current : _preferredPanelRoute(panel)));
     if (!panel || panel === 'chat' || !MAIN_VIEW_PANELS.includes(panel)) {
       if (_panelFromRouteHash(current)) window.history.replaceState(window.history.state, '', base);
@@ -447,6 +449,17 @@ function _syncPanelRoute(panel) {
 // Called once boot has restored the conversation: reopen the page the hash
 // names. Jobs reads its own section from the hash when it mounts; the Office
 // page's sub-page is reapplied here.
+// A fresh launch (nothing remembered for this tab, no chat link, no launch
+// shortcut) opens the start page the server names: the Dashboard by default.
+function _isFreshLaunchToStartPage() {
+  if (typeof document === 'undefined' || !document.body || document.body.dataset.startPage !== 'dashboard') return false;
+  if (!document.querySelector('[data-panel="dashboard"]')) return false;
+  try {
+    const url = new URL(window.location.href);
+    if (/\/session\//.test(url.pathname) || url.searchParams.has('action')) return false;
+  } catch (_) { return false; }
+  return true;
+}
 async function restorePanelFromRoute() {
   let hash = (typeof window !== 'undefined' && window.location) ? window.location.hash : '';
   if (!_panelFromRouteHash(hash)) {
@@ -455,6 +468,8 @@ async function restorePanelFromRoute() {
     if (_panelFromRouteHash(saved)) {
       hash = saved;
       try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search + saved); } catch (_) {}
+    } else if (!saved && _isFreshLaunchToStartPage()) {
+      hash = '#dashboard';
     }
   }
   const panel = _panelFromRouteHash(hash);
@@ -10063,7 +10078,7 @@ let _settingsPreferencesAutosaveTimer = null;
 let _settingsPreferencesAutosaveRetryPayload = null;
 
 // ── Sidebar tab visibility/order ────────────────────────────────────────────
-const _ALWAYS_VISIBLE_TABS = new Set(['chat','settings']);
+const _ALWAYS_VISIBLE_TABS = new Set(['dashboard','chat','settings']);
 const _HIDDEN_TABS_LS_KEY = 'hermes-webui-hidden-tabs';
 const _TAB_ORDER_LS_KEY = 'hermes-webui-tab-order';
 const _COMPOSER_CONTROL_ORDER_LS_KEY = 'hermes-webui-composer-control-order';

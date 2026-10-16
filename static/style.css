@@ -12722,3 +12722,102 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg .themed-select-trigger-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;text-box:trim-both cap alphabetic;}
 .dash.is-rpg .themed-select-trigger:focus-visible,.dash.is-rpg .themed-select-trigger[aria-expanded="true"]{border-color:var(--rpg-gold);outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-gold) 30%,transparent);}
 .dash.is-rpg .dash-row .themed-select-trigger{min-width:0;width:100%;}
+/* ==== Dashboard round 5 ==== */
+@font-face{font-family:"VT323";src:url("vendor/fonts/vt323/VT323-Regular.ttf") format("truetype");font-display:swap;}
+.dash.is-rpg{--rpg-text:"VT323",var(--font-ui,system-ui);}
+/* Plain page background (no violet glow). */
+#mainDashboard:has(.dash.is-rpg),:root.dark #mainDashboard:has(.dash.is-rpg){background:var(--bg);}
+/* Readable pixel text: VT323 (tall, narrow terminal pixels) for body text and
+   controls; the wide Press Start 2P stays on titles and numbers. */
+.dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection,.dash-connect-hint){font-family:var(--rpg-text);font-size:13px;line-height:1.45;letter-spacing:.01em;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-row-main strong,.dash.is-rpg .dash-quest-open strong,.dash.is-rpg .dash-goal-head strong,.dash.is-rpg .rpg-reward strong,.dash.is-rpg .rpg-member strong{font-family:var(--rpg-text);font-size:14px;font-weight:600;line-height:1.3;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(small,.dash-hint,.dash-empty,p){font-family:var(--rpg-text);font-size:12px;line-height:1.45;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-xp-gain,.dash-num,.dash-chip,.dash-area-tag){font-family:var(--rpg-text);}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-chip){font-size:12px;font-weight:500;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-xp-gain,.dash-num){font-size:13px;font-weight:600;}
+.dash.is-rpg .dash-area-tag{font-size:11px;font-weight:600;padding:2px 6px;}
+.dash.is-rpg .dash-pill{padding:3px 9px;}
+.dash.is-rpg .dash-row-main,.dash.is-rpg .dash-quest-open{gap:2px;}
+.dash.is-rpg :is(.dash-btn,.dash-link,.rpg-buy,.dash-tabs button,.dash-char-btn,.themed-select-trigger,.dash-check-label),.dash-picker .dash-btn{font-family:var(--rpg-text)!important;letter-spacing:.02em;}
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn,.dash.is-rpg .dash-btn.is-small{font-size:13px;font-weight:600;}
+.dash.is-rpg .dash-link{font-size:13px;font-weight:600;}
+.dash.is-rpg .rpg-buy{font-size:13px;font-weight:600;}
+.dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:14px;font-weight:600;}
+.dash.is-rpg .themed-select-trigger{font-size:13px!important;}
+.dash.is-rpg .dash-inline-form input,.dash.is-rpg .dash-inline-form input::placeholder,.dash.is-rpg .dash-select{font-family:var(--rpg-text)!important;font-size:13px!important;}
+.dash.is-rpg .dash-stat small,.dash.is-rpg .dash-stat span{font-family:var(--rpg-text);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+.dash.is-rpg .dash-stat span{text-transform:none;letter-spacing:.01em;font-weight:500;}
+.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-xpline,.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small,.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong,.dash.is-rpg .dash-chart-col small,.dash.is-rpg .dash-chart-val,.dash.is-rpg .dash-road-node small,.dash.is-rpg .rpg-purse small,.dash.is-rpg .rpg-history{font-family:var(--rpg-text);}
+.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-xpline{font-size:12px;}
+.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong{font-size:12px;font-weight:600;}
+.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small{font-size:11px;}
+.dash.is-rpg .dash-chart-col small,.dash.is-rpg .dash-chart-val,.dash.is-rpg .dash-road-node small{font-size:11px;}
+.dash.is-rpg .dash-connect-copy p{font-family:var(--rpg-text);font-size:13px;}
+/* Card icons: as tall as the header's buttons, so the gap above equals the gap to the left. */
+.dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon).is-pixel,.dash-pix-icon{width:28px;height:28px;}
+.dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon):not(.is-pixel){width:28px;height:28px;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head){min-height:28px;}
+/* Stat tiles: taller, content centred so the gaps above and below match. */
+.dash.is-rpg .dash-stat{min-height:108px;justify-content:center;gap:10px;padding:16px 18px;}
+.dash.is-rpg .dash-stat b{font-size:20px;}
+/* Gold studs on all four corners of every card (not the stat tiles). */
+.dash.is-rpg :is(.dash-card,.rpg-panel)::after{content:none;}
+.dash.is-rpg :is(.dash-card,.rpg-panel)::before{content:"";position:absolute;inset:-4px;width:auto;height:auto;box-shadow:none;pointer-events:none;
+  background:linear-gradient(var(--rpg-gold),var(--rpg-gold)) top left/6px 6px no-repeat,linear-gradient(var(--rpg-gold),var(--rpg-gold)) top right/6px 6px no-repeat,linear-gradient(var(--rpg-gold),var(--rpg-gold)) bottom left/6px 6px no-repeat,linear-gradient(var(--rpg-gold),var(--rpg-gold)) bottom right/6px 6px no-repeat;
+  filter:drop-shadow(0 0 1px rgba(0,0,0,.6));}
+.dash.is-rpg .rpg-panel.rpg-sheet::before{content:"";}
+/* Scrolling: a card that reaches its end hands the wheel back to the page
+   (no more "stuck" page while the pointer is over a card). */
+.dash.is-rpg .dash-card-body{overscroll-behavior:auto!important;}
+@media (max-width:620px){
+  .dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat){font-size:13px;}
+  .dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:13px;}
+  .dash.is-rpg .dash-stat{min-height:96px;}
+  .dash.is-rpg .dash-stat b{font-size:16px;}
+}
+/* VT323 is tall and narrow: it reads at larger point sizes. */
+.dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection,.dash-connect-hint){font-size:14px;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-row-main strong,.dash.is-rpg .dash-quest-open strong,.dash.is-rpg .dash-goal-head strong,.dash.is-rpg .rpg-reward strong,.dash.is-rpg .rpg-member strong{font-size:15px;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(small,.dash-hint,.dash-empty,p){font-size:13px;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-chip){font-size:13px;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-xp-gain,.dash-num){font-size:14px;}
+.dash.is-rpg .dash-area-tag{font-size:12px;}
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn,.dash.is-rpg .dash-btn.is-small,.dash.is-rpg .dash-link,.dash.is-rpg .rpg-buy,.dash.is-rpg .themed-select-trigger{font-size:14px!important;}
+.dash.is-rpg .dash-inline-form input,.dash.is-rpg .dash-inline-form input::placeholder,.dash.is-rpg .dash-select{font-size:14px!important;}
+.dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:15px;}
+.dash.is-rpg .dash-stat small{font-size:13px;}
+.dash.is-rpg .dash-stat span{font-size:13px;}
+.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-xpline{font-size:13px;}
+.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong{font-size:13px;}
+.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small{font-size:12px;}
+.dash.is-rpg .dash-chart-col small,.dash.is-rpg .dash-chart-val,.dash.is-rpg .dash-road-node small{font-size:12px;}
+/* Press Start 2P keeps its own spacing. */
+.dash.is-rpg :is(h1,h2,h3,.rpg-stat strong,.rpg-stat b,.dash-stat b,.rpg-badges b,.rpg-purse b,.rpg-plate-level,.rpg-rank,.rpg-gold,.dash-level-badge){word-spacing:normal;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-area-tag{font-size:11px;padding:2px 6px;line-height:1.2;}
+/* VT323 sizes (it is drawn small for its point size). */
+.dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection,.dash-connect-hint){font-size:18px;line-height:1.25;letter-spacing:.02em;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-row-main strong,.dash.is-rpg .dash-quest-open strong,.dash.is-rpg .dash-goal-head strong,.dash.is-rpg .rpg-reward strong,.dash.is-rpg .rpg-member strong{font-size:19px;font-weight:400;line-height:1.15;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(small,.dash-hint,.dash-empty,p){font-size:17px;line-height:1.25;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-chip){font-size:17px;font-weight:400;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-xp-gain,.dash-num){font-size:18px;font-weight:400;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-area-tag{font-size:15px;font-weight:400;padding:0 6px;line-height:1.3;}
+.dash.is-rpg .dash-pill{padding:1px 9px;}
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn,.dash.is-rpg .dash-btn.is-small,.dash.is-rpg .dash-link,.dash.is-rpg .rpg-buy,.dash.is-rpg .themed-select-trigger{font-size:18px!important;font-weight:400!important;}
+.dash.is-rpg .dash-inline-form input,.dash.is-rpg .dash-inline-form input::placeholder,.dash.is-rpg .dash-select{font-size:18px!important;}
+.dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:19px;font-weight:400;}
+.dash.is-rpg .dash-stat small{font-size:17px;font-weight:400;letter-spacing:.08em;}
+.dash.is-rpg .dash-stat span{font-size:17px;font-weight:400;}
+.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-xpline{font-size:17px;}
+.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong{font-size:17px;font-weight:400;line-height:1.15;}
+.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small{font-size:15px;line-height:1.15;}
+.dash.is-rpg .dash-chart-col small,.dash.is-rpg .dash-chart-val,.dash.is-rpg .dash-road-node small{font-size:16px;}
+.dash.is-rpg .dash-connect-copy p,.dash.is-rpg .rpg-purse small,.dash.is-rpg .rpg-history{font-size:17px;}
+.dash.is-rpg .dash-check-label{font-size:17px;}
+@media (max-width:620px){
+  .dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat){font-size:18px;}
+  .dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:18px;}
+}
+/* The icon sits at the header's top edge, so its gap from the card's top always
+   equals its gap from the left (a two-line title or taller button grows downward). */
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head) > :is(.dash-card-icon,.rpg-panel-icon){align-self:flex-start;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head){align-items:center;}

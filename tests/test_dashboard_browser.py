@@ -248,3 +248,53 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
     capped = page.evaluate("() => [...document.querySelectorAll('.rpg-col > .rpg-panel')].map(p => Math.round(p.getBoundingClientRect().height))")
     assert capped and max(capped) <= 560
+
+
+def test_a_fresh_launch_opens_the_dashboard_but_a_reload_in_chat_stays_in_chat(browser):
+    # The test server pins Chat as the start page; switch this page to the
+    # product default (Dashboard) and replay the boot-time route restore.
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    opened = page.evaluate("""async () => {
+        document.body.dataset.startPage = 'dashboard';
+        try { sessionStorage.removeItem('hermes-webui-panel-route'); } catch (_) {}
+        await switchPanel('chat'); try { sessionStorage.removeItem('hermes-webui-panel-route'); } catch (_) {}
+        await restorePanelFromRoute(); return _currentPanel; }""")
+    assert opened == "dashboard"
+    stays = page.evaluate("""async () => { await switchPanel('chat'); await restorePanelFromRoute(); return _currentPanel; }""")
+    assert stays == "chat"  # Chat is remembered for the tab
+    assert page.evaluate("() => [...document.querySelector('.rail').children].filter(e => e.dataset.panel)[0].dataset.panel") == "dashboard"
+
+
+def test_stat_tiles_and_card_icons_are_evenly_spaced(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-stats", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    stats = page.evaluate("""() => [...document.querySelectorAll('.dash-stat')].map(s => { const r = s.getBoundingClientRect(), b = parseFloat(getComputedStyle(s).borderTopWidth), k = [...s.children];
+        return [Math.round(k[0].getBoundingClientRect().top - r.top - b), Math.round(r.bottom - b - k[k.length - 1].getBoundingClientRect().bottom)]; })""")
+    assert stats and all(abs(top - bottom) <= 1 for top, bottom in stats)
+    icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head img')).map(c => {
+        const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('img').getBoundingClientRect();
+        return [Math.round(i.top - r.top - b), Math.round(i.left - r.left - b)]; })""")
+    assert icons and all(top == left for top, left in icons)
+
+
+def test_the_wheel_moves_on_to_the_page_once_a_card_has_scrolled_to_its_end(browser):
+    for i in range(12):
+        _post("/api/dashboard/rewards/add", {"name": f"Reward {uuid.uuid4().hex[:4]} {i}", "cost": 10 + i})
+    page = _open(browser, viewport={"width": 1440, "height": 800})
+    page.evaluate("() => document.querySelectorAll('.app-tour-overlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-stage", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    target = page.evaluate("""() => { const m = document.getElementById('mainDashboard');
+        const panel = [...document.querySelectorAll('.rpg-col > .rpg-panel')].find(p => { const b = p.querySelector('.dash-card-body'); return b && b.scrollHeight > b.clientHeight + 4; });
+        if (!panel) return null; panel.scrollIntoView({block: 'center'}); const b = panel.querySelector('.dash-card-body'); b.scrollTop = 0;
+        const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2, m.scrollTop]; }""")
+    if target is None or target[2] < 50:
+        pytest.skip("no scrolling card or page in this state")
+    page.mouse.move(target[0], target[1])
+    for _ in range(4):
+        page.mouse.wheel(0, -200)
+        time.sleep(0.15)
+    page.wait_for_function(f"() => document.getElementById('mainDashboard').scrollTop < {target[2]}", polling=100, timeout=5000)

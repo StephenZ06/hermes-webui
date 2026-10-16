@@ -1,6 +1,6 @@
 """The left rail's page icons sit in four groups, and the slots do not move.
 
-Work (Chat, Dashboard, Work Hub, Notes, Office) | Automations (Tasks, Jobs) |
+Work (Dashboard, Chat, Work Hub, Notes, Office) | Automations (Tasks, Jobs) |
 Agent setup (Personas, Profiles, Skills, Memory, Knowledge) |
 Spaces, then Monitoring (Insights, Logs, Activity). The dividers are re-anchored at boot
 by _applyTabOrder(), so this checks the rendered rail, not the HTML.
@@ -9,7 +9,7 @@ import pytest
 
 from tests._pytest_port import BASE
 
-EXPECTED = ["chat", "dashboard", "notes", "notebook", "office", "|",
+EXPECTED = ["dashboard", "chat", "notes", "notebook", "office", "|",
             "tasks", "jobs", "|",
             "agents", "profiles", "skills", "memory", "knowledge", "|",
             "workspaces", "insights", "logs", "audit"]
