@@ -5791,7 +5791,8 @@ main.main > #mainOffice{display:none;}
 main.main > #mainNotes{display:none;}
 main.main > #mainJobs{display:none;}
 main.main > #mainNotebook{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office):not(.showing-notes):not(.showing-jobs):not(.showing-notebook) > #mainChat{display:flex;}
+main.main > #mainDashboard{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-agents):not(.showing-memory):not(.showing-knowledge):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin):not(.showing-office):not(.showing-notes):not(.showing-jobs):not(.showing-notebook):not(.showing-dashboard) > #mainChat{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-agents > #mainAgents{display:flex;}
@@ -5807,6 +5808,7 @@ main.main.showing-office > #mainOffice{display:flex;}
 main.main.showing-notes > #mainNotes{display:flex;}
 main.main.showing-jobs > #mainJobs{display:flex;overflow:auto;}
 main.main.showing-notebook > #mainNotebook{display:flex;}
+main.main.showing-dashboard > #mainDashboard{display:flex;overflow:auto;}
 
 /* ── Notes (BlockNote) ──
    Side panel: #notebookSidebar reuses the Work Hub nav rows. Main view: the
@@ -11596,9 +11598,9 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
     box-shadow:none;}
   .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .sidebar-nav-divider{width:auto;align-self:stretch;margin:5px 8px;}
   /* 6px clear above and below each divider, so a highlighted button never
-     touches it; the buttons give up 1px of height (icons unchanged) so all
-     18 still fit the bar without scrolling. */
-  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{flex-basis:43px;height:43px;min-height:43px;}
+     touches it; the buttons give up 3px of height (icons unchanged) so all
+     19 (Dashboard included) still fit the bar without scrolling. */
+  .sidebar:is(.mobile-icons,.mobile-icons-leaving):not(.mobile-open) > .sidebar-nav .nav-tab{flex-basis:41px;height:41px;min-height:41px;}
   /* The panel is hidden whenever the sidebar is not fully open. Going from
      closed to the icon bar it therefore never shows through the widening
      clip; collapsing from the full sidebar it still hides after the slide. */
@@ -12079,3 +12081,80 @@ html.job-os-touch-dragging .pipe-board{scroll-snap-type:none;}
 .work-hub-column-badge .work-hub-spinner{width:8px;height:8px;}
 @keyframes work-hub-badge-in{from{opacity:0;transform:scale(.85);}to{opacity:1;transform:none;}}
 @media (prefers-reduced-motion:reduce){.work-hub-column-badge{animation:none;}}
+/* ==== Dashboard (Personal / Career / Business) ==== */
+#mainDashboard{background:var(--bg);padding:24px;box-sizing:border-box;}
+#mainDashboard>#dashboardRoot{flex:1 1 auto;min-width:0;}
+#dashboardSidebar{display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
+.dash-side-nav{display:flex;flex-direction:column;gap:2px;padding:8px;}
+.dash-side-nav .side-menu-item{min-height:38px;padding:0 10px;gap:11px;}
+.dash-side-nav .side-menu-item svg{color:var(--muted);transition:color .15s ease;}
+.dash-side-nav .side-menu-item.active svg{color:var(--accent-text,var(--accent));}
+.dash{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px;}
+.dash-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.dash-head h1{margin:0;font-size:24px;line-height:1.2;}
+.dash-head p{margin:4px 0 0;color:var(--muted);font-size:13px;}
+.dash-tabs{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--border2);border-radius:12px;background:var(--card);}
+.dash-tabs button{border:0;background:transparent;color:var(--muted);font:600 13px var(--font-ui,inherit);padding:7px 16px;border-radius:9px;cursor:pointer;transition:background .18s ease,color .18s ease;}
+.dash-tabs button:hover{color:var(--text);}
+.dash-tabs button.on{background:var(--accent);color:var(--accent-contrast,#111);}
+.dash-body{display:flex;flex-direction:column;gap:14px;animation:dash-in .28s cubic-bezier(.22,1,.36,1);}
+@keyframes dash-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.dash-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+.dash-stat{display:flex;flex-direction:column;gap:4px;padding:16px;border:1px solid var(--border2);border-radius:14px;background:var(--card);min-width:0;}
+.dash-stat small{color:var(--muted);font-size:12px;}
+.dash-stat b{font-size:26px;line-height:1.1;font-variant-numeric:tabular-nums;}
+.dash-stat span{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;}
+.dash-stat.is-good b{color:var(--success,#4ade80);}
+.dash-stat.is-bad b{color:var(--error,#f87171);}
+.dash-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.dash-grid.is-wide-left{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);}
+.dash-card{display:flex;flex-direction:column;min-width:0;padding:18px;border:1px solid var(--border2);border-radius:14px;background:var(--card);box-sizing:border-box;}
+.dash-card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dash-card-head h3{margin:0;font-size:14px;line-height:1.2;text-box:trim-both cap alphabetic;}
+.dash-card-icon{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent-text,var(--accent));flex:none;}
+.dash-link{margin-left:auto;border:0;background:none;color:var(--accent-text,var(--accent));font:500 12px var(--font-ui,inherit);cursor:pointer;padding:4px 0;}
+.dash-link:hover{text-decoration:underline;}
+.dash-row{display:flex;align-items:center;gap:10px;width:100%;padding:9px 6px;border:0;border-top:1px solid var(--border2);background:none;color:inherit;font:inherit;text-align:left;border-radius:0;box-sizing:border-box;}
+.dash-row:first-of-type{border-top:0;}
+button.dash-row{cursor:pointer;transition:background .15s ease;}
+button.dash-row:hover{background:color-mix(in srgb,var(--border2) 40%,transparent);border-radius:8px;}
+.dash-row-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
+.dash-row-main strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dash-row-main small{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dash-pill{display:inline-flex;align-items:center;gap:5px;flex:none;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--border2) 70%,transparent);color:var(--muted);font-size:11px;white-space:nowrap;}
+.dash-pill.is-accent{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent-text,var(--accent));}
+.dash-pill.is-bad{background:color-mix(in srgb,var(--error,#f87171) 16%,transparent);color:var(--error,#f87171);}
+.dash-num{flex:none;min-width:28px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;}
+.dash-bar{flex:0 0 34%;height:7px;border-radius:999px;background:color-mix(in srgb,var(--border2) 80%,transparent);overflow:hidden;}
+.dash-bar i{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .5s cubic-bezier(.22,1,.36,1);}
+.dash-bar.is-bad i{background:var(--error,#f87171);}
+.dash-check{flex:none;width:14px;height:14px;border:1.5px solid var(--border2);border-radius:4px;}
+.dash-check[data-status="in_progress"]{border-color:var(--accent);}
+.dash-check[data-status="blocked"]{border-color:var(--error,#f87171);}
+.dash-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--border2);}
+.dash-dot.is-bad{background:var(--error,#f87171);}
+.dash-callout{margin:0 0 6px;padding:8px 10px;border-radius:9px;font-size:12px;}
+.dash-callout.is-bad{background:color-mix(in srgb,var(--error,#f87171) 12%,transparent);color:var(--error,#f87171);}
+.dash-empty{margin:6px 0;color:var(--muted);font-size:12px;}
+.dash-teaser{display:flex;align-items:center;gap:14px;}
+.dash-teaser-art{display:grid;place-items:center;flex:none;width:64px;height:64px;border-radius:14px;font-size:34px;background:radial-gradient(circle at 50% 70%,color-mix(in srgb,#a78bfa 35%,transparent),transparent 70%);}
+.dash-teaser p{margin:0;color:var(--muted);font-size:12px;line-height:1.5;}
+.dash-empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 20px;border:1px dashed var(--border2);border-radius:14px;background:var(--card);}
+.dash-empty-state h3{margin:6px 0 0;font-size:16px;}
+.dash-empty-state p{margin:0;max-width:460px;color:var(--muted);font-size:13px;line-height:1.5;}
+.dash-empty-icon{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent-text,var(--accent));}
+.dash-skeleton{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.dash-skeleton i{height:84px;border-radius:14px;background:linear-gradient(90deg,var(--card),color-mix(in srgb,var(--border2) 60%,var(--card)),var(--card));background-size:200% 100%;animation:dash-shimmer 1.2s linear infinite;}
+@keyframes dash-shimmer{to{background-position:-200% 0;}}
+@media (prefers-reduced-motion:reduce){.dash-body,.dash-skeleton i,.dash-bar i{animation:none;transition:none;}}
+@media (max-width:900px){.dash-grid,.dash-grid.is-wide-left{grid-template-columns:minmax(0,1fr);}}
+@media (max-width:620px){
+  #mainDashboard{padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));}
+  .dash-stats,.dash-skeleton{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .dash-head{align-items:stretch;}
+  .dash-tabs{display:flex;width:100%;}
+  .dash-tabs button{flex:1;}
+  .dash-bar{flex-basis:28%;}
+}
+/* Test copy marker (HERMES_WEBUI_INSTANCE_LABEL): a pill over every page. */
+body[data-instance-label]::after{content:attr(data-instance-label);position:fixed;z-index:2147483000;top:calc(6px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);padding:2px 10px;border-radius:999px;background:#e11d48;color:#fff;font:700 10px/1.6 var(--font-ui,system-ui);letter-spacing:.08em;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.3);}

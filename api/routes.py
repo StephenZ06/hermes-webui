@@ -13487,6 +13487,11 @@ def _render_index_shell_base() -> str:
         .replace("__WEBUI_VERSION__", version_token)
         .replace("__MAX_UPLOAD_BYTES__", str(MAX_UPLOAD_BYTES))
     )
+    # A side-by-side test copy (e.g. HERMES_WEBUI_INSTANCE_LABEL=TEST) marks every
+    # page so it is never mistaken for the live instance.
+    label = re.sub(r"[^A-Za-z0-9 _-]", "", os.getenv("HERMES_WEBUI_INSTANCE_LABEL", ""))[:16].strip()
+    if label:
+        base = base.replace("<body", f'<body data-instance-label="{label}"', 1)
     with _INDEX_SHELL_CACHE_LOCK:
         _INDEX_SHELL_CACHE["base"] = (sig, base)
     return base
@@ -15193,6 +15198,13 @@ def _route_get_api_work_hub_bootstrap(handler, parsed):
         return bad(handler, str(exc), exc.status)
 
 
+def _route_get_api_dashboard_summary(handler, parsed):
+    from api import dashboard
+
+    tab = str((parse_qs(parsed.query or "").get("tab") or ["personal"])[0])
+    return j(handler, dashboard.summary(tab))
+
+
 def _route_get_api_work_hub_items(handler, parsed):
     from api import work_hub
 
@@ -16057,6 +16069,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/office/scheduled-tasks"), _route_get_api_office_scheduled_tasks),
         (Exact("/api/sessions/search"), _route_get_api_sessions_search),
         (Exact("/api/work_hub/bootstrap"), _route_get_api_work_hub_bootstrap),
+        (Exact("/api/dashboard/summary"), _route_get_api_dashboard_summary),
         (Exact("/api/work_hub/items"), _route_get_api_work_hub_items),
         (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),

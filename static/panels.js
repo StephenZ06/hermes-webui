@@ -90,7 +90,7 @@ const APP_TITLEBAR_KEYS = {
 // Panels whose internal key is not their visible name (`notes` is the Work Hub
 // for saved-state compatibility; `notebook` is the Notes page).
 const APP_TITLEBAR_LABELS = { notes: 'Work Hub', notebook: 'Notes' };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs','notebook'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs','notebook','dashboard'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -470,7 +470,7 @@ async function restorePanelFromRoute() {
 // scope or note). Once one is chosen the drawer folds away so the destination
 // is what the user sees. Filters and toggles inside the drawer are not listed:
 // they change the drawer itself and keep it open.
-const MOBILE_DRAWER_NAV_SELECTOR = '[data-job-os-view],[data-job-os-stage],[data-office-subview],'
+const MOBILE_DRAWER_NAV_SELECTOR = '[data-dash-tab],[data-job-os-view],[data-job-os-stage],[data-office-subview],'
   + '[data-nb-open],.nb-scope[data-nb-scope],.work-hub-scope[data-scope],[data-board-id]';
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
@@ -644,6 +644,7 @@ async function switchPanel(name, opts = {}) {
   // Hub. The old Notes script stays loaded only for its legacy workspace pane.
   if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'jobs' && window.JobOS && typeof window.JobOS.mount === 'function') { window.JobOS.mount(); }
+  if (nextPanel === 'dashboard' && window.HermesDashboard) { window.HermesDashboard.mount(); }
   if (nextPanel === 'notebook' && window.Notebook && typeof window.Notebook.mount === 'function') { window.Notebook.mount(); }
   if (nextPanel === 'profiles') { await loadProfilesPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'todos') loadTodos();
