@@ -12493,3 +12493,14 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash .dash-inline-form .themed-select-wrap,.dash .dash-row .themed-select-wrap{display:inline-block;width:auto;flex:0 0 auto;min-width:0;}
 .dash .dash-inline-form .themed-select-wrap select,.dash .dash-row .themed-select-wrap select{width:100%;min-width:140px;}
 @media (max-width:620px){.dash .dash-inline-form .themed-select-wrap{flex:1 1 140px;}}
+/* Dashboard backdrop: a pixel-art night sky (dark theme). Scaled with crisp
+   pixels and fixed behind the page; panels let a little of it through. */
+:root.dark #mainDashboard:has(.dash.is-rpg){background:linear-gradient(180deg,rgba(4,3,14,.25),rgba(4,3,14,.55)),url("dashboard/space-bg.jpg") center/cover no-repeat fixed,#05040f;image-rendering:pixelated;}
+:root.dark .dash.is-rpg{--rpg-panel:color-mix(in srgb,var(--card) 82%,transparent);}
+:root.dark .dash.is-rpg :is(.dash-card,.dash-stat,.dash-connection,.rpg-panel,.dash-tabs){-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+:root.dark .dash.is-rpg .rpg-stage{background:radial-gradient(circle at 50% 72%,color-mix(in srgb,var(--stage-glow,#2a1f4d) 70%,transparent) 0%,transparent 62%),url("dashboard/space-bg.jpg") 30% 40%/cover no-repeat,#05040f;image-rendering:pixelated;}
+:root.dark .dash.is-rpg .rpg-stage .rpg-stars{opacity:.55;}
+:root.dark .dash.is-rpg .dash-head p{color:color-mix(in srgb,var(--text) 72%,transparent);}
+@media (max-width:620px){:root.dark #mainDashboard:has(.dash.is-rpg){background-attachment:scroll;}}
+.dash .dash-row .themed-select-wrap{flex:0 1 150px;max-width:150px;}
+.dash .dash-row .themed-select-wrap select{min-width:0;}
