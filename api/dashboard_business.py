@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -333,6 +334,29 @@ def sync(*, force: bool = False, fetch: Fetch | None = None) -> None:
         _set_meta(conn, "last_error", "")
 
 
+_SYNCING = threading.Lock()
+
+
+def sync_soon() -> None:
+    """Refresh from the platform in the background when the copy is stale, so a
+    slow or unreachable platform never holds up the page. One at a time."""
+    with _LOCK, _Conn() as conn:
+        platform = _meta(conn, "platform")
+        last = _meta(conn, "last_sync_at", 0) or 0
+    if platform not in PLATFORMS or time.time() - last < SYNC_EVERY or not _SYNCING.acquire(blocking=False):
+        return
+
+    def run():
+        try:
+            sync()
+        except Exception:
+            logger.info("background sales sync failed", exc_info=True)
+        finally:
+            _SYNCING.release()
+
+    threading.Thread(target=run, name="dashboard-sales-sync", daemon=True).start()
+
+
 # ── manual sales ────────────────────────────────────────────────────────────
 
 def add_manual_sale(payload: dict[str, Any]) -> dict[str, Any]:
@@ -427,7 +451,7 @@ def _paid(rows) -> list:
 
 
 def summary(now: float | None = None) -> dict[str, Any]:
-    sync()
+    sync_soon()
     now = time.time() if now is None else now
     today = datetime.fromtimestamp(now).date()
     with _LOCK, _Conn() as conn:

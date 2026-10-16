@@ -18,7 +18,8 @@
   async function loadWorkHubPanel() {
     const root = el('workHub'); if (!root) return;
     try {
-      const data = await request('/api/work_hub/bootstrap');
+      const [data, quests] = await Promise.all([request('/api/work_hub/bootstrap'), request('/api/dashboard/quests').catch(() => null)]);
+      store.questIds = new Set((quests && quests.item_ids) || []);
       if ((data.revision || 0) < store.revision) return;
       store.items = data.items || []; store.folders = data.folders || []; store.projects = data.projects || []; store.boards = data.boards || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
@@ -149,7 +150,7 @@
   }
   function fillWorkHubCards(cards, columnItems) {
     cards.textContent = '';
-    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${store.questIds && store.questIds.has(item.id) ? '<span class="work-hub-quest-mark" title="On your Dashboard quests" aria-label="Quest">⚔</span>' : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
   }
   // Typing in a column filter updates that column's cards in place. Replacing
   // the input would drop focus, and the iOS keyboard with it.
@@ -229,6 +230,9 @@
       try {
         await request(isQuest ? '/api/dashboard/quests/remove' : '/api/dashboard/quests/add', { method: 'POST', body: JSON.stringify(isQuest ? { item_id: itemId } : { item_ids: [itemId] }) });
         if (typeof showToast === 'function') showToast(isQuest ? 'Removed from quests' : 'Added to your quests');
+        store.questIds = store.questIds || new Set();
+        if (isQuest) store.questIds.delete(itemId); else store.questIds.add(itemId);
+        renderCanvas(scopedItems()); bind();
       } catch (error) { if (typeof showToast === 'function') showToast(error.message || 'Could not update quests'); }
       fillQuestToggle(itemId);
     };

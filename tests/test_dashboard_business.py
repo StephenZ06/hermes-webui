@@ -135,3 +135,27 @@ def test_gumroad_sales_are_read_page_by_page(biz):
     dashboard_business.connect("gumroad", "gumroad_token_0123456789", fetch=fetch)
     totals = dashboard_business.summary()["totals"]
     assert (totals["sales"], totals["revenue"], totals["refunds"]) == (1, 1500, 1)
+
+
+def test_a_stale_copy_refreshes_in_the_background_without_holding_up_the_page(biz, monkeypatch):
+    import threading
+
+    dashboard_business, _, _ = biz
+    dashboard_business.connect("lemonsqueezy", "ls_live_key_0123456789abcdef", fetch=lemon([(2900, 1, False)]))
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_sync(**_):
+        started.set()
+        release.wait(5)
+
+    monkeypatch.setattr(dashboard_business, "sync", slow_sync)
+    with dashboard_business._LOCK, dashboard_business._Conn() as conn:
+        dashboard_business._set_meta(conn, "last_sync_at", 0)
+
+    t0 = time.time()
+    data = dashboard_business.summary()
+    assert time.time() - t0 < 2 and data["totals"]["sales"] == 1  # answered from the last copy
+    assert started.wait(2)
+    dashboard_business.sync_soon()  # a second refresh does not start while one runs
+    release.set()

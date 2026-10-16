@@ -185,3 +185,11 @@ def test_libraries_dev_effects_mount_on_the_character_page(browser):
     page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
     page.wait_for_function("() => document.querySelector('.rpg-member-avatar canvas')", polling=100, timeout=15000)
     assert page.evaluate("() => document.querySelectorAll('.rpg-member-avatar canvas').length") >= 1
+
+
+def test_work_hub_cards_mark_quests(browser):
+    item = _post("/api/work_hub/items/create", {"item": {"title": f"Marked {uuid.uuid4().hex[:4]}"}, "expected_revision": _rev()})["item"]["id"]
+    _post("/api/dashboard/quests/add", {"item_ids": [item]})
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    page.evaluate("async () => { await switchPanel('notes'); }")
+    page.wait_for_selector(f".work-hub-card[data-item-id='{item}'] .work-hub-quest-mark", timeout=15000)

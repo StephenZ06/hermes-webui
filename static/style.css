@@ -12461,3 +12461,4 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 @media (max-width:620px){.dash .dash-inline-form select{flex:1 1 auto;}}
 .dash-card-actions .dash-link,.rpg-panel-actions .dash-link{white-space:nowrap;}
 @media (max-width:480px){.dash-card.is-quests .dash-card-actions [data-dash-tab="character"]{display:none;}.dash-card-head h3{min-width:0;}}
+.work-hub-quest-mark{margin-right:5px;color:#a78bfa;font-size:10px;}
