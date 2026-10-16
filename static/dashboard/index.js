@@ -462,7 +462,9 @@
 
   // ── loading and painting ─────────────────────────────────────────────────
   async function load(tab, {quiet = false, append = false} = {}) {
-    if (state.loading[tab]) return;
+    // A reload asked for while one is in flight runs once it lands, so a
+    // change made meanwhile (a quest finished, a habit ticked) is not lost.
+    if (state.loading[tab]) { if (!append) (state.again || (state.again = {}))[tab] = true; return; }
     state.loading[tab] = true;
     if (!quiet) paint();
     try {
@@ -482,6 +484,7 @@
       state.error[tab] = (error && error.message) || 'Could not load the dashboard';
     } finally { state.loading[tab] = false; }
     if (state.mounted && state.tab === tab) paint();
+    if (state.again && state.again[tab]) { state.again[tab] = false; load(tab, {quiet: true}); }
   }
 
   function celebrate(level) {
