@@ -232,3 +232,19 @@ def test_header_controls_share_a_height_and_cards_have_equal_padding(browser):
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), h = c.querySelector('.dash-card-head').getBoundingClientRect();
         return [Math.round(h.top - r.top - b), Math.round(h.left - r.left - b), Math.round(r.right - b - h.right)]; })""")
     assert pads and all(p == [16, 16, 16] for p in pads)
+
+
+def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
+    for i in range(6):
+        _post("/api/dashboard/learning/add", {"title": f"Course {uuid.uuid4().hex[:4]} {i}", "kind": "course", "area": "career"})
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-grid", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    pairs = page.evaluate("() => [...document.querySelectorAll('.dash-grid')].map(g => [...g.children].map(c => Math.round(c.getBoundingClientRect().height)))")
+    assert pairs and all(len(set(p)) == 1 for p in pairs)
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_selector(".rpg-stage", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    capped = page.evaluate("() => [...document.querySelectorAll('.rpg-col > .rpg-panel')].map(p => Math.round(p.getBoundingClientRect().height))")
+    assert capped and max(capped) <= 560

@@ -86,7 +86,7 @@
 
   // ── pieces ───────────────────────────────────────────────────────────────
   const card = (title, body, {icon = '', pix = '', action = '', cls = '', attrs = ''} = {}) =>
-    `<section class="dash-card ${cls}" ${attrs}><header class="dash-card-head">${pix ? `<span class="dash-card-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="dash-card-icon">${svg(icon, 16)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="dash-card-actions">${action}</span>` : ''}</header>${body}</section>`;
+    `<section class="dash-card ${cls}" ${attrs}><header class="dash-card-head">${pix ? `<span class="dash-card-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="dash-card-icon">${svg(icon, 16)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="dash-card-actions">${action}</span>` : ''}</header><div class="dash-card-body">${body}</div></section>`;
   const stat = (label, value, note = '', tone = '') =>
     `<div class="dash-stat${tone ? ' is-' + tone : ''}"><small>${esc(label)}</small><b>${value}</b>${note ? `<span>${note}</span>` : ''}</div>`;
   const bar = (fraction, tone = '') => `<span class="dash-bar${tone ? ' is-' + tone : ''}"><i style="width:${Math.round(Math.max(0, Math.min(1, fraction || 0)) * 100)}%"></i></span>`;
@@ -334,7 +334,7 @@
       <polygon points="${shape}" class="rpg-radar-shape"/>${labels}</svg>`;
   }
   const panel = (title, body, {icon = '', pix = '', action = '', cls = ''} = {}) =>
-    `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${pix ? `<span class="rpg-panel-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header>${body}</section>`;
+    `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${pix ? `<span class="rpg-panel-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header><div class="dash-card-body">${body}</div></section>`;
 
   function characterView(data) {
     if (!window.DashSprite) return '<p class="dash-empty">Loading the character…</p>';
@@ -718,6 +718,14 @@
     act('/api/dashboard/categories', {project_id: picker.dataset.projectCategory, category: picker.value}, {ok: 'Realm updated'});
   });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && document.querySelector('.dash-picker-overlay')) closeQuestPicker(); });
+  // A card's scrollbar shows while it scrolls and fades a moment after.
+  document.addEventListener('scroll', (event) => {
+    const body = event.target && event.target.classList && event.target.classList.contains('dash-card-body') ? event.target : null;
+    if (!body) return;
+    body.classList.add('is-scrolling');
+    clearTimeout(body._scrollTimer);
+    body._scrollTimer = setTimeout(() => body.classList.remove('is-scrolling'), 900);
+  }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _state: state};
 })();
