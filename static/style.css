@@ -12322,7 +12322,7 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 
 /* ==== Character page: an RPG character sheet in the app's theme ==== */
 @font-face{font-family:"Press Start 2P";src:url("vendor/fonts/press-start-2p/PressStart2P-Regular.ttf") format("truetype");font-display:swap;}
-.dash.is-rpg{--rpg-gold:#f4c542;--rpg-gold-deep:#b7861b;--rpg-violet:#a78bfa;--rpg-frame:color-mix(in srgb,var(--rpg-violet) 34%,var(--border2));--rpg-panel:color-mix(in srgb,var(--card) 92%,#1b1032);--rpg-pixel:"Press Start 2P",ui-monospace,monospace;}
+.dash.is-rpg{--rpg-gold:#f4c542;--rpg-gold-deep:#b7861b;--rpg-violet:#a78bfa;--rpg-frame:color-mix(in srgb,var(--rpg-violet) 34%,var(--border2));--rpg-panel:color-mix(in srgb,var(--card) 92%,#1b1032);--rpg-pixel:"Press Start 2P",var(--font-mono);}
 :root:not(.dark) .dash.is-rpg{--rpg-panel:color-mix(in srgb,var(--card) 94%,#ede6ff);--rpg-gold-deep:#8a6110;}
 #mainDashboard:has(.dash.is-rpg){background:radial-gradient(1200px 600px at 20% -10%,color-mix(in srgb,var(--rpg-violet,#a78bfa) 12%,transparent),transparent 60%),radial-gradient(900px 500px at 110% 10%,color-mix(in srgb,#f4c542 7%,transparent),transparent 60%),var(--bg);}
 .dash.is-rpg .dash-head h1{font-family:var(--rpg-pixel);font-size:20px;letter-spacing:.02em;line-height:1.3;text-shadow:0 2px 0 color-mix(in srgb,var(--rpg-violet) 35%,transparent);}
@@ -12430,8 +12430,8 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .rpg .dash-chip.on{background:var(--rpg-violet);border-color:var(--rpg-violet);color:#160d2b;}
 .rpg-levelup{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle,rgba(167,139,250,.38),transparent 60%);animation:rpg-levelup-fade 2.8s ease forwards;}
 .rpg-levelup div{display:flex;flex-direction:column;align-items:center;gap:10px;animation:rpg-levelup-pop .7s cubic-bezier(.34,1.56,.64,1);}
-.rpg-levelup small{font:14px "Press Start 2P",monospace;letter-spacing:.2em;color:#f4c542;text-shadow:0 3px 0 #7a5810;}
-.rpg-levelup b{font:64px/1 "Press Start 2P",monospace;color:#fff;text-shadow:0 0 30px #a78bfa,0 5px 0 #4c1d95;}
+.rpg-levelup small{font:14px "Press Start 2P",var(--font-mono);letter-spacing:.2em;color:#f4c542;text-shadow:0 3px 0 #7a5810;}
+.rpg-levelup b{font:64px/1 "Press Start 2P",var(--font-mono);color:#fff;text-shadow:0 0 30px #a78bfa,0 5px 0 #4c1d95;}
 .rpg-levelup span{font-size:14px;color:#e9e3ff;}
 @keyframes rpg-levelup-pop{from{transform:scale(.3);opacity:0;}to{transform:none;opacity:1;}}
 @keyframes rpg-levelup-fade{0%,78%{opacity:1;}100%{opacity:0;}}
