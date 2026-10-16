@@ -12462,3 +12462,34 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash-card-actions .dash-link,.rpg-panel-actions .dash-link{white-space:nowrap;}
 @media (max-width:480px){.dash-card.is-quests .dash-card-actions [data-dash-tab="character"]{display:none;}.dash-card-head h3{min-width:0;}}
 .work-hub-quest-mark{margin-right:5px;color:#a78bfa;font-size:10px;}
+/* ==== Dashboard tabs share the Character page's RPG look ==== */
+.dash.is-rpg .dash-card,.dash.is-rpg .dash-stat,.dash.is-rpg .dash-connection{position:relative;border:2px solid var(--rpg-frame);border-radius:6px;background:var(--rpg-panel);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--bg) 60%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 6%,transparent),0 6px 18px rgba(0,0,0,.18);}
+.dash.is-rpg .dash-card::before,.dash.is-rpg .dash-card::after{content:"";position:absolute;width:6px;height:6px;background:var(--rpg-gold);box-shadow:0 0 0 1px color-mix(in srgb,#000 35%,transparent);pointer-events:none;}
+.dash.is-rpg .dash-card::before{top:-4px;left:-4px;}
+.dash.is-rpg .dash-card::after{bottom:-4px;right:-4px;}
+.dash.is-rpg .dash-card-head{margin:-2px 0 12px;padding-bottom:10px;border-bottom:2px dashed color-mix(in srgb,var(--rpg-frame) 70%,transparent);}
+.dash.is-rpg .dash-card-head h3{font-family:var(--rpg-pixel);font-size:10px;line-height:1.5;letter-spacing:.06em;text-transform:uppercase;text-box:none;}
+.dash.is-rpg .dash-card-icon{border-radius:4px;background:color-mix(in srgb,var(--rpg-violet) 22%,transparent);color:var(--rpg-violet);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rpg-violet) 40%,transparent);}
+.dash.is-rpg .dash-stat small{font-family:var(--rpg-pixel);font-size:8px;letter-spacing:.06em;text-transform:uppercase;line-height:1.6;}
+.dash.is-rpg .dash-stat b{font-family:var(--rpg-pixel);font-size:20px;line-height:1.3;}
+.dash.is-rpg .dash-tabs{border:2px solid var(--rpg-frame);border-radius:6px;background:var(--rpg-panel);}
+.dash.is-rpg .dash-tabs button{border-radius:3px;font-family:var(--rpg-pixel);font-size:9px;letter-spacing:.04em;}
+.dash.is-rpg .dash-char-btn{border-width:2px;border-radius:6px;font-family:var(--rpg-pixel);font-size:9px;}
+.dash.is-rpg .dash-btn{border-radius:4px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.3);}
+.dash.is-rpg .dash-bar{height:9px;border-radius:2px;padding:1px;box-sizing:border-box;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--rpg-frame) 70%,transparent);}
+.dash.is-rpg .dash-bar i{border-radius:1px;}
+.dash.is-rpg .dash-badge,.dash.is-rpg .dash-inline-form,.dash.is-rpg .dash-quest-row,.dash.is-rpg .dash-picker-row{border-radius:4px;}
+.dash.is-rpg .dash-badge{border-width:2px;border-color:color-mix(in srgb,var(--rpg-gold) 45%,var(--border2));background:color-mix(in srgb,var(--rpg-gold) 6%,transparent);}
+.dash.is-rpg .dash-badge.is-locked{border-color:var(--border2);background:transparent;}
+.dash.is-rpg .dash-badge-icon{border-radius:4px;}
+.dash.is-rpg .dash-xp-gain{color:var(--rpg-violet);}
+.dash.is-rpg .dash-habit-check{border-radius:4px;}
+.dash.is-rpg .dash-chart-col i{border-radius:2px 2px 0 0;background:repeating-linear-gradient(180deg,var(--accent) 0 6px,color-mix(in srgb,var(--accent) 80%,#000) 6px 8px);}
+.dash.is-rpg .dash-chart-col i.is-zero{background:color-mix(in srgb,var(--border2) 90%,transparent);}
+.dash.is-rpg .dash-road-node{border-radius:3px;}
+.dash.is-rpg .dash-skeleton i{border-radius:6px;}
+@media (max-width:620px){.dash.is-rpg .dash-stat b{font-size:16px;}.dash.is-rpg .dash-tabs button,.dash.is-rpg .dash-char-btn{font-size:8px;}}
+/* Themed selects inside dashboard forms size to their choices, not the row. */
+.dash .dash-inline-form .themed-select-wrap,.dash .dash-row .themed-select-wrap{display:inline-block;width:auto;flex:0 0 auto;min-width:0;}
+.dash .dash-inline-form .themed-select-wrap select,.dash .dash-row .themed-select-wrap select{width:100%;min-width:140px;}
+@media (max-width:620px){.dash .dash-inline-form .themed-select-wrap{flex:1 1 140px;}}

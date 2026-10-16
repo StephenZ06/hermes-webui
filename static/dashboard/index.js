@@ -506,7 +506,7 @@
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
     const scroll = scroller ? scroller.scrollTop : 0;
-    host.innerHTML = `<div class="dash${isChar ? ' is-rpg' : ''}">
+    host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${isChar ? 'Character' : 'Dashboard'}</h1><p>${isChar ? 'Everything you finish, as an adventure.' : `${(TABS.find((t) => t.key === state.tab) || TABS[0]).label} at a glance.`}</p></div>
         <div class="dash-head-right"><div class="dash-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-dash-tab="${t.key}" aria-selected="${t.key === state.tab}" class="${t.key === state.tab ? 'on' : ''}">${t.label}</button>`).join('')}</div>
         <button type="button" class="dash-char-btn${isChar ? ' on' : ''}" data-dash-tab="character">${svg('character', 15)}<span>Character</span>${levelBadge()}</button></div>
