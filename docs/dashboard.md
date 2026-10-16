@@ -1,0 +1,58 @@
+# Dashboard
+
+The Dashboard page (rail button after Chat) has three tabs, Personal, Career
+and Business, plus a Character page that turns what you finish into an RPG
+character. Everything is stored per state directory in `dashboard.db`; the
+Work Hub, Jobs and Notes stay the owners of their own data.
+
+## Tabs
+
+| Tab | Shows |
+| --- | --- |
+| Personal | Habits (daily or n times a week, streaks, 21-day heatmap), personal quests, learning log, project health, scheduled jobs (failing ones first), recent notes |
+| Career | Jobs pipeline totals, this week's activity, the funnel, career quests |
+| Business | Sales connection, revenue/MRR/sales/customers, goals with streaks, road to $10k MRR, milestones, 6-month revenue, recent sales, business quests |
+| Character | Level, tier sprite, XP bar, STR/INT/CHA/VIT/DEX, quest log (all areas), achievements, chronicle (XP log), party (agent profiles), treasury and rewards, realms, evolution, project realms |
+
+## Quests
+
+A quest is a Work Hub item you chose to focus on; there are no dates. Pick
+them with **Choose quests** (Character page) or **Add** (each tab), or with
+**Add to quests** in a Work Hub item's details. A quest always shows the
+item's live Work Hub status, so finishing it in the Work Hub, or a chat
+finishing it with the `work_hub` tool, ticks it off. A finished quest earns
+50% bonus XP for its project's realm.
+
+## XP, levels and gold
+
+| Source | XP | Realm / stat |
+| --- | --- | --- |
+| Work Hub item done | 20 (none/low), 30 (medium), 50 (high); x1.5 as a quest | the project's realm (Project realms) |
+| Habit ticked | 10 per day | Personal, counts as VIT |
+| Learning logged | course 40, book 30, certification 100, skill 20, other 15 | the chosen realm |
+| Jobs | resume tailored 15, applied 30, interview 80, offer 250 | Career |
+| Sale (live, not test mode) | 25 each | Business |
+| Business milestone | 100 | Business |
+
+Each award is written once to a ledger under a stable key, so reopening or
+deleting an item later does not take XP back (unticking a habit or removing a
+learning entry does). Level n needs 100 + 25(n-1) XP. Tiers: Apprentice (1),
+Adept (5), Sorcerer (10), Archmage (20), Legendary (35). Gold is half of all
+XP plus 50 per achievement, spent on rewards you define in the Treasury.
+
+## Sales platforms
+
+Lemon Squeezy (API key) or Gumroad (access token). The key is checked with the
+platform before it is saved to the active profile's env file
+(`SALES_LEMONSQUEEZY_API_KEY` / `SALES_GUMROAD_ACCESS_TOKEN`) and is never
+sent back to the browser. Sales are copied in at most every 5 minutes when the
+page is read; when the platform is down the last copy stays and the reason is
+shown. Customers are kept as fingerprints only. Test-mode sales are shown but
+never unlock milestones or earn XP. MRR counts subscriptions that renewed in
+the last ~35 days. Sales can also be entered by hand.
+
+## Effects
+
+Thinking orbs, border beams, bot avatars and liquid metal come from the
+vendored Libraries.dev bundle (`static/vendor/libraries-dev/`), loaded only
+when the Dashboard is shown. Reduced motion pauses them.

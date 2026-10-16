@@ -82,11 +82,11 @@ def test_a_quest_is_picked_from_the_work_hub_finishes_there_and_earns_xp(browser
     assert page.evaluate(f"() => document.querySelector(\"{row} .dash-xp-gain\").textContent") == "+75 XP"  # high 50 x 1.5
 
     page.evaluate("() => window.HermesDashboard.select('character')")
-    page.wait_for_selector(".char-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
     log = page.evaluate("() => document.querySelector('.dash-body').textContent")
     assert title in log and "+75 XP" in log
-    assert page.evaluate("() => document.querySelectorAll('.char-tier').length") == 5
-    assert page.evaluate("() => /Level \\d+/.test(document.querySelector('.char-title h2').textContent)")
+    assert page.evaluate("() => document.querySelectorAll('.rpg-tier').length") == 5
+    assert page.evaluate("() => /Level \\d+/.test(document.querySelector('.rpg-title h2').textContent)")
 
 
 def test_quest_rows_open_their_work_hub_item(browser):
@@ -119,7 +119,69 @@ def test_dashboard_fits_a_phone(browser):
 def test_character_page_fits_a_phone(browser):
     page = _open(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
-    page.wait_for_selector(".char-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
     time.sleep(0.4)
     assert page.evaluate("() => { const m = document.getElementById('mainDashboard'); return m.scrollWidth <= m.clientWidth + 1; }")
-    assert page.evaluate("() => document.querySelector('.char-panel').getBoundingClientRect().right <= innerWidth")
+    assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
+
+
+def _dashboard(browser, tab, **ctx):
+    page = _open(browser, **(ctx or {"viewport": {"width": 1280, "height": 860}}))
+    page.evaluate(f"async () => {{ await switchPanel('dashboard'); window.HermesDashboard.select('{tab}'); }}")
+    return page
+
+
+def test_a_habit_is_added_and_ticked_for_vitality_xp(browser):
+    page = _dashboard(browser, "personal")
+    page.wait_for_selector("[data-form-open=habit]", timeout=15000)
+    name = f"Gym {uuid.uuid4().hex[:4]}"
+    page.evaluate("() => document.querySelector('[data-form-open=habit]').click()")
+    page.wait_for_selector("form[data-form=habit] input[name=name]", timeout=5000)
+    page.fill("form[data-form=habit] input[name=name]", name)
+    page.evaluate("() => document.querySelector('form[data-form=habit] [type=submit]').click()")
+    toggle = page.wait_for_selector(f".dash-habit:has-text('{name}') [data-habit-toggle]", timeout=10000)
+    toggle.evaluate("el => el.click()")
+    page.wait_for_function(f"() => [...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}'))?.querySelector('.dash-habit-check.is-on')", polling=100, timeout=10000)
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    assert name in page.evaluate("() => document.querySelector('.dash-body').textContent")
+
+
+def test_a_manual_sale_meets_a_goal_and_unlocks_the_first_sale_milestone(browser):
+    page = _dashboard(browser, "business")
+    page.wait_for_selector("[data-form-open=goal]", timeout=15000)
+    page.evaluate("() => document.querySelector('[data-form-open=goal]').click()")
+    page.fill("form[data-form=goal] input[name=target]", "1")
+    page.evaluate("() => document.querySelector('form[data-form=goal] [type=submit]').click()")
+    page.wait_for_selector(".dash-goal", timeout=10000)
+    page.evaluate("() => document.querySelector('[data-form-open=sale]').click()")
+    page.fill("form[data-form=sale] input[name=amount]", "29")
+    page.fill("form[data-form=sale] input[name=product]", "Pro plan")
+    page.evaluate("() => document.querySelector('form[data-form=sale] [type=submit]').click()")
+    page.wait_for_function("() => document.querySelector('.dash-goal')?.classList.contains('is-met')", polling=100, timeout=10000)
+    unlocked = page.evaluate("() => [...document.querySelectorAll('.dash-badge:not(.is-locked) strong')].map(e => e.textContent)")
+    assert "First Sale" in unlocked
+    assert "Pro plan" in page.evaluate("() => document.querySelector('.dash-body').textContent")
+
+
+def test_a_reward_is_bought_with_gold_on_the_character_page(browser):
+    item = _post("/api/work_hub/items/create", {"item": {"title": f"Gold {uuid.uuid4().hex[:4]}", "priority": "high"}, "expected_revision": _rev()})["item"]["id"]
+    _post("/api/work_hub/items/update", {"item_id": item, "item": {"status": "done"}, "expected_revision": _rev()})
+    page = _dashboard(browser, "character")
+    page.wait_for_selector("[data-form-open=reward]", timeout=15000)
+    page.evaluate("() => document.querySelector('[data-form-open=reward]').click()")
+    page.fill("form[data-form=reward] input[name=name]", "Coffee break")
+    page.fill("form[data-form=reward] input[name=cost]", "5")
+    page.evaluate("() => document.querySelector('form[data-form=reward] [type=submit]').click()")
+    buy = page.wait_for_selector(".rpg-reward:has-text('Coffee break') [data-reward-redeem]:not([disabled])", timeout=10000)
+    before = page.evaluate("() => parseInt(document.querySelector('.rpg-purse b').textContent.replace(/\\D/g, ''), 10)")
+    buy.evaluate("el => el.click()")
+    page.wait_for_function(f"() => parseInt(document.querySelector('.rpg-purse b')?.textContent.replace(/\\D/g, ''), 10) === {before} - 5", polling=100, timeout=10000)
+    assert "Coffee break" in page.evaluate("() => document.querySelector('.rpg-history').textContent")
+
+
+def test_libraries_dev_effects_mount_on_the_character_page(browser):
+    page = _dashboard(browser, "character")
+    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_function("() => document.querySelector('.rpg-member-avatar canvas')", polling=100, timeout=15000)
+    assert page.evaluate("() => document.querySelectorAll('.rpg-member-avatar canvas').length") >= 1

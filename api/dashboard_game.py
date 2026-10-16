@@ -28,7 +28,7 @@ from api.config import STATE_DIR
 
 CATEGORIES = ("personal", "career", "business")
 QUEST_LIMIT = 30
-LOG_PAGE = 50
+LOG_PAGE = 15
 DAY = 86400
 
 # XP per finished Work Hub item, by priority; a chosen quest earns half again.
