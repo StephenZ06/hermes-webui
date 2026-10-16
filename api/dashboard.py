@@ -30,6 +30,12 @@ def _section(build: Callable[[], Any]) -> Any:
         return {"error": str(error) or type(error).__name__}
 
 
+def _area_quests(area: str) -> list[dict[str, Any]]:
+    from api import dashboard_game
+
+    return [quest for quest in dashboard_game.quests() if quest.get("area") == area]
+
+
 # ── Personal ────────────────────────────────────────────────────────────────
 
 def _work_hub(now: float) -> dict[str, Any]:
@@ -118,7 +124,9 @@ def personal(now: float | None = None) -> dict[str, Any]:
     from api import dashboard_game
 
     return {
-        "quests": _section(dashboard_game.quests),
+        "quests": _section(lambda: _area_quests("personal")),
+        "habits": _section(lambda: dashboard_game.habits(now)),
+        "learning": _section(dashboard_game.learning),
         "work_hub": _section(lambda: _work_hub(now)),
         "schedules": _section(_schedules),
         "notes": _section(_recent_notes),
@@ -156,15 +164,15 @@ def _jobs(now: float) -> dict[str, Any]:
 
 def career(now: float | None = None) -> dict[str, Any]:
     now = time.time() if now is None else now
-    return {"jobs": _section(lambda: _jobs(now))}
+    return {"jobs": _section(lambda: _jobs(now)), "quests": _section(lambda: _area_quests("career"))}
 
 
 # ── Business ────────────────────────────────────────────────────────────────
 
 def business(now: float | None = None) -> dict[str, Any]:
-    # Phase 3 adds the sales connection (Lemon Squeezy / Gumroad), goals and
-    # milestones. Until then the tab says what it will show.
-    return {"connected": False}
+    from api import dashboard_business
+
+    return {"sales": _section(lambda: dashboard_business.summary(now)), "quests": _section(lambda: _area_quests("business"))}
 
 
 def summary(tab: str) -> dict[str, Any]:

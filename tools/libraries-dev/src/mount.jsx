@@ -19,13 +19,37 @@ export function mount(element, name, props = {}) {
   if (element.__librariesDevRoot) element.__librariesDevRoot.unmount();
   const root = createRoot(element);
   let current = props;
-  const render = () => root.render(React.createElement(Component, current));
+  const render = () => root.render(React.createElement(Component, withAdopted(current)));
   render();
   const handle = {
     update(next) { current = { ...current, ...next }; render(); },
     unmount() { root.unmount(); if (element.__librariesDevRoot === handle) delete element.__librariesDevRoot; },
   };
   element.__librariesDevRoot = handle;
+  return handle;
+}
+
+// ``adopt``: an existing DOM node to show as the component's child (so a
+// wrapper such as BorderBeam can go around content the app already drew).
+function withAdopted(props) {
+  if (!props || !props.adopt) return props;
+  const { adopt, ...rest } = props;
+  const slot = React.createElement('div', {
+    style: { display: 'contents' },
+    ref: (node) => { if (node && adopt.parentNode !== node) node.appendChild(adopt); },
+  });
+  return { ...rest, children: slot };
+}
+
+/* Wrap ``element`` (already in the page) with component ``name``: a host takes
+   its place and the component renders around it. unmount() puts it back. */
+export function wrap(element, name, props = {}) {
+  const host = document.createElement('div');
+  host.className = 'libdev-host';
+  element.replaceWith(host);
+  const handle = mount(host, name, { ...props, adopt: element });
+  const unmount = handle.unmount;
+  handle.unmount = () => { unmount(); host.replaceWith(element); };
   return handle;
 }
 

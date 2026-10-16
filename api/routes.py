@@ -18560,6 +18560,84 @@ def _route_post_api_dashboard_quests_clear(handler, parsed, body, diag):
     return _dashboard_game_call(handler, lambda game: game.clear_completed())
 
 
+def _route_post_api_dashboard_habits_create(handler, parsed, body, diag):
+    return _dashboard_game_call(handler, lambda game: game.create_habit(body))
+
+
+def _route_post_api_dashboard_habits_archive(handler, parsed, body, diag):
+    habit_id = str(body.get("habit_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.archive_habit(habit_id))
+
+
+def _route_post_api_dashboard_habits_check(handler, parsed, body, diag):
+    body = body if isinstance(body, dict) else {}
+    return _dashboard_game_call(handler, lambda game: game.check_habit(str(body.get("habit_id") or ""), body.get("day"), body.get("done", True) is not False))
+
+
+def _route_post_api_dashboard_learning_add(handler, parsed, body, diag):
+    return _dashboard_game_call(handler, lambda game: game.add_learning(body))
+
+
+def _route_post_api_dashboard_learning_remove(handler, parsed, body, diag):
+    entry_id = str(body.get("entry_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.remove_learning(entry_id))
+
+
+def _dashboard_business_call(handler, call):
+    from api import dashboard_business, dashboard_game
+
+    try:
+        return j(handler, {"ok": True, **call(dashboard_business)})
+    except dashboard_game.GameError as exc:
+        return bad(handler, str(exc), exc.status)
+
+
+def _route_post_api_dashboard_sales_connect(handler, parsed, body, diag):
+    body = body if isinstance(body, dict) else {}
+    return _dashboard_business_call(handler, lambda biz: biz.connect(str(body.get("platform") or ""), str(body.get("key") or "")))
+
+
+def _route_post_api_dashboard_sales_disconnect(handler, parsed, body, diag):
+    body = body if isinstance(body, dict) else {}
+    return _dashboard_business_call(handler, lambda biz: biz.disconnect(forget_sales=bool(body.get("forget_sales"))))
+
+
+def _route_post_api_dashboard_sales_sync(handler, parsed, body, diag):
+    return _dashboard_business_call(handler, lambda biz: (biz.sync(force=True), biz.status())[1])
+
+
+def _route_post_api_dashboard_sales_add(handler, parsed, body, diag):
+    return _dashboard_business_call(handler, lambda biz: biz.add_manual_sale(body))
+
+
+def _route_post_api_dashboard_sales_remove(handler, parsed, body, diag):
+    sale_id = str(body.get("sale_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_business_call(handler, lambda biz: biz.remove_manual_sale(sale_id))
+
+
+def _route_post_api_dashboard_goals_add(handler, parsed, body, diag):
+    return _dashboard_business_call(handler, lambda biz: biz.add_goal(body))
+
+
+def _route_post_api_dashboard_goals_remove(handler, parsed, body, diag):
+    goal_id = str(body.get("goal_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_business_call(handler, lambda biz: biz.remove_goal(goal_id))
+
+
+def _route_post_api_dashboard_rewards_add(handler, parsed, body, diag):
+    return _dashboard_game_call(handler, lambda game: game.add_reward(body))
+
+
+def _route_post_api_dashboard_rewards_remove(handler, parsed, body, diag):
+    reward_id = str(body.get("reward_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.remove_reward(reward_id))
+
+
+def _route_post_api_dashboard_rewards_redeem(handler, parsed, body, diag):
+    reward_id = str(body.get("reward_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.redeem(reward_id))
+
+
 def _route_post_api_dashboard_categories(handler, parsed, body, diag):
     body = body if isinstance(body, dict) else {}
     return _dashboard_game_call(handler, lambda game: game.set_category(body.get("project_id"), body.get("category")))
@@ -20244,6 +20322,21 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/dashboard/quests/remove"), _route_post_api_dashboard_quests_remove),
         (Exact("/api/dashboard/quests/clear"), _route_post_api_dashboard_quests_clear),
         (Exact("/api/dashboard/categories"), _route_post_api_dashboard_categories),
+        (Exact("/api/dashboard/rewards/add"), _route_post_api_dashboard_rewards_add),
+        (Exact("/api/dashboard/rewards/remove"), _route_post_api_dashboard_rewards_remove),
+        (Exact("/api/dashboard/rewards/redeem"), _route_post_api_dashboard_rewards_redeem),
+        (Exact("/api/dashboard/sales/connect"), _route_post_api_dashboard_sales_connect),
+        (Exact("/api/dashboard/sales/disconnect"), _route_post_api_dashboard_sales_disconnect),
+        (Exact("/api/dashboard/sales/sync"), _route_post_api_dashboard_sales_sync),
+        (Exact("/api/dashboard/sales/add"), _route_post_api_dashboard_sales_add),
+        (Exact("/api/dashboard/sales/remove"), _route_post_api_dashboard_sales_remove),
+        (Exact("/api/dashboard/goals/add"), _route_post_api_dashboard_goals_add),
+        (Exact("/api/dashboard/goals/remove"), _route_post_api_dashboard_goals_remove),
+        (Exact("/api/dashboard/habits/create"), _route_post_api_dashboard_habits_create),
+        (Exact("/api/dashboard/habits/archive"), _route_post_api_dashboard_habits_archive),
+        (Exact("/api/dashboard/habits/check"), _route_post_api_dashboard_habits_check),
+        (Exact("/api/dashboard/learning/add"), _route_post_api_dashboard_learning_add),
+        (Exact("/api/dashboard/learning/remove"), _route_post_api_dashboard_learning_remove),
         (Exact("/api/work_hub/items/update"), _route_post_api_work_hub_items_update),
         (Exact("/api/work_hub/items/move"), _route_post_api_work_hub_items_move),
         (Exact("/api/work_hub/items/delete"), _route_post_api_work_hub_items_delete),

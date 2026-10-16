@@ -1,0 +1,137 @@
+"""Business dashboard: platform sales (Lemon Squeezy, Gumroad) and manual ones,
+goals, milestones and the XP they earn. The platforms are faked here; the key
+is checked before it is saved and never returned."""
+
+import time
+
+import pytest
+
+
+@pytest.fixture()
+def biz(monkeypatch, tmp_path):
+    from api import dashboard_business, dashboard_game, work_hub
+
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(dashboard_game, "STATE_DIR", tmp_path)
+    monkeypatch.setattr("api.models.load_projects", lambda **_: [])
+    monkeypatch.setattr(dashboard_game, "_sync_jobs", lambda conn: None)
+    keys = {}
+    monkeypatch.setattr(dashboard_business, "_key", lambda platform: keys.get(platform))
+    monkeypatch.setattr(dashboard_business, "_write_key", lambda platform, value: keys.__setitem__(platform, value) if value else keys.pop(platform, None))
+    return dashboard_business, dashboard_game, keys
+
+
+def _iso(days_ago=0):
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime(time.time() - days_ago * 86400))
+
+
+def lemon(orders, invoices=(), *, test=False, refuse=False):
+    def fetch(url, token):
+        if refuse:
+            from api.dashboard_business import SalesError
+            raise SalesError("The platform refused the key. Check it and try again.", 400)
+        if url.endswith("/users/me"):
+            return {"data": {"attributes": {"name": "Matt"}}}
+        if "/orders" in url:
+            return {"data": [{"id": str(i), "attributes": {"status": "paid" if not r else "refunded", "refunded": r, "total": t, "currency": "USD",
+                                                           "first_order_item": {"product_name": "Pro"}, "customer_id": i, "test_mode": test,
+                                                           "created_at": _iso(d)}} for i, (t, d, r) in enumerate(orders)], "links": {}}
+        if "/subscription-invoices" in url:
+            return {"data": [{"id": f"inv{i}", "attributes": {"status": "paid", "total": t, "currency": "USD", "billing_reason": "renewal",
+                                                              "subscription_id": f"s{i}", "customer_id": 100 + i, "test_mode": test,
+                                                              "created_at": _iso(d)}} for i, (t, d) in enumerate(invoices)], "links": {}}
+        raise AssertionError(url)
+    return fetch
+
+
+def test_connect_checks_the_key_saves_it_and_never_returns_it(biz):
+    dashboard_business, _, keys = biz
+    status = dashboard_business.connect("lemonsqueezy", "ls_test_key_0123456789abcdef", fetch=lemon([(2900, 1, False)]))
+    assert status["connected"] and status["account"] == "Matt" and status["label"] == "Lemon Squeezy"
+    assert "ls_test_key_0123456789abcdef" not in str(status) and keys["lemonsqueezy"]
+
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.connect("gumroad", "gr_wrong_key_0123456789", fetch=lemon([], refuse=True))
+    assert "gumroad" not in keys  # nothing saved when refused
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.connect("stripe", "x" * 20)
+
+
+def test_sales_revenue_mrr_refunds_and_milestones(biz):
+    dashboard_business, dashboard_game, _ = biz
+    dashboard_business.connect("lemonsqueezy", "ls_live_key_0123456789abcdef",
+                               fetch=lemon([(14900, 2, False), (2900, 1, False), (900, 0, True)], invoices=[(2900, 3), (2900, 50)]))
+    data = dashboard_business.summary()
+    totals = data["totals"]
+    assert totals["sales"] == 4  # two orders and two renewals (the refund is not a sale)
+    assert totals["revenue"] == 14900 + 2900 + 2900 + 2900
+    assert totals["mrr"] == 2900  # the renewal 50 days ago has lapsed
+    assert totals["refunds"] == 1
+    unlocked = {m["key"] for m in data["milestones"] if m["unlocked_at"]}
+    assert {"first_sale", "revenue_100", "first_subscriber"} <= unlocked and "mrr_1k" not in unlocked
+    assert data["road"]["reached"] == 0 and data["road"]["next"] == 100_00
+
+    profile = dashboard_game.character()
+    business_xp = next(a["xp"] for a in profile["areas"] if a["key"] == "business")
+    assert business_xp == 4 * dashboard_business.SALE_XP + 3 * dashboard_business.MILESTONE_XP
+    assert dashboard_game.character()["total_xp"] == profile["total_xp"]  # awarded once
+
+
+def test_test_mode_sales_show_but_never_reward(biz):
+    dashboard_business, dashboard_game, _ = biz
+    dashboard_business.connect("lemonsqueezy", "ls_test_key_0123456789abcdef", fetch=lemon([(2900, 0, False)], test=True))
+    data = dashboard_business.summary()
+    assert data["status"]["test_mode"] and data["totals"]["sales"] == 1
+    assert not any(m["unlocked_at"] for m in data["milestones"])
+    assert dashboard_game.character()["total_xp"] == 0
+
+
+def test_manual_sales_goals_and_streaks(biz):
+    dashboard_business, _, _ = biz
+    goal = dashboard_business.add_goal({"metric": "sales", "period": "week", "target": 2})["goal"]
+    dashboard_business.add_goal({"metric": "revenue", "period": "month", "target": 100})
+    first = dashboard_business.add_manual_sale({"amount": "29", "product": "Pro"})["sale"]
+    dashboard_business.add_manual_sale({"amount": 49.5, "product": "Pro yearly"})
+
+    goals = {g["metric"]: g for g in dashboard_business.summary()["goals"]}
+    assert goals["sales"]["value"] == 2 and goals["sales"]["met"] and goals["sales"]["streak"] >= 1
+    assert goals["revenue"]["value"] == 7850 and goals["revenue"]["progress"] == pytest.approx(0.785)
+
+    dashboard_business.remove_manual_sale(first["id"])
+    assert dashboard_business.summary()["totals"]["sales"] == 1
+    dashboard_business.remove_goal(goal["id"])
+    assert len(dashboard_business.summary()["goals"]) == 1
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.add_manual_sale({"amount": -5})
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.add_goal({"metric": "vibes", "period": "week", "target": 1})
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.remove_manual_sale("lemonsqueezy:order:1")
+
+
+def test_a_failing_platform_keeps_the_last_copy_and_says_why(biz):
+    dashboard_business, _, _ = biz
+    dashboard_business.connect("lemonsqueezy", "ls_live_key_0123456789abcdef", fetch=lemon([(2900, 1, False)]))
+
+    def down(url, token):
+        from api.dashboard_business import SalesError
+        raise SalesError("The platform did not answer", 502)
+
+    dashboard_business.sync(force=True, fetch=down)
+    data = dashboard_business.summary()
+    assert data["totals"]["sales"] == 1 and "did not answer" in data["status"]["last_error"]
+
+
+def test_gumroad_sales_are_read_page_by_page(biz):
+    dashboard_business, _, _ = biz
+    pages = {"": {"success": True, "sales": [{"id": "a", "price": 1500, "product_name": "Kit", "created_at": _iso(1), "purchaser_id": "p1"}], "next_page_key": "k2"},
+             "k2": {"success": True, "sales": [{"id": "b", "price": 900, "product_name": "Kit", "created_at": _iso(0), "refunded": True}]}}
+
+    def fetch(url, token):
+        if url.endswith("/user"):
+            return {"success": True, "user": {"name": "Matt"}}
+        return pages["k2" if "page_key=k2" in url else ""]
+
+    dashboard_business.connect("gumroad", "gumroad_token_0123456789", fetch=fetch)
+    totals = dashboard_business.summary()["totals"]
+    assert (totals["sales"], totals["revenue"], totals["refunds"]) == (1, 1500, 1)
