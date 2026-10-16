@@ -16,7 +16,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 WEEK = 7 * 86400
-TABS = ("personal", "career", "business")
+TABS = ("personal", "career", "business", "settings")
 _QUEST_LIMIT = 8
 _FAILING_LIMIT = 6
 _RECENT_NOTES = 5
@@ -175,7 +175,13 @@ def business(now: float | None = None) -> dict[str, Any]:
     return {"sales": _section(lambda: dashboard_business.summary(now)), "quests": _section(lambda: _area_quests("business"))}
 
 
+def settings(now: float | None = None) -> dict[str, Any]:
+    from api import dashboard_business
+
+    return {"sales_status": _section(dashboard_business.status)}
+
+
 def summary(tab: str) -> dict[str, Any]:
     tab = tab if tab in TABS else "personal"
-    build = {"personal": personal, "career": career, "business": business}[tab]
+    build = {"personal": personal, "career": career, "business": business, "settings": settings}[tab]
     return {"tab": tab, "generated_at": time.time(), **build()}

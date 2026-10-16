@@ -31,6 +31,7 @@
     users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
     gem: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3 8 9l4 12 4-12-3-6M2 9h20"/>',
     layers: '<path d="M3 7h18M3 12h18M3 17h18"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   };
   const TABS = [
@@ -38,14 +39,18 @@
     {key: 'career', label: 'Career'},
     {key: 'business', label: 'Business'},
   ];
-  const VIEWS = ['personal', 'career', 'business', 'character'];
+  const VIEWS = ['character', 'personal', 'career', 'business', 'settings'];
+  const VIEW_TITLE = {character: 'Character', personal: 'Personal Dashboard', career: 'Career Dashboard', business: 'Business Dashboard', settings: 'Settings'};
+  const VIEW_SUB = {character: 'Everything you finish, as an adventure.', personal: 'Habits, learning and your projects.', career: 'Your job search, levelled up.', business: 'Sales, goals and milestones.', settings: 'Connections for the dashboard.'};
+  // Card icons drawn as pixel art (static/dashboard/icons), by card.
+  const PIX = (name) => `<img class="dash-pix-icon" src="static/dashboard/icons/${name}.png" alt="" width="24" height="24" draggable="false">`;
   const AREA = {personal: 'Personal', career: 'Career', business: 'Business'};
   const STATUS_LABEL = {in_progress: 'In progress', blocked: 'Blocked', todo: 'To do', triage: 'Triage', backlog: 'Backlog', done: 'Done', cancelled: 'Cancelled'};
   const BOT_TYPES = ['clover', 'star', 'mech', 'flower', 'ghost', 'hexagon', 'circle', 'square'];
   const REFRESH_MS = 15000;
   const LOG_PAGE = 15;
 
-  const state = {tab: 'personal', data: {}, loading: {}, error: {}, painted: {}, timer: 0, mounted: false, logCategory: 'all', logOffset: 0, forms: {}};
+  const state = {tab: 'character', entering: true, data: {}, loading: {}, error: {}, painted: {}, timer: 0, mounted: false, logCategory: 'all', logOffset: 0, forms: {}};
   const effects = [];
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -67,7 +72,7 @@
   }
   const root = () => document.getElementById('dashboardRoot');
   const sidebar = () => document.getElementById('dashboardSidebar');
-  function readTab() { try { const t = localStorage.getItem('hermes-dashboard-tab'); if (VIEWS.includes(t)) return t; } catch (_) {} return 'personal'; }
+  function readTab() { try { const t = localStorage.getItem('hermes-dashboard-tab'); if (VIEWS.includes(t)) return t; } catch (_) {} return 'character'; }
   function saveTab(tab) { try { localStorage.setItem('hermes-dashboard-tab', tab); } catch (_) {} }
   state.tab = readTab();
   async function post(path, body) { return api(path, {method: 'POST', body: JSON.stringify(body || {})}); }
@@ -80,20 +85,20 @@
   }
 
   // ── pieces ───────────────────────────────────────────────────────────────
-  const card = (title, body, {icon = '', action = '', cls = '', attrs = ''} = {}) =>
-    `<section class="dash-card ${cls}" ${attrs}><header class="dash-card-head">${icon ? `<span class="dash-card-icon">${svg(icon, 16)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="dash-card-actions">${action}</span>` : ''}</header>${body}</section>`;
+  const card = (title, body, {icon = '', pix = '', action = '', cls = '', attrs = ''} = {}) =>
+    `<section class="dash-card ${cls}" ${attrs}><header class="dash-card-head">${pix ? `<span class="dash-card-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="dash-card-icon">${svg(icon, 16)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="dash-card-actions">${action}</span>` : ''}</header>${body}</section>`;
   const stat = (label, value, note = '', tone = '') =>
     `<div class="dash-stat${tone ? ' is-' + tone : ''}"><small>${esc(label)}</small><b>${value}</b>${note ? `<span>${note}</span>` : ''}</div>`;
   const bar = (fraction, tone = '') => `<span class="dash-bar${tone ? ' is-' + tone : ''}"><i style="width:${Math.round(Math.max(0, Math.min(1, fraction || 0)) * 100)}%"></i></span>`;
   const sectionError = (section) => section && section.error ? `<p class="dash-empty">Couldn't read this: ${esc(section.error)}</p>` : '';
-  const link = (label, attrs) => `<button type="button" class="dash-link" ${attrs}>${esc(label)}</button>`;
+  const link = (label, attrs) => `<button type="button" class="dash-link${/data-dash-(go|tab)=/.test(attrs) ? ' dash-nav' : ''}" ${attrs}>${esc(label)}</button>`;
   const btn = (label, attrs, {icon = '', cls = ''} = {}) => `<button type="button" class="dash-btn ${cls}" ${attrs}>${icon ? svg(icon, 14) : ''}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
   const orb = (kind = 'working') => `<span class="dash-orb" data-ld="orb" data-state="${kind}"><span class="work-hub-spinner" aria-hidden="true"></span></span>`;
 
   function questRow(q, {showArea = true} = {}) {
     return `<div class="dash-quest-row${q.done ? ' is-done' : ''}${q.working ? ' is-working' : ''}" data-quest="${esc(q.id)}">
       <span class="dash-check" data-status="${esc(q.status)}">${q.done ? svg('check', 12) : ''}</span>
-      <button type="button" class="dash-quest-open" data-dash-item="${esc(q.id)}" data-project="${esc(q.project_id || '')}" data-board="${esc(q.board_id || '')}">
+      <button type="button" class="dash-quest-open dash-nav" data-dash-item="${esc(q.id)}" data-project="${esc(q.project_id || '')}" data-board="${esc(q.board_id || '')}">
         <strong>${esc(q.title)}</strong><small>${showArea ? `<span class="dash-area-tag is-${esc(q.area)}">${esc(AREA[q.area] || q.area)}</span>` : ''}${esc(q.project || 'General')}${q.priority && q.priority !== 'none' ? ' · ' + esc(q.priority) : ''}</small>
       </button>
       ${q.done ? `<span class="dash-xp-gain">+${esc(q.xp || 0)} XP</span>`
@@ -105,7 +110,7 @@
 
   /* An area's quests, on its own tab (the full quest log is on the Character page). */
   function questStrip(list, area) {
-    if (list && list.error) return card('Quests', sectionError(list), {icon: 'sword'});
+    if (list && list.error) return card('Quests', sectionError(list), {pix: {personal: 'personal-quest', career: 'career-quests', business: 'business-quest'}[area]});
     list = Array.isArray(list) ? list : [];
     const open = list.filter((q) => !q.done);
     const done = list.length - open.length;
@@ -113,12 +118,12 @@
     const body = list.length ? `<div class="dash-quests">${list.map((q) => questRow(q, {showArea: false})).join('')}</div>`
       : `<div class="dash-quest-empty"><p>No ${esc(AREA[area].toLowerCase())} quests yet. Pick Work Hub items to focus on; finishing one as a quest earns 50% bonus XP.</p></div>`;
     const action = `${done ? link('Clear done', 'data-quest-clear') : ''}${link('Quest log', 'data-dash-tab="character"')}${btn('Add', 'data-dash-add-quest', {icon: 'plus', cls: 'is-small'})}`;
-    return card(`${AREA[area]} quests${open.length ? ` · ${open.length} open` : ''}`, body, {icon: 'sword', action, cls: 'is-quests', attrs: working ? 'data-ld-beam="md"' : ''});
+    return card(`${AREA[area]} quests${open.length ? ` · ${open.length} open` : ''}`, body, {pix: {personal: 'personal-quest', career: 'career-quests', business: 'business-quest'}[area], action, cls: 'is-quests', attrs: working ? 'data-ld-beam="md"' : ''});
   }
 
   // ── Personal ─────────────────────────────────────────────────────────────
   function habitsCard(list) {
-    if (list && list.error) return card('Habits', sectionError(list), {icon: 'heart'});
+    if (list && list.error) return card('Habits', sectionError(list), {pix: 'habits'});
     list = Array.isArray(list) ? list : [];
     const form = state.forms.habit ? `<form class="dash-inline-form" data-form="habit">
         <input name="name" type="text" maxlength="120" placeholder="e.g. Gym, Read 20 pages" required autocomplete="off">
@@ -133,11 +138,11 @@
         <button type="button" class="dash-icon-btn dash-habit-remove" data-habit-archive="${esc(h.id)}" aria-label="Stop tracking ${esc(h.name)}" title="Stop tracking">${svg('x', 13)}</button>
       </div>`).join('');
     const empty = !list.length && !state.forms.habit ? '<p class="dash-empty">Track the things that keep you going. Each one ticked earns 10 XP towards Vitality.</p>' : '';
-    return card('Habits', `${form}${empty}<div class="dash-habits">${rows}</div>`, {icon: 'heart', action: state.forms.habit ? '' : btn('New habit', 'data-form-open="habit"', {icon: 'plus', cls: 'is-small'})});
+    return card('Habits', `${form}${empty}<div class="dash-habits">${rows}</div>`, {pix: 'habits', action: state.forms.habit ? '' : btn('New habit', 'data-form-open="habit"', {icon: 'plus', cls: 'is-small'})});
   }
 
   function learningCard(data) {
-    if (data && data.error) return card('Learning log', sectionError(data), {icon: 'book'});
+    if (data && data.error) return card('Learning log', sectionError(data), {pix: 'learning-log'});
     const entries = (data && data.entries) || [];
     const kinds = [['course', 'Course', 40], ['book', 'Book', 30], ['certification', 'Certification', 100], ['skill', 'Skill', 20], ['other', 'Other', 15]];
     const form = `<form class="dash-inline-form is-learning" data-form="learning">
@@ -147,7 +152,7 @@
         <button type="submit" class="dash-btn is-small">Log it</button>
       </form>`;
     const rows = entries.map((e) => `<div class="dash-row"><span class="dash-area-dot is-${esc(e.area)}"></span><span class="dash-row-main"><strong>${esc(e.title)}</strong><small>${esc(e.kind)} · ${esc(AREA[e.area])} · ${ago(e.done_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-learning-remove="${esc(e.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button></div>`).join('');
-    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `${form}${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}`, {icon: 'book'});
+    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `${form}${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}`, {pix: 'learning-log'});
   }
 
   function personal(data) {
@@ -171,7 +176,7 @@
     const failing = (sch.failing || []).map((f) => `<div class="dash-row is-alert"><span class="dash-dot is-bad"></span><span class="dash-row-main"><strong>${esc(f.name)}</strong><small title="${esc(f.error)}">${esc(f.profile)} · ${esc(f.error || 'failed')}</small></span></div>`).join('');
     const upcoming = (sch.upcoming || []).map((u) => `<div class="dash-row"><span class="dash-dot"></span><span class="dash-row-main"><strong>${esc(u.name)}</strong><small>${esc(u.profile)} · next ${esc(String(u.next_run_at || '').replace('T', ' ').slice(0, 16))}</small></span></div>`).join('');
     const schedules = sectionError(sch) || `${sch.failing_count ? `<p class="dash-callout is-bad">${plural(sch.failing_count, 'scheduled job')} failing</p>` : ''}${failing}${upcoming || (failing ? '' : `<p class="dash-empty">${sch.enabled ? 'No upcoming runs.' : 'No scheduled jobs are switched on.'}</p>`)}`;
-    const notes = Array.isArray(data.notes) ? (data.notes.map((n) => `<button type="button" class="dash-row" data-dash-note="${esc(n.id)}"><span class="dash-row-main"><strong>${n.pinned ? '📌 ' : ''}${esc(n.title)}</strong><small>${ago(n.updated_at)}</small></span></button>`).join('') || '<p class="dash-empty">No notes yet.</p>') : sectionError(data.notes);
+    const notes = Array.isArray(data.notes) ? (data.notes.map((n) => `<button type="button" class="dash-row dash-nav" data-dash-note="${esc(n.id)}"><span class="dash-row-main"><strong>${n.pinned ? '📌 ' : ''}${esc(n.title)}</strong><small>${ago(n.updated_at)}</small></span></button>`).join('') || '<p class="dash-empty">No notes yet.</p>') : sectionError(data.notes);
     return `${stats}
       <div class="dash-grid is-wide-left">
         ${habitsCard(data.habits)}
@@ -179,11 +184,11 @@
       </div>
       <div class="dash-grid">
         ${learningCard(data.learning)}
-        ${card('Project health', projects, {icon: 'chart'})}
+        ${card('Project health', projects, {pix: 'project-health'})}
       </div>
       <div class="dash-grid">
-        ${card('Scheduled jobs', schedules, {icon: 'clock', action: link('Open Tasks', 'data-dash-go="tasks"')})}
-        ${card('Recent notes', notes, {icon: 'note', action: link('Open Notes', 'data-dash-go="notebook"')})}
+        ${card('Scheduled jobs', schedules, {pix: 'scheduled-jobs', action: link('Open Tasks', 'data-dash-go="tasks"')})}
+        ${card('Recent notes', notes, {pix: 'recent-notes', action: link('Open Notes', 'data-dash-go="notebook"')})}
       </div>`;
   }
 
@@ -205,9 +210,9 @@
     return `${jobsBody}
       <div class="dash-grid is-wide-left">
         ${questStrip(data.quests, 'career')}
-        ${card('This week', weekRows, {icon: 'calendar'})}
+        ${card('This week', weekRows, {pix: 'this-week'})}
       </div>
-      ${card('Funnel', funnelRows || '<p class="dash-empty">No jobs yet.</p>', {icon: 'funnel', action: link('Open Jobs', 'data-dash-go="jobs"')})}`;
+      ${card('Funnel', funnelRows || '<p class="dash-empty">No jobs yet.</p>', {pix: 'funnel', action: link('Open Jobs', 'data-dash-go="jobs"')})}`;
   }
 
   // ── Business ─────────────────────────────────────────────────────────────
@@ -225,7 +230,7 @@
         <span class="dash-cta-host" data-ld-beam="pulse-inner"><button type="submit" class="dash-btn">Connect</button></span>
       </form>
       ${status && status.last_error ? `<p class="dash-callout is-bad">${esc(status.last_error)}</p>` : ''}
-      <p class="dash-hint">Lemon Squeezy: Settings → API → new key. Gumroad: Settings → Advanced → Applications → generate an access token. No platform yet? Add sales by hand below.</p>
+      <p class="dash-hint">Lemon Squeezy: Settings → API → new key. Gumroad: Settings → Advanced → Applications → generate an access token. No platform yet? Add sales by hand on the Business page.</p>
     </section>`;
   }
 
@@ -242,7 +247,7 @@
         <span class="dash-connection-sync">${status.last_error ? `<span class="dash-bad-text" title="${esc(status.last_error)}">Last sync failed</span>` : `Synced ${ago(status.last_sync_at) || 'never'}`}</span>
         ${btn('', 'data-sales-sync aria-label="Sync now" title="Sync now"', {icon: 'refresh', cls: 'is-small is-ghost'})}
         ${link('Disconnect', 'data-sales-disconnect')}
-      </div>` : connectPanel(status);
+      </div>` : `<button type="button" class="dash-connect-hint dash-nav" data-dash-tab="settings"><span class="dash-dot"></span><span><strong>No sales platform connected.</strong> Connect Lemon Squeezy or Gumroad in Settings, or add sales by hand below.</span><span class="dash-connect-go">Settings →</span></button>`;
     const stats = `<div class="dash-stats">
       ${stat('Revenue this month', esc(money(t.month_revenue, cur)), delta == null ? '' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs last month`, delta > 0 ? 'good' : '')}
       ${stat('MRR', esc(money(t.mrr, cur)), t.subscribers ? plural(t.subscribers, 'subscriber') : '')}
@@ -289,15 +294,29 @@
     const recent = (s.recent || []).map((r) => `<div class="dash-row"><span class="dash-dot${r.refunded ? ' is-bad' : ' is-good'}"></span><span class="dash-row-main"><strong>${esc(r.product || 'Sale')}${r.recurring ? ' · monthly' : ''}${r.test ? ' · test' : ''}</strong><small>${esc(r.platform === 'manual' ? 'Added by hand' : r.platform)} · ${ago(r.created_at)}</small></span><span class="dash-num${r.refunded ? ' dash-bad-text' : ''}">${r.refunded ? '−' : ''}${esc(money(r.amount, r.currency))}</span>${r.platform === 'manual' ? `<button type="button" class="dash-icon-btn" data-sale-remove="${esc(r.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button>` : ''}</div>`).join('') || (state.forms.sale ? '' : '<p class="dash-empty">No sales yet. Your first one unlocks a milestone.</p>');
     return `${statusBar}${stats}
       <div class="dash-grid">
-        ${card('Goals', `${goalForm}<div class="dash-goals">${goals}</div>`, {icon: 'target', action: state.forms.goal ? '' : btn('Goal', 'data-form-open="goal"', {icon: 'plus', cls: 'is-small'})})}
-        ${card('Road to $10k MRR', roadHtml, {icon: 'road'})}
+        ${card('Goals', `${goalForm}<div class="dash-goals">${goals}</div>`, {pix: 'goals', action: state.forms.goal ? '' : btn('Goal', 'data-form-open="goal"', {icon: 'plus', cls: 'is-small'})})}
+        ${card('Road to $10k MRR', roadHtml, {pix: 'road-to-10k'})}
       </div>
-      ${card(`Milestones · ${(s.milestones || []).filter((m) => m.unlocked_at).length}/${(s.milestones || []).length}`, `<div class="dash-badges">${milestones}</div>`, {icon: 'trophy'})}
+      ${card(`Milestones · ${(s.milestones || []).filter((m) => m.unlocked_at).length}/${(s.milestones || []).length}`, `<div class="dash-badges">${milestones}</div>`, {pix: 'milestone'})}
       <div class="dash-grid">
-        ${card('Revenue · 6 months', chart, {icon: 'chart'})}
-        ${card('Recent sales', `${saleForm}${recent}`, {icon: 'receipt', action: state.forms.sale ? '' : btn('Sale', 'data-form-open="sale"', {icon: 'plus', cls: 'is-small'})})}
+        ${card('Revenue · 6 months', chart, {pix: 'revenue'})}
+        ${card('Recent sales', `${saleForm}${recent}`, {pix: 'recent-sales', action: state.forms.sale ? '' : btn('Sale', 'data-form-open="sale"', {icon: 'plus', cls: 'is-small'})})}
       </div>
       ${questStrip(data.quests, 'business')}`;
+  }
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+  function settingsView(data) {
+    const status = data.sales_status || {};
+    if (status.error) return sectionError(status);
+    const connected = status.connected ? `<div class="dash-connection">
+        <span class="dash-dot is-good"></span><strong>${esc(status.label)}</strong>${status.account ? `<span>· ${esc(status.account)}</span>` : ''}
+        ${status.test_mode ? '<span class="dash-pill is-warn">Test mode</span>' : ''}
+        <span class="dash-connection-sync">${status.last_error ? `<span class="dash-bad-text" title="${esc(status.last_error)}">Last sync failed</span>` : `Synced ${ago(status.last_sync_at) || 'never'}`}</span>
+        ${btn('', 'data-sales-sync aria-label="Sync now" title="Sync now"', {icon: 'refresh', cls: 'is-small is-ghost'})}
+        ${btn('Disconnect', 'data-sales-disconnect', {cls: 'is-small is-danger'})}
+      </div>` : '';
+    return `${status.connected ? card('Sales platform', `<p class="dash-hint">Connected. Sales are copied in every few minutes and drive Business goals, milestones and XP.</p>${connected}`, {icon: 'link'}) : connectPanel(status)}`;
   }
 
   // ── Character (RPG) ──────────────────────────────────────────────────────
@@ -314,8 +333,8 @@
       ${STATS.map((_, i) => { const [x, y] = point(i, 1); return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rpg-radar-ring"/>`; }).join('')}
       <polygon points="${shape}" class="rpg-radar-shape"/>${labels}</svg>`;
   }
-  const panel = (title, body, {icon = '', action = '', cls = ''} = {}) =>
-    `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header>${body}</section>`;
+  const panel = (title, body, {icon = '', pix = '', action = '', cls = ''} = {}) =>
+    `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${pix ? `<span class="rpg-panel-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header>${body}</section>`;
 
   function characterView(data) {
     if (!window.DashSprite) return '<p class="dash-empty">Loading the character…</p>';
@@ -385,12 +404,12 @@
       </div>
       <div class="rpg-columns">
         <div class="rpg-col">
-          ${panel(`Quest log${quests.length ? ` · ${quests.length - doneQuests} open` : ''}`, questLog, {icon: 'sword', cls: 'is-quests', action: `${doneQuests ? link('Clear done', 'data-quest-clear') : ''}${btn('Choose quests', 'data-dash-add-quest', {icon: 'plus', cls: 'is-small is-gold'})}`})}
-          ${panel(`Achievements · ${achievements.filter((a) => a.unlocked_at).length}/${achievements.length}`, `<div class="rpg-achs">${achHtml}</div>`, {icon: 'trophy'})}
+          ${panel(`Quest log${quests.length ? ` · ${quests.length - doneQuests} open` : ''}`, questLog, {pix: 'quest-log', cls: 'is-quests', action: `${doneQuests ? link('Clear done', 'data-quest-clear') : ''}${btn('Choose quests', 'data-dash-add-quest', {icon: 'plus', cls: 'is-small is-gold'})}`})}
+          ${panel(`Achievements · ${achievements.filter((a) => a.unlocked_at).length}/${achievements.length}`, `<div class="rpg-achs">${achHtml}</div>`, {pix: 'achievements'})}
           ${panel('Chronicle', `<div class="dash-chips">${chips}</div>${log}${more}`, {icon: 'list'})}
         </div>
         <div class="rpg-col">
-          ${panel('Party', `<div class="rpg-party">${party}</div>`, {icon: 'users'})}
+          ${panel('Party', `<div class="rpg-party">${party}</div>`, {pix: 'party'})}
           ${panel('Treasury', `<div class="rpg-purse"><span class="rpg-coin is-big" aria-hidden="true"></span><b>${gold.toLocaleString()}</b><small>gold · ${(((shop.gold || {}).earned) || 0).toLocaleString()} earned</small></div>${rewardForm}<div class="rpg-rewards">${rewards}</div>${history ? `<ul class="rpg-history">${history}</ul>` : ''}`, {icon: 'gem', action: state.forms.reward ? '' : btn('Reward', 'data-form-open="reward"', {icon: 'plus', cls: 'is-small is-gold'})})}
           ${panel('Realms', areas, {icon: 'layers'})}
           ${panel('Evolution', `<div class="rpg-tiers">${tiers}</div>`, {icon: 'star'})}
@@ -485,7 +504,7 @@
   function paintSidebar() {
     const host = sidebar(); if (!host) return;
     const item = (key, label) => `<button type="button" class="side-menu-item${key === state.tab ? ' active' : ''}" data-dash-tab="${key}"${key === state.tab ? ' aria-current="page"' : ''}>${svg(key)}<span class="side-menu-label">${label}</span>${key === 'character' ? levelBadge() : ''}</button>`;
-    host.innerHTML = `<nav class="dash-side-nav">${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('character', 'Character')}</nav>`;
+    host.innerHTML = `<nav class="dash-side-nav">${item('character', 'Character')}<div class="dash-side-divider" aria-hidden="true"></div>${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('settings', 'Settings')}</nav>`;
   }
 
   function paint({force = false} = {}) {
@@ -493,7 +512,8 @@
     const host = root(); if (!host) return;
     const data = state.data[state.tab];
     // A refresh that brought nothing new leaves the page (and its live effects) alone.
-    const signature = JSON.stringify([state.tab, data, state.error[state.tab], state.forms, state.logCategory]);
+    // generated_at changes on every read; it is not news, so it does not repaint.
+    const signature = JSON.stringify([state.tab, data, state.error[state.tab], state.forms, state.logCategory], (key, value) => key === 'generated_at' ? undefined : value);
     if (!force && state.painted.signature === signature && host.firstChild) return;
     // Never pull a form out from under someone typing; the next refresh paints.
     if (!force && document.activeElement && host.contains(document.activeElement) && document.activeElement.closest('form')) return;
@@ -502,16 +522,18 @@
     let body;
     if (!data && state.error[state.tab]) body = `<p class="dash-empty">${esc(state.error[state.tab])} <button type="button" class="dash-link" data-dash-retry>Retry</button></p>`;
     else if (!data) body = '<div class="dash-skeleton" aria-busy="true"><i></i><i></i><i></i><i></i></div>';
-    else body = state.tab === 'character' ? characterView(data) : state.tab === 'career' ? career(data) : state.tab === 'business' ? business(data) : personal(data);
+    else body = ({character: characterView, career, business, settings: settingsView, personal})[state.tab](data);
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
     const scroll = scroller ? scroller.scrollTop : 0;
+    const entering = state.entering; state.entering = false;
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
-      <div class="dash-head"><div><h1>${isChar ? 'Character' : 'Dashboard'}</h1><p>${isChar ? 'Everything you finish, as an adventure.' : `${(TABS.find((t) => t.key === state.tab) || TABS[0]).label} at a glance.`}</p></div>
-        <div class="dash-head-right"><div class="dash-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-dash-tab="${t.key}" aria-selected="${t.key === state.tab}" class="${t.key === state.tab ? 'on' : ''}">${t.label}</button>`).join('')}</div>
-        <button type="button" class="dash-char-btn${isChar ? ' on' : ''}" data-dash-tab="character">${svg('character', 15)}<span>Character</span>${levelBadge()}</button></div>
+      <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1><p>${esc(VIEW_SUB[state.tab])}</p></div>
+        <div class="dash-head-right">
+        <button type="button" class="dash-char-btn${isChar ? ' on' : ''}" data-dash-tab="character">${svg('character', 15)}<span>Character</span>${levelBadge()}</button>
+        <div class="dash-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" data-dash-tab="${t.key}" aria-selected="${t.key === state.tab}" class="${t.key === state.tab ? 'on' : ''}"><span>${t.label}</span></button>`).join('')}</div></div>
       </div>
-      <div class="dash-body" data-tab="${state.tab}">${body}</div>
+      <div class="dash-body${entering ? ' is-entering' : ''}" data-tab="${state.tab}">${body}</div>
     </div>`;
     if (scroller) scroller.scrollTop = scroll;
     const cadence = host.querySelector('[data-form="habit"] select[name=cadence]');
@@ -524,6 +546,7 @@
     const changed = tab !== state.tab;
     state.tab = tab; saveTab(tab);
     state.forms = {};
+    if (changed) state.entering = true;
     paint({force: true});
     if (changed || !state.data[tab]) load(tab, {quiet: !!state.data[tab]});
   }
@@ -624,6 +647,13 @@
     const t = event.target.closest('[data-dash-tab],[data-dash-go],[data-dash-item],[data-dash-note],[data-dash-retry],[data-dash-add-quest],[data-quest-remove],[data-quest-clear],[data-log-filter],[data-log-more],[data-form-open],[data-form-cancel],[data-habit-toggle],[data-habit-archive],[data-learning-remove],[data-goal-remove],[data-sale-remove],[data-sales-sync],[data-sales-disconnect],[data-reward-redeem],[data-reward-remove]');
     if (!t) return;
     const d = t.dataset;
+    // A link to another page glows for a moment before the page changes.
+    if (t.classList.contains('dash-nav') && !t.dataset.launched && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      t.dataset.launched = '1'; t.classList.add('is-launching');
+      setTimeout(() => { t.classList.remove('is-launching'); t.click(); delete t.dataset.launched; }, 260);
+      event.preventDefault();
+      return;
+    }
     if (d.dashTab) return select(d.dashTab);
     if (t.hasAttribute('data-dash-retry')) return load(state.tab);
     if (t.hasAttribute('data-dash-add-quest')) return openQuestPicker();

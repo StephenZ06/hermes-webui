@@ -12495,3 +12495,90 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 @media (max-width:620px){.dash .dash-inline-form .themed-select-wrap{flex:1 1 140px;}}
 .dash .dash-row .themed-select-wrap{flex:0 1 150px;max-width:150px;}
 .dash .dash-row .themed-select-wrap select{min-width:0;}
+/* ==== Dashboard polish (pixel icons, full width, equal padding, pixel text, gold controls) ==== */
+.dash{max-width:none;width:100%;}
+#mainDashboard{padding:20px clamp(12px,2vw,28px);}
+.dash-body{animation:none;}
+.dash-body.is-entering{animation:dash-in .28s cubic-bezier(.22,1,.36,1);}
+@media (min-width:1700px){.dash-stats{grid-template-columns:repeat(4,minmax(0,1fr));}.rpg-columns{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);}}
+/* Header: Character button and the tabs share one height; labels centred. */
+.dash.is-rpg .dash-head-right{gap:10px;align-items:stretch;}
+.dash.is-rpg .dash-char-btn,.dash.is-rpg .dash-tabs{height:40px;box-sizing:border-box;}
+.dash.is-rpg .dash-tabs{display:inline-flex;align-items:stretch;padding:3px;gap:3px;}
+.dash.is-rpg .dash-tabs button{display:inline-flex;align-items:center;justify-content:center;height:auto;padding:0 14px;line-height:1;}
+.dash.is-rpg .dash-char-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;line-height:1;}
+.dash.is-rpg :is(.dash-tabs button,.dash-char-btn,.dash-btn,.rpg-buy,.dash-chip) > span,.dash.is-rpg :is(.dash-tabs button,.dash-chip){text-box:trim-both cap alphabetic;}
+.dash.is-rpg .dash-level-badge{margin-left:2px;font-family:var(--rpg-pixel);font-size:8px;padding:3px 6px;line-height:1;}
+/* Pixel-art card icons, all drawn at the same size. */
+.dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon).is-pixel{width:30px;height:30px;padding:0;background:none;box-shadow:none;border-radius:0;flex:none;}
+.dash-pix-icon{display:block;width:30px;height:30px;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.35));}
+/* Every card: the same 16px on all four sides. */
+.dash.is-rpg :is(.dash-card,.rpg-panel){padding:16px;}
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head){margin:0 0 12px;min-height:30px;}
+.dash.is-rpg .dash-stat{padding:16px;justify-content:flex-start;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) > :last-child,.dash.is-rpg :is(.dash-card,.rpg-panel) > :last-child > :last-child{margin-bottom:0;}
+.dash.is-rpg :is(.dash-quests,.dash-habits,.rpg-rewards,.rpg-party,.dash-goals) > :last-child,.dash.is-rpg :is(.dash-card,.rpg-panel) > .dash-row:last-child{padding-bottom:0;}
+.dash.is-rpg .dash-chart{padding-bottom:0;}
+/* Text inside cards in the same pixel font as the titles. */
+.dash.is-rpg :is(.dash-card,.rpg-panel,.dash-stat,.dash-connection,.dash-connect-hint){font-family:var(--rpg-pixel);font-size:9px;line-height:1.7;letter-spacing:.02em;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(strong,b){font-weight:400;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) .dash-row-main strong,.dash.is-rpg .dash-quest-open strong,.dash.is-rpg .dash-goal-head strong,.dash.is-rpg .rpg-reward strong,.dash.is-rpg .rpg-member strong{font-size:10px;line-height:1.6;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(small,.dash-hint,.dash-empty,p){font-size:8px;line-height:1.8;}
+.dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-pill,.dash-xp-gain,.dash-area-tag,.dash-num,.dash-chip){font-family:var(--rpg-pixel);font-size:8px;line-height:1;}
+.dash.is-rpg .dash-pill{padding:5px 8px;}
+.dash.is-rpg .dash-area-tag{padding:3px 5px;line-height:1;vertical-align:0;}
+.dash.is-rpg .dash-stat span{font-family:var(--rpg-pixel);font-size:8px;}
+.dash.is-rpg .rpg-badges small,.dash.is-rpg .rpg-stat small,.dash.is-rpg .rpg-xpline{font-family:var(--rpg-pixel);font-size:8px;}
+.dash.is-rpg .rpg-badges b{font-family:var(--rpg-pixel);font-size:12px;}
+.dash.is-rpg .dash-chart-col small,.dash.is-rpg .dash-chart-val,.dash.is-rpg .dash-road-node small{font-family:var(--rpg-pixel);font-size:7px;}
+.dash.is-rpg .dash-badge strong,.dash.is-rpg .rpg-ach strong{font-size:8px;line-height:1.6;}
+.dash.is-rpg .dash-badge small,.dash.is-rpg .rpg-ach small{font-size:7px;}
+.dash.is-rpg .rpg-purse b{font-size:16px;}
+/* Buttons, inputs and selects follow the gold "Choose quests" button. */
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 12px;border:2px solid #7a5810;border-radius:4px;background:linear-gradient(180deg,#ffd75e,#e0a91c);color:#3a2600;font:9px/1 var(--rpg-pixel);letter-spacing:.02em;box-shadow:0 3px 0 #7a5810,inset 0 1px 0 rgba(255,255,255,.4);transition:transform .1s ease,box-shadow .1s ease,filter .15s ease;}
+.dash.is-rpg .dash-btn:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.05);}
+.dash.is-rpg .dash-btn:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 #7a5810;}
+.dash.is-rpg .dash-btn.is-small{height:28px;padding:0 10px;}
+.dash.is-rpg .dash-btn.is-ghost{width:28px;padding:0;background:var(--rpg-panel);border-color:var(--rpg-frame);color:var(--text);box-shadow:0 3px 0 color-mix(in srgb,var(--rpg-frame) 80%,#000);}
+.dash.is-rpg .dash-btn.is-danger{background:linear-gradient(180deg,#f87171,#c53030);border-color:#7f1d1d;color:#fff;box-shadow:0 3px 0 #7f1d1d,inset 0 1px 0 rgba(255,255,255,.3);}
+.dash-picker .dash-btn.is-ghost{background:transparent;color:var(--text);border-color:var(--border2);box-shadow:none;}
+.dash.is-rpg .dash-inline-form{border:2px dashed color-mix(in srgb,var(--rpg-frame) 80%,transparent);background:color-mix(in srgb,var(--bg) 35%,transparent);}
+.dash.is-rpg .dash-inline-form :is(input[type=text],input[type=number],input[type=date],input[type=password]),.dash.is-rpg .themed-select-wrap select,.dash.is-rpg .dash-select{height:30px;box-sizing:border-box;padding:0 10px;border:2px solid var(--rpg-frame);border-radius:4px;background:color-mix(in srgb,var(--bg) 75%,#000);color:var(--text);font:9px/1 var(--rpg-pixel);}
+.dash.is-rpg .themed-select-wrap select{padding-right:26px;}
+.dash.is-rpg .dash-inline-form input::placeholder{color:var(--muted);font:9px var(--rpg-pixel);}
+.dash.is-rpg .dash-inline-form :is(input,select):focus{border-color:var(--rpg-gold);box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-gold) 30%,transparent);outline:none;}
+.dash.is-rpg .dash-chip{height:26px;display:inline-flex;align-items:center;border:2px solid var(--rpg-frame);border-radius:4px;}
+.dash.is-rpg .dash-chip.on{background:linear-gradient(180deg,#ffd75e,#e0a91c);border-color:#7a5810;color:#3a2600;}
+.dash.is-rpg .dash-tabs button.on{background:linear-gradient(180deg,#ffd75e,#e0a91c);color:#3a2600;box-shadow:inset 0 -2px 0 rgba(0,0,0,.2);}
+.dash.is-rpg .dash-link{font:9px/1 var(--rpg-pixel);color:var(--rpg-gold-deep);padding:6px 4px;border-radius:4px;}
+:root.dark .dash.is-rpg .dash-link{color:var(--rpg-gold);}
+.dash.is-rpg .dash-check-label{font:8px var(--rpg-pixel);}
+/* Side panel: compact rows. */
+.dash-side-nav{padding:6px 8px;gap:1px;}
+.dash-side-nav .side-menu-item{min-height:32px;padding:0 10px;gap:10px;font-size:13px;border-radius:6px;}
+.dash-side-nav .side-menu-item svg{width:16px;height:16px;}
+.dash-side-divider{margin:5px 10px;}
+/* Links that open another page or view glow, and flash as they are followed. */
+.dash .dash-nav{position:relative;transition:box-shadow .25s ease,background .25s ease,color .2s ease;}
+.dash .dash-nav:is(:hover,:focus-visible){box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-violet,#a78bfa) 70%,transparent),0 0 16px color-mix(in srgb,var(--rpg-violet,#a78bfa) 45%,transparent);animation:dash-nav-breathe 1.6s ease-in-out infinite;outline:none;}
+.dash .dash-nav.is-launching{animation:dash-nav-launch .26s ease-out forwards;}
+@keyframes dash-nav-breathe{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-violet,#a78bfa) 55%,transparent),0 0 10px color-mix(in srgb,var(--rpg-violet,#a78bfa) 30%,transparent);}50%{box-shadow:0 0 0 2px color-mix(in srgb,var(--rpg-violet,#a78bfa) 90%,transparent),0 0 22px color-mix(in srgb,var(--rpg-violet,#a78bfa) 55%,transparent);}}
+@keyframes dash-nav-launch{0%{box-shadow:0 0 0 2px var(--rpg-gold,#f4c542),0 0 6px var(--rpg-gold,#f4c542);}60%{box-shadow:0 0 0 3px var(--rpg-gold,#f4c542),0 0 28px color-mix(in srgb,var(--rpg-gold,#f4c542) 80%,transparent);}100%{box-shadow:0 0 0 2px transparent,0 0 0 transparent;}}
+@media (prefers-reduced-motion:reduce){.dash .dash-nav:is(:hover,:focus-visible),.dash .dash-nav.is-launching{animation:none;}}
+/* Business: link to Settings when no platform is connected. */
+.dash-connect-hint{display:flex;align-items:center;gap:10px;width:100%;padding:14px 16px;border:2px dashed var(--rpg-frame);border-radius:6px;background:var(--rpg-panel);color:var(--text);text-align:left;cursor:pointer;}
+.dash-connect-hint strong{color:var(--text);}
+.dash-connect-hint span:nth-child(2){flex:1;min-width:0;}
+.dash-connect-go{flex:none;color:var(--rpg-gold-deep);}
+:root.dark .dash-connect-go{color:var(--rpg-gold);}
+@media (max-width:620px){
+  .dash.is-rpg .dash-head-right{flex-direction:column;}
+  .dash.is-rpg .dash-tabs,.dash.is-rpg .dash-char-btn{width:100%;}
+  .dash.is-rpg .dash-tabs button{flex:1;padding:0 6px;}
+  #mainDashboard{padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));}
+}
+/* Cards hug their content, so the space under the last line matches the other sides. */
+.dash.is-rpg :is(.dash-grid,.rpg-columns){align-items:start;}
+.dash.is-rpg .rpg-hero{align-items:stretch;}
+/* The themed select styles its own text; keep it in the card's pixel size. */
+.dash.is-rpg .themed-select-wrap select,.dash.is-rpg .dash-select{font-family:var(--rpg-pixel)!important;font-size:9px!important;line-height:1!important;letter-spacing:.02em;}

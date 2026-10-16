@@ -44,8 +44,13 @@ def test_dashboard_tabs_switch_and_are_remembered(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("() => { try { localStorage.removeItem('hermes-dashboard-tab'); } catch (_) {} }")
     page.evaluate("async () => { await switchPanel('dashboard'); }")
+    # The Character page is the default view, first in the side panel.
+    page.wait_for_selector("#dashboardRoot .rpg-stage", timeout=15000)
+    assert page.evaluate("() => document.querySelector('#dashboardSidebar .side-menu-item').textContent.trim()").startswith("Character")
+    page.evaluate("() => document.querySelector('.dash-tabs [data-dash-tab=personal]').click()")
     page.wait_for_selector("#dashboardRoot .dash-stats", timeout=15000)
     assert page.evaluate("() => document.querySelector('.dash-tabs .on').textContent") == "Personal"
+    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "Personal Dashboard"
 
     page.evaluate("() => document.querySelector('.dash-tabs [data-dash-tab=career]').click()")
     page.wait_for_function("() => document.querySelector('.dash-body')?.dataset.tab === 'career' && document.querySelector('.dash-stats')", polling=100, timeout=15000)
@@ -108,7 +113,7 @@ def test_quest_rows_open_their_work_hub_item(browser):
 
 def test_dashboard_fits_a_phone(browser):
     page = _open(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
-    page.evaluate("async () => { await switchPanel('dashboard'); }")
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
     page.wait_for_selector("#dashboardRoot .dash-stats", timeout=15000)
     time.sleep(0.4)
     widths = page.evaluate("() => { const r = document.getElementById('mainDashboard'); return [r.scrollWidth, r.clientWidth, document.querySelector('.dash-stats').getBoundingClientRect().right, innerWidth]; }")
@@ -193,3 +198,37 @@ def test_work_hub_cards_mark_quests(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("async () => { await switchPanel('notes'); }")
     page.wait_for_selector(f".work-hub-card[data-item-id='{item}'] .work-hub-quest-mark", timeout=15000)
+
+
+def test_a_refresh_with_nothing_new_does_not_repaint(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-stats", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    page.evaluate("() => { window.__body = document.querySelector('.dash-body'); }")
+    page.evaluate("() => window.HermesDashboard.refresh()")
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    assert page.evaluate("() => window.__body === document.querySelector('.dash-body')")
+
+
+def test_the_sales_connection_lives_in_settings(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
+    page.wait_for_selector(".dash-stats", timeout=15000)
+    assert not page.evaluate("() => !!document.querySelector('form[data-form=connect]')")
+    page.evaluate("() => document.querySelector('.dash-connect-hint').click()")
+    page.wait_for_selector("form[data-form=connect]", timeout=15000)
+    assert page.evaluate("() => document.querySelector('.dash-head h1').textContent") == "Settings"
+
+
+def test_header_controls_share_a_height_and_cards_have_equal_padding(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-stats", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    heights = page.evaluate("() => [document.querySelector('.dash-tabs'), document.querySelector('.dash-char-btn')].map(e => Math.round(e.getBoundingClientRect().height))")
+    assert heights[0] == heights[1]
+    pads = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head')).map(c => {
+        const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), h = c.querySelector('.dash-card-head').getBoundingClientRect();
+        return [Math.round(h.top - r.top - b), Math.round(h.left - r.left - b), Math.round(r.right - b - h.right)]; })""")
+    assert pads and all(p == [16, 16, 16] for p in pads)
