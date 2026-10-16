@@ -15198,6 +15198,24 @@ def _route_get_api_work_hub_bootstrap(handler, parsed):
         return bad(handler, str(exc), exc.status)
 
 
+def _route_get_api_dashboard_character(handler, parsed):
+    from api import dashboard_game
+
+    query = parse_qs(parsed.query or "")
+    category = str((query.get("category") or [""])[0])
+    try:
+        offset = max(0, int((query.get("offset") or ["0"])[0]))
+    except ValueError:
+        offset = 0
+    return j(handler, dashboard_game.character(category=category or None, offset=offset))
+
+
+def _route_get_api_dashboard_quest_ids(handler, parsed):
+    from api import dashboard_game
+
+    return j(handler, {"item_ids": dashboard_game.quest_ids()})
+
+
 def _route_get_api_dashboard_summary(handler, parsed):
     from api import dashboard
 
@@ -16070,6 +16088,8 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/sessions/search"), _route_get_api_sessions_search),
         (Exact("/api/work_hub/bootstrap"), _route_get_api_work_hub_bootstrap),
         (Exact("/api/dashboard/summary"), _route_get_api_dashboard_summary),
+        (Exact("/api/dashboard/character"), _route_get_api_dashboard_character),
+        (Exact("/api/dashboard/quests"), _route_get_api_dashboard_quest_ids),
         (Exact("/api/work_hub/items"), _route_get_api_work_hub_items),
         (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
@@ -18517,6 +18537,34 @@ def _route_post_api_work_hub_items_create(handler, parsed, body, diag):
         return bad(handler, str(exc), exc.status)
 
 
+def _dashboard_game_call(handler, call):
+    from api import dashboard_game
+
+    try:
+        return j(handler, {"ok": True, **call(dashboard_game)})
+    except dashboard_game.GameError as exc:
+        return bad(handler, str(exc), exc.status)
+
+
+def _route_post_api_dashboard_quests_add(handler, parsed, body, diag):
+    ids = body.get("item_ids") if isinstance(body, dict) else None
+    return _dashboard_game_call(handler, lambda game: game.add_quests(ids))
+
+
+def _route_post_api_dashboard_quests_remove(handler, parsed, body, diag):
+    item_id = str(body.get("item_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.remove_quest(item_id))
+
+
+def _route_post_api_dashboard_quests_clear(handler, parsed, body, diag):
+    return _dashboard_game_call(handler, lambda game: game.clear_completed())
+
+
+def _route_post_api_dashboard_categories(handler, parsed, body, diag):
+    body = body if isinstance(body, dict) else {}
+    return _dashboard_game_call(handler, lambda game: game.set_category(body.get("project_id"), body.get("category")))
+
+
 def _route_post_api_work_hub_items_update(handler, parsed, body, diag):
     from api import work_hub
 
@@ -20192,6 +20240,10 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/workspaces/add"), _route_post_api_workspaces_add),
         (Exact("/api/work_hub/folders/create"), _route_post_api_work_hub_folders_create),
         (Exact("/api/work_hub/items/create"), _route_post_api_work_hub_items_create),
+        (Exact("/api/dashboard/quests/add"), _route_post_api_dashboard_quests_add),
+        (Exact("/api/dashboard/quests/remove"), _route_post_api_dashboard_quests_remove),
+        (Exact("/api/dashboard/quests/clear"), _route_post_api_dashboard_quests_clear),
+        (Exact("/api/dashboard/categories"), _route_post_api_dashboard_categories),
         (Exact("/api/work_hub/items/update"), _route_post_api_work_hub_items_update),
         (Exact("/api/work_hub/items/move"), _route_post_api_work_hub_items_move),
         (Exact("/api/work_hub/items/delete"), _route_post_api_work_hub_items_delete),

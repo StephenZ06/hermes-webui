@@ -1402,6 +1402,25 @@ def list_items(query: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"items": mark_working(items), "revision": revision}
 
 
+def completed_items() -> list[dict[str, Any]]:
+    """Items now done, each with when it was finished: the latest activity that
+    set it to done, or its last update when no activity says so."""
+    with _STATE_LOCK:
+        _maybe_migrate_from_json()
+        with _connect() as conn:
+            rows = conn.execute("SELECT * FROM work_items WHERE status = 'done'").fetchall()
+            done_at = {}
+            for row in conn.execute("SELECT item_id, fields, created_at FROM activities WHERE fields LIKE '%done%'"):
+                if _decode_json(row["fields"], {}).get("status") == "done":
+                    done_at[row["item_id"]] = max(done_at.get(row["item_id"], 0), row["created_at"])
+    items = []
+    for row in rows:
+        item = _row_to_item(row)
+        item["done_at"] = done_at.get(item["id"]) or item.get("updated_at")
+        items.append(item)
+    return items
+
+
 def current_revision() -> int:
     with _STATE_LOCK:
         _maybe_migrate_from_json()

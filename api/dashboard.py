@@ -115,7 +115,10 @@ def _recent_notes() -> list[dict[str, Any]]:
 
 def personal(now: float | None = None) -> dict[str, Any]:
     now = time.time() if now is None else now
+    from api import dashboard_game
+
     return {
+        "quests": _section(dashboard_game.quests),
         "work_hub": _section(lambda: _work_hub(now)),
         "schedules": _section(_schedules),
         "notes": _section(_recent_notes),
