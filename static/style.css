@@ -13255,3 +13255,6 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 /* The line between rows is each row's top border; rounded row corners bent its
    ends. Rows are square, so the lines run straight edge to edge. */
 .dash.is-rpg :is(.dash-row,.dash-quest-row,.dash-habit,.dash-quest-open){border-radius:0;}
+/* Quest picker: search and folder filter wait while the panel settles. */
+.dash-picker-tools.is-waiting{opacity:.5;pointer-events:none;}
+.dash-picker-tools.is-waiting :is(input,.themed-select-trigger){cursor:wait;}

@@ -565,3 +565,19 @@ def test_card_dividers_are_square_dashes_and_dropdowns_match_their_button(browse
         const p = document.querySelector('.themed-select-popup'), opt = p.querySelectorAll('.themed-select-option')[1];
         return {popup: p.getBoundingClientRect().width, trigger: t.getBoundingClientRect().width, cut: opt.scrollWidth > opt.clientWidth + 1}; }""")
     assert grown["popup"] > grown["trigger"] and not grown["cut"]  # long text widens the list instead of being cut
+
+
+def test_quest_picker_search_and_filter_wait_until_the_panel_settles(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    early = page.evaluate("""() => { document.querySelector('.dash-card.is-quests [data-dash-add-quest]').click();
+        const t = document.querySelector('.dash-picker-tools .themed-select-trigger'), s = document.querySelector('[data-picker-search]');
+        return {trigger: t.disabled, search: s.disabled}; }""")
+    assert early == {"trigger": True, "search": True}  # nothing to open while the panel still moves
+    page.wait_for_function("() => !document.querySelector('[data-picker-search]').disabled", polling=50, timeout=10000)
+    assert not page.evaluate("() => document.querySelector('.dash-picker').classList.contains('is-resizing')")
+    page.click(".dash-picker-tools .themed-select-trigger")
+    page.wait_for_selector(".themed-select-popup")
+    gap = page.evaluate("() => document.querySelector('.themed-select-popup').getBoundingClientRect().top - document.querySelector('.dash-picker-tools .themed-select-trigger').getBoundingClientRect().bottom")
+    assert 0 <= gap <= 8  # the list sits under its button

@@ -628,24 +628,35 @@
     document.body.appendChild(overlay);
     const panel = overlay.querySelector('.dash-picker');
     const filter = overlay.querySelector('[data-picker-filter]');
+    const search = overlay.querySelector('[data-picker-search]');
+    // The panel opens and then grows to fit the list, moving as it does; a
+    // dropdown opened mid-way would stay where its button was. Search and the
+    // folder filter wait until the list has loaded and the panel has settled.
+    const setReady = (on) => {
+      search.disabled = !on; filter.disabled = !on;
+      overlay.querySelector('.dash-picker-tools').classList.toggle('is-waiting', !on);
+      if (window.refreshThemedSelect) window.refreshThemedSelect(filter);
+    };
     if (window.enhanceThemedSelect) window.enhanceThemedSelect(filter);
+    setReady(false);
     setTimeout(() => overlay.classList.add('is-open'), 16);
     // The panel grows from the loading skeleton to the full list: animate its
     // height between the two instead of jumping.
-    const resize = (change) => {
+    const resize = (change, done = () => {}) => {
       const from = panel.getBoundingClientRect().height;
       change();
-      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
       panel.style.height = 'auto';
       const to = panel.getBoundingClientRect().height;
-      if (Math.abs(to - from) < 2) { panel.style.height = ''; return; }
+      if (Math.abs(to - from) < 2) { panel.style.height = ''; done(); return; }
       panel.style.height = from + 'px';
       void panel.offsetHeight;
       panel.classList.add('is-resizing');
       panel.style.height = to + 'px';
       clearTimeout(panel._resizeTimer);
-      panel._resizeTimer = setTimeout(() => { panel.classList.remove('is-resizing'); panel.style.height = ''; }, 320);
+      panel._resizeTimer = setTimeout(() => { panel.classList.remove('is-resizing'); panel.style.height = ''; done(); }, 320);
     };
+    const opened = Date.now();
     const chosen = new Set();
     let items = [], names = {}, already = new Set();
     try {
@@ -664,7 +675,6 @@
     if (window.refreshThemedSelect) window.refreshThemedSelect(filter);
     const list = overlay.querySelector('[data-picker-list]');
     const addBtn = overlay.querySelector('[data-picker-add]');
-    const search = overlay.querySelector('[data-picker-search]');
     const draw = () => {
       const q = String(search.value || '').toLowerCase();
       const folder = filter.value;
@@ -678,7 +688,8 @@
         return `<label class="dash-picker-row${isQuest ? ' is-quest' : ''}"><input type="checkbox" value="${esc(i.id)}"${isQuest ? ' disabled checked' : chosen.has(i.id) ? ' checked' : ''}><span class="dash-row-main"><strong>${esc(i.title)}</strong><small>${esc(STATUS_LABEL[i.status] || i.status)}${isQuest ? ' · already a quest' : ''}</small></span></label>`;
       }).join('')}</div>`).join('') || '<p class="dash-empty">No open Work Hub items match.</p>';
     };
-    resize(draw);
+    // Enable once grown, and not before the open animation (0.25s) is over.
+    resize(draw, () => setTimeout(() => { if (overlay.isConnected) setReady(true); }, Math.max(0, 260 - (Date.now() - opened))));
     list.addEventListener('change', (event) => {
       const box = event.target.closest('input[type=checkbox]'); if (!box || box.disabled) return;
       if (box.checked) chosen.add(box.value); else chosen.delete(box.value);
