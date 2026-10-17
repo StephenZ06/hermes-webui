@@ -242,3 +242,21 @@ def test_skills_gained_earn_xp_once_unlock_badges_and_can_be_removed(game):
     dashboard_game.remove_skill(docker["id"])
     assert dashboard_game.skill_names() == ["AWS Cloud Practitioner"]
     assert dashboard_game.character()["total_xp"] == profile["total_xp"] - dashboard_game.SKILL_XP["course"]
+
+
+def test_a_quest_chosen_on_a_tab_shows_and_earns_there_whatever_its_project(game):
+    dashboard_game, work_hub = game
+    item = _item(work_hub, "Polish CV", priority="high")  # General: Personal by default
+    with pytest.raises(dashboard_game.GameError):
+        dashboard_game.add_quests([item], area="wizardry")
+    dashboard_game.add_quests([item], area="career")
+
+    [quest] = dashboard_game.quests()
+    assert quest["area"] == "career"
+    _finish(work_hub, item)
+    areas = {a["key"]: a["xp"] for a in dashboard_game.character()["areas"]}
+    assert areas["career"] == 75 and areas["personal"] == 0  # high 50 x 1.5, counted for Career
+
+    other = _item(work_hub, "Plan trip")
+    dashboard_game.add_quests([other])  # chosen from the Character page: follows its project
+    assert {q["title"]: q["area"] for q in dashboard_game.quests()}["Plan trip"] == "personal"

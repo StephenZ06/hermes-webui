@@ -145,3 +145,25 @@ def test_graphify_static_fallback_404_outside_root(tmp_path):
         handler.send_response.assert_called_once_with(404)
     finally:
         config.REPO_ROOT = original
+
+
+def test_a_missing_workspace_graph_map_reads_as_no_graphs_not_an_error(tmp_path):
+    from api import config
+    from api.graphify_static import graphify_static_fallback
+
+    original = config.REPO_ROOT
+    config.REPO_ROOT = tmp_path
+    try:
+        handler = MagicMock()
+        parsed = MagicMock()
+        parsed.path = "/graphify-projects/workspace-graph-map.json"
+        assert graphify_static_fallback(None, handler, parsed) is True
+        handler.send_response.assert_called_once_with(200)
+        assert handler.wfile.write.call_args[0][0] == b"{}"
+
+        other = MagicMock()
+        parsed.path = "/graphify-projects/missing.html"
+        graphify_static_fallback(None, other, parsed)
+        other.send_response.assert_called_once_with(404)  # only the optional index is softened
+    finally:
+        config.REPO_ROOT = original

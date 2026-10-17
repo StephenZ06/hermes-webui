@@ -90,6 +90,8 @@
     var items = flattenOptions(select);
     var popup = document.createElement('div');
     popup.className = 'themed-select-popup';
+    // Dashboard selects keep the dashboard's pixel type in their option list.
+    if (trigger.closest('.dash, .dash-picker')) popup.classList.add('is-dash');
     popup.setAttribute('role', 'listbox');
     var optionEls = [];
     var highlightedIndex = -1;

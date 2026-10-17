@@ -18559,7 +18559,8 @@ def _dashboard_game_call(handler, call):
 
 def _route_post_api_dashboard_quests_add(handler, parsed, body, diag):
     ids = body.get("item_ids") if isinstance(body, dict) else None
-    return _dashboard_game_call(handler, lambda game: game.add_quests(ids))
+    area = str(body.get("area") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.add_quests(ids, area or None))
 
 
 def _route_post_api_dashboard_quests_remove(handler, parsed, body, diag):

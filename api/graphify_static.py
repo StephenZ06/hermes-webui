@@ -50,6 +50,17 @@ def graphify_static_fallback(_app, handler, parsed):
     except ValueError:
         return _not_found(handler)
     if not target.exists() or not target.is_file():
+        if rel == "workspace-graph-map.json":
+            # Optional index: an install that has not built any graph has no
+            # map, which means "no graphs", not an error.
+            data = b"{}"
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", str(len(data)))
+            handler.send_header("Cache-Control", "no-store")
+            handler.end_headers()
+            handler.wfile.write(data)
+            return True
         return _not_found(handler)
 
     content_types = {

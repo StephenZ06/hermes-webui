@@ -382,10 +382,12 @@ def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
     page.evaluate("() => window.HermesDashboard.select('personal')")
     page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
     assert page.evaluate("() => [...document.querySelectorAll('.dash-stat small')].some(e => e.textContent.trim() === 'Personal quests')")
+    # The form slides in (dash-in); measure once it has settled.
+    page.wait_for_function("() => document.querySelector('.dash-card.is-learning-log form.is-learning').getAnimations().length === 0", polling=50, timeout=5000)
     footer = page.evaluate("""() => { const card = document.querySelector('.dash-card.is-learning-log'), form = card.querySelector('form.is-learning'),
         button = form.querySelector('button'), selects = [...form.querySelectorAll('.themed-select-trigger')], r = card.getBoundingClientRect(), f = form.getBoundingClientRect();
         return {bottom: Math.round(r.bottom - f.bottom - parseFloat(getComputedStyle(card).borderBottomWidth)), heights: [button, ...selects].map(e => Math.round(e.getBoundingClientRect().height))}; }""")
-    assert abs(footer["bottom"] - 16) <= 1
+    assert abs(footer["bottom"] - 16) <= 1, footer
     assert len(set(footer["heights"])) == 1
     icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head .dash-card-icon')).map(c => {
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('.dash-card-icon').getBoundingClientRect();
@@ -478,3 +480,67 @@ def test_road_title_settings_realms_and_a_solid_picker(browser):
     page.wait_for_selector(".dash-picker-overlay.is-open .dash-picker", timeout=10000)
     bg = page.evaluate("() => getComputedStyle(document.querySelector('.dash-picker')).backgroundColor")
     assert bg not in ("rgba(0, 0, 0, 0)", "transparent") and not bg.endswith(", 0)")
+
+
+def test_the_quest_picker_filters_by_folder_and_adds_to_the_tab_it_was_opened_on(browser):
+    title = f"Picker item {uuid.uuid4().hex[:6]}"
+    item = _post("/api/work_hub/items/create", {"item": {"title": title, "status": "todo"}, "expected_revision": _rev()})["item"]
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('career'); }")
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.career", polling=100, timeout=10000)
+    page.click(".dash-card.is-quests [data-dash-add-quest]")
+    page.wait_for_selector(f".dash-picker-row:has-text('{title}')", timeout=10000)
+    assert "Career" in page.inner_text(".dash-picker header h3")
+    options = page.evaluate("() => [...document.querySelectorAll('[data-picker-filter] option')].map(o => o.value)")
+    assert options[:2] == ["", "__general"]
+    tools = page.evaluate("""() => { const s = document.querySelector('.dash-picker-search').getBoundingClientRect(), t = document.querySelector('.dash-picker-tools .themed-select-trigger').getBoundingClientRect();
+        const f = [...document.querySelectorAll('.dash-picker footer .dash-btn')].map(b => Math.round(b.getBoundingClientRect().height));
+        return {search: Math.round(s.height), filter: Math.round(t.height), footer: f}; }""")
+    assert tools["search"] == tools["filter"] >= 30 and len(set(tools["footer"])) == 1
+    page.evaluate("() => { const f = document.querySelector('[data-picker-filter]'); f.value = '__general'; f.dispatchEvent(new Event('change')); }")
+    assert page.locator(f".dash-picker-row:has-text('{title}')").count() == 1  # a General item
+    page.click(f".dash-picker-row:has-text('{title}') input")
+    page.click("[data-picker-add]")
+    page.wait_for_selector(f".dash-card.is-quests .dash-quest-row:has-text('{title}')", timeout=10000)
+    _post("/api/dashboard/quests/remove", {"item_id": item["id"]})
+
+
+def test_sale_dates_use_the_themed_calendar_and_forms_line_up(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
+    page.wait_for_selector("[data-form-open=sale]", timeout=15000)
+    page.click("[data-form-open=sale]")
+    assert page.locator("[data-form=sale] input[type=date]").count() == 0
+    page.click("[data-date-pick]")
+    page.wait_for_selector(".dash-cal.is-open")
+    assert page.evaluate("() => document.querySelectorAll('.dash-cal-days button:not([disabled])').length") >= 1
+    page.click(".dash-cal-days button:not([disabled]) >> nth=0")
+    value = page.evaluate("() => document.querySelector('[data-form=sale] input[name=date]').value")
+    assert len(value) == 10 and value.endswith("-01")
+    assert page.locator(".dash-cal").count() == 0
+    heights = page.evaluate("() => [...document.querySelectorAll('[data-form=sale] :is(input[type=number],input[type=text],.dash-date-btn,.dash-btn)')].map(e => Math.round(e.getBoundingClientRect().height))")
+    assert len(set(heights)) == 1
+    page.click("[data-form-open=goal]")
+    goal = page.evaluate("() => [...document.querySelectorAll('[data-form=goal] :is(input,.themed-select-trigger,.dash-btn)')].filter(e => e.offsetParent).map(e => Math.round(e.getBoundingClientRect().height))")
+    assert len(set(goal)) == 1
+    assert page.locator("[data-form=goal] select[name=project_id]").count() == 1
+
+
+def test_habit_form_hides_weekly_count_for_daily_and_lists_scroll_with_an_arrow(browser):
+    for i in range(10):
+        _post("/api/dashboard/learning/add", {"title": f"Arrow fixture {uuid.uuid4().hex[:4]} {i}", "kind": "book", "area": "career"})
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-card.is-learning-log", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    assert page.locator(".dash-card.is-learning-log .dash-row small:has-text('Book ·')").count() >= 1  # capitalised kind
+    page.wait_for_function("() => document.querySelector('.dash-card.is-learning-log .dash-more.is-on')", polling=100, timeout=5000)
+    page.evaluate("() => { const l = document.querySelector('.dash-card.is-learning-log .dash-learning-entries'); l.scrollTop = l.scrollHeight; }")
+    page.wait_for_function("() => !document.querySelector('.dash-card.is-learning-log .dash-more.is-on')", polling=100, timeout=5000)
+    page.click("[data-form-open=habit]")
+    page.wait_for_selector("[data-form=habit]")
+    visible = lambda: page.evaluate("() => { const w = document.querySelector('[data-weekly-target]').closest('.themed-select-wrap') || document.querySelector('[data-weekly-target]'); return getComputedStyle(w).display !== 'none'; }")
+    assert visible() is False
+    page.evaluate("() => { const s = document.querySelector('[data-form=habit] select[name=cadence]'); s.value = 'weekly'; s.dispatchEvent(new Event('change')); }")
+    assert visible() is True
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.dash')).userSelect") == "none"

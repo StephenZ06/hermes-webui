@@ -159,3 +159,41 @@ def test_a_stale_copy_refreshes_in_the_background_without_holding_up_the_page(bi
     assert started.wait(2)
     dashboard_business.sync_soon()  # a second refresh does not start while one runs
     release.set()
+
+
+def test_goals_can_carry_a_live_work_hub_project_label(biz, monkeypatch):
+    dashboard_business, _, _ = biz
+    projects = [{"project_id": "saas", "name": "SaaS app"}]
+    monkeypatch.setattr("api.models.load_projects", lambda **_: projects)
+    dashboard_business.add_goal({"metric": "sales", "period": "week", "target": 3, "project_id": "saas"})
+    with pytest.raises(dashboard_business.SalesError):
+        dashboard_business.add_goal({"metric": "sales", "period": "week", "target": 3, "project_id": "gone"})
+    data = dashboard_business.summary()
+    assert data["projects"] == [{"id": "saas", "name": "SaaS app"}]
+    assert data["goals"][0]["project"] == "SaaS app"
+
+    projects.append({"project_id": "kit", "name": "Kit"})  # a folder added in the Work Hub shows at once
+    assert [p["name"] for p in dashboard_business.summary()["projects"]] == ["Kit", "SaaS app"]
+    projects.clear()  # deleted: the goal stays, without a label
+    data = dashboard_business.summary()
+    assert data["projects"] == [] and data["goals"][0]["project"] is None
+
+
+def test_goals_stop_at_the_limit_with_a_clear_reason(biz):
+    dashboard_business, _, _ = biz
+    for n in range(dashboard_business.GOAL_LIMIT):
+        dashboard_business.add_goal({"metric": "sales", "period": "week", "target": n + 1})
+    with pytest.raises(dashboard_business.SalesError) as full:
+        dashboard_business.add_goal({"metric": "sales", "period": "week", "target": 99})
+    assert full.value.status == 409 and "at most" in str(full.value)
+    assert dashboard_business.summary()["goal_limit"] == dashboard_business.GOAL_LIMIT
+
+
+def test_the_sales_poller_starts_once(biz, monkeypatch):
+    dashboard_business, _, _ = biz
+    monkeypatch.setattr(dashboard_business, "_POLLER", None)
+    started = []
+    monkeypatch.setattr(dashboard_business.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: started.append(kw["name"]), "is_alive": lambda self: True})())
+    assert dashboard_business.start_poller() is True
+    assert dashboard_business.start_poller() is False
+    assert started == ["dashboard-sales-poller"]

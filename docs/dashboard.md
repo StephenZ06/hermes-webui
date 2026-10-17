@@ -41,7 +41,10 @@ them with **Choose quests** (Character page) or **Add** (each tab), or with
 **Add to quests** in a Work Hub item's details. A quest always shows the
 item's live Work Hub status, so finishing it in the Work Hub, or a chat
 finishing it with the `work_hub` tool, ticks it off. A finished quest earns
-50% bonus XP for its project's realm.
+50% bonus XP. A quest chosen on Personal, Career or Business shows there and
+earns its XP there; one chosen on the Character page follows its project's
+realm. The picker lists open Work Hub items and can be narrowed to General or
+one project folder (read fresh each time, so new or deleted folders show).
 
 ## XP, levels and gold
 
@@ -65,11 +68,14 @@ XP plus 50 per achievement, spent on rewards you define in the Treasury.
 Lemon Squeezy (API key) or Gumroad (access token). The key is checked with the
 platform before it is saved to the active profile's env file
 (`SALES_LEMONSQUEEZY_API_KEY` / `SALES_GUMROAD_ACCESS_TOKEN`) and is never
-sent back to the browser. Sales are copied in at most every 5 minutes when the
+sent back to the browser. Sales are copied in at most every 2 minutes when the
 page is read; when the platform is down the last copy stays and the reason is
-shown. Customers are kept as fingerprints only. Test-mode sales are shown but
+shown. Customers are kept as fingerprints only. While a platform is connected
+the server also polls it every 2 minutes in the background, so milestones,
+goals and XP move as sales come in even with the page closed. Test-mode sales are shown but
 never unlock milestones or earn XP. MRR counts subscriptions that renewed in
-the last ~35 days. Sales can also be entered by hand.
+the last ~35 days. Sales can also be entered by hand. Goals (up to 12) can be labelled with a
+Work Hub project; the list follows the Work Hub's project folders.
 
 ## Effects
 

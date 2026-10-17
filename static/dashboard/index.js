@@ -26,6 +26,8 @@
     refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
     funnel: '<path d="M3 4h18l-7 9v6l-4 2v-8z"/>',
     calendar: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/>',
+    'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+    'chevron-right': '<path d="m9 18 6-6-6-6"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     star: '<path d="m12 2 3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/>',
     users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
@@ -131,7 +133,7 @@
     const form = state.forms.habit ? `<form class="dash-inline-form" data-form="habit">
         <input name="name" type="text" maxlength="120" placeholder="e.g. Gym, Read 20 pages" required autocomplete="off">
         <select name="cadence" aria-label="How often"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
-        <select name="target" aria-label="Times a week" data-weekly-target hidden>${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}"${n === 3 ? ' selected' : ''}>${n}× a week</option>`).join('')}</select>
+        <select name="target" aria-label="Times a week" data-weekly-target hidden>${[1, 2, 3, 4, 5, 6, 7].map((n) => `<option value="${n}"${n === 3 ? ' selected' : ''}>${n === 1 ? 'Once' : `${n} times`} a week</option>`).join('')}</select>
         <button type="submit" class="dash-btn is-small">Add</button><button type="button" class="dash-link" data-form-cancel="habit">Cancel</button>
       </form>` : '';
     const rows = list.map((h) => `<div class="dash-habit${h.done ? ' is-done' : ''}" data-habit="${esc(h.id)}">
@@ -154,7 +156,7 @@
         <select name="area" aria-label="Counts towards"><option value="career">Career</option><option value="personal">Personal</option><option value="business">Business</option></select>
         <button type="submit" class="dash-btn is-small">Log it</button>
       </form>`;
-    const rows = entries.map((e) => `<div class="dash-row"><span class="dash-area-dot is-${esc(e.area)}"></span><span class="dash-row-main"><strong>${esc(e.title)}</strong><small>${esc(e.kind)} · ${esc(AREA[e.area])} · ${ago(e.done_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-learning-remove="${esc(e.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button></div>`).join('');
+    const rows = entries.map((e) => `<div class="dash-row"><span class="dash-area-dot is-${esc(e.area)}"></span><span class="dash-row-main"><strong>${esc(e.title)}</strong><small>${esc(String(e.kind || '').charAt(0).toUpperCase() + String(e.kind || '').slice(1))} · ${esc(AREA[e.area])} · ${ago(e.done_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-learning-remove="${esc(e.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button></div>`).join('');
     return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `<div class="dash-learning-entries">${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}</div>${form}`, {pix: 'learning-log', cls: 'is-learning-log', key: 'learning'});
   }
 
@@ -280,12 +282,13 @@
         <input name="target" type="number" min="1" step="any" placeholder="5" required aria-label="Target">
         <select name="metric" aria-label="What"><option value="sales">sales</option><option value="revenue">in revenue (${esc(cur)})</option></select>
         <select name="period" aria-label="Per"><option value="week">per week</option><option value="month">per month</option></select>
+        <select name="project_id" aria-label="Project"><option value="">No project</option>${(s.projects || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>
         <button type="submit" class="dash-btn is-small">Add</button><button type="button" class="dash-link" data-form-cancel="goal">Cancel</button>
       </form>` : '';
     const goals = (s.goals || []).map((g) => {
       const label = g.metric === 'sales' ? `${g.target} sales this ${g.period}` : `${money(g.target, cur)} this ${g.period}`;
       const value = g.metric === 'sales' ? `${g.value} / ${g.target}` : `${money(g.value, cur)} / ${money(g.target, cur)}`;
-      return `<div class="dash-goal${g.met ? ' is-met' : ''}"><div class="dash-goal-head"><strong>${esc(label)}</strong><span class="dash-pill${g.met ? ' is-good' : ' is-accent'}">${g.met ? '✓ Met' : esc(value)}</span><button type="button" class="dash-icon-btn" data-goal-remove="${esc(g.id)}" aria-label="Remove goal" title="Remove goal">${svg('x', 13)}</button></div>${bar(g.progress, g.met ? 'good' : '')}${g.streak ? `<small class="dash-goal-streak">🔥 ${g.streak} ${g.period}${g.streak === 1 ? '' : 's'} in a row</small>` : ''}</div>`;
+      return `<div class="dash-goal${g.met ? ' is-met' : ''}"><div class="dash-goal-head"><strong>${esc(label)}</strong>${g.project ? `<span class="dash-area-tag is-project">${esc(g.project)}</span>` : ''}<span class="dash-pill${g.met ? ' is-good' : ' is-accent'}">${g.met ? '✓ Met' : esc(value)}</span><button type="button" class="dash-icon-btn" data-goal-remove="${esc(g.id)}" aria-label="Remove goal" title="Remove goal">${svg('x', 13)}</button></div>${bar(g.progress, g.met ? 'good' : '')}${g.streak ? `<small class="dash-goal-streak">🔥 ${g.streak} ${g.period}${g.streak === 1 ? '' : 's'} in a row</small>` : ''}</div>`;
     }).join('') || (state.forms.goal ? '' : '<p class="dash-empty">Set a target, like 5 sales this week, and build a streak.</p>');
     const newest = (s.milestones || []).filter((m) => m.unlocked_at).sort((a, b) => b.unlocked_at - a.unlocked_at)[0];
     const milestones = (s.milestones || []).map((m) => `<div class="dash-badge${m.unlocked_at ? '' : ' is-locked'}" title="${esc(m.description)}">
@@ -309,14 +312,14 @@
     const saleForm = state.forms.sale ? `<form class="dash-inline-form" data-form="sale">
         <input name="amount" type="number" min="0.01" step="0.01" placeholder="29.00" required aria-label="Amount">
         <input name="product" type="text" maxlength="120" placeholder="Product" aria-label="Product">
-        <input name="date" type="date" aria-label="Date">
+        <input name="date" type="hidden" value=""><button type="button" class="dash-date-btn" data-date-pick aria-haspopup="dialog" aria-label="Sale date">${svg('calendar', 14)}<span>Today</span></button>
         <label class="dash-check-label"><input name="recurring" type="checkbox"> Monthly</label>
         <button type="submit" class="dash-btn is-small">Add</button><button type="button" class="dash-link" data-form-cancel="sale">Cancel</button>
       </form>` : '';
     const recent = (s.recent || []).map((r) => `<div class="dash-row"><span class="dash-dot${r.refunded ? ' is-bad' : ' is-good'}"></span><span class="dash-row-main"><strong>${esc(r.product || 'Sale')}${r.recurring ? ' · monthly' : ''}${r.test ? ' · test' : ''}</strong><small>${esc(r.platform === 'manual' ? 'Added by hand' : r.platform)} · ${ago(r.created_at)}</small></span><span class="dash-num${r.refunded ? ' dash-bad-text' : ''}">${r.refunded ? '−' : ''}${esc(money(r.amount, r.currency))}</span>${r.platform === 'manual' ? `<button type="button" class="dash-icon-btn" data-sale-remove="${esc(r.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button>` : ''}</div>`).join('') || (state.forms.sale ? '' : '<p class="dash-empty">No sales yet. Your first one unlocks a milestone.</p>');
     return `${statusBar}${stats}
       <div class="dash-grid">
-        ${card('Goals', `${goalForm}<div class="dash-goals">${goals}</div>`, {pix: 'goals', key: 'goals', action: state.forms.goal ? '' : btn('Goal', 'data-form-open="goal"', {icon: 'plus', cls: 'is-small'})})}
+        ${card('Goals', `${goalForm}<div class="dash-goals">${goals}</div>`, {pix: 'goals', key: 'goals', action: state.forms.goal || (s.goals || []).length >= (s.goal_limit || 12) ? '' : btn('Goal', 'data-form-open="goal"', {icon: 'plus', cls: 'is-small'})})}
         ${card('Road to $10k', roadHtml, {pix: 'road-to-10k', key: 'road'})}
       </div>
       ${card(`Milestones · ${(s.milestones || []).filter((m) => m.unlocked_at).length}/${(s.milestones || []).length}`, `<div class="dash-badges">${milestones}</div>`, {pix: 'milestone', key: 'milestones'})}
@@ -407,6 +410,7 @@
     return `<div class="rpg">
       <div class="rpg-hero">
         <div class="rpg-stage" data-tier="${data.tier}">
+          <i class="rpg-frame-gem is-top" aria-hidden="true"></i><i class="rpg-frame-gem is-bottom" aria-hidden="true"></i><i class="rpg-frame-gem is-left" aria-hidden="true"></i><i class="rpg-frame-gem is-right" aria-hidden="true"></i>
           <div class="rpg-stars" aria-hidden="true"></div>
           <div class="rpg-aura" aria-hidden="true"></div>
           ${window.DashSprite.render(data.tier, 6)}
@@ -562,8 +566,37 @@
     </div>`;
     if (scroller) scroller.scrollTop = scroll;
     const cadence = host.querySelector('[data-form="habit"] select[name=cadence]');
-    if (cadence) cadence.addEventListener('change', () => { host.querySelector('[data-weekly-target]').hidden = cadence.value !== 'weekly'; });
     enhance(host);
+    if (cadence) {
+      // The themed select's wrapper hides with it (CSS :has(> select[hidden])).
+      const target = host.querySelector('[data-weekly-target]');
+      const show = () => { target.hidden = cadence.value !== 'weekly'; };
+      cadence.addEventListener('change', show); show();
+    }
+    markScrollable(host);
+  }
+
+  // A card whose list scrolls shows a small arrow at its bottom edge while
+  // more rows are hidden below; it goes once the list is scrolled to the end.
+  const SCROLLERS = '.dash-card-body,.dash-learning-entries';
+  function updateMore(el) {
+    const card = el.closest('.dash-card,.rpg-panel');
+    if (!card) return;
+    const more = el.scrollHeight - el.clientHeight - el.scrollTop > 4 && getComputedStyle(el).overflowY !== 'visible';
+    let arrow = card.querySelector(':scope > .dash-more');
+    if (more && !arrow) {
+      arrow = document.createElement('span');
+      arrow.className = 'dash-more'; arrow.setAttribute('aria-hidden', 'true');
+      card.appendChild(arrow);
+    }
+    if (!arrow) return;
+    arrow.classList.toggle('is-on', more);
+    // Sit at the bottom of the list itself (above a footer form, if any).
+    const c = card.getBoundingClientRect(), r = el.getBoundingClientRect();
+    arrow.style.top = Math.round(r.bottom - c.top - parseFloat(getComputedStyle(card).borderTopWidth) - 9) + 'px';
+  }
+  function markScrollable(host) {
+    requestAnimationFrame(() => host.querySelectorAll(SCROLLERS).forEach(updateMore));
   }
 
   function select(tab) {
@@ -578,62 +611,161 @@
   const refresh = () => load(state.tab, {quiet: true});
 
   // ── quest picker ─────────────────────────────────────────────────────────
-  async function openQuestPicker() {
+  // ``area`` is the tab the picker was opened from: the quests it adds show
+  // (and earn XP) there, whatever their project's realm.
+  async function openQuestPicker(area) {
     closeQuestPicker();
+    area = AREA[area] ? area : '';
     const overlay = document.createElement('div');
     overlay.className = 'dash-picker-overlay';
     overlay.innerHTML = `<div class="dash-picker" role="dialog" aria-modal="true" aria-label="Choose quests">
-      <header><h3>Choose quests</h3><button type="button" class="dash-picker-x" data-picker-close aria-label="Close">${svg('x', 16)}</button></header>
-      <label class="dash-picker-search">${svg('search', 15)}<input type="text" placeholder="Search Work Hub items" autocomplete="off" data-picker-search></label>
+      <header><h3>Choose ${area ? esc(AREA[area]) + ' ' : ''}quests</h3><button type="button" class="dash-picker-x" data-picker-close aria-label="Close">${svg('x', 16)}</button></header>
+      <div class="dash-picker-tools"><label class="dash-picker-search">${svg('search', 15)}<input type="text" placeholder="Search Work Hub items" autocomplete="off" data-picker-search></label>
+        <select class="dash-picker-filter" data-picker-filter aria-label="Show items from"><option value="">All folders</option></select></div>
       <div class="dash-picker-list" data-picker-list><div class="dash-skeleton is-list"><i></i><i></i><i></i></div></div>
       <footer><button type="button" class="dash-btn is-ghost" data-picker-close>Cancel</button><button type="button" class="dash-btn" data-picker-add disabled>Add quests</button></footer>
     </div>`;
     document.body.appendChild(overlay);
+    const panel = overlay.querySelector('.dash-picker');
+    const filter = overlay.querySelector('[data-picker-filter]');
+    if (window.enhanceThemedSelect) window.enhanceThemedSelect(filter);
     setTimeout(() => overlay.classList.add('is-open'), 16);
+    // The panel grows from the loading skeleton to the full list: animate its
+    // height between the two instead of jumping.
+    const resize = (change) => {
+      const from = panel.getBoundingClientRect().height;
+      change();
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      panel.style.height = 'auto';
+      const to = panel.getBoundingClientRect().height;
+      if (Math.abs(to - from) < 2) { panel.style.height = ''; return; }
+      panel.style.height = from + 'px';
+      void panel.offsetHeight;
+      panel.classList.add('is-resizing');
+      panel.style.height = to + 'px';
+      clearTimeout(panel._resizeTimer);
+      panel._resizeTimer = setTimeout(() => { panel.classList.remove('is-resizing'); panel.style.height = ''; }, 320);
+    };
     const chosen = new Set();
     let items = [], names = {}, already = new Set();
     try {
+      // Read fresh each time, so added or deleted project folders show at once.
       const [boot, ids] = await Promise.all([api('/api/work_hub/bootstrap'), api('/api/dashboard/quests')]);
       items = (boot.items || []).filter((i) => !['done', 'cancelled'].includes(i.status));
       (boot.projects || []).forEach((proj) => { names[proj.project_id] = proj.name; });
       already = new Set(ids.item_ids || []);
     } catch (error) {
-      overlay.querySelector('[data-picker-list]').innerHTML = `<p class="dash-empty">Couldn't load the Work Hub: ${esc(error.message || error)}</p>`;
+      resize(() => { overlay.querySelector('[data-picker-list]').innerHTML = `<p class="dash-empty">Couldn't load the Work Hub: ${esc(error.message || error)}</p>`; });
       return;
     }
+    if (!overlay.isConnected) return;
+    const folders = Object.entries(names).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    filter.innerHTML = `<option value="">All folders</option><option value="__general">General</option>${folders.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('')}`;
+    if (window.refreshThemedSelect) window.refreshThemedSelect(filter);
     const list = overlay.querySelector('[data-picker-list]');
     const addBtn = overlay.querySelector('[data-picker-add]');
-    const draw = (query) => {
-      const q = String(query || '').toLowerCase();
+    const search = overlay.querySelector('[data-picker-search]');
+    const draw = () => {
+      const q = String(search.value || '').toLowerCase();
+      const folder = filter.value;
       const groups = {};
-      items.filter((i) => !q || String(i.title || '').toLowerCase().includes(q) || String(names[i.project_id] || '').toLowerCase().includes(q))
-        .forEach((i) => { (groups[i.project_id || ''] = groups[i.project_id || ''] || []).push(i); });
+      items.filter((i) => !folder || (folder === '__general' ? !names[i.project_id] : i.project_id === folder))
+        .filter((i) => !q || String(i.title || '').toLowerCase().includes(q) || String(names[i.project_id] || '').toLowerCase().includes(q))
+        .forEach((i) => { const k = names[i.project_id] ? i.project_id : ''; (groups[k] = groups[k] || []).push(i); });
       const keys = Object.keys(groups).sort((a, b) => String(names[a] || 'General').localeCompare(String(names[b] || 'General')));
       list.innerHTML = keys.map((k) => `<div class="dash-picker-group"><h4>${esc(names[k] || 'General')}</h4>${groups[k].map((i) => {
         const isQuest = already.has(i.id);
         return `<label class="dash-picker-row${isQuest ? ' is-quest' : ''}"><input type="checkbox" value="${esc(i.id)}"${isQuest ? ' disabled checked' : chosen.has(i.id) ? ' checked' : ''}><span class="dash-row-main"><strong>${esc(i.title)}</strong><small>${esc(STATUS_LABEL[i.status] || i.status)}${isQuest ? ' · already a quest' : ''}</small></span></label>`;
       }).join('')}</div>`).join('') || '<p class="dash-empty">No open Work Hub items match.</p>';
     };
-    draw('');
+    resize(draw);
     list.addEventListener('change', (event) => {
       const box = event.target.closest('input[type=checkbox]'); if (!box || box.disabled) return;
       if (box.checked) chosen.add(box.value); else chosen.delete(box.value);
       addBtn.disabled = !chosen.size;
       addBtn.textContent = chosen.size ? `Add ${chosen.size} quest${chosen.size === 1 ? '' : 's'}` : 'Add quests';
     });
-    overlay.querySelector('[data-picker-search]').addEventListener('input', (event) => draw(event.target.value));
+    search.addEventListener('input', () => resize(draw));
+    filter.addEventListener('change', () => resize(draw));
     addBtn.addEventListener('click', async () => {
       addBtn.disabled = true;
       try {
-        await post('/api/dashboard/quests/add', {item_ids: [...chosen]});
+        await post('/api/dashboard/quests/add', {item_ids: [...chosen], area});
         closeQuestPicker();
-        toast(`${chosen.size} quest${chosen.size === 1 ? '' : 's'} added`);
+        toast(`${chosen.size} quest${chosen.size === 1 ? '' : 's'} added${area ? ` to ${AREA[area]}` : ''}`);
         refresh();
       } catch (error) { addBtn.disabled = false; toast(error.message || 'Could not add quests'); }
     });
   }
+
   function closeQuestPicker() {
     document.querySelectorAll('.dash-picker-overlay').forEach((el) => { el.classList.remove('is-open'); setTimeout(() => el.remove(), 200); });
+  }
+
+  // ── date picker ──────────────────────────────────────────────────────────
+  // A themed calendar for the manual-sale date (the browser's own picker does
+  // not follow the dashboard look). Writes YYYY-MM-DD into the hidden input
+  // beside the button; no future dates.
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  function closeDatePicker() {
+    document.querySelectorAll('.dash-cal').forEach((el) => { el._cleanup && el._cleanup(); el.remove(); });
+  }
+  function openDatePicker(button) {
+    if (document.querySelector('.dash-cal')) { closeDatePicker(); return; }
+    const input = button.parentElement.querySelector('input[name="date"]');
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const picked = input.value ? new Date(input.value + 'T00:00:00') : today;
+    let view = new Date(picked.getFullYear(), picked.getMonth(), 1);
+    const pop = document.createElement('div');
+    pop.className = 'dash-cal';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', 'Choose a date');
+    const draw = () => {
+      const first = (view.getDay() + 6) % 7; // weeks start on Monday
+      const days = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+      const cells = [];
+      for (let i = 0; i < first; i++) cells.push('<span></span>');
+      for (let d = 1; d <= days; d++) {
+        const date = new Date(view.getFullYear(), view.getMonth(), d);
+        const value = iso(date);
+        const cls = [value === iso(today) ? 'is-today' : '', input.value === value || (!input.value && value === iso(today)) ? 'is-picked' : ''].filter(Boolean).join(' ');
+        cells.push(`<button type="button" class="${cls}" data-cal-day="${value}"${date > today ? ' disabled' : ''}>${d}</button>`);
+      }
+      const nextMonth = new Date(view.getFullYear(), view.getMonth() + 1, 1);
+      pop.innerHTML = `<header><button type="button" data-cal-step="-1" aria-label="Previous month">${svg('chevron-left', 14)}</button><strong>${MONTHS[view.getMonth()]} ${view.getFullYear()}</strong><button type="button" data-cal-step="1" aria-label="Next month"${nextMonth > today ? ' disabled' : ''}>${svg('chevron-right', 14)}</button></header>
+        <div class="dash-cal-week">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((w) => `<span>${w}</span>`).join('')}</div>
+        <div class="dash-cal-days">${cells.join('')}</div>
+        <footer><button type="button" data-cal-day="${iso(today)}">Today</button></footer>`;
+    };
+    draw();
+    document.body.appendChild(pop);
+    const place = () => {
+      const r = button.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      const top = r.bottom + 6 + h > window.innerHeight - 8 ? Math.max(8, r.top - 6 - h) : r.bottom + 6;
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    };
+    place();
+    requestAnimationFrame(() => pop.classList.add('is-open'));
+    pop.addEventListener('click', (event) => {
+      const step = event.target.closest('[data-cal-step]');
+      if (step && !step.disabled) { view = new Date(view.getFullYear(), view.getMonth() + Number(step.dataset.calStep), 1); draw(); return; }
+      const day = event.target.closest('[data-cal-day]');
+      if (day && !day.disabled) {
+        input.value = day.dataset.calDay === iso(today) ? '' : day.dataset.calDay;
+        const d = new Date(day.dataset.calDay + 'T00:00:00');
+        button.querySelector('span').textContent = input.value ? d.toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : 'Today';
+        closeDatePicker();
+        button.focus();
+      }
+    });
+    const outside = (event) => { if (!pop.contains(event.target) && !button.contains(event.target)) closeDatePicker(); };
+    const key = (event) => { if (event.key === 'Escape') { closeDatePicker(); button.focus(); } };
+    setTimeout(() => document.addEventListener('mousedown', outside), 0);
+    document.addEventListener('keydown', key);
+    window.addEventListener('resize', place);
+    pop._cleanup = () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key); window.removeEventListener('resize', place); };
   }
 
   // ── actions ──────────────────────────────────────────────────────────────
@@ -657,7 +789,7 @@
     let result = null;
     if (kind === 'habit') result = await act('/api/dashboard/habits/create', {name: f.name, cadence: f.cadence, target: f.cadence === 'weekly' ? Number(f.target) : 1}, {ok: 'Habit added', after: null});
     else if (kind === 'learning') result = await act('/api/dashboard/learning/add', {title: f.title, kind: f.kind, area: f.area}, {ok: (r) => `+${r.entry.xp} XP: ${r.entry.title}`, after: null});
-    else if (kind === 'goal') result = await act('/api/dashboard/goals/add', {metric: f.metric, period: f.period, target: Number(f.target)}, {ok: 'Goal set', after: null});
+    else if (kind === 'goal') result = await act('/api/dashboard/goals/add', {metric: f.metric, period: f.period, target: Number(f.target), project_id: f.project_id || ''}, {ok: 'Goal set', after: null});
     else if (kind === 'sale') result = await act('/api/dashboard/sales/add', {amount: f.amount, product: f.product, date: f.date || null, recurring: !!f.recurring}, {ok: 'Sale added', after: null});
     else if (kind === 'skill') result = await act('/api/dashboard/skills/add', {name: f.name, kind: f.kind}, {ok: (r) => `+${r.skill.xp} XP: ${r.skill.name}`, after: null});
     else if (kind === 'reward') result = await act('/api/dashboard/rewards/add', {name: f.name, cost: Number(f.cost), icon: f.icon}, {ok: 'Reward added', after: null});
@@ -670,6 +802,8 @@
   }
 
   function onClick(event) {
+    const pick = event.target.closest('[data-date-pick]');
+    if (pick) { openDatePicker(pick); return; }
     const t = event.target.closest('[data-dash-focus],[data-skill-remove],[data-dash-tab],[data-dash-go],[data-dash-item],[data-dash-note],[data-dash-retry],[data-dash-add-quest],[data-quest-remove],[data-quest-clear],[data-log-filter],[data-log-more],[data-form-open],[data-form-cancel],[data-habit-toggle],[data-habit-archive],[data-learning-remove],[data-goal-remove],[data-sale-remove],[data-sales-sync],[data-sales-disconnect],[data-reward-redeem],[data-reward-remove]');
     if (!t) return;
     const d = t.dataset;
@@ -684,7 +818,7 @@
     if (d.skillRemove) return act('/api/dashboard/skills/remove', {skill_id: d.skillRemove}, {row: t.closest('.dash-row')});
     if (d.dashTab) return select(d.dashTab);
     if (t.hasAttribute('data-dash-retry')) return load(state.tab);
-    if (t.hasAttribute('data-dash-add-quest')) return openQuestPicker();
+    if (t.hasAttribute('data-dash-add-quest')) return openQuestPicker(AREA[state.tab] ? state.tab : '');
     if (d.questRemove) return act('/api/dashboard/quests/remove', {item_id: d.questRemove}, {row: t.closest('.dash-quest-row')});
     if (t.hasAttribute('data-quest-clear')) return act('/api/dashboard/quests/clear', {});
     if (d.logFilter) { state.logCategory = d.logFilter; return load('character', {quiet: true}); }
@@ -742,7 +876,7 @@
     state.timer = setInterval(tick, REFRESH_MS);
     if (state.timer && typeof state.timer.unref === 'function') state.timer.unref();
   }
-  function unmount() { state.mounted = false; clearInterval(state.timer); state.timer = 0; clearEffects(); state.painted = {}; }
+  function unmount() { state.mounted = false; clearInterval(state.timer); state.timer = 0; clearEffects(); closeDatePicker(); state.painted = {}; }
 
   document.addEventListener('click', (event) => {
     if (!event.target.closest) return;
@@ -763,12 +897,15 @@
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && document.querySelector('.dash-picker-overlay')) closeQuestPicker(); });
   // A card's scrollbar shows while it scrolls and fades a moment after.
   document.addEventListener('scroll', (event) => {
-    const body = event.target && event.target.classList && event.target.classList.contains('dash-card-body') ? event.target : null;
+    const target = event.target && event.target.matches && event.target.matches(SCROLLERS) ? event.target : null;
+    if (target) updateMore(target);
+    const body = target && target.classList.contains('dash-card-body') ? target : null;
     if (!body) return;
     body.classList.add('is-scrolling');
     clearTimeout(body._scrollTimer);
     body._scrollTimer = setTimeout(() => body.classList.remove('is-scrolling'), 900);
   }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  window.addEventListener('resize', () => { const host = root(); if (host) markScrollable(host); });
   window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _state: state};
 })();

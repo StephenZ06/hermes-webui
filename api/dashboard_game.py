@@ -171,10 +171,18 @@ def _connect() -> Iterator[sqlite3.Connection]:
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    # quests.area: the area a quest was chosen for (Personal, Career or
+    # Business tab); NULL means it follows its project's realm.
+    if "area" not in {row[1] for row in conn.execute("PRAGMA table_info(quests)")}:
+        conn.execute("ALTER TABLE quests ADD COLUMN area TEXT")
 
 
 # ── levels ──────────────────────────────────────────────────────────────────
@@ -223,11 +231,16 @@ def set_category(project_id: str, category: str) -> dict[str, Any]:
 
 # ── quests ──────────────────────────────────────────────────────────────────
 
-def add_quests(item_ids: list[str]) -> dict[str, Any]:
+def add_quests(item_ids: list[str], area: str | None = None) -> dict[str, Any]:
+    """Make Work Hub items quests. ``area`` is the tab they were chosen on; a
+    quest chosen on Career shows (and earns XP) there whatever its project's realm."""
     from api import work_hub
 
     if not isinstance(item_ids, list) or not item_ids:
         raise GameError("Choose at least one Work Hub item")
+    if area not in (None, "", *CATEGORIES):
+        raise GameError("Unknown area")
+    area = area or None
     added = []
     now = time.time()
     with _LOCK, _connect() as conn:
@@ -241,8 +254,9 @@ def add_quests(item_ids: list[str]) -> dict[str, Any]:
                 continue
             if active >= QUEST_LIMIT:
                 raise GameError(f"You can have at most {QUEST_LIMIT} quests at once")
-            conn.execute("INSERT INTO quests(item_id, added_at, cleared_at) VALUES(?, ?, NULL) "
-                         "ON CONFLICT(item_id) DO UPDATE SET added_at = excluded.added_at, cleared_at = NULL", (item["id"], now))
+            conn.execute("INSERT INTO quests(item_id, added_at, cleared_at, area) VALUES(?, ?, NULL, ?) "
+                         "ON CONFLICT(item_id) DO UPDATE SET added_at = excluded.added_at, cleared_at = NULL, area = excluded.area",
+                         (item["id"], now, area))
             active += 1
             added.append(item["id"])
     return {"added": added}
@@ -299,7 +313,7 @@ def quests() -> list[dict[str, Any]]:
             "working": bool(item.get("working")), "project": names.get(item.get("project_id")),
             "project_id": item.get("project_id"), "board_id": item.get("board_id"),
             "done": status in ("done", "cancelled"), "xp": earned.get(f"work_hub:{item['id']}"),
-            "added_at": row["added_at"], "area": categories.get(item.get("project_id") or "", "personal"),
+            "added_at": row["added_at"], "area": row["area"] or categories.get(item.get("project_id") or "", "personal"),
         })
     order = {"in_progress": 0, "blocked": 1, "todo": 2, "triage": 3, "backlog": 4}
     out.sort(key=lambda q: (q["done"], order.get(q["status"], 5), q["added_at"]))
@@ -596,14 +610,14 @@ def _insert(conn: sqlite3.Connection, key: str, source: str, title: str, xp: int
 def _sync_work_hub(conn: sqlite3.Connection) -> None:
     from api import work_hub
 
-    quest_rows = {row["item_id"] for row in conn.execute("SELECT item_id FROM quests")}
+    quest_rows = {row["item_id"]: row["area"] for row in conn.execute("SELECT item_id, area FROM quests")}
     for item in work_hub.completed_items():
         quest = item["id"] in quest_rows
         xp = WORK_XP.get(str(item.get("priority") or "none"), WORK_XP["none"])
         if quest:
             xp = int(round(xp * QUEST_BONUS))
         _insert(conn, f"work_hub:{item['id']}", "work_hub", str(item.get("title") or "Work item"), xp,
-                item.get("done_at") or time.time(), project_id=item.get("project_id"),
+                item.get("done_at") or time.time(), project_id=item.get("project_id"), category=quest_rows.get(item["id"]),
                 detail={"priority": item.get("priority"), "quest": quest})
 
 

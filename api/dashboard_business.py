@@ -33,7 +33,8 @@ PLATFORMS = {
     "lemonsqueezy": {"label": "Lemon Squeezy", "env": "SALES_LEMONSQUEEZY_API_KEY", "api": "https://api.lemonsqueezy.com/v1"},
     "gumroad": {"label": "Gumroad", "env": "SALES_GUMROAD_ACCESS_TOKEN", "api": "https://api.gumroad.com/v2"},
 }
-SYNC_EVERY = 300
+SYNC_EVERY = 120
+GOAL_LIMIT = 12
 MAX_PAGES = 30
 _MAX_BODY = 4 * 1024 * 1024
 SALE_XP = 25
@@ -97,6 +98,9 @@ def _db():
     conn_cm = _connect()
     conn = conn_cm.__enter__()
     conn.executescript(_SCHEMA)
+    # business_goals.project_id: a Work Hub project the goal is labelled with.
+    if "project_id" not in {row[1] for row in conn.execute("PRAGMA table_info(business_goals)")}:
+        conn.execute("ALTER TABLE business_goals ADD COLUMN project_id TEXT")
     return conn_cm, conn
 
 
@@ -357,6 +361,37 @@ def sync_soon() -> None:
     threading.Thread(target=run, name="dashboard-sales-sync", daemon=True).start()
 
 
+_POLLER: threading.Thread | None = None
+
+
+def start_poller() -> bool:
+    """Copy new sales in every SYNC_EVERY seconds while a platform is
+    connected, whether or not the Dashboard is open, so milestones, goals and
+    XP move as sales come in. Started once at server start."""
+    global _POLLER
+    if _POLLER is not None and _POLLER.is_alive():
+        return False
+
+    def loop():
+        while True:
+            time.sleep(SYNC_EVERY)
+            try:
+                with _LOCK, _Conn() as conn:
+                    connected = _meta(conn, "platform") in PLATFORMS
+                if connected and _SYNCING.acquire(blocking=False):
+                    try:
+                        sync()
+                    finally:
+                        _SYNCING.release()
+                    summary()  # unlocks milestones (and their XP) for the new sales
+            except Exception:
+                logger.info("sales poll failed", exc_info=True)
+
+    _POLLER = threading.Thread(target=loop, name="dashboard-sales-poller", daemon=True)
+    _POLLER.start()
+    return True
+
+
 # ── manual sales ────────────────────────────────────────────────────────────
 
 def add_manual_sale(payload: dict[str, Any]) -> dict[str, Any]:
@@ -415,11 +450,15 @@ def add_goal(payload: dict[str, Any]) -> dict[str, Any]:
     target = round(target * 100) if metric == "revenue" else int(target)
     if target <= 0:
         raise SalesError("Target must be above 0")
-    goal = {"id": uuid.uuid4().hex, "metric": metric, "period": period, "target": target, "created_at": time.time()}
+    project_id = str(payload.get("project_id") or "").strip()[:80] or None
+    if project_id and project_id not in _project_names():
+        raise SalesError("That Work Hub project no longer exists")
+    goal = {"id": uuid.uuid4().hex, "metric": metric, "period": period, "target": target, "created_at": time.time(), "project_id": project_id}
     with _LOCK, _Conn() as conn:
-        if conn.execute("SELECT COUNT(*) FROM business_goals").fetchone()[0] >= 6:
-            raise SalesError("You can have at most 6 goals")
-        conn.execute("INSERT INTO business_goals(id, metric, period, target, created_at) VALUES(:id, :metric, :period, :target, :created_at)", goal)
+        if conn.execute("SELECT COUNT(*) FROM business_goals").fetchone()[0] >= GOAL_LIMIT:
+            raise SalesError(f"You can have at most {GOAL_LIMIT} goals. Remove one first.", 409)
+        conn.execute("INSERT INTO business_goals(id, metric, period, target, created_at, project_id) "
+                     "VALUES(:id, :metric, :period, :target, :created_at, :project_id)", goal)
     return {"goal": goal}
 
 
@@ -428,6 +467,16 @@ def remove_goal(goal_id: str) -> dict[str, Any]:
         if not conn.execute("DELETE FROM business_goals WHERE id = ?", (str(goal_id),)).rowcount:
             raise SalesError("Goal not found", 404)
     return {"removed": str(goal_id)}
+
+
+def _project_names() -> dict[str, str]:
+    try:
+        from api.models import load_projects
+
+        return {str(p.get("project_id")): str(p.get("name") or p.get("project_id")) for p in load_projects() if p.get("project_id")}
+    except Exception:
+        logger.info("projects unavailable for goals", exc_info=True)
+        return {}
 
 
 def _period_start(period: str, day: date) -> date:
@@ -491,6 +540,7 @@ def summary(now: float | None = None) -> dict[str, Any]:
                 conn.execute("INSERT OR IGNORE INTO milestones(key, unlocked_at) VALUES(?, ?)", (key, now))
                 _insert(conn, f"milestone:{key}", "business", f"Milestone: {title}", MILESTONE_XP, now, category="business",
                         detail={"kind": "milestone"})
+    projects = _project_names()
     goal_rows = []
     for goal in goals:
         start = _period_start(goal["period"], today)
@@ -506,7 +556,7 @@ def summary(now: float | None = None) -> dict[str, Any]:
         while _ts(begin) >= goal["created_at"] - 40 * 86400 and value(begin, _next(goal["period"], begin)) >= goal["target"]:
             streak += 1
             begin = _previous_start(goal["period"], begin)
-        goal_rows.append({**goal, "value": current, "progress": round(min(1.0, current / goal["target"]), 4), "met": current >= goal["target"], "streak": streak})
+        goal_rows.append({**goal, "project": projects.get(goal.get("project_id") or ""), "value": current, "progress": round(min(1.0, current / goal["target"]), 4), "met": current >= goal["target"], "streak": streak})
     months = []
     cursor = today.replace(day=1)
     for _ in range(6):
@@ -523,6 +573,9 @@ def summary(now: float | None = None) -> dict[str, Any]:
                    "week_sales": sum(1 for r in sales_only if r["created_at"] >= week_start),
                    "refunds": sum(1 for r in rows if r["refunded"])},
         "goals": goal_rows,
+        "goal_limit": GOAL_LIMIT,
+        # Read on every summary, so added or deleted Work Hub folders show at once.
+        "projects": [{"id": k, "name": v} for k, v in sorted(projects.items(), key=lambda kv: kv[1].lower())],
         "milestones": [{"key": k, "title": t, "description": d, "unlocked_at": unlocked.get(k), "new": k in newly or (unlocked.get(k, 0) >= now - 3 * 86400)}
                        for k, t, d, _ in MILESTONES],
         "road": {"checkpoints": ROAD, "reached": reached, "mrr": mrr,
