@@ -69,6 +69,10 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
     ("first_skill", "Skilled", "Add your first skill", "🎲", lambda p: p["kinds"].get("skill", 0) >= 1),
     ("certified", "Certified", "Add a certification skill", "📜", lambda p: p["kinds"].get("skill:certification", 0) >= 1),
     ("polymath", "Polymath", "Gain 10 skills", "🧠", lambda p: p["kinds"].get("skill", 0) >= 10),
+    ("applications_10", "Persistent", "Send 10 job applications", "📮", lambda p: p["kinds"].get("applied", 0) >= 10),
+    ("sales_10", "Trader", "Make 10 sales", "🪙", lambda p: p["kinds"].get("sale", 0) >= 10),
+    ("habit_month", "Iron Will", "Keep habits on 30 different days", "🛡️", lambda p: p["habit_days"] >= 30),
+    ("tasks_200", "Tireless", "Earn XP 200 times", "⚙️", lambda p: p["tasks_done"] >= 200),
 ]
 NAME_MAX = 120
 

@@ -90,7 +90,7 @@ def test_a_quest_is_picked_from_the_work_hub_finishes_there_and_earns_xp(browser
     page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
     log = page.evaluate("() => document.querySelector('.dash-body').textContent")
     assert title in log and "+75 XP" in log
-    assert page.evaluate("() => document.querySelectorAll('.rpg-tier').length") == 5
+    assert page.evaluate("() => document.querySelectorAll('.rpg-evo .rpg-evo-dots i').length") == 5  # five forms in the evolution carousel
     assert page.evaluate("() => /Level \\d+/.test(document.querySelector('.rpg-title h2').textContent)")
 
 
@@ -581,3 +581,36 @@ def test_quest_picker_search_and_filter_wait_until_the_panel_settles(browser):
     page.wait_for_selector(".themed-select-popup")
     gap = page.evaluate("() => document.querySelector('.themed-select-popup').getBoundingClientRect().top - document.querySelector('.dash-picker-tools .themed-select-trigger').getBoundingClientRect().bottom")
     assert 0 <= gap <= 8  # the list sits under its button
+
+
+def test_character_page_frame_evolution_party_achievements_and_level_up(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 1000})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-evo", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    page.wait_for_timeout(300)
+    hero = page.evaluate("""() => { const a = document.querySelector('.rpg-stage').getBoundingClientRect(), b = document.querySelector('.rpg-sheet').getBoundingClientRect();
+        return {top: Math.round(a.top - b.top), bottom: Math.round(a.bottom - b.bottom)}; }""")
+    assert hero == {"top": 0, "bottom": 0}  # the frame is exactly as tall as the level card
+    titles = page.evaluate("() => [...document.querySelectorAll('.rpg-panel-head h3')].map(h => h.textContent)")
+    assert not any(t.startswith("Quest log") or t == "Evolution" for t in titles)  # quest log gone, evolution moved into the level card
+    # Evolution: one form at a time, later forms chained.
+    data = page.evaluate("() => window.HermesDashboard._state.data.character")
+    for _ in range(len(data["tiers"])):
+        page.evaluate("() => { const b = document.querySelector('[data-evo-step=\"1\"]'); if (!b.disabled) b.click(); }")
+    last = page.evaluate("() => ({locked: document.querySelector('.rpg-evo-art').classList.contains('is-locked'), name: document.querySelector('.rpg-evo-name').textContent, next: document.querySelector('[data-evo-step=\"1\"]').disabled})")
+    assert last["name"] == data["tiers"][-1]["name"] and last["next"] is True
+    assert last["locked"] == (data["level"] < data["tiers"][-1]["level"])
+    assert page.evaluate("() => document.querySelectorAll('.rpg-evo-art').length") == 1
+    # Party two to a row; achievements one height.
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-party')).gridTemplateColumns.split(' ').length") == 2
+    heights = page.evaluate("() => [...new Set([...document.querySelectorAll('.rpg-ach')].map(a => Math.round(a.getBoundingClientRect().height)))]")
+    assert len(heights) == 1
+    assert page.evaluate("() => [...document.querySelectorAll('.rpg-ach')].every(a => a.scrollHeight <= a.clientHeight + 1)")  # text fits
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-panel-icon.is-pixel')).backgroundColor") in ("rgba(0, 0, 0, 0)", "transparent")
+    # Level up: a themed card that closes on Continue.
+    page.evaluate("() => window.HermesDashboard._celebrate(window.HermesDashboard._state.data.character, {force: true})")
+    page.wait_for_selector(".rpg-levelup.is-open .rpg-levelup-card")
+    assert str(data["level"]) in page.inner_text(".rpg-levelup-levels")
+    page.click("[data-levelup-close]")
+    page.wait_for_function("() => !document.querySelector('.rpg-levelup')", polling=50, timeout=3000)

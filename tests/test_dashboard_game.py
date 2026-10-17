@@ -260,3 +260,10 @@ def test_a_quest_chosen_on_a_tab_shows_and_earns_there_whatever_its_project(game
     other = _item(work_hub, "Plan trip")
     dashboard_game.add_quests([other])  # chosen from the Character page: follows its project
     assert {q["title"]: q["area"] for q in dashboard_game.quests()}["Plan trip"] == "personal"
+
+
+def test_achievements_fill_whole_rows_and_each_one_is_unique():
+    from api import dashboard_game
+
+    keys = [a[0] for a in dashboard_game.ACHIEVEMENTS]
+    assert len(keys) == len(set(keys)) == 24  # 24 tiles: whole rows of 2, 3, 4, 6 or 8

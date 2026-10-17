@@ -12,7 +12,7 @@ Work Hub, Jobs and Notes stay the owners of their own data.
 | Personal | Habits (daily or n times a week, streaks, 21-day heatmap), personal quests, learning log, project health, scheduled jobs (failing ones first), recent notes |
 | Career | Jobs pipeline totals, career quests, skills gained, the funnel, this week's activity |
 | Business | Sales connection, revenue/MRR/sales/customers, goals with streaks, road to $10k, milestones, 6-month revenue, recent sales, business quests |
-| Character | Level, tier sprite, XP bar, STR/INT/CHA/VIT/DEX, quest log (all areas), achievements, chronicle (XP log), party (agent profiles), treasury and rewards, realms, evolution |
+| Character | The warlock in a pixel frame; the level card (level, XP bar, STR/INT/CHA/VIT/DEX as bars, an evolution carousel with locked forms chained, streak and XP badges); achievements (24), chronicle (XP log), party (agent profiles, two to a row), treasury and rewards, realms. Quests live on the Personal, Career and Business tabs. |
 | Settings | Sales platform connection, project realms (which area each project's XP counts towards) |
 
 The four summary tiles at the top of Personal, Career and Business are
@@ -62,6 +62,8 @@ deleting an item later does not take XP back (unticking a habit or removing a
 learning entry does). Level n needs 100 + 25(n-1) XP. Tiers: Apprentice (1),
 Adept (5), Sorcerer (10), Archmage (20), Legendary (35). Gold is half of all
 XP plus 50 per achievement, spent on rewards you define in the Treasury.
+Reaching a new level shows a level-up card once per level on each browser,
+naming the new form when the level crosses a tier.
 
 ## Sales platforms
 

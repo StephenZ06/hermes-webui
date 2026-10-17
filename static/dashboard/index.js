@@ -363,18 +363,44 @@
   const panel = (title, body, {icon = '', pix = '', action = '', cls = ''} = {}) =>
     `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${pix ? `<span class="rpg-panel-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header><div class="dash-card-body">${body}</div></section>`;
 
+  // Total XP needed to reach ``level`` (level n takes 100 + 25(n-1) XP).
+  const xpToReach = (level) => { let total = 0; for (let n = 1; n < level; n++) total += 100 + 25 * (n - 1); return total; };
+  // One evolution at a time, stepped with the arrows; forms not reached yet
+  // are greyed and chained.
+  function evolutionView(data) {
+    const tiers = data.tiers || [];
+    if (!tiers.length) return '';
+    const current = Math.max(0, (data.tier || 1) - 1);
+    const i = Math.max(0, Math.min(tiers.length - 1, state.evoIndex == null ? current : state.evoIndex));
+    const t = tiers[i];
+    const locked = data.level < t.level;
+    const status = i === current ? 'Current form' : locked ? `Unlocks at Lv ${t.level}` : 'Unlocked';
+    const togo = locked ? Math.max(0, xpToReach(t.level) - (data.total_xp || 0)) : 0;
+    const dots = tiers.map((_, n) => `<i class="${n === i ? 'on' : ''}${data.level >= tiers[n].level ? ' is-reached' : ''}"></i>`).join('');
+    return `<div class="rpg-evo-head"><span>Evolution</span><small>${i + 1} / ${tiers.length}</small></div>
+      <div class="rpg-evo-stage">
+        <button type="button" class="rpg-evo-arrow" data-evo-step="-1" aria-label="Previous form"${i === 0 ? ' disabled' : ''}>${svg('chevron-left', 14)}</button>
+        <div class="rpg-evo-art${locked ? ' is-locked' : ''}${i === current ? ' is-current' : ''}" role="img" aria-label="${esc(t.name)}${locked ? ', locked' : ''}">${window.DashSprite.render(i + 1, 4)}</div>
+        <button type="button" class="rpg-evo-arrow" data-evo-step="1" aria-label="Next form"${i === tiers.length - 1 ? ' disabled' : ''}>${svg('chevron-right', 14)}</button>
+      </div>
+      <strong class="rpg-evo-name">${esc(t.name)}</strong>
+      <small class="rpg-evo-status">${esc(status)}${togo ? ` · ${togo.toLocaleString()} XP to go` : ''}</small>
+      <div class="rpg-evo-dots" aria-hidden="true">${dots}</div>`;
+  }
+
   function characterView(data) {
     if (!window.DashSprite) return '<p class="dash-empty">Loading the character…</p>';
     const stats = data.stats || {};
-    const statRows = STATS.map((k) => { const st = stats[k] || {}; return `<div class="rpg-stat" title="${esc(st.hint || '')}"><b>${esc(st.value || 1)}</b><span><strong>${k}</strong><small>${esc(st.label || '')}</small></span></div>`; }).join('');
+    // Attributes as bars against the strongest one (at least 10), so growth shows.
+    const statTop = Math.max(10, ...STATS.map((k) => Number((stats[k] || {}).value) || 1));
+    const statRows = STATS.map((k) => { const st = stats[k] || {}; const v = Number(st.value) || 1;
+      return `<div class="rpg-stat" title="${esc(st.hint || '')}"><strong>${k}</strong><small>${esc(st.label || '')}</small><span class="rpg-stat-bar" aria-hidden="true"><i style="width:${Math.round(v / statTop * 100)}%"></i></span><b>${esc(v)}</b></div>`; }).join('');
     const segments = 20;
     const filled = Math.round((data.progress || 0) * segments);
     const xpbar = `<div class="rpg-xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${data.level_size}" aria-valuenow="${data.into_level}" aria-label="Experience">${Array.from({length: segments}, (_, i) => `<i class="${i < filled ? 'on' : ''}"></i>`).join('')}</div>`;
     const gold = ((data.shop || {}).gold || {}).balance || 0;
-    const quests = Array.isArray(data.quests) ? data.quests : [];
-    const questLog = quests.length ? `<div class="dash-quests">${quests.map((q) => questRow(q)).join('')}</div>`
-      : '<div class="dash-quest-empty"><p>Your quest log is empty. Choose Work Hub items from any realm (Personal, Career, Business) to focus on. Finishing a quest earns 50% bonus XP for its realm.</p></div>';
-    const doneQuests = quests.filter((q) => q.done).length;
+    // One tile per agent profile, two to a row; read on every refresh, so a
+    // profile added, renamed or removed shows on the next one.
     const party = (data.party || []).map((m, i) => `<div class="rpg-member${m.busy ? ' is-busy' : ''}">
         <span class="rpg-member-avatar" data-ld="bot" data-type="${BOT_TYPES[i % BOT_TYPES.length]}" data-state="${m.busy ? 'working' : 'default'}"></span>
         <span class="dash-row-main"><strong>${esc(m.name)}</strong><small>${m.busy ? `On a quest · ${plural(m.busy, 'chat')}` : esc(m.model || 'Resting')}</small></span>
@@ -383,7 +409,7 @@
     const achievements = data.achievements || [];
     const newest = achievements.filter((a) => a.unlocked_at).sort((a, b) => b.unlocked_at - a.unlocked_at)[0];
     const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}" title="${esc(a.description)}">
-        <span class="rpg-ach-icon" aria-hidden="true">${a.unlocked_at ? esc(a.icon) : '?'}</span><strong>${esc(a.title)}</strong>
+        <span class="rpg-ach-icon" aria-hidden="true">${esc(a.icon)}</span><strong>${esc(a.title)}</strong>
         ${newest && newest.key === a.key && a.new ? '<span class="dash-new" data-ld="metal-badge">New</span>' : `<small>${a.unlocked_at ? ago(a.unlocked_at) : esc(a.description)}</small>`}
       </div>`).join('');
     const shop = data.shop || {rewards: [], history: []};
@@ -400,8 +426,6 @@
       </div>`).join('') || (state.forms.reward ? '' : '<p class="dash-empty">Add treats you can buy with gold: you earn half your XP as gold, plus 50 per achievement.</p>');
     const history = (shop.history || []).slice(0, 4).map((h) => `<li>${esc(h.name)} <small>−${h.cost} · ${ago(h.at)}</small></li>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
-    const tiers = (data.tiers || []).map((t, i) => { const reached = data.level >= t.level; const current = data.tier === i + 1;
-      return `<div class="rpg-tier${reached ? ' is-reached' : ''}${current ? ' is-current' : ''}">${window.DashSprite.render(i + 1, 3)}<strong>${esc(t.name)}</strong><small>${reached ? (current ? 'Now' : 'Unlocked') : `Lv ${t.level}`}</small></div>`; }).join('');
     const filter = state.logCategory || 'all';
     const chips = ['all', 'personal', 'career', 'business'].map((k) => `<button type="button" class="dash-chip${filter === k ? ' on' : ''}" data-log-filter="${k}">${k === 'all' ? 'All' : AREA[k]}</button>`).join('');
     const log = (data.log || []).map((e) => `<div class="dash-row rpg-log-row"><span class="dash-area-dot is-${esc(e.category)}"></span><span class="dash-row-main"><strong>${e.quest ? '⚔ ' : ''}${esc(e.title)}</strong><small>${esc(AREA[e.category] || e.category)} · ${ago(e.at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span></div>`).join('') || '<p class="dash-empty">Finish a Work Hub item, tick a habit or move a job forward to earn your first XP.</p>';
@@ -420,7 +444,7 @@
           <div class="rpg-title"><h2><span data-ld="metal-text" data-text="Level ${data.level}">Level ${data.level}</span></h2><span class="rpg-rank">${esc(data.tier_name)}</span><span class="rpg-gold" title="Gold"><span class="rpg-coin" aria-hidden="true"></span>${gold.toLocaleString()}</span></div>
           ${xpbar}
           <div class="rpg-xpline"><span>${data.into_level} / ${data.level_size} XP</span><span>${toNext} XP to level ${data.level + 1}${data.next_tier ? ` · ${esc(data.next_tier.name)} at ${data.next_tier.level}` : ''}</span></div>
-          <div class="rpg-body">${radar(stats)}<div class="rpg-stats">${statRows}</div></div>
+          <div class="rpg-body">${radar(stats)}<div class="rpg-stats">${statRows}</div><div class="rpg-evo" data-evo>${evolutionView(data)}</div></div>
           <div class="rpg-badges">
             <div><span class="rpg-badge-icon">${PIX('this-week')}</span><span class="rpg-badge-copy"><b>${data.streak}</b><small>day streak</small></span></div>
             <div><span class="rpg-badge-icon">${PIX('party')}</span><span class="rpg-badge-copy"><b>${(data.total_xp || 0).toLocaleString()}</b><small>total XP</small></span></div>
@@ -431,7 +455,6 @@
       </div>
       <div class="rpg-columns">
         <div class="rpg-col">
-          ${panel(`Quest log${quests.length ? ` · ${quests.length - doneQuests} open` : ''}`, questLog, {pix: 'quest-log', cls: 'is-quests', action: `${doneQuests ? link('Clear done', 'data-quest-clear') : ''}${btn('Choose quests', 'data-dash-add-quest', {icon: 'plus', cls: 'is-small is-gold'})}`})}
           ${panel(`Achievements · ${achievements.filter((a) => a.unlocked_at).length}/${achievements.length}`, `<div class="rpg-achs">${achHtml}</div>`, {pix: 'achievements'})}
           ${panel('Chronicle', `<div class="dash-chips">${chips}</div>${log}${more}`, {pix: 'chronicle'})}
         </div>
@@ -439,7 +462,6 @@
           ${panel('Party', `<div class="rpg-party">${party}</div>`, {pix: 'party'})}
           ${panel('Treasury', `<div class="rpg-purse"><span class="rpg-coin is-big" aria-hidden="true"></span><b>${gold.toLocaleString()}</b><small>gold · ${(((shop.gold || {}).earned) || 0).toLocaleString()} earned</small></div>${rewardForm}<div class="rpg-rewards">${rewards}</div>${history ? `<ul class="rpg-history">${history}</ul>` : ''}`, {pix: 'treasury', action: state.forms.reward ? '' : btn('Reward', 'data-form-open="reward"', {icon: 'plus', cls: 'is-small is-gold'})})}
           ${panel('Realms', areas, {pix: 'realms'})}
-          ${panel('Evolution', `<div class="rpg-tiers">${tiers}</div>`, {pix: 'evolution'})}
         </div>
       </div>
     </div>`;
@@ -501,7 +523,7 @@
         if (append && state.data.character) data.log = (state.data.character.log || []).concat(data.log || []);
         state.logOffset = append ? offset : 0;
         state.data.character = data;
-        celebrate(data.level);
+        celebrate(data);
       } else {
         state.data[tab] = await api(`/api/dashboard/summary?tab=${encodeURIComponent(tab)}`);
       }
@@ -513,16 +535,39 @@
     if (state.again && state.again[tab]) { state.again[tab] = false; load(tab, {quiet: true}); }
   }
 
-  function celebrate(level) {
+  // A themed level-up card: the new level, the warlock, and a new form when
+  // the level crossed a tier. Shown once per level reached on this browser.
+  function celebrate(data, {force = false} = {}) {
+    const level = data.level;
     let seen = 0;
     try { seen = parseInt(localStorage.getItem('hermes-dashboard-level') || '0', 10) || 0; localStorage.setItem('hermes-dashboard-level', String(level)); } catch (_) {}
-    if (!seen || level <= seen) return;
-    const burst = document.createElement('div');
-    burst.className = 'rpg-levelup';
-    burst.setAttribute('role', 'status');
-    burst.innerHTML = `<div><small>LEVEL UP</small><b>${level}</b><span>Your warlock grows stronger</span></div>`;
-    document.body.appendChild(burst);
-    setTimeout(() => burst.remove(), 2800);
+    if (!force && (!seen || level <= seen)) return;
+    const from = force ? Math.max(1, level - 1) : seen;
+    const tiers = data.tiers || [];
+    const tierAt = (lv) => tiers.reduce((n, t, i) => (lv >= t.level ? i + 1 : n), 1);
+    const newForm = tierAt(level) > tierAt(from);
+    document.querySelectorAll('.rpg-levelup').forEach((el) => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'rpg-levelup';
+    const confetti = Array.from({length: 28}, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 7) * 0.12}s;--r:${(i * 53) % 360}deg"></i>`).join('');
+    overlay.innerHTML = `<div class="rpg-levelup-card" role="dialog" aria-modal="true" aria-label="Level up: level ${level}">
+        <div class="rpg-levelup-rays" aria-hidden="true"></div><div class="rpg-levelup-confetti" aria-hidden="true">${confetti}</div>
+        <small class="rpg-levelup-kicker">Level up!</small>
+        <div class="rpg-levelup-levels"><span>${from}</span><i aria-hidden="true">▶</i><b>${level}</b></div>
+        <div class="rpg-levelup-hero">${window.DashSprite ? window.DashSprite.render(data.tier || 1, 4) : ''}</div>
+        <strong class="rpg-levelup-class">${esc(data.tier_name || '')} Warlock</strong>
+        ${newForm ? `<div class="rpg-levelup-unlock">New form unlocked: ${esc(data.tier_name || '')}</div>` : ''}
+        <p class="rpg-levelup-next">${(data.level_size || 0).toLocaleString()} XP to level ${level + 1}</p>
+        <button type="button" class="dash-btn" data-levelup-close>Continue</button>
+      </div>`;
+    const close = () => { overlay.classList.remove('is-open'); setTimeout(() => overlay.remove(), 250); document.removeEventListener('keydown', key); };
+    const key = (event) => { if (event.key === 'Escape' || event.key === 'Enter') close(); };
+    overlay.addEventListener('click', (event) => { if (event.target === overlay || event.target.closest('[data-levelup-close]')) close(); });
+    document.addEventListener('keydown', key);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('is-open'));
+    const button = overlay.querySelector('[data-levelup-close]');
+    setTimeout(() => button && button.focus(), 300);
   }
 
   function levelBadge() {
@@ -596,7 +641,20 @@
     arrow.style.top = Math.round(r.bottom - c.top - parseFloat(getComputedStyle(card).borderTopWidth) - 9) + 'px';
   }
   function markScrollable(host) {
-    requestAnimationFrame(() => host.querySelectorAll(SCROLLERS).forEach(updateMore));
+    requestAnimationFrame(() => { host.querySelectorAll(SCROLLERS).forEach(updateMore); fitAchievements(host); });
+  }
+  // Achievement tiles are one fixed height; a long title or description
+  // steps its type down until the tile's text fits.
+  function fitAchievements(host) {
+    host.querySelectorAll('.rpg-ach').forEach((tile) => {
+      const parts = [...tile.querySelectorAll('strong,small')];
+      parts.forEach((el) => { el.style.fontSize = ''; });
+      let step = 0;
+      while (tile.scrollHeight > tile.clientHeight + 1 && step < 6) {
+        step += 1;
+        parts.forEach((el) => { el.style.fontSize = `${parseFloat(getComputedStyle(el).fontSize) - 1}px`; });
+      }
+    });
   }
 
   function select(tab) {
@@ -815,6 +873,15 @@
   function onClick(event) {
     const pick = event.target.closest('[data-date-pick]');
     if (pick) { openDatePicker(pick); return; }
+    const evo = event.target.closest('[data-evo-step]');
+    if (evo) {
+      const data = state.data.character; if (!data) return;
+      const current = Math.max(0, (data.tier || 1) - 1);
+      state.evoIndex = Math.max(0, Math.min((data.tiers || []).length - 1, (state.evoIndex == null ? current : state.evoIndex) + Number(evo.dataset.evoStep)));
+      const host = evo.closest('[data-evo]');
+      if (host) { host.innerHTML = evolutionView(data); const again = host.querySelector(`[data-evo-step="${evo.dataset.evoStep}"]`); if (again && !again.disabled) again.focus(); }
+      return;
+    }
     const t = event.target.closest('[data-dash-focus],[data-skill-remove],[data-dash-tab],[data-dash-go],[data-dash-item],[data-dash-note],[data-dash-retry],[data-dash-add-quest],[data-quest-remove],[data-quest-clear],[data-log-filter],[data-log-more],[data-form-open],[data-form-cancel],[data-habit-toggle],[data-habit-archive],[data-learning-remove],[data-goal-remove],[data-sale-remove],[data-sales-sync],[data-sales-disconnect],[data-reward-redeem],[data-reward-remove]');
     if (!t) return;
     const d = t.dataset;
@@ -918,5 +985,5 @@
   }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('resize', () => { const host = root(); if (host) markScrollable(host); });
-  window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _state: state};
+  window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _celebrate: celebrate, _state: state};
 })();
