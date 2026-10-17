@@ -217,3 +217,28 @@ def test_best_streak():
 
     assert _best_streak({"2026-10-01", "2026-10-02", "2026-10-03", "2026-10-07", "2026-10-08"}) == 3
     assert _best_streak(set()) == 0
+
+
+def test_skills_gained_earn_xp_once_unlock_badges_and_can_be_removed(game):
+    dashboard_game, _ = game
+    docker = dashboard_game.add_skill({"name": "Docker", "kind": "course"})["skill"]
+    assert docker["xp"] == dashboard_game.SKILL_XP["course"]
+    with pytest.raises(dashboard_game.GameError) as dup:
+        dashboard_game.add_skill({"name": "  docker ", "kind": "self"})  # same skill, any case
+    assert dup.value.status == 409
+    with pytest.raises(dashboard_game.GameError):
+        dashboard_game.add_skill({"name": "Kubernetes", "kind": "wizardry"})
+    dashboard_game.add_skill({"name": "AWS Cloud Practitioner", "kind": "certification"})
+
+    data = dashboard_game.skills()
+    assert data["total"] == 2 and [e["name"] for e in data["entries"]] == ["AWS Cloud Practitioner", "Docker"]
+    assert sorted(dashboard_game.skill_names()) == ["AWS Cloud Practitioner", "Docker"]
+    profile = dashboard_game.character()
+    career = next(a["xp"] for a in profile["areas"] if a["key"] == "career")
+    assert career == dashboard_game.SKILL_XP["course"] + dashboard_game.SKILL_XP["certification"]
+    unlocked = {a["key"] for a in profile["achievements"] if a["unlocked_at"]}
+    assert {"first_skill", "certified"} <= unlocked and "polymath" not in unlocked
+
+    dashboard_game.remove_skill(docker["id"])
+    assert dashboard_game.skill_names() == ["AWS Cloud Practitioner"]
+    assert dashboard_game.character()["total_xp"] == profile["total_xp"] - dashboard_game.SKILL_XP["course"]

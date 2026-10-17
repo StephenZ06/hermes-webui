@@ -194,3 +194,36 @@ def test_a_rescore_cut_off_by_a_restart_reads_as_failed_not_running(store, monke
     monkeypatch.setattr(tailor.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: None})())
     fresh = tailor.rescore_document(doc["id"])["notes"]["tailored_fit"]
     assert fresh["status"] == "running"
+
+
+def test_skills_added_reads_the_text_not_the_model():
+    master = "Built Python services. Some compose files."
+    tailored = "Built Python services with Docker and Terraform.\nSkills: Docker, Terraform, Go"
+    assert tailor.skills_added(tailored, master, ["Docker", "Terraform", "Kubernetes", "Python", "Go"]) == ["Docker", "Terraform", "Go"]
+    assert tailor.skills_added(tailored, master, []) == []
+
+
+def test_tailoring_offers_verified_skills_and_records_the_ones_it_used(store, monkeypatch):
+    prompts = []
+    answer = dict(store, resume_markdown=TAILORED + "\n## Skills\nPython, AWS, Kafka, Terraform\n")
+
+    def transport(**kw):
+        prompts.append(kw["user"])
+        return json.dumps(answer)
+    monkeypatch.setattr(llm, "_transport", transport)
+    monkeypatch.setattr(tailor, "_verified_skills", lambda: ["Terraform", "Rust"])
+    job = _shortlisted()
+    tailor.request_tailoring(job.id, start_worker=False)
+    docs = tailor.tailor_one(job.id)
+    assert "<<<VERIFIED SKILLS" in prompts[0] and "Terraform" in prompts[0] and "Rust" in prompts[0]
+    assert docs["resume"]["notes"]["skills_added"] == ["Terraform"]  # Rust was offered but not used
+
+
+def test_tailoring_without_skills_gained_sends_no_skills_block(store, monkeypatch):
+    prompts = []
+    monkeypatch.setattr(llm, "_transport", lambda **kw: prompts.append(kw["user"]) or json.dumps(store))
+    monkeypatch.setattr(tailor, "_verified_skills", lambda: [])
+    job = _shortlisted()
+    tailor.request_tailoring(job.id, start_worker=False)
+    docs = tailor.tailor_one(job.id)
+    assert "VERIFIED SKILLS" not in prompts[0] and docs["resume"]["notes"]["skills_added"] == []

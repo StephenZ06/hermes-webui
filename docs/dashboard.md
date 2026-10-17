@@ -10,9 +10,29 @@ Work Hub, Jobs and Notes stay the owners of their own data.
 | Tab | Shows |
 | --- | --- |
 | Personal | Habits (daily or n times a week, streaks, 21-day heatmap), personal quests, learning log, project health, scheduled jobs (failing ones first), recent notes |
-| Career | Jobs pipeline totals, this week's activity, the funnel, career quests |
-| Business | Sales connection, revenue/MRR/sales/customers, goals with streaks, road to $10k MRR, milestones, 6-month revenue, recent sales, business quests |
-| Character | Level, tier sprite, XP bar, STR/INT/CHA/VIT/DEX, quest log (all areas), achievements, chronicle (XP log), party (agent profiles), treasury and rewards, realms, evolution, project realms |
+| Career | Jobs pipeline totals, career quests, skills gained, the funnel, this week's activity |
+| Business | Sales connection, revenue/MRR/sales/customers, goals with streaks, road to $10k, milestones, 6-month revenue, recent sales, business quests |
+| Character | Level, tier sprite, XP bar, STR/INT/CHA/VIT/DEX, quest log (all areas), achievements, chronicle (XP log), party (agent profiles), treasury and rewards, realms, evolution |
+| Settings | Sales platform connection, project realms (which area each project's XP counts towards) |
+
+The four summary tiles at the top of Personal, Career and Business are
+buttons: each scrolls to the card it summarises and makes it pulse (Habits
+today to Habits, MRR to Road to $10k, and so on).
+
+## Skills gained
+
+Career has a Skills gained card for skills you picked up from courses,
+bootcamps, certifications, projects or work. Each skill is added once (any
+case) and earns Career XP by its type: certification 100, bootcamp 80, online
+course 40, project 30, on the job 30, self-taught 20. Removing a skill takes
+its XP back. Skills unlock the Skilled, Certified and Polymath (10 skills)
+achievements.
+
+The same list shows in Jobs > Resume Studio. When a resume is tailored, the
+skills are given to the model as verified: one the posting asks for may be
+added to the resume's existing skills section, and nothing else is. The
+tailored resume's notes list the skills that were added, worked out from the
+text itself rather than from what the model reports.
 
 ## Quests
 

@@ -972,6 +972,7 @@
           <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 16)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
         <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${state.studioTab === 'resume' ? reportBox(notes.report) : ''}
+          ${(notes.skills_added || []).length ? `<div class="studio-box"><h4>From your skills gained</h4><div class="job-os-chips">${notes.skills_added.map((k) => `<span class="job-os-chip" data-kind="remote">+ ${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}
           ${flags.length ? `<div class="studio-box"><h4>Preview</h4><div class="studio-preview">${highlightNumbers(doc.content, flags)}</div></div>` : ''}</aside></div>`;
     }
@@ -1123,6 +1124,18 @@
       <div class="analysis-cols">${a.strengths && a.strengths.length ? `<div><h4>Strengths</h4>${list(a.strengths, 'is-good')}</div>` : ''}${a.gaps && a.gaps.length ? `<div><h4>Gaps</h4>${list(a.gaps, 'is-gap')}</div>` : ''}${a.must_haves && a.must_haves.length ? `<div><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}</div>
       ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div></div>`;
   }
+  // Skills gained (kept on the Dashboard's Career tab). Tailoring may add one
+  // to a resume when the posting asks for it, since you have learnt it.
+  const SKILL_KIND = {course: 'Online course', bootcamp: 'Bootcamp', certification: 'Certification', project: 'Project', work: 'On the job', self: 'Self-taught'};
+  function skillsGainedView(state) {
+    const skills = state.skillsGained;
+    if (!state.resume || state.resumeReplacing || !Array.isArray(skills)) return '';
+    const manage = '<button type="button" class="job-os-btn" data-job-os-action="skills-manage">Manage skills</button>';
+    const chips = skills.map((s) => `<span class="skills-gained-chip" title="${esc(SKILL_KIND[s.kind] || s.kind || '')}"><b>${esc(s.name)}</b><small>${esc(SKILL_KIND[s.kind] || '')}</small></span>`).join('');
+    return `<section class="job-os-card skills-gained">${cardHead('Skills gained', 'magic', manage, skills.length)}
+      ${skills.length ? `<div class="skills-gained-chips">${chips}</div>` : '<p class="job-os-card-note skills-gained-empty">No skills yet. Add the ones you learn from courses, bootcamps and projects on the Dashboard’s Career tab.</p>'}
+      <p class="job-os-card-note">When Luna tailors a resume, a skill here that the posting asks for is added to its skills section, since you have already learnt it. Nothing else is added.</p></section>`;
+  }
   // ---- Resume Studio ---------------------------------------------------------
   function resumeView(state) {
     const r = state.resume;
@@ -1221,7 +1234,7 @@
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {
-      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
+      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : skillsGainedView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
     }
     return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view, state)}<main class="job-os-content">${body}</main></div>`;
   }
@@ -1246,5 +1259,5 @@
     }).join('');
     return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, LOADING};
+  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, skillsGainedView, LOADING};
 }());

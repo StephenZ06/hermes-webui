@@ -147,14 +147,14 @@ def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
               actionTopEqualsDividerGap: Math.abs((action.top - card.top) - (divider.bottom - action.bottom)) <= 1,
           titleIsCentered: Math.abs(header.querySelector('h3').getBoundingClientRect().top - icon.top) <= 8,
           formIsLast: learning.querySelector('.dash-card-body').lastElementChild === form,
-          titleInputBorder: getComputedStyle(input).borderTopWidth,
+          inputSpansForm: Math.abs(input.getBoundingClientRect().width - form.clientWidth) <= 1,
           navTopEqualsSide: Math.abs((characterBox.top - navBox.top) - (characterBox.left - navBox.left)) <= 1,
         };
     }""")
     assert layout["firstIsQuests"] and layout["secondIsHabits"] and layout["questIsWider"]
     assert layout["iconTopEqualsLeft"] and layout["actionTopEqualsDividerGap"]
     assert layout["titleIsCentered"] and layout["formIsLast"]
-    assert layout["titleInputBorder"] == "0px"
+    assert layout["inputSpansForm"]  # the text has its own row; the choices and the button share the next
     assert layout["navTopEqualsSide"]
 
 
@@ -364,14 +364,21 @@ def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
     for tab in ("personal", "career", "business"):
         page.evaluate(f"async () => {{ window.HermesDashboard.select('{tab}'); }}")
         page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
+        # The icon sits as far from the card's left edge as from the text, and
+        # the tallest icon is as tall as the label plus the value.
         stats = page.evaluate("""() => [...document.querySelectorAll('.dash-stat')].map(s => {
-            const icon = s.querySelector('.dash-stat-icon'); const copy = s.querySelector('.dash-stat-copy');
-            if (!icon || !copy) return null;
-            const card = s.getBoundingClientRect(), a = icon.getBoundingClientRect(), b = copy.getBoundingClientRect();
-            const left = Math.min(a.left, b.left), right = Math.max(a.right, b.right);
-            return Math.round(((left + right) / 2) - ((card.left + card.right) / 2));
+            const box = s.querySelector('.dash-stat-icon'), img = box && box.querySelector('img'), copy = s.querySelector('.dash-stat-copy');
+            if (!box || !copy) return null;
+            const card = s.getBoundingClientRect(), a = box.getBoundingClientRect(), b = copy.getBoundingClientRect();
+            const border = parseFloat(getComputedStyle(s).borderLeftWidth);
+            const text = copy.querySelector('b').getBoundingClientRect().bottom - copy.querySelector('small').getBoundingClientRect().top;
+            const label = copy.querySelector('small'), oneLine = label.getBoundingClientRect().height < parseFloat(getComputedStyle(label).fontSize) * 1.6;
+            return {left: a.left - card.left - border, gap: b.left - a.right, icon: img.getBoundingClientRect().height, text, oneLine};
         })""")
-        assert len(stats) == 4 and all(offset is not None and abs(offset) <= 1 for offset in stats)
+        assert len(stats) == 4 and all(st is not None and abs(st["left"] - st["gap"]) <= 1 for st in stats)
+        assert all(st["icon"] <= st["text"] + 1 for st in stats)
+        one_line = [st for st in stats if st["oneLine"]]
+        assert one_line and abs(max(st["icon"] for st in one_line) - one_line[0]["text"]) <= 2, stats
     page.evaluate("() => window.HermesDashboard.select('personal')")
     page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
     assert page.evaluate("() => [...document.querySelectorAll('.dash-stat small')].some(e => e.textContent.trim() === 'Personal quests')")
@@ -383,7 +390,7 @@ def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
     icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head .dash-card-icon')).map(c => {
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('.dash-card-icon').getBoundingClientRect();
         return [Math.round(i.top - r.top - b), Math.round(i.left - r.left - b)]; })""")
-    assert icons and all(left - top == 1 for top, left in icons)
+    assert icons and all(left == top for top, left in icons)  # icons are cropped to their visible pixels
 
 
 def test_the_wheel_moves_on_to_the_page_once_a_card_has_scrolled_to_its_end(browser):
@@ -405,3 +412,69 @@ def test_the_wheel_moves_on_to_the_page_once_a_card_has_scrolled_to_its_end(brow
         page.mouse.wheel(0, -200)
         time.sleep(0.15)
     page.wait_for_function(f"() => document.getElementById('mainDashboard').scrollTop < {target[2]}", polling=100, timeout=5000)
+
+
+def test_a_summary_tile_scrolls_to_its_card_and_makes_it_pulse(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 700})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-stat.is-link", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    targets = page.evaluate("() => [...document.querySelectorAll('.dash-stat.is-link')].map(s => [s.dataset.dashFocus, !!document.querySelector(`[data-dash-card=\"${s.dataset.dashFocus}\"]`)])")
+    assert len(targets) == 4 and all(found for _, found in targets)  # every tile points at a card on the page
+    page.click(".dash-stat[data-dash-focus='habits']")
+    assert page.evaluate("() => document.querySelector('[data-dash-card=habits]').classList.contains('is-pulsing')")
+    assert not page.evaluate("() => document.querySelector('[data-dash-card=quests]').classList.contains('is-pulsing')")
+    assert page.evaluate("() => getComputedStyle(document.querySelector('[data-dash-card=habits]')).animationName") == "dash-card-pulse"
+    page.wait_for_function("() => !document.querySelector('[data-dash-card=habits]').classList.contains('is-pulsing')", polling=100, timeout=4000)
+    for tab in ("career", "business"):
+        page.evaluate(f"() => window.HermesDashboard.select('{tab}')")
+        page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
+        missing = page.evaluate("() => [...document.querySelectorAll('.dash-stat.is-link')].filter(s => !document.querySelector(`[data-dash-card=\"${s.dataset.dashFocus}\"]`)).length")
+        assert missing == 0
+
+
+def test_career_pairs_quests_with_skills_and_funnel_with_this_week(browser):
+    name = f"Skill {uuid.uuid4().hex[:6]}"
+    added = _post("/api/dashboard/skills/add", {"name": name, "kind": "bootcamp"})["skill"]
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('career'); }")
+    page.wait_for_selector("[data-dash-card=skills]", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.career", polling=100, timeout=10000)
+    layout = page.evaluate("""() => { const r = (k) => document.querySelector(`[data-dash-card="${k}"]`).getBoundingClientRect();
+        const q = document.querySelector('.dash-card.is-quests').getBoundingClientRect(), s = r('skills'), f = r('funnel'), w = r('this-week');
+        const form = document.querySelector('[data-dash-card=skills] form[data-form=skill]');
+        return {skillsRightOfQuests: Math.abs(q.top - s.top) <= 1 && s.left > q.right, weekRightOfFunnel: Math.abs(f.top - w.top) <= 1 && w.left > f.right,
+                funnelWider: f.width > w.width, selects: form.querySelectorAll('select').length, button: form.querySelector('button[type=submit]').textContent.trim(),
+                placeholder: form.querySelector('input').placeholder, icon: document.querySelector('[data-dash-card=skills] .dash-pix-icon').dataset.dashPix}; }""")
+    assert layout["skillsRightOfQuests"] and layout["weekRightOfFunnel"] and layout["funnelWider"]
+    assert (layout["selects"], layout["button"], layout["placeholder"], layout["icon"]) == (1, "Add Skill", "What skills did you learn?", "gambling")
+    assert page.locator(f"[data-dash-card=skills] .dash-row:has-text('{name}')").count() == 1
+    _post("/api/dashboard/skills/remove", {"skill_id": added["id"]})
+
+
+def test_resume_studio_lists_skills_gained_and_tailoring_shows_what_it_added(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    html = page.evaluate("""() => window.JobOSRender.skillsGainedView({resume: {text: 'x'}, skillsGained: [
+        {name: 'Docker', kind: 'course'}, {name: 'AWS Cloud Practitioner', kind: 'certification'}]})""")
+    assert "Skills gained" in html and "Docker" in html and "Certification" in html and 'data-job-os-action="skills-manage"' in html
+    assert page.evaluate("() => window.JobOSRender.skillsGainedView({resume: null, skillsGained: []})") == ""
+    assert "No skills yet" in page.evaluate("() => window.JobOSRender.skillsGainedView({resume: {text: 'x'}, skillsGained: []})")
+
+
+def test_road_title_settings_realms_and_a_solid_picker(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
+    page.wait_for_selector("[data-dash-card=road]", timeout=15000)
+    road = page.evaluate("() => document.querySelector('[data-dash-card=road]').textContent")
+    assert "Road to $10k" in road and "MRR" not in road
+    page.evaluate("() => window.HermesDashboard.select('settings')")
+    page.wait_for_selector("[data-dash-card=realms]", timeout=15000)
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_selector(".rpg-stage", timeout=15000)
+    assert page.evaluate("() => !document.querySelector('#dashboardRoot').textContent.includes('Project realms')")
+    tab = page.evaluate("() => { const on = getComputedStyle(document.querySelector('.dash-char-btn.on')).backgroundImage; return on; }")
+    assert "linear-gradient" in tab  # the gold toggle, like Personal / Career / Business
+    page.evaluate("() => window.HermesDashboard.openQuestPicker()")
+    page.wait_for_selector(".dash-picker-overlay.is-open .dash-picker", timeout=10000)
+    bg = page.evaluate("() => getComputedStyle(document.querySelector('.dash-picker')).backgroundColor")
+    assert bg not in ("rgba(0, 0, 0, 0)", "transparent") and not bg.endswith(", 0)")

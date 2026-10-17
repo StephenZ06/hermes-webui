@@ -62,6 +62,7 @@
     resumeOriginal: null, // 'pdf' | 'docx' | ... when the master was uploaded as a file
     resumePreview: null, // full-size preview overlay: {kind: 'pdf'|'html', url, title}
     resumeThumb: null, // {revision, url}: the master's first page, drawn once
+    skillsGained: null, // Skills gained, from the Dashboard (Career)
     settingsFocus: '', // a Settings section to scroll to after opening Settings
     matchDirection: null, // which way the match check last stepped, for its slide
     activityMonth: 0, // Dashboard activity calendars: months back from this one

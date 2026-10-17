@@ -164,7 +164,10 @@ def _jobs(now: float) -> dict[str, Any]:
 
 def career(now: float | None = None) -> dict[str, Any]:
     now = time.time() if now is None else now
-    return {"jobs": _section(lambda: _jobs(now)), "quests": _section(lambda: _area_quests("career"))}
+    from api import dashboard_game
+
+    return {"jobs": _section(lambda: _jobs(now)), "quests": _section(lambda: _area_quests("career")),
+            "skills": _section(lambda: dashboard_game.skills(limit=50))}
 
 
 # ── Business ────────────────────────────────────────────────────────────────
@@ -178,7 +181,9 @@ def business(now: float | None = None) -> dict[str, Any]:
 def settings(now: float | None = None) -> dict[str, Any]:
     from api import dashboard_business
 
-    return {"sales_status": _section(dashboard_business.status)}
+    from api import dashboard_game
+
+    return {"sales_status": _section(dashboard_business.status), "projects": _section(dashboard_game.project_realms)}
 
 
 def summary(tab: str) -> dict[str, Any]:

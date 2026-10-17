@@ -15214,6 +15214,12 @@ def _route_get_api_dashboard_character(handler, parsed):
     return j(handler, dashboard_game.character(category=category or None, offset=offset))
 
 
+def _route_get_api_dashboard_skills(handler, parsed):
+    from api import dashboard_game
+
+    return j(handler, dashboard_game.skills(limit=200))
+
+
 def _route_get_api_dashboard_quest_ids(handler, parsed):
     from api import dashboard_game
 
@@ -16094,6 +16100,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/dashboard/summary"), _route_get_api_dashboard_summary),
         (Exact("/api/dashboard/character"), _route_get_api_dashboard_character),
         (Exact("/api/dashboard/quests"), _route_get_api_dashboard_quest_ids),
+        (Exact("/api/dashboard/skills"), _route_get_api_dashboard_skills),
         (Exact("/api/work_hub/items"), _route_get_api_work_hub_items),
         (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
@@ -18642,6 +18649,15 @@ def _route_post_api_dashboard_rewards_redeem(handler, parsed, body, diag):
     return _dashboard_game_call(handler, lambda game: game.redeem(reward_id))
 
 
+def _route_post_api_dashboard_skills_add(handler, parsed, body, diag):
+    return _dashboard_game_call(handler, lambda game: game.add_skill(body))
+
+
+def _route_post_api_dashboard_skills_remove(handler, parsed, body, diag):
+    skill_id = str(body.get("skill_id") or "") if isinstance(body, dict) else ""
+    return _dashboard_game_call(handler, lambda game: game.remove_skill(skill_id))
+
+
 def _route_post_api_dashboard_categories(handler, parsed, body, diag):
     body = body if isinstance(body, dict) else {}
     return _dashboard_game_call(handler, lambda game: game.set_category(body.get("project_id"), body.get("category")))
@@ -20326,6 +20342,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/dashboard/quests/remove"), _route_post_api_dashboard_quests_remove),
         (Exact("/api/dashboard/quests/clear"), _route_post_api_dashboard_quests_clear),
         (Exact("/api/dashboard/categories"), _route_post_api_dashboard_categories),
+        (Exact("/api/dashboard/skills/add"), _route_post_api_dashboard_skills_add),
+        (Exact("/api/dashboard/skills/remove"), _route_post_api_dashboard_skills_remove),
         (Exact("/api/dashboard/rewards/add"), _route_post_api_dashboard_rewards_add),
         (Exact("/api/dashboard/rewards/remove"), _route_post_api_dashboard_rewards_remove),
         (Exact("/api/dashboard/rewards/redeem"), _route_post_api_dashboard_rewards_redeem),

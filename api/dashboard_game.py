@@ -41,6 +41,9 @@ HABIT_XP = 10
 # Something learnt: a course, a book, a certification, a new skill.
 LEARNING_XP = {"course": 40, "book": 30, "certification": 100, "skill": 20, "other": 15}
 CADENCES = ("daily", "weekly")
+# A skill gained, by how it was learnt.
+SKILL_XP = {"course": 40, "bootcamp": 80, "certification": 100, "project": 30, "work": 30, "self": 20}
+SKILL_NAME_MAX = 80
 GOLD_PER_XP = 0.5
 ACHIEVEMENT_GOLD = 50
 
@@ -63,6 +66,9 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
     ("habit_week", "Creature of Habit", "Keep habits on 7 different days", "🌱", lambda p: p["habit_days"] >= 7),
     ("scholar", "Scholar", "Log 5 things you learnt", "📚", lambda p: p["kinds"].get("learning", 0) >= 5),
     ("balanced", "Well-Rounded", "Earn XP in all three areas", "⚖️", lambda p: all(a["xp"] > 0 for a in p["areas"])),
+    ("first_skill", "Skilled", "Add your first skill", "🎲", lambda p: p["kinds"].get("skill", 0) >= 1),
+    ("certified", "Certified", "Add a certification skill", "📜", lambda p: p["kinds"].get("skill:certification", 0) >= 1),
+    ("polymath", "Polymath", "Gain 10 skills", "🧠", lambda p: p["kinds"].get("skill", 0) >= 10),
 ]
 NAME_MAX = 120
 
@@ -129,6 +135,12 @@ CREATE TABLE IF NOT EXISTS redemptions (
     name TEXT NOT NULL,
     cost INTEGER NOT NULL,
     at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS learning (
     id TEXT PRIMARY KEY,
@@ -431,6 +443,60 @@ def learning(limit: int = 8) -> dict[str, Any]:
             "by_kind": {k: sum(r["kind"] == k for r in rows) for k in LEARNING_XP}}
 
 
+# ── skills gained ───────────────────────────────────────────────────────────
+
+def add_skill(payload: dict[str, Any]) -> dict[str, Any]:
+    """A skill the user gained (course, bootcamp, certification...). Earns Career
+    XP once; the same name (any case) is not added twice."""
+    payload = payload if isinstance(payload, dict) else {}
+    kind = str(payload.get("kind") or "course")
+    if kind not in SKILL_XP:
+        raise GameError("Type must be course, bootcamp, certification, project, work or self")
+    name = _clean_name(payload.get("name"), "Skill")
+    if len(name) > SKILL_NAME_MAX:
+        raise GameError("Skill name is too long")
+    skill = {"id": uuid.uuid4().hex, "name": name, "kind": kind, "created_at": time.time()}
+    with _LOCK, _connect() as conn:
+        if conn.execute("SELECT 1 FROM skills WHERE lower(name) = lower(?)", (name,)).fetchone():
+            raise GameError("That skill is already on your list", 409)
+        if conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0] >= 200:
+            raise GameError("You can list at most 200 skills")
+        conn.execute("INSERT INTO skills(id, name, kind, created_at) VALUES(:id, :name, :kind, :created_at)", skill)
+        _insert(conn, f"skill:{skill['id']}", "skill", f"Skill gained: {name}", SKILL_XP[kind], skill["created_at"],
+                category="career", detail={"kind": "skill", "via": kind})
+    return {"skill": {**skill, "xp": SKILL_XP[kind]}}
+
+
+def remove_skill(skill_id: str) -> dict[str, Any]:
+    with _LOCK, _connect() as conn:
+        if not conn.execute("DELETE FROM skills WHERE id = ?", (str(skill_id),)).rowcount:
+            raise GameError("Skill not found", 404)
+        conn.execute("DELETE FROM xp_events WHERE key = ?", (f"skill:{skill_id}",))
+    return {"removed": str(skill_id)}
+
+
+def skills(limit: int | None = None) -> dict[str, Any]:
+    with _LOCK, _connect() as conn:
+        rows = [dict(r) for r in conn.execute("SELECT * FROM skills ORDER BY created_at DESC")]
+    entries = [{**r, "xp": SKILL_XP.get(r["kind"], 0)} for r in rows]
+    return {"total": len(entries), "entries": entries[:limit] if limit else entries}
+
+
+def skill_names() -> list[str]:
+    """The user's skills, oldest first (for the resume)."""
+    with _LOCK, _connect() as conn:
+        return [r["name"] for r in conn.execute("SELECT name FROM skills ORDER BY created_at")]
+
+
+def project_realms() -> list[dict[str, Any]]:
+    from api.models import load_projects
+
+    with _LOCK, _connect() as conn:
+        categories = _categories(conn)
+    return [{"project_id": p.get("project_id"), "name": p.get("name"),
+             "category": categories.get(p.get("project_id") or "", "personal")} for p in load_projects()]
+
+
 # ── party: the Hermes agent profiles ────────────────────────────────────────
 
 def party() -> list[dict[str, Any]]:
@@ -645,6 +711,8 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         if row["source"] == "learning":
             kind = "learning"
         kinds[kind] = kinds.get(kind, 0) + 1
+        if row["source"] == "skill" and detail.get("via"):
+            kinds[f"skill:{detail['via']}"] = kinds.get(f"skill:{detail['via']}", 0) + 1
         if row["source"] == "habit":
             habit_days.add(detail.get("day") or "")
     today = time.strftime("%Y-%m-%d", time.localtime(now))

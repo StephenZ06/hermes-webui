@@ -180,7 +180,7 @@
       const wantCountries = !state.countries.length;
       // Firecrawl only matters while Scout reads Indeed itself (Apify off).
       const wantFirecrawl = wantScout || wantSettings || !(state.apifyUsage && state.apifyUsage.active);
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage, skillsGained] = await Promise.all([
         cached('capability', 10 * 60 * 1000, window.JobOSApi.capability), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' && !window.JobOSRender.STATUS_GROUPS[state.statusFilter] ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -201,6 +201,8 @@
         cached('matches', 20 * 1000, window.JobOSApi.matches).catch(() => null),
         // Apify status and spend for the header chip and the side panel (cached on the server too).
         cached('apify', 60 * 1000, window.JobOSApi.apifyUsage).catch(() => null),
+        // Skills gained (Dashboard) for the Resume Studio card; missing is not an error.
+        wantResume ? window.JobOSApi.skillsGained().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       // Resume Studio's match check reads the full analysis of the job it is on:
@@ -233,6 +235,7 @@
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) { state.resume = resume.resume; state.resumeOriginal = resume.original || null; }
+      if (skillsGained) state.skillsGained = skillsGained.entries || [];
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
       state.board = board || (wantBoard ? state.board : null);
@@ -881,6 +884,12 @@
         if (typeof window.showToast === 'function') window.showToast('Application recorded');
       } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not record it'); }
       return refresh();
+    }
+    if (name === 'skills-manage') {
+      // Skills are kept on the Dashboard's Career tab; open it there.
+      if (typeof window.switchPanel === 'function') window.switchPanel('dashboard');
+      if (window.HermesDashboard) window.HermesDashboard.select('career');
+      return;
     }
     if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }
     if (name === 'resume-cancel') { state.resumeReplacing = false; state.resumeError = ''; return refresh(); }

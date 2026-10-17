@@ -36,6 +36,8 @@
     analyzeNew: () => request('/api/job-os/analyze', {method: 'POST', body: JSON.stringify({scope: 'new'})}),
     fetchDetails: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/details', {method: 'POST', body: '{}'}),
     resume: () => request('/api/job-os/resume'),
+    // Skills gained, kept by the Dashboard (Career); tailoring may add matching ones.
+    skillsGained: () => request('/api/dashboard/skills'),
     notifications: () => request('/api/job-os/notifications'),
     sendDigest: () => request('/api/job-os/notifications/digest', {method: 'POST', body: '{}'}),
     checkReplies: () => request('/api/job-os/notifications/check', {method: 'POST', body: '{}'}),

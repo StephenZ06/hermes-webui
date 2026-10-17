@@ -55,7 +55,11 @@ SYSTEM = (
     "'## ' section headings word for word and in the same order, the same '### Title | Company | Place | Dates' entry "
     "lines, '**Label:** text' lines where the master has them, '- ' bullets, and about the same length. Only the "
     "wording and selection inside the sections change.\n"
-    "Hard rules: use ONLY facts in the master resume. You may rephrase, reorder, select, merge and emphasise; never add "
+    "6. Verified skills: when a VERIFIED SKILLS block is given, those are skills the candidate has confirmed they "
+    "learned (courses, bootcamps, certifications) after writing the master resume. Add a verified skill to the resume's "
+    "existing skills section (in its format) only when the posting asks for it or something equivalent; never claim "
+    "experience, projects or results with it, and never add a verified skill the posting does not need.\n"
+    "Hard rules: use ONLY facts in the master resume (and the VERIFIED SKILLS, as in step 6). You may rephrase, reorder, select, merge and emphasise; never add "
     "employers, titles, dates, numbers, degrees, certifications, tools or achievements that are not in it. Keep every "
     "date and number exactly as written. Cover letter: plain text, 180-320 words, specific to this company and role, "
     "no placeholders like [Company].\n"
@@ -66,11 +70,41 @@ SYSTEM = (
     '"changes": [{"what": "<edit made>", "why": "<which posting need it serves>"}], '
     '"reframings": [{"original": "<master wording>", "reframed": "<new wording>", "why": "<why it is still true>"}], '
     '"gaps": [{"need": "<requirement>", "advice": "<cover letter angle, or what to add if it is true>"}], '
-    '"questions": ["<question for the candidate that could surface real, unlisted experience for a gap>"]}\n'
+    '"questions": ["<question for the candidate that could surface real, unlisted experience for a gap>"], '
+    '"skills_added": ["<verified skill you added, exactly as given>"]}\n'
     "Up to 6 items in each list, 8 changes. " + llm.UNTRUSTED
 )
 
 _NUMBER = re.compile(r"(?<![\w.])(\d[\d,.]*\s?%?|[€$£]\s?\d[\d,.]*\s?[kKmM]?)(?![\w])")
+
+
+def _verified_skills() -> list[str]:
+    """Skills the user listed under Dashboard > Career > Skills gained."""
+    try:
+        from api.dashboard_game import skill_names
+
+        return [name for name in skill_names() if name.strip()][:60]
+    except Exception:
+        logger.debug("verified skills unavailable", exc_info=True)
+        return []
+
+
+def skills_added(tailored: str, master: str, verified: list[str]) -> list[str]:
+    """Which verified skills the tailored resume names that the master did not:
+    decided from the text itself, not from what the model says it did."""
+    def norm(text: str) -> str:
+        return re.sub(r"\s+", " ", text.lower())
+
+    tailored_n, master_n = norm(tailored), norm(master)
+    out = []
+    for name in verified:
+        n = norm(name).strip()
+        if not n:
+            continue
+        pattern = r"(?<![\w])" + re.escape(n) + r"(?![\w])"
+        if re.search(pattern, tailored_n) and not re.search(pattern, master_n):
+            out.append(name)
+    return out
 
 
 class TailorError(ValueError):
@@ -254,13 +288,15 @@ def tailor_one(job_id: str) -> dict:
         from api.job_os.export import text_markdown
 
         layout = text_markdown(master["text"])[:18000]
-        data, model = llm.ask_json(SYSTEM, f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\nMASTER RESUME>>>",
+        verified = _verified_skills()
+        skills_block = ("\n\n<<<VERIFIED SKILLS\n" + "\n".join(f"- {name}" for name in verified) + "\nVERIFIED SKILLS>>>") if verified else ""
+        data, model = llm.ask_json(SYSTEM, f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\nMASTER RESUME>>>{skills_block}",
                                    max_tokens=9000)
         tailored = str(data.get("resume_markdown") or "").strip()
         letter = str(data.get("cover_letter") or "").strip()
         if len(tailored) < 200:
             raise llm.LLMError("The tailored resume came back empty.")
-        allowed_numbers = master["text"] + " " + json.dumps(applicant)
+        allowed_numbers = master["text"] + " " + json.dumps(applicant) + " " + " ".join(verified)
         flags_resume = unverified_numbers(tailored, allowed_numbers)
         flags_letter = unverified_numbers(letter, allowed_numbers)
         changes = [{"what": str(c.get("what") or "")[:200], "why": str(c.get("why") or "")[:200]}
@@ -268,6 +304,7 @@ def tailor_one(job_id: str) -> dict:
         coverage = keyword_coverage(tailored, analysis.get("must_haves") or [])
         set_doc(resume_doc, status="needs_review" if flags_resume else "ready", content=tailored[:30000], model=model, error="",
                 notes_json=json.dumps({"changes": changes, "unverified": flags_resume, "coverage": coverage,
+                                       "skills_added": skills_added(tailored, master["text"], verified),
                                        "report": _report(data),
                                        "master_revision": master.get("revision"),
                                        "master_fit": analysis.get("fit_score"),
