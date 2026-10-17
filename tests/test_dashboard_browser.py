@@ -121,6 +121,69 @@ def test_dashboard_fits_a_phone(browser):
     assert page.evaluate("() => getComputedStyle(document.querySelector('.dash-stats')).gridTemplateColumns.split(' ').length") == 2
 
 
+def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
+    page = _dashboard(browser, "personal")
+    page.wait_for_selector(".dash-grid.is-personal-focus", timeout=15000)
+    layout = page.evaluate("""() => {
+        const focus = document.querySelector('.dash-grid.is-personal-focus');
+        const [quests, habits] = focus.children;
+        const nav = document.querySelector('.dash-side-nav');
+        const character = nav.querySelector('.side-menu-item');
+        const learning = document.querySelector('.dash-card.is-learning-log');
+        const form = learning.querySelector('form.is-learning');
+        const input = form.querySelector('input[name=title]');
+        const header = quests.querySelector('.dash-card-head');
+        const icon = header.querySelector('.dash-card-icon').getBoundingClientRect();
+        const card = quests.getBoundingClientRect();
+        const action = header.querySelector('.dash-card-actions').getBoundingClientRect();
+        const divider = header.getBoundingClientRect();
+        const navBox = nav.getBoundingClientRect();
+        const characterBox = character.getBoundingClientRect();
+        return {
+          firstIsQuests: quests.classList.contains('is-quests'),
+          secondIsHabits: habits.classList.contains('is-habits'),
+          questIsWider: quests.getBoundingClientRect().width > habits.getBoundingClientRect().width,
+          iconTopEqualsLeft: Math.abs((icon.top - card.top) - (icon.left - card.left)) <= 1,
+              actionTopEqualsDividerGap: Math.abs((action.top - card.top) - (divider.bottom - action.bottom)) <= 1,
+          titleIsCentered: Math.abs(header.querySelector('h3').getBoundingClientRect().top - icon.top) <= 8,
+          formIsLast: learning.querySelector('.dash-card-body').lastElementChild === form,
+          titleInputBorder: getComputedStyle(input).borderTopWidth,
+          navTopEqualsSide: Math.abs((characterBox.top - navBox.top) - (characterBox.left - navBox.left)) <= 1,
+        };
+    }""")
+    assert layout["firstIsQuests"] and layout["secondIsHabits"] and layout["questIsWider"]
+    assert layout["iconTopEqualsLeft"] and layout["actionTopEqualsDividerGap"]
+    assert layout["titleIsCentered"] and layout["formIsLast"]
+    assert layout["titleInputBorder"] == "0px"
+    assert layout["navTopEqualsSide"]
+
+
+def test_personal_pixel_icons_are_unboxed_and_optically_aligned(browser):
+    page = _dashboard(browser, "personal")
+    page.evaluate("""() => {
+        document.documentElement.classList.add('dark');
+        document.documentElement.dataset.skin = 'geist-contrast';
+    }""")
+    page.wait_for_selector(".dash-card-icon.is-pixel img[data-dash-pix]", timeout=15000)
+    icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card-icon.is-pixel')].map((box) => {
+        const image = box.querySelector('img');
+        return {
+          name: image.dataset.dashPix,
+          background: getComputedStyle(box).backgroundColor,
+          x: getComputedStyle(image).getPropertyValue('--dash-pix-x').trim(),
+          y: getComputedStyle(image).getPropertyValue('--dash-pix-y').trim(),
+        };
+    })""")
+    names = {icon["name"] for icon in icons}
+    assert {"personal-quest", "habits", "learning-log", "project-health"} <= names
+    assert all(icon["background"] in {"transparent", "rgba(0, 0, 0, 0)"} for icon in icons)
+    offsets = {icon["name"]: (icon["x"], icon["y"]) for icon in icons}
+    assert offsets["personal-quest"] == ("0px", "0px")
+    assert offsets["habits"] == ("0px", "-1px")
+    assert offsets["learning-log"] == ("-3px", "0px")
+    assert offsets["project-health"] == ("0px", "-2px")
+
+
 def test_character_page_fits_a_phone(browser):
     page = _open(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
@@ -128,6 +191,32 @@ def test_character_page_fits_a_phone(browser):
     time.sleep(0.4)
     assert page.evaluate("() => { const m = document.getElementById('mainDashboard'); return m.scrollWidth <= m.clientWidth + 1; }")
     assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
+
+
+def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    page.evaluate("""async () => {
+        document.documentElement.classList.add('dark');
+        document.documentElement.dataset.skin = 'geist-contrast';
+        await switchPanel('dashboard');
+        window.HermesDashboard.select('character');
+    }""")
+    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    visuals = page.evaluate("""() => {
+        const canvas = document.getElementById('mainDashboard');
+        const panel = document.querySelector('.rpg-panel');
+        const stage = document.querySelector('.rpg-stage');
+        return {
+          canvasImage: getComputedStyle(canvas).backgroundImage,
+          panelBackground: getComputedStyle(panel).backgroundColor,
+          panelBorder: getComputedStyle(panel).borderColor,
+          stageBackground: getComputedStyle(stage).backgroundColor,
+        };
+    }""")
+    assert "background.png" not in visuals["canvasImage"]
+    assert visuals["panelBackground"] == "rgb(10, 10, 10)"
+    assert visuals["panelBorder"] == "rgb(63, 63, 63)"
+    assert visuals["stageBackground"] == "rgb(10, 10, 10)"
 
 
 def _dashboard(browser, tab, **ctx):
@@ -265,18 +354,36 @@ def test_a_fresh_launch_opens_the_dashboard_but_a_reload_in_chat_stays_in_chat(b
     assert page.evaluate("() => [...document.querySelector('.rail').children].filter(e => e.dataset.panel)[0].dataset.panel") == "dashboard"
 
 
-def test_stat_tiles_and_card_icons_are_evenly_spaced(browser):
+def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
+    for i in range(8):
+        _post("/api/dashboard/learning/add", {"title": f"Footer fixture {uuid.uuid4().hex[:4]} {i}", "kind": "course", "area": "career"})
     page = _open(browser, viewport={"width": 1440, "height": 900})
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
     page.wait_for_selector(".dash-stats", timeout=15000)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
-    stats = page.evaluate("""() => [...document.querySelectorAll('.dash-stat')].map(s => { const r = s.getBoundingClientRect(), b = parseFloat(getComputedStyle(s).borderTopWidth), k = [...s.children];
-        return [Math.round(k[0].getBoundingClientRect().top - r.top - b), Math.round(r.bottom - b - k[k.length - 1].getBoundingClientRect().bottom)]; })""")
-    assert stats and all(abs(top - bottom) <= 1 for top, bottom in stats)
-    icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head img')).map(c => {
-        const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('img').getBoundingClientRect();
+    for tab in ("personal", "career", "business"):
+        page.evaluate(f"async () => {{ window.HermesDashboard.select('{tab}'); }}")
+        page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
+        stats = page.evaluate("""() => [...document.querySelectorAll('.dash-stat')].map(s => {
+            const icon = s.querySelector('.dash-stat-icon'); const copy = s.querySelector('.dash-stat-copy');
+            if (!icon || !copy) return null;
+            const card = s.getBoundingClientRect(), a = icon.getBoundingClientRect(), b = copy.getBoundingClientRect();
+            const left = Math.min(a.left, b.left), right = Math.max(a.right, b.right);
+            return Math.round(((left + right) / 2) - ((card.left + card.right) / 2));
+        })""")
+        assert len(stats) == 4 and all(offset is not None and abs(offset) <= 1 for offset in stats)
+    page.evaluate("() => window.HermesDashboard.select('personal')")
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
+    assert page.evaluate("() => [...document.querySelectorAll('.dash-stat small')].some(e => e.textContent.trim() === 'Personal quests')")
+    footer = page.evaluate("""() => { const card = document.querySelector('.dash-card.is-learning-log'), form = card.querySelector('form.is-learning'),
+        button = form.querySelector('button'), selects = [...form.querySelectorAll('.themed-select-trigger')], r = card.getBoundingClientRect(), f = form.getBoundingClientRect();
+        return {bottom: Math.round(r.bottom - f.bottom - parseFloat(getComputedStyle(card).borderBottomWidth)), heights: [button, ...selects].map(e => Math.round(e.getBoundingClientRect().height))}; }""")
+    assert abs(footer["bottom"] - 16) <= 1
+    assert len(set(footer["heights"])) == 1
+    icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head .dash-card-icon')).map(c => {
+        const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('.dash-card-icon').getBoundingClientRect();
         return [Math.round(i.top - r.top - b), Math.round(i.left - r.left - b)]; })""")
-    assert icons and all(top == left for top, left in icons)
+    assert icons and all(left - top == 1 for top, left in icons)
 
 
 def test_the_wheel_moves_on_to_the_page_once_a_card_has_scrolled_to_its_end(browser):

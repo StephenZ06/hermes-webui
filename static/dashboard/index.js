@@ -42,7 +42,7 @@
   const VIEWS = ['character', 'personal', 'career', 'business', 'settings'];
   const VIEW_TITLE = {character: 'CHARACTER', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};
   // Card icons drawn as pixel art (static/dashboard/icons), by card.
-  const PIX = (name) => `<img class="dash-pix-icon" src="static/dashboard/icons/${name}.png" alt="" width="24" height="24" draggable="false">`;
+  const PIX = (name) => `<img class="dash-pix-icon" data-dash-pix="${name}" src="static/dashboard/icons/${name}.png" alt="" width="24" height="24" draggable="false">`;
   const AREA = {personal: 'Personal', career: 'Career', business: 'Business'};
   const STATUS_LABEL = {in_progress: 'In progress', blocked: 'Blocked', todo: 'To do', triage: 'Triage', backlog: 'Backlog', done: 'Done', cancelled: 'Cancelled'};
   const BOT_TYPES = ['clover', 'star', 'mech', 'flower', 'ghost', 'hexagon', 'circle', 'square'];
@@ -86,8 +86,8 @@
   // ── pieces ───────────────────────────────────────────────────────────────
   const card = (title, body, {icon = '', pix = '', action = '', cls = '', attrs = ''} = {}) =>
     `<section class="dash-card ${cls}" ${attrs}><header class="dash-card-head">${pix ? `<span class="dash-card-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="dash-card-icon">${svg(icon, 16)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="dash-card-actions">${action}</span>` : ''}</header><div class="dash-card-body">${body}</div></section>`;
-  const stat = (label, value, note = '', tone = '') =>
-    `<div class="dash-stat${tone ? ' is-' + tone : ''}"><small>${esc(label)}</small><b>${value}</b>${note ? `<span>${note}</span>` : ''}</div>`;
+  const stat = (label, value, note = '', tone = '', pix = '') =>
+    `<div class="dash-stat${tone ? ' is-' + tone : ''}">${pix ? `<span class="dash-stat-icon is-pixel">${PIX(pix)}</span>` : ''}<span class="dash-stat-copy"><small>${esc(label)}</small><b>${value}</b>${note ? `<span>${note}</span>` : ''}</span></div>`;
   const bar = (fraction, tone = '') => `<span class="dash-bar${tone ? ' is-' + tone : ''}"><i style="width:${Math.round(Math.max(0, Math.min(1, fraction || 0)) * 100)}%"></i></span>`;
   const sectionError = (section) => section && section.error ? `<p class="dash-empty">Couldn't read this: ${esc(section.error)}</p>` : '';
   const link = (label, attrs) => `<button type="button" class="dash-link${/data-dash-(go|tab)=/.test(attrs) ? ' dash-nav' : ''}" ${attrs}>${esc(label)}</button>`;
@@ -137,7 +137,7 @@
         <button type="button" class="dash-icon-btn dash-habit-remove" data-habit-archive="${esc(h.id)}" aria-label="Stop tracking ${esc(h.name)}" title="Stop tracking">${svg('x', 13)}</button>
       </div>`).join('');
     const empty = !list.length && !state.forms.habit ? '<p class="dash-empty">Track the things that keep you going. Each one ticked earns 10 XP towards Vitality.</p>' : '';
-    return card('Habits', `${form}${empty}<div class="dash-habits">${rows}</div>`, {pix: 'habits', action: state.forms.habit ? '' : btn('New habit', 'data-form-open="habit"', {icon: 'plus', cls: 'is-small'})});
+    return card('Habits', `${form}${empty}<div class="dash-habits">${rows}</div>`, {pix: 'habits', cls: 'is-habits', action: state.forms.habit ? '' : btn('New habit', 'data-form-open="habit"', {icon: 'plus', cls: 'is-small'})});
   }
 
   function learningCard(data) {
@@ -151,7 +151,7 @@
         <button type="submit" class="dash-btn is-small">Log it</button>
       </form>`;
     const rows = entries.map((e) => `<div class="dash-row"><span class="dash-area-dot is-${esc(e.area)}"></span><span class="dash-row-main"><strong>${esc(e.title)}</strong><small>${esc(e.kind)} · ${esc(AREA[e.area])} · ${ago(e.done_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-learning-remove="${esc(e.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button></div>`).join('');
-    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `${form}${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}`, {pix: 'learning-log'});
+    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `<div class="dash-learning-entries">${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}</div>${form}`, {pix: 'learning-log', cls: 'is-learning-log'});
   }
 
   function personal(data) {
@@ -161,10 +161,10 @@
     const daily = habits.filter((h) => h.cadence === 'daily');
     const allDone = daily.length && daily.every((h) => h.today);
     const stats = `<div class="dash-stats">
-      ${stat('Habits today', `${daily.filter((h) => h.today).length}/${daily.length}`, allDone ? 'All done 🎉' : '', allDone ? 'good' : '')}
-      ${stat('Open work items', t.open || 0)}
-      ${stat('In progress', t.in_progress || 0, t.working ? `${orb('working')} ${t.working} with a chat` : '')}
-      ${stat('Done this week', t.done_this_week || 0, '', t.done_this_week ? 'good' : '')}
+      ${stat('Habits today', `${daily.filter((h) => h.today).length}/${daily.length}`, allDone ? 'All done 🎉' : '', allDone ? 'good' : '', 'habits')}
+      ${stat('Personal quests', (data.quests || []).length, '', '', 'personal-quest')}
+      ${stat('In progress', t.in_progress || 0, t.working ? `${orb('working')} ${t.working} with a chat` : '', '', 'project-health')}
+      ${stat('Done this week', t.done_this_week || 0, '', t.done_this_week ? 'good' : '', 'this-week')}
     </div>`;
     const projects = (hub.projects || []).filter((p) => p.open || p.done).slice(0, 6).map((p) => `<div class="dash-row">
         <span class="dash-row-main"><strong>${esc(p.name)}</strong><small>${plural(p.open, 'open item')}${p.last_activity ? ' · ' + ago(p.last_activity) : ''}</small></span>
@@ -177,9 +177,9 @@
     const schedules = sectionError(sch) || `${sch.failing_count ? `<p class="dash-callout is-bad">${plural(sch.failing_count, 'scheduled job')} failing</p>` : ''}${failing}${upcoming || (failing ? '' : `<p class="dash-empty">${sch.enabled ? 'No upcoming runs.' : 'No scheduled jobs are switched on.'}</p>`)}`;
     const notes = Array.isArray(data.notes) ? (data.notes.map((n) => `<button type="button" class="dash-row dash-nav" data-dash-note="${esc(n.id)}"><span class="dash-row-main"><strong>${n.pinned ? '📌 ' : ''}${esc(n.title)}</strong><small>${ago(n.updated_at)}</small></span></button>`).join('') || '<p class="dash-empty">No notes yet.</p>') : sectionError(data.notes);
     return `${stats}
-      <div class="dash-grid is-wide-left">
-        ${habitsCard(data.habits)}
+      <div class="dash-grid is-wide-left is-personal-focus">
         ${questStrip(data.quests, 'personal')}
+        ${habitsCard(data.habits)}
       </div>
       <div class="dash-grid">
         ${learningCard(data.learning)}
@@ -201,10 +201,10 @@
     const weekRows = [['found', 'Scout finds'], ['tailored', 'Resumes tailored'], ['applied', 'Applications sent'], ['interview', 'Interviews'], ['rejected', 'Rejections']]
       .map(([k, label]) => `<div class="dash-row"><span class="dash-row-main"><strong>${label}</strong></span><span class="dash-num">${week[k] || 0}</span></div>`).join('');
     const jobsBody = jobs.error ? sectionError(jobs) : `<div class="dash-stats">
-        ${stat('Jobs tracked', jobs.total_jobs || 0)}
-        ${stat('Active work', jobs.active_work || 0)}
-        ${stat('Needs attention', jobs.needs_attention || 0, '', jobs.needs_attention ? 'bad' : '')}
-        ${stat('Applied this week', week.applied || 0, '', week.applied ? 'good' : '')}
+        ${stat('Jobs tracked', jobs.total_jobs || 0, '', '', 'funnel')}
+        ${stat('Active work', jobs.active_work || 0, '', '', 'career-quests')}
+        ${stat('Needs attention', jobs.needs_attention || 0, '', jobs.needs_attention ? 'bad' : '', 'project-health')}
+        ${stat('Applied this week', week.applied || 0, '', week.applied ? 'good' : '', 'this-week')}
       </div>`;
     return `${jobsBody}
       <div class="dash-grid is-wide-left">
@@ -248,10 +248,10 @@
         ${link('Disconnect', 'data-sales-disconnect')}
       </div>` : `<button type="button" class="dash-connect-hint dash-nav" data-dash-tab="settings"><span class="dash-dot"></span><span><strong>No sales platform connected.</strong> Connect Lemon Squeezy or Gumroad in Settings, or add sales by hand below.</span><span class="dash-connect-go">Settings →</span></button>`;
     const stats = `<div class="dash-stats">
-      ${stat('Revenue this month', esc(money(t.month_revenue, cur)), delta == null ? '' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs last month`, delta > 0 ? 'good' : '')}
-      ${stat('MRR', esc(money(t.mrr, cur)), t.subscribers ? plural(t.subscribers, 'subscriber') : '')}
-      ${stat('Sales this week', t.week_sales || 0, `${t.sales || 0} all time`)}
-      ${stat('Customers', t.customers || 0, t.refunds ? plural(t.refunds, 'refund') : '')}
+      ${stat('Revenue this month', esc(money(t.month_revenue, cur)), delta == null ? '' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs last month`, delta > 0 ? 'good' : '', 'revenue')}
+      ${stat('MRR', esc(money(t.mrr, cur)), t.subscribers ? plural(t.subscribers, 'subscriber') : '', '', 'road-to-10k')}
+      ${stat('Sales this week', t.week_sales || 0, `${t.sales || 0} all time`, '', 'recent-sales')}
+      ${stat('Customers', t.customers || 0, t.refunds ? plural(t.refunds, 'refund') : '', '', 'goals')}
     </div>`;
     const goalForm = state.forms.goal ? `<form class="dash-inline-form" data-form="goal">
         <input name="target" type="number" min="1" step="any" placeholder="5" required aria-label="Target">

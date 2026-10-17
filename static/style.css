@@ -12821,3 +12821,148 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
    equals its gap from the left (a two-line title or taller button grows downward). */
 .dash.is-rpg :is(.dash-card-head,.rpg-panel-head) > :is(.dash-card-icon,.rpg-panel-icon){align-self:flex-start;}
 .dash.is-rpg :is(.dash-card-head,.rpg-panel-head){align-items:center;}
+
+/* Geist Contrast keeps dashboard content inside its neutral, high-contrast
+   surface system.  Dashboard-specific colours intentionally come from the
+   active skin tokens rather than a separate illustrated theme. */
+:root[data-skin="geist-contrast"] #mainDashboard:has(.dash.is-rpg){
+  background:var(--bg);
+}
+:root[data-skin="geist-contrast"] .dash.is-rpg{
+  --rpg-violet:var(--accent);
+  --rpg-gold:var(--accent);
+  --rpg-gold-deep:var(--accent-text);
+  --rpg-frame:var(--border2);
+  --rpg-panel:var(--surface);
+}
+:root[data-skin="geist-contrast"] .dash.is-rpg :is(.rpg-panel,.dash-card,.dash-stat,.dash-connection){
+  background-color:var(--surface);
+  background-image:none;
+  border-color:var(--border2);
+  box-shadow:none;
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+:root[data-skin="geist-contrast"] .dash.is-rpg .rpg-stage{
+  background:var(--surface);
+  border-color:var(--border2);
+  box-shadow:none;
+}
+:root[data-skin="geist-contrast"] .dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-card-head,.rpg-panel-head){
+  border-bottom-color:var(--border);
+}
+:root[data-skin="geist-contrast"] .dash.is-rpg :is(.dash-card-icon,.rpg-panel-icon){
+  color:var(--accent);
+  background:var(--accent-bg);
+  box-shadow:inset 0 0 0 1px var(--border);
+}
+
+/* Personal dashboard: the action cards use one header grid, and the Learning
+   Log keeps its entry control as a quiet footer rather than a competing card. */
+.dash-side-nav{padding:8px;}
+.dash.is-rpg .dash-grid.is-personal-focus{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);}
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card{padding:16px;}
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card-head{
+  position:relative;
+  align-items:center;
+  min-height:28px;
+  margin:0 0 12px;
+  padding:0 0 18px;
+}
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card-head > .dash-card-icon{
+  align-self:center;
+}
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card-head h3{
+  display:flex;
+  align-items:center;
+  min-height:28px;
+  padding-right:108px;
+}
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card-actions{
+  position:absolute;
+  top:0;
+  right:0;
+  min-height:28px;
+  align-items:center;
+}
+.dash.is-rpg .dash-card.is-learning-log{min-height:100%;}
+.dash.is-rpg .dash-card.is-learning-log .dash-card-body{display:flex;flex:1 1 auto;flex-direction:column;}
+.dash.is-rpg .dash-card.is-learning-log .dash-learning-entries{min-height:0;overflow-y:auto;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning{
+  order:2;
+  margin:12px 0 0;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning input[name="title"]{
+  padding-left:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning input[name="title"]:focus{box-shadow:none;}
+@media (max-width:900px){
+  .dash.is-rpg .dash-grid.is-personal-focus{grid-template-columns:minmax(0,1fr);}
+}
+
+/* Pixel assets share a canvas but not identical transparent margins.  Keep
+   their wrappers in the same header grid, then compensate only for the
+   artwork's exported transparent edge so the visible pixels align. */
+:root[data-skin="geist-contrast"] .dash.is-rpg .dash-card-icon.is-pixel,
+.dash.is-rpg .dash-card-icon.is-pixel{
+  background:transparent;
+  box-shadow:none;
+}
+.dash.is-rpg .dash-pix-icon{
+  --dash-pix-x:0px;
+  --dash-pix-y:0px;
+  transform:translate(var(--dash-pix-x),var(--dash-pix-y));
+}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="habits"]{--dash-pix-y:-1px;}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="learning-log"]{--dash-pix-x:-3px;}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="project-health"]{--dash-pix-y:-2px;}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="recent-notes"]{--dash-pix-x:-2px;}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="recent-sales"]{--dash-pix-y:-5px;}
+.dash.is-rpg .dash-pix-icon[data-dash-pix="revenue"]{--dash-pix-y:-3px;}
+
+/* Summary tiles keep the icon and its label/value stack as one centred unit.
+   Pixel art is intentionally bare, so its visible edge aligns with the rest
+   of each card instead of sitting inside a second visual container. */
+.dash.is-rpg .dash-stat{
+  flex-direction:row;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+}
+.dash.is-rpg .dash-stat-icon.is-pixel{
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:28px;
+  height:28px;
+  background:transparent;
+  box-shadow:none;
+}
+.dash.is-rpg .dash-stat-icon .dash-pix-icon{display:block;}
+.dash.is-rpg .dash-stat-copy{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:1px;
+  min-width:0;
+}
+.dash.is-rpg .dash-stat-copy :is(small,b,span){display:block;}
+
+/* The learning entry is a footer: it stays at the bottom of the paired card
+   whether the log is empty or has a few recent entries. */
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning{
+  margin: auto 0 2px;
+}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning :is(.themed-select-trigger,.dash-btn){
+  height:28px;
+}
+
+/* Match the visible top inset of every non-summary card icon to its left inset. */
+.dash.is-rpg .dash-card-head > .dash-card-icon.is-pixel{transform:translateY(-1px);}
