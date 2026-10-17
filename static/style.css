@@ -13244,3 +13244,14 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg :is(.dash-card-body,.rpg-panel-body) :is(.dash-row,.dash-quest-row,.dash-habit){padding-top:8px;padding-bottom:8px;}
 .dash.is-rpg .dash-card-body > :first-child > .dash-empty:first-child{margin-top:0;}
 .dash.is-rpg .dash-quest-empty,.dash.is-rpg .dash-quest-empty p{margin-top:0;padding-top:0;}
+
+/* Card dividers: drawn as square 6px dashes (a hard-stop gradient), not a
+   dashed border, which Chrome stretches and softens at the ends on
+   fractional widths. Same 2px line, same 16px either side. */
+.dash.is-rpg :is(.dash-card-head,.rpg-panel-head),
+.dash.is-rpg .dash-grid.is-personal-focus .dash-card-head{--dash-rule:color-mix(in srgb,var(--rpg-frame) 70%,transparent);border-bottom:0;padding-bottom:18px;background:repeating-linear-gradient(90deg,var(--dash-rule) 0 6px,transparent 6px 12px) left bottom/100% 2px no-repeat;}
+:root[data-skin="geist-contrast"] .dash.is-rpg :is(.dash-card,.rpg-panel) :is(.dash-card-head,.rpg-panel-head){--dash-rule:var(--border);}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning{border-top:0;padding-top:18px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--rpg-frame) 80%,transparent) 0 6px,transparent 6px 12px) left top/100% 2px no-repeat;}
+/* The line between rows is each row's top border; rounded row corners bent its
+   ends. Rows are square, so the lines run straight edge to edge. */
+.dash.is-rpg :is(.dash-row,.dash-quest-row,.dash-habit,.dash-quest-open){border-radius:0;}

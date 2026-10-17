@@ -56,8 +56,9 @@
   function positionPopup(trigger, popup) {
     var rect = trigger.getBoundingClientRect();
     var gap = 4;
-    popup.style.minWidth = Math.max(rect.width, 160) + 'px';
-    popup.style.maxWidth = Math.min(440, window.innerWidth - 16) + 'px';
+    // As wide as its button; wider only when an option's text needs it.
+    popup.style.minWidth = rect.width + 'px';
+    popup.style.maxWidth = (window.innerWidth - 16) + 'px';
     var popupH = Math.min(popup.scrollHeight || 280, 320);
     var spaceBelow = window.innerHeight - rect.bottom;
     var openBelow = spaceBelow >= popupH + gap || spaceBelow >= rect.top;

@@ -544,3 +544,24 @@ def test_habit_form_hides_weekly_count_for_daily_and_lists_scroll_with_an_arrow(
     page.evaluate("() => { const s = document.querySelector('[data-form=habit] select[name=cadence]'); s.value = 'weekly'; s.dispatchEvent(new Event('change')); }")
     assert visible() is True
     assert page.evaluate("() => getComputedStyle(document.querySelector('.dash')).userSelect") == "none"
+
+
+def test_card_dividers_are_square_dashes_and_dropdowns_match_their_button(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-card.is-learning-log .themed-select-trigger", timeout=15000)
+    rules = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-card-head,.rpg-panel-head)')].map(h => [getComputedStyle(h).borderBottomStyle, getComputedStyle(h).backgroundImage.startsWith('repeating-linear-gradient')])")
+    assert rules and all(style == "none" and gradient for style, gradient in rules)
+    radii = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-row,.dash-quest-row,.dash-habit)')].map(r => getComputedStyle(r).borderTopLeftRadius)")
+    assert radii and set(radii) == {"0px"}  # rounded rows bent the lines between them
+    # Open and measure in one step, so a background repaint can't swap the button out.
+    widths = page.evaluate("""() => { const t = document.querySelectorAll('.dash-card.is-learning-log .themed-select-trigger')[1];  // Career / Personal / Business
+        t.click(); const p = document.querySelector('.themed-select-popup'); return p ? [p.getBoundingClientRect().width, t.getBoundingClientRect().width] : null; }""")
+    assert widths and abs(widths[0] - widths[1]) <= 1  # the options fit: as wide as the button
+    page.mouse.click(5, 5)
+    grown = page.evaluate("""() => { const s = document.createElement('select'); s.innerHTML = '<option>A</option><option>' + 'A much longer option label '.repeat(3) + '</option>';
+        const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:20px;top:20px;width:80px'; host.appendChild(s); document.body.appendChild(host);
+        window.enhanceThemedSelect(s); const t = host.querySelector('.themed-select-trigger'); t.click();
+        const p = document.querySelector('.themed-select-popup'), opt = p.querySelectorAll('.themed-select-option')[1];
+        return {popup: p.getBoundingClientRect().width, trigger: t.getBoundingClientRect().width, cut: opt.scrollWidth > opt.clientWidth + 1}; }""")
+    assert grown["popup"] > grown["trigger"] and not grown["cut"]  # long text widens the list instead of being cut
