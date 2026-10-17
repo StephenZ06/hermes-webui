@@ -267,3 +267,20 @@ def test_achievements_fill_whole_rows_and_each_one_is_unique():
 
     keys = [a[0] for a in dashboard_game.ACHIEVEMENTS]
     assert len(keys) == len(set(keys)) == 24  # 24 tiles: whole rows of 2, 3, 4, 6 or 8
+
+
+def test_the_treasury_tracks_gold_in_and_out(game):
+    dashboard_game, work_hub = game
+    item = _item(work_hub, "Ship it", priority="high")
+    _finish(work_hub, item)  # 50 XP -> 25 gold, plus the First Steps achievement (50)
+    dashboard_game.character()
+    reward = dashboard_game.add_reward({"name": "Coffee", "cost": 30, "icon": "☕"})["reward"]
+    dashboard_game.add_reward({"name": "Keyboard", "cost": 5000})
+    dashboard_game.redeem(reward["id"])
+    t = dashboard_game.treasury()
+    assert t["gold"]["spent"] == 30 and t["gold"]["balance"] == t["gold"]["earned"] - 30
+    assert t["stats"]["earned_today"] == t["gold"]["earned"] and t["stats"]["redeemed"] == 1
+    assert t["saving_for"]["name"] == "Keyboard" and t["saving_for"]["short"] == 5000 - t["gold"]["balance"]
+    kinds = [f["kind"] for f in t["ledger"]]
+    assert "spend" in kinds and "achievement" in kinds and "earn" in kinds
+    assert len(t["days"]) == 14 and t["days"][-1]["spent"] == 30

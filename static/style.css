@@ -13358,3 +13358,88 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg .rpg-xpbar i.on{background:linear-gradient(180deg,#ffe08a,#e0a91c);box-shadow:inset 0 2px 0 rgba(255,255,255,.35);}
 .dash.is-rpg .rpg-radar-shape{fill:color-mix(in srgb,var(--rpg-gold) 28%,transparent);stroke:var(--rpg-gold);}
 .dash.is-rpg .rpg-rank{background:color-mix(in srgb,var(--rpg-gold) 14%,transparent);color:var(--rpg-gold);}
+
+/* ── Character round 9 ─────────────────────────────────────────────────────── */
+/* Hero frame: the gold blade frame art over an inset night scene. */
+.dash.is-rpg .rpg-stage{border:0;border-image:none;background:none;padding:0;filter:drop-shadow(0 8px 0 rgba(0,0,0,.35));}
+.dash.is-rpg .rpg-stage::before{content:none;}
+.dash.is-rpg .rpg-stage::after{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;background:url("dashboard/frame-gold.png") center/100% 100% no-repeat;image-rendering:pixelated;}
+.dash.is-rpg .rpg-stage .rpg-frame-gem{display:none;}
+.rpg-stage-scene{position:absolute;inset:6.5% 10.5%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;padding:12px 8px 14px;overflow:hidden;background:radial-gradient(circle at 50% 70%,var(--stage-glow,#2a2418) 0%,transparent 60%),linear-gradient(180deg,#0b0b0d 0%,#121215 55%,#19191d 100%);}
+.rpg-stage-scene::before{content:"";position:absolute;left:0;right:0;bottom:0;height:52px;background:repeating-linear-gradient(90deg,#1f1f23 0 16px,#19191c 16px 32px);box-shadow:inset 0 3px 0 #2e2e33;}
+.rpg-stage-scene > *{position:relative;}
+.rpg-stage-scene > .rpg-stars,.rpg-stage-scene > .rpg-aura{position:absolute;}
+.rpg-stage-scene .px-hero{max-width:100%;height:auto;}
+@media (max-width:900px){.dash.is-rpg .rpg-stage{aspect-ratio:924/1421;width:min(100%,300px);min-height:0;justify-self:center;}}
+
+/* Level card: four columns lined up with the badges below. The radar takes
+   the first, the attributes the middle two, evolution the last. */
+.dash.is-rpg .rpg-body{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.dash.is-rpg .rpg-body .rpg-radar{grid-column:1;width:100%;height:auto;max-width:190px;justify-self:center;align-self:center;}
+.dash.is-rpg .rpg-body .rpg-stats{grid-column:2 / 4;padding-left:8px;}
+.dash.is-rpg .rpg-body .rpg-evo{grid-column:4;}
+.dash.is-rpg .rpg-stat{grid-template-columns:40px minmax(0,1fr) 64px 26px;}
+@media (max-width:1100px){.dash.is-rpg .rpg-body{grid-template-columns:repeat(2,minmax(0,1fr));}.dash.is-rpg .rpg-body .rpg-radar{grid-column:1;}.dash.is-rpg .rpg-body .rpg-stats{grid-column:2;padding-left:0;}.dash.is-rpg .rpg-body .rpg-evo{grid-column:1 / -1;}}
+@media (max-width:620px){.dash.is-rpg .rpg-body{grid-template-columns:minmax(0,1fr);}.dash.is-rpg .rpg-body > *{grid-column:1 / -1!important;}}
+.dash.is-rpg button.rpg-gold{border:0;background:none;padding:0;cursor:pointer;}
+.dash.is-rpg button.rpg-gold:is(:hover,:focus-visible){text-decoration:underline;text-underline-offset:4px;outline:none;}
+
+/* Achievements: the badge fills the top of the tile; title and line below. */
+.dash.is-rpg .rpg-achs{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));}
+.dash.is-rpg .rpg-ach{position:relative;height:184px;padding:10px 8px 10px;gap:6px;justify-content:flex-start;}
+.rpg-ach-art{position:relative;display:grid;place-items:center;flex:none;width:100%;height:112px;}
+.rpg-ach-art img{width:108px;height:108px;object-fit:contain;filter:drop-shadow(0 4px 0 rgba(0,0,0,.35));transition:transform .2s steps(3);}
+.rpg-ach-medal{display:grid;place-items:center;width:84px;height:84px;font-size:38px;line-height:1;background:radial-gradient(circle at 50% 40%,#2c2a24,#121214 70%);border:4px solid #e0a91c;box-shadow:0 0 0 3px #3a2600,inset 0 0 0 3px #7a5810,0 4px 0 3px rgba(0,0,0,.35);clip-path:polygon(24% 0,76% 0,100% 24%,100% 76%,76% 100%,24% 100%,0 76%,0 24%);}
+.rpg-ach-text{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1 1 auto;min-height:0;width:100%;overflow:hidden;}
+.dash.is-rpg .rpg-ach .rpg-ach-text strong{font-size:16px;line-height:1.05;}
+.dash.is-rpg .rpg-ach .rpg-ach-text small{font-size:14px;line-height:1.1;}
+.dash.is-rpg .rpg-ach.is-locked .rpg-ach-art :is(img,.rpg-ach-medal){filter:grayscale(1) brightness(.35);}
+.dash.is-rpg .rpg-ach.is-locked .rpg-ach-medal{border-color:#4b4b52;box-shadow:0 0 0 3px #19191c,inset 0 0 0 3px #2a2a2e;}
+.dash.is-rpg .rpg-ach.is-locked{opacity:.75;}
+.rpg-ach-lock{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%230a0a0b' d='M3 1h6v1h1v3h1v7H1V5h1V2h1z'/%3E%3Cpath fill='%239ca3af' d='M4 2h4v1h1v2H8V3H4v2H3V3h1z'/%3E%3Cpath fill='%236b7280' d='M2 6h8v5H2z'/%3E%3Cpath fill='%23d1d5db' d='M2 6h8v1H2z'/%3E%3Cpath fill='%230a0a0b' d='M5 8h2v2H5z'/%3E%3C/svg%3E") center/contain no-repeat;image-rendering:pixelated;}
+.dash.is-rpg .rpg-ach:not(.is-locked)::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,rgba(255,246,214,.18) 50%,transparent 65%) -200% 0/200% 100% no-repeat;transition:background-position .6s ease;}
+.dash.is-rpg .rpg-ach:not(.is-locked):hover::after{background-position:200% 0;}
+.dash.is-rpg .rpg-ach:not(.is-locked):hover .rpg-ach-art img{transform:scale(1.04);}
+@media (prefers-reduced-motion:reduce){.dash.is-rpg .rpg-ach::after,.rpg-ach-art img{transition:none;}}
+
+/* Shop. */
+.shop-shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;}
+.shop-shelf > .dash-empty{grid-column:1 / -1;}
+.shop-item{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 12px 12px;border:2px solid color-mix(in srgb,var(--rpg-frame) 60%,transparent);border-radius:4px;background:color-mix(in srgb,var(--bg) 40%,transparent);text-align:center;min-width:0;}
+.shop-item.is-affordable{border-color:color-mix(in srgb,var(--rpg-gold) 60%,transparent);background:color-mix(in srgb,var(--rpg-gold) 6%,transparent);}
+.shop-item-icon{font-size:34px;line-height:1.1;}
+.shop-item strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.shop-item small{color:var(--muted);}
+.shop-item .dash-bar{width:100%;}
+.shop-item .rpg-buy{margin-top:auto;width:100%;justify-content:center;}
+.shop-item-remove{position:absolute;top:4px;right:4px;opacity:0;transition:opacity .15s ease;}
+.shop-item:is(:hover,:focus-within) .shop-item-remove{opacity:1;}
+@media (hover:none){.shop-item-remove{opacity:1;}}
+.shop-purse{display:flex;align-items:center;gap:14px;padding:4px 0 16px;}
+.shop-purse b{display:block;font:22px/1.2 var(--rpg-pixel);color:var(--rpg-gold);}
+.shop-purse small{color:var(--muted);}
+.shop-saving{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;padding:12px;border:2px dashed color-mix(in srgb,var(--rpg-gold) 45%,transparent);border-radius:4px;}
+.shop-saving-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.shop-saving-head span{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+.shop-saving small{color:var(--muted);}
+.shop-figures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.shop-figures > div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:2px solid color-mix(in srgb,var(--rpg-frame) 55%,transparent);border-radius:4px;}
+.shop-figures b{font:14px/1.2 var(--rpg-pixel);color:var(--text);}
+.shop-figures small{color:var(--muted);}
+.shop-flow{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:6px;align-items:end;height:180px;padding-top:8px;}
+.shop-flow-day{display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;}
+.shop-flow-bars{display:flex;align-items:flex-end;justify-content:center;gap:2px;flex:1 1 auto;width:100%;}
+.shop-flow-bars i{display:block;width:40%;min-height:2px;}
+.shop-flow-bars i.is-earn,.shop-flow-key i.is-earn{background:linear-gradient(180deg,#ffd75e,#e0a91c);}
+.shop-flow-bars i.is-spend,.shop-flow-key i.is-spend{background:color-mix(in srgb,var(--error,#f87171) 75%,#000);}
+.shop-flow-day small{color:var(--muted);}
+.shop-flow-key{display:flex;gap:16px;margin-top:12px;color:var(--muted);}
+.shop-flow-key span{display:inline-flex;align-items:center;gap:6px;}
+.shop-flow-key i{display:inline-block;width:10px;height:10px;}
+.shop-ledger-mark{display:grid;place-items:center;flex:none;width:22px;height:22px;border:2px solid currentColor;font:10px/1 var(--rpg-pixel);color:var(--rpg-gold);}
+.shop-ledger-mark.is-spend{color:color-mix(in srgb,var(--error,#f87171) 80%,#fff);}
+.shop-ledger-mark.is-achievement{color:#fff6d6;}
+.shop-ledger-gold{flex:none;font:11px/1 var(--rpg-pixel);color:var(--rpg-gold);}
+.shop-ledger-gold.is-spend{color:color-mix(in srgb,var(--error,#f87171) 85%,#fff);}
+.shop-item .dash-bar,.shop-saving .dash-bar{flex:none;align-self:stretch;width:auto;height:8px;min-height:8px;}
+.shop-item strong{display:block;}

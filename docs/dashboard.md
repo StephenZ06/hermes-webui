@@ -12,7 +12,8 @@ Work Hub, Jobs and Notes stay the owners of their own data.
 | Personal | Habits (daily or n times a week, streaks, 21-day heatmap), personal quests, learning log, project health, scheduled jobs (failing ones first), recent notes |
 | Career | Jobs pipeline totals, career quests, skills gained, the funnel, this week's activity |
 | Business | Sales connection, revenue/MRR/sales/customers, goals with streaks, road to $10k, milestones, 6-month revenue, recent sales, business quests |
-| Character | The warlock in a pixel frame; the level card (level, XP bar, STR/INT/CHA/VIT/DEX as bars, an evolution carousel with locked forms chained, streak and XP badges); achievements (24), chronicle (XP log), party (agent profiles, two to a row), treasury and rewards, realms. Quests live on the Personal, Career and Business tabs. |
+| Character | The warlock in a pixel frame; the level card (level, XP bar, STR/INT/CHA/VIT/DEX as bars, an evolution carousel with locked forms chained, streak and XP badges); achievements (24, with badge art where it exists), chronicle (XP log), party (agent profiles, two to a row), realms. Quests live on the Personal, Career and Business tabs. |
+| Shop | Gold balance, earned today / this week, spent this month; the rewards shelf (add your own, buy with gold); the purse with what you are saving for and all-time figures; gold flow over 14 days; a ledger of every gold in (XP, achievements) and out (rewards). |
 | Settings | Sales platform connection, project realms (which area each project's XP counts towards) |
 
 The four summary tiles at the top of Personal, Career and Business are
@@ -61,7 +62,7 @@ Each award is written once to a ledger under a stable key, so reopening or
 deleting an item later does not take XP back (unticking a habit or removing a
 learning entry does). Level n needs 100 + 25(n-1) XP. Tiers: Apprentice (1),
 Adept (5), Sorcerer (10), Archmage (20), Legendary (35). Gold is half of all
-XP plus 50 per achievement, spent on rewards you define in the Treasury.
+XP plus 50 per achievement, spent on rewards you define in the Shop (below Character in the side panel).
 Reaching a new level shows a level-up card once per level on each browser,
 naming the new form when the level crosses a tier.
 

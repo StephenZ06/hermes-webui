@@ -258,20 +258,27 @@ def test_a_manual_sale_meets_a_goal_and_unlocks_the_first_sale_milestone(browser
     assert "Pro plan" in page.evaluate("() => document.querySelector('.dash-body').textContent")
 
 
-def test_a_reward_is_bought_with_gold_on_the_character_page(browser):
+def test_a_reward_is_bought_with_gold_in_the_shop(browser):
     item = _post("/api/work_hub/items/create", {"item": {"title": f"Gold {uuid.uuid4().hex[:4]}", "priority": "high"}, "expected_revision": _rev()})["item"]["id"]
     _post("/api/work_hub/items/update", {"item_id": item, "item": {"status": "done"}, "expected_revision": _rev()})
-    page = _dashboard(browser, "character")
+    page = _dashboard(browser, "shop")
     page.wait_for_selector("[data-form-open=reward]", timeout=15000)
     page.evaluate("() => document.querySelector('[data-form-open=reward]').click()")
     page.fill("form[data-form=reward] input[name=name]", "Coffee break")
     page.fill("form[data-form=reward] input[name=cost]", "5")
     page.evaluate("() => document.querySelector('form[data-form=reward] [type=submit]').click()")
-    buy = page.wait_for_selector(".rpg-reward:has-text('Coffee break') [data-reward-redeem]:not([disabled])", timeout=10000)
-    before = page.evaluate("() => parseInt(document.querySelector('.rpg-purse b').textContent.replace(/\\D/g, ''), 10)")
+    buy = page.wait_for_selector(".shop-item:has-text('Coffee break') [data-reward-redeem]:not([disabled])", timeout=10000)
+    before = page.evaluate("() => parseInt(document.querySelector('.shop-purse b').textContent.replace(/\\D/g, ''), 10)")
     buy.evaluate("el => el.click()")
-    page.wait_for_function(f"() => parseInt(document.querySelector('.rpg-purse b')?.textContent.replace(/\\D/g, ''), 10) === {before} - 5", polling=100, timeout=10000)
-    assert "Coffee break" in page.evaluate("() => document.querySelector('.rpg-history').textContent")
+    page.wait_for_function(f"() => parseInt(document.querySelector('.shop-purse b')?.textContent.replace(/\\D/g, ''), 10) === {before} - 5", polling=100, timeout=10000)
+    assert page.locator(".shop-ledger-row:has-text('Coffee break') .shop-ledger-gold.is-spend").count() == 1
+    nav = page.evaluate("() => [...document.querySelectorAll('#dashboardSidebar [data-dash-tab]')].map(b => b.dataset.dashTab)")
+    assert nav[:2] == ["character", "shop"]  # the Shop sits under Character
+    assert page.locator("[data-dash-card=flow] .shop-flow-day").count() == 14
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_selector(".rpg-stage", timeout=10000)
+    assert page.locator(".rpg-purse").count() == 0  # the treasury moved to the Shop
+
 
 
 def test_libraries_dev_effects_mount_on_the_character_page(browser):
@@ -614,3 +621,15 @@ def test_character_page_frame_evolution_party_achievements_and_level_up(browser)
     assert str(data["level"]) in page.inner_text(".rpg-levelup-levels")
     page.click("[data-levelup-close]")
     page.wait_for_function("() => !document.querySelector('.rpg-levelup')", polling=50, timeout=3000)
+
+
+def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 1000})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-ach", timeout=15000)
+    assert "frame-gold.png" in page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage'), '::after').backgroundImage")
+    cols = page.evaluate("""() => { const e = document.querySelector('.rpg-evo').getBoundingClientRect(), b = [...document.querySelectorAll('.rpg-badges > div')].pop().getBoundingClientRect();
+        return [Math.round(e.left - b.left), Math.round(e.width - b.width)]; }""")
+    assert cols == [0, 0]  # evolution lines up with the badge below it
+    art = page.evaluate("() => [...document.querySelectorAll('.rpg-ach.has-art img')].map(i => [i.naturalWidth > 0, i.getAttribute('src')])")
+    assert len(art) == 5 and all(ok for ok, _ in art)

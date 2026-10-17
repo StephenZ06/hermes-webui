@@ -594,6 +594,64 @@ def redeem(reward_id: str) -> dict[str, Any]:
         return {"redeemed": reward["name"], "gold": _gold(conn)}
 
 
+def treasury(now: float | None = None) -> dict[str, Any]:
+    """The Shop page: balance, rewards, gold earned and spent over time, the
+    next reward to save for, and one ledger of gold in (XP, achievements) and
+    out (rewards)."""
+    from datetime import date, datetime, timedelta
+
+    now = time.time() if now is None else now
+    sync()
+    today = datetime.fromtimestamp(now).date()
+
+    def start(day: date) -> float:
+        return datetime(day.year, day.month, day.day).timestamp()
+
+    with _LOCK, _connect() as conn:
+        gold = _gold(conn)
+        rewards = [dict(r) for r in conn.execute("SELECT * FROM rewards WHERE archived_at IS NULL ORDER BY cost")]
+        spends = [dict(r) for r in conn.execute("SELECT * FROM redemptions ORDER BY at DESC")]
+        events = [dict(r) for r in conn.execute("SELECT key, source, category, title, xp, at FROM xp_events ORDER BY at DESC")]
+        unlocks = {r["key"]: r["unlocked_at"] for r in conn.execute("SELECT * FROM achievements")}
+    titles = {a[0]: a[1] for a in ACHIEVEMENTS}
+    flows = [{"kind": "earn", "title": e["title"], "gold": e["xp"] * GOLD_PER_XP, "at": e["at"], "category": e["category"], "source": e["source"]} for e in events]
+    flows += [{"kind": "achievement", "title": f"Achievement: {titles.get(k, k)}", "gold": ACHIEVEMENT_GOLD, "at": at} for k, at in unlocks.items()]
+    flows += [{"kind": "spend", "title": r["name"], "gold": -r["cost"], "at": r["at"]} for r in spends]
+    flows.sort(key=lambda f: -f["at"])
+
+    def earned_since(t: float) -> int:
+        return int(sum(f["gold"] for f in flows if f["gold"] > 0 and f["at"] >= t))
+
+    days = []
+    for back in range(13, -1, -1):
+        day = today - timedelta(days=back)
+        lo, hi = start(day), start(day + timedelta(days=1))
+        inside = [f for f in flows if lo <= f["at"] < hi]
+        days.append({"day": day.isoformat(), "label": day.strftime("%a")[:2], "earned": int(sum(f["gold"] for f in inside if f["gold"] > 0)),
+                     "spent": int(-sum(f["gold"] for f in inside if f["gold"] < 0))})
+    week_start = start(today - timedelta(days=today.weekday()))
+    month_start = start(today.replace(day=1))
+    first = min((f["at"] for f in flows), default=now)
+    active_days = max(1, int((now - first) // 86400) + 1)
+    best = max(days, key=lambda d: d["earned"]) if days else None
+    goal = next((r for r in rewards if r["cost"] > gold["balance"]), None)
+    return {
+        "gold": gold,
+        "rewards": [{**r, "affordable": r["cost"] <= gold["balance"], "progress": round(min(1.0, gold["balance"] / r["cost"]), 4)} for r in rewards],
+        "stats": {
+            "earned_today": earned_since(start(today)), "earned_week": earned_since(week_start), "earned_month": earned_since(month_start),
+            "spent_month": int(-sum(f["gold"] for f in flows if f["gold"] < 0 and f["at"] >= month_start)),
+            "redeemed": len(spends), "per_day": round(gold["earned"] / active_days, 1),
+            "best_day": best if best and best["earned"] else None,
+            "biggest": max(spends, key=lambda r: r["cost"])["name"] if spends else None,
+        },
+        "saving_for": {**goal, "short": goal["cost"] - gold["balance"], "progress": round(gold["balance"] / goal["cost"], 4)} if goal else None,
+        "days": days,
+        "ledger": [{**f, "gold": int(round(f["gold"]))} for f in flows[:40]],
+        "ledger_total": len(flows),
+    }
+
+
 def shop() -> dict[str, Any]:
     with _LOCK, _connect() as conn:
         rewards = [dict(r) for r in conn.execute("SELECT * FROM rewards WHERE archived_at IS NULL ORDER BY cost")]

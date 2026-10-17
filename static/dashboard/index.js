@@ -35,14 +35,15 @@
     layers: '<path d="M3 7h18M3 12h18M3 17h18"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    shop: '<path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
   };
   const TABS = [
     {key: 'personal', label: 'Personal'},
     {key: 'career', label: 'Career'},
     {key: 'business', label: 'Business'},
   ];
-  const VIEWS = ['character', 'personal', 'career', 'business', 'settings'];
-  const VIEW_TITLE = {character: 'CHARACTER', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};
+  const VIEWS = ['character', 'shop', 'personal', 'career', 'business', 'settings'];
+  const VIEW_TITLE = {character: 'CHARACTER', shop: 'SHOP', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};
   // Card icons drawn as pixel art (static/dashboard/icons), by card.
   const PIX = (name) => `<img class="dash-pix-icon" data-dash-pix="${name}" src="static/dashboard/icons/${name}.png" alt="" width="24" height="24" draggable="false">`;
   const AREA = {personal: 'Personal', career: 'Career', business: 'Business'};
@@ -348,6 +349,8 @@
 
   // ── Character (RPG) ──────────────────────────────────────────────────────
   const STATS = ['STR', 'INT', 'CHA', 'VIT', 'DEX'];
+  // Achievements with badge art in static/dashboard/achievements/<key>.png.
+  const ACH_ART = new Set(['first_task', 'first_quest', 'quests_10', 'tasks_50', 'streak_7']);
   function radar(stats) {
     const max = Math.max(10, ...STATS.map((k) => (stats[k] || {}).value || 0));
     const c = 80, r = 58, n = STATS.length;
@@ -408,23 +411,12 @@
       </div>`).join('') || '<p class="dash-empty">No agent profiles yet.</p>';
     const achievements = data.achievements || [];
     const newest = achievements.filter((a) => a.unlocked_at).sort((a, b) => b.unlocked_at - a.unlocked_at)[0];
-    const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}" title="${esc(a.description)}">
-        <span class="rpg-ach-icon" aria-hidden="true">${esc(a.icon)}</span><strong>${esc(a.title)}</strong>
-        ${newest && newest.key === a.key && a.new ? '<span class="dash-new" data-ld="metal-badge">New</span>' : `<small>${a.unlocked_at ? ago(a.unlocked_at) : esc(a.description)}</small>`}
+    // Achievements with their own badge art fill most of the tile; the rest
+    // get a pixel medallion around their icon. Locked ones stay dark until earned.
+    const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${ACH_ART.has(a.key) ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}">
+        <span class="rpg-ach-art" aria-hidden="true">${ACH_ART.has(a.key) ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? '' : '<span class="rpg-ach-lock"></span>'}</span>
+        <span class="rpg-ach-text"><strong>${esc(a.title)}</strong>${newest && newest.key === a.key && a.new ? '<span class="dash-new" data-ld="metal-badge">New</span>' : `<small>${a.unlocked_at ? ago(a.unlocked_at) : esc(a.description)}</small>`}</span>
       </div>`).join('');
-    const shop = data.shop || {rewards: [], history: []};
-    const rewardForm = state.forms.reward ? `<form class="dash-inline-form" data-form="reward">
-        <input name="icon" type="text" maxlength="4" placeholder="🎮" aria-label="Icon" class="is-icon">
-        <input name="name" type="text" maxlength="120" placeholder="1 hour of gaming" required aria-label="Reward">
-        <input name="cost" type="number" min="1" step="1" placeholder="200" required aria-label="Cost in gold" class="is-cost">
-        <button type="submit" class="dash-btn is-small">Add</button><button type="button" class="dash-link" data-form-cancel="reward">Cancel</button>
-      </form>` : '';
-    const rewards = (shop.rewards || []).map((r) => `<div class="rpg-reward${gold >= r.cost ? '' : ' is-short'}">
-        <span class="rpg-reward-icon" aria-hidden="true">${esc(r.icon || '🎁')}</span><span class="dash-row-main"><strong>${esc(r.name)}</strong><small>${gold >= r.cost ? 'Affordable' : `${r.cost - gold} gold short`}</small></span>
-        <button type="button" class="rpg-buy" data-reward-redeem="${esc(r.id)}"${gold >= r.cost ? '' : ' disabled'}><span class="rpg-coin" aria-hidden="true"></span>${r.cost}</button>
-        <button type="button" class="dash-icon-btn" data-reward-remove="${esc(r.id)}" aria-label="Remove reward" title="Remove reward">${svg('x', 13)}</button>
-      </div>`).join('') || (state.forms.reward ? '' : '<p class="dash-empty">Add treats you can buy with gold: you earn half your XP as gold, plus 50 per achievement.</p>');
-    const history = (shop.history || []).slice(0, 4).map((h) => `<li>${esc(h.name)} <small>−${h.cost} · ${ago(h.at)}</small></li>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
     const filter = state.logCategory || 'all';
     const chips = ['all', 'personal', 'career', 'business'].map((k) => `<button type="button" class="dash-chip${filter === k ? ' on' : ''}" data-log-filter="${k}">${k === 'all' ? 'All' : AREA[k]}</button>`).join('');
@@ -434,14 +426,15 @@
     return `<div class="rpg">
       <div class="rpg-hero">
         <div class="rpg-stage" data-tier="${data.tier}">
-          <i class="rpg-frame-gem is-top" aria-hidden="true"></i><i class="rpg-frame-gem is-bottom" aria-hidden="true"></i><i class="rpg-frame-gem is-left" aria-hidden="true"></i><i class="rpg-frame-gem is-right" aria-hidden="true"></i>
-          <div class="rpg-stars" aria-hidden="true"></div>
-          <div class="rpg-aura" aria-hidden="true"></div>
-          ${window.DashSprite.render(data.tier, 6)}
-          <div class="rpg-plate"><span class="rpg-plate-level">LV ${data.level}</span><span class="rpg-plate-class">${esc(data.tier_name)} Warlock</span></div>
+          <div class="rpg-stage-scene">
+            <div class="rpg-stars" aria-hidden="true"></div>
+            <div class="rpg-aura" aria-hidden="true"></div>
+            ${window.DashSprite.render(data.tier, 6)}
+            <div class="rpg-plate"><span class="rpg-plate-level">LV ${data.level}</span><span class="rpg-plate-class">${esc(data.tier_name)} Warlock</span></div>
+          </div>
         </div>
         <div class="rpg-sheet rpg-panel">
-          <div class="rpg-title"><h2><span data-ld="metal-text" data-text="Level ${data.level}">Level ${data.level}</span></h2><span class="rpg-rank">${esc(data.tier_name)}</span><span class="rpg-gold" title="Gold"><span class="rpg-coin" aria-hidden="true"></span>${gold.toLocaleString()}</span></div>
+          <div class="rpg-title"><h2><span data-ld="metal-text" data-text="Level ${data.level}">Level ${data.level}</span></h2><span class="rpg-rank">${esc(data.tier_name)}</span><button type="button" class="rpg-gold" data-dash-tab="shop" title="Open the Shop"><span class="rpg-coin" aria-hidden="true"></span>${gold.toLocaleString()}</button></div>
           ${xpbar}
           <div class="rpg-xpline"><span>${data.into_level} / ${data.level_size} XP</span><span>${toNext} XP to level ${data.level + 1}${data.next_tier ? ` · ${esc(data.next_tier.name)} at ${data.next_tier.level}` : ''}</span></div>
           <div class="rpg-body">${radar(stats)}<div class="rpg-stats">${statRows}</div><div class="rpg-evo" data-evo>${evolutionView(data)}</div></div>
@@ -460,11 +453,66 @@
         </div>
         <div class="rpg-col">
           ${panel('Party', `<div class="rpg-party">${party}</div>`, {pix: 'party'})}
-          ${panel('Treasury', `<div class="rpg-purse"><span class="rpg-coin is-big" aria-hidden="true"></span><b>${gold.toLocaleString()}</b><small>gold · ${(((shop.gold || {}).earned) || 0).toLocaleString()} earned</small></div>${rewardForm}<div class="rpg-rewards">${rewards}</div>${history ? `<ul class="rpg-history">${history}</ul>` : ''}`, {pix: 'treasury', action: state.forms.reward ? '' : btn('Reward', 'data-form-open="reward"', {icon: 'plus', cls: 'is-small is-gold'})})}
           ${panel('Realms', areas, {pix: 'realms'})}
         </div>
       </div>
     </div>`;
+  }
+
+
+  // ── Shop ─────────────────────────────────────────────────────────────────
+  // The treasury hub: what you have, what you can buy, how gold comes and goes.
+  function shopView(data) {
+    const t = data.treasury || {};
+    if (t.error) return sectionError(t);
+    const gold = t.gold || {balance: 0, earned: 0, spent: 0};
+    const st = t.stats || {};
+    const n = (v) => Number(v || 0).toLocaleString();
+    const stats = `<div class="dash-stats">
+      ${stat('Gold balance', n(gold.balance), 'in your purse', '', 'treasury', 'rewards')}
+      ${stat('Earned today', `+${n(st.earned_today)}`, '', st.earned_today ? 'good' : '', 'this-week', 'ledger')}
+      ${stat('This week', `+${n(st.earned_week)}`, `+${n(st.earned_month)} this month`, '', 'revenue', 'flow')}
+      ${stat('Spent this month', n(st.spent_month), plural(st.redeemed || 0, 'reward') + ' bought', '', 'recent-sales', 'ledger')}
+    </div>`;
+    const rewardForm = state.forms.reward ? `<form class="dash-inline-form" data-form="reward">
+        <input name="icon" type="text" maxlength="4" placeholder="🎮" aria-label="Icon" class="is-icon">
+        <input name="name" type="text" maxlength="120" placeholder="1 hour of gaming" required aria-label="Reward">
+        <input name="cost" type="number" min="1" step="1" placeholder="200" required aria-label="Cost in gold" class="is-cost">
+        <button type="submit" class="dash-btn is-small">Add</button><button type="button" class="dash-link" data-form-cancel="reward">Cancel</button>
+      </form>` : '';
+    const shelf = (t.rewards || []).map((r) => `<div class="shop-item${r.affordable ? ' is-affordable' : ''}">
+        <button type="button" class="dash-icon-btn shop-item-remove" data-reward-remove="${esc(r.id)}" aria-label="Remove ${esc(r.name)}" title="Remove reward">${svg('x', 13)}</button>
+        <span class="shop-item-icon" aria-hidden="true">${esc(r.icon || '🎁')}</span>
+        <strong>${esc(r.name)}</strong>
+        ${r.affordable ? '<small>Ready to buy</small>' : `<small>${n(r.cost - gold.balance)} gold to go</small>${bar(r.progress)}`}
+        <button type="button" class="rpg-buy" data-reward-redeem="${esc(r.id)}"${r.affordable ? '' : ' disabled'}><span class="rpg-coin" aria-hidden="true"></span>${n(r.cost)}</button>
+      </div>`).join('') || (state.forms.reward ? '' : '<p class="dash-empty">Add treats you can buy with gold, like an hour of gaming or a takeaway. You earn half your XP as gold, plus 50 per achievement.</p>');
+    const saving = t.saving_for;
+    const purse = `<div class="shop-purse"><span class="rpg-coin is-big" aria-hidden="true"></span><span><b>${n(gold.balance)}</b><small>gold in your purse</small></span></div>
+      ${saving ? `<div class="shop-saving"><div class="shop-saving-head"><span>Saving for</span><strong>${esc(saving.icon || '🎁')} ${esc(saving.name)}</strong></div>${bar(saving.progress, 'gold')}<small>${n(saving.short)} gold to go · ${Math.round(saving.progress * 100)}%</small></div>`
+        : `<p class="dash-empty">${(t.rewards || []).length ? 'You can afford every reward on the shelf.' : 'Add a reward to start saving for it.'}</p>`}
+      <div class="shop-figures">
+        <div><b>${n(gold.earned)}</b><small>Earned all time</small></div>
+        <div><b>${n(gold.spent)}</b><small>Spent all time</small></div>
+        <div><b>${n(st.per_day)}</b><small>Gold a day</small></div>
+        <div><b>${st.best_day ? n(st.best_day.earned) : '—'}</b><small>${st.best_day ? `Best day (${esc(st.best_day.label)})` : 'Best day'}</small></div>
+      </div>`;
+    const days = t.days || [];
+    const peak = Math.max(1, ...days.map((d) => Math.max(d.earned, d.spent)));
+    const flow = `<div class="shop-flow" role="img" aria-label="Gold earned and spent over the last 14 days">${days.map((d) => `<div class="shop-flow-day" title="${esc(d.day)}: +${d.earned} / −${d.spent}">
+        <span class="shop-flow-bars"><i class="is-earn" style="height:${Math.round(d.earned / peak * 100)}%"></i><i class="is-spend" style="height:${Math.round(d.spent / peak * 100)}%"></i></span><small>${esc(d.label)}</small></div>`).join('')}</div>
+      <div class="shop-flow-key"><span><i class="is-earn"></i>Earned</span><span><i class="is-spend"></i>Spent</span></div>`;
+    const ledger = (t.ledger || []).map((f) => `<div class="dash-row shop-ledger-row"><span class="shop-ledger-mark is-${esc(f.kind)}" aria-hidden="true">${f.kind === 'spend' ? '−' : f.kind === 'achievement' ? '★' : '+'}</span><span class="dash-row-main"><strong>${esc(f.title)}</strong><small>${f.kind === 'spend' ? 'Reward bought' : f.kind === 'achievement' ? 'Achievement bonus' : esc(AREA[f.category] || 'XP')} · ${ago(f.at)}</small></span><span class="shop-ledger-gold${f.gold < 0 ? ' is-spend' : ''}">${f.gold < 0 ? '−' : '+'}${n(Math.abs(f.gold))}</span></div>`).join('')
+      || '<p class="dash-empty">Gold you earn and spend shows here.</p>';
+    return `${stats}
+      <div class="dash-grid is-wide-left">
+        ${card(`Rewards${(t.rewards || []).length ? ` · ${(t.rewards || []).length}` : ''}`, `${rewardForm}<div class="shop-shelf">${shelf}</div>`, {pix: 'treasury', key: 'rewards', action: state.forms.reward ? '' : btn('Reward', 'data-form-open="reward"', {icon: 'plus', cls: 'is-small'})})}
+        ${card('Purse', purse, {pix: 'revenue', key: 'purse'})}
+      </div>
+      <div class="dash-grid is-wide-left">
+        ${card('Gold flow · 14 days', flow, {pix: 'road-to-10k', key: 'flow'})}
+        ${card(`Ledger${t.ledger_total ? ` · ${n(t.ledger_total)}` : ''}`, ledger, {pix: 'chronicle', key: 'ledger'})}
+      </div>`;
   }
 
   // ── Libraries.dev effects ────────────────────────────────────────────────
@@ -578,7 +626,7 @@
   function paintSidebar() {
     const host = sidebar(); if (!host) return;
     const item = (key, label) => `<button type="button" class="side-menu-item${key === state.tab ? ' active' : ''}" data-dash-tab="${key}"${key === state.tab ? ' aria-current="page"' : ''}>${svg(key)}<span class="side-menu-label">${label}</span>${key === 'character' ? levelBadge() : ''}</button>`;
-    host.innerHTML = `<nav class="dash-side-nav">${item('character', 'Character')}<div class="dash-side-divider" aria-hidden="true"></div>${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('settings', 'Settings')}</nav>`;
+    host.innerHTML = `<nav class="dash-side-nav">${item('character', 'Character')}${item('shop', 'Shop')}<div class="dash-side-divider" aria-hidden="true"></div>${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('settings', 'Settings')}</nav>`;
   }
 
   function paint({force = false} = {}) {
@@ -596,7 +644,7 @@
     let body;
     if (!data && state.error[state.tab]) body = `<p class="dash-empty">${esc(state.error[state.tab])} <button type="button" class="dash-link" data-dash-retry>Retry</button></p>`;
     else if (!data) body = '<div class="dash-skeleton" aria-busy="true"><i></i><i></i><i></i><i></i></div>';
-    else body = ({character: characterView, career, business, settings: settingsView, personal})[state.tab](data);
+    else body = ({character: characterView, shop: shopView, career, business, settings: settingsView, personal})[state.tab](data);
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
     const scroll = scroller ? scroller.scrollTop : 0;
@@ -647,10 +695,11 @@
   // steps its type down until the tile's text fits.
   function fitAchievements(host) {
     host.querySelectorAll('.rpg-ach').forEach((tile) => {
-      const parts = [...tile.querySelectorAll('strong,small')];
+      const box = tile.querySelector('.rpg-ach-text') || tile;
+      const parts = [...box.querySelectorAll('strong,small')];
       parts.forEach((el) => { el.style.fontSize = ''; });
       let step = 0;
-      while (tile.scrollHeight > tile.clientHeight + 1 && step < 6) {
+      while (box.scrollHeight > box.clientHeight + 1 && step < 6) {
         step += 1;
         parts.forEach((el) => { el.style.fontSize = `${parseFloat(getComputedStyle(el).fontSize) - 1}px`; });
       }
