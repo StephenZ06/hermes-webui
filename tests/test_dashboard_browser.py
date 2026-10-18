@@ -719,9 +719,9 @@ def test_level_card_has_as_much_space_below_the_bars_as_above(browser):
 
 
 def test_character_videos_are_served_with_byte_ranges():
-    req = urllib.request.Request(BASE + "/static/dashboard/characters/apprentice.mp4", headers={"Range": "bytes=0-99"})
+    req = urllib.request.Request(BASE + "/static/dashboard/characters/ascended.mp4", headers={"Range": "bytes=0-99"})
     with urllib.request.urlopen(req, timeout=10) as res:
         assert res.status == 206 and res.headers["Content-Type"] == "video/mp4"
         assert res.headers["Content-Range"].startswith("bytes 0-99/") and len(res.read()) == 100
     from api import dashboard_game
-    assert "apprentice" in dashboard_game._character_video()
+    assert {"ascended", "celestial"} <= dashboard_game._character_video() and {"ascended", "celestial"} <= dashboard_game._character_sprite()

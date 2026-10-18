@@ -367,8 +367,11 @@
   // The warlock for a form: its animation when static/dashboard/characters/
   // <form>.mp4 exists, else the drawn sprite. Muted, looping, inline; still
   // (first frame) under reduced motion.
-  function heroArt(data, tierIndex, scale) {
+  function heroArt(data, tierIndex, scale, {sprite = false} = {}) {
     const tier = (data.tiers || [])[tierIndex];
+    // The evolution carousel shows the transparent sprite (same body height
+    // and baseline for every form) when there is one.
+    if (sprite && tier && tier.sprite) return `<img class="rpg-hero-sprite" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.webp" alt="" draggable="false">`;
     if (tier && tier.video) {
       const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       return `<video class="rpg-hero-video" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline${still ? ' preload="auto"' : ' autoplay preload="auto"'} disablepictureinpicture aria-hidden="true"></video>`;
@@ -393,7 +396,7 @@
     return `<div class="rpg-evo-head"><span>Evolution</span><small>${i + 1} / ${tiers.length}</small></div>
       <div class="rpg-evo-stage">
         <button type="button" class="rpg-evo-arrow" data-evo-step="-1" aria-label="Previous form"${i === 0 ? ' disabled' : ''}>${svg('chevron-left', 14)}</button>
-        <div class="rpg-evo-art${locked ? ' is-locked' : ''}${i === current ? ' is-current' : ''}" role="img" aria-label="${esc(t.name)}${locked ? ', locked' : ''}">${heroArt(data, i, 4)}</div>
+        <div class="rpg-evo-art${locked ? ' is-locked' : ''}${i === current ? ' is-current' : ''}" role="img" aria-label="${esc(t.name)}${locked ? ', locked' : ''}">${heroArt(data, i, 4, {sprite: true})}</div>
         <button type="button" class="rpg-evo-arrow" data-evo-step="1" aria-label="Next form"${i === tiers.length - 1 ? ' disabled' : ''}>${svg('chevron-right', 14)}</button>
       </div>
       <strong class="rpg-evo-name">${esc(t.name)}</strong>

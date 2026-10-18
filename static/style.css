@@ -13579,3 +13579,13 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .rpg-stage-scene > .rpg-plate{z-index:1;}
 .rpg-evo-art > .rpg-hero-video{width:100%;height:100%;object-fit:cover;}
 .rpg-levelup-hero > .rpg-hero-video{width:120px;height:160px;object-fit:cover;border:2px solid #7a5f2c;animation:none;}
+/* Evolution: the transparent sprite, a little larger, crisp. */
+.dash.is-rpg .rpg-evo-art{width:120px;height:120px;}
+.rpg-evo-art > .rpg-hero-sprite{width:100%;height:100%;object-fit:contain;image-rendering:auto;}
+.rpg-evo-art.is-locked > .rpg-hero-sprite{filter:grayscale(1) brightness(.45);}
+.dash.is-rpg .rpg-evo-art{width:calc(100% - 84px);max-width:132px;height:124px;} /* clear of the side arrows (12px inset + 26px + 4px each side) */
+.dash.is-rpg .rpg-evo-stage{width:100%;align-self:stretch;}
+/* The evolution card is narrow: the sprite spans its width and the arrows sit
+   over its empty outer edges (sprites are centred on a transparent square). */
+.dash.is-rpg .rpg-evo-art{width:100%;max-width:none;height:132px;}
+.dash.is-rpg .rpg-evo-arrow{z-index:3;background:color-mix(in srgb,var(--bg) 85%,transparent);}

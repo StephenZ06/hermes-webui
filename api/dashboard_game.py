@@ -78,11 +78,11 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
 NAME_MAX = 120
 
 TIERS = (  # (first level, name)
-    (1, "Apprentice"),
-    (5, "Adept"),
-    (10, "Sorcerer"),
-    (20, "Archmage"),
-    (35, "Legendary"),
+    (1, "Ascended"),
+    (5, "Disciple"),
+    (10, "Astral"),
+    (20, "Paragon"),
+    (35, "Celestial"),
 )
 
 _LOCK = threading.RLock()
@@ -823,7 +823,8 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         "log": log[offset:offset + LOG_PAGE],
         "log_total": len(log),
         "projects": projects,
-        "tiers": [{"level": first, "name": name, "video": name.lower() in _character_video()} for first, name in TIERS],
+        "tiers": [{"level": first, "name": name, "video": name.lower() in _character_video(), "sprite": name.lower() in _character_sprite()}
+                  for first, name in TIERS],
         "quests": _safe(quests, []),
         "party": _safe(party, []),
         "achievements": achievements,
@@ -870,6 +871,16 @@ def _character_video() -> set[str]:
     e.g. apprentice.mp4); the rest are drawn as pixel sprites."""
     try:
         return {f.stem.lower() for f in _VIDEO_DIR.glob("*.mp4")}
+    except OSError:
+        return set()
+
+
+def _character_sprite() -> set[str]:
+    """Forms with a transparent animated sprite (static/dashboard/characters/
+    <form>.webp) for the evolution carousel: every one is scaled so the body
+    is the same height, feet on one baseline, on a 260px square."""
+    try:
+        return {f.stem.lower() for f in _VIDEO_DIR.glob("*.webp")}
     except OSError:
         return set()
 

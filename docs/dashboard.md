@@ -60,8 +60,10 @@ one project folder (read fresh each time, so new or deleted folders show).
 
 Each award is written once to a ledger under a stable key, so reopening or
 deleting an item later does not take XP back (unticking a habit or removing a
-learning entry does). Level n needs 100 + 25(n-1) XP. Tiers: Apprentice (1),
-Adept (5), Sorcerer (10), Archmage (20), Legendary (35). Gold is half of all
+learning entry does). Level n needs 100 + 25(n-1) XP. Forms: Ascended (1),
+Disciple (5), Astral (10), Paragon (20), Celestial (35); each plays
+static/dashboard/characters/<form>.mp4 in the frame and <form>.webp in the
+evolution carousel when present. Gold is half of all
 XP plus 50 per achievement, spent on rewards you define in the Shop (below Character in the side panel).
 Reaching a new level shows a level-up card once per level on each browser,
 naming the new form when the level crosses a tier.

@@ -93,8 +93,8 @@ def test_levels_and_tiers():
     assert level_for(0)["level"] == 1 and level_for(99)["level"] == 1
     assert level_for(100)["level"] == 2 and level_for(100)["into_level"] == 0
     assert level_for(225)["level"] == 3  # 100 + 125
-    assert level_for(10_000)["tier_name"] in ("Sorcerer", "Archmage")
-    assert level_for(0)["next_tier"] == {"level": 5, "name": "Adept"}
+    assert level_for(10_000)["tier_name"] in ("Astral", "Paragon")
+    assert level_for(0)["next_tier"] == {"level": 5, "name": "Disciple"}
 
 
 def test_streak_counts_consecutive_days_and_survives_until_today_ends():
