@@ -143,8 +143,9 @@ def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
           firstIsQuests: quests.classList.contains('is-quests'),
           secondIsHabits: habits.classList.contains('is-habits'),
           questIsWider: quests.getBoundingClientRect().width > habits.getBoundingClientRect().width,
-          iconTopEqualsLeft: Math.abs((icon.top - card.top) - (icon.left - card.left)) <= 1,
-              actionTopEqualsDividerGap: Math.abs((action.top - card.top) - (divider.bottom - action.bottom)) <= 1,
+          // Measured from the frame art's bars (12px in at the top, 14.4px at the sides).
+          iconTopEqualsLeft: Math.abs((icon.top - card.top - 12) - (icon.left - card.left - 14.4)) <= 1,
+              actionTopEqualsDividerGap: Math.abs((action.top - card.top - 12) - (divider.bottom - 2 - action.bottom)) <= 1,
           titleIsCentered: Math.abs(header.querySelector('h3').getBoundingClientRect().top - icon.top) <= 8,
           formIsLast: learning.querySelector('.dash-card-body').lastElementChild === form,
           inputSpansForm: Math.abs(input.getBoundingClientRect().width - form.clientWidth) <= 1,
@@ -330,7 +331,7 @@ def test_header_controls_share_a_height_and_cards_have_equal_padding(browser):
     pads = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head')).map(c => {
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), h = c.querySelector('.dash-card-head').getBoundingClientRect();
         return [Math.round(h.top - r.top - b), Math.round(h.left - r.left - b), Math.round(r.right - b - h.right)]; })""")
-    assert pads and all(p == [16, 16, 16] for p in pads)
+    assert pads and all(p == [26, 28, 28] for p in pads)  # ~16px clear of the frame bars on every side
 
 
 def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
@@ -399,12 +400,12 @@ def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
     footer = page.evaluate("""() => { const card = document.querySelector('.dash-card.is-learning-log'), form = card.querySelector('form.is-learning'),
         button = form.querySelector('button'), selects = [...form.querySelectorAll('.themed-select-trigger')], r = card.getBoundingClientRect(), f = form.getBoundingClientRect();
         return {bottom: Math.round(r.bottom - f.bottom - parseFloat(getComputedStyle(card).borderBottomWidth)), heights: [button, ...selects].map(e => Math.round(e.getBoundingClientRect().height))}; }""")
-    assert abs(footer["bottom"] - 16) <= 1, footer
+    assert abs(footer["bottom"] - 26) <= 1, footer  # the card's bottom padding (16px clear of the frame bar)
     assert len(set(footer["heights"])) == 1
     icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head .dash-card-icon')).map(c => {
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('.dash-card-icon').getBoundingClientRect();
         return [Math.round(i.top - r.top - b), Math.round(i.left - r.left - b)]; })""")
-    assert icons and all(left == top for top, left in icons)  # icons are cropped to their visible pixels
+    assert icons and all(left - top == 2 for top, left in icons)  # equal room from the frame bars (side bars are 2.4px deeper)
 
 
 def test_the_wheel_moves_on_to_the_page_once_a_card_has_scrolled_to_its_end(browser):
