@@ -349,8 +349,6 @@
 
   // ── Character (RPG) ──────────────────────────────────────────────────────
   const STATS = ['STR', 'INT', 'CHA', 'VIT', 'DEX'];
-  // Achievements with badge art in static/dashboard/achievements/<key>.png.
-  const ACH_ART = new Set(['first_task', 'first_quest', 'quests_10', 'tasks_50', 'streak_7']);
   function radar(stats) {
     const max = Math.max(10, ...STATS.map((k) => (stats[k] || {}).value || 0));
     const c = 80, r = 58, n = STATS.length;
@@ -413,8 +411,8 @@
     const newest = achievements.filter((a) => a.unlocked_at).sort((a, b) => b.unlocked_at - a.unlocked_at)[0];
     // Achievements with their own badge art fill most of the tile; the rest
     // get a pixel medallion around their icon. Locked ones stay dark until earned.
-    const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${ACH_ART.has(a.key) ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}${a.unlocked_at ? ` · earned ${esc(ago(a.unlocked_at))}` : ''}">
-        <span class="rpg-ach-art" aria-hidden="true">${ACH_ART.has(a.key) ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? '' : '<span class="rpg-ach-lock"></span>'}</span>
+    const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${a.art ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}${a.unlocked_at ? ` · earned ${esc(ago(a.unlocked_at))}` : ''}">
+        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('static/dashboard/achievements/${esc(a.key)}.png')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
         <span class="rpg-ach-text"><strong>${esc(a.title)}</strong><small>${esc(a.description)}</small></span>
       </div>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
@@ -711,7 +709,7 @@
   function fitAchievements(host) {
     host.querySelectorAll('.rpg-ach').forEach((tile) => {
       const box = tile.querySelector('.rpg-ach-text') || tile;
-      const parts = [...box.querySelectorAll('strong,small')];
+      const parts = [...box.querySelectorAll('small')];  // titles stay one size; only the line under them shrinks
       parts.forEach((el) => { el.style.fontSize = ''; });
       let step = 0;
       while (box.scrollHeight > box.clientHeight + 1 && step < 6) {

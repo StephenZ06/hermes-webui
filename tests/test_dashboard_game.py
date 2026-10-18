@@ -284,3 +284,11 @@ def test_the_treasury_tracks_gold_in_and_out(game):
     kinds = [f["kind"] for f in t["ledger"]]
     assert "spend" in kinds and "achievement" in kinds and "earn" in kinds
     assert len(t["days"]) == 14 and t["days"][-1]["spent"] == 30
+
+
+def test_achievements_say_which_ones_have_badge_art():
+    from api import dashboard_game
+
+    art = dashboard_game._achievement_art()
+    assert {"first_task", "habit_month", "tasks_200"} <= art
+    assert art <= {a[0] for a in dashboard_game.ACHIEVEMENTS}  # every art file belongs to an achievement

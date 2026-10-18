@@ -636,7 +636,14 @@ def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
         return [Math.round(e.left - b.left), Math.round(e.width - b.width)]; }""")
     assert cols == [0, 0]  # evolution lines up with the badge below it
     art = page.evaluate("() => [...document.querySelectorAll('.rpg-ach.has-art img')].map(i => [i.naturalWidth > 0, i.getAttribute('src')])")
-    assert len(art) == 5 and all(ok for ok, _ in art)
+    data = page.evaluate("() => window.HermesDashboard._state.data.character.achievements")
+    assert len(art) == sum(1 for a in data if a["art"]) >= 21 and all(ok for ok, _ in art)
+    # Titles are one size and one height across a row; only descriptions shrink.
+    assert page.evaluate("() => new Set([...document.querySelectorAll('.rpg-ach strong')].map(s => getComputedStyle(s).fontSize)).size") == 1
+    offsets = page.evaluate("() => new Set([...document.querySelectorAll('.rpg-ach')].map(a => Math.round(a.querySelector('strong').getBoundingClientRect().top - a.getBoundingClientRect().top))).size")
+    assert offsets == 1
+    earned = page.evaluate("() => [...document.querySelectorAll('.rpg-ach:not(.is-locked)')].every(a => a.querySelector('.rpg-ach-shine'))")
+    assert earned and page.evaluate("() => document.querySelectorAll('.rpg-ach.is-locked .rpg-ach-shine').length") == 0
 
 
 def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scroll(browser):

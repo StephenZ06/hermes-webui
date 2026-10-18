@@ -22,6 +22,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Iterator
 
 from api.config import STATE_DIR
@@ -857,8 +858,21 @@ def _achievements(progress: dict[str, Any], now: float) -> list[dict[str, Any]]:
                 if earned:
                     unlocked[key] = now
                     conn.execute("INSERT OR IGNORE INTO achievements(key, unlocked_at) VALUES(?, ?)", (key, now))
-    return [{"key": k, "title": t, "description": d, "icon": i, "unlocked_at": unlocked.get(k),
+    return [{"key": k, "title": t, "description": d, "icon": i, "unlocked_at": unlocked.get(k), "art": k in _achievement_art(),
              "new": bool(unlocked.get(k)) and unlocked[k] >= now - 3 * DAY} for k, t, d, i, _ in ACHIEVEMENTS]
+
+
+_ART_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard" / "achievements"
+
+
+def _achievement_art() -> set[str]:
+    """Achievements with badge art (static/dashboard/achievements/<key>.png);
+    the rest show their icon in a medallion. Read each time, so new art shows
+    without a restart."""
+    try:
+        return {f.stem for f in _ART_DIR.glob("*.png")}
+    except OSError:
+        return set()
 
 
 def _safe(build, default):

@@ -13492,3 +13492,21 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .rpg-ach-medal{width:76px;height:76px;font-size:34px;}
 .dash.is-rpg .rpg-plate{align-items:center;flex-wrap:nowrap;}
 .dash.is-rpg .rpg-plate-level{flex:none;transform:translateY(1px);} /* Press Start sits 1px high beside VT323 */
+
+/* Earned achievements: a soft gold glow breathing behind the badge and a
+   light sweep across it now and then (masked to the badge's own shape).
+   Titles keep one size; only the line under them steps down to fit. */
+.dash.is-rpg .rpg-ach .rpg-ach-text strong{font-size:16px!important;}
+.dash.is-rpg .rpg-ach:not(.is-locked) .rpg-ach-art::before{content:"";position:absolute;left:50%;top:50%;width:104px;height:104px;margin:-52px 0 0 -52px;border-radius:50%;background:radial-gradient(circle,rgba(244,197,66,.22) 0%,rgba(244,197,66,.08) 45%,transparent 70%);animation:rpg-ach-glow 4.5s ease-in-out infinite;pointer-events:none;}
+.dash.is-rpg .rpg-ach:not(.is-locked) .rpg-ach-art > :is(img,.rpg-ach-medal){position:relative;filter:drop-shadow(0 4px 0 rgba(0,0,0,.35)) drop-shadow(0 0 6px rgba(244,197,66,.25));}
+.rpg-ach-shine{position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;pointer-events:none;background:linear-gradient(115deg,transparent 40%,rgba(255,246,214,.55) 50%,transparent 60%) -150% 0/250% 100% no-repeat;-webkit-mask:var(--art) center/contain no-repeat;mask:var(--art) center/contain no-repeat;animation:rpg-ach-shine 7s ease-in-out infinite;}
+.rpg-ach:not(.has-art) .rpg-ach-shine{width:76px;height:76px;margin:-38px 0 0 -38px;-webkit-mask:none;mask:none;clip-path:polygon(24% 0,76% 0,100% 24%,100% 76%,76% 100%,24% 100%,0 76%,0 24%);}
+.rpg-ach:nth-child(3n+1) .rpg-ach-shine{animation-delay:-1.5s;}
+.rpg-ach:nth-child(3n+2) .rpg-ach-shine{animation-delay:-4s;}
+.rpg-ach:nth-child(4n) .rpg-ach-shine{animation-delay:-5.5s;}
+@keyframes rpg-ach-shine{0%,72%{background-position:-150% 0;}100%{background-position:250% 0;}}
+@keyframes rpg-ach-glow{0%,100%{opacity:.55;transform:scale(.94);}50%{opacity:1;transform:scale(1.04);}}
+@media (prefers-reduced-motion:reduce){.rpg-ach-shine{animation:none;display:none;}.dash.is-rpg .rpg-ach:not(.is-locked) .rpg-ach-art::before{animation:none;}}
+/* The hover sweep from before is replaced by the badge's own shine. */
+.dash.is-rpg .rpg-ach:not(.is-locked)::after{content:none;}
+.rpg-ach-text{justify-content:flex-start;padding-top:4px;} /* titles on one line across a row */
