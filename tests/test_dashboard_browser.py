@@ -701,11 +701,12 @@ def test_dashboard_cards_use_the_chamfered_pixel_frame(browser):
     for tab in ("personal", "character"):
         page.evaluate(f"() => window.HermesDashboard.select('{tab}')")
         page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
-        frames = page.evaluate("""() => [...document.querySelectorAll('.dash :is(.dash-card,.rpg-panel,.dash-stat)')].map(c => { const s = getComputedStyle(c);
-            return [s.borderImageSource.includes('svg'), s.clipPath.startsWith('polygon'), s.borderTopLeftRadius, c.classList.contains('dash-stat') || getComputedStyle(c, '::after').backgroundImage.includes('svg')]; })""")
-        assert frames and all(svg and cut and radius == "0px" and gem for svg, cut, radius, gem in frames)  # main cards carry the centre gem
-        inner = page.evaluate("() => [...document.querySelectorAll('.dash :is(.rpg-stat,.rpg-badges > div,.rpg-evo)')].map(e => getComputedStyle(e).borderImageSource.includes('svg'))")
-        assert all(inner)
+        # Large panels draw the frame art and carry the centre gems; small boxes a plain gold chamfer.
+        panels = page.evaluate("""() => [...document.querySelectorAll('.dash :is(.dash-card,.rpg-panel)')].map(c => { const s = getComputedStyle(c);
+            return [s.borderImageSource.includes('card-frame.png'), s.borderTopLeftRadius, getComputedStyle(c, '::after').backgroundImage.includes('card-gem-top.png')]; })""")
+        assert panels and all(art and radius == "0px" and gem for art, radius, gem in panels)
+        small = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-stat,.rpg-stat,.rpg-badges > div,.rpg-evo)')].map(e => { const s = getComputedStyle(e); return s.borderImageSource.includes('svg') && s.clipPath.startsWith('polygon'); })")
+        assert all(small)
     # The character frame keeps its own art, without the card frame.
     assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage')).borderImageSource") == "none"
 
