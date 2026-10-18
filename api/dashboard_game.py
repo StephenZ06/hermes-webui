@@ -63,7 +63,7 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
     ("first_interview", "Audience", "Land an interview", "🎤", lambda p: p["kinds"].get("interview", 0) >= 1),
     ("first_offer", "Recruited", "Receive a job offer", "🏆", lambda p: p["kinds"].get("offer", 0) >= 1),
     ("first_sale", "Merchant", "Make your first sale", "💰", lambda p: p["kinds"].get("sale", 0) >= 1),
-    ("habit_week", "Creature of Habit", "Keep habits on 7 different days", "🌱", lambda p: p["habit_days"] >= 7),
+    ("habit_week", "Creature of Habit", "7-day habits streak", "🌱", lambda p: p["habit_days"] >= 7),
     ("scholar", "Scholar", "Log 5 things you learnt", "📚", lambda p: p["kinds"].get("learning", 0) >= 5),
     ("balanced", "Well-Rounded", "Earn XP in all three areas", "⚖️", lambda p: all(a["xp"] > 0 for a in p["areas"])),
     ("first_skill", "Skilled", "Add your first skill", "🎲", lambda p: p["kinds"].get("skill", 0) >= 1),
@@ -71,7 +71,7 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
     ("polymath", "Polymath", "Gain 10 skills", "🧠", lambda p: p["kinds"].get("skill", 0) >= 10),
     ("applications_10", "Persistent", "Send 10 job applications", "📮", lambda p: p["kinds"].get("applied", 0) >= 10),
     ("sales_10", "Trader", "Make 10 sales", "🪙", lambda p: p["kinds"].get("sale", 0) >= 10),
-    ("habit_month", "Iron Will", "Keep habits on 30 different days", "🛡️", lambda p: p["habit_days"] >= 30),
+    ("habit_month", "Iron Will", "30-day habits streak", "🛡️", lambda p: p["habit_days"] >= 30),
     ("tasks_200", "Tireless", "Earn XP 200 times", "⚙️", lambda p: p["tasks_done"] >= 200),
 ]
 NAME_MAX = 120

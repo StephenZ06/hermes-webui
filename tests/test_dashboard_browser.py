@@ -666,3 +666,13 @@ def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scrol
     page.wait_for_function("() => document.querySelector('[data-log-filter=career]').classList.contains('on')", polling=100, timeout=10000)
     page.wait_for_timeout(200)
     assert page.evaluate("() => document.getElementById('mainDashboard').scrollTop") == 400  # the page stays put
+
+
+def test_earned_achievements_keep_their_description(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-ach", timeout=15000)
+    data = page.evaluate("() => window.HermesDashboard._state.data.character.achievements")
+    shown = page.evaluate("() => [...document.querySelectorAll('.rpg-ach small')].map(s => s.textContent)")
+    assert shown == [a["description"] for a in data]  # earned or not, the line under the title is what it is for
+    assert {a["key"]: a["description"] for a in data}["habit_week"] == "7-day habits streak"

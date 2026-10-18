@@ -13490,3 +13490,5 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .rpg-ach-art{height:100px;}
 .rpg-ach-art img{width:96px;height:96px;}
 .rpg-ach-medal{width:76px;height:76px;font-size:34px;}
+.dash.is-rpg .rpg-plate{align-items:center;flex-wrap:nowrap;}
+.dash.is-rpg .rpg-plate-level{flex:none;transform:translateY(1px);} /* Press Start sits 1px high beside VT323 */
