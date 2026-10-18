@@ -13510,3 +13510,24 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 /* The hover sweep from before is replaced by the badge's own shine. */
 .dash.is-rpg .rpg-ach:not(.is-locked)::after{content:none;}
 .rpg-ach-text{justify-content:flex-start;padding-top:4px;} /* titles on one line across a row */
+
+/* Earned badges, round 2: no glow and no hover zoom (it resampled the art).
+   Instead one soft glint travels around the badge's frame ring now and then:
+   a conic highlight masked to the badge's shape and to its outer ring. The
+   mask URL is absolute (set in JS); a relative url() in a custom property
+   resolves against this stylesheet's folder. */
+@property --rpg-glint{syntax:"<angle>";inherits:false;initial-value:0deg;}
+.dash.is-rpg .rpg-ach:not(.is-locked) .rpg-ach-art::before{content:none;}
+.dash.is-rpg .rpg-ach:not(.is-locked) .rpg-ach-art > :is(img,.rpg-ach-medal){filter:drop-shadow(0 4px 0 rgba(0,0,0,.35));}
+.dash.is-rpg .rpg-ach:not(.is-locked):hover .rpg-ach-art img,.rpg-ach-art img{transform:none;transition:none;}
+.rpg-ach-shine{z-index:1;background:conic-gradient(from var(--rpg-glint),transparent 0deg,transparent 300deg,rgba(255,240,196,.0) 312deg,rgba(255,244,210,.75) 330deg,rgba(255,240,196,0) 348deg,transparent 360deg);
+  -webkit-mask:var(--art) center/contain no-repeat,radial-gradient(circle closest-side,transparent 62%,#000 70%);-webkit-mask-composite:source-in;
+  mask:var(--art) center/contain no-repeat,radial-gradient(circle closest-side,transparent 62%,#000 70%);mask-composite:intersect;
+  animation:rpg-ach-glint 6s linear infinite;mix-blend-mode:screen;opacity:.85;}
+.rpg-ach:not(.has-art) .rpg-ach-shine{-webkit-mask:radial-gradient(circle closest-side,transparent 74%,#000 80%);mask:radial-gradient(circle closest-side,transparent 74%,#000 80%);}
+@keyframes rpg-ach-glint{0%{--rpg-glint:0deg;opacity:0;}8%{opacity:.85;}55%{--rpg-glint:360deg;opacity:.85;}62%,100%{--rpg-glint:360deg;opacity:0;}}
+.rpg-ach:nth-child(3n+1) .rpg-ach-shine{animation-delay:-1.6s;}
+.rpg-ach:nth-child(3n+2) .rpg-ach-shine{animation-delay:-3.7s;}
+.rpg-ach:nth-child(4n) .rpg-ach-shine{animation-delay:-5.1s;}
+@media (prefers-reduced-motion:reduce){.rpg-ach-shine{display:none;}}
+.rpg-ach-shine{mix-blend-mode:normal;background:conic-gradient(from var(--rpg-glint),transparent 0deg,transparent 296deg,rgba(255,244,214,0) 306deg,rgba(255,248,226,.9) 328deg,rgba(255,244,214,0) 350deg,transparent 360deg);}

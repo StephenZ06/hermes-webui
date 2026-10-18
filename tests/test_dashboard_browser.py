@@ -644,6 +644,14 @@ def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
     assert offsets == 1
     earned = page.evaluate("() => [...document.querySelectorAll('.rpg-ach:not(.is-locked)')].every(a => a.querySelector('.rpg-ach-shine'))")
     assert earned and page.evaluate("() => document.querySelectorAll('.rpg-ach.is-locked .rpg-ach-shine').length") == 0
+    # The glint is masked to the badge art: the mask must point at the real file
+    # (a relative url() in a custom property resolves against the stylesheet).
+    masks = page.evaluate("() => [...document.querySelectorAll('.rpg-ach.has-art:not(.is-locked) .rpg-ach-shine')].map(s => getComputedStyle(s).webkitMaskImage)")
+    assert masks and all("/static/dashboard/achievements/" in m and "/static/static/" not in m for m in masks)
+    ok = page.evaluate("async () => { const m = getComputedStyle(document.querySelector('.rpg-ach.has-art:not(.is-locked) .rpg-ach-shine')).webkitMaskImage.match(/url\\(\"([^\"]+)\"\\)/)[1]; return (await fetch(m)).ok; }")
+    assert ok
+    page.hover(".rpg-ach.has-art:not(.is-locked)")
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-ach.has-art:not(.is-locked) img')).transform") == "none"  # no zoom, so no blur
 
 
 def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scroll(browser):

@@ -412,7 +412,7 @@
     // Achievements with their own badge art fill most of the tile; the rest
     // get a pixel medallion around their icon. Locked ones stay dark until earned.
     const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${a.art ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}${a.unlocked_at ? ` · earned ${esc(ago(a.unlocked_at))}` : ''}">
-        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('static/dashboard/achievements/${esc(a.key)}.png')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
+        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('${esc(new URL(`static/dashboard/achievements/${a.key}.png`, document.baseURI).href)}')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
         <span class="rpg-ach-text"><strong>${esc(a.title)}</strong><small>${esc(a.description)}</small></span>
       </div>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
