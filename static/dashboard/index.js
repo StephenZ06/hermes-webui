@@ -374,7 +374,8 @@
     if (sprite && tier && tier.sprite) return `<img class="rpg-hero-sprite" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.webp" alt="" draggable="false">`;
     if (tier && tier.video) {
       const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      return `<video class="rpg-hero-video" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline${still ? ' preload="auto"' : ' autoplay preload="auto"'} disablepictureinpicture aria-hidden="true"></video>`;
+      // No autoplay: watchVideos() plays it only while it is on screen.
+      return `<video class="rpg-hero-video" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline preload="${still ? 'auto' : 'metadata'}" disablepictureinpicture aria-hidden="true"></video>`;
     }
     return window.DashSprite.render(tierIndex + 1, scale);
   }
@@ -621,12 +622,15 @@
         <p class="rpg-levelup-next">${(data.level_size || 0).toLocaleString()} XP to level ${level + 1}</p>
         <button type="button" class="dash-btn" data-levelup-close>Continue</button>
       </div>`;
-    const close = () => { overlay.classList.remove('is-open'); setTimeout(() => overlay.remove(), 250); document.removeEventListener('keydown', key); };
+    const close = () => {
+      overlay.querySelectorAll('video').forEach((v) => { v.pause(); if (videoWatch) videoWatch.unobserve(v); });
+      overlay.classList.remove('is-open'); setTimeout(() => overlay.remove(), 250); document.removeEventListener('keydown', key);
+    };
     const key = (event) => { if (event.key === 'Escape' || event.key === 'Enter') close(); };
     overlay.addEventListener('click', (event) => { if (event.target === overlay || event.target.closest('[data-levelup-close]')) close(); });
     document.addEventListener('keydown', key);
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('is-open'));
+    requestAnimationFrame(() => { overlay.classList.add('is-open'); watchVideos(overlay); });
     const button = overlay.querySelector('[data-levelup-close]');
     setTimeout(() => button && button.focus(), 300);
   }
@@ -716,8 +720,29 @@
     const c = card.getBoundingClientRect(), r = el.getBoundingClientRect();
     arrow.style.top = Math.round(r.bottom - c.top - parseFloat(getComputedStyle(card).borderTopWidth) - 9) + 'px';
   }
+  // Character videos play only while they can be seen: on screen, in a visible
+  // tab, with the Dashboard open, and not under reduced motion. Anything else
+  // pauses them, so a looping video never decodes in the background.
+  let videoWatch = null;
+  const stillMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function syncVideo(video) {
+    const show = video.isConnected && video._onScreen && !document.hidden && state.mounted && !stillMotion();
+    if (show && video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+    else if (!show && !video.paused) video.pause();
+  }
+  function syncVideos() { document.querySelectorAll('video.rpg-hero-video').forEach(syncVideo); }
+  function watchVideos(root) {
+    if (!('IntersectionObserver' in window)) { root.querySelectorAll('video.rpg-hero-video').forEach((v) => { v._onScreen = true; syncVideo(v); }); return; }
+    if (!videoWatch) videoWatch = new IntersectionObserver((entries) => entries.forEach((e) => { e.target._onScreen = e.isIntersecting; syncVideo(e.target); }), {threshold: 0.05});
+    root.querySelectorAll('video.rpg-hero-video').forEach((v) => { if (!v._watched) { v._watched = true; videoWatch.observe(v); } });
+  }
+  function stopVideos() {
+    document.querySelectorAll('video.rpg-hero-video').forEach((v) => { v.pause(); if (videoWatch) videoWatch.unobserve(v); v._watched = false; });
+  }
+  document.addEventListener('visibilitychange', syncVideos);
+
   function markScrollable(host) {
-    requestAnimationFrame(() => { host.querySelectorAll(SCROLLERS).forEach(updateMore); fitAchievements(host); });
+    requestAnimationFrame(() => { host.querySelectorAll(SCROLLERS).forEach(updateMore); fitAchievements(host); watchVideos(host); });
   }
   // Achievement tiles are one fixed height; a long title or description
   // steps its type down until the tile's text fits.
@@ -1031,7 +1056,7 @@
     state.timer = setInterval(tick, REFRESH_MS);
     if (state.timer && typeof state.timer.unref === 'function') state.timer.unref();
   }
-  function unmount() { state.mounted = false; clearInterval(state.timer); state.timer = 0; clearEffects(); closeDatePicker(); state.painted = {}; }
+  function unmount() { state.mounted = false; clearInterval(state.timer); state.timer = 0; clearEffects(); closeDatePicker(); stopVideos(); state.painted = {}; }
 
   document.addEventListener('click', (event) => {
     if (!event.target.closest) return;

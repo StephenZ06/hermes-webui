@@ -725,3 +725,18 @@ def test_character_videos_are_served_with_byte_ranges():
         assert res.headers["Content-Range"].startswith("bytes 0-99/") and len(res.read()) == 100
     from api import dashboard_game
     assert {"ascended", "celestial"} <= dashboard_game._character_video() and {"ascended", "celestial"} <= dashboard_game._character_sprite()
+
+
+def test_character_video_plays_only_while_it_can_be_seen(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 700})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-stage video.rpg-hero-video", timeout=15000)
+    video = ".rpg-stage video.rpg-hero-video"
+    assert page.evaluate(f"() => !document.querySelector('{video}').autoplay")  # nothing starts on its own
+    page.wait_for_function(f"() => !document.querySelector('{video}').paused", polling=100, timeout=10000)
+    page.evaluate("() => { document.getElementById('mainDashboard').scrollTop = 100000; }")
+    page.wait_for_function(f"() => document.querySelector('{video}').paused", polling=100, timeout=5000)  # scrolled away
+    page.evaluate("() => { document.getElementById('mainDashboard').scrollTop = 0; }")
+    page.wait_for_function(f"() => !document.querySelector('{video}').paused", polling=100, timeout=5000)  # back in view
+    page.evaluate("async () => { window.__v = document.querySelector('.rpg-stage video.rpg-hero-video'); await switchPanel('chat'); }")
+    page.wait_for_function("() => window.__v.paused", polling=100, timeout=5000)  # left the Dashboard
