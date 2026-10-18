@@ -216,7 +216,8 @@ def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
     }""")
     assert "background.png" not in visuals["canvasImage"]
     assert visuals["panelBackground"] == "rgb(10, 10, 10)"
-    assert visuals["panelBorder"] == "rgb(63, 63, 63)"
+    # Cards draw their outline with the antique-gold pixel frame in every skin.
+    assert visuals["panelBorder"] == "rgba(0, 0, 0, 0)"
     # The stage is the gold frame only; the night scene inside it is painted.
     assert visuals["stageBackground"] == "rgba(0, 0, 0, 0)" and "gradient" in visuals["sceneBackground"]
 
@@ -691,3 +692,17 @@ def test_earned_achievements_keep_their_description(browser):
     shown = page.evaluate("() => [...document.querySelectorAll('.rpg-ach small')].map(s => s.textContent)")
     assert shown == [a["description"] for a in data]  # earned or not, the line under the title is what it is for
     assert {a["key"]: a["description"] for a in data}["habit_week"] == "7-day habits streak"
+
+
+def test_dashboard_cards_use_the_chamfered_pixel_frame(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    page.wait_for_selector(".dash-card", timeout=15000)
+    for tab in ("personal", "character"):
+        page.evaluate(f"() => window.HermesDashboard.select('{tab}')")
+        page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
+        frames = page.evaluate("""() => [...document.querySelectorAll('.dash :is(.dash-card,.rpg-panel,.dash-stat)')].map(c => { const s = getComputedStyle(c);
+            return [s.borderImageSource.includes('svg'), s.clipPath.startsWith('polygon'), s.borderTopLeftRadius, getComputedStyle(c, '::before').content]; })""")
+        assert frames and all(svg and cut and radius == "0px" and before == "none" for svg, cut, radius, before in frames)
+    # The character frame keeps its own art, without the card frame.
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage')).borderImageSource") == "none"
