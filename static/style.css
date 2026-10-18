@@ -13571,3 +13571,11 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 /* Inner boxes. */
 :root[data-skin] .dash.is-rpg :is(.rpg-stat,.rpg-badges > div,.rpg-evo,.shop-item,.shop-figures > div),
 .dash.is-rpg :is(.rpg-stat,.rpg-badges > div,.rpg-evo,.shop-item,.shop-figures > div){border:2px solid transparent;border-radius:0;border-image:var(--dash-card-frame-sm) 3 / 6px / 0 stretch;image-rendering:pixelated;clip-path:var(--dash-card-cut-sm);box-shadow:none;}
+
+/* Animated forms (static/dashboard/characters/<form>.mp4): the video is the
+   whole scene inside the frame; the name plate stays on top. */
+.rpg-stage-scene.has-video::before,.rpg-stage-scene.has-video > :is(.rpg-stars,.rpg-aura){display:none;}
+.rpg-stage-scene > .rpg-hero-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;}
+.rpg-stage-scene > .rpg-plate{z-index:1;}
+.rpg-evo-art > .rpg-hero-video{width:100%;height:100%;object-fit:cover;}
+.rpg-levelup-hero > .rpg-hero-video{width:120px;height:160px;object-fit:cover;border:2px solid #7a5f2c;animation:none;}

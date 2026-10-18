@@ -823,7 +823,7 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         "log": log[offset:offset + LOG_PAGE],
         "log_total": len(log),
         "projects": projects,
-        "tiers": [{"level": first, "name": name} for first, name in TIERS],
+        "tiers": [{"level": first, "name": name, "video": name.lower() in _character_video()} for first, name in TIERS],
         "quests": _safe(quests, []),
         "party": _safe(party, []),
         "achievements": achievements,
@@ -860,6 +860,18 @@ def _achievements(progress: dict[str, Any], now: float) -> list[dict[str, Any]]:
                     conn.execute("INSERT OR IGNORE INTO achievements(key, unlocked_at) VALUES(?, ?)", (key, now))
     return [{"key": k, "title": t, "description": d, "icon": i, "unlocked_at": unlocked.get(k), "art": k in _achievement_art(),
              "new": bool(unlocked.get(k)) and unlocked[k] >= now - 3 * DAY} for k, t, d, i, _ in ACHIEVEMENTS]
+
+
+_VIDEO_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard" / "characters"
+
+
+def _character_video() -> set[str]:
+    """Evolution forms with an animation (static/dashboard/characters/<form>.mp4,
+    e.g. apprentice.mp4); the rest are drawn as pixel sprites."""
+    try:
+        return {f.stem.lower() for f in _VIDEO_DIR.glob("*.mp4")}
+    except OSError:
+        return set()
 
 
 _ART_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard" / "achievements"

@@ -20603,7 +20603,11 @@ _STATIC_MIME = {
     "webp": "image/webp",
     "woff": "font/woff",
     "woff2": "font/woff2",
+    "mp4": "video/mp4",
+    "webm": "video/webm",
 }
+# Media served with byte ranges: Safari/iOS will not play a video without them.
+_RANGE_MIME = {"video/mp4", "video/webm"}
 # MIME types that are text-based and should carry charset=utf-8
 _TEXT_MIME_TYPES = {"text/css", "application/javascript", "text/html", "image/svg+xml", "text/plain"}
 
@@ -20689,6 +20693,33 @@ def _serve_static(handler, parsed):
         handler.end_headers()
         return True
 
+    if ct in _RANGE_MIME:
+        match = re.match(r"bytes=(\d*)-(\d*)$", (handler.headers.get("Range") or "").strip())
+        if match and (match.group(1) or match.group(2)):
+            size = len(raw)
+            if match.group(1):
+                start = int(match.group(1))
+                end = min(int(match.group(2)) if match.group(2) else size - 1, size - 1)
+            else:  # bytes=-N: the last N bytes
+                start, end = max(0, size - int(match.group(2))), size - 1
+            if start >= size or start > end:
+                handler.send_response(416)
+                handler.send_header("Content-Range", f"bytes */{size}")
+                handler.send_header("Content-Length", "0")
+                handler.end_headers()
+                return True
+            part = raw[start:end + 1]
+            handler.send_response(206)
+            handler.send_header("Content-Type", ct_header)
+            handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            handler.send_header("Content-Length", str(len(part)))
+            handler.send_header("Accept-Ranges", "bytes")
+            handler.send_header("ETag", etag)
+            handler.send_header("Cache-Control", cache_control)
+            handler.end_headers()
+            handler.wfile.write(part)
+            return True
+
     accept_enc = (handler.headers.get("Accept-Encoding") or "").lower()
     use_gzip = gz is not None and "gzip" in accept_enc
     body = gz if use_gzip else raw
@@ -20698,6 +20729,8 @@ def _serve_static(handler, parsed):
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("ETag", etag)
     handler.send_header("Cache-Control", cache_control)
+    if ct in _RANGE_MIME:
+        handler.send_header("Accept-Ranges", "bytes")
     if gz is not None:
         handler.send_header("Vary", "Accept-Encoding")
     if use_gzip:

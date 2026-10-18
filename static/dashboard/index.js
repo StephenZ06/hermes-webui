@@ -364,6 +364,18 @@
   const panel = (title, body, {icon = '', pix = '', action = '', cls = ''} = {}) =>
     `<section class="rpg-panel ${cls}"><header class="rpg-panel-head">${pix ? `<span class="rpg-panel-icon is-pixel">${PIX(pix)}</span>` : icon ? `<span class="rpg-panel-icon">${svg(icon, 15)}</span>` : ''}<h3>${title}</h3>${action ? `<span class="rpg-panel-actions">${action}</span>` : ''}</header><div class="dash-card-body">${body}</div></section>`;
 
+  // The warlock for a form: its animation when static/dashboard/characters/
+  // <form>.mp4 exists, else the drawn sprite. Muted, looping, inline; still
+  // (first frame) under reduced motion.
+  function heroArt(data, tierIndex, scale) {
+    const tier = (data.tiers || [])[tierIndex];
+    if (tier && tier.video) {
+      const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      return `<video class="rpg-hero-video" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline${still ? ' preload="auto"' : ' autoplay preload="auto"'} disablepictureinpicture aria-hidden="true"></video>`;
+    }
+    return window.DashSprite.render(tierIndex + 1, scale);
+  }
+
   // Total XP needed to reach ``level`` (level n takes 100 + 25(n-1) XP).
   const xpToReach = (level) => { let total = 0; for (let n = 1; n < level; n++) total += 100 + 25 * (n - 1); return total; };
   // One evolution at a time, stepped with the arrows; forms not reached yet
@@ -381,7 +393,7 @@
     return `<div class="rpg-evo-head"><span>Evolution</span><small>${i + 1} / ${tiers.length}</small></div>
       <div class="rpg-evo-stage">
         <button type="button" class="rpg-evo-arrow" data-evo-step="-1" aria-label="Previous form"${i === 0 ? ' disabled' : ''}>${svg('chevron-left', 14)}</button>
-        <div class="rpg-evo-art${locked ? ' is-locked' : ''}${i === current ? ' is-current' : ''}" role="img" aria-label="${esc(t.name)}${locked ? ', locked' : ''}">${window.DashSprite.render(i + 1, 4)}</div>
+        <div class="rpg-evo-art${locked ? ' is-locked' : ''}${i === current ? ' is-current' : ''}" role="img" aria-label="${esc(t.name)}${locked ? ', locked' : ''}">${heroArt(data, i, 4)}</div>
         <button type="button" class="rpg-evo-arrow" data-evo-step="1" aria-label="Next form"${i === tiers.length - 1 ? ' disabled' : ''}>${svg('chevron-right', 14)}</button>
       </div>
       <strong class="rpg-evo-name">${esc(t.name)}</strong>
@@ -424,10 +436,10 @@
     return `<div class="rpg">
       <div class="rpg-hero">
         <div class="rpg-stage" data-tier="${data.tier}">
-          <div class="rpg-stage-scene">
+          <div class="rpg-stage-scene${((data.tiers || [])[(data.tier || 1) - 1] || {}).video ? ' has-video' : ''}">
             <div class="rpg-stars" aria-hidden="true"></div>
             <div class="rpg-aura" aria-hidden="true"></div>
-            ${window.DashSprite.render(data.tier, 6)}
+            ${heroArt(data, (data.tier || 1) - 1, 6)}
             <div class="rpg-plate"><span class="rpg-plate-level">LV ${data.level}</span><span class="rpg-plate-class">${esc(data.tier_name)} Warlock</span></div>
           </div>
         </div>
@@ -600,7 +612,7 @@
         <div class="rpg-levelup-rays" aria-hidden="true"></div><div class="rpg-levelup-confetti" aria-hidden="true">${confetti}</div>
         <small class="rpg-levelup-kicker">Level up!</small>
         <div class="rpg-levelup-levels"><span>${from}</span><i aria-hidden="true">▶</i><b>${level}</b></div>
-        <div class="rpg-levelup-hero">${window.DashSprite ? window.DashSprite.render(data.tier || 1, 4) : ''}</div>
+        <div class="rpg-levelup-hero">${window.DashSprite ? heroArt(data, (data.tier || 1) - 1, 4) : ''}</div>
         <strong class="rpg-levelup-class">${esc(data.tier_name || '')} Warlock</strong>
         ${newForm ? `<div class="rpg-levelup-unlock">New form unlocked: ${esc(data.tier_name || '')}</div>` : ''}
         <p class="rpg-levelup-next">${(data.level_size || 0).toLocaleString()} XP to level ${level + 1}</p>

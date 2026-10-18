@@ -87,7 +87,7 @@ def test_a_quest_is_picked_from_the_work_hub_finishes_there_and_earns_xp(browser
     assert page.evaluate(f"() => document.querySelector(\"{row} .dash-xp-gain\").textContent") == "+75 XP"  # high 50 x 1.5
 
     page.evaluate("() => window.HermesDashboard.select('character')")
-    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
     log = page.evaluate("() => document.querySelector('.dash-body').textContent")
     assert title in log and "+75 XP" in log
     assert page.evaluate("() => document.querySelectorAll('.rpg-evo .rpg-evo-dots i').length") == 5  # five forms in the evolution carousel
@@ -187,7 +187,7 @@ def test_personal_pixel_icons_are_unboxed_and_optically_aligned(browser):
 def test_character_page_fits_a_phone(browser):
     page = _open(browser, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
-    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
     time.sleep(0.4)
     assert page.evaluate("() => { const m = document.getElementById('mainDashboard'); return m.scrollWidth <= m.clientWidth + 1; }")
     assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
@@ -201,7 +201,7 @@ def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
         await switchPanel('dashboard');
         window.HermesDashboard.select('character');
     }""")
-    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
     visuals = page.evaluate("""() => {
         const canvas = document.getElementById('mainDashboard');
         const panel = document.querySelector('.rpg-panel');
@@ -240,7 +240,7 @@ def test_a_habit_is_added_and_ticked_for_vitality_xp(browser):
     toggle.evaluate("el => el.click()")
     page.wait_for_function(f"() => [...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}'))?.querySelector('.dash-habit-check.is-on')", polling=100, timeout=10000)
     page.evaluate("() => window.HermesDashboard.select('character')")
-    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
     assert name in page.evaluate("() => document.querySelector('.dash-body').textContent")
 
 
@@ -286,7 +286,7 @@ def test_a_reward_is_bought_with_gold_in_the_shop(browser):
 
 def test_libraries_dev_effects_mount_on_the_character_page(browser):
     page = _dashboard(browser, "character")
-    page.wait_for_selector(".rpg-stage .px-hero", timeout=15000)
+    page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
     page.wait_for_function("() => document.querySelector('.rpg-member-avatar canvas')", polling=100, timeout=15000)
     assert page.evaluate("() => document.querySelectorAll('.rpg-member-avatar canvas').length") >= 1
 
@@ -716,3 +716,12 @@ def test_level_card_has_as_much_space_below_the_bars_as_above(browser):
     page.wait_for_selector(".rpg-stats", timeout=15000)
     gaps = page.evaluate("() => { const R = s => document.querySelector(s).getBoundingClientRect(); return [R('.rpg-stats').top - R('.rpg-xpbar').bottom, R('.rpg-badges').top - R('.rpg-stats').bottom]; }")
     assert abs(gaps[0] - gaps[1]) <= 0.5
+
+
+def test_character_videos_are_served_with_byte_ranges():
+    req = urllib.request.Request(BASE + "/static/dashboard/characters/apprentice.mp4", headers={"Range": "bytes=0-99"})
+    with urllib.request.urlopen(req, timeout=10) as res:
+        assert res.status == 206 and res.headers["Content-Type"] == "video/mp4"
+        assert res.headers["Content-Range"].startswith("bytes 0-99/") and len(res.read()) == 100
+    from api import dashboard_game
+    assert "apprentice" in dashboard_game._character_video()
