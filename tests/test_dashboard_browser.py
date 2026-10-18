@@ -211,12 +211,14 @@ def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
           panelBackground: getComputedStyle(panel).backgroundColor,
           panelBorder: getComputedStyle(panel).borderColor,
           stageBackground: getComputedStyle(stage).backgroundColor,
+          sceneBackground: getComputedStyle(stage.querySelector('.rpg-stage-scene')).backgroundImage,
         };
     }""")
     assert "background.png" not in visuals["canvasImage"]
     assert visuals["panelBackground"] == "rgb(10, 10, 10)"
     assert visuals["panelBorder"] == "rgb(63, 63, 63)"
-    assert visuals["stageBackground"] == "rgb(10, 10, 10)"
+    # The stage is the gold frame only; the night scene inside it is painted.
+    assert visuals["stageBackground"] == "rgba(0, 0, 0, 0)" and "gradient" in visuals["sceneBackground"]
 
 
 def _dashboard(browser, tab, **ctx):
@@ -342,8 +344,10 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     page.evaluate("() => window.HermesDashboard.select('character')")
     page.wait_for_selector(".rpg-stage", timeout=15000)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
-    capped = page.evaluate("() => [...document.querySelectorAll('.rpg-col > .rpg-panel')].map(p => Math.round(p.getBoundingClientRect().height))")
+    # Lists cap and scroll; Achievements shows every badge at full height.
+    capped = page.evaluate("() => [...document.querySelectorAll('.rpg-col > .rpg-panel:not(:has(.rpg-achs))')].map(p => Math.round(p.getBoundingClientRect().height))")
     assert capped and max(capped) <= 560
+    assert page.evaluate("() => { const b = document.querySelector('.rpg-achs').closest('.dash-card-body'); return b.scrollHeight <= b.clientHeight + 1; }")
 
 
 def test_a_fresh_launch_opens_the_dashboard_but_a_reload_in_chat_stays_in_chat(browser):
@@ -633,3 +637,32 @@ def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
     assert cols == [0, 0]  # evolution lines up with the badge below it
     art = page.evaluate("() => [...document.querySelectorAll('.rpg-ach.has-art img')].map(i => [i.naturalWidth > 0, i.getAttribute('src')])")
     assert len(art) == 5 and all(ok for ok, _ in art)
+
+
+def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scroll(browser):
+    for i in range(20):
+        _post("/api/dashboard/learning/add", {"title": f"Scroll fixture {uuid.uuid4().hex[:4]} {i}", "kind": "book", "area": "career"})
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { document.documentElement.dataset.skin = 'geist-contrast'; await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-panel.is-chronicle .rpg-log-row", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    stage = page.evaluate("() => { const c = getComputedStyle(document.querySelector('.rpg-stage')); return [c.borderTopWidth, c.borderImageSource]; }")
+    assert stage == ["0px", "none"]  # only the gold frame art, in this skin too
+    cols = page.evaluate("() => [...document.querySelectorAll('.rpg-col')].map(c => [...c.querySelectorAll(':scope > .rpg-panel h3')].map(h => h.textContent.split(' ')[0]))")
+    assert cols[1][-1] == "Chronicle" and cols[1].index("Realms") == len(cols[1]) - 2
+    assert page.evaluate("() => document.querySelectorAll('.rpg-ach .dash-new').length") == 0
+    body = ".rpg-panel.is-chronicle > .dash-card-body"
+    page.evaluate(f"() => {{ document.querySelector('{body}').scrollTop = 240; }}")
+    top = page.evaluate(f"() => document.querySelector('{body}').getBoundingClientRect().top")
+    chips = page.evaluate("() => document.querySelector('.rpg-log-filters').getBoundingClientRect().top")
+    assert abs(chips - top) <= 1  # the filters stay at the top of the list while it scrolls
+    page.evaluate("() => window.HermesDashboard._state.data.character = {...window.HermesDashboard._state.data.character, streak: 999}")
+    page.evaluate("() => window.HermesDashboard.refresh()")
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    page.wait_for_timeout(200)
+    assert page.evaluate(f"() => document.querySelector('{body}').scrollTop") == 240  # a refresh keeps the list where it was
+    page.evaluate("() => { document.getElementById('mainDashboard').scrollTop = 400; }")
+    page.evaluate("() => document.querySelector('[data-log-filter=career]').click()")
+    page.wait_for_function("() => document.querySelector('[data-log-filter=career]').classList.contains('on')", polling=100, timeout=10000)
+    page.wait_for_timeout(200)
+    assert page.evaluate("() => document.getElementById('mainDashboard').scrollTop") == 400  # the page stays put

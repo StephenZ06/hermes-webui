@@ -358,7 +358,7 @@
     const ring = (f) => STATS.map((_, i) => point(i, f).map((v) => v.toFixed(1)).join(',')).join(' ');
     const shape = STATS.map((k, i) => point(i, Math.max(0.06, ((stats[k] || {}).value || 0) / max)).map((v) => v.toFixed(1)).join(',')).join(' ');
     const labels = STATS.map((k, i) => { const [x, y] = point(i, 1.27); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${k}</text>`; }).join('');
-    return `<svg class="rpg-radar" viewBox="0 0 160 160" role="img" aria-label="Attributes: ${STATS.map((k) => `${k} ${(stats[k] || {}).value || 1}`).join(', ')}">
+    return `<svg class="rpg-radar" viewBox="0 -7 160 160" role="img" aria-label="Attributes: ${STATS.map((k) => `${k} ${(stats[k] || {}).value || 1}`).join(', ')}">
       ${[0.33, 0.66, 1].map((f) => `<polygon points="${ring(f)}" class="rpg-radar-ring"/>`).join('')}
       ${STATS.map((_, i) => { const [x, y] = point(i, 1); return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rpg-radar-ring"/>`; }).join('')}
       <polygon points="${shape}" class="rpg-radar-shape"/>${labels}</svg>`;
@@ -415,7 +415,7 @@
     // get a pixel medallion around their icon. Locked ones stay dark until earned.
     const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${ACH_ART.has(a.key) ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}">
         <span class="rpg-ach-art" aria-hidden="true">${ACH_ART.has(a.key) ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? '' : '<span class="rpg-ach-lock"></span>'}</span>
-        <span class="rpg-ach-text"><strong>${esc(a.title)}</strong>${newest && newest.key === a.key && a.new ? '<span class="dash-new" data-ld="metal-badge">New</span>' : `<small>${a.unlocked_at ? ago(a.unlocked_at) : esc(a.description)}</small>`}</span>
+        <span class="rpg-ach-text"><strong>${esc(a.title)}</strong><small>${a.unlocked_at ? ago(a.unlocked_at) : esc(a.description)}</small></span>
       </div>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
     const filter = state.logCategory || 'all';
@@ -449,11 +449,11 @@
       <div class="rpg-columns">
         <div class="rpg-col">
           ${panel(`Achievements · ${achievements.filter((a) => a.unlocked_at).length}/${achievements.length}`, `<div class="rpg-achs">${achHtml}</div>`, {pix: 'achievements'})}
-          ${panel('Chronicle', `<div class="dash-chips">${chips}</div>${log}${more}`, {pix: 'chronicle'})}
         </div>
         <div class="rpg-col">
           ${panel('Party', `<div class="rpg-party">${party}</div>`, {pix: 'party'})}
           ${panel('Realms', areas, {pix: 'realms'})}
+          ${panel('Chronicle', `<div class="dash-chips rpg-log-filters">${chips}</div>${log}${more}`, {pix: 'chronicle', cls: 'is-chronicle'})}
         </div>
       </div>
     </div>`;
@@ -648,6 +648,11 @@
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
     const scroll = scroller ? scroller.scrollTop : 0;
+    // A repaint rebuilds the cards; keep where each scrolling list was, so a
+    // refresh, a filter or an opened form never jumps a list (or the page) back.
+    const lists = {};
+    host.querySelectorAll(SCROLLERS).forEach((el) => { if (el.scrollTop) lists[scrollKey(el)] = el.scrollTop; });
+    if (state.resetLists) { state.resetLists.forEach((k) => { Object.keys(lists).forEach((key) => { if (key.startsWith(k)) delete lists[key]; }); }); state.resetLists = null; }
     const entering = state.entering; state.entering = false;
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
@@ -657,7 +662,12 @@
       </div>
       <div class="dash-body${entering ? ' is-entering' : ''}" data-tab="${state.tab}">${body}</div>
     </div>`;
-    if (scroller) scroller.scrollTop = scroll;
+    const restore = () => {
+      host.querySelectorAll(SCROLLERS).forEach((el) => { const top = lists[scrollKey(el)]; if (top) el.scrollTop = top; });
+      if (scroller && Math.abs(scroller.scrollTop - scroll) > 1) scroller.scrollTop = scroll;
+    };
+    restore();
+    requestAnimationFrame(restore);  // again once late layout (fonts, art) has settled
     const cadence = host.querySelector('[data-form="habit"] select[name=cadence]');
     enhance(host);
     if (cadence) {
@@ -672,6 +682,11 @@
   // A card whose list scrolls shows a small arrow at its bottom edge while
   // more rows are hidden below; it goes once the list is scrolled to the end.
   const SCROLLERS = '.dash-card-body,.dash-learning-entries';
+  function scrollKey(el) {
+    const card = el.closest('[data-dash-card],.dash-card,.rpg-panel');
+    const name = card ? (card.dataset.dashCard || ((card.querySelector('h3') || {}).textContent || '').replace(/[·\d\/\s]+$/, '')) : '';
+    return `${state.tab}|${name}|${el.className}`;
+  }
   function updateMore(el) {
     const card = el.closest('.dash-card,.rpg-panel');
     if (!card) return;
@@ -948,7 +963,7 @@
     if (t.hasAttribute('data-dash-add-quest')) return openQuestPicker(AREA[state.tab] ? state.tab : '');
     if (d.questRemove) return act('/api/dashboard/quests/remove', {item_id: d.questRemove}, {row: t.closest('.dash-quest-row')});
     if (t.hasAttribute('data-quest-clear')) return act('/api/dashboard/quests/clear', {});
-    if (d.logFilter) { state.logCategory = d.logFilter; return load('character', {quiet: true}); }
+    if (d.logFilter) { state.logCategory = d.logFilter; state.resetLists = ['character|Chronicle']; return load('character', {quiet: true}); }
     if (t.hasAttribute('data-log-more')) return load('character', {quiet: true, append: true});
     if (d.formOpen) { state.forms[d.formOpen] = true; paint({force: true}); const first = root().querySelector(`[data-form="${d.formOpen}"] input:not([type=checkbox])`); if (first) first.focus(); return; }
     if (d.formCancel) { delete state.forms[d.formCancel]; return paint({force: true}); }

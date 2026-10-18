@@ -13443,3 +13443,50 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .shop-ledger-gold.is-spend{color:color-mix(in srgb,var(--error,#f87171) 85%,#fff);}
 .shop-item .dash-bar,.shop-saving .dash-bar{flex:none;align-self:stretch;width:auto;height:8px;min-height:8px;}
 .shop-item strong{display:block;}
+
+/* ── Character round 10 ────────────────────────────────────────────────────── */
+/* Only the gold blade frame: no box or border image behind it, in any skin. */
+:root[data-skin] .dash.is-rpg .rpg-stage,.dash.is-rpg .rpg-stage{border:0;border-image:none;border-radius:0;background:none;box-shadow:none;}
+/* Name plate in the pixel fonts, on one line. */
+.dash.is-rpg .rpg-plate{gap:8px;padding:6px 10px;max-width:100%;}
+.dash.is-rpg .rpg-plate-level{font:9px/1 var(--rpg-pixel);white-space:nowrap;}
+.dash.is-rpg .rpg-plate-class{font:16px/1 var(--rpg-text);font-weight:400;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+
+/* Level card: the attribute bars span exactly the two badges below; more air
+   between this row and the badges. */
+.dash.is-rpg .rpg-body .rpg-stats{padding-left:0;}
+.dash.is-rpg .rpg-body{margin-bottom:8px;}
+.dash.is-rpg .rpg-body .rpg-radar{width:100%;height:100%;max-width:none;max-height:220px;}
+/* Badges: the same space above the number as below its label. */
+.dash.is-rpg .rpg-badges > div{padding:14px 12px;}
+.dash.is-rpg .rpg-badge-copy{gap:8px;}
+.dash.is-rpg .rpg-badge-copy :is(b,small){line-height:1;display:block;}
+/* Evolution: 12px in from the card's top and left edges; arrows centred on the card. */
+.dash.is-rpg .rpg-evo{position:relative;padding:12px;}
+.dash.is-rpg .rpg-evo-head span,.dash.is-rpg .rpg-evo-head small{line-height:1;}
+.dash.is-rpg .rpg-evo-stage{justify-content:center;}
+.dash.is-rpg .rpg-evo-arrow{position:absolute;top:50%;margin-top:-13px;}
+.dash.is-rpg .rpg-evo-arrow[data-evo-step="-1"]{left:12px;}
+.dash.is-rpg .rpg-evo-arrow[data-evo-step="1"]{right:12px;}
+.dash.is-rpg .rpg-evo-art.is-locked::after{inset:0;background:url("dashboard/chain.png") center/88% no-repeat;image-rendering:auto;opacity:1;}
+
+/* Achievements and party: bare tiles, no boxes. */
+.dash.is-rpg .rpg-ach,.dash.is-rpg .rpg-ach:not(.is-locked):hover{border-color:transparent;background:transparent;box-shadow:none;}
+.dash.is-rpg .rpg-member{border-color:transparent;}
+/* Achievements show every tile (no cap); Chronicle keeps its list scrolling. */
+.dash.is-rpg .rpg-col > .rpg-panel:has(.rpg-achs){max-height:none;}
+.dash.is-rpg .rpg-col > .rpg-panel:has(.rpg-achs) > .dash-card-body{overflow:visible;margin-right:0;padding-right:0;}
+/* Chronicle filters stay put while the list scrolls, 16px clear above and below. */
+.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters{position:sticky;top:0;z-index:2;margin:0;padding:0 0 8px;background:var(--rpg-panel);}
+:root[data-skin="geist-contrast"] .dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters{background:var(--surface);}
+.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters + .dash-row{border-top:0;}
+/* Measure from the glyphs, not the line box, so the insets read equal. */
+.dash.is-rpg .rpg-evo-head{align-items:flex-start;}
+.dash.is-rpg .rpg-evo-head :is(span,small),.dash.is-rpg .rpg-badge-copy :is(b,small){text-box:trim-both cap alphabetic;}
+.dash.is-rpg .rpg-evo{padding-top:14px;}
+/* Four badges to a row on desktop so Achievements and the right column end near each other. */
+.dash.is-rpg .rpg-achs{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));}
+.dash.is-rpg .rpg-ach{height:164px;}
+.rpg-ach-art{height:100px;}
+.rpg-ach-art img{width:96px;height:96px;}
+.rpg-ach-medal{width:76px;height:76px;font-size:34px;}
