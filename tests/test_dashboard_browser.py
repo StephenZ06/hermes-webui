@@ -702,7 +702,17 @@ def test_dashboard_cards_use_the_chamfered_pixel_frame(browser):
         page.evaluate(f"() => window.HermesDashboard.select('{tab}')")
         page.wait_for_function(f"() => !window.HermesDashboard._state.loading.{tab}", polling=100, timeout=10000)
         frames = page.evaluate("""() => [...document.querySelectorAll('.dash :is(.dash-card,.rpg-panel,.dash-stat)')].map(c => { const s = getComputedStyle(c);
-            return [s.borderImageSource.includes('svg'), s.clipPath.startsWith('polygon'), s.borderTopLeftRadius, getComputedStyle(c, '::before').content]; })""")
-        assert frames and all(svg and cut and radius == "0px" and before == "none" for svg, cut, radius, before in frames)
+            return [s.borderImageSource.includes('svg'), s.clipPath.startsWith('polygon'), s.borderTopLeftRadius, c.classList.contains('dash-stat') || getComputedStyle(c, '::after').backgroundImage.includes('svg')]; })""")
+        assert frames and all(svg and cut and radius == "0px" and gem for svg, cut, radius, gem in frames)  # main cards carry the centre gem
+        inner = page.evaluate("() => [...document.querySelectorAll('.dash :is(.rpg-stat,.rpg-badges > div,.rpg-evo)')].map(e => getComputedStyle(e).borderImageSource.includes('svg'))")
+        assert all(inner)
     # The character frame keeps its own art, without the card frame.
     assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage')).borderImageSource") == "none"
+
+
+def test_level_card_has_as_much_space_below_the_bars_as_above(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-stats", timeout=15000)
+    gaps = page.evaluate("() => { const R = s => document.querySelector(s).getBoundingClientRect(); return [R('.rpg-stats').top - R('.rpg-xpbar').bottom, R('.rpg-badges').top - R('.rpg-stats').bottom]; }")
+    assert abs(gaps[0] - gaps[1]) <= 0.5
