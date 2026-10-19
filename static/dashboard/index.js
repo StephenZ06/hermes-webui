@@ -119,6 +119,10 @@
         <small>${i % every === 0 || p.now ? esc(p.label) : ''}</small></div>`).join('');
     return `<div class="px-chart" role="img" aria-label="${esc(label)}" style="--n:${points.length}"><div class="px-chart-plot">${guides}<i class="px-chart-guide is-base"></i><div class="px-chart-cols">${cols}</div></div></div>`;
   }
+  // The pixel loading ring: eight square beads lit one after another round a
+  // circle. ``text`` adds the blinking "Loading..." under it (page start-up).
+  const spinner = (cls = '') => `<span class="px-spin ${cls}" aria-hidden="true">${'<i></i>'.repeat(8)}</span>`;
+  const pageLoader = (text) => `<div class="dash-loader${text ? ' is-page' : ''}" role="status" aria-live="polite" aria-label="Loading">${spinner('is-big')}${text ? '<span class="dash-loader-text">Loading<b>.</b><b>.</b><b>.</b></span>' : ''}</div>`;
   const orb = (kind = 'working') => `<span class="dash-orb" data-ld="orb" data-state="${kind}"><span class="work-hub-spinner" aria-hidden="true"></span></span>`;
 
   function questRow(q, {showArea = true} = {}) {
@@ -860,8 +864,18 @@
     state.painted.signature = signature;
     clearEffects();
     let body;
+    // Nothing to show yet: on start-up the whole page is the loader (with its
+    // "Loading..." line; index.html already shows the same one before this
+    // script runs), on a page change only the ring, in the page body.
+    if (!data && !state.error[state.tab] && !state.started) {
+      if (!host.querySelector(':scope > .dash-loader.is-page:not(.is-leaving)')) host.innerHTML = pageLoader(true);
+      paintSidebar();
+      return;
+    }
+    const leaving = host.querySelector(':scope > .dash-loader.is-page:not(.is-leaving)');
+    if (data) { if (leaving) state.entering = true; state.started = true; }
     if (!data && state.error[state.tab]) body = `<p class="dash-empty">${esc(state.error[state.tab])} <button type="button" class="dash-link" data-dash-retry>Retry</button></p>`;
-    else if (!data) body = '<div class="dash-skeleton" aria-busy="true"><i></i><i></i><i></i><i></i></div>';
+    else if (!data) body = pageLoader(false);
     else body = ({character: characterView, shop: shopView, career, business, settings: settingsView, personal})[state.tab](data);
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
@@ -890,6 +904,15 @@
     };
     restore();
     requestAnimationFrame(restore);  // again once late layout (fonts, art) has settled
+    // The start-up loader fades out over the page as it rises in.
+    if (leaving) {
+      leaving.classList.add('is-leaving');
+      // Over the part of the page in view, so the ring stays where it was.
+      if (scroller) Object.assign(leaving.style, {bottom: 'auto', top: `${Math.max(0, scroller.scrollTop - host.offsetTop)}px`, height: `${scroller.clientHeight}px`});
+      host.appendChild(leaving);
+      setTimeout(() => leaving.remove(), 420);
+    }
+    waitForMedia(host);
     const cadence = host.querySelector('[data-form="habit"] select[name=cadence]');
     enhance(host);
     if (cadence) {
@@ -950,6 +973,38 @@
     document.querySelectorAll('video.rpg-hero-video').forEach((v) => { v.pause(); if (videoWatch) videoWatch.unobserve(v); v._watched = false; });
   }
   document.addEventListener('visibilitychange', syncVideos);
+
+  // Cards whose art is still on its way (the hero video, the evolution
+  // sprite, the badges, the party's bots) show the ring in their middle and
+  // fade their content in once it has arrived. Nothing already loaded (a
+  // cached image, the kept video) waits; a stuck file gives up after 8s.
+  const MEDIA_CARDS = [['.rpg-stage', 'video.rpg-hero-video'], ['.rpg-evo-art', 'img'], ['.rpg-panel:has(.rpg-achs) > .dash-card-body', 'img'], ['.rpg-party', '[data-ld="bot"]']];
+  function waitForMedia(host) {
+    const effects = typeof window.loadLibrariesDev === 'function';  // without the bundle the bots never draw
+    MEDIA_CARDS.forEach(([sel, what]) => (what.startsWith('[data-ld') && !effects ? [] : host.querySelectorAll(sel)).forEach((box) => {
+      const pending = [...box.querySelectorAll(what)].filter((el) => (el.tagName === 'VIDEO' ? el.readyState < 2 : el.tagName === 'IMG' ? !el.complete : !el.firstElementChild));
+      if (!pending.length) return;
+      box.classList.add('is-media-loading');
+      const ring = document.createElement('span');
+      ring.className = 'dash-media-wait';
+      ring.innerHTML = spinner();
+      box.appendChild(ring);
+      let left = pending.length, over = false;
+      const finish = () => {
+        if (over) return; over = true;
+        box.classList.remove('is-media-loading');
+        ring.classList.add('is-leaving');
+        setTimeout(() => ring.remove(), 300);
+      };
+      const one = () => { if (--left <= 0) finish(); };
+      pending.forEach((el) => {
+        if (el.tagName === 'VIDEO') { el.addEventListener('loadeddata', one, {once: true}); el.addEventListener('error', one, {once: true}); }
+        else if (el.tagName === 'IMG') { el.addEventListener('load', one, {once: true}); el.addEventListener('error', one, {once: true}); }
+        else { const obs = new MutationObserver(() => { if (el.firstElementChild) { obs.disconnect(); one(); } }); obs.observe(el, {childList: true}); setTimeout(() => obs.disconnect(), 8000); }
+      });
+      setTimeout(finish, 8000);
+    }));
+  }
 
   function markScrollable(host) {
     requestAnimationFrame(() => { host.querySelectorAll(SCROLLERS).forEach(updateMore); fitAchievements(host); watchVideos(host); });

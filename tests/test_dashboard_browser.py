@@ -908,3 +908,40 @@ def test_revenue_shows_the_change_against_the_previous_period(browser):
     page.click("[data-rev-range=today]")
     delta = page.evaluate("() => { const d = document.querySelector('[data-dash-card=revenue] .px-chart-delta'); return d && [d.textContent, d.className, d.title]; }")
     assert delta and "vs yesterday" in delta[0] and "is-up" in delta[1] and "at this point" in delta[2]
+
+
+def test_loading_ring_on_start_up_on_navigation_and_in_cards_still_fetching_art(browser):
+    html = urllib.request.urlopen(BASE + "/", timeout=10).read().decode()
+    root = html[html.index('id="dashboardRoot"'):][:600]
+    assert 'dash-loader is-page' in root and "Loading" in root  # shows before any script runs
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-sheet", timeout=15000)
+    # Start-up with no data yet: the whole page is the loader, with its text...
+    page.evaluate("() => { const st = window.HermesDashboard._state; window.__data = st.data.character; st.started = false; st.data = {}; st.loading.character = true; window.HermesDashboard.select('character'); }")
+    assert page.evaluate("() => { const l = document.querySelector('#dashboardRoot > .dash-loader.is-page'); return !!l && !!l.querySelector('.dash-loader-text') && l.querySelectorAll('.px-spin i').length === 8; }")
+    # ...which fades out over the page once the data is in.
+    page.evaluate("() => { const st = window.HermesDashboard._state; st.loading.character = false; st.data.character = window.__data; window.HermesDashboard.select('character'); }")
+    assert page.evaluate("() => !!document.querySelector('.dash-loader.is-page.is-leaving') && !!document.querySelector('.rpg-sheet')")
+    page.wait_for_function("() => !document.querySelector('.dash-loader')", polling=50, timeout=3000)
+    # A page change to a page not loaded yet: only the ring, in the page body.
+    page.route("**/api/dashboard/summary*", lambda r: (time.sleep(1.0), r.continue_()))
+    page.evaluate("() => { delete window.HermesDashboard._state.data.shop; window.HermesDashboard.select('shop'); }")
+    assert page.evaluate("() => { const l = document.querySelector('.dash-body > .dash-loader'); return !!l && !l.classList.contains('is-page') && !l.querySelector('.dash-loader-text'); }")
+    page.wait_for_selector("[data-dash-card=rewards]", timeout=10000)
+    page.unroute("**/api/dashboard/summary*")
+    page.context.close()
+    # A card whose art is still coming shows the ring in its middle until it
+    # lands (a fresh page, so the badges are not cached; one of them is slow).
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    slow = {"done": False}
+
+    def badge(route):
+        if not slow["done"]:
+            slow["done"] = True
+            time.sleep(1.5)
+        route.continue_()
+    page.route("**/static/dashboard/achievements/*", badge)
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-panel:has(.rpg-achs) > .dash-card-body.is-media-loading .dash-media-wait .px-spin", timeout=5000)
+    page.wait_for_function("() => !document.querySelector('.rpg-panel:has(.rpg-achs) > .dash-card-body.is-media-loading')", polling=100, timeout=10000)

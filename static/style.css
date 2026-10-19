@@ -14049,3 +14049,45 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash-unlock-more{position:absolute;top:10px;right:14px;font:15px/1 "VT323",var(--font-mono);font-style:normal;color:var(--muted,#999);}
 @media (max-width:620px){.dash-unlock{right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px) + 64px);}}
 @media (prefers-reduced-motion:reduce){.dash-unlock{transition:none;}.dash-unlock-art::after{animation:none;display:none;}}
+
+/* ── Loading ───────────────────────────────────────────────────────────────
+   A ring of eight square gold beads, each lighting up in turn, so the light
+   runs round the circle. Start-up: the big ring and a blinking "Loading..."
+   in the middle of the page, fading out as the page rises in. A page change
+   or a card still fetching its art: the ring alone, in its middle. */
+.px-spin{position:relative;display:inline-block;width:32px;height:32px;flex:none;}
+.px-spin i{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;background:#f4c542;box-shadow:0 0 0 1px #3a2600;opacity:.18;transform:rotate(calc(var(--n) * 45deg)) translateY(-13px);animation:px-spin-bead .96s linear infinite;animation-delay:calc(var(--n) * .12s - .96s);}
+.px-spin i:nth-child(1){--n:0}.px-spin i:nth-child(2){--n:1}.px-spin i:nth-child(3){--n:2}.px-spin i:nth-child(4){--n:3}.px-spin i:nth-child(5){--n:4}.px-spin i:nth-child(6){--n:5}.px-spin i:nth-child(7){--n:6}.px-spin i:nth-child(8){--n:7}
+.px-spin.is-big{width:64px;height:64px;}
+.px-spin.is-big i{width:10px;height:10px;margin:-5px;box-shadow:0 0 0 2px #3a2600;transform:rotate(calc(var(--n) * 45deg)) translateY(-26px);}
+@keyframes px-spin-bead{0%{opacity:1;background:#fff2bd;}12%{opacity:1;background:#f4c542;}60%,100%{opacity:.18;background:#f4c542;}}
+.dash-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;min-height:min(60vh,520px);animation:dash-loader-in .25s ease-out both;}
+.dash-loader.is-page{position:absolute;inset:0;z-index:5;min-height:0;background:var(--bg);}
+#mainDashboard > #dashboardRoot{position:relative;min-height:100%;}
+.dash-loader-text{font:13px/1 "Press Start 2P",var(--font-mono,monospace);letter-spacing:.12em;text-transform:uppercase;color:#f4c542;text-shadow:0 3px 0 #3a2600;}
+.dash-loader-text b{font-weight:inherit;animation:dash-loader-dot 1.2s steps(1) infinite;}
+.dash-loader-text b:nth-child(2){animation-delay:.2s;}
+.dash-loader-text b:nth-child(3){animation-delay:.4s;}
+@keyframes dash-loader-dot{0%,100%{opacity:0;}30%,80%{opacity:1;}}
+@keyframes dash-loader-in{from{opacity:0;}to{opacity:1;}}
+.dash-loader.is-leaving{pointer-events:none;animation:dash-loader-out .4s ease-in forwards;}
+.dash-loader.is-leaving .px-spin{animation:dash-loader-shrink .4s ease-in forwards;}
+@keyframes dash-loader-out{to{opacity:0;}}
+@keyframes dash-loader-shrink{to{transform:scale(.6);}}
+/* A card waiting for its art. */
+.rpg-panel:has(.rpg-achs) > .dash-card-body,.rpg-party{position:relative;}
+.dash-media-wait{position:absolute;left:50%;top:50%;z-index:5;transform:translate(-50%,-50%);pointer-events:none;transition:opacity .3s ease;}
+.dash-media-wait.is-leaving{opacity:0;}
+.is-media-loading :is(video,img,[data-ld="bot"]){opacity:0;}
+:is(.rpg-stage,.rpg-evo-art,.rpg-achs,.rpg-party) :is(video,img,[data-ld="bot"]){transition:opacity .35s ease;}
+.rpg-panel:has(.rpg-achs) > .dash-card-body > .dash-media-wait{top:120px;}
+@media (prefers-reduced-motion:reduce){.px-spin i{animation-duration:2.4s;}.dash-loader,.dash-loader.is-leaving,.dash-loader.is-leaving .px-spin{animation-duration:.01s;}}
+.rpg-panel:has(.rpg-achs) > .dash-card-body.is-media-loading > .rpg-achs{opacity:0;}
+.rpg-panel:has(.rpg-achs) > .dash-card-body > .rpg-achs{transition:opacity .35s ease;}
+.rpg-party.is-media-loading > *:not(.dash-media-wait){opacity:0;}
+.rpg-party > *{transition:opacity .35s ease;}
+/* Beads placed (not rotated) round the ring, so every one stays a square pixel. */
+.px-spin i:nth-child(1){--x:0;--y:-1}.px-spin i:nth-child(2){--x:.72;--y:-.72}.px-spin i:nth-child(3){--x:1;--y:0}.px-spin i:nth-child(4){--x:.72;--y:.72}
+.px-spin i:nth-child(5){--x:0;--y:1}.px-spin i:nth-child(6){--x:-.72;--y:.72}.px-spin i:nth-child(7){--x:-1;--y:0}.px-spin i:nth-child(8){--x:-.72;--y:-.72}
+.px-spin i{transform:translate(round(calc(var(--x) * 12px),1px),round(calc(var(--y) * 12px),1px));}
+.px-spin.is-big i{transform:translate(round(calc(var(--x) * 24px),2px),round(calc(var(--y) * 24px),2px));}
