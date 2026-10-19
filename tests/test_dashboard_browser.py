@@ -977,3 +977,16 @@ def test_round_12_names_bars_milestones_and_revenue(browser):
     page.click("[data-rev-range=month]")
     labels = page.evaluate("() => [...document.querySelectorAll('[data-dash-card=revenue] .px-chart-col > small')].map(s => s.textContent).filter(Boolean)")
     assert labels[:3] == ["1", "8", "15"]  # every 7th day, no extra label squeezed in for today
+
+
+def test_jobs_side_panel_opens_the_career_dashboard_and_side_buttons_sit_on_the_panel(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { document.documentElement.dataset.skin = 'geist-contrast'; await switchPanel('jobs'); }")
+    page.wait_for_selector("#panelJobs.active .hermes-cli-interact-btn", timeout=10000)
+    assert page.inner_text("#panelJobs .hermes-cli-interact-label").strip().lower() == "career dashboard"
+    # Every side-panel action strip takes its panel's background (no darker band).
+    assert page.evaluate("() => [...document.querySelectorAll('.panel-view > .hermes-cli-card')].every(c => getComputedStyle(c).backgroundColor === 'rgba(0, 0, 0, 0)')")
+    # Only the active panel's button shows.
+    assert page.evaluate("() => getComputedStyle(document.getElementById('panelChat') || document.querySelector('.panel-view:not(.active)')).display") == "none"
+    page.click("#panelJobs .hermes-cli-interact-btn")
+    page.wait_for_function("() => window.HermesDashboard._state.tab === 'career' && document.querySelector('.dash-head h1')?.textContent === 'CAREER DASHBOARD'", polling=100, timeout=10000)

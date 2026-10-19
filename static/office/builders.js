@@ -1883,9 +1883,12 @@ export function makeChatBubble(palette) {
   const ctx = canvas.getContext('2d');
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  // Drawn last and over everything: a mood shows above its worker, never
+  // hidden behind the worker's own head or body.
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: texture, transparent: true, depthWrite: false,
+    map: texture, transparent: true, depthWrite: false, depthTest: false,
   }));
+  sprite.renderOrder = 999;
   sprite.scale.set(1.6, 1.2, 1);
   sprite.position.set(0, 2.9, 0);
   sprite.visible = false;

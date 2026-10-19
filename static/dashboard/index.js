@@ -1401,5 +1401,10 @@
   }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('resize', () => { const host = root(); if (host) markScrollable(host); });
+  // Jobs' side panel button: the Dashboard, on its Career page.
+  window.openCareerDashboard = async () => {
+    if (typeof switchPanel === 'function') await switchPanel('dashboard');
+    select('career');
+  };
   window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _celebrate: celebrate, _announce: announceUnlocks, _state: state};
 })();

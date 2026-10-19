@@ -30,6 +30,8 @@ def _old_inline_render(csrf_token: str) -> str:
         .replace("__WEBUI_VERSION__", quote(WEBUI_VERSION, safe=""))
         .replace("__MAX_UPLOAD_BYTES__", str(routes.MAX_UPLOAD_BYTES))
         .replace("__CSRF_TOKEN_JSON__", json.dumps(csrf_token))
+        # The shell marks the page a fresh launch opens on (HERMES_WEBUI_START_PAGE).
+        .replace("<body", '<body data-start-page="dashboard"', 1)
     )
 
 

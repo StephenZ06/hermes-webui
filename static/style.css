@@ -14064,7 +14064,7 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;min-height:min(60vh,520px);animation:dash-loader-in .25s ease-out both;}
 .dash-loader.is-page{position:absolute;inset:0;z-index:5;min-height:0;background:var(--bg);}
 #mainDashboard > #dashboardRoot{position:relative;min-height:100%;}
-.dash-loader-text{font:13px/1 "Press Start 2P",var(--font-mono,monospace);letter-spacing:.12em;text-transform:uppercase;color:#f4c542;text-shadow:0 3px 0 #3a2600;}
+.dash-loader-text{font:13px/1 "Press Start 2P",var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:#f4c542;text-shadow:0 3px 0 #3a2600;}
 .dash-loader-text b{font-weight:inherit;animation:dash-loader-dot 1.2s steps(1) infinite;}
 .dash-loader-text b:nth-child(2){animation-delay:.2s;}
 .dash-loader-text b:nth-child(3){animation-delay:.4s;}
@@ -14256,3 +14256,11 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 /* The workspace panel has no place on the Dashboard: its edge toggle (and
    the panel) stay hidden there. */
 body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpanel){display:none!important;}
+
+/* Side-panel action buttons (Initialize Hermes CLI, Live Office, Career
+   Dashboard): the strip they sit in takes the panel's own background, so
+   Geist Contrast shows no darker band behind them. */
+.panel-view > .hermes-cli-card{background:transparent;}
+#panelJobs.active{display:flex;flex-direction:column;}
+#panelJobs > #jobOsSidebar{flex:1 1 auto;min-height:0;overflow-y:auto;}
+#panelJobs > .hermes-cli-card{flex:none;}
