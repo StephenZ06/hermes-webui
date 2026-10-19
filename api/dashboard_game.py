@@ -74,6 +74,13 @@ ACHIEVEMENTS: list[tuple[str, str, str, str, Any]] = [
     ("sales_10", "Trader", "Make 10 sales", "🪙", lambda p: p["kinds"].get("sale", 0) >= 10),
     ("habit_month", "Iron Will", "30-day habits streak", "🛡️", lambda p: p["habit_days"] >= 30),
     ("tasks_200", "Tireless", "Earn XP 200 times", "⚙️", lambda p: p["tasks_done"] >= 200),
+    # No badge art yet: "pix:<name>" draws that pixel icon in the medallion.
+    ("bookworm", "Bookworm", "Finish 10 books", "pix:learning-log", lambda p: p["kinds"].get("book", 0) >= 10),
+    ("early_bird", "Early Bird", "Earn XP before 7am", "pix:this-week", lambda p: p["early"] >= 1),
+    ("night_owl", "Night Owl", "Earn XP after midnight", "pix:quest-log", lambda p: p["night"] >= 1),
+    ("big_spender", "Big Spender", "Buy 5 rewards", "pix:recent-sales", lambda p: p["bought"] >= 5),
+    ("hoarder", "Hoarder", "Earn 5,000 gold", "pix:treasury", lambda p: p["gold_earned"] >= 5000),
+    ("realm_keeper", "Realm Keeper", "Reach level 5 in every realm", "pix:realms", lambda p: all(level_for(a["xp"])["level"] >= 5 for a in p["areas"])),
 ]
 NAME_MAX = 120
 
@@ -782,12 +789,18 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
     week = sum(row["xp"] for row in rows if row["at"] >= now - 7 * DAY)
     kinds: dict[str, int] = {}
     habit_days: set[str] = set()
+    early = night = 0
     for row in rows:
         detail = json.loads(row["detail"] or "{}")
         kind = detail.get("kind") or row["source"]
         if row["source"] == "learning":
             kind = "learning"
         kinds[kind] = kinds.get(kind, 0) + 1
+        if row["source"] == "learning" and detail.get("kind") == "book":
+            kinds["book"] = kinds.get("book", 0) + 1
+        hour = time.localtime(row["at"]).tm_hour
+        early += 4 <= hour < 7
+        night += 0 <= hour < 4
         if row["source"] == "skill" and detail.get("via"):
             kinds[f"skill:{detail['via']}"] = kinds.get(f"skill:{detail['via']}", 0) + 1
         if row["source"] == "habit":
@@ -806,7 +819,7 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
     }
     level_info = level_for(total)
     progress = {"tasks_done": len(rows), "quests_done": quests_done, "best_streak": _best_streak(days), "level": level_info["level"],
-                "kinds": kinds, "habit_days": len(habit_days),
+                "kinds": kinds, "habit_days": len(habit_days), "early": early, "night": night, **_purse_progress(),
                 "areas": [{"key": c, "xp": by_category[c]} for c in CATEGORIES]}
     achievements = _achievements(progress, now)
     projects = [{"project_id": p.get("project_id"), "name": p.get("name"),
@@ -831,6 +844,17 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         "best_streak": progress["best_streak"],
         "shop": _safe(shop, {"gold": {"earned": 0, "spent": 0, "balance": 0}, "rewards": [], "history": []}),
     }
+
+
+def _purse_progress() -> dict[str, int]:
+    """Rewards bought and gold earned all time, for the Shop achievements."""
+    try:
+        with _LOCK, _connect() as conn:
+            bought = conn.execute("SELECT COUNT(*) FROM redemptions").fetchone()[0]
+            return {"bought": int(bought), "gold_earned": _gold(conn)["earned"]}
+    except Exception:
+        logging.getLogger(__name__).info("purse progress unavailable", exc_info=True)
+        return {"bought": 0, "gold_earned": 0}
 
 
 def _best_streak(days: set[str]) -> int:

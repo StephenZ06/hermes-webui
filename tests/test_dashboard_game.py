@@ -266,7 +266,7 @@ def test_achievements_fill_whole_rows_and_each_one_is_unique():
     from api import dashboard_game
 
     keys = [a[0] for a in dashboard_game.ACHIEVEMENTS]
-    assert len(keys) == len(set(keys)) == 24  # 24 tiles: whole rows of 2, 3, 4, 6 or 8
+    assert len(keys) == len(set(keys)) == 30  # 30 tiles: whole rows of 5 (desktop) or 3 (phones)
 
 
 def test_the_treasury_tracks_gold_in_and_out(game):
@@ -292,3 +292,21 @@ def test_achievements_say_which_ones_have_badge_art():
     art = dashboard_game._achievement_art()
     assert {"first_task", "habit_month", "tasks_200"} <= art
     assert art <= {a[0] for a in dashboard_game.ACHIEVEMENTS}  # every art file belongs to an achievement
+
+
+def test_new_achievements_count_books_hours_rewards_and_realms(game):
+    import time as _t
+    from api import dashboard_game
+
+    progress = {"tasks_done": 0, "quests_done": 0, "best_streak": 0, "level": 1, "kinds": {"book": 10}, "habit_days": 0,
+                "early": 1, "night": 0, "bought": 5, "gold_earned": 4999,
+                "areas": [{"key": k, "xp": 2000} for k in dashboard_game.CATEGORIES]}
+    tests = {k: t for k, _, _, _, t in dashboard_game.ACHIEVEMENTS}
+    assert tests["bookworm"](progress) and tests["early_bird"](progress) and tests["big_spender"](progress)
+    assert not tests["night_owl"](progress) and not tests["hoarder"](progress)
+    assert tests["realm_keeper"](progress) == all(dashboard_game.level_for(2000)["level"] >= 5 for _ in range(1))
+    # Books are counted from the learning log.
+    for i in range(10):
+        dashboard_game.add_learning({"title": f"Book {i}", "kind": "book", "area": "personal"})
+    data = dashboard_game.character()
+    assert {a["key"]: a["unlocked_at"] for a in data["achievements"]}["bookworm"]

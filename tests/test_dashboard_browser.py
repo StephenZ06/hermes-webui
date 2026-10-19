@@ -207,6 +207,8 @@ def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
         window.HermesDashboard.select('character');
     }""")
     page.wait_for_selector(".rpg-stage :is(.px-hero,.rpg-hero-video)", timeout=15000)
+    # While the video loads the scene is black behind the ring; measure after.
+    page.wait_for_function("() => !document.querySelector('.rpg-stage.is-media-loading')", polling=100, timeout=12000)
     visuals = page.evaluate("""() => {
         const canvas = document.getElementById('mainDashboard');
         const panel = document.querySelector('.rpg-panel');
@@ -452,7 +454,9 @@ def test_a_summary_tile_scrolls_to_its_card_and_makes_it_pulse(browser):
     page.click(".dash-stat[data-dash-focus='habits']")
     assert page.evaluate("() => document.querySelector('[data-dash-card=habits]').classList.contains('is-pulsing')")
     assert not page.evaluate("() => document.querySelector('[data-dash-card=quests]').classList.contains('is-pulsing')")
-    assert page.evaluate("() => getComputedStyle(document.querySelector('[data-dash-card=habits]')).animationName") == "dash-card-pulse"
+    # It bobs (no glow).
+    pulse = page.evaluate("() => { const s = getComputedStyle(document.querySelector('[data-dash-card=habits]')); return [s.animationName, s.boxShadow]; }")
+    assert pulse == ["dash-card-bob", "none"]
     page.wait_for_function("() => !document.querySelector('[data-dash-card=habits]').classList.contains('is-pulsing')", polling=100, timeout=4000)
     for tab in ("career", "business"):
         page.evaluate(f"() => window.HermesDashboard.select('{tab}')")
@@ -691,6 +695,7 @@ def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scrol
     assert cols[1][-1] == "Chronicle" and cols[1].index("Realms") == len(cols[1]) - 2
     assert page.evaluate("() => document.querySelectorAll('.rpg-ach .dash-new').length") == 0
     body = ".rpg-panel.is-chronicle > .dash-card-body"
+    page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
     page.evaluate(f"() => {{ document.querySelector('{body}').scrollTop = 240; }}")
     top = page.evaluate(f"() => document.querySelector('{body}').getBoundingClientRect().top")
     chips = page.evaluate("() => document.querySelector('.rpg-log-filters').getBoundingClientRect().top")
@@ -945,3 +950,24 @@ def test_loading_ring_on_start_up_on_navigation_and_in_cards_still_fetching_art(
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
     page.wait_for_selector(".rpg-panel:has(.rpg-achs) > .dash-card-body.is-media-loading .dash-media-wait .px-spin", timeout=5000)
     page.wait_for_function("() => !document.querySelector('.rpg-panel:has(.rpg-achs) > .dash-card-body.is-media-loading')", polling=100, timeout=10000)
+
+
+
+def test_round_12_names_bars_milestones_and_revenue(browser):
+    page = _open(browser, viewport={"width": 1560, "height": 1000})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-stat", timeout=15000)
+    names = page.evaluate("() => [...document.querySelectorAll('.rpg-stat strong')].map(s => s.textContent)")
+    assert names == ["PER", "CAR", "BUS", "VIT", "CON"]
+    colours = page.evaluate("() => new Set([...document.querySelectorAll('.rpg-stat-bar')].map(b => getComputedStyle(b).getPropertyValue('--c2').trim())).size")
+    assert colours == 5  # each attribute its own colour
+    realms = page.evaluate("() => new Set([...document.querySelectorAll('.dash-meters.is-realms .dash-bar')].map(b => getComputedStyle(b).getPropertyValue('--c2').trim())).size")
+    assert realms == 3
+    page.evaluate("() => window.HermesDashboard.select('business')")
+    page.wait_for_selector(".dash-badge-art img", timeout=15000)
+    ms = page.evaluate("() => [...document.querySelectorAll('.dash-badge')].map(b => [getComputedStyle(b).borderImageWidth, b.querySelector('img').getAttribute('src')])")
+    assert ms and all(w == "4px" and "/milestones/" in src for w, src in ms)
+    assert page.evaluate("() => [...document.querySelectorAll('.dash-seg, .dash-seg button')].every(e => getComputedStyle(e).borderTopLeftRadius === '0px')")
+    page.click("[data-rev-range=month]")
+    labels = page.evaluate("() => [...document.querySelectorAll('[data-dash-card=revenue] .px-chart-col > small')].map(s => s.textContent).filter(Boolean)")
+    assert labels[:3] == ["1", "8", "15"]  # every 7th day, no extra label squeezed in for today

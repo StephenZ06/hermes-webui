@@ -116,7 +116,7 @@
     const guides = [1, 0.5].map((f) => `<i class="px-chart-guide" style="bottom:${f * 100}%"><small>${esc(format(scale * f))}</small></i>`).join('');
     const cols = points.map((p, i) => `<div class="px-chart-col${p.now ? ' is-now' : ''}${p.value ? '' : ' is-zero'}" title="${esc(p.title || '')}">
         <span class="px-chart-bar" style="--h:${p.value ? Math.max(3, (p.value / scale) * 100).toFixed(1) : 0}%;--i:${i}">${i === peak ? `<b class="px-chart-peak">${esc(format(p.value))}</b>` : ''}</span>
-        <small>${i % every === 0 || p.now ? esc(p.label) : ''}</small></div>`).join('');
+        <small>${i % every === 0 ? esc(p.label) : ''}</small></div>`).join('');
     return `<div class="px-chart" role="img" aria-label="${esc(label)}" style="--n:${points.length}"><div class="px-chart-plot">${guides}<i class="px-chart-guide is-base"></i><div class="px-chart-cols">${cols}</div></div></div>`;
   }
   // The pixel loading ring: eight square beads lit one after another round a
@@ -200,7 +200,7 @@
     </div>`;
     const projects = (hub.projects || []).filter((p) => p.open || p.done).slice(0, 6).map((p) => `<div class="dash-row">
         <span class="dash-row-main"><strong>${esc(p.name)}</strong><small>${plural(p.open, 'open item')}${p.last_activity ? ' · ' + ago(p.last_activity) : ''}</small></span>
-        ${bar(p.progress, p.blocked ? 'bad' : '')}
+        ${bar(p.progress, p.blocked ? 'bad' : 'good')}
         <span class="dash-pill${p.blocked ? ' is-bad' : p.in_progress ? ' is-accent' : ''}">${p.blocked ? `${p.blocked} blocked` : p.in_progress ? `${p.in_progress} active` : `${Math.round(p.progress * 100)}%`}</span>
       </div>`).join('') || sectionError(hub) || '<p class="dash-empty">No projects with work items yet.</p>';
     const sch = data.schedules || {};
@@ -246,7 +246,9 @@
     const week = jobs.this_week || {};
     const funnel = jobs.funnel || [];
     const top = Math.max(1, ...funnel.map((f) => f.count || 0));
-    const funnelRows = funnel.map((f) => `<div class="dash-row"><span class="dash-row-main"><strong>${esc(f.label)}</strong></span>${bar((f.count || 0) / top)}<span class="dash-num">${f.count || 0}</span></div>`).join('');
+    // Each stage of the funnel its own colour, cool to warm as jobs move on.
+    const STAGE_TONES = ['silver', 'blue', 'purple', 'gold', 'pink', 'good'];
+    const funnelRows = funnel.map((f, i) => `<div class="dash-row"><span class="dash-row-main"><strong>${esc(f.label)}</strong></span>${bar((f.count || 0) / top, STAGE_TONES[i % STAGE_TONES.length])}<span class="dash-num">${f.count || 0}</span></div>`).join('');
     const weekRows = [['found', 'Scout finds'], ['tailored', 'Resumes tailored'], ['applied', 'Applications sent'], ['interview', 'Interviews'], ['rejected', 'Rejections']]
       .map(([k, label]) => `<div class="dash-row"><span class="dash-row-main"><strong>${label}</strong></span><span class="dash-num">${week[k] || 0}</span></div>`).join('');
     const jobsBody = jobs.error ? sectionError(jobs) : `<div class="dash-stats">
@@ -317,11 +319,10 @@
       const value = g.metric === 'sales' ? `${g.value} / ${g.target}` : `${money(g.value, cur)} / ${money(g.target, cur)}`;
       return `<div class="dash-goal${g.met ? ' is-met' : ''}"><div class="dash-goal-head"><strong>${esc(label)}</strong>${g.project ? `<span class="dash-area-tag is-project">${esc(g.project)}</span>` : ''}<span class="dash-pill${g.met ? ' is-good' : ' is-accent'}">${g.met ? '✓ Met' : esc(value)}</span><button type="button" class="dash-icon-btn" data-goal-remove="${esc(g.id)}" aria-label="Remove goal" title="Remove goal">${svg('x', 13)}</button></div>${bar(g.progress, g.met ? 'good' : '')}${g.streak ? `<small class="dash-goal-streak">🔥 ${g.streak} ${g.period}${g.streak === 1 ? '' : 's'} in a row</small>` : ''}</div>`;
     }).join('') || (state.forms.goal ? '' : '<p class="dash-empty">Set a target, like 5 sales this week, and build a streak.</p>');
-    // Each milestone wears the pixel icon of the figure it counts (the same
-    // icons as the summary tiles); locked ones are greyed.
-    const msIcon = (key) => (/^first_sale/.test(key) ? 'recent-sales' : /^revenue_/.test(key) ? 'treasury' : /^customers_/.test(key) ? 'goals' : 'road-to-10k');
+    // Each milestone has its own art (static/dashboard/milestones/<key>.webp,
+    // from icons/milestones); locked ones are greyed.
     const milestones = (s.milestones || []).map((m) => `<div class="dash-badge${m.unlocked_at ? '' : ' is-locked'}" title="${esc(m.description)}">
-        <span class="dash-badge-icon is-pixel">${PIX(msIcon(m.key))}</span><strong>${esc(m.title)}</strong>
+        <span class="dash-badge-art"><img src="static/dashboard/milestones/${esc(m.key)}.webp" alt="" width="56" height="56" draggable="false"></span><strong>${esc(m.title)}</strong>
         <small>${m.unlocked_at ? ago(m.unlocked_at) : 'Locked'}</small>
       </div>`).join('');
     const road = s.road || {checkpoints: []};
@@ -366,7 +367,10 @@
       title: `${range === 'today' ? `${p.label}:00` : range === 'week' ? p.label : `Day ${p.label}`}: ${money(p.revenue, cur)}`}));
     const total = points.reduce((n, p) => n + p.value, 0);
     const short = (c) => (c >= 100000 ? `$${Math.round(c / 100000)}k` : money(c, cur));
-    const every = range === 'today' ? 3 : range === 'month' ? 5 : 1;
+    // Fewer, regular labels: every 6 hours, every day of the week, every
+    // 7th day of the month (1, 8, 15...). The current slot is marked by its
+    // bar and a small marker, not by squeezing in an extra label.
+    const every = range === 'today' ? 6 : range === 'month' ? 7 : 1;
     const seg = `<span class="dash-seg" role="group" aria-label="Revenue period">${REV_RANGES.map(([k, l]) => `<button type="button" data-rev-range="${k}" class="${k === range ? 'on' : ''}" aria-pressed="${k === range}">${l}</button>`).join('')}</span>`;
     // Against the previous period up to the same point (the server's figure).
     const prev = (s.series_previous || {})[range];
@@ -380,7 +384,8 @@
         delta = `<p class="px-chart-delta ${pct > 0 ? 'is-up' : pct < 0 ? 'is-down' : ''}" title="${esc(tip)}">${pct > 0 ? '▲' : pct < 0 ? '▼' : '='} ${Math.abs(pct)}% vs ${than}</p>`;
       }
     }
-    const body = points.length ? `${delta}${pixelChart(points, {format: short, every, label: `Revenue ${range === 'today' ? 'today by hour' : range === 'week' ? 'this week by day' : 'this month by day'}`})}` : '<p class="dash-empty">No revenue yet.</p>';
+    const none = `<p class="dash-empty px-chart-none">No sales ${range === 'today' ? 'today' : range === 'week' ? 'this week' : 'this month'} yet.</p>`;
+    const body = !total ? `${delta}${none}` : points.length ? `${delta}${pixelChart(points, {format: short, every, label: `Revenue ${range === 'today' ? 'today by hour' : range === 'week' ? 'this week by day' : 'this month by day'}`})}` : '<p class="dash-empty">No revenue yet.</p>';
     return card(`Revenue · ${esc(money(total, cur))}`, body, {pix: 'revenue', key: 'revenue', cls: 'is-revenue', action: seg});
   }
 
@@ -401,15 +406,20 @@
   }
 
   // ── Character (RPG) ──────────────────────────────────────────────────────
+  // Achievements without badge art stand their pixel icon in a template
+  // shield (icons/template/01), coloured by what they are for.
+  const SHIELD = {bookworm: 'green', realm_keeper: 'green', early_bird: 'blue', night_owl: 'blue', big_spender: 'red', hoarder: 'red'};
   const STATS = ['STR', 'INT', 'CHA', 'VIT', 'DEX'];
+  // Shown as the first three letters of what each one measures.
+  const STAT_SHORT = {STR: 'PER', INT: 'CAR', CHA: 'BUS', VIT: 'VIT', DEX: 'CON'};
   function radar(stats) {
     const max = Math.max(10, ...STATS.map((k) => (stats[k] || {}).value || 0));
     const c = 80, r = 58, n = STATS.length;
     const point = (i, f) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [c + Math.cos(a) * r * f, c + Math.sin(a) * r * f]; };
     const ring = (f) => STATS.map((_, i) => point(i, f).map((v) => v.toFixed(1)).join(',')).join(' ');
     const shape = STATS.map((k, i) => point(i, Math.max(0.06, ((stats[k] || {}).value || 0) / max)).map((v) => v.toFixed(1)).join(',')).join(' ');
-    const labels = STATS.map((k, i) => { const [x, y] = point(i, 1.27); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${k}</text>`; }).join('');
-    return `<svg class="rpg-radar" viewBox="0 -7 160 160" role="img" aria-label="Attributes: ${STATS.map((k) => `${k} ${(stats[k] || {}).value || 1}`).join(', ')}">
+    const labels = STATS.map((k, i) => { const [x, y] = point(i, 1.27); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${STAT_SHORT[k]}</text>`; }).join('');
+    return `<svg class="rpg-radar" viewBox="0 -7 160 160" role="img" aria-label="Attributes: ${STATS.map((k) => `${STAT_SHORT[k]} ${(stats[k] || {}).value || 1}`).join(', ')}">
       ${[0.33, 0.66, 1].map((f) => `<polygon points="${ring(f)}" class="rpg-radar-ring"/>`).join('')}
       ${STATS.map((_, i) => { const [x, y] = point(i, 1); return `<line x1="${c}" y1="${c}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rpg-radar-ring"/>`; }).join('')}
       <polygon points="${shape}" class="rpg-radar-shape"/>${labels}</svg>`;
@@ -474,7 +484,7 @@
     // Attributes as bars against the strongest one (at least 10), so growth shows.
     const statTop = Math.max(10, ...STATS.map((k) => Number((stats[k] || {}).value) || 1));
     const statRows = STATS.map((k) => { const st = stats[k] || {}; const v = Number(st.value) || 1;
-      return `<div class="rpg-stat" title="${esc(st.hint || '')}"><strong>${k}</strong><small>${esc(st.label || '')}</small><span class="rpg-stat-bar" aria-hidden="true"><i style="width:${Math.round(v / statTop * 100)}%"></i></span><b>${esc(v)}</b></div>`; }).join('');
+      return `<div class="rpg-stat is-${STAT_SHORT[k].toLowerCase()}" title="${esc(st.hint || '')}"><strong>${STAT_SHORT[k]}</strong><small>${esc(st.label || '')}</small><span class="rpg-stat-bar" aria-hidden="true"><i style="width:${Math.round(v / statTop * 100)}%"></i></span><b>${esc(v)}</b></div>`; }).join('');
     const segments = 20;
     const filled = Math.round((data.progress || 0) * segments);
     const xpbar = `<div class="rpg-xpbar" role="progressbar" aria-valuemin="0" aria-valuemax="${data.level_size}" aria-valuenow="${data.into_level}" aria-label="Experience">${Array.from({length: segments}, (_, i) => `<i class="${i < filled ? 'on' : ''}"></i>`).join('')}</div>`;
@@ -491,10 +501,10 @@
     // Achievements with their own badge art fill most of the tile; the rest
     // get a pixel medallion around their icon. Locked ones stay dark until earned.
     const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${a.art ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}${a.unlocked_at ? ` · earned ${esc(ago(a.unlocked_at))}` : ''}">
-        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.webp" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('${esc(new URL(`static/dashboard/achievements/${a.key}.webp`, document.baseURI).href)}')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
+        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.webp" alt="" draggable="false" loading="lazy">` : String(a.icon || '').startsWith('pix:') ? `<span class="rpg-ach-shield is-${SHIELD[a.key] || 'blue'}">${PIX(a.icon.slice(4))}</span>` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('${esc(new URL(`static/dashboard/achievements/${a.key}.webp`, document.baseURI).href)}')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
         <span class="rpg-ach-text"><strong>${esc(a.title)}</strong><small>${esc(a.description)}</small></span>
       </div>`).join('');
-    const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
+    const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress, `area-${a.key}`)}</div>`).join('');
     const toNext = data.level_size - data.into_level;
     return `<div class="rpg">
       <div class="rpg-hero">
@@ -825,8 +835,8 @@
     if (document.querySelector('.dash-unlock') || !unlockQueue.length) return;
     const {kind, item} = unlockQueue.shift();
     const art = kind === 'achievement'
-      ? (item.art ? `<img src="static/dashboard/achievements/${esc(item.key)}.webp" alt="" draggable="false">` : `<span class="dash-unlock-medal">${esc(item.icon || '★')}</span>`)
-      : PIX(/^first_sale/.test(item.key) ? 'recent-sales' : /^revenue_/.test(item.key) ? 'treasury' : /^customers_/.test(item.key) ? 'goals' : 'road-to-10k');
+      ? (item.art ? `<img src="static/dashboard/achievements/${esc(item.key)}.webp" alt="" draggable="false">` : String(item.icon || '').startsWith('pix:') ? PIX(item.icon.slice(4)) : `<span class="dash-unlock-medal">${esc(item.icon || '★')}</span>`)
+      : `<img src="static/dashboard/milestones/${esc(item.key)}.webp" alt="" draggable="false">`;
     const el = document.createElement('div');
     el.className = 'dash-unlock';
     el.setAttribute('role', 'status');
