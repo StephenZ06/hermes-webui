@@ -352,13 +352,15 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
     # Achievements shows every badge at full height and runs down to
     # Chronicle's bottom edge; Chronicle fills what is left and scrolls inside.
+    # (Measured once the page's rise-in has finished.)
+    page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
     ends = page.evaluate("""() => {
         const ach = document.querySelector('.rpg-panel:has(.rpg-achs)').getBoundingClientRect();
         const chron = document.querySelector('.rpg-panel.is-chronicle');
         const body = chron.querySelector(':scope > .dash-card-body');
-        return {gap: Math.abs(ach.bottom - chron.getBoundingClientRect().bottom), scrolls: body.scrollHeight > body.clientHeight + 1};
+        return {gap: Math.abs(ach.bottom - chron.getBoundingClientRect().bottom), scroll: getComputedStyle(body).overflowY};
     }""")
-    assert ends["gap"] <= 1 and ends["scrolls"]
+    assert ends["gap"] <= 1 and ends["scroll"] == "auto", ends
     assert page.evaluate("() => { const b = document.querySelector('.rpg-achs').closest('.dash-card-body'); return b.scrollHeight <= b.clientHeight + 1; }")
 
 
@@ -651,7 +653,9 @@ def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
     page.wait_for_selector(".rpg-ach", timeout=15000)
     frame = page.evaluate("() => { const s = document.querySelector('.rpg-stage'), r = s.getBoundingClientRect(); return [getComputedStyle(s, '::after').borderImageSource, r.width / r.height]; }")
-    assert "frame-gold.png" in frame[0] and abs(frame[1] - 0.75) <= 0.05  # the blade frame as a 3:4 nine-slice
+    # The blade frame as a nine-slice: 3:4 where the page is wide; narrower
+    # here, where the level card needs the width.
+    assert "frame-gold.png" in frame[0] and 0.55 <= frame[1] <= 0.8
     cols = page.evaluate("""() => { const e = document.querySelector('.rpg-evo').getBoundingClientRect(), b = [...document.querySelectorAll('.rpg-badges > div')].pop().getBoundingClientRect();
         return [Math.round(e.left - b.left), Math.round(e.width - b.width)]; }""")
     assert cols == [0, 0]  # evolution lines up with the badge below it
@@ -843,3 +847,36 @@ def test_buying_a_reward_bursts_coins_and_the_level_up_card_is_framed(browser):
                 textTop: tr.top - br.top, textBottom: br.bottom - tr.bottom, rays: document.querySelector('.rpg-levelup-rays').getBoundingClientRect().width / c.getBoundingClientRect().width}; }""")
     assert card["frame"] and card["heroFrame"] and card["rays"] > 0.9
     assert abs(card["textTop"] - card["textBottom"]) <= 1  # Continue sits in the middle of its button
+
+
+def test_a_repaint_keeps_the_hero_video_and_only_a_page_change_animates(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-sheet", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    if not page.evaluate("() => !!document.querySelector('.rpg-stage video.rpg-hero-video')"):
+        pytest.skip("this form has no video")
+    kept = page.evaluate("""() => { const v = document.querySelector('.rpg-hero-video'), sheet = document.querySelector('.rpg-sheet');
+        window.HermesDashboard.select('character');  // same page: a forced repaint
+        return {video: v === document.querySelector('.rpg-hero-video'), rebuilt: sheet !== document.querySelector('.rpg-sheet'),
+                entering: document.querySelector('.dash-body').classList.contains('is-entering')}; }""")
+    assert kept == {"video": True, "rebuilt": True, "entering": False}  # no reload, no fade on a repaint
+
+
+def test_character_layout_fits_from_laptop_to_wide_screens(browser):
+    # Wide: the frame is 3:4. At every width nothing in the level card is cut.
+    for width, three_four in ((1700, True), (1440, False), (1366, False), (1280, False)):
+        page = _open(browser, viewport={"width": width, "height": 900})
+        page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+        page.wait_for_selector(".rpg-badges", timeout=15000)
+        page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+        page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
+        fit = page.evaluate("""() => { const s = document.querySelector('.rpg-stage').getBoundingClientRect();
+            const cut = [...document.querySelectorAll('.rpg-badge-copy :is(b,small), .rpg-evo-head :is(span,small), .rpg-evo-status, .rpg-evo-name, .rpg-stat :is(strong,small,b), .rpg-plate-class')]
+              .filter(e => { const r = e.getBoundingClientRect(), p = e.closest('.rpg-badges > div,.rpg-evo,.rpg-stat,.rpg-plate').getBoundingClientRect(); return r.right > p.right - 2 || e.scrollWidth > e.clientWidth + 1; })
+              .map(e => e.textContent);
+            return {ratio: s.width / s.height, cut}; }""")
+        assert fit["cut"] == [], (width, fit)
+        if three_four:
+            assert abs(fit["ratio"] - 0.75) <= 0.04, (width, fit)
+        page.context.close()

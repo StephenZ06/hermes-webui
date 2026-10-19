@@ -416,8 +416,11 @@
     }
     if (tier && tier.video) {
       const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      // No autoplay: watchVideos() plays it only while it is on screen.
-      return `<video class="rpg-hero-video" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline preload="${still ? 'auto' : 'metadata'}" disablepictureinpicture aria-hidden="true"></video>`;
+      // No src and no autoplay: syncVideo() gives it its file once it is on
+      // screen and the page has gone idle (a media request made during start-up
+      // queues behind the app's own requests and holds up the page), and plays
+      // it only while it can be seen.
+      return `<video class="rpg-hero-video" data-src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.mp4" muted loop playsinline preload="${still ? 'auto' : 'metadata'}" disablepictureinpicture aria-hidden="true"></video>`;
     }
     return window.DashSprite.render(tierIndex + 1, scale);
   }
@@ -820,6 +823,9 @@
     host.querySelectorAll(SCROLLERS).forEach((el) => { if (el.scrollTop) lists[scrollKey(el)] = el.scrollTop; });
     if (state.resetLists) { state.resetLists.forEach((k) => { Object.keys(lists).forEach((key) => { if (key.startsWith(k)) delete lists[key]; }); }); state.resetLists = null; }
     const entering = state.entering; state.entering = false;
+    // The hero video survives a repaint: the same element is put back in the
+    // new page (in the same task, so it never pauses or reloads).
+    const videos = new Map([...host.querySelectorAll('video.rpg-hero-video')].map((v) => [v.dataset.src, v]));
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
         <div class="dash-head-right">
@@ -828,6 +834,7 @@
       </div>
       <div class="dash-body${entering ? ' is-entering' : ''}" data-tab="${state.tab}">${body}</div>
     </div>`;
+    host.querySelectorAll('video.rpg-hero-video').forEach((v) => { const kept = videos.get(v.dataset.src); if (kept && kept !== v && !v.closest('.rpg-levelup')) v.replaceWith(kept); });
     const restore = () => {
       host.querySelectorAll(SCROLLERS).forEach((el) => { const top = lists[scrollKey(el)]; if (top) el.scrollTop = top; });
       if (scroller && Math.abs(scroller.scrollTop - scroll) > 1) scroller.scrollTop = scroll;
@@ -874,7 +881,12 @@
   // pauses them, so a looping video never decodes in the background.
   let videoWatch = null;
   const stillMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const idle = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, {timeout: 1500}) : setTimeout(fn, 200));
   function syncVideo(video) {
+    if (!video.getAttribute('src') && video.dataset.src) {
+      if (video._onScreen && !video._loading) { video._loading = true; idle(() => { if (video.isConnected) { video.src = video.dataset.src; syncVideo(video); } }); }
+      return;
+    }
     const show = video.isConnected && video._onScreen && !document.hidden && state.mounted && !stillMotion();
     if (show && video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
     else if (!show && !video.paused) video.pause();

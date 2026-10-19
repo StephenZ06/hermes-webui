@@ -13964,3 +13964,66 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
   .dash.is-rpg .dash-card.is-learning-log{max-height:560px;}
   .dash.is-rpg .dash-card.is-learning-log .dash-learning-entries{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
 }
+
+/* ── Dashboard final pass: motion ───────────────────────────────────────────
+   Only a page change animates in (the cards rise one after another); a
+   repaint from a refresh, a filter or an opened form swaps in place, so the
+   page never flickers. */
+.dash-body,.dash.is-rpg .dash-body{animation:none;}
+.dash-body.is-entering > *{animation:dash-rise .34s cubic-bezier(.22,1,.36,1) both;}
+.dash-body.is-entering > :nth-child(2){animation-delay:.04s;}
+.dash-body.is-entering > :nth-child(3){animation-delay:.08s;}
+.dash-body.is-entering > :nth-child(4){animation-delay:.12s;}
+.dash-body.is-entering > :nth-child(n+5){animation-delay:.16s;}
+.dash-body.is-entering .rpg-columns > .rpg-col:nth-child(2){animation:dash-rise .34s cubic-bezier(.22,1,.36,1) .06s both;}
+@keyframes dash-rise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.dash-body.is-entering > *,.dash-body.is-entering .rpg-col{animation:none!important;}}
+
+/* ── Character page by available width (container queries on .rpg, so the
+   side panel being open or closed counts too) ─────────────────────────────
+   Wide: the 3:4 frame (340px) beside the level card's four columns.
+   Narrower: the frame gives up some width and the badges tighten (their
+   icon goes over the copy only when even that does not fit). Narrower still: the frame stands over the level
+   card (3:4 again), which keeps its four columns until there is no room. */
+.rpg{container:rpg / inline-size;}
+.rpg-badges{container:rpg-badges / inline-size;}
+.dash.is-rpg .rpg-evo-head{flex-wrap:nowrap;gap:6px;white-space:nowrap;}
+.dash.is-rpg .rpg-evo-head span{letter-spacing:.02em;}
+@container rpg (max-width:1180px){
+  .dash.is-rpg .rpg-hero{grid-template-columns:clamp(250px,30cqw,340px) minmax(0,1fr);}
+}
+@container rpg-badges (max-width:720px){
+  .dash.is-rpg .rpg-badges > div{gap:8px;padding:14px 6px;}
+  .dash.is-rpg .rpg-badge-icon{width:28px;}
+  .dash.is-rpg .rpg-badge-icon .dash-pix-icon{max-width:28px;max-height:28px;}
+}
+@container rpg-badges (max-width:630px){
+  .dash.is-rpg .rpg-badges > div{flex-direction:column;justify-content:center;gap:10px;padding:14px 6px;text-align:center;}
+  .dash.is-rpg .rpg-badge-copy{align-items:center;}
+  .dash.is-rpg .rpg-badge-copy small{text-align:center;}
+}
+@container rpg (max-width:900px){
+  .dash.is-rpg .rpg-hero{grid-template-columns:minmax(0,1fr);}
+  .dash.is-rpg .rpg-stage{contain:none;aspect-ratio:3 / 4;width:min(100%,340px);height:auto;justify-self:center;}
+}
+@container rpg (max-width:640px){
+  .dash.is-rpg .rpg-body{grid-template-columns:minmax(0,1fr);}
+  .dash.is-rpg .rpg-body > *{grid-column:1 / -1!important;}
+  .dash.is-rpg .rpg-body .rpg-radar{max-width:260px;justify-self:center;}
+  .dash.is-rpg .rpg-body .rpg-evo{height:230px;}
+  .dash.is-rpg .rpg-badges{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:12px;}
+}
+/* A narrower frame: the plaque's type steps down with the frame (cqw of the
+   stage) so the longest form name still fits. */
+.dash.is-rpg .rpg-stage-scene{padding-left:4px;padding-right:4px;}
+.rpg-plate-name{gap:8px;padding:0 12px 0 24px;}
+.dash.is-rpg .rpg-plate-name .rpg-plate-class{font-size:clamp(8px,calc(100cqw / 30),10px);letter-spacing:.03em;}
+.dash.is-rpg .rpg-plate-name .rpg-plate-level{font-size:clamp(7px,calc(100cqw / 34),9px);}
+@container rpg (max-width:1000px){.dash.is-rpg .rpg-evo-head span{font-size:8px;letter-spacing:0;}.dash.is-rpg .rpg-evo-head small{font-size:14px;}}
+/* Mid widths: the radar gives width to evolution; the badges take the same
+   split (the attributes' share is two badges), so they still line up. */
+@container rpg (max-width:1000px) and (min-width:641px){
+  .dash.is-rpg .rpg-body{grid-template-columns:minmax(0,.95fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr);}
+  .dash.is-rpg .rpg-badges{grid-template-columns:minmax(0,.95fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr);}
+  .dash.is-rpg .rpg-evo-status{white-space:nowrap;font-size:14px;}
+}
