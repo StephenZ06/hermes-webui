@@ -585,6 +585,18 @@ def summary(now: float | None = None) -> dict[str, Any]:
               "month": [str(d) for d in range(1, month_days + 1)]}
     current = {"today": now_at.hour, "week": today.weekday(), "month": today.day - 1}
     series = {k: [{"label": labels[k][i], "revenue": v, "now": i == current[k]} for i, v in enumerate(slots[k])] for k in slots}
+    # The same span one period back, up to the same point (yesterday until
+    # this hour, last week until now's weekday and time, last month until
+    # today's date), so a period still under way is compared fairly.
+    elapsed = now_at - datetime.combine(today, datetime.min.time())
+    last_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    spans = {
+        "today": (today - timedelta(days=1), now_at - timedelta(days=1)),
+        "week": (week_first - timedelta(days=7), now_at - timedelta(days=7)),
+        "month": (last_month_first, min(datetime.combine(last_month_first, datetime.min.time()) + timedelta(days=today.day - 1) + elapsed,
+                                        datetime.combine(today.replace(day=1), datetime.min.time()))),
+    }
+    previous = {k: sum(r["amount"] for r in paid if _ts(a) <= r["created_at"] < b.timestamp()) for k, (a, b) in spans.items()}
     return {
         "status": status(),
         "currency": currency,
@@ -601,6 +613,7 @@ def summary(now: float | None = None) -> dict[str, Any]:
                  "next": ROAD[reached + 1] if reached + 1 < len(ROAD) else None},
         "months": months,
         "series": series,
+        "series_previous": previous,
         "recent": [{"id": r["id"], "platform": r["platform"], "amount": r["amount"], "currency": r["currency"], "product": r["product"],
                     "refunded": bool(r["refunded"]), "recurring": bool(r["recurring"]), "test": bool(r["test"]), "created_at": r["created_at"]}
                    for r in rows[:8] if r["amount"] > 0 or r["refunded"]],

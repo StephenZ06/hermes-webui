@@ -220,3 +220,22 @@ def test_revenue_series_by_hour_today_and_by_day_this_week_and_month(biz):
     assert len(month) == ((today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)).day
     assert month[today.day - 1]["now"] and month[today.day - 1]["revenue"] >= 1000
     assert sum(p["revenue"] for p in month) == 1000 + (700 if today.day > 1 else 0)  # last month's sale is in none
+
+
+def test_revenue_compares_with_the_previous_period_up_to_the_same_point(biz):
+    """Yesterday counts only up to this time of day; a sale later yesterday
+    is not part of the comparison."""
+    from datetime import datetime, timedelta
+
+    dashboard_business, _, _ = biz
+    now = datetime.now()
+    yesterday = now - timedelta(days=1)
+    with dashboard_business._LOCK, dashboard_business._Conn() as conn:
+        for i, (when, cents) in enumerate([(yesterday - timedelta(minutes=30), 1200), (yesterday + timedelta(minutes=30), 9900)]):
+            conn.execute("INSERT INTO sales(id, platform, amount, currency, product, customer, refunded, recurring, test, created_at) "
+                         "VALUES(?, 'manual', ?, 'USD', 'x', ?, 0, 0, 0, ?)", (f"manual:t{i}", cents, f"c{i}", when.timestamp()))
+    if yesterday.date() != (yesterday - timedelta(minutes=30)).date() or yesterday.date() != (yesterday + timedelta(minutes=30)).date():
+        pytest.skip("too close to midnight for this fixture")
+    previous = dashboard_business.summary()["series_previous"]
+    assert previous["today"] == 1200  # the 9900 sale came later in the day than now
+    assert set(previous) == {"today", "week", "month"}

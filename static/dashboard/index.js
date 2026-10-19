@@ -364,7 +364,19 @@
     const short = (c) => (c >= 100000 ? `$${Math.round(c / 100000)}k` : money(c, cur));
     const every = range === 'today' ? 3 : range === 'month' ? 5 : 1;
     const seg = `<span class="dash-seg" role="group" aria-label="Revenue period">${REV_RANGES.map(([k, l]) => `<button type="button" data-rev-range="${k}" class="${k === range ? 'on' : ''}" aria-pressed="${k === range}">${l}</button>`).join('')}</span>`;
-    const body = points.length ? pixelChart(points, {format: short, every, label: `Revenue ${range === 'today' ? 'today by hour' : range === 'week' ? 'this week by day' : 'this month by day'}`}) : '<p class="dash-empty">No revenue yet.</p>';
+    // Against the previous period up to the same point (the server's figure).
+    const prev = (s.series_previous || {})[range];
+    const than = {today: 'yesterday', week: 'last week', month: 'last month'}[range];
+    let delta = '';
+    if (prev != null && (total || prev)) {
+      const tip = `${money(total, cur)} vs ${money(prev, cur)} ${than} at this point`;
+      if (!prev) delta = `<p class="px-chart-delta is-up" title="${esc(tip)}">▲ New vs ${than}</p>`;
+      else {
+        const pct = Math.round(((total - prev) / prev) * 100);
+        delta = `<p class="px-chart-delta ${pct > 0 ? 'is-up' : pct < 0 ? 'is-down' : ''}" title="${esc(tip)}">${pct > 0 ? '▲' : pct < 0 ? '▼' : '='} ${Math.abs(pct)}% vs ${than}</p>`;
+      }
+    }
+    const body = points.length ? `${delta}${pixelChart(points, {format: short, every, label: `Revenue ${range === 'today' ? 'today by hour' : range === 'week' ? 'this week by day' : 'this month by day'}`})}` : '<p class="dash-empty">No revenue yet.</p>';
     return card(`Revenue · ${esc(money(total, cur))}`, body, {pix: 'revenue', key: 'revenue', cls: 'is-revenue', action: seg});
   }
 
@@ -725,6 +737,7 @@
         if (append && prev) data.log = (prev.log || []).concat(data.log || []);
         state.logOffset = append ? offset : 0;
         state.data.character = data;
+        announceUnlocks('achievement', data.achievements);
         (state.logCache || (state.logCache = {}))[cat || 'all'] = {log: data.log, log_total: data.log_total};
         celebrate(data);
         // Only the log changed: redraw Chronicle alone.
@@ -736,6 +749,7 @@
         }
       } else {
         state.data[tab] = await api(`/api/dashboard/summary?tab=${encodeURIComponent(tab)}`);
+        if (tab === 'business') announceUnlocks('milestone', ((state.data[tab] || {}).sales || {}).milestones);
       }
       state.error[tab] = null;
     } catch (error) {
@@ -784,6 +798,41 @@
     requestAnimationFrame(() => { overlay.classList.add('is-open'); watchVideos(overlay); });
     const button = overlay.querySelector('[data-levelup-close]');
     setTimeout(() => button && button.focus(), 300);
+  }
+
+  // Achievements and milestones earned since this browser last looked slide
+  // in at the corner, one after another. The first read of a list only
+  // records what is already earned, so nothing old is announced.
+  const SEEN_KEY = 'hermes-dashboard-seen-unlocks';
+  const unlockQueue = [];
+  function announceUnlocks(kind, items) {
+    if (!Array.isArray(items)) return;
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}') || {}; } catch (_) { seen = {}; }
+    const earned = items.filter((i) => i.unlocked_at);
+    const known = Array.isArray(seen[kind]) ? new Set(seen[kind]) : null;
+    seen[kind] = earned.map((i) => i.key);
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch (_) { return; }  // no memory: never announce
+    if (!known) return;
+    earned.filter((i) => !known.has(i.key)).forEach((i) => unlockQueue.push({kind, item: i}));
+    showNextUnlock();
+  }
+  function showNextUnlock() {
+    if (document.querySelector('.dash-unlock') || !unlockQueue.length) return;
+    const {kind, item} = unlockQueue.shift();
+    const art = kind === 'achievement'
+      ? (item.art ? `<img src="static/dashboard/achievements/${esc(item.key)}.webp" alt="" draggable="false">` : `<span class="dash-unlock-medal">${esc(item.icon || '★')}</span>`)
+      : PIX(/^first_sale/.test(item.key) ? 'recent-sales' : /^revenue_/.test(item.key) ? 'treasury' : /^customers_/.test(item.key) ? 'goals' : 'road-to-10k');
+    const el = document.createElement('div');
+    el.className = 'dash-unlock';
+    el.setAttribute('role', 'status');
+    el.innerHTML = `<span class="dash-unlock-art" aria-hidden="true">${art}</span><span class="dash-unlock-copy"><small>${kind === 'achievement' ? 'Achievement unlocked' : 'Milestone reached'}</small><strong>${esc(item.title)}</strong><span>${esc(item.description || '')}</span></span>${unlockQueue.length ? `<em class="dash-unlock-more">+${unlockQueue.length}</em>` : ''}`;
+    let done = false;
+    const close = () => { if (done) return; done = true; el.classList.remove('is-open'); setTimeout(() => { el.remove(); showNextUnlock(); }, 260); };
+    el.addEventListener('click', close);
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('is-open'));
+    setTimeout(close, 5200);
   }
 
   function levelBadge() {
@@ -1271,5 +1320,5 @@
   }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('resize', () => { const host = root(); if (host) markScrollable(host); });
-  window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _celebrate: celebrate, _state: state};
+  window.HermesDashboard = {mount, unmount, select, openQuestPicker, refresh, _celebrate: celebrate, _announce: announceUnlocks, _state: state};
 })();

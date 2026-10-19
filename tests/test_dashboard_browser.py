@@ -880,3 +880,31 @@ def test_character_layout_fits_from_laptop_to_wide_screens(browser):
         if three_four:
             assert abs(fit["ratio"] - 0.75) <= 0.04, (width, fit)
         page.context.close()
+
+
+def test_new_unlocks_slide_in_once_and_old_ones_stay_quiet(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("() => { try { localStorage.removeItem('hermes-dashboard-seen-unlocks'); } catch (_) {} }")
+    items = [{"key": "a", "title": "Alpha", "description": "First", "unlocked_at": 1, "art": False, "icon": "★"},
+             {"key": "b", "title": "Beta", "description": "Second", "unlocked_at": None, "art": False, "icon": "★"}]
+    page.evaluate("(items) => window.HermesDashboard._announce('achievement', items)", items)
+    assert page.evaluate("() => document.querySelectorAll('.dash-unlock').length") == 0  # first read: recorded, not announced
+    items[1]["unlocked_at"] = 2
+    page.evaluate("(items) => window.HermesDashboard._announce('achievement', items)", items)
+    page.wait_for_selector(".dash-unlock.is-open", timeout=3000)
+    assert "Beta" in page.inner_text(".dash-unlock") and "Achievement unlocked" in page.text_content(".dash-unlock")
+    page.click(".dash-unlock")
+    page.wait_for_function("() => !document.querySelector('.dash-unlock')", polling=50, timeout=3000)
+    page.evaluate("(items) => window.HermesDashboard._announce('achievement', items)", items)
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => document.querySelectorAll('.dash-unlock').length") == 0  # announced once
+
+
+def test_revenue_shows_the_change_against_the_previous_period(browser):
+    _post("/api/dashboard/sales/add", {"amount": "9", "product": f"Delta {uuid.uuid4().hex[:4]}"})
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
+    page.wait_for_selector("[data-dash-card=revenue] .px-chart", timeout=15000)
+    page.click("[data-rev-range=today]")
+    delta = page.evaluate("() => { const d = document.querySelector('[data-dash-card=revenue] .px-chart-delta'); return d && [d.textContent, d.className, d.title]; }")
+    assert delta and "vs yesterday" in delta[0] and "is-up" in delta[1] and "at this point" in delta[2]
