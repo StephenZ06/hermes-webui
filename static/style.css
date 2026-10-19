@@ -13650,3 +13650,16 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .dash.is-rpg .rpg-plate-name .rpg-plate-class{font:10px/1 var(--rpg-pixel);color:#ffe9a3;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .rpg-plate-rivet{flex:none;width:4px;height:4px;background:#f6b829;box-shadow:inset -1px -1px 0 #8a5410;}
 .rpg-plate-gem{width:42px;height:42px;margin-right:-16px;} .rpg-plate-gem b{font-size:10px;}
+
+/* Name plaque in the frame art itself: the plate is the same nine-slice
+   (bevelled bars, plated corners with rivets) at plaque size, and the level
+   sits in the frame's own gem. */
+.rpg-plate-name{clip-path:none;background:#0c0803;border:2px solid transparent;border-image:url("dashboard/card-frame.png") 55 / 12px / 0 stretch;height:34px;padding:0 16px 0 24px;box-sizing:border-box;}
+.rpg-plate-name::before{content:none;}
+.rpg-plate-rivet{display:none;}
+.rpg-plate-gem{width:52px;height:40px;margin-right:-18px;clip-path:none;background:url("dashboard/card-gem-top.png") center/100% 100% no-repeat;}
+.rpg-plate-gem::before,.rpg-plate-gem::after{content:none;}
+.rpg-plate-gem b{margin-top:-1px;font-size:9px;color:#2a1404;text-shadow:0 1px 0 rgba(255,240,194,.6);}
+.rpg-plate-name{gap:10px;padding:0 16px 0 26px;}
+.dash.is-rpg .rpg-plate-name .rpg-plate-level{font:9px/1 var(--rpg-pixel);color:#f6b829;white-space:nowrap;transform:none;}
+.rpg-plate-gem{width:46px;height:36px;margin-right:-20px;}
