@@ -14196,3 +14196,63 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
   .dash.is-rpg .dash-habit{grid-template-columns:auto minmax(84px,max-content) minmax(0,1fr);column-gap:10px;}
   .dash.is-rpg .dash-habit .dash-heat{gap:1px;padding:0 5px;overflow:hidden;}
 }
+
+/* ── Round 13 ──────────────────────────────────────────────────────────────
+   Progress bars (Realms, Project health, Funnel, Goals...): template 04-2,
+   drawn at 2px per pixel so it stretches to any length. Five rows: a black
+   outline with hexagonal ends, a dark track (lighter top row), and a fill
+   with a lit top row over two rows of its colour, its leading edge stepped. */
+:is(.dash.is-rpg,.rpg-levelup) .dash-bar{--hi:#fffc40;--c2:#ffc825;height:10px;min-height:10px;background:#000;clip-path:polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 2px,calc(100% - 2px) 2px,calc(100% - 2px) 4px,100% 4px,100% 6px,calc(100% - 2px) 6px,calc(100% - 2px) 8px,calc(100% - 4px) 8px,calc(100% - 4px) 10px,4px 10px,4px 8px,2px 8px,2px 6px,0 6px,0 4px,2px 4px,2px 2px,4px 2px);}
+:is(.dash.is-rpg,.rpg-levelup) .dash-bar::before{inset:2px 2px;background:linear-gradient(180deg,#2e2e2e 0 2px,#202020 2px);clip-path:polygon(2px 0,calc(100% - 2px) 0,calc(100% - 2px) 2px,100% 2px,100% 4px,calc(100% - 2px) 4px,calc(100% - 2px) 6px,2px 6px,2px 4px,0 4px,0 2px,2px 2px);}
+:is(.dash.is-rpg,.rpg-levelup) .dash-bar > i{left:2px;top:2px;bottom:2px;max-width:calc(100% - 4px);background:linear-gradient(180deg,var(--hi) 0 2px,var(--c2) 2px);clip-path:polygon(2px 0,100% 0,100% 2px,calc(100% - 2px) 2px,calc(100% - 2px) 4px,calc(100% - 4px) 4px,calc(100% - 4px) 6px,2px 6px,2px 4px,0 4px,0 2px,2px 2px);}
+:is(.dash.is-rpg,.rpg-levelup) .dash-bar > i::after{content:none;}
+.dash.is-rpg .dash-meters .dash-bar{height:10px;min-height:10px;}
+.dash.is-rpg .dash-bar.is-good{--hi:#49da3a;--c2:#21aa41;}
+.dash.is-rpg .dash-bar.is-bad{--hi:#fe1e2a;--c2:#d90f1e;}
+.dash.is-rpg .dash-bar:is(.is-blue,.is-area-personal){--hi:#00cdf9;--c2:#0098dc;}
+.dash.is-rpg .dash-bar:is(.is-gold,.is-area-business){--hi:#fffc40;--c2:#ffc825;}
+.dash.is-rpg .dash-bar:is(.is-purple,.is-area-career){--hi:#d68cff;--c2:#9b45d9;}
+.dash.is-rpg .dash-bar.is-pink{--hi:#ff8ec4;--c2:#e0508a;}
+.dash.is-rpg .dash-bar.is-silver{--hi:#f4f6fa;--c2:#a9b2c2;}
+
+/* Attribute bars: the slot's frame a pixel thinner. */
+.dash.is-rpg .rpg-stat-bar{border-width:1px;height:12px;min-height:12px;}
+
+/* Evolution: a smaller chain over the locked form's body, greyed like it;
+   the arrows back to the plain chevrons. */
+.dash.is-rpg .rpg-evo-art.is-locked::after{background-size:auto 46%;background-position:50% 70%;filter:grayscale(1) brightness(.5);}
+.dash.is-rpg .rpg-evo-arrow{background-image:none!important;background-color:color-mix(in srgb,var(--bg) 85%,transparent);}
+.dash.is-rpg .rpg-evo-arrow svg{display:block;}
+.dash.is-rpg .rpg-evo-arrow:not(:disabled):hover{filter:none;}
+
+/* Habits: the strip runs right to the row's end; on hover only the x shows,
+   over the strip, with no box of its own. */
+.dash.is-rpg .dash-habit{padding-right:0;}
+.dash.is-rpg .dash-habit .dash-heat{justify-self:stretch;width:100%;}
+.dash.is-rpg .dash-habit .dash-heat i{max-width:none;width:100%;}
+.dash.is-rpg .dash-habit .dash-habit-remove{right:6px;width:20px;height:20px;margin-top:-10px;background:none!important;box-shadow:none!important;color:#fff;text-shadow:0 1px 0 #000;filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 2px #000);}
+.dash.is-rpg .dash-habit .dash-habit-remove:hover{color:var(--error,#f87171);background:none!important;}
+
+/* Rows that are buttons (Recent notes): straight divider lines. */
+.dash.is-rpg button.dash-row{border-radius:0;}
+
+/* Milestones: a locked one's frame is greyed too. */
+.dash.is-rpg .dash-badges > .dash-badge.is-locked{filter:grayscale(1) brightness(.75);}
+
+/* Revenue: the filter rounded like the other buttons; a smaller comparison line. */
+.dash.is-rpg .dash-seg{border-radius:4px!important;overflow:hidden;}
+.dash.is-rpg .dash-seg button{border-radius:0!important;}
+.dash.is-rpg .px-chart-delta{padding:3px 6px;font-size:14px;line-height:1;}
+
+/* Loading rings: centred in what they wait for. A page change's ring sits in
+   the middle of the space below the header; a card's in the middle of the
+   card; a list's (Chronicle, the quest picker) in a short band of its own. */
+.dash-body > .dash-loader:not(.is-page){min-height:calc(100dvh - 200px);}
+.rpg-panel:has(.rpg-achs) > .dash-card-body > .dash-media-wait{top:50%;}
+.dash-loader.is-inline{min-height:96px;gap:0;animation:none;}
+.dash-loader.is-inline.is-list{min-height:120px;}
+.dash-picker-list > .dash-loader.is-inline{min-height:160px;}
+
+/* The workspace panel has no place on the Dashboard: its edge toggle (and
+   the panel) stay hidden there. */
+body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpanel){display:none!important;}

@@ -954,6 +954,7 @@ def test_loading_ring_on_start_up_on_navigation_and_in_cards_still_fetching_art(
 
 
 def test_round_12_names_bars_milestones_and_revenue(browser):
+    _post("/api/dashboard/sales/add", {"amount": "5", "product": f"R12 {uuid.uuid4().hex[:4]}"})
     page = _open(browser, viewport={"width": 1560, "height": 1000})
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
     page.wait_for_selector(".rpg-stat", timeout=15000)
@@ -967,7 +968,12 @@ def test_round_12_names_bars_milestones_and_revenue(browser):
     page.wait_for_selector(".dash-badge-art img", timeout=15000)
     ms = page.evaluate("() => [...document.querySelectorAll('.dash-badge')].map(b => [getComputedStyle(b).borderImageWidth, b.querySelector('img').getAttribute('src')])")
     assert ms and all(w == "4px" and "/milestones/" in src for w, src in ms)
-    assert page.evaluate("() => [...document.querySelectorAll('.dash-seg, .dash-seg button')].every(e => getComputedStyle(e).borderTopLeftRadius === '0px')")
+    # The filter is rounded like the other buttons (its buttons sit inside, clipped).
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.dash-seg')).borderTopLeftRadius") == "4px"
+    assert "First Sub" in page.evaluate("() => [...document.querySelectorAll('.dash-badge strong')].map(s => s.textContent).join('|')").split("|")
+    # Template 04-2 bars, and no workspace panel toggle on the Dashboard.
+    assert page.evaluate("() => [...document.querySelectorAll('.dash-bar')].every(b => b.getBoundingClientRect().height === 10)")
+    assert page.evaluate("() => getComputedStyle(document.getElementById('btnWorkspacePanelEdgeToggle')).display") == "none"
     page.click("[data-rev-range=month]")
     labels = page.evaluate("() => [...document.querySelectorAll('[data-dash-card=revenue] .px-chart-col > small')].map(s => s.textContent).filter(Boolean)")
     assert labels[:3] == ["1", "8", "15"]  # every 7th day, no extra label squeezed in for today

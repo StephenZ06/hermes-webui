@@ -578,6 +578,9 @@
         body.querySelectorAll('[data-log-filter]').forEach((b) => { const on = b.dataset.logFilter === cat; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
         body.querySelectorAll('.rpg-log-row').forEach((r) => { r.hidden = cat !== 'all' && r.dataset.logCat !== cat; });
         body.scrollTop = 0;
+        // The rest of that realm's list is on its way: the ring under the filters.
+        body.querySelectorAll('.dash-loader.is-inline').forEach((el) => el.remove());
+        body.querySelector('.rpg-log-filters').insertAdjacentHTML('afterend', `<div class="dash-loader is-inline is-list" aria-label="Loading">${spinner()}</div>`);
       }
     }
     load('character', {quiet: true, logOnly: true});
@@ -899,6 +902,8 @@
     // The hero video survives a repaint: the same element is put back in the
     // new page (in the same task, so it never pauses or reloads).
     const videos = new Map([...host.querySelectorAll('video.rpg-hero-video')].map((v) => [v.dataset.src, v]));
+    // Where each habit's strip sat, so a longer or shorter label slides it.
+    const strips = new Map([...host.querySelectorAll('.dash-habit[data-habit] .dash-heat')].map((h) => [h.closest('.dash-habit').dataset.habit, h.getBoundingClientRect()]));
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
         <div class="dash-head-right">
@@ -907,6 +912,17 @@
       </div>
       <div class="dash-body${entering ? ' is-entering' : ''}" data-tab="${state.tab}">${body}</div>
     </div>`;
+    if (strips.size && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      host.querySelectorAll('.dash-habit[data-habit] .dash-heat').forEach((h) => {
+        const was = strips.get(h.closest('.dash-habit').dataset.habit), now = h.getBoundingClientRect();
+        if (!was || !now.width || Math.abs(was.left - now.left) < 1) return;
+        // Start where it was (its right end does not move), then ease to its new place.
+        h.style.transformOrigin = 'right center';
+        h.style.transform = `scaleX(${(was.width / now.width).toFixed(4)})`;
+        requestAnimationFrame(() => requestAnimationFrame(() => { h.style.transition = 'transform .32s cubic-bezier(.22,1,.36,1)'; h.style.transform = ''; }));
+        setTimeout(() => { h.style.transition = ''; h.style.transformOrigin = ''; }, 420);
+      });
+    }
     host.querySelectorAll('video.rpg-hero-video').forEach((v) => { const kept = videos.get(v.dataset.src); if (kept && kept !== v && !v.closest('.rpg-levelup')) v.replaceWith(kept); });
     const restore = () => {
       host.querySelectorAll(SCROLLERS).forEach((el) => { const top = lists[scrollKey(el)]; if (top) el.scrollTop = top; });
@@ -1057,7 +1073,7 @@
       <header><h3>Choose ${area ? esc(AREA[area]) + ' ' : ''}quests</h3><button type="button" class="dash-picker-x" data-picker-close aria-label="Close">${svg('x', 16)}</button></header>
       <div class="dash-picker-tools"><label class="dash-picker-search">${svg('search', 15)}<input type="text" placeholder="Search Work Hub items" autocomplete="off" data-picker-search></label>
         <select class="dash-picker-filter" data-picker-filter aria-label="Show items from"><option value="">All folders</option></select></div>
-      <div class="dash-picker-list" data-picker-list><div class="dash-skeleton is-list"><i></i><i></i><i></i></div></div>
+      <div class="dash-picker-list" data-picker-list><div class="dash-loader is-inline">${spinner()}</div></div>
       <footer><button type="button" class="dash-btn is-ghost" data-picker-close>Cancel</button><button type="button" class="dash-btn" data-picker-add disabled>Add quests</button></footer>
     </div>`;
     document.body.appendChild(overlay);
@@ -1269,7 +1285,7 @@
       const data = state.data.character; if (!data) return;
       state.evoIndex = Math.max(0, Math.min((data.tiers || []).length - 1, (state.evoIndex == null ? evoStart(data) : state.evoIndex) + Number(evo.dataset.evoStep)));
       const host = evo.closest('[data-evo]');
-      if (host) { host.innerHTML = evolutionView(data); const again = host.querySelector(`[data-evo-step="${evo.dataset.evoStep}"]`); if (again && !again.disabled) again.focus(); }
+      if (host) { host.innerHTML = evolutionView(data); waitForMedia(host); const again = host.querySelector(`[data-evo-step="${evo.dataset.evoStep}"]`); if (again && !again.disabled) again.focus(); }
       return;
     }
     const t = event.target.closest('[data-dash-focus],[data-skill-remove],[data-dash-tab],[data-dash-go],[data-dash-item],[data-dash-note],[data-dash-retry],[data-dash-add-quest],[data-quest-remove],[data-quest-clear],[data-log-filter],[data-log-more],[data-form-open],[data-form-cancel],[data-habit-toggle],[data-habit-archive],[data-learning-remove],[data-goal-remove],[data-sale-remove],[data-sales-sync],[data-sales-disconnect],[data-reward-redeem],[data-reward-remove]');
@@ -1290,7 +1306,7 @@
     if (d.questRemove) return act('/api/dashboard/quests/remove', {item_id: d.questRemove}, {row: t.closest('.dash-quest-row')});
     if (t.hasAttribute('data-quest-clear')) return act('/api/dashboard/quests/clear', {});
     if (d.logFilter) return setLogFilter(d.logFilter);
-    if (t.hasAttribute('data-log-more')) return load('character', {quiet: true, append: true});
+    if (t.hasAttribute('data-log-more')) { t.outerHTML = `<div class="dash-loader is-inline" aria-label="Loading">${spinner()}</div>`; return load('character', {quiet: true, append: true}); }
     if (d.formOpen) { state.forms[d.formOpen] = true; paint({force: true}); const first = root().querySelector(`[data-form="${d.formOpen}"] input:not([type=checkbox])`); if (first) first.focus(); return; }
     if (d.formCancel) { delete state.forms[d.formCancel]; return paint({force: true}); }
     if (d.habitToggle) {
