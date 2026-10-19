@@ -194,6 +194,7 @@
     <button class="rail-btn nav-tab has-tooltip" data-panel="knowledge" onclick="switchPanel('knowledge',{fromRailClick:true})" data-tooltip="Knowledge" data-i18n-title="tab_knowledge" aria-label="Knowledge"><span class="page-nav-mark page-nav-mark--knowledge" aria-hidden="true"></span></button>
     <div class="rail-divider" data-after-panel="knowledge" aria-hidden="true"></div>
     <button class="rail-btn nav-tab has-tooltip" data-panel="workspaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces" aria-label="Spaces"><span class="page-nav-mark page-nav-mark--workspaces" aria-hidden="true"></span></button>
+    <button class="rail-btn nav-tab has-tooltip" data-panel="files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights" aria-label="Insights"><span class="page-nav-mark page-nav-mark--insights" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs" aria-label="Logs"><span class="page-nav-mark page-nav-mark--logs" aria-hidden="true"></span></button>
     <button class="rail-btn nav-tab has-tooltip" data-panel="audit" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit" aria-label="Activity"><span class="page-nav-mark page-nav-mark--audit" aria-hidden="true"></span></button>
@@ -225,6 +226,7 @@
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="knowledge" data-label="Knowledge" onclick="switchPanel('knowledge',{fromRailClick:true})" data-tooltip="Knowledge" data-i18n-title="tab_knowledge"><span class="page-nav-mark page-nav-mark--knowledge" aria-hidden="true"></span></button>
       <div class="sidebar-nav-divider" data-after-panel="knowledge" aria-hidden="true"></div>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="workspaces" data-label="Spaces" onclick="switchPanel('workspaces',{fromRailClick:true})" data-tooltip="Spaces" data-i18n-title="tab_workspaces"><span class="page-nav-mark page-nav-mark--workspaces" aria-hidden="true"></span></button>
+      <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="files" data-label="Files" onclick="switchPanel('files',{fromRailClick:true})" data-tooltip="Files" aria-label="Files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/></svg></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="insights" data-label="Insights" onclick="switchPanel('insights',{fromRailClick:true})" data-tooltip="Insights" data-i18n-title="tab_insights"><span class="page-nav-mark page-nav-mark--insights" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="logs" data-label="Logs" onclick="switchPanel('logs',{fromRailClick:true})" data-tooltip="Logs" data-i18n-title="tab_logs"><span class="page-nav-mark page-nav-mark--logs" aria-hidden="true"></span></button>
       <button class="nav-tab has-tooltip has-tooltip--bottom" data-panel="audit" data-label="Activity" onclick="switchPanel('audit',{fromRailClick:true})" data-tooltip="Activity" data-i18n-title="tab_audit"><span class="page-nav-mark page-nav-mark--audit" aria-hidden="true"></span></button>
@@ -428,6 +430,10 @@
         </div>
       </div>
       <div style="flex:1;overflow-y:auto;padding:8px" id="workspacesPanel"><div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only" data-i18n="loading">Loading...</span></div></div>
+    </div>
+    <div class="panel-view" id="panelFiles">
+      <div class="panel-head"><span>Files</span></div>
+      <div class="files-sidebar-note">Browse and manage the spaces connected to this WebUI.</div>
     </div>
     <!-- `panelNotes` remains the compatibility identity for saved panel state;
          the visible product is the local Work Hub. -->
@@ -1151,6 +1157,7 @@
       <div id="workHub" aria-live="polite"></div>
     </div>
     <div id="mainDashboard" class="main-view"><div id="dashboardRoot" aria-live="polite"><div class="dash-loader is-page" role="status" aria-label="Loading"><span class="px-spin is-big" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="dash-loader-text">Loading<b>.</b><b>.</b><b>.</b></span></div></div></div>
+    <div id="mainFiles" class="main-view"><div id="fileManagerRoot" aria-live="polite"></div></div>
     <div id="mainJobs" class="main-view"><div id="jobOsRoot" aria-live="polite"></div></div>
     <div id="mainNotebook" class="main-view"><div id="notebookRoot"></div></div>
     <div id="mainInsights" class="main-view">
@@ -2229,6 +2236,7 @@
 <script src="static/extension_settings.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/performance.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/panels.js?v=__WEBUI_VERSION__" defer></script>
+<script src="static/file-manager.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/vendor/mx-icons/work-hub-icons.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/libraries-dev.js?v=__WEBUI_VERSION__" defer></script>
 <script src="static/dashboard/sprite.js?v=__WEBUI_VERSION__" defer></script>

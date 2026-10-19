@@ -2035,6 +2035,16 @@ Each has automated API-level tests in `tests/test_sprint{N}.py`.
 
 ## Slash command parity (manual checklist)
 
+## Files page (manual checklist)
+
+- [ ] Open **Files** from the primary navigation. Confirm only saved Spaces and available registry projects are listed; unavailable Spaces show no browseable contents.
+- [ ] Select a local Space, browse into a nested folder, and use the breadcrumb and parent control to return. Confirm the page never shows an absolute server path.
+- [ ] Open a text file, edit it, save it, then refresh the folder and reopen it to confirm the content persisted.
+- [ ] Create a file and a folder, rename the file, upload a file smaller than 25 MB, and verify each appears in the current directory.
+- [ ] Delete a file only after accepting the confirmation; cancel a second delete confirmation and confirm that file remains.
+- [ ] Select an SSH registry project. Confirm browsing and text preview work when connected, while create, upload, save, rename, and delete controls are absent.
+- [ ] At a narrow phone width, confirm workspace list, browser, and file preview each occupy one focused surface and no horizontal page overflow occurs.
+
 For each batch-1 command, run via webui slash menu AND via `hermes` CLI in the
 same `HERMES_HOME` (when applicable) and verify identical effect.
 

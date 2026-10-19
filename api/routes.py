@@ -15128,6 +15128,60 @@ def _route_get_api_workspaces_registry(handler, parsed):
     return j(handler, {"projects": list_registry_projects()})
 
 
+def _file_manager_response(handler, operation):
+    """Translate the Files facade's safe errors into small HTTP responses."""
+    from api.file_manager import FileManagerError
+
+    try:
+        return j(handler, operation())
+    except FileManagerError as exc:
+        return bad(handler, str(exc), exc.status)
+
+
+def _route_get_api_file_manager_workspaces(handler, parsed):
+    from api.file_manager import list_file_manager_workspaces
+
+    return _file_manager_response(handler, lambda: {"workspaces": list_file_manager_workspaces()})
+
+
+def _route_get_api_file_manager_list(handler, parsed):
+    from api.file_manager import list_directory
+
+    query = parse_qs(parsed.query or "")
+    workspace_id = str((query.get("workspace_id") or [""])[0])
+    path = str((query.get("path") or ["."])[0])
+    return _file_manager_response(handler, lambda: list_directory(workspace_id, path))
+
+
+def _route_get_api_file_manager_read(handler, parsed):
+    from api.file_manager import read_file
+
+    query = parse_qs(parsed.query or "")
+    workspace_id = str((query.get("workspace_id") or [""])[0])
+    path = str((query.get("path") or [""])[0])
+    return _file_manager_response(handler, lambda: read_file(workspace_id, path))
+
+
+def _route_get_api_file_manager_download(handler, parsed):
+    from api.file_manager import FileManagerError, download_file
+
+    query = parse_qs(parsed.query or "")
+    workspace_id = str((query.get("workspace_id") or [""])[0])
+    path = str((query.get("path") or [""])[0])
+    try:
+        raw, filename, mime = download_file(workspace_id, path)
+    except FileManagerError as exc:
+        return bad(handler, str(exc), exc.status)
+    handler.send_response(200)
+    handler.send_header("Content-Type", mime)
+    handler.send_header("Content-Length", str(len(raw)))
+    handler.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(filename))
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.end_headers()
+    handler.wfile.write(raw)
+    return True
+
+
 def _route_get_api_workspaces_suggest(handler, parsed):
     qs = parse_qs(parsed.query)
     prefix = qs.get("prefix", [""])[0]
@@ -16093,6 +16147,10 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/workspaces"), _route_get_api_workspaces),
         (Exact("/api/workspaces/registry"), _route_get_api_workspaces_registry),
         (Exact("/api/workspaces/suggest"), _route_get_api_workspaces_suggest),
+        (Exact("/api/file-manager/workspaces"), _route_get_api_file_manager_workspaces),
+        (Exact("/api/file-manager/list"), _route_get_api_file_manager_list),
+        (Exact("/api/file-manager/read"), _route_get_api_file_manager_read),
+        (Exact("/api/file-manager/download"), _route_get_api_file_manager_download),
         (Exact("/api/office/integrations"), _route_get_api_office_integrations),
         (Exact("/api/office/scheduled-tasks"), _route_get_api_office_scheduled_tasks),
         (Exact("/api/sessions/search"), _route_get_api_sessions_search),
@@ -18510,6 +18568,71 @@ def _route_post_api_file_create_dir(handler, parsed, body, diag):
     return _handle_create_dir(handler, body)
 
 
+def _route_post_api_file_manager_create(handler, parsed, body, diag):
+    from api.file_manager import create_file
+
+    return _file_manager_response(
+        handler,
+        lambda: create_file(body.get("workspace_id", ""), body.get("path", ""), body.get("content", "")),
+    )
+
+
+def _route_post_api_file_manager_create_dir(handler, parsed, body, diag):
+    from api.file_manager import create_directory
+
+    return _file_manager_response(handler, lambda: create_directory(body.get("workspace_id", ""), body.get("path", "")))
+
+
+def _route_post_api_file_manager_save(handler, parsed, body, diag):
+    from api.file_manager import save_file
+
+    return _file_manager_response(
+        handler,
+        lambda: save_file(body.get("workspace_id", ""), body.get("path", ""), body.get("content", "")),
+    )
+
+
+def _route_post_api_file_manager_rename(handler, parsed, body, diag):
+    from api.file_manager import rename_file
+
+    return _file_manager_response(
+        handler,
+        lambda: rename_file(body.get("workspace_id", ""), body.get("path", ""), body.get("new_name", "")),
+    )
+
+
+def _route_post_api_file_manager_move(handler, parsed, body, diag):
+    from api.file_manager import move_path
+
+    return _file_manager_response(
+        handler,
+        lambda: move_path(body.get("workspace_id", ""), body.get("path", ""), body.get("destination", ".")),
+    )
+
+
+def _route_post_api_file_manager_delete(handler, parsed, body, diag):
+    from api.file_manager import delete_path
+
+    return _file_manager_response(
+        handler,
+        lambda: delete_path(body.get("workspace_id", ""), body.get("path", ""), bool(body.get("recursive"))),
+    )
+
+
+def _route_post_api_file_manager_upload(handler, parsed, body, diag):
+    from api.file_manager import upload_file
+
+    return _file_manager_response(
+        handler,
+        lambda: upload_file(
+            body.get("workspace_id", ""),
+            body.get("path", "."),
+            body.get("filename", ""),
+            body.get("data_base64", ""),
+        ),
+    )
+
+
 def _route_post_api_file_reveal(handler, parsed, body, diag):
     return _handle_file_reveal(handler, body)
 
@@ -20333,6 +20456,13 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/file/rename"), _route_post_api_file_rename),
         (Exact("/api/file/move"), _route_post_api_file_move),
         (Exact("/api/file/create-dir"), _route_post_api_file_create_dir),
+        (Exact("/api/file-manager/create"), _route_post_api_file_manager_create),
+        (Exact("/api/file-manager/create-dir"), _route_post_api_file_manager_create_dir),
+        (Exact("/api/file-manager/save"), _route_post_api_file_manager_save),
+        (Exact("/api/file-manager/rename"), _route_post_api_file_manager_rename),
+        (Exact("/api/file-manager/move"), _route_post_api_file_manager_move),
+        (Exact("/api/file-manager/delete"), _route_post_api_file_manager_delete),
+        (Exact("/api/file-manager/upload"), _route_post_api_file_manager_upload),
         (Exact("/api/file/reveal"), _route_post_api_file_reveal),
         (Exact("/api/file/path"), _route_post_api_file_path),
         (Exact("/api/file/open-vscode"), _route_post_api_file_open_vscode),

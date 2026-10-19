@@ -84,13 +84,13 @@ function _panelLoading(el) {
 // Map of panel names → i18n keys for the app titlebar label.
 const APP_TITLEBAR_KEYS = {
   chat: 'tab_chat', tasks: 'tab_tasks', skills: 'tab_skills', agents: 'tab_agents',
-  memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces',
+  memory: 'tab_memory', knowledge: 'tab_knowledge', workspaces: 'tab_workspaces', files: 'Files',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', audit: 'tab_audit', settings: 'tab_settings',
 };
 // Panels whose internal key is not their visible name (`notes` is the Work Hub
 // for saved-state compatibility; `notebook` is the Notes page).
 const APP_TITLEBAR_LABELS = { notes: 'Work Hub', notebook: 'Notes' };
-const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','profiles','insights','logs','audit','plugin','office','notes','jobs','notebook','dashboard'];
+const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tasks','kanban','workspaces','files','profiles','insights','logs','audit','plugin','office','notes','jobs','notebook','dashboard'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -574,6 +574,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
   // Notes owns the full main surface too.
   if (nextPanel === 'notebook' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
+  if (nextPanel === 'files' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   // Close any long-lived Kanban SSE stream when leaving the kanban panel
   // so we don't keep a stale connection open in the background.
@@ -606,6 +607,9 @@ async function switchPanel(name, opts = {}) {
   }
   if (prevPanel === 'jobs' && nextPanel !== 'jobs' && window.JobOS && typeof window.JobOS.unmount === 'function') {
     window.JobOS.unmount();
+  }
+  if (prevPanel === 'files' && nextPanel !== 'files' && window.HermesFileManager && typeof window.HermesFileManager.unmount === 'function') {
+    window.HermesFileManager.unmount();
   }
   _currentPanel = nextPanel;
   _syncPanelRoute(nextPanel);
@@ -660,6 +664,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'notes') { await loadWorkHubPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'jobs' && window.JobOS && typeof window.JobOS.mount === 'function') { window.JobOS.mount(); }
   if (nextPanel === 'dashboard' && window.HermesDashboard) { window.HermesDashboard.mount(); }
+  if (nextPanel === 'files' && window.HermesFileManager && typeof window.HermesFileManager.mount === 'function') { window.HermesFileManager.mount(); }
   if (nextPanel === 'notebook' && window.Notebook && typeof window.Notebook.mount === 'function') { window.Notebook.mount(); }
   if (nextPanel === 'profiles') { await loadProfilesPanel(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'todos') loadTodos();
