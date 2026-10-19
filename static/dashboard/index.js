@@ -77,6 +77,7 @@
   function readTab() { try { const t = localStorage.getItem('hermes-dashboard-tab'); if (VIEWS.includes(t)) return t; } catch (_) {} return 'character'; }
   function saveTab(tab) { try { localStorage.setItem('hermes-dashboard-tab', tab); } catch (_) {} }
   state.tab = readTab();
+  try { state.revRange = localStorage.getItem('hermes-dashboard-revenue') || 'month'; } catch (_) { state.revRange = 'month'; }
   async function post(path, body) { return api(path, {method: 'POST', body: JSON.stringify(body || {})}); }
   function toast(message) { if (message && typeof showToast === 'function') showToast(message); }
   function isDark() {
@@ -99,6 +100,25 @@
   const sectionError = (section) => section && section.error ? `<p class="dash-empty">Couldn't read this: ${esc(section.error)}</p>` : '';
   const link = (label, attrs) => `<button type="button" class="dash-link${/data-dash-(go|tab)=/.test(attrs) ? ' dash-nav' : ''}" ${attrs}>${esc(label)}</button>`;
   const btn = (label, attrs, {icon = '', cls = ''} = {}) => `<button type="button" class="dash-btn ${cls}" ${attrs}>${icon ? svg(icon, 14) : ''}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
+  // A rounded-up scale for a chart axis: 1, 2 or 5 times a power of ten.
+  function niceMax(v) {
+    if (!(v > 0)) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v);
+  }
+  // A pixel bar chart: guide lines with their values, segmented gold columns,
+  // the current slot picked out, the peak labelled above its column.
+  // ``points`` are {label, value, now, title}; ``every`` thins the labels.
+  function pixelChart(points, {format = (v) => String(v), every = 1, label = 'Chart'} = {}) {
+    const top = Math.max(0, ...points.map((p) => p.value || 0));
+    const scale = niceMax(top);
+    const peak = top ? points.findIndex((p) => p.value === top) : -1;
+    const guides = [1, 0.5].map((f) => `<i class="px-chart-guide" style="bottom:${f * 100}%"><small>${esc(format(scale * f))}</small></i>`).join('');
+    const cols = points.map((p, i) => `<div class="px-chart-col${p.now ? ' is-now' : ''}${p.value ? '' : ' is-zero'}" title="${esc(p.title || '')}">
+        <span class="px-chart-bar" style="--h:${p.value ? Math.max(3, (p.value / scale) * 100).toFixed(1) : 0}%;--i:${i}">${i === peak ? `<b class="px-chart-peak">${esc(format(p.value))}</b>` : ''}</span>
+        <small>${i % every === 0 || p.now ? esc(p.label) : ''}</small></div>`).join('');
+    return `<div class="px-chart" role="img" aria-label="${esc(label)}" style="--n:${points.length}"><div class="px-chart-plot">${guides}<i class="px-chart-guide is-base"></i><div class="px-chart-cols">${cols}</div></div></div>`;
+  }
   const orb = (kind = 'working') => `<span class="dash-orb" data-ld="orb" data-state="${kind}"><span class="work-hub-spinner" aria-hidden="true"></span></span>`;
 
   function questRow(q, {showArea = true} = {}) {
@@ -151,14 +171,15 @@
     if (data && data.error) return card('Learning log', sectionError(data), {pix: 'learning-log'});
     const entries = (data && data.entries) || [];
     const kinds = [['course', 'Course', 40], ['book', 'Book', 30], ['certification', 'Certification', 100], ['skill', 'Skill', 20], ['other', 'Other', 15]];
-    const form = `<form class="dash-inline-form is-learning" data-form="learning">
+    // The entry opens from the header button, as Habits' does.
+    const form = state.forms.learning ? `<form class="dash-inline-form is-learning" data-form="learning">
         <input name="title" type="text" maxlength="120" placeholder="What did you learn or finish?" required autocomplete="off">
         <select name="kind" aria-label="Kind">${kinds.map(([k, l, xp]) => `<option value="${k}">${l} · ${xp} XP</option>`).join('')}</select>
         <select name="area" aria-label="Counts towards"><option value="career">Career</option><option value="personal">Personal</option><option value="business">Business</option></select>
-        <button type="submit" class="dash-btn is-small">Log it</button>
-      </form>`;
+        <button type="submit" class="dash-btn is-small">Log it</button><button type="button" class="dash-link" data-form-cancel="learning">Cancel</button>
+      </form>` : '';
     const rows = entries.map((e) => `<div class="dash-row"><span class="dash-area-dot is-${esc(e.area)}"></span><span class="dash-row-main"><strong>${esc(e.title)}</strong><small>${esc(String(e.kind || '').charAt(0).toUpperCase() + String(e.kind || '').slice(1))} · ${esc(AREA[e.area])} · ${ago(e.done_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-learning-remove="${esc(e.id)}" aria-label="Remove" title="Remove">${svg('x', 13)}</button></div>`).join('');
-    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `<div class="dash-learning-entries">${rows || '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>'}</div>${form}`, {pix: 'learning-log', cls: 'is-learning-log', key: 'learning'});
+    return card(`Learning log${data && data.total ? ` · ${data.total}` : ''}`, `${form}<div class="dash-learning-entries">${rows || (state.forms.learning ? '' : '<p class="dash-empty">Courses, books, certifications and new skills: they level you up and can feed your resume.</p>')}</div>`, {pix: 'learning-log', cls: 'is-learning-log', key: 'learning', action: state.forms.learning ? '' : btn('Log', 'data-form-open="learning"', {icon: 'plus', cls: 'is-small'})});
   }
 
   function personal(data) {
@@ -190,7 +211,7 @@
       </div>
       <div class="dash-grid">
         ${learningCard(data.learning)}
-        ${card('Project health', projects, {pix: 'project-health', key: 'project-health'})}
+        ${card('Project health', (hub.projects || []).some((p) => p.open || p.done) ? `<div class="dash-meters is-health">${projects}</div>` : projects, {pix: 'project-health', key: 'project-health'})}
       </div>
       <div class="dash-grid">
         ${card('Scheduled jobs', schedules, {pix: 'scheduled-jobs', key: 'schedules', action: link('Open Tasks', 'data-dash-go="tasks"')})}
@@ -206,12 +227,13 @@
     const entries = (data && data.entries) || [];
     const label = Object.fromEntries(SKILL_KINDS.map(([k, l]) => [k, l]));
     const rows = entries.map((e) => `<div class="dash-row"><span class="dash-skill-gem" aria-hidden="true"></span><span class="dash-row-main"><strong>${esc(e.name)}</strong><small>${esc(label[e.kind] || e.kind)} · ${ago(e.created_at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span><button type="button" class="dash-icon-btn" data-skill-remove="${esc(e.id)}" aria-label="Remove ${esc(e.name)}" title="Remove">${svg('x', 13)}</button></div>`).join('');
-    const form = `<form class="dash-inline-form is-learning is-skills" data-form="skill">
+    const form = state.forms.skill ? `<form class="dash-inline-form is-learning is-skills" data-form="skill">
         <input name="name" type="text" maxlength="80" placeholder="What skills did you learn?" required autocomplete="off">
         <select name="kind" aria-label="Type">${SKILL_KINDS.map(([k, l, xp]) => `<option value="${k}">${l} · ${xp} XP</option>`).join('')}</select>
-        <button type="submit" class="dash-btn is-small">Add Skill</button>
-      </form>`;
-    return card(`Skills gained${data && data.total ? ` · ${data.total}` : ''}`, `<div class="dash-learning-entries">${rows || '<p class="dash-empty">Skills from courses, bootcamps and certifications. They show in Resume Studio, and tailoring adds the ones a job asks for.</p>'}</div>${form}`, {pix: 'gambling', cls: 'is-learning-log is-skills-card', key: 'skills', action: link('Resume Studio', 'data-dash-go="jobs" data-jobs-view="resume-studio"')});
+        <button type="submit" class="dash-btn is-small">Add Skill</button><button type="button" class="dash-link" data-form-cancel="skill">Cancel</button>
+      </form>` : '';
+    const action = `${link('Resume Studio', 'data-dash-go="jobs" data-jobs-view="resume-studio"')}${state.forms.skill ? '' : btn('Skill', 'data-form-open="skill"', {icon: 'plus', cls: 'is-small'})}`;
+    return card(`Skills gained${data && data.total ? ` · ${data.total}` : ''}`, `${form}<div class="dash-learning-entries">${rows || (state.forms.skill ? '' : '<p class="dash-empty">Skills from courses, bootcamps and certifications. They show in Resume Studio, and tailoring adds the ones a job asks for.</p>')}</div>`, {pix: 'gambling', cls: 'is-learning-log is-skills-card', key: 'skills', action});
   }
 
   // ── Career ───────────────────────────────────────────────────────────────
@@ -235,7 +257,7 @@
         ${skillsCard(data.skills)}
       </div>
       <div class="dash-grid is-wide-left">
-        ${card('Funnel', funnelRows || '<p class="dash-empty">No jobs yet.</p>', {pix: 'funnel', key: 'funnel', action: link('Open Jobs', 'data-dash-go="jobs"')})}
+        ${card('Funnel', funnelRows ? `<div class="dash-meters is-funnel">${funnelRows}</div>` : '<p class="dash-empty">No jobs yet.</p>', {pix: 'funnel', key: 'funnel', action: link('Open Jobs', 'data-dash-go="jobs"')})}
         ${card('This week', weekRows, {pix: 'this-week', key: 'this-week'})}
       </div>`;
   }
@@ -291,10 +313,12 @@
       const value = g.metric === 'sales' ? `${g.value} / ${g.target}` : `${money(g.value, cur)} / ${money(g.target, cur)}`;
       return `<div class="dash-goal${g.met ? ' is-met' : ''}"><div class="dash-goal-head"><strong>${esc(label)}</strong>${g.project ? `<span class="dash-area-tag is-project">${esc(g.project)}</span>` : ''}<span class="dash-pill${g.met ? ' is-good' : ' is-accent'}">${g.met ? '✓ Met' : esc(value)}</span><button type="button" class="dash-icon-btn" data-goal-remove="${esc(g.id)}" aria-label="Remove goal" title="Remove goal">${svg('x', 13)}</button></div>${bar(g.progress, g.met ? 'good' : '')}${g.streak ? `<small class="dash-goal-streak">🔥 ${g.streak} ${g.period}${g.streak === 1 ? '' : 's'} in a row</small>` : ''}</div>`;
     }).join('') || (state.forms.goal ? '' : '<p class="dash-empty">Set a target, like 5 sales this week, and build a streak.</p>');
-    const newest = (s.milestones || []).filter((m) => m.unlocked_at).sort((a, b) => b.unlocked_at - a.unlocked_at)[0];
+    // Each milestone wears the pixel icon of the figure it counts (the same
+    // icons as the summary tiles); locked ones are greyed.
+    const msIcon = (key) => (/^first_sale/.test(key) ? 'recent-sales' : /^revenue_/.test(key) ? 'treasury' : /^customers_/.test(key) ? 'goals' : 'road-to-10k');
     const milestones = (s.milestones || []).map((m) => `<div class="dash-badge${m.unlocked_at ? '' : ' is-locked'}" title="${esc(m.description)}">
-        <span class="dash-badge-icon">${svg(m.unlocked_at ? 'trophy' : 'star', 18)}</span><strong>${esc(m.title)}</strong>
-        ${newest && newest.key === m.key && m.new ? '<span class="dash-new" data-ld="metal-badge">New</span>' : `<small>${m.unlocked_at ? ago(m.unlocked_at) : 'Locked'}</small>`}
+        <span class="dash-badge-icon is-pixel">${PIX(msIcon(m.key))}</span><strong>${esc(m.title)}</strong>
+        <small>${m.unlocked_at ? ago(m.unlocked_at) : 'Locked'}</small>
       </div>`).join('');
     const road = s.road || {checkpoints: []};
     const marks = road.checkpoints || [];
@@ -307,9 +331,6 @@
     const roadHtml = `<div class="dash-road"><div class="dash-road-track"><i style="width:${along.toFixed(1)}%"></i></div>
         ${marks.map((c, i) => `<span class="dash-road-node${mrr >= c ? ' is-done' : ''}" style="left:${(i * step).toFixed(1)}%"><small>${c ? esc(money(c, cur)) : 'Start'}</small></span>`).join('')}
       </div><p class="dash-hint">${road.next ? `${esc(money(road.next - (road.mrr || 0), cur))} more to the next checkpoint.` : 'You reached the end of the road. Legendary.'}</p>`;
-    const months = s.months || [];
-    const topMonth = Math.max(1, ...months.map((m) => m.revenue));
-    const chart = `<div class="dash-chart">${months.map((m) => `<div class="dash-chart-col" title="${esc(m.label)}: ${esc(money(m.revenue, cur))}"><span class="dash-chart-val">${m.revenue ? esc(money(m.revenue, cur)) : ''}</span><i class="${m.revenue ? '' : 'is-zero'}" style="height:${m.revenue ? Math.max(4, Math.round(m.revenue / topMonth * 100)) : 2}%"></i><small>${esc(m.label)}</small></div>`).join('')}</div>`;
     const saleForm = state.forms.sale ? `<form class="dash-inline-form" data-form="sale">
         <input name="amount" type="number" min="0.01" step="0.01" placeholder="29.00" required aria-label="Amount">
         <input name="product" type="text" maxlength="120" placeholder="Product" aria-label="Product">
@@ -325,10 +346,26 @@
       </div>
       ${card(`Milestones · ${(s.milestones || []).filter((m) => m.unlocked_at).length}/${(s.milestones || []).length}`, `<div class="dash-badges">${milestones}</div>`, {pix: 'milestone', key: 'milestones'})}
       <div class="dash-grid">
-        ${card('Revenue · 6 months', chart, {pix: 'revenue', key: 'revenue'})}
+        ${revenueCard(s)}
         ${card('Recent sales', `${saleForm}${recent}`, {pix: 'recent-sales', key: 'recent-sales', action: state.forms.sale ? '' : btn('Sale', 'data-form-open="sale"', {icon: 'plus', cls: 'is-small'})})}
       </div>
       ${questStrip(data.quests, 'business')}`;
+  }
+
+  // Revenue for today (by hour), this week or this month (by day); the
+  // filter in the header redraws this card alone.
+  const REV_RANGES = [['today', 'Today'], ['week', 'This week'], ['month', 'This month']];
+  function revenueCard(s) {
+    const range = REV_RANGES.some(([k]) => k === state.revRange) ? state.revRange : 'month';
+    const cur = s.currency || 'USD';
+    const points = ((s.series || {})[range] || []).map((p) => ({label: p.label, value: p.revenue, now: p.now,
+      title: `${range === 'today' ? `${p.label}:00` : range === 'week' ? p.label : `Day ${p.label}`}: ${money(p.revenue, cur)}`}));
+    const total = points.reduce((n, p) => n + p.value, 0);
+    const short = (c) => (c >= 100000 ? `$${Math.round(c / 100000)}k` : money(c, cur));
+    const every = range === 'today' ? 3 : range === 'month' ? 5 : 1;
+    const seg = `<span class="dash-seg" role="group" aria-label="Revenue period">${REV_RANGES.map(([k, l]) => `<button type="button" data-rev-range="${k}" class="${k === range ? 'on' : ''}" aria-pressed="${k === range}">${l}</button>`).join('')}</span>`;
+    const body = points.length ? pixelChart(points, {format: short, every, label: `Revenue ${range === 'today' ? 'today by hour' : range === 'week' ? 'this week by day' : 'this month by day'}`}) : '<p class="dash-empty">No revenue yet.</p>';
+    return card(`Revenue · ${esc(money(total, cur))}`, body, {pix: 'revenue', key: 'revenue', cls: 'is-revenue', action: seg});
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────
@@ -371,7 +408,12 @@
     const tier = (data.tiers || [])[tierIndex];
     // The evolution carousel shows the transparent sprite (same body height
     // and baseline for every form) when there is one.
-    if (sprite && tier && tier.sprite) return `<img class="rpg-hero-sprite" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}.webp" alt="" draggable="false">`;
+    // A locked form shows its first frame only: nothing animates (or decodes)
+    // for a character you cannot have yet.
+    if (sprite && tier && tier.sprite) {
+      const still = (data.level || 0) < tier.level;
+      return `<img class="rpg-hero-sprite" src="static/dashboard/characters/${esc(tier.name.toLowerCase())}${still ? '-still' : ''}.webp" alt="" draggable="false" decoding="async">`;
+    }
     if (tier && tier.video) {
       const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       // No autoplay: watchVideos() plays it only while it is on screen.
@@ -383,12 +425,14 @@
   // Total XP needed to reach ``level`` (level n takes 100 + 25(n-1) XP).
   const xpToReach = (level) => { let total = 0; for (let n = 1; n < level; n++) total += 100 + 25 * (n - 1); return total; };
   // One evolution at a time, stepped with the arrows; forms not reached yet
-  // are greyed and chained.
+  // are greyed and chained. It opens on the next form to unlock (the goal),
+  // or on the current one once every form is reached.
+  const evoStart = (data) => Math.min((data.tiers || []).length - 1, Math.max(0, (data.tier || 1) - 1) + 1);
   function evolutionView(data) {
     const tiers = data.tiers || [];
     if (!tiers.length) return '';
     const current = Math.max(0, (data.tier || 1) - 1);
-    const i = Math.max(0, Math.min(tiers.length - 1, state.evoIndex == null ? current : state.evoIndex));
+    const i = Math.max(0, Math.min(tiers.length - 1, state.evoIndex == null ? evoStart(data) : state.evoIndex));
     const t = tiers[i];
     const locked = data.level < t.level;
     const status = i === current ? 'Current form' : locked ? `Unlocks at Lv ${t.level}` : 'Unlocked';
@@ -401,7 +445,7 @@
         <button type="button" class="rpg-evo-arrow" data-evo-step="1" aria-label="Next form"${i === tiers.length - 1 ? ' disabled' : ''}>${svg('chevron-right', 14)}</button>
       </div>
       <strong class="rpg-evo-name">${esc(t.name)}</strong>
-      <small class="rpg-evo-status">${esc(status)}${togo ? ` · ${togo.toLocaleString()} XP to go` : ''}</small>
+      <small class="rpg-evo-status"${togo ? ` title="${togo.toLocaleString()} XP to go"` : ''}>${esc(status)}</small>
       <div class="rpg-evo-dots" aria-hidden="true">${dots}</div>`;
   }
 
@@ -428,14 +472,10 @@
     // Achievements with their own badge art fill most of the tile; the rest
     // get a pixel medallion around their icon. Locked ones stay dark until earned.
     const achHtml = achievements.map((a) => `<div class="rpg-ach${a.unlocked_at ? '' : ' is-locked'}${a.art ? ' has-art' : ''}" title="${esc(a.title)}: ${esc(a.description)}${a.unlocked_at ? ` · earned ${esc(ago(a.unlocked_at))}` : ''}">
-        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.png" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('${esc(new URL(`static/dashboard/achievements/${a.key}.png`, document.baseURI).href)}')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
+        <span class="rpg-ach-art" aria-hidden="true">${a.art ? `<img src="static/dashboard/achievements/${esc(a.key)}.webp" alt="" draggable="false" loading="lazy">` : `<span class="rpg-ach-medal">${esc(a.icon)}</span>`}${a.unlocked_at ? `<span class="rpg-ach-shine"${a.art ? ` style="--art:url('${esc(new URL(`static/dashboard/achievements/${a.key}.webp`, document.baseURI).href)}')"` : ''}></span>` : '<span class="rpg-ach-lock"></span>'}</span>
         <span class="rpg-ach-text"><strong>${esc(a.title)}</strong><small>${esc(a.description)}</small></span>
       </div>`).join('');
     const areas = (data.areas || []).map((a) => `<div class="dash-row"><span class="dash-area-dot is-${a.key}"></span><span class="dash-row-main"><strong>${esc(AREA[a.key])} · Lv ${a.level}</strong><small>${a.xp} XP · ${plural(a.tasks, 'deed')}</small></span>${bar(a.progress)}</div>`).join('');
-    const filter = state.logCategory || 'all';
-    const chips = ['all', 'personal', 'career', 'business'].map((k) => `<button type="button" class="dash-chip${filter === k ? ' on' : ''}" data-log-filter="${k}">${k === 'all' ? 'All' : AREA[k]}</button>`).join('');
-    const log = (data.log || []).map((e) => `<div class="dash-row rpg-log-row"><span class="dash-area-dot is-${esc(e.category)}"></span><span class="dash-row-main"><strong>${e.quest ? '⚔ ' : ''}${esc(e.title)}</strong><small>${esc(AREA[e.category] || e.category)} · ${ago(e.at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span></div>`).join('') || '<p class="dash-empty">Finish a Work Hub item, tick a habit or move a job forward to earn your first XP.</p>';
-    const more = data.log_total > (data.log || []).length ? link('Show more', 'data-log-more') : '';
     const toNext = data.level_size - data.into_level;
     return `<div class="rpg">
       <div class="rpg-hero">
@@ -466,13 +506,82 @@
         </div>
         <div class="rpg-col">
           ${panel('Party', `<div class="rpg-party">${party}</div>`, {pix: 'party'})}
-          ${panel('Realms', areas, {pix: 'realms'})}
-          ${panel('Chronicle', `<div class="dash-chips rpg-log-filters">${chips}</div>${log}${more}`, {pix: 'chronicle', cls: 'is-chronicle'})}
+          ${panel('Realms', areas ? `<div class="dash-meters is-realms">${areas}</div>` : '', {pix: 'realms'})}
+          ${panel('Chronicle', chronicleBody(data), {pix: 'chronicle', cls: 'is-chronicle'})}
         </div>
       </div>
     </div>`;
   }
 
+
+  // Chronicle: the filters, the XP log for the chosen realm, Show more.
+  function chronicleBody(data) {
+    const filter = state.logCategory || 'all';
+    const chips = ['all', 'personal', 'career', 'business'].map((k) => `<button type="button" class="dash-chip${filter === k ? ' on' : ''}" data-log-filter="${k}" aria-pressed="${filter === k}">${k === 'all' ? 'All' : AREA[k]}</button>`).join('');
+    const log = (data.log || []).map((e) => `<div class="dash-row rpg-log-row" data-log-cat="${esc(e.category)}"><span class="dash-area-dot is-${esc(e.category)}"></span><span class="dash-row-main"><strong>${e.quest ? '⚔ ' : ''}${esc(e.title)}</strong><small>${esc(AREA[e.category] || e.category)} · ${ago(e.at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span></div>`).join('') || '<p class="dash-empty">Finish a Work Hub item, tick a habit or move a job forward to earn your first XP.</p>';
+    const more = data.log_total > (data.log || []).length ? link('Show more', 'data-log-more') : '';
+    return `<div class="dash-chips rpg-log-filters">${chips}</div>${log}${more}`;
+  }
+  // Redraw only the Chronicle list (a filter or Show more): the rest of the
+  // page, its video and its effects are left alone.
+  function paintChronicle({top = false} = {}) {
+    const body = root() && root().querySelector('.rpg-panel.is-chronicle > .dash-card-body');
+    const data = state.data.character;
+    if (!body || !data || state.tab !== 'character') return false;
+    const keep = body.scrollTop;
+    body.innerHTML = chronicleBody(data);
+    body.scrollTop = top ? 0 : keep;
+    state.painted.signature = signatureOf();
+    requestAnimationFrame(() => updateMore(body));
+    return true;
+  }
+  // A filter answers at once: the chips switch, and the rows already on the
+  // page that are not in that realm hide (or a list read before is shown)
+  // while the full list for it loads.
+  function setLogFilter(cat) {
+    if ((state.logCategory || 'all') === cat) return;
+    state.logCategory = cat;
+    const cached = state.logCache && state.logCache[cat];
+    if (cached && state.data.character) { Object.assign(state.data.character, cached); paintChronicle({top: true}); }
+    else {
+      const body = root() && root().querySelector('.rpg-panel.is-chronicle > .dash-card-body');
+      if (body) {
+        body.querySelectorAll('[data-log-filter]').forEach((b) => { const on = b.dataset.logFilter === cat; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+        body.querySelectorAll('.rpg-log-row').forEach((r) => { r.hidden = cat !== 'all' && r.dataset.logCat !== cat; });
+        body.scrollTop = 0;
+      }
+    }
+    load('character', {quiet: true, logOnly: true});
+  }
+
+  // Ledger marks drawn as pixel shapes on an odd grid, so each sits exactly in
+  // the middle of its square (a font's glyphs sit wherever their metrics say).
+  const pxShape = (size, w, rows) => `<svg width="${size}" height="${size}" viewBox="0 0 ${w} ${w}" shape-rendering="crispEdges" fill="currentColor">${rows.map((r, y) => [...r].map((c, x) => (c === '#' ? `<rect x="${x}" y="${y}" width="1" height="1"/>` : '')).join('')).join('')}</svg>`;
+  const LEDGER_GLYPH = {
+    earn: pxShape(10, 5, ['..#..', '..#..', '#####', '..#..', '..#..']),
+    spend: pxShape(10, 5, ['.....', '.....', '#####', '.....', '.....']),
+    star: pxShape(14, 7, ['...#...', '..###..', '#######', '.#####.', '..###..', '.##.##.', '##...##']),
+  };
+
+  // A reward bought: the tile flashes, gold coins burst out of it and the
+  // price floats up. Drawn over the page, so the shelf can repaint under it.
+  function rewardBurst(rect, cost) {
+    if (!rect || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+    const fx = document.createElement('div');
+    fx.className = 'shop-burst';
+    fx.setAttribute('aria-hidden', 'true');
+    fx.style.left = `${rect.left + rect.width / 2}px`;
+    fx.style.top = `${rect.top + rect.height / 2}px`;
+    const coins = Array.from({length: 14}, (_, i) => {
+      const a = (i / 14) * Math.PI * 2 + (i % 2 ? 0.2 : -0.1);
+      const r = 70 + (i % 3) * 22;
+      return `<i class="shop-burst-coin" style="--x:${Math.round(Math.cos(a) * r)}px;--y:${Math.round(Math.sin(a) * r * 0.8 - 30)}px;--d:${(i % 4) * 30}ms"></i>`;
+    }).join('');
+    const sparks = Array.from({length: 8}, (_, i) => `<i class="shop-burst-spark" style="--r:${i * 45}deg"></i>`).join('');
+    fx.innerHTML = `<span class="shop-burst-ring"></span>${sparks}${coins}<b class="shop-burst-text">−${Number(cost || 0).toLocaleString()}<small>Enjoy!</small></b>`;
+    document.body.appendChild(fx);
+    setTimeout(() => fx.remove(), 1400);
+  }
 
   // ── Shop ─────────────────────────────────────────────────────────────────
   // The treasury hub: what you have, what you can buy, how gold comes and goes.
@@ -511,12 +620,8 @@
         <div><b>${n(st.per_day)}</b><small>Gold a day</small></div>
         <div><b>${st.best_day ? n(st.best_day.earned) : '—'}</b><small>${st.best_day ? `Best day (${esc(st.best_day.label)})` : 'Best day'}</small></div>
       </div>`;
-    const days = t.days || [];
-    const peak = Math.max(1, ...days.map((d) => Math.max(d.earned, d.spent)));
-    const flow = `<div class="shop-flow" role="img" aria-label="Gold earned and spent over the last 14 days">${days.map((d) => `<div class="shop-flow-day" title="${esc(d.day)}: +${d.earned} / −${d.spent}">
-        <span class="shop-flow-bars"><i class="is-earn" style="height:${Math.round(d.earned / peak * 100)}%"></i><i class="is-spend" style="height:${Math.round(d.spent / peak * 100)}%"></i></span><small>${esc(d.label)}</small></div>`).join('')}</div>
-      <div class="shop-flow-key"><span><i class="is-earn"></i>Earned</span><span><i class="is-spend"></i>Spent</span></div>`;
-    const ledger = (t.ledger || []).map((f) => `<div class="dash-row shop-ledger-row"><span class="shop-ledger-mark is-${esc(f.kind)}" aria-hidden="true">${f.kind === 'spend' ? '−' : f.kind === 'achievement' ? '★' : '+'}</span><span class="dash-row-main"><strong>${esc(f.title)}</strong><small>${f.kind === 'spend' ? 'Reward bought' : f.kind === 'achievement' ? 'Achievement bonus' : esc(AREA[f.category] || 'XP')} · ${ago(f.at)}</small></span><span class="shop-ledger-gold${f.gold < 0 ? ' is-spend' : ''}">${f.gold < 0 ? '−' : '+'}${n(Math.abs(f.gold))}</span></div>`).join('')
+    const flow = goldFlow(t.days || []);
+    const ledger = (t.ledger || []).map((f) => `<div class="dash-row shop-ledger-row"><span class="shop-ledger-mark is-${esc(f.kind)}" aria-hidden="true">${LEDGER_GLYPH[f.kind === 'spend' ? 'spend' : f.kind === 'achievement' ? 'star' : 'earn']}</span><span class="dash-row-main"><strong>${esc(f.title)}</strong><small>${f.kind === 'spend' ? 'Reward bought' : f.kind === 'achievement' ? 'Achievement bonus' : esc(AREA[f.category] || 'XP')} · ${ago(f.at)}</small></span><span class="shop-ledger-gold${f.gold < 0 ? ' is-spend' : ''}">${f.gold < 0 ? '−' : '+'}${n(Math.abs(f.gold))}</span></div>`).join('')
       || '<p class="dash-empty">Gold you earn and spend shows here.</p>';
     return `${stats}
       <div class="dash-grid is-wide-left">
@@ -524,9 +629,43 @@
         ${card('Purse', purse, {pix: 'revenue', key: 'purse'})}
       </div>
       <div class="dash-grid is-wide-left">
-        ${card('Gold flow · 14 days', flow, {pix: 'road-to-10k', key: 'flow'})}
+        ${card('Gold flow · 14 days', flow, {pix: 'road-to-10k', key: 'flow', cls: 'is-flow'})}
         ${card(`Ledger${t.ledger_total ? ` · ${n(t.ledger_total)}` : ''}`, ledger, {pix: 'chronicle', key: 'ledger'})}
       </div>`;
+  }
+
+  // Gold flow: what came in rises above the line in gold, what was spent
+  // hangs below it in red, and a stepped line traces the running balance
+  // over the fortnight.
+  function goldFlow(days) {
+    if (!days.length) return '<p class="dash-empty">Gold you earn and spend shows here.</p>';
+    const n = (v) => Number(v || 0).toLocaleString();
+    const earnTop = niceMax(Math.max(0, ...days.map((d) => d.earned)));
+    const spentMax = Math.max(0, ...days.map((d) => d.spent));
+    const spendTop = spentMax ? niceMax(spentMax) : 0;
+    const up = spendTop ? 70 : 100;  // share of the height above the line
+    let run = 0;
+    const net = days.map((d) => (run += d.earned - d.spent));
+    const lo = Math.min(0, ...net), hi = Math.max(1, ...net);
+    // Stepped path in a 0..n by 0..100 box (stretched over the plot).
+    const y = (v) => (100 - ((v - lo) / (hi - lo || 1)) * 100).toFixed(2);
+    const path = net.map((v, i) => `${i ? 'H' : 'M'}${i} ${i ? `V${y(v)} H${i + 1}` : `${y(v)} H1`}`).join(' ');
+    const sum = (k) => days.reduce((t, d) => t + (d[k] || 0), 0);
+    const cols = days.map((d, i) => `<div class="sf-col${i === days.length - 1 ? ' is-now' : ''}" title="${esc(d.day)}: +${n(d.earned)} / −${n(d.spent)}">
+        <span class="sf-earn" style="--v:${d.earned ? Math.max(3, (d.earned / earnTop) * 100).toFixed(1) : 0};--i:${i}"></span>
+        ${spendTop ? `<span class="sf-spend" style="--v:${d.spent ? Math.max(4, (d.spent / spendTop) * 100).toFixed(1) : 0};--i:${i}"></span>` : ''}
+        <small>${esc(d.label)}</small></div>`).join('');
+    return `<div class="shop-flow2" role="img" aria-label="Gold earned and spent over the last 14 days, with the running balance" style="--n:${days.length};--up:${up}%">
+        <div class="sf-plot">
+          <i class="px-chart-guide" style="bottom:${100 - up + up}%"><small>${n(earnTop)}</small></i>
+          <i class="px-chart-guide" style="bottom:${100 - up + up / 2}%"><small>${n(earnTop / 2)}</small></i>
+          <i class="px-chart-guide is-base" style="bottom:${100 - up}%"></i>
+          ${spendTop ? `<i class="px-chart-guide is-spend" style="bottom:0"><small>−${n(spendTop)}</small></i>` : ''}
+          <div class="sf-cols">${cols}</div>
+          <svg class="sf-net" viewBox="0 0 ${days.length} 100" preserveAspectRatio="none" aria-hidden="true"><path d="${path}"/></svg>
+        </div>
+      </div>
+      <div class="shop-flow-key"><span><i class="is-earn"></i>Earned <b>+${n(sum('earned'))}</b></span><span><i class="is-spend"></i>Spent <b>−${n(sum('spent'))}</b></span><span><i class="is-net"></i>Balance <b>${run >= 0 ? '+' : '−'}${n(Math.abs(run))}</b></span></div>`;
   }
 
   // ── Libraries.dev effects ────────────────────────────────────────────────
@@ -558,10 +697,6 @@
         const style = getComputedStyle(el);
         try { effects.push(lib.mount(el, 'MetalText', {children: el.dataset.text || el.textContent, font: `${style.fontWeight} ${style.fontSize}/1.15 ${style.fontFamily}`, color: '#E8E2FF'})); } catch (_) {}
       });
-      host.querySelectorAll('[data-ld="metal-badge"]').forEach((el) => {
-        if (!claim(el)) return;
-        try { effects.push(lib.mount(el, 'MetalBadge', {children: el.textContent || 'New'})); } catch (_) {}
-      });
     }
     host.querySelectorAll('[data-ld-beam]').forEach((el) => {
       if (!claim(el)) return;
@@ -571,7 +706,7 @@
   }
 
   // ── loading and painting ─────────────────────────────────────────────────
-  async function load(tab, {quiet = false, append = false} = {}) {
+  async function load(tab, {quiet = false, append = false, logOnly = false} = {}) {
     // A reload asked for while one is in flight runs once it lands, so a
     // change made meanwhile (a quest finished, a habit ticked) is not lost.
     if (state.loading[tab]) { if (!append) (state.again || (state.again = {}))[tab] = true; return; }
@@ -582,10 +717,20 @@
         const offset = append ? (state.logOffset || 0) + LOG_PAGE : 0;
         const cat = state.logCategory && state.logCategory !== 'all' ? state.logCategory : '';
         const data = await api(`/api/dashboard/character?category=${encodeURIComponent(cat)}&offset=${offset}`);
-        if (append && state.data.character) data.log = (state.data.character.log || []).concat(data.log || []);
+        if ((state.logCategory && state.logCategory !== 'all' ? state.logCategory : '') !== cat) { state.loading[tab] = false; return; }  // the filter moved on meanwhile
+        const prev = state.data.character;
+        if (append && prev) data.log = (prev.log || []).concat(data.log || []);
         state.logOffset = append ? offset : 0;
         state.data.character = data;
+        (state.logCache || (state.logCache = {}))[cat || 'all'] = {log: data.log, log_total: data.log_total};
         celebrate(data);
+        // Only the log changed: redraw Chronicle alone.
+        const rest = (d) => JSON.stringify(d, (key, value) => (['log', 'log_total', 'generated_at'].includes(key) ? undefined : value));
+        if ((logOnly || append) && prev && rest(prev) === rest(data) && state.mounted && state.tab === tab) {
+          state.error[tab] = null; state.loading[tab] = false;
+          paintChronicle({top: !append});
+          return;
+        }
       } else {
         state.data[tab] = await api(`/api/dashboard/summary?tab=${encodeURIComponent(tab)}`);
       }
@@ -612,15 +757,18 @@
     const overlay = document.createElement('div');
     overlay.className = 'rpg-levelup';
     const confetti = Array.from({length: 28}, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 7) * 0.12}s;--r:${(i * 53) % 360}deg"></i>`).join('');
+    const sparks = Array.from({length: 8}, (_, i) => `<i style="--a:${i * 45 + 22}deg;--d:${(i % 4) * 0.35}s"></i>`).join('');
+    const into = Math.max(0, Math.min(1, (data.into_level || 0) / Math.max(1, data.level_size || 1)));
+    const toNext = Math.max(0, (data.level_size || 0) - (data.into_level || 0));
     overlay.innerHTML = `<div class="rpg-levelup-card" role="dialog" aria-modal="true" aria-label="Level up: level ${level}">
         <div class="rpg-levelup-rays" aria-hidden="true"></div><div class="rpg-levelup-confetti" aria-hidden="true">${confetti}</div>
-        <small class="rpg-levelup-kicker">Level up!</small>
+        <div class="rpg-levelup-banner"><span class="rpg-levelup-kicker">Level up!</span></div>
         <div class="rpg-levelup-levels"><span>${from}</span><i aria-hidden="true">▶</i><b>${level}</b></div>
-        <div class="rpg-levelup-hero">${window.DashSprite ? heroArt(data, (data.tier || 1) - 1, 4) : ''}</div>
+        <div class="rpg-levelup-stage"><div class="rpg-levelup-sparks" aria-hidden="true">${sparks}</div><div class="rpg-levelup-hero">${window.DashSprite ? heroArt(data, (data.tier || 1) - 1, 4) : ''}</div></div>
         <strong class="rpg-levelup-class">${esc(data.tier_name || '')}</strong>
-        ${newForm ? `<div class="rpg-levelup-unlock">New form unlocked: ${esc(data.tier_name || '')}</div>` : ''}
-        <p class="rpg-levelup-next">${(data.level_size || 0).toLocaleString()} XP to level ${level + 1}</p>
-        <button type="button" class="dash-btn" data-levelup-close>Continue</button>
+        ${newForm ? `<div class="rpg-levelup-unlock"><i aria-hidden="true"></i><span>New form unlocked</span><i aria-hidden="true"></i></div>` : ''}
+        <div class="rpg-levelup-next"><span class="dash-bar" aria-hidden="true"><i style="width:${Math.round(into * 100)}%"></i></span><small>${toNext.toLocaleString()} XP to level ${level + 1}</small></div>
+        <button type="button" class="rpg-levelup-btn" data-levelup-close><span>Continue</span></button>
       </div>`;
     const close = () => {
       overlay.querySelectorAll('video').forEach((v) => { v.pause(); if (videoWatch) videoWatch.unobserve(v); });
@@ -646,13 +794,14 @@
     host.innerHTML = `<nav class="dash-side-nav">${item('character', 'Character')}${item('shop', 'Shop')}<div class="dash-side-divider" aria-hidden="true"></div>${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('settings', 'Settings')}</nav>`;
   }
 
+  const signatureOf = () => JSON.stringify([state.tab, state.data[state.tab], state.error[state.tab], state.forms, state.logCategory, state.revRange], (key, value) => key === 'generated_at' ? undefined : value);
   function paint({force = false} = {}) {
     paintSidebar();
     const host = root(); if (!host) return;
     const data = state.data[state.tab];
     // A refresh that brought nothing new leaves the page (and its live effects) alone.
     // generated_at changes on every read; it is not news, so it does not repaint.
-    const signature = JSON.stringify([state.tab, data, state.error[state.tab], state.forms, state.logCategory], (key, value) => key === 'generated_at' ? undefined : value);
+    const signature = signatureOf();
     if (!force && state.painted.signature === signature && host.firstChild) return;
     // Never pull a form out from under someone typing; the next refresh paints.
     if (!force && document.activeElement && host.contains(document.activeElement) && document.activeElement.closest('form')) return;
@@ -967,7 +1116,7 @@
     else if (kind === 'connect') result = await act('/api/dashboard/sales/connect', {platform: f.platform, key: f.key}, {ok: (r) => `Connected to ${r.label}`, after: null});
     if (submit) submit.disabled = false;
     if (!result) return;
-    if (kind === 'learning' || kind === 'skill') form.reset(); else delete state.forms[kind];
+    delete state.forms[kind];
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     load(state.tab, {quiet: true});
   }
@@ -975,11 +1124,24 @@
   function onClick(event) {
     const pick = event.target.closest('[data-date-pick]');
     if (pick) { openDatePicker(pick); return; }
+    const range = event.target.closest('[data-rev-range]');
+    if (range) {
+      state.revRange = range.dataset.revRange;
+      try { localStorage.setItem('hermes-dashboard-revenue', state.revRange); } catch (_) {}
+      const old = root() && root().querySelector('[data-dash-card="revenue"]');
+      const s = state.data.business && state.data.business.sales;
+      if (old && s) {
+        const tmp = document.createElement('div'); tmp.innerHTML = revenueCard(s);
+        const fresh = tmp.firstElementChild; old.replaceWith(fresh);
+        state.painted.signature = signatureOf();
+        const again = fresh.querySelector(`[data-rev-range="${state.revRange}"]`); if (again) again.focus();
+      }
+      return;
+    }
     const evo = event.target.closest('[data-evo-step]');
     if (evo) {
       const data = state.data.character; if (!data) return;
-      const current = Math.max(0, (data.tier || 1) - 1);
-      state.evoIndex = Math.max(0, Math.min((data.tiers || []).length - 1, (state.evoIndex == null ? current : state.evoIndex) + Number(evo.dataset.evoStep)));
+      state.evoIndex = Math.max(0, Math.min((data.tiers || []).length - 1, (state.evoIndex == null ? evoStart(data) : state.evoIndex) + Number(evo.dataset.evoStep)));
       const host = evo.closest('[data-evo]');
       if (host) { host.innerHTML = evolutionView(data); const again = host.querySelector(`[data-evo-step="${evo.dataset.evoStep}"]`); if (again && !again.disabled) again.focus(); }
       return;
@@ -1001,7 +1163,7 @@
     if (t.hasAttribute('data-dash-add-quest')) return openQuestPicker(AREA[state.tab] ? state.tab : '');
     if (d.questRemove) return act('/api/dashboard/quests/remove', {item_id: d.questRemove}, {row: t.closest('.dash-quest-row')});
     if (t.hasAttribute('data-quest-clear')) return act('/api/dashboard/quests/clear', {});
-    if (d.logFilter) { state.logCategory = d.logFilter; state.resetLists = ['character|Chronicle']; return load('character', {quiet: true}); }
+    if (d.logFilter) return setLogFilter(d.logFilter);
     if (t.hasAttribute('data-log-more')) return load('character', {quiet: true, append: true});
     if (d.formOpen) { state.forms[d.formOpen] = true; paint({force: true}); const first = root().querySelector(`[data-form="${d.formOpen}"] input:not([type=checkbox])`); if (first) first.focus(); return; }
     if (d.formCancel) { delete state.forms[d.formCancel]; return paint({force: true}); }
@@ -1022,7 +1184,17 @@
         : Promise.resolve(window.confirm('Disconnect the sales platform?'));
       return Promise.resolve(ask).then((yes) => yes && act('/api/dashboard/sales/disconnect', {}, {ok: 'Disconnected'}));
     }
-    if (d.rewardRedeem) return act('/api/dashboard/rewards/redeem', {reward_id: d.rewardRedeem}, {ok: (r) => `Enjoy: ${r.redeemed}!`});
+    if (d.rewardRedeem) {
+      const tile = t.closest('.shop-item');
+      const rect = tile ? tile.getBoundingClientRect() : null;
+      const cost = Number((t.textContent || '').replace(/[^\d]/g, '')) || 0;
+      t.disabled = true;
+      if (tile) tile.classList.add('is-bought');
+      return act('/api/dashboard/rewards/redeem', {reward_id: d.rewardRedeem}, {ok: (r) => `Enjoy: ${r.redeemed}!`}).then((r) => {
+        if (r) rewardBurst(rect, cost);
+        else { t.disabled = false; if (tile) tile.classList.remove('is-bought'); }
+      });
+    }
     if (d.rewardRemove) return act('/api/dashboard/rewards/remove', {reward_id: d.rewardRemove}, {row: t.closest('.rpg-reward')});
     if (d.jobsView && d.dashGo === 'jobs') {
       // Open the Jobs page on a given section (it reads the section from the hash).

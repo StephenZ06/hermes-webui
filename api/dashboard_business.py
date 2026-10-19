@@ -566,6 +566,25 @@ def summary(now: float | None = None) -> dict[str, Any]:
         cursor = (cursor - timedelta(days=1)).replace(day=1)
     months.reverse()
     reached = max(i for i, mark in enumerate(ROAD) if mrr >= mark)
+    # Revenue for the Revenue card's filter: today by hour, this week by day
+    # (Monday first), this month by day. Slots come from each sale's local
+    # date and hour, so a daylight-saving change never shifts a sale a slot.
+    now_at = datetime.fromtimestamp(now)
+    week_first = today - timedelta(days=today.weekday())
+    month_days = ((today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)).day
+    slots = {"today": [0] * 24, "week": [0] * 7, "month": [0] * month_days}
+    for r in paid:
+        at = datetime.fromtimestamp(r["created_at"])
+        if at.date() == today:
+            slots["today"][at.hour] += r["amount"]
+        if 0 <= (at.date() - week_first).days < 7:
+            slots["week"][(at.date() - week_first).days] += r["amount"]
+        if (at.year, at.month) == (today.year, today.month):
+            slots["month"][at.day - 1] += r["amount"]
+    labels = {"today": [f"{h:02d}" for h in range(24)], "week": ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+              "month": [str(d) for d in range(1, month_days + 1)]}
+    current = {"today": now_at.hour, "week": today.weekday(), "month": today.day - 1}
+    series = {k: [{"label": labels[k][i], "revenue": v, "now": i == current[k]} for i, v in enumerate(slots[k])] for k in slots}
     return {
         "status": status(),
         "currency": currency,
@@ -581,6 +600,7 @@ def summary(now: float | None = None) -> dict[str, Any]:
         "road": {"checkpoints": ROAD, "reached": reached, "mrr": mrr,
                  "next": ROAD[reached + 1] if reached + 1 < len(ROAD) else None},
         "months": months,
+        "series": series,
         "recent": [{"id": r["id"], "platform": r["platform"], "amount": r["amount"], "currency": r["currency"], "product": r["product"],
                     "refunded": bool(r["refunded"]), "recurring": bool(r["recurring"]), "test": bool(r["test"]), "created_at": r["created_at"]}
                    for r in rows[:8] if r["amount"] > 0 or r["refunded"]],

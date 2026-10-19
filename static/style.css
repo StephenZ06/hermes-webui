@@ -13663,3 +13663,304 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 .rpg-plate-name{gap:10px;padding:0 16px 0 26px;}
 .dash.is-rpg .rpg-plate-name .rpg-plate-level{font:9px/1 var(--rpg-pixel);color:#f6b829;white-space:nowrap;transform:none;}
 .rpg-plate-gem{width:46px;height:36px;margin-right:-20px;}
+
+/* ── Dashboard round 11 ────────────────────────────────────────────────────── */
+/* Rail: the Dashboard mark (icons/maindashboard.png) drawn as a mask like the
+   other page marks, at the size the old line icon covered. */
+.page-nav-mark--dashboard{width:16px;height:16px;mask-image:url("nav-dashboard-mark.png");-webkit-mask-image:url("nav-dashboard-mark.png");}
+@media (max-width:700px){.sidebar-nav .page-nav-mark--dashboard{width:15px;height:15px;}}
+
+/* Small boxes inside the level card (attribute rows, evolution, the four
+   badges): a thinner frame in a darker gold, 1px per pixel: a dark outline, a
+   lit top/left edge over a shaded bottom/right, stepped corners and a rivet
+   in each corner. */
+:root{--rpg-frame-xs:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' shape-rendering='crispEdges'><rect x='2' y='0' width='1' height='1' fill='%23120c05'/><rect x='3' y='0' width='1' height='1' fill='%23120c05'/><rect x='4' y='0' width='1' height='1' fill='%23120c05'/><rect x='5' y='0' width='1' height='1' fill='%23120c05'/><rect x='6' y='0' width='1' height='1' fill='%23120c05'/><rect x='7' y='0' width='1' height='1' fill='%23120c05'/><rect x='8' y='0' width='1' height='1' fill='%23120c05'/><rect x='9' y='0' width='1' height='1' fill='%23120c05'/><rect x='1' y='1' width='1' height='1' fill='%23120c05'/><rect x='2' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='3' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='4' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='5' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='6' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='7' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='8' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='9' y='1' width='1' height='1' fill='%23c9a24e'/><rect x='10' y='1' width='1' height='1' fill='%23120c05'/><rect x='0' y='2' width='1' height='1' fill='%23120c05'/><rect x='1' y='2' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='3' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='4' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='5' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='6' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='7' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='8' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='2' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='2' width='1' height='1' fill='%234f3a14'/><rect x='11' y='2' width='1' height='1' fill='%23120c05'/><rect x='0' y='3' width='1' height='1' fill='%23120c05'/><rect x='1' y='3' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='3' width='1' height='1' fill='%238f6d2b'/><rect x='3' y='3' width='1' height='1' fill='%23e3c06a'/><rect x='8' y='3' width='1' height='1' fill='%23e3c06a'/><rect x='9' y='3' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='3' width='1' height='1' fill='%234f3a14'/><rect x='11' y='3' width='1' height='1' fill='%23120c05'/><rect x='0' y='4' width='1' height='1' fill='%23120c05'/><rect x='1' y='4' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='4' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='4' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='4' width='1' height='1' fill='%234f3a14'/><rect x='11' y='4' width='1' height='1' fill='%23120c05'/><rect x='0' y='5' width='1' height='1' fill='%23120c05'/><rect x='1' y='5' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='5' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='5' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='5' width='1' height='1' fill='%234f3a14'/><rect x='11' y='5' width='1' height='1' fill='%23120c05'/><rect x='0' y='6' width='1' height='1' fill='%23120c05'/><rect x='1' y='6' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='6' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='6' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='6' width='1' height='1' fill='%234f3a14'/><rect x='11' y='6' width='1' height='1' fill='%23120c05'/><rect x='0' y='7' width='1' height='1' fill='%23120c05'/><rect x='1' y='7' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='7' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='7' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='7' width='1' height='1' fill='%234f3a14'/><rect x='11' y='7' width='1' height='1' fill='%23120c05'/><rect x='0' y='8' width='1' height='1' fill='%23120c05'/><rect x='1' y='8' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='8' width='1' height='1' fill='%238f6d2b'/><rect x='3' y='8' width='1' height='1' fill='%23e3c06a'/><rect x='8' y='8' width='1' height='1' fill='%23e3c06a'/><rect x='9' y='8' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='8' width='1' height='1' fill='%234f3a14'/><rect x='11' y='8' width='1' height='1' fill='%23120c05'/><rect x='0' y='9' width='1' height='1' fill='%23120c05'/><rect x='1' y='9' width='1' height='1' fill='%23c9a24e'/><rect x='2' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='3' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='4' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='5' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='6' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='7' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='8' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='9' y='9' width='1' height='1' fill='%238f6d2b'/><rect x='10' y='9' width='1' height='1' fill='%234f3a14'/><rect x='11' y='9' width='1' height='1' fill='%23120c05'/><rect x='1' y='10' width='1' height='1' fill='%23120c05'/><rect x='2' y='10' width='1' height='1' fill='%234f3a14'/><rect x='3' y='10' width='1' height='1' fill='%234f3a14'/><rect x='4' y='10' width='1' height='1' fill='%234f3a14'/><rect x='5' y='10' width='1' height='1' fill='%234f3a14'/><rect x='6' y='10' width='1' height='1' fill='%234f3a14'/><rect x='7' y='10' width='1' height='1' fill='%234f3a14'/><rect x='8' y='10' width='1' height='1' fill='%234f3a14'/><rect x='9' y='10' width='1' height='1' fill='%234f3a14'/><rect x='10' y='10' width='1' height='1' fill='%23120c05'/><rect x='2' y='11' width='1' height='1' fill='%23120c05'/><rect x='3' y='11' width='1' height='1' fill='%23120c05'/><rect x='4' y='11' width='1' height='1' fill='%23120c05'/><rect x='5' y='11' width='1' height='1' fill='%23120c05'/><rect x='6' y='11' width='1' height='1' fill='%23120c05'/><rect x='7' y='11' width='1' height='1' fill='%23120c05'/><rect x='8' y='11' width='1' height='1' fill='%23120c05'/><rect x='9' y='11' width='1' height='1' fill='%23120c05'/></svg>");
+  --rpg-cut-xs:polygon(2px 0,calc(100% - 2px) 0,calc(100% - 2px) 1px,calc(100% - 1px) 1px,calc(100% - 1px) 2px,100% 2px,100% calc(100% - 2px),calc(100% - 1px) calc(100% - 2px),calc(100% - 1px) calc(100% - 1px),calc(100% - 2px) calc(100% - 1px),calc(100% - 2px) 100%,2px 100%,2px calc(100% - 1px),1px calc(100% - 1px),1px calc(100% - 2px),0 calc(100% - 2px),0 2px,1px 2px,1px 1px,2px 1px);}
+:root[data-skin] .dash.is-rpg :is(.rpg-stat,.rpg-badges > div,.rpg-evo),
+.dash.is-rpg :is(.rpg-stat,.rpg-badges > div,.rpg-evo){border:4px solid transparent;border-image:var(--rpg-frame-xs) 4 / 4px / 0 stretch;image-rendering:pixelated;clip-path:var(--rpg-cut-xs);}
+
+/* Hero: the frame is 3:4 (a nine-slice of the blade frame, so the corner
+   blades keep their shape) and the level card gives up the width. Sizes run
+   off the frame's height (cqh), so the art scales as one piece. */
+@media (min-width:901px){.dash.is-rpg .rpg-hero{grid-template-columns:var(--rpg-hero-w,340px) minmax(0,1fr);gap:16px;}}
+.dash.is-rpg .rpg-stage{container-type:size;--k:calc(100cqh / 710);}
+.dash.is-rpg .rpg-stage::after{background:none;border:0 solid transparent;border-image-source:url("dashboard/frame-gold.png");border-image-slice:100 140;border-image-width:calc(var(--k) * 100) calc(var(--k) * 140);border-image-repeat:stretch;image-rendering:auto;}
+.dash.is-rpg .rpg-stage-scene{inset:calc(var(--k) * 46) calc(var(--k) * 48);}
+@media (max-width:900px){.dash.is-rpg .rpg-stage{aspect-ratio:3 / 4;width:min(100%,340px);}}
+
+/* Progress bars, one look everywhere: a dark recessed track with faint
+   segment ticks, and a bevelled gold fill cut into segments with a bright
+   leading edge. */
+:is(.dash.is-rpg,.rpg-levelup) :is(.dash-bar,.rpg-stat-bar){position:relative;display:block;height:12px;min-height:12px;padding:2px;box-sizing:border-box;border:0;border-radius:0;overflow:hidden;background:repeating-linear-gradient(90deg,#17110a 0 6px,#0b0804 6px 7px);box-shadow:inset 0 0 0 1px #4a3713,inset 0 1px 0 1px #060402;clip-path:polygon(1px 0,calc(100% - 1px) 0,100% 1px,100% calc(100% - 1px),calc(100% - 1px) 100%,1px 100%,0 calc(100% - 1px),0 1px);}
+:is(.dash.is-rpg,.rpg-levelup) :is(.dash-bar,.rpg-stat-bar) > i{position:relative;display:block;height:100%;min-width:0;border-radius:0;background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(46,24,2,.55) 6px 7px),linear-gradient(180deg,#fff2bd 0 1px,#ffd75e 1px 3px,#e9a620 3px 5px,#a8680d 5px 100%);transition:width .45s cubic-bezier(.22,1,.36,1);}
+:is(.dash.is-rpg,.rpg-levelup) :is(.dash-bar,.rpg-stat-bar) > i:not([style*="width:0%"])::after{content:"";position:absolute;top:0;right:0;bottom:0;width:2px;background:linear-gradient(180deg,#fffbe6,#ffe08a);}
+.dash.is-rpg .dash-bar.is-bad > i{background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(40,4,4,.55) 6px 7px),linear-gradient(180deg,#ffd0d0 0 1px,#f87171 1px 3px,#d94848 3px 5px,#8f2323 5px 100%);}
+.dash.is-rpg .dash-bar.is-bad > i::after{background:#ffe1e1;}
+.dash.is-rpg .dash-bar.is-good > i{background:repeating-linear-gradient(90deg,transparent 0 6px,rgba(2,30,12,.55) 6px 7px),linear-gradient(180deg,#d6ffe2 0 1px,#4ade80 1px 3px,#22b35e 3px 5px,#11703a 5px 100%);}
+.dash.is-rpg .dash-bar.is-good > i::after{background:#eafff0;}
+
+/* Attribute rows: label, name, then the bar takes every pixel up to the
+   number, the same gap either side. Columns are shared (subgrid), so the bars
+   line up from row to row. */
+.dash.is-rpg .rpg-body .rpg-stats{display:grid;grid-template-columns:max-content max-content minmax(0,1fr) max-content;grid-auto-rows:34px;align-content:space-between;row-gap:6px;column-gap:0;}
+.dash.is-rpg .rpg-body .rpg-stat{grid-column:1 / -1;display:grid;grid-template-columns:subgrid;column-gap:12px;height:34px;padding:0 10px;}
+.dash.is-rpg .rpg-stat b{min-width:2ch;}
+
+/* Realms and the job funnel: label, bar, number in shared columns; the bar
+   fills the row between them with the same gap on either side. */
+.dash-meters{display:grid;column-gap:0;}
+.dash-meters.is-realms{grid-template-columns:max-content max-content minmax(0,1fr);}
+.dash-meters.is-funnel{grid-template-columns:max-content minmax(0,1fr) max-content;}
+.dash.is-rpg .dash-meters > .dash-row{grid-column:1 / -1;display:grid;grid-template-columns:subgrid;align-items:center;column-gap:16px;}
+.dash.is-rpg .dash-meters .dash-bar{width:auto;flex:none;}
+.dash.is-rpg .dash-meters.is-realms > .dash-row{column-gap:12px;}
+.dash.is-rpg .dash-meters.is-realms .dash-bar{margin-left:4px;}
+.dash.is-rpg .dash-meters .dash-num{text-align:right;min-width:2ch;}
+
+/* Evolution: no glow; the sprite (a canvas roomy enough for every frame)
+   fills the art box, feet on its floor, and fades out before the card's
+   edges, so no frame is ever cut square. A smaller chain over a locked one. */
+.dash.is-rpg .rpg-evo{overflow:hidden;}
+.dash.is-rpg .rpg-evo-head{position:relative;z-index:2;}
+.dash.is-rpg .rpg-evo-art.is-current > *,.dash.is-rpg .rpg-evo-art > *{filter:none;}
+.dash.is-rpg .rpg-evo-art.is-locked > .rpg-hero-sprite{filter:grayscale(1) brightness(.5);}
+.dash.is-rpg .rpg-evo-art{overflow:visible;}
+.rpg-evo-art > .rpg-hero-sprite{inset:auto;left:50%;bottom:0;top:auto;width:auto;max-width:none;height:118%;max-height:none;aspect-ratio:440 / 400;transform:translateX(-50%);object-fit:contain;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent),linear-gradient(180deg,transparent,#000 16%,#000 90%,transparent);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent),linear-gradient(180deg,transparent,#000 16%,#000 90%,transparent);mask-composite:intersect;}
+.dash.is-rpg .rpg-evo-art.is-locked::after{background-size:50%;background-position:50% 66%;z-index:1;}
+.dash.is-rpg .rpg-evo-arrow{z-index:3;}
+/* The sprite stands taller than the art box: its feet on the box's floor,
+   its effects free to rise behind the heading (which stays on top). */
+.rpg-evo-art > .rpg-hero-sprite{height:185%;bottom:-32%;}
+.dash.is-rpg .rpg-evo :is(.rpg-evo-name,.rpg-evo-status,.rpg-evo-dots){position:relative;z-index:2;}
+/* The level card's four columns (radar, attributes, evolution; the badges
+   under them) sit 18px apart: the space the frame art leaves at its sides,
+   so the evolution card has as much room on its left as on its right. */
+.dash.is-rpg .rpg-body,.dash.is-rpg .rpg-badges{column-gap:18px;}
+.dash.is-rpg .rpg-badges > div{justify-content:center;gap:10px;padding:14px 10px;}
+.dash.is-rpg .rpg-badge-copy small{white-space:nowrap;}
+
+/* Achievements: bigger, sharper badges; the first row sits as far below the
+   divider as the title sits above it. The panel runs down to Chronicle's
+   bottom edge: Chronicle takes whatever height the row has left (scrolling
+   inside), and the badge rows spread out to fill Achievements. */
+.dash.is-rpg .rpg-achs{grid-template-columns:repeat(auto-fill,minmax(124px,1fr));row-gap:14px;}
+.dash.is-rpg .rpg-ach{height:178px;padding:0 6px 4px;gap:8px;}
+.dash.is-rpg .rpg-ach .rpg-ach-art{height:112px;}
+.dash.is-rpg .rpg-ach .rpg-ach-art img{width:112px;height:112px;}
+.dash.is-rpg .rpg-ach .rpg-ach-medal{width:86px;height:86px;font-size:38px;}
+@media (min-width:1101px){
+  .dash.is-rpg .rpg-columns{align-items:stretch;}
+  .dash.is-rpg .rpg-col > .rpg-panel:has(.rpg-achs){flex:1 1 auto;}
+  .dash.is-rpg .rpg-col > .rpg-panel:has(.rpg-achs) > .dash-card-body{flex:1 1 auto;display:flex;flex-direction:column;}
+  .dash.is-rpg .rpg-col > .rpg-panel:has(.rpg-achs) .rpg-achs{flex:1 1 auto;align-content:space-between;}
+  .dash.is-rpg .rpg-col > .rpg-panel.is-chronicle{flex:1 1 0;min-height:420px;max-height:none;}
+}
+.dash.is-rpg .rpg-achs{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));}
+.dash.is-rpg .rpg-ach{height:172px;padding:0 0 4px;}
+.dash.is-rpg .rpg-ach .rpg-ach-art{height:108px;}
+.dash.is-rpg .rpg-ach .rpg-ach-art img{width:108px;height:108px;}
+/* Party and Realms: the first member / realm starts as far below the divider
+   as the title sits above it (18px, measured from the ink). */
+.dash.is-rpg .rpg-party{margin-top:-9px;}
+.dash.is-rpg .dash-meters.is-realms{margin-top:-10px;}
+.dash.is-rpg .rpg-party{margin-bottom:6px;}
+/* Chronicle filters answer on the press: rows outside the realm hide at once. */
+.dash.is-rpg .rpg-log-row[hidden]{display:none;}
+.dash.is-rpg .dash-chip{transition:background-color .08s linear,border-color .08s linear,color .08s linear;}
+.dash.is-rpg .dash-chip:not(.on):hover{border-color:#c9a24e;color:var(--text);}
+.dash.is-rpg .dash-chip:active{transform:translateY(1px);}
+/* Learning log and Skills gained: the entry opens at the top of the card from
+   the header button (as Habits'), with Cancel at the end of its row and a
+   dashed rule between it and the entries. */
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning{grid-template-columns:repeat(3,minmax(0,1fr)) auto;margin:0 0 14px;padding:0 0 16px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--rpg-frame) 80%,transparent) 0 6px,transparent 6px 12px) left bottom/100% 2px no-repeat;animation:dash-form-in .18s ease-out;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning.is-skills{grid-template-columns:repeat(2,minmax(0,1fr)) auto;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning > .dash-link{padding:0 4px;}
+@keyframes dash-form-in{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.dash.is-rpg .dash-inline-form{animation:none!important;}}
+@media (max-width:480px){.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning:not(.is-skills){grid-template-columns:repeat(2,minmax(0,1fr));}}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning{order:0;margin:0 0 14px;}
+
+/* Summary tiles (every page's top four), Business milestones and the Shop's
+   rewards and purse figures: the same frame art as the cards (bevelled gold
+   bars, plated corners with a rivet), drawn smaller. */
+:root[data-skin] .dash.is-rpg :is(.dash-stat,.shop-item,.shop-figures > div,.dash-badge),
+.dash.is-rpg :is(.dash-stat,.shop-item,.shop-figures > div,.dash-badge){border:2px solid transparent;border-radius:0;border-image:url("dashboard/card-frame.png") 55 / 16px / 0 stretch;image-rendering:auto;clip-path:none;box-shadow:none;}
+:root.dark .dash.is-rpg :is(.shop-item,.shop-figures > div,.dash-badge),:root[data-skin] .dash.is-rpg :is(.shop-item,.shop-figures > div,.dash-badge){background-color:#0c0c0d;}
+:root[data-skin="geist-contrast"] .dash.is-rpg :is(.shop-item,.shop-figures > div,.dash-badge){background-color:var(--surface);}
+/* Milestones: one tile height, the icon, title and date centred in it with
+   equal space above and below; the pixel icon of the figure each counts. A
+   locked tile keeps its frame and greys what is inside. */
+.dash.is-rpg .dash-badges{grid-auto-rows:118px;gap:10px;}
+.dash.is-rpg .dash-badge{height:auto;justify-content:center;gap:8px;padding:14px 12px;box-sizing:border-box;transform:none;}
+.dash.is-rpg .dash-badge > *{flex:none;}
+.dash.is-rpg .dash-badge strong{line-height:1.05;}
+.dash.is-rpg .dash-badge :is(strong,small){text-box:trim-both cap alphabetic;}
+.dash.is-rpg .dash-badge-icon.is-pixel{width:32px;height:32px;border-radius:0;background:none;}
+.dash.is-rpg .dash-badge-icon.is-pixel .dash-pix-icon{width:32px;height:32px;object-fit:contain;image-rendering:pixelated;}
+.dash.is-rpg .dash-badge.is-locked{opacity:1;}
+.dash.is-rpg .dash-badge.is-locked > *{opacity:.55;}
+.dash.is-rpg .dash-badge.is-locked .dash-badge-icon{filter:grayscale(1) brightness(.8);background:none;}
+
+/* Pixel charts (Revenue, Gold flow): dashed guide lines with their values at
+   the left, a solid base line, segmented bevelled columns that grow in, the
+   current slot outlined, the peak's value above its column. */
+.px-chart{position:relative;height:100%;min-height:170px;}
+.px-chart-plot,.sf-plot{position:absolute;inset:22px 0 26px 46px;}
+.px-chart-guide{position:absolute;left:0;right:0;height:0;border-top:2px dashed color-mix(in srgb,var(--rpg-frame,#5a4520) 55%,transparent);}
+.px-chart-guide.is-base{bottom:0;border-top:2px solid color-mix(in srgb,#c9a24e 70%,transparent);}
+.px-chart-guide small{position:absolute;right:calc(100% + 8px);top:-8px;font:15px/1 var(--rpg-text);color:var(--muted);white-space:nowrap;}
+.px-chart-cols,.sf-cols{position:absolute;inset:0;display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));column-gap:clamp(2px,0.6vw,8px);}
+.px-chart-col,.sf-col{position:relative;min-width:0;}
+.px-chart-col > small,.sf-col > small{position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);font:15px/1 var(--rpg-text);color:var(--muted);white-space:nowrap;}
+.px-chart-col.is-now > small,.sf-col.is-now > small{color:#ffd75e;}
+.px-chart-bar{position:absolute;left:12%;right:12%;bottom:0;height:var(--h);min-height:0;background:repeating-linear-gradient(180deg,transparent 0 5px,rgba(46,24,2,.45) 5px 6px),linear-gradient(90deg,#a8680d 0 2px,#e9a620 2px calc(100% - 2px),#a8680d calc(100% - 2px));box-shadow:inset 0 2px 0 #fff2bd;transform-origin:bottom;animation:px-grow .5s steps(8) both;animation-delay:calc(var(--i,0) * 18ms);}
+.px-chart-col.is-zero .px-chart-bar{height:2px;background:color-mix(in srgb,var(--muted) 35%,transparent);box-shadow:none;}
+.px-chart-col.is-now .px-chart-bar{outline:2px solid #fff2bd;outline-offset:1px;}
+.px-chart-col.is-now.is-zero .px-chart-bar{outline:0;background:#ffd75e;}
+.px-chart-peak{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);padding:3px 6px;font:9px/1 var(--rpg-pixel);color:#2a1404;background:#ffd75e;box-shadow:0 2px 0 #7a5810;white-space:nowrap;}
+.px-chart-peak::after{content:"";position:absolute;left:50%;top:100%;margin-left:-3px;border:3px solid transparent;border-top-color:#ffd75e;}
+@keyframes px-grow{from{transform:scaleY(0);}to{transform:scaleY(1);}}
+@media (prefers-reduced-motion:reduce){.px-chart-bar,.sf-earn,.sf-spend{animation:none!important;}}
+.dash.is-rpg .dash-card.is-revenue .dash-card-body{display:flex;flex-direction:column;min-height:220px;overflow:visible;}
+.dash.is-rpg .dash-card.is-revenue .px-chart{flex:1 1 auto;}
+
+/* Segmented filter in a card header (Revenue): pixel buttons, the chosen one gold. */
+.dash-seg{display:inline-flex;gap:0;border:2px solid var(--rpg-frame,#5a4520);background:color-mix(in srgb,var(--bg) 70%,#000);}
+.dash-seg button{height:26px;padding:0 10px;border:0;background:transparent;color:var(--muted);font:16px/1 var(--rpg-text);cursor:pointer;white-space:nowrap;transition:background-color .08s linear,color .08s linear;}
+.dash-seg button + button{border-left:2px solid var(--rpg-frame,#5a4520);}
+.dash-seg button:hover{color:var(--text);}
+.dash-seg button.on{background:linear-gradient(180deg,#ffd75e,#e0a91c);color:#3a2600;}
+.dash-seg button:focus-visible{outline:2px solid #fff2bd;outline-offset:-2px;}
+
+/* Gold flow. */
+.dash.is-rpg .dash-card.is-flow .dash-card-body{display:flex;flex-direction:column;overflow:visible;}
+.shop-flow2{position:relative;flex:1 1 auto;min-height:200px;}
+.sf-earn,.sf-spend{position:absolute;left:14%;right:14%;transform-origin:bottom;animation:px-grow .5s steps(8) both;animation-delay:calc(var(--i,0) * 18ms);}
+.sf-earn{bottom:calc(100% - var(--up));height:calc(var(--up) * var(--v) / 100);background:repeating-linear-gradient(180deg,transparent 0 5px,rgba(46,24,2,.45) 5px 6px),linear-gradient(90deg,#a8680d 0 2px,#e9a620 2px calc(100% - 2px),#a8680d calc(100% - 2px));box-shadow:inset 0 2px 0 #fff2bd;}
+.sf-spend{top:var(--up);height:calc((100% - var(--up)) * var(--v) / 100);transform-origin:top;background:repeating-linear-gradient(180deg,transparent 0 5px,rgba(40,4,4,.45) 5px 6px),linear-gradient(90deg,#7f1d1d 0 2px,#dc4a4a 2px calc(100% - 2px),#7f1d1d calc(100% - 2px));box-shadow:inset 0 -2px 0 #ffc2c2;}
+.px-chart-guide.is-spend{border-top-color:color-mix(in srgb,#dc4a4a 35%,transparent);}
+.sf-col.is-now .sf-earn{outline:2px solid #fff2bd;outline-offset:1px;}
+.sf-net{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;}
+.sf-net path{fill:none;stroke:#fff2bd;stroke-width:2px;vector-effect:non-scaling-stroke;shape-rendering:crispEdges;filter:drop-shadow(0 2px 0 rgba(0,0,0,.7));}
+.dash.is-rpg .shop-flow-key{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 22px;margin-top:18px;}
+.dash.is-rpg .shop-flow-key b{margin-left:4px;font-weight:400;color:var(--text);}
+.shop-flow-key i.is-net{width:14px;height:2px;background:#fff2bd;}
+
+/* Ledger marks: the pixel shape centred in its square. */
+.dash.is-rpg .shop-ledger-mark{display:grid;place-items:center;width:22px;height:22px;box-sizing:border-box;padding:0;font-size:0;line-height:0;}
+.dash.is-rpg .shop-ledger-mark svg{display:block;}
+
+/* Purse figures: the number and its label centred in the framed tile, the
+   same space above as below. */
+.dash.is-rpg .shop-figures{gap:10px;}
+.dash.is-rpg .shop-figures > div{justify-content:center;gap:10px;min-height:68px;padding:14px 18px;box-sizing:border-box;}
+.dash.is-rpg .shop-figures > div :is(b,small){display:block;line-height:1;text-box:trim-both cap alphabetic;}
+
+/* Rewards: framed tiles; a bought one flashes gold, coins burst from it and
+   the price floats up. */
+.dash.is-rpg .shop-item{padding:18px 16px 16px;gap:8px;}
+.dash.is-rpg .shop-item.is-bought{animation:shop-bought .6s steps(6) both;}
+@keyframes shop-bought{0%{transform:none;filter:none;}30%{transform:scale(1.06);filter:brightness(1.6) saturate(1.3);}100%{transform:none;filter:none;}}
+.shop-burst{position:fixed;z-index:1200;width:0;height:0;pointer-events:none;}
+.shop-burst-ring{position:absolute;left:-40px;top:-40px;width:80px;height:80px;border:4px solid #ffd75e;box-shadow:0 0 0 2px #7a5810;animation:shop-ring .55s steps(6) forwards;clip-path:polygon(25% 0,75% 0,100% 25%,100% 75%,75% 100%,25% 100%,0 75%,0 25%);}
+@keyframes shop-ring{from{transform:scale(.3);opacity:1;}to{transform:scale(2.2);opacity:0;}}
+.shop-burst-coin{position:absolute;left:-7px;top:-7px;width:14px;height:14px;background:radial-gradient(circle at 35% 35%,#fff6c8 0 18%,#ffd75e 19% 55%,#c27a10 56% 70%,#5a3608 71%);clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);animation:shop-coin .95s cubic-bezier(.2,.8,.3,1) var(--d) both;}
+@keyframes shop-coin{0%{transform:translate(0,0) scale(.4);opacity:0;}15%{opacity:1;}70%{transform:translate(var(--x),var(--y)) scale(1);opacity:1;}100%{transform:translate(var(--x),calc(var(--y) + 40px)) scale(.8);opacity:0;}}
+.shop-burst-spark{position:absolute;left:-2px;top:-2px;width:4px;height:18px;background:#fff2bd;transform:rotate(var(--r)) translateY(-30px);transform-origin:2px 2px;animation:shop-spark .5s steps(5) forwards;}
+@keyframes shop-spark{from{opacity:1;transform:rotate(var(--r)) translateY(-20px) scaleY(.4);}to{opacity:0;transform:rotate(var(--r)) translateY(-70px) scaleY(1);}}
+.shop-burst-text{position:absolute;left:0;top:-20px;display:flex;flex-direction:column;align-items:center;gap:6px;transform:translateX(-50%);font:16px/1 var(--rpg-pixel);color:#ffd75e;text-shadow:0 3px 0 #3a1a02,0 0 12px rgba(255,215,94,.5);white-space:nowrap;animation:shop-float 1.3s ease-out forwards;}
+.shop-burst-text small{font:20px/1 var(--rpg-text);color:#fff2bd;}
+@keyframes shop-float{0%{transform:translate(-50%,10px) scale(.6);opacity:0;}15%{transform:translate(-50%,0) scale(1.1);opacity:1;}30%{transform:translate(-50%,-6px) scale(1);}100%{transform:translate(-50%,-70px);opacity:0;}}
+
+/* ── Level up, round 11 ──────────────────────────────────────────────────────
+   The card wears the cards' frame art (gold bars, plated corners, a gem top
+   and bottom). Rays fill the whole card; the form stands in the character
+   frame (the blade frame as a 3:4 nine-slice, as on the Character page) with
+   sparkles around it; the banner is a plaque in the frame art. Everything
+   sits on one 14px rhythm. */
+.rpg-levelup-card{width:min(380px,100%);gap:14px;padding:34px 30px 30px;box-sizing:border-box;border:2px solid transparent;border-image:url("dashboard/card-frame.png") 55 / 24px / 0 stretch;image-rendering:auto;background:#0c0c0d;background-clip:border-box;overflow:visible;transform:scale(.8) translateY(12px);transition:opacity .22s ease,transform .32s cubic-bezier(.2,1.4,.4,1);}
+:root[data-skin="geist-contrast"] .rpg-levelup-card{background:var(--surface,#0c0c0d);}
+.rpg-levelup-card::before,.rpg-levelup-card::after{content:"";position:absolute;left:50%;width:28px;height:22px;margin-left:-14px;z-index:3;pointer-events:none;}
+.rpg-levelup-card::after{top:-4.4px;background:url("dashboard/card-gem-top.png") center/100% 100% no-repeat;}
+.rpg-levelup-card::before{bottom:-6.6px;height:22.7px;background:url("dashboard/card-gem-bottom.png") center/100% 100% no-repeat;}
+.rpg-levelup-rays{inset:10px;overflow:hidden;}
+.rpg-levelup-rays::before,.rpg-levelup-rays::after{left:50%;top:40%;width:1200px;height:1200px;margin:-600px 0 0 -600px;}
+.rpg-levelup-rays::before{background:repeating-conic-gradient(from 0deg,rgba(244,197,66,.13) 0 9deg,transparent 9deg 22deg);}
+.rpg-levelup-rays::after{content:"";position:absolute;background:radial-gradient(circle,rgba(255,215,94,.22) 0,rgba(255,215,94,.06) 22%,transparent 45%);animation:rpg-levelup-pulse 2.4s ease-in-out infinite;}
+@keyframes rpg-levelup-pulse{50%{opacity:.55;transform:scale(.92);}}
+/* Banner: the frame art at plaque size, the title in gold pixel type. */
+.rpg-levelup-banner{position:relative;display:grid;place-items:center;height:40px;padding:0 26px;box-sizing:border-box;border:2px solid transparent;border-image:url("dashboard/card-frame.png") 55 / 12px / 0 stretch;background:#0c0803;animation:rpg-levelup-drop .45s cubic-bezier(.2,1.5,.4,1) .1s both;}
+.rpg-levelup-kicker{font-size:13px;line-height:1;text-box:trim-both cap alphabetic;}
+@keyframes rpg-levelup-drop{from{opacity:0;transform:translateY(-14px) scale(.9);}to{opacity:1;transform:none;}}
+.rpg-levelup-levels{gap:16px;}
+.rpg-levelup-levels span{font-size:20px;}
+.rpg-levelup-levels b{font-size:46px;background:linear-gradient(180deg,#fff6d6 0 30%,#ffd75e 30% 62%,#e0a91c 62%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 4px 0 #7a5810) drop-shadow(0 0 14px rgba(244,197,66,.45));animation:rpg-levelup-num .6s steps(6) .25s both;}
+@keyframes rpg-levelup-num{0%{transform:scale(.3);opacity:0;}60%{transform:scale(1.18);opacity:1;}100%{transform:none;}}
+/* The form in the character frame. */
+.rpg-levelup-stage{position:relative;width:168px;aspect-ratio:3 / 4;container-type:size;--k:calc(100cqh / 710);}
+.rpg-levelup-stage::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;border:0 solid transparent;border-image-source:url("dashboard/frame-gold.png");border-image-slice:100 140;border-image-width:calc(var(--k) * 100) calc(var(--k) * 140);border-image-repeat:stretch;}
+.rpg-levelup-stage .rpg-levelup-hero{position:absolute;inset:calc(var(--k) * 46) calc(var(--k) * 48);min-height:0;display:grid;place-items:end center;overflow:hidden;background:radial-gradient(circle at 50% 70%,#2a2418 0%,transparent 60%),linear-gradient(180deg,#0b0b0d,#19191d);}
+.rpg-levelup-stage .rpg-levelup-hero > *{filter:none;animation:none;}
+.rpg-levelup-stage .rpg-levelup-hero > .rpg-hero-video{width:100%;height:100%;border:0;object-fit:cover;}
+.rpg-levelup-stage .rpg-levelup-hero > .px-hero{max-width:100%;height:auto;margin-bottom:8px;}
+.rpg-levelup-sparks{position:absolute;inset:-18px;z-index:3;pointer-events:none;}
+.rpg-levelup-sparks i{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px;background:#fff2bd;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);transform:rotate(var(--a)) translateY(-118px);animation:rpg-levelup-twinkle 1.6s steps(4) var(--d) infinite;}
+@keyframes rpg-levelup-twinkle{0%,100%{opacity:0;}50%{opacity:1;}}
+.rpg-levelup-class{font-size:12px;letter-spacing:.06em;color:#fff6d6;text-box:trim-both cap alphabetic;}
+.rpg-levelup-unlock{display:flex;align-items:center;gap:10px;padding:8px 14px;border:2px solid #c9a24e;background:rgba(244,197,66,.1);font-size:18px;line-height:1;animation:rpg-levelup-drop .4s ease-out .5s both;}
+.rpg-levelup-unlock span{text-box:trim-both cap alphabetic;}
+.rpg-levelup-unlock i{width:8px;height:8px;background:#ffd75e;transform:rotate(45deg);box-shadow:0 0 0 2px #7a5810;}
+.rpg-levelup-next{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;}
+.rpg-levelup-next small{font-size:16px;line-height:1;color:var(--muted,#999);text-box:trim-both cap alphabetic;}
+.rpg-levelup-btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 22px;border:2px solid #7a5810;border-radius:0;background:linear-gradient(180deg,#ffd75e,#e0a91c);color:#3a2600;font:18px/1 "VT323",var(--font-mono);cursor:pointer;box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.2),0 3px 0 #3a2600;transition:transform .08s ease,filter .12s ease;clip-path:polygon(2px 0,calc(100% - 2px) 0,100% 2px,100% calc(100% - 2px),calc(100% - 2px) 100%,2px 100%,0 calc(100% - 2px),0 2px);}
+.rpg-levelup-btn span{display:block;line-height:1;text-box:trim-both cap alphabetic;}
+.rpg-levelup-btn:hover{filter:brightness(1.08);}
+.rpg-levelup-btn:active{transform:translateY(2px);}
+.rpg-levelup-btn:focus-visible{outline:2px solid #fff6d6;outline-offset:3px;}
+.rpg-levelup .dash-bar{height:12px;}
+@media (max-width:420px){.rpg-levelup-card{padding:30px 22px 26px;gap:12px;}.rpg-levelup-stage{width:140px;}.rpg-levelup-levels b{font-size:38px;}}
+@media (prefers-reduced-motion:reduce){.rpg-levelup-rays::after,.rpg-levelup-sparks i,.rpg-levelup-banner,.rpg-levelup-levels b,.rpg-levelup-unlock{animation:none!important;}}
+
+/* Phones: evolution spans the column at a fixed height; badge labels may wrap;
+   achievements three to a row with smaller badges. */
+@media (max-width:620px){
+  .dash.is-rpg .rpg-body .rpg-evo{width:auto;max-width:none;justify-self:stretch;height:230px;}
+  .dash.is-rpg .rpg-badge-copy small{white-space:normal;}
+  .dash.is-rpg .rpg-badges > div{justify-content:flex-start;}
+  .dash.is-rpg .rpg-achs{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:6px;row-gap:10px;}
+  .dash.is-rpg .rpg-ach{height:150px;}
+  .dash.is-rpg .rpg-ach .rpg-ach-art{height:86px;}
+  .dash.is-rpg .rpg-ach .rpg-ach-art img{width:86px;height:86px;}
+  .dash.is-rpg .rpg-ach .rpg-ach-text strong{font-size:14px!important;}
+  .dash.is-rpg .rpg-col > .rpg-panel.is-chronicle{max-height:560px;}
+  .dash-seg button{padding:0 7px;font-size:15px;}
+}
+.dash.is-rpg .rpg-evo-art.is-locked::after{background-size:74px 74px;}
+@media (max-width:620px){
+  .dash.is-rpg .rpg-badges > div{flex-direction:column;justify-content:center;gap:10px;text-align:center;}
+  .dash.is-rpg .rpg-badge-copy{align-items:center;}
+  .dash.is-rpg .rpg-badge-copy small{white-space:nowrap;text-align:center;}
+}
+/* Phones: long lists (Ledger, Chronicle) scroll inside their card rather
+   than running the page on for screens. */
+@media (max-width:620px){
+  .dash.is-rpg :is(.dash-card[data-dash-card="ledger"],.rpg-col > .rpg-panel.is-chronicle){max-height:560px;}
+  .dash.is-rpg :is(.dash-card[data-dash-card="ledger"],.rpg-col > .rpg-panel.is-chronicle) > .dash-card-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+}
+/* Phones: a header whose actions do not fit beside the title puts them on a
+   row of their own under it (Revenue's filter, Business quests' links). */
+@media (max-width:620px){
+  .dash.is-rpg :is(.dash-card.is-revenue,.dash-card.is-quests) > .dash-card-head{flex-wrap:wrap;row-gap:12px;}
+  .dash.is-rpg :is(.dash-card.is-revenue,.dash-card.is-quests) > .dash-card-head > h3{flex:1 1 0;min-width:0;}
+  .dash.is-rpg :is(.dash-card.is-revenue,.dash-card.is-quests) > .dash-card-head > .dash-card-actions{flex:1 1 100%;justify-content:flex-end;margin-left:0;}
+  .dash.is-rpg .dash-card.is-revenue .dash-seg{display:flex;width:100%;}
+  .dash.is-rpg .dash-card.is-revenue .dash-seg button{flex:1 1 0;}
+}
+/* Project health: name, bar, status in shared columns, so the bars line up. */
+.dash-meters.is-health{grid-template-columns:minmax(0,max-content) minmax(72px,1fr) max-content;}
+.dash.is-rpg .dash-meters.is-health .dash-pill{justify-self:end;}
+@media (max-width:620px){
+  .dash.is-rpg .dash-card.is-learning-log{max-height:560px;}
+  .dash.is-rpg .dash-card.is-learning-log .dash-learning-entries{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+}

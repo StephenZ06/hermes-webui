@@ -124,6 +124,10 @@ def test_dashboard_fits_a_phone(browser):
 def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
     page = _dashboard(browser, "personal")
     page.wait_for_selector(".dash-grid.is-personal-focus", timeout=15000)
+    # The learning entry opens from the card's header button, as Habits' does.
+    assert page.locator(".dash-card.is-learning-log form.is-learning").count() == 0
+    page.click(".dash-card.is-learning-log [data-form-open='learning']")
+    page.wait_for_selector(".dash-card.is-learning-log form.is-learning input[name=title]:focus", timeout=3000)
     layout = page.evaluate("""() => {
         const focus = document.querySelector('.dash-grid.is-personal-focus');
         const [quests, habits] = focus.children;
@@ -147,14 +151,14 @@ def test_personal_dashboard_balances_cards_headers_and_learning_entry(browser):
           iconTopEqualsLeft: Math.abs((icon.top - card.top - 12) - (icon.left - card.left - 14.4)) <= 1,
               actionTopEqualsDividerGap: Math.abs((action.top - card.top - 12) - (divider.bottom - 2 - action.bottom)) <= 1,
           titleIsCentered: Math.abs(header.querySelector('h3').getBoundingClientRect().top - icon.top) <= 8,
-          formIsLast: learning.querySelector('.dash-card-body').lastElementChild === form,
+          formIsFirst: learning.querySelector('.dash-card-body').firstElementChild === form,
           inputSpansForm: Math.abs(input.getBoundingClientRect().width - form.clientWidth) <= 1,
           navTopEqualsSide: Math.abs((characterBox.top - navBox.top) - (characterBox.left - navBox.left)) <= 1,
         };
     }""")
     assert layout["firstIsQuests"] and layout["secondIsHabits"] and layout["questIsWider"]
     assert layout["iconTopEqualsLeft"] and layout["actionTopEqualsDividerGap"]
-    assert layout["titleIsCentered"] and layout["formIsLast"]
+    assert layout["titleIsCentered"] and layout["formIsFirst"]
     assert layout["inputSpansForm"]  # the text has its own row; the choices and the button share the next
     assert layout["navTopEqualsSide"]
 
@@ -278,7 +282,7 @@ def test_a_reward_is_bought_with_gold_in_the_shop(browser):
     assert page.locator(".shop-ledger-row:has-text('Coffee break') .shop-ledger-gold.is-spend").count() == 1
     nav = page.evaluate("() => [...document.querySelectorAll('#dashboardSidebar [data-dash-tab]')].map(b => b.dataset.dashTab)")
     assert nav[:2] == ["character", "shop"]  # the Shop sits under Character
-    assert page.locator("[data-dash-card=flow] .shop-flow-day").count() == 14
+    assert page.locator("[data-dash-card=flow] .sf-col").count() == 14
     page.evaluate("() => window.HermesDashboard.select('character')")
     page.wait_for_selector(".rpg-stage", timeout=10000)
     assert page.locator(".rpg-purse").count() == 0  # the treasury moved to the Shop
@@ -346,9 +350,15 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     page.evaluate("() => window.HermesDashboard.select('character')")
     page.wait_for_selector(".rpg-stage", timeout=15000)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
-    # Lists cap and scroll; Achievements shows every badge at full height.
-    capped = page.evaluate("() => [...document.querySelectorAll('.rpg-col > .rpg-panel:not(:has(.rpg-achs))')].map(p => Math.round(p.getBoundingClientRect().height))")
-    assert capped and max(capped) <= 560
+    # Achievements shows every badge at full height and runs down to
+    # Chronicle's bottom edge; Chronicle fills what is left and scrolls inside.
+    ends = page.evaluate("""() => {
+        const ach = document.querySelector('.rpg-panel:has(.rpg-achs)').getBoundingClientRect();
+        const chron = document.querySelector('.rpg-panel.is-chronicle');
+        const body = chron.querySelector(':scope > .dash-card-body');
+        return {gap: Math.abs(ach.bottom - chron.getBoundingClientRect().bottom), scrolls: body.scrollHeight > body.clientHeight + 1};
+    }""")
+    assert ends["gap"] <= 1 and ends["scrolls"]
     assert page.evaluate("() => { const b = document.querySelector('.rpg-achs').closest('.dash-card-body'); return b.scrollHeight <= b.clientHeight + 1; }")
 
 
@@ -395,13 +405,14 @@ def test_dashboard_summary_tiles_center_icon_copy_and_footer_controls(browser):
     page.evaluate("() => window.HermesDashboard.select('personal')")
     page.wait_for_function("() => !window.HermesDashboard._state.loading.personal", polling=100, timeout=10000)
     assert page.evaluate("() => [...document.querySelectorAll('.dash-stat small')].some(e => e.textContent.trim() === 'Personal quests')")
-    # The form slides in (dash-in); measure once it has settled.
-    page.wait_for_function("() => document.querySelector('.dash-card.is-learning-log form.is-learning').getAnimations().length === 0", polling=50, timeout=5000)
-    footer = page.evaluate("""() => { const card = document.querySelector('.dash-card.is-learning-log'), form = card.querySelector('form.is-learning'),
-        button = form.querySelector('button'), selects = [...form.querySelectorAll('.themed-select-trigger')], r = card.getBoundingClientRect(), f = form.getBoundingClientRect();
-        return {bottom: Math.round(r.bottom - f.bottom - parseFloat(getComputedStyle(card).borderBottomWidth)), heights: [button, ...selects].map(e => Math.round(e.getBoundingClientRect().height))}; }""")
-    assert abs(footer["bottom"] - 26) <= 1, footer  # the card's bottom padding (16px clear of the frame bar)
-    assert len(set(footer["heights"])) == 1
+    # The entry opens from the header button at the top of the card; measure
+    # once its slide-in has settled.
+    page.click(".dash-card.is-learning-log [data-form-open='learning']")
+    page.wait_for_function("() => { const f = document.querySelector('.dash-card.is-learning-log form.is-learning'); return f && f.getAnimations().length === 0; }", polling=50, timeout=5000)
+    entry = page.evaluate("""() => { const card = document.querySelector('.dash-card.is-learning-log'), form = card.querySelector('form.is-learning'),
+        button = form.querySelector('button[type=submit]'), selects = [...form.querySelectorAll('.themed-select-trigger')];
+        return {first: card.querySelector('.dash-card-body').firstElementChild === form, heights: [button, ...selects].map(e => Math.round(e.getBoundingClientRect().height))}; }""")
+    assert entry["first"] and len(set(entry["heights"])) == 1, entry
     icons = page.evaluate("""() => [...document.querySelectorAll('.dash-card')].filter(c => c.querySelector(':scope > .dash-card-head .dash-card-icon')).map(c => {
         const r = c.getBoundingClientRect(), b = parseFloat(getComputedStyle(c).borderTopWidth), i = c.querySelector('.dash-card-icon').getBoundingClientRect();
         return [Math.round(i.top - r.top - b), Math.round(i.left - r.left - b)]; })""")
@@ -455,6 +466,10 @@ def test_career_pairs_quests_with_skills_and_funnel_with_this_week(browser):
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('career'); }")
     page.wait_for_selector("[data-dash-card=skills]", timeout=15000)
     page.wait_for_function("() => !window.HermesDashboard._state.loading.career", polling=100, timeout=10000)
+    # The entry opens from the header's Skill button.
+    assert page.locator("[data-dash-card=skills] form[data-form=skill]").count() == 0
+    page.click("[data-dash-card=skills] [data-form-open='skill']")
+    page.wait_for_selector("[data-dash-card=skills] form[data-form=skill]", timeout=3000)
     layout = page.evaluate("""() => { const r = (k) => document.querySelector(`[data-dash-card="${k}"]`).getBoundingClientRect();
         const q = document.querySelector('.dash-card.is-quests').getBoundingClientRect(), s = r('skills'), f = r('funnel'), w = r('this-week');
         const form = document.querySelector('[data-dash-card=skills] form[data-form=skill]');
@@ -562,7 +577,9 @@ def test_habit_form_hides_weekly_count_for_daily_and_lists_scroll_with_an_arrow(
 def test_card_dividers_are_square_dashes_and_dropdowns_match_their_button(browser):
     page = _open(browser, viewport={"width": 1280, "height": 900})
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
-    page.wait_for_selector(".dash-card.is-learning-log .themed-select-trigger", timeout=15000)
+    page.wait_for_selector(".dash-card.is-learning-log [data-form-open='learning']", timeout=15000)
+    page.click(".dash-card.is-learning-log [data-form-open='learning']")
+    page.wait_for_selector(".dash-card.is-learning-log .themed-select-trigger", timeout=5000)
     rules = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-card-head,.rpg-panel-head)')].map(h => [getComputedStyle(h).borderBottomStyle, getComputedStyle(h).backgroundImage.startsWith('repeating-linear-gradient')])")
     assert rules and all(style == "none" and gradient for style, gradient in rules)
     radii = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-row,.dash-quest-row,.dash-habit)')].map(r => getComputedStyle(r).borderTopLeftRadius)")
@@ -633,7 +650,8 @@ def test_character_frame_art_level_card_columns_and_achievement_badges(browser):
     page = _open(browser, viewport={"width": 1440, "height": 1000})
     page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
     page.wait_for_selector(".rpg-ach", timeout=15000)
-    assert "frame-gold.png" in page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage'), '::after').backgroundImage")
+    frame = page.evaluate("() => { const s = document.querySelector('.rpg-stage'), r = s.getBoundingClientRect(); return [getComputedStyle(s, '::after').borderImageSource, r.width / r.height]; }")
+    assert "frame-gold.png" in frame[0] and abs(frame[1] - 0.75) <= 0.05  # the blade frame as a 3:4 nine-slice
     cols = page.evaluate("""() => { const e = document.querySelector('.rpg-evo').getBoundingClientRect(), b = [...document.querySelectorAll('.rpg-badges > div')].pop().getBoundingClientRect();
         return [Math.round(e.left - b.left), Math.round(e.width - b.width)]; }""")
     assert cols == [0, 0]  # evolution lines up with the badge below it
@@ -706,7 +724,11 @@ def test_dashboard_cards_use_the_chamfered_pixel_frame(browser):
         panels = page.evaluate("""() => [...document.querySelectorAll('.dash :is(.dash-card,.rpg-panel)')].map(c => { const s = getComputedStyle(c);
             return [s.borderImageSource.includes('card-frame.png'), s.borderTopLeftRadius, getComputedStyle(c, '::after').backgroundImage.includes('card-gem-top.png')]; })""")
         assert panels and all(art and radius == "0px" and gem for art, radius, gem in panels)
-        small = page.evaluate("() => [...document.querySelectorAll('.dash :is(.dash-stat,.rpg-stat,.rpg-badges > div,.rpg-evo)')].map(e => { const s = getComputedStyle(e); return s.borderImageSource.includes('svg') && s.clipPath.startsWith('polygon'); })")
+        # Summary tiles wear the frame art too, smaller; the level card's own
+        # boxes a thin dark-gold pixel frame with stepped corners.
+        tiles = page.evaluate("() => [...document.querySelectorAll('.dash .dash-stat')].map(e => getComputedStyle(e).borderImageSource.includes('card-frame.png'))")
+        assert all(tiles)
+        small = page.evaluate("() => [...document.querySelectorAll('.dash :is(.rpg-stat,.rpg-badges > div,.rpg-evo)')].map(e => { const s = getComputedStyle(e); return s.borderImageSource.includes('svg') && s.clipPath.startsWith('polygon') && s.borderImageWidth === '4px'; })")
         assert all(small)
     # The character frame keeps its own art, without the card frame.
     assert page.evaluate("() => getComputedStyle(document.querySelector('.rpg-stage')).borderImageSource") == "none"
@@ -742,3 +764,82 @@ def test_character_video_plays_only_while_it_can_be_seen(browser):
     page.wait_for_function(f"() => !document.querySelector('{video}').paused", polling=100, timeout=5000)  # back in view
     page.evaluate("async () => { window.__v = document.querySelector('.rpg-stage video.rpg-hero-video'); await switchPanel('chat'); }")
     page.wait_for_function("() => window.__v.paused", polling=100, timeout=5000)  # left the Dashboard
+
+
+def test_evolution_opens_on_the_next_form_and_a_locked_form_is_a_still(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 1000})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-evo-art", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    data = page.evaluate("() => window.HermesDashboard._state.data.character")
+    start = min(len(data["tiers"]) - 1, data["tier"])  # the form after the current one
+    shown = page.evaluate("() => ({name: document.querySelector('.rpg-evo-name').textContent, src: (document.querySelector('.rpg-hero-sprite') || {}).src || ''})")
+    tier = data["tiers"][start]
+    assert shown["name"] == tier["name"]
+    if tier["sprite"]:
+        locked = data["level"] < tier["level"]
+        assert shown["src"].endswith(f"/{tier['name'].lower()}{'-still' if locked else ''}.webp")  # nothing animates for a form not reached
+        glow = page.evaluate("() => getComputedStyle(document.querySelector('.rpg-hero-sprite')).filter")
+        assert "drop-shadow" not in glow
+
+
+def test_chronicle_filter_answers_at_once_without_rebuilding_the_page(browser):
+    _post("/api/dashboard/learning/add", {"title": f"Personal fixture {uuid.uuid4().hex[:4]}", "kind": "book", "area": "personal"})
+    _post("/api/dashboard/learning/add", {"title": f"Career fixture {uuid.uuid4().hex[:4]}", "kind": "book", "area": "career"})
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector(".rpg-panel.is-chronicle .rpg-log-row", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
+    page.evaluate("() => { window.__sheet = document.querySelector('.rpg-sheet'); }")
+    # In the same task as the click: the chip is on and other realms' rows are gone.
+    now = page.evaluate("""() => { document.querySelector('[data-log-filter=personal]').click();
+        const rows = [...document.querySelectorAll('.rpg-log-row')].filter(r => !r.hidden);
+        return {on: document.querySelector('.dash-chip.on').dataset.logFilter, cats: [...new Set(rows.map(r => r.dataset.logCat))]}; }""")
+    assert now["on"] == "personal" and now["cats"] in (["personal"], [])
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=50, timeout=10000)
+    page.wait_for_timeout(150)
+    after = page.evaluate("() => ({same: window.__sheet === document.querySelector('.rpg-sheet'), cats: [...new Set([...document.querySelectorAll('.rpg-log-row')].map(r => r.dataset.logCat))]})")
+    assert after["same"] and after["cats"] == ["personal"]  # only Chronicle was redrawn
+
+
+def test_revenue_filter_redraws_its_card_and_is_remembered(browser):
+    _post("/api/dashboard/sales/add", {"amount": "12", "product": f"Filter {uuid.uuid4().hex[:4]}"})
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { try { localStorage.removeItem('hermes-dashboard-revenue'); } catch (_) {} await switchPanel('dashboard'); window.HermesDashboard.select('business'); }")
+    page.wait_for_selector("[data-dash-card=revenue] .px-chart", timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.business", polling=100, timeout=10000)
+    counts = {}
+    for key in ("today", "week", "month"):
+        page.click(f"[data-rev-range={key}]")
+        counts[key] = page.evaluate("() => document.querySelectorAll('[data-dash-card=revenue] .px-chart-col').length")
+        assert page.evaluate(f"() => document.querySelector('[data-rev-range={key}]').classList.contains('on')")
+    assert counts["today"] == 24 and counts["week"] == 7 and 28 <= counts["month"] <= 31
+    page.click("[data-rev-range=week]")
+    assert page.evaluate("() => localStorage.getItem('hermes-dashboard-revenue')") == "week"
+    # Milestones wear pixel icons and never a "New" label.
+    assert page.evaluate("() => document.querySelectorAll('.dash-badge .dash-new, .dash-badge [data-ld=metal-badge]').length") == 0
+    assert page.evaluate("() => [...document.querySelectorAll('.dash-badge-icon')].every(i => i.querySelector('img[data-dash-pix]'))")
+
+
+def test_buying_a_reward_bursts_coins_and_the_level_up_card_is_framed(browser):
+    reward = _post("/api/dashboard/rewards/add", {"name": f"Treat {uuid.uuid4().hex[:4]}", "cost": 1})["reward"]
+    page = _open(browser, viewport={"width": 1440, "height": 900})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('shop'); }")
+    page.wait_for_selector(f"[data-reward-redeem='{reward['id']}']", timeout=15000)
+    page.route("**/api/dashboard/rewards/redeem", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"redeemed": reward["name"]})))
+    page.evaluate(f"() => document.querySelector(\"[data-reward-redeem='{reward['id']}']\").removeAttribute('disabled')")
+    page.click(f"[data-reward-redeem='{reward['id']}']")
+    page.wait_for_selector(".shop-burst .shop-burst-coin", timeout=3000)
+    page.wait_for_function("() => !document.querySelector('.shop-burst')", polling=100, timeout=4000)  # it cleans up after itself
+    _post("/api/dashboard/rewards/remove", {"reward_id": reward["id"]})
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_function("() => window.HermesDashboard._state.data.character", polling=100, timeout=15000)
+    page.evaluate("() => window.HermesDashboard._celebrate(window.HermesDashboard._state.data.character, {force: true})")
+    page.wait_for_selector(".rpg-levelup.is-open .rpg-levelup-card", timeout=3000)
+    page.wait_for_timeout(500)
+    card = page.evaluate("""() => { const c = document.querySelector('.rpg-levelup-card'), b = document.querySelector('[data-levelup-close]'), t = b.querySelector('span');
+        const br = b.getBoundingClientRect(), tr = t.getBoundingClientRect(), stage = document.querySelector('.rpg-levelup-stage');
+        return {frame: getComputedStyle(c).borderImageSource.includes('card-frame.png'), heroFrame: getComputedStyle(stage, '::after').borderImageSource.includes('frame-gold.png'),
+                textTop: tr.top - br.top, textBottom: br.bottom - tr.bottom, rays: document.querySelector('.rpg-levelup-rays').getBoundingClientRect().width / c.getBoundingClientRect().width}; }""")
+    assert card["frame"] and card["heroFrame"] and card["rays"] > 0.9
+    assert abs(card["textTop"] - card["textBottom"]) <= 1  # Continue sits in the middle of its button

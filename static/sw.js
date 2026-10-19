@@ -54,6 +54,7 @@ const SHELL_ASSETS = [
   './static/chat-nav-mark.png',
   './static/office-nav-mark.png',
   './static/nav-tasks-mark.png',
+  './static/nav-dashboard-mark.png',
   './static/nav-agents-mark.png',
   './static/nav-profiles-mark.png',
   './static/nav-memory-mark.png',

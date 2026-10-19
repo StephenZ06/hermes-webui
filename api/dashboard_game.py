@@ -878,9 +878,11 @@ def _character_video() -> set[str]:
 def _character_sprite() -> set[str]:
     """Forms with a transparent animated sprite (static/dashboard/characters/
     <form>.webp) for the evolution carousel: every one is scaled so the body
-    is the same height, feet on one baseline, on a 260px square."""
+    is the same height, feet on one baseline, on a 440x400 canvas roomy
+    enough for its effects. <form>-still.webp is its first frame, shown
+    while the form is locked."""
     try:
-        return {f.stem.lower() for f in _VIDEO_DIR.glob("*.webp")}
+        return {f.stem.lower() for f in _VIDEO_DIR.glob("*.webp") if not f.stem.lower().endswith("-still")}
     except OSError:
         return set()
 
@@ -889,11 +891,11 @@ _ART_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard" / "ac
 
 
 def _achievement_art() -> set[str]:
-    """Achievements with badge art (static/dashboard/achievements/<key>.png);
+    """Achievements with badge art (static/dashboard/achievements/<key>.webp);
     the rest show their icon in a medallion. Read each time, so new art shows
     without a restart."""
     try:
-        return {f.stem for f in _ART_DIR.glob("*.png")}
+        return {f.stem for f in _ART_DIR.glob("*.webp")}
     except OSError:
         return set()
 

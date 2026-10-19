@@ -197,3 +197,26 @@ def test_the_sales_poller_starts_once(biz, monkeypatch):
     assert dashboard_business.start_poller() is True
     assert dashboard_business.start_poller() is False
     assert started == ["dashboard-sales-poller"]
+
+
+def test_revenue_series_by_hour_today_and_by_day_this_week_and_month(biz):
+    """The Revenue card's filter: today by hour, this week (Monday first) and
+    this month by day, each slot from the sale's local date, the current one
+    marked. Sales before this month count in none of them."""
+    from datetime import date, datetime, timedelta
+
+    dashboard_business, _, _ = biz
+    today = date.today()
+    dashboard_business.add_manual_sale({"amount": "10", "product": "Now"})
+    dashboard_business.add_manual_sale({"amount": "5", "product": "Old", "date": (today.replace(day=1) - timedelta(days=3)).isoformat()})
+    if today.day > 1:
+        dashboard_business.add_manual_sale({"amount": "7", "product": "Earlier", "date": today.replace(day=1).isoformat()})
+    series = dashboard_business.summary()["series"]
+    hour = datetime.now().hour
+    assert len(series["today"]) == 24 and series["today"][hour]["revenue"] == 1000 and series["today"][hour]["now"]
+    assert sum(p["revenue"] for p in series["today"]) == 1000
+    assert [p["label"] for p in series["week"]] == ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] and series["week"][today.weekday()]["now"]
+    month = series["month"]
+    assert len(month) == ((today.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)).day
+    assert month[today.day - 1]["now"] and month[today.day - 1]["revenue"] >= 1000
+    assert sum(p["revenue"] for p in month) == 1000 + (700 if today.day > 1 else 0)  # last month's sale is in none
