@@ -444,7 +444,7 @@
             <div class="rpg-stars" aria-hidden="true"></div>
             <div class="rpg-aura" aria-hidden="true"></div>
             ${heroArt(data, (data.tier || 1) - 1, 6)}
-            <div class="rpg-plate"><span class="rpg-plate-level">LV ${data.level}</span><span class="rpg-plate-class">${esc(data.tier_name)} Warlock</span></div>
+            <div class="rpg-plate" aria-label="Level ${data.level} ${esc(data.tier_name)}"><span class="rpg-plate-gem" title="Level ${data.level}"><b>${data.level}</b></span><span class="rpg-plate-name"><i class="rpg-plate-rivet" aria-hidden="true"></i><span class="rpg-plate-class">${esc(data.tier_name)}</span><i class="rpg-plate-rivet" aria-hidden="true"></i></span></div>
           </div>
         </div>
         <div class="rpg-sheet rpg-panel">
@@ -617,7 +617,7 @@
         <small class="rpg-levelup-kicker">Level up!</small>
         <div class="rpg-levelup-levels"><span>${from}</span><i aria-hidden="true">▶</i><b>${level}</b></div>
         <div class="rpg-levelup-hero">${window.DashSprite ? heroArt(data, (data.tier || 1) - 1, 4) : ''}</div>
-        <strong class="rpg-levelup-class">${esc(data.tier_name || '')} Warlock</strong>
+        <strong class="rpg-levelup-class">${esc(data.tier_name || '')}</strong>
         ${newForm ? `<div class="rpg-levelup-unlock">New form unlocked: ${esc(data.tier_name || '')}</div>` : ''}
         <p class="rpg-levelup-next">${(data.level_size || 0).toLocaleString()} XP to level ${level + 1}</p>
         <button type="button" class="dash-btn" data-levelup-close>Continue</button>
