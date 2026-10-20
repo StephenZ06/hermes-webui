@@ -529,6 +529,9 @@ def _remove_anthropic_link_marker(hermes_home: Path) -> None:
 
 # ── Codex protocol ──────────────────────────────────────────────────────────
 
+_USER_AGENT = "Hermes-WebUI/1.0 (+https://github.com/nesquena/hermes-webui)"
+
+
 def _json_request(url: str, payload: dict[str, Any], *, form: bool = False) -> dict[str, Any]:
     """POST a JSON or form-encoded payload to url and return the parsed JSON response."""
     if form:
@@ -541,7 +544,9 @@ def _json_request(url: str, payload: dict[str, Any], *, form: bool = False) -> d
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": content_type, "Accept": "application/json"},
+        # Cloudflare in front of auth.openai.com rejects Python's default
+        # "Python-urllib/x" agent with HTTP 530, so identify as Hermes WebUI.
+        headers={"Content-Type": content_type, "Accept": "application/json", "User-Agent": _USER_AGENT},
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -788,10 +793,12 @@ def _oauth_target_home(body: dict[str, Any] | None) -> Path:
     name = str((body or {}).get("profile") or "").strip()
     if not name:
         return _get_active_hermes_home()
-    from api.profiles import get_hermes_home_for_profile
+    from api import profiles
 
-    home = Path(get_hermes_home_for_profile(name))
-    if name != "default" and (home.name != name or not home.is_dir()):
+    home = Path(profiles.get_hermes_home_for_profile(name))
+    if profiles._is_root_profile(name):  # "default" or the root's display name
+        return home
+    if home.name != name or not home.is_dir():
         raise ValueError(f"Profile '{name}' does not exist")
     return home
 

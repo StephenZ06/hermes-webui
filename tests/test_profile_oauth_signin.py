@@ -59,3 +59,37 @@ def test_codex_tokens_are_written_to_the_chosen_profile(homes, monkeypatch):
 
     assert oauth.profile_oauth_status("docs-gits")["signed_in"] is True
     assert not (homes / "default" / "auth.json").exists()
+
+
+def test_the_root_profile_display_name_resolves_to_the_root_home(homes, monkeypatch):
+    import api.profiles as profiles
+
+    monkeypatch.setattr(profiles, "get_hermes_home_for_profile", lambda name: homes / "default")
+    monkeypatch.setattr(profiles, "_is_root_profile", lambda name: name in ("default", "conductor"))
+
+    assert oauth._oauth_target_home({"profile": "conductor"}) == homes / "default"
+
+
+def test_provider_requests_send_a_hermes_user_agent(monkeypatch):
+    # Cloudflare in front of auth.openai.com answers Python's default
+    # "Python-urllib" agent with HTTP 530, which looked like an outage.
+    seen = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout=0):
+        seen["ua"] = req.get_header("User-agent")
+        return _Resp()
+
+    monkeypatch.setattr(oauth.urllib.request, "urlopen", fake_urlopen)
+    oauth._json_request("https://example.invalid", {"a": 1})
+
+    assert seen["ua"] and "urllib" not in seen["ua"].lower()
