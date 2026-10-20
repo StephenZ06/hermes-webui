@@ -9074,36 +9074,31 @@ function _renderProfileDetail(p, activeName){
   _renderProfileSignin(p.name);
 }
 
-// Provider sign-in for one profile (OpenAI Codex device code / Claude link).
-// Each profile keeps its own auth.json, so a profile can need signing in
-// even when the default profile already is.
+// Providers card on a profile's detail page. Each profile keeps its own
+// config.yaml / .env / auth.json, so everything here edits *this* profile
+// (not the active one): main model, sign-ins, API keys, custom endpoints
+// (9Router, LM Studio, Ollama, any OpenAI-compatible URL) and the fallback
+// chain the agent uses when the main route can't start or fails.
 let _profileSigninFlow = null;
-const _PROFILE_SIGNIN_LABELS = {'openai-codex': 'OpenAI Codex', anthropic: 'Claude'};
-async function _renderProfileSignin(name){
-  const card = $('profileSigninCard');
-  if (!card) return;
-  let status;
-  try { status = await api('/api/profiles/oauth/status?name=' + encodeURIComponent(name)); }
-  catch (_) { card.hidden = true; return; }
-  if (!card.isConnected || !_currentProfileDetail || _currentProfileDetail.name !== name) return;
-  if (!status.oauth_supported) { card.hidden = true; return; }
-  const label = _PROFILE_SIGNIN_LABELS[status.provider] || status.provider;
-  const badge = status.signed_in
-    ? '<span class="detail-badge ok">Signed in</span>'
-    : '<span class="detail-badge warn">Not signed in</span>';
-  card.hidden = false;
-  card.innerHTML = `
-    <div class="detail-card-title">Provider sign-in</div>
-    <div class="detail-row"><div class="detail-row-label">${esc(label)}</div><div class="detail-row-value">${badge}</div></div>
-    <div class="profile-signin-body">
-      <p class="profile-signin-hint">${status.signed_in
-        ? `This profile can use ${esc(label)}. Sign in again if its chats report missing credentials.`
-        : `Chats and tools that run as <b>${esc(name)}</b> need their own ${esc(label)} sign-in.`}</p>
-      <button type="button" class="project-starter-submit profile-signin-btn">${status.signed_in ? 'Sign in again' : 'Sign in to ' + esc(label)}</button>
-      <div class="profile-signin-flow" hidden></div>
-    </div>`;
-  card.querySelector('.profile-signin-btn').onclick = () => _startProfileSignin(name, status.provider, card);
+const _PP_STATE_BADGE = {
+  ready: ['ok', 'Ready'], signin: ['warn', 'Needs sign-in'], key: ['warn', 'Needs API key'],
+  cli: ['', 'Sign in with CLI'], unset: ['warn', 'Not set'], unknown: ['', 'Unchecked'],
+};
+function _ppBadge(status){
+  const [cls, label] = _PP_STATE_BADGE[(status && status.state) || 'unknown'] || _PP_STATE_BADGE.unknown;
+  return `<span class="detail-badge ${cls}" title="${esc((status && status.message) || '')}">${esc(label)}</span>`;
 }
+function _ppDashboardUrl(url){
+  // A router on the server's localhost is reached via the server's hostname
+  // when the WebUI is opened from another device (e.g. over Tailscale).
+  try { const u = new URL(url); if (['localhost', '127.0.0.1'].includes(u.hostname)) u.hostname = location.hostname; return u.toString(); }
+  catch (_) { return url; }
+}
+async function _ppPost(action, payload){
+  return api('/api/profiles/providers/' + action, {method: 'POST', body: JSON.stringify(payload)});
+}
+
+async function _renderProfileSignin(name){ return _renderProfileProviders(name); }
 
 async function _startProfileSignin(name, provider, card){
   const btn = card.querySelector('.profile-signin-btn');
@@ -9116,7 +9111,7 @@ async function _startProfileSignin(name, provider, card){
   catch (e) { flowBox.innerHTML = `<span class="profile-signin-error">${esc(e.message || 'Could not start sign-in.')}</span>`; btn.disabled = false; return; }
   const flowId = start.flow_id;
   _profileSigninFlow = flowId;
-  if (start.status === 'success') { showToast('Signed in ' + name); _renderProfileSignin(name); return; }
+  if (start.status === 'success') { showToast('Signed in ' + name); _renderProfileProviders(name); return; }
   if (provider === 'openai-codex') {
     flowBox.innerHTML = `
       <ol class="profile-signin-steps">
@@ -9136,7 +9131,7 @@ async function _startProfileSignin(name, provider, card){
   flowBox.querySelector('.profile-signin-cancel').onclick = async () => {
     _profileSigninFlow = null;
     try { await api('/api/profiles/oauth/cancel', {method: 'POST', body: JSON.stringify({flow_id: flowId, provider})}); } catch (_) {}
-    _renderProfileSignin(name);
+    _renderProfileProviders(name);
   };
   const interval = Math.max(2, Number(start.poll_interval_seconds) || 5) * 1000;
   const poll = async () => {
@@ -9147,12 +9142,205 @@ async function _startProfileSignin(name, provider, card){
     if (_profileSigninFlow !== flowId) return;
     if (st.status === 'pending') { setTimeout(poll, interval); return; }
     _profileSigninFlow = null;
-    if (st.status === 'success') { showToast('Signed in ' + name); _renderProfileSignin(name); return; }
+    if (st.status === 'success') { showToast('Signed in ' + name); _renderProfileProviders(name); return; }
     const msg = st.status === 'expired' ? 'The code expired. Try again.' : (st.error || 'Sign-in did not complete.');
     if (card.isConnected) { flowBox.innerHTML = `<span class="profile-signin-error">${esc(msg)}</span>`; btn.disabled = false; }
   };
   setTimeout(poll, interval);
 }
+
+async function _renderProfileProviders(name){
+  const card = $('profileSigninCard');
+  if (!card) return;
+  let data;
+  try { data = await api('/api/profiles/providers?name=' + encodeURIComponent(name)); }
+  catch (e) { card.hidden = false; card.innerHTML = `<div class="detail-card-title">Providers</div><p class="profile-signin-error">${esc(e.message || 'Could not load providers.')}</p>`; return; }
+  if (!card.isConnected || !_currentProfileDetail || _currentProfileDetail.name !== name) return;
+  card.hidden = false;
+  const otherProfiles = ((_profilesCache && _profilesCache.profiles) || []).map(p => p.name).filter(n => n !== name);
+  // Routes this profile can use: signed-in OAuth, keyed providers, endpoints.
+  const routes = [];
+  data.signins.forEach(s => routes.push({provider: s.id, label: s.label, ready: s.signed_in}));
+  data.api_keys.filter(k => k.has_key).forEach(k => routes.push({provider: k.id, label: k.label, ready: true}));
+  data.endpoints.forEach(e => routes.push({provider: e.provider, label: e.name, ready: true, model: e.model}));
+  const routeOptions = (selected) => routes.map(r => `<option value="${esc(r.provider)}"${r.provider === selected ? ' selected' : ''}>${esc(r.label)}${r.ready ? '' : ' (needs sign-in)'}</option>`).join('');
+  const main = data.main;
+  const keyed = data.api_keys.filter(k => k.has_key);
+  card.innerHTML = `
+    <div class="detail-card-title">Providers</div>
+    <div class="pp-main">
+      <div class="pp-main-route">
+        <span class="pp-main-label">Main model</span>
+        <span class="pp-main-value">${main.provider ? esc((routes.find(r => r.provider === main.provider) || {}).label || main.provider) + (main.model ? ' · ' + esc(main.model) : '') : 'Not set'}</span>
+        ${_ppBadge(main.status)}
+      </div>
+      <p class="profile-signin-hint pp-main-msg">${esc(main.status.message || '')}</p>
+      <div class="pp-row">
+        <button type="button" class="project-starter-cancel pp-test">Test connection</button>
+        <button type="button" class="project-starter-cancel pp-change">Change main model</button>
+        <span class="pp-test-result"></span>
+      </div>
+      <form class="pp-form pp-main-form" hidden>
+        <select class="pp-input pp-main-provider">${routeOptions(main.provider)}</select>
+        <input class="pp-input pp-main-model" placeholder="Model id" value="${esc(main.model)}">
+        <button type="submit" class="project-starter-submit">Save</button>
+      </form>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-title">Sign in</div>
+      ${data.signins.map(s => `
+        <div class="pp-signin" data-provider="${esc(s.id)}">
+          <div class="pp-row"><span class="pp-name">${esc(s.label)}</span>${s.signed_in ? '<span class="detail-badge ok">Signed in</span>' : '<span class="detail-badge warn">Not signed in</span>'}
+            <button type="button" class="project-starter-submit profile-signin-btn">${s.signed_in ? 'Sign in again' : 'Sign in'}</button></div>
+          <div class="profile-signin-flow" hidden></div>
+        </div>`).join('')}
+      <p class="profile-signin-hint">Sign-ins belong to one profile. OpenAI rotates sign-in tokens, so each profile signs in on its own.</p>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-title">API keys</div>
+      ${keyed.length ? `<ul class="pp-list">${keyed.map(k => `<li><span class="pp-name">${esc(k.label)}</span><code>${esc(k.env_var)}</code><span class="detail-badge ok">Saved</span><button type="button" class="pp-link pp-key-remove" data-provider="${esc(k.id)}">Remove</button></li>`).join('')}</ul>` : '<p class="profile-signin-hint">No API keys saved for this profile.</p>'}
+      <form class="pp-form pp-key-form">
+        <select class="pp-input pp-key-provider">${data.api_keys.map(k => `<option value="${esc(k.id)}">${esc(k.label)}</option>`).join('')}</select>
+        <input class="pp-input pp-key-value" type="password" autocomplete="off" placeholder="Paste API key">
+        <button type="submit" class="project-starter-submit">Save key</button>
+      </form>
+      ${otherProfiles.length ? `<form class="pp-form pp-copy-form">
+        <span class="pp-form-label">or copy from</span>
+        <select class="pp-input pp-copy-source">${otherProfiles.map(n => `<option>${esc(n)}</option>`).join('')}</select>
+        <select class="pp-input pp-copy-provider">${data.api_keys.map(k => `<option value="${esc(k.id)}">${esc(k.label)}</option>`).join('')}</select>
+        <button type="submit" class="project-starter-cancel">Copy</button>
+      </form>` : ''}
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-title">Custom endpoints</div>
+      ${data.endpoints.length ? `<ul class="pp-list">${data.endpoints.map(e => `<li><span class="pp-name">${esc(e.name)}</span><code>${esc(e.base_url)}</code>${e.model ? `<span class="pp-muted">${esc(e.model)}</span>` : ''}
+        <button type="button" class="pp-link pp-ep-test" data-provider="${esc(e.provider)}">Test</button>
+        <button type="button" class="pp-link pp-ep-edit" data-id="${esc(e.id)}">Edit</button>
+        <button type="button" class="pp-link pp-ep-remove" data-id="${esc(e.id)}">Remove</button></li>`).join('')}</ul>` : ''}
+      <div class="pp-presets">${data.presets.map(p => `<button type="button" class="pp-chip" data-preset="${esc(p.id)}">+ ${esc(p.name)}</button>`).join('')}</div>
+      <form class="pp-form pp-ep-form" hidden>
+        <p class="profile-signin-hint pp-ep-hint"></p>
+        <div class="pp-grid">
+          <label>Name<input class="pp-input pp-ep-name" required maxlength="60"></label>
+          <label>Base URL<input class="pp-input pp-ep-url" required placeholder="http://localhost:20128/v1"></label>
+          <label>API key<input class="pp-input pp-ep-key" type="password" autocomplete="off" placeholder="Leave blank to keep the saved key"></label>
+          <label>Model<input class="pp-input pp-ep-model" list="ppModels" placeholder="Model id"></label>
+        </div>
+        <datalist id="ppModels"></datalist>
+        <label class="pp-check"><input type="checkbox" class="pp-ep-main"> Use as this profile's main model</label>
+        <div class="pp-row">
+          <a class="project-starter-cancel pp-ep-dashboard" target="_blank" rel="noopener" hidden>Open dashboard</a>
+          <button type="button" class="project-starter-cancel pp-ep-load">Load models</button>
+          <span class="pp-spacer"></span>
+          <button type="button" class="project-starter-cancel pp-ep-cancel">Cancel</button>
+          <button type="submit" class="project-starter-submit">Save endpoint</button>
+        </div>
+        <span class="pp-ep-result"></span>
+      </form>
+    </div>
+
+    <div class="pp-section">
+      <div class="pp-section-title">Fallbacks</div>
+      <p class="profile-signin-hint">Tried in order when the main model can't start (for example a missing sign-in) or keeps failing.</p>
+      <ol class="pp-fallbacks">${data.fallbacks.map(f => `<li data-provider="${esc(f.provider)}" data-model="${esc(f.model)}"><span class="pp-name">${esc((routes.find(r => r.provider === f.provider) || {}).label || f.provider)}</span><span class="pp-muted">${esc(f.model)}</span>${_ppBadge(f.status)}<button type="button" class="pp-link pp-fb-remove">Remove</button></li>`).join('')}</ol>
+      ${routes.length ? `<form class="pp-form pp-fb-form">
+        <select class="pp-input pp-fb-provider">${routeOptions('')}</select>
+        <input class="pp-input pp-fb-model" placeholder="Model id">
+        <button type="submit" class="project-starter-cancel">Add fallback</button>
+      </form>` : '<p class="profile-signin-hint">Connect a provider above to add fallbacks.</p>'}
+    </div>`;
+
+  const refresh = () => _renderProfileProviders(name);
+  const fail = (e) => showToast(e.message || String(e));
+  const $c = (sel) => card.querySelector(sel);
+
+  $c('.pp-test').onclick = async () => {
+    const out = $c('.pp-test-result'); out.className = 'pp-test-result'; out.innerHTML = '<span class="ps-pulse"></span>';
+    try { const r = await _ppPost('test', {name}); out.textContent = r.message; out.classList.add(r.ok ? 'is-ok' : 'is-error'); }
+    catch (e) { out.textContent = e.message; out.classList.add('is-error'); }
+  };
+  $c('.pp-change').onclick = () => { const f = $c('.pp-main-form'); f.hidden = !f.hidden; };
+  const syncMainModel = () => { const r = routes.find(x => x.provider === $c('.pp-main-provider').value); if (r && r.model && !$c('.pp-main-model').value) $c('.pp-main-model').value = r.model; };
+  $c('.pp-main-provider').onchange = syncMainModel;
+  $c('.pp-main-form').onsubmit = async (ev) => { ev.preventDefault();
+    try { await _ppPost('main', {name, provider: $c('.pp-main-provider').value, model: $c('.pp-main-model').value.trim()}); showToast('Main model updated'); refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); } catch (e) { fail(e); } };
+
+  card.querySelectorAll('.pp-signin').forEach(row => {
+    row.querySelector('.profile-signin-btn').onclick = () => _startProfileSignin(name, row.dataset.provider, row);
+  });
+
+  $c('.pp-key-form').onsubmit = async (ev) => { ev.preventDefault();
+    const value = $c('.pp-key-value').value.trim(); if (!value) return;
+    try { await _ppPost('key', {name, provider: $c('.pp-key-provider').value, api_key: value}); showToast('API key saved'); refresh(); } catch (e) { fail(e); } };
+  card.querySelectorAll('.pp-key-remove').forEach(b => b.onclick = async () => {
+    const ok = typeof showConfirmDialog === 'function' ? await showConfirmDialog({message: 'Remove this API key from ' + name + '?', confirmLabel: 'Remove', danger: true}) : confirm('Remove this API key?');
+    if (!ok) return;
+    try { await _ppPost('key', {name, provider: b.dataset.provider, api_key: null}); refresh(); } catch (e) { fail(e); } });
+  const copyForm = $c('.pp-copy-form');
+  if (copyForm) copyForm.onsubmit = async (ev) => { ev.preventDefault();
+    try { await _ppPost('copy', {name, source: $c('.pp-copy-source').value, provider: $c('.pp-copy-provider').value}); showToast('Copied'); refresh(); } catch (e) { fail(e); } };
+
+  // Endpoint form (add from a preset, or edit an existing one)
+  const epForm = $c('.pp-ep-form');
+  let epId = null;
+  const openEp = (preset, existing) => {
+    epForm.hidden = false; epId = existing ? existing.id : null;
+    $c('.pp-ep-hint').textContent = (preset && preset.hint) || '';
+    $c('.pp-ep-name').value = existing ? existing.name : (preset && preset.id !== 'custom' ? preset.name : '');
+    $c('.pp-ep-url').value = existing ? existing.base_url : ((preset && preset.base_url) || '');
+    $c('.pp-ep-key').value = ''; $c('.pp-ep-model').value = existing ? existing.model : '';
+    $c('.pp-ep-main').checked = !!existing && main.provider === existing.provider;
+    const dash = $c('.pp-ep-dashboard');
+    if (preset && preset.dashboard) { dash.hidden = false; dash.href = _ppDashboardUrl(preset.dashboard); } else dash.hidden = true;
+    $c('.pp-ep-result').textContent = '';
+    $c(existing ? '.pp-ep-model' : '.pp-ep-name').focus();
+  };
+  card.querySelectorAll('.pp-chip').forEach(b => b.onclick = () => openEp(data.presets.find(p => p.id === b.dataset.preset), null));
+  card.querySelectorAll('.pp-ep-edit').forEach(b => b.onclick = () => openEp(null, data.endpoints.find(e => e.id === b.dataset.id)));
+  $c('.pp-ep-cancel').onclick = () => { epForm.hidden = true; };
+  const saveEp = async (extra = {}) => {
+    const payload = {name, id: epId || undefined, display: $c('.pp-ep-name').value.trim(),
+      base_url: $c('.pp-ep-url').value.trim(), model: $c('.pp-ep-model').value.trim(), make_main: $c('.pp-ep-main').checked, ...extra};
+    const key = $c('.pp-ep-key').value.trim();
+    if (key) payload.api_key = key;
+    return _ppPost('endpoint', payload);
+  };
+  $c('.pp-ep-load').onclick = async () => {
+    const out = $c('.pp-ep-result'); out.className = 'pp-ep-result'; out.innerHTML = '<span class="ps-pulse"></span>';
+    try {
+      const saved = await saveEp({make_main: false}); epId = saved.id;
+      const r = await _ppPost('test', {name, provider: saved.provider});
+      out.textContent = r.message; out.classList.add(r.ok ? 'is-ok' : 'is-error');
+      $('ppModels').innerHTML = (r.models || []).map(m => `<option value="${esc(m)}">`).join('');
+      if (r.ok && r.models && r.models.length && !$c('.pp-ep-model').value) $c('.pp-ep-model').value = r.models[0];
+    } catch (e) { out.textContent = e.message; out.classList.add('is-error'); }
+  };
+  epForm.onsubmit = async (ev) => { ev.preventDefault();
+    try { await saveEp(); showToast('Endpoint saved'); refresh(); if ($c('.pp-ep-main') && $c('.pp-ep-main').checked && typeof loadProfilesPanel === 'function') loadProfilesPanel(); } catch (e) { fail(e); } };
+  card.querySelectorAll('.pp-ep-test').forEach(b => b.onclick = async () => {
+    b.textContent = 'Testing…';
+    try { const r = await _ppPost('test', {name, provider: b.dataset.provider}); showToast(r.message); } catch (e) { fail(e); }
+    b.textContent = 'Test'; });
+  card.querySelectorAll('.pp-ep-remove').forEach(b => b.onclick = async () => {
+    try { await _ppPost('endpoint-delete', {name, id: b.dataset.id}); refresh(); } catch (e) { fail(e); } });
+
+  // Fallback chain
+  const currentFallbacks = () => [...card.querySelectorAll('.pp-fallbacks li')].map(li => ({provider: li.dataset.provider, model: li.dataset.model}));
+  const saveFallbacks = async (items) => { try { await _ppPost('fallbacks', {name, items}); refresh(); } catch (e) { fail(e); } };
+  card.querySelectorAll('.pp-fb-remove').forEach(b => b.onclick = () => { b.closest('li').remove(); saveFallbacks(currentFallbacks()); });
+  const fbForm = $c('.pp-fb-form');
+  if (fbForm) {
+    const syncFb = () => { const r = routes.find(x => x.provider === $c('.pp-fb-provider').value); $c('.pp-fb-model').value = (r && r.model) || ''; };
+    $c('.pp-fb-provider').onchange = syncFb; syncFb();
+    fbForm.onsubmit = (ev) => { ev.preventDefault();
+      const model = $c('.pp-fb-model').value.trim(); if (!model) { $c('.pp-fb-model').focus(); return; }
+      saveFallbacks([...currentFallbacks(), {provider: $c('.pp-fb-provider').value, model}]); };
+  }
+}
+
 
 function _setProfileHeaderButtons(mode, p, activeName){
   const header = $('mainProfiles') && $('mainProfiles').querySelector('.main-view-header');

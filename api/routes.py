@@ -15378,6 +15378,17 @@ def _route_get_api_profiles_oauth_poll(handler, parsed):
         return bad(handler, str(exc), 404)
 
 
+def _route_get_api_profiles_providers(handler, parsed):
+    """One profile's provider setup: main model, sign-ins, keys, endpoints, fallbacks."""
+    from api.profile_providers import ProfileProviderError, overview
+
+    try:
+        return j(handler, overview((parse_qs(parsed.query).get("name") or [""])[0]),
+                 extra_headers={"Cache-Control": "no-store"})
+    except ProfileProviderError as exc:
+        return bad(handler, str(exc), 404)
+
+
 def _route_get_api_list(handler, parsed):
     return _handle_list_dir(handler, parsed)
 
@@ -16218,6 +16229,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
         (Exact("/api/list"), _route_get_api_list),
         (Exact("/api/profiles/oauth/status"), _route_get_api_profiles_oauth_status),
+        (Exact("/api/profiles/providers"), _route_get_api_profiles_providers),
         (Exact("/api/profiles/oauth/poll"), _route_get_api_profiles_oauth_poll),
         (Exact("/api/projects/starter/templates"), _route_get_api_projects_starter_templates),
         (Exact("/api/projects/starter/folders"), _route_get_api_projects_starter_folders),
@@ -19478,6 +19490,37 @@ def _route_post_api_settings(handler, parsed, body, diag):
     return True
 
 
+def _route_post_api_profiles_providers_action(handler, parsed, body, diag):
+    """Edit one profile's provider setup without switching to it.
+
+    Secrets are write-only: responses report whether a key is set, never it.
+    """
+    from api import profile_providers as pp
+
+    name = str(body.get("name") or "").strip() or "default"
+    action = parsed.path.rsplit("/", 1)[-1]
+    try:
+        if action == "key":
+            result = pp.set_api_key(name, body.get("provider"), body.get("api_key"))
+        elif action == "endpoint":
+            result = pp.save_endpoint(name, body)
+        elif action == "endpoint-delete":
+            result = pp.delete_endpoint(name, str(body.get("id") or ""))
+        elif action == "main":
+            result = pp.set_main(name, body.get("provider"), body.get("model"))
+        elif action == "fallbacks":
+            result = pp.set_fallbacks(name, body.get("items") if isinstance(body.get("items"), list) else [])
+        elif action == "copy":
+            result = pp.copy_credentials(str(body.get("source") or ""), name, body.get("provider"))
+        elif action == "test":
+            result = pp.test_route(name, str(body.get("provider") or ""))
+        else:
+            return bad(handler, "Unknown action", 404)
+    except pp.ProfileProviderError as exc:
+        return bad(handler, str(exc))
+    return j(handler, result, extra_headers={"Cache-Control": "no-store"})
+
+
 def _route_post_api_profiles_oauth_start(handler, parsed, body, diag):
     """Sign a specific profile in to its provider (Profiles page).
 
@@ -20780,6 +20823,13 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/settings"), _route_post_api_settings),
         (Exact("/api/onboarding/oauth/start"), _route_post_api_onboarding_oauth_start),
         (Exact("/api/profiles/oauth/start"), _route_post_api_profiles_oauth_start),
+        (Exact("/api/profiles/providers/key"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/endpoint"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/endpoint-delete"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/main"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/fallbacks"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/copy"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/test"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/oauth/cancel"), _route_post_api_profiles_oauth_cancel),
         (Exact("/api/onboarding/oauth/cancel"), _route_post_api_onboarding_oauth_cancel),
         (Exact("/api/onboarding/setup"), _route_post_api_onboarding_setup),
