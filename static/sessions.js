@@ -9973,7 +9973,7 @@ function _inferProjectTemplate(brief){
   return 'blank';
 }
 
-async function _projectStarterDraft(profile){
+async function _projectStarterDraft(profile,submitDraft){
   let workspaceResponse;
   try{ workspaceResponse=await api('/api/workspaces'); }
   catch(error){ showToast('Could not load workspaces: '+(error.message||error)); return null; }
@@ -10017,33 +10017,54 @@ async function _projectStarterDraft(profile){
     const fileStatus=document.createElement('span');fileStatus.className='project-starter-file-status';fileStatus.textContent='Optional · .md or .txt';
     fileRow.append(uploadButton,upload,fileStatus);
     const hint=document.createElement('p');hint.className='project-starter-hint';hint.textContent='The suggested template adjusts to your brief. You can always choose a different one.';
+    const errorLine=document.createElement('p');errorLine.className='project-starter-error';errorLine.setAttribute('role','alert');errorLine.hidden=true;
     const actions=document.createElement('footer');actions.className='project-starter-actions';
     const cancel=document.createElement('button');cancel.type='button';cancel.className='project-starter-cancel';cancel.textContent='Cancel';
     const submit=document.createElement('button');submit.type='submit';submit.className='project-starter-submit';submit.textContent='Create workspace';
     actions.append(cancel,submit);
-    adopt.onchange=()=>{name.disabled=adopt.checked;name.placeholder=adopt.checked?'Uses the selected workspace name':'e.g. customer-health';};
-    form.append(field('Project folder name',name),field('Saved workspace',workspace),adoptRow,field('Starter template',template),field('Project brief',brief),fileRow,hint,actions);
+    adopt.onchange=()=>{name.disabled=adopt.checked;name.placeholder=adopt.checked?'Uses the selected workspace name':'e.g. customer-health';submit.textContent=adopt.checked?'Add existing project':'Create workspace';};
+    // Suggest a template from the brief until the user picks one themselves.
+    let templateChosen=false;
+    template.onchange=()=>{templateChosen=true;};
+    const suggestTemplate=()=>{if(templateChosen)return;template.value=_inferProjectTemplate(brief.value);if(window.refreshThemedSelect)window.refreshThemedSelect(template);};
+    form.append(field('Project folder name',name),field('Saved workspace',workspace),adoptRow,field('Starter template',template),field('Project brief',brief),fileRow,hint,errorLine,actions);
     dialog.append(header,form);overlay.append(dialog);document.body.append(overlay);
     let done=false;
     const finish=(value)=>{if(done)return;done=true;document.removeEventListener('keydown',onKey,true);overlay.remove();if(opener&&opener.isConnected)opener.focus();resolve(value);};
-    const onKey=(event)=>{if(event.key==='Escape'){event.preventDefault();finish(null);}};
+    // Escape closes an open dropdown first (select-theme.js handles that), not the whole dialog.
+    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup')){event.preventDefault();finish(null);}};
     close.onclick=()=>finish(null);cancel.onclick=()=>finish(null);overlay.onclick=(event)=>{if(event.target===overlay)finish(null);};
     uploadButton.onclick=()=>upload.click();
-    upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}try{brief.value=await file.text();fileStatus.textContent='Using '+file.name;template.value=_inferProjectTemplate(brief.value);}catch(_){fileStatus.textContent='Could not read that file.';}};
-    brief.oninput=()=>{template.value=_inferProjectTemplate(brief.value);};
-    form.onsubmit=(event)=>{event.preventDefault();const folder=name.value.trim();if(!adopt.checked&&!folder){name.focus();return;}finish({name:folder,workspace_path:workspace.value,template:template.value,brief:brief.value.trim(),profile,adopt:adopt.checked});};
+    upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}try{brief.value=(await file.text()).slice(0,100000);fileStatus.textContent='Using '+file.name;suggestTemplate();}catch(_){fileStatus.textContent='Could not read that file.';}};
+    brief.oninput=suggestTemplate;
+    // The dialog stays open until the server accepts the project, so a
+    // rejected name or a busy workspace never throws away the typed brief.
+    let busy=false;
+    form.onsubmit=async(event)=>{
+      event.preventDefault();
+      if(busy)return;
+      const folder=name.value.trim();
+      if(!adopt.checked&&!folder){name.focus();return;}
+      const draft={name:adopt.checked?'':folder,workspace_path:workspace.value,template:template.value,brief:brief.value.trim(),profile,adopt:adopt.checked};
+      busy=true;submit.disabled=true;errorLine.hidden=true;
+      let result;
+      try{result=await submitDraft(draft);}catch(error){result={error:error&&error.message||String(error)};}
+      busy=false;submit.disabled=false;
+      if(result&&result.error){errorLine.textContent=result.error;errorLine.hidden=false;return;}
+      finish(result);
+    };
     document.addEventListener('keydown',onKey,true);setTimeout(()=>name.focus(),0);
   });
 }
 
 async function _createStarterProject({session=null,profile=undefined}={}){
-  const draft=await _projectStarterDraft(profile);
-  if(!draft) return;
   const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
-  let response;
-  const endpoint=draft.adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
-  try{ response=await api(endpoint,{method:'POST',body:JSON.stringify({...draft,color})}); }
-  catch(error){ showToast('Project create failed: '+(error.message||error)); return; }
+  const response=await _projectStarterDraft(profile,async(draft)=>{
+    const endpoint=draft.adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
+    const {adopt,...payload}=draft;
+    const result=await api(endpoint,{method:'POST',body:JSON.stringify({...payload,color})});
+    return result&&result.project?result:{error:'The project could not be created.'};
+  });
   if(!response||!response.project) return;
   _allProjects.push(response.project);
   if(session){

@@ -19781,6 +19781,28 @@ def _route_post_api_projects_create(handler, parsed, body, diag):
     return j(handler, {"ok": True, "project": proj})
 
 
+def _starter_options(body):
+    """Validate the colour and profile shared by both starter routes."""
+    import re as _re
+
+    color = body.get("color")
+    if color and not (isinstance(color, str) and _re.match(r"^#[0-9a-fA-F]{3,8}$", color)):
+        raise ValueError("Invalid color format")
+    requested_profile = str(body.get("profile") or "").strip()
+    if requested_profile and requested_profile != "default":
+        from api.profiles import _PROFILE_ID_RE
+        if not _PROFILE_ID_RE.fullmatch(requested_profile):
+            raise ValueError("invalid profile")
+    return color, requested_profile or get_active_profile_name() or "default"
+
+
+def _starter_workspace_root(body):
+    root = resolve_trusted_workspace(body["workspace_path"])
+    if is_blocked_system_path(root):
+        raise ValueError(f"Project path is not allowed: {root}")
+    return root
+
+
 def _route_post_api_projects_create_starter(handler, parsed, body, diag):
     """Create a sidebar project and its documented folder in one operation."""
     _arm_project_lifecycle_for_mutation()
@@ -19788,24 +19810,14 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         require(body, "name", "workspace_path", "template")
     except ValueError as e:
         return bad(handler, str(e))
-    import re as _re
     from api.project_starter import ProjectStarterError, create_starter_pack
 
     name = str(body["name"] or "").strip()[:128]
     if not name:
         return bad(handler, "name required")
-    color = body.get("color")
-    if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
-        return bad(handler, "Invalid color format")
-    requested_profile = str(body.get("profile") or "").strip()
-    if requested_profile and requested_profile != "default":
-        from api.profiles import _PROFILE_ID_RE
-        if not _PROFILE_ID_RE.fullmatch(requested_profile):
-            return bad(handler, "invalid profile")
     try:
-        workspace_root = resolve_trusted_workspace(body["workspace_path"])
-        if is_blocked_system_path(workspace_root):
-            return bad(handler, f"Project path is not allowed: {workspace_root}", 400)
+        color, profile = _starter_options(body)
+        workspace_root = _starter_workspace_root(body)
         starter = create_starter_pack(
             workspace_root=workspace_root,
             folder_name=name,
@@ -19823,13 +19835,13 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         "project_id": uuid.uuid4().hex[:12],
         "name": name,
         "color": color,
-        "profile": requested_profile or get_active_profile_name() or "default",
+        "profile": profile,
         "workspace_path": project_path,
         "starter_template": starter["template"],
         "created_at": time.time(),
     }
-    projects = load_projects()
     try:
+        projects = load_projects()
         projects.append(proj)
         save_projects(projects)
     except Exception:
@@ -19847,24 +19859,50 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
 def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
     """Register an existing saved workspace without overwriting its files."""
     _arm_project_lifecycle_for_mutation()
+    from api.project_starter import (
+        ProjectStarterError,
+        adopt_starter_pack,
+        project_using_path,
+        rollback_adopted,
+    )
+
     try:
         require(body, "workspace_path", "template")
-        from api.project_starter import ProjectStarterError, adopt_starter_pack
-        workspace_root = resolve_trusted_workspace(body["workspace_path"])
-        if is_blocked_system_path(workspace_root):
-            return bad(handler, f"Project path is not allowed: {workspace_root}", 400)
+        color, profile = _starter_options(body)
+        workspace_root = _starter_workspace_root(body)
+    except ValueError as exc:
+        return bad(handler, str(exc), 400)
+    name = str(body.get("name") or workspace_root.name).strip()[:128]
+    if not name:
+        return bad(handler, "name required")
+    existing = project_using_path(load_projects(), workspace_root)
+    if existing:
+        return bad(handler, f'This workspace is already the project "{existing.get("name") or "Untitled"}".', 409)
+    try:
         starter = adopt_starter_pack(workspace_root, str(body["template"]), str(body.get("brief") or ""))
     except (ValueError, ProjectStarterError) as exc:
         return bad(handler, str(exc), 400)
-    name = str(body.get("name") or Path(starter["path"]).name).strip()[:128]
-    if not name:
-        return bad(handler, "name required")
-    proj = {"project_id": uuid.uuid4().hex[:12], "name": name, "color": body.get("color"),
-            "profile": str(body.get("profile") or get_active_profile_name() or "default"),
-            "workspace_path": starter["path"], "starter_template": starter["template"], "created_at": time.time()}
-    projects = load_projects()
-    projects.append(proj)
-    save_projects(projects)
+    except OSError:
+        logger.exception("Project starter adopt failed")
+        return bad(handler, "Could not add the project files to this workspace.", 500)
+    proj = {
+        "project_id": uuid.uuid4().hex[:12],
+        "name": name,
+        "color": color,
+        "profile": profile,
+        "workspace_path": starter["path"],
+        "starter_template": starter["template"],
+        "created_at": time.time(),
+    }
+    try:
+        projects = load_projects()
+        projects.append(proj)
+        save_projects(projects)
+    except Exception:
+        rollback_adopted(workspace_root, starter)
+        logger.exception("Project adopt record save failed")
+        return bad(handler, "Could not save the project.", 500)
+    starter.pop("added", None)
     return j(handler, {"ok": True, "project": proj, "starter": starter})
 
 

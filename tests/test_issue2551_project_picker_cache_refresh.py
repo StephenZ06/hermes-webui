@@ -146,6 +146,11 @@ def test_new_project_branch_still_uses_authoritative_refetch():
     # that follows the createItem.onclick), falling back to a generous slice.
     end_idx = PICKER_BODY.find("picker.appendChild(createItem)", create_idx)
     window = PICKER_BODY[create_idx: end_idx if end_idx != -1 else create_idx + 1600]
+    # The branch now delegates to the shared starter flow, which owns the
+    # create + move + refetch sequence.
+    if "_createStarterProject(" in window:
+        start = SESSIONS_SRC.index("async function _createStarterProject(")
+        window = SESSIONS_SRC[start: SESSIONS_SRC.index("\nfunction ", start)]
     assert "await renderSessionList()" in window, (
         "'+ New project' branch must keep its authoritative refetch — the "
         "new project_id is only known to the server until /api/sessions is "

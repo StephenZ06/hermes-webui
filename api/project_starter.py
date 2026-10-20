@@ -11,14 +11,25 @@ import os
 import re
 from pathlib import Path
 
-from api.workspace import make_anchored_dir, open_anchored_create_fd, rmtree_anchored
+from api.workspace import (
+    _DIR_FD_OK,
+    _O_DIRECTORY,
+    _O_NOFOLLOW,
+    open_anchored_create_fd,
+    rmtree_anchored,
+    unlink_anchored,
+)
 
 
 class ProjectStarterError(ValueError):
     """The requested starter pack cannot be created safely."""
 
 
-_FOLDER_RE = re.compile(r"^[^/\\\x00]{1,96}$")
+# Workspaces often live on Windows drives (/mnt/c/...), so names must also be
+# valid there: no reserved characters, reserved device names, or trailing
+# dots/spaces. A leading dot would create a hidden folder the user can't see.
+_FOLDER_RE = re.compile(r'^[^/\\<>:"|?*\x00-\x1f]{1,96}$')
+_RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 _TEMPLATES = {
     "blank": ("Blank project", ()),
     "web": ("Web application", ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md")),
@@ -34,8 +45,12 @@ def available_templates() -> tuple[str, ...]:
 
 def _folder_name(value: str) -> str:
     name = str(value or "").strip()
-    if not _FOLDER_RE.fullmatch(name) or name in {".", ".."}:
-        raise ProjectStarterError("A project folder name cannot contain slashes or special path segments.")
+    if not _FOLDER_RE.fullmatch(name):
+        raise ProjectStarterError('A project folder name cannot contain / \\ < > : " | ? * or control characters.')
+    if name.startswith(".") or name.endswith((".", " ")):
+        raise ProjectStarterError("A project folder name cannot start with a dot or end with a dot or space.")
+    if name.split(".")[0].lower() in _RESERVED_NAMES:
+        raise ProjectStarterError("That project folder name is reserved by Windows.")
     return name
 
 
@@ -57,6 +72,31 @@ def _write(root: Path, path: Path, content: str) -> None:
         except OSError:
             pass
         raise
+
+
+def _make_new_dir(root: Path, name: str) -> None:
+    """Create ``root/name`` exclusively; never reuse a folder that appeared late."""
+    try:
+        if not _DIR_FD_OK:
+            os.mkdir(root / name)
+            return
+        fd = os.open(str(root), os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW)
+        try:
+            os.mkdir(name, dir_fd=fd)
+        finally:
+            os.close(fd)
+    except FileExistsError as exc:
+        raise ProjectStarterError("A folder with that name already exists in the selected workspace.") from exc
+
+
+def project_using_path(projects: list, path: Path) -> dict | None:
+    """Return the sidebar project already bound to ``path``, if any."""
+    wanted = os.path.normpath(str(Path(path).resolve()))
+    for project in projects or []:
+        bound = project.get("workspace_path") if isinstance(project, dict) else None
+        if bound and os.path.normpath(str(Path(bound).resolve())) == wanted:
+            return project
+    return None
 
 
 def _document(title: str, brief: str, guidance: str) -> str:
@@ -143,10 +183,8 @@ def create_starter_pack(
         raise ProjectStarterError("A folder with that name already exists in the selected workspace.")
 
     label, documents = _TEMPLATES[template_key]
-    created = False
+    _make_new_dir(root, name)
     try:
-        make_anchored_dir(root, target)
-        created = True
         _write(root, target / "AGENTS.md", _agents(name))
         _write(root, target / ".agent" / "ECC_HANDOFF.md", _handoff(name, label, project_brief))
         _write(root, target / "README.md", _document(name, project_brief, "Use this file for the quickest project orientation."))
@@ -154,11 +192,10 @@ def create_starter_pack(
             topic = doc.removesuffix(".md").replace("_", " ").title()
             _write(root, target / "docs" / doc, _document(topic, project_brief, "Add verified decisions and keep this document current."))
     except Exception:
-        if created:
-            try:
-                rmtree_anchored(root, target)
-            except Exception:
-                pass
+        try:
+            rmtree_anchored(root, target)
+        except Exception:
+            pass
         raise
     return {"path": str(target), "template": template_key}
 
@@ -181,10 +218,38 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     for doc in documents:
         topic = doc.removesuffix(".md").replace("_", " ").title()
         candidates[root / "docs" / doc] = _document(topic, project_brief, "Add verified decisions and keep this document current.")
-    created = 0
-    for path, content in candidates.items():
-        if path.exists() or path.is_symlink():
+    added: dict[str, list[str]] = {"files": [], "dirs": []}
+    for directory in (root / ".agent", root / "docs"):
+        if not directory.exists() and not directory.is_symlink():
+            added["dirs"].append(str(directory))
+    try:
+        for path, content in candidates.items():
+            if path.exists() or path.is_symlink():
+                continue
+            _write(root, path, content)
+            added["files"].append(str(path))
+    except Exception:
+        rollback_adopted(root, {"added": added})
+        raise
+    added["dirs"] = [d for d in added["dirs"] if Path(d).is_dir()]
+    return {"path": str(root), "template": template_key, "created": str(len(added["files"])), "added": added}
+
+
+def rollback_adopted(project_root: Path, result: dict) -> None:
+    """Undo an adopt: remove only the documents and folders it added."""
+    root = Path(project_root).resolve()
+    added = (result or {}).get("added") or {}
+    new_dirs = [Path(d) for d in added.get("dirs") or []]
+    for file_path in added.get("files") or []:
+        path = Path(file_path)
+        if any(d in path.parents for d in new_dirs):
             continue
-        _write(root, path, content)
-        created += 1
-    return {"path": str(root), "template": template_key, "created": str(created)}
+        try:
+            unlink_anchored(root, path)
+        except (OSError, ValueError):
+            pass
+    for directory in new_dirs:
+        try:
+            rmtree_anchored(root, directory)
+        except (OSError, ValueError):
+            pass
