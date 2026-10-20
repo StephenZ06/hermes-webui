@@ -311,6 +311,14 @@ def test_task_status_icon_and_title_are_centred_as_one_group():
     assert ".office-tasks-title-icon{width:14px;height:14px;" in CSS
 
 
+def test_task_status_count_uses_the_badge_height_as_its_line_box():
+    """The numeral must sit optically centred, including with bitmap-style fonts."""
+    assert ".office-tasks-count" in CSS
+    count_rule = CSS[CSS.index(".office-tasks-count{"):CSS.index(".office-tasks-count.is-running{")]
+    assert "height:20px;" in count_rule
+    assert "line-height:20px;" in count_rule
+
+
 def test_task_status_uses_a_coordinated_disclosure_and_content_fade():
     # The Task Status card should feel like a compact sibling of the Chat
     # project folders, rather than a separate static drawer.
