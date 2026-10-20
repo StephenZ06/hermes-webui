@@ -84,3 +84,21 @@ def test_mail_carries_its_own_date_and_message_id(base):
     mailer.send("jobs", "main@gmail.com", "Hi", "Body", sender=lambda msg, a, p: seen.append((msg["Date"], msg["Message-ID"])))
     date, message_id = seen[0]
     assert date and message_id and message_id.endswith("@gmail.com>")
+
+
+def test_mail_includes_a_professional_html_alternative_without_changing_plain_text(base):
+    mailer.connect("bot@gmail.com", "abcdefghijklmnop", verify=lambda *_: None)
+    seen = []
+    mailer.send(
+        "business", "main@gmail.com", "Daily <brief>", "First line\nSecond <line>",
+        sender=lambda msg, _address, _password: seen.append(msg),
+    )
+
+    message = seen[0]
+    plain, html = message.get_body(preferencelist=("plain", "html")), message.get_body(preferencelist=("html",))
+    assert plain.get_content().strip() == "First line\nSecond <line>"
+    rendered = html.get_content()
+    assert "Hermes Business" in rendered
+    assert "Daily &lt;brief&gt;" in rendered
+    assert "Second &lt;line&gt;" in rendered
+    assert "<table" in rendered

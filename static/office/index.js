@@ -151,6 +151,12 @@ let _sessionQuery = '';
 // Read-only, ephemeral scheduler rows. They never enter the delegation
 // adapter, session history, or persisted office state.
 let _scheduledTasks = [];
+// Scheduler configuration is separate from active runs: an enabled recurring
+// job is live even while it is between runs.  It is only used to annotate the
+// system-owned Cron Jobs project in the Office sidebar.
+let _scheduledCronJobs = [];
+let _scheduledCronJobsLoadedAt = 0;
+const SCHEDULED_CRON_REFRESH_MS = 30_000;
 
 const STATUS_LABEL = {
   running: 'Running', completed: 'Completed', failed: 'Failed',
@@ -414,6 +420,20 @@ function scheduledTaskState(state) {
   return Object.assign({}, state, {
     workers: (state.workers || []).concat(scheduledWorkers),
   });
+}
+
+function liveScheduleCountForProject(project) {
+  if (!project || project.name !== 'Cron Jobs') return 0;
+  const projectProfile = String(project.profile || '').trim().toLowerCase();
+  if (!projectProfile) return 0;
+  return _scheduledCronJobs.filter(job => {
+    if (!job || typeof job !== 'object') return false;
+    const owner = String(job.owner_profile || job.profile || '').trim().toLowerCase();
+    return owner === projectProfile
+      && job.enabled !== false
+      && job.state !== 'paused'
+      && !!job.next_run_at;
+  }).length;
 }
 
 // The fade-out is at least this long before the reveal starts, whatever
@@ -1903,6 +1923,7 @@ function renderProjectFolders(projects, parents) {
     id: project.project_id,
     name: project.name,
     color: project.color,
+    liveSchedules: liveScheduleCountForProject(project),
     rows: (parents || []).filter(parent => parent.project_id === project.project_id).map(parent => ({
       id: parent.parent_session_id,
       title: parent.title,
@@ -1924,6 +1945,11 @@ function renderProjectFolders(projects, parents) {
     <div class="project-folder-list">${list.length ? list.map(project => {
       const rows = (parents || []).filter(parent => parent.project_id === project.project_id);
       const expanded = _expandedProjectIds.has(project.project_id);
+      const liveSchedules = liveScheduleCountForProject(project);
+      const liveLabel = liveSchedules === 1 ? '1 live Cron-Job schedule' : `${liveSchedules} live Cron-Job schedules`;
+      const liveBadge = liveSchedules
+        ? `<span class="project-folder-schedule-live" title="${liveLabel}" aria-label="${liveLabel}">LIVE</span>`
+        : '';
       const taskRows = rows.length ? rows.map(parent => {
         const count = Array.isArray(parent.children) ? parent.children.length : 0;
         return `<button type="button" class="office-session-row" data-parent-id="${esc(parent.parent_session_id)}">
@@ -1932,7 +1958,7 @@ function renderProjectFolders(projects, parents) {
       }).join('') : '<div class="project-folder-empty">No delegated tasks yet.</div>';
       return `<button type="button" class="project-chip project-folder-row office-project-folder" data-project-id="${esc(project.project_id)}">
         <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span>
-        <span class="project-folder-name">${esc(project.name)}</span><span class="project-folder-count">${rows.length}</span></button>
+        <span class="project-folder-name">${esc(project.name)}</span>${liveBadge}<span class="project-folder-count">${rows.length}</span></button>
         <div class="project-folder-sessions${expanded ? ' expanded' : ''}"><div class="project-folder-sessions-inner">${taskRows}</div></div>`;
     }).join('') : '<div class="project-folder-empty">No projects configured.</div>'}</div>`;
   if (searchWrap) host.insertBefore(searchWrap, host.querySelector('.project-folder-list'));
@@ -1966,9 +1992,14 @@ async function renderSidebar() {
   renderProjectFolders(_officeProjects, _historyParents);
   renderSessionList();
   try {
-    const [sessionsResult, projectsResult] = await Promise.allSettled([
+    const shouldRefreshSchedules = Date.now() - _scheduledCronJobsLoadedAt >= SCHEDULED_CRON_REFRESH_MS;
+    if (shouldRefreshSchedules) _scheduledCronJobsLoadedAt = Date.now();
+    const [sessionsResult, projectsResult, cronsResult] = await Promise.allSettled([
       request('/api/agent-canvas/sessions', { timeoutToast: false }),
       request('/api/projects?all_profiles=1', { timeoutToast: false }),
+      shouldRefreshSchedules
+        ? request('/api/crons?all_profiles=1', { timeoutToast: false })
+        : Promise.resolve(null),
     ]);
     if (sessionsResult.status === 'fulfilled') {
       const data = sessionsResult.value;
@@ -1987,6 +2018,12 @@ async function renderSidebar() {
       _officeProjects = allProjects.filter(project => !workHubOnly(project));
     } else if (projectsResult.status === 'rejected') {
       console.warn('[office] /api/projects failed:', projectsResult.reason);
+    }
+    if (shouldRefreshSchedules && cronsResult.status === 'fulfilled') {
+      const payload = cronsResult.value || {};
+      _scheduledCronJobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+    } else if (cronsResult.status === 'rejected') {
+      console.warn('[office] /api/crons failed:', cronsResult.reason);
     }
   } catch (_err) {
     console.warn('[office] renderSidebar network error:', _err);

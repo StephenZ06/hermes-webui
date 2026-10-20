@@ -8488,6 +8488,8 @@ main.main > #mainPlugin{display:none;}
 .project-folder-list .project-chip .color-dot{margin-right:4px;}
 .project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
 .project-folder-count{font-size:10px;color:var(--muted);flex-shrink:0;padding:0 2px;}
+.project-folder-schedule-live{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;margin-right:5px;color:var(--success,#8ddbb5);font-size:9px;font-weight:700;letter-spacing:.06em;line-height:1;text-transform:uppercase;}
+.project-folder-schedule-live::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px color-mix(in srgb,currentColor 14%,transparent);}
 .project-folder-kebab{width:16px;height:16px;flex-shrink:0;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;padding:0;line-height:1;display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s,color .15s;}
 .project-folder-kebab svg{width:14px;height:14px;}
 .project-chip:hover .project-folder-kebab,

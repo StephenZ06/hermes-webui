@@ -80,6 +80,21 @@ def test_office_projection_uses_the_terminal_scheduled_task_status():
     assert "status: task.status || 'running'" in source
 
 
+def test_office_workspace_sidebar_marks_only_enabled_scheduled_cron_projects_as_live():
+    source = (Path(__file__).parents[1] / "static" / "office" / "index.js").read_text(encoding="utf-8")
+    assert "function liveScheduleCountForProject(project)" in source
+    assert "project.name !== 'Cron Jobs'" in source
+    assert "job.enabled !== false" in source
+    assert "job.next_run_at" in source
+    assert "LIVE" in source
+
+
+def test_scheduled_jobs_navigation_uses_the_cron_jobs_label():
+    source = (Path(__file__).parents[1] / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'data-panel="tasks" onclick="switchPanel(\'tasks\',{fromRailClick:true})" data-tooltip="Cron-Jobs"' in source
+    assert 'data-panel="tasks" data-label="Cron-Jobs" onclick="switchPanel(\'tasks\',{fromRailClick:true})" data-tooltip="Cron-Jobs"' in source
+
+
 def test_office_scheduled_tasks_route_uses_active_profile(monkeypatch):
     import api.profiles as profiles
     import api.gateway_chat as gateway_chat

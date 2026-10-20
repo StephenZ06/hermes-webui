@@ -14,6 +14,7 @@ the browser or logged; status is reported as booleans.
 
 from __future__ import annotations
 
+import html
 import imaplib
 import os
 import re
@@ -149,6 +150,37 @@ def sender_name(context: str) -> str:
         raise ValueError(f"Unknown email sender context: {context!r}") from None
 
 
+def _html_email(name: str, subject: str, body: str) -> str:
+    """Render a conservative, client-safe companion for Hermes email.
+
+    The plain-text part remains the canonical message for reply workflows and
+    mail clients that do not render HTML.  This version deliberately uses
+    table layout and inline styles because Gmail and Outlook discard modern
+    layout rules unpredictably.
+    """
+    safe_subject = html.escape(str(subject or ""))
+    safe_body = html.escape(str(body or "")).replace("\n", "<br>")
+    return f"""<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{safe_subject}</title></head>
+  <body style="margin:0;padding:0;background:#101412;color:#edf3ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#101412;padding:28px 12px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#1a211d;border:1px solid #2c3530;border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:24px 28px 18px;border-bottom:1px solid #2c3530;">
+            <p style="margin:0 0 6px;color:#78c7a3;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">Hermes</p>
+            <h1 style="margin:0;color:#edf3ef;font-size:20px;line-height:1.35;font-weight:650;">{safe_subject}</h1>
+            <p style="margin:8px 0 0;color:#a9b4ad;font-size:13px;line-height:1.5;">{html.escape(name)}</p>
+          </td></tr>
+          <tr><td style="padding:24px 28px 28px;color:#edf3ef;font-size:15px;line-height:1.65;">{safe_body}</td></tr>
+          <tr><td style="padding:16px 28px;border-top:1px solid #2c3530;color:#a9b4ad;font-size:12px;line-height:1.5;">Sent by Hermes. Keep this email for your records or reply where an action code is provided.</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
+
 def send(context: str, to_address: str | None, subject: str, body: str, *,
          sender: Callable[[EmailMessage, str, str], None] | None = None) -> str:
     """Send ``body`` from the connected Gmail as ``"<feature name> <address>"``.
@@ -171,6 +203,7 @@ def send(context: str, to_address: str | None, subject: str, body: str, *,
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=address.rpartition("@")[2] or None)
     message.set_content(body)
+    message.add_alternative(_html_email(name, subject, body), subtype="html")
     (sender or _smtp_send)(message, address, password)
     return recipient
 
