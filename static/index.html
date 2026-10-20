@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Hermes</title>
 <!-- base href enables subpath mount support; all static paths must stay relative (no leading slash).
      MUST appear before manifest/favicon links so browsers resolve relative URLs against the
@@ -1159,7 +1159,7 @@
     <div id="mainDashboard" class="main-view"><div id="dashboardRoot" aria-live="polite"><div class="dash-loader is-page" role="status" aria-label="Loading"><span class="px-spin is-big" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="dash-loader-text">Loading<b>.</b><b>.</b><b>.</b></span></div></div></div>
     <div id="mainFiles" class="main-view"><div id="fileManagerRoot" aria-live="polite"></div></div>
     <div id="mainJobs" class="main-view"><div id="jobOsRoot" aria-live="polite"></div></div>
-    <div id="mainNotebook" class="main-view"><div id="notebookRoot"></div></div>
+    <div id="mainNotebook" class="main-view" data-slide-safe><div id="notebookRoot"></div></div>
     <div id="mainInsights" class="main-view">
       <div class="main-view-header">
         <div class="main-view-title" data-i18n="insights_title">Usage Analytics</div>

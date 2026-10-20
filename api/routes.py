@@ -887,8 +887,8 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
         MAX_DESCRIPTION_LENGTH,
         _EXCLUDED_SKILL_DIRS,
         _parse_frontmatter,
-        _sort_skills,
         skill_matches_platform,
+        sort_skills,
     )
 
     if not skills_dir.exists():
@@ -947,7 +947,7 @@ def _skills_list_from_dir(skills_dir: Path, category: str | None = None) -> dict
 
     if category:
         all_skills = [s for s in all_skills if s.get("category") == category]
-    all_skills = _sort_skills(all_skills)
+    all_skills = sort_skills(all_skills)
     categories = sorted(set(s.get("category") for s in all_skills if s.get("category")))
     result = {
         "success": True,

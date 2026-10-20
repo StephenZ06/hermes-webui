@@ -714,9 +714,12 @@
   }
   function onTriageKey(event) {
     const state = window.JobOSState;
-    if ((state.activeView !== 'pipeline' && event.key.toLowerCase() !== 'escape') || !state.jobDetail || state.jobForm || event.metaKey || event.ctrlKey || event.altKey) return;
+    // Some embedded WebViews dispatch synthetic keydown events without a
+    // `key` string. Treat those as an unrecognised shortcut rather than
+    // throwing globally and disabling every following keyboard interaction.
+    const key=String(event.key||'').toLowerCase();
+    if ((state.activeView !== 'pipeline' && key !== 'escape') || !state.jobDetail || state.jobForm || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
-    const key = event.key.toLowerCase();
     const ids = orderedJobIds();
     const i = ids.indexOf(state.jobDetail.id);
     if (key === 'j' || key === 'k') {
