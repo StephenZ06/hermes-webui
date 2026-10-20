@@ -9936,31 +9936,7 @@ function _showProjectPicker(session, anchorEl){
   createItem.onclick=async()=>{
     picker.remove();
     document.removeEventListener('click',close);
-    const name=await showPromptDialog({
-      message:t('project_name_prompt'),
-      confirmLabel:t('create'),
-      placeholder:'Project name'
-    });
-    if(!name||!name.trim()) return;
-    const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
-    const profile = session.profile || undefined;
-    const res=await api('/api/projects/create',{method:'POST',body:JSON.stringify({name:name.trim(),color,profile})});
-    if(res.project){
-      _allProjects.push(res.project);
-      // Guard the move so a 503 (session busy/streaming, #3746) shows a toast
-      // instead of an unhandled rejection. Keep the authoritative refetch (#2551).
-      try{
-        await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:res.project.project_id})});
-        session.project_id=res.project.project_id;
-        _setOptimisticSessionField(session.session_id,'project_id',res.project.project_id);
-        _expandProjectFolder(res.project.project_id);
-        await renderSessionList();
-        showToast('Created "'+res.project.name+'" and moved session');
-      }catch(e){
-        await renderSessionList();
-        showToast('Created "'+res.project.name+'" but move failed: '+(e&&e.message||'try again'));
-      }
-    }
+    await _createStarterProject({session,profile:session.profile||undefined});
   };
   picker.appendChild(createItem);
   // Append to body and position using getBoundingClientRect so it isn't clipped
@@ -9988,65 +9964,103 @@ function _showProjectPicker(session, anchorEl){
   setTimeout(()=>document.addEventListener('click',close),0);
 }
 
-function _startProjectCreate(){
-  // Reached from the "+" menu in the Chat panel head (there's no more
-  // per-folder create button to anchor on) -- find or make a
-  // .project-folder-list to spawn the inline input into. With zero
-  // existing projects there's nothing to find, so create an empty one at
-  // the top of the sidebar; it's discarded on cancel if still empty, or
-  // replaced by the real render (with the new project inside it) on save.
-  const list=$('sessionList');
-  let bar=document.querySelector('.project-folder-list');
-  let createdBar=false;
-  if(!bar){
-    bar=document.createElement('div');
-    bar.className='project-folder-list';
-    createdBar=true;
-    if(list) list.insertBefore(bar,list.firstChild);
+function _inferProjectTemplate(brief){
+  const text=String(brief||'').toLowerCase();
+  if(/\b(ios|iphone|ipad|swiftui|xcode)\b/.test(text)) return 'ios';
+  if(/\b(api|backend|server|service|endpoint)\b/.test(text)) return 'api';
+  if(/\b(research|thesis|literature review|investigation)\b/.test(text)) return 'research';
+  if(/\b(web|website|dashboard|frontend|saas|browser)\b/.test(text)) return 'web';
+  return 'blank';
+}
+
+async function _projectStarterDraft(profile){
+  let workspaceResponse;
+  try{ workspaceResponse=await api('/api/workspaces'); }
+  catch(error){ showToast('Could not load workspaces: '+(error.message||error)); return null; }
+  const workspaces=(workspaceResponse&&workspaceResponse.workspaces||[])
+    .filter(workspace=>workspace&&workspace.path&&workspace.availability!=='offline');
+  if(!workspaces.length){
+    showToast('Add or reconnect a workspace before creating a project.');
+    return null;
   }
-  const inp=document.createElement('input');
-  // Full-width folder-row shape (matches _startProjectRename), not the old
-  // small pill -- the new folder spawns in place looking like a real row.
-  // Blur always discards: clicking away means "I don't want to add this",
-  // it never silently saves whatever was typed. Only Enter confirms.
-  inp.className='project-create-input project-folder-rename-input';
-  inp.placeholder='Project name';
-  let _finishDone=false;
-  const finish=async(save)=>{
-    if(_finishDone) return;
-    _finishDone=true;
-    if(save&&inp.value.trim()){
-      const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
-      try{
-        await api('/api/projects/create',{method:'POST',body:JSON.stringify({name:inp.value.trim(),color})});
-      }catch(e){
-        _finishDone=false;
-        showToast('Project create failed: '+(e.message||e));
-        return;
-      }
-      await renderSessionList();
-      // Agent Canvas keeps its own sidebar DOM (it only reads _allProjects,
-      // just refreshed above, on its own render pass) — without this a
-      // project created while sitting on that panel wouldn't show up until
-      // the user switched away and back.
-      if(window.AgentCanvas && typeof window.AgentCanvas.renderSidebar==='function') window.AgentCanvas.renderSidebar();
-      showToast('Project created');
-    }else{
-      inp.remove();
-      if(createdBar&&bar&&!bar.children.length) bar.remove();
-    }
-  };
-  inp.onkeydown=(e)=>{
-    if(e.key==='Enter'){
-      if(window._isImeEnter&&window._isImeEnter(e)){return;}
-      e.preventDefault();
-      finish(true);
-    }
-    if(e.key==='Escape'){e.preventDefault();finish(false);}
-  };
-  inp.onblur=()=>finish(false);
-  bar.appendChild(inp);
-  setTimeout(()=>inp.focus(),10);
+  return new Promise(resolve=>{
+    const opener=document.activeElement;
+    const overlay=document.createElement('div');
+    overlay.className='project-starter-overlay';
+    overlay.setAttribute('role','presentation');
+    const dialog=document.createElement('section');
+    dialog.className='project-starter-dialog';
+    dialog.setAttribute('role','dialog');
+    dialog.setAttribute('aria-modal','true');
+    dialog.setAttribute('aria-labelledby','projectStarterTitle');
+    const header=document.createElement('header'); header.className='project-starter-header';
+    const heading=document.createElement('div');
+    const title=document.createElement('h2'); title.id='projectStarterTitle'; title.textContent='Create project workspace';
+    const description=document.createElement('p'); description.textContent='Start with a saved workspace, a concise brief, and docs tailored to the project type.';
+    heading.append(title,description);
+    const close=document.createElement('button'); close.type='button'; close.className='project-starter-close'; close.setAttribute('aria-label','Close'); close.textContent='×';
+    header.append(heading,close);
+    const form=document.createElement('form'); form.className='project-starter-form';
+    const field=(labelText,control)=>{const label=document.createElement('label');label.className='project-starter-field';const labelNode=document.createElement('span');labelNode.textContent=labelText;label.append(labelNode,control);return label;};
+    const name=document.createElement('input'); name.required=true; name.maxLength=96; name.placeholder='e.g. customer-health'; name.autocomplete='off';
+    const workspace=document.createElement('select');
+    workspaces.forEach((item,index)=>{const option=document.createElement('option');option.value=item.path;option.textContent=item.name||item.path;if(index===0)option.selected=true;workspace.append(option);});
+    const adoptRow=document.createElement('label');adoptRow.className='project-starter-adopt';
+    const adopt=document.createElement('input');adopt.type='checkbox';
+    const adoptText=document.createElement('span');adoptText.textContent='Use the selected workspace as an existing project';adoptRow.append(adopt,adoptText);
+    const template=document.createElement('select');
+    [['blank','Blank project'],['web','Web application'],['ios','iOS application'],['api','API / backend service'],['research','Research project']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;template.append(option);});
+    const brief=document.createElement('textarea'); brief.rows=5; brief.maxLength=100000; brief.placeholder='What do you want to build? Paste a brief or drop in a .md/.txt file. Hermes will use this to seed the project context.';
+    const fileRow=document.createElement('div');fileRow.className='project-starter-file-row';
+    const upload=document.createElement('input');upload.type='file';upload.accept='.md,.txt,text/markdown,text/plain';upload.hidden=true;
+    const uploadButton=document.createElement('button');uploadButton.type='button';uploadButton.textContent='Attach brief file';
+    const fileStatus=document.createElement('span');fileStatus.className='project-starter-file-status';fileStatus.textContent='Optional · .md or .txt';
+    fileRow.append(uploadButton,upload,fileStatus);
+    const hint=document.createElement('p');hint.className='project-starter-hint';hint.textContent='The suggested template adjusts to your brief. You can always choose a different one.';
+    const actions=document.createElement('footer');actions.className='project-starter-actions';
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='project-starter-cancel';cancel.textContent='Cancel';
+    const submit=document.createElement('button');submit.type='submit';submit.className='project-starter-submit';submit.textContent='Create workspace';
+    actions.append(cancel,submit);
+    adopt.onchange=()=>{name.disabled=adopt.checked;name.placeholder=adopt.checked?'Uses the selected workspace name':'e.g. customer-health';};
+    form.append(field('Project folder name',name),field('Saved workspace',workspace),adoptRow,field('Starter template',template),field('Project brief',brief),fileRow,hint,actions);
+    dialog.append(header,form);overlay.append(dialog);document.body.append(overlay);
+    let done=false;
+    const finish=(value)=>{if(done)return;done=true;document.removeEventListener('keydown',onKey,true);overlay.remove();if(opener&&opener.isConnected)opener.focus();resolve(value);};
+    const onKey=(event)=>{if(event.key==='Escape'){event.preventDefault();finish(null);}};
+    close.onclick=()=>finish(null);cancel.onclick=()=>finish(null);overlay.onclick=(event)=>{if(event.target===overlay)finish(null);};
+    uploadButton.onclick=()=>upload.click();
+    upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}try{brief.value=await file.text();fileStatus.textContent='Using '+file.name;template.value=_inferProjectTemplate(brief.value);}catch(_){fileStatus.textContent='Could not read that file.';}};
+    brief.oninput=()=>{template.value=_inferProjectTemplate(brief.value);};
+    form.onsubmit=(event)=>{event.preventDefault();const folder=name.value.trim();if(!adopt.checked&&!folder){name.focus();return;}finish({name:folder,workspace_path:workspace.value,template:template.value,brief:brief.value.trim(),profile,adopt:adopt.checked});};
+    document.addEventListener('keydown',onKey,true);setTimeout(()=>name.focus(),0);
+  });
+}
+
+async function _createStarterProject({session=null,profile=undefined}={}){
+  const draft=await _projectStarterDraft(profile);
+  if(!draft) return;
+  const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
+  let response;
+  const endpoint=draft.adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
+  try{ response=await api(endpoint,{method:'POST',body:JSON.stringify({...draft,color})}); }
+  catch(error){ showToast('Project create failed: '+(error.message||error)); return; }
+  if(!response||!response.project) return;
+  _allProjects.push(response.project);
+  if(session){
+    try{
+      await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:response.project.project_id})});
+      session.project_id=response.project.project_id;
+      _setOptimisticSessionField(session.session_id,'project_id',response.project.project_id);
+      _expandProjectFolder(response.project.project_id);
+      showToast('Created "'+response.project.name+'" and moved this chat');
+    }catch(error){showToast('Created "'+response.project.name+'" but move failed: '+(error.message||'try again'));}
+  }else{ showToast('Created "'+response.project.name+'"'); }
+  await renderSessionList();
+  if(window.AgentCanvas&&typeof window.AgentCanvas.renderSidebar==='function')window.AgentCanvas.renderSidebar();
+}
+
+function _startProjectCreate(){
+  _createStarterProject();
 }
 
 function _startProjectRename(proj, chip){
