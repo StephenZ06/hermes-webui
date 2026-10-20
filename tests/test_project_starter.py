@@ -135,3 +135,60 @@ def test_select_popups_open_above_the_project_starter_modal():
         return int(match.group(1))
 
     assert z(".themed-select-popup") > z(".project-starter-overlay")
+
+
+def test_template_catalog_lists_the_files_each_template_creates(tmp_path: Path):
+    catalog = {t["key"]: t for t in project_starter.template_catalog()}
+
+    assert len(catalog) == 8
+    assert {"blank", "web", "ios", "android", "api", "cli", "data", "research"} == set(catalog)
+    for key, entry in catalog.items():
+        target = tmp_path / key
+        project_starter.create_starter_pack(tmp_path, key, key, "")
+        written = sorted(p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file())
+        assert written == sorted(entry["files"]), key
+
+
+def test_starter_records_the_answers_from_docs_git_questions(tmp_path: Path):
+    project_starter.create_starter_pack(
+        tmp_path, "shop", "web", "An online shop.",
+        answers=[{"question": "Which stack?", "answer": "Next.js + Postgres"}, {"question": "Skip", "answer": ""}],
+    )
+
+    text = (tmp_path / "shop" / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "**Which stack?** Next.js + Postgres" in text
+    assert "Skip" not in text
+
+
+def test_folder_browser_lists_visible_subfolders_and_blocks_escapes(tmp_path: Path):
+    (tmp_path / "b").mkdir()
+    (tmp_path / "A" / "inner").mkdir(parents=True)
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "file.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "link").symlink_to(tmp_path / "b")
+
+    assert [f["name"] for f in project_starter.list_child_folders(tmp_path)] == ["A", "b"]
+    assert project_starter.list_child_folders(tmp_path, "A") == [{"name": "inner", "path": "A/inner"}]
+    assert project_starter.resolve_parent(tmp_path, "A/inner") == (tmp_path / "A" / "inner").resolve()
+    _rejects(project_starter.list_child_folders, tmp_path, "..")
+    _rejects(project_starter.resolve_parent, tmp_path, "../..")
+
+
+def test_docs_git_review_is_parsed_into_bounded_questions():
+    from api.project_starter_agent import parse_analysis
+
+    reply = 'Sure!\n```json\n{"complete": false, "summary": "A shop", "questions": [' + ",".join(
+        f'{{"id": "q{i}", "question": "Q{i}?", "options": ["a","b","c","d","e","f","g"]}}' for i in range(9)
+    ) + "]}\n```"
+    result = parse_analysis(reply)
+
+    assert result["complete"] is False
+    assert len(result["questions"]) == 6
+    assert result["questions"][0] == {"id": "q0", "question": "Q0?", "options": ["a", "b", "c", "d", "e", "f"]}
+    assert parse_analysis('{"complete": true, "questions": []}')["complete"] is True
+    try:
+        parse_analysis("no json here")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unreadable review was accepted")

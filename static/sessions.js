@@ -7844,7 +7844,8 @@ function _attachProjectQuickCreateButton(chip, project){
   const btn=document.createElement('button');
   btn.type='button';
   btn.className='project-chip-quick-create';
-  btn.textContent='+';
+  // An SVG plus centres exactly; the '+' text glyph sat on the font baseline.
+  btn.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   btn.title='New conversation in this project';
   btn.setAttribute('aria-label','New conversation in this project');
   const stop=function(e){
@@ -9964,120 +9965,460 @@ function _showProjectPicker(session, anchorEl){
   setTimeout(()=>document.addEventListener('click',close),0);
 }
 
+// ── Project starter wizard ─────────────────────────────────────────────────
+// Step by step: kind → location → template → brief → Docs-Git questions →
+// create. Docs-Git (docs-gits profile) reviews the brief for missing facts
+// and then writes or adapts the project's instruction files. The template
+// list and the files each one creates come from the server, so the preview
+// always matches what is written.
+const _PROJECT_STARTER_ICONS={
+  blank:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  web:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>',
+  ios:'<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  android:'<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M8 8a4 4 0 0 1 8 0M8.5 4.5 7 3M15.5 4.5 17 3M9.5 12h.01M14.5 12h.01"/>',
+  api:'<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>',
+  cli:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 10 3 2-3 2M12 15h5"/>',
+  data:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  research:'<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 6 6"/>',
+  newProject:'<path d="M12 5v14M5 12h14"/><rect x="2.5" y="2.5" width="19" height="19" rx="4"/>',
+  existing:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m9 13 2 2 4-4"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  workspace:'<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>',
+  file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  chevron:'<path d="m9 6 6 6-6 6"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+};
+function _psIcon(name,size=18){
+  return '<svg class="ps-icon" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(_PROJECT_STARTER_ICONS[name]||'')+'</svg>';
+}
+function _psEl(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node;}
+function _psFolderNameError(value){
+  const name=String(value||'').trim();
+  if(!name) return 'Name the new project folder.';
+  if(name.length>96) return 'Keep the name under 96 characters.';
+  if(/[\/\\<>:"|?*\x00-\x1f]/.test(name)) return 'A folder name cannot contain / \\ < > : " | ? *';
+  if(name.startsWith('.')||/[. ]$/.test(name)) return 'A folder name cannot start with a dot or end with a dot or space.';
+  if(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name)) return 'That name is reserved by Windows.';
+  return '';
+}
 function _inferProjectTemplate(brief){
   const text=String(brief||'').toLowerCase();
   if(/\b(ios|iphone|ipad|swiftui|xcode)\b/.test(text)) return 'ios';
+  if(/\b(android|kotlin|jetpack)\b/.test(text)) return 'android';
+  if(/\b(cli|command[- ]line|terminal tool)\b/.test(text)) return 'cli';
+  if(/\b(machine learning|ml model|dataset|pipeline|notebook|analytics)\b/.test(text)) return 'data';
   if(/\b(api|backend|server|service|endpoint)\b/.test(text)) return 'api';
   if(/\b(research|thesis|literature review|investigation)\b/.test(text)) return 'research';
   if(/\b(web|website|dashboard|frontend|saas|browser)\b/.test(text)) return 'web';
   return 'blank';
 }
 
-async function _projectStarterDraft(profile,submitDraft){
-  let workspaceResponse;
-  try{ workspaceResponse=await api('/api/workspaces'); }
-  catch(error){ showToast('Could not load workspaces: '+(error.message||error)); return null; }
-  const workspaces=(workspaceResponse&&workspaceResponse.workspaces||[])
-    .filter(workspace=>workspace&&workspace.path&&workspace.availability!=='offline');
-  if(!workspaces.length){
-    showToast('Add or reconnect a workspace before creating a project.');
-    return null;
-  }
+async function _openProjectStarterWizard(profile){
+  let workspaces, catalog;
+  try{
+    const [ws,tpl]=await Promise.all([api('/api/workspaces'),api('/api/projects/starter/templates')]);
+    workspaces=(ws&&ws.workspaces||[]).filter(w=>w&&w.path&&w.availability!=='offline');
+    catalog=tpl||{templates:[]};
+  }catch(error){ showToast('Could not open the project starter: '+(error.message||error)); return null; }
+  if(!workspaces.length){ showToast('Add or reconnect a workspace before creating a project.'); return null; }
+  const templates=catalog.templates||[];
+  const docsAgent=!!catalog.docs_agent;
+  const st={mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
+    analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false};
+  const folderCache=new Map();
+
   return new Promise(resolve=>{
     const opener=document.activeElement;
-    const overlay=document.createElement('div');
-    overlay.className='project-starter-overlay';
-    overlay.setAttribute('role','presentation');
-    const dialog=document.createElement('section');
-    dialog.className='project-starter-dialog';
-    dialog.setAttribute('role','dialog');
-    dialog.setAttribute('aria-modal','true');
-    dialog.setAttribute('aria-labelledby','projectStarterTitle');
-    const header=document.createElement('header'); header.className='project-starter-header';
-    const heading=document.createElement('div');
-    const title=document.createElement('h2'); title.id='projectStarterTitle'; title.textContent='Create project workspace';
-    const description=document.createElement('p'); description.textContent='Start with a saved workspace, a concise brief, and docs tailored to the project type.';
-    heading.append(title,description);
-    const close=document.createElement('button'); close.type='button'; close.className='project-starter-close'; close.setAttribute('aria-label','Close'); close.textContent='×';
+    const overlay=_psEl('div','project-starter-overlay');overlay.setAttribute('role','presentation');
+    const dialog=_psEl('section','project-starter-dialog ps-wizard');
+    dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','projectStarterTitle');
+    const header=_psEl('header','project-starter-header');
+    const heading=_psEl('div');
+    const title=_psEl('h2',null,'Create project workspace');title.id='projectStarterTitle';
+    const sub=_psEl('p',null,'');
+    heading.append(title,sub);
+    const close=_psEl('button','project-starter-close','×');close.type='button';close.setAttribute('aria-label','Close');
     header.append(heading,close);
-    const form=document.createElement('form'); form.className='project-starter-form';
-    const field=(labelText,control)=>{const label=document.createElement('label');label.className='project-starter-field';const labelNode=document.createElement('span');labelNode.textContent=labelText;label.append(labelNode,control);return label;};
-    const name=document.createElement('input'); name.required=true; name.maxLength=96; name.placeholder='e.g. customer-health'; name.autocomplete='off';
-    const workspace=document.createElement('select');
-    workspaces.forEach((item,index)=>{const option=document.createElement('option');option.value=item.path;option.textContent=item.name||item.path;if(index===0)option.selected=true;workspace.append(option);});
-    const adoptRow=document.createElement('label');adoptRow.className='project-starter-adopt';
-    const adopt=document.createElement('input');adopt.type='checkbox';
-    const adoptText=document.createElement('span');adoptText.textContent='Use the selected workspace as an existing project';adoptRow.append(adopt,adoptText);
-    const template=document.createElement('select');
-    [['blank','Blank project'],['web','Web application'],['ios','iOS application'],['api','API / backend service'],['research','Research project']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;template.append(option);});
-    const brief=document.createElement('textarea'); brief.rows=5; brief.maxLength=100000; brief.placeholder='What do you want to build? Paste a brief or drop in a .md/.txt file. Hermes will use this to seed the project context.';
-    const fileRow=document.createElement('div');fileRow.className='project-starter-file-row';
-    const upload=document.createElement('input');upload.type='file';upload.accept='.md,.txt,text/markdown,text/plain';upload.hidden=true;
-    const uploadButton=document.createElement('button');uploadButton.type='button';uploadButton.textContent='Attach brief file';
-    const fileStatus=document.createElement('span');fileStatus.className='project-starter-file-status';fileStatus.textContent='Optional · .md or .txt';
-    fileRow.append(uploadButton,upload,fileStatus);
-    const hint=document.createElement('p');hint.className='project-starter-hint';hint.textContent='The suggested template adjusts to your brief. You can always choose a different one.';
-    const errorLine=document.createElement('p');errorLine.className='project-starter-error';errorLine.setAttribute('role','alert');errorLine.hidden=true;
-    const actions=document.createElement('footer');actions.className='project-starter-actions';
-    const cancel=document.createElement('button');cancel.type='button';cancel.className='project-starter-cancel';cancel.textContent='Cancel';
-    const submit=document.createElement('button');submit.type='submit';submit.className='project-starter-submit';submit.textContent='Create workspace';
-    actions.append(cancel,submit);
-    adopt.onchange=()=>{name.disabled=adopt.checked;name.placeholder=adopt.checked?'Uses the selected workspace name':'e.g. customer-health';submit.textContent=adopt.checked?'Add existing project':'Create workspace';};
-    // Suggest a template from the brief until the user picks one themselves.
-    let templateChosen=false;
-    template.onchange=()=>{templateChosen=true;};
-    const suggestTemplate=()=>{if(templateChosen)return;template.value=_inferProjectTemplate(brief.value);if(window.refreshThemedSelect)window.refreshThemedSelect(template);};
-    form.append(field('Project folder name',name),field('Saved workspace',workspace),adoptRow,field('Starter template',template),field('Project brief',brief),fileRow,hint,errorLine,actions);
-    dialog.append(header,form);overlay.append(dialog);document.body.append(overlay);
-    let done=false;
-    const finish=(value)=>{if(done)return;done=true;document.removeEventListener('keydown',onKey,true);overlay.remove();if(opener&&opener.isConnected)opener.focus();resolve(value);};
-    // Escape closes an open dropdown first (select-theme.js handles that), not the whole dialog.
-    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup')){event.preventDefault();finish(null);}};
-    close.onclick=()=>finish(null);cancel.onclick=()=>finish(null);overlay.onclick=(event)=>{if(event.target===overlay)finish(null);};
-    uploadButton.onclick=()=>upload.click();
-    upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}try{brief.value=(await file.text()).slice(0,100000);fileStatus.textContent='Using '+file.name;suggestTemplate();}catch(_){fileStatus.textContent='Could not read that file.';}};
-    brief.oninput=suggestTemplate;
-    // The dialog stays open until the server accepts the project, so a
-    // rejected name or a busy workspace never throws away the typed brief.
-    let busy=false;
-    form.onsubmit=async(event)=>{
-      event.preventDefault();
-      if(busy)return;
-      const folder=name.value.trim();
-      if(!adopt.checked&&!folder){name.focus();return;}
-      const draft={name:adopt.checked?'':folder,workspace_path:workspace.value,template:template.value,brief:brief.value.trim(),profile,adopt:adopt.checked};
-      busy=true;submit.disabled=true;errorLine.hidden=true;
-      let result;
-      try{result=await submitDraft(draft);}catch(error){result={error:error&&error.message||String(error)};}
-      busy=false;submit.disabled=false;
-      if(result&&result.error){errorLine.textContent=result.error;errorLine.hidden=false;return;}
-      finish(result);
+    const stepper=_psEl('ol','ps-stepper');
+    const body=_psEl('div','ps-body');
+    const footer=_psEl('footer','project-starter-actions ps-actions');
+    const prev=_psEl('button','project-starter-cancel ps-prev','Back');prev.type='button';
+    const spacer=_psEl('span','ps-spacer');
+    const next=_psEl('button','project-starter-submit ps-next','Next');next.type='button';
+    footer.append(prev,spacer,next);
+    dialog.append(header,stepper,body,footer);overlay.append(dialog);document.body.append(overlay);
+
+    let done=false,pollTimer=null;
+    const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);document.removeEventListener('keydown',onKey,true);overlay.remove();if(opener&&opener.isConnected)opener.focus();resolve(value);};
+    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup')&&!st.busy){event.preventDefault();finish(null);}};
+    close.onclick=()=>{if(!st.busy)finish(null);};
+    overlay.onclick=(event)=>{if(event.target===overlay&&!st.busy)finish(null);};
+    document.addEventListener('keydown',onKey,true);
+
+    const stepsFor=()=>st.mode==='adopt'
+      ?[{n:1,label:'Start'},{n:2,label:'Project folder'},{n:6,label:'Docs-Git'}]
+      :[{n:1,label:'Start'},{n:2,label:'Location'},{n:3,label:'Template'},{n:4,label:'Brief'},{n:5,label:'Details'},{n:6,label:'Create'}];
+    const paintStepper=()=>{
+      stepper.innerHTML='';
+      const steps=stepsFor();
+      const current=steps.findIndex(s=>s.n===st.step);
+      steps.forEach((s,i)=>{
+        const li=_psEl('li','ps-step'+(i<current?' is-done':'')+(i===current?' is-current':''));
+        const dot=_psEl('span','ps-step-dot');dot.innerHTML=i<current?_psIcon('check',12):String(i+1);
+        li.append(dot,_psEl('span','ps-step-label',s.label));stepper.append(li);
+      });
     };
-    document.addEventListener('keydown',onKey,true);setTimeout(()=>name.focus(),0);
+    const setNav=({prevLabel='Back',showPrev=true,nextLabel='Next',canNext=false,hideNext=false}={})=>{
+      prev.hidden=!showPrev;prev.textContent=prevLabel;
+      next.hidden=hideNext;next.textContent=nextLabel;next.disabled=!canNext||st.busy;
+      footer.hidden=!showPrev&&hideNext;
+    };
+    const section=(prompt,hint)=>{
+      body.innerHTML='';
+      const wrap=_psEl('div','ps-section');
+      wrap.append(_psEl('h3','ps-prompt',prompt));
+      if(hint) wrap.append(_psEl('p','ps-hint',hint));
+      body.append(wrap);
+      return wrap;
+    };
+    const render=(direction=1)=>{
+      body.classList.remove('ps-enter-fwd','ps-enter-back');void body.offsetWidth;
+      body.classList.add(direction>=0?'ps-enter-fwd':'ps-enter-back');
+      paintStepper();
+      ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate})[st.step]();
+    };
+    const go=(step,direction)=>{st.step=step;render(direction);};
+
+    // Step 1 — new or existing
+    function renderKind(){
+      sub.textContent='Hermes sets up the folder, the instruction files, and a handoff so every agent starts with context.';
+      const wrap=section('Please pick one:');
+      const grid=_psEl('div','ps-choice-grid');
+      [['new','newProject','New project from scratch','Pick a location and template, describe it, and Docs-Git writes the instruction files.'],
+       ['adopt','existing','Use existing project','Point at a folder you already have. Docs-Git reads it and adapts the instruction files to match.']]
+      .forEach(([mode,icon,label,desc])=>{
+        const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';
+        card.setAttribute('aria-pressed',st.mode===mode?'true':'false');
+        card.innerHTML='<span class="ps-choice-icon">'+_psIcon(icon,22)+'</span>';
+        card.append(_psEl('span','ps-choice-title',label),_psEl('span','ps-choice-desc',desc));
+        card.onclick=()=>{st.mode=mode;renderKind();paintStepper();};
+        card.ondblclick=()=>{st.mode=mode;go(2,1);};
+        grid.append(card);
+      });
+      wrap.append(grid);
+      if(st.mode==='adopt'&&!docsAgent) wrap.append(_psEl('p','ps-note','The Docs-Git profile is not set up, so Hermes will only add the missing continuity files.'));
+      setNav({showPrev:false,canNext:!!st.mode});
+    }
+
+    // Step 2 — folder browser over saved workspaces
+    async function loadFolders(ws,rel){
+      const key=ws.path+'\u0000'+rel;
+      if(folderCache.has(key)) return folderCache.get(key);
+      const data=await api('/api/projects/starter/folders?workspace='+encodeURIComponent(ws.path)+'&path='+encodeURIComponent(rel));
+      const folders=data&&data.folders||[];folderCache.set(key,folders);return folders;
+    }
+    function renderLocation(){
+      const adopt=st.mode==='adopt';
+      sub.textContent=adopt?'Choose the folder that holds your existing project.':'Choose where the new project folder should be created.';
+      const wrap=section(adopt?'Select the existing project folder:':'Select the Workspace Location:',
+        adopt?'Docs-Git will read this folder and adapt its instruction files.':'Expand a workspace and pick the folder that will contain the new project.');
+      const tree=_psEl('div','ps-tree');tree.setAttribute('role','tree');
+      const selectedKey=()=>st.workspace?st.workspace.path+'\u0000'+st.parent:'';
+      const row=(ws,rel,label,depth,icon)=>{
+        const item=_psEl('div','ps-tree-item');
+        const line=_psEl('div','ps-tree-row'+(selectedKey()===ws.path+'\u0000'+rel?' is-selected':''));
+        line.setAttribute('role','treeitem');line.tabIndex=0;line.style.setProperty('--depth',depth);
+        const twist=_psEl('button','ps-tree-twist');twist.type='button';twist.setAttribute('aria-label','Expand '+label);twist.innerHTML=_psIcon('chevron',14);
+        const children=_psEl('div','ps-tree-children');children.hidden=true;
+        line.append(twist);
+        const iconSpan=_psEl('span','ps-tree-icon');iconSpan.innerHTML=_psIcon(icon,16);line.append(iconSpan,_psEl('span','ps-tree-label',label));
+        let loaded=false;
+        const toggle=async()=>{
+          if(!children.hidden){children.hidden=true;line.classList.remove('is-open');return;}
+          children.hidden=false;line.classList.add('is-open');
+          if(loaded) return;
+          children.innerHTML='<div class="ps-tree-loading" style="--depth:'+(depth+1)+'"><span class="ps-pulse"></span>Loading…</div>';
+          try{
+            const folders=await loadFolders(ws,rel);loaded=true;children.innerHTML='';
+            if(!folders.length) children.append(Object.assign(_psEl('div','ps-tree-empty','No sub-folders'),{style:'--depth:'+(depth+1)}));
+            folders.forEach(f=>children.append(row(ws,f.path,f.name,depth+1,'folder')));
+          }catch(error){children.innerHTML='';children.append(_psEl('div','ps-tree-empty',error.message||'Could not read this folder.'));}
+        };
+        twist.onclick=(event)=>{event.stopPropagation();toggle();};
+        const pick=()=>{
+          st.workspace=ws;st.parent=rel;
+          if(adopt) st.name=rel?rel.split('/').pop():(ws.name||ws.path.split('/').pop());
+          tree.querySelectorAll('.ps-tree-row.is-selected').forEach(n=>n.classList.remove('is-selected'));
+          line.classList.add('is-selected');updateTarget();
+        };
+        line.onclick=pick;line.ondblclick=toggle;
+        line.onkeydown=(event)=>{
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();pick();}
+          else if(event.key==='ArrowRight'&&children.hidden) toggle();
+          else if(event.key==='ArrowLeft'&&!children.hidden) toggle();
+        };
+        item.append(line,children);return item;
+      };
+      workspaces.forEach(ws=>tree.append(row(ws,'',ws.name||ws.path,0,'workspace')));
+      wrap.append(tree);
+      const target=_psEl('div','ps-target');
+      let nameInput=null,nameError=null;
+      if(!adopt){
+        const field=_psEl('label','project-starter-field');
+        field.append(_psEl('span',null,'New project folder name'));
+        nameInput=_psEl('input');nameInput.maxLength=96;nameInput.placeholder='e.g. customer-health';nameInput.autocomplete='off';nameInput.value=st.name;
+        nameError=_psEl('span','ps-field-error');
+        nameInput.oninput=()=>{st.name=nameInput.value;updateTarget();};
+        nameInput.onkeydown=(event)=>{if(event.key==='Enter'&&!next.disabled){event.preventDefault();next.click();}};
+        field.append(nameInput,nameError);wrap.append(field);
+      }
+      wrap.append(target);
+      function updateTarget(){
+        const base=st.workspace?(st.workspace.name||st.workspace.path)+(st.parent?' / '+st.parent.split('/').join(' / '):''):'';
+        const err=adopt?'':_psFolderNameError(st.name);
+        if(nameError) nameError.textContent=st.name.trim()&&err?err:'';
+        target.innerHTML='';
+        if(!st.workspace){target.append(_psEl('span','ps-target-empty',adopt?'No folder selected yet.':'No location selected yet.'));}
+        else{
+          target.innerHTML=_psIcon(adopt?'existing':'folder',16);
+          target.append(_psEl('span','ps-target-path',adopt?base:base+' / '+(st.name.trim()||'…')));
+        }
+        setNav({canNext:!!st.workspace&&!err,nextLabel:adopt?'Adopt project':'Next'});
+      }
+      updateTarget();
+      setTimeout(()=>{const first=tree.querySelector('.ps-tree-row');if(first&&!st.workspace)first.focus();else if(nameInput)nameInput.focus();},30);
+    }
+
+    // Step 3 — template grid + file preview
+    function renderTemplate(){
+      sub.textContent='Each template seeds documents tailored to that kind of project.';
+      const wrap=section('Choose the Project Template:');
+      const grid=_psEl('div','ps-template-grid');
+      const preview=_psEl('div','ps-files');
+      const paintPreview=()=>{
+        preview.innerHTML='';
+        const tpl=templates.find(t=>t.key===st.template);
+        if(!tpl){preview.append(_psEl('p','ps-files-empty','Pick a template to see the files Hermes will create.'));return;}
+        preview.append(_psEl('p','ps-files-title','Files created in '+(st.name.trim()||'the project folder')));
+        const list=_psEl('ul','ps-files-list');
+        tpl.files.forEach((file,i)=>{const li=_psEl('li','ps-file');li.style.setProperty('--i',i);li.innerHTML=_psIcon('file',14);li.append(_psEl('span',null,file));list.append(li);});
+        preview.append(list);
+      };
+      templates.forEach(tpl=>{
+        const card=_psEl('button','ps-template'+(st.template===tpl.key?' is-selected':''));card.type='button';
+        card.setAttribute('aria-pressed',st.template===tpl.key?'true':'false');card.title=tpl.description;
+        card.innerHTML='<span class="ps-template-icon">'+_psIcon(tpl.key,20)+'</span>';
+        const text=_psEl('span','ps-template-text');text.append(_psEl('span','ps-template-label',tpl.label),_psEl('span','ps-template-desc',tpl.description));
+        card.append(text);
+        card.onclick=()=>{st.template=tpl.key;st.templateChosen=true;grid.querySelectorAll('.ps-template').forEach(n=>{n.classList.toggle('is-selected',n===card);n.setAttribute('aria-pressed',n===card?'true':'false');});paintPreview();setNav({canNext:true});};
+        grid.append(card);
+      });
+      wrap.append(grid,preview);paintPreview();
+      setNav({canNext:!!st.template});
+    }
+
+    // Step 4 — brief + Docs-Git review
+    function renderBrief(){
+      sub.textContent=docsAgent?'Docs-Git reviews the brief and only asks about what is missing.':'The brief seeds every document Hermes creates.';
+      const wrap=section("Describe what you're building:");
+      const brief=_psEl('textarea','ps-brief');brief.rows=7;brief.maxLength=100000;brief.value=st.brief;
+      brief.placeholder='What are you building, who is it for, and what does done look like? Mention the stack if you already know it.';
+      const fileRow=_psEl('div','project-starter-file-row');
+      const upload=_psEl('input');upload.type='file';upload.accept='.md,.txt,text/markdown,text/plain';upload.hidden=true;
+      const uploadButton=_psEl('button',null,'Attach brief file');uploadButton.type='button';
+      const fileStatus=_psEl('span','project-starter-file-status',st.fileName?'Using '+st.fileName:'Optional · .md or .txt, up to 100 KB');
+      fileRow.append(uploadButton,upload,fileStatus);
+      const review=_psEl('div','ps-review');
+      wrap.append(brief,fileRow,review);
+      const invalidate=()=>{st.analysis=null;st.analysisError='';st.questions=[];st.answers={};st.q=0;paintReview();};
+      const suggest=()=>{if(!st.templateChosen){st.template=_inferProjectTemplate(st.brief);}};
+      brief.oninput=()=>{st.brief=brief.value;suggest();invalidate();};
+      uploadButton.onclick=()=>upload.click();
+      upload.onchange=async()=>{const file=upload.files&&upload.files[0];if(!file)return;if(file.size>100000){fileStatus.textContent='That file is too large (100 KB maximum).';return;}
+        try{brief.value=(await file.text()).slice(0,100000);st.brief=brief.value;st.fileName=file.name;fileStatus.textContent='Using '+file.name;suggest();invalidate();}catch(_){fileStatus.textContent='Could not read that file.';}};
+      function paintReview(){
+        review.innerHTML='';review.className='ps-review';
+        if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span',null,'Docs-Git is reviewing your brief…'));}
+        else if(st.analysisError){
+          review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
+          const retry=_psEl('button','ps-link','Try again');retry.type='button';retry.onclick=()=>analyze();
+          const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
+          review.append(retry,skip);
+        }else if(st.analysis&&st.analysis.complete){
+          review.classList.add('is-ok');review.innerHTML=_psIcon('check',16);
+          review.append(_psEl('span',null,st.analysis.summary||'Docs-Git has everything it needs.'));
+        }
+        const canNext=!!st.brief.trim()&&!st.busy;
+        if(st.analysis&&st.analysis.complete) setNav({canNext,nextLabel:'Create project'});
+        else setNav({canNext,nextLabel:'Next'});
+      }
+      paintReview();
+      setTimeout(()=>brief.focus(),30);
+      renderBrief.paint=paintReview;
+    }
+    async function analyze(){
+      if(!docsAgent){go(6,1);return;}
+      st.busy=true;st.analysisError='';renderBrief.paint&&renderBrief.paint();
+      try{
+        const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
+        const job=await new Promise((res,rej)=>{
+          const poll=async()=>{
+            if(done) return rej(new Error('closed'));
+            try{const j=await api('/api/projects/starter/job?job_id='+encodeURIComponent(start.job_id));
+              if(j.status==='running'){pollTimer=setTimeout(poll,1500);return;}res(j);}catch(e){rej(e);}
+          };poll();
+        });
+        if(job.status==='error') throw new Error(job.error||'Docs-Git could not review the brief.');
+        st.analysis=job.result;st.questions=job.result.questions||[];st.q=0;
+      }catch(error){ if(done) return; st.analysisError=(error&&error.message)||'Docs-Git could not review the brief.'; }
+      st.busy=false;
+      if(done) return;
+      if(st.analysis&&!st.analysis.complete&&st.questions.length){go(5,1);return;}
+      renderBrief.paint&&renderBrief.paint();
+    }
+
+    // Step 5 — Docs-Git's follow-up questions, one at a time
+    function renderQuestions(){
+      const total=st.questions.length;const item=st.questions[st.q];
+      sub.textContent='Question '+(st.q+1)+' of '+total+' · Docs-Git needs these to fill the instruction files.';
+      const wrap=section(item.question);
+      const progress=_psEl('div','ps-progress');const bar=_psEl('span');bar.style.width=((st.q+1)/total*100)+'%';progress.append(bar);
+      wrap.prepend(progress);
+      const opts=_psEl('div','ps-options');opts.setAttribute('role','radiogroup');
+      const current=st.answers[item.id]||'';
+      const other=_psEl('input','ps-other');other.placeholder='Or type your own answer';other.maxLength=300;
+      const isOption=item.options.includes(current);
+      if(current&&!isOption) other.value=current;
+      item.options.forEach((label,i)=>{
+        const opt=_psEl('button','ps-option'+(current===label?' is-selected':''));opt.type='button';opt.setAttribute('role','radio');
+        opt.setAttribute('aria-checked',current===label?'true':'false');
+        opt.innerHTML='<span class="ps-option-key">'+(i+1)+'</span>';opt.append(_psEl('span','ps-option-label',label));
+        opt.onclick=()=>{st.answers[item.id]=label;other.value='';renderQuestions();};
+        opts.append(opt);
+      });
+      other.oninput=()=>{st.answers[item.id]=other.value.trim();opts.querySelectorAll('.ps-option').forEach(n=>{n.classList.remove('is-selected');n.setAttribute('aria-checked','false');});updateNav();};
+      other.onkeydown=(event)=>{if(event.key==='Enter'&&!next.disabled){event.preventDefault();next.click();}};
+      wrap.append(opts,other);
+      function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
+      updateNav();
+      opts.onkeydown=(event)=>{const n=Number(event.key);if(n>=1&&n<=item.options.length){st.answers[item.id]=item.options[n-1];renderQuestions();}};
+      setTimeout(()=>{const sel=opts.querySelector('.is-selected')||opts.querySelector('.ps-option');if(sel)sel.focus();},30);
+    }
+
+    // Step 6 — create, then follow Docs-Git
+    async function renderCreate(){
+      const adopt=st.mode==='adopt';
+      sub.textContent=adopt?'Registering the project and handing it to Docs-Git.':'Creating the folder and handing it to Docs-Git.';
+      const wrap=section(adopt?'Adopting '+st.name:'Creating '+st.name.trim());
+      const list=_psEl('ul','ps-tasks');wrap.append(list);
+      const task=(label)=>{const li=_psEl('li','ps-task is-running');li.innerHTML='<span class="ps-task-mark"><span class="ps-pulse"></span></span>';li.append(_psEl('span','ps-task-label',label));list.append(li);
+        return {ok(text){li.className='ps-task is-done';li.firstChild.innerHTML=_psIcon('check',14);if(text)li.append(_psEl('span','ps-task-note',text));},
+          fail(text){li.className='ps-task is-error';li.firstChild.textContent='!';li.append(_psEl('span','ps-task-note',text));},
+          skip(text){li.className='ps-task is-skipped';li.firstChild.textContent='–';li.append(_psEl('span','ps-task-note',text));}};};
+      setNav({showPrev:false,hideNext:true});
+      st.busy=true;
+      const first=task(adopt?'Register the project':'Create the project folder and starter files');
+      const answers=st.questions.map(q=>({question:q.question,answer:st.answers[q.id]||''})).filter(a=>a.answer);
+      let response;
+      try{
+        const endpoint=adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
+        const payload={workspace_path:st.workspace.path,parent:st.parent,profile,color:PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length]};
+        if(!adopt) Object.assign(payload,{name:st.name.trim(),template:st.template||'blank',brief:st.brief.trim(),answers});
+        response=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
+        first.ok(response.project&&response.project.workspace_path);
+      }catch(error){
+        st.busy=false;first.fail(error.message||'Could not create the project.');
+        setNav({showPrev:true,prevLabel:'Back',hideNext:true});
+        prev.onclick=()=>{prev.onclick=onPrev;go(adopt?2:4,-1);};
+        return;
+      }
+      st.busy=false;
+      finishedProject=response.project;
+      _onProjectStarterCreated(response.project);
+      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':'Docs-Git writes the instruction files');
+      const actions=_psEl('div','ps-done-actions');
+      const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';
+      chat.onclick=()=>{finish(response);_startProjectChat(response.project);};
+      const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.onclick=()=>finish(response);
+      actions.append(closeBtn,chat);wrap.append(actions);
+      if(!response.docs_job){docs.skip(docsAgent?'Docs-Git did not start.':'The Docs-Git profile is not set up.');return;}
+      const summary=_psEl('div','ps-summary');summary.hidden=true;wrap.insertBefore(summary,actions);
+      _followProjectDocsJob(response.docs_job,response.project,{
+        isOpen:()=>!done,
+        ok:(text)=>{docs.ok();if(text){summary.hidden=false;summary.textContent=text;}},
+        fail:(text)=>docs.fail(text),
+      });
+    }
+    let finishedProject=null;
+
+    const onPrev=()=>{
+      if(st.step===2) go(1,-1);
+      else if(st.step===3) go(2,-1);
+      else if(st.step===4) go(3,-1);
+      else if(st.step===5){ if(st.q>0){st.q-=1;render(-1);} else go(4,-1); }
+    };
+    prev.onclick=onPrev;
+    next.onclick=()=>{
+      if(next.disabled) return;
+      if(st.step===1) go(2,1);
+      else if(st.step===2) go(st.mode==='adopt'?6:3,1);
+      else if(st.step===3) go(4,1);
+      else if(st.step===4){ if(st.analysis&&st.analysis.complete) go(6,1); else if(st.analysis&&st.questions.length) go(5,1); else analyze(); }
+      else if(st.step===5){ if(st.q<st.questions.length-1){st.q+=1;render(1);} else go(6,1); }
+    };
+    render(1);
   });
 }
 
+function _onProjectStarterCreated(project){
+  if(!project) return;
+  if(!_allProjects.some(p=>p.project_id===project.project_id)) _allProjects.push(project);
+  _expandProjectFolder(project.project_id);
+  void renderSessionList();
+  if(window.AgentCanvas&&typeof window.AgentCanvas.renderSidebar==='function') window.AgentCanvas.renderSidebar();
+}
+
+// Polls a Docs-Git setup job. Keeps going after the dialog closes so the
+// user still hears when the docs are ready.
+function _followProjectDocsJob(jobId,project,view){
+  const poll=async()=>{
+    let job;
+    try{ job=await api('/api/projects/starter/job?job_id='+encodeURIComponent(jobId)); }
+    catch(error){ if(view.isOpen()) view.fail(error.message||'Lost track of Docs-Git.'); return; }
+    if(job.status==='running'){ setTimeout(poll,3000); return; }
+    if(job.status==='done'){
+      const text=job.result&&job.result.summary||'';
+      if(view.isOpen()) view.ok(text); else showToast('Docs-Git finished setting up "'+project.name+'".');
+    }else{
+      const text=job.error||'Docs-Git could not finish.';
+      if(view.isOpen()) view.fail(text); else showToast('Docs-Git could not set up "'+project.name+'": '+text);
+    }
+  };
+  poll();
+}
+
+async function _startProjectChat(project){
+  try{
+    await newSession(false,{project_id:project.project_id});
+    if(typeof renderSessionListFromCache==='function') renderSessionListFromCache();
+    void renderSessionList({deferWhileInteracting:false});
+    if(typeof closeMobileSidebar==='function') closeMobileSidebar();
+  }catch(error){ showToast('New conversation failed: '+(error.message||error)); }
+}
+
 async function _createStarterProject({session=null,profile=undefined}={}){
-  const color=PROJECT_COLORS[_allProjects.length%PROJECT_COLORS.length];
-  const response=await _projectStarterDraft(profile,async(draft)=>{
-    const endpoint=draft.adopt?'/api/projects/adopt_starter':'/api/projects/create_starter';
-    const {adopt,...payload}=draft;
-    const result=await api(endpoint,{method:'POST',body:JSON.stringify({...payload,color})});
-    return result&&result.project?result:{error:'The project could not be created.'};
-  });
+  const response=await _openProjectStarterWizard(profile);
   if(!response||!response.project) return;
-  _allProjects.push(response.project);
   if(session){
     try{
       await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:response.project.project_id})});
       session.project_id=response.project.project_id;
       _setOptimisticSessionField(session.session_id,'project_id',response.project.project_id);
       _expandProjectFolder(response.project.project_id);
-      showToast('Created "'+response.project.name+'" and moved this chat');
+      showToast('Moved this chat into "'+response.project.name+'"');
     }catch(error){showToast('Created "'+response.project.name+'" but move failed: '+(error.message||'try again'));}
-  }else{ showToast('Created "'+response.project.name+'"'); }
+  }
   await renderSessionList();
-  if(window.AgentCanvas&&typeof window.AgentCanvas.renderSidebar==='function')window.AgentCanvas.renderSidebar();
 }
 
 function _startProjectCreate(){

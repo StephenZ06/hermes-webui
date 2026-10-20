@@ -15324,6 +15324,37 @@ def _route_get_api_work_hub_plan(handler, parsed):
     return j(handler, goal_planner.plan_goal(goal))
 
 
+def _route_get_api_projects_starter_templates(handler, parsed):
+    from api.project_starter import template_catalog
+    from api.project_starter_agent import docs_profile_available
+
+    return j(handler, {"templates": template_catalog(), "docs_agent": docs_profile_available()})
+
+
+def _route_get_api_projects_starter_folders(handler, parsed):
+    from api.project_starter import ProjectStarterError, list_child_folders
+
+    query = parse_qs(parsed.query)
+    body = {"workspace_path": (query.get("workspace") or [""])[0], "parent": (query.get("path") or [""])[0]}
+    try:
+        root, folder = _starter_workspace_root(body)
+        rel = "" if folder == root else folder.relative_to(root).as_posix()
+        return j(handler, {"path": rel, "folders": list_child_folders(root, rel)})
+    except (ValueError, ProjectStarterError) as exc:
+        return bad(handler, str(exc), 400)
+    except OSError:
+        return bad(handler, "Could not read that folder.", 500)
+
+
+def _route_get_api_projects_starter_job(handler, parsed):
+    from api.project_starter_agent import get_job
+
+    job = get_job((parse_qs(parsed.query).get("job_id") or [""])[0])
+    if job is None:
+        return bad(handler, "That Docs-Git job has expired.", 404)
+    return j(handler, job)
+
+
 def _route_get_api_list(handler, parsed):
     return _handle_list_dir(handler, parsed)
 
@@ -16163,6 +16194,9 @@ _GET_ROUTES = RouteTable(
         (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
         (Exact("/api/list"), _route_get_api_list),
+        (Exact("/api/projects/starter/templates"), _route_get_api_projects_starter_templates),
+        (Exact("/api/projects/starter/folders"), _route_get_api_projects_starter_folders),
+        (Exact("/api/projects/starter/job"), _route_get_api_projects_starter_job),
         (Exact("/api/escape/list"), _route_get_api_escape_list),
         (Exact("/api/git/status"), _route_get_api_git_status),
         (Exact("/api/subagents/active"), _route_get_api_subagents_active),
@@ -19797,10 +19831,44 @@ def _starter_options(body):
 
 
 def _starter_workspace_root(body):
-    root = resolve_trusted_workspace(body["workspace_path"])
+    """The saved workspace the wizard browsed, plus the folder chosen inside it."""
+    from api.project_starter import resolve_parent
+
+    raw = str(body.get("workspace_path") or "").strip()
+    saved = {os.path.normpath(str(w.get("path") or "")) for w in load_workspaces() if isinstance(w, dict)}
+    if not raw or os.path.normpath(raw) not in saved:
+        raise ValueError("Choose one of your saved workspaces.")
+    root = resolve_trusted_workspace(raw)
     if is_blocked_system_path(root):
         raise ValueError(f"Project path is not allowed: {root}")
-    return root
+    return root, resolve_parent(root, str(body.get("parent") or ""))
+
+
+def _starter_docs_job(proj, *, adopt, template_key):
+    """Hand the new project to Docs-Git; returns the job id or None."""
+    from api.project_starter import template_catalog
+    from api.project_starter_agent import start_docs_setup
+
+    template = next((t for t in template_catalog() if t["key"] == template_key), None) or {}
+    return start_docs_setup(proj, adopt=adopt, template_label=template.get("label", ""), files=template.get("files"))
+
+
+def _route_post_api_projects_starter_analyze(handler, parsed, body, diag):
+    from api.project_starter import template_catalog
+    from api.project_starter_agent import docs_profile_available, start_analysis
+
+    brief = str(body.get("brief") or "").strip()
+    if not brief:
+        return bad(handler, "Describe the project first.")
+    if len(brief) > 100_000:
+        return bad(handler, "Project brief is too large (maximum 100,000 characters).")
+    template = next((t for t in template_catalog() if t["key"] == str(body.get("template") or "blank")), None)
+    if template is None:
+        return bad(handler, "Unknown project template.")
+    if not docs_profile_available():
+        return bad(handler, "The Docs-Git profile is not set up.", 409)
+    job_id = start_analysis(name=str(body.get("name") or "")[:96], brief=brief, template=template)
+    return j(handler, {"job_id": job_id})
 
 
 def _route_post_api_projects_create_starter(handler, parsed, body, diag):
@@ -19817,12 +19885,14 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         return bad(handler, "name required")
     try:
         color, profile = _starter_options(body)
-        workspace_root = _starter_workspace_root(body)
+        workspace_root, parent = _starter_workspace_root(body)
+        answers = body.get("answers") if isinstance(body.get("answers"), list) else None
         starter = create_starter_pack(
-            workspace_root=workspace_root,
+            workspace_root=parent,
             folder_name=name,
             template=str(body["template"]),
             brief=str(body.get("brief") or ""),
+            answers=answers,
         )
     except (ValueError, ProjectStarterError) as exc:
         return bad(handler, str(exc), 400)
@@ -19848,12 +19918,13 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
         # The UI must never report a usable project record if its state could
         # not be saved. Remove only the directory this request just created.
         try:
-            rmtree_anchored(Path(workspace_root), Path(project_path))
+            rmtree_anchored(Path(parent), Path(project_path))
         except Exception:
             logger.exception("Could not roll back project starter files: %s", project_path)
         logger.exception("Project starter record save failed")
         return bad(handler, "Could not save the new project.", 500)
-    return j(handler, {"ok": True, "project": proj, "starter": starter})
+    docs_job = _starter_docs_job(proj, adopt=False, template_key=starter["template"]) if body.get("docs_agent", True) else None
+    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job})
 
 
 def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
@@ -19867,10 +19938,10 @@ def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
     )
 
     try:
-        require(body, "workspace_path", "template")
+        require(body, "workspace_path")
         color, profile = _starter_options(body)
-        workspace_root = _starter_workspace_root(body)
-    except ValueError as exc:
+        _saved_root, workspace_root = _starter_workspace_root(body)
+    except (ValueError, ProjectStarterError) as exc:
         return bad(handler, str(exc), 400)
     name = str(body.get("name") or workspace_root.name).strip()[:128]
     if not name:
@@ -19879,7 +19950,7 @@ def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
     if existing:
         return bad(handler, f'This workspace is already the project "{existing.get("name") or "Untitled"}".', 409)
     try:
-        starter = adopt_starter_pack(workspace_root, str(body["template"]), str(body.get("brief") or ""))
+        starter = adopt_starter_pack(workspace_root, str(body.get("template") or "blank"), str(body.get("brief") or ""))
     except (ValueError, ProjectStarterError) as exc:
         return bad(handler, str(exc), 400)
     except OSError:
@@ -19903,7 +19974,8 @@ def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
         logger.exception("Project adopt record save failed")
         return bad(handler, "Could not save the project.", 500)
     starter.pop("added", None)
-    return j(handler, {"ok": True, "project": proj, "starter": starter})
+    docs_job = _starter_docs_job(proj, adopt=True, template_key=starter["template"]) if body.get("docs_agent", True) else None
+    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job})
 
 
 def _route_post_api_projects_rename(handler, parsed, body, diag):
@@ -20662,6 +20734,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/projects/create"), _route_post_api_projects_create),
         (Exact("/api/projects/create_starter"), _route_post_api_projects_create_starter),
         (Exact("/api/projects/adopt_starter"), _route_post_api_projects_adopt_starter),
+        (Exact("/api/projects/starter/analyze"), _route_post_api_projects_starter_analyze),
         (Exact("/api/projects/rename"), _route_post_api_projects_rename),
         (Exact("/api/projects/set_workspace"), _route_post_api_projects_set_workspace),
         (Exact("/api/profiles/set_approval_mode"), _route_post_api_profiles_set_approval_mode),

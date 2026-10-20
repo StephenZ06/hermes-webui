@@ -372,7 +372,8 @@ def test_project_chip_quick_create_does_not_touch_active_filter():
     out = _run_quick_create_case("project-123")
     assert out["buttonClass"] == "project-chip-quick-create"
     assert out["buttonTag"] == "BUTTON"
-    assert out["buttonText"] == "+"
+    # The visible "+" is now an SVG (centred); the accessible name is the label below.
+    assert out["buttonText"] == ""
     assert out["buttonAriaLabel"] == "New conversation in this project"
     assert out["filterProjectId"] == "active-project"
     assert out["newSession"] == {"flash": False, "options": {"project_id": "project-123"}}

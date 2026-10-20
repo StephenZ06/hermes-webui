@@ -30,17 +30,86 @@ class ProjectStarterError(ValueError):
 # dots/spaces. A leading dot would create a hidden folder the user can't see.
 _FOLDER_RE = re.compile(r'^[^/\\<>:"|?*\x00-\x1f]{1,96}$')
 _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
+# key: (label, description, docs/ files). Every template also gets AGENTS.md,
+# .agent/ECC_HANDOFF.md and README.md (see _CORE_FILES).
 _TEMPLATES = {
-    "blank": ("Blank project", ()),
-    "web": ("Web application", ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md")),
-    "ios": ("iOS application", ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md")),
-    "api": ("API or backend service", ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
-    "research": ("Research project", ("RESEARCH.md", "SOURCES.md", "FINDINGS.md")),
+    "blank": ("Blank project", "Just the continuity files; shape it later.", ()),
+    "web": ("Web application", "Sites, dashboards and SaaS front ends.",
+            ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md")),
+    "ios": ("iOS application", "iPhone and iPad apps in Swift.",
+            ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md")),
+    "android": ("Android application", "Phone and tablet apps in Kotlin.",
+                ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md")),
+    "api": ("API / backend", "Services, endpoints and data stores.",
+            ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
+    "cli": ("CLI tool", "Command-line tools and automation scripts.",
+            ("PRODUCT.md", "ARCHITECTURE.md", "CLI.md", "TESTING.md")),
+    "data": ("Data / ML", "Analysis, pipelines and model training.",
+             ("PRODUCT.md", "DATA.md", "EXPERIMENTS.md", "TESTING.md")),
+    "research": ("Research", "Investigations, reviews and write-ups.",
+                 ("RESEARCH.md", "SOURCES.md", "FINDINGS.md")),
 }
+_CORE_FILES = ("AGENTS.md", ".agent/ECC_HANDOFF.md", "README.md")
 
 
 def available_templates() -> tuple[str, ...]:
     return tuple(_TEMPLATES)
+
+
+def template_catalog() -> list[dict]:
+    """Templates with the files each one creates, for the starter wizard."""
+    return [
+        {"key": key, "label": label, "description": description,
+         "files": [*_CORE_FILES, *(f"docs/{doc}" for doc in docs)]}
+        for key, (label, description, docs) in _TEMPLATES.items()
+    ]
+
+
+def list_child_folders(workspace_root: Path, rel: str = "") -> list[dict]:
+    """Visible sub-folders of ``rel`` inside a trusted workspace, sorted by name."""
+    root = Path(workspace_root).resolve()
+    target = (root / (rel or ".")).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ProjectStarterError("That folder is outside the workspace.") from exc
+    if not target.is_dir():
+        raise ProjectStarterError("That folder is unavailable.")
+    folders = []
+    for child in target.iterdir():
+        if child.name.startswith(".") or child.is_symlink():
+            continue
+        try:
+            if child.is_dir():
+                folders.append({"name": child.name, "path": child.relative_to(root).as_posix()})
+        except OSError:
+            continue
+    return sorted(folders, key=lambda item: item["name"].casefold())
+
+
+def resolve_parent(workspace_root: Path, rel: str = "") -> Path:
+    """Resolve the chosen folder inside a trusted workspace (no escapes)."""
+    root = Path(workspace_root).resolve()
+    target = (root / (rel or ".")).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ProjectStarterError("That folder is outside the workspace.") from exc
+    if not target.is_dir():
+        raise ProjectStarterError("That folder is unavailable.")
+    return target
+
+
+def _decisions(answers) -> str:
+    lines = []
+    for item in answers or []:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()[:300]
+        answer = str(item.get("answer") or "").strip()[:2000]
+        if question and answer:
+            lines.append(f"- **{question}** {answer}")
+    return "\n".join(lines)
 
 
 def _folder_name(value: str) -> str:
@@ -159,6 +228,7 @@ def create_starter_pack(
     folder_name: str,
     template: str,
     brief: str,
+    answers=None,
 ) -> dict[str, str]:
     """Create a template-specific project folder below ``workspace_root``.
 
@@ -171,6 +241,9 @@ def create_starter_pack(
     if template_key not in _TEMPLATES:
         raise ProjectStarterError("Unknown project template.")
     project_brief = _brief(brief)
+    decisions = _decisions(answers)
+    if decisions:
+        project_brief = f"{project_brief}\n\n### Decisions\n\n{decisions}".strip()
     root = Path(workspace_root).resolve()
     if not root.is_dir():
         raise ProjectStarterError("Selected workspace is unavailable.")
@@ -182,7 +255,7 @@ def create_starter_pack(
     if target.exists() or target.is_symlink():
         raise ProjectStarterError("A folder with that name already exists in the selected workspace.")
 
-    label, documents = _TEMPLATES[template_key]
+    label, _description, documents = _TEMPLATES[template_key]
     _make_new_dir(root, name)
     try:
         _write(root, target / "AGENTS.md", _agents(name))
@@ -209,7 +282,7 @@ def adopt_starter_pack(project_root: Path, template: str, brief: str) -> dict[st
     if template_key not in _TEMPLATES:
         raise ProjectStarterError("Unknown project template.")
     project_brief = _brief(brief)
-    label, documents = _TEMPLATES[template_key]
+    label, _description, documents = _TEMPLATES[template_key]
     candidates = {
         root / "AGENTS.md": _agents(root.name),
         root / ".agent" / "ECC_HANDOFF.md": _handoff(root.name, label, project_brief),
