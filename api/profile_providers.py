@@ -467,3 +467,46 @@ def test_route(name: str, provider: str = "") -> dict:
             return {"ok": False, "message": f"Couldn't reach {_endpoint_url(entry)} ({exc.__class__.__name__}). Is it running?"}
     status = _route_status(home, cfg, env, provider, str(model.get("base_url") or ""))
     return {"ok": status["state"] == "ready", "message": status["message"]}
+
+
+def list_models(name: str, provider: str) -> dict:
+    """Models a profile can pick for ``provider``.
+
+    Endpoints are asked live (/models). Built-in providers go through the
+    agent's own resolver under *this* profile's environment, so its key or
+    sign-in is used; that resolver falls back to Hermes' curated list.
+    """
+    import concurrent.futures
+
+    home = profile_home(name)
+    provider = str(provider or "").strip()
+    if not provider:
+        raise ProfileProviderError("Choose a provider first.")
+    slug = provider.split(":", 1)[1] if provider.startswith("custom:") else provider
+    entry = _endpoints(_read_config(home)).get(slug)
+    if isinstance(entry, dict) and _endpoint_url(entry):
+        result = test_route(name, provider)
+        return {"models": result.get("models") or [], "ok": result["ok"], "message": result["message"]}
+
+    def _fetch() -> list[str]:
+        from api.config import _resolve_provider_alias
+        from api.profiles import profile_env_for_background_worker
+        from hermes_cli.models import provider_model_ids
+
+        with profile_env_for_background_worker(name or "default", "profile model list"):
+            return [str(m) for m in (provider_model_ids(_resolve_provider_alias(provider)) or []) if m]
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        ids = pool.submit(_fetch).result(timeout=20)
+    except concurrent.futures.TimeoutError:
+        return {"models": [], "ok": False, "message": "The provider took too long to list models. Type a model id."}
+    except Exception as exc:
+        return {"models": [], "ok": False, "message": f"Couldn't list models ({exc.__class__.__name__}). Type a model id."}
+    finally:
+        pool.shutdown(wait=False)
+    seen: list[str] = []
+    for model_id in ids:
+        if model_id not in seen:
+            seen.append(model_id)
+    return {"models": seen[:300], "ok": True, "message": f"{len(seen)} model(s)."}

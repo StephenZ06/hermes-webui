@@ -10291,8 +10291,13 @@ async function _openProjectStarterWizard(profile){
         signIn.onclick=()=>startSignin(setup.provider,flow,signIn);
         actions.append(signIn);
       }
-      const profiles=_psEl('button','project-starter-cancel','More options in Profiles');profiles.type='button';
-      profiles.onclick=()=>{finish(null);_openProfileSignin('docs-gits');};
+      const profiles=_psEl('button','project-starter-cancel','Set up Docs-Git');profiles.type='button';
+      // Opens the provider wizard on top; the project draft stays as it is.
+      profiles.onclick=async()=>{
+        if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin('docs-gits');return;}
+        const r=await openProviderWizard('docs-gits',{title:'Set up Docs-Git'});
+        if(r&&!done) analyze();
+      };
       const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
       actions.append(profiles,skip);
       review.append(actions,flow);

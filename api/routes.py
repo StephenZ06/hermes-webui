@@ -19514,6 +19514,8 @@ def _route_post_api_profiles_providers_action(handler, parsed, body, diag):
             result = pp.copy_credentials(str(body.get("source") or ""), name, body.get("provider"))
         elif action == "test":
             result = pp.test_route(name, str(body.get("provider") or ""))
+        elif action == "models":
+            result = pp.list_models(name, str(body.get("provider") or ""))
         else:
             return bad(handler, "Unknown action", 404)
     except pp.ProfileProviderError as exc:
@@ -20835,6 +20837,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/profiles/providers/fallbacks"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/copy"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/providers/test"), _route_post_api_profiles_providers_action),
+        (Exact("/api/profiles/providers/models"), _route_post_api_profiles_providers_action),
         (Exact("/api/profiles/oauth/cancel"), _route_post_api_profiles_oauth_cancel),
         (Exact("/api/onboarding/oauth/cancel"), _route_post_api_onboarding_oauth_cancel),
         (Exact("/api/onboarding/setup"), _route_post_api_onboarding_setup),

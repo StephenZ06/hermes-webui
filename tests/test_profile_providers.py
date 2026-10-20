@@ -129,3 +129,12 @@ def test_docs_git_readiness_blocks_only_without_a_usable_main_or_fallback(homes,
 
     pp.set_api_key("docs", "opencode-go", "go")
     assert agent.docs_agent_readiness()["state"] == "ready"
+
+
+def test_model_list_for_an_endpoint_comes_from_the_endpoint_itself(homes, monkeypatch):
+    pp.save_endpoint("docs", {"display": "Box", "base_url": "http://box/v1", "model": "m"})
+    monkeypatch.setattr(pp, "test_route", lambda name, provider: {"ok": True, "message": "Connected.", "models": ["a", "b"]})
+
+    assert pp.list_models("docs", "custom:box") == {"models": ["a", "b"], "ok": True, "message": "Connected."}
+    with pytest.raises(pp.ProfileProviderError):
+        pp.list_models("docs", "")

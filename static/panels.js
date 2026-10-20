@@ -9149,6 +9149,311 @@ async function _startProfileSignin(name, provider, card){
   setTimeout(poll, interval);
 }
 
+// ── Provider setup wizard ───────────────────────────────────────────────────
+// Step by step, like the project starter: choose a provider → connect it
+// (sign in / API key / endpoint URL) → choose a model → use it as the main
+// model or a fallback. Writes only to the named profile.
+const _PW_FEATURED_KEYS = ['openrouter', 'opencode-go', 'opencode-zen', 'anthropic', 'openai', 'deepseek', 'google', 'x-ai'];
+const _PW_ICONS = {
+  signin: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2 2"/>',
+  router: '<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h.01M11 16.5h.01M8 9.5a6 6 0 0 1 8 0M5 6.5a10 10 0 0 1 14 0"/>',
+  local: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  custom: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+};
+function _pwIcon(kind, size = 18){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${_PW_ICONS[kind] || ''}</svg>`;
+}
+
+async function openProviderWizard(name, opts = {}){
+  let data;
+  try { data = await api('/api/profiles/providers?name=' + encodeURIComponent(name)); }
+  catch (e) { showToast(e.message || 'Could not load providers'); return null; }
+  // Catalogue: sign-ins, API-key providers, then routers / local servers.
+  const choices = [];
+  data.signins.forEach(s => choices.push({kind: 'signin', id: s.id, label: s.label, desc: s.id === 'openai-codex' ? 'ChatGPT plan sign-in' : 'Claude Code sign-in', connected: s.signed_in}));
+  const keyRows = data.api_keys.slice().sort((a, b) => {
+    const ia = _PW_FEATURED_KEYS.indexOf(a.id), ib = _PW_FEATURED_KEYS.indexOf(b.id);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.label.localeCompare(b.label);
+  });
+  keyRows.forEach(k => choices.push({kind: 'key', id: k.id, label: k.label, desc: 'API key', connected: k.has_key, env_var: k.env_var}));
+  data.presets.forEach(p => {
+    const existing = data.endpoints.find(e => e.id === p.id || (p.base_url && e.base_url === p.base_url.replace(/\/$/, '')));
+    choices.push({kind: p.id === '9router' ? 'router' : (p.id === 'custom' ? 'custom' : 'local'), id: 'preset:' + p.id, label: p.name,
+      desc: p.id === '9router' ? 'Local AI router' : (p.id === 'custom' ? 'Any OpenAI-compatible URL' : 'Runs on this machine'),
+      connected: !!existing, preset: p, endpoint: existing || null});
+  });
+  data.endpoints.filter(e => !choices.some(c => c.endpoint && c.endpoint.id === e.id))
+    .forEach(e => choices.push({kind: 'custom', id: 'endpoint:' + e.id, label: e.name, desc: e.base_url, connected: true, endpoint: e}));
+
+  const st = {step: 1, choice: null, provider: '', model: '', models: null, modelsMsg: '', use: opts.use || 'main', busy: false, showAllKeys: false};
+  return new Promise(resolve => {
+    const opener = document.activeElement;
+    const overlay = document.createElement('div'); overlay.className = 'project-starter-overlay';
+    const dialog = document.createElement('section'); dialog.className = 'project-starter-dialog ps-wizard pw-wizard';
+    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-labelledby', 'pwTitle');
+    dialog.innerHTML = `
+      <header class="project-starter-header"><div><h2 id="pwTitle">${esc(opts.title || 'Set up a provider')}</h2><p class="pw-sub"></p></div>
+        <button type="button" class="project-starter-close ps-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+      <ol class="ps-stepper"></ol>
+      <div class="ps-body"></div>
+      <footer class="project-starter-actions ps-actions"><button type="button" class="project-starter-cancel ps-prev">Back</button><span class="ps-spacer"></span><button type="button" class="project-starter-submit ps-next">Next</button></footer>`;
+    overlay.append(dialog); document.body.append(overlay);
+    const q = sel => dialog.querySelector(sel);
+    const body = q('.ps-body'), prev = q('.ps-prev'), next = q('.ps-next'), stepper = q('.ps-stepper'), sub = q('.pw-sub');
+    let done = false, flowId = null;
+    const finish = (value) => {
+      if (done) return; done = true; flowId = null;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.classList.add('is-leaving');
+      setTimeout(() => { overlay.remove(); if (opener && opener.isConnected) opener.focus(); }, 180);
+      resolve(value);
+    };
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.themed-select-popup') && !st.busy) { e.preventDefault(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+    q('.ps-close').onclick = () => { if (!st.busy) finish(null); };
+
+    const STEPS = ['Provider', 'Connect', 'Model', 'Finish'];
+    const paintStepper = () => {
+      stepper.innerHTML = STEPS.map((label, i) => {
+        const n = i + 1, cls = n < st.step ? ' is-done' : (n === st.step ? ' is-current' : '');
+        const dot = n < st.step ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>' : n;
+        return `<li class="ps-step${cls}"><span class="ps-step-dot">${dot}</span><span class="ps-step-label">${label}</span></li>`;
+      }).join('');
+    };
+    const nav = ({canNext = false, nextLabel = 'Next', showPrev = true, hideNext = false} = {}) => {
+      prev.hidden = !showPrev; next.hidden = hideNext; next.textContent = nextLabel; next.disabled = !canNext || st.busy;
+    };
+    const section = (prompt, hint) => {
+      body.innerHTML = `<div class="ps-section"><h3 class="ps-prompt">${esc(prompt)}</h3>${hint ? `<p class="ps-hint">${esc(hint)}</p>` : ''}</div>`;
+      return body.firstElementChild;
+    };
+    const render = (dir = 1) => {
+      body.classList.remove('ps-enter-fwd', 'ps-enter-back'); void body.offsetWidth;
+      body.classList.add(dir >= 0 ? 'ps-enter-fwd' : 'ps-enter-back');
+      paintStepper();
+      ({1: stepProvider, 2: stepConnect, 3: stepModel, 4: stepFinish})[st.step]();
+    };
+    const go = (n, dir) => { st.step = n; render(dir); };
+
+    // Step 1: provider
+    function stepProvider(){
+      sub.textContent = `Profile “${name}”: pick how it reaches an AI model.`;
+      const wrap = section('Choose a provider:');
+      const groups = [['Sign in', c => c.kind === 'signin'], ['API key', c => c.kind === 'key'], ['Local & routers', c => ['router', 'local', 'custom'].includes(c.kind)]];
+      let i = 0;
+      groups.forEach(([title, test]) => {
+        let items = choices.filter(test);
+        if (title === 'API key' && !st.showAllKeys) {
+          const featured = items.filter(c => _PW_FEATURED_KEYS.includes(c.id) || c.connected || (st.choice && st.choice.id === c.id));
+          if (featured.length < items.length) items = featured; else st.showAllKeys = true;
+        }
+        const head = document.createElement('div'); head.className = 'pw-group-title'; head.textContent = title; wrap.append(head);
+        const grid = document.createElement('div'); grid.className = 'pw-grid';
+        items.forEach(c => {
+          const card = document.createElement('button'); card.type = 'button';
+          card.className = 'ps-template pw-choice' + (st.choice && st.choice.id === c.id ? ' is-selected' : '');
+          card.style.setProperty('--i', i++);
+          card.innerHTML = `<span class="ps-template-icon">${_pwIcon(c.kind)}</span><span class="ps-template-text"><span class="ps-template-label">${esc(c.label)}</span><span class="ps-template-desc">${esc(c.desc || '')}</span></span>${c.connected ? '<span class="pw-connected" title="Already connected">✓</span>' : ''}`;
+          card.onclick = () => { st.choice = c; st.models = null; st.model = ''; wrap.querySelectorAll('.pw-choice').forEach(n => n.classList.toggle('is-selected', n === card)); nav({canNext: true, showPrev: false}); };
+          card.ondblclick = () => { st.choice = c; go(2, 1); };
+          grid.append(card);
+        });
+        wrap.append(grid);
+        if (title === 'API key' && !st.showAllKeys) {
+          const more = document.createElement('button'); more.type = 'button'; more.className = 'ps-link pw-more'; more.textContent = 'Show all API-key providers';
+          more.onclick = () => { st.showAllKeys = true; stepProvider(); };
+          wrap.append(more);
+        }
+      });
+      nav({canNext: !!st.choice, showPrev: false});
+    }
+
+    // Step 2: connect
+    function stepConnect(){
+      const c = st.choice;
+      st.save = null;
+      sub.textContent = c.label;
+      if (c.kind === 'signin') return connectSignin(c);
+      if (c.kind === 'key') return connectKey(c);
+      return connectEndpoint(c);
+    }
+    function connectSignin(c){
+      const wrap = section(`Sign in to ${c.label}:`, 'The sign-in is saved to this profile only.');
+      const box = document.createElement('div'); box.className = 'pw-connect';
+      const status = document.createElement('div'); status.className = 'pw-status';
+      const flow = document.createElement('div'); flow.className = 'ps-setup-flow';
+      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'project-starter-submit';
+      const paint = () => {
+        status.innerHTML = c.connected ? `<span class="detail-badge ok">Signed in</span><span>This profile can already use ${esc(c.label)}.</span>` : `<span class="detail-badge warn">Not signed in</span>`;
+        btn.textContent = c.connected ? 'Sign in again' : `Sign in to ${c.label}`;
+        nav({canNext: c.connected});
+      };
+      btn.onclick = async () => {
+        btn.disabled = true; flow.innerHTML = '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Starting sign-in…</span></div>';
+        let start;
+        try { start = await api('/api/profiles/oauth/start', {method: 'POST', body: JSON.stringify({name})}); }
+        catch (e) { flow.textContent = e.message || 'Could not start sign-in.'; btn.disabled = false; return; }
+        if (start.status === 'success') { c.connected = true; flow.innerHTML = ''; btn.disabled = false; paint(); return; }
+        const id = start.flow_id; flowId = id;
+        flow.innerHTML = c.id === 'openai-codex'
+          ? `<ol class="ps-setup-steps"><li>Open <a href="${esc(start.verification_uri)}" target="_blank" rel="noopener">${esc(start.verification_uri)}</a></li>
+             <li>Enter <code class="ps-setup-code">${esc(start.user_code)}</code><button type="button" class="ps-link pw-copy">Copy</button></li>
+             <li>Approve it. This step continues by itself.</li></ol>`
+          : '<p>Sign in to Claude Code on this machine (run <code>claude</code> and log in). Hermes links it automatically.</p>';
+        flow.insertAdjacentHTML('beforeend', '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Waiting for approval…</span></div>');
+        const copy = flow.querySelector('.pw-copy');
+        if (copy) copy.onclick = () => { try { navigator.clipboard.writeText(start.user_code); showToast('Code copied'); } catch (_) {} };
+        const every = Math.max(2, Number(start.poll_interval_seconds) || 5) * 1000;
+        const poll = async () => {
+          if (done || flowId !== id) return;
+          let r; try { r = await api('/api/profiles/oauth/poll?flow_id=' + encodeURIComponent(id)); } catch (e) { r = {status: 'error', error: e.message}; }
+          if (done || flowId !== id) return;
+          if (r.status === 'pending') { setTimeout(poll, every); return; }
+          flowId = null; btn.disabled = false;
+          if (r.status === 'success') { c.connected = true; flow.innerHTML = ''; paint(); showToast('Signed in'); go(3, 1); return; }
+          flow.textContent = r.status === 'expired' ? 'The code expired. Try again.' : (r.error || 'Sign-in did not complete.');
+        };
+        setTimeout(poll, every);
+      };
+      box.append(status, btn, flow); wrap.append(box); paint();
+      st.provider = c.id;
+    }
+    function connectKey(c){
+      const wrap = section(`Add your ${c.label} API key:`, c.connected ? 'A key is already saved. Paste a new one to replace it, or continue.' : 'It is saved to this profile only and never shown again.');
+      const form = document.createElement('form'); form.className = 'pw-connect';
+      form.innerHTML = `<label class="project-starter-field"><span>${esc(c.env_var)}</span><input class="pp-input pw-key" type="password" autocomplete="off" placeholder="${c.connected ? '•••••••• saved' : 'Paste API key'}"></label>`;
+      wrap.append(form);
+      const input = form.querySelector('.pw-key');
+      const sync = () => nav({canNext: c.connected || !!input.value.trim()});
+      input.oninput = sync; form.onsubmit = (e) => { e.preventDefault(); if (!next.disabled) next.click(); };
+      st.provider = c.id; st.save = async () => {
+        const key = input.value.trim();
+        if (key) { await _ppPost('key', {name, provider: c.id, api_key: key}); c.connected = true; }
+      };
+      sync(); setTimeout(() => input.focus(), 40);
+    }
+    function connectEndpoint(c){
+      const p = c.preset || {name: c.label, base_url: (c.endpoint && c.endpoint.base_url) || '', needs_key: true, hint: ''};
+      const e = c.endpoint;
+      const wrap = section(`Connect ${c.label}:`, p.hint || 'Any server that speaks the OpenAI chat-completions API.');
+      const form = document.createElement('form'); form.className = 'pw-connect';
+      form.innerHTML = `
+        ${p.dashboard ? `<a class="project-starter-cancel pw-dash" target="_blank" rel="noopener" href="${esc(_ppDashboardUrl(p.dashboard))}">Open ${esc(p.name)} dashboard ↗</a>` : ''}
+        <div class="pp-grid">
+          <label>Name<input class="pp-input pw-ep-name" maxlength="60" value="${esc(e ? e.name : (p.id === 'custom' ? '' : p.name))}" placeholder="My endpoint"></label>
+          <label>Base URL<input class="pp-input pw-ep-url" value="${esc(e ? e.base_url : p.base_url)}" placeholder="https://host/v1"></label>
+          <label class="pw-span">API key${p.needs_key ? '' : ' (optional)'}<input class="pp-input pw-ep-key" type="password" autocomplete="off" placeholder="${e && e.has_key ? '•••••••• saved' : 'Paste API key'}"></label>
+        </div>
+        <span class="pp-ep-result pw-ep-result"></span>`;
+      wrap.append(form);
+      const nameIn = form.querySelector('.pw-ep-name'), urlIn = form.querySelector('.pw-ep-url'), keyIn = form.querySelector('.pw-ep-key');
+      const sync = () => nav({canNext: !!nameIn.value.trim() && /^https?:\/\/./.test(urlIn.value.trim())});
+      [nameIn, urlIn, keyIn].forEach(i => i.oninput = sync);
+      form.onsubmit = (ev) => { ev.preventDefault(); if (!next.disabled) next.click(); };
+      st.save = async () => {
+        const payload = {name, id: e ? e.id : undefined, display: nameIn.value.trim(), base_url: urlIn.value.trim()};
+        if (keyIn.value.trim()) payload.api_key = keyIn.value.trim();
+        const saved = await _ppPost('endpoint', payload);
+        st.provider = saved.provider; c.endpoint = {id: saved.id, provider: saved.provider, name: payload.display, base_url: payload.base_url, has_key: !!payload.api_key || (e && e.has_key)};
+      };
+      sync(); setTimeout(() => (nameIn.value ? urlIn : nameIn).focus(), 40);
+    }
+
+    // Step 3: model
+    async function stepModel(){
+      sub.textContent = st.choice.label;
+      const wrap = section('Choose a model:', 'Pick from the list or type any model id.');
+      const search = document.createElement('input'); search.className = 'pp-input pw-model-search'; search.placeholder = 'Search or type a model id'; search.value = st.model;
+      const list = document.createElement('div'); list.className = 'pw-models'; list.setAttribute('role', 'listbox');
+      const note = document.createElement('p'); note.className = 'ps-hint pw-models-note';
+      wrap.append(search, list, note);
+      const paint = () => {
+        const term = search.value.trim().toLowerCase();
+        const rows = (st.models || []).filter(m => !term || m.toLowerCase().includes(term)).slice(0, 120);
+        list.innerHTML = '';
+        if (st.models === null) { list.innerHTML = '<div class="pw-models-empty"><span class="ps-pulse"></span> Loading models…</div>'; }
+        else if (!rows.length) { list.innerHTML = `<div class="pw-models-empty">${term ? 'No match. Next uses “' + esc(search.value.trim()) + '”.' : 'No models listed. Type a model id above.'}</div>`; }
+        rows.forEach((m, i) => {
+          const row = document.createElement('button'); row.type = 'button'; row.className = 'pw-model' + (m === st.model ? ' is-selected' : '');
+          row.style.setProperty('--i', Math.min(i, 12)); row.textContent = m; row.setAttribute('role', 'option');
+          row.onclick = () => { st.model = m; search.value = m; list.querySelectorAll('.pw-model').forEach(n => n.classList.toggle('is-selected', n === row)); nav({canNext: true}); };
+          row.ondblclick = () => { st.model = m; go(4, 1); };
+          list.append(row);
+        });
+        nav({canNext: !!search.value.trim()});
+      };
+      search.oninput = () => { st.model = search.value.trim(); paint(); };
+      search.onkeydown = (ev) => { if (ev.key === 'Enter' && !next.disabled) { ev.preventDefault(); next.click(); } };
+      paint();
+      if (st.models === null) {
+        try { const r = await _ppPost('models', {name, provider: st.provider}); st.models = r.models || []; st.modelsMsg = r.ok ? '' : r.message; }
+        catch (e) { st.models = []; st.modelsMsg = e.message; }
+        if (done || st.step !== 3) return;
+        if (!st.model && st.choice.endpoint && st.choice.endpoint.model) st.model = st.choice.endpoint.model;
+        note.textContent = st.modelsMsg; search.value = st.model; paint();
+      }
+      setTimeout(() => search.focus(), 40);
+    }
+
+    // Step 4: use as main / fallback, then save + test
+    function stepFinish(){
+      sub.textContent = `${st.choice.label} · ${st.model}`;
+      const wrap = section('How should this profile use it?');
+      const grid = document.createElement('div'); grid.className = 'ps-choice-grid';
+      [['main', 'Main model', `Every chat in “${name}” uses ${st.model}.`], ['fallback', 'Fallback', 'Used only when the main model can’t start or keeps failing.']].forEach(([id, label, desc], i) => {
+        const card = document.createElement('button'); card.type = 'button'; card.className = 'ps-choice pw-use' + (st.use === id ? ' is-selected' : '');
+        card.style.setProperty('--i', i);
+        card.innerHTML = `<span class="ps-choice-title">${esc(label)}</span><span class="ps-choice-desc">${esc(desc)}</span>`;
+        card.onclick = () => { st.use = id; grid.querySelectorAll('.pw-use').forEach(n => n.classList.toggle('is-selected', n === card)); };
+        grid.append(card);
+      });
+      const result = document.createElement('div'); result.className = 'pw-result';
+      wrap.append(grid, result);
+      nav({canNext: true, nextLabel: 'Save'});
+      st.finishResult = result;
+    }
+    async function save(){
+      const result = st.finishResult;
+      st.busy = true; nav({canNext: false, nextLabel: 'Saving…'});
+      result.innerHTML = '<div class="ps-setup-wait"><span class="ps-pulse"></span><span>Saving and testing…</span></div>';
+      try {
+        if (st.use === 'main') await _ppPost('main', {name, provider: st.provider, model: st.model});
+        else {
+          const items = data.fallbacks.map(f => ({provider: f.provider, model: f.model})).filter(f => !(f.provider === st.provider && f.model === st.model));
+          await _ppPost('fallbacks', {name, items: [...items, {provider: st.provider, model: st.model}]});
+        }
+        const t = await _ppPost('test', {name, provider: st.provider});
+        st.busy = false;
+        result.className = 'pw-result ' + (t.ok ? 'is-ok' : 'is-warn');
+        result.innerHTML = `<strong>${t.ok ? 'All set.' : 'Saved, but check this:'}</strong><span>${esc(t.message || '')}</span>`;
+        nav({canNext: true, nextLabel: 'Done', showPrev: !t.ok});
+        st.saved = true;
+      } catch (e) {
+        st.busy = false; result.className = 'pw-result is-error'; result.textContent = e.message || 'Could not save.';
+        nav({canNext: true, nextLabel: 'Save'});
+      }
+    }
+
+    prev.onclick = () => { if (st.busy) return; flowId = null; st.saved = false; if (st.step > 1) go(st.step - 1, -1); };
+    next.onclick = async () => {
+      if (next.disabled) return;
+      if (st.step === 1) { go(2, 1); return; }
+      if (st.step === 2) {
+        if (st.save) {
+          st.busy = true; next.disabled = true; next.textContent = 'Saving…';
+          try { await st.save(); } catch (e) { st.busy = false; showToast(e.message || 'Could not save'); nav({canNext: true}); return; }
+          st.busy = false; st.save = null;
+        }
+        st.models = null; go(3, 1); return;
+      }
+      if (st.step === 3) { st.model = (q('.pw-model-search') || {}).value ? q('.pw-model-search').value.trim() : st.model; go(4, 1); return; }
+      if (st.step === 4) { if (st.saved) finish({provider: st.provider, model: st.model, use: st.use}); else save(); }
+    };
+    render(1);
+  });
+}
+
 async function _renderProfileProviders(name){
   const card = $('profileSigninCard');
   if (!card) return;
@@ -9167,7 +9472,8 @@ async function _renderProfileProviders(name){
   const main = data.main;
   const keyed = data.api_keys.filter(k => k.has_key);
   card.innerHTML = `
-    <div class="detail-card-title">Providers</div>
+    <div class="pp-card-head"><div class="detail-card-title">Providers</div>
+      <button type="button" class="project-starter-submit pp-setup">Set up a provider</button></div>
     <div class="pp-main">
       <div class="pp-main-route">
         <span class="pp-main-label">Main model</span>
@@ -9256,6 +9562,10 @@ async function _renderProfileProviders(name){
   const refresh = () => _renderProfileProviders(name);
   const fail = (e) => showToast(e.message || String(e));
   const $c = (sel) => card.querySelector(sel);
+  $c('.pp-setup').onclick = async () => {
+    const r = await openProviderWizard(name);
+    if (r) { refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); }
+  };
 
   $c('.pp-test').onclick = async () => {
     const out = $c('.pp-test-result'); out.className = 'pp-test-result'; out.innerHTML = '<span class="ps-pulse"></span>';
@@ -10081,6 +10391,8 @@ async function saveProfileForm(){
     await loadProfilesPanel();
     showToast(t('profile_created', name));
     openProfileDetail(name);
+    // A new profile has no model access yet: walk straight into setup.
+    openProviderWizard(name, {title: `Connect “${name}” to a model`}).then(r => { if (r) loadProfilesPanel(); });
   } catch (e) {
     errEl.textContent = e.message || t('create_failed');
     errEl.style.display = '';
