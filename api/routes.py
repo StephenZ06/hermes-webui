@@ -15355,6 +15355,29 @@ def _route_get_api_projects_starter_job(handler, parsed):
     return j(handler, job)
 
 
+def _route_get_api_profiles_oauth_status(handler, parsed):
+    """Sign-in status for one profile's configured provider (presence only)."""
+    from api.oauth import profile_oauth_status
+
+    name = (parse_qs(parsed.query).get("name") or [""])[0]
+    try:
+        return j(handler, profile_oauth_status(name), extra_headers={"Cache-Control": "no-store"})
+    except ValueError as exc:
+        return bad(handler, str(exc), 404)
+
+
+def _route_get_api_profiles_oauth_poll(handler, parsed):
+    from api.oauth import poll_onboarding_oauth_flow
+
+    try:
+        return j(handler, poll_onboarding_oauth_flow((parse_qs(parsed.query).get("flow_id") or [""])[0]),
+                 extra_headers={"Cache-Control": "no-store"})
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    except KeyError as exc:
+        return bad(handler, str(exc), 404)
+
+
 def _route_get_api_list(handler, parsed):
     return _handle_list_dir(handler, parsed)
 
@@ -16194,6 +16217,8 @@ _GET_ROUTES = RouteTable(
         (Prefix(_WORK_HUB_WORKFLOW_PREFIX), _route_get_api_work_hub_workflows_prefix),
         (Exact("/api/work_hub/plan"), _route_get_api_work_hub_plan),
         (Exact("/api/list"), _route_get_api_list),
+        (Exact("/api/profiles/oauth/status"), _route_get_api_profiles_oauth_status),
+        (Exact("/api/profiles/oauth/poll"), _route_get_api_profiles_oauth_poll),
         (Exact("/api/projects/starter/templates"), _route_get_api_projects_starter_templates),
         (Exact("/api/projects/starter/folders"), _route_get_api_projects_starter_folders),
         (Exact("/api/projects/starter/job"), _route_get_api_projects_starter_job),
@@ -19453,6 +19478,38 @@ def _route_post_api_settings(handler, parsed, body, diag):
     return True
 
 
+def _route_post_api_profiles_oauth_start(handler, parsed, body, diag):
+    """Sign a specific profile in to its provider (Profiles page).
+
+    Unlike onboarding this runs behind the normal WebUI login, so it also
+    works when a password is set and the UI is reached remotely.
+    """
+    from api.oauth import profile_oauth_status, start_onboarding_oauth_flow
+
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return bad(handler, "name required")
+    try:
+        status = profile_oauth_status(name)
+        if not status["oauth_supported"]:
+            return bad(handler, "This profile's provider does not use a browser sign-in.")
+        return j(handler, start_onboarding_oauth_flow({"provider": status["provider"], "profile": name}),
+                 extra_headers={"Cache-Control": "no-store"})
+    except ValueError as exc:
+        return bad(handler, str(exc))
+    except RuntimeError as exc:
+        return bad(handler, str(exc), 502)
+
+
+def _route_post_api_profiles_oauth_cancel(handler, parsed, body, diag):
+    from api.oauth import cancel_onboarding_oauth_flow
+
+    try:
+        return j(handler, cancel_onboarding_oauth_flow(body), extra_headers={"Cache-Control": "no-store"})
+    except ValueError as exc:
+        return bad(handler, str(exc))
+
+
 def _route_post_api_onboarding_oauth_start(handler, parsed, body, diag):
     if not _onboarding_gate_allows(handler):
         return bad(handler, "Onboarding OAuth is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
@@ -20722,6 +20779,8 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/profile/delete"), _route_post_api_profile_delete),
         (Exact("/api/settings"), _route_post_api_settings),
         (Exact("/api/onboarding/oauth/start"), _route_post_api_onboarding_oauth_start),
+        (Exact("/api/profiles/oauth/start"), _route_post_api_profiles_oauth_start),
+        (Exact("/api/profiles/oauth/cancel"), _route_post_api_profiles_oauth_cancel),
         (Exact("/api/onboarding/oauth/cancel"), _route_post_api_onboarding_oauth_cancel),
         (Exact("/api/onboarding/setup"), _route_post_api_onboarding_setup),
         (Exact("/api/onboarding/complete"), _route_post_api_onboarding_complete),

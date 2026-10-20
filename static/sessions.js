@@ -10244,6 +10244,11 @@ async function _openProjectStarterWizard(profile){
           const retry=_psEl('button','ps-link','Try again');retry.type='button';retry.onclick=()=>analyze();
           const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
           review.append(retry,skip);
+          if(/credential|sign in|auth|access_token/i.test(st.analysisError)){
+            const fix=_psEl('button','ps-link','Sign in Docs-Git');fix.type='button';
+            fix.onclick=()=>{finish(null);_openProfileSignin('docs-gits');};
+            review.append(fix);
+          }
         }else if(st.analysis&&st.analysis.complete){
           review.classList.add('is-ok');review.innerHTML=_psIcon('check',16);
           review.append(_psEl('span',null,st.analysis.summary||'Docs-Git has everything it needs.'));
@@ -10368,6 +10373,13 @@ async function _openProjectStarterWizard(profile){
     };
     render(1);
   });
+}
+
+// Jump to a profile's detail page, where its provider sign-in card lives.
+async function _openProfileSignin(name){
+  if(typeof switchPanel==='function') await switchPanel('profiles');
+  if(typeof loadProfilesPanel==='function') await loadProfilesPanel();
+  if(typeof openProfileDetail==='function') openProfileDetail(name);
 }
 
 function _onProjectStarterCreated(project){

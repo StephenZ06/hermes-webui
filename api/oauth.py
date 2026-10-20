@@ -778,6 +778,58 @@ def _start_anthropic_flow(hermes_home: Path) -> dict[str, Any]:
     return _public_start_payload(flow_id, flow)
 
 
+def _oauth_target_home(body: dict[str, Any] | None) -> Path:
+    """Profile whose auth.json receives the credentials.
+
+    Onboarding signs in the active profile. The Profiles page passes an
+    explicit ``profile`` so any profile can be signed in without switching
+    to it; an unknown profile is rejected rather than falling back.
+    """
+    name = str((body or {}).get("profile") or "").strip()
+    if not name:
+        return _get_active_hermes_home()
+    from api.profiles import get_hermes_home_for_profile
+
+    home = Path(get_hermes_home_for_profile(name))
+    if name != "default" and (home.name != name or not home.is_dir()):
+        raise ValueError(f"Profile '{name}' does not exist")
+    return home
+
+
+def profile_oauth_status(name: str) -> dict[str, Any]:
+    """Which sign-in a profile's configured provider needs, and whether it has one.
+
+    Reports only presence, never token values.
+    """
+    home = _oauth_target_home({"profile": name or "default"})
+    provider = ""
+    try:
+        import yaml
+
+        cfg = yaml.safe_load((Path(home) / "config.yaml").read_text(encoding="utf-8")) or {}
+        model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
+        if isinstance(model_cfg, dict):
+            provider = str(model_cfg.get("provider") or "").strip().lower()
+    except Exception:
+        provider = ""
+    canonical = _normalize_onboarding_oauth_provider(provider) if provider in _ALLOWED_ONBOARDING_OAUTH_PROVIDERS else provider
+    supported = canonical in {"openai-codex", "anthropic"}
+    signed_in = False
+    if supported:
+        auth = _read_auth_json(Path(home) / "auth.json")
+        pool = auth.get("credential_pool") if isinstance(auth.get("credential_pool"), dict) else {}
+        providers = auth.get("providers") if isinstance(auth.get("providers"), dict) else {}
+        entries = pool.get(canonical) if isinstance(pool.get(canonical), list) else []
+        signed_in = any(isinstance(e, dict) and (e.get("access_token") or e.get("source", "").startswith("claude")) for e in entries)
+        stored = providers.get(canonical)
+        if isinstance(stored, dict):
+            tokens = stored.get("tokens") if isinstance(stored.get("tokens"), dict) else stored
+            signed_in = signed_in or bool(tokens.get("access_token"))
+        if canonical == "anthropic" and not signed_in:
+            signed_in = bool(entries)
+    return {"profile": name or "default", "provider": canonical, "oauth_supported": supported, "signed_in": signed_in}
+
+
 def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
     """Start the supported onboarding OAuth flow.
 
@@ -795,11 +847,12 @@ def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
         raise ValueError("provider is required")
 
     # Normalize Claude aliases to canonical "anthropic"
+    target_home = _oauth_target_home(body)
     if provider in _ANTHROPIC_PROVIDER_ALIASES:
-        return _start_anthropic_flow(_get_active_hermes_home())
+        return _start_anthropic_flow(target_home)
 
     # Codex flow
-    hermes_home = _get_active_hermes_home()
+    hermes_home = target_home
     # Serialize check -> device-code request -> flow insertion -> worker spawn
     # for this provider/profile. The global flow lock is still held only for
     # short in-memory checks/inserts, so unrelated polling/status/cleanup paths

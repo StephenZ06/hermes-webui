@@ -9065,11 +9065,93 @@ function _renderProfileDetail(p, activeName){
         <div class="detail-card-title">Profile</div>
         ${rows.join('')}
       </div>
+      <div class="detail-card profile-signin-card" id="profileSigninCard" hidden></div>
     </div>`;
   body.style.display = '';
   if (empty) empty.style.display = 'none';
   _profileMode = 'read';
   _setProfileHeaderButtons('read', p, activeName);
+  _renderProfileSignin(p.name);
+}
+
+// Provider sign-in for one profile (OpenAI Codex device code / Claude link).
+// Each profile keeps its own auth.json, so a profile can need signing in
+// even when the default profile already is.
+let _profileSigninFlow = null;
+const _PROFILE_SIGNIN_LABELS = {'openai-codex': 'OpenAI Codex', anthropic: 'Claude'};
+async function _renderProfileSignin(name){
+  const card = $('profileSigninCard');
+  if (!card) return;
+  let status;
+  try { status = await api('/api/profiles/oauth/status?name=' + encodeURIComponent(name)); }
+  catch (_) { card.hidden = true; return; }
+  if (!card.isConnected || !_currentProfileDetail || _currentProfileDetail.name !== name) return;
+  if (!status.oauth_supported) { card.hidden = true; return; }
+  const label = _PROFILE_SIGNIN_LABELS[status.provider] || status.provider;
+  const badge = status.signed_in
+    ? '<span class="detail-badge ok">Signed in</span>'
+    : '<span class="detail-badge warn">Not signed in</span>';
+  card.hidden = false;
+  card.innerHTML = `
+    <div class="detail-card-title">Provider sign-in</div>
+    <div class="detail-row"><div class="detail-row-label">${esc(label)}</div><div class="detail-row-value">${badge}</div></div>
+    <div class="profile-signin-body">
+      <p class="profile-signin-hint">${status.signed_in
+        ? `This profile can use ${esc(label)}. Sign in again if its chats report missing credentials.`
+        : `Chats and tools that run as <b>${esc(name)}</b> need their own ${esc(label)} sign-in.`}</p>
+      <button type="button" class="project-starter-submit profile-signin-btn">${status.signed_in ? 'Sign in again' : 'Sign in to ' + esc(label)}</button>
+      <div class="profile-signin-flow" hidden></div>
+    </div>`;
+  card.querySelector('.profile-signin-btn').onclick = () => _startProfileSignin(name, status.provider, card);
+}
+
+async function _startProfileSignin(name, provider, card){
+  const btn = card.querySelector('.profile-signin-btn');
+  const flowBox = card.querySelector('.profile-signin-flow');
+  btn.disabled = true;
+  flowBox.hidden = false;
+  flowBox.innerHTML = '<span class="profile-signin-wait">Starting sign-in…</span>';
+  let start;
+  try { start = await api('/api/profiles/oauth/start', {method: 'POST', body: JSON.stringify({name})}); }
+  catch (e) { flowBox.innerHTML = `<span class="profile-signin-error">${esc(e.message || 'Could not start sign-in.')}</span>`; btn.disabled = false; return; }
+  const flowId = start.flow_id;
+  _profileSigninFlow = flowId;
+  if (start.status === 'success') { showToast('Signed in ' + name); _renderProfileSignin(name); return; }
+  if (provider === 'openai-codex') {
+    flowBox.innerHTML = `
+      <ol class="profile-signin-steps">
+        <li>Open <a href="${esc(start.verification_uri)}" target="_blank" rel="noopener">${esc(start.verification_uri)}</a></li>
+        <li>Enter this code: <code class="profile-signin-code">${esc(start.user_code)}</code> <button type="button" class="project-starter-cancel profile-signin-copy">Copy</button></li>
+        <li>Approve the sign-in. This page updates by itself.</li>
+      </ol>
+      <div class="profile-signin-wait"><span class="ps-pulse"></span>Waiting for approval…</div>
+      <button type="button" class="project-starter-cancel profile-signin-cancel">Cancel</button>`;
+    flowBox.querySelector('.profile-signin-copy').onclick = () => { try { navigator.clipboard.writeText(start.user_code); showToast('Code copied'); } catch (_) {} };
+  } else {
+    flowBox.innerHTML = `
+      <p class="profile-signin-hint">Sign in to Claude Code on this machine (run <code>claude</code> and log in). Hermes links it to this profile automatically.</p>
+      <div class="profile-signin-wait"><span class="ps-pulse"></span>Waiting for Claude credentials…</div>
+      <button type="button" class="project-starter-cancel profile-signin-cancel">Cancel</button>`;
+  }
+  flowBox.querySelector('.profile-signin-cancel').onclick = async () => {
+    _profileSigninFlow = null;
+    try { await api('/api/profiles/oauth/cancel', {method: 'POST', body: JSON.stringify({flow_id: flowId, provider})}); } catch (_) {}
+    _renderProfileSignin(name);
+  };
+  const interval = Math.max(2, Number(start.poll_interval_seconds) || 5) * 1000;
+  const poll = async () => {
+    if (_profileSigninFlow !== flowId) return;
+    let st;
+    try { st = await api('/api/profiles/oauth/poll?flow_id=' + encodeURIComponent(flowId)); }
+    catch (e) { st = {status: 'error', error: e.message}; }
+    if (_profileSigninFlow !== flowId) return;
+    if (st.status === 'pending') { setTimeout(poll, interval); return; }
+    _profileSigninFlow = null;
+    if (st.status === 'success') { showToast('Signed in ' + name); _renderProfileSignin(name); return; }
+    const msg = st.status === 'expired' ? 'The code expired. Try again.' : (st.error || 'Sign-in did not complete.');
+    if (card.isConnected) { flowBox.innerHTML = `<span class="profile-signin-error">${esc(msg)}</span>`; btn.disabled = false; }
+  };
+  setTimeout(poll, interval);
 }
 
 function _setProfileHeaderButtons(mode, p, activeName){
