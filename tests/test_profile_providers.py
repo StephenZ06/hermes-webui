@@ -110,3 +110,22 @@ def test_endpoint_test_reports_an_unreachable_server(homes):
     pp.save_endpoint("docs", {"display": "Dead", "base_url": "http://127.0.0.1:9/v1", "model": "m"})
     result = pp.test_route("docs", "custom:dead")
     assert result["ok"] is False and "Couldn't reach" in result["message"]
+
+
+def test_docs_git_readiness_blocks_only_without_a_usable_main_or_fallback(homes, monkeypatch):
+    from api import project_starter_agent as agent
+
+    monkeypatch.setattr(agent, "DOCS_PROFILE", "docs")
+    monkeypatch.setattr(agent, "docs_profile_available", lambda: True)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    blocked = agent.docs_agent_readiness()
+    assert blocked["ready"] is False and blocked["state"] == "key" and blocked["provider"] == "opencode-go"
+
+    pp.set_api_key("docs", "openrouter", "or")
+    pp.set_fallbacks("docs", [{"provider": "openrouter", "model": "x"}])
+    assert agent.docs_agent_readiness() == {"ready": True, "state": "fallback", "provider": "opencode-go",
+                                            "message": "Using a fallback model."}
+
+    pp.set_api_key("docs", "opencode-go", "go")
+    assert agent.docs_agent_readiness()["state"] == "ready"

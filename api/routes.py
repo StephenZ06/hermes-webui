@@ -19947,15 +19947,17 @@ def _starter_workspace_root(body):
 def _starter_docs_job(proj, *, adopt, template_key):
     """Hand the new project to Docs-Git; returns the job id or None."""
     from api.project_starter import template_catalog
-    from api.project_starter_agent import start_docs_setup
+    from api.project_starter_agent import docs_agent_readiness, start_docs_setup
 
+    if not docs_agent_readiness()["ready"]:
+        return None
     template = next((t for t in template_catalog() if t["key"] == template_key), None) or {}
     return start_docs_setup(proj, adopt=adopt, template_label=template.get("label", ""), files=template.get("files"))
 
 
 def _route_post_api_projects_starter_analyze(handler, parsed, body, diag):
     from api.project_starter import template_catalog
-    from api.project_starter_agent import docs_profile_available, start_analysis
+    from api.project_starter_agent import start_analysis
 
     brief = str(body.get("brief") or "").strip()
     if not brief:
@@ -19965,8 +19967,11 @@ def _route_post_api_projects_starter_analyze(handler, parsed, body, diag):
     template = next((t for t in template_catalog() if t["key"] == str(body.get("template") or "blank")), None)
     if template is None:
         return bad(handler, "Unknown project template.")
-    if not docs_profile_available():
-        return bad(handler, "The Docs-Git profile is not set up.", 409)
+    from api.project_starter_agent import docs_agent_readiness
+
+    readiness = docs_agent_readiness()
+    if not readiness["ready"]:
+        return j(handler, {"error": readiness["message"], "code": "docs_agent_setup", "setup": readiness}, status=409)
     job_id = start_analysis(name=str(body.get("name") or "")[:96], brief=brief, template=template)
     return j(handler, {"job_id": job_id})
 

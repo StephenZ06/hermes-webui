@@ -49,6 +49,32 @@ def docs_profile_available() -> bool:
         return False
 
 
+def docs_agent_readiness() -> dict:
+    """Can Docs-Git start? Checked before a run so the wizard can offer setup.
+
+    Blocks only on a definite gap (no sign-in / no key / no model) with no
+    usable fallback; routes Hermes can't verify from here are let through and
+    the agent reports any problem itself.
+    """
+    if not docs_profile_available():
+        return {"ready": False, "state": "missing", "provider": "",
+                "message": "The Docs-Git profile is not set up."}
+    from api.profile_providers import overview
+
+    try:
+        view = overview(DOCS_PROFILE)
+    except Exception:
+        return {"ready": True, "state": "unknown", "provider": "", "message": ""}
+    main = view["main"]
+    state = main["status"]["state"]
+    if state not in {"signin", "key", "unset"}:
+        return {"ready": True, "state": state, "provider": main["provider"], "message": main["status"]["message"]}
+    if any(f["status"]["state"] == "ready" for f in view["fallbacks"]):
+        return {"ready": True, "state": "fallback", "provider": main["provider"], "message": "Using a fallback model."}
+    return {"ready": False, "state": state, "provider": main["provider"],
+            "message": f"Docs-Git can't run yet: {main['status']['message']}"}
+
+
 # ── Brief analysis ─────────────────────────────────────────────────────────
 
 _ANALYSIS_PROMPT = """You are helping set up a new software project's instruction files.

@@ -10023,7 +10023,7 @@ async function _openProjectStarterWizard(profile){
   if(!workspaces.length){ showToast('Add or reconnect a workspace before creating a project.'); return null; }
   const templates=catalog.templates||[];
   const docsAgent=!!catalog.docs_agent;
-  const st={mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
+  const st={analysisSetup:null,mode:null,workspace:null,parent:'',name:'',template:null,templateChosen:false,brief:'',fileName:'',
     analysis:null,analysisJob:null,analysisError:'',questions:[],answers:{},q:0,step:1,busy:false};
   const folderCache=new Map();
 
@@ -10037,7 +10037,8 @@ async function _openProjectStarterWizard(profile){
     const title=_psEl('h2',null,'Create project workspace');title.id='projectStarterTitle';
     const sub=_psEl('p',null,'');
     heading.append(title,sub);
-    const close=_psEl('button','project-starter-close','×');close.type='button';close.setAttribute('aria-label','Close');
+    const close=_psEl('button','project-starter-close ps-close');close.type='button';close.setAttribute('aria-label','Close');
+    close.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
     header.append(heading,close);
     const stepper=_psEl('ol','ps-stepper');
     const body=_psEl('div','ps-body');
@@ -10049,10 +10050,16 @@ async function _openProjectStarterWizard(profile){
     dialog.append(header,stepper,body,footer);overlay.append(dialog);document.body.append(overlay);
 
     let done=false,pollTimer=null;
-    const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);document.removeEventListener('keydown',onKey,true);overlay.remove();if(opener&&opener.isConnected)opener.focus();resolve(value);};
+    const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);signinFlow=null;document.removeEventListener('keydown',onKey,true);
+      overlay.classList.add('is-leaving');
+      const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
+      resolve(value);};
     const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup')&&!st.busy){event.preventDefault();finish(null);}};
     close.onclick=()=>{if(!st.busy)finish(null);};
-    overlay.onclick=(event)=>{if(event.target===overlay&&!st.busy)finish(null);};
+    // Clicking outside never closes the wizard: a stray click would lose the
+    // whole draft. Close with the × button, Cancel, or Escape.
+    let signinFlow=null;
     document.addEventListener('keydown',onKey,true);
 
     const stepsFor=()=>st.mode==='adopt'
@@ -10097,11 +10104,17 @@ async function _openProjectStarterWizard(profile){
       [['new','newProject','New project from scratch','Pick a location and template, describe it, and Docs-Git writes the instruction files.'],
        ['adopt','existing','Use existing project','Point at a folder you already have. Docs-Git reads it and adapts the instruction files to match.']]
       .forEach(([mode,icon,label,desc])=>{
-        const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';
+        const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';card.style.setProperty('--i',grid.children.length);
         card.setAttribute('aria-pressed',st.mode===mode?'true':'false');
         card.innerHTML='<span class="ps-choice-icon">'+_psIcon(icon,22)+'</span>';
         card.append(_psEl('span','ps-choice-title',label),_psEl('span','ps-choice-desc',desc));
-        card.onclick=()=>{st.mode=mode;renderKind();paintStepper();};
+        card.onclick=()=>{
+          st.mode=mode;
+          grid.querySelectorAll('.ps-choice').forEach(n=>{const on=n===card;n.classList.toggle('is-selected',on);n.setAttribute('aria-pressed',on?'true':'false');});
+          const note=wrap.querySelector('.ps-note');if(note)note.remove();
+          if(mode==='adopt'&&!docsAgent) wrap.append(_psEl('p','ps-note','The Docs-Git profile is not set up, so Hermes will only add the missing continuity files.'));
+          paintStepper();setNav({showPrev:false,canNext:true});
+        };
         card.ondblclick=()=>{st.mode=mode;go(2,1);};
         grid.append(card);
       });
@@ -10206,7 +10219,7 @@ async function _openProjectStarterWizard(profile){
       };
       templates.forEach(tpl=>{
         const card=_psEl('button','ps-template'+(st.template===tpl.key?' is-selected':''));card.type='button';
-        card.setAttribute('aria-pressed',st.template===tpl.key?'true':'false');card.title=tpl.description;
+        card.setAttribute('aria-pressed',st.template===tpl.key?'true':'false');card.style.setProperty('--i',templates.indexOf(tpl));
         card.innerHTML='<span class="ps-template-icon">'+_psIcon(tpl.key,20)+'</span>';
         const text=_psEl('span','ps-template-text');text.append(_psEl('span','ps-template-label',tpl.label),_psEl('span','ps-template-desc',tpl.description));
         card.append(text);
@@ -10230,7 +10243,7 @@ async function _openProjectStarterWizard(profile){
       fileRow.append(uploadButton,upload,fileStatus);
       const review=_psEl('div','ps-review');
       wrap.append(brief,fileRow,review);
-      const invalidate=()=>{st.analysis=null;st.analysisError='';st.questions=[];st.answers={};st.q=0;paintReview();};
+      const invalidate=()=>{st.analysis=null;st.analysisError='';st.analysisSetup=null;st.questions=[];st.answers={};st.q=0;paintReview();};
       const suggest=()=>{if(!st.templateChosen){st.template=_inferProjectTemplate(st.brief);}};
       brief.oninput=()=>{st.brief=brief.value;suggest();invalidate();};
       uploadButton.onclick=()=>upload.click();
@@ -10239,6 +10252,7 @@ async function _openProjectStarterWizard(profile){
       function paintReview(){
         review.innerHTML='';review.className='ps-review';
         if(st.busy){review.classList.add('is-busy');review.innerHTML='<span class="ps-pulse"></span>';review.append(_psEl('span',null,'Docs-Git is reviewing your brief…'));}
+        else if(st.analysisSetup){ paintSetup(review); }
         else if(st.analysisError){
           review.classList.add('is-error');review.append(_psEl('span',null,st.analysisError));
           const retry=_psEl('button','ps-link','Try again');retry.type='button';retry.onclick=()=>analyze();
@@ -10261,9 +10275,62 @@ async function _openProjectStarterWizard(profile){
       setTimeout(()=>brief.focus(),30);
       renderBrief.paint=paintReview;
     }
+    // Docs-Git's profile has no usable model yet: offer the sign-in right
+    // here (Codex / Claude), or the Profiles page for keys and endpoints.
+    function paintSetup(review){
+      const setup=st.analysisSetup||{};
+      review.classList.add('is-setup');
+      const head=_psEl('div','ps-setup-head');
+      head.append(_psEl('strong',null,'Docs-Git needs a model'),_psEl('span',null,setup.message||'Its profile has no usable model yet.'));
+      review.append(head);
+      const flow=_psEl('div','ps-setup-flow');
+      const actions=_psEl('div','ps-setup-actions');
+      const labels={'openai-codex':'OpenAI Codex',anthropic:'Claude'};
+      if(setup.state==='signin'&&labels[setup.provider]){
+        const signIn=_psEl('button','project-starter-submit','Sign in to '+labels[setup.provider]);signIn.type='button';
+        signIn.onclick=()=>startSignin(setup.provider,flow,signIn);
+        actions.append(signIn);
+      }
+      const profiles=_psEl('button','project-starter-cancel','More options in Profiles');profiles.type='button';
+      profiles.onclick=()=>{finish(null);_openProfileSignin('docs-gits');};
+      const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
+      actions.append(profiles,skip);
+      review.append(actions,flow);
+    }
+    async function startSignin(provider,flow,button){
+      button.disabled=true;flow.innerHTML='<span class="ps-pulse"></span> Starting sign-in…';
+      let start;
+      try{start=await api('/api/profiles/oauth/start',{method:'POST',body:JSON.stringify({name:'docs-gits'})});}
+      catch(e){flow.textContent=e.message||'Could not start sign-in.';button.disabled=false;return;}
+      if(start.status==='success'){analyze();return;}
+      const id=start.flow_id;signinFlow=id;
+      flow.innerHTML='';
+      if(provider==='openai-codex'){
+        const steps=_psEl('ol','ps-setup-steps');
+        const a=document.createElement('a');a.href=start.verification_uri;a.target='_blank';a.rel='noopener';a.textContent=start.verification_uri;
+        const li1=_psEl('li',null,'Open ');li1.append(a);
+        const li2=_psEl('li',null,'Enter ');const code=_psEl('code','ps-setup-code',start.user_code);
+        const copy=_psEl('button','ps-link','Copy');copy.type='button';copy.onclick=()=>{try{navigator.clipboard.writeText(start.user_code);showToast('Code copied');}catch(_){}};
+        li2.append(code,copy);
+        steps.append(li1,li2,_psEl('li',null,'Approve it. Docs-Git retries by itself.'));
+        flow.append(steps);
+      }else flow.append(_psEl('p',null,'Sign in to Claude Code on this machine (run claude and log in). Hermes links it automatically.'));
+      const wait=_psEl('div','ps-setup-wait');wait.innerHTML='<span class="ps-pulse"></span>';wait.append(_psEl('span',null,'Waiting for approval…'));flow.append(wait);
+      const every=Math.max(2,Number(start.poll_interval_seconds)||5)*1000;
+      const poll=async()=>{
+        if(done||signinFlow!==id) return;
+        let r;try{r=await api('/api/profiles/oauth/poll?flow_id='+encodeURIComponent(id));}catch(e){r={status:'error',error:e.message};}
+        if(done||signinFlow!==id) return;
+        if(r.status==='pending'){setTimeout(poll,every);return;}
+        signinFlow=null;
+        if(r.status==='success'){showToast('Docs-Git is signed in');analyze();return;}
+        flow.textContent=r.status==='expired'?'The code expired. Try again.':(r.error||'Sign-in did not complete.');button.disabled=false;
+      };
+      setTimeout(poll,every);
+    }
     async function analyze(){
       if(!docsAgent){go(6,1);return;}
-      st.busy=true;st.analysisError='';renderBrief.paint&&renderBrief.paint();
+      st.busy=true;st.analysisError='';st.analysisSetup=null;renderBrief.paint&&renderBrief.paint();
       try{
         const start=await api('/api/projects/starter/analyze',{method:'POST',body:JSON.stringify({name:st.name.trim(),brief:st.brief.trim(),template:st.template})});
         const job=await new Promise((res,rej)=>{
@@ -10275,7 +10342,13 @@ async function _openProjectStarterWizard(profile){
         });
         if(job.status==='error') throw new Error(job.error||'Docs-Git could not review the brief.');
         st.analysis=job.result;st.questions=job.result.questions||[];st.q=0;
-      }catch(error){ if(done) return; st.analysisError=(error&&error.message)||'Docs-Git could not review the brief.'; }
+      }catch(error){
+        if(done) return;
+        st.analysisSetup=null;
+        if(error&&error.code==='docs_agent_setup'){
+          try{st.analysisSetup=JSON.parse(error.body).setup;}catch(_){st.analysisSetup={state:'unknown',message:error.message};}
+        }else st.analysisError=(error&&error.message)||'Docs-Git could not review the brief.';
+      }
       st.busy=false;
       if(done) return;
       if(st.analysis&&!st.analysis.complete&&st.questions.length){go(5,1);return;}
