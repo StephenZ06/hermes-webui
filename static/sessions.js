@@ -10301,9 +10301,13 @@ async function _openProjectStarterWizard(profile){
           const retry=_psEl('button','ps-link','Try again');retry.type='button';retry.onclick=()=>analyze();
           const skip=_psEl('button','ps-link','Skip and create');skip.type='button';skip.onclick=()=>go(6,1);
           review.append(retry,skip);
-          if(/credential|sign in|auth|access_token/i.test(st.analysisError)){
-            const fix=_psEl('button','ps-link','Sign in Docs-Git');fix.type='button';
-            fix.onclick=()=>{finish(null);_openProfileSignin('docs-gits');};
+          if(/credential|sign in|auth|access_token|api key/i.test(st.analysisError)){
+            const fix=_psEl('button','ps-link','Set up Docs-Git');fix.type='button';
+            fix.onclick=async()=>{
+              if(typeof openProviderWizard!=='function'){finish(null);_openProfileSignin('docs-gits');return;}
+              const r=await openProviderWizard('docs-gits',{title:'Set up Docs-Git'});
+              if(r&&!done) analyze();
+            };
             review.append(fix);
           }
         }else if(st.analysis&&st.analysis.complete){

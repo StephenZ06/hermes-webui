@@ -11123,12 +11123,19 @@ def _run_agent_streaming(
                 _ephemeral_session = _ephemeral_session_payload(
                     session_id, result.get('messages', [])
                 )
-                put('done', {
+                _ephemeral_done = {
                     'session': _ephemeral_session,
                     'usage': {'input_tokens': 0, 'output_tokens': 0},
                     'ephemeral': True,
                     'answer': _answer,
-                })
+                }
+                # A failed turn ends with the agent's "not processed" boundary
+                # row as its last assistant message. Carry the verdict and the
+                # user-facing explanation so callers can report the real error.
+                if result.get('failure_reason'):
+                    _ephemeral_done['failure_reason'] = str(result.get('failure_reason'))
+                    _ephemeral_done['failure_message'] = str(result.get('final_response') or '')[:1000]
+                put('done', _ephemeral_done)
                 if _checkpoint_stop is not None:
                     _checkpoint_stop.set()
                 try:

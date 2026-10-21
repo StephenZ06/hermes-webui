@@ -5197,6 +5197,11 @@ def _hide_from_default_sidebar(session: dict, *, show_cron: bool = False, show_w
         return True
     if not show_webhook and source == 'webhook':
         return True
+    # Hidden Docs-Git runs from the project starter wizard are internal work
+    # in another profile; listing them let the sidebar open them and switch
+    # the user's profile mid-wizard. Never shown.
+    if source == 'project_starter':
+        return True
     if not show_kanban and source == 'kanban':
         return True
     if source == 'work_hub_workflow':

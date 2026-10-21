@@ -156,6 +156,7 @@ def parse_analysis(text: str) -> dict:
     raw = str(text or "").strip()
     match = re.search(r"\{.*\}", raw, re.S)
     if not match:
+        logger.warning("Docs-Git review was not JSON (%d chars): %r", len(raw), raw[:300])
         raise ValueError("Docs-Git did not return a readable review.")
     data = json.loads(match.group(0))
     if not isinstance(data, dict):
@@ -221,6 +222,7 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
     session.model = model
     session.model_provider = model_provider
     session.title = title[:80]
+    session.source_tag = "project_starter"  # hidden from every session list
     session.save()
     stream_id = uuid.uuid4().hex
     session.active_stream_id = stream_id
@@ -249,7 +251,12 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
                 continue
             name, data = event[0], event[1] if len(event) > 1 else None
             if name == "done":
-                return str((data or {}).get("answer") or "")
+                payload = data or {}
+                if payload.get("failure_reason"):
+                    # The model never answered: report why, not "unreadable".
+                    detail = str(payload.get("failure_message") or "").strip()
+                    raise RuntimeError(detail or f"Docs-Git's model failed ({payload['failure_reason']}).")
+                return str(payload.get("answer") or "")
             if name in ("error", "apperror", "cancel"):
                 message = (data or {}).get("message") if isinstance(data, dict) else None
                 raise RuntimeError(message or "Docs-Git stopped before answering.")
@@ -257,6 +264,13 @@ def _run_ephemeral_turn(prompt: str, *, timeout: float, workspace: str | None = 
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
+        # The ephemeral path removes the file only on success; a failed or
+        # timed-out run would otherwise leave an empty session behind.
+        if not worker.is_alive():
+            try:
+                Path(session.path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 # ── Docs-Git project setup ──────────────────────────────────────────────────

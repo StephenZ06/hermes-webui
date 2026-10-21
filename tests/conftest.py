@@ -1303,6 +1303,14 @@ _REAL_HERMES_STATE = sys.modules.get("hermes_state")
 _AGENT_PATH_ENV_KEYS = ("HERMES_WEBUI_AGENT_DIR", "PYTHONPATH", "HERMES_WEBUI_PYTHON")
 _REAL_AGENT_ENV = {k: os.environ.get(k) for k in _AGENT_PATH_ENV_KEYS}
 _REAL_SYS_PATH = list(sys.path)
+# api.config appends the agent dir to sys.path when it is first imported, which
+# happens during collection, i.e. after this snapshot. Without it here, the
+# per-test restore below stripped the agent dir after the first test, so any
+# later test that reached agent code needing a root-level module (e.g.
+# gateway/session_policy.py -> hermes_state_runtime) failed with
+# ModuleNotFoundError depending only on test order.
+if HERMES_AGENT is not None and str(HERMES_AGENT) not in _REAL_SYS_PATH:
+    _REAL_SYS_PATH.append(str(HERMES_AGENT))
 
 
 def _hermes_cli_is_healthy() -> bool:

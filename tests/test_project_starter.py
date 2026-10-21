@@ -232,3 +232,12 @@ def test_recommended_option_must_be_one_of_the_options():
 
     assert result["questions"][0]["recommended"] == "Next.js" and result["questions"][0]["why"] == "SSR and a big ecosystem"
     assert "recommended" not in result["questions"][1]
+
+
+def test_hidden_docs_git_sessions_never_reach_the_sidebar():
+    from api.models import _hide_from_default_sidebar
+
+    assert _hide_from_default_sidebar({"session_id": "abc", "source_tag": "project_starter"}) is True
+    assert _hide_from_default_sidebar({"session_id": "abc", "source_tag": "project_starter"},
+                                      show_cron=True, show_webhook=True, show_kanban=True) is True
+    assert _hide_from_default_sidebar({"session_id": "abc", "source_tag": "webui"}) is False
