@@ -14573,3 +14573,29 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 @media (prefers-reduced-motion:reduce){.profile-health-pill,.profile-health-banner,.pp-alert{animation:none;}}
 .project-starter-field .pp-input{flex:none;width:100%;}
 .ps-choice.pw-start,.ps-choice.pw-use{min-height:84px;}
+/* Provider wizard: sized to its content, centred connect/finish steps. */
+.project-starter-dialog.ps-wizard.pw-wizard{width:min(640px,100%);min-height:0;}
+.pw-wizard .ps-body{min-height:0;}
+.pw-wizard .ps-section.is-centred{align-items:center;text-align:center;padding:6px 0 2px;}
+.pw-wizard .ps-section.is-centred .ps-hint{max-width:440px;margin-left:auto;margin-right:auto;}
+.pw-wizard .is-centred .pw-connect{align-items:center;width:100%;max-width:440px;}
+.pw-wizard .is-centred .pw-status{justify-content:center;flex-wrap:wrap;}
+.pw-wizard .is-centred .ps-setup-flow{align-items:center;}
+.pw-wizard .is-centred .ps-setup-steps{text-align:left;}
+.pw-wizard .is-centred .pp-grid,.pw-wizard .is-centred .project-starter-field{text-align:left;}
+.pw-wizard .is-centred .ps-choice-grid{width:100%;}
+.pw-wizard .is-centred .ps-choice{text-align:left;}
+.pw-wizard .is-centred .pw-result{width:100%;text-align:left;}
+.pw-wizard .pw-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+.pw-wizard .pw-models{max-height:230px;}
+.pp-more{margin-top:12px;border-top:1px solid var(--border);}
+.pp-more > summary{display:flex;align-items:center;gap:6px;padding:12px 0 2px;cursor:pointer;list-style:none;color:var(--muted);font-size:12px;font-weight:650;}
+.pp-more > summary::-webkit-details-marker{display:none;}
+.pp-more > summary::before{content:'';width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s;}
+.pp-more[open] > summary::before{transform:rotate(45deg);}
+.pp-more > summary:hover{color:var(--text);}
+.pp-more[open] > .pp-section{animation:ps-fade-up .2s ease-out;}
+.pp-own .pp-row{gap:10px;}
+.pp-own .profile-signin-btn{margin-left:auto;}
+.pp-own .pp-own-edit{margin-left:auto;}
+@media (max-width:720px){.pw-wizard .pw-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}

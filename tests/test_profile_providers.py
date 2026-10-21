@@ -153,3 +153,32 @@ def test_health_lists_each_profile_and_counts_a_ready_fallback_as_usable(homes, 
     pp.set_api_key("docs", "openrouter", "k")
     pp.set_fallbacks("docs", [{"provider": "openrouter", "model": "m"}])
     assert {r["name"]: r for r in pp.health()}["docs"]["state"] == "fallback"
+
+
+def test_local_lm_studio_needs_no_key_and_is_probed_at_its_url(homes, monkeypatch):
+    work = homes / "profiles" / "work"
+    (work / "config.yaml").write_text("model:\n  provider: lmstudio\n  default: qwen\n  base_url: http://localhost:1234/v1\n")
+
+    assert pp.overview("work")["main"]["status"]["state"] == "ready"
+    assert all(k["id"] != "lmstudio" for k in pp.api_key_providers())
+
+    seen = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"data":[{"id":"qwen"}]}'
+
+    def fake_urlopen(req, timeout=0):
+        seen["url"] = req.full_url
+        return _Resp()
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+    result = pp.test_route("work")
+    assert seen["url"] == "http://localhost:1234/v1/models"
+    assert result["ok"] is True and result["models"] == ["qwen"]

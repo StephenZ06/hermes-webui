@@ -9204,7 +9204,7 @@ async function openProviderWizard(name, opts = {}){
   return _pwRun();
 
   function _pwRun(){
-  const pre = opts.preselect ? choices.find(c => c.id === opts.preselect || (c.endpoint && c.endpoint.provider === opts.preselect)) : null;
+  const pre = opts.preselect ? choices.find(c => c.id === opts.preselect || (c.endpoint && c.endpoint.provider === opts.preselect) || (c.preset && c.preset.id === opts.preselect)) : null;
   const st = {step: opts.create ? 0 : (pre ? 2 : 1), created: false, profileName: '', startFrom: 'fresh', cloneFrom: '', choice: pre || null, provider: '', model: '', models: null, modelsMsg: '', use: opts.use || 'main', busy: false, showAllKeys: false};
   return new Promise(resolve => {
     const opener = document.activeElement;
@@ -9244,8 +9244,8 @@ async function openProviderWizard(name, opts = {}){
     const nav = ({canNext = false, nextLabel = 'Next', showPrev = true, hideNext = false} = {}) => {
       prev.hidden = !showPrev; next.hidden = hideNext; next.textContent = nextLabel; next.disabled = !canNext || st.busy;
     };
-    const section = (prompt, hint) => {
-      body.innerHTML = `<div class="ps-section"><h3 class="ps-prompt">${esc(prompt)}</h3>${hint ? `<p class="ps-hint">${esc(hint)}</p>` : ''}</div>`;
+    const section = (prompt, hint, centred) => {
+      body.innerHTML = `<div class="ps-section${centred ? ' is-centred' : ''}"><h3 class="ps-prompt">${esc(prompt)}</h3>${hint ? `<p class="ps-hint">${esc(hint)}</p>` : ''}</div>`;
       return body.firstElementChild;
     };
     const render = (dir = 1) => {
@@ -9357,7 +9357,7 @@ async function openProviderWizard(name, opts = {}){
       return connectEndpoint(c);
     }
     function connectSignin(c){
-      const wrap = section(`Sign in to ${c.label}:`, 'The sign-in is saved to this profile only.');
+      const wrap = section(`Sign in to ${c.label}`, 'The sign-in is saved to this profile only.', true);
       const box = document.createElement('div'); box.className = 'pw-connect';
       const status = document.createElement('div'); status.className = 'pw-status';
       const flow = document.createElement('div'); flow.className = 'ps-setup-flow';
@@ -9398,7 +9398,7 @@ async function openProviderWizard(name, opts = {}){
       st.provider = c.id;
     }
     function connectKey(c){
-      const wrap = section(`Add your ${c.label} API key:`, c.connected ? 'A key is already saved. Paste a new one to replace it, or continue.' : 'It is saved to this profile only and never shown again.');
+      const wrap = section(`Add your ${c.label} API key`, c.connected ? 'A key is already saved. Paste a new one to replace it, or continue.' : 'It is saved to this profile only and never shown again.', true);
       const form = document.createElement('form'); form.className = 'pw-connect';
       form.innerHTML = `<label class="project-starter-field"><span>${esc(c.env_var)}</span><input class="pp-input pw-key" type="password" autocomplete="off" placeholder="${c.connected ? '•••••••• saved' : 'Paste API key'}"></label>`;
       wrap.append(form);
@@ -9414,7 +9414,7 @@ async function openProviderWizard(name, opts = {}){
     function connectEndpoint(c){
       const p = c.preset || {name: c.label, base_url: (c.endpoint && c.endpoint.base_url) || '', needs_key: true, hint: ''};
       const e = c.endpoint;
-      const wrap = section(`Connect ${c.label}:`, p.hint || 'Any server that speaks the OpenAI chat-completions API.');
+      const wrap = section(`Connect ${c.label}`, p.hint || 'Any server that speaks the OpenAI chat-completions API.', true);
       const form = document.createElement('form'); form.className = 'pw-connect';
       form.innerHTML = `
         ${p.dashboard ? `<a class="project-starter-cancel pw-dash" target="_blank" rel="noopener" href="${esc(_ppDashboardUrl(p.dashboard))}">Open ${esc(p.name)} dashboard ↗</a>` : ''}
@@ -9477,7 +9477,7 @@ async function openProviderWizard(name, opts = {}){
     // Step 4: use as main / fallback, then save + test
     function stepFinish(){
       sub.textContent = `${st.choice.label} · ${st.model}`;
-      const wrap = section('How should this profile use it?');
+      const wrap = section('How should this profile use it?', '', true);
       const grid = document.createElement('div'); grid.className = 'ps-choice-grid';
       [['main', 'Main model', `Every chat in “${name}” uses ${st.model}.`], ['fallback', 'Fallback', 'Used only when the main model can’t start or keeps failing.']].forEach(([id, label, desc], i) => {
         const card = document.createElement('button'); card.type = 'button'; card.className = 'ps-choice pw-use' + (st.use === id ? ' is-selected' : '');
@@ -9604,6 +9604,31 @@ async function _renderProfileProviders(name){
   const main = data.main;
   const keyed = data.api_keys.filter(k => k.has_key);
   const needsFix = ['signin', 'key', 'unset'].includes(main.status.state) && !data.fallbacks.some(f => f.status.state === 'ready');
+  // Only this profile's own connection is shown up front; every other
+  // provider lives behind "All connections" (opened by default only for a
+  // profile with no main model yet).
+  const ownSignin = data.signins.find(s => s.id === main.provider);
+  const ownKey = data.api_keys.find(k => k.id === main.provider);
+  const ownEndpoint = data.endpoints.find(e => e.provider === main.provider);
+  let own = '';
+  if (ownSignin) {
+    own = `<div class="pp-signin" data-provider="${esc(ownSignin.id)}">
+      <div class="pp-row"><span class="pp-name">${esc(ownSignin.label)}</span>${ownSignin.signed_in ? '<span class="detail-badge ok">Signed in</span>' : '<span class="detail-badge warn">Not signed in</span>'}
+        <button type="button" class="project-starter-submit profile-signin-btn">${ownSignin.signed_in ? 'Sign in again' : 'Sign in'}</button></div>
+      <div class="profile-signin-flow" hidden></div>
+      <p class="profile-signin-hint">This sign-in belongs to “${esc(name)}” only.</p></div>`;
+  } else if (ownKey) {
+    own = `<div class="pp-row"><span class="pp-name">${esc(ownKey.label)}</span><code class="pp-muted">${esc(ownKey.env_var)}</code>${ownKey.has_key ? '<span class="detail-badge ok">Key saved</span>' : '<span class="detail-badge warn">No key</span>'}</div>
+      <form class="pp-form pp-own-key-form"><input class="pp-input pp-own-key" type="password" autocomplete="off" placeholder="${ownKey.has_key ? 'Paste a new key to replace it' : 'Paste API key'}"><button type="submit" class="project-starter-submit">${ownKey.has_key ? 'Replace key' : 'Save key'}</button></form>`;
+  } else if (ownEndpoint) {
+    own = `<div class="pp-row"><span class="pp-name">${esc(ownEndpoint.name)}</span><code class="pp-muted">${esc(ownEndpoint.base_url)}</code>${ownEndpoint.has_key ? '<span class="detail-badge ok">Key saved</span>' : ''}
+      <button type="button" class="pp-link pp-own-edit">Edit</button></div>`;
+  } else if (['lmstudio', 'ollama'].includes(main.provider)) {
+    own = `<div class="pp-row"><span class="pp-name">${main.provider === 'lmstudio' ? 'LM Studio' : 'Ollama'}</span><code class="pp-muted">${esc(main.base_url || (main.provider === 'lmstudio' ? 'http://127.0.0.1:1234/v1' : 'http://127.0.0.1:11434/v1'))}</code><span class="detail-badge">No key needed</span>
+      <button type="button" class="pp-link pp-own-edit">Edit</button></div>`;
+  }
+  const ownFallbacks = data.fallbacks.length ? `<div class="pp-section"><div class="pp-section-title">Fallbacks</div>
+    <ol class="pp-fallbacks pp-fallbacks-summary">${data.fallbacks.map(f => `<li><span class="pp-name">${esc((routes.find(r => r.provider === f.provider) || {}).label || f.provider)}</span><span class="pp-muted">${esc(f.model)}</span>${_ppBadge(f.status)}</li>`).join('')}</ol></div>` : '';
   card.innerHTML = `
     <div class="pp-card-head"><div class="detail-card-title">Providers</div>
       <button type="button" class="project-starter-submit pp-setup">Set up a provider</button></div>
@@ -9612,7 +9637,7 @@ async function _renderProfileProviders(name){
     <div class="pp-main">
       <div class="pp-main-route">
         <span class="pp-main-label">Main model</span>
-        <span class="pp-main-value">${main.provider ? esc((routes.find(r => r.provider === main.provider) || {}).label || main.provider) + (main.model ? ' · ' + esc(main.model) : '') : 'Not set'}</span>
+        <span class="pp-main-value">${main.provider ? esc((routes.find(r => r.provider === main.provider) || {}).label || ({lmstudio: 'LM Studio', ollama: 'Ollama'})[main.provider] || main.provider) + (main.model ? ' · ' + esc(main.model) : '') : 'Not set'}</span>
         ${_ppBadge(main.status)}
       </div>
       <p class="profile-signin-hint pp-main-msg">${esc(main.status.message || '')}</p>
@@ -9627,7 +9652,10 @@ async function _renderProfileProviders(name){
         <button type="submit" class="project-starter-submit">Save</button>
       </form>
     </div>
+    ${own ? `<div class="pp-section pp-own"><div class="pp-section-title">Connection</div>${own}</div>` : ''}
+    ${ownFallbacks}
 
+    <details class="pp-more"${main.provider ? '' : ' open'}><summary>All connections</summary>
     <div class="pp-section">
       <div class="pp-section-title">Sign in</div>
       ${data.signins.map(s => `
@@ -9692,13 +9720,22 @@ async function _renderProfileProviders(name){
         <input class="pp-input pp-fb-model" placeholder="Model id">
         <button type="submit" class="project-starter-cancel">Add fallback</button>
       </form>` : '<p class="profile-signin-hint">Connect a provider above to add fallbacks.</p>'}
-    </div>`;
+    </div>
+    </details>`;
 
   const refresh = () => _renderProfileProviders(name);
   const fail = (e) => showToast(e.message || String(e));
   const $c = (sel) => card.querySelector(sel);
   if ($c('.pp-fix')) $c('.pp-fix').onclick = async () => {
     const r = await openProviderWizard(name, {title: `Set up “${name}”`, preselect: ['signin', 'key'].includes(main.status.state) ? main.provider : undefined});
+    if (r) { refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); }
+  };
+  const ownKeyForm = $c('.pp-own-key-form');
+  if (ownKeyForm) ownKeyForm.onsubmit = async (ev) => { ev.preventDefault();
+    const value = $c('.pp-own-key').value.trim(); if (!value) return;
+    try { await _ppPost('key', {name, provider: main.provider, api_key: value}); showToast('API key saved'); refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); } catch (e) { fail(e); } };
+  if ($c('.pp-own-edit')) $c('.pp-own-edit').onclick = async () => {
+    const r = await openProviderWizard(name, {preselect: main.provider});
     if (r) { refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); }
   };
   $c('.pp-setup').onclick = async () => {

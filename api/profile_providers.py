@@ -44,6 +44,9 @@ ENDPOINT_PRESETS = [
      "hint": "Any endpoint that speaks the OpenAI chat-completions API."},
 ]
 
+# Local servers that need no API key; the agent fills in a placeholder.
+LOCAL_NO_KEY = {"lmstudio": "http://127.0.0.1:1234/v1", "ollama": "http://127.0.0.1:11434/v1"}
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 
@@ -164,7 +167,7 @@ def api_key_providers() -> list[dict]:
     rows = []
     for pid, label in _PROVIDER_DISPLAY.items():
         env_var = _provider_env_var_for(pid)
-        if env_var and pid != "openai-codex":  # Anthropic takes a key or a Claude sign-in
+        if env_var and pid != "openai-codex" and pid not in LOCAL_NO_KEY:  # Anthropic: key or Claude sign-in
             rows.append({"id": pid, "label": label, "env_var": env_var})
     return rows
 
@@ -212,6 +215,8 @@ def _route_status(home: Path, cfg: dict, env: dict, provider: str, base_url: str
         if not _endpoint_url(entry):
             return {"state": "key", "message": "This endpoint has no URL."}
         return {"state": "ready", "message": f"Uses {entry.get('name') or slug} at {_endpoint_url(entry)}."}
+    if provider in LOCAL_NO_KEY:
+        return {"state": "ready", "message": f"Uses the local server at {base_url or LOCAL_NO_KEY[provider]}."}
     env_var = _env_var_for(provider)
     if env_var:
         if env.get(env_var) or (_is_root_home(home) and os.environ.get(env_var)):
@@ -449,6 +454,10 @@ def test_route(name: str, provider: str = "") -> dict:
     provider = str(provider or model.get("provider") or "").strip()
     slug = provider.split(":", 1)[1] if provider.startswith("custom:") else provider
     entry = _endpoints(cfg).get(slug)
+    if not (isinstance(entry, dict) and _endpoint_url(entry)) and provider in LOCAL_NO_KEY:
+        # Built-in local server configured only through model.base_url.
+        main_url = str(model.get("base_url") or "") if model.get("provider") == provider else ""
+        entry = {"base_url": main_url or LOCAL_NO_KEY[provider], "name": provider}
     if isinstance(entry, dict) and _endpoint_url(entry):
         url = _endpoint_url(entry).rstrip("/") + "/models"
         headers = {"Accept": "application/json", "User-Agent": "Hermes-WebUI/1.0"}
@@ -484,7 +493,7 @@ def list_models(name: str, provider: str) -> dict:
         raise ProfileProviderError("Choose a provider first.")
     slug = provider.split(":", 1)[1] if provider.startswith("custom:") else provider
     entry = _endpoints(_read_config(home)).get(slug)
-    if isinstance(entry, dict) and _endpoint_url(entry):
+    if (isinstance(entry, dict) and _endpoint_url(entry)) or provider in LOCAL_NO_KEY:
         result = test_route(name, provider)
         return {"models": result.get("models") or [], "ok": result["ok"], "message": result["message"]}
 
