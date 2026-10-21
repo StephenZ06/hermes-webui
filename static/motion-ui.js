@@ -408,7 +408,11 @@
     const panelTo = expanding ? 0 : offscreen;
     // How far the main column jumped when the state was applied. It is carried
     // back and animated to zero so the content glides instead of popping.
-    const mainFrom = animateMain ? mainBefore.left - mainAfter.left : 0;
+    // Right panel: main only narrows (its left edge stays put), so carry the
+    // centred chat column by its centre, not its left edge, or it snaps first.
+    const mainFrom = !animateMain ? 0 : (side === 'right'
+      ? (mainBefore.left + mainBefore.width / 2) - (mainAfter.left + mainAfter.width / 2)
+      : mainBefore.left - mainAfter.left);
     // Translate only. The page keeps its final layout width and moves as one
     // rigid body: scaling main to interpolate its width stretched every glyph
     // and card for the length of the slide, which read as a wobble.

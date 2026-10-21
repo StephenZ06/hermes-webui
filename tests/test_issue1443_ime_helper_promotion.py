@@ -98,20 +98,23 @@ def test_session_rename_uses_windowed_helper():
 
 
 def test_project_create_and_rename_use_windowed_helper():
-    """Project create + project rename (sessions.js ~1987 and ~2015) both use window._isImeEnter."""
-    # Both project blocks share the shape `inp.onkeydown=(e)=>{...}` (note the parens).
-    pattern = re.compile(
+    """Project rename and the project starter wizard's Enter-to-advance fields use window._isImeEnter."""
+    rename = re.compile(
         r"inp\.onkeydown\s*=\s*\(\s*e\s*\)\s*=>\s*\{\s*"
         r"if\s*\(\s*e\.key\s*===\s*'Enter'\s*\)\s*\{\s*"
         + _windowed_guard("e"),
         re.DOTALL,
     )
-    matches = pattern.findall(SESSIONS_JS)
-    assert len(matches) >= 2, (
-        f"Project create AND project rename Enter handlers in static/sessions.js "
-        f"must both use window._isImeEnter(e); found {len(matches)} of 2 expected "
-        f"(issue #1443)."
+    assert rename.findall(SESSIONS_JS), "Project rename must use window._isImeEnter(e) (issue #1443)."
+    # Project creation is now the starter wizard: its folder-name and custom-answer
+    # fields advance on Enter and must not do so while an IME is composing.
+    wizard = re.compile(
+        r"(?:nameInput|other)\.onkeydown\s*=\s*\(\s*event\s*\)\s*=>\s*\{\s*"
+        r"if\s*\(\s*event\.key\s*===\s*'Enter'\s*\)\s*\{\s*"
+        + _windowed_guard("event"),
+        re.DOTALL,
     )
+    assert len(wizard.findall(SESSIONS_JS)) >= 2, "Project starter Enter handlers must use window._isImeEnter (issue #1443)."
 
 
 def test_app_dialog_uses_windowed_helper():

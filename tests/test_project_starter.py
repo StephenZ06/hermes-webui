@@ -192,3 +192,43 @@ def test_docs_git_review_is_parsed_into_bounded_questions():
         pass
     else:
         raise AssertionError("unreadable review was accepted")
+
+
+def test_new_projects_carry_the_lifecycle_contract_and_docs(tmp_path: Path):
+    project_starter.create_starter_pack(tmp_path, "shop", "web", "An online candle shop.")
+    root = tmp_path / "shop"
+
+    agents = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert "project-lifecycle" in agents and ".agent/ECC_HANDOFF.md" in agents and "docs/UI_UX.md" in agents
+    for rel in (".agent/CONTEXT.md", ".agent/PROJECT_STATUS.md", ".agent/TASKS.md", ".agent/CHANGELOG.md"):
+        assert (root / rel).is_file(), rel
+    architecture = (root / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "## Stack" in architecture and "candle shop" in architecture
+
+
+def test_registry_gets_one_appended_entry_and_never_a_duplicate(tmp_path: Path):
+    registry = tmp_path / "WORKSPACES.yaml"
+    registry.write_text("projects:\n  shop:\n    display_name: Shop\n    access_mode: local\n    repo_path: /old/shop\n    status: confirmed project root\n")
+    project = tmp_path / "Shop"
+    project.mkdir()
+
+    key = project_starter.register_in_lifecycle_registry("Shop", project, registry)
+    assert key == "shop-2"
+    assert project_starter.register_in_lifecycle_registry("Shop", project, registry) is None
+    import yaml
+
+    data = yaml.safe_load(registry.read_text())
+    assert data["projects"]["shop"]["repo_path"] == "/old/shop"
+    assert data["projects"]["shop-2"] == {"display_name": "Shop", "access_mode": "local",
+                                         "repo_path": str(project.resolve()), "status": "confirmed project root"}
+
+
+def test_recommended_option_must_be_one_of_the_options():
+    from api.project_starter_agent import parse_analysis
+
+    result = parse_analysis('{"complete": false, "questions": ['
+                            '{"id": "stack", "question": "Stack?", "options": ["Next.js", "Django"], "recommended": "next.js", "why": "SSR and a big ecosystem"},'
+                            '{"id": "db", "question": "DB?", "options": ["Postgres", "SQLite"], "recommended": "Mongo"}]}')
+
+    assert result["questions"][0]["recommended"] == "Next.js" and result["questions"][0]["why"] == "SSR and a big ecosystem"
+    assert "recommended" not in result["questions"][1]

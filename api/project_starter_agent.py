@@ -80,7 +80,8 @@ def docs_agent_readiness() -> dict:
 _ANALYSIS_PROMPT = """You are helping set up a new software project's instruction files.
 Do not use any tools and do not create files. Reply with ONLY one JSON object:
 {{"complete": true|false, "summary": "one sentence", "questions": [
-  {{"id": "short_snake_id", "question": "...", "options": ["...", "..."]}}]}}
+  {{"id": "short_snake_id", "question": "...", "options": ["...", "..."],
+    "recommended": "one of the options, copied exactly", "why": "one short reason tied to the brief"}}]}}
 
 The project will be created from the "{template}" template, which writes these
 files: {files}. To fill them well we need: what is being built and for whom, the
@@ -90,7 +91,11 @@ how it is deployed or delivered (skip what does not apply to this template).
 Set "complete" to true only when the brief already answers everything that
 applies. Otherwise ask at most {max_questions} short questions, one per missing
 fact, most important first. Give each question 3-6 concrete, mutually exclusive
-options that suit the brief (the user can also type their own answer).
+options that suit the brief (the user can also type their own answer). For every
+question, pick the option you would recommend for THIS project (its users,
+scale, platform and constraints in the brief) as "recommended", and say why in
+under 15 words as "why". Prefer mainstream, well-supported choices unless the
+brief points elsewhere.
 
 Project name: {name}
 Brief:
@@ -166,7 +171,13 @@ def parse_analysis(text: str) -> dict:
         if not question or qid in seen:
             continue
         seen.add(qid)
-        questions.append({"id": qid, "question": question, "options": options})
+        recommended = str(item.get("recommended") or "").strip()
+        match = next((o for o in options if o.casefold() == recommended.casefold()), "")
+        entry = {"id": qid, "question": question, "options": options}
+        if match:
+            entry["recommended"] = match
+            entry["why"] = str(item.get("why") or "").strip()[:160]
+        questions.append(entry)
         if len(questions) >= _MAX_QUESTIONS:
             break
     return {

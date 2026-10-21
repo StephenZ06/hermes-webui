@@ -282,6 +282,58 @@ function _setWorkspacePanelMode(mode){
   syncWorkspacePanelUI();
 }
 
+// ── Pinned workspace panel ──────────────────────────────────────────────────
+// Pinned = the workspace panel and the chat share the row 50/50. The choice is
+// remembered (localStorage) across page switches and reloads until unpinned.
+const _WORKSPACE_PIN_KEY='hermes-webui-workspace-pinned';
+function _isWorkspacePinned(){return document.documentElement.dataset.workspacePinned==='1';}
+function _syncWorkspacePinButton(){
+  const btn=$('btnWorkspacePin');
+  if(!btn)return;
+  const pinned=_isWorkspacePinned();
+  btn.classList.toggle('active',pinned);
+  btn.setAttribute('aria-pressed',pinned?'true':'false');
+  btn.dataset.tooltip=pinned?'Unpin':'Pin side by side';
+  btn.setAttribute('aria-label',pinned?'Unpin the workspace panel':'Pin side by side with the chat');
+}
+function toggleWorkspacePin(force){
+  const panel=document.querySelector('.rightpanel');
+  const next=typeof force==='boolean'?force:!_isWorkspacePinned();
+  try{localStorage.setItem(_WORKSPACE_PIN_KEY,next?'1':'0');}catch(_){}
+  const apply=()=>{
+    if(next)document.documentElement.dataset.workspacePinned='1';
+    else delete document.documentElement.dataset.workspacePinned;
+  };
+  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(!panel||reduce||_isCompactWorkspaceViewport()||!panel.getBoundingClientRect().width){apply();_syncWorkspacePinButton();return;}
+  // FLIP the width: hold the current width, switch state, then glide to the
+  // new width with the stylesheet transition; drop the pin when it lands.
+  const from=panel.getBoundingClientRect().width;
+  // The resize handle keeps the user's width inline; give it back on landing.
+  const savedWidth=[panel.style.getPropertyValue('width'),panel.style.getPropertyPriority('width')];
+  panel.style.removeProperty('width');
+  panel.style.setProperty('transition','none','important');
+  apply();
+  if(savedWidth[0]&&!next)panel.style.setProperty('width',savedWidth[0],savedWidth[1]);
+  const to=panel.getBoundingClientRect().width;
+  panel.style.setProperty('width',from+'px','important');
+  panel.style.setProperty('flex','none','important');
+  void panel.offsetWidth;
+  panel.style.removeProperty('transition');
+  panel.classList.add('workspace-pin-gliding');
+  panel.style.setProperty('width',to+'px','important');
+  let done=false;
+  const land=()=>{if(done)return;done=true;panel.classList.remove('workspace-pin-gliding');panel.style.removeProperty('width');if(savedWidth[0])panel.style.setProperty('width',savedWidth[0],savedWidth[1]);panel.style.removeProperty('flex');panel.removeEventListener('transitionend',onEnd);};
+  const onEnd=(e)=>{if(e.target===panel&&e.propertyName==='width')land();};
+  panel.addEventListener('transitionend',onEnd);
+  setTimeout(land,520);
+  _syncWorkspacePinButton();
+  // Pinning a closed panel opens it: pinned means "keep it beside the chat".
+  if(next&&document.documentElement.dataset.workspacePanel==='closed'&&typeof toggleWorkspacePanel==='function')toggleWorkspacePanel(true);
+}
+try{if(localStorage.getItem(_WORKSPACE_PIN_KEY)==='1')document.documentElement.dataset.workspacePinned='1';}catch(_){}
+document.addEventListener('DOMContentLoaded',_syncWorkspacePinButton);
+
 function syncWorkspacePanelState(){
   const hasPreview=_hasWorkspacePreviewVisible();
   if(hasPreview){
@@ -1217,7 +1269,13 @@ function _slidePanelWithNativeAnimation(panel,side,apply,opts){
   const offscreen=side==='right'?rect.width:-rect.width;
   const panelFrom=expanding?offscreen:0;
   const panelTo=expanding?0:offscreen;
-  const mainFrom=animateMain?mainBefore.left-mainAfter.left:0;
+  // The chat column is centred in <main>. A left rail moves main's left edge,
+  // but the right workspace panel only narrows main, so its left edge never
+  // moves and a left-edge offset left the chat snapping while the panel slid.
+  // Carry the centre instead: the conversation glides with the panel.
+  const mainFrom=!animateMain?0:(side==='right'
+    ?(mainBefore.left+mainBefore.width/2)-(mainAfter.left+mainAfter.width/2)
+    :mainBefore.left-mainAfter.left);
   // Translate only: the page keeps its final layout width and moves rigidly.
   // Scaling main to interpolate its width stretched every glyph during the slide.
   const mainFromTransform='translateX('+mainFrom+'px)';
@@ -3293,11 +3351,6 @@ function _toggleNewChatMenu(anchorBtn){
   if(existing){existing.remove();return;}
   const menu=document.createElement('div');
   menu.className='new-chat-menu';
-  document.body.appendChild(menu);
-  const rect=anchorBtn.getBoundingClientRect();
-  const menuRect=menu.getBoundingClientRect();
-  menu.style.top=(rect.bottom+4)+'px';
-  menu.style.left=Math.max(8,rect.right-menuRect.width)+'px';
   const mkItem=(label,onClick)=>{
     const item=document.createElement('button');
     item.type='button';
@@ -3310,6 +3363,12 @@ function _toggleNewChatMenu(anchorBtn){
   menu.appendChild(mkItem(t('new_project_folder'),()=>{
     if(typeof _startProjectCreate==='function') _startProjectCreate();
   }));
+  // Measure after the items exist so the menu hugs its labels and its right
+  // edge lines up with the button.
+  document.body.appendChild(menu);
+  const rect=anchorBtn.getBoundingClientRect();
+  menu.style.top=(rect.bottom+4)+'px';
+  menu.style.left=Math.max(8,rect.right-menu.getBoundingClientRect().width)+'px';
   const close=(e)=>{if(!menu.contains(e.target)&&e.target!==anchorBtn){menu.remove();document.removeEventListener('click',close);}};
   setTimeout(()=>document.addEventListener('click',close),0);
 }

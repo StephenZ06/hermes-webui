@@ -9289,7 +9289,7 @@ async function openProviderWizard(name, opts = {}){
         nav({canNext: !!v && !msg && (st.startFrom === 'fresh' || existing.length > 0), nextLabel: 'Create profile', showPrev: false});
       };
       input.oninput = validate;
-      input.onkeydown = (e) => { if (e.key === 'Enter' && !next.disabled) { e.preventDefault(); next.click(); } };
+      input.onkeydown = (e) => { if (e.key === 'Enter') { if (window._isImeEnter && window._isImeEnter(e)) return; if (!next.disabled) { e.preventDefault(); next.click(); } } };
       validate(); setTimeout(() => input.focus(), 40);
     }
     async function createProfile(){
@@ -9462,7 +9462,7 @@ async function openProviderWizard(name, opts = {}){
         nav({canNext: !!search.value.trim()});
       };
       search.oninput = () => { st.model = search.value.trim(); paint(); };
-      search.onkeydown = (ev) => { if (ev.key === 'Enter' && !next.disabled) { ev.preventDefault(); next.click(); } };
+      search.onkeydown = (ev) => { if (ev.key === 'Enter') { if (window._isImeEnter && window._isImeEnter(ev)) return; if (!next.disabled) { ev.preventDefault(); next.click(); } } };
       paint();
       if (st.models === null) {
         try { const r = await _ppPost('models', {name, provider: st.provider}); st.models = r.models || []; st.modelsMsg = r.ok ? '' : r.message; }

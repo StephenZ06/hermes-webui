@@ -20038,8 +20038,11 @@ def _route_post_api_projects_create_starter(handler, parsed, body, diag):
             logger.exception("Could not roll back project starter files: %s", project_path)
         logger.exception("Project starter record save failed")
         return bad(handler, "Could not save the new project.", 500)
+    from api.project_starter import register_in_lifecycle_registry
+
+    registry_key = register_in_lifecycle_registry(name, Path(project_path))
     docs_job = _starter_docs_job(proj, adopt=False, template_key=starter["template"]) if body.get("docs_agent", True) else None
-    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job})
+    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job, "registry_key": registry_key})
 
 
 def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
@@ -20089,8 +20092,11 @@ def _route_post_api_projects_adopt_starter(handler, parsed, body, diag):
         logger.exception("Project adopt record save failed")
         return bad(handler, "Could not save the project.", 500)
     starter.pop("added", None)
+    from api.project_starter import register_in_lifecycle_registry
+
+    registry_key = register_in_lifecycle_registry(name, Path(starter["path"]))
     docs_job = _starter_docs_job(proj, adopt=True, template_key=starter["template"]) if body.get("docs_agent", True) else None
-    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job})
+    return j(handler, {"ok": True, "project": proj, "starter": starter, "docs_job": docs_job, "registry_key": registry_key})
 
 
 def _route_post_api_projects_rename(handler, parsed, body, diag):

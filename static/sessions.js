@@ -7845,7 +7845,7 @@ function _attachProjectQuickCreateButton(chip, project){
   btn.type='button';
   btn.className='project-chip-quick-create';
   // An SVG plus centres exactly; the '+' text glyph sat on the font baseline.
-  btn.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  btn.innerHTML='<svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M4 .75v6.5M.75 4h6.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>';
   btn.title='New conversation in this project';
   btn.setAttribute('aria-label','New conversation in this project');
   const stop=function(e){
@@ -9988,6 +9988,12 @@ const _PROJECT_STARTER_ICONS={
   chevron:'<path d="m9 6 6 6-6 6"/>',
   check:'<path d="m5 12 5 5 9-10"/>',
 };
+// Full-colour artwork for the start choices and templates (icons/new-workspace,
+// optically normalised to the same visual size in static/project-starter/).
+const _PS_ART={blank:1,web:1,ios:1,android:1,api:1,cli:1,data:1,research:1,new:1,existing:1};
+function _psArt(name,size){
+  return '<img class="ps-art" src="static/project-starter/'+name+'.webp" width="'+size+'" height="'+size+'" alt="" decoding="async" draggable="false">';
+}
 function _psIcon(name,size=18){
   return '<svg class="ps-icon" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(_PROJECT_STARTER_ICONS[name]||'')+'</svg>';
 }
@@ -10106,7 +10112,8 @@ async function _openProjectStarterWizard(profile){
       .forEach(([mode,icon,label,desc])=>{
         const card=_psEl('button','ps-choice'+(st.mode===mode?' is-selected':''));card.type='button';card.style.setProperty('--i',grid.children.length);
         card.setAttribute('aria-pressed',st.mode===mode?'true':'false');
-        card.innerHTML='<span class="ps-choice-icon">'+_psIcon(icon,22)+'</span>';
+        card.classList.add('ps-kind');
+        card.innerHTML='<span class="ps-choice-icon ps-art-wrap">'+_psArt(mode==='new'?'new':'existing',48)+'</span>';
         card.append(_psEl('span','ps-choice-title',label),_psEl('span','ps-choice-desc',desc));
         card.onclick=()=>{
           st.mode=mode;
@@ -10182,7 +10189,7 @@ async function _openProjectStarterWizard(profile){
         nameInput=_psEl('input');nameInput.maxLength=96;nameInput.placeholder='e.g. customer-health';nameInput.autocomplete='off';nameInput.value=st.name;
         nameError=_psEl('span','ps-field-error');
         nameInput.oninput=()=>{st.name=nameInput.value;updateTarget();};
-        nameInput.onkeydown=(event)=>{if(event.key==='Enter'&&!next.disabled){event.preventDefault();next.click();}};
+        nameInput.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event))return;if(!next.disabled){event.preventDefault();next.click();}}};
         field.append(nameInput,nameError);wrap.append(field);
       }
       wrap.append(target);
@@ -10220,7 +10227,7 @@ async function _openProjectStarterWizard(profile){
       templates.forEach(tpl=>{
         const card=_psEl('button','ps-template'+(st.template===tpl.key?' is-selected':''));card.type='button';
         card.setAttribute('aria-pressed',st.template===tpl.key?'true':'false');card.style.setProperty('--i',templates.indexOf(tpl));
-        card.innerHTML='<span class="ps-template-icon">'+_psIcon(tpl.key,20)+'</span>';
+        card.innerHTML='<span class="ps-template-icon ps-art-wrap">'+(_PS_ART[tpl.key]?_psArt(tpl.key,34):_psIcon(tpl.key,20))+'</span>';
         const text=_psEl('span','ps-template-text');text.append(_psEl('span','ps-template-label',tpl.label),_psEl('span','ps-template-desc',tpl.description));
         card.append(text);
         card.onclick=()=>{st.template=tpl.key;st.templateChosen=true;grid.querySelectorAll('.ps-template').forEach(n=>{n.classList.toggle('is-selected',n===card);n.setAttribute('aria-pressed',n===card?'true':'false');});paintPreview();setNav({canNext:true});};
@@ -10368,6 +10375,8 @@ async function _openProjectStarterWizard(profile){
       const progress=_psEl('div','ps-progress');const bar=_psEl('span');bar.style.width=((st.q+1)/total*100)+'%';progress.append(bar);
       wrap.prepend(progress);
       const opts=_psEl('div','ps-options');opts.setAttribute('role','radiogroup');
+      // Docs-Git's recommendation is preselected once; the user can change it.
+      if(item.recommended&&st.answers[item.id]===undefined) st.answers[item.id]=item.recommended;
       const current=st.answers[item.id]||'';
       const other=_psEl('input','ps-other');other.placeholder='Or type your own answer';other.maxLength=300;
       const isOption=item.options.includes(current);
@@ -10376,12 +10385,14 @@ async function _openProjectStarterWizard(profile){
         const opt=_psEl('button','ps-option'+(current===label?' is-selected':''));opt.type='button';opt.setAttribute('role','radio');
         opt.setAttribute('aria-checked',current===label?'true':'false');
         opt.innerHTML='<span class="ps-option-key">'+(i+1)+'</span>';opt.append(_psEl('span','ps-option-label',label));
+        if(item.recommended===label){opt.classList.add('is-recommended');opt.append(_psEl('span','ps-option-rec','Recommended'));}
         opt.onclick=()=>{st.answers[item.id]=label;other.value='';renderQuestions();};
         opts.append(opt);
       });
       other.oninput=()=>{st.answers[item.id]=other.value.trim();opts.querySelectorAll('.ps-option').forEach(n=>{n.classList.remove('is-selected');n.setAttribute('aria-checked','false');});updateNav();};
-      other.onkeydown=(event)=>{if(event.key==='Enter'&&!next.disabled){event.preventDefault();next.click();}};
-      wrap.append(opts,other);
+      other.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event))return;if(!next.disabled){event.preventDefault();next.click();}}};
+      if(item.recommended&&item.why){const why=_psEl('p','ps-rec-why');why.append(_psEl('strong',null,'Why '+item.recommended+': '),document.createTextNode(item.why));wrap.append(opts,why,other);}
+      else wrap.append(opts,other);
       function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
       updateNav();
       opts.onkeydown=(event)=>{const n=Number(event.key);if(n>=1&&n<=item.options.length){st.answers[item.id]=item.options[n-1];renderQuestions();}};

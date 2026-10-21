@@ -3274,7 +3274,7 @@
   /* container-type/name lets descendants run @container queries against the
      panel's width so the header can collapse less-essential elements as the
      user resizes the panel narrower. */
-  .rightpanel{width:300px;background:var(--sidebar);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;min-width:0;opacity:1;transform:translateX(0);transform-origin:right center;transition:width .24s cubic-bezier(.22,1,.36,1),opacity .18s ease,transform .24s cubic-bezier(.22,1,.36,1),border-color .24s ease;container-type:inline-size;container-name:rightpanel;}
+  .rightpanel{width:300px;background:var(--sidebar);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;min-width:0;opacity:1;transform:translateX(0);transform-origin:right center;transition:width .24s cubic-bezier(.22,1,.36,1),min-width .24s cubic-bezier(.22,1,.36,1),opacity .18s ease,transform .24s cubic-bezier(.22,1,.36,1),border-color .24s ease;container-type:inline-size;container-name:rightpanel;}
   .panel-header{padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;overflow:visible;}
   .workspace-panel-title-group{grid-column:1;grid-row:1;display:flex;align-items:center;min-width:0;}
   .workspace-panel-title-group > span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
@@ -8773,8 +8773,8 @@ main.main > #mainPlugin{display:none;}
 .project-chip .color-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;}
 .project-create-input{font-size:10px;padding:3px 8px;border-radius:12px;border:1px solid var(--accent-bg);background:var(--surface);color:var(--text);outline:none;min-width:40px;max-width:180px;width:auto;font-family:inherit;box-shadow:0 0 0 2px var(--accent-bg);}
 /* "+" menu in the Chat panel head: New conversation / New project folder. */
-.new-chat-menu{position:fixed;min-width:190px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35);padding:6px;z-index:9999;display:flex;flex-direction:column;gap:2px;}
-.new-chat-menu-item{width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer;}
+.new-chat-menu{position:fixed;width:max-content;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35);padding:6px;z-index:9999;display:flex;flex-direction:column;gap:2px;}
+.new-chat-menu-item{width:100%;text-align:left;padding:7px 12px;white-space:nowrap;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer;}
 .new-chat-menu-item:hover{background:var(--hover-bg);}
 /* Renaming a folder row: keep the full-width folder-row shape (matches
    .project-folder-list .project-chip) instead of shrinking to the small
@@ -14599,3 +14599,54 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .pp-own .profile-signin-btn{margin-left:auto;}
 .pp-own .pp-own-edit{margin-left:auto;}
 @media (max-width:720px){.pw-wizard .pw-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+/* Pinned workspace panel: shares the row 50/50 with the chat (desktop). */
+@media(min-width:901px){
+  html[data-workspace-pinned="1"]:not([data-workspace-panel="closed"]) .layout:not(.workspace-panel-collapsed) .rightpanel{flex:1 1 0;width:auto!important;max-width:none;min-width:280px;}
+  html[data-workspace-pinned="1"]:not([data-workspace-panel="closed"]) .layout:not(.workspace-panel-collapsed) .main{flex:1 1 0;min-width:320px;}
+  html[data-workspace-pinned="1"] .rightpanel > .resize-handle{display:none;}
+}
+.rightpanel.workspace-pin-gliding{transition:width .42s cubic-bezier(.22,1,.36,1)!important;}
+.workspace-pin-btn svg{transition:transform .24s cubic-bezier(.22,1,.36,1);}
+.workspace-pin-btn:hover svg{transform:rotate(-12deg);}
+.workspace-pin-btn.active{color:var(--accent-text,var(--accent));}
+.workspace-pin-btn.active svg{transform:rotate(-30deg);}
+.workspace-pin-btn.active .workspace-pin-head{fill:currentColor;}
+@media (max-width:900px){.workspace-pin-btn{display:none!important;}}
+@media (prefers-reduced-motion:reduce){.rightpanel.workspace-pin-gliding,.workspace-pin-btn svg{transition:none!important;}}
+/* Project wizard artwork + centred start choices. */
+.ps-art-wrap{background:none!important;width:auto!important;height:auto!important;border-radius:0!important;}
+.ps-art{display:block;object-fit:contain;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.28));}
+.ps-template .ps-art{width:34px;height:34px;}
+.ps-choice.ps-kind{align-items:center;justify-content:center;text-align:center;gap:10px;padding:22px 18px;}
+.ps-choice.ps-kind .ps-art{width:52px;height:52px;transition:transform .28s cubic-bezier(.22,1,.36,1);}
+.ps-choice.ps-kind:hover .ps-art,.ps-choice.ps-kind.is-selected .ps-art{transform:translateY(-2px) scale(1.04);}
+.ps-choice.ps-kind .ps-choice-desc{max-width:280px;}
+@media (prefers-reduced-motion:reduce){.ps-choice.ps-kind .ps-art{transition:none;}}
+/* Every icon-only close button: the × turns a quarter on hover (the same
+   motion as the wizard's close). Icon-only = the known close classes or an
+   accessible name of exactly "Close"/"Close …". */
+:is(.app-dialog-close,.project-starter-close,.close-preview,.mobile-sidebar-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i],button[aria-label^="Close " i]) > svg{transition:transform .24s cubic-bezier(.22,1,.36,1);}
+:is(.app-dialog-close,.project-starter-close,.close-preview,.mobile-sidebar-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i],button[aria-label^="Close " i]):hover > svg{transform:rotate(90deg);}
+:is(.app-dialog-close,.project-starter-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i]):not(:has(svg)){transition:transform .24s cubic-bezier(.22,1,.36,1),background .15s,color .15s;}
+:is(.app-dialog-close,.project-starter-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i]):not(:has(svg)):hover{transform:rotate(90deg);}
+.ps-wizard .ps-close:hover{transform:none;}
+@media (prefers-reduced-motion:reduce){
+  :is(.app-dialog-close,.project-starter-close,.close-preview,.mobile-sidebar-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i],button[aria-label^="Close " i]):hover,
+  :is(.app-dialog-close,.project-starter-close,.close-preview,.mobile-sidebar-close,.outline-close-btn,.wh-insp-close,.agent-canvas-detail-close,.img-lightbox-close,button[aria-label="Close" i],button[aria-label^="Close " i]):hover > svg{transform:none;}
+}
+/* Wizard finish buttons read as regular-weight text. */
+.ps-done-actions .project-starter-cancel,.ps-done-actions .project-starter-submit{font-weight:500;}
+/* Composer selectors: one family. The workspace pill loses its outline and
+   gains a folder icon like its neighbours; every label shares one size. */
+.composer-workspace-group,.composer-workspace-group:hover{border-color:transparent;}
+.composer-workspace-chip{border-left:none;border-radius:999px;padding:8px 10px 8px 12px;}
+.composer-workspace-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;}
+.composer-workspace-icon svg{display:block;}
+.composer-profile-label,.composer-workspace-label,.composer-model-label,.composer-reasoning-label,.composer-toolsets-label,.provider-quota-chip-label{font-size:12.5px;font-weight:500;}
+.composer-reasoning-chip{gap:7px;}
+.ps-option{position:relative;}
+.ps-option-label{flex:1 1 auto;min-width:0;}
+.ps-option-rec{flex:none;padding:2px 7px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent-text);font-size:10.5px;font-weight:600;letter-spacing:.01em;}
+.ps-rec-why{margin:-2px 0 0;font-size:12px;line-height:1.5;color:var(--muted);}
+.ps-rec-why strong{color:var(--text);font-weight:600;}
+.ps-choice.ps-kind{justify-content:flex-start;padding-top:26px;}
