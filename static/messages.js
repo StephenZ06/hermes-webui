@@ -3353,8 +3353,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     return scene;
   }
   let _persistAnchorSceneWarned=false;
+  // Set from the done event: ephemeral turns (hidden Docs-Git runs, /btw) are
+  // never written to the session, so there is no server message to attach a
+  // scene to and the POST could only 404.
+  let _anchorSceneStreamEphemeral=false;
   function _persistSettledAnchorScene(message, scene, messageIndex){
     if(!activeSid||!message||!scene||typeof api!=='function') return;
+    if(_anchorSceneStreamEphemeral) return;
     try{
       const messageOffset=_anchorSceneMessageOffsetForPersist();
       api('/api/session/anchor-scene',{
@@ -5459,6 +5464,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(_persistTimer){clearTimeout(_persistTimer);_persistTimer=null;}
       _cancelThrottledSnapshotTimer();
       const _doneData=JSON.parse(e.data);
+      if(_doneData&&_doneData.ephemeral) _anchorSceneStreamEphemeral=true;
       const _doneEvent=e;
       const _finishDone=()=>{
         // Bug A fix: cancel any pending rAF and mark stream finalized before

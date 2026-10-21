@@ -9997,6 +9997,36 @@ function _psArt(name,size){
 function _psIcon(name,size=18){
   return '<svg class="ps-icon" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(_PROJECT_STARTER_ICONS[name]||'')+'</svg>';
 }
+// Height glide for the wizard dialog. The dialog keeps its natural layout;
+// a WAAPI animation carries the visible height from wherever it is now to the
+// new natural height. Content that arrives in stages (step 6 builds its list,
+// buttons and summary over time) continues the running glide instead of
+// jumping. The overlay re-centres the dialog on every frame.
+function _psGlideHeight(el,from){
+  if(!el||!el.animate) return;
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){el._psShown=null;return;}
+  const onScreen=el._psHeightAnim?el.getBoundingClientRect().height:null;
+  if(el._psHeightAnim){el._psHeightAnim.cancel();el._psHeightAnim=null;}
+  const start=onScreen!=null?onScreen:(from!=null?from:el._psShown);
+  const to=el.getBoundingClientRect().height;
+  el._psShown=to;
+  if(start==null||Math.abs(to-start)<2) return;
+  const anim=el.animate([{height:start+'px'},{height:to+'px'}],{duration:340,easing:'cubic-bezier(.22,1,.36,1)'});
+  el._psHeightAnim=anim;
+  anim.onfinish=anim.oncancel=()=>{if(el._psHeightAnim===anim)el._psHeightAnim=null;};
+}
+// Re-glides the dialog whenever its body content changes size (rAF-batched).
+function _psFollowContentHeight(dialog,body){
+  if(typeof ResizeObserver!=='function') return ()=>{};
+  dialog._psShown=dialog.getBoundingClientRect().height;
+  let raf=0;
+  const ro=new ResizeObserver(()=>{
+    if(raf) return;
+    raf=requestAnimationFrame(()=>{raf=0;_psGlideHeight(dialog);});
+  });
+  ro.observe(body);
+  return ()=>{ro.disconnect();if(raf)cancelAnimationFrame(raf);};
+}
 function _psEl(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node;}
 function _psFolderNameError(value){
   const name=String(value||'').trim();
@@ -10054,9 +10084,10 @@ async function _openProjectStarterWizard(profile){
     const next=_psEl('button','project-starter-submit ps-next','Next');next.type='button';
     footer.append(prev,spacer,next);
     dialog.append(header,stepper,body,footer);overlay.append(dialog);document.body.append(overlay);
+    const stopFollowingHeight=_psFollowContentHeight(dialog,body);
 
     let done=false,pollTimer=null;
-    const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);signinFlow=null;document.removeEventListener('keydown',onKey,true);
+    const finish=(value)=>{if(done)return;done=true;clearTimeout(pollTimer);signinFlow=null;stopFollowingHeight();document.removeEventListener('keydown',onKey,true);
       overlay.classList.add('is-leaving');
       const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
@@ -10095,10 +10126,15 @@ async function _openProjectStarterWizard(profile){
       return wrap;
     };
     const render=(direction=1)=>{
+      // Step 6 is a short progress list: the dialog drops its fixed height and
+      // glides to fit (the overlay keeps it centred while it resizes).
+      const h0=dialog._psHeightAnim?null:dialog.getBoundingClientRect().height;
+      dialog.classList.toggle('is-compact',st.step===6);
       body.classList.remove('ps-enter-fwd','ps-enter-back');void body.offsetWidth;
       body.classList.add(direction>=0?'ps-enter-fwd':'ps-enter-back');
       paintStepper();
       ({1:renderKind,2:renderLocation,3:renderTemplate,4:renderBrief,5:renderQuestions,6:renderCreate})[st.step]();
+      _psGlideHeight(dialog,h0);
     };
     const go=(step,direction)=>{st.step=step;render(direction);};
 
@@ -10189,7 +10225,7 @@ async function _openProjectStarterWizard(profile){
         nameInput=_psEl('input');nameInput.maxLength=96;nameInput.placeholder='e.g. customer-health';nameInput.autocomplete='off';nameInput.value=st.name;
         nameError=_psEl('span','ps-field-error');
         nameInput.oninput=()=>{st.name=nameInput.value;updateTarget();};
-        nameInput.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event))return;if(!next.disabled){event.preventDefault();next.click();}}};
+        nameInput.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
         field.append(nameInput,nameError);wrap.append(field);
       }
       wrap.append(target);
@@ -10390,7 +10426,7 @@ async function _openProjectStarterWizard(profile){
         opts.append(opt);
       });
       other.oninput=()=>{st.answers[item.id]=other.value.trim();opts.querySelectorAll('.ps-option').forEach(n=>{n.classList.remove('is-selected');n.setAttribute('aria-checked','false');});updateNav();};
-      other.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event))return;if(!next.disabled){event.preventDefault();next.click();}}};
+      other.onkeydown=(event)=>{if(event.key==='Enter'){if(window._isImeEnter&&window._isImeEnter(event)){return;}if(!next.disabled){event.preventDefault();next.click();}}};
       if(item.recommended&&item.why){const why=_psEl('p','ps-rec-why');why.append(_psEl('strong',null,'Why '+item.recommended+': '),document.createTextNode(item.why));wrap.append(opts,why,other);}
       else wrap.append(opts,other);
       function updateNav(){setNav({canNext:!!(st.answers[item.id]||'').trim(),nextLabel:st.q===total-1?'Done':'Next'});}
@@ -10405,13 +10441,21 @@ async function _openProjectStarterWizard(profile){
       sub.textContent=adopt?'Registering the project and handing it to Docs-Git.':'Creating the folder and handing it to Docs-Git.';
       const wrap=section(adopt?'Adopting '+st.name:'Creating '+st.name.trim());
       const list=_psEl('ul','ps-tasks');wrap.append(list);
-      const task=(label)=>{const li=_psEl('li','ps-task is-running');li.innerHTML='<span class="ps-task-mark"><span class="ps-pulse"></span></span>';li.append(_psEl('span','ps-task-label',label));list.append(li);
-        return {ok(text){li.className='ps-task is-done';li.firstChild.innerHTML=_psIcon('check',14);if(text)li.append(_psEl('span','ps-task-note',text));},
+      const task=(label,waiting)=>{const li=_psEl('li','ps-task '+(waiting?'is-waiting':'is-running'));li.innerHTML='<span class="ps-task-mark">'+(waiting?'':'<span class="ps-pulse"></span>')+'</span>';li.append(_psEl('span','ps-task-label',label));list.append(li);
+        return {run(){li.className='ps-task is-running';li.firstChild.innerHTML='<span class="ps-pulse"></span>';},
+          ok(text){li.className='ps-task is-done';li.firstChild.innerHTML=_psIcon('check',14);if(text)li.append(_psEl('span','ps-task-note',text));},
           fail(text){li.className='ps-task is-error';li.firstChild.textContent='!';li.append(_psEl('span','ps-task-note',text));},
           skip(text){li.className='ps-task is-skipped';li.firstChild.textContent='–';li.append(_psEl('span','ps-task-note',text));}};};
       setNav({showPrev:false,hideNext:true});
       st.busy=true;
       const first=task(adopt?'Register the project':'Create the project folder and starter files');
+      // The whole step is laid out up front (second task waiting, buttons
+      // disabled) so the dialog settles once instead of growing in stages.
+      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':'Docs-Git writes the instruction files',true);
+      const actions=_psEl('div','ps-done-actions');
+      const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';chat.disabled=true;
+      const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.disabled=true;
+      actions.append(closeBtn,chat);wrap.append(actions);
       const answers=st.questions.map(q=>({question:q.question,answer:st.answers[q.id]||''})).filter(a=>a.answer);
       let response;
       try{
@@ -10422,6 +10466,7 @@ async function _openProjectStarterWizard(profile){
         first.ok(response.project&&response.project.workspace_path);
       }catch(error){
         st.busy=false;first.fail(error.message||'Could not create the project.');
+        docs.skip('Not started.');actions.remove();
         setNav({showPrev:true,prevLabel:'Back',hideNext:true});
         prev.onclick=()=>{prev.onclick=onPrev;go(adopt?2:4,-1);};
         return;
@@ -10429,12 +10474,10 @@ async function _openProjectStarterWizard(profile){
       st.busy=false;
       finishedProject=response.project;
       _onProjectStarterCreated(response.project);
-      const docs=task(adopt?'Docs-Git reads the project and adapts its instruction files':'Docs-Git writes the instruction files');
-      const actions=_psEl('div','ps-done-actions');
-      const chat=_psEl('button','project-starter-submit','Start a chat in this project');chat.type='button';
+      chat.disabled=false;closeBtn.disabled=false;
       chat.onclick=()=>{finish(response);_startProjectChat(response.project);};
-      const closeBtn=_psEl('button','project-starter-cancel','Close');closeBtn.type='button';closeBtn.onclick=()=>finish(response);
-      actions.append(closeBtn,chat);wrap.append(actions);
+      closeBtn.onclick=()=>finish(response);
+      if(response.docs_job) docs.run();
       if(!response.docs_job){docs.skip(docsAgent?'Docs-Git did not start.':'The Docs-Git profile is not set up.');return;}
       const summary=_psEl('div','ps-summary');summary.hidden=true;wrap.insertBefore(summary,actions);
       _followProjectDocsJob(response.docs_job,response.project,{
@@ -10511,13 +10554,15 @@ async function _createStarterProject({session=null,profile=undefined}={}){
   const response=await _openProjectStarterWizard(profile);
   if(!response||!response.project) return;
   if(session){
+    // Guard the move so a 503 (session busy/streaming, #3746) shows a toast
+    // instead of an unhandled rejection. Keep the authoritative refetch (#2551).
     try{
       await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:response.project.project_id})});
       session.project_id=response.project.project_id;
       _setOptimisticSessionField(session.session_id,'project_id',response.project.project_id);
       _expandProjectFolder(response.project.project_id);
       showToast('Moved this chat into "'+response.project.name+'"');
-    }catch(error){showToast('Created "'+response.project.name+'" but move failed: '+(error.message||'try again'));}
+    }catch(e){showToast('Created "'+response.project.name+'" but move failed: '+(e&&e.message||'try again'));}
   }
   await renderSessionList();
 }

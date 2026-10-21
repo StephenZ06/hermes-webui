@@ -14650,3 +14650,24 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .ps-rec-why{margin:-2px 0 0;font-size:12px;line-height:1.5;color:var(--muted);}
 .ps-rec-why strong{color:var(--text);font-weight:600;}
 .ps-choice.ps-kind{justify-content:flex-start;padding-top:26px;}
+/* Wizard footer: equal space above and below Back / Next; compact last step. */
+.ps-wizard .ps-actions{padding-top:16px;}
+.project-starter-dialog.ps-wizard{padding-bottom:16px;}
+.project-starter-dialog.ps-wizard.is-compact{min-height:0;}
+/* Approval card: sits fully above the message box (it used to tuck 24px
+   under it, but the flyout paints above the box so it covered it), with
+   compact buttons. */
+.approval-card{bottom:10px;}
+.approval-card.collapsed{bottom:10px;}
+.approval-inner{padding:14px 16px;}
+.approval-header{margin-bottom:8px;}
+.approval-cmd{margin-bottom:12px;}
+.approval-btns{gap:6px;}
+.approval-btn{height:30px;padding:0 11px;gap:6px;font-size:12px;font-weight:500;border-radius:7px;line-height:1;}
+.approval-btn .approval-btn-icon,.approval-btn .approval-btn-icon svg{width:13px;height:13px;display:inline-flex;}
+.approval-btn .approval-kbd{margin-left:2px;padding:1px 5px;font-size:10px;line-height:1.3;}
+@media (max-width:640px){.approval-btn{height:auto;min-height:40px;padding:6px 10px;}}
+.ps-task.is-waiting{color:var(--muted);}
+.ps-task.is-waiting .ps-task-mark{border-style:dashed;}
+.ps-done-actions button:disabled{opacity:.45;cursor:default;}
+.ps-summary:not([hidden]){animation:ps-fade-up .26s ease-out;}

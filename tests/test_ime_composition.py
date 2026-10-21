@@ -67,8 +67,9 @@ def test_ui_enter_submit_paths_respect_ime_composition():
 
 
 def test_sessions_enter_submit_paths_respect_ime_composition():
+    # Project creation is the starter wizard now; its fields name the event `event`.
     matches = re.findall(
-        _ime_guarded_enter_pattern(r"e2?"),
+        _ime_guarded_enter_pattern(r"(?:e2?|event)"),
         SESSIONS_JS,
         re.DOTALL,
     )

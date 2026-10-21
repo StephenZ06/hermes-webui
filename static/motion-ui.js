@@ -379,15 +379,22 @@
     if(typeof apply !== 'function') return;
     if(!panel || !main || !enabled()){ apply(); return; }
 
-    let panelBefore, mainBefore, panelAfter, mainAfter;
+    // A pinned workspace panel shares the row 50/50 with the chat, so a left
+    // sidebar slide resizes it too. Carry its left edge on the same spring or
+    // it snaps to its new width while everything else glides.
+    const companion = side === 'left' && document.documentElement.dataset.workspacePinned === '1'
+      ? document.querySelector('.rightpanel') : null;
+    let panelBefore, mainBefore, panelAfter, mainAfter, companionBefore = null, companionAfter = null;
     try{
       panelBefore = panel.getBoundingClientRect();
       if(animateMain) mainBefore = main.getBoundingClientRect();
+      if(companion) companionBefore = companion.getBoundingClientRect();
       begin();
       freezePanel(panel);
       apply(); // the one and only layout-invalidating step
       panelAfter = panel.getBoundingClientRect();
       if(animateMain) mainAfter = main.getBoundingClientRect();
+      if(companion) companionAfter = companion.getBoundingClientRect();
     }catch(_){
       try{ apply(); }catch(__){}
       try{ thawPanel(panel); }catch(__){}
@@ -427,9 +434,15 @@
       if(Math.abs(mainFrom) > 0.5){
         running.push(springTransform(main, mainFromTransform, 'none'));
       }
+      const companionFrom = companion && companionBefore && companionAfter
+        ? companionBefore.left - companionAfter.left : 0;
+      if(Math.abs(companionFrom) > 0.5){
+        running.push(springTransform(companion, 'translateX(' + companionFrom + 'px)', 'none'));
+      }
     }catch(_){
       unpinPanel(panel);
       main.style.transform = '';
+      if(companion) companion.style.transform = '';
       finish();
       return;
     }
@@ -437,6 +450,7 @@
     const settle = () => {
       unpinPanel(panel);
       main.style.transform = '';
+      if(companion) companion.style.transform = '';
       finish();
     };
     track(motionName, running, settle);

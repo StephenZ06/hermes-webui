@@ -34,16 +34,16 @@ _RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)
 # key: (label, description, docs/ files). Every template also gets the agent
 # continuity files listed in _pack_files().
 _TEMPLATES = {
-    "blank": ("Blank project", "Just the continuity files; shape it later.", ()),
-    "web": ("Web application", "Sites, dashboards and SaaS front ends.",
+    "blank": ("Blank Project", "Just the continuity files; shape it later.", ()),
+    "web": ("Web App", "Sites, dashboards and SaaS front ends.",
             ("PRODUCT.md", "ARCHITECTURE.md", "UI_UX.md", "TESTING.md")),
-    "ios": ("iOS application", "iPhone and iPad apps in Swift.",
+    "ios": ("iOS App", "iPhone and iPad apps in Swift.",
             ("PRODUCT.md", "ARCHITECTURE.md", "IOS.md", "UI_UX.md", "TESTING.md")),
-    "android": ("Android application", "Phone and tablet apps in Kotlin.",
+    "android": ("Android App", "Phone and tablet apps in Kotlin.",
                 ("PRODUCT.md", "ARCHITECTURE.md", "ANDROID.md", "UI_UX.md", "TESTING.md")),
-    "api": ("API / backend", "Services, endpoints and data stores.",
+    "api": ("API/Backend", "Services, endpoints and data stores.",
             ("PRODUCT.md", "ARCHITECTURE.md", "API.md", "TESTING.md")),
-    "cli": ("CLI tool", "Command-line tools and automation scripts.",
+    "cli": ("CLI Tool", "Command-line tools and automation scripts.",
             ("PRODUCT.md", "ARCHITECTURE.md", "CLI.md", "TESTING.md")),
     "data": ("Data / ML", "Analysis, pipelines and model training.",
              ("PRODUCT.md", "DATA.md", "EXPERIMENTS.md", "TESTING.md")),
