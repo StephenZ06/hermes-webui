@@ -8999,6 +8999,7 @@ async function loadProfilesPanel() {
       if (_currentProfileDetail && _currentProfileDetail.name === p.name) card.classList.add('active');
       panel.appendChild(card);
     }
+    _paintProfileHealth(panel);
     // Re-render detail with fresh data if we have one and we're not in a form
     if (_currentProfileDetail && _profileMode !== 'create' && _profileMode !== 'edit') {
       const refreshed = data.profiles.find(p => p.name === _currentProfileDetail.name);
@@ -9165,11 +9166,7 @@ function _pwIcon(kind, size = 18){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${_PW_ICONS[kind] || ''}</svg>`;
 }
 
-async function openProviderWizard(name, opts = {}){
-  let data;
-  try { data = await api('/api/profiles/providers?name=' + encodeURIComponent(name)); }
-  catch (e) { showToast(e.message || 'Could not load providers'); return null; }
-  // Catalogue: sign-ins, API-key providers, then routers / local servers.
+function _pwChoices(data){
   const choices = [];
   data.signins.forEach(s => choices.push({kind: 'signin', id: s.id, label: s.label, desc: s.id === 'openai-codex' ? 'ChatGPT plan sign-in' : 'Claude Code sign-in', connected: s.signed_in}));
   const keyRows = data.api_keys.slice().sort((a, b) => {
@@ -9186,14 +9183,36 @@ async function openProviderWizard(name, opts = {}){
   data.endpoints.filter(e => !choices.some(c => c.endpoint && c.endpoint.id === e.id))
     .forEach(e => choices.push({kind: 'custom', id: 'endpoint:' + e.id, label: e.name, desc: e.base_url, connected: true, endpoint: e}));
 
-  const st = {step: 1, choice: null, provider: '', model: '', models: null, modelsMsg: '', use: opts.use || 'main', busy: false, showAllKeys: false};
+  return choices;
+}
+
+// opts: {create, title, use, preselect, queueLabel}
+//   create    → starts with a Profile step (name + start fresh / copy) and
+//               creates the profile before connecting anything to it.
+//   preselect → provider id to reconnect (skips straight to Connect).
+async function openProviderWizard(name, opts = {}){
+  let data = null;
+  let choices = [];
+  const loadData = async (profileName) => {
+    data = await api('/api/profiles/providers?name=' + encodeURIComponent(profileName));
+    choices = _pwChoices(data);
+  };
+  if (!opts.create) {
+    try { await loadData(name); }
+    catch (e) { showToast(e.message || 'Could not load providers'); return null; }
+  }
+  return _pwRun();
+
+  function _pwRun(){
+  const pre = opts.preselect ? choices.find(c => c.id === opts.preselect || (c.endpoint && c.endpoint.provider === opts.preselect)) : null;
+  const st = {step: opts.create ? 0 : (pre ? 2 : 1), created: false, profileName: '', startFrom: 'fresh', cloneFrom: '', choice: pre || null, provider: '', model: '', models: null, modelsMsg: '', use: opts.use || 'main', busy: false, showAllKeys: false};
   return new Promise(resolve => {
     const opener = document.activeElement;
     const overlay = document.createElement('div'); overlay.className = 'project-starter-overlay';
     const dialog = document.createElement('section'); dialog.className = 'project-starter-dialog ps-wizard pw-wizard';
     dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-labelledby', 'pwTitle');
     dialog.innerHTML = `
-      <header class="project-starter-header"><div><h2 id="pwTitle">${esc(opts.title || 'Set up a provider')}</h2><p class="pw-sub"></p></div>
+      <header class="project-starter-header"><div><h2 id="pwTitle">${esc(opts.title || (opts.create ? 'New profile' : 'Set up a provider'))}</h2><p class="pw-sub"></p></div>
         <button type="button" class="project-starter-close ps-close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
       <ol class="ps-stepper"></ol>
       <div class="ps-body"></div>
@@ -9213,11 +9232,12 @@ async function openProviderWizard(name, opts = {}){
     document.addEventListener('keydown', onKey, true);
     q('.ps-close').onclick = () => { if (!st.busy) finish(null); };
 
-    const STEPS = ['Provider', 'Connect', 'Model', 'Finish'];
+    const STEPS = opts.create ? ['Profile', 'Provider', 'Connect', 'Model', 'Finish'] : ['Provider', 'Connect', 'Model', 'Finish'];
+    const first = opts.create ? 0 : 1;
     const paintStepper = () => {
       stepper.innerHTML = STEPS.map((label, i) => {
-        const n = i + 1, cls = n < st.step ? ' is-done' : (n === st.step ? ' is-current' : '');
-        const dot = n < st.step ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>' : n;
+        const n = i + first, num = i + 1, cls = n < st.step ? ' is-done' : (n === st.step ? ' is-current' : '');
+        const dot = n < st.step ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>' : num;
         return `<li class="ps-step${cls}"><span class="ps-step-dot">${dot}</span><span class="ps-step-label">${label}</span></li>`;
       }).join('');
     };
@@ -9232,13 +9252,65 @@ async function openProviderWizard(name, opts = {}){
       body.classList.remove('ps-enter-fwd', 'ps-enter-back'); void body.offsetWidth;
       body.classList.add(dir >= 0 ? 'ps-enter-fwd' : 'ps-enter-back');
       paintStepper();
-      ({1: stepProvider, 2: stepConnect, 3: stepModel, 4: stepFinish})[st.step]();
+      ({0: stepProfile, 1: stepProvider, 2: stepConnect, 3: stepModel, 4: stepFinish})[st.step]();
     };
     const go = (n, dir) => { st.step = n; render(dir); };
 
+    // Step 0 (new profile): name it and choose what it starts from.
+    function stepProfile(){
+      sub.textContent = 'A profile is a separate agent: its own model, keys, memory and skills.';
+      const wrap = section('Name your profile:');
+      const existing = ((_profilesCache && _profilesCache.profiles) || []).map(p => p.name);
+      const field = document.createElement('label'); field.className = 'project-starter-field';
+      field.innerHTML = '<span>Profile name</span><input class="pp-input pw-name" maxlength="64" autocomplete="off" placeholder="e.g. research, coding, docs"><span class="ps-field-error"></span>';
+      const input = field.querySelector('input'), err = field.querySelector('.ps-field-error');
+      input.value = st.profileName;
+      wrap.append(field);
+      const head = document.createElement('div'); head.className = 'pw-group-title'; head.textContent = 'Start from'; wrap.append(head);
+      const grid = document.createElement('div'); grid.className = 'ps-choice-grid';
+      [['fresh', 'Start fresh', 'Empty profile: you pick its provider and model next.'],
+       ['copy', 'Copy settings from…', 'Reuse another profile’s config (model, skills, tools) as a starting point.']].forEach(([id, label, desc], i) => {
+        const card = document.createElement('button'); card.type = 'button'; card.className = 'ps-choice pw-start' + (st.startFrom === id ? ' is-selected' : '');
+        card.style.setProperty('--i', i);
+        card.innerHTML = `<span class="ps-choice-title">${esc(label)}</span><span class="ps-choice-desc">${esc(desc)}</span>`;
+        card.onclick = () => { st.startFrom = id; grid.querySelectorAll('.pw-start').forEach(n => n.classList.toggle('is-selected', n === card)); copyRow.hidden = id !== 'copy'; validate(); };
+        grid.append(card);
+      });
+      wrap.append(grid);
+      const copyRow = document.createElement('label'); copyRow.className = 'project-starter-field pw-copy-from'; copyRow.hidden = st.startFrom !== 'copy';
+      copyRow.innerHTML = `<span>Copy from</span><select class="pp-input pw-clone">${existing.map(n => `<option${n === st.cloneFrom ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+      wrap.append(copyRow);
+      const validate = () => {
+        const v = input.value.trim().toLowerCase(); st.profileName = v;
+        let msg = '';
+        if (v && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(v)) msg = 'Use lowercase letters, numbers, - and _ (start with a letter or number).';
+        else if (v && existing.includes(v)) msg = 'A profile with that name already exists.';
+        err.textContent = msg;
+        nav({canNext: !!v && !msg && (st.startFrom === 'fresh' || existing.length > 0), nextLabel: 'Create profile', showPrev: false});
+      };
+      input.oninput = validate;
+      input.onkeydown = (e) => { if (e.key === 'Enter' && !next.disabled) { e.preventDefault(); next.click(); } };
+      validate(); setTimeout(() => input.focus(), 40);
+    }
+    async function createProfile(){
+      st.busy = true; next.disabled = true; next.textContent = 'Creating…';
+      const payload = {name: st.profileName};
+      if (st.startFrom === 'copy') { const sel = q('.pw-clone'); payload.clone_from = sel ? sel.value : ''; payload.clone_config = true; st.cloneFrom = payload.clone_from; }
+      try {
+        await api('/api/profile/create', {method: 'POST', body: JSON.stringify(payload)});
+        name = st.profileName; st.created = true;
+        if (typeof _invalidateKanbanProfileCache === 'function') _invalidateKanbanProfileCache();
+        if (typeof loadProfilesPanel === 'function') loadProfilesPanel();
+        await loadData(name);
+      } catch (e) {
+        st.busy = false; showToast(e.message || 'Could not create the profile'); nav({canNext: true, nextLabel: 'Create profile', showPrev: false}); return;
+      }
+      st.busy = false; go(1, 1);
+    }
+
     // Step 1: provider
     function stepProvider(){
-      sub.textContent = `Profile “${name}”: pick how it reaches an AI model.`;
+      sub.textContent = (opts.queueLabel ? opts.queueLabel + ' · ' : '') + (st.created ? `“${name}” is created. Now connect it to a model.` : `Profile “${name}”: pick how it reaches an AI model.`);
       const wrap = section('Choose a provider:');
       const groups = [['Sign in', c => c.kind === 'signin'], ['API key', c => c.kind === 'key'], ['Local & routers', c => ['router', 'local', 'custom'].includes(c.kind)]];
       let i = 0;
@@ -9266,6 +9338,12 @@ async function openProviderWizard(name, opts = {}){
           wrap.append(more);
         }
       });
+      if (st.created && st.startFrom === 'copy') {
+        const keep = document.createElement('button'); keep.type = 'button'; keep.className = 'ps-link pw-more';
+        keep.textContent = `Keep the settings copied from “${st.cloneFrom}”`;
+        keep.onclick = () => finish({name, created: true, kept: true});
+        wrap.append(keep);
+      }
       nav({canNext: !!st.choice, showPrev: false});
     }
 
@@ -9436,8 +9514,11 @@ async function openProviderWizard(name, opts = {}){
     }
 
     prev.onclick = () => { if (st.busy) return; flowId = null; st.saved = false; if (st.step > 1) go(st.step - 1, -1); };
+    // A profile created in step 0 stays even if setup is abandoned; it then
+    // shows 'Needs setup' in the list with a button that resumes here.
     next.onclick = async () => {
       if (next.disabled) return;
+      if (st.step === 0) { createProfile(); return; }
       if (st.step === 1) { go(2, 1); return; }
       if (st.step === 2) {
         if (st.save) {
@@ -9448,10 +9529,61 @@ async function openProviderWizard(name, opts = {}){
         st.models = null; go(3, 1); return;
       }
       if (st.step === 3) { st.model = (q('.pw-model-search') || {}).value ? q('.pw-model-search').value.trim() : st.model; go(4, 1); return; }
-      if (st.step === 4) { if (st.saved) finish({provider: st.provider, model: st.model, use: st.use}); else save(); }
+      if (st.step === 4) { if (st.saved) finish({name, created: st.created, provider: st.provider, model: st.model, use: st.use}); else save(); }
     };
     render(1);
   });
+  }
+}
+
+// ── Profile health: which profiles can't reach a model ─────────────────────
+// Each card gets a pill (Needs setup / Sign in again), and a banner offers
+// to walk through every broken profile in turn with the setup wizard.
+const _PROFILE_HEALTH_PILL = {signin: ['Needs sign-in', 'warn'], key: ['Needs setup', 'warn'], unset: ['Needs setup', 'warn'], fallback: ['On fallback', '']};
+let _profileHealth = [];
+function _profileNeedsFix(row){ return row && ['signin', 'key', 'unset'].includes(row.state); }
+function _profileFixPreselect(row){ return row && ['signin', 'key'].includes(row.state) ? row.provider : undefined; }
+
+async function _paintProfileHealth(panel){
+  let rows;
+  try { rows = (await api('/api/profiles/providers/health')).profiles || []; } catch (_) { return; }
+  _profileHealth = rows;
+  if (!panel.isConnected) return;
+  panel.querySelectorAll('.profile-health-pill').forEach(n => n.remove());
+  rows.forEach(row => {
+    const pill = _PROFILE_HEALTH_PILL[row.state];
+    const card = panel.querySelector(`.profile-card[data-name="${CSS.escape(row.name)}"] .profile-card-name`);
+    if (!pill || !card) return;
+    const el = document.createElement('span');
+    el.className = 'profile-health-pill ' + pill[1]; el.textContent = pill[0]; el.title = row.message || '';
+    card.appendChild(el);
+  });
+  const broken = rows.filter(_profileNeedsFix);
+  let banner = panel.querySelector('.profile-health-banner');
+  if (!broken.length) { if (banner) banner.remove(); return; }
+  if (!banner) {
+    banner = document.createElement('div'); banner.className = 'profile-health-banner';
+    const firstCard = panel.querySelector('.profile-card:not(.profile-help-card)');
+    panel.insertBefore(banner, firstCard || null);
+  }
+  banner.innerHTML = `<div><strong>${broken.length === 1 ? '1 profile needs' : broken.length + ' profiles need'} setup</strong>
+    <span>${esc(broken.map(r => r.name).join(', '))} can't reach a model yet.</span></div>
+    <button type="button" class="project-starter-submit">${broken.length === 1 ? 'Fix it' : 'Fix all'}</button>`;
+  banner.querySelector('button').onclick = () => fixBrokenProfiles(broken);
+}
+
+// Walks through each broken profile with the wizard; stops if one is closed.
+async function fixBrokenProfiles(rows){
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (typeof openProfileDetail === 'function') openProfileDetail(row.name);
+    const r = await openProviderWizard(row.name, {
+      title: `Set up “${row.name}”`, preselect: _profileFixPreselect(row),
+      queueLabel: rows.length > 1 ? `${i + 1} of ${rows.length}` : '',
+    });
+    if (!r) break;
+  }
+  await loadProfilesPanel();
 }
 
 async function _renderProfileProviders(name){
@@ -9471,9 +9603,12 @@ async function _renderProfileProviders(name){
   const routeOptions = (selected) => routes.map(r => `<option value="${esc(r.provider)}"${r.provider === selected ? ' selected' : ''}>${esc(r.label)}${r.ready ? '' : ' (needs sign-in)'}</option>`).join('');
   const main = data.main;
   const keyed = data.api_keys.filter(k => k.has_key);
+  const needsFix = ['signin', 'key', 'unset'].includes(main.status.state) && !data.fallbacks.some(f => f.status.state === 'ready');
   card.innerHTML = `
     <div class="pp-card-head"><div class="detail-card-title">Providers</div>
       <button type="button" class="project-starter-submit pp-setup">Set up a provider</button></div>
+    ${needsFix ? `<div class="pp-alert"><div><strong>${main.status.state === 'signin' ? 'Sign-in needed' : 'This profile can’t reach a model yet'}</strong><span>${esc(main.status.message || '')}</span></div>
+      <button type="button" class="project-starter-submit pp-fix">${main.status.state === 'signin' ? 'Sign in' : 'Fix now'}</button></div>` : ''}
     <div class="pp-main">
       <div class="pp-main-route">
         <span class="pp-main-label">Main model</span>
@@ -9562,6 +9697,10 @@ async function _renderProfileProviders(name){
   const refresh = () => _renderProfileProviders(name);
   const fail = (e) => showToast(e.message || String(e));
   const $c = (sel) => card.querySelector(sel);
+  if ($c('.pp-fix')) $c('.pp-fix').onclick = async () => {
+    const r = await openProviderWizard(name, {title: `Set up “${name}”`, preselect: ['signin', 'key'].includes(main.status.state) ? main.provider : undefined});
+    if (r) { refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); }
+  };
   $c('.pp-setup').onclick = async () => {
     const r = await openProviderWizard(name);
     if (r) { refresh(); if (typeof loadProfilesPanel === 'function') loadProfilesPanel(); }
@@ -10190,6 +10329,23 @@ async function switchToProfile(name) {
 }
 
 function openProfileCreate(){
+  if (typeof switchPanel === 'function' && _currentPanel !== 'profiles') switchPanel('profiles');
+  // New profiles are created through the setup wizard (name → provider →
+  // connect → model). The classic form stays reachable via openProfileCreateForm.
+  if (typeof openProviderWizard === 'function') {
+    _closeMobileSidebarAfterPanelSelection();
+    openProviderWizard('', {create: true}).then(async r => {
+      if (!r || !r.name) return;
+      await loadProfilesPanel();
+      openProfileDetail(r.name);
+      showToast(r.kept ? `Created “${r.name}”` : `“${r.name}” is ready`);
+    });
+    return;
+  }
+  openProfileCreateForm();
+}
+
+function openProfileCreateForm(){
   if (typeof switchPanel === 'function' && _currentPanel !== 'profiles') switchPanel('profiles');
   _profilePreFormDetail = _currentProfileDetail ? { ..._currentProfileDetail } : null;
   _profileMode = 'create';

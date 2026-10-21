@@ -510,3 +510,26 @@ def list_models(name: str, provider: str) -> dict:
         if model_id not in seen:
             seen.append(model_id)
     return {"models": seen[:300], "ok": True, "message": f"{len(seen)} model(s)."}
+
+
+def health() -> list[dict]:
+    """Setup status for every profile, for the Profiles list and its banner.
+
+    A profile is usable when its main model is ready or any fallback is.
+    """
+    from api.profiles import list_profiles_api
+
+    rows = []
+    for item in list_profiles_api():
+        name = str(item.get("name") or "")
+        try:
+            view = overview(name)
+        except Exception:
+            continue
+        main = view["main"]
+        state = main["status"]["state"]
+        if state != "ready" and any(f["status"]["state"] == "ready" for f in view["fallbacks"]):
+            state = "fallback"
+        rows.append({"name": name, "state": state, "provider": main["provider"], "model": main["model"],
+                     "message": main["status"]["message"]})
+    return rows

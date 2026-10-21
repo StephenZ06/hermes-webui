@@ -15378,6 +15378,13 @@ def _route_get_api_profiles_oauth_poll(handler, parsed):
         return bad(handler, str(exc), 404)
 
 
+def _route_get_api_profiles_providers_health(handler, parsed):
+    """Setup status of every profile (no secrets, no network)."""
+    from api.profile_providers import health
+
+    return j(handler, {"profiles": health()}, extra_headers={"Cache-Control": "no-store"})
+
+
 def _route_get_api_profiles_providers(handler, parsed):
     """One profile's provider setup: main model, sign-ins, keys, endpoints, fallbacks."""
     from api.profile_providers import ProfileProviderError, overview
@@ -16230,6 +16237,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/list"), _route_get_api_list),
         (Exact("/api/profiles/oauth/status"), _route_get_api_profiles_oauth_status),
         (Exact("/api/profiles/providers"), _route_get_api_profiles_providers),
+        (Exact("/api/profiles/providers/health"), _route_get_api_profiles_providers_health),
         (Exact("/api/profiles/oauth/poll"), _route_get_api_profiles_oauth_poll),
         (Exact("/api/projects/starter/templates"), _route_get_api_projects_starter_templates),
         (Exact("/api/projects/starter/folders"), _route_get_api_projects_starter_folders),

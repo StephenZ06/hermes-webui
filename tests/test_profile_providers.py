@@ -138,3 +138,18 @@ def test_model_list_for_an_endpoint_comes_from_the_endpoint_itself(homes, monkey
     assert pp.list_models("docs", "custom:box") == {"models": ["a", "b"], "ok": True, "message": "Connected."}
     with pytest.raises(pp.ProfileProviderError):
         pp.list_models("docs", "")
+
+
+def test_health_lists_each_profile_and_counts_a_ready_fallback_as_usable(homes, monkeypatch):
+    import api.profiles as profiles
+
+    monkeypatch.setattr(profiles, "list_profiles_api", lambda: [{"name": "docs"}, {"name": "work"}, {"name": "ghost"}])
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    rows = {r["name"]: r for r in pp.health()}
+
+    assert set(rows) == {"docs", "work"}  # unknown profiles are skipped, not guessed
+    assert rows["docs"]["state"] == "key" and rows["work"]["state"] == "unset"
+
+    pp.set_api_key("docs", "openrouter", "k")
+    pp.set_fallbacks("docs", [{"provider": "openrouter", "model": "m"}])
+    assert {r["name"]: r for r in pp.health()}["docs"]["state"] == "fallback"

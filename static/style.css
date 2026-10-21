@@ -14559,3 +14559,17 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .pw-use{min-height:96px;}
 @media (max-width:720px){.pw-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media (prefers-reduced-motion:reduce){.pw-model{animation:none;}}
+/* Profile health: list pills, fix-all banner, detail alert. */
+.profile-health-pill{display:inline-flex;align-items:center;height:17px;margin-left:8px;padding:0 7px;border-radius:999px;border:1px solid var(--border2);font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--muted);vertical-align:middle;animation:ps-fade-up .25s ease-out;}
+.profile-health-pill.warn{border-color:rgba(220,140,60,.4);background:rgba(220,140,60,.12);color:rgba(230,160,80,.98);}
+.profile-health-banner,.pp-alert{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(220,140,60,.35);background:rgba(220,140,60,.08);animation:ps-fade-up .25s ease-out;}
+.profile-health-banner{margin:8px 8px 10px;}
+.profile-health-banner > div,.pp-alert > div{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;font-size:12px;line-height:1.4;}
+.profile-health-banner strong,.pp-alert strong{color:var(--text);font-size:12.5px;}
+.profile-health-banner span,.pp-alert span{color:var(--muted);overflow-wrap:anywhere;}
+.profile-health-banner .project-starter-submit,.pp-alert .project-starter-submit{flex:none;height:28px;padding:0 11px;font-size:12px;display:inline-flex;align-items:center;}
+.pp-alert{margin-top:10px;}
+.pw-copy-from[hidden]{display:none;}
+@media (prefers-reduced-motion:reduce){.profile-health-pill,.profile-health-banner,.pp-alert{animation:none;}}
+.project-starter-field .pp-input{flex:none;width:100%;}
+.ps-choice.pw-start,.ps-choice.pw-use{min-height:84px;}
