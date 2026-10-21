@@ -162,3 +162,80 @@ def load_scheduled_tasks(profile_home: Path, profile_name: str) -> list[dict]:
         if task["status"] == "running"
         or now - _parse_time(task["completed_at"]) <= _COMPLETED_TASK_RETENTION
     ]
+
+
+def _pid_alive(pid: object) -> bool:
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid_int <= 0:
+        return False
+    try:
+        os.kill(pid_int, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def load_running_executions(profile_home: Path, profile_name: str) -> list[dict]:
+    """Scheduler-fired runs that are executing right now, as Office task rows.
+
+    The runtime ledger above only records runs started from the WebUI; runs
+    the scheduler fires on its own timer live in cron/executions.db. Only rows
+    the scheduler marked ``running`` whose process is still alive count, so a
+    crashed run's stale row never shows up as live work. Read-only.
+    """
+    import sqlite3
+
+    cron_dir = Path(profile_home) / "cron"
+    db_path = cron_dir / "executions.db"
+    if not db_path.is_file():
+        return []
+    try:
+        jobs_raw = json.loads((cron_dir / "jobs.json").read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        jobs_raw = {}
+    job_rows = jobs_raw.get("jobs", jobs_raw) if isinstance(jobs_raw, dict) else jobs_raw
+    if isinstance(job_rows, dict):
+        job_rows = list(job_rows.values())
+    jobs = {str(job.get("id")): job for job in (job_rows or []) if isinstance(job, dict) and job.get("id")}
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=0.5)
+    except sqlite3.Error:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT job_id, pid, COALESCE(started_at, claimed_at) FROM executions "
+            "WHERE status = 'running' ORDER BY rowid DESC LIMIT ?",
+            (_MAX_TASKS,),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    now = datetime.now(timezone.utc)
+    tasks: list[dict] = []
+    seen: set[str] = set()
+    for job_id, pid, started_at in rows:
+        job_id = str(job_id or "")
+        started = _parse_time(started_at)
+        if not job_id or job_id in seen or started is None or now - started > _MAX_LEDGER_AGE:
+            continue
+        if not _pid_alive(pid):
+            continue
+        job = jobs.get(job_id, {})
+        seen.add(job_id)
+        tasks.append({
+            "job_id": job_id,
+            "name": str(job.get("name") or job_id)[:_MAX_TEXT],
+            "mode": "script" if job.get("no_agent") else "agent",
+            "started_at": started.isoformat(),
+            "profile": str(job.get("profile") or profile_name)[:80],
+            "status": "running",
+        })
+    return validate_scheduled_tasks(tasks, profile_name)

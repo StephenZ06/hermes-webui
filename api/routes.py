@@ -15229,6 +15229,15 @@ def _route_get_api_office_scheduled_tasks(handler, parsed):
         local_tasks = load_scheduled_tasks(get_active_hermes_home(), profile_name)
     except Exception:
         local_tasks = []
+    # Runs the scheduler fired on its own (not from the WebUI) only appear in
+    # cron/executions.db; without them the Office showed no work while a cron
+    # job was visibly running.
+    try:
+        from api.scheduled_tasks import load_running_executions
+
+        local_tasks = local_tasks + load_running_executions(get_active_hermes_home(), profile_name)
+    except Exception:
+        pass
     seen = set()
     tasks = []
     for task in gateway_tasks + local_tasks:

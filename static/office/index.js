@@ -422,6 +422,14 @@ function scheduledTaskState(state) {
   });
 }
 
+function runningScheduleCountForProject(project) {
+  if (!project || project.name !== 'Cron Jobs') return 0;
+  const projectProfile = String(project.profile || '').trim().toLowerCase();
+  if (!projectProfile) return 0;
+  return _scheduledTasks.filter(task => task && task.status === 'running'
+    && String(task.profile || '').trim().toLowerCase() === projectProfile).length;
+}
+
 function liveScheduleCountForProject(project) {
   if (!project || project.name !== 'Cron Jobs') return 0;
   const projectProfile = String(project.profile || '').trim().toLowerCase();
@@ -923,6 +931,25 @@ function dashboardFloorDetailKey(model) {
   return model.floors.some(floor => floor.key === _dashboardFloorDetail.key) ? _dashboardFloorDetail.key : null;
 }
 
+// Dashboard panel chrome: a tinted icon, an uppercase title and a one-line
+// subtitle per panel, and a framed empty state (icon, headline, message).
+const DASH_ICONS = {
+  layers: '<path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+  radio: '<path d="M4.9 19.1a10 10 0 0 1 0-14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9a10 10 0 0 1 0 14.2"/><circle cx="12" cy="12" r="2"/>',
+  alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m8.5 12.5 2.5 2.5 5-6"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+};
+function dashIcon(name, size = 18) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DASH_ICONS[name] || ''}</svg>`;
+}
+function dashPanelHead(icon, tone, title, subtitle, meta) {
+  return `<div class="office-dashboard-panel-head"><span class="office-dash-icon is-${tone}">${dashIcon(icon)}</span><div class="office-dash-titles"><h2>${title}</h2><p>${subtitle}</p></div><span class="office-dash-meta">${meta}</span></div>`;
+}
+function dashEmpty(icon, tone, title, message) {
+  return `<div class="office-dashboard-empty office-dash-empty"><span class="office-dash-empty-icon is-${tone}">${dashIcon(icon, 22)}</span><strong>${title}</strong><span>${message}</span></div>`;
+}
+
 function dashboardDistributionPanel(model) {
   const openKey = dashboardFloorDetailKey(model);
   const floor = openKey ? model.floors.find(item => item.key === openKey) : null;
@@ -937,9 +964,9 @@ function dashboardDistributionPanel(model) {
         ? done.map(worker => dashboardWorkerRow(worker, 'is-done')).join('')
         : `<div class="office-dashboard-empty">No completed tasks on ${esc(floor.name)} yet.</div>`}</div></article>`;
   }
-  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution"><div class="office-dashboard-panel-head"><h2>Work distribution</h2><span>${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}</span></div><div class="office-dashboard-panel-body">${model.floors.length
+  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('layers', 'blue', 'Work distribution', 'How work spreads across floors.', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
     ? model.floors.map(item => `<button type="button" class="office-dashboard-floor" data-dashboard-floor="${esc(item.key)}" aria-label="${esc(item.name)}: show completed tasks"><span class="office-dashboard-floor-dot" style="background:${esc(item.color || 'var(--accent)')}"></span><span><strong>${esc(item.name)}</strong><small>${item.workers.length} assigned</small></span><small>${item.active} active · ${item.completed} done</small><span class="office-dashboard-floor-chevron" aria-hidden="true">›</span></button>`).join('')
-    : '<div class="office-dashboard-empty">No delegated work in this office yet.</div>'}</div></article>`;
+    : dashEmpty('layers', 'blue', 'No delegated work yet', 'Work assigned to floors in this office will appear here.')}</div></article>`;
 }
 
 function bindDashboardDistribution(host, state) {
@@ -975,24 +1002,24 @@ function renderOfficeDashboard(state) {
   const model = officeDashboardModel(dashboardState, _outlet);
   const modeLabel = model.mode === 'business' ? 'Business Office' : 'Projects Office';
   const metrics = [
-    ['agents', 'Agents', model.snapshot.agents, 'People currently seated on this floor'],
-    ['active', 'Active work', model.snapshot.active, 'Tasks in progress'],
-    ['completed', 'Completed', model.snapshot.completed, 'Finished tasks'],
-    ['attention', 'Needs attention', model.snapshot.attention, 'Stopped or unknown work'],
+    ['agents', 'Agents', model.snapshot.agents, 'Seated on this floor', 'agents'],
+    ['active', 'Active work', model.snapshot.active, 'Tasks in progress', 'active-work'],
+    ['completed', 'Completed', model.snapshot.completed, 'Finished tasks', 'completed'],
+    ['attention', 'Needs attention', model.snapshot.attention, 'Stopped or unknown work', 'needs-attention'],
   ];
   const rows = (items, tone, empty) => items.length
     ? items.map(worker => dashboardWorkerRow(worker, tone)).join('')
-    : `<div class="office-dashboard-empty">${empty}</div>`;
+    : empty;
   const attentionItems = dashboardAttentionItems(model);
   host.innerHTML = `<div class="office-dashboard-toolbar"><span>${modeLabel}</span><div class="office-outlet" role="group" aria-label="Dashboard outlet">
     <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
     <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
   </div></div>
-  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><span>${label}</span><strong data-count-key="office-${model.mode}-${action}">${value}</strong><small>${detail}</small></button>`).join('')}</section>
+  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}.webp" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-${model.mode}-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
   <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
-  <article class="office-dashboard-panel"><div class="office-dashboard-panel-head"><h2>Live delegation</h2><span>${model.live.length} active</span></div><div class="office-dashboard-panel-body">${rows(model.live, 'is-live', 'No active delegation right now.')}</div></article>
-  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention"><div class="office-dashboard-panel-head"><h2>Attention required</h2><span>${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}</span></div><div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : '<div class="office-dashboard-empty">Everything is on track.</div>'}</div></article>
-  <article class="office-dashboard-panel" data-dashboard-panel="completed"><div class="office-dashboard-panel-head"><h2>Recent completions</h2><span>${model.recent.length} shown</span></div><div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', 'Completed work will appear here.')}</div></article>
+  <article class="office-dashboard-panel">${dashPanelHead('radio', 'amber', 'Live delegation', 'Real-time activity from your agents.', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
+  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action.', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
+  <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('check', 'green', 'Recent completions', 'The latest finished work.', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
   <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${officeIcon('settings', 'Integrations')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor.</small></span><span aria-hidden="true">›</span></button></section>`;
   host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
     button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
@@ -1379,7 +1406,16 @@ function renderOfficeSubview(container) {
     mount(container);
     return;
   }
-  if (_container) {
+  // Park a built floor instead of destroying it: the scene stops drawing and
+  // its DOM is hidden, so coming back from the Dashboard/Integrations resumes
+  // the intact scene instead of rebuilding every model (seconds of main-thread
+  // work and the loader each time).
+  const parkFloor = !!(_container === container && _scene && _canvas && container.contains(_canvas));
+  if (parkFloor) {
+    _scene.stop();
+    container.classList.add('office-floor-parked');
+    container.querySelectorAll(':scope > .office-subview').forEach(el => el.remove());
+  } else if (_container) {
     _preserveOfficeNavigationOnUnmount = true;
     unmount();
   }
@@ -1389,13 +1425,15 @@ function renderOfficeSubview(container) {
   const description = isDashboard
     ? 'A live view of delegation, workload, and what needs attention.'
     : 'Manage the accounts and capabilities available to Business Office floors.';
-  container.innerHTML = `<section class="office-subview office-${_officeSubview}" aria-labelledby="officeSubviewTitle">
+  const subviewHtml = `<section class="office-subview office-${_officeSubview}" aria-labelledby="officeSubviewTitle">
     <div class="office-subview-head">
       <div><div class="office-subview-eyebrow">${eyebrow}</div><h1 id="officeSubviewTitle">${title}</h1><p>${description}</p></div>
       <button type="button" class="office-subview-back" aria-label="Return to the Office floor" title="Return to the Office floor" onclick="officeSetSubview('floor')">${officeIcon('arrow-left', 'Return to the Office floor')}</button>
     </div>
     ${isDashboard ? '<div id="officeDashboardContent"></div>' : '<div id="officeIntegrationsContent"></div>'}
   </section>`;
+  if (parkFloor) container.insertAdjacentHTML('beforeend', subviewHtml);
+  else container.innerHTML = subviewHtml;
   if (isDashboard) renderOfficeDashboard(activeAdapter().getState());
   else loadOfficeIntegrations();
 }
@@ -1643,7 +1681,9 @@ async function reconcile() {
     const data = await request('/api/subagents/active', { timeoutToast: false });
     if (!data) return;
     _adapter.applySnapshot(data);
-    if (_viewMode === 'live' && _outlet === 'business') {
+    // Fetched on both outlets: Business seats running scheduled tasks on its
+    // floor, and the sidebar's Cron Jobs badge needs to know what is running.
+    if (_viewMode === 'live') {
       try {
         const scheduled = await request('/api/office/scheduled-tasks', { timeoutToast: false });
         _scheduledTasks = Array.isArray(scheduled && scheduled.tasks) ? scheduled.tasks : [];
@@ -1924,6 +1964,7 @@ function renderProjectFolders(projects, parents) {
     name: project.name,
     color: project.color,
     liveSchedules: liveScheduleCountForProject(project),
+    runningSchedules: runningScheduleCountForProject(project),
     rows: (parents || []).filter(parent => parent.project_id === project.project_id).map(parent => ({
       id: parent.parent_session_id,
       title: parent.title,
@@ -1946,10 +1987,15 @@ function renderProjectFolders(projects, parents) {
       const rows = (parents || []).filter(parent => parent.project_id === project.project_id);
       const expanded = _expandedProjectIds.has(project.project_id);
       const liveSchedules = liveScheduleCountForProject(project);
-      const liveLabel = liveSchedules === 1 ? '1 live Cron-Job schedule' : `${liveSchedules} live Cron-Job schedules`;
-      const liveBadge = liveSchedules
+      // LIVE only while a job is actually executing; otherwise the project
+      // just has schedules waiting, which used to read as live work.
+      const runningNow = runningScheduleCountForProject(project);
+      const liveLabel = runningNow
+        ? (runningNow === 1 ? '1 Cron Job running now' : `${runningNow} Cron Jobs running now`)
+        : (liveSchedules === 1 ? '1 active Cron-Job schedule' : `${liveSchedules} active Cron-Job schedules`);
+      const liveBadge = runningNow
         ? `<span class="project-folder-schedule-live" title="${liveLabel}" aria-label="${liveLabel}">LIVE</span>`
-        : '';
+        : (liveSchedules ? `<span class="project-folder-schedule-live is-scheduled" title="${liveLabel}" aria-label="${liveLabel}">SCHEDULED</span>` : '');
       const taskRows = rows.length ? rows.map(parent => {
         const count = Array.isArray(parent.children) ? parent.children.length : 0;
         return `<button type="button" class="office-session-row" data-parent-id="${esc(parent.parent_session_id)}">
@@ -2234,6 +2280,11 @@ function mount(container) {
     renderOfficeSubview(container);
     return;
   }
+  if (container.classList.contains('office-floor-parked')) {
+    // Returning from a subview to a parked floor: drop the subview, show it.
+    container.querySelectorAll(':scope > .office-subview').forEach(el => el.remove());
+    container.classList.remove('office-floor-parked');
+  }
   if (_container === container && _scene) {
     // Same panel re-entered: the scene is intact, just start drawing again
     // and re-measure, since the container's size while hidden was 0x0.
@@ -2264,11 +2315,14 @@ function mount(container) {
         <canvas class="office-canvas is-mounting" id="officeCanvas" role="img"
                 aria-label="Isometric floor of the current Hermes delegation tree"></canvas>
         <div class="office-loader" aria-hidden="true">
-          <svg class="office-loader-atom" viewBox="0 0 160 160" aria-hidden="true">
-            <defs><radialGradient id="officeLoaderCore"><stop offset="0" stop-color="#e0efff"/><stop offset=".45" stop-color="#6ea8ff"/><stop offset="1" stop-color="#2b5fd9" stop-opacity="0"/></radialGradient></defs>
-            <circle cx="80" cy="80" r="30" fill="url(#officeLoaderCore)" class="office-loader-core"/>
-            <g class="office-loader-orbits"><g transform="rotate(0 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="1.6s" begin="0s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g><g transform="rotate(60 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="2.1s" begin="-0.4s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g><g transform="rotate(120 80 80)"><ellipse cx="80" cy="80" rx="64" ry="22" class="office-loader-orbit"/><circle r="3.6" class="office-loader-electron"><animateMotion dur="1.85s" begin="-0.9s" repeatCount="indefinite" path="M16,80 a64,22 0 1,0 128,0 a64,22 0 1,0 -128,0"/></circle></g></g>
-          </svg>
+          <div class="office-loader-atom" aria-hidden="true">
+            <div class="ola-core"></div>
+            <div class="ola-spin">
+              <div class="ola-orbit" style="--ola-r:0deg"><div class="ola-ring"></div><div class="ola-x" style="--ola-d:0.8s;--ola-o:0s"><div class="ola-y"><i class="ola-e"></i></div></div></div>
+              <div class="ola-orbit" style="--ola-r:60deg"><div class="ola-ring"></div><div class="ola-x" style="--ola-d:1.05s;--ola-o:-0.2s"><div class="ola-y"><i class="ola-e"></i></div></div></div>
+              <div class="ola-orbit" style="--ola-r:120deg"><div class="ola-ring"></div><div class="ola-x" style="--ola-d:0.925s;--ola-o:-0.45s"><div class="ola-y"><i class="ola-e"></i></div></div></div>
+            </div>
+          </div>
           <div class="office-loader-caption">Assembling the office<span class="office-loader-dots"><i>.</i><i>.</i><i>.</i></span></div>
         </div>
         <div class="office-dept-cards" id="officeDeptCards" aria-hidden="true"></div>
@@ -2389,7 +2443,7 @@ function unmount() {
   }
   if (_layoutMotionResumeRaf) cancelAnimationFrame(_layoutMotionResumeRaf);
   _layoutMotionResumeRaf = 0;
-  if (_container) _container.innerHTML = '';
+  if (_container) { _container.innerHTML = ''; _container.classList.remove('office-floor-parked'); }
   _container = null;
   _canvas = null;
   _pillEl = null;
