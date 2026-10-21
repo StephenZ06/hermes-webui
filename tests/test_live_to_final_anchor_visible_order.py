@@ -674,7 +674,10 @@ def test_scene_renderer_allows_prose_tool_prose_tool_interleaving():
 
     assert "currentTools=null;" in render
     assert render.index("if(row.role==='tool')") < render.index("}else{")
-    assert render.index("currentTools=null;") < render.index("list.appendChild(node);")
+    # A prose row closes the open tool group before it is placed, so tools
+    # after it start a new group (rows are reconciled, not rebuilt).
+    else_branch = render[render.index("}else{"):]
+    assert else_branch.index("flushTools();") < else_branch.index("top.push(node);")
 
 
 def test_anchor_tool_preview_slot_stays_empty_for_result_text():

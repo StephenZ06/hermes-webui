@@ -4163,7 +4163,21 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       else _streamFadeSilentPrefixChars=0;
       if(!changed){baseAddText(data,text);return;}
       if(last<value.length) frag.appendChild(document.createTextNode(value.slice(last)));
+      // Fail-safe: words become fully visible once their fade should have
+      // ended, even if something restarted the animation in the meantime
+      // (re-attaching an ancestor restarts it and would hold the text at 0).
+      const fadingWords=Array.from(frag.querySelectorAll?frag.querySelectorAll('.stream-fade-word.is-new'):[]);
       parent.appendChild(frag);
+      if(fadingWords.length){
+        const settleMs=(_streamFadeCurrentMs||_STREAM_FADE_MS)+160;
+        setTimeout(()=>{
+          for(const word of fadingWords){
+            if(!word.classList.contains('is-new')) continue;
+            word.classList.remove('is-new');
+            if(word.style) word.style.removeProperty('--stream-fade-ms');
+          }
+        },settleMs);
+      }
     };
     renderer.set_attr=(data,attr,value)=>{
       const isHref=window.smd&&attr===window.smd.HREF;

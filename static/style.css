@@ -14729,3 +14729,16 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
   .work-hub-board .work-hub-card:hover{transform:none;}
   .work-hub-inspector.is-clearing > *,.work-hub-inspector-empty,.work-hub.has-selection .work-hub-inspector .wh-insp,.pipe-col-cards > .drag-slot,.work-hub-cards > .drag-slot{animation:none;}
 }
+/* Work Hub round 2. */
+/* Close fade: must beat the inspector's own fill-in animation. */
+.work-hub .work-hub-inspector.is-clearing > *{animation:wh-insp-clear .17s ease-in forwards!important;pointer-events:none;}
+/* Landing pop (scale 1.03) needs room inside the scrolling card list, which
+   clips horizontally; pad the list and pull it back so cards keep their width. */
+.work-hub-board .work-hub-cards{padding:4px 6px 6px;margin:6px -6px 0;}
+.work-hub-board .work-hub-card.card-landed{position:relative;z-index:2;}
+/* Details panel: property selectors sit on the panel's own background. */
+.work-hub-inspector .wh-insp-prop .themed-select-trigger,
+.work-hub-inspector .wh-insp-prop select{background-color:transparent!important;border-color:transparent;box-shadow:none;}
+.work-hub-inspector .wh-insp-prop .themed-select-trigger:hover,
+.work-hub-inspector .wh-insp-prop .themed-select-trigger.themed-select-trigger-open{background-color:color-mix(in srgb,var(--text) 6%,transparent)!important;}
+@media (prefers-reduced-motion:reduce){.work-hub .work-hub-inspector.is-clearing > *{animation:none!important;}}

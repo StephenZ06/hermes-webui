@@ -14000,29 +14000,55 @@ function _anchorSceneWorklogGroup(blocks, opts){
   if(opts&&opts.turnStartedAt!==undefined&&opts.turnStartedAt!==null) group.setAttribute('data-turn-started-at',String(opts.turnStartedAt));
   return group;
 }
+// Puts exactly `wanted` (in order) under `parent`, moving a node only when it
+// is out of place. Detaching and re-attaching a node restarts every CSS
+// animation inside it, so a rebuild-from-scratch on each token kept the live
+// answer's word fade pinned at opacity 0 for the whole stream.
+function _reconcileChildren(parent, wanted){
+  // Drop what is no longer wanted first, so a stale sibling (e.g. a replaced
+  // thinking row) can't push a stable node out of place and force a move.
+  const keep=new Set(wanted);
+  Array.from(parent.children).forEach(el=>{if(!keep.has(el))el.remove();});
+  for(let i=0;i<wanted.length;i++){
+    const node=wanted[i];
+    const at=parent.children[i]||null;
+    if(at!==node) parent.insertBefore(node, at);
+  }
+  while(parent.children.length>wanted.length) parent.lastElementChild.remove();
+}
 function _renderAnchorSceneRowsIntoWorklog(group, rows, opts){
   const list=_toolWorklogListEl(group);
   if(!group||!list) return false;
-  list.innerHTML='';
+  // Reuse the existing tool wrappers in order so a stable layout moves nothing.
+  const spareTools=Array.from(list.children).filter(el=>el.matches&&el.matches('.wl-step-tools[data-worklog-tools="1"]'));
+  const top=[];
   let wrote=false;
   let currentTools=null;
+  let currentToolNodes=null;
+  const flushTools=()=>{if(currentTools){_reconcileChildren(currentTools,currentToolNodes);currentTools=null;currentToolNodes=null;}};
   for(const row of rows){
     const node=_anchorSceneNodeForRow(row,opts);
     if(!node) continue;
     if(row.role==='tool'){
       if(!currentTools){
-        currentTools=document.createElement('div');
-        currentTools.className='wl-step-tools tool-worklog-tools';
-        currentTools.setAttribute('data-worklog-tools','1');
-        list.appendChild(currentTools);
+        currentTools=spareTools.shift()||null;
+        if(!currentTools){
+          currentTools=document.createElement('div');
+          currentTools.className='wl-step-tools tool-worklog-tools';
+          currentTools.setAttribute('data-worklog-tools','1');
+        }
+        currentToolNodes=[];
+        top.push(currentTools);
       }
-      currentTools.appendChild(node);
+      currentToolNodes.push(node);
     }else{
-      currentTools=null;
-      list.appendChild(node);
+      flushTools();
+      top.push(node);
     }
     wrote=true;
   }
+  flushTools();
+  _reconcileChildren(list,top);
   if(wrote){
     _syncToolCallGroupSummary(group);
   }
@@ -14266,9 +14292,17 @@ function renderLiveAnchorActivityScene(streamId, scene, opts){
     : null;
   const scrollSnapshot=_captureMessageScrollSnapshot();
   const scrollRebuildGuard=_prepareLiveAnchorScrollRebuildGuard(scrollSnapshot);
-  blocks.querySelectorAll('[data-anchor-scene-owner="1"],[data-anchor-scene-row="1"]').forEach(el=>el.remove());
-  blocks.querySelectorAll('.live-worklog[data-live-worklog-shell="1"],.tool-worklog-group[data-live-tool-call-group="1"],.tool-call-group[data-live-tool-call-group="1"],.tool-card-row[data-live-tid]:not(.transparent-event-row),.agent-activity-thinking[data-live-thinking="1"],.interim-collapse-toggle').forEach(el=>el.remove());
+  // Keep this stream's scene group (and the rows inside it) across renders:
+  // rebuilding it on every token detached and re-attached the live answer,
+  // which restarts its word fade and held streamed text near opacity 0.
+  const liveSceneKey=`live:${streamId||S.activeStreamId||'anchor'}`;
+  const keepGroup=Array.from(blocks.querySelectorAll('.tool-worklog-group[data-anchor-scene-owner="1"]')||[])
+    .find(g=>g&&g.getAttribute&&g.getAttribute('data-tool-worklog-key')===liveSceneKey)||null;
+  const outsideKept=el=>!(keepGroup&&(el===keepGroup||keepGroup.contains(el)));
+  blocks.querySelectorAll('[data-anchor-scene-owner="1"],[data-anchor-scene-row="1"]').forEach(el=>{if(outsideKept(el))el.remove();});
+  blocks.querySelectorAll('.live-worklog[data-live-worklog-shell="1"],.tool-worklog-group[data-live-tool-call-group="1"],.tool-call-group[data-live-tool-call-group="1"],.tool-card-row[data-live-tid]:not(.transparent-event-row),.agent-activity-thinking[data-live-thinking="1"],.interim-collapse-toggle').forEach(el=>{if(outsideKept(el))el.remove();});
   blocks.querySelectorAll('[data-live-assistant="1"]').forEach(el=>{
+    if(!outsideKept(el)) return;
     el.classList.add('assistant-segment-worklog-source');
     el.setAttribute('aria-hidden','true');
     el.hidden=true;
@@ -14276,7 +14310,7 @@ function renderLiveAnchorActivityScene(streamId, scene, opts){
   const group=_anchorSceneWorklogGroup(blocks,{
     live:true,
     collapsed:false,
-    activityKey:`live:${streamId||S.activeStreamId||'anchor'}`,
+    activityKey:liveSceneKey,
     streamId:streamId||S.activeStreamId||'',
     turnStartedAt:S.session&&S.session.pending_started_at,
   });
