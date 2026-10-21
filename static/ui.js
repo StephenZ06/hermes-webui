@@ -149,6 +149,29 @@ function markLanded(el){
   el.addEventListener('animationend',()=>el.classList.remove('card-landed'),{once:true});
   return el;
 }
+// Drag image for board cards: a tilted, lifted copy under the cursor instead
+// of the browser's flat translucent snapshot. Shared by the Work Hub and Jobs
+// pipeline boards.
+function liftDragGhost(event,card){
+  if(!event||!event.dataTransfer||!card||typeof event.dataTransfer.setDragImage!=='function')return;
+  if(_listMotionReduced())return;
+  try{
+    const rect=card.getBoundingClientRect();
+    const ghost=card.cloneNode(true);
+    ghost.classList.remove('dragging','card-landed','work-hub-new');
+    ghost.classList.add('drag-ghost');
+    ghost.removeAttribute('id');
+    ghost.style.width=rect.width+'px';
+    ghost.style.height=rect.height+'px';
+    document.body.appendChild(ghost);
+    const x=Math.max(0,Math.min(rect.width,(event.clientX||rect.left)-rect.left));
+    const y=Math.max(0,Math.min(rect.height,(event.clientY||rect.top)-rect.top));
+    event.dataTransfer.setDragImage(ghost,x,y);
+    // The browser snapshots the image synchronously; the node can go next frame.
+    requestAnimationFrame(()=>ghost.remove());
+  }catch(_){}
+}
+window.liftDragGhost=liftDragGhost;
 window.showDragSlot=showDragSlot;
 window.hideDragSlot=hideDragSlot;
 window.markLanded=markLanded;

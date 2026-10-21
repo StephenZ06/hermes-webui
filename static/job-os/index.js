@@ -1262,6 +1262,7 @@
       dragging = {id: card.dataset.boardJob, from: card.closest('.pipe-col').dataset.col, height: card.offsetHeight, card};
       event.dataTransfer.setData('text/plain', dragging.id);
       event.dataTransfer.effectAllowed = 'move';
+      if (typeof window.liftDragGhost === 'function') window.liftDragGhost(event, card);
       requestAnimationFrame(() => { if (dragging && dragging.card === card) card.classList.add('dragging'); });
       board.classList.add('is-dragging');
       board.querySelectorAll('.pipe-col').forEach((col) => col.classList.toggle('can-drop', col.dataset.col !== dragging.from));

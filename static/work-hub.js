@@ -338,9 +338,14 @@
         draggedStatus = (store.items.find(i => i.id === draggedId) || {}).status || null;
         e.dataTransfer.setData('text/plain', draggedId);
         e.dataTransfer.effectAllowed = 'move';
-        card.classList.add('dragging');
+        if (typeof liftDragGhost === 'function') liftDragGhost(e, card);
+        // After the drag image is captured, fade the original in place and
+        // show which columns can take it (same states as the Jobs pipeline).
+        requestAnimationFrame(() => { if (draggedId === card.dataset.itemId) card.classList.add('dragging'); });
+        board.classList.add('is-dragging');
+        board.querySelectorAll('.work-hub-column').forEach(c => c.classList.toggle('can-drop', c.dataset.status !== draggedStatus));
       });
-      card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target')); });
+      card.addEventListener('dragend', () => { card.classList.remove('dragging'); draggedId = null; hideDragSlot(); board.classList.remove('is-dragging'); board.querySelectorAll('.work-hub-column').forEach(c => c.classList.remove('drop-target', 'can-drop')); });
     };
     board.querySelectorAll('.work-hub-card').forEach(bindCard);
     // Cards redrawn in place by a column filter need both kinds of drag again.
@@ -519,34 +524,43 @@
     markLanded(card);
   }
   function closeInspectorAnimated() {
+    // Desktop: the panel stays put; only its contents fade out and the empty
+    // state fades in, so it reads as one motion. Phones keep the sheet slide.
     const panel = el('workHubInspector');
-    const done = () => { if (panel) panel.classList.remove('is-closing'); store.selectedItemId = null; render(); };
+    const phone = window.matchMedia('(max-width: 620px)').matches;
+    const done = () => { if (panel) panel.classList.remove('is-closing', 'is-clearing'); store.selectedItemId = null; render(); };
     if (!panel || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return Promise.resolve(); }
-    panel.classList.add('is-closing');
-    return new Promise(resolve => setTimeout(() => { done(); resolve(); }, 260));
+    panel.classList.add(phone ? 'is-closing' : 'is-clearing');
+    return new Promise(resolve => setTimeout(() => { done(); resolve(); }, phone ? 260 : 170));
   }
   async function changeWorkflow(workflowId, action) { try { const result = await request(`/api/work_hub/workflows/${workflowId}/${action}`, { method: 'POST', body: JSON.stringify({ expected_revision: store.revision }) }); store.revision = result.revision; await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); } }
   function initResizer(wrap) {
     const resizer = wrap.querySelector('.work-hub-resizer'); if (!resizer) return;
-    resizer.addEventListener('mousedown', (e) => {
+    // Pointer events cover mouse, pen and touch (the old mouse-only handler
+    // never fired for those, so the width was never saved).
+    resizer.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
       const startX = e.clientX;
       const startWidth = currentInspectorWidth;
+      let width = startWidth;
+      try { resizer.setPointerCapture(e.pointerId); } catch (_) {}
+      wrap.classList.add('is-resizing');
       const onMove = (ev) => {
-        const delta = startX - ev.clientX;
-        const newWidth = Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_INSPECTOR_WIDTH, startWidth + delta));
-        wrap.style.setProperty('--wh-inspector-width', newWidth + 'px');
+        width = Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_INSPECTOR_WIDTH, startWidth + (startX - ev.clientX)));
+        wrap.style.setProperty('--wh-inspector-width', width + 'px');
       };
-      const onUp = (ev) => {
-        const delta = startX - ev.clientX;
-        currentInspectorWidth = Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_INSPECTOR_WIDTH, startWidth + delta));
-        wrap.style.setProperty('--wh-inspector-width', currentInspectorWidth + 'px');
-        localStorage.setItem('workHubInspectorWidth', String(currentInspectorWidth));
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+      const onUp = () => {
+        currentInspectorWidth = width;
+        try { localStorage.setItem('workHubInspectorWidth', String(currentInspectorWidth)); } catch (_) {}
+        wrap.classList.remove('is-resizing');
+        resizer.removeEventListener('pointermove', onMove);
+        resizer.removeEventListener('pointerup', onUp);
+        resizer.removeEventListener('pointercancel', onUp);
       };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      resizer.addEventListener('pointermove', onMove);
+      resizer.addEventListener('pointerup', onUp);
+      resizer.addEventListener('pointercancel', onUp);
     });
   }
   async function openWorkHubItem(itemId, projectId, boardId = null) {

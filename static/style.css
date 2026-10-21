@@ -14675,3 +14675,57 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Approval buttons: hover changes the fill only; no accent outline. */
 .approval-btn.once:hover{border-color:var(--accent);}
 .approval-btn.session:hover,.approval-btn.always:hover{border-color:var(--accent-bg-strong);}
+
+/* ── Work Hub polish ─────────────────────────────────────────────────────────
+   Board columns share the Jobs pipeline's language: a status colour (--stage)
+   on a 3px top edge, its dot, the drop target and the landing slot. */
+.work-hub-column{--stage:var(--muted);border:1px solid var(--border2);border-top:3px solid color-mix(in srgb,var(--stage) 80%,var(--border2));border-radius:12px;padding:10px;background:color-mix(in srgb,var(--surface) 55%,transparent);transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,opacity .18s ease;}
+.work-hub-column[data-status="triage"]{--stage:var(--accent);}
+.work-hub-column[data-status="backlog"]{--stage:color-mix(in srgb,var(--muted) 85%,var(--text));}
+.work-hub-column[data-status="todo"]{--stage:#a78bfa;}
+.work-hub-column[data-status="in_progress"]{--stage:#60a5fa;}
+.work-hub-column[data-status="blocked"]{--stage:var(--error,#f07878);}
+.work-hub-column[data-status="done"]{--stage:var(--success,#4ade80);}
+.work-hub-column[data-status="cancelled"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
+.work-hub-column header{min-height:24px;padding:0 2px;font-size:11.5px;}
+.work-hub-column header strong{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.work-hub-column header .work-hub-status{background:var(--stage);box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 18%,transparent);}
+.work-hub-column header small{min-width:20px;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--stage) 14%,transparent);color:var(--text);font-size:10.5px;font-weight:650;text-align:center;}
+.work-hub-cards{gap:8px;margin-top:10px;}
+.work-hub-board .work-hub-card{border:1px solid var(--border2);border-radius:10px;padding:10px;background:var(--card,var(--surface));cursor:grab;transition:border-color .18s ease,transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s ease,opacity .2s ease;}
+.work-hub-board .work-hub-card:hover{border-color:color-mix(in srgb,var(--stage) 45%,var(--border2));background:var(--card,var(--surface));transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.22);}
+.work-hub-board .work-hub-card:active{cursor:grabbing;}
+.work-hub-board .work-hub-card.dragging{opacity:.38;transform:scale(.97);box-shadow:none;border-style:dashed;}
+.work-hub-board.is-dragging .work-hub-column:not(.can-drop){opacity:.55;}
+.work-hub-board.is-dragging .work-hub-column.can-drop{border-color:color-mix(in srgb,var(--stage) 45%,var(--border2));border-top-color:var(--stage);}
+.work-hub-column.drop-target{border-color:var(--stage)!important;background:color-mix(in srgb,var(--stage) 8%,var(--surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 22%,transparent);}
+.work-hub-cards > .drag-slot{margin:0;border-color:color-mix(in srgb,var(--stage) 65%,transparent);background:color-mix(in srgb,var(--stage) 9%,transparent);}
+.pipe-col-cards > .drag-slot,.work-hub-cards > .drag-slot{animation:drag-slot-open .2s cubic-bezier(.22,1,.36,1),drag-slot-breathe 1.6s ease-in-out .2s infinite;}
+@keyframes drag-slot-breathe{50%{background:color-mix(in srgb,var(--stage,var(--accent)) 15%,transparent);}}
+/* The lifted copy the browser drags (liftDragGhost in ui.js). */
+.drag-ghost{position:fixed!important;top:-1000px!important;left:-1000px!important;margin:0!important;transform:rotate(2.5deg) scale(1.03);box-shadow:0 18px 40px rgba(0,0,0,.45),0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent)!important;border-color:var(--accent)!important;opacity:1!important;pointer-events:none;z-index:-1;}
+.card-landed{animation:card-landed .55s cubic-bezier(.34,1.56,.64,1);}
+/* Toolbar: search and + match the Board/List switch height. */
+.work-hub-toolbar{align-items:stretch;}
+.work-hub-search{box-sizing:border-box;min-height:34px;padding:0 10px;}
+.work-hub-search input{height:100%;}
+.work-hub-toolbar .work-hub-create.work-hub-icon-button{box-sizing:border-box;width:34px;min-width:34px;height:34px;min-height:34px;padding:0;border-radius:7px;}
+/* Sidebar "+" under the folders: a square, centred glyph. */
+.work-hub-project-create{box-sizing:border-box;width:24px;height:24px;}
+.work-hub-project-create svg,.work-hub-project-create .work-hub-icon{flex:none;width:12px;height:12px;display:block;}
+/* Board rows: edit and delete match the 30px board button. */
+.work-hub-board-row .work-hub-board-rename,.work-hub-board-row .work-hub-board-delete{height:30px;width:28px;border-radius:7px;}
+/* Inspector close: contents fade, the panel stays (desktop). */
+.work-hub-inspector.is-clearing > *{animation:wh-insp-clear .17s ease-in forwards;pointer-events:none;}
+@keyframes wh-insp-clear{to{opacity:0;transform:translateY(4px);}}
+.work-hub-inspector-empty{animation:wh-insp-empty-in .22s ease-out;}
+@keyframes wh-insp-empty-in{from{opacity:0;}}
+.work-hub.has-selection .work-hub-inspector .wh-insp{animation:wh-insp-fill-in .22s cubic-bezier(.22,1,.36,1);}
+@keyframes wh-insp-fill-in{from{opacity:0;transform:translateY(4px);}}
+.work-hub-resizer{touch-action:none;}
+.work-hub.is-resizing,.work-hub.is-resizing *{cursor:col-resize!important;user-select:none!important;}
+@media (prefers-reduced-motion:reduce){
+  .work-hub-board .work-hub-card,.work-hub-column{transition:none;}
+  .work-hub-board .work-hub-card:hover{transform:none;}
+  .work-hub-inspector.is-clearing > *,.work-hub-inspector-empty,.work-hub.has-selection .work-hub-inspector .wh-insp,.pipe-col-cards > .drag-slot,.work-hub-cards > .drag-slot{animation:none;}
+}

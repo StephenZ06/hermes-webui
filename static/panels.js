@@ -9762,7 +9762,7 @@ async function _renderProfileProviders(name){
     const value = $c('.pp-key-value').value.trim(); if (!value) return;
     try { await _ppPost('key', {name, provider: $c('.pp-key-provider').value, api_key: value}); showToast('API key saved'); refresh(); } catch (e) { fail(e); } };
   card.querySelectorAll('.pp-key-remove').forEach(b => b.onclick = async () => {
-    const ok = typeof showConfirmDialog === 'function' ? await showConfirmDialog({message: 'Remove this API key from ' + name + '?', confirmLabel: 'Remove', danger: true}) : confirm('Remove this API key?');
+    const ok = await showConfirmDialog({message: 'Remove this API key from ' + name + '?', confirmLabel: 'Remove', danger: true});
     if (!ok) return;
     try { await _ppPost('key', {name, provider: b.dataset.provider, api_key: null}); refresh(); } catch (e) { fail(e); } });
   const copyForm = $c('.pp-copy-form');
