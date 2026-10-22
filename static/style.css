@@ -1098,9 +1098,17 @@
     --accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--accent-hover:#3A6E9A;
     --accent-bg:rgba(70,130,180,0.06);--accent-bg-strong:rgba(70,130,180,0.12);--accent-text:#2C5F88;
     --focus-ring:rgba(70,130,180,.3);--focus-glow:rgba(70,130,180,.08);--info:#4682B4;
-    --font-ui:"SF Mono","Roboto Mono","Courier New",monospace;
+    --font-ui:"SF Mono","Roboto Mono","Zeus2 Courier New","Courier New",monospace;
     font-family:var(--font-ui);font-size:14.5px;line-height:1.7;
   }
+  /* Courier New (the face Windows resolves this stack to) carries a tall
+     ascent and short descent, so its letters sit high in every line box and
+     button text looked top-heavy. The same local font with rebalanced
+     vertical metrics centres cap height to baseline; widths are unchanged. */
+  @font-face{font-family:"Zeus2 Courier New";src:local("Courier New"),local("CourierNewPSMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-weight:700;src:local("Courier New Bold"),local("CourierNewPS-BoldMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-style:italic;src:local("Courier New Italic"),local("CourierNewPS-ItalicMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
   :root.dark[data-skin="zeus-2"]{
     --bg:#0F0F0F;--sidebar:#111111;--surface:#181818;--code-bg:#181818;
     --topbar-bg:rgba(15,15,15,.98);--main-bg:rgba(15,15,15,0.6);
@@ -14875,6 +14883,8 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Sidebar Dashboard/Integrations: the labels have no descenders, so their ink
    sits above the line box's centre; nudge them onto the icon's centre line. */
 .office-page-nav-copy strong{position:relative;top:1.5px;}
+/* Zeus 2.0 ships a metric-balanced face, so its labels need no nudge. */
+:root[data-skin="zeus-2"] .office-page-nav-copy strong{top:0;}
 /* Metric cards: the bottom line has no cap height above its baseline, so the
    same padding read ~3px taller at the bottom; trim it. */
 .office-dashboard-metric{padding-bottom:15px;}
