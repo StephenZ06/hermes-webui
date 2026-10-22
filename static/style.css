@@ -14815,3 +14815,22 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .office-floor-parked > :not(.office-subview){display:none!important;}
 .project-folder-schedule-live.is-scheduled{color:var(--muted);}
 .office-dashboard-integration strong{text-transform:uppercase;letter-spacing:.07em;font-size:13px;}
+/* Office dashboard round 2.
+   Metric cards: the art carries ~5px of transparent margin and the text lines
+   carry leading, so trim both and the visible content sits 18px from every
+   edge. */
+.office-dashboard-metric{padding:18px;}
+.office-dash-metric-art{margin:-5px 0 -5px -5px;}
+.office-dashboard-metric .office-dash-metric-label{line-height:1.1;}
+.office-dashboard-metric strong{line-height:1;}
+.office-dashboard-metric small{line-height:1.15;}
+/* Every empty state gets the ringed icon, including the neutral one. */
+.office-dash-empty-icon.is-neutral{color:var(--muted);border:1px solid color-mix(in srgb,var(--muted) 45%,transparent);background:color-mix(in srgb,var(--muted) 10%,transparent);}
+/* Lists hand the wheel back to the page once they reach an end (or have
+   nothing to scroll), instead of swallowing it. */
+.office-dashboard-panel-body{overscroll-behavior:auto;}
+/* A refresh with new data must not replay the entry fade. */
+.office-dashboard-refreshed .office-dash-empty,.office-dashboard-refreshed .office-dashboard-floor-detail{animation:none;}
+/* Sidebar Dashboard/Integrations: the labels have no descenders, so their ink
+   sits above the line box's centre; nudge them onto the icon's centre line. */
+.office-page-nav-copy strong{position:relative;top:1.5px;}

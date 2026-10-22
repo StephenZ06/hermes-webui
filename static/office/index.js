@@ -973,6 +973,8 @@ function bindDashboardDistribution(host, state) {
   const card = host.querySelector('[data-dashboard-panel="distribution"]');
   if (!card) return;
   const rerender = focusSelector => {
+    // A deliberate view change, not a poll: let the entry motion play.
+    host._officeDashHtml = undefined;
     renderOfficeDashboard(state);
     const target = focusSelector && document.querySelector(focusSelector);
     if (target) target.focus({ preventScroll: true });
@@ -1011,7 +1013,7 @@ function renderOfficeDashboard(state) {
     ? items.map(worker => dashboardWorkerRow(worker, tone)).join('')
     : empty;
   const attentionItems = dashboardAttentionItems(model);
-  host.innerHTML = `<div class="office-dashboard-toolbar"><span>${modeLabel}</span><div class="office-outlet" role="group" aria-label="Dashboard outlet">
+  const html = `<div class="office-dashboard-toolbar"><span>${modeLabel}</span><div class="office-outlet" role="group" aria-label="Dashboard outlet">
     <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
     <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
   </div></div>
@@ -1021,6 +1023,16 @@ function renderOfficeDashboard(state) {
   <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action.', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
   <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('check', 'green', 'Recent completions', 'The latest finished work.', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
   <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${officeIcon('settings', 'Integrations')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor.</small></span><span aria-hidden="true">›</span></button></section>`;
+  // The reconcile poll re-renders every few seconds. Unchanged markup is left
+  // alone, so the panels don't flash their entry fade; a real change keeps
+  // each list's scroll position and skips the fade.
+  if (host._officeDashHtml === html) return;
+  const refreshed = host._officeDashHtml !== undefined;
+  const scrolls = [...host.querySelectorAll('.office-dashboard-panel-body')].map(el => el.scrollTop);
+  host._officeDashHtml = html;
+  host.innerHTML = html;
+  host.classList.toggle('office-dashboard-refreshed', refreshed);
+  if (refreshed) host.querySelectorAll('.office-dashboard-panel-body').forEach((el, i) => { if (scrolls[i]) el.scrollTop = scrolls[i]; });
   host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
     button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
   });

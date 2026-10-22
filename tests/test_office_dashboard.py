@@ -157,3 +157,24 @@ def test_office_rfc_records_dashboard_and_gmail_connection_boundaries():
     assert "Gmail" in RFC
     assert "OAuth" in RFC
     assert "does not connect an account automatically" in RFC
+
+
+def test_dashboard_poll_leaves_unchanged_markup_alone():
+    # The reconcile poll re-rendered every few seconds and replayed the
+    # empty-state fade, which read as the lower cards flickering.
+    body = OFFICE[OFFICE.index("function renderOfficeDashboard(state)"):]
+    body = body[:body.index("\nfunction ")]
+    assert "if (host._officeDashHtml === html) return;" in body
+    assert body.index("if (host._officeDashHtml === html) return;") < body.index("host.innerHTML = html;")
+    assert ".office-dashboard-refreshed .office-dash-empty" in CSS
+
+
+def test_dashboard_lists_chain_the_wheel_to_the_page():
+    last = CSS.rindex(".office-dashboard-panel-body{overscroll-behavior:")
+    assert CSS[last:].startswith(".office-dashboard-panel-body{overscroll-behavior:auto;}")
+
+
+def test_every_dashboard_empty_state_icon_has_a_ring():
+    rule = CSS[CSS.rindex(".office-dash-empty-icon.is-neutral{"):]
+    rule = rule[:rule.index("}")]
+    assert "border:1px solid" in rule
