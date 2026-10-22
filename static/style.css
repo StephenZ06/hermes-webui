@@ -14909,3 +14909,12 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .office-dashboard-integration .office-dash-icon .work-hub-icon,.office-dashboard-integration .office-dash-icon svg{width:18px;height:18px;color:currentColor;}
 /* Integrations: card titles in capitals, like the dashboard panels. */
 .office-integration-card h2{text-transform:uppercase;letter-spacing:.07em;}
+/* Panel heads: trim the title/description line boxes to cap height and
+   baseline so the stretched icon tile starts at the title's cap line and
+   ends at the description's baseline. */
+.office-dashboard-panel-head .office-dash-titles h2,.office-dashboard-panel-head .office-dash-titles p,
+.office-dashboard-integration > span:nth-child(2) strong,.office-dashboard-integration > span:nth-child(2) small{text-box:trim-both cap alphabetic;}
+.office-dashboard-panel-head .office-dash-titles p{margin-top:7px;}
+.office-dashboard-integration > span:nth-child(2) small{margin-top:7px;}
+/* Sidebar page buttons and metric labels in capitals. */
+.office-page-nav-copy strong,.office-dashboard-metric .office-dash-metric-label{text-transform:uppercase;letter-spacing:.06em;}
