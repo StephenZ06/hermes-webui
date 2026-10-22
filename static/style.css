@@ -14834,3 +14834,18 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Sidebar Dashboard/Integrations: the labels have no descenders, so their ink
    sits above the line box's centre; nudge them onto the icon's centre line. */
 .office-page-nav-copy strong{position:relative;top:1.5px;}
+/* Metric cards: the bottom line has no cap height above its baseline, so the
+   same padding read ~3px taller at the bottom; trim it. */
+.office-dashboard-metric{padding-bottom:15px;}
+/* Dashboard / Integrations entry: one rise-and-fade, staggered top to bottom. */
+@keyframes office-subview-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+.office-subview.is-entering :is(.office-subview-head,.office-dashboard-toolbar,.office-dashboard-metric,.office-dashboard-panel,.office-dashboard-integration,.office-integrations-intro,.office-integration-card){animation:office-subview-in .44s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--office-enter-i,0) * 40ms);}
+.office-subview.is-entering .office-dashboard-toolbar,.office-subview.is-entering .office-integrations-intro{--office-enter-i:1;}
+.office-subview.is-entering .office-dashboard-metric:nth-child(1),.office-subview.is-entering .office-integration-card:nth-child(1){--office-enter-i:2;}
+.office-subview.is-entering .office-dashboard-metric:nth-child(2),.office-subview.is-entering .office-integration-card:nth-child(2){--office-enter-i:3;}
+.office-subview.is-entering .office-dashboard-metric:nth-child(3),.office-subview.is-entering .office-integration-card:nth-child(3){--office-enter-i:4;}
+.office-subview.is-entering .office-dashboard-metric:nth-child(4),.office-subview.is-entering .office-integration-card:nth-child(4){--office-enter-i:5;}
+.office-subview.is-entering .office-dashboard-panel:nth-child(1),.office-subview.is-entering .office-dashboard-panel:nth-child(2){--office-enter-i:6;}
+.office-subview.is-entering .office-dashboard-panel:nth-child(3),.office-subview.is-entering .office-dashboard-panel:nth-child(4){--office-enter-i:8;}
+.office-subview.is-entering .office-dashboard-integration{--office-enter-i:10;}
+@media (prefers-reduced-motion:reduce){.office-subview.is-entering *{animation:none!important;}}

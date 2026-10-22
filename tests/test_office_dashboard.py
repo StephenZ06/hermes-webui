@@ -178,3 +178,17 @@ def test_every_dashboard_empty_state_icon_has_a_ring():
     rule = CSS[CSS.rindex(".office-dash-empty-icon.is-neutral{"):]
     rule = rule[:rule.index("}")]
     assert "border:1px solid" in rule
+
+
+def test_floor_detail_empty_state_uses_the_framed_panel_empty():
+    panel = OFFICE[OFFICE.index("function dashboardDistributionPanel(model)"):OFFICE.index("function bindDashboardDistribution")]
+    assert "dashEmpty('check', 'green', 'Nothing completed yet'" in panel
+    assert '<div class="office-dashboard-empty">No completed tasks' not in panel
+
+
+def test_subviews_enter_with_a_staggered_motion_that_releases_its_fill():
+    subview = OFFICE[OFFICE.index("function renderOfficeSubview(container)"):OFFICE.index("function setOfficeSubview(name)")]
+    assert "subviewEl.classList.add('is-entering')" in subview
+    assert "subviewEl.classList.remove('is-entering')" in subview
+    assert "@keyframes office-subview-in" in CSS
+    assert "@media (prefers-reduced-motion:reduce){.office-subview.is-entering *{animation:none!important;}}" in CSS

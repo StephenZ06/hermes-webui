@@ -962,7 +962,7 @@ function dashboardDistributionPanel(model) {
       <span>${done.length} completed</span></div>
       <div class="office-dashboard-panel-body office-dashboard-floor-detail">${done.length
         ? done.map(worker => dashboardWorkerRow(worker, 'is-done')).join('')
-        : `<div class="office-dashboard-empty">No completed tasks on ${esc(floor.name)} yet.</div>`}</div></article>`;
+        : dashEmpty('check', 'green', 'Nothing completed yet', `Finished work on ${esc(floor.name)} will appear here.`)}</div></article>`;
   }
   return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('layers', 'blue', 'Work distribution', 'How work spreads across floors.', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
     ? model.floors.map(item => `<button type="button" class="office-dashboard-floor" data-dashboard-floor="${esc(item.key)}" aria-label="${esc(item.name)}: show completed tasks"><span class="office-dashboard-floor-dot" style="background:${esc(item.color || 'var(--accent)')}"></span><span><strong>${esc(item.name)}</strong><small>${item.workers.length} assigned</small></span><small>${item.active} active · ${item.completed} done</small><span class="office-dashboard-floor-chevron" aria-hidden="true">›</span></button>`).join('')
@@ -1079,11 +1079,16 @@ function renderOfficeIntegrations(payload) {
     ? payload.integrations : defaultOfficeIntegrations();
   const gmail = integrations.find(item => item && item.provider === 'gmail') || defaultOfficeIntegrations()[0];
   const connected = gmail.status === 'connected';
-  host.innerHTML = `<div class="office-integrations-intro"><span>BUSINESS OFFICE</span><p>Connections are assigned to a floor and expose only the capabilities you approve.</p></div>
+  const html = `<div class="office-integrations-intro"><span>BUSINESS OFFICE</span><p>Connections are assigned to a floor and expose only the capabilities you approve.</p></div>
   <section class="office-integrations-grid"><article class="office-integration-card"><div class="office-integration-card-head"><span class="office-integration-provider-icon"><img src="/static/office-integration-gmail.png" alt="" aria-hidden="true"></span><span><h2>Gmail</h2><p>Email floor</p></span><span class="office-integration-status ${connected ? 'is-connected' : ''}">${connected ? 'Connected' : 'Not connected'}</span></div>
     <p class="office-integration-copy">Search, summarize, and draft replies for the Email floor. Sending will always require your approval.</p>
     <div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Google OAuth setup is required before an account can be connected">Google OAuth setup required</button><button type="button" class="office-integration-settings" disabled aria-label="Configure Gmail integration" title="Gmail configuration will be available after OAuth setup">${officeIcon('settings', 'Configure Gmail integration')}</button></div></article>
   ${[['Marketing', 'Choose a platform when you are ready to connect campaign or social tools.', 'Choose marketing platform'], ['Operations', 'Calendar and operations providers will be configured here.', 'Choose operations provider'], ['Documents', 'Document storage providers will be configured here.', 'Choose document provider']].map(([name, copy, action]) => `<article class="office-integration-card is-future"><div class="office-integration-card-head"><span class="office-integration-provider-icon"><img src="/static/office-integration-${name.toLowerCase()}.png" alt="" aria-hidden="true"></span><span><h2>${name}</h2><p>Future integration</p></span></div><p class="office-integration-copy">${copy}</p><div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Provider setup will be available in a future update">${action}</button><button type="button" class="office-integration-settings" disabled aria-label="Configure ${name} integration" title="Configuration will be available after a provider is selected">${officeIcon('settings', `Configure ${name} integration`)}</button></div></article>`).join('')}</section>`;
+  // Defaults paint first and the fetched payload usually matches them; an
+  // identical repaint would restart the entry motion mid-way.
+  if (host._officeIntegrationsHtml === html) return;
+  host._officeIntegrationsHtml = html;
+  host.innerHTML = html;
 }
 
 function loadOfficeIntegrations() {
@@ -1446,6 +1451,13 @@ function renderOfficeSubview(container) {
   </section>`;
   if (parkFloor) container.insertAdjacentHTML('beforeend', subviewHtml);
   else container.innerHTML = subviewHtml;
+  // Staggered entry, then the class goes so later repaints and hover/press
+  // transforms are not held by the animation's fill.
+  const subviewEl = container.querySelector(':scope > .office-subview');
+  if (subviewEl && !dashboardPrefersReducedMotion()) {
+    subviewEl.classList.add('is-entering');
+    setTimeout(() => subviewEl.classList.remove('is-entering'), 900);
+  }
   if (isDashboard) renderOfficeDashboard(activeAdapter().getState());
   else loadOfficeIntegrations();
 }
