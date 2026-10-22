@@ -192,3 +192,9 @@ def test_subviews_enter_with_a_staggered_motion_that_releases_its_fill():
     assert "subviewEl.classList.remove('is-entering')" in subview
     assert "@keyframes office-subview-in" in CSS
     assert "@media (prefers-reduced-motion:reduce){.office-subview.is-entering *{animation:none!important;}}" in CSS
+
+
+def test_panel_icons_match_their_title_block_and_integration_health_has_a_tile():
+    assert ".office-dashboard-panel-head .office-dash-icon,.office-dashboard-integration .office-dash-icon{align-self:stretch;width:auto;height:auto;aspect-ratio:1;" in CSS
+    assert '<span class="office-dash-icon is-purple">${officeIcon(\'settings\', \'Integrations\')}</span>' in OFFICE
+    assert ".office-integration-card h2{text-transform:uppercase;" in CSS

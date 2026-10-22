@@ -14900,3 +14900,12 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .office-subview.is-entering .office-dashboard-panel:nth-child(3),.office-subview.is-entering .office-dashboard-panel:nth-child(4){--office-enter-i:8;}
 .office-subview.is-entering .office-dashboard-integration{--office-enter-i:10;}
 @media (prefers-reduced-motion:reduce){.office-subview.is-entering *{animation:none!important;}}
+/* Panel and Integration-health icons: a square tile exactly as tall as the
+   title + description beside it. */
+.office-dashboard-panel-head .office-dash-icon,.office-dashboard-integration .office-dash-icon{align-self:stretch;width:auto;height:auto;aspect-ratio:1;border-radius:8px;}
+.office-dashboard-panel-head .office-dash-icon svg,.office-dashboard-integration .office-dash-icon .work-hub-icon{width:15px;height:15px;}
+.office-dash-icon.is-purple{color:#a78bfa;background:color-mix(in srgb,#a78bfa 14%,transparent);}
+.office-dashboard-integration{grid-template-columns:auto minmax(0,1fr) auto;gap:12px;}
+.office-dashboard-integration .office-dash-icon .work-hub-icon,.office-dashboard-integration .office-dash-icon svg{width:18px;height:18px;color:currentColor;}
+/* Integrations: card titles in capitals, like the dashboard panels. */
+.office-integration-card h2{text-transform:uppercase;letter-spacing:.07em;}
