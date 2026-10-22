@@ -823,9 +823,9 @@
     font-family:var(--font-ui);font-size:14.5px;line-height:1.7;
   }
   :root.dark[data-skin|="nous"]{
-    --bg:#0A0E14;--sidebar:#0F1419;--border:#1E2A3A;--border2:rgba(255,255,255,0.14);
-    --text:#C8D6E5;--muted:#5A6A7A;--accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--code-bg:#111820;
-    --surface:#111820;--topbar-bg:rgba(10,14,20,.98);--main-bg:rgba(10,14,20,0.5);
+    --bg:#0F0F0F;--sidebar:#111111;--border:#262626;--border2:rgba(255,255,255,0.14);
+    --text:#C8D6E5;--muted:#5A6A7A;--accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--code-bg:#181818;
+    --surface:#181818;--topbar-bg:rgba(17,17,17,.98);--main-bg:rgba(15,15,15,0.5);
     --focus-ring:rgba(70,130,180,.3);--focus-glow:rgba(70,130,180,.08);
     --input-bg:rgba(255,255,255,.04);--hover-bg:rgba(255,255,255,.06);
     --strong:#E2E8F0;--em:#5A6A7A;--code-text:#7EB6E0;--code-inline-bg:rgba(70,130,180,.12);--pre-text:#C8D6E5;
