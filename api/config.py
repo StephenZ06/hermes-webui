@@ -10213,6 +10213,7 @@ _SETTINGS_SKIN_VALUES = {
     "nous-charcoal",
     "geist-contrast",
     "zeus",
+    "zeus-2",
     "verdigris",
     "neumorphic",
     "teal-neumorphic",

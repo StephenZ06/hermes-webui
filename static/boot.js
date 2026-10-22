@@ -4011,6 +4011,7 @@ const _SKINS=[
   {name:'Neon Paint', value:'neon-paint', colors:['#FF2D95','#00E5FF','#FFB800']},
   {name:'Geist Contrast', value:'geist-contrast', colors:['#000000','#ffffff','#FFF175']},
   {name:'Zeus',     colors:['#FFD700','#FFBF00','#1A1A00']},
+  {name:'Zeus 2.0', value:'zeus-2', colors:['#4682B4','#3A6E9A','#111111']},
   {name:'Workspace', value:'verdigris', colors:['#78C7A3','#161B18','#EDF3EF']},
   {name:'Neumorphic', value:'neumorphic', colors:['#9B6CFF','#F06AB4','#45C6F5']},
   {name:'Teal Neumorphic', value:'teal-neumorphic', colors:['#29C7B8','#4BD4C7','#7EE7DC']},

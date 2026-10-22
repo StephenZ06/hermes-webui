@@ -1090,6 +1090,47 @@
   :root.dark[data-skin="zeus"] .kanban-modal-overlay{background:rgba(0,0,0,.72);}
   :root.dark[data-skin="zeus"] .kanban-board-switcher-menu{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(255,215,0,0.15);}
 
+  /* ── Skin: Zeus 2.0 ──
+     Zeus's near-black surfaces with the Nous steel-blue accent, Nous
+     monospace type and Nous's dashed sidebar edge. Dark-first like Zeus;
+     the accent and type also apply in light mode. */
+  :root[data-skin="zeus-2"]{
+    --accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--accent-hover:#3A6E9A;
+    --accent-bg:rgba(70,130,180,0.06);--accent-bg-strong:rgba(70,130,180,0.12);--accent-text:#2C5F88;
+    --focus-ring:rgba(70,130,180,.3);--focus-glow:rgba(70,130,180,.08);--info:#4682B4;
+    --font-ui:"SF Mono","Roboto Mono","Courier New",monospace;
+    font-family:var(--font-ui);font-size:14.5px;line-height:1.7;
+  }
+  :root.dark[data-skin="zeus-2"]{
+    --bg:#0F0F0F;--sidebar:#111111;--surface:#181818;--code-bg:#181818;
+    --topbar-bg:rgba(15,15,15,.98);--main-bg:rgba(15,15,15,0.6);
+    --border:#1E2630;--border2:rgba(70,130,180,0.18);
+    --input-bg:rgba(255,255,255,.04);--hover-bg:rgba(70,130,180,.06);
+    --surface-subtle:rgba(255,255,255,.03);--surface-subtle-hover:rgba(255,255,255,.05);
+    --border-subtle:rgba(70,130,180,.08);--border-muted:rgba(70,130,180,.14);
+    --focus-ring:rgba(70,130,180,.4);--focus-glow:rgba(70,130,180,.1);
+    --accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--accent-hover:#5A9AD0;
+    --accent-bg:rgba(70,130,180,0.1);--accent-bg-strong:rgba(70,130,180,0.2);--accent-text:#7EB6E0;
+    --code-text:#7EB6E0;--code-inline-bg:rgba(70,130,180,.12);--info:#4682B4;
+  }
+  :root.dark[data-skin="zeus-2"] .topbar{background:#0F0F0F;border-bottom:1px solid rgba(70,130,180,0.15);}
+  :root.dark[data-skin="zeus-2"] .sidebar{background:#111111;border-right:1px dashed rgba(70,130,180,0.22);}
+  :root.dark[data-skin="zeus-2"] .session-item.active{background:rgba(70,130,180,0.1);position:relative;padding-left:23px;color:#4682B4;}
+  :root.dark[data-skin="zeus-2"] .session-item.active::before{content:"";position:absolute;left:12px;top:8px;bottom:8px;width:2px;border-radius:999px;background:#4682B4;}
+  :root.dark[data-skin="zeus-2"] .session-item:hover:not(.active){background:rgba(70,130,180,0.05);}
+  :root.dark[data-skin="zeus-2"] .composer-box{background:#141414;border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .msg-row[data-role="assistant"] .msg-body{background:transparent;border-color:transparent;}
+  :root.dark[data-skin="zeus-2"] .msg-row[data-role="user"] .msg-body{background:#0F1822;border-color:rgba(70,130,180,0.25);}
+  :root.dark[data-skin="zeus-2"] .app-dialog{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .app-dialog-overlay{background:rgba(0,0,0,.72);}
+  :root.dark[data-skin="zeus-2"] .kanban-modal{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .kanban-modal-overlay{background:rgba(0,0,0,.72);}
+  :root.dark[data-skin="zeus-2"] .kanban-board-switcher-menu{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.15);}
+  :root[data-skin="zeus-2"]:not(.dark) .sidebar{border-right-style:dashed;}
+  :root[data-skin="zeus-2"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
+  :root[data-skin="zeus-2"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
+  :root[data-skin="zeus-2"]{scrollbar-width:thin;scrollbar-color:rgba(70,130,180,.25) transparent;}
+
   /* ═══ NEON — cyberpunk theme (dark-first) ═══ */
   :root[data-skin="neon"]{
     --bg:#F8F7FC;--sidebar:#F0EEF8;--border:#D8D4EC;--border2:rgba(0,0,0,0.12);
