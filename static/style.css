@@ -807,7 +807,7 @@
      Monochromatic steel blue accent, monospace typography, near-sharp corners,
      dashed borders on structural elements, and deep navy dark mode.
      Opt-in via Settings → Skin picker. */
-  :root[data-skin="nous"]{
+  :root[data-skin|="nous"]{
     --bg:#FFFFFF;--sidebar:#F5F5F5;--border:#D0D8E0;--border2:rgba(0,0,0,0.15);
     --text:#1A2A3A;--muted:#6B7B8B;--accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--code-bg:#F0F2F5;
     --surface:#FFFFFF;--topbar-bg:rgba(255,255,255,.98);--main-bg:rgba(255,255,255,0.5);
@@ -822,7 +822,7 @@
     --border-subtle:rgba(0,0,0,.08);--border-muted:rgba(0,0,0,.12);
     font-family:var(--font-ui);font-size:14.5px;line-height:1.7;
   }
-  :root.dark[data-skin="nous"]{
+  :root.dark[data-skin|="nous"]{
     --bg:#0A0E14;--sidebar:#0F1419;--border:#1E2A3A;--border2:rgba(255,255,255,0.14);
     --text:#C8D6E5;--muted:#5A6A7A;--accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--code-bg:#111820;
     --surface:#111820;--topbar-bg:rgba(10,14,20,.98);--main-bg:rgba(10,14,20,0.5);
@@ -834,47 +834,56 @@
     --surface-subtle:rgba(255,255,255,.025);--surface-subtle-hover:rgba(255,255,255,.045);
     --border-subtle:rgba(255,255,255,.075);--border-muted:rgba(255,255,255,.12);
   }
+  /* ── Skin: Nous Charcoal — Nous with a neutral charcoal dark base ──
+     Inherits every Nous rule via [data-skin|="nous"]; only the dark
+     surfaces change. Steel blue accent stays identical. */
+  :root.dark[data-skin="nous-charcoal"]{
+    --bg:#1B1C1E;--sidebar:#202124;--border:#33363A;--border2:rgba(255,255,255,0.13);
+    --text:#D4D7DB;--muted:#7E8389;--code-bg:#232427;
+    --surface:#25272A;--topbar-bg:rgba(27,28,30,.98);--main-bg:rgba(27,28,30,0.5);
+    --strong:#ECEEF0;--em:#8A8F95;--pre-text:#D4D7DB;
+  }
   /* ── Nous skin: component-level overrides ── */
   /* Topbar: dashed border */
-  :root[data-skin="nous"] .topbar{border-bottom-style:dashed;}
-  :root.dark[data-skin="nous"] .topbar{border-bottom-style:dashed;}
+  :root[data-skin|="nous"] .topbar{border-bottom-style:dashed;}
+  :root.dark[data-skin|="nous"] .topbar{border-bottom-style:dashed;}
   /* Sidebar: dashed border */
-  :root[data-skin="nous"] .sidebar{border-right-style:dashed;}
-  :root.dark[data-skin="nous"] .sidebar{border-right-style:dashed;}
+  :root[data-skin|="nous"] .sidebar{border-right-style:dashed;}
+  :root.dark[data-skin|="nous"] .sidebar{border-right-style:dashed;}
   /* Scrollbar: steel blue */
-  :root[data-skin="nous"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
-  :root[data-skin="nous"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
-  :root[data-skin="nous"]{scrollbar-width:thin;scrollbar-color:rgba(70,130,180,.25) transparent;}
-  :root.dark[data-skin="nous"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
-  :root.dark[data-skin="nous"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
-  :root.dark[data-skin="nous"]{scrollbar-width:thin;scrollbar-color:rgba(70,130,180,.25) transparent;}
+  :root[data-skin|="nous"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
+  :root[data-skin|="nous"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
+  :root[data-skin|="nous"]{scrollbar-width:thin;scrollbar-color:rgba(70,130,180,.25) transparent;}
+  :root.dark[data-skin|="nous"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
+  :root.dark[data-skin|="nous"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
+  :root.dark[data-skin|="nous"]{scrollbar-width:thin;scrollbar-color:rgba(70,130,180,.25) transparent;}
   /* Tree viewer: blue family */
-  :root[data-skin="nous"] .tree-key{color:#4682B4;}
-  :root[data-skin="nous"] .tree-str{color:#7EB6E0;}
-  :root[data-skin="nous"] .tree-num{color:#4682B4;}
-  :root[data-skin="nous"] .tree-bool{color:#4682B4;}
-  :root.dark[data-skin="nous"] .tree-key{color:#4682B4;}
-  :root.dark[data-skin="nous"] .tree-str{color:#7EB6E0;}
-  :root.dark[data-skin="nous"] .tree-num{color:#4682B4;}
-  :root.dark[data-skin="nous"] .tree-bool{color:#4682B4;}
+  :root[data-skin|="nous"] .tree-key{color:#4682B4;}
+  :root[data-skin|="nous"] .tree-str{color:#7EB6E0;}
+  :root[data-skin|="nous"] .tree-num{color:#4682B4;}
+  :root[data-skin|="nous"] .tree-bool{color:#4682B4;}
+  :root.dark[data-skin|="nous"] .tree-key{color:#4682B4;}
+  :root.dark[data-skin|="nous"] .tree-str{color:#7EB6E0;}
+  :root.dark[data-skin|="nous"] .tree-num{color:#4682B4;}
+  :root.dark[data-skin|="nous"] .tree-bool{color:#4682B4;}
   /* Session badges/tags */
-  :root[data-skin="nous"] .session-tree-badge{background:rgba(99,179,237,.2);color:#4682B4;}
-  :root[data-skin="nous"] .session-tag{background:rgba(99,179,237,.2);color:#4682B4;}
-  :root.dark[data-skin="nous"] .session-tree-badge{background:rgba(99,179,237,.2);color:#4682B4;}
-  :root.dark[data-skin="nous"] .session-tag{background:rgba(99,179,237,.2);color:#4682B4;}
+  :root[data-skin|="nous"] .session-tree-badge{background:rgba(99,179,237,.2);color:#4682B4;}
+  :root[data-skin|="nous"] .session-tag{background:rgba(99,179,237,.2);color:#4682B4;}
+  :root.dark[data-skin|="nous"] .session-tree-badge{background:rgba(99,179,237,.2);color:#4682B4;}
+  :root.dark[data-skin|="nous"] .session-tag{background:rgba(99,179,237,.2);color:#4682B4;}
   /* Image lightbox */
-  :root[data-skin="nous"] .img-lightbox-close:hover{background:rgba(70,130,180,.4);}
-  :root.dark[data-skin="nous"] .img-lightbox-close:hover{background:rgba(70,130,180,.4);}
-  :root[data-skin="nous"] .img-lightbox-nav:hover{background:rgba(70,130,180,.5);}
-  :root.dark[data-skin="nous"] .img-lightbox-nav:hover{background:rgba(70,130,180,.5);}
+  :root[data-skin|="nous"] .img-lightbox-close:hover{background:rgba(70,130,180,.4);}
+  :root.dark[data-skin|="nous"] .img-lightbox-close:hover{background:rgba(70,130,180,.4);}
+  :root[data-skin|="nous"] .img-lightbox-nav:hover{background:rgba(70,130,180,.5);}
+  :root.dark[data-skin|="nous"] .img-lightbox-nav:hover{background:rgba(70,130,180,.5);}
   /* Diff blocks */
-  :root[data-skin="nous"] .diff-block .diff-plus{color:#4682B4;}
-  :root.dark[data-skin="nous"] .diff-block .diff-plus{color:#7EB6E0;}
+  :root[data-skin|="nous"] .diff-block .diff-plus{color:#4682B4;}
+  :root.dark[data-skin|="nous"] .diff-block .diff-plus{color:#7EB6E0;}
   /* MCP status */
-  :root[data-skin="nous"] .mcp-http{color:#4682B4;}
-  :root[data-skin="nous"] .mcp-status-active{color:#4682B4;}
-  :root.dark[data-skin="nous"] .mcp-http{color:#7EB6E0;}
-  :root.dark[data-skin="nous"] .mcp-status-active{color:#7EB6E0;}
+  :root[data-skin|="nous"] .mcp-http{color:#4682B4;}
+  :root[data-skin|="nous"] .mcp-status-active{color:#4682B4;}
+  :root.dark[data-skin|="nous"] .mcp-http{color:#7EB6E0;}
+  :root.dark[data-skin|="nous"] .mcp-status-active{color:#7EB6E0;}
 
   /* ── Skin: Geist Contrast (Geist-inspired neutral precision) ──
      Dark mode uses a #FFF175 accent; solid accent controls use black

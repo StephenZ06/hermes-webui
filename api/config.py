@@ -10210,6 +10210,7 @@ _SETTINGS_SKIN_VALUES = {
     "sienna",
     "catppuccin",
     "nous",
+    "nous-charcoal",
     "geist-contrast",
     "zeus",
     "verdigris",

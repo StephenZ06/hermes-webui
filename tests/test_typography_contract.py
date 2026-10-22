@@ -23,7 +23,7 @@ NODE = shutil.which("node")
 
 
 def _iter_root_skin_blocks(css):
-    selector_re = re.compile(r'(:root(?:\.dark)?\[data-skin="[^"]+"\][^{]*?)\{')
+    selector_re = re.compile(r'(:root(?:\.dark)?\[data-skin\|?="[^"]+"\][^{]*?)\{')
     for selector_match in selector_re.finditer(css):
         selector = selector_match.group(1).strip()
         idx = selector_match.end()
@@ -42,9 +42,10 @@ def _iter_root_skin_blocks(css):
 
 
 def _get_root_skin_block(css, skin):
-    target = f':root[data-skin="{skin}"]'
+    # |= blocks are shared by a skin family (e.g. nous + nous-charcoal).
+    targets = {f':root[data-skin="{skin}"]', f':root[data-skin|="{skin}"]'}
     for selector, block in _iter_root_skin_blocks(css):
-        if selector == target:
+        if selector in targets:
             return block
     return ""
 
