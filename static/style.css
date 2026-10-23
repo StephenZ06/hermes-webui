@@ -14990,6 +14990,3 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] :is(.rail-btn[data-panel="tasks"],.rail-btn[data-panel="memory"],.rail-btn[data-panel="audit"]) :is(svg,.page-nav-mark){transform:translateY(-.5px);}
 :root[data-skin="zeus-2"] .rail-btn[data-panel="files"] svg{transform:translateY(-1px);}
 :root[data-skin="zeus-2"] :is(.composer-toolsets-icon,#btnWorkspacePin,.rightpanel .themed-select-trigger) svg{transform:translateY(.5px);}
-/* Zeus 2.0 "to response": an all-lowercase label centres on its x-height,
-   which sat 1px under the box centre on Windows. */
-:root[data-skin="zeus-2"] .msg-question-jump-btn > span{position:relative;top:-.8px;}
