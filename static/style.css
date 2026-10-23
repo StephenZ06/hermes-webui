@@ -14983,3 +14983,13 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] :is(.composer-reasoning-label,.composer-toolsets-label){position:relative;top:1px;}
 /* Zeus 2.0 chat rows: the age stamp ("1d") ink sat 1px below the row centre. */
 :root[data-skin="zeus-2"] #sessionList .session-time{position:relative;top:-1px;}
+/* Zeus 2.0 half-pixel icon centring, measured at 1x (ink edges and ink
+   centroid agree): an icon whose ink leaves an odd number of spare pixels
+   can't sit on a whole-pixel centre, so it moves half a pixel and the
+   antialiasing splits evenly above and below. */
+:root[data-skin="zeus-2"] :is(.rail-btn[data-panel="tasks"],.rail-btn[data-panel="memory"],.rail-btn[data-panel="audit"]) :is(svg,.page-nav-mark){transform:translateY(-.5px);}
+:root[data-skin="zeus-2"] .rail-btn[data-panel="files"] svg{transform:translateY(-1px);}
+:root[data-skin="zeus-2"] :is(.composer-toolsets-icon,#btnWorkspacePin,.rightpanel .themed-select-trigger) svg{transform:translateY(.5px);}
+/* Zeus 2.0 "to response": an all-lowercase label centres on its x-height,
+   which sat 2px under the box centre. */
+:root[data-skin="zeus-2"] .msg-question-jump-btn > span{position:relative;top:-2px;}
