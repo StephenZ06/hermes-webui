@@ -14966,6 +14966,6 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .project-folder-row > .color-dot{top:.2px;}
 /* Folder caret drawn in CSS, not the "▸" glyph: Courier New has no ▸, so each
    OS substitutes a different fallback font and the caret lands at a
-   different height. An 8px-tall triangle centres exactly on the 16px box. */
+   different height. A 6px-tall triangle centres exactly on the 16px box. */
 .project-folder-row > .project-folder-chevron{top:.2px;font-size:0;}
-.project-folder-row > .project-folder-chevron::before{content:"";border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;}
+.project-folder-row > .project-folder-chevron::before{content:"";border-left:4px solid currentColor;border-top:3px solid transparent;border-bottom:3px solid transparent;}
