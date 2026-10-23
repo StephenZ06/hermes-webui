@@ -14963,3 +14963,4 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Project folder rows (Chat, Work Hub, Notes, Office): caret, colour dot and
    label sit 0.1px lower so the top and bottom space reads equal. */
 .project-folder-row > *{position:relative;top:.1px;}
+.project-folder-row > .color-dot{top:.2px;}
