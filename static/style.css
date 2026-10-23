@@ -14993,3 +14993,12 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Zeus 2.0 profile chip: "default" is all lowercase with ascenders; measured
    ascender-top to baseline it sat 1px high (10px over, 12px under). */
 :root[data-skin="zeus-2"] #profileChipLabel{position:relative;top:1px;}
+/* Zeus 2.0 Work Hub: Inbox / All work icons sat 1px below their label. */
+:root[data-skin="zeus-2"] .work-hub-scope svg{position:relative;top:-1px;}
+/* Zeus 2.0 Work Hub column count: a 7px digit can't centre in a 20px
+   circle, so the circle is 21px and the digit sits 7px from each edge. */
+:root[data-skin="zeus-2"] .work-hub-column header small{padding-top:2px;min-width:21px;box-sizing:border-box;}
+/* Zeus 2.0 Work Hub list rows: whole-pixel line heights so every row is the
+   same height and its title and status sit on the same pixel rows. */
+:root[data-skin="zeus-2"] .work-hub-list-row strong{line-height:16px;}
+:root[data-skin="zeus-2"] .work-hub-list-row small{line-height:14px;}
