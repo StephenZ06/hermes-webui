@@ -1681,6 +1681,11 @@
   .sidebar-search input::placeholder{color:var(--muted);opacity:.7;}
   .sidebar-search-icon{position:absolute;left:22px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--muted);opacity:.7;pointer-events:none;}
   .session-search .sidebar-search-icon{left:10px;}
+  /* Above the input: the input is position:relative and later in the DOM, so
+     its opaque background otherwise paints over the icon. */
+  .session-search .sidebar-search-icon{z-index:1;}
+  /* Same height as the project folder rows below it. */
+  #panelChat .session-search input{height:34px;}
   .session-search .session-search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);z-index:1;width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;opacity:.78;}
   .session-search-clear[hidden]{display:none;}
   .session-search-clear svg{width:14px;height:14px;}
@@ -9257,6 +9262,9 @@ body code[class*="language-"],body pre[class*="language-"],body pre code[class*=
   box-shadow: 0 2px 8px rgba(0,0,0,.25);
   transition: color .12s, border-color .12s, background .12s, transform .12s;
 }
+/* SVG arrow, not a "↑" glyph: a font glyph sits on the label's baseline and
+   reads small and low in monospace skins; the SVG centres on the box. */
+.msg-question-jump-icon { display: block; width: 15px; height: 15px; flex: 0 0 15px; }
 .msg-question-jump-btn:hover,
 .msg-question-jump-btn:focus-visible {
   color: var(--text);
@@ -14952,3 +14960,6 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] #composerModelChip .composer-model-icon{position:relative;top:-1px;}
 :where(:root[data-skin="zeus-2"]) .themed-select-trigger{padding-bottom:8px;}
 :root[data-skin="zeus-2"] #composerModelChip .composer-model-chevron{position:relative;top:-1px;}
+/* Project folder rows (Chat, Work Hub, Notes, Office): caret, colour dot and
+   label sit 0.1px lower so the top and bottom space reads equal. */
+.project-folder-row > *{position:relative;top:.1px;}
