@@ -15060,7 +15060,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Zeus 2.0 Obsidian side panel: label text 1px up (All notes / Vault root
    text only; folder caret, dot and name; the vault card's two lines). */
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > span:not(.nb-scope-count){position:relative;top:-1px;}
-:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > .nb-scope-count{position:relative;top:-1px;}
+/* Counts sit 1px above the labels' baseline (labels are already 1px up). */
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > .nb-scope-count{position:relative;top:-2px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-name{top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :is(.project-folder-chevron,.color-dot){top:0;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-count{top:-1px;}
