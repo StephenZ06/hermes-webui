@@ -1109,6 +1109,13 @@
   @font-face{font-family:"Zeus2 Courier New";font-weight:700;src:local("Courier New Bold"),local("CourierNewPS-BoldMT");ascent-override:93%;descent-override:20.28%;line-gap-override:0%;}
   @font-face{font-family:"Zeus2 Courier New";font-style:italic;src:local("Courier New Italic"),local("CourierNewPS-ItalicMT");ascent-override:93%;descent-override:20.28%;line-gap-override:0%;}
   @font-face{font-family:"Zeus2 Courier New";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:93%;descent-override:20.28%;line-gap-override:0%;}
+  /* Chat page: baseline 0.1px lower (ascent +1.4% of 14.5px, split by half-leading) so text sits mid-box. */
+  @font-face{font-family:"Zeus2 Courier New Chat";src:local("Courier New"),local("CourierNewPSMT");ascent-override:94.4%;descent-override:20.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New Chat";font-weight:700;src:local("Courier New Bold"),local("CourierNewPS-BoldMT");ascent-override:94.4%;descent-override:20.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New Chat";font-style:italic;src:local("Courier New Italic"),local("CourierNewPS-ItalicMT");ascent-override:94.4%;descent-override:20.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New Chat";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:94.4%;descent-override:20.28%;line-gap-override:0%;}
+  :root[data-skin="zeus-2"] :is(#messages,#composerWrap){--font-ui:"SF Mono","Roboto Mono","Zeus2 Courier New Chat","Courier New",monospace;font-family:var(--font-ui);}
+
   :root.dark[data-skin="zeus-2"]{
     --bg:#0F0F0F;--sidebar:#111111;--surface:#181818;--code-bg:#181818;
     --topbar-bg:rgba(15,15,15,.98);--main-bg:rgba(15,15,15,0.6);
