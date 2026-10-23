@@ -1105,10 +1105,10 @@
      ascent and short descent, so its letters sit high in every line box and
      button text looked top-heavy. The same local font with rebalanced
      vertical metrics centres cap height to baseline; widths are unchanged. */
-  @font-face{font-family:"Zeus2 Courier New";src:local("Courier New"),local("CourierNewPSMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
-  @font-face{font-family:"Zeus2 Courier New";font-weight:700;src:local("Courier New Bold"),local("CourierNewPS-BoldMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
-  @font-face{font-family:"Zeus2 Courier New";font-style:italic;src:local("Courier New Italic"),local("CourierNewPS-ItalicMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
-  @font-face{font-family:"Zeus2 Courier New";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:87%;descent-override:26.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";src:local("Courier New"),local("CourierNewPSMT");ascent-override:95%;descent-override:18.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-weight:700;src:local("Courier New Bold"),local("CourierNewPS-BoldMT");ascent-override:95%;descent-override:18.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-style:italic;src:local("Courier New Italic"),local("CourierNewPS-ItalicMT");ascent-override:95%;descent-override:18.28%;line-gap-override:0%;}
+  @font-face{font-family:"Zeus2 Courier New";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:95%;descent-override:18.28%;line-gap-override:0%;}
   :root.dark[data-skin="zeus-2"]{
     --bg:#0F0F0F;--sidebar:#111111;--surface:#181818;--code-bg:#181818;
     --topbar-bg:rgba(15,15,15,.98);--main-bg:rgba(15,15,15,0.6);
@@ -14925,3 +14925,15 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    icon and the right edge. */
 .office-page-nav-btn{justify-content:flex-start;}
 .office-page-nav-copy{flex:1 1 auto;justify-items:center;text-align:center;}
+/* ── Zeus 2.0: per-component optical centring ──
+   With the rebalanced Courier New face most labels land centred; these few
+   boxes were measured (1x, ink of capitals vs inner box) still ≥0.75px off,
+   so their padding or line box is rebalanced by about a pixel. */
+:root[data-skin="zeus-2"] .work-hub-scope{padding-top:7px;padding-bottom:5px;}
+:root[data-skin="zeus-2"] .logs-copy{padding-top:6px;padding-bottom:8px;}
+:root[data-skin="zeus-2"] .model-opt-badge{padding-top:1px;padding-bottom:3px;}
+:root[data-skin="zeus-2"] .main-view-title{position:relative;top:-1px;}
+:root[data-skin="zeus-2"] .office-tasks-count{line-height:1;}
+:root[data-skin="zeus-2"] .provider-card-badge{display:inline-flex;align-items:center;align-self:center;line-height:1;padding:4px 8px 5px;}
+:root[data-skin="zeus-2"] .office-tasks-filter{padding:3px 9px 5px;}
+:root[data-skin="zeus-2"] .provider-quota-refresh{padding:4px 9px 6px;}
