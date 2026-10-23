@@ -15060,6 +15060,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Zeus 2.0 Obsidian side panel: label text 1px up (All notes / Vault root
    text only; folder caret, dot and name; the vault card's two lines). */
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > span:not(.nb-scope-count){position:relative;top:-1px;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > .nb-scope-count{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-name{top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :is(.project-folder-chevron,.color-dot){top:0;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-count{top:-1px;}
@@ -15074,7 +15075,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .nb-editor-mount .bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content > .bn-inline-content{text-box:trim-start cap alphabetic;}
 /* Notes list cards: three lines (title, one line of text, place), no fixed
    height, and the same space inside on every side (ink to edge). */
-.nb-item{min-height:0;padding:7px 12px 8px;gap:4px;}
+.nb-item{flex-shrink:0;min-height:0;padding:7px 12px 8px;gap:4px;}
 .nb-item-title{line-height:18px;}
 .nb-item-preview{display:block;white-space:nowrap;text-overflow:ellipsis;-webkit-line-clamp:unset;line-height:18px;}
 .nb-item-meta{line-height:16px;}
