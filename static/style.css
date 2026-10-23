@@ -14964,4 +14964,8 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    label sit 0.1px lower so the top and bottom space reads equal. */
 .project-folder-row > *{position:relative;top:.1px;}
 .project-folder-row > .color-dot{top:.2px;}
-.project-folder-row > .project-folder-chevron{top:.2px;}
+/* Folder caret drawn in CSS, not the "▸" glyph: Courier New has no ▸, so each
+   OS substitutes a different fallback font and the caret lands at a
+   different height. An 8px-tall triangle centres exactly on the 16px box. */
+.project-folder-row > .project-folder-chevron{top:.2px;font-size:0;}
+.project-folder-row > .project-folder-chevron::before{content:"";border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;}
