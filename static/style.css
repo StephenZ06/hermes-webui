@@ -14990,3 +14990,6 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] :is(.rail-btn[data-panel="tasks"],.rail-btn[data-panel="memory"],.rail-btn[data-panel="audit"]) :is(svg,.page-nav-mark){transform:translateY(-.5px);}
 :root[data-skin="zeus-2"] .rail-btn[data-panel="files"] svg{transform:translateY(-1px);}
 :root[data-skin="zeus-2"] :is(.composer-toolsets-icon,#btnWorkspacePin,.rightpanel .themed-select-trigger) svg{transform:translateY(.5px);}
+/* Zeus 2.0 profile chip: "default" is all lowercase with ascenders; measured
+   ascender-top to baseline it sat 1px high (10px over, 12px under). */
+:root[data-skin="zeus-2"] #profileChipLabel{position:relative;top:1px;}
