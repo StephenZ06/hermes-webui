@@ -496,7 +496,7 @@
     host.innerHTML = (trash ? '<div class="nb-trash-bar"><span>Notes here are deleted for good when you empty the trash.</span><button type="button" class="nb-btn small" data-nb-action="empty-trash">Empty trash</button></div>' : '')
       + notes.map((n, i) => `<button type="button" role="listitem" class="nb-item${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-open="${esc(n.id)}" style="--i:${Math.min(i, 12)}">
         <span class="nb-item-title">${n.pinned ? `<span class="nb-flag" title="Pinned">${icon('pin', 12)}</span>` : ''}${n.favorite ? `<span class="nb-flag fav" title="Favorite">${icon('star', 12)}</span>` : ''}<strong>${esc(n.title || 'Untitled')}</strong></span>
-        ${n.preview ? `<span class="nb-item-preview">${esc(n.preview)}</span>` : ''}
+        <span class="nb-item-preview${n.preview ? '' : ' is-empty'}">${n.preview ? esc(n.preview) : 'No additional text'}</span>
         <span class="nb-item-meta"><span class="nb-place-dot" aria-hidden="true" style="background:${esc(placeColor(n))}"></span><span class="nb-item-meta-text">${esc(placeLabel(n))} · ${esc(when(n.updated_at))}${(n.tags || []).length ? ` · ${n.tags.slice(0, 3).map((t) => '#' + esc(t)).join(' ')}` : ''}</span></span>
       </button>`).join('');
   }
@@ -538,6 +538,14 @@
     }
     empty.hidden = true;
     chrome.hidden = false;
+    // A different note: its title and details fade in (the body fades in when
+    // its editor mounts). Updates to the same note don't replay it.
+    if (chrome.dataset.noteId !== note.id) {
+      chrome.dataset.noteId = note.id;
+      chrome.classList.remove('nb-text-in');
+      void chrome.offsetWidth;
+      chrome.classList.add('nb-text-in');
+    }
     const trashed = !!note.deleted_at;
     const conflict = save.conflict ? `<div class="nb-banner warn" role="alert"><span>${S.vault ? 'This note was changed in Obsidian or another window.' : 'This note was changed in another window.'}</span><button type="button" class="nb-btn small" data-nb-action="conflict-mine">Keep mine</button><button type="button" class="nb-btn small" data-nb-action="conflict-theirs">Load theirs</button></div>` : '';
     const failed = save.status === 'error' ? `<div class="nb-banner" role="status"><span>${esc(save.error || 'Saving failed')}. Your changes are kept here and retried.</span><button type="button" class="nb-btn small" data-nb-action="retry">Retry now</button></div>` : '';

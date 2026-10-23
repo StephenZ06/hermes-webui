@@ -15064,9 +15064,25 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] .nb-vault-title > span:last-child{position:relative;top:-1px;}
 /* Notes divider: lower, with the same space above it (to the folder button)
    as below it (to the note's first line). The first block's own top padding
-   is dropped so that space doesn't depend on whether a note opens with a
-   heading. */
+   is dropped and its first line is trimmed to the cap height, so the space
+   is the same whether a note opens with a heading of any level or text. */
 .nb-editor-head .nb-meta-row{padding-bottom:29px;}
-.nb-editor-host{padding-top:6px;}
+.nb-editor-host{padding-top:31px;}
 .nb-editor-mount .bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content{padding-top:0;}
-.nb-editor-mount .bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content[data-content-type="paragraph"]{padding-top:16px;}
+.nb-editor-mount .bn-editor > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content > .bn-inline-content{text-box:trim-start cap alphabetic;}
+/* Notes list cards: three lines (title, one line of text, place), no fixed
+   height, and the same space inside on every side (ink to edge). */
+.nb-item{min-height:0;padding:7px 12px 8px;gap:4px;}
+.nb-item-title{line-height:18px;}
+.nb-item-preview{display:block;white-space:nowrap;text-overflow:ellipsis;-webkit-line-clamp:unset;line-height:18px;}
+.nb-item-meta{line-height:16px;}
+.nb-item-preview.is-empty{opacity:.55;font-style:italic;}
+/* Switching notes: title and details fade in with the body. */
+.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated){animation:nb-text-in .22s ease both;}
+.nb-editor-host.is-entering .nb-editor-mount{animation:nb-text-in .22s ease both;}
+@keyframes nb-text-in{from{opacity:0;}}
+@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}}
+/* Drag-to-move drop indicator (ProseMirror's dropcursor, configured 5px and
+   near-white by BlockNote): a 2px rounded accent line centred on the gap. */
+.nb-editor-host .prosemirror-dropcursor-block{height:2px!important;border-radius:999px;background-color:var(--accent)!important;transform:translateY(1.5px);}
+.nb-editor-host .prosemirror-dropcursor-inline{width:2px!important;border-radius:999px;background-color:var(--accent)!important;}
