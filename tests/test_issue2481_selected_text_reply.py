@@ -64,7 +64,8 @@ def test_selected_text_reply_collects_named_context_blocks_without_dumping_into_
     assert "function _addNamedContextBlock(text)" in js
     assert "function _renderSelectionChips()" in js
     assert "function _flushSelectionBlocksToComposer()" in js
-    assert "_pendingSelections.push({id, name, text})" in js
+    assert "const options=arguments[1]||{}" in js
+    assert "_pendingSelections.push({id, name, text, kind:options.kind||'', noteId:options.noteId||''})" in js
     assert "const text=_consumeSelectedTextReplySelection();" in js
     assert "_addNamedContextBlock(text)" in js
     assert "**${s.name}:**\\n${_formatSelectedTextReplyQuote(s.text)}" in js
@@ -76,14 +77,15 @@ def test_selected_text_reply_context_cards_are_built_with_text_nodes():
     js = read("static/messages.js")
 
     assert "function _selectedContextPreview(text)" in js
-    assert "card.className='selection-context-card'" in js
+    assert "card.className='selection-context-card'+(s.kind==='note'?' note-context-card':'')" in js
     assert "quote.className='selection-context-quote'" in js
     assert "name.textContent=s.name" in js
     assert "quote.textContent=_selectedContextPreview(s.text)" in js
-    assert "quote.title=String(s.text||'')" in js
+    assert "quote.title=String(s.text||'')" not in js
+    assert "selection-context-preview" not in js
     assert "remove.addEventListener('click',()=>_removeNamedContextBlock(s.id))" in js
-    assert "name.addEventListener('click',()=>_editSelectionChipName(s.id,card))" in js
-    assert "e.key==='Enter'||e.key===' '||e.key==='F2'" in js
+    assert "else _editSelectionChipName(s.id,card);" in js
+    assert "e.key==='Enter'||e.key===' '||(!linkedNote&&e.key==='F2')" in js
     assert "context_block_rename_aria" in js
     assert "context_block_remove" in js
     assert "${_selectedTextReplyT('context_block_remove','Remove context block')}: ${s.name}" in js

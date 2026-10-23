@@ -36,6 +36,10 @@
     pane: 'list', // narrow screens: 'list' | 'editor'
   };
   const save = {timer: 0, retry: 0, inflight: null, dirty: {}, again: false, status: 'idle', error: '', conflict: null};
+  // Navigation can ask for the Notes page more than once before the first
+  // bootstrap returns. Keep that request shared so the page keeps one stable
+  // loading state instead of replacing its contents repeatedly.
+  let bootstrapPromise = null;
   // The two stores, side by side. S.projects / S.folders / S.notes are the
   // active one's, so the tree, list, search and delete code work unchanged.
   const W = {notes: {projects: [], folders: [], notes: []}, vault: {projects: [], folders: [], notes: []}};
@@ -84,7 +88,11 @@
     tag: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
     vault: '<path d="M12 2.5 4.5 7v10L12 21.5l7.5-4.5V7z"/><path d="M12 2.5v19M4.5 7l7.5 4.5L19.5 7"/>',
   };
-  const icon = (name, size) => `<svg width="${size || 14}" height="${size || 14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+  const icon = (name, size) => {
+    const crispPlus = name === 'plus';
+    const path = ICONS[name] || '';
+    return `<svg class="${crispPlus ? 'work-hub-icon--plus' : ''}" width="${size || 14}" height="${size || 14}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${crispPlus ? '2' : '1.8'}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${crispPlus ? path.replaceAll('<path ', '<path vector-effect="non-scaling-stroke" ') : path}</svg>`;
+  };
 
   function when(seconds) {
     if (!seconds) return '';
@@ -147,21 +155,41 @@
   }
 
   // ── data ───────────────────────────────────────────────────────────────────
-  async function loadBootstrap() {
-    S.loading = true; S.error = '';
-    try {
-      const data = await window.NotebookApi.bootstrap();
-      W.notes = {projects: data.projects || [], folders: data.folders || [], notes: data.notes || []};
-      const v = data.vault || null;
-      W.vault = {projects: [], folders: (v && v.folders) || [], notes: ((v && v.notes) || []).map(asVaultView)};
-      S.vault = v ? (v.vault || {name: 'Vault'}) : null;
-      S.vaultConfig = data.vault_config || null;
-      if (S.side === 'vault' && !S.vault) useSide('notes');
-      S.loaded = true;
-    } catch (error) {
-      S.error = error.message || 'Notes could not be loaded';
+  function syncInitialLoadingState() {
+    const root = $('notebookRoot');
+    if (!root) return;
+    // Only the first load covers the page: switching notes keeps the list and
+    // the editor chrome in place instead of flashing a loader over them.
+    const loading = S.loading && !S.loaded && !S.error;
+    root.classList.toggle('nb-is-loading', loading);
+    const loader = root.querySelector('.nb-page-loader');
+    if (loader) {
+      loader.setAttribute('aria-busy', String(loading));
+      const label = loader.querySelector('.nb-page-loader-label');
+      if (label) label.textContent = 'Loading notes';
     }
-    S.loading = false;
+  }
+  function loadBootstrap() {
+    if (bootstrapPromise) return bootstrapPromise;
+    S.loading = true; S.error = '';
+    bootstrapPromise = (async () => {
+      try {
+        const data = await window.NotebookApi.bootstrap();
+        W.notes = {projects: data.projects || [], folders: data.folders || [], notes: data.notes || []};
+        const v = data.vault || null;
+        W.vault = {projects: [], folders: (v && v.folders) || [], notes: ((v && v.notes) || []).map(asVaultView)};
+        S.vault = v ? (v.vault || {name: 'Vault'}) : null;
+        S.vaultConfig = data.vault_config || null;
+        if (S.side === 'vault' && !S.vault) useSide('notes');
+        S.loaded = true;
+      } catch (error) {
+        S.error = error.message || 'Notes could not be loaded';
+      } finally {
+        S.loading = false;
+        bootstrapPromise = null;
+      }
+    })();
+    return bootstrapPromise;
   }
   function upsertSummary(note) {
     const summary = Object.assign({}, note);
@@ -245,7 +273,7 @@
       <div class="project-folder-list work-hub-projects nb-folders${dm}">${vaultFolderGroups(liveNotes)}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
         ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'
-        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
+        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 18)}</button>`}</div>
       ${tags.length ? `<div class="work-hub-nav-label work-hub-projects-heading"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
       <div class="nb-nav-spacer"></div>
       ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at), 'nb-trash-scope')}
@@ -263,7 +291,7 @@
   function renderSidebar() {
     const side = $('notebookSidebar');
     if (!side) return;
-    if (!S.loaded) { side.innerHTML = S.error ? `<p class="nb-side-error">${esc(S.error)}</p>` : '<div class="nb-side-loading" aria-busy="true"><i></i><i></i><i></i></div>'; return; }
+    if (!S.loaded) { side.innerHTML = S.error ? `<p class="nb-side-error">${esc(S.error)}</p>` : ''; return; }
     const liveNotes = S.notes.filter(live);
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
     const dm = S.deleteMode ? ' is-delete-mode' : '';
@@ -280,7 +308,7 @@
       <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
         ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'
-        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 13)}</button>`}</div>
+        : `<button type="button" class="work-hub-project-create" data-nb-action="create-menu" aria-label="New note, new folder or delete" aria-haspopup="menu">${icon('plus', 18)}</button>`}</div>
       ${tags.length ? `<div class="work-hub-nav-label work-hub-projects-heading"><span>TAGS</span></div><div class="nb-tag-cloud">${tags.map((t) => `<button type="button" class="nb-tag${S.tagFilter === t ? ' active' : ''}" data-nb-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
       <div class="nb-nav-spacer"></div>
       ${scopeButton('trash', 'Trash', 'trash', count((n) => !!n.deleted_at), 'nb-trash-scope')}
@@ -378,42 +406,84 @@
     if (chevron) chevron.classList.toggle('expanded', expanded);
     const group = document.getElementById(tile.getAttribute('aria-controls'));
     if (group) { group.classList.toggle('expanded', expanded); group.inert = !expanded; }
+    // Workspace and folder trees already contain their notes. Do not leave an
+    // unrelated note open beside that tree: it makes the collapsed middle pane
+    // look as though it is still showing a second copy of the same scope.
+    const currentIsInScope = S.note && ((tile.dataset.nbKind === 'project' && S.note.project_id === tile.dataset.nbId)
+      || (tile.dataset.nbKind === 'folder' && S.note.folder_id === tile.dataset.nbId));
+    if (!currentIsInScope) {
+      destroyEditor();
+      S.note = null; S.noteError = ''; S.noteLoading = false;
+    }
     ensureShell();
     renderList();
+    renderEditorHead();
   }
 
   // ── rendering: main ─────────────────────────────────────────────────────────
+  // A workspace/folder already exposes its note rows in the first side panel.
+  // Keep the focused editor wide in that case; the middle list remains for the
+  // high-level collections where it adds navigation rather than duplicates it.
+  function shouldShowMiddleList() {
+    const scope = S.scope || {};
+    return scope.kind !== 'project' && scope.kind !== 'folder';
+  }
+  function syncListPresentation() {
+    const shell = document.querySelector('#notebookRoot .nb');
+    if (!shell) return;
+    const visible = shouldShowMiddleList();
+    shell.classList.toggle('nb-list-collapsed', !visible);
+    const list = shell.querySelector('.nb-list');
+    if (!list) return;
+    list.setAttribute('aria-hidden', String(!visible));
+    list.inert = !visible;
+  }
   function ensureShell() {
     const root = $('notebookRoot');
     if (!root) return null;
     if (!root.querySelector('.nb')) {
-      root.innerHTML = `<div class="nb" data-pane="list">
+      root.innerHTML = `<div class="nb-page-loader" role="status" aria-live="polite" aria-busy="false"><span class="nb-page-loader-orbit" aria-hidden="true"></span><span class="nb-page-loader-label">Loading notes</span></div><div class="nb" data-pane="list">
         <section class="nb-list" aria-label="Notes">
           <header class="nb-list-head"><h2 id="nbScopeTitle"></h2><button type="button" class="nb-icon-btn" data-nb-action="new" aria-label="New note" title="New note (Alt+N)">${icon('plus', 16)}</button></header>
           <label class="nb-search">${icon('search', 14)}<input id="nbSearch" type="search" placeholder="Search notes" autocomplete="off" spellcheck="false" aria-label="Search notes"></label>
           <div class="nb-list-items" id="nbListItems" role="list"></div>
         </section>
         <section class="nb-editor" aria-label="Note">
-          <div class="nb-editor-head" id="nbEditorHead"></div>
+          <div class="nb-editor-head" id="nbEditorHead">${editorHeadShell()}</div>
           <div class="nb-editor-scroll"><div class="nb-editor-host" id="nbEditorHost"></div></div>
         </section>
       </div>`;
       $('nbSearch').addEventListener('input', onSearchInput);
     }
     root.querySelector('.nb').dataset.pane = S.pane;
+    syncListPresentation();
+    syncInitialLoadingState();
     return root;
+  }
+  // Built once with the shell; renderEditorHeadPersistent() only updates it.
+  function editorHeadShell() {
+    return `<div id="nbEditorBanners"></div><div id="nbEditorEmpty" class="nb-empty nb-editor-empty" hidden></div><div id="nbEditorChrome" class="nb-editor-chrome" hidden>`
+      + `<div class="nb-head-row"><button type="button" class="nb-icon-btn nb-back" data-nb-action="back" data-allow-blur aria-label="Back to notes">${icon('back', 16)}</button><input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title"><span class="nb-status" id="nbStatus" aria-live="polite"></span>`
+      + `<button type="button" class="nb-icon-btn" id="nbAddFiles" data-nb-action="add-files" aria-label="Add images or files" title="Add images or files">${icon('image', 16)}</button>`
+      + `<button type="button" class="nb-icon-btn" id="nbPin" data-nb-action="toggle-pinned" aria-pressed="false" aria-label="Pin" title="Pin">${icon('pin', 15)}</button>`
+      + `<button type="button" class="nb-icon-btn fav" id="nbFavorite" data-nb-action="toggle-favorite" aria-pressed="false" aria-label="Add to favorites" title="Favorite">${icon('star', 15)}</button>`
+      + `<button type="button" class="nb-icon-btn" id="nbMenu" data-nb-action="menu" aria-label="More actions" aria-haspopup="menu" title="More">${icon('more', 16)}</button></div>`
+      + `<div class="nb-meta-row"><label class="nb-place-select">${icon('folder', 16)}<select id="nbPlace" aria-label="Where this note lives"></select></label>`
+      + `<div class="nb-tags" id="nbTags"><span class="nb-tag-chips" id="nbTagChips"></span><input id="nbTagInput" class="nb-tag-input" type="text" placeholder="+ Add tag" maxlength="40" aria-label="Add a tag"></div>`
+      + `<span class="nb-updated" id="nbUpdated"></span></div></div>`;
   }
   let lastListKey = '';
   function renderList() {
     const host = $('nbListItems');
     if (!host) return;
+    syncListPresentation();
     // Items fade in when the list changes what it shows (scope, search, tag),
     // not on the re-renders an autosave triggers.
     const listKey = [S.scope.kind, S.scope.id, S.search, S.tagFilter, S.loaded].join('|');
     host.classList.toggle('is-entering', listKey !== lastListKey);
     lastListKey = listKey;
     $('nbScopeTitle').textContent = scopeTitle() + (S.tagFilter ? ` · #${S.tagFilter}` : '');
-    if (!S.loaded) { host.innerHTML = S.error ? `<div class="nb-empty"><p>${esc(S.error)}</p><button type="button" class="nb-btn" data-nb-action="reload">Try again</button></div>` : '<div class="nb-skeleton"><i></i><i></i><i></i><i></i></div>'; return; }
+    if (!S.loaded) { host.innerHTML = S.error ? `<div class="nb-empty"><p>${esc(S.error)}</p><button type="button" class="nb-btn" data-nb-action="reload">Try again</button></div>` : ''; return; }
     const notes = visibleNotes();
     const trash = S.scope.kind === 'trash';
     if (!notes.length) {
@@ -447,69 +517,93 @@
       + (S.projects.length ? `<optgroup label="Workspaces">${S.projects.map((p) => option('p:' + p.project_id, p.name)).join('')}</optgroup>` : '')
       + (S.folders.length ? `<optgroup label="Folders">${S.folders.map((f) => option('f:' + f.id, f.name)).join('')}</optgroup>` : '');
   }
-  let headNoteId = null;
-  function renderEditorHead() {
+  function renderEditorHeadPersistent() {
     const head = $('nbEditorHead');
     if (!head) return;
     const note = S.note;
-    // The header eases in when a different note opens, not on every re-render.
-    const nextId = note ? note.id : null;
-    if (nextId && nextId !== headNoteId) {
-      head.classList.remove('is-entering'); void head.offsetWidth; head.classList.add('is-entering');
-    }
-    headNoteId = nextId;
+    // Keep the editor chrome still while changing notes. The body gets the
+    // transition after its new content is mounted, so navigation never makes
+    // the title, actions, metadata row, or its divider jump in with the text.
+    const chrome = $('nbEditorChrome');
+    const empty = $('nbEditorEmpty');
+    const banners = $('nbEditorBanners');
+    if (!chrome || !empty || !banners) return;
     if (!note) {
-      head.innerHTML = S.noteLoading ? '<div class="nb-skeleton head"><i></i><i></i></div>'
-        : S.noteError ? `<div class="nb-empty"><p>${esc(S.noteError)}</p></div>`
-          : `<div class="nb-empty nb-editor-empty"><p>${S.loaded && !S.notes.some(live) ? 'Create your first note to get started.' : 'Select a note, or start a new one.'}</p><button type="button" class="nb-btn primary" data-nb-action="new">New note</button></div>`;
+      chrome.hidden = true;
+      banners.innerHTML = '';
+      empty.hidden = false;
+      empty.innerHTML = S.noteError ? `<p>${esc(S.noteError)}</p>`
+        : `<p>${S.loaded && !S.notes.some(live) ? 'Create your first note to get started.' : 'Select a note, or start a new one.'}</p><button type="button" class="nb-btn primary" data-nb-action="new">New note</button>`;
       return;
     }
+    empty.hidden = true;
+    chrome.hidden = false;
     const trashed = !!note.deleted_at;
     const conflict = save.conflict ? `<div class="nb-banner warn" role="alert"><span>${S.vault ? 'This note was changed in Obsidian or another window.' : 'This note was changed in another window.'}</span><button type="button" class="nb-btn small" data-nb-action="conflict-mine">Keep mine</button><button type="button" class="nb-btn small" data-nb-action="conflict-theirs">Load theirs</button></div>` : '';
     const failed = save.status === 'error' ? `<div class="nb-banner" role="status"><span>${esc(save.error || 'Saving failed')}. Your changes are kept here and retried.</span><button type="button" class="nb-btn small" data-nb-action="retry">Retry now</button></div>` : '';
-    head.innerHTML = `${trashed ? '<div class="nb-banner"><span>This note is in the trash.</span><button type="button" class="nb-btn small" data-nb-action="restore">Restore</button><button type="button" class="nb-btn small danger" data-nb-action="purge">Delete forever</button></div>' : ''}${conflict}${failed}
-      <div class="nb-head-row">
-        <button type="button" class="nb-icon-btn nb-back" data-nb-action="back" data-allow-blur aria-label="Back to notes">${icon('back', 16)}</button>
-        <input id="nbTitle" class="nb-title" type="text" maxlength="240" placeholder="Untitled" aria-label="Note title" ${trashed ? 'disabled' : ''}>
-        <span class="nb-status" data-status="${esc(save.status)}" aria-live="polite">${esc(statusText())}</span>
-        <button type="button" class="nb-icon-btn" data-nb-action="add-files" aria-label="Add images or files" title="Add images or files" ${trashed ? 'disabled' : ''}>${icon('image', 16)}</button>
-        <button type="button" class="nb-icon-btn${note.pinned ? ' on' : ''}" data-nb-action="toggle-pinned" aria-pressed="${note.pinned}" aria-label="${note.pinned ? 'Unpin' : 'Pin'}" title="${note.pinned ? 'Unpin' : 'Pin'}" ${trashed ? 'disabled' : ''}>${icon('pin', 15)}</button>
-        <button type="button" class="nb-icon-btn fav${note.favorite ? ' on' : ''}" data-nb-action="toggle-favorite" aria-pressed="${note.favorite}" aria-label="${note.favorite ? 'Remove from favorites' : 'Add to favorites'}" title="Favorite" ${trashed ? 'disabled' : ''}>${icon('star', 15)}</button>
-        <button type="button" class="nb-icon-btn" data-nb-action="menu" aria-label="More actions" aria-haspopup="menu" title="More">${icon('more', 16)}</button>
-      </div>
-      <div class="nb-meta-row">
-        <label class="nb-place-select">${icon('folder', 13)}<select id="nbPlace" aria-label="Where this note lives" ${trashed ? 'disabled' : ''}>${placeOptions(note)}</select></label>
-        <div class="nb-tags" id="nbTags">${(note.tags || []).map((t) => `<span class="nb-tag-chip">#${esc(t)}<button type="button" data-nb-untag="${esc(t)}" aria-label="Remove tag ${esc(t)}" ${trashed ? 'disabled' : ''}>×</button></span>`).join('')}${trashed ? '' : `<input id="nbTagInput" class="nb-tag-input" type="text" placeholder="${(note.tags || []).length ? '+ tag' : '+ Add tag'}" maxlength="40" aria-label="Add a tag">`}</div>
-        <span class="nb-updated">Edited ${esc(when(note.updated_at))}</span>
-      </div>`;
+    banners.innerHTML = `${trashed ? '<div class="nb-banner"><span>This note is in the trash.</span><button type="button" class="nb-btn small" data-nb-action="restore">Restore</button><button type="button" class="nb-btn small danger" data-nb-action="purge">Delete forever</button></div>' : ''}${conflict}${failed}`;
     const title = $('nbTitle');
-    title.value = note.title || '';
-    title.addEventListener('input', () => { note.title = title.value; queueSave('title'); });
+    if (title.dataset.noteId !== note.id || document.activeElement !== title) title.value = note.title || '';
+    title.dataset.noteId = note.id;
+    title.disabled = trashed;
+    const place = $('nbPlace');
+    place.disabled = trashed;
+    const options = placeOptions(note);
+    if (place.dataset.options !== options) { place.innerHTML = options; place.dataset.options = options; }
+    fitPlaceSelect(place);
+    $('nbStatus').dataset.status = save.status;
+    $('nbStatus').textContent = statusText();
+    $('nbUpdated').textContent = 'Edited ' + when(note.updated_at);
+    const pin = $('nbPin');
+    pin.disabled = trashed; pin.classList.toggle('on', !!note.pinned); pin.setAttribute('aria-pressed', String(!!note.pinned)); pin.setAttribute('aria-label', note.pinned ? 'Unpin' : 'Pin'); pin.title = note.pinned ? 'Unpin' : 'Pin';
+    const favorite = $('nbFavorite');
+    favorite.disabled = trashed; favorite.classList.toggle('on', !!note.favorite); favorite.setAttribute('aria-pressed', String(!!note.favorite)); favorite.setAttribute('aria-label', note.favorite ? 'Remove from favorites' : 'Add to favorites');
+    $('nbAddFiles').disabled = trashed;
+    $('nbMenu').disabled = trashed;
+    renderTags(note, trashed);
+  }
+  function bindEditorHead() {
+    const title = $('nbTitle');
+    if (!title || title.dataset.nbBound) return;
+    title.dataset.nbBound = 'true';
+    title.addEventListener('input', () => { if (S.note) { S.note.title = title.value; queueSave('title'); } });
     title.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); if (editorCtl) editorCtl.focus(); }
     });
     const place = $('nbPlace');
-    if (place) place.addEventListener('change', () => {
+    place.addEventListener('change', () => {
+      if (!S.note) return;
       const v = place.value;
-      note.project_id = v.startsWith('p:') ? v.slice(2) : null;
-      note.folder_id = v.startsWith('f:') ? v.slice(2) : null;
+      S.note.project_id = v.startsWith('p:') ? v.slice(2) : null;
+      S.note.folder_id = v.startsWith('f:') ? v.slice(2) : null;
+      fitPlaceSelect(place);
       queueSave('place', true);
     });
     const tagInput = $('nbTagInput');
-    if (tagInput) {
-      fitTagInput(tagInput); tagInput.addEventListener('input', () => fitTagInput(tagInput));
-      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (tagInput.isConnected) fitTagInput(tagInput); });
-    }
-    if (tagInput) tagInput.addEventListener('keydown', (event) => {
+    tagInput.addEventListener('input', () => fitTagInput(tagInput));
+    tagInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ',') return;
       event.preventDefault();
+      const note = S.note;
       const tag = tagInput.value.trim().replace(/^#/, '').toLowerCase().replace(/\s+/g, '-');
-      if (!tag || (note.tags || []).includes(tag)) { tagInput.value = ''; return; }
+      if (!note || !tag || (note.tags || []).includes(tag)) { tagInput.value = ''; return; }
       note.tags = [...(note.tags || []), tag];
       queueSave('tags', true);
       renderEditorHead();
-      const again = $('nbTagInput'); if (again) again.focus();
+      tagInput.focus();
     });
+  }
+  function renderTags(note, trashed) {
+    const chips = $('nbTagChips');
+    const tagInput = $('nbTagInput');
+    if (!chips || !tagInput) return;
+    chips.innerHTML = (note.tags || []).map((t) => `<span class="nb-tag-chip">#${esc(t)}<button type="button" data-nb-untag="${esc(t)}" aria-label="Remove tag ${esc(t)}" ${trashed ? 'disabled' : ''}>×</button></span>`).join('');
+    tagInput.value = '';
+    tagInput.disabled = trashed;
+    tagInput.hidden = trashed;
+    tagInput.placeholder = (note.tags || []).length ? '+ tag' : '+ Add tag';
+    fitTagInput(tagInput);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (tagInput.isConnected) fitTagInput(tagInput); });
   }
   // The tag box is as wide as what it holds: its placeholder, then the text typed.
   let fitCanvas = null;
@@ -520,6 +614,33 @@
     ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
     const chrome = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
     input.style.width = Math.ceil(ctx.measureText(input.value || input.placeholder).width + chrome + 6) + 'px';
+  }
+  // The folder button is as wide as the folder name it shows; CSS animates
+  // the width when the name changes. The themed trigger is the visible
+  // button (the native select is hidden), and its label is synced by a
+  // MutationObserver, so measure on the next frame.
+  function fitPlaceSelect(select) {
+    requestAnimationFrame(() => {
+      const trigger = select && select.isConnected && select.__themedTrigger;
+      const option = select && select.options[select.selectedIndex];
+      if (!trigger || !option) return;
+      const label = trigger.querySelector('.themed-select-trigger-label') || trigger;
+      const cs = getComputedStyle(label);
+      const ts = getComputedStyle(trigger);
+      fitCanvas = fitCanvas || document.createElement('canvas');
+      const ctx = fitCanvas.getContext('2d'); if (!ctx) return;
+      ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const chevron = trigger.querySelector('.themed-select-chevron');
+      const chrome = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth', 'columnGap'].reduce((sum, k) => sum + (parseFloat(ts[k]) || 0), 0)
+        + (chevron ? chevron.getBoundingClientRect().width : 0);
+      const width = Math.min(220, Math.ceil(ctx.measureText(option.text).width + chrome + 1));
+      trigger.style.width = width + 'px';
+    });
+  }
+  function renderEditorHead() {
+    if (!$('nbEditorHead')) return;
+    bindEditorHead();
+    renderEditorHeadPersistent();
   }
   function syncStatus() {
     const el = document.querySelector('#nbEditorHead .nb-status');
@@ -786,6 +907,46 @@
     }));
     ui.addEventListener('pointermove', () => { if (playing()) show(); });
     state();
+  }
+
+  // Images and clips are inserted asynchronously by BlockNote. Mark the outer
+  // card while either resource is decoding so a blank rectangle never appears
+  // to be a broken note. The observer lives with this editor instance and is
+  // released by destroyEditor through watching().
+  function installMediaLoadStates(host) {
+    const mount = host && host.querySelector('.nb-editor-mount');
+    if (!mount) return;
+    const settle = (box, failed) => {
+      if (!box || !box.isConnected) return;
+      box.classList.remove('nb-media-loading');
+      box.classList.toggle('nb-media-failed', !!failed);
+      if (!failed) {
+        box.classList.remove('nb-media-ready');
+        void box.offsetWidth;
+        box.classList.add('nb-media-ready');
+      }
+    };
+    const wire = (media) => {
+      const box = media.closest('.bn-file-block-content-wrapper');
+      if (!box || media.__nbMediaStateWired) return;
+      media.__nbMediaStateWired = true;
+      box.classList.add('nb-media-loading');
+      const loaded = () => settle(box, false);
+      const failed = () => settle(box, true);
+      if (media.tagName === 'IMG') {
+        media.addEventListener('load', loaded, {once: true});
+        media.addEventListener('error', failed, {once: true});
+        if (media.complete) (media.naturalWidth ? loaded : failed)();
+      } else {
+        media.addEventListener('loadeddata', loaded, {once: true});
+        media.addEventListener('canplay', loaded, {once: true});
+        media.addEventListener('error', failed, {once: true});
+        if (media.readyState >= 2) loaded();
+      }
+    };
+    const scan = () => mount.querySelectorAll('img.bn-visual-media, video.bn-visual-media').forEach(wire);
+    scan();
+    watching(new MutationObserver(scan)).observe(mount, {childList: true, subtree: true});
   }
   // A clip that will not play says why: a failure (not the ordinary events) goes to the server log
   // in one short line, and is shown in words. A network or decode error is often a hiccup (a
@@ -1229,9 +1390,16 @@
     }
     if (!S.note || S.note.id !== note.id) return; // switched away while loading
     destroyEditor();
+    host.classList.remove('is-entering');
     const mountPoint = document.createElement('div');
     mountPoint.className = 'nb-editor-mount';
     host.appendChild(mountPoint);
+    // The stable editor chrome above this host is deliberately not animated.
+    // Starting the animation on the persistent host means only newly mounted
+    // note content fades in, without moving the page or duplicating chrome.
+    requestAnimationFrame(() => {
+      if (S.note && S.note.id === note.id && host.contains(mountPoint)) host.classList.add('is-entering');
+    });
     // A vault note arrives as Markdown: the editor parses it once mounted, and
     // the changes that parse makes are not edits (the file is only written
     // when the user changes something).
@@ -1257,6 +1425,7 @@
     editorNoteId = note.id;
     mountBlockGrip(host, note);
     mountImageOutline(host, note);
+    installMediaLoadStates(host);
     if (fromMarkdown) {
       try {
         const blocks = withMediaBlocks(withImageWidths(await Promise.resolve(editorCtl.parseMarkdown(note.markdown || ''))));
@@ -1367,7 +1536,6 @@
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');
     S.noteLoading = true; S.noteError = ''; S.pane = 'editor';
     destroyEditor();
-    S.note = null;
     render();
     try {
       const {note} = await window.NotebookApi.get(noteId);
@@ -1391,6 +1559,7 @@
       if (Object.keys(save.dirty).length) queueSave('content', true);
     } catch (error) {
       S.noteLoading = false;
+      S.note = null;
       S.noteError = error.status === 404 ? 'This note no longer exists.' : (error.message || 'The note could not be loaded');
       render();
     }
@@ -1488,13 +1657,12 @@
       download(fileBase(note) + '.html', 'text/html', `<!doctype html><html><head><meta charset="utf-8"><title>${titleHtml}</title></head><body><h1>${titleHtml}</h1>${editorCtl.toHTML()}</body></html>`);
     } else download(fileBase(note) + '.json', 'application/json', JSON.stringify({title, tags: note.tags || [], content: editorCtl.getBlocks()}, null, 2));
   }
-  // Hermes integration: hand the note to a fresh chat. The text is placed in
-  // the composer, not sent -- the user picks the agent/model and sends it, so
-  // the note goes through the normal chat orchestration.
+  // Hermes integration: attach the note as a named context card, not a giant
+  // pasted composer value. The card is linked back to the note and still sends
+  // the note body as deliberate context through the normal chat orchestration.
   async function sendToChat() {
     const note = S.note; if (!note || !editorCtl) return;
     await flushSave();
-    const text = `Note: ${note.title || 'Untitled'}${note.project_id ? ` (workspace: ${placeLabel(note)})` : ''}\n\n${editorCtl.toMarkdown()}`;
     if (typeof window.switchPanel === 'function') await window.switchPanel('chat');
     if (typeof window._currentSessionIsReusableEmptyChat === 'function' && !window._currentSessionIsReusableEmptyChat()
         && typeof window.newSession === 'function') {
@@ -1503,8 +1671,15 @@
     }
     const box = document.getElementById('msg');
     if (!box) return;
-    box.value = text;
-    box.dispatchEvent(new Event('input', {bubbles: true}));
+    const name = `Note · ${note.title || 'Untitled'}${note.project_id ? ` (${placeLabel(note)})` : ''}`;
+    if (typeof window._addNamedContextBlock === 'function') {
+      window._addNamedContextBlock(editorCtl.toMarkdown(), {name, kind: 'note', noteId: note.id});
+    } else {
+      // Older cached assets do not expose context cards yet. Keep this bounded
+      // fallback useful without pasting a whole document into the composer.
+      box.value = `[Linked note: ${note.title || 'Untitled'}]`;
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+    }
     box.focus();
   }
   function importMarkdown() {
@@ -1825,8 +2000,13 @@
     bind();
     const wanted = pendingOpen; pendingOpen = null;
     if (!S.loaded) {
-      render();
-      await loadBootstrap();
+      // Build one stable, centred loading layer before the request starts.
+      // The real page stays underneath it, so it can fade cleanly into view.
+      const bootstrap = loadBootstrap();
+      ensureShell();
+      await bootstrap;
+      syncInitialLoadingState();
+      if (!isShowing()) return;
       render();
       let last = wanted;
       if (!last) { try { last = localStorage.getItem(LAST_KEY); } catch (_) {} }

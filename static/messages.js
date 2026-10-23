@@ -929,12 +929,15 @@ document.addEventListener('click',(e)=>{
   }
 },{capture:false});
 function _addNamedContextBlock(text){
+  const options=arguments[1]||{};
   const id='ctx-'+(++_selectionIdCounter);
-  const name=(_selectedTextReplyT('context_block_name_default','Context'))+' '+_selectionIdCounter;
-  _pendingSelections.push({id, name, text});
+  const defaultName=(_selectedTextReplyT('context_block_name_default','Context'))+' '+_selectionIdCounter;
+  const name=String(options.name||defaultName).trim().slice(0,120)||defaultName;
+  _pendingSelections.push({id, name, text, kind:options.kind||'', noteId:options.noteId||''});
   _renderSelectionChips();
   return id;
 }
+if(typeof window!=='undefined') window._addNamedContextBlock=_addNamedContextBlock;
 
 function _removeNamedContextBlock(id){
   _pendingSelections=_pendingSelections.filter(s=>s.id!==id);
@@ -952,9 +955,10 @@ function _clearPendingSelections(){
 if(typeof window!=='undefined') window._clearPendingSelections=_clearPendingSelections;
 
 function _selectedContextPreview(text){
+  const maxLength=arguments[1];
   const normalized=String(text||'').replace(/\r\n?/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
   if(!normalized)return '';
-  const max=360;
+  const max=Number.isFinite(maxLength)?maxLength:360;
   return normalized.length>max?normalized.slice(0,max).trimEnd()+'…':normalized;
 }
 
@@ -965,7 +969,7 @@ function _renderSelectionChips(){
   wrap.hidden=!_pendingSelections.length;
   _pendingSelections.forEach(s=>{
     const card=document.createElement('article');
-    card.className='selection-context-card';
+    card.className='selection-context-card'+(s.kind==='note'?' note-context-card':'');
     card.dataset.selectionId=s.id;
     card.setAttribute('aria-label', s.name);
 
@@ -983,14 +987,19 @@ function _renderSelectionChips(){
     name.type='button';
     name.className='selection-context-name selection-chip-name';
     name.textContent=s.name;
-    name.title=_selectedTextReplyT('context_block_rename_hint','Click or press Enter to rename');
-    name.setAttribute('aria-label', `${_selectedTextReplyT('context_block_rename_aria','Rename context block')}: ${s.name}`);
-    name.addEventListener('click',()=>_editSelectionChipName(s.id,card));
-    name.addEventListener('dblclick',()=>_editSelectionChipName(s.id,card));
+    const linkedNote=!!(s.kind==='note'&&s.noteId);
+    name.title=linkedNote?'Open linked note':_selectedTextReplyT('context_block_rename_hint','Click or press Enter to rename');
+    name.setAttribute('aria-label', linkedNote?`Open linked note: ${s.name}`:`${_selectedTextReplyT('context_block_rename_aria','Rename context block')}: ${s.name}`);
+    name.addEventListener('click',()=>{
+      if(linkedNote&&window.Notebook&&typeof window.Notebook.openFrom==='function') window.Notebook.openFrom(s.noteId);
+      else _editSelectionChipName(s.id,card);
+    });
+    name.addEventListener('dblclick',()=>{if(!linkedNote)_editSelectionChipName(s.id,card);});
     name.addEventListener('keydown',e=>{
-      if(e.key==='Enter'||e.key===' '||e.key==='F2'){
+      if(e.key==='Enter'||e.key===' '||(!linkedNote&&e.key==='F2')){
         e.preventDefault();
-        _editSelectionChipName(s.id,card);
+        if(linkedNote&&window.Notebook&&typeof window.Notebook.openFrom==='function') window.Notebook.openFrom(s.noteId);
+        else _editSelectionChipName(s.id,card);
       }
     });
 
@@ -1004,7 +1013,6 @@ function _renderSelectionChips(){
     const quote=document.createElement('blockquote');
     quote.className='selection-context-quote';
     quote.textContent=_selectedContextPreview(s.text);
-    quote.title=String(s.text||'');
 
     header.appendChild(name);
     header.appendChild(remove);

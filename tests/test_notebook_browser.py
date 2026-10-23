@@ -25,7 +25,13 @@ def _open(page):
 
 
 def _new_note(page, title):
-    page.click(".nb-list-head [data-nb-action=new]")
+    # A folder or workspace scope collapses the middle list (its notes are in
+    # the side panel tree), so its New note button is hidden; Alt+N creates
+    # the note in the selected scope the same way.
+    if page.query_selector(".nb.nb-list-collapsed"):
+        page.keyboard.press("Alt+n")
+    else:
+        page.click(".nb-list-head [data-nb-action=new]")
     page.wait_for_selector(".hermes-note-editor .bn-editor", timeout=30000)
     # newNote() creates the note on the server, opens it, then focuses its
     # empty title. With a note already open the editor selector above matches
@@ -166,9 +172,9 @@ def test_send_to_chat_prefills_a_chat_without_sending(page):
     page.click("[data-nb-action=menu]")
     page.click(".nb-menu-item:has-text('Send to chat')")
     page.wait_for_function("() => document.querySelector('main.main') && !document.querySelector('main.main.showing-notebook')", timeout=10000)
-    page.wait_for_function("(t) => document.querySelector('#msg').value.includes(t)", arg=title, timeout=10000)
-    composer = page.input_value("#msg")
-    assert "Fix the white artifacts around the platforms" in composer
+    # The note arrives as a linked context card, not pasted composer text.
+    page.wait_for_function("(t) => [...document.querySelectorAll('.note-context-card')].some(c => c.textContent.includes(t))", arg=title, timeout=10000)
+    assert "Fix the white artifacts around the platforms" not in page.input_value("#msg")
 
 
 
