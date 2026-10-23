@@ -14997,8 +14997,17 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] .work-hub-scope svg{position:relative;top:-1px;}
 /* Zeus 2.0 Work Hub column count: a 7px digit can't centre in a 20px
    circle, so the circle is 21px and the digit sits 7px from each edge. */
-:root[data-skin="zeus-2"] .work-hub-column header small{padding-top:2px;min-width:21px;box-sizing:border-box;}
+:root[data-skin="zeus-2"] .work-hub-column header small{padding-top:1px;padding-bottom:0;min-width:21px;box-sizing:border-box;}
 /* Zeus 2.0 Work Hub list rows: whole-pixel line heights so every row is the
    same height and its title and status sit on the same pixel rows. */
 :root[data-skin="zeus-2"] .work-hub-list-row strong{line-height:16px;}
 :root[data-skin="zeus-2"] .work-hub-list-row small{line-height:14px;}
+/* Work Hub column count: rounded-square outline, not a pill. */
+.work-hub-column header small{border-radius:5px;border:1px solid color-mix(in srgb,var(--stage) 45%,transparent);}
+/* Work Hub sidebar "+": a lighter 14px glyph in its 24px button. */
+.work-hub-project-create svg,.work-hub-project-create .work-hub-icon{width:14px;height:14px;}
+/* Zeus 2.0 delegation result row: icon, title and id sat 1px high. */
+:root[data-skin="zeus-2"] .async-delegation-summary > *{position:relative;top:1px;}
+/* Zeus 2.0 chat sidebar WORKSPACES / CONVERSATIONS: text 1px up so the
+   divider lines run through its middle. */
+:root[data-skin="zeus-2"] .chat-sidebar-section-heading > span{position:relative;top:-1px;}
