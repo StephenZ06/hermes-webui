@@ -14969,3 +14969,17 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    different height. A 6px-tall triangle centres exactly on the 16px box. */
 .project-folder-row > .project-folder-chevron{top:.2px;font-size:0;}
 .project-folder-row > .project-folder-chevron::before{content:"";border-left:4px solid currentColor;border-top:3px solid transparent;border-bottom:3px solid transparent;}
+/* Zeus 2.0 chat sidebar: date-group headers drawn so the space from a header
+   to its first chat equals the space from a group's last chat to the next
+   header (27px cap to cap; rows sit 2px apart, hence 4px over 7px). */
+:root[data-skin="zeus-2"] .session-date-header{padding-top:4px;padding-bottom:7px;}
+/* Date caret in CSS: Courier New has no U+25BE, so the glyph came from a
+   per-OS fallback font. */
+.session-date-caret{font-size:0;width:6px;height:6px;display:inline-flex;align-items:center;justify-content:center;}
+.session-date-caret::before{content:"";border-top:4px solid currentColor;border-left:3px solid transparent;border-right:3px solid transparent;}
+/* Zeus 2.0 composer chips: workspace, reasoning and toolsets labels sat 1px
+   high (cap ink 10px under, 12px over); the icons were already centred. */
+:root[data-skin="zeus-2"] .composer-workspace-label{position:relative;top:1px;}
+:root[data-skin="zeus-2"] :is(.composer-reasoning-label,.composer-toolsets-label){position:relative;top:1px;}
+/* Zeus 2.0 chat rows: the age stamp ("1d") ink sat 1px below the row centre. */
+:root[data-skin="zeus-2"] #sessionList .session-time{position:relative;top:-1px;}
