@@ -15223,3 +15223,17 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .sidebar .panel-view.active,#workHubCanvas.is-entering :is(.work-hub-column,.work-hub-list){animation:none;}
   #notebookSidebar .nb-nav:is(.is-entering-forward,.is-entering-back) > *{animation:nb-text-in .16s ease-out both;animation-delay:0s;}
 }
+/* Buttons show no hover label, native or themed (micro.js drops a button's
+   title to aria-label); the rail's and mobile nav's CSS labels go too. */
+.has-tooltip::after,.sidebar-nav .nav-tab:hover::after{content:none!important;display:none!important;}
+/* Zeus 2.0 side panel dividers (Work Hub, Notes, Office WORKSPACES...):
+   text 1px up, as the chat sidebar's, so the lines run through its middle. */
+:root[data-skin="zeus-2"] :is(.work-hub-projects-heading,.office-sidebar-section-title,.office-project-folders-title) > span{position:relative;top:-1px;}
+/* Zeus 2.0 hovers take the skin's steel blue, not a grey or white tint:
+   the shared hover token, and the controls that hard-code their own. */
+:root[data-skin="zeus-2"]{--hover-bg:rgba(70,130,180,.1);--surface-subtle-hover:rgba(70,130,180,.08);}
+:root.dark[data-skin="zeus-2"]{--hover-bg:rgba(70,130,180,.14);--surface-subtle-hover:rgba(70,130,180,.1);}
+:root[data-skin="zeus-2"] :is(.icon-btn,.panel-icon-btn,.sm-btn,.cron-btn,.app-dialog-close,.app-dialog-btn,.approval-btn,.reasoning-option,.ctx-compress-btn,.model-opt,.model-opt-more,.ws-opt,.ws-row,.ws-action-btn,.profile-opt,.cmd-item,.ws-suggest-item,.msg-edit-cancel,.skill-opt,.side-menu-item,.session-child-session,.session-tree-caret,.project-chip,.project-chip-quick-create,.project-picker-item,.code-copy-btn,.checkpoint-item-actions button,.office-page-nav-btn,.provider-cost-budget-set,.provider-cost-budget-clear,.file-item):hover,
+:root[data-skin="zeus-2"] #sidebarWsDisplay:hover{background:var(--hover-bg);}
+/* Workspace row quick "+": a rounded square like the side panels' +, not a circle. */
+.project-chip-quick-create{border-radius:5px;}

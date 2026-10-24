@@ -253,7 +253,21 @@
     }
     return tip;
   }
+  // Buttons show no hover label at all, native or themed. The title becomes
+  // the button's aria-label when it has no name of its own, so screen readers
+  // keep it, and nothing appears on hover.
+  const QUIET_BUTTON = 'button, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], input[type="button"], input[type="submit"]';
+  function quietButton(el) {
+    const button = el.closest(QUIET_BUTTON);
+    if (!button) return false;
+    const text = el.getAttribute('title') || el.getAttribute('data-mi-title');
+    if (text && !button.hasAttribute('aria-label') && !String(button.textContent || '').trim()) button.setAttribute('aria-label', text);
+    el.removeAttribute('title');
+    el.removeAttribute('data-mi-title');
+    return true;
+  }
   function park(el) {
+    if (quietButton(el)) return null;
     const text = el.getAttribute('title');
     if (text == null) return el.getAttribute('data-mi-title');
     el.setAttribute('data-mi-title', text);

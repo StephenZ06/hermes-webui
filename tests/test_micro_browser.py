@@ -59,7 +59,7 @@ def test_tooltips_replace_the_native_one_and_toasts_stack():
     with sync_api.sync_playwright() as pw:
         browser, page = _page(pw)
         try:
-            page.evaluate("""() => { const b = document.createElement('button'); b.id = 'tipme'; b.title = 'Helpful hint'; b.textContent = 'x';
+            page.evaluate("""() => { const b = document.createElement('span'); b.id = 'tipme'; b.title = 'Helpful hint'; b.textContent = 'x';
               Object.assign(b.style, {position: 'fixed', left: '300px', top: '300px', zIndex: 99999}); document.body.appendChild(b); }""")
             page.hover("#tipme")
             page.wait_for_selector(".mi-tip.is-open", timeout=3000)
@@ -77,6 +77,34 @@ def test_tooltips_replace_the_native_one_and_toasts_stack():
     assert shown == ["Helpful hint", False], "the native tooltip is parked while the themed one shows"
     assert restored == "Helpful hint"
     assert ghosts == [True]
+
+
+def test_buttons_show_no_hover_label_and_keep_their_title_as_a_name():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            page.evaluate("""() => {
+              const make = (id, text) => { const b = document.createElement('button'); b.id = id; b.title = 'Helpful hint'; b.textContent = text;
+                Object.assign(b.style, {position: 'fixed', left: id === 'iconbtn' ? '300px' : '400px', top: '300px', zIndex: 99999}); document.body.appendChild(b); };
+              make('iconbtn', ''); make('textbtn', 'Save');
+            }""")
+            page.hover("#iconbtn")
+            page.wait_for_timeout(900)
+            icon = page.evaluate("""() => { const b = document.querySelector('#iconbtn'); const t = document.querySelector('.mi-tip');
+              return [b.getAttribute('title'), b.getAttribute('aria-label'), !!(t && t.classList.contains('is-open'))]; }""")
+            page.hover("#textbtn")
+            page.wait_for_timeout(900)
+            text = page.evaluate("""() => { const b = document.querySelector('#textbtn'); const t = document.querySelector('.mi-tip');
+              return [b.getAttribute('title'), b.getAttribute('aria-label'), !!(t && t.classList.contains('is-open'))]; }""")
+            rail = page.evaluate("""() => { const b = document.createElement('button'); b.className = 'rail-btn has-tooltip'; b.dataset.tooltip = 'Chat';
+              document.body.appendChild(b); return getComputedStyle(b, '::after').content; }""")
+        finally:
+            browser.close()
+    # An icon-only button keeps its title as its accessible name; a labelled one keeps its text.
+    assert icon == [None, "Helpful hint", False]
+    assert text == [None, None, False]
+    assert rail == "none"
 
 
 def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_line():
