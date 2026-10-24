@@ -45,7 +45,11 @@ def _tick_and_heartbeat_all_profiles() -> None:
     for home in _iter_profile_homes():
         try:
             with cron_profile_context_for_home(home):
-                cron_tick(verbose=False, sync=False)
+                # sync=True: due jobs run before this profile's context
+                # exits. A handed-off run (sync=False) checked its fire claim
+                # after the context had moved to the next profile, read the
+                # wrong jobs.json, and was dropped every time.
+                cron_tick(verbose=False, sync=True)
                 write_runtime_status(gateway_state="running")
         except ModuleNotFoundError:
             # Agent's cron/gateway packages not on the import path at all —
