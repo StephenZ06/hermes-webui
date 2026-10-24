@@ -19,6 +19,7 @@ import logging
 import subprocess
 from pathlib import Path
 
+from api.mount_probe import path_unresponsive
 from api.ssh_workspace import _classify_ssh_error
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,14 @@ def _path_state(path: Path) -> str:
 
     'missing' and 'unusable' are kept apart because only the latter is worth
     a lazy unmount: a path that is not there at all has no mount to clear.
+
+    'unresponsive' is a mount whose host stopped answering: a stat would
+    block the caller, so it is never attempted. It is not 'unusable' either
+    -- sshfs reconnects on its own once the host is back, and a lazy unmount
+    would throw that away.
     """
+    if path_unresponsive(path):
+        return "unresponsive"
     try:
         path.stat()
         return "ok"
@@ -195,6 +203,8 @@ def mount_remote(entry: dict) -> None:
     if mount_status(entry) == "connected":
         return
     cfg = _remote_cfg(entry)
+    if _path_state(mountpoint) == "unresponsive":
+        raise SshMountError("Remote host is not responding; the mount reconnects when it is back")
     # A dead mount from a previous run blocks both the mkdir below and sshfs
     # itself, so it has to go before anything else is attempted.
     _clear_stale_mountpoint(mountpoint)

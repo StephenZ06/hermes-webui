@@ -554,6 +554,10 @@ def get_last_workspace() -> str:
             if _remote_terminal_workspace_candidate(raw) is not None:
                 return raw
             return None
+        # A host that stopped answering would block the is_dir() below.
+        # Skip it for now without forgetting it: the file is left alone.
+        if _mount_unresponsive(raw):
+            return None
         if Path(raw).is_dir():
             return raw
         return None
@@ -586,8 +590,17 @@ def set_last_workspace(path: str) -> None:
         logger.debug("Failed to set last workspace")
 
 
+def _mount_unresponsive(path) -> bool:
+    """True if *path* is on a network/FUSE mount whose host is not answering."""
+    from api.mount_probe import path_unresponsive
+
+    return path_unresponsive(path)
+
+
 def _safe_resolve(p: Path) -> Path:
     """Path.resolve() that never raises — falls back to the input path on error."""
+    if _mount_unresponsive(p):
+        return p
     try:
         return p.resolve()
     except (OSError, RuntimeError, ValueError):
@@ -875,7 +888,7 @@ def workspace_availability(entry: dict) -> str:
         except Exception:
             return "offline"
     path = entry.get("path")
-    if not path:
+    if not path or _mount_unresponsive(path):
         return "offline"
     try:
         return "online" if stat.S_ISDIR(os.stat(path).st_mode) else "offline"
