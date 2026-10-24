@@ -2441,10 +2441,6 @@ function mount(container) {
   try {
     _scene = createOfficeScene(_canvas, {
       onSelect: id => id ? selectTask(id, false) : clearTaskSelection(),
-      // Hovering a platform highlights its card (the scene brightens its band).
-      onHoverPod: cluster => {
-        _deptCardEls.forEach((el, key) => el.classList.toggle('is-hovered', key === cluster));
-      },
       onTick: () => { activeAdapter().tick(); repositionDepartmentCards(); },
       // The canvas, its cards and the loader's fade-out all wait for the
       // scene's first frames to have really been drawn -- and on Business

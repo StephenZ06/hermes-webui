@@ -1717,7 +1717,7 @@ export function createOfficeScene(canvas, options) {
   }
 
   // The platform under the pointer: its band brightens (advanceDeliveryGlow)
-  // and the page highlights its card (config.onHoverPod).
+  // and the page is told (config.onHoverPod, optional).
   function setHoveredCluster(cluster) {
     if (hoveredCluster === cluster) return;
     hoveredCluster = cluster;

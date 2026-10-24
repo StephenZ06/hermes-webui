@@ -304,7 +304,6 @@
       ${scopeButton('favorites', 'Favorites', 'star', count((n) => live(n) && n.favorite))}
       <div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div>
       <div class="project-folder-list work-hub-projects nb-projects${dm}">${S.projects.map((p) => placeGroup('project', {id: p.project_id, color: p.color}, liveNotes.filter((n) => n.project_id === p.project_id))).join('')}</div>
-      <div class="work-hub-nav-label work-hub-projects-heading"><span>FOLDERS</span></div>
       <div class="project-folder-list work-hub-projects nb-folders${dm}">${S.folders.map((f) => placeGroup('folder', {id: f.id, color: f.color}, liveNotes.filter((n) => n.folder_id === f.id))).join('')}</div>
       <div class="work-hub-project-create-row nb-create-row">${S.deleteMode
         ? '<button type="button" class="work-hub-project-delete-done" data-nb-action="delete-done">Done</button>'

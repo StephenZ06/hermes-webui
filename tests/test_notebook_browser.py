@@ -182,8 +182,10 @@ def test_side_panel_matches_work_hub_and_its_plus_menu_creates_and_deletes(page)
     folder_name = f"Drafts {uuid.uuid4().hex[:4]}"
     _open(page)
     # Same section markup as the Work Hub: headings with the divider, tiles, a centred + row.
+    # FOLDERS is the Obsidian side's heading only.
     headings = page.evaluate("() => [...document.querySelectorAll('#notebookSidebar .work-hub-projects-heading span')].map(e => e.textContent)")
-    assert headings[:2] == ["WORKSPACES", "FOLDERS"]
+    assert headings[:1] == ["WORKSPACES"]
+    assert "FOLDERS" not in headings
     assert not page.query_selector(".nb-new-btn")
     assert "Folders you create here" not in page.inner_text("#notebookSidebar")
     page.click("#notebookSidebar .nb-create-row .work-hub-project-create")
