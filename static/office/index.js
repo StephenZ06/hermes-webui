@@ -973,9 +973,9 @@ function bindDashboardDistribution(host, state) {
   const card = host.querySelector('[data-dashboard-panel="distribution"]');
   if (!card) return;
   const rerender = focusSelector => {
-    // A deliberate view change, not a poll: let the entry motion play.
-    host._officeDashHtml = undefined;
-    renderOfficeDashboard(state);
+    // Only this card changes: swap it alone so the other panels don't
+    // rebuild and replay their entry fade (they flickered).
+    renderOfficeDashboard(state, { swap: 'distribution' });
     const target = focusSelector && document.querySelector(focusSelector);
     if (target) target.focus({ preventScroll: true });
   };
@@ -997,7 +997,7 @@ function bindDashboardDistribution(host, state) {
   }
 }
 
-function renderOfficeDashboard(state) {
+function renderOfficeDashboard(state, opts) {
   const host = document.getElementById('officeDashboardContent');
   if (!host) return;
   const dashboardState = _outlet === 'business' ? scheduledTaskState(state) : state;
@@ -1027,6 +1027,21 @@ function renderOfficeDashboard(state) {
   // alone, so the panels don't flash their entry fade; a real change keeps
   // each list's scroll position and skips the fade.
   if (host._officeDashHtml === html) return;
+  const oldCard = opts && opts.swap === 'distribution' && host._officeDashHtml !== undefined
+    && host.querySelector('[data-dashboard-panel="distribution"]');
+  if (oldCard) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = dashboardDistributionPanel(model);
+    const card = tpl.content.firstElementChild;
+    host._officeDashHtml = html;
+    card.classList.add('is-swapped');
+    oldCard.replaceWith(card);
+    bindDashboardDistribution(host, state);
+    card.querySelectorAll('[data-dashboard-worker-id]').forEach(button => {
+      button.onclick = () => openDashboardWorker(model.workers.find(worker => worker.id === button.dataset.dashboardWorkerId), model.mode);
+    });
+    return;
+  }
   const refreshed = host._officeDashHtml !== undefined;
   const scrolls = [...host.querySelectorAll('.office-dashboard-panel-body')].map(el => el.scrollTop);
   const shownOutlet = host.querySelector('.office-outlet-btn.is-active')?.dataset.dashboardOutlet;

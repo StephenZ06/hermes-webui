@@ -1411,19 +1411,36 @@ function toggleCronPromptExpanded(jobId){
   }
 }
 
+// A run's one toggle (the chevron) opens and closes its output, the same as
+// clicking the row; the chevron turns with it.
 function toggleCronRunExpanded(jobId, filename, runId){
-  const key = _cronRunExpandKey(jobId, filename);
-  const expanded = !_cronExpansionGet(key);
-  _cronExpansionSet(key, expanded);
-  const item = document.getElementById(runId);
-  const body = item ? item.querySelector('.detail-run-body') : null;
+  return _loadRunContent(jobId, filename, runId);
+}
+
+function _setCronRunToggle(item, open){
   const btn = item ? item.querySelector('.detail-expand-toggle') : null;
-  if (body) body.classList.toggle('expanded', expanded);
-  if (btn) {
-    btn.textContent = expanded ? '▴' : '▾';
-    btn.title = expanded ? (t('cron_collapse_output') || 'Collapse output') : (t('cron_expand_output') || 'Expand output');
-    btn.setAttribute('aria-label', btn.title);
-  }
+  if (!btn) return;
+  btn.title = open ? (t('cron_collapse_output') || 'Collapse output') : (t('cron_expand_output') || 'Expand output');
+  btn.setAttribute('aria-label', btn.title);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+// Height tween for a run's output: `change` swaps what is shown, and the box
+// eases from its old height to the new one instead of jumping.
+function _tweenCronRunBody(body, change, shut){
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (body._tween) { body._tween.cancel(); body._tween = null; }
+  const from = body.offsetHeight;
+  const result = change();
+  const to = shut ? 0 : body.offsetHeight;
+  if (reduce || !body.animate || from === to) return Promise.resolve(result);
+  const box = (h) => h ? {height: h + 'px'} : {height: '0px', paddingTop: '0px', paddingBottom: '0px', marginTop: '0px', borderTopWidth: '0px', borderBottomWidth: '0px', opacity: 0};
+  const anim = body.animate([
+    Object.assign({boxSizing: 'border-box', overflow: 'hidden'}, box(from)),
+    Object.assign({boxSizing: 'border-box', overflow: 'hidden'}, box(to)),
+  ], {duration: 240, easing: 'cubic-bezier(.22,1,.36,1)'});
+  body._tween = anim;
+  return anim.finished.then(() => result, () => result).finally(() => { if (body._tween === anim) body._tween = null; });
 }
 
 function _isCronScriptJob(job){
@@ -1719,13 +1736,12 @@ async function _loadCronDetailRuns(jobId, detailKey){
       const rid = `cron-det-run-${jobId}-${i}`;
       const usageStrip = isScriptJob ? '' : _formatCronRunUsageStrip(run.usage);
       const runExpanded = _cronExpansionGet(_cronRunExpandKey(jobId, run.filename));
-      const runToggleLabel = runExpanded ? (t('cron_collapse_output') || 'Collapse output') : (t('cron_expand_output') || 'Expand output');
+      const runToggleLabel = t('cron_expand_output') || 'Expand output';
       return `<div class="detail-run-item" id="${rid}">
         <div class="detail-run-head" onclick="_loadRunContent('${esc(jobId)}','${esc(run.filename)}','${rid}')">
           <span><span style="opacity:.7">${esc(ts)}</span> <span style="opacity:.4;font-size:11px">${esc(sizeStr)}</span>${usageStrip ? ` <span class="cron-run-usage-strip">${esc(usageStrip)}</span>` : ''}</span>
           <span class="detail-run-actions">
-            <button type="button" class="detail-expand-toggle" onclick="event.stopPropagation();toggleCronRunExpanded('${esc(jobId)}','${esc(run.filename)}','${rid}')" title="${esc(runToggleLabel)}" aria-label="${esc(runToggleLabel)}">${esc(runExpanded ? '▴' : '▾')}</button>
-            <span style="opacity:.6">▸</span>
+            <button type="button" class="detail-expand-toggle cron-run-toggle" onclick="event.stopPropagation();toggleCronRunExpanded('${esc(jobId)}','${esc(run.filename)}','${rid}')" title="${esc(runToggleLabel)}" aria-label="${esc(runToggleLabel)}" aria-expanded="false"><svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg></button>
           </span>
         </div>
         <div class="detail-run-body ${runExpanded ? 'expanded' : ''}" style="color:var(--muted);font-size:12px">${esc(t('loading'))}</div>
@@ -1756,73 +1772,78 @@ async function _loadRunContent(jobId, filename, runId){
   const item = document.getElementById(runId);
   if (item.classList.contains('open')) {
     // Already open → collapse and return (toggle behaviour)
+    // Kept drawn (.closing) while it eases shut, then hidden.
+    item.classList.add('closing');
     item.classList.remove('open');
-    body.classList.remove('expanded');
+    _setCronRunToggle(item, false);
     _cronExpansionSet(_cronRunExpandKey(jobId, filename), false);
-    const btn = item ? item.querySelector('.detail-expand-toggle') : null;
-    if (btn) {
-      btn.textContent = '▾';
-      btn.title = (t('cron_expand_output') || 'Expand output');
-      btn.setAttribute('aria-label', btn.title);
-    }
+    await _tweenCronRunBody(body, () => {}, true);
+    if (!item.classList.contains('open')) { item.classList.remove('closing'); body.classList.remove('expanded'); }
     return;
   }
-  item.classList.add('open');
-  body.classList.toggle('expanded', _cronExpansionGet(_cronRunExpandKey(jobId, filename)));
-  body.innerHTML = `<span style="opacity:.5">${esc(t('loading'))}</span>`;
+  _setCronRunToggle(item, true);
+  item.classList.remove('closing');
+  _tweenCronRunBody(body, () => {
+    item.classList.add('open');
+    body.classList.toggle('expanded', _cronExpansionGet(_cronRunExpandKey(jobId, filename)));
+    body.innerHTML = `<span style="opacity:.5">${esc(t('loading'))}</span>`;
+  });
   try {
     const data = await api(`/api/crons/run?job_id=${encodeURIComponent(jobId)}&filename=${encodeURIComponent(filename)}`);
     if (data.error) {
       body.textContent = data.error;
       return;
     }
-    const expanded = _cronExpansionGet(_cronRunExpandKey(jobId, filename));
-    const output = expanded ? (data.content || data.snippet || '') : (data.snippet || data.content || '');
-    body.classList.toggle('expanded', expanded);
-    // Cron run output is never authored Markdown — render as literal
-    // preformatted text using DOM-created <pre><code> so all content
-    // (including shapes starting with #, |, >, ``` and embedded fences)
-    // renders verbatim without Markdown interpretation.
-    body.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'cron-run-pre';
-    const code = document.createElement('code');
-    code.textContent = output;
-    pre.appendChild(code);
-    body.appendChild(pre);
-    const usageStrip = _formatCronRunUsageStrip(data.usage);
-    if (usageStrip) {
-      const usage = document.createElement('div');
-      usage.className = 'cron-run-usage-strip cron-run-usage-footer';
-      usage.textContent = usageStrip;
-      body.appendChild(usage);
-    }
-    // Show "View full output" button only for collapsed previews. Expanded rows render the full body inline.
-    if (!expanded && data.content && data.snippet && data.content.length > data.snippet.length) {
-      const btn = document.createElement('button');
-      btn.style.cssText = 'margin-top:8px;padding:4px 12px;border-radius:var(--radius-btn);border:1px solid var(--border-subtle);background:var(--surface-subtle);color:var(--text-secondary);cursor:pointer;font-size:12px';
-      btn.textContent = t('cron_view_full_output') || 'View full output';
-      btn.onclick = () => {
-        _cronExpansionSet(_cronRunExpandKey(jobId, filename), true);
-        body.classList.add('expanded');
-        body.innerHTML = '';
-        const pre = document.createElement('pre');
-        pre.className = 'cron-run-pre';
-        const code = document.createElement('code');
-        code.textContent = data.content || '';
-        pre.appendChild(code);
-        body.appendChild(pre);
-        const usageStrip = _formatCronRunUsageStrip(data.usage);
-        if (usageStrip) {
-          const usage = document.createElement('div');
-          usage.className = 'cron-run-usage-strip cron-run-usage-footer';
-          usage.textContent = usageStrip;
-          body.appendChild(usage);
-        }
-        btn.remove();
-      };
-      body.appendChild(btn);
-    }
+    if (!item.classList.contains('open')) return; // closed while loading
+    _tweenCronRunBody(body, () => {
+      const expanded = _cronExpansionGet(_cronRunExpandKey(jobId, filename));
+      const output = expanded ? (data.content || data.snippet || '') : (data.snippet || data.content || '');
+      body.classList.toggle('expanded', expanded);
+      // Cron run output is never authored Markdown — render as literal
+      // preformatted text using DOM-created <pre><code> so all content
+      // (including shapes starting with #, |, >, ``` and embedded fences)
+      // renders verbatim without Markdown interpretation.
+      body.innerHTML = '';
+      const pre = document.createElement('pre');
+      pre.className = 'cron-run-pre';
+      const code = document.createElement('code');
+      code.textContent = output;
+      pre.appendChild(code);
+      body.appendChild(pre);
+      const usageStrip = _formatCronRunUsageStrip(data.usage);
+      if (usageStrip) {
+        const usage = document.createElement('div');
+        usage.className = 'cron-run-usage-strip cron-run-usage-footer';
+        usage.textContent = usageStrip;
+        body.appendChild(usage);
+      }
+      // Show "View full output" button only for collapsed previews. Expanded rows render the full body inline.
+      if (!expanded && data.content && data.snippet && data.content.length > data.snippet.length) {
+        const btn = document.createElement('button');
+        btn.style.cssText = 'margin-top:8px;padding:4px 12px;border-radius:var(--radius-btn);border:1px solid var(--border-subtle);background:var(--surface-subtle);color:var(--text-secondary);cursor:pointer;font-size:12px';
+        btn.textContent = t('cron_view_full_output') || 'View full output';
+        btn.onclick = () => _tweenCronRunBody(body, () => {
+          _cronExpansionSet(_cronRunExpandKey(jobId, filename), true);
+          body.classList.add('expanded');
+          body.innerHTML = '';
+          const pre = document.createElement('pre');
+          pre.className = 'cron-run-pre';
+          const code = document.createElement('code');
+          code.textContent = data.content || '';
+          pre.appendChild(code);
+          body.appendChild(pre);
+          const usageStrip = _formatCronRunUsageStrip(data.usage);
+          if (usageStrip) {
+            const usage = document.createElement('div');
+            usage.className = 'cron-run-usage-strip cron-run-usage-footer';
+            usage.textContent = usageStrip;
+            body.appendChild(usage);
+          }
+          btn.remove();
+        });
+        body.appendChild(btn);
+      }
+    });
   } catch(e) {
     body.textContent = 'Error: ' + e.message;
   }

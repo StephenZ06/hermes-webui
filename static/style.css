@@ -15134,10 +15134,48 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .cron-run-list{position:relative;}
 /* Zeus 2.0 nudges (measured against the user's Windows render). */
 :root[data-skin="zeus-2"] :is(#workHubProjects,.nb-folders,.office-project-folders) .project-folder-row > .project-folder-count{top:-1px;}
-:root[data-skin="zeus-2"] .office-page-nav{position:relative;top:1px;}
+:root[data-skin="zeus-2"] .office-page-nav-copy strong{top:1px;}
 :root[data-skin="zeus-2"] .office-session-row :is(.office-session-title,.office-session-meta){position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){position:relative;top:1px;}
 :root[data-skin="zeus-2"] .office-dashboard-metric > *{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-dashboard-floor-chevron{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .cron-name{position:relative;top:-1px;}
-:root[data-skin="zeus-2"] #taskDetailBody .detail-card:first-child .detail-row-label{position:relative;top:1px;}
+:root[data-skin="zeus-2"] #taskDetailBody .detail-row-label{position:relative;top:1px;}
+/* Office Projects / Business: caps, and no middle divider under the
+   sliding highlight. */
+.office-outlet::after{display:none;}
+.office-outlet-btn{text-transform:uppercase;letter-spacing:.04em;}
+/* Office filter: placeholder text 1px up. */
+#panelOffice .session-search input{padding-top:6px;padding-bottom:8px;}
+/* Office dashboard: a Work distribution swap slides only that card's body. */
+.office-dashboard-distribution.is-swapped .office-dashboard-panel-body{animation:office-dashboard-floor-detail-in .22s cubic-bezier(.22,.61,.36,1) both;}
+.office-dashboard-distribution.is-swapped:not(.is-floor-detail) .office-dashboard-panel-body{animation-name:office-dashboard-floor-list-in;}
+@keyframes office-dashboard-floor-list-in{from{opacity:0;transform:translateX(-10px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.office-dashboard-distribution.is-swapped .office-dashboard-panel-body{animation:none;}}
+/* Office Task Status (desktop): the list slides down open and up shut.
+   1fr <-> 0fr interpolates; minmax(0,1fr) <-> 0fr jumped, so only the fade
+   showed. */
+@media (min-width:641px){
+  .office-tasks-body{grid-template-rows:1fr;transition:grid-template-rows .44s cubic-bezier(.22,1,.36,1);}
+  .office-tasks.is-collapsed .office-tasks-body{grid-template-rows:0fr;transition:grid-template-rows .32s cubic-bezier(.45,0,.25,1);}
+  .office-tasks-body-inner{transition:opacity .3s ease .06s,transform .44s cubic-bezier(.22,1,.36,1);}
+  .office-tasks.is-collapsed .office-tasks-body-inner{opacity:0;transform:translateY(-8px);transition:opacity .2s ease,transform .32s cubic-bezier(.45,0,.25,1);}
+}
+/* Scheduled job runs: one chevron toggle (turns when open); the output
+   stays drawn while it eases shut (_tweenCronRunBody). */
+.cron-run-toggle{display:inline-grid;place-items:center;width:24px;height:20px;padding:0;}
+.cron-run-toggle svg{display:block;transition:transform .24s cubic-bezier(.22,1,.36,1);}
+.detail-run-item.open .cron-run-toggle svg{transform:rotate(180deg);}
+.detail-run-item.closing .detail-run-body{display:block;}
+@media (prefers-reduced-motion:reduce){.cron-run-toggle svg{transition:none;}}
+/* Chat project folders: the count rests at the right edge; on hover or
+   focus the ⋯ and + open beside it and the count slides left with them. */
+@media (hover:hover){
+  #sessionList .project-folder-row > :is(.project-folder-kebab,.project-chip-quick-create){width:0;margin-left:-4px;border-width:0;overflow:hidden;opacity:0;transition:width .24s cubic-bezier(.22,1,.36,1),margin-left .24s cubic-bezier(.22,1,.36,1),opacity .16s ease,background .15s,color .15s,border-color .15s;}
+  #sessionList .project-folder-row:is(:hover,:focus-within) > .project-folder-kebab{width:16px;margin-left:0;border-width:1px;opacity:1;transition-delay:0s,0s,.06s,0s,0s,0s;}
+  #sessionList .project-folder-row:is(:hover,:focus-within) > .project-chip-quick-create{width:18px;margin-left:0;border-width:1px;opacity:1;transition-delay:0s,0s,.06s,0s,0s,0s;}
+  #sessionList .project-folder-row > .project-folder-count{min-width:14px;text-align:right;}
+}
+@media (hover:hover) and (prefers-reduced-motion:reduce){
+  #sessionList .project-folder-row > :is(.project-folder-kebab,.project-chip-quick-create){transition:none;}
+}

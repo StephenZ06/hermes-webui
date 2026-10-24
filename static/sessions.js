@@ -8130,12 +8130,11 @@ function renderSessionListFromCache(){
       kebab.setAttribute('aria-label','Project options');
       kebab.innerHTML=ICONS.more;
       kebab.onclick=(e)=>{e.preventDefault();e.stopPropagation();_showProjectContextMenu(e,p,chip);};
-      // Kebab is invisible until hover/focus (opacity:0) but still occupies
-      // layout width — appended before the count so the count (always
-      // visible) is the row's true rightmost, edge-aligned element instead
-      // of sitting one kebab-width short of the box's right edge.
-      chip.appendChild(kebab);
+      // The count sits at the row's right edge; the kebab (and the optional
+      // quick-create "+") follow it at zero width and open on hover/focus,
+      // sliding the count left to make room (style.css).
       chip.appendChild(countSpan);
+      chip.appendChild(kebab);
       // Toggle on the click itself. This used to sit behind a 220ms setTimeout
       // purely to find out whether a second click was coming (dblclick renames),
       // which put that delay on EVERY expand and EVERY collapse -- the common

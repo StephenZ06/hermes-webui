@@ -204,7 +204,8 @@ export function createOfficeScene(canvas, options) {
   if (!canvas) throw new Error('createOfficeScene: a canvas element is required');
   const config = options || {};
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  // high-performance: on a machine with two GPUs the floor gets the faster one.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   // alpha:true and no scene.background: the panel's own themed background
   // shows through, so the scene tracks every skin/light/dark mode for free
   // instead of hard-coding a clear colour per theme.

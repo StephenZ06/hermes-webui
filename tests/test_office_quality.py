@@ -85,3 +85,9 @@ def test_a_gpu_on_the_edge_stops_bouncing_between_ratios():
     changes = _drive(frames)["changes"]
     ups = [i for i in range(1, len(changes)) if changes[i][1] > changes[i - 1][1]]
     assert len(ups) <= 1, changes
+
+
+def test_a_gpu_just_under_60fps_trades_resolution_for_smoothness():
+    # About 50fps at 2x reads as sluggish next to the 60fps pages; the governor
+    # steps down instead of holding the sharper picture.
+    assert _drive([(600, 20)])["ratio"] < 2

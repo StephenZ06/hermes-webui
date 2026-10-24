@@ -50,13 +50,21 @@
     const thumb = document.createElement('span');
     thumb.className = 'dash-tabs-thumb'; thumb.setAttribute('aria-hidden', 'true');
     bar.prepend(thumb); bar.classList.add('has-thumb');
+    let target = '';
     const place = (animate) => {
       const on = bar.querySelector('button.on');
       thumb.classList.toggle('is-hidden', !on);
       if (!on) return;
+      target = `${on.offsetLeft}/${on.offsetWidth}`;
       thumb.style.transition = animate ? '' : 'none';
       thumb.style.transform = `translateX(${on.offsetLeft}px)`;
       thumb.style.width = on.offsetWidth + 'px';
+    };
+    // Re-place only when the tab itself moved or resized (late web font,
+    // window resize); an unchanged target leaves a running slide alone.
+    const refit = () => {
+      const on = bar.querySelector('button.on');
+      if (thumb.isConnected && on && `${on.offsetLeft}/${on.offsetWidth}` !== target) place(false);
     };
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (from && bar.querySelector('button.on') && !reduce) {
@@ -66,9 +74,11 @@
       void thumb.offsetWidth;
       place(true);
     } else place(false);
-    // A ResizeObserver reports once on observe(); only later sizes re-place.
-    let seen = false;
-    if (window.ResizeObserver) new ResizeObserver(() => { if (seen && thumb.isConnected) place(false); seen = true; }).observe(bar);
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(refit);
+      ro.observe(bar); bar.querySelectorAll('button').forEach((b) => ro.observe(b));
+    }
+    if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(refit);
   }
   const VIEWS = ['character', 'shop', 'personal', 'career', 'business', 'settings'];
   const VIEW_TITLE = {character: 'CHARACTER', shop: 'SHOP', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};

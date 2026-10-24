@@ -81,7 +81,7 @@ def test_dashboard_derives_outlet_scoped_cards_from_existing_office_state():
     assert "const selectedView = mode === 'business'" in OFFICE
     assert "const visibleIds = new Set" in OFFICE
     assert "const scopedWorkers = workers.filter" in OFFICE
-    assert "function renderOfficeDashboard(state)" in OFFICE
+    assert "function renderOfficeDashboard(state, opts)" in OFFICE
     assert "office-dashboard-snapshot" in OFFICE
     assert "office-dashboard-distribution" in OFFICE
     assert "office-dashboard-attention" in OFFICE
@@ -162,7 +162,7 @@ def test_office_rfc_records_dashboard_and_gmail_connection_boundaries():
 def test_dashboard_poll_leaves_unchanged_markup_alone():
     # The reconcile poll re-rendered every few seconds and replayed the
     # empty-state fade, which read as the lower cards flickering.
-    body = OFFICE[OFFICE.index("function renderOfficeDashboard(state)"):]
+    body = OFFICE[OFFICE.index("function renderOfficeDashboard(state, opts)"):]
     body = body[:body.index("\nfunction ")]
     assert "if (host._officeDashHtml === html) return;" in body
     assert body.index("if (host._officeDashHtml === html) return;") < body.index("host.innerHTML = html;")
@@ -198,3 +198,18 @@ def test_panel_icons_match_their_title_block_and_integration_health_has_a_tile()
     assert ".office-dashboard-panel-head .office-dash-icon,.office-dashboard-integration .office-dash-icon{align-self:stretch;width:auto;height:auto;aspect-ratio:1;" in CSS
     assert '<span class="office-dash-icon is-purple">${officeIcon(\'settings\', \'Integrations\')}</span>' in OFFICE
     assert ".office-integration-card h2{text-transform:uppercase;" in CSS
+
+
+def test_work_distribution_swap_rebuilds_only_its_own_card():
+    # Opening a floor re-rendered the whole dashboard, so every other panel
+    # replayed its entry fade (a flicker). The swap replaces that card alone.
+    bind = OFFICE[OFFICE.index("function bindDashboardDistribution(host, state)"):]
+    bind = bind[:bind.index("\nfunction ")]
+    assert "renderOfficeDashboard(state, { swap: 'distribution' })" in bind
+    assert "_officeDashHtml = undefined" not in bind
+    body = OFFICE[OFFICE.index("function renderOfficeDashboard(state, opts)"):]
+    body = body[:body.index("\nfunction ")]
+    swap = body[body.index("if (oldCard) {"):body.index("const refreshed")]
+    assert "oldCard.replaceWith(card)" in swap
+    assert "host.innerHTML" not in swap
+    assert "host._officeDashHtml = html;" in swap

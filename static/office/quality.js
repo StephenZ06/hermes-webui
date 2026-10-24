@@ -12,7 +12,9 @@
 
 export const STEP = 0.25;
 export const WINDOW = 45;            // frames per measurement window
-export const SLOW_MS = 21;           // window average above this: below ~48fps
+// Smoothness over sharpness: a floor that holds ~50fps still reads as
+// sluggish next to the 60fps pages, so anything under ~54fps steps down.
+export const SLOW_MS = 18.5;         // window median above this: below ~54fps
 export const FAST_MS = 14.5;         // window average below this: real headroom
 export const RAISE_AFTER_WINDOWS = 6; // consecutive fast windows before stepping up
 export const SETTLE_MS = 1500;       // ignore frames right after a change/start
