@@ -1029,8 +1029,17 @@ function renderOfficeDashboard(state) {
   if (host._officeDashHtml === html) return;
   const refreshed = host._officeDashHtml !== undefined;
   const scrolls = [...host.querySelectorAll('.office-dashboard-panel-body')].map(el => el.scrollTop);
+  const shownOutlet = host.querySelector('.office-outlet-btn.is-active')?.dataset.dashboardOutlet;
   host._officeDashHtml = html;
   host.innerHTML = html;
+  // The toolbar is rebuilt, so a Projects/Business switch would jump: draw the
+  // old side first, then flip, and the highlight slides across (CSS).
+  if (shownOutlet && shownOutlet !== _outlet) {
+    const outletBtns = [...host.querySelectorAll('[data-dashboard-outlet]')];
+    outletBtns.forEach(b => b.classList.toggle('is-active', b.dataset.dashboardOutlet === shownOutlet));
+    void host.offsetWidth;
+    outletBtns.forEach(b => b.classList.toggle('is-active', b.dataset.dashboardOutlet === _outlet));
+  }
   host.classList.toggle('office-dashboard-refreshed', refreshed);
   if (refreshed) host.querySelectorAll('.office-dashboard-panel-body').forEach((el, i) => { if (scrolls[i]) el.scrollTop = scrolls[i]; });
   host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
@@ -2305,9 +2314,17 @@ function mount(container) {
     return;
   }
   if (container.classList.contains('office-floor-parked')) {
-    // Returning from a subview to a parked floor: drop the subview, show it.
-    container.querySelectorAll(':scope > .office-subview').forEach(el => el.remove());
+    // Returning from a subview to a parked floor: the subview fades out over
+    // the floor while the floor fades in, then it is dropped.
+    const leaving = [...container.querySelectorAll(':scope > .office-subview')];
     container.classList.remove('office-floor-parked');
+    if (leaving.length && !dashboardPrefersReducedMotion()) {
+      container.classList.add('office-floor-returning');
+      leaving.forEach(el => { el.classList.remove('is-entering'); el.classList.add('is-leaving'); setTimeout(() => el.remove(), 240); });
+      setTimeout(() => container.classList.remove('office-floor-returning'), 440);
+    } else {
+      leaving.forEach(el => el.remove());
+    }
   }
   if (_container === container && _scene) {
     // Same panel re-entered: the scene is intact, just start drawing again

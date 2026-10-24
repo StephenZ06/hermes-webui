@@ -1732,8 +1732,22 @@ async function _loadCronDetailRuns(jobId, detailKey){
       </div>`;
     }).join('');
     const countLabel = data.total > 50 ? ` (${data.total} runs, showing latest 50)` : ` (${data.total} runs)`;
-    card.innerHTML = `<div class="detail-card-title">${esc(outputTitle)}${countLabel}</div>${rows}`;
+    card.innerHTML = `<div class="detail-card-title">${esc(outputTitle)}${countLabel}</div><div class="cron-run-list">${rows}</div>`;
+    _capCronRunList(card.querySelector('.cron-run-list'));
   } catch(e) { /* ignore */ }
+}
+
+// The run list shows the latest 10 runs; the rest scroll (thin scrollbar).
+// Sized to the 10th row as drawn, so it fits whatever a row's height is.
+const CRON_RUNS_VISIBLE = 10;
+function _capCronRunList(list){
+  if (!list) return;
+  const items = list.querySelectorAll(':scope > .detail-run-item');
+  list.classList.toggle('is-capped', items.length > CRON_RUNS_VISIBLE);
+  if (items.length <= CRON_RUNS_VISIBLE) { list.style.maxHeight = ''; return; }
+  const last = items[CRON_RUNS_VISIBLE - 1];
+  if (!last.offsetHeight) return; // not laid out (hidden): leave it uncapped
+  list.style.maxHeight = (last.offsetTop + last.offsetHeight) + 'px';
 }
 
 async function _loadRunContent(jobId, filename, runId){

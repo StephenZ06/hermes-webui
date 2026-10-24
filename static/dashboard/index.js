@@ -42,6 +42,34 @@
     {key: 'career', label: 'Career'},
     {key: 'business', label: 'Business'},
   ];
+  // The selected tab's highlight is one element that slides between tabs.
+  // The header is rebuilt on every change, so it starts where the previous
+  // highlight was and eases to the new tab; a resize just re-places it.
+  function placeTabsThumb(bar, from) {
+    if (!bar) return;
+    const thumb = document.createElement('span');
+    thumb.className = 'dash-tabs-thumb'; thumb.setAttribute('aria-hidden', 'true');
+    bar.prepend(thumb); bar.classList.add('has-thumb');
+    const place = (animate) => {
+      const on = bar.querySelector('button.on');
+      thumb.classList.toggle('is-hidden', !on);
+      if (!on) return;
+      thumb.style.transition = animate ? '' : 'none';
+      thumb.style.transform = `translateX(${on.offsetLeft}px)`;
+      thumb.style.width = on.offsetWidth + 'px';
+    };
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (from && bar.querySelector('button.on') && !reduce) {
+      thumb.style.transition = 'none';
+      thumb.style.transform = `translateX(${from.left}px)`;
+      thumb.style.width = from.width + 'px';
+      void thumb.offsetWidth;
+      place(true);
+    } else place(false);
+    // A ResizeObserver reports once on observe(); only later sizes re-place.
+    let seen = false;
+    if (window.ResizeObserver) new ResizeObserver(() => { if (seen && thumb.isConnected) place(false); seen = true; }).observe(bar);
+  }
   const VIEWS = ['character', 'shop', 'personal', 'career', 'business', 'settings'];
   const VIEW_TITLE = {character: 'CHARACTER', shop: 'SHOP', personal: 'PERSONAL DASHBOARD', career: 'CAREER DASHBOARD', business: 'BUSINESS DASHBOARD', settings: 'SETTINGS'};
   // Card icons drawn as pixel art (static/dashboard/icons), by card.
@@ -903,6 +931,16 @@
     // new page (in the same task, so it never pauses or reloads).
     const videos = new Map([...host.querySelectorAll('video.rpg-hero-video')].map((v) => [v.dataset.src, v]));
     // Where each habit's strip sat, so a longer or shorter label slides it.
+    // Where the selected Personal/Career/Business tab sat, so its highlight
+    // slides to the new tab instead of jumping.
+    // Read from the highlight's current on-screen place (not the old tab), so
+    // a second repaint mid-slide (data arriving) continues the slide.
+    const oldThumb = host.querySelector('.dash-tabs-thumb:not(.is-hidden)');
+    let thumbFrom = null;
+    if (oldThumb) {
+      const bar = oldThumb.parentElement, tr = oldThumb.getBoundingClientRect();
+      thumbFrom = {left: tr.left - bar.getBoundingClientRect().left - bar.clientLeft, width: tr.width};
+    }
     const strips = new Map([...host.querySelectorAll('.dash-habit[data-habit] .dash-heat')].map((h) => [h.closest('.dash-habit').dataset.habit, h.getBoundingClientRect()]));
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
@@ -912,6 +950,7 @@
       </div>
       <div class="dash-body${entering ? ' is-entering' : ''}" data-tab="${state.tab}">${body}</div>
     </div>`;
+    placeTabsThumb(host.querySelector('.dash-tabs'), thumbFrom);
     if (strips.size && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
       host.querySelectorAll('.dash-habit[data-habit] .dash-heat').forEach((h) => {
         const was = strips.get(h.closest('.dash-habit').dataset.habit), now = h.getBoundingClientRect();
