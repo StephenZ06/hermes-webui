@@ -8902,11 +8902,23 @@ function _setComposerPrimaryButtonIcon(btn,action){
     stop:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>',
     disabled:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
   };
-  const next=icons[action]||icons.send;
-  if(btn.innerHTML!==next) btn.innerHTML=next;
+  const name=icons[action]?action:'send';
+  // Compare by name: the parsed innerHTML never equals the source string.
+  if(btn.dataset.icon===name) return;
+  // Before the first sync the button holds index.html's send arrow.
+  const swapping=btn.dataset.icon?true:!['send','disabled'].includes(name);
+  btn.dataset.icon=name;
+  btn.innerHTML=icons[name];
+  // A changed action (send -> stop and back) swaps its icon in with a quick
+  // scale-and-unblur, so the new meaning registers; the first paint does not.
+  if(swapping){btn.classList.remove('icon-swap');void btn.offsetWidth;btn.classList.add('icon-swap');}
 }
 
 function updateSendBtn(){
+  // A beam of light runs round the composer while the agent works. Every path
+  // that changes S.busy re-syncs the primary button here, so the beam follows.
+  const box=$('composerBox');
+  if(box) box.classList.toggle('is-working',!!S.busy);
   const btn=$('btnSend');
   if(!btn){
     if(typeof _applyBusyComposerPlaceholder==='function') _applyBusyComposerPlaceholder();

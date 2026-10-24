@@ -15237,3 +15237,17 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] #sidebarWsDisplay:hover{background:var(--hover-bg);}
 /* Workspace row quick "+": a rounded square like the side panels' +, not a circle. */
 .project-chip-quick-create{border-radius:5px;}
+/* Composer border beam: while the agent works, one soft arc of accent light
+   travels round the composer's border (the libraries.dev "border beam" idea,
+   in plain CSS).  Reduced motion keeps a still accent border instead. */
+@property --composer-beam-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
+.composer-box.is-working::after{content:"";position:absolute;inset:-1px;z-index:1;padding:1px;border-radius:inherit;background:conic-gradient(from var(--composer-beam-angle),transparent 0deg,transparent 250deg,color-mix(in srgb,var(--accent) 35%,transparent) 300deg,var(--accent) 340deg,transparent 360deg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);pointer-events:none;animation:composer-beam 3.2s linear infinite,composer-beam-in .4s ease-out;}
+@keyframes composer-beam{to{--composer-beam-angle:360deg;}}
+@keyframes composer-beam-in{from{opacity:0;}}
+/* Send button: a changed action's icon scales in from a blur (transitions.dev "icon swap"). */
+.send-btn.icon-swap > svg{animation:send-icon-swap .24s cubic-bezier(.16,1,.3,1);}
+@keyframes send-icon-swap{from{opacity:0;transform:scale(.55);filter:blur(3px);}}
+@media (prefers-reduced-motion:reduce){
+  .composer-box.is-working::after{animation:none;background:color-mix(in srgb,var(--accent) 55%,transparent);}
+  .send-btn.icon-swap > svg{animation:none;}
+}
