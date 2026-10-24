@@ -478,10 +478,14 @@
     syncListPresentation();
     // Items fade in when the list changes what it shows (scope, search, tag),
     // not on the re-renders an autosave triggers.
-    const listKey = [S.scope.kind, S.scope.id, S.search, S.tagFilter, S.loaded].join('|');
-    host.classList.toggle('is-entering', listKey !== lastListKey);
+    const listKey = [S.side, S.scope.kind, S.scope.id, S.search, S.tagFilter, S.loaded].join('|');
+    const entering = listKey !== lastListKey;
+    host.classList.toggle('is-entering', entering);
     lastListKey = listKey;
-    $('nbScopeTitle').textContent = scopeTitle() + (S.tagFilter ? ` · #${S.tagFilter}` : '');
+    const title = $('nbScopeTitle');
+    title.textContent = scopeTitle() + (S.tagFilter ? ` · #${S.tagFilter}` : '');
+    // The heading fades to its new name with the list (reflow restarts it).
+    if (entering) { title.classList.remove('is-entering'); void title.offsetWidth; title.classList.add('is-entering'); }
     if (!S.loaded) { host.innerHTML = S.error ? `<div class="nb-empty"><p>${esc(S.error)}</p><button type="button" class="nb-btn" data-nb-action="reload">Try again</button></div>` : ''; return; }
     const notes = visibleNotes();
     const trash = S.scope.kind === 'trash';
@@ -655,8 +659,17 @@
     el.dataset.status = save.status;
     el.textContent = statusText();
   }
+  // Opening the Obsidian vault drills into it and Back drills out: the new
+  // side panel's rows slide in from the side they came from, one after another.
+  let sideMotion = '';
   function render() {
     renderSidebar();
+    const nav = sideMotion && $('notebookSidebar') && $('notebookSidebar').querySelector('.nb-nav');
+    if (nav) {
+      Array.from(nav.children).forEach((row, i) => row.style.setProperty('--nb-side-i', Math.min(i, 8)));
+      nav.classList.add(sideMotion === 'back' ? 'is-entering-back' : 'is-entering-forward');
+    }
+    sideMotion = '';
     if (!ensureShell()) return;
     const search = $('nbSearch');
     if (search && document.activeElement !== search) search.value = S.search;
@@ -1932,9 +1945,9 @@
           if (typeof window.switchPanel === 'function') { await window.switchPanel('settings'); if (typeof window.switchSettingsSection === 'function') window.switchSettingsSection('preferences'); }
           break;
         }
-        useSide('vault'); S.pane = 'list'; render(); break;
+        sideMotion = 'forward'; useSide('vault'); S.pane = 'list'; render(); break;
       case 'more': S.more[action.dataset.nbMore] = !S.more[action.dataset.nbMore]; renderSidebar(); break;
-      case 'vault-close': useSide('notes'); S.pane = 'list'; render(); break;
+      case 'vault-close': sideMotion = 'back'; useSide('notes'); S.pane = 'list'; render(); break;
       default: break;
     }
   }

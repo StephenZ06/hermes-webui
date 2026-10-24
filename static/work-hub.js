@@ -40,7 +40,13 @@
     initResizer(wrap);
     renderWorkHubNavigation();
     renderCanvas(items); renderInspector(); bind();
+    // The board fades in when it shows something else (scope, project, board
+    // or view), not on the re-renders an edit or a refresh triggers.
+    const canvasKey = [store.activeScope, store.activeFolderId, store.activeBoardId, store.activeView].join('|');
+    if (lastCanvasKey !== null && canvasKey !== lastCanvasKey) el('workHubCanvas')?.classList.add('is-entering');
+    lastCanvasKey = canvasKey;
   }
+  let lastCanvasKey = null;
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
     sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode

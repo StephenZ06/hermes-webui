@@ -15179,11 +15179,23 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (hover:hover) and (prefers-reduced-motion:reduce){
   #sessionList .project-folder-row > :is(.project-folder-kebab,.project-chip-quick-create){transition:none;}
 }
-/* Chat usage widget title ("SESSION USAGE"): the 10px of its 5 hours /
-   Weekly toggle, not a size larger. */
-.chat-usage-widget-label{font-size:10px;}
-/* Work Hub / Notes sidebar "+": 12px glyph in its 24px button. */
-.work-hub-project-create svg,.work-hub-project-create .work-hub-icon{width:12px;height:12px;}
+/* Chat usage widget title ("SESSION USAGE"): sized up toward its 22px
+   5 hours / Weekly toggle box -- 16px is the largest that still clears the
+   toggle in the sidebar's width. */
+.chat-usage-widget-label{font-size:16px;}
+.chat-usage-widget-label-stage{line-height:22px;}
+:root[data-skin="zeus-2"] .chat-usage-widget-label-stage{position:relative;top:-1px;}
+/* Work Hub / Notes sidebar "+": an 11px glyph with a 1px stroke, so the
+   odd box centres each arm on a whole pixel and it renders crisp. */
+.work-hub-project-create svg,.work-hub-project-create .work-hub-icon{width:11px;height:11px;}
+.work-hub-project-create .work-hub-icon--plus path{stroke-width:1px;}
+/* Notes side panel: the + sits as close under the last folder as Work
+   Hub's -- one 10px list gap. An empty folders list takes no room, the
+   workspaces list hands its gap to a following folders list, and the row
+   drops its centring height and cancels the nav's 2px flex gap. */
+#notebookSidebar .nb-folders:empty{display:none;}
+#notebookSidebar .nb-projects:has(+ .nb-folders:not(:empty)){padding-bottom:0;}
+#notebookSidebar .nb-create-row{margin-top:-2px;min-height:0;}
 /* Zeus 2.0 Notes side panel (Obsidian Notes / General / Pinned / Favorites):
    counts 1px up. */
 :root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope > .nb-scope-count{position:relative;top:-1px;}
@@ -15191,3 +15203,23 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-page-nav-copy strong,.office-outlet-btn{font-weight:700;}
 /* Zeus 2.0 Office floor header: its bottom line 1px up. */
 @media (min-width:641px){:root[data-skin="zeus-2"] .office-header{padding-bottom:9px;}}
+/* Navigation motion.  Side panels fade up as the main view does when the
+   rail switches pages; Notes drills into the Obsidian vault and back out,
+   its list heading fading to the new name; a Work Hub board fades in when
+   it shows another scope, project, board or view. */
+.sidebar .panel-view.active{animation:page-view-in .22s cubic-bezier(.22,1,.36,1) backwards;}
+#notebookSidebar{overflow-x:hidden;}
+#notebookSidebar .nb-nav.is-entering-forward > *{animation:nb-side-in-forward .3s cubic-bezier(.16,1,.3,1) backwards;animation-delay:calc(var(--nb-side-i,0) * 18ms);}
+#notebookSidebar .nb-nav.is-entering-back > *{animation:nb-side-in-back .3s cubic-bezier(.16,1,.3,1) backwards;animation-delay:calc(var(--nb-side-i,0) * 18ms);}
+@keyframes nb-side-in-forward{from{opacity:0;transform:translateX(16px);}}
+@keyframes nb-side-in-back{from{opacity:0;transform:translateX(-16px);}}
+.nb-list-head h2.is-entering{animation:nb-text-in .24s ease-out both;}
+#workHubCanvas.is-entering :is(.work-hub-column,.work-hub-list){animation:page-view-in .26s cubic-bezier(.22,1,.36,1) backwards;}
+#workHubCanvas.is-entering .work-hub-column:nth-child(2){animation-delay:30ms;}
+#workHubCanvas.is-entering .work-hub-column:nth-child(3){animation-delay:60ms;}
+#workHubCanvas.is-entering .work-hub-column:nth-child(4){animation-delay:90ms;}
+#workHubCanvas.is-entering .work-hub-column:nth-child(n+5){animation-delay:120ms;}
+@media (prefers-reduced-motion:reduce){
+  .sidebar .panel-view.active,#workHubCanvas.is-entering :is(.work-hub-column,.work-hub-list){animation:none;}
+  #notebookSidebar .nb-nav:is(.is-entering-forward,.is-entering-back) > *{animation:nb-text-in .16s ease-out both;animation-delay:0s;}
+}
