@@ -47,7 +47,7 @@ def test_defaults_are_safe(home):
     s = load_settings()
     assert s["revision"] == 0
     assert s["notifications"]["email_enabled"] is False
-    assert s["ai"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True}
+    assert s["ai"] == {"provider": "openai-codex", "model": "gpt-6-luna", "reasoning_effort": "high", "auto_analyze": True}
     assert s["applicant"]["email"] == ""
     assert "auto_apply" not in s, "Auto-apply was removed"
 

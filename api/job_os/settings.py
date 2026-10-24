@@ -36,7 +36,7 @@ def default_settings() -> dict:
     return {
         "revision": 0,
         "firecrawl": {"api_url": ""},
-        "ai": {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "medium", "auto_analyze": True},
+        "ai": {"provider": "openai-codex", "model": "gpt-6-luna", "reasoning_effort": "high", "auto_analyze": True},
         # Contact details for tailored resumes and cover letters.
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         # blocked_companies: Scout never saves postings from these employers.
