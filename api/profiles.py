@@ -662,6 +662,11 @@ def get_active_hermes_home() -> Path:
 # which is also under the lock — so child processes always see a consistent
 # (own-profile) HERMES_HOME, never a half-swapped state.
 _cron_env_lock = threading.Lock()
+# The profile home the in-process cron ticker (api/gateway_ticker.py) has
+# pinned while it holds _cron_env_lock. The agent runs each due job on a pool
+# thread and the ticker waits for it, so that thread must not take the lock
+# again (deadlock) -- the environment is already this store's profile.
+_cron_ticker_home = None
 
 
 def _cron_profile_context_depth() -> int:
@@ -738,7 +743,7 @@ def install_cron_scheduler_profile_isolation() -> None:
         # Manual WebUI runs already enter cron_profile_context_for_home before
         # calling run_job. Avoid nesting the non-reentrant env lock or changing
         # the explicitly selected manual execution profile.
-        if _cron_profile_context_depth() > 0:
+        if _cron_profile_context_depth() > 0 or _cron_ticker_home is not None:
             return original(job, *args, **kwargs)
         try:
             with cron_profile_context_for_home(_home_for_scheduled_cron_job(job)):
