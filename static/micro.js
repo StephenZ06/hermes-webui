@@ -253,15 +253,26 @@
     }
     return tip;
   }
-  // Buttons show no hover label at all, native or themed. The title becomes
-  // the button's aria-label when it has no name of its own, so screen readers
-  // keep it, and nothing appears on hover.
-  const QUIET_BUTTON = 'button, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], input[type="button"], input[type="submit"]';
+  // Controls show no hover label at all, native or themed. The title becomes
+  // the control's aria-label when it has no name of its own, so screen readers
+  // keep it. The one tip a control keeps is a truncated name: when the title is
+  // the control's own text and that text is cut off, the tip is the only way to
+  // read the rest of it. Plain text (badges, stats, names) keeps its tip.
+  const QUIET_CONTROL = 'button, a[href], select, summary, label, input, textarea, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [role="switch"], [role="checkbox"], [role="link"], [onclick], .skill-toggle, .ws-drag-handle';
+  function ownText(el, text) {
+    return !!text && String(el.textContent || '').trim() === String(text).trim();
+  }
+  function revealsTruncation(el, text) {
+    if (!ownText(el, text)) return false;
+    return [el, ...el.querySelectorAll('*')].some((n) => n.scrollWidth > n.clientWidth + 1);
+  }
   function quietButton(el) {
-    const button = el.closest(QUIET_BUTTON);
-    if (!button) return false;
+    const control = el.closest(QUIET_CONTROL);
+    if (!control) return false;
     const text = el.getAttribute('title') || el.getAttribute('data-mi-title');
-    if (text && !button.hasAttribute('aria-label') && !String(button.textContent || '').trim()) button.setAttribute('aria-label', text);
+    if (text && !control.hasAttribute('aria-label') && !String(control.textContent || '').trim()) control.setAttribute('aria-label', text);
+    // A possible truncated name stays parked; showTip decides on hover.
+    if (ownText(el, text)) return false;
     el.removeAttribute('title');
     el.removeAttribute('data-mi-title');
     return true;
@@ -282,6 +293,7 @@
   function showTip(el) {
     const text = (el.getAttribute('data-mi-title') || '').trim();
     if (!text || !el.isConnected) return;
+    if (el.closest(QUIET_CONTROL) && !revealsTruncation(el, text)) return;
     const t = tipEl();
     t.textContent = text;
     t.classList.remove('is-below');

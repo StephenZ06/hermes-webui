@@ -107,6 +107,47 @@ def test_buttons_show_no_hover_label_and_keep_their_title_as_a_name():
     assert rail == "none"
 
 
+def test_controls_show_no_hover_label_except_a_cut_off_name():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            page.evaluate("""() => {
+              const box = document.createElement('div');
+              Object.assign(box.style, {position: 'fixed', left: '200px', top: '200px', zIndex: 99999, display: 'grid', gap: '20px', width: '120px'});
+              box.innerHTML = '<select id="sel" title="Conversation model"><option>gpt</option></select>'
+                + '<span id="tog" class="skill-toggle" title="Enabled" style="display:inline-block;width:30px;height:16px"></span>'
+                + '<a id="cut" href="#x" title="A very long session name that cannot fit" style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">A very long session name that cannot fit</a>'
+                + '<a id="fits" href="#y" title="Short" style="display:block">Short</a>'
+                + '<span id="badge" title="Owner profile: default">default</span>';
+              document.body.appendChild(box);
+            }""")
+            seen = {}
+            for target in ("sel", "tog", "cut", "fits", "badge"):
+                # The app's themed select covers the native one, so hover it by event.
+                if target == "sel":
+                    page.dispatch_event("#sel", "pointerover", {"bubbles": True, "pointerType": "mouse"})
+                else:
+                    page.hover("#" + target)
+                page.wait_for_timeout(700)
+                seen[target] = page.evaluate("""(id) => { const el = document.getElementById(id); const t = document.querySelector('.mi-tip');
+                  return [el.getAttribute('title'), t && t.classList.contains('is-open') ? t.textContent : null]; }""", target)
+                if target == "sel":
+                    page.dispatch_event("#sel", "pointerout", {"bubbles": True, "pointerType": "mouse"})
+                page.mouse.move(5, 5)
+                page.wait_for_timeout(450)
+        finally:
+            browser.close()
+    # Controls lose the native title and show no themed tip...
+    assert seen["sel"] == [None, None]
+    assert seen["tog"] == [None, None]
+    assert seen["fits"] == [None, None]
+    # ...except a cut-off name, whose tip is the only way to read it.
+    assert seen["cut"] == [None, "A very long session name that cannot fit"]
+    # Plain text keeps its explanation.
+    assert seen["badge"] == [None, "Owner profile: default"]
+
+
 def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_line():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:

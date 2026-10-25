@@ -15226,9 +15226,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Buttons show no hover label, native or themed (micro.js drops a button's
    title to aria-label); the rail's and mobile nav's CSS labels go too. */
 .has-tooltip::after,.sidebar-nav .nav-tab:hover::after{content:none!important;display:none!important;}
-/* Zeus 2.0 side panel dividers (Work Hub, Notes, Office WORKSPACES...):
-   text 1px up, as the chat sidebar's, so the lines run through its middle. */
-:root[data-skin="zeus-2"] :is(.work-hub-projects-heading,.office-sidebar-section-title,.office-project-folders-title) > span{position:relative;top:-1px;}
 /* Zeus 2.0 hovers take the skin's steel blue, not a grey or white tint:
    the shared hover token, and the controls that hard-code their own. */
 :root[data-skin="zeus-2"]{--hover-bg:rgba(70,130,180,.1);--surface-subtle-hover:rgba(70,130,180,.08);}
@@ -15251,3 +15248,18 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .composer-box.is-working::after{animation:none;background:color-mix(in srgb,var(--accent) 55%,transparent);}
   .send-btn.icon-swap > svg{animation:none;}
 }
+/* Usage card: with the 5h/Weekly toggle showing, "USAGE" stands as tall as
+   the toggle (cap height = its 22px box), and the card's inked edges sit
+   the same distance from the border on every side. */
+.chat-usage-widget.has-window-toggle .chat-usage-widget-label{font-size:31px;letter-spacing:0;}
+.chat-usage-widget.has-window-toggle .chat-usage-widget-label-stage{line-height:22px;}
+:root[data-skin="zeus-2"] .chat-usage-widget.has-window-toggle .chat-usage-widget-label{font-size:38px;}
+:root[data-skin="zeus-2"] .chat-usage-widget.has-window-toggle .chat-usage-widget-label-stage{top:-2px;}
+.chat-usage-widget.has-window-toggle .chat-usage-widget-title-row{min-width:0;}
+.chat-usage-widget{padding-bottom:8px;}
+/* Square "+" (Work Hub, Notes): an odd box puts the odd 1px cross on whole
+   pixels, so it sits dead centre instead of half a pixel low. */
+.work-hub-project-create{width:23px;height:23px;}
+/* Notes list column: the title row matches the sidebar header beside it
+   (41px, title centred on "NOTES"), with even space above and below. */
+.nb-list-head{box-sizing:border-box;min-height:41px;padding:0 14px 0 16px;}

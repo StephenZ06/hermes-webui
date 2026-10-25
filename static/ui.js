@@ -2213,7 +2213,8 @@ function selectAccountUsageWindow(windowKey){
     outgoing.classList.add('is-outgoing');
     stage.appendChild(outgoing);
   }
-  if(_accountUsageData&&labelStage&&label){
+  const widget=$('chatUsageWidget');
+  if(_accountUsageData&&labelStage&&label&&!(widget&&widget.classList.contains('has-window-toggle'))){
     outgoingLabel=label.cloneNode(true);
     outgoingLabel.removeAttribute('id');
     outgoingLabel.classList.add('is-outgoing');
@@ -2240,7 +2241,7 @@ function selectAccountUsageWindow(windowKey){
     content.classList.remove('is-incoming');
     void content.offsetWidth;
     content.classList.add('is-incoming');
-    if(label){
+    if(label&&outgoingLabel){
       label.classList.remove('is-incoming');
       void label.offsetWidth;
       label.classList.add('is-incoming');
@@ -2296,7 +2297,11 @@ function _renderAccountUsageImpl(data){
   const used=Math.max(0,Math.min(100,Number(selected.used_percent)||0));
   const remaining=Math.round(100-used);
   const label=$('chatUsageWidgetLabel');
-  if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':(selected.label?`${selected.label} usage`:t('chat_usage_weekly'));
+  // With the 5h/Weekly toggle showing, it names the window, so the label is
+  // just "Usage" and can stand as tall as the toggle beside it.
+  const hasWindowToggle=!isNeuralwatt&&selectable.length>=2;
+  widget.classList.toggle('has-window-toggle',hasWindowToggle);
+  if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':(hasWindowToggle?t('chat_usage'):(selected.label?`${selected.label} usage`:t('chat_usage_weekly')));
   const pctEl=$('chatUsageWidgetPercent');
   if(pctEl) pctEl.textContent=remaining+'% '+t('chat_usage_remaining');
   _renderAccountUsageBattery(remaining);
