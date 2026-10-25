@@ -64,6 +64,8 @@
     var openBelow = spaceBelow >= popupH + gap || spaceBelow >= rect.top;
     var left = Math.max(8, Math.min(rect.left, window.innerWidth - popup.offsetWidth - 8));
     popup.style.left = left + 'px';
+    // The list grows out of the edge that faces its button.
+    popup.classList.toggle('opens-up', !openBelow);
     if (openBelow) {
       popup.style.top = (rect.bottom + gap) + 'px';
       popup.style.bottom = '';

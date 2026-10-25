@@ -148,6 +148,33 @@ def test_controls_show_no_hover_label_except_a_cut_off_name():
     assert seen["badge"] == [None, "Owner profile: default"]
 
 
+def test_usage_percent_pops_only_when_its_value_changes():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _page(pw)
+        try:
+            out = page.evaluate("""async () => {
+              const render = (u) => _renderAccountUsage({available: true, provider: 'openai-codex',
+                windows: [{label: 'Weekly', used_percent: u}, {label: '5h session', used_percent: u}]});
+              const el = () => document.getElementById('chatUsageWidgetPercent');
+              const popping = () => el().classList.contains('mi-num-pop');
+              render(42); await new Promise((r) => setTimeout(r, 50));
+              const first = popping();
+              render(42); await new Promise((r) => setTimeout(r, 50));
+              const same = popping();
+              render(47); await new Promise((r) => setTimeout(r, 50));
+              const changed = [popping(), el().textContent];
+              await new Promise((r) => setTimeout(r, 700));
+              return {first, same, changed, settled: popping()};
+            }""")
+        finally:
+            browser.close()
+    # First paint and an unchanged repaint stay still; a new value pops, then the class clears.
+    assert out["first"] is False and out["same"] is False
+    assert out["changed"] == [True, "53% remaining"]
+    assert out["settled"] is False
+
+
 def test_effort_meter_fills_to_the_level_and_jobs_busy_states_use_the_working_line():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:

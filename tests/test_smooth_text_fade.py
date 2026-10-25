@@ -563,22 +563,21 @@ def test_live_streaming_assistant_content_opts_out_of_global_theme_transitions()
     )
 
 
-def test_stream_fade_css_is_opacity_only_and_hides_live_cursor():
+def test_stream_fade_css_fades_out_of_a_blur_in_place_and_hides_live_cursor():
     fade_css = STYLE_CSS[STYLE_CSS.index("OpenWebUI-style streaming word fade") :]
-    assert "filter:" not in STYLE_CSS[STYLE_CSS.index("OpenWebUI-style streaming word fade") :].split(
-        "[data-live-assistant", 1
-    )[0]
-    assert "translateY" not in STYLE_CSS[STYLE_CSS.index("OpenWebUI-style streaming word fade") :].split(
-        "[data-live-assistant", 1
-    )[0]
+    fade_rules = fade_css.split("[data-live-assistant", 1)[0]
+    # Words fade and un-blur in place: nothing translates, and the blur ends at none.
+    assert "translateY" not in fade_rules
+    assert "transform" not in fade_rules
+    assert "100%{opacity:1;filter:none;}" in fade_rules
     assert_contains_all(
         fade_css,
         [
             "@keyframes stream-fade-word-in",
             ".stream-fade-word.is-new",
             "var(--stream-fade-ms,620ms) cubic-bezier(.16,.84,.32,1)",
-            "35%{opacity:.18;}",
-            "70%{opacity:.72;}",
+            "35%{opacity:.18;filter:blur(2.5px);}",
+            "70%{opacity:.72;filter:blur(.8px);}",
             "prefers-reduced-motion: reduce",
             ".msg-body.stream-fade-active > :last-child::after",
             "display:none",

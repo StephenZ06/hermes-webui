@@ -10581,10 +10581,11 @@ main.main.showing-logs > #mainLogs{display:flex;}
 @media (max-width:640px){#insightsContent,.logs-main-body{padding:14px;}.insights-row{grid-template-columns:1fr;}.logs-output{max-height:calc(100dvh - 150px);}}
 
 /* OpenWebUI-style streaming word fade (opt-in via Settings → Preferences).
-   Opacity-only fade with JS-paced word/paragraph reveal. */
+   JS-paced word/paragraph reveal; each word resolves out of a soft blur
+   (transitions.dev "streaming text"). Nothing moves, so no layout shift. */
 .stream-fade-active .stream-fade-word{display:inline;}
-.stream-fade-word.is-new{animation:stream-fade-word-in var(--stream-fade-ms,620ms) cubic-bezier(.16,.84,.32,1) both;will-change:opacity;}
-@keyframes stream-fade-word-in{0%{opacity:0;}35%{opacity:.18;}70%{opacity:.72;}100%{opacity:1;}}
+.stream-fade-word.is-new{animation:stream-fade-word-in var(--stream-fade-ms,620ms) cubic-bezier(.16,.84,.32,1) both;will-change:opacity,filter;}
+@keyframes stream-fade-word-in{0%{opacity:0;filter:blur(4px);}35%{opacity:.18;filter:blur(2.5px);}70%{opacity:.72;filter:blur(.8px);}100%{opacity:1;filter:none;}}
 @media (prefers-reduced-motion: reduce){.stream-fade-word.is-new{animation:none;will-change:auto;}}
 [data-live-assistant="1"]:last-child .msg-body.stream-fade-active > :last-child::after,
 [data-live-assistant="1"]:last-child .msg-body.stream-fade-active:not(:has(> *))::after{display:none;content:none;}
@@ -15263,3 +15264,50 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Notes list column: the title row matches the sidebar header beside it
    (41px, title centred on "NOTES"), with even space above and below. */
 .nb-list-head{box-sizing:border-box;min-height:41px;padding:0 14px 0 16px;}
+/* Thinking states (transitions.dev "shimmer text"): while a turn runs, the
+   live activity line and the active thinking label shimmer, and the dot
+   breathes in the accent. Settled turns lose the live attributes and the
+   effect with them. */
+.tool-call-group[data-live-tool-call-group="1"] :is(.tool-worklog-label,.tool-call-group-label),
+.agent-activity-thinking[data-thinking-active="1"] .thinking-card-label,
+#thinkingRow[data-thinking-active="1"] .thinking-card-label{background:linear-gradient(90deg,currentColor 35%,color-mix(in srgb,currentColor 30%,transparent) 50%,currentColor 65%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:mi-shimmer 2.2s linear infinite;}
+.tool-call-group[data-live-tool-call-group="1"] > .tool-worklog-summary .as-dot{background:var(--accent);opacity:1;animation:live-dot-breathe 1.6s ease-in-out infinite;}
+@keyframes live-dot-breathe{0%,100%{transform:scale(.7);opacity:.55;}50%{transform:scale(1);opacity:1;}}
+@media (prefers-reduced-motion:reduce){
+  .tool-call-group[data-live-tool-call-group="1"] :is(.tool-worklog-label,.tool-call-group-label),
+  .agent-activity-thinking[data-thinking-active="1"] .thinking-card-label,
+  #thinkingRow[data-thinking-active="1"] .thinking-card-label{animation:none;background:none;-webkit-text-fill-color:currentColor;}
+  .tool-call-group[data-live-tool-call-group="1"] > .tool-worklog-summary .as-dot{animation:none;}
+}
+/* Menus grow out of their trigger (transitions.dev "menu dropdown"), height
+   only so their width reads true from the first frame: the
+   composer menus open upward so they scale from their bottom edge; themed
+   select lists from whichever edge faces their button. Toasts slide in out
+   of a light blur. */
+@keyframes menu-from-trigger{from{opacity:0;transform:translateY(var(--menu-from-y,4px)) scaleY(.94);}}
+:is(.model-dropdown,.ws-dropdown,.composer-toolsets-dropdown,.composer-reasoning-dropdown,.cmd-dropdown,.profile-dropdown).open{transform-origin:50% 100%;animation:menu-from-trigger .18s cubic-bezier(.16,1,.3,1);}
+.themed-select-popup{transform-origin:50% 0;--menu-from-y:-4px;animation:menu-from-trigger .18s cubic-bezier(.16,1,.3,1);}
+.themed-select-popup.opens-up{transform-origin:50% 100%;--menu-from-y:4px;}
+.toast{filter:blur(3px);transition:opacity .2s,transform .32s cubic-bezier(.22,1,.36,1),filter .32s cubic-bezier(.22,1,.36,1);}
+.toast.show{filter:none;}
+@media (prefers-reduced-motion:reduce){
+  :is(.model-dropdown,.ws-dropdown,.composer-toolsets-dropdown,.composer-reasoning-dropdown,.cmd-dropdown,.profile-dropdown).open,.themed-select-popup{animation:none;}
+  .toast{filter:none;transition:opacity .2s;}
+}
+/* Number pop-in (transitions.dev): a number that just changed rises in out
+   of a small blur (Micro.pop: usage %, Dashboard stats and counts). */
+.mi-num-pop{display:inline-block;animation:mi-num-pop .42s cubic-bezier(.34,1.56,.64,1) both;}
+@keyframes mi-num-pop{from{opacity:0;transform:translateY(.35em) scale(.85);filter:blur(2px);}}
+@media (prefers-reduced-motion:reduce){.mi-num-pop{animation:none;}}
+/* Checkbox check (transitions.dev): ticking a habit draws its check in,
+   short stroke first, while the box pops. */
+.dash-habit-check.is-on.is-pop svg path{stroke-dasharray:23 23;animation:check-draw .34s .05s cubic-bezier(.65,0,.35,1) both;}
+@keyframes check-draw{from{stroke-dashoffset:-23;}to{stroke-dashoffset:0;}}
+@media (prefers-reduced-motion:reduce){.dash-habit-check.is-on.is-pop svg path{animation:none;stroke-dasharray:none;}}
+/* Themed orb (Libraries.dev "thinking orb"): behind the empty chat's logo, a
+   soft accent glow drifts and breathes, so a fresh chat feels awake. */
+.empty-logo::before{content:"";position:absolute;z-index:0;left:50%;top:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;background:conic-gradient(from var(--empty-orb-angle,0deg),color-mix(in srgb,var(--accent) 55%,transparent),color-mix(in srgb,var(--accent) 12%,transparent) 35%,color-mix(in srgb,var(--accent) 40%,transparent) 65%,color-mix(in srgb,var(--accent) 55%,transparent));filter:blur(26px);opacity:.42;pointer-events:none;animation:empty-orb-spin 14s linear infinite,empty-orb-breathe 5s ease-in-out infinite;}
+@property --empty-orb-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
+@keyframes empty-orb-spin{to{--empty-orb-angle:360deg;}}
+@keyframes empty-orb-breathe{0%,100%{transform:scale(.88);opacity:.32;}50%{transform:scale(1.06);opacity:.5;}}
+@media (prefers-reduced-motion:reduce){.empty-logo::before{animation:none;}}

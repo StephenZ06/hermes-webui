@@ -952,6 +952,8 @@
       thumbFrom = {left: tr.left - bar.getBoundingClientRect().left - bar.clientLeft, width: tr.width};
     }
     const strips = new Map([...host.querySelectorAll('.dash-habit[data-habit] .dash-heat')].map((h) => [h.closest('.dash-habit').dataset.habit, h.getBoundingClientRect()]));
+    // What each number read before this repaint, so only the ones that changed pop in.
+    const numbers = new Map([...host.querySelectorAll(NUMBERS)].map((el) => [numberKey(el), el.textContent]));
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
         <div class="dash-head-right">
@@ -972,6 +974,7 @@
         setTimeout(() => { h.style.transition = ''; h.style.transformOrigin = ''; }, 420);
       });
     }
+    if (window.Micro) host.querySelectorAll(NUMBERS).forEach((el) => { const was = numbers.get(numberKey(el)); if (was !== undefined && was !== el.textContent) window.Micro.pop(el); });
     host.querySelectorAll('video.rpg-hero-video').forEach((v) => { const kept = videos.get(v.dataset.src); if (kept && kept !== v && !v.closest('.rpg-levelup')) v.replaceWith(kept); });
     const restore = () => {
       host.querySelectorAll(SCROLLERS).forEach((el) => { const top = lists[scrollKey(el)]; if (top) el.scrollTop = top; });
@@ -999,6 +1002,16 @@
     markScrollable(host);
   }
 
+  // Stat tiles and row counts; keyed by tab, card and label so a repaint can
+  // tell a number that changed from one that merely re-rendered.
+  const NUMBERS = '.dash-stat b,.dash-num';
+  function numberKey(el) {
+    const card = el.closest('[data-dash-card],.dash-card,.rpg-panel');
+    const cardName = card ? (card.dataset.dashCard || ((card.querySelector('h3') || {}).textContent || '').replace(/[·\d\/\s]+$/, '')) : '';
+    const row = el.closest('.dash-stat,.dash-row');
+    const label = row ? ((row.querySelector('small,strong') || {}).textContent || '') : '';
+    return `${state.tab}|${cardName}|${label}`;
+  }
   // A card whose list scrolls shows a small arrow at its bottom edge while
   // more rows are hidden below; it goes once the list is scrolled to the end.
   const SCROLLERS = '.dash-card-body,.dash-learning-entries';

@@ -2303,7 +2303,14 @@ function _renderAccountUsageImpl(data){
   widget.classList.toggle('has-window-toggle',hasWindowToggle);
   if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':(hasWindowToggle?t('chat_usage'):(selected.label?`${selected.label} usage`:t('chat_usage_weekly')));
   const pctEl=$('chatUsageWidgetPercent');
-  if(pctEl) pctEl.textContent=remaining+'% '+t('chat_usage_remaining');
+  if(pctEl){
+    // Same window, new value: the number pops in. A window switch has its own swap.
+    const pctText=remaining+'% '+t('chat_usage_remaining');
+    const changed=pctEl.dataset.usageWindow===selectedKey&&pctEl.textContent!==pctText;
+    pctEl.textContent=pctText;
+    pctEl.dataset.usageWindow=selectedKey;
+    if(changed&&window.Micro) window.Micro.pop(pctEl);
+  }
   _renderAccountUsageBattery(remaining);
   const toggle=$('chatUsageWidgetWindowToggle');
   if(toggle){

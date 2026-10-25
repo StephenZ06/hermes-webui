@@ -209,6 +209,16 @@
     return `<span class="mi-status${extraClass ? ` ${extraClass}` : ''}${list.length > 1 ? ' is-stepping' : ''}" role="status" aria-label="${escapeHtml(list[0] || '')}"><span class="mi-status-dot" aria-hidden="true"></span><span class="mi-status-lines">${lines}</span></span>`;
   }
 
+  // ---- number pop-in --------------------------------------------------------------
+  // A number that just changed rises in out of a small blur, so the eye finds it.
+  function pop(el) {
+    if (!el || reduced()) return;
+    el.classList.remove('mi-num-pop');
+    void el.offsetWidth;
+    el.classList.add('mi-num-pop');
+    el.addEventListener('animationend', () => el.classList.remove('mi-num-pop'), { once: true });
+  }
+
   // ---- confetti --------------------------------------------------------------------
   // For milestones (first interview, an offer). Kept ready; nothing calls it
   // until the app records milestones.
@@ -359,7 +369,7 @@
     return String(value == null ? '' : value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
   }
 
-  window.Micro = { tabs, scan, busy, done, fail, restore, shake, invalid, arm, disarm, ghostToast, status, confetti, hideTip };
+  window.Micro = { tabs, scan, busy, done, fail, restore, shake, invalid, arm, disarm, ghostToast, status, pop, confetti, hideTip };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => scan(document));
   else scan(document);
 }());
