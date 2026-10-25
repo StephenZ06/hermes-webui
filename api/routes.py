@@ -15813,10 +15813,21 @@ def _route_get_api_crons_run(handler, parsed):
 
 
 def _route_get_api_crons_recent(handler, parsed):
-    from api.profiles import cron_profile_context
+    from api.profiles import cron_profile_context, get_active_hermes_home
 
-    with cron_profile_context():
-        _ensure_agent_cron_import_path()
+    # The in-process ticker holds the cron env lock for a whole due-job run, which
+    # can take minutes. This poll only reads jobs.json, so pin the store with the
+    # agent's context-local use_cron_store instead of queueing behind that lock
+    # (the wait outlasted the client timeout and toasted "Request timed out").
+    _ensure_agent_cron_import_path()
+    try:
+        from cron.jobs import use_cron_store
+    except ImportError:
+        use_cron_store = None
+    if use_cron_store is None:
+        with cron_profile_context():
+            return _handle_cron_recent(handler, parsed)
+    with use_cron_store(get_active_hermes_home()):
         return _handle_cron_recent(handler, parsed)
 
 

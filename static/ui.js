@@ -2373,7 +2373,7 @@ async function loadAccountUsage(profile, options={}){
   let data;
   try{
     const refresh=options&&options.refresh===true?'&refresh=1':'';
-    data=await api(`/api/account_usage?profile=${encodeURIComponent(profileName)}${refresh}`,{cache:options&&options.refresh?'no-store':undefined});
+    data=await api(`/api/account_usage?profile=${encodeURIComponent(profileName)}${refresh}`,{cache:options&&options.refresh?'no-store':undefined,timeoutToast:false});
   }catch(e){
     if(requestGeneration!==_accountUsageRequestGeneration) return;
     widget.hidden=true;

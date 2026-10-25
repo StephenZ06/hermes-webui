@@ -16497,7 +16497,7 @@ function startCronPolling(){
     if(document.hidden) return;  // don't poll when tab is in background
     try{
       const pollGeneration=_cronPollGeneration;
-      const data=await api(`/api/crons/recent?since=${_cronPollSince}`);
+      const data=await api(`/api/crons/recent?since=${_cronPollSince}`,{timeoutToast:false});
       if(pollGeneration!==_cronPollGeneration) return;
       if(data.completions&&data.completions.length>0){
         for(const c of data.completions){
