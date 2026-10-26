@@ -1353,3 +1353,22 @@ def test_reopening_notes_fetches_the_last_note_and_editor_alongside_the_list():
     # Both were asked for while the list request was still held.
     assert asked[note_id] < listed[0]
     assert asked["blocknote-hermes.js"] < listed[0]
+
+
+def test_picking_a_note_inside_a_workspace_folds_the_middle_list(page):
+    # Only the workspace tile itself folded the list away; a note picked from
+    # inside the workspace left the middle list (a second copy) open.
+    project = _api("/api/projects/create", {"name": f"Fold {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
+    note = _api("/api/notebook/notes/create", {"title": "Inside", "project_id": project["project_id"]})["note"]
+    _open(page)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_function("() => !document.querySelector('.nb.nb-list-collapsed')", timeout=10000)
+    tile = f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']"
+    page.wait_for_selector(tile, timeout=15000)
+    # Unfold the workspace to reach its note, then go back to General (list shown).
+    page.click(tile)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_function("() => !document.querySelector('.nb.nb-list-collapsed')", timeout=10000)
+    page.click(f"#notebookSidebar [data-nb-note-row='{note['id']}'] [data-nb-open]")
+    page.wait_for_function("(id) => document.querySelector('.nb.nb-list-collapsed') && document.getElementById('nbTitle').value === 'Inside'", arg=note["id"], timeout=10000)
+    assert page.evaluate(f"() => document.querySelector(\"{tile}\").classList.contains('active')")

@@ -1939,7 +1939,18 @@
     }
     if (S.deleteMode && t.closest('[data-nb-open]') && t.closest('#notebookSidebar')) return;
     const open = t.closest('[data-nb-open]');
-    if (open) { await openNote(open.dataset.nbOpen); return; }
+    if (open) {
+      // A note picked in a workspace or folder of the side panel selects that
+      // place too, as its tile does, so the middle list folds away the same way.
+      const group = open.closest('#notebookSidebar .project-folder-sessions');
+      const tile = group && group.previousElementSibling;
+      if (tile && tile.matches('.nb-place-btn') && !(S.scope.kind === tile.dataset.nbKind && S.scope.id === tile.dataset.nbId)) {
+        S.scope = {kind: tile.dataset.nbKind, id: tile.dataset.nbId};
+        if (S.note && S.note.id === open.dataset.nbOpen) { render(); return; }
+      }
+      await openNote(open.dataset.nbOpen);
+      return;
+    }
     const scope = t.closest('[data-nb-scope]');
     if (scope) {
       S.scope = {kind: scope.dataset.nbScope, id: null};
