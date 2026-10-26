@@ -7933,7 +7933,9 @@ main.main > #mainPlugin{display:none;}
 .chat-sidebar-section--workspaces .chat-sidebar-section-heading svg{display:none;}
 .chat-sidebar-section--workspaces .sidebar-search{padding:0 4px 10px;}
 .chat-sidebar-section--workspaces .project-folder-list{padding:6px 4px 8px;}
-.chat-sidebar-section--conversations{margin:0 0 3px;padding:0;border-top:0;}
+/* 4px more under CONVERSATIONS than over it: the card above ends in a faint
+   border and LAST WEEK below is bright text, so equal gaps read tight below. */
+.chat-sidebar-section--conversations{margin:0 0 7px;padding:0;border-top:0;}
 .chat-sidebar-section--conversations .chat-sidebar-section-heading{margin:3px 4px 0;gap:10px;padding:0;}
 .chat-sidebar-section--conversations .chat-sidebar-section-heading::before,.chat-sidebar-section--conversations .chat-sidebar-section-heading::after{content:"";height:1px;flex:1;background:var(--border);}
 .chat-sidebar-section--conversations .chat-sidebar-section-heading svg{display:none;}

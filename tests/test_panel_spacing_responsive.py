@@ -46,7 +46,7 @@ def test_chat_workspaces_heading_matches_the_office_divider_pattern():
 
 
 def test_chat_conversations_heading_uses_the_same_centered_divider_pattern():
-    assert ".chat-sidebar-section--conversations{margin:0 0 3px;padding:0;border-top:0;}" in CSS
+    assert ".chat-sidebar-section--conversations{margin:0 0 7px;padding:0;border-top:0;}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading{margin:3px 4px 0;gap:10px;padding:0;}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading::before,.chat-sidebar-section--conversations .chat-sidebar-section-heading::after{content:\"\";height:1px;flex:1;background:var(--border);}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading svg{display:none;}" in CSS
