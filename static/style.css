@@ -10574,10 +10574,10 @@ main.main.showing-logs > #mainLogs{display:flex;}
 #notebookSidebar .work-hub-projects{padding:0 0 10px;}
 /* A heading straight after a list already has the list's 10px under it: equal space above and below its line. */
 #notebookSidebar .work-hub-projects + .work-hub-projects-heading{margin-top:0;}
-/* After the scope buttons: equal visible space above and below the line. The
-   Work Hub's active "All work" row shows its box; Notes' "Favorites" row is bare text. */
-#workHubSidebar .work-hub-scope + .work-hub-projects-heading{margin:4px 0 15px;}
-#notebookSidebar .work-hub-scope + .work-hub-projects-heading{margin:2px 0 13px;}
+/* After the scope buttons: equal space between the line and the scope row's
+   box (shown when it is active or hovered) above, and the first workspace card below. */
+#workHubSidebar .work-hub-scope + .work-hub-projects-heading{margin:14px 0 15px;}
+#notebookSidebar .work-hub-scope + .work-hub-projects-heading{margin:12px 0 13px;}
 #panelWorkspaces .panel-head-sub{padding-bottom:2px;}
 @media (max-width:640px){#insightsContent,.logs-main-body{padding:14px;}.insights-row{grid-template-columns:1fr;}.logs-output{max-height:calc(100dvh - 150px);}}
 
