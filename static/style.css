@@ -7879,7 +7879,10 @@ main.main > #mainPlugin{display:none;}
 .chat-usage-widget{margin:10px 12px 0;padding:10px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--surface) 78%,transparent);box-shadow:0 1px 2px rgba(0,0,0,.08);flex-shrink:0;transition:opacity .25s ease;}
 .chat-usage-widget.is-fading{opacity:0;}
 .chat-usage-widget-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--chat-sidebar-card-type-size);color:var(--muted);margin-bottom:8px;}
-.chat-usage-widget-title-row{line-height:1;}
+/* 16px "5H SESSION USAGE" plus the toggle just fit the card in Zeus 2.0;
+   a skin with a wider label puts the toggle on its own line instead of
+   pushing it past the card's edge. */
+.chat-usage-widget-title-row{line-height:1;gap:8px 4px;flex-wrap:wrap;}
 .chat-usage-widget-label{display:inline-flex;align-items:center;gap:5px;line-height:16px;font-weight:600;color:var(--text);}
 .chat-usage-widget-label svg{display:block;flex:0 0 14px;width:14px;height:14px;color:var(--accent);}
 .chat-usage-widget-label-stage{position:relative;display:inline-flex;align-items:center;min-width:0;line-height:14px;white-space:nowrap;text-transform:uppercase;}
@@ -7888,10 +7891,10 @@ main.main > #mainPlugin{display:none;}
 .chat-usage-widget-percent{font-weight:650;color:var(--text);font-variant-numeric:tabular-nums;}
 .chat-usage-widget-window-toggle{position:relative;display:flex;align-items:center;gap:0;width:max-content;max-width:100%;padding:1px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);}
 .chat-usage-widget-window-toggle[hidden]{display:none!important;}
-.chat-usage-widget-window-toggle::before{content:'';position:absolute;z-index:0;top:1px;bottom:1px;left:1px;width:54px;border-radius:4px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.12);transform:translateX(0);transition:transform .32s cubic-bezier(.2,.8,.2,1);}
-.chat-usage-widget-window-toggle[data-active-window="weekly"]::before{transform:translateX(54px);}
+.chat-usage-widget-window-toggle::before{content:'';position:absolute;z-index:0;top:1px;bottom:1px;left:1px;width:46px;border-radius:4px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.12);transform:translateX(0);transition:transform .32s cubic-bezier(.2,.8,.2,1);}
+.chat-usage-widget-window-toggle[data-active-window="weekly"]::before{transform:translateX(46px);}
 .chat-usage-widget-title-row .chat-usage-widget-window-toggle{margin-left:auto;}
-.chat-usage-widget-window-toggle button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:54px;min-height:18px;border:0;border-radius:4px;padding:2px 5px;background:transparent;color:var(--muted);font:inherit;font-size:10px;line-height:1;cursor:pointer;transition:color .16s ease;}
+.chat-usage-widget-window-toggle button{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:46px;min-height:18px;border:0;border-radius:4px;padding:2px;white-space:nowrap;background:transparent;color:var(--muted);font:inherit;font-size:10px;line-height:1;cursor:pointer;transition:color .16s ease;}
 .chat-usage-widget-window-toggle button:hover{color:var(--text);}
 .chat-usage-widget-window-toggle button.active{color:var(--text);}
 .chat-usage-widget-battery{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;width:100%;}
@@ -15250,15 +15253,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .composer-box.is-working::after{animation:none;background:color-mix(in srgb,var(--accent) 55%,transparent);}
   .send-btn.icon-swap > svg{animation:none;}
 }
-/* Usage card: with the 5h/Weekly toggle showing, "USAGE" stands as tall as
-   the toggle (cap height = its 22px box), and the card's inked edges sit
-   the same distance from the border on every side. */
-.chat-usage-widget.has-window-toggle .chat-usage-widget-label{font-size:31px;letter-spacing:0;}
-.chat-usage-widget.has-window-toggle .chat-usage-widget-label-stage{line-height:22px;}
-:root[data-skin="zeus-2"] .chat-usage-widget.has-window-toggle .chat-usage-widget-label{font-size:38px;}
-:root[data-skin="zeus-2"] .chat-usage-widget.has-window-toggle .chat-usage-widget-label-stage{top:-2px;}
-.chat-usage-widget.has-window-toggle .chat-usage-widget-title-row{min-width:0;}
-.chat-usage-widget{padding-bottom:8px;}
 /* Square "+" (Work Hub, Notes): an odd box puts the odd 1px cross on whole
    pixels, so it sits dead centre instead of half a pixel low. */
 .work-hub-project-create{width:23px;height:23px;}

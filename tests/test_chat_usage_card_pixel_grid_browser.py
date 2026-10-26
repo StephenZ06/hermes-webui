@@ -37,3 +37,37 @@ def test_usage_card_height_is_a_whole_number_of_pixels():
     for skin, hidden, height in heights:
         assert hidden is False, skin
         assert height == round(height), (skin, height)
+
+
+def test_session_label_keeps_its_size_and_the_window_toggle_stays_inside_the_card():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            out = page.evaluate("""() => {
+              switchPanel('chat');
+              const rows = [];
+              for (const skin of ['zeus-2', '']) {
+                if (skin) document.documentElement.dataset.skin = skin; else delete document.documentElement.dataset.skin;
+                _renderAccountUsage({available: true, provider: 'openai-codex', plan: 'Pro',
+                  windows: [{label: '5h session', used_percent: 10}, {label: 'Weekly', used_percent: 42}]});
+                selectAccountUsageWindow('session');
+                const card = document.getElementById('chatUsageWidget').getBoundingClientRect();
+                const toggle = document.getElementById('chatUsageWidgetWindowToggle').getBoundingClientRect();
+                const label = document.getElementById('chatUsageWidgetLabel');
+                const buttons = [...document.querySelectorAll('#chatUsageWidgetWindowToggle button')].map((b) => b.getBoundingClientRect().height);
+                rows.push({skin: skin || 'default', text: label.textContent, size: getComputedStyle(label).fontSize,
+                           overflow: toggle.right - card.right, buttons});
+              }
+              return rows;
+            }""")
+        finally:
+            browser.close()
+    for row in out:
+        assert row["text"] == "5h session usage", row
+        assert row["size"] == "16px", row
+        assert row["overflow"] <= -1, row  # inside the card's border
+        assert max(row["buttons"]) < 24, row  # "5 hours" on one line

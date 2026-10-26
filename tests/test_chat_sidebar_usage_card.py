@@ -121,10 +121,10 @@ def test_usage_window_switch_has_one_sliding_active_indicator():
 
 
 def test_codex_usage_window_toggle_uses_the_compact_control_size():
-    assert "width:54px" in CSS
+    assert "width:46px" in CSS
     assert "min-height:18px" in CSS
     assert "font-size:10px" in CSS
-    assert "transform:translateX(54px)" in CSS
+    assert "transform:translateX(46px)" in CSS
 
 
 def test_usage_window_motion_is_not_silently_skipped_for_the_explicit_control():
