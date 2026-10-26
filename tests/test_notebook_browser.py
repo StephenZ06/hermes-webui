@@ -1411,3 +1411,17 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
     assert any(0 < f["opacity"] < 1 for f in shown), "the body cut in instead of fading"
     assert not any(f["skel"] is False and f["text"] == "" and f["opacity"] for f in frames[frames.index(next(f for f in frames if f["skel"])):]), "an empty editor showed"
     assert final == {"skel": False, "opacity": 1, "text": final["text"]} and "alpha body text" in final["text"]
+
+
+def test_block_handle_sits_on_the_line_of_text(page):
+    # The dot grid is taller than the capitals and Courier New sits high in its
+    # line box, so a handle centred on the block read low against the text.
+    _open(page)
+    _new_note(page, f"Grip {uuid.uuid4().hex[:6]}")
+    page.click(".hermes-note-editor .bn-editor")
+    line = page.query_selector(".bn-inline-content").bounding_box()
+    page.mouse.move(line["x"] + 40, line["y"] + line["height"] / 2)
+    page.wait_for_selector("#nbEditorHost .bn-side-menu [draggable=true] svg", timeout=5000)
+    grip = page.query_selector("#nbEditorHost .bn-side-menu [draggable=true] svg").bounding_box()
+    offset = (grip["y"] + grip["height"] / 2) - (line["y"] + line["height"] / 2)
+    assert -1.5 <= offset <= -0.5, offset

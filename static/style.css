@@ -15103,6 +15103,10 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* The bars sit on the text's lines: the editor's side inset (54/28/24px at
    the .bn-editor breakpoints), 16px text on a 30px pitch. */
 .nb-editor-host{position:relative;display:flow-root;--nb-text-inset:54px;}
+/* The + and drag handle are centred on the 30px block, but the 14px dot
+   grid reads 1-2px below the line's capitals (Courier New sits high in its
+   line box on Windows); lift both 1px onto the text. */
+#nbEditorHost .bn-side-menu>*{position:relative;top:-1px;}
 @media (max-width:900px){.nb-editor-host{--nb-text-inset:28px;}}
 @media (max-width:760px){.nb-editor-host{--nb-text-inset:24px;}}
 .nb-skel{position:absolute;top:0;left:0;right:0;z-index:1;display:flex;flex-direction:column;gap:18px;padding:11px var(--nb-text-inset) 0;pointer-events:none;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
