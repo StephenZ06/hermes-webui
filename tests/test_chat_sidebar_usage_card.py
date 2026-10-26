@@ -64,7 +64,7 @@ def test_usage_window_switch_uses_shared_type_and_motion_tokens():
     assert ".chat-usage-widget-window-content.is-incoming" in CSS
     assert "chatUsageWindowTextEnter" in CSS
     assert "is-incoming" in UI
-    assert ".chat-sidebar-section--conversations{margin:0 0 2px;" in CSS
+    assert ".chat-sidebar-section--conversations{margin:0 0 4px;" in CSS
     assert ".chat-usage-widget-label-stage{position:relative;display:inline-flex;align-items:center;" in CSS
     assert "text-transform:uppercase" in CSS
     assert ".chat-usage-widget-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;" in CSS
