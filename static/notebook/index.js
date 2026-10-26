@@ -68,6 +68,7 @@
   let editorNoteId = null;
   let themeObserver = null;
   let searchTimer = 0;
+  let autoOpenTimer = 0; // a place's tile opening its most recent note
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -410,13 +411,28 @@
     // look as though it is still showing a second copy of the same scope.
     const currentIsInScope = S.note && ((tile.dataset.nbKind === 'project' && S.note.project_id === tile.dataset.nbId)
       || (tile.dataset.nbKind === 'folder' && S.note.folder_id === tile.dataset.nbId));
-    if (!currentIsInScope) {
+    // On a wide screen, open the place's most recently edited note instead of
+    // leaving the editor on "Select a note". It waits for the group's 160ms
+    // open transition, since opening a note re-renders the side panel. On a
+    // phone the tree is the next step, so the place only lists its notes.
+    const recent = currentIsInScope ? null : mostRecentIn(S.scope);
+    clearTimeout(autoOpenTimer);
+    if (recent && !window.matchMedia('(max-width: 760px)').matches) {
+      const scope = S.scope;
+      autoOpenTimer = setTimeout(() => {
+        if (S.scope === scope && !(S.note && S.note.id === recent.id)) openNote(recent.id);
+      }, 170);
+    } else if (!currentIsInScope) {
       destroyEditor();
       S.note = null; S.noteError = ''; S.noteLoading = false;
     }
     ensureShell();
     renderList();
     renderEditorHead();
+  }
+  function mostRecentIn(scope) {
+    return S.notes.filter((n) => inScope(n, scope))
+      .reduce((best, n) => (!best || n.updated_at > best.updated_at ? n : best), null);
   }
 
   // ── rendering: main ─────────────────────────────────────────────────────────
@@ -1605,6 +1621,7 @@
     return hit;
   }
   async function openNote(noteId, opts) {
+    clearTimeout(autoOpenTimer);
     if (S.note && S.note.id === noteId && !(opts && opts.force)) { S.pane = 'editor'; ensureShell(); return; }
     await flushSave();
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');

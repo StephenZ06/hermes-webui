@@ -284,13 +284,16 @@ def test_opening_a_workspace_does_not_slide_its_rows(page, panel):
     tile = (f"#workHubSidebar [data-project-toggle='{project['project_id']}']" if panel == "notes"
             else f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']")
     page.wait_for_selector(tile, timeout=15000)
+    # The row is looked up each frame: opening a Notes workspace also opens its
+    # latest note, which re-renders the side panel once the group is open.
     xs = page.evaluate("""(sel) => new Promise((resolve) => {
-      const tile = document.querySelector(sel);
-      const group = document.getElementById(tile.getAttribute('aria-controls'));
+      const groupId = document.querySelector(sel).getAttribute('aria-controls');
       const xs = []; const t0 = performance.now();
-      tile.click();
+      document.querySelector(sel).click();
       const tick = () => {
-        const row = group.querySelector('.work-hub-board-row');
+        const tile = document.querySelector(sel);
+        const group = document.getElementById(groupId);
+        const row = group && group.querySelector('.work-hub-board-row');
         if (row) {
           const r = row.getBoundingClientRect();
           xs.push([r.left, r.top - tile.getBoundingClientRect().bottom].map((v) => Math.round(v * 10) / 10));
@@ -1425,3 +1428,43 @@ def test_block_handle_sits_on_the_line_of_text(page):
     grip = page.query_selector("#nbEditorHost .bn-side-menu [draggable=true] svg").bounding_box()
     offset = (grip["y"] + grip["height"] / 2) - (line["y"] + line["height"] / 2)
     assert 0.5 <= offset <= 1.5, offset
+
+
+def _place_with_two_notes():
+    # "Edited" is made first but edited last, so creation order and the
+    # list's order cannot pick it by accident.
+    project = _api("/api/projects/create", {"name": f"Recent {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
+    edited = _api("/api/notebook/notes/create", {"title": "Edited last", "project_id": project["project_id"]})["note"]
+    _api("/api/notebook/notes/create", {"title": "Made last", "project_id": project["project_id"]})
+    _api(f"/api/notebook/notes/{edited['id']}/update", {"title": "Edited last", "content": [], "expected_revision": edited["revision"]})
+    return project, f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']"
+
+
+def test_opening_a_workspace_opens_its_most_recently_edited_note(page):
+    project, tile = _place_with_two_notes()
+    empty = _api("/api/projects/create", {"name": f"Empty {uuid.uuid4().hex[:4]}", "color": "#5fbf9f"})["project"]
+    _open(page)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_selector(tile, timeout=15000)
+    page.click(tile)
+    page.wait_for_function("() => document.getElementById('nbTitle') && document.getElementById('nbTitle').value === 'Edited last'", timeout=10000)
+    assert page.is_hidden("#nbEditorEmpty")
+    # A workspace with no notes still offers to start one.
+    page.click(f"#notebookSidebar .nb-place-btn[data-nb-id='{empty['project_id']}']")
+    page.wait_for_function("() => !document.getElementById('nbEditorEmpty').hidden", timeout=10000)
+    assert "start a new one" in page.inner_text("#nbEditorEmpty")
+
+
+def test_on_a_phone_a_workspace_lists_its_notes_without_opening_one(page):
+    project, tile = _place_with_two_notes()
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_selector("#notebookSidebar .nb-nav", state="attached", timeout=15000)
+    page.evaluate("() => document.querySelector('[data-nb-scope=general]').click()")
+    page.wait_for_selector(tile, state="attached", timeout=15000)
+    page.evaluate(f"() => document.querySelector(\"{tile}\").click()")
+    page.wait_for_timeout(600)
+    assert page.evaluate("() => !document.getElementById('nbTitle') || document.getElementById('nbTitle').value !== 'Edited last'")
