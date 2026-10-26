@@ -948,15 +948,15 @@ def test_transparent_rows_remove_card_chrome_by_default():
 
 def test_smaller_tool_icons_and_reduced_font_sizes():
     """Tool icons are constrained to 11px (was 14px), and the tool name
-    font is 11.5px (was 12.5px — reduced by two notches). The arg-key
+    font is 12px (was 13px; whole pixels keep Courier New crisp). The arg-key
     font is 10px (was 11px). Status badge gets a pill background and
     letter-spacing for visual distinction from the copy button."""
     # Icon wrapper size.
     assert "width:14px;height:14px" in STYLE_CSS
     # Inner SVG size.
     assert "width:11px;height:11px" in STYLE_CSS
-    # Tool name font 11.5px (down from 12.5px).
-    assert "font-size:11.5px" in STYLE_CSS
+    # Tool name font 12px (down from 13px).
+    assert "font-size:12px" in STYLE_CSS
     # Status badge: pill background + letter-spacing.
     assert "border-radius:6px" in STYLE_CSS
     assert "letter-spacing:.02em" in STYLE_CSS

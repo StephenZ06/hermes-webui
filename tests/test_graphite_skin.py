@@ -43,8 +43,8 @@ def test_graphite_skin_tunes_workbench_chrome():
     assert "box-shadow:0 1px 2px rgba(0,0,0,0.07)" in CSS
     assert ':root[data-skin="graphite"] .workspace-panel-edge-toggle' in CSS
     assert ':root[data-skin="graphite"] .scroll-to-bottom-btn' in CSS
-    assert ':root[data-skin="graphite"] .session-item{border-radius:8px;font-size:12.5px;' in CSS
-    assert ':root[data-skin="graphite"] .session-meta{font-size:10.5px;' in CSS
+    assert ':root[data-skin="graphite"] .session-item{border-radius:8px;font-size:13px;' in CSS
+    assert ':root[data-skin="graphite"] .session-meta{font-size:11px;' in CSS
     assert ':root[data-skin="graphite"] .session-item.active' in CSS
     assert ':root[data-skin="graphite"] .session-item.active{position:relative;padding:10px 12px 10px 23px;' in CSS
     assert ':root[data-skin="graphite"] .session-item.active.streaming' in CSS
