@@ -15311,3 +15311,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @keyframes empty-orb-spin{to{--empty-orb-angle:360deg;}}
 @keyframes empty-orb-breathe{0%,100%{transform:scale(.88);opacity:.32;}50%{transform:scale(1.06);opacity:.5;}}
 @media (prefers-reduced-motion:reduce){.empty-logo::before{animation:none;}}
+/* Composer's four icon buttons drawn at one optical size (~14px tall): the
+   diagonal paper clip and the solid-framed persona card read larger than the
+   bookmark at the same 16px box, the thin mic smaller. */
+#btnAttach svg{width:14px;height:14px;}
+#btnMic svg,#btnPersonaPicker svg{width:15px;height:15px;}
