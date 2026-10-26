@@ -1415,7 +1415,7 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
 
 def test_block_handle_sits_on_the_line_of_text(page):
     # Centred on the block, the dot grid read ~2.5px above the text on Windows,
-    # so the handle is dropped 2px below the block's centre.
+    # so the handle is dropped 1px below the block's centre.
     _open(page)
     _new_note(page, f"Grip {uuid.uuid4().hex[:6]}")
     page.click(".hermes-note-editor .bn-editor")
@@ -1424,4 +1424,4 @@ def test_block_handle_sits_on_the_line_of_text(page):
     page.wait_for_selector("#nbEditorHost .bn-side-menu [draggable=true] svg", timeout=5000)
     grip = page.query_selector("#nbEditorHost .bn-side-menu [draggable=true] svg").bounding_box()
     offset = (grip["y"] + grip["height"] / 2) - (line["y"] + line["height"] / 2)
-    assert 1.5 <= offset <= 2.5, offset
+    assert 0.5 <= offset <= 1.5, offset

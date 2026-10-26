@@ -105,9 +105,14 @@ def test_opening_a_skill_fades_its_document_in_from_a_skeleton(page):
     page.wait_for_function("() => document.querySelector('#skillDetailBody .skill-detail-content')", timeout=15000)
     _slow(page, r"/api/skills/content")
     page.evaluate(FRAMES_JS, {"host": "#mainSkills", "content": "#skillDetailBody"})
+    first_title = page.evaluate(TITLE_JS, "skillDetailTitle")["text"]
     second = page.query_selector_all(".skill-item")[1]
     second.click()
+    page.wait_for_selector("#mainSkills > .skel", timeout=5000)
+    loading = page.evaluate(TITLE_JS, "skillDetailTitle")
+    assert loading == {"text": "", "bar": True, "header": True}, (first_title, loading)
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
+    assert not page.evaluate(TITLE_JS, "skillDetailTitle")["bar"]
     frames = page.evaluate("() => window.__frames")
     title = page.evaluate("() => document.getElementById('skillDetailBody').innerText.trim().split('\\n').pop()")
     _assert_skeleton_then_fade(frames, title)
@@ -123,6 +128,11 @@ def _fake(page, routes):
           {status: hit[2] || 200, headers: {'Content-Type': 'application/json'}})); }; }""", routes)
 
 
+TITLE_JS = """(id) => { const el = document.getElementById(id);
+  return {text: el.innerText.trim(), bar: !!el.querySelector('.skel-title'),
+          header: getComputedStyle(el.closest('.main-view-header')).display !== 'none'}; }"""
+
+
 def _item(n):
     return {"item": {"id": f"k{n}", "type": "memory", "title": f"Item {n}", "content": f"knowledge body {n}"}}
 
@@ -134,7 +144,11 @@ def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
     page.wait_for_function("() => document.getElementById('knowledgeDetailBody').innerText.includes('knowledge body 1')", timeout=15000)
     page.evaluate(FRAMES_JS, {"host": "#mainKnowledge", "content": "#knowledgeDetailBody"})
     page.evaluate("() => { openKnowledgeItem('k2'); }")
+    page.wait_for_selector("#mainKnowledge > .skel", timeout=5000)
+    # The previous item's title does not linger over the next item's skeleton.
+    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "", "bar": True, "header": True}
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
+    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "Item 2", "bar": False, "header": True}
     _assert_skeleton_then_fade(page.evaluate("() => window.__frames"), "knowledge body 2")
     assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
 

@@ -6519,6 +6519,13 @@ function _setSkillHeaderButtons(mode) {
   else { if (header) header.style.display = 'none';  hide(editBtn); hide(delBtn); hide(cancelBtn); hide(saveBtn); }
 }
 
+// While the next item loads, its header title is a placeholder bar instead of
+// the previous item's title. The title stays non-empty so the header (hidden
+// when its title is empty) does not collapse and jump the view.
+function _skeletonTitle(el) {
+  if (el && window.SkeletonEntrance) el.innerHTML = '<i class="skel-title" aria-hidden="true"></i>';
+}
+
 async function openSkill(name, el) {
   // Highlight active skill in the sidebar list
   document.querySelectorAll('.skill-item').forEach(e => e.classList.remove('active'));
@@ -6534,6 +6541,7 @@ async function openSkill(name, el) {
     const empty = $('skillDetailEmpty');
     if (empty) empty.style.display = 'none';
     skillBody.style.display = '';
+    _skeletonTitle($('skillDetailTitle'));
     skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody]});
     SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
   }
@@ -6551,6 +6559,8 @@ async function openSkill(name, el) {
     _closeMobileSidebarAfterPanelSelection();
   } catch(e) {
     if (skillHost && window.SkeletonEntrance) SkeletonEntrance.cancel(skillHost);
+    const title = $('skillDetailTitle');
+    if (title) title.textContent = name;
     setStatus(t('skill_load_failed') + e.message);
   }
 }
@@ -10821,6 +10831,7 @@ async function openKnowledgeItem(id) {
     const emptyEl = $('knowledgeDetailEmpty');
     if (emptyEl) emptyEl.style.display = 'none';
     bodyEl.style.display = 'block';
+    _skeletonTitle($('knowledgeDetailTitle'));
     const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl]});
     SkeletonEntrance.revealOnChange(skelHost, bodyEl, skelToken);
   }

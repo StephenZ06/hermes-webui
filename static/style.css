@@ -15130,12 +15130,15 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* The + and drag handle are centred on the 30px block, which on Windows
    leaves the 14px dot grid ~2.5px above the text it belongs to (measured on a
    1x screenshot: grid 5-18, "test" ascender-to-baseline 10-18). Drop both
-   2px so the middle row of dots sits on the middle of the lowercase text. */
-#nbEditorHost .bn-side-menu>*{position:relative;top:2px;}
+   1px (2px read low on the user's screen). */
+#nbEditorHost .bn-side-menu>*{position:relative;top:1px;}
 /* A skill: lines across the document column, inside .main-view-body's
    24px 32px padding (16px at phone width). */
 .skel--doc{padding:28px 32px 0;}
 @media(max-width:700px){.skel--doc{padding:20px 16px 0;}}
+/* The header title while the next skill or Knowledge item loads. */
+.skel-title{display:inline-block;vertical-align:middle;width:180px;max-width:60%;height:14px;border-radius:7px;background:color-mix(in srgb,var(--text) 9%,transparent);animation:skel-pulse 1s ease-in-out infinite;}
+@media (prefers-reduced-motion:reduce){.skel-title{animation:none;}}
 /* A Knowledge wiki page: inside the browser's 16px content padding. */
 #wikiBrowserOverlay .skel--doc{padding:16px 16px 0;}
 @media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.skel i{animation:none;}.skel,.skel-host[data-skel] [data-skel-hide]{transition:none;}}
