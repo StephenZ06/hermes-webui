@@ -22698,7 +22698,7 @@ const SkeletonEntrance=(()=>{
   // A bar over a title's line of text: as wide as a short title, as tall as
   // its capitals, centred between their tops and the baseline (how the eye
   // reads a line as centred), from the font's own metrics.
-  function titleBar(title){
+  function titleBar(title,centred){
     const box=title.parentElement;
     if(!box) return null;
     const cs=getComputedStyle(title), r=title.getBoundingClientRect(), b=box.getBoundingClientRect();
@@ -22721,10 +22721,18 @@ const SkeletonEntrance=(()=>{
     bar.style.height=h+'px';
     bar.style.top=Math.round(baseline-ink/2-h/2-b.top+box.scrollTop)+'px';
     const left=r.left+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
-    bar.style.left=Math.round(left-b.left)+'px';
-    // The title may be sized to its old text, so the room is the row's.
-    bar.style.width=Math.round(Math.min(size*9,(b.right-left)*0.6))+'px';
-    box.classList.add('skel-title-host');
+    if(centred){
+      // A title centred with what is beside it (the app titlebar's icon):
+      // the bar takes the title's own place, so nothing beside it moves.
+      bar.style.left=Math.round(left-b.left)+'px';
+      bar.style.width=Math.round(Math.max(size*6,Math.min(size*12,r.width)))+'px';
+    }else{
+      bar.style.left=Math.round(left-b.left)+'px';
+      // The title may be sized to its old text, so the room is the row's.
+      bar.style.width=Math.round(Math.min(size*9,(b.right-left)*0.6))+'px';
+    }
+    // Its row becomes the bar's frame unless it is positioned already.
+    if(getComputedStyle(box).position==='static') box.classList.add('skel-title-host');
     box.appendChild(bar);
     return bar;
   }
@@ -22740,7 +22748,8 @@ const SkeletonEntrance=(()=>{
   // Show the skeleton over `host`. `align` lays it over that element's box
   // (a centred column, or a child that is not at the host's top-left); `hide`
   // lists what it stands in for when that is not every child of the host;
-  // `title` puts a bar over that title's text while it is hidden. Hidden elements carry their own state, so one outside the
+  // `title` puts a bar over that title's text while it is hidden
+  // (`titleCentred` for a title centred with what sits beside it). Hidden elements carry their own state, so one outside the
   // host (a title above the scroll area) fades in with the content.
   function start(host,opts){
     if(!host) return 0;
@@ -22764,7 +22773,7 @@ const SkeletonEntrance=(()=>{
     host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
     host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide','loading'));
     host.dataset.skel='loading';
-    if(opts.title) host._skelTitle=titleBar(opts.title);
+    if(opts.title) host._skelTitle=titleBar(opts.title,opts.titleCentred);
     host.appendChild(el);
     host._skelEl=el;
     host._skelAt=performance.now();

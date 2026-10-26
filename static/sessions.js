@@ -1903,7 +1903,12 @@ async function loadSession(sid){
       _msgInner.innerHTML = '<span class="sr-only" role="status">'+esc(t('loading_conversation'))+'</span>';
       const _messagesEl = $('messages');
       if (_messagesEl && window.SkeletonEntrance) {
-        const _skelToken = SkeletonEntrance.start(_messagesEl, {shape:'chat', align:_msgInner});
+        // On the chat page the titlebar shows the chat's title: it and its
+        // message count give way to a bar and fade in with the transcript.
+        const _onChat = (typeof _currentPanel !== 'string' || !_currentPanel || _currentPanel === 'chat');
+        const _title = _onChat ? $('appTitlebarTitle') : null;
+        const _skelToken = SkeletonEntrance.start(_messagesEl, {shape:'chat', align:_msgInner,
+          hide:[..._messagesEl.children, _title, _title && $('appTitlebarSub')], title:_title, titleCentred:true});
         SkeletonEntrance.revealOnChange(_messagesEl, _msgInner, _skelToken);
       }
     }

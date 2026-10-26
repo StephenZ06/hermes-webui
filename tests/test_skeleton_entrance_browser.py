@@ -80,12 +80,20 @@ def test_opening_a_chat_fades_its_transcript_in_from_a_skeleton(page):
     _slow(page, r"/api/session\?")
     page.evaluate(FRAMES_JS, {"host": "#messages", "content": "#msgInner"})
     page.evaluate("(sid) => { loadSession(sid); }", sids[1])
+    # The titlebar's chat title gives way to a bar in its place while loading.
+    page.wait_for_selector("#messages > .skel", timeout=5000)
+    title = page.evaluate("""() => { const t = document.getElementById('appTitlebarTitle');
+      const bar = t.parentElement.querySelector('.skel-title');
+      return {opacity: Number(getComputedStyle(t).opacity), bar: !!bar,
+              start: bar ? Math.abs(bar.getBoundingClientRect().left - t.getBoundingClientRect().left) : null}; }""")
+    assert title == {"opacity": 0, "bar": True, "start": title["start"]} and title["start"] <= 1, title
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
     frames = page.evaluate("() => window.__frames")
     _assert_skeleton_then_fade(frames, "second transcript reply")
     final = page.evaluate("""() => ({skel: !!document.querySelector('#messages > .skel'),
       hidden: document.querySelectorAll('[data-skel-hide]').length, opacity: Number(getComputedStyle(document.getElementById('msgInner')).opacity)})""")
     assert final == {"skel": False, "hidden": 0, "opacity": 1}
+    assert page.inner_text("#appTitlebarTitle") == "Skel two" and not page.query_selector(".skel-title")
 
 
 def test_a_chat_that_fails_to_load_does_not_stay_hidden(page):
