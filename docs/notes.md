@@ -235,7 +235,7 @@ In the vault:
 | `Ctrl/Cmd+S` | save now |
 | `Alt+N` | new note |
 | `Ctrl/Cmd+Shift+F` | focus note search |
-| `/` (in the editor) | BlockNote slash menu |
+| `/` (in the editor) | BlockNote slash menu; a heading, list, quote or code item formats the line it is typed on (keeping its text), anything else goes below |
 | `Enter` (in the title) | move to the body |
 
 Ctrl/Cmd+N belongs to the browser and Ctrl/Cmd+K to Chat, so they are not used.

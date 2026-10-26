@@ -17,6 +17,44 @@ import { createRoot } from "react-dom/client";
 
 export const BLOCKNOTE_VERSION = "0.55.0";
 
+// Slash-menu items that change what kind of line it is. BlockNote applies
+// them to the current line only when it is empty; on a line with text it
+// inserts a new block below. These keep the text and change the line itself,
+// as a word processor's paragraph styles do. Items that add something
+// (image, table, divider, file...) still go below.
+const LINE_FORMATS = {
+  quote: { type: "quote" },
+  toggle_list: { type: "toggleListItem" },
+  numbered_list: { type: "numberedListItem" },
+  bullet_list: { type: "bulletListItem" },
+  check_list: { type: "checkListItem" },
+  paragraph: { type: "paragraph" },
+  code_block: { type: "codeBlock" },
+};
+
+function lineFormat(editor, key) {
+  const heading = /^(toggle_)?heading(?:_(\d))?$/.exec(String(key || ""));
+  if (!heading) return LINE_FORMATS[key];
+  const props = { level: Number(heading[2] || 1) };
+  if (editor.schema.blockSchema.heading?.propSchema?.isToggleable) props.isToggleable = !!heading[1];
+  return { type: "heading", props };
+}
+
+function formatsTheLine(editor, item) {
+  const format = lineFormat(editor, item.key);
+  if (!format) return item;
+  return {
+    ...item,
+    onItemClick: () => {
+      // By now the menu has removed the "/query" it was opened with.
+      const line = editor.getTextCursorPosition().block;
+      if (!Array.isArray(line.content) || !line.content.length) return item.onItemClick();
+      const updated = editor.updateBlock(line, format);
+      if (editor.getTextCursorPosition().block.id !== updated.id) editor.setTextCursorPosition(updated, "end");
+    },
+  };
+}
+
 function normaliseContent(content) {
   return Array.isArray(content) && content.length ? content : undefined;
 }
@@ -44,7 +82,8 @@ export function mountNoteEditor(host, options = {}) {
   const root = createRoot(host);
   const getItems = async (query) => {
     const extra = typeof options.slashItems === "function" ? options.slashItems(editor) || [] : [];
-    return filterSuggestionItems([...getDefaultReactSlashMenuItems(editor), ...extra], query);
+    const items = getDefaultReactSlashMenuItems(editor).map((item) => formatsTheLine(editor, item));
+    return filterSuggestionItems([...items, ...extra], query);
   };
   const render = () => {
     root.render(

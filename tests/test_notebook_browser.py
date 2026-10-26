@@ -1479,3 +1479,51 @@ def test_on_a_phone_a_workspace_lists_its_notes_without_opening_one(page):
     page.evaluate(f"() => document.querySelector(\"{tile}\").click()")
     page.wait_for_timeout(600)
     assert page.evaluate("() => !document.getElementById('nbTitle') || document.getElementById('nbTitle').value !== 'Edited last'")
+
+
+def _slash(page, query):
+    page.keyboard.type("/" + query)
+    page.wait_for_selector(".bn-suggestion-menu", timeout=10000)
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".bn-suggestion-menu", state="detached", timeout=10000)
+
+
+def _blocks(page, title):
+    _saved(page)
+    content = _api("/api/notebook/notes/" + _note_by_title(title)["id"])["note"]["content"]
+    return [(b["type"], "".join(c.get("text", "") for c in (b.get("content") or []) if isinstance(c, dict)).strip()) for b in content]
+
+
+def test_a_slash_command_on_a_line_with_text_formats_that_line(page):
+    # BlockNote put the heading on a new line below; it now turns this line
+    # into one, keeps its text, and leaves the cursor in it.
+    title = f"Slash {uuid.uuid4().hex[:6]}"
+    _open(page)
+    _new_note(page, title)
+    _type_body(page, "Make me a heading ")
+    _slash(page, "heading")
+    page.keyboard.type("!")
+    blocks = _blocks(page, title)
+    assert blocks[0] == ("heading", "Make me a heading !"), blocks
+    assert blocks[1:] in ([], [("paragraph", "")]), blocks
+
+
+def test_a_slash_command_turns_a_heading_back_into_a_list_line(page):
+    title = f"Slash list {uuid.uuid4().hex[:6]}"
+    _open(page)
+    _new_note(page, title)
+    _type_body(page, "Item one ")
+    _slash(page, "heading")
+    _slash(page, "bullet")
+    blocks = _blocks(page, title)
+    assert blocks[0] == ("bulletListItem", "Item one"), blocks
+    assert blocks[1:] in ([], [("paragraph", "")]), blocks
+
+
+def test_a_slash_divider_on_a_line_with_text_still_goes_below(page):
+    title = f"Slash divider {uuid.uuid4().hex[:6]}"
+    _open(page)
+    _new_note(page, title)
+    _type_body(page, "Above the line ")
+    _slash(page, "divider")
+    assert _blocks(page, title)[:2] == [("paragraph", "Above the line"), ("divider", "")]
