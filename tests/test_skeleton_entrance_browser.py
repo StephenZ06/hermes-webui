@@ -6,6 +6,8 @@ skeleton fades out as the content fades in. The view never sits blank behind
 a spinner, and nothing is left hidden once the load is done.
 """
 
+import base64
+
 import pytest
 
 from tests._pytest_port import BASE
@@ -111,10 +113,12 @@ def test_opening_a_skill_fades_its_document_in_from_a_skeleton(page):
     page.wait_for_selector("#mainSkills > .skel", timeout=5000)
     loading = page.evaluate(TITLE_JS, "skillDetailTitle")
     assert loading["opacity"] == 0 and loading["header"], (first_title, loading)
+    assert page.query_selector("#skillDetailTitle ~ .skel-title"), "no bar where the title will be"
     title, body = page.evaluate(TOGETHER_JS, ["skillDetailTitle", "skillDetailBody"])
     assert abs(title - body) < 0.05, (title, body)
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
     assert page.evaluate(TITLE_JS, "skillDetailTitle")["opacity"] == 1
+    assert not page.query_selector(".skel-title")
     frames = page.evaluate("() => window.__frames")
     title = page.evaluate("() => document.getElementById('skillDetailBody').innerText.trim().split('\\n').pop()")
     _assert_skeleton_then_fade(frames, title)
@@ -145,8 +149,28 @@ TOGETHER_JS = """([title, body]) => new Promise((resolve) => {
 })"""
 
 
+def _ink_rows(page, el_id, threshold):
+    """Rows of a screenshot of the title's row that differ from its background."""
+    box = page.evaluate("""(id) => { const r = document.getElementById(id).parentElement.getBoundingClientRect();
+      return {x: r.left, y: r.top, width: Math.min(r.width, 400), height: r.height}; }""", el_id)
+    png = base64.b64encode(page.screenshot(clip=box)).decode()
+    return page.evaluate("""async ([png, threshold]) => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + png; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height).data, at = (px, py) => d[(py * c.width + px) * 4];
+      const bg = at(c.width - 1, Math.floor(c.height / 2)), rows = [];
+      // A row that differs across nearly its full width is a border, not ink.
+      for (let py = 0; py < c.height; py++) {
+        let n = 0;
+        for (let px = 0; px < c.width; px++) if (Math.abs(at(px, py) - bg) > threshold) n++;
+        if (n && n < c.width * 0.9) rows.push(py);
+      }
+      return rows; }""", [png, threshold])
+
+
 def _item(n):
-    return {"item": {"id": f"k{n}", "type": "memory", "title": f"Item {n}", "content": f"knowledge body {n}"}}
+    return {"item": {"id": f"k{n}", "type": "memory", "title": f"Held {n}", "content": f"knowledge body {n}"}}
 
 
 def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
@@ -154,6 +178,8 @@ def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
     _fake(page, [[r"/api/knowledge/read\?id=k1", _item(1)], [r"/api/knowledge/read\?id=k2", _item(2)]])
     page.evaluate("() => openKnowledgeItem('k1')")
     page.wait_for_function("() => document.getElementById('knowledgeDetailBody').innerText.includes('knowledge body 1')", timeout=15000)
+    page.wait_for_function("() => !document.querySelector('[data-skel-hide], .skel-title')", timeout=5000)
+    text = _ink_rows(page, "knowledgeDetailTitle", 60)
     page.evaluate(FRAMES_JS, {"host": "#mainKnowledge", "content": "#knowledgeDetailBody"})
     page.evaluate("() => { openKnowledgeItem('k2'); }")
     page.wait_for_selector("#mainKnowledge > .skel", timeout=5000)
@@ -161,10 +187,16 @@ def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
     # and the header stays where it is.
     loading = page.evaluate(TITLE_JS, "knowledgeDetailTitle")
     assert loading["opacity"] == 0 and loading["header"], loading
+    # A bar stands where the title's text is: centred between the tops of its
+    # tallest letters and the baseline ("Held 1": no descenders), in pixels,
+    # to within the one row that anti-aliased glyph edges blur.
+    bar = _ink_rows(page, "knowledgeDetailTitle", 6)
+    assert bar and abs((bar[0] + bar[-1]) / 2 - (text[0] + text[-1]) / 2) <= 1, (bar, text)
     title, body = page.evaluate(TOGETHER_JS, ["knowledgeDetailTitle", "knowledgeDetailBody"])
     assert abs(title - body) < 0.05, (title, body)
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
-    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "Item 2", "opacity": 1, "header": True}
+    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "Held 2", "opacity": 1, "header": True}
+    assert not page.query_selector(".skel-title")
     _assert_skeleton_then_fade(page.evaluate("() => window.__frames"), "knowledge body 2")
     assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
 

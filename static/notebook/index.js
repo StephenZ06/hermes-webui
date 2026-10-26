@@ -1511,7 +1511,7 @@
     if (!scroll || !window.SkeletonEntrance) return;
     // The title, tags and date fade in with the body, in one movement.
     const chrome = ['nbTitle', 'nbTags', 'nbUpdated'].map($);
-    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host, hide: [host, ...chrome]});
+    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host, hide: [host, ...chrome], title: chrome[0]});
   }
   function clearSkeleton() {
     const host = $('nbEditorHost');

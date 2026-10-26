@@ -15112,6 +15112,11 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 [data-skel-hide="reveal"]{opacity:1;filter:none;}
 .skel-host[data-skel="reveal"] > .skel{opacity:0;filter:blur(2px);}
 @keyframes skel-pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+/* The bar standing in for a title (SkeletonEntrance's `title`), placed by
+   script over the title's text and faded out as the title fades in. */
+.skel-title-host{position:relative;}
+.skel-title{position:absolute;z-index:1;display:block;border-radius:999px;pointer-events:none;background:color-mix(in srgb,var(--text) 9%,transparent);animation:skel-pulse 1s ease-in-out infinite;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
+.skel-title.is-out{opacity:0;filter:blur(2px);}
 /* A chat: your message as a bubble on the right, then Hermes' name row and
    its reply's lines, placed where the transcript's first turn lands. */
 .skel--chat{gap:0;padding:32px 24px 0;}
@@ -15138,7 +15143,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media(max-width:700px){.skel--doc{padding:20px 16px 0;}}
 /* A Knowledge wiki page: inside the browser's 16px content padding. */
 #wikiBrowserOverlay .skel--doc{padding:16px 16px 0;}
-@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.skel i{animation:none;}.skel,[data-skel-hide]{transition:none;}}
+@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.skel i,.skel-title{animation:none;}.skel,.skel-title,[data-skel-hide]{transition:none;}}
 /* Drag-to-move drop indicator (ProseMirror's dropcursor, configured 5px and
    near-white by BlockNote): a 2px rounded accent line centred on the gap. */
 .nb-editor-host .prosemirror-dropcursor-block{height:2px!important;border-radius:999px;background-color:var(--accent)!important;transform:translateY(1.5px);}

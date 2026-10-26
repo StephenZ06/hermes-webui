@@ -22695,8 +22695,42 @@ const SkeletonEntrance=(()=>{
     chat:()=>`<i class="skel-bubble"></i><div class="skel-who"><i class="dot"></i><i style="width:64px"></i></div><div class="skel-lines">${bars([96,88,92,54,0,90,72])}</div>`,
   };
   const reduced=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // A bar over a title's line of text: as wide as a short title, as tall as
+  // its capitals, centred between their tops and the baseline (how the eye
+  // reads a line as centred), from the font's own metrics.
+  function titleBar(title){
+    const box=title.parentElement;
+    if(!box) return null;
+    const cs=getComputedStyle(title), r=title.getBoundingClientRect(), b=box.getBoundingClientRect();
+    const size=parseFloat(cs.fontSize)||16;
+    const ctx=(titleBar.canvas||(titleBar.canvas=document.createElement('canvas'))).getContext('2d');
+    ctx.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m=ctx.measureText('Hd');
+    const contentTop=r.top+parseFloat(cs.borderTopWidth)+parseFloat(cs.paddingTop);
+    const contentH=r.height-parseFloat(cs.borderTopWidth)-parseFloat(cs.borderBottomWidth)-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+    const fontH=m.fontBoundingBoxAscent+m.fontBoundingBoxDescent;
+    // The browser rounds the space above the text down to a whole pixel.
+    const baseline=contentTop+Math.floor((contentH-fontH)/2)+m.fontBoundingBoxAscent;
+    const ink=m.actualBoundingBoxAscent;
+    // Same odd/even as the capitals' height, so it can sit exactly centred.
+    let h=Math.max(8,Math.round(ink*0.8));
+    if((Math.round(ink)-h)%2) h-=1;
+    const bar=document.createElement('i');
+    bar.className='skel-title';
+    bar.setAttribute('aria-hidden','true');
+    bar.style.height=h+'px';
+    bar.style.top=Math.round(baseline-ink/2-h/2-b.top+box.scrollTop)+'px';
+    const left=r.left+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
+    bar.style.left=Math.round(left-b.left)+'px';
+    // The title may be sized to its old text, so the room is the row's.
+    bar.style.width=Math.round(Math.min(size*9,(b.right-left)*0.6))+'px';
+    box.classList.add('skel-title-host');
+    box.appendChild(bar);
+    return bar;
+  }
   function clear(host){
     if(host._skelEl) host._skelEl.remove();
+    if(host._skelTitle){ host._skelTitle.remove(); host._skelTitle=null; }
     (host._skelHidden||[]).forEach(el=>el.removeAttribute('data-skel-hide'));
     host._skelHidden=null;
     if(host._skelWatch){ host._skelWatch.disconnect(); clearTimeout(host._skelWatchTimer); }
@@ -22705,9 +22739,9 @@ const SkeletonEntrance=(()=>{
   }
   // Show the skeleton over `host`. `align` lays it over that element's box
   // (a centred column, or a child that is not at the host's top-left); `hide`
-  // lists what it stands in for when that is not every child of the host.
-  // Hidden elements carry their own state, so one outside the host (a title
-  // above the scroll area) fades in with the content.
+  // lists what it stands in for when that is not every child of the host;
+  // `title` puts a bar over that title's text while it is hidden. Hidden elements carry their own state, so one outside the
+  // host (a title above the scroll area) fades in with the content.
   function start(host,opts){
     if(!host) return 0;
     opts=opts||{};
@@ -22730,6 +22764,7 @@ const SkeletonEntrance=(()=>{
     host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
     host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide','loading'));
     host.dataset.skel='loading';
+    if(opts.title) host._skelTitle=titleBar(opts.title);
     host.appendChild(el);
     host._skelEl=el;
     host._skelAt=performance.now();
@@ -22744,6 +22779,7 @@ const SkeletonEntrance=(()=>{
       if(host._skelWatch){ host._skelWatch.disconnect(); host._skelWatch=null; clearTimeout(host._skelWatchTimer); }
       host.dataset.skel='reveal';
       (host._skelHidden||[]).forEach(el=>el.setAttribute('data-skel-hide','reveal'));
+      if(host._skelTitle) host._skelTitle.classList.add('is-out');
       setTimeout(()=>{ if(token===host._skelToken) clear(host); },REVEAL_MS+40);
     },wait);
   }

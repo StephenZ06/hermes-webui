@@ -1397,6 +1397,7 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
         window.__frames.push({skel: !!bar, top: bar ? bar.getBoundingClientRect().top : null,
           opacity: mount ? Number(getComputedStyle(host).opacity) : null,
           title: Number(getComputedStyle(document.getElementById('nbTitle')).opacity),
+          bar: (() => { const b = document.querySelector('.nb-head-row > .skel-title'); return b ? Number(getComputedStyle(b).opacity) : null; })(),
           text: mount ? mount.textContent : ''});
         if (window.__frames.length < 120) requestAnimationFrame(tick);
       };
@@ -1420,6 +1421,10 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
     start = frames.index(next(f for f in frames if f["skel"]))
     apart = [(f["title"], f["opacity"]) for f in frames[start:] if f["opacity"] is not None and abs(f["title"] - f["opacity"]) > 0.05]
     assert not apart, apart
+    # A bar stands over the title while it loads and fades out as it fades in.
+    assert any(f["bar"] == 1 and f["title"] == 0 for f in frames[start:]), "no title bar while loading"
+    assert any(f["bar"] is not None and 0 < f["bar"] < 1 for f in frames[start:]), "the title bar cut out instead of fading"
+    assert not page.query_selector(".skel-title")
 
 
 def test_block_handle_sits_on_the_line_of_text(page):

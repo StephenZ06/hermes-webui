@@ -6543,7 +6543,7 @@ async function openSkill(name, el) {
     if (empty) empty.style.display = 'none';
     skillBody.style.display = '';
     const title = _holdSkeletonTitle($('skillDetailTitle'));
-    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title]});
+    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title], title});
     SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
   }
   try {
@@ -10833,7 +10833,7 @@ async function openKnowledgeItem(id) {
     if (emptyEl) emptyEl.style.display = 'none';
     bodyEl.style.display = 'block';
     const title = _holdSkeletonTitle($('knowledgeDetailTitle'));
-    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl, title]});
+    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl, title], title});
     SkeletonEntrance.revealOnChange(skelHost, bodyEl, skelToken);
   }
   try {
