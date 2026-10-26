@@ -112,3 +112,59 @@ def test_opening_a_skill_fades_its_document_in_from_a_skeleton(page):
     title = page.evaluate("() => document.getElementById('skillDetailBody').innerText.trim().split('\\n').pop()")
     _assert_skeleton_then_fade(frames, title)
     assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
+
+
+def _fake(page, routes):
+    # Answer the matching requests in-page after 300 ms with the given JSON.
+    page.evaluate("""(routes) => { const f = window.fetch;
+      window.fetch = (u, o) => { const hit = routes.find(([re]) => new RegExp(re).test(String(u)));
+        if (!hit) return f(u, o);
+        return new Promise((r) => setTimeout(r, 300)).then(() => new Response(JSON.stringify(hit[1]),
+          {status: hit[2] || 200, headers: {'Content-Type': 'application/json'}})); }; }""", routes)
+
+
+def _item(n):
+    return {"item": {"id": f"k{n}", "type": "memory", "title": f"Item {n}", "content": f"knowledge body {n}"}}
+
+
+def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
+    _open(page, "knowledge")
+    _fake(page, [[r"/api/knowledge/read\?id=k1", _item(1)], [r"/api/knowledge/read\?id=k2", _item(2)]])
+    page.evaluate("() => openKnowledgeItem('k1')")
+    page.wait_for_function("() => document.getElementById('knowledgeDetailBody').innerText.includes('knowledge body 1')", timeout=15000)
+    page.evaluate(FRAMES_JS, {"host": "#mainKnowledge", "content": "#knowledgeDetailBody"})
+    page.evaluate("() => { openKnowledgeItem('k2'); }")
+    page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
+    _assert_skeleton_then_fade(page.evaluate("() => window.__frames"), "knowledge body 2")
+    assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
+
+
+def test_a_missing_knowledge_item_drops_its_skeleton_at_once(page):
+    _open(page, "knowledge")
+    _fake(page, [[r"/api/knowledge/read", {"item": None}]])
+    page.evaluate("() => { openKnowledgeItem('gone'); }")
+    page.wait_for_selector("#mainKnowledge > .skel", timeout=5000)
+    # Well inside the 10 s safety cap: nothing will be written into the body.
+    page.wait_for_function("() => !document.querySelector('#mainKnowledge > .skel')", timeout=2000)
+    assert page.evaluate("() => getComputedStyle(document.getElementById('knowledgeDetailEmpty')).display") == "flex"
+
+
+def test_opening_a_wiki_page_fades_it_in_and_keeps_the_search_in_view(page):
+    _open(page, "knowledge")
+    _fake(page, [[r"/api/wiki/browse", {"pages": [{"name": "Alpha", "path": "alpha.md"}]}],
+                 [r"/api/wiki/page", {"content": "wiki page body"}]])
+    page.evaluate("() => { _openWikiBrowser(); }")
+    page.wait_for_selector(".wiki-browser-item", timeout=5000)
+    page.evaluate("""() => { window.__frames = []; const tick = () => {
+      const panel = document.getElementById('wikiBrowserContent').parentElement;
+      const c = document.getElementById('wikiBrowserContent');
+      window.__frames.push({skel: !!panel.querySelector(':scope > .skel'), reveal: panel.dataset.skel === 'reveal',
+        opacity: Number(getComputedStyle(c).opacity), text: c.innerText || '',
+        search: getComputedStyle(document.getElementById('wikiBrowserSearch')).opacity === '1'});
+      if (window.__frames.length < 150) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }""")
+    page.click(".wiki-browser-item")
+    page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
+    frames = page.evaluate("() => window.__frames")
+    _assert_skeleton_then_fade(frames, "wiki page body")
+    assert all(f["search"] for f in frames), "the search box was hidden behind the skeleton"
+    assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0

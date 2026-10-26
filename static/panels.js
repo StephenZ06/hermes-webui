@@ -5965,7 +5965,7 @@ async function _openWikiBrowser() {
       <input id="wikiBrowserSearch" type="text" placeholder="${esc(t('wiki_search_placeholder'))}" style="width:100%;padding:6px 10px;background:var(--input-bg,var(--bg));border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px;box-sizing:border-box;" />
     </div>
     <div id="wikiBrowserList" style="flex:1;overflow-y:auto;padding:8px 0;min-height:80px;"></div>
-    <div id="wikiBrowserContent" style="display:none;flex:1;overflow-y:auto;padding:16px;border-top:1px solid var(--border);"></div>`;
+    <div id="wikiBrowserContent" style="display:none;flex:1;overflow-y:auto;padding:16px;min-height:220px;border-top:1px solid var(--border);"></div>`;
 
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
@@ -5988,9 +5988,16 @@ async function _openWikiBrowser() {
   }
 
   window._wikiBrowserOpenPage = async function(path) {
-    contentEl.innerHTML = '<div class="loading-spinner-wrap" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">'+esc(t('loading'))+'</span></div>';
+    // The page stands as placeholder lines until it is written in, then
+    // cross-fades into it (SkeletonEntrance, ui.js); the header and search
+    // stay in view.
+    contentEl.innerHTML = '<span class="sr-only" role="status">'+esc(t('loading'))+'</span>';
     contentEl.style.display = 'block';
     listEl.style.display = 'none';
+    if (window.SkeletonEntrance) {
+      const skelToken = SkeletonEntrance.start(panel, {shape: 'doc', align: contentEl, hide: [contentEl]});
+      SkeletonEntrance.revealOnChange(panel, contentEl, skelToken);
+    }
     try {
       const data = await api('/api/wiki/page?path=' + encodeURIComponent(path));
       if (typeof renderMarkdownPreviewContent === 'function') {
@@ -10806,6 +10813,17 @@ function searchKnowledgeItems() {
 async function openKnowledgeItem(id) {
   _currentKnowledgeItemId = id;
   renderKnowledgeItems();
+  // The item's text stands as placeholder lines until it is written in, then
+  // cross-fades into it (SkeletonEntrance, ui.js).
+  const bodyEl = $('knowledgeDetailBody');
+  const skelHost = bodyEl && bodyEl.parentElement;
+  if (skelHost && window.SkeletonEntrance) {
+    const emptyEl = $('knowledgeDetailEmpty');
+    if (emptyEl) emptyEl.style.display = 'none';
+    bodyEl.style.display = 'block';
+    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl]});
+    SkeletonEntrance.revealOnChange(skelHost, bodyEl, skelToken);
+  }
   try {
     const data = await api(`/api/knowledge/read?id=${encodeURIComponent(id)}`);
     _renderKnowledgeDetail(data.item);
@@ -10823,6 +10841,8 @@ function _renderKnowledgeDetail(item, errorMessage) {
   const bodyEl = $('knowledgeDetailBody');
   const emptyEl = $('knowledgeDetailEmpty');
   if (!item) {
+    // Nothing will be written into the body, so drop its skeleton now.
+    if (bodyEl && window.SkeletonEntrance) SkeletonEntrance.cancel(bodyEl.parentElement);
     if (titleEl) titleEl.textContent = '';
     if (bodyEl) bodyEl.style.display = 'none';
     if (emptyEl) {
