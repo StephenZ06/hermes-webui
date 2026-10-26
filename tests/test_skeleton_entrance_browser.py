@@ -110,9 +110,11 @@ def test_opening_a_skill_fades_its_document_in_from_a_skeleton(page):
     second.click()
     page.wait_for_selector("#mainSkills > .skel", timeout=5000)
     loading = page.evaluate(TITLE_JS, "skillDetailTitle")
-    assert loading == {"text": "", "bar": True, "header": True}, (first_title, loading)
+    assert loading["opacity"] == 0 and loading["header"], (first_title, loading)
+    title, body = page.evaluate(TOGETHER_JS, ["skillDetailTitle", "skillDetailBody"])
+    assert abs(title - body) < 0.05, (title, body)
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
-    assert not page.evaluate(TITLE_JS, "skillDetailTitle")["bar"]
+    assert page.evaluate(TITLE_JS, "skillDetailTitle")["opacity"] == 1
     frames = page.evaluate("() => window.__frames")
     title = page.evaluate("() => document.getElementById('skillDetailBody').innerText.trim().split('\\n').pop()")
     _assert_skeleton_then_fade(frames, title)
@@ -129,8 +131,18 @@ def _fake(page, routes):
 
 
 TITLE_JS = """(id) => { const el = document.getElementById(id);
-  return {text: el.innerText.trim(), bar: !!el.querySelector('.skel-title'),
+  return {text: el.innerText.trim(), opacity: Number(getComputedStyle(el).opacity),
           header: getComputedStyle(el.closest('.main-view-header')).display !== 'none'}; }"""
+
+# The title and the body fade in together: sampled mid-reveal, they match.
+TOGETHER_JS = """([title, body]) => new Promise((resolve) => {
+  const tick = () => {
+    const a = Number(getComputedStyle(document.getElementById(title)).opacity);
+    const b = Number(getComputedStyle(document.getElementById(body)).opacity);
+    if (b > 0.2 && b < 0.8) resolve([a, b]); else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})"""
 
 
 def _item(n):
@@ -145,10 +157,14 @@ def test_opening_a_knowledge_item_fades_its_text_in_from_a_skeleton(page):
     page.evaluate(FRAMES_JS, {"host": "#mainKnowledge", "content": "#knowledgeDetailBody"})
     page.evaluate("() => { openKnowledgeItem('k2'); }")
     page.wait_for_selector("#mainKnowledge > .skel", timeout=5000)
-    # The previous item's title does not linger over the next item's skeleton.
-    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "", "bar": True, "header": True}
+    # The previous item's title does not linger over the next item's skeleton,
+    # and the header stays where it is.
+    loading = page.evaluate(TITLE_JS, "knowledgeDetailTitle")
+    assert loading["opacity"] == 0 and loading["header"], loading
+    title, body = page.evaluate(TOGETHER_JS, ["knowledgeDetailTitle", "knowledgeDetailBody"])
+    assert abs(title - body) < 0.05, (title, body)
     page.wait_for_function("() => window.__frames.length >= 150", timeout=20000)
-    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "Item 2", "bar": False, "header": True}
+    assert page.evaluate(TITLE_JS, "knowledgeDetailTitle") == {"text": "Item 2", "opacity": 1, "header": True}
     _assert_skeleton_then_fade(page.evaluate("() => window.__frames"), "knowledge body 2")
     assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
 

@@ -15136,9 +15136,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    24px 32px padding (16px at phone width). */
 .skel--doc{padding:28px 32px 0;}
 @media(max-width:700px){.skel--doc{padding:20px 16px 0;}}
-/* The header title while the next skill or Knowledge item loads. */
-.skel-title{display:inline-block;vertical-align:middle;width:180px;max-width:60%;height:14px;border-radius:7px;background:color-mix(in srgb,var(--text) 9%,transparent);animation:skel-pulse 1s ease-in-out infinite;}
-@media (prefers-reduced-motion:reduce){.skel-title{animation:none;}}
 /* A Knowledge wiki page: inside the browser's 16px content padding. */
 #wikiBrowserOverlay .skel--doc{padding:16px 16px 0;}
 @media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.skel i{animation:none;}.skel,.skel-host[data-skel] [data-skel-hide]{transition:none;}}

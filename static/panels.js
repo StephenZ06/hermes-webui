@@ -6519,11 +6519,12 @@ function _setSkillHeaderButtons(mode) {
   else { if (header) header.style.display = 'none';  hide(editBtn); hide(delBtn); hide(cancelBtn); hide(saveBtn); }
 }
 
-// While the next item loads, its header title is a placeholder bar instead of
-// the previous item's title. The title stays non-empty so the header (hidden
-// when its title is empty) does not collapse and jump the view.
-function _skeletonTitle(el) {
-  if (el && window.SkeletonEntrance) el.innerHTML = '<i class="skel-title" aria-hidden="true"></i>';
+// While the next item loads, its header title is hidden with the body and
+// fades in with it, as a note's title does. An empty title would hide the
+// header (and jump the view), so a first open holds it with a blank space.
+function _holdSkeletonTitle(el) {
+  if (el && !el.textContent) el.textContent = '\u00a0';
+  return el;
 }
 
 async function openSkill(name, el) {
@@ -6541,8 +6542,8 @@ async function openSkill(name, el) {
     const empty = $('skillDetailEmpty');
     if (empty) empty.style.display = 'none';
     skillBody.style.display = '';
-    _skeletonTitle($('skillDetailTitle'));
-    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody]});
+    const title = _holdSkeletonTitle($('skillDetailTitle'));
+    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title]});
     SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
   }
   try {
@@ -10831,8 +10832,8 @@ async function openKnowledgeItem(id) {
     const emptyEl = $('knowledgeDetailEmpty');
     if (emptyEl) emptyEl.style.display = 'none';
     bodyEl.style.display = 'block';
-    _skeletonTitle($('knowledgeDetailTitle'));
-    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl]});
+    const title = _holdSkeletonTitle($('knowledgeDetailTitle'));
+    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl, title]});
     SkeletonEntrance.revealOnChange(skelHost, bodyEl, skelToken);
   }
   try {
