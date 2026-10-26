@@ -22720,7 +22720,10 @@ const SkeletonEntrance=(()=>{
     bar.setAttribute('aria-hidden','true');
     bar.style.height=h+'px';
     bar.style.top=Math.round(baseline-ink/2-h/2-b.top+box.scrollTop)+'px';
-    const left=r.left+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
+    // Where the title sits in its row, leaving out a slide still under way
+    // (the titlebar slides its items when the title changes length).
+    const sliding=cs.transform&&cs.transform!=='none'?new DOMMatrixReadOnly(cs.transform).m41:0;
+    const left=r.left-sliding+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
     if(centred){
       // A title centred with what is beside it (the app titlebar's icon):
       // the bar takes the title's own place, so nothing beside it moves.
@@ -22734,6 +22737,16 @@ const SkeletonEntrance=(()=>{
     // Its row becomes the bar's frame unless it is positioned already.
     if(getComputedStyle(box).position==='static') box.classList.add('skel-title-host');
     box.appendChild(bar);
+    // A slide the title is part way through: the bar joins it, so the two
+    // reach their place together.
+    title.getAnimations().forEach((a)=>{
+      const frames=a.effect&&a.effect.getKeyframes();
+      if(!frames||!frames.some((f)=>f.transform)) return;
+      const t=a.effect.getTiming();
+      const copy=bar.animate(frames,{duration:t.duration,easing:t.easing,id:a.id});
+      // Same start on the page's clock, so the two stay in step to the frame.
+      if(a.startTime!==null) copy.startTime=a.startTime; else copy.currentTime=a.currentTime;
+    });
     return bar;
   }
   function clear(host){
