@@ -1372,3 +1372,39 @@ def test_picking_a_note_inside_a_workspace_folds_the_middle_list(page):
     page.click(f"#notebookSidebar [data-nb-note-row='{note['id']}'] [data-nb-open]")
     page.wait_for_function("(id) => document.querySelector('.nb.nb-list-collapsed') && document.getElementById('nbTitle').value === 'Inside'", arg=note["id"], timeout=10000)
     assert page.evaluate(f"() => document.querySelector(\"{tile}\").classList.contains('active')")
+
+
+def test_switching_notes_reveals_the_body_from_a_skeleton(page):
+    # The next note's text stands as pulsing placeholder lines while it loads,
+    # then cross-fades in; the old text never cuts to an empty editor.
+    first, second = f"Skel A {uuid.uuid4().hex[:6]}", f"Skel B {uuid.uuid4().hex[:6]}"
+    _open(page)
+    _new_note(page, first)
+    _type_body(page, "alpha body text")
+    _saved(page)
+    _new_note(page, second)
+    _type_body(page, "beta body text")
+    _saved(page)
+    page.evaluate("""() => {
+      window.__frames = [];
+      const tick = () => {
+        const host = document.getElementById('nbEditorHost');
+        const mount = host && host.querySelector('.nb-editor-mount');
+        window.__frames.push({skel: !!(host && host.querySelector('.nb-skel i')),
+          opacity: mount ? Number(getComputedStyle(mount).opacity) : null,
+          text: mount ? mount.textContent : ''});
+        if (window.__frames.length < 120) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }""")
+    page.click(f".nb-item:has-text('{first}')")
+    page.wait_for_function("() => window.__frames.length >= 120", timeout=15000)
+    frames = page.evaluate("() => window.__frames")
+    final = page.evaluate("""() => { const host = document.getElementById('nbEditorHost');
+      return {skel: !!host.querySelector('.nb-skel'), opacity: Number(getComputedStyle(host.querySelector('.nb-editor-mount')).opacity),
+              text: host.querySelector('.nb-editor-mount').textContent}; }""")
+    assert any(f["skel"] for f in frames), "no skeleton while the note loaded"
+    shown = [f for f in frames if "alpha body text" in f["text"]]
+    assert any(0 < f["opacity"] < 1 for f in shown), "the body cut in instead of fading"
+    assert not any(f["skel"] is False and f["text"] == "" and f["opacity"] for f in frames[frames.index(next(f for f in frames if f["skel"])):]), "an empty editor showed"
+    assert final == {"skel": False, "opacity": 1, "text": final["text"]} and "alpha body text" in final["text"]

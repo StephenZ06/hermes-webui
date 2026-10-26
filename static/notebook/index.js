@@ -1435,17 +1435,13 @@
       return;
     }
     if (!S.note || S.note.id !== note.id) return; // switched away while loading
+    const skeleton = host.querySelector('.nb-skel');
     destroyEditor();
-    host.classList.remove('is-entering');
+    if (skeleton) host.appendChild(skeleton);
+    host.classList.remove('is-entering', 'is-revealed');
     const mountPoint = document.createElement('div');
     mountPoint.className = 'nb-editor-mount';
     host.appendChild(mountPoint);
-    // The stable editor chrome above this host is deliberately not animated.
-    // Starting the animation on the persistent host means only newly mounted
-    // note content fades in, without moving the page or duplicating chrome.
-    requestAnimationFrame(() => {
-      if (S.note && S.note.id === note.id && host.contains(mountPoint)) host.classList.add('is-entering');
-    });
     // A vault note arrives as Markdown: the editor parses it once mounted, and
     // the changes that parse makes are not edits (the file is only written
     // when the user changes something).
@@ -1482,6 +1478,42 @@
       }
       setTimeout(() => { settling = false; }, 0);
     }
+    revealNote(host, note.id);
+  }
+  // Switching notes: placeholder lines stand where the text will be, then
+  // cross-fade with a slight blur into the note once it is parsed, so the
+  // body never cuts from one note to an empty editor to the next. The
+  // skeleton sits over the editor (absolute), so the swap moves nothing.
+  // Pattern after Transitions.dev's "Skeleton loader and reveal"
+  // (https://transitions.dev, Copyright (c) 2026 Jakub Antalik).
+  const SKELETON_MIN_MS = 160;
+  const REVEAL_MS = 360;
+  let skeletonShownAt = 0;
+  function showSkeleton() {
+    const host = $('nbEditorHost');
+    if (!host) return;
+    host.classList.remove('is-entering', 'is-revealed');
+    if (host.querySelector('.nb-skel')) return;
+    const widths = [94, 82, 88, 46, 0, 90, 76, 58];
+    host.insertAdjacentHTML('afterbegin', `<div class="nb-skel" aria-hidden="true">${widths.map((w) => w ? `<i style="width:${w}%"></i>` : '<i class="gap"></i>').join('')}</div>`);
+    skeletonShownAt = performance.now();
+  }
+  function clearSkeleton() {
+    const host = $('nbEditorHost');
+    const skeleton = host && host.querySelector('.nb-skel');
+    if (skeleton) skeleton.remove();
+    if (host) host.classList.remove('is-revealed');
+  }
+  function revealNote(host, noteId) {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const wait = reduce ? 0 : Math.max(0, SKELETON_MIN_MS - (performance.now() - skeletonShownAt));
+    setTimeout(() => {
+      if (editorNoteId !== noteId) return; // switched away: the next note owns the host
+      const skeleton = host.querySelector('.nb-skel');
+      if (!skeleton || reduce) { if (skeleton) skeleton.remove(); host.classList.add('is-revealed'); return; }
+      host.classList.add('is-revealed');
+      setTimeout(() => { if (skeleton.isConnected) skeleton.remove(); }, REVEAL_MS + 40);
+    }, wait);
   }
 
   // ── saving ──────────────────────────────────────────────────────────────────
@@ -1594,6 +1626,7 @@
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');
     S.noteLoading = true; S.noteError = ''; S.pane = 'editor';
     destroyEditor();
+    showSkeleton();
     render();
     try {
       const {note} = await (takePrefetched(noteId) || window.NotebookApi.get(noteId));
@@ -1618,6 +1651,7 @@
     } catch (error) {
       S.noteLoading = false;
       S.note = null;
+      clearSkeleton();
       S.noteError = error.status === 404 ? 'This note no longer exists.' : (error.message || 'The note could not be loaded');
       render();
     }

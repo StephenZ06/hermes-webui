@@ -15097,8 +15097,23 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Switching notes: title and details fade in with the body. */
 .nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated){animation:nb-text-in .22s ease both;}
 .nb-editor-host.is-entering .nb-editor-mount{animation:nb-text-in .22s ease both;}
-@keyframes nb-text-in{from{opacity:0;}}
-@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}}
+@keyframes nb-text-in{from{opacity:0;filter:blur(2px);}}
+/* Skeleton entrance: placeholder lines pulse where the note's text will be,
+   then cross-fade (with a 2px blur) into the parsed note. */
+/* The bars sit on the text's lines: the editor's side inset (54/28/24px at
+   the .bn-editor breakpoints), 16px text on a 30px pitch. */
+.nb-editor-host{position:relative;--nb-text-inset:54px;}
+@media (max-width:900px){.nb-editor-host{--nb-text-inset:28px;}}
+@media (max-width:760px){.nb-editor-host{--nb-text-inset:24px;}}
+.nb-skel{position:absolute;top:0;left:0;right:0;z-index:1;display:flex;flex-direction:column;gap:18px;padding:9px var(--nb-text-inset) 0;pointer-events:none;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
+.nb-skel i{display:block;height:12px;border-radius:6px;background:color-mix(in srgb,var(--text) 9%,transparent);animation:nb-skel-pulse 1s ease-in-out infinite;}
+.nb-skel i:nth-child(odd){animation-delay:.12s;}
+.nb-skel i.gap{height:12px;background:none;}
+.nb-editor-host:has(.nb-skel) .nb-editor-mount{opacity:0;filter:blur(2px);transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
+.nb-editor-host.is-revealed .nb-skel{opacity:0;filter:blur(2px);}
+.nb-editor-host.is-revealed .nb-editor-mount{opacity:1;filter:none;}
+@keyframes nb-skel-pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.nb-skel i{animation:none;}.nb-skel,.nb-editor-host:has(.nb-skel) .nb-editor-mount{transition:none;}}
 /* Drag-to-move drop indicator (ProseMirror's dropcursor, configured 5px and
    near-white by BlockNote): a 2px rounded accent line centred on the gap. */
 .nb-editor-host .prosemirror-dropcursor-block{height:2px!important;border-radius:999px;background-color:var(--accent)!important;transform:translateY(1.5px);}

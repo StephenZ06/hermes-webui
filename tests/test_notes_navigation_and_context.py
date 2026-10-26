@@ -67,8 +67,8 @@ def test_notes_initial_navigation_uses_one_central_loading_screen_not_shimmer_pl
 
 def test_note_switch_keeps_editor_chrome_static_and_only_animates_the_body():
     assert "head.classList.add('is-entering')" not in NOTEBOOK
-    assert "host.classList.add('is-entering')" in NOTEBOOK
-    assert ".nb-editor-host.is-entering .nb-editor-mount" in STYLE
+    assert "host.classList.add('is-revealed')" in NOTEBOOK
+    assert ".nb-editor-host.is-revealed .nb-editor-mount" in STYLE
     assert ".nb-editor-head.is-entering" not in STYLE
 
 
