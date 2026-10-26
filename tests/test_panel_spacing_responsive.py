@@ -112,10 +112,10 @@ def test_work_hub_project_tiles_show_board_counts_and_include_main_boards_in_del
 
 def test_office_section_titles_use_icon_free_dividers_with_double_spacing():
     assert ".office-sidebar-section-title{margin:20px 8px;" in CSS
-    assert ".office-project-folders-title{margin:20px 0;" in CSS
+    assert ".office-project-folders-title{margin:14px 0;" in CSS
     assert ".office-project-folders{flex:0 0 auto;padding:0 8px;" in CSS
     assert ".office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;" in CSS
-    assert ".office-history-title{margin:16px 8px 6px;}" in CSS
+    assert ".office-history-title{margin:9px 8px 4px;}" in CSS
     project_folder_body = OFFICE[OFFICE.index("function renderProjectFolders("):]
     assert "workspace-heading" not in project_folder_body
 

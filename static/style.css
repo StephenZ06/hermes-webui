@@ -7367,8 +7367,8 @@ main.main > #mainPlugin{display:none;}
 .office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;display:flex;flex-direction:column;gap:2px;}
 .office-sidebar-section-title,.office-project-folders-title{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;text-transform:uppercase;flex:0 0 auto;}
 .office-sidebar-section-title{margin:20px 8px;}
-.office-history-title{margin:16px 8px 6px;}
-.office-project-folders-title{margin:20px 0;}
+.office-history-title{margin:9px 8px 4px;}
+.office-project-folders-title{margin:14px 0;}
 .office-sidebar-section-title::before,.office-sidebar-section-title::after,.office-project-folders-title::before,.office-project-folders-title::after{content:"";height:1px;flex:1;background:var(--border);}
 .office-sidebar-section-title>span,.office-project-folders-title>span{flex:0 0 auto;text-align:center;}
 .office-project-folders{flex:0 0 auto;padding:0 8px;max-height:42%;overflow-y:auto;}
