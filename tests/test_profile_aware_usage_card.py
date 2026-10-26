@@ -199,3 +199,70 @@ def test_usage_widget_hides_itself_on_a_local_response():
     assert "data.local" in js
     guard = js.index("data.local")
     assert "widget.hidden=true" in js[guard : guard + 120]
+
+
+class _Blocked:
+    """Stands in for the cron profile context while a scheduled job holds the lock."""
+
+    def __enter__(self):
+        raise AssertionError("waited on the cron lock")
+
+    def __exit__(self, *_):
+        return False
+
+
+def test_codex_usage_answers_while_a_scheduled_job_holds_the_cron_lock(monkeypatch, tmp_path):
+    # The ticker holds _cron_env_lock for a job's whole run (minutes); the
+    # usage request waited on it past the page's 30s timeout and the card
+    # never showed. Codex usage reads the Codex CLI token file: no lock.
+    from api.profiles import _cron_env_lock
+
+    profile_home = _write_profile(tmp_path, "openai-codex")
+    seen = _install(monkeypatch, tmp_path, profile_home)
+    monkeypatch.setattr("api.profiles.cron_profile_context_for_home", lambda _: _Blocked())
+    monkeypatch.setattr(
+        "api.account_usage.fetch_codex_cli_account_usage",
+        lambda tokens: AccountUsageSnapshot("openai-codex", (AccountUsageWindow("5h session", 12),)),
+    )
+    codex_auth_mod = types.ModuleType("hermes_cli.auth_codex")
+    codex_auth_mod._import_codex_cli_tokens = lambda: {"access_token": "desktop-token"}
+    monkeypatch.setitem(sys.modules, "hermes_cli.auth_codex", codex_auth_mod)
+
+    assert _cron_env_lock.acquire(timeout=5)
+    try:
+        routes._handle_account_usage(object(), SimpleNamespace(query="profile=codex"))
+    finally:
+        _cron_env_lock.release()
+    assert seen[-1]["available"] is True
+    assert seen[-1]["windows"][0]["label"] == "5h session"
+
+
+def test_other_providers_show_their_last_usage_while_a_job_holds_the_cron_lock(monkeypatch, tmp_path):
+    from api.profiles import _cron_env_lock
+
+    profile_home = _write_profile(tmp_path, "openrouter")
+    seen = _install(monkeypatch, tmp_path, profile_home)
+    readings = []
+
+    def fetch_account_usage(provider, **_kwargs):
+        readings.append(provider)
+        return AccountUsageSnapshot(provider, (AccountUsageWindow("Credits", 30 + len(readings)),))
+
+    agent_mod = types.ModuleType("agent")
+    agent_mod.__path__ = []
+    usage_mod = types.ModuleType("agent.account_usage")
+    usage_mod.fetch_account_usage = fetch_account_usage
+    monkeypatch.setitem(sys.modules, "agent", agent_mod)
+    monkeypatch.setitem(sys.modules, "agent.account_usage", usage_mod)
+
+    routes._handle_account_usage(object(), SimpleNamespace(query="profile=or"))
+    assert seen[-1]["windows"][0]["used_percent"] == 31
+
+    monkeypatch.setattr("api.profiles.cron_profile_context_for_home", lambda _: _Blocked())
+    assert _cron_env_lock.acquire(timeout=5)
+    try:
+        routes._handle_account_usage(object(), SimpleNamespace(query="profile=or"))
+    finally:
+        _cron_env_lock.release()
+    assert seen[-1]["windows"][0]["used_percent"] == 31  # the last reading, without waiting
+    assert readings == ["openrouter"]

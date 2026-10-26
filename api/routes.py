@@ -12063,6 +12063,13 @@ def _prune_neuralwatt_usage_cache(now: float) -> None:
         _neuralwatt_usage_snapshot_cache.pop(key, None)
 
 
+# profile home -> (monotonic time, snapshot): the last usage each profile
+# answered, served while a scheduled job holds the cron lock.
+_account_usage_last: dict = {}
+_account_usage_last_lock = threading.Lock()
+_ACCOUNT_USAGE_LAST_TTL_SECONDS = 30 * 60
+
+
 def _render_account_usage_response(handler, snapshot) -> None:
     """Serialize an AccountUsageSnapshot (or compatible namespace) to JSON."""
     windows = []
@@ -12098,6 +12105,7 @@ def _handle_account_usage(handler, parsed) -> bool:
 
     from api import account_usage as _webui_account_usage
     from api.profiles import (
+        _cron_env_lock,
         cron_profile_context_for_home,
         get_active_profile_name,
         get_hermes_home_for_profile,
@@ -12128,6 +12136,38 @@ def _handle_account_usage(handler, parsed) -> bool:
     if not provider_raw:
         j(handler, {"available": False})
         return True
+
+    home_key = str(profile_home)
+
+    def _answer(found) -> bool:
+        with _account_usage_last_lock:
+            _account_usage_last[home_key] = (time.monotonic(), found)
+        _render_account_usage_response(handler, found)
+        return True
+
+    # Codex: the usage comes from the Codex CLI's own token file, which no
+    # profile setting changes, so it needs no profile scope -- and none of
+    # the cron lock, which a scheduled job holds for its whole run (minutes):
+    # waiting on it outlasted the page's 30s request and hid the usage card.
+    if normalized_profile_provider(provider_raw, base_url) == "openai-codex":
+        try:
+            from hermes_cli.auth_codex import _import_codex_cli_tokens
+            tokens = _import_codex_cli_tokens()
+            if tokens:
+                desktop_snapshot = _webui_account_usage.fetch_codex_cli_account_usage(tokens)
+                if desktop_snapshot is not None and getattr(desktop_snapshot, "available", False):
+                    return _answer(desktop_snapshot)
+        except Exception:
+            logger.debug("Codex desktop usage fetch failed for %r", profile_name, exc_info=True)
+
+    # The rest reads profile-scoped credentials under the cron lock. While a
+    # scheduled job holds it, answer with this profile's last reading.
+    if _cron_env_lock.locked():
+        with _account_usage_last_lock:
+            last = _account_usage_last.get(home_key)
+        if last and time.monotonic() - last[0] <= _ACCOUNT_USAGE_LAST_TTL_SECONDS:
+            _render_account_usage_response(handler, last[1])
+            return True
 
     effective_provider = provider_raw
     # Bound before the try: any early failure (no agent installed, a provider
@@ -12225,7 +12265,8 @@ def _handle_account_usage(handler, parsed) -> bool:
                 j(handler, {"available": False, "provider": "9router-claude"})
                 return True
 
-            # Codex path: prefer the read-only Codex CLI desktop token account.
+            # Codex path (reached when "auto"/custom resolved to Codex):
+            # prefer the read-only Codex CLI desktop token account.
             if effective_provider == "openai-codex":
                 try:
                     from hermes_cli.auth_codex import _import_codex_cli_tokens
@@ -12233,8 +12274,7 @@ def _handle_account_usage(handler, parsed) -> bool:
                     if tokens:
                         desktop_snapshot = _webui_account_usage.fetch_codex_cli_account_usage(tokens)
                         if desktop_snapshot is not None and getattr(desktop_snapshot, "available", False):
-                            _render_account_usage_response(handler, desktop_snapshot)
-                            return True
+                            return _answer(desktop_snapshot)
                 except Exception:
                     logger.debug(
                         "Codex desktop usage fetch failed for %r", profile_name, exc_info=True
@@ -12265,8 +12305,7 @@ def _handle_account_usage(handler, parsed) -> bool:
         j(handler, {"available": False, "provider": effective_provider})
         return True
 
-    _render_account_usage_response(handler, snapshot)
-    return True
+    return _answer(snapshot)
 
 
 def _handle_insights(handler, parsed) -> bool:
