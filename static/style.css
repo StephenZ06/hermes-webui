@@ -15098,26 +15098,44 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated){animation:nb-text-in .22s ease both;}
 .nb-editor-host.is-entering .nb-editor-mount{animation:nb-text-in .22s ease both;}
 @keyframes nb-text-in{from{opacity:0;filter:blur(2px);}}
-/* Skeleton entrance: placeholder lines pulse where the note's text will be,
-   then cross-fade (with a 2px blur) into the parsed note. */
-/* The bars sit on the text's lines: the editor's side inset (54/28/24px at
-   the .bn-editor breakpoints), 16px text on a 30px pitch. */
-.nb-editor-host{position:relative;display:flow-root;--nb-text-inset:54px;}
+/* Skeleton entrance (SkeletonEntrance in ui.js): while a document-like view
+   loads, placeholder lines pulse where its text will be, then cross-fade
+   with a 2px blur into the content. The skeleton overlays its host; what it
+   stands in for ([data-skel-hide]) stays hidden until the reveal. */
+.skel-host{position:relative;}
+.skel{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;flex-direction:column;gap:18px;box-sizing:border-box;pointer-events:none;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
+.skel i{display:block;flex:0 0 auto;height:12px;border-radius:6px;background:color-mix(in srgb,var(--text) 9%,transparent);animation:skel-pulse 1s ease-in-out infinite;}
+.skel i:nth-child(odd){animation-delay:.12s;}
+.skel i.gap{background:none;animation:none;}
+.skel-host[data-skel] [data-skel-hide]{opacity:0;filter:blur(2px);transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
+.skel-host[data-skel="loading"] [data-skel-hide]{transition:none;}
+.skel-host[data-skel="reveal"] [data-skel-hide]{opacity:1;filter:none;}
+.skel-host[data-skel="reveal"] > .skel{opacity:0;filter:blur(2px);}
+@keyframes skel-pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+/* A chat: your message as a bubble on the right, then Hermes' name row and
+   its reply's lines, placed where the transcript's first turn lands. */
+.skel--chat{gap:0;padding:32px 24px 0;}
+.skel--chat .skel-bubble{align-self:flex-end;width:min(286px,60%);height:46px;border-radius:14px;}
+.skel--chat .skel-who{display:flex;align-items:center;gap:8px;margin:50px 0 20px;}
+.skel--chat .skel-who i{height:10px;}
+.skel--chat .skel-who i.dot{width:20px;height:20px;border-radius:50%;}
+.skel--chat .skel-lines{display:flex;flex-direction:column;gap:13px;}
+/* A note: the bars sit on the text's lines, at the editor's side inset
+   (54/28/24px at the .bn-editor breakpoints), 16px text on a 30px pitch. */
+.nb-editor-scroll{--nb-text-inset:54px;}
+@media (max-width:900px){.nb-editor-scroll{--nb-text-inset:28px;}}
+@media (max-width:760px){.nb-editor-scroll{--nb-text-inset:24px;}}
+.skel--note{padding:11px var(--nb-text-inset) 0;}
+.nb-editor-host{display:flow-root;}
 /* The + and drag handle are centred on the 30px block, but the 14px dot
    grid reads 1-2px below the line's capitals (Courier New sits high in its
    line box on Windows); lift both 1px onto the text. */
 #nbEditorHost .bn-side-menu>*{position:relative;top:-1px;}
-@media (max-width:900px){.nb-editor-host{--nb-text-inset:28px;}}
-@media (max-width:760px){.nb-editor-host{--nb-text-inset:24px;}}
-.nb-skel{position:absolute;top:0;left:0;right:0;z-index:1;display:flex;flex-direction:column;gap:18px;padding:11px var(--nb-text-inset) 0;pointer-events:none;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
-.nb-skel i{display:block;height:12px;border-radius:6px;background:color-mix(in srgb,var(--text) 9%,transparent);animation:nb-skel-pulse 1s ease-in-out infinite;}
-.nb-skel i:nth-child(odd){animation-delay:.12s;}
-.nb-skel i.gap{height:12px;background:none;}
-.nb-editor-host:has(.nb-skel) .nb-editor-mount{opacity:0;filter:blur(2px);transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
-.nb-editor-host.is-revealed .nb-skel{opacity:0;filter:blur(2px);}
-.nb-editor-host.is-revealed .nb-editor-mount{opacity:1;filter:none;}
-@keyframes nb-skel-pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
-@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.nb-skel i{animation:none;}.nb-skel,.nb-editor-host:has(.nb-skel) .nb-editor-mount{transition:none;}}
+/* A skill: lines across the document column, inside .main-view-body's
+   24px 32px padding (16px at phone width). */
+.skel--doc{padding:28px 32px 0;}
+@media(max-width:700px){.skel--doc{padding:20px 16px 0;}}
+@media (prefers-reduced-motion:reduce){.nb-editor-chrome.nb-text-in :is(.nb-title,.nb-tags,.nb-updated),.nb-editor-host.is-entering .nb-editor-mount{animation:none;}.skel i{animation:none;}.skel,.skel-host[data-skel] [data-skel-hide]{transition:none;}}
 /* Drag-to-move drop indicator (ProseMirror's dropcursor, configured 5px and
    near-white by BlockNote): a 2px rounded accent line centred on the gap. */
 .nb-editor-host .prosemirror-dropcursor-block{height:2px!important;border-radius:999px;background-color:var(--accent)!important;transform:translateY(1.5px);}

@@ -1894,7 +1894,19 @@ async function loadSession(sid){
     // #messages (an ancestor, position:relative) is the real viewport this
     // should center in, and absolute positioning skips straight to that
     // nearest positioned ancestor regardless of #msgInner's height.
-    if (_msgInner && currentSid !== sid) _msgInner.innerHTML = '<div class="loading-spinner-wrap loading-spinner-wrap--overlay" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">'+esc(t('loading_conversation'))+'</span></div>';
+    // The transcript's place holds a skeleton of a turn (your message, then
+    // Hermes' reply) until the messages are written in, then cross-fades into
+    // them (SkeletonEntrance, ui.js). The overlay sits on #messages, so the
+    // render may replace #msgInner freely; any write into it, including an
+    // error message, ends the skeleton.
+    if (_msgInner && currentSid !== sid) {
+      _msgInner.innerHTML = '<span class="sr-only" role="status">'+esc(t('loading_conversation'))+'</span>';
+      const _messagesEl = $('messages');
+      if (_messagesEl && window.SkeletonEntrance) {
+        const _skelToken = SkeletonEntrance.start(_messagesEl, {shape:'chat', align:_msgInner});
+        SkeletonEntrance.revealOnChange(_messagesEl, _msgInner, _skelToken);
+      }
+    }
   }
   // Phase 1: Load metadata only (~1KB) for fast session switching. Keep model
   // resolution out of the first-paint path; old provider-shaped model IDs are

@@ -22676,3 +22676,90 @@ async function uploadPendingFiles(options={}){
   if(extracted.length)showToast(t('archive_extracted',extracted.reduce((s,n)=>s+n.extracted,0),extracted.length));
   return names;
 }
+
+// ── Skeleton entrance ────────────────────────────────────────────────────────
+// While a document-like view loads (a chat, a note, a skill, a wiki page),
+// placeholder lines pulse where its text will be, then cross-fade with a 2px
+// blur into the content. The skeleton is an overlay on `host`, so the loader
+// may replace the content underneath (innerHTML) while it shows. The host's
+// children (or just `hide`) stay hidden until the reveal. It shows for at least 160ms so
+// a fast load still reads as one motion, and is skipped under reduced motion.
+// Pattern after Transitions.dev's "Skeleton loader and reveal"
+// (https://transitions.dev, Copyright (c) 2026 Jakub Antalik).
+const SkeletonEntrance=(()=>{
+  const MIN_MS=160, REVEAL_MS=360, MAX_WAIT_MS=10000;
+  const bars=(widths)=>widths.map(w=>w?`<i style="width:${w}%"></i>`:'<i class="gap"></i>').join('');
+  const SHAPES={
+    note:()=>bars([94,82,88,46,0,90,76,58]),
+    doc:()=>bars([38,0,94,86,90,52,0,88,80,64]),
+    chat:()=>`<i class="skel-bubble"></i><div class="skel-who"><i class="dot"></i><i style="width:64px"></i></div><div class="skel-lines">${bars([96,88,92,54,0,90,72])}</div>`,
+  };
+  const reduced=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function clear(host){
+    if(host._skelEl) host._skelEl.remove();
+    (host._skelHidden||[]).forEach(el=>el.removeAttribute('data-skel-hide'));
+    host._skelHidden=null;
+    if(host._skelWatch){ host._skelWatch.disconnect(); clearTimeout(host._skelWatchTimer); }
+    host._skelEl=null; host._skelWatch=null;
+    delete host.dataset.skel;
+  }
+  // Show the skeleton over `host`. `align` lays it over that element's box
+  // (a centred column, or a child that is not at the host's top-left); `hide`
+  // lists what it stands in for when that is not every child of the host.
+  function start(host,opts){
+    if(!host) return 0;
+    opts=opts||{};
+    clear(host);
+    const token=(host._skelToken||0)+1;
+    host._skelToken=token;
+    if(reduced()) return token;
+    const el=document.createElement('div');
+    el.className='skel skel--'+(SHAPES[opts.shape]?opts.shape:'doc');
+    el.setAttribute('aria-hidden','true');
+    el.innerHTML=SHAPES[SHAPES[opts.shape]?opts.shape:'doc']();
+    if(opts.align){
+      const a=opts.align.getBoundingClientRect(), h=host.getBoundingClientRect();
+      el.style.top=(a.top-h.top+host.scrollTop)+'px';
+      el.style.left=(a.left-h.left+host.scrollLeft)+'px';
+      el.style.right='auto';
+      el.style.width=a.width+'px';
+    }
+    host.classList.add('skel-host');
+    host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
+    host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide',''));
+    host.dataset.skel='loading';
+    host.appendChild(el);
+    host._skelEl=el;
+    host._skelAt=performance.now();
+    return token;
+  }
+  // Cross-fade into the content. A stale token (a newer start) is ignored.
+  function reveal(host,token){
+    if(!host||token!==host._skelToken||!host._skelEl) return;
+    const wait=Math.max(0,MIN_MS-(performance.now()-host._skelAt));
+    setTimeout(()=>{
+      if(token!==host._skelToken||!host._skelEl) return;
+      if(host._skelWatch){ host._skelWatch.disconnect(); host._skelWatch=null; clearTimeout(host._skelWatchTimer); }
+      host.dataset.skel='reveal';
+      setTimeout(()=>{ if(token===host._skelToken) clear(host); },REVEAL_MS+40);
+    },wait);
+  }
+  // Reveal once the loader writes into `target` (or after MAX_WAIT_MS, so a
+  // load that never paints cannot leave the view hidden).
+  function revealOnChange(host,target,token){
+    if(!host||!target||token!==host._skelToken||!host._skelEl) return;
+    const go=()=>requestAnimationFrame(()=>reveal(host,token));
+    const watch=new MutationObserver(()=>{ watch.disconnect(); go(); });
+    watch.observe(target,{childList:true});
+    host._skelWatch=watch;
+    host._skelWatchTimer=setTimeout(go,MAX_WAIT_MS);
+  }
+  // Drop the skeleton at once (an error message replaces the view).
+  function cancel(host){
+    if(!host) return;
+    host._skelToken=(host._skelToken||0)+1;
+    clear(host);
+  }
+  return {start,reveal,revealOnChange,cancel};
+})();
+window.SkeletonEntrance=SkeletonEntrance;

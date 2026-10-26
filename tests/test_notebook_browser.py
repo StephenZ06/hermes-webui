@@ -1390,9 +1390,9 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
       const tick = () => {
         const host = document.getElementById('nbEditorHost');
         const mount = host && host.querySelector('.nb-editor-mount');
-        const bar = host && host.querySelector('.nb-skel i');
+        const bar = document.querySelector('.nb-editor-scroll > .skel i');
         window.__frames.push({skel: !!bar, top: bar ? bar.getBoundingClientRect().top : null,
-          opacity: mount ? Number(getComputedStyle(mount).opacity) : null,
+          opacity: mount ? Number(getComputedStyle(host).opacity) : null,
           text: mount ? mount.textContent : ''});
         if (window.__frames.length < 120) requestAnimationFrame(tick);
       };
@@ -1402,7 +1402,7 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
     page.wait_for_function("() => window.__frames.length >= 120", timeout=15000)
     frames = page.evaluate("() => window.__frames")
     final = page.evaluate("""() => { const host = document.getElementById('nbEditorHost');
-      return {skel: !!host.querySelector('.nb-skel'), opacity: Number(getComputedStyle(host.querySelector('.nb-editor-mount')).opacity),
+      return {skel: !!document.querySelector('.nb-editor-scroll > .skel'), opacity: Number(getComputedStyle(host).opacity),
               text: host.querySelector('.nb-editor-mount').textContent}; }""")
     assert any(f["skel"] for f in frames), "no skeleton while the note loaded"
     # The placeholder lines stand still: the editor's margins never move them.

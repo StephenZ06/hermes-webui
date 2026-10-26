@@ -1432,13 +1432,12 @@
     let mod;
     try { mod = await loadEditorModule(); } catch (error) {
       host.innerHTML = `<div class="nb-empty"><p>The editor could not load (${esc(String(error && error.message || error).slice(0, 120))}).</p></div>`;
+      clearSkeleton();
       return;
     }
     if (!S.note || S.note.id !== note.id) return; // switched away while loading
-    const skeleton = host.querySelector('.nb-skel');
     destroyEditor();
-    if (skeleton) host.appendChild(skeleton);
-    host.classList.remove('is-entering', 'is-revealed');
+    host.classList.remove('is-entering');
     const mountPoint = document.createElement('div');
     mountPoint.className = 'nb-editor-mount';
     host.appendChild(mountPoint);
@@ -1481,39 +1480,24 @@
     revealNote(host, note.id);
   }
   // Switching notes: placeholder lines stand where the text will be, then
-  // cross-fade with a slight blur into the note once it is parsed, so the
-  // body never cuts from one note to an empty editor to the next. The
-  // skeleton sits over the editor (absolute), so the swap moves nothing.
-  // Pattern after Transitions.dev's "Skeleton loader and reveal"
-  // (https://transitions.dev, Copyright (c) 2026 Jakub Antalik).
-  const SKELETON_MIN_MS = 160;
-  const REVEAL_MS = 360;
-  let skeletonShownAt = 0;
+  // cross-fade into the note once it is parsed (SkeletonEntrance, ui.js), so
+  // the body never cuts from one note to an empty editor to the next. The
+  // skeleton overlays the scroll area, so destroying and mounting the editor
+  // underneath does not touch it.
+  let skeletonToken = 0;
   function showSkeleton() {
     const host = $('nbEditorHost');
-    if (!host) return;
-    host.classList.remove('is-entering', 'is-revealed');
-    if (host.querySelector('.nb-skel')) return;
-    const widths = [94, 82, 88, 46, 0, 90, 76, 58];
-    host.insertAdjacentHTML('afterbegin', `<div class="nb-skel" aria-hidden="true">${widths.map((w) => w ? `<i style="width:${w}%"></i>` : '<i class="gap"></i>').join('')}</div>`);
-    skeletonShownAt = performance.now();
+    const scroll = host && host.parentElement;
+    if (!scroll || !window.SkeletonEntrance) return;
+    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host});
   }
   function clearSkeleton() {
     const host = $('nbEditorHost');
-    const skeleton = host && host.querySelector('.nb-skel');
-    if (skeleton) skeleton.remove();
-    if (host) host.classList.remove('is-revealed');
+    if (host && window.SkeletonEntrance) window.SkeletonEntrance.cancel(host.parentElement);
   }
   function revealNote(host, noteId) {
-    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const wait = reduce ? 0 : Math.max(0, SKELETON_MIN_MS - (performance.now() - skeletonShownAt));
-    setTimeout(() => {
-      if (editorNoteId !== noteId) return; // switched away: the next note owns the host
-      const skeleton = host.querySelector('.nb-skel');
-      if (!skeleton || reduce) { if (skeleton) skeleton.remove(); host.classList.add('is-revealed'); return; }
-      host.classList.add('is-revealed');
-      setTimeout(() => { if (skeleton.isConnected) skeleton.remove(); }, REVEAL_MS + 40);
-    }, wait);
+    if (editorNoteId !== noteId || !window.SkeletonEntrance) return; // switched away: the next note owns it
+    window.SkeletonEntrance.reveal(host.parentElement, skeletonToken);
   }
 
   // ── saving ──────────────────────────────────────────────────────────────────

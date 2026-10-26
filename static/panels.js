@@ -6518,6 +6518,18 @@ async function openSkill(name, el) {
   if (el) el.classList.add('active');
   _skillPreFormDetail = null;
   _editingSkillName = null;
+  // The skill's text stands as placeholder lines until it is written in,
+  // then cross-fades into it (SkeletonEntrance, ui.js).
+  const skillBody = $('skillDetailBody');
+  const skillHost = skillBody && skillBody.parentElement;
+  let skelToken = 0;
+  if (skillHost && window.SkeletonEntrance) {
+    const empty = $('skillDetailEmpty');
+    if (empty) empty.style.display = 'none';
+    skillBody.style.display = '';
+    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody]});
+    SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
+  }
   try {
     const data = await api(`/api/skills/content?name=${encodeURIComponent(name)}`);
     if (data && (data.success === false || data.error)) {
@@ -6530,7 +6542,10 @@ async function openSkill(name, el) {
     _renderSkillDetail(name, data.content || '', data.linked_files || {});
     _loadSkillScan(name);
     _closeMobileSidebarAfterPanelSelection();
-  } catch(e) { setStatus(t('skill_load_failed') + e.message); }
+  } catch(e) {
+    if (skillHost && window.SkeletonEntrance) SkeletonEntrance.cancel(skillHost);
+    setStatus(t('skill_load_failed') + e.message);
+  }
 }
 
 async function openSkillFile(skillName, filePath) {
