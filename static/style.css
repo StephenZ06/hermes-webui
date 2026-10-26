@@ -15316,3 +15316,33 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    bookmark at the same 16px box, the thin mic smaller. */
 #btnAttach svg{width:14px;height:14px;}
 #btnMic svg,#btnPersonaPicker svg{width:15px;height:15px;}
+/* Jobs dashboard: Application funnel + Activity on the left; Action centre
+   over a compact Automations card on the right, the two sharing its height. */
+.job-os-shell[data-view="dashboard"] :is(.job-os-card-head .card-title,.cal-title,.automation-title){text-transform:uppercase;letter-spacing:.06em;}
+.dash-main .funnel-card{margin-top:0;}
+.dash-side{display:flex;flex-direction:column;gap:20px;min-width:0;min-height:0;}
+.dash-side>.action-centre{flex:1 1 0;min-height:220px;}
+.dash-side>.automations-card{flex:0 0 auto;}
+.action-centre .action-list{flex:1 1 0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin:0 -4px;padding:0 4px;}
+.action-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;padding:9px 10px;border:1px solid var(--border2);border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .16s ease,background .16s ease;}
+.action-row:hover,.action-row:focus-visible{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));background:var(--hover-bg);outline:none;}
+.action-icon{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;background:color-mix(in srgb,var(--border2) 45%,transparent);color:var(--muted);}
+.action-row[data-kind="connection"] .action-icon,.action-row[data-kind="failed"] .action-icon{background:color-mix(in srgb,var(--error,#f07878) 16%,transparent);color:var(--error,#f07878);}
+.action-row[data-kind="matches"] .action-icon{background:color-mix(in srgb,var(--success,#4ade80) 15%,transparent);color:var(--success,#4ade80);}
+.action-row[data-kind="follow_up"] .action-icon,.action-row[data-kind="review"] .action-icon{background:color-mix(in srgb,var(--warning,#f5b84b) 15%,transparent);color:var(--warning,#f5b84b);}
+.action-text{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.action-text strong{font-size:12.5px;font-weight:650;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.action-text small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.action-go{font-size:11.5px;font-weight:600;color:var(--accent-text,var(--accent));white-space:nowrap;}
+.action-centre .action-empty{margin:auto 0;text-align:center;}
+/* Compact automations: title, one line of timing and the 14-day ticks. */
+.dash-side .automations{gap:8px;}
+.dash-side .automation-row{padding:9px 10px;row-gap:6px;column-gap:8px;}
+.dash-side .automation-row>.automation-main{gap:2px;}
+.dash-side .automation-row>.automation-main small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dash-side .automation-row>.automation-ticks i{height:8px;}
+.dash-side .automations{grid-template-columns:repeat(6,minmax(0,1fr));}
+.dash-side .automation-row{grid-column:span 2;}
+.dash-side .automation-row:nth-child(n+4),.dash-side .automation-row:last-child:nth-child(odd){grid-column:span 3;}
+@media (max-width:1400px){.dash-side .automations{grid-template-columns:repeat(2,minmax(0,1fr));}.dash-side .automation-row,.dash-side .automation-row:nth-child(n+4){grid-column:auto;}.dash-side .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
+.dash-side .automation-row>.automation-title{font-size:11.5px;letter-spacing:0;white-space:nowrap;text-wrap:nowrap;overflow:visible;}

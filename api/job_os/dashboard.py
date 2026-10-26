@@ -31,9 +31,11 @@ def build_dashboard() -> dict[str, Any]:
     from api.job_os.applications import board, funnel
 
     # Every card the board flags, wherever it sits (a follow-up nudge stays in Applied).
-    attention = sum(1 for column in board()["columns"] for card in column["jobs"]
+    columns = board()["columns"]
+    attention = sum(1 for column in columns for card in column["jobs"]
                     if card["attention"] or column["key"] == "attention")
     return {
+        "actions": decisions(columns),
         "total_jobs": len(jobs),
         "by_status": by_status,
         "active_work": sum(job.status in _ACTIVE_WORK_STATUSES for job in jobs),
@@ -41,6 +43,25 @@ def build_dashboard() -> dict[str, Any]:
         "funnel": funnel(),
         "activity": activity(),
     }
+
+
+ACTION_LIMIT = 20
+
+
+def decisions(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The jobs waiting on the user, for the dashboard's Action Centre: one row
+    per flag (a follow-up, a document to check, a failed tailoring), most
+    recently changed first."""
+    rows = []
+    for column in columns:
+        for card in column["jobs"]:
+            for reason in card["attention"]:
+                kind = "follow_up" if "follow up" in reason else "failed" if "failed" in reason else "review"
+                rows.append({"job_id": card["id"], "title": card["title"], "company": card["company"],
+                             "status": card["status"], "reason": reason, "kind": kind,
+                             "updated_at": card["updated_at"]})
+    rows.sort(key=lambda row: -(row["updated_at"] or 0))
+    return rows[:ACTION_LIMIT]
 
 
 ACTIVITY_DAYS = 190  # this month and the five before it

@@ -118,6 +118,40 @@
     }).join('');
     return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 18)}</button>`)}<div class="automations">${rows}</div></section>`;
   }
+  // Dashboard: what is waiting on a decision. A connection that broke comes
+  // first (nothing new arrives until it is fixed), then new good matches, then
+  // the jobs the board flags (a follow-up, a document to check, a failed tailoring).
+  const ACTION_ICON = {connection: 'cloud', matches: 'applied', follow_up: 'clock', review: 'eye', failed: 'close'};
+  function actionCentre(state) {
+    const dashboard = dashboardOf(state);
+    const rows = [];
+    const row = (kind, title, note, control, attrs) => {
+      const tag = attrs ? 'button' : 'div';
+      return `<${tag} ${attrs ? 'type="button" ' : ''}class="action-row" data-kind="${kind}"${attrs || ''}><span class="action-icon" aria-hidden="true">${icon(ACTION_ICON[kind] || 'bell', 15)}</span><span class="action-text"><strong>${title}</strong>${note ? `<small>${note}</small>` : ''}</span>${control || ''}</${tag}>`;
+    };
+    siteProblems(state).filter((site) => site.in_use !== false).forEach((site) => {
+      const what = site.state === 'changed' ? 'Its pages changed, so Scout can no longer read it' : 'It has not loaded for the last few tries';
+      rows.push(row('connection', `${esc(site.name)}: ${esc(SITE_STATE[site.state] || site.state)}`, esc(what),
+        '<span class="action-go">Check now</span>', ` data-job-os-action="site-check" data-site="${esc(site.site)}"`));
+    });
+    (state.automations || []).filter((a) => a.on && a.key === 'replies' && a.detail).forEach((a) => {
+      rows.push(row('connection', `${esc(a.label)}: can't read your inbox`, esc(a.detail), '<span class="action-go">Settings</span>',
+        ` data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'notifications')}"`));
+    });
+    const released = state.matches ? state.matches.released || [] : [];
+    if (released.length) {
+      const names = released.slice(0, 2).map((m) => m.title).filter(Boolean).join(' · ');
+      rows.push(row('matches', `${released.length} new good match${released.length === 1 ? '' : 'es'}`, esc(names) + (released.length > 2 ? ` +${released.length - 2} more` : ''),
+        '<span class="action-go">Review</span>', ' data-job-os-view="scout"'));
+    }
+    (dashboard.actions || []).forEach((a) => {
+      rows.push(row(a.kind, esc(a.title || 'Untitled job'), [a.company, a.reason].filter(Boolean).map(esc).join(' · '),
+        '<span class="action-go">Open</span>', ` data-job-id="${esc(a.job_id)}"`));
+    });
+    const body = rows.length ? `<div class="action-list">${rows.join('')}</div>`
+      : '<p class="job-os-card-note card-empty-note action-empty">Nothing needs a decision right now. New matches, follow-ups and connection problems show here when they do.</p>';
+    return `<section class="job-os-card action-centre">${cardHead('Action centre', 'bell', '', rows.length || null)}${body}</section>`;
+  }
   // While a view's data is on its way: the same spinner the app's other pages show.
   const LOADING = '<div class="loading-spinner-wrap job-os-loading" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">Loading</span></div>';
   // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
@@ -768,7 +802,7 @@
     const body = rows
       ? `<div class="funnel">${rows.map((st, i) => `<div class="funnel-row"><span>${esc(st.label)}</span><div class="funnel-track"><i style="--w:${Math.max(2, Math.round(100 * st.count / max))}%;--i:${i}"></i></div><strong data-count-key="funnel-${esc(st.key)}">${st.count}</strong></div>`).join('')}</div>`
       : '<p class="job-os-card-note card-empty-note">Your funnel fills in as Scout finds jobs and you move them along.</p>';
-    return `<section class="job-os-card funnel-card">${cardHead('Your funnel', 'chart')}${body}${activityCalendars(activity, back)}</section>`;
+    return `<section class="job-os-card funnel-card">${cardHead('Application funnel', 'chart')}${body}${activityCalendars(activity, back)}</section>`;
   }
   // ---- Pipeline toolbar ------------------------------------------------------
   function sortJobs(jobs, by) {
@@ -1208,13 +1242,11 @@
     let body;
     if (view === 'dashboard') {
       const recent = paged(jobs, state.recentPage);
-      body = `${header('Dashboard', 'Your job search at a glance.', state)}${siteHealthBanner(state, 'dashboard')}
+      body = `${header('Dashboard', 'Your job search at a glance.', state)}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"')}</section>
-        <div class="job-os-pair">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}</div>
-        <div class="job-os-columns">
-          <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
-          <section class="job-os-card job-os-import">${cardHead('Track a job', 'import')}<p class="job-os-card-note">Manually save jobs, tailor your resume to it, then follow through on your pipeline.</p><button class="job-os-btn primary" type="button" data-job-os-action="job-form-new">${icon('import', 16)}Add job</button></section>
-        </div>${jobDrawer(state)}${jobForm(state)}`;
+        <div class="job-os-pair dash-main">${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}<div class="dash-side">${actionCentre(state)}${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}</div></div>
+        <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
+        ${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
       const group = STATUS_GROUPS[filter];

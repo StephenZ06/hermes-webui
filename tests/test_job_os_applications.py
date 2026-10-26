@@ -81,7 +81,13 @@ def test_board_columns_attention_and_follow_up(store):
     card = next(j for c in applications.board()["columns"] for j in c["jobs"] if j["id"] == applied.id)
     assert card["attention"] and "follow up" in card["attention"][0]
     from api.job_os.dashboard import build_dashboard
-    assert build_dashboard()["needs_attention"] == 2  # the review card and the follow-up nudge
+    dashboard = build_dashboard()
+    assert dashboard["needs_attention"] == 2  # the review card and the follow-up nudge
+    # The Action Centre lists the same two, each with what it is waiting on.
+    actions = {a["job_id"]: (a["kind"], a["reason"]) for a in dashboard["actions"]}
+    assert actions[review.id] == ("review", "A tailored document has numbers to check")
+    assert actions[applied.id][0] == "follow_up" and "follow up" in actions[applied.id][1]
+    assert len(actions) == 2
 
 
 def test_board_narrows_to_one_source_and_counts_both(store):

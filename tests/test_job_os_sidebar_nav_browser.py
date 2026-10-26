@@ -71,7 +71,9 @@ def test_dashboard_add_job_saves_a_job_and_escapes_its_title():
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1280)
         try:
-            page.click(".job-os-import [data-job-os-action='job-form-new']")
+            # Add job lives on the Pipeline toolbar (the dashboard's Track a job card is gone).
+            page.click("#jobOsSidebar .side-menu-item[data-job-os-view='pipeline']")
+            page.click(".pipe-toolbar [data-job-os-action='job-form-new']")
             page.wait_for_selector("#job-os-job-form", timeout=10000)
             page.fill("#job-os-job-form input[name='title']", title)
             page.fill("#job-os-job-form input[name='canonical_url']", f"https://example.com/import-{marker}")
@@ -129,7 +131,9 @@ def test_a_refresh_keeps_unsaved_job_form_input():
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1280)
         try:
-            page.click(".job-os-import [data-job-os-action='job-form-new']")
+            # Add job lives on the Pipeline toolbar (the dashboard's Track a job card is gone).
+            page.click("#jobOsSidebar .side-menu-item[data-job-os-view='pipeline']")
+            page.click(".pipe-toolbar [data-job-os-action='job-form-new']")
             page.wait_for_selector("#job-os-job-form", timeout=10000)
             page.fill("#job-os-job-form input[name='title']", "Typed before refresh")
             page.fill("#job-os-job-form input[name='company']", "Draft Co")
@@ -187,3 +191,28 @@ def test_dashboard_metric_icons_match_their_value_and_label_height():
     for row in rows:
         assert row["loaded"], row
         assert abs(row["icon"] - row["text"]) < 1 and abs(row["top"] - row["textTop"]) < 1, row
+
+
+def test_dashboard_puts_the_funnel_left_and_action_centre_over_automations_right():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1600)
+        try:
+            page.wait_for_selector(".action-centre", timeout=15000)
+            page.wait_for_selector(".dash-side .automations-card:not(.is-loading)", timeout=15000)
+            out = page.evaluate("""() => {
+              const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return {l: r.left, r: r.right, t: r.top, b: r.bottom}; };
+              const title = (s) => { const e = document.querySelector(s + ' .card-title'); return [e.textContent, getComputedStyle(e).textTransform]; };
+              return {funnel: box('.funnel-card'), action: box('.action-centre'), auto: box('.dash-side .automations-card'),
+                      titles: [title('.funnel-card'), title('.action-centre'), title('.automations-card'), title('.job-os-recent')],
+                      track: !!document.querySelector('.job-os-import')};
+            }""")
+        finally:
+            browser.close()
+    funnel, action, auto = out["funnel"], out["action"], out["auto"]
+    assert funnel["r"] < action["l"] and abs(action["l"] - auto["l"]) < 1  # funnel left, the pair right
+    assert action["b"] < auto["t"]  # Action centre above Automations
+    assert abs(auto["b"] - funnel["b"]) < 2  # the right column ends with the left one
+    assert [t for t, _ in out["titles"]] == ["Application funnel", "Action centre", "Automations", "Recent jobs"]
+    assert all(tt == "uppercase" for _, tt in out["titles"])
+    assert out["track"] is False
