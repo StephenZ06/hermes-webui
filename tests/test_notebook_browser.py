@@ -1396,6 +1396,7 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
         const bar = document.querySelector('.nb-editor-scroll > .skel i');
         window.__frames.push({skel: !!bar, top: bar ? bar.getBoundingClientRect().top : null,
           opacity: mount ? Number(getComputedStyle(host).opacity) : null,
+          title: Number(getComputedStyle(document.getElementById('nbTitle')).opacity),
           text: mount ? mount.textContent : ''});
         if (window.__frames.length < 120) requestAnimationFrame(tick);
       };
@@ -1414,6 +1415,11 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
     assert any(0 < f["opacity"] < 1 for f in shown), "the body cut in instead of fading"
     assert not any(f["skel"] is False and f["text"] == "" and f["opacity"] for f in frames[frames.index(next(f for f in frames if f["skel"])):]), "an empty editor showed"
     assert final == {"skel": False, "opacity": 1, "text": final["text"]} and "alpha body text" in final["text"]
+    # The title moves with the body, frame for frame: it neither stays on the
+    # old note nor arrives a beat ahead of the text.
+    start = frames.index(next(f for f in frames if f["skel"]))
+    apart = [(f["title"], f["opacity"]) for f in frames[start:] if f["opacity"] is not None and abs(f["title"] - f["opacity"]) > 0.05]
+    assert not apart, apart
 
 
 def test_block_handle_sits_on_the_line_of_text(page):

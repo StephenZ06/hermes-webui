@@ -583,13 +583,17 @@
     }
     empty.hidden = true;
     chrome.hidden = false;
-    // A different note: its title and details fade in (the body fades in when
-    // its editor mounts). Updates to the same note don't replay it.
+    // A different note: its title and details fade in. When the note loaded
+    // behind the skeleton they are already held for its reveal, so they fade
+    // in with the body rather than a beat ahead of it. Updates to the same
+    // note don't replay it.
     if (chrome.dataset.noteId !== note.id) {
       chrome.dataset.noteId = note.id;
       chrome.classList.remove('nb-text-in');
-      void chrome.offsetWidth;
-      chrome.classList.add('nb-text-in');
+      if (!$('nbTitle').hasAttribute('data-skel-hide')) {
+        void chrome.offsetWidth;
+        chrome.classList.add('nb-text-in');
+      }
     }
     const trashed = !!note.deleted_at;
     const conflict = save.conflict ? `<div class="nb-banner warn" role="alert"><span>${S.vault ? 'This note was changed in Obsidian or another window.' : 'This note was changed in another window.'}</span><button type="button" class="nb-btn small" data-nb-action="conflict-mine">Keep mine</button><button type="button" class="nb-btn small" data-nb-action="conflict-theirs">Load theirs</button></div>` : '';
@@ -1505,7 +1509,9 @@
     const host = $('nbEditorHost');
     const scroll = host && host.parentElement;
     if (!scroll || !window.SkeletonEntrance) return;
-    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host});
+    // The title, tags and date fade in with the body, in one movement.
+    const chrome = ['nbTitle', 'nbTags', 'nbUpdated'].map($);
+    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host, hide: [host, ...chrome]});
   }
   function clearSkeleton() {
     const host = $('nbEditorHost');

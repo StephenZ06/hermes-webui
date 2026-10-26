@@ -68,7 +68,7 @@ def test_notes_initial_navigation_uses_one_central_loading_screen_not_shimmer_pl
 def test_note_switch_keeps_editor_chrome_static_and_only_animates_the_body():
     assert "head.classList.add('is-entering')" not in NOTEBOOK
     assert "SkeletonEntrance.reveal(host.parentElement" in NOTEBOOK
-    assert '.skel-host[data-skel="reveal"] [data-skel-hide]' in STYLE
+    assert '[data-skel-hide="reveal"]' in STYLE
     assert ".nb-editor-head.is-entering" not in STYLE
 
 

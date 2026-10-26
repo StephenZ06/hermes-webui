@@ -22706,6 +22706,8 @@ const SkeletonEntrance=(()=>{
   // Show the skeleton over `host`. `align` lays it over that element's box
   // (a centred column, or a child that is not at the host's top-left); `hide`
   // lists what it stands in for when that is not every child of the host.
+  // Hidden elements carry their own state, so one outside the host (a title
+  // above the scroll area) fades in with the content.
   function start(host,opts){
     if(!host) return 0;
     opts=opts||{};
@@ -22726,7 +22728,7 @@ const SkeletonEntrance=(()=>{
     }
     host.classList.add('skel-host');
     host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
-    host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide',''));
+    host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide','loading'));
     host.dataset.skel='loading';
     host.appendChild(el);
     host._skelEl=el;
@@ -22741,6 +22743,7 @@ const SkeletonEntrance=(()=>{
       if(token!==host._skelToken||!host._skelEl) return;
       if(host._skelWatch){ host._skelWatch.disconnect(); host._skelWatch=null; clearTimeout(host._skelWatchTimer); }
       host.dataset.skel='reveal';
+      (host._skelHidden||[]).forEach(el=>el.setAttribute('data-skel-hide','reveal'));
       setTimeout(()=>{ if(token===host._skelToken) clear(host); },REVEAL_MS+40);
     },wait);
   }
