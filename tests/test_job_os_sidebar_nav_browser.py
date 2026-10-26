@@ -216,3 +216,29 @@ def test_dashboard_puts_the_funnel_left_and_action_centre_over_automations_right
     assert [t for t, _ in out["titles"]] == ["Application funnel", "Action centre", "Automations", "Recent jobs"]
     assert all(tt == "uppercase" for _, tt in out["titles"])
     assert out["track"] is False
+
+
+def test_dashboard_side_cards_use_whole_pixel_font_sizes():
+    # Courier New (Zeus 2.0 on Windows) is hinted for whole pixel sizes; at
+    # 11.5px its stems fall between pixels and the letters look warped.
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_jobs(pw, 1600)
+        try:
+            page.wait_for_selector(".dash-side .automations-card:not(.is-loading) .automation-row", timeout=15000)
+            sizes = page.evaluate("""() => {
+              const list = document.querySelector('.action-centre .action-list') || document.querySelector('.action-centre');
+              const row = document.createElement('button');
+              row.className = 'action-row';
+              row.innerHTML = '<span class="action-icon"></span><span class="action-text"><strong>Title</strong><small>Reason</small></span><span class="action-go">Open</span>';
+              list.appendChild(row);
+              return [...document.querySelectorAll('.dash-side *')]
+                .filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))
+                .map((e) => [e.className || e.tagName, getComputedStyle(e).fontSize]);
+            }""")
+        finally:
+            browser.close()
+    assert any("automation-title" in name for name, _ in sizes)
+    assert any(name == "action-go" for name, _ in sizes)
+    fractional = [(name, size) for name, size in sizes if float(size[:-2]) != round(float(size[:-2]))]
+    assert fractional == [], fractional
