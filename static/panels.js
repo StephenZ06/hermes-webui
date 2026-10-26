@@ -94,42 +94,10 @@ const MAIN_VIEW_PANELS = ['settings','skills','agents','memory','knowledge','tas
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 // The titlebar centres its items as one group, so a longer or shorter title
-// moves the icon, count and search beside it. Measure them before the
-// titlebar is rewritten and slide each from where it was (transform only, no
-// per-frame layout) instead of letting it jump.
-const _TITLEBAR_SLIDE = 'titlebar-slide';
-function _titlebarSlideStart() {
+// moves the icon, count and search beside it: they slide (SlideOnChange).
+function _titlebarItems() {
   const bar = document.querySelector('.app-titlebar');
-  if (!bar || !bar.getClientRects().length) return null;
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
-  const items = [...bar.querySelectorAll('.app-titlebar-inner > *, .app-titlebar > :not(.app-titlebar-inner)')];
-  // Where each one is on screen now, part way through a slide included.
-  return {items, from: items.map((el) => el.getBoundingClientRect())};
-}
-function _titlebarSlideEnd(start) {
-  if (!start) return;
-  start.items.forEach((el, i) => {
-    const a = start.from[i], b = el.getBoundingClientRect();
-    if (!a.width || !b.width || !el.isConnected) return; // appeared or hid: nothing to slide from
-    // Its place in the layout: on screen, less any slide under way.
-    const shift = getComputedStyle(el).transform;
-    const place = b.left - (shift && shift !== 'none' ? new DOMMatrixReadOnly(shift).m41 : 0);
-    const slides = el.getAnimations().filter((x) => x.id === _TITLEBAR_SLIDE);
-    // This runs many times while a chat loads. If the item's place has not
-    // changed, a slide toward it carries on rather than restarting. (A slide
-    // with no recorded place was joined part way, as the loading title's bar
-    // does, and also ends at the item's place.)
-    if (slides.length && (el._titlebarPlace === undefined || Math.abs(place - el._titlebarPlace) < 0.5)) {
-      el._titlebarPlace = place;
-      return;
-    }
-    slides.forEach((x) => x.cancel());
-    el._titlebarPlace = place;
-    const dx = a.left - place;
-    if (Math.abs(dx) < 0.5) return;
-    el.animate([{transform: `translateX(${dx}px)`}, {transform: 'translateX(0)'}],
-      {duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)', id: _TITLEBAR_SLIDE});
-  });
+  return bar ? [...bar.querySelectorAll('.app-titlebar-inner > *, .app-titlebar > :not(.app-titlebar-inner)')] : [];
 }
 
 /**
@@ -161,7 +129,7 @@ function syncAppTitlebar() {
   // syncAppTitlebar again, destroying the input before the user finishes.
   if (_renamingAppTitlebar) return;
 
-  const slide = _titlebarSlideStart();
+  const slide = window.SlideOnChange ? SlideOnChange.start(_titlebarItems()) : null;
   // Write only on change: this runs on every locale re-apply and chat load,
   // and same-value writes still fire DOM mutations.
   if (titleEl.textContent !== mainText) titleEl.textContent = mainText;
@@ -189,7 +157,7 @@ function syncAppTitlebar() {
       subEl.hidden = true;
     }
   }
-  _titlebarSlideEnd(slide);
+  if (slide) SlideOnChange.end(slide);
 
   // Double-click on the titlebar title → rename the active session (same behaviour
   // as double-clicking a session title in the sidebar).  Only active on the chat
@@ -7850,7 +7818,8 @@ function getWorkspaceFriendlyName(path){
   return path.split('/').filter(Boolean).pop()||path;
 }
 
-function syncWorkspaceDisplays(){
+function syncWorkspaceDisplays(){ return _slideComposerChips(_syncWorkspaceDisplaysNow); }
+function _syncWorkspaceDisplaysNow(){
   const hasSession=!!(S.session&&S.session.workspace);
   // Fall back to the profile default workspace when no session is active yet.
   // S._profileDefaultWorkspace is set during boot and profile switches from /api/settings.

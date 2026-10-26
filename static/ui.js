@@ -4422,7 +4422,20 @@ function _compactComposerModelChipLabel(modelId,labelText){
   return raw;
 }
 
-function syncModelChip(){
+// The composer's chips sit in one row, so a longer model, workspace or
+// effort name, or a chip that hides, moves the others: they slide there
+// (SlideOnChange).
+function _composerChipsSlideStart(){
+  const row=document.querySelector('.composer-left');
+  return row&&window.SlideOnChange?SlideOnChange.start([...row.children]):null;
+}
+function _slideComposerChips(write){
+  const slide=_composerChipsSlideStart();
+  try{ return write(); }finally{ if(slide) SlideOnChange.end(slide); }
+}
+
+function syncModelChip(){ return _slideComposerChips(_syncModelChip); }
+function _syncModelChip(){
   const sel=$('modelSelect');
   const chip=$('composerModelChip');
   const label=$('composerModelLabel');
@@ -5662,67 +5675,73 @@ function _applyReasoningOptions(supportedEfforts){
 }
 
 function _applyReasoningChip(eff){
-  const meta=arguments[1]||null;
-  const effort=_normalizeReasoningEffort(eff);
-  _currentReasoningEffort=effort;
-  if(meta&&Array.isArray(meta.supported_efforts)){
-    _currentReasoningEffortsSupported=meta.supported_efforts;
-  }
-  // supports_thinking_toggle: the model accepts the thinking on/off toggle even
-  // when the effort ladder is empty (GLM-4.5–5.1 on native zai accept
-  // `thinking: {"type": ...}` but NOT `reasoning_effort`). Without honoring this
-  // flag, returning an empty supported_efforts hides the entire chip and
-  // silently regresses the working thinking on/off control for those models.
-  // Default true preserves prior behavior when the field is absent.
-  if(meta&&typeof meta.supports_thinking_toggle==='boolean'){
-    _currentReasoningToggleSupported=meta.supports_thinking_toggle;
-  }
-  const wrap=$('composerReasoningWrap');
-  const label=$('composerReasoningLabel');
-  const chip=$('composerReasoningChip');
-  const mobileLabel=$('composerMobileReasoningLabel');
-  const mobileAction=$('composerMobileReasoningAction');
-  if(!wrap||!label) return;
-  const supportedEfforts=(typeof _currentReasoningEffortsSupported==='undefined')
-    ?null
-    :_currentReasoningEffortsSupported;
-  const toggleSupported=(typeof _currentReasoningToggleSupported==='undefined')
-    ?true
-    :_currentReasoningToggleSupported;
-  const hasEffortLadder=Array.isArray(supportedEfforts)
-    ?supportedEfforts.length>0
-    :true;
-  // Show the chip if there is an effort ladder OR a thinking toggle is still
-  // available. Only hide when the model supports neither.
-  const supports=hasEffortLadder||toggleSupported;
-  if(!supports){
-    wrap.style.display='none';
-    if(mobileAction) mobileAction.style.display='none';
-    return;
-  }
-  wrap.style.display='';
-  if(mobileAction) mobileAction.style.display='';
-  if(typeof _applyReasoningOptions==='function') _applyReasoningOptions(supportedEfforts);
-  const text=_formatReasoningEffortLabel(effort);
-  label.textContent=text;
-  if(mobileLabel) mobileLabel.textContent=text;
-  if(chip){
-    const inactive=!effort||effort==='none';
-    chip.classList.toggle('inactive',inactive);
-    // The bar meter fills to the level (micro.js styles); a change pops the chip once.
-    const level={minimal:1,low:2,medium:3,high:4,xhigh:5,max:5}[effort]||0;
-    const meter=typeof chip.querySelector==='function'?chip.querySelector('.mi-effort'):null;
-    if(meter){
-      const before=meter.dataset.level;
-      meter.dataset.level=String(level);
-      if(before!==undefined&&before!==String(level)){chip.classList.remove('mi-effort-pop');void chip.offsetWidth;chip.classList.add('mi-effort-pop');}
+  // The chip can grow, shrink or hide: the chips beside it slide.
+  const slide=typeof _composerChipsSlideStart==='function'?_composerChipsSlideStart():null;
+  try{
+    const meta=arguments[1]||null;
+    const effort=_normalizeReasoningEffort(eff);
+    _currentReasoningEffort=effort;
+    if(meta&&Array.isArray(meta.supported_efforts)){
+      _currentReasoningEffortsSupported=meta.supported_efforts;
     }
-    const labelText='Reasoning effort: '+text;
-    chip.title=labelText;
-    chip.setAttribute('aria-label',labelText);
+    // supports_thinking_toggle: the model accepts the thinking on/off toggle even
+    // when the effort ladder is empty (GLM-4.5–5.1 on native zai accept
+    // `thinking: {"type": ...}` but NOT `reasoning_effort`). Without honoring this
+    // flag, returning an empty supported_efforts hides the entire chip and
+    // silently regresses the working thinking on/off control for those models.
+    // Default true preserves prior behavior when the field is absent.
+    if(meta&&typeof meta.supports_thinking_toggle==='boolean'){
+      _currentReasoningToggleSupported=meta.supports_thinking_toggle;
+    }
+    const wrap=$('composerReasoningWrap');
+    const label=$('composerReasoningLabel');
+    const chip=$('composerReasoningChip');
+    const mobileLabel=$('composerMobileReasoningLabel');
+    const mobileAction=$('composerMobileReasoningAction');
+    if(!wrap||!label) return;
+    const supportedEfforts=(typeof _currentReasoningEffortsSupported==='undefined')
+      ?null
+      :_currentReasoningEffortsSupported;
+    const toggleSupported=(typeof _currentReasoningToggleSupported==='undefined')
+      ?true
+      :_currentReasoningToggleSupported;
+    const hasEffortLadder=Array.isArray(supportedEfforts)
+      ?supportedEfforts.length>0
+      :true;
+    // Show the chip if there is an effort ladder OR a thinking toggle is still
+    // available. Only hide when the model supports neither.
+    const supports=hasEffortLadder||toggleSupported;
+    if(!supports){
+      wrap.style.display='none';
+      if(mobileAction) mobileAction.style.display='none';
+      return;
+    }
+    wrap.style.display='';
+    if(mobileAction) mobileAction.style.display='';
+    if(typeof _applyReasoningOptions==='function') _applyReasoningOptions(supportedEfforts);
+    const text=_formatReasoningEffortLabel(effort);
+    label.textContent=text;
+    if(mobileLabel) mobileLabel.textContent=text;
+    if(chip){
+      const inactive=!effort||effort==='none';
+      chip.classList.toggle('inactive',inactive);
+      // The bar meter fills to the level (micro.js styles); a change pops the chip once.
+      const level={minimal:1,low:2,medium:3,high:4,xhigh:5,max:5}[effort]||0;
+      const meter=typeof chip.querySelector==='function'?chip.querySelector('.mi-effort'):null;
+      if(meter){
+        const before=meter.dataset.level;
+        meter.dataset.level=String(level);
+        if(before!==undefined&&before!==String(level)){chip.classList.remove('mi-effort-pop');void chip.offsetWidth;chip.classList.add('mi-effort-pop');}
+      }
+      const labelText='Reasoning effort: '+text;
+      chip.title=labelText;
+      chip.setAttribute('aria-label',labelText);
+    }
+    if(mobileAction) mobileAction.classList.toggle('inactive',!effort||effort==='none');
+    _highlightReasoningOption(effort);
+  }finally{
+    if(slide) SlideOnChange.end(slide);
   }
-  if(mobileAction) mobileAction.classList.toggle('inactive',!effort||effort==='none');
-  _highlightReasoningOption(effort);
 }
 
 // Tracks the model/provider identity of the last reasoning fetch so routine
@@ -22824,3 +22843,47 @@ const SkeletonEntrance=(()=>{
   return {start,reveal,revealOnChange,cancel};
 })();
 window.SkeletonEntrance=SkeletonEntrance;
+
+// Items in a row that a text change re-flows (the centred titlebar, the
+// composer's chips): measure them before the change and slide each from
+// where it was, as a transform, instead of letting it jump. start() takes
+// the items; end() runs after the change. A call that does not move an item
+// leaves a slide toward its place running (some of these rows are rewritten
+// many times while a chat loads). Items that appear or hide do not slide.
+const SlideOnChange=(()=>{
+  const ID='slide-on-change';
+  const reduced=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function start(items){
+    items=(items||[]).filter(Boolean);
+    if(!items.length||reduced()||!items.some((el)=>el.getClientRects().length)) return null;
+    // Where each one is on screen now, part way through a slide included.
+    return {items,from:items.map((el)=>el.getBoundingClientRect())};
+  }
+  function end(state){
+    if(!state) return;
+    state.items.forEach((el,i)=>{
+      const a=state.from[i], b=el.getBoundingClientRect();
+      if(!a.width||!b.width||!el.isConnected) return;
+      // Its place in the layout: on screen, less any slide under way.
+      const shift=getComputedStyle(el).transform;
+      const place=b.left-(shift&&shift!=='none'?new DOMMatrixReadOnly(shift).m41:0);
+      const slides=el.getAnimations().filter((x)=>x.id===ID);
+      // A slide toward an unchanged place carries on. (One with no recorded
+      // place was joined part way, as the loading title's bar does.)
+      if(slides.length&&(el._slidePlace===undefined||Math.abs(place-el._slidePlace)<0.5)){ el._slidePlace=place; return; }
+      slides.forEach((x)=>x.cancel());
+      el._slidePlace=place;
+      const dx=a.left-place;
+      if(Math.abs(dx)<0.5) return;
+      el.animate([{transform:`translateX(${dx}px)`},{transform:'translateX(0)'}],
+        {duration:320,easing:'cubic-bezier(.2,.8,.2,1)',id:ID});
+    });
+  }
+  // Run write() between start and end.
+  function around(items,write){
+    const state=start(items);
+    try{ return write(); }finally{ end(state); }
+  }
+  return {start,end,around};
+})();
+window.SlideOnChange=SlideOnChange;
