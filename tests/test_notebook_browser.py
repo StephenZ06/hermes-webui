@@ -1296,3 +1296,60 @@ def test_opening_notes_does_not_pile_up_listeners_on_the_page(touch_page):
     last = tab.evaluate("() => window.__listenerKeys()")
     grew = {k: (first.get(k, 0), v) for k, v in last.items() if v > first.get(k, 0)}
     assert counts[-1] <= counts[1] + 2, (counts, grew)
+
+
+def test_changing_list_fades_the_old_one_out_before_the_new_one_in(page):
+    # The middle list used to cut to blank in one frame (every new item at
+    # opacity 0), which read as a flicker, before fading the new list in.
+    title = f"Handoff {uuid.uuid4().hex[:6]}"
+    _open(page)
+    _new_note(page, title)
+    _saved(page)
+    page.wait_for_function("(t) => [...document.querySelectorAll('.nb-item strong')].some(e => e.textContent === t)", arg=title, timeout=10000)
+    out = page.evaluate("""async () => {
+      const host = document.getElementById('nbListItems');
+      const before = host.childElementCount;
+      document.querySelector('[data-nb-scope=trash]').click();
+      const leaving = [host.classList.contains('is-leaving'), host.childElementCount, document.getElementById('nbScopeTitle').textContent];
+      await new Promise((r) => setTimeout(r, 400));
+      return {before, leaving, after: [host.classList.contains('is-leaving'), host.classList.contains('is-entering'), document.getElementById('nbScopeTitle').textContent]};
+    }""")
+    # Right after the click the old list is still there, fading out under its old heading.
+    assert out["leaving"][0] is True and out["leaving"][1] == out["before"] > 0
+    assert out["leaving"][2] != "Trash"
+    assert out["after"] == [False, True, "Trash"]
+
+
+def test_reopening_notes_fetches_the_last_note_and_editor_alongside_the_list():
+    # Opening the page used to wait for the note list, then fetch the last
+    # note, then load the 1.7 MB editor: three round trips in a row.
+    import time
+    sync_api = pytest.importorskip("playwright.sync_api")
+    title = f"Reopen {uuid.uuid4().hex[:6]}"
+    note_id = _api("/api/notebook/notes/create", {"title": title})["note"]["id"]
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            # The service worker would otherwise answer these fetches out of the page's sight.
+            page = browser.new_context(viewport={"width": 1440, "height": 900}, service_workers="block").new_page()
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("(id) => localStorage.setItem('hermes-notebook-last', id)", note_id)
+            asked = {}
+            page.on("request", lambda r: asked.setdefault(r.url.split("?")[0].rsplit("/", 1)[-1], time.monotonic()))
+            listed = []
+
+            def hold(route):
+                page.wait_for_timeout(1000)
+                listed.append(time.monotonic())
+                route.continue_()
+
+            page.route("**/api/notebook/bootstrap", hold)
+            page.evaluate("() => { setTimeout(() => switchPanel('notebook'), 0); }")
+            page.wait_for_function("(t) => document.getElementById('nbTitle') && document.getElementById('nbTitle').value === t", arg=title, timeout=30000)
+        finally:
+            browser.close()
+    # Both were asked for while the list request was still held.
+    assert asked[note_id] < listed[0]
+    assert asked["blocknote-hermes.js"] < listed[0]

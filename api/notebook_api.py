@@ -136,8 +136,7 @@ def handle_notebook_get(handler, parsed) -> bool:
             # 01 Projects/<workspace>, 03 Resources/<folder>), plus the whole
             # vault for the Obsidian view. Otherwise Hermes' own store.
             if notebook_vault.enabled():
-                data = notebook_vault.main_bootstrap()
-                data["vault"] = notebook_vault.bootstrap()
+                data = notebook_vault.both_bootstraps()
             else:
                 data = notebook.bootstrap()
                 data["vault"] = None

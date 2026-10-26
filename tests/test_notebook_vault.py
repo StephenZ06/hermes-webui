@@ -305,3 +305,32 @@ def test_streamed_media_goes_to_attachments_and_plays_from_anywhere(vault):
         notebook_vault.file_path("Elsewhere/d.pdf")
     note = notebook_vault.create_note({"title": "Media", "markdown": "![[Clip 1.mp4]]"})
     assert "![Clip 1.mp4](" + notebook_vault.FILE_ROUTE in notebook_vault.get_note(note["id"])["markdown"]
+
+
+def test_bootstrap_walks_the_vault_once_and_rereads_only_changed_notes(vault, monkeypatch):
+    # A vault on a slow mount (a Windows drive under WSL) made each file
+    # touch cost milliseconds: the page's bootstrap must not list the vault
+    # once per view, nor re-read notes that have not changed.
+    _connect(vault)
+    reads, scans = [], []
+    real_read, real_scan = notebook_vault._read, notebook_vault._scan_notes
+    monkeypatch.setattr(notebook_vault, "_read", lambda path: reads.append(path.name) or real_read(path))
+    monkeypatch.setattr(notebook_vault, "_scan_notes", lambda root, trash: scans.append(trash) or real_scan(root, trash=trash))
+
+    data = notebook_vault.both_bootstraps()
+    assert sorted(n["title"] for n in data["vault"]["notes"]) == ["Honeypot", "Inbox note"]
+    assert sorted(scans) == [False, True]  # one pass, shared by both views
+    assert sorted(reads) == ["Honeypot.md", "Inbox note.md"]
+    assert data["vault"]["notes"] == notebook_vault.bootstrap()["notes"]
+    assert data["notes"] == notebook_vault.main_bootstrap()["notes"]
+
+    reads.clear()
+    notebook_vault.both_bootstraps()
+    assert reads == []  # nothing changed, nothing re-read
+
+    note = vault / "Inbox note.md"
+    note.write_text("Changed in Obsidian #later\n")
+    os.utime(note, ns=(time.time_ns(), time.time_ns() + 5_000_000_000))
+    again = {n["title"]: n for n in notebook_vault.both_bootstraps()["vault"]["notes"]}
+    assert reads == ["Inbox note.md"]
+    assert again["Inbox note"]["preview"].startswith("Changed in Obsidian")

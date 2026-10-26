@@ -472,16 +472,42 @@
       + `<span class="nb-updated" id="nbUpdated"></span></div></div>`;
   }
   let lastListKey = '';
+  // While the shown list fades out, the next one waits; it is painted from
+  // the state as it is when the fade ends, so renders in between merge.
+  let listLeaving = 0;
+  const LIST_LEAVE_MS = 110;
   function renderList() {
     const host = $('nbListItems');
     if (!host) return;
     syncListPresentation();
-    // Items fade in when the list changes what it shows (scope, search, tag),
-    // not on the re-renders an autosave triggers.
+    // The list changes what it shows (scope, search, tag): the old one fades
+    // out, then the new one fades in, never cutting to blank in one frame.
+    // The re-renders an autosave triggers repaint in place.
     const listKey = [S.side, S.scope.kind, S.scope.id, S.search, S.tagFilter, S.loaded].join('|');
     const entering = listKey !== lastListKey;
-    host.classList.toggle('is-entering', entering);
     lastListKey = listKey;
+    if (listLeaving) return;
+    const title = $('nbScopeTitle');
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (entering && !reduce && host.childElementCount && S.loaded) {
+      host.classList.remove('is-entering'); title.classList.remove('is-entering');
+      host.classList.add('is-leaving'); title.classList.add('is-leaving');
+      listLeaving = setTimeout(() => {
+        listLeaving = 0;
+        const items = $('nbListItems'), heading = $('nbScopeTitle');
+        if (items) items.classList.remove('is-leaving');
+        if (heading) heading.classList.remove('is-leaving');
+        paintList(true);
+      }, LIST_LEAVE_MS);
+      return;
+    }
+    paintList(entering);
+  }
+  function paintList(entering) {
+    const host = $('nbListItems');
+    if (!host) return;
+    host.classList.toggle('is-entering', entering);
+    if (entering) host.scrollTop = 0;
     const title = $('nbScopeTitle');
     title.textContent = scopeTitle() + (S.tagFilter ? ` · #${S.tagFilter}` : '');
     // The heading fades to its new name with the list (reflow restarts it).
@@ -1550,6 +1576,18 @@
   }
 
   // ── actions ─────────────────────────────────────────────────────────────────
+  // One note fetched ahead (the note the page reopens), taken by openNote.
+  let prefetched = null;
+  function prefetchNote(noteId) {
+    const request = window.NotebookApi.get(noteId);
+    request.catch(() => {});
+    prefetched = {id: noteId, request};
+  }
+  function takePrefetched(noteId) {
+    const hit = prefetched && prefetched.id === noteId ? prefetched.request : null;
+    prefetched = null;
+    return hit;
+  }
   async function openNote(noteId, opts) {
     if (S.note && S.note.id === noteId && !(opts && opts.force)) { S.pane = 'editor'; ensureShell(); return; }
     await flushSave();
@@ -1558,7 +1596,7 @@
     destroyEditor();
     render();
     try {
-      const {note} = await window.NotebookApi.get(noteId);
+      const {note} = await (takePrefetched(noteId) || window.NotebookApi.get(noteId));
       if (S.side === 'vault' && isVaultNote(note)) Object.assign(note, asVaultView(note));
       S.note = note;
       try { localStorage.setItem(LAST_KEY, noteId); } catch (_) {}
@@ -2024,13 +2062,18 @@
       // The real page stays underneath it, so it can fade cleanly into view.
       const bootstrap = loadBootstrap();
       ensureShell();
+      // The note to reopen and the editor load alongside the note list,
+      // rather than one after another once the list is in.
+      let last = wanted;
+      if (!last) { try { last = localStorage.getItem(LAST_KEY); } catch (_) {} }
+      if (last) prefetchNote(last);
+      loadEditorModule().catch(() => {});
       await bootstrap;
       syncInitialLoadingState();
       if (!isShowing()) return;
       render();
-      let last = wanted;
-      if (!last) { try { last = localStorage.getItem(LAST_KEY); } catch (_) {} }
       if (last && S.notes.some((n) => n.id === last && live(n))) { S.pane = window.matchMedia('(max-width: 760px)').matches ? 'list' : 'editor'; await openNote(last); }
+      prefetched = null;
     } else {
       render();
       if (wanted) await openNote(wanted);

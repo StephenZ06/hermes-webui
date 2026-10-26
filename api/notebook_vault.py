@@ -257,29 +257,63 @@ def _unique(folder: Path, stem: str, suffix: str = ".md", skip: Path | None = No
     return candidate
 
 
-def _walk_notes(root: Path, *, trash: bool) -> list[Path]:
+def _scan_notes(root: Path, *, trash: bool) -> list[tuple[Path, os.stat_result]]:
+    """Every note file with its stat. os.scandir answers "directory? symlink?"
+    from the listing itself, so a vault on a slow mount (a Windows drive under
+    WSL) costs one stat per note rather than four or five."""
     base = root / TRASH if trash else root
-    out: list[Path] = []
-    if not base.is_dir() or base.is_symlink():
+    out: list[tuple[Path, os.stat_result]] = []
+    try:
+        if base.is_symlink() or not base.is_dir():
+            return out
+    except OSError:
         return out
-    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
-        here = Path(dirpath)
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") and not (here / d).is_symlink()]
-        for name in filenames:
-            path = here / name
-            if name.endswith(".md") and not name.startswith(".") and not path.is_symlink():
-                out.append(path)
-                if len(out) >= MAX_FILES:
-                    return out
+    pending = [base]
+    while pending:
+        here = pending.pop()
+        try:
+            with os.scandir(here) as entries:
+                listed = list(entries)
+        except OSError:
+            continue
+        dirs = []
+        for entry in sorted(listed, key=lambda e: e.name):
+            name = entry.name
+            if name.startswith("."):
+                continue
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append(Path(entry.path))
+                elif name.endswith(".md"):
+                    out.append((Path(entry.path), entry.stat(follow_symlinks=False)))
+                    if len(out) >= MAX_FILES:
+                        return out
+            except OSError:
+                continue
+        pending.extend(reversed(dirs))
     return out
+
+
+def _walk_notes(root: Path, *, trash: bool) -> list[Path]:
+    return [path for path, _stat in _scan_notes(root, trash=trash)]
 
 
 def _top_folders(root: Path) -> list[Path]:
     try:
-        entries = sorted(root.iterdir(), key=lambda p: p.name.lower())
+        with os.scandir(root) as entries:
+            listed = list(entries)
     except OSError:
         return []
-    return [p for p in entries if p.is_dir() and not p.is_symlink() and not p.name.startswith(".")]
+    out = []
+    for entry in sorted(listed, key=lambda e: e.name.lower()):
+        try:
+            if not entry.name.startswith(".") and not entry.is_symlink() and entry.is_dir(follow_symlinks=False):
+                out.append(Path(entry.path))
+        except OSError:
+            continue
+    return out
 
 
 # ── markdown ───────────────────────────────────────────────────────────────────
@@ -520,7 +554,25 @@ def _vault_folder_rel(rel: str) -> str | None:
 
 # ── notes ──────────────────────────────────────────────────────────────────────
 
-def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
+# path -> (mtime_ns, size, preview, tags): an unchanged file is not re-read.
+_PARSED: dict[str, tuple[int, int, str, list[str]]] = {}
+
+
+def _parsed(path: Path, stat: os.stat_result) -> tuple[str, list[str]]:
+    key = str(path)
+    hit = _PARSED.get(key)
+    if hit and hit[0] == stat.st_mtime_ns and hit[1] == stat.st_size:
+        return hit[2], list(hit[3])
+    front, body = _split(_read(path))
+    preview, tags = _plain(body)[:160], _frontmatter_tags(front)
+    if len(_PARSED) >= 2 * MAX_FILES:
+        _PARSED.clear()
+    _PARSED[key] = (stat.st_mtime_ns, stat.st_size, preview, tags)
+    return preview, list(tags)
+
+
+def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, Any] | None = None,
+             stat: os.stat_result | None = None) -> dict[str, Any]:
     vault = str(root)
     ctx = ctx or _context(conn, root)
     rel = _rel(root, path)
@@ -531,20 +583,23 @@ def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, An
     placed = (row["restore_to"] or rel) if in_trash else rel
     in_main, project_id, folder_id = _main_place(placed, ctx)
     vault_rel = _vault_folder_rel(rel)
-    text = _read(path)
-    front, body = _split(text)
-    stat = path.stat()
+    if stat is None:
+        try:
+            stat = path.stat()
+        except OSError as error:
+            raise NotebookError("Note not found", 404) from error
+    preview, tags = _parsed(path, stat)
     deleted_at = row["deleted_at"] if in_trash else None
     if in_trash and not deleted_at:
         deleted_at = stat.st_mtime
     return {
-        "id": note_id, "title": path.stem, "preview": _plain(body)[:160],
+        "id": note_id, "title": path.stem, "preview": preview,
         # The main Notes view's place for it, and the Obsidian view's folder.
         "in_main": in_main, "project_id": project_id, "folder_id": folder_id,
         "vault_folder_id": _folder_id(conn, vault, vault_rel) if vault_rel else None,
-        "tags": _frontmatter_tags(front),
+        "tags": tags,
         "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]), "archived": False,
-        "deleted_at": deleted_at, "revision": _revision(path),
+        "deleted_at": deleted_at, "revision": int(stat.st_mtime_ns // 1_000_000),
         "created_at": getattr(stat, "st_birthtime", stat.st_ctime), "updated_at": stat.st_mtime,
         "path": rel, "format": "markdown", "store": "vault",
     }
@@ -626,17 +681,28 @@ def _visible_folders(conn: sqlite3.Connection, root: Path) -> list[dict[str, Any
     return out
 
 
+def _all_summaries(conn: sqlite3.Connection, root: Path, ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    found = _scan_notes(root, trash=False) + _scan_notes(root, trash=True)
+    notes = [_summary(conn, root, path, ctx, stat) for path, stat in found]
+    notes.sort(key=lambda n: (not n["pinned"], -n["updated_at"]))
+    return notes
+
+
+def _vault_view(conn: sqlite3.Connection, root: Path, notes: list[dict[str, Any]]) -> dict[str, Any]:
+    cfg = config()
+    return {"projects": [], "folders": _visible_folders(conn, root), "notes": notes,
+            "vault": {"name": cfg["name"], "path": cfg["path"]}}
+
+
+def _main_view(ctx: dict[str, Any], notes: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"projects": _workspaces(), "folders": ctx["folders"], "notes": [n for n in notes if n["in_main"]]}
+
+
 def bootstrap() -> dict[str, Any]:
     """The Obsidian view: every folder (two levels) and every note."""
     root = _root()
     with _LOCK, _connect() as conn:
-        ctx = _context(conn, root)
-        folders = _visible_folders(conn, root)
-        notes = [_summary(conn, root, p, ctx) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
-    notes.sort(key=lambda n: (not n["pinned"], -n["updated_at"]))
-    cfg = config()
-    return {"projects": [], "folders": folders, "notes": notes,
-            "vault": {"name": cfg["name"], "path": cfg["path"]}}
+        return _vault_view(conn, root, _all_summaries(conn, root, _context(conn, root)))
 
 
 def main_bootstrap() -> dict[str, Any]:
@@ -645,10 +711,19 @@ def main_bootstrap() -> dict[str, Any]:
     root = _root()
     with _LOCK, _connect() as conn:
         ctx = _context(conn, root)
-        notes = [_summary(conn, root, p, ctx) for p in _walk_notes(root, trash=False) + _walk_notes(root, trash=True)]
-    notes = [n for n in notes if n["in_main"]]
-    notes.sort(key=lambda n: (not n["pinned"], -n["updated_at"]))
-    return {"projects": _workspaces(), "folders": ctx["folders"], "notes": notes}
+        return _main_view(ctx, _all_summaries(conn, root, ctx))
+
+
+def both_bootstraps() -> dict[str, Any]:
+    """The main view with the Obsidian view under "vault", from one pass over
+    the vault: the two views are the same notes, placed differently."""
+    root = _root()
+    with _LOCK, _connect() as conn:
+        ctx = _context(conn, root)
+        notes = _all_summaries(conn, root, ctx)
+        data = _main_view(ctx, notes)
+        data["vault"] = _vault_view(conn, root, [dict(n) for n in notes])
+    return data
 
 
 def get_note(note_id: str) -> dict[str, Any]:
