@@ -40,13 +40,13 @@ def test_chat_workspaces_heading_matches_the_office_divider_pattern():
     assert "const sessionSearchWrap=$('sessionSearch')?.closest('.session-search');" in SESSIONS
     assert "workspacesSection.appendChild(sessionSearchWrap);" in SESSIONS
     assert ".chat-sidebar-section--workspaces{padding:0;border-top:0;}" in CSS
-    assert ".chat-sidebar-section--workspaces .chat-sidebar-section-heading,.chat-sidebar-section--conversations .chat-sidebar-section-heading{margin:15px 4px 14px;" in CSS
+    assert ".chat-sidebar-section--workspaces .chat-sidebar-section-heading,.chat-sidebar-section--conversations .chat-sidebar-section-heading{margin:15px 4px 13px;" in CSS
     assert ".chat-sidebar-section--workspaces .chat-sidebar-section-heading::before,.chat-sidebar-section--workspaces .chat-sidebar-section-heading::after{content:\"\";height:1px;flex:1;background:var(--border);}" in CSS
     assert ".chat-sidebar-section--workspaces .sidebar-search{padding:0 4px 10px;}" in CSS
 
 
 def test_chat_conversations_heading_uses_the_same_centered_divider_pattern():
-    assert ".chat-sidebar-section--conversations{margin:0 0 4px;padding:0;border-top:0;}" in CSS
+    assert ".chat-sidebar-section--conversations{margin:0 0 3px;padding:0;border-top:0;}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading{margin:3px 4px 0;gap:10px;padding:0;}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading::before,.chat-sidebar-section--conversations .chat-sidebar-section-heading::after{content:\"\";height:1px;flex:1;background:var(--border);}" in CSS
     assert ".chat-sidebar-section--conversations .chat-sidebar-section-heading svg{display:none;}" in CSS
@@ -112,10 +112,10 @@ def test_work_hub_project_tiles_show_board_counts_and_include_main_boards_in_del
 
 def test_office_section_titles_use_icon_free_dividers_with_double_spacing():
     assert ".office-sidebar-section-title{margin:20px 8px;" in CSS
-    assert ".office-project-folders-title{margin:20px 0 21px;" in CSS
+    assert ".office-project-folders-title{margin:20px 0;" in CSS
     assert ".office-project-folders{flex:0 0 auto;padding:0 8px;" in CSS
     assert ".office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;" in CSS
-    assert ".office-history-title{margin:16px 8px 7px;}" in CSS
+    assert ".office-history-title{margin:16px 8px 6px;}" in CSS
     project_folder_body = OFFICE[OFFICE.index("function renderProjectFolders("):]
     assert "workspace-heading" not in project_folder_body
 

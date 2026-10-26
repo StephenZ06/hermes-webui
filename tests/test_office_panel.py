@@ -45,7 +45,7 @@ def test_office_sidebar_restores_project_folders_above_delegated_chat_history():
     # The heading sits in its own labelled divider, with matching whitespace
     # before and after the line before the first project chip.
     assert ".office-project-folders{flex:0 0 auto;padding:0 8px;" in CSS
-    assert ".office-project-folders-title{margin:20px 0 21px;" in CSS
+    assert ".office-project-folders-title{margin:20px 0;" in CSS
     assert "officeLabelsBtn" in OFFICE_INDEX_JS
     assert "togglePlatformLabels" in OFFICE_INDEX_JS
 
@@ -83,7 +83,7 @@ def test_office_filter_uses_a_compact_vertical_inset():
     assert ".panel-view#panelOffice .sidebar-search{padding:0 8px 6px;}" in CSS
     assert ".panel-view#panelOffice .office-project-folders .sidebar-search{padding:0 0 10px;}" in CSS
     assert ".office-sidebar-list{flex:1;min-height:0;overflow-y:auto;padding:0 8px;" in CSS
-    assert ".office-history-title{margin:16px 8px 7px;}" in CSS
+    assert ".office-history-title{margin:16px 8px 6px;}" in CSS
 
 
 def test_empty_chat_landing_does_not_define_a_logo_glow():
