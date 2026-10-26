@@ -1390,7 +1390,8 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
       const tick = () => {
         const host = document.getElementById('nbEditorHost');
         const mount = host && host.querySelector('.nb-editor-mount');
-        window.__frames.push({skel: !!(host && host.querySelector('.nb-skel i')),
+        const bar = host && host.querySelector('.nb-skel i');
+        window.__frames.push({skel: !!bar, top: bar ? bar.getBoundingClientRect().top : null,
           opacity: mount ? Number(getComputedStyle(mount).opacity) : null,
           text: mount ? mount.textContent : ''});
         if (window.__frames.length < 120) requestAnimationFrame(tick);
@@ -1404,6 +1405,8 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
       return {skel: !!host.querySelector('.nb-skel'), opacity: Number(getComputedStyle(host.querySelector('.nb-editor-mount')).opacity),
               text: host.querySelector('.nb-editor-mount').textContent}; }""")
     assert any(f["skel"] for f in frames), "no skeleton while the note loaded"
+    # The placeholder lines stand still: the editor's margins never move them.
+    assert len({round(f["top"], 1) for f in frames if f["skel"]}) == 1, frames
     shown = [f for f in frames if "alpha body text" in f["text"]]
     assert any(0 < f["opacity"] < 1 for f in shown), "the body cut in instead of fading"
     assert not any(f["skel"] is False and f["text"] == "" and f["opacity"] for f in frames[frames.index(next(f for f in frames if f["skel"])):]), "an empty editor showed"
