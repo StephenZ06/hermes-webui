@@ -247,3 +247,35 @@ def test_a_calibration_proposal_is_reviewed_and_accepted_from_the_dashboard():
         assert json.loads(path.read_text())["current"]["weights"]["skills"] == 40
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_resume_studio_shows_the_latest_skill_gap_report():
+    from tests._pytest_port import TEST_STATE_DIR
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    _post("/api/job-os/resume", {"filename": "cv.md", "text": "Jane Doe\nAnalyst\n" + "SQL and Python reporting. " * 20})
+    path = TEST_STATE_DIR / "webui_state" / "job_os" / "skill_gaps.json"
+    path.write_text(json.dumps({"reports": [{"created_at": 1_800_000_000, "jobs": 12, "scope": {"good_only": False, "days": 0},
+                                             "gaps": [{"label": "Kubernetes", "gap": 7, "asked": 4, "key": ["kubernetes"]},
+                                                      {"label": "Power BI", "gap": 3, "asked": 2, "key": ["bi", "power"]}],
+                                             "themes": [{"name": "Cloud", "gaps": ["Kubernetes"], "why": "Asked often"}],
+                                             "plan": [{"step": "Run a cluster", "detail": "Use kind locally."}],
+                                             "since_last": {"new": ["Power BI"], "closed": ["Go"]}}]}))
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = _browser(sync_api, pw)
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 1000})
+                _open_jobs(page, "#jobs/resume-studio")
+                page.wait_for_selector(".skill-gaps .gaps-bars li", timeout=15000)
+                rows = page.evaluate("() => [...document.querySelectorAll('.skill-gaps .gaps-bars li')].map(li => li.textContent)")
+                since = page.inner_text(".skill-gaps .gaps-since")
+                page.locator(".skill-gaps").scroll_into_view_if_needed()
+                page.wait_for_timeout(300)
+                _shot(page, "skill-gaps")
+            finally:
+                browser.close()
+    finally:
+        path.unlink(missing_ok=True)
+    assert rows == ["Kubernetes7 jobs", "Power BI3 jobs"]
+    assert "New · Power BI" in since and "Gone · Go" in since

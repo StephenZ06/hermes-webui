@@ -247,6 +247,11 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"notifications": notify.status()})
         return True
+    if path == f"{_PREFIX}/skill-gaps":
+        from api.job_os import skill_gaps
+
+        j(handler, {"skill_gaps": skill_gaps.status()})
+        return True
     if path == f"{_PREFIX}/calibration":
         from api.job_os import calibration
 
@@ -619,6 +624,18 @@ def _notifications_post(handler, path: str) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path == f"{_PREFIX}/skill-gaps":
+        from api.job_os import skill_gaps
+
+        body = body if isinstance(body, dict) else {}
+        try:
+            days = int(body.get("days") or 0)
+        except (TypeError, ValueError):
+            days = 0
+        if days not in (0, 30, 90):
+            return _error(handler, "days must be 0, 30 or 90", 400)
+        j(handler, {"skill_gaps": skill_gaps.request(good_only=bool(body.get("good_only")), days=days)})
+        return True
     if parsed.path.startswith(f"{_PREFIX}/calibration/"):
         from api.job_os import calibration
 

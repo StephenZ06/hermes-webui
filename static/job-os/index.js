@@ -180,7 +180,7 @@
       const wantCountries = !state.countries.length;
       // Firecrawl only matters while Scout reads Indeed itself (Apify off).
       const wantFirecrawl = wantScout || wantSettings || !(state.apifyUsage && state.apifyUsage.active);
-      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage, skillsGained] = await Promise.all([
+      const [capability, dashboard, jobs, health, settings, searches, runs, detail, resume, tailored, studioDocs, board, notifications, automations, timeline, matches, apifyUsage, skillsGained, skillGaps] = await Promise.all([
         cached('capability', 10 * 60 * 1000, window.JobOSApi.capability), window.JobOSApi.dashboard(),
         window.JobOSApi.jobs(state.activeView === 'pipeline' && !window.JobOSRender.STATUS_GROUPS[state.statusFilter] ? state.statusFilter : null),
         // Header status only: a Firecrawl outage must not take the page down.
@@ -203,6 +203,7 @@
         cached('apify', 60 * 1000, window.JobOSApi.apifyUsage).catch(() => null),
         // Skills gained (Dashboard) for the Resume Studio card; missing is not an error.
         wantResume ? window.JobOSApi.skillsGained().catch(() => null) : Promise.resolve(null),
+        wantResume ? window.JobOSApi.skillGaps().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
       // Resume Studio's match check reads the full analysis of the job it is on:
@@ -236,6 +237,7 @@
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
       if (resume) { state.resume = resume.resume; state.resumeOriginal = resume.original || null; }
       if (skillsGained) state.skillsGained = skillsGained.entries || [];
+      if (skillGaps) state.skillGaps = skillGaps.skill_gaps;
       if (tailored) state.tailored = tailored.documents || [];
       if (studioDocs) state.studioDocs = studioDocs.documents || {};
       state.board = board || (wantBoard ? state.board : null);
@@ -505,6 +507,16 @@
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override', 'follow-draft', 'follow-sent', 'follow-no-response'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
     if (name.startsWith('cal-')) return calibrationAction(name, button);
+    if (name === 'gaps-build') {
+      const scope = document.getElementById('job-os-gaps-scope');
+      const span = document.getElementById('job-os-gaps-days');
+      if (button) button.disabled = true;
+      try {
+        const out = await window.JobOSApi.buildSkillGaps(scope && scope.value === 'good', span ? span.value : 0);
+        state.skillGaps = out.skill_gaps;
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not build the report'); }
+      return refresh();
+    }
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -677,7 +689,7 @@
         || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')
         || !!(state.jobDetail && state.jobDetail.follow_up && state.jobDetail.follow_up.draft && state.jobDetail.follow_up.draft.status === 'running')
         || !!(state.dashboard && state.dashboard.calibration && state.dashboard.calibration.running)))
-      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)
+      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch) || !!(state.skillGaps && state.skillGaps.running)
         || (state.jobs || []).some((j) => busy(j) || j.status === 'tailoring')) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }

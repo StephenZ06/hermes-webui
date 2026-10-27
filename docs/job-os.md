@@ -523,3 +523,17 @@ dimension (*Skills 30 → 40 +10*); **Accept** stores it as a new version in
 **Undo last calibration** restores the previous set. New analyses use the
 accepted weights and note; past scores are never edited, so they stay
 comparable.
+
+## Skill gaps
+
+Resume Studio → **Skill gaps** adds up the gaps and must-haves of every
+analysed job (or only good matches, or the last 30 or 90 days). Near-identical
+wording is merged ("Kubernetes" and "Kubernetes in production" are one gap)
+and each job counts once per gap. One Luna call groups the most frequent
+gaps into themes and suggests a short plan, without links (they would be
+invented without web search). The last 5 reports are kept
+(`skill_gaps.json`); each shows what changed since the one before: **New**
+gaps and ones now **Gone**.
+
+Adapted from ai-job-search's `/upskill` aggregate mode
+(github.com/ai-job-search-dev/ai-job-search, MIT).

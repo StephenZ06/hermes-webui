@@ -1314,6 +1314,32 @@
       ${skills.length ? `<div class="skills-gained-chips">${chips}</div>` : '<p class="job-os-card-note skills-gained-empty">No skills yet. Add the ones you learn from courses, bootcamps and projects on the Dashboard’s Career tab.</p>'}
       <p class="job-os-card-note">When Luna tailors a resume, a skill here that the posting asks for is added to its skills section, since you have already learnt it. Nothing else is added.</p></section>`;
   }
+  // Skill gaps: the gaps of every analysed job added up, grouped into themes
+  // with a short plan, and what changed since the last report.
+  function skillGapsView(state) {
+    if (!state.resume || state.resumeReplacing) return '';
+    const g = state.skillGaps || {reports: []};
+    const report = (g.reports || [])[0];
+    const controls = `<div class="gaps-controls"><select id="job-os-gaps-scope" aria-label="Which jobs"><option value="all">All analysed jobs</option><option value="good">Good matches only</option></select><select id="job-os-gaps-days" aria-label="Time window"><option value="0">Any time</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>${g.running
+      ? `<button type="button" class="job-os-btn is-loading" disabled aria-busy="true">${spinnerDot()}Building…</button>`
+      : `<button type="button" class="job-os-btn primary" data-job-os-action="gaps-build">${report ? 'Build again' : 'Build report'}</button>`}</div>`;
+    let body;
+    if (!report) body = `<p class="job-os-card-note card-empty-note">Adds up the gaps Luna found across your analysed jobs, groups them by theme and suggests a short plan. One model call.</p>`;
+    else {
+      const most = Math.max(1, ...report.gaps.map((x) => x.gap));
+      const rows = report.gaps.slice(0, 10).map((x) => `<li><span class="gap-label">${esc(x.label)}</span><i aria-hidden="true"><b style="width:${Math.round(100 * x.gap / most)}%"></b></i><em>${Number(x.gap)} job${x.gap === 1 ? '' : 's'}</em></li>`).join('');
+      const since = report.since_last;
+      const sinceLine = since && (since.new.length || since.closed.length)
+        ? `<div class="gaps-since">${since.new.map((x) => `<span class="job-os-chip" data-kind="pay">New · ${esc(x)}</span>`).join('')}${since.closed.map((x) => `<span class="job-os-chip" data-kind="remote">Gone · ${esc(x)}</span>`).join('')}</div>` : '';
+      const themes = (report.themes || []).map((t) => `<li><strong>${esc(t.name)}</strong>${t.why ? `<span>${esc(t.why)}</span>` : ''}</li>`).join('');
+      const plan = (report.plan || []).map((p) => `<li><strong>${esc(p.step)}</strong>${p.detail ? `<span>${esc(p.detail)}</span>` : ''}</li>`).join('');
+      body = `<p class="job-os-card-note">From ${Number(report.jobs)} analysed job${report.jobs === 1 ? '' : 's'}${report.scope && report.scope.good_only ? ' (good matches)' : ''}${report.scope && report.scope.days ? `, last ${Number(report.scope.days)} days` : ''} · ${esc(when(report.created_at))}</p>
+        ${sinceLine}
+        <div class="gaps-grid"><div><h4>Most frequent gaps</h4><ul class="gaps-bars">${rows}</ul></div>
+        <div>${themes ? `<h4>Themes</h4><ul class="gaps-themes">${themes}</ul>` : ''}${plan ? `<h4>Plan</h4><ol class="gaps-plan">${plan}</ol>` : ''}</div></div>`;
+    }
+    return `<section class="job-os-card skill-gaps">${cardHead('Skill gaps', 'chart', controls)}${g.error ? `<p class="job-os-error">${esc(g.error)}</p>` : ''}${body}</section>`;
+  }
   // ---- Resume Studio ---------------------------------------------------------
   function resumeView(state) {
     const r = state.resume;
@@ -1410,7 +1436,7 @@
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {
-      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : skillsGainedView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
+      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : skillsGainedView(state)}${state.studioJobId ? '' : skillGapsView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
     }
     return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view, state)}<main class="job-os-content">${body}</main></div>`;
   }

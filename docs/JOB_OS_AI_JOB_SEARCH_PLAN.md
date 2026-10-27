@@ -1,6 +1,7 @@
 # Job OS × ai-job-search: improvement plan
 
-Status: **proposed, not started** (written 2026-10-27).
+Status: **implemented** (written and built 2026-10-27; one commit per phase,
+see `git log --grep 'Phase [1-9] of docs/JOB_OS_AI_JOB_SEARCH_PLAN.md'`).
 Source reviewed: [ai-job-search-dev/ai-job-search](https://github.com/ai-job-search-dev/ai-job-search)
 at commit `4b109c2` (2026-10-26), MIT licence, © 2026 Mads Lorentzen.
 
@@ -366,10 +367,22 @@ strings), the saved-report diff, and the empty state with no analyses.
 4. `systemctl --user restart hermes-webui-native`, a commit, and
    `graphify update .`.
 
-## Open questions for the owner
+## Decisions (answered by the owner)
 
-1. Phase 3: should an expired job go to **Closed** with a reason, or have
-   its own **Expired** column?
-2. Phase 6: is adding `pypdf` acceptable, or DOCX-only checks to start?
-3. Phase 7: keep the review off by default (cost), or on for good matches
-   only?
+1. Phase 3: an expired job goes to **Closed** with "the closing date passed"
+   (or "the posting is no longer open") in its activity.
+2. Phase 6: `pypdf` is fine; it was already a runtime dependency. The PDF
+   export is a print page, so its text is checked from the page markup and
+   `pypdf` reads PDF files.
+3. Phase 7: the review runs on **good matches only** by default (Settings →
+   AI → Review tailored documents: good matches, every tailoring, or off).
+
+## Deviations from the plan
+
+- Calibration (Phase 8) is stored in `calibration.json` beside the other Job
+  OS state, not in `settings["calibration"]`, so the settings validator stays
+  a flat set of fields. It still has versions, a date, approve and undo.
+- Phase 3's expiry check reads the posting through Firecrawl only (Scout's
+  own reader); Apify actors return search results, not single pages.
+- Unparseable closing dates are dropped where the job is saved; they are not
+  counted separately.

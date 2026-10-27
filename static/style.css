@@ -6685,6 +6685,27 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .job-modal-foot .job-os-error{margin:0 auto 0 0;}
 .job-modal-foot .job-os-error:empty{display:none;}
 .job-modal-loading{padding:18px 0;color:var(--muted);font-size:13px;}
+.gaps-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;}
+.gaps-controls .themed-select-wrap{width:auto;flex:0 0 auto;}
+.gaps-controls select,.gaps-controls .themed-select-trigger{width:auto;min-width:150px;min-height:36px;}
+.gaps-since{margin-bottom:6px;}
+.gaps-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px 28px;margin-top:4px;}
+.gaps-grid h4{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.gaps-bars{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+.gaps-bars li{display:grid;grid-template-columns:minmax(0,1fr) 90px 56px;align-items:center;gap:10px;font-size:13px;}
+.gap-label{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gaps-bars i{display:block;height:4px;border-radius:999px;background:color-mix(in srgb,var(--border2) 80%,transparent);overflow:hidden;}
+.gaps-bars b{display:block;height:100%;border-radius:inherit;background:var(--accent);}
+.gaps-bars em{font-style:normal;font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;}
+.gaps-themes,.gaps-plan{margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:8px;}
+.gaps-themes{list-style:none;}
+.gaps-plan{padding-left:18px;}
+.gaps-themes li,.gaps-plan li{display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:1.45;}
+.gaps-plan li{display:list-item;}
+.gaps-plan li span{display:block;}
+.gaps-themes span,.gaps-plan span{color:var(--muted);}
+.gaps-since{display:flex;flex-wrap:wrap;gap:6px;}
+@media (max-width:760px){.gaps-grid{grid-template-columns:1fr;}.gaps-bars li{grid-template-columns:minmax(0,1fr) 60px 50px;}}
 .cal-weights{width:100%;border-collapse:collapse;font-size:13px;}
 .cal-weights th,.cal-weights td{padding:8px 10px;text-align:left;border-bottom:1px solid color-mix(in srgb,var(--border2) 70%,transparent);font-variant-numeric:tabular-nums;}
 .cal-weights thead th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
@@ -6697,6 +6718,7 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .cal-note p{margin:0;font-size:13px;line-height:1.5;color:var(--text);}
 .stale-sheet .job-os-inline-select{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:13px;color:var(--muted);}
 .stale-sheet .job-os-inline-select select{width:auto;min-width:140px;}
+.stale-sheet .job-os-inline-select .themed-select-wrap{width:auto;flex:0 0 160px;}
 .stale-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--border2);border-radius:10px;overflow:hidden;}
 .stale-list li+li{border-top:1px solid color-mix(in srgb,var(--border2) 70%,transparent);}
 .stale-row{display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;}
