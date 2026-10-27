@@ -279,3 +279,32 @@ def test_resume_studio_shows_the_latest_skill_gap_report():
         path.unlink(missing_ok=True)
     assert rows == ["Kubernetes7 jobs", "Power BI3 jobs"]
     assert "New · Power BI" in since and "Gone · Go" in since
+
+
+@pytest.mark.parametrize("width,height", [(1440, 1000), (900, 700), (390, 844)])
+def test_add_job_opens_as_a_centred_window(width, height):
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = _browser(sync_api, pw)
+        try:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            _open_jobs(page)
+            page.wait_for_selector('[data-job-os-action="job-form-new"]', state="attached", timeout=15000)
+            page.evaluate("() => document.querySelector('[data-job-os-action=\"job-form-new\"]').click()")
+            page.wait_for_selector(".job-form-modal #job-os-job-form", timeout=15000)
+            page.wait_for_timeout(400)
+            _shot(page, f"add-job-{width}")
+            box = page.evaluate("""() => { const r = document.querySelector('.job-form-modal').getBoundingClientRect();
+              const f = document.querySelector('.job-form-modal .job-modal-foot').getBoundingClientRect();
+              return {l: r.left, r: r.right, t: r.top, b: r.bottom, foot: f.bottom, drawer: !!document.querySelector('.job-drawer')}; }""")
+            page.keyboard.press("Escape")
+            page.wait_for_selector(".job-form-modal", state="detached", timeout=10000)
+        finally:
+            browser.close()
+    assert not box["drawer"]
+    assert box["b"] <= height + 0.5 and box["foot"] <= height + 0.5  # Save is always on screen
+    if width > 640:
+        assert abs((box["l"] + box["r"]) / 2 - width / 2) < 2 and abs((box["t"] + box["b"]) / 2 - height / 2) < 2
+        assert box["r"] - box["l"] <= 720
+    else:
+        assert box["l"] == 0 and box["r"] == width  # a bottom sheet on a phone

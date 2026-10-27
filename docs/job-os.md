@@ -43,7 +43,9 @@ The **Jobs** page is a profile-scoped job-search tracker. Its data lives in
 2. **Add job (manual tracker).** For jobs found anywhere else: title, link,
    company, country, city, salary, employment type, workplace, the job
    description, a note, and whether you already applied (source `manual`).
-   Any job's details can be corrected later with **Edit**.
+   Any job's details can be corrected later with **Edit**. The form opens
+   as a centred window sized to it (up to 720px wide, scrolling inside, with
+   Save always visible), and as a bottom sheet on a phone.
 
 Either way, a job with a description can be scored and tailored.
 
@@ -278,7 +280,7 @@ source tabs scrolling in their own row and layout, search and Add job sharing
 the next; the dashboard's activity calendars swipe sideways; job rows read like
 list cells (status top-right, chips wrapping across); the Settings menu sticks
 to the top; Match check's actions sit two to a row. Nothing scrolls the page
-sideways. A job's details and the Add job form open as full-screen sheets.
+sideways. A job's details open as a full-screen sheet and the Add job form as a bottom sheet.
 - `?` opens the keyboard shortcuts, now with a Jobs group.
 
 ## Dashboard activity

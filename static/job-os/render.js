@@ -844,11 +844,12 @@
     const field = (name, label, attrs, wide) => `<label class="job-os-field${wide ? ' wide' : ''}"><span>${label}</span><input name="${name}" value="${esc(f[name])}" ${attrs || ''}></label>`;
     const options = (values, current, blank) => `<option value="">${blank}</option>${values.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
     const countries = (state.countries || []).map((c) => `<option value="${esc(c.name)}"></option>`).join('');
-    return `<div class="job-drawer-backdrop" data-job-os-action="job-form-close"></div>
-      <aside class="job-drawer job-form-drawer" role="dialog" aria-label="${editing ? 'Edit job' : 'Add a job'}">
-        <header class="job-drawer-head"><div class="job-drawer-title"><h2>${editing ? 'Edit job' : 'Add a job'}</h2><p>${editing ? 'Correct the details or paste in the description.' : 'Track a job you found yourself. With its description, Luna can score your resume against it and tailor one for it.'}</p></div>
+    // A centred window sized to the form (a bottom sheet on a phone), not a side panel.
+    return `<div class="job-modal-backdrop" data-job-os-action="job-form-close"></div>
+      <div class="job-modal job-form-modal" role="dialog" aria-modal="true" aria-labelledby="job-form-title">
+        <header class="job-modal-head"><div><h2 id="job-form-title">${editing ? 'Edit job' : 'Add a job'}</h2><p>${editing ? 'Correct the details or paste in the description.' : 'Track a job you found yourself. With its description, Luna can score your resume against it and tailor one for it.'}</p></div>
           <button type="button" class="wh-insp-close" data-job-os-action="job-form-close" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
-        <form id="job-os-job-form" class="job-drawer-body job-form" novalidate>
+        <form id="job-os-job-form" class="job-form" novalidate><div class="job-modal-body">
           <div class="job-form-grid">
             ${field('title', 'Job title <em>required</em>', 'required maxlength="240" placeholder="e.g. Data Analyst"', true)}
             ${field('company', 'Company', 'maxlength="240"')}
@@ -863,9 +864,9 @@
             ${editing ? '' : `<label class="job-os-field wide"><span>Note</span><textarea name="note" rows="2" maxlength="2000" placeholder="Optional — who referred you, where you found it">${esc(f.note)}</textarea></label>`}
           </div>
           <datalist id="job-os-countries">${countries}</datalist>
-          <p class="job-os-error" role="alert">${esc(state.jobFormError || '')}</p>
-          <div class="job-form-actions"><button type="button" class="job-os-btn" data-job-os-action="job-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save changes' : 'Save job'}</button></div>
-        </form></aside>`;
+          </div>
+          <footer class="job-modal-foot"><p class="job-os-error" role="alert">${esc(state.jobFormError || '')}</p><button type="button" class="job-os-btn" data-job-os-action="job-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save changes' : 'Save job'}</button></footer>
+        </form></div>`;
   }
   // Apify bills per job: this month's spend against the account's limit, in
   // the side panel like the chat page's usage meter (cells show what is left),
