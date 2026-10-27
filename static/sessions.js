@@ -4561,9 +4561,7 @@ function _renderBatchActionBar(){
         if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
         if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
         if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
-        const remaining=await api('/api/sessions'+_sessionListQueryString());
-        if(remaining.sessions&&remaining.sessions.length){await loadSession(remaining.sessions[0].session_id);}
-        else{$('msgInner').innerHTML='';$('emptyState').style.display='';}
+        await _loadReplacementSessionAfterDelete();
       }
       if(cleanupFailedCount) showToast(t('delete_failed')+' ('+cleanupFailedCount+'/'+ids.length+')',0,'error');
       else showToast((retainedCount?t('session_deleted_worktree'):t('session_delete'))+' ('+ids.length+')');
@@ -9656,6 +9654,29 @@ async function removeWorktree(session){
   }
 }
 
+function _showEmptySessionAfterDelete(){
+  const _tt=$('topbarTitle');if(_tt)_tt.textContent=assistantDisplayName();
+  const _tm=$('topbarMeta');if(_tm)_tm.textContent='Start a new conversation';
+  $('msgInner').innerHTML='';$('emptyState').style.display='';
+  $('fileTree').innerHTML='';
+  if(typeof S!=='undefined') S.session=null;
+  if(typeof syncAppTitlebar==='function') syncAppTitlebar();
+}
+
+async function _loadReplacementSessionAfterDelete(){
+  // A second tab, cleanup job, or double-click can remove the first remaining
+  // session between list and detail fetch. Retry that expected 404 once from a
+  // fresh list; do not swallow authentication/network failures.
+  for(let attempt=0;attempt<2;attempt++){
+    const remaining=await api('/api/sessions'+_sessionListQueryString());
+    const candidate=remaining&&remaining.sessions&&remaining.sessions[0];
+    if(!candidate){_showEmptySessionAfterDelete();return;}
+    try{await loadSession(candidate.session_id);return;}
+    catch(error){if(!(error&&error.status===404))throw error;}
+  }
+  _showEmptySessionAfterDelete();
+}
+
 async function deleteSession(sid, beforeDelete=null){
   const session=_sessionSnapshotById(sid);
   const ok=await showConfirmDialog({
@@ -9714,18 +9735,7 @@ async function deleteSession(sid, beforeDelete=null){
     if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
     localStorage.removeItem('hermes-webui-session');
     // load the most recent remaining session, or show blank if none left
-    const remaining=await api('/api/sessions'+_sessionListQueryString());
-    if(remaining.sessions&&remaining.sessions.length){
-      await loadSession(remaining.sessions[0].session_id);
-    }else{
-      const _tt=$('topbarTitle');if(_tt)_tt.textContent=assistantDisplayName();
-      const _tm=$('topbarMeta');if(_tm)_tm.textContent='Start a new conversation';
-      $('msgInner').innerHTML='';
-      $('emptyState').style.display='';
-      $('fileTree').innerHTML='';
-      if(typeof S!=='undefined') S.session=null;
-      if(typeof syncAppTitlebar==='function') syncAppTitlebar();
-    }
+    await _loadReplacementSessionAfterDelete();
   }
   if(cleanupFailed) showToast(t('delete_failed'),0,'error');
   else showToast(_sessionResponseRetainsWorktree(response,session)?t('session_deleted_worktree'):t('session_deleted'));
