@@ -311,6 +311,7 @@ def tailor_one(job_id: str) -> dict:
                                        "tailored_fit": _fit_of(job, tailored)}))
         set_doc(letter_doc, status="needs_review" if flags_letter else "ready", content=letter[:8000], model=model, error="",
                 notes_json=json.dumps({"unverified": flags_letter}))
+        _parse_check(resume_doc)
         finish_job(JobStatus.RESUME_READY)
     except Exception as error:
         message = str(error) if isinstance(error, llm.LLMError) else f"Tailoring failed ({type(error).__name__})."
@@ -411,7 +412,20 @@ def update_document(doc_id: str, content: str, *, expected_revision: int) -> dic
         conn.commit()
     finally:
         conn.close()
+    _parse_check(doc)
     return get_document(doc_id)
+
+
+def _parse_check(doc: dict | None) -> None:
+    """Read the export back the way hiring software does (``ats_check``)."""
+    if not doc or doc.get("kind") != "resume":
+        return
+    try:
+        from api.job_os.ats_check import run_for
+
+        run_for(doc["id"])
+    except Exception:  # the check is advice; tailoring and saving stand without it
+        logger.debug("parse check failed for %s", doc.get("id"), exc_info=True)
 
 
 def _next_pending() -> str | None:

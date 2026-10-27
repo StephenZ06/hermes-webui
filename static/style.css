@@ -6515,6 +6515,11 @@ button.job-os-status:hover{border-color:var(--accent);color:var(--text);}
 .skills-gained .skills-gained-empty{margin-bottom:10px;}
 .studio-box h4{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
 .cov-score{color:var(--accent-text,var(--accent));font-size:13px;letter-spacing:0;}
+.parse-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.parse-list li{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;color:var(--text);}
+.parse-list li .mx-icon{flex:0 0 auto;margin-top:1px;color:var(--success,#4ade80);}
+.parse-list li[data-ok="false"] .mx-icon{color:var(--warning,#f5b84b);}
+.parse-check h4 small{font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;}
 .studio-box .job-os-chip{white-space:normal;line-height:1.35;padding:3px 9px;max-width:100%;}
 .studio-preview{max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.5;color:var(--text);}
 .studio-preview mark{background:color-mix(in srgb,var(--warning,#f5b84b) 45%,transparent);color:var(--text);border-radius:3px;padding:0 2px;}

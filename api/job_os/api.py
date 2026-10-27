@@ -145,6 +145,10 @@ def _document_get(handler, parsed) -> bool:
     from api.job_os.resume import style_profile
 
     style, is_resume = style_profile(), doc["kind"] == "resume"
+    if fmt in ("docx", "pdf") and doc["kind"] == "resume":
+        from api.job_os.tailor import _parse_check
+
+        _parse_check(doc)
     if fmt == "docx":
         body, ctype, name = (export.to_docx(doc["content"], style=style, resume=is_resume),
                              "application/vnd.openxmlformats-officedocument.wordprocessingml.document", f"{base}.docx")

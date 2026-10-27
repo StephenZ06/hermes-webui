@@ -1059,6 +1059,14 @@
     (flags || []).forEach((n) => { const e = esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); out = out.replace(new RegExp(`(^|[^\\w.])(${e})(?![\\w])`, 'g'), '$1<mark title="Not in your master resume">$2</mark>'); });
     return out;
   }
+  // Parse check: the export read back the way hiring software reads it.
+  function parseCheckBox(ats) {
+    if (!ats || !ats.checks) return '';
+    const kw = ats.checks.find((c) => c.key === 'keywords');
+    const rows = ats.checks.map((c) => `<li data-ok="${c.ok ? 'true' : 'false'}">${icon(c.ok ? 'applied' : 'attention', 14)}<span>${esc(c.label)}</span></li>`).join('');
+    const missing = (ats.missing_terms || []).length ? `<p class="job-os-card-note">Not in the resume: ${ats.missing_terms.map(esc).join(', ')}. Add one only if it is true.</p>` : '';
+    return `<div class="studio-box parse-check"><h4>Parse check <span class="cov-score">${Number(ats.passed)}/${Number(ats.total)}</span>${kw ? `<small> · ${esc(kw.label)}</small>` : ''}</h4><ul class="parse-list">${rows}</ul>${missing}</div>`;
+  }
   function studioEditor(state) {
     const docs = state.studioDocs || {};
     const doc = docs[state.studioTab];
@@ -1079,7 +1087,7 @@
           <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
           <button type="button" class="job-os-btn" data-job-os-action="doc-preview" data-url="${exportUrl('html')}" data-title="${esc(`${state.studioTab === 'resume' ? 'Resume' : 'Cover letter'} — ${job.job_title || ''}`)}" ${state.studioDraft != null && state.studioDraft !== doc.content ? 'disabled title="Save your edits to preview them"' : ''}>${icon('eye', 16)}Preview</button>
           <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 16)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
-        <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
+        <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' ? parseCheckBox(notes.ats) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${state.studioTab === 'resume' ? reportBox(notes.report) : ''}
           ${(notes.skills_added || []).length ? `<div class="studio-box"><h4>From your skills gained</h4><div class="job-os-chips">${notes.skills_added.map((k) => `<span class="job-os-chip" data-kind="remote">+ ${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}

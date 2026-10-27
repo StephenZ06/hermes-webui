@@ -468,3 +468,21 @@ gets a **Follow up** section in its side panel (`api/job_os/followup.py`):
 Pipeline toolbar shows "N quiet". It opens a centred window listing them
 (30, 45, 60 or 90+ days), all ticked, to move to **No response** in one go.
 Each move is logged ("quiet applications closed") and can be dragged back.
+
+## Parse check (how hiring software reads your resume)
+
+Hiring systems read the text layer of the file you upload, not its looks.
+After tailoring, after you edit a tailored resume and on every DOCX or PDF
+export, `api/job_os/ats_check.py` exports the resume as DOCX and as the
+print page that becomes the PDF, reads the text back (DOCX through its XML,
+the print page through its markup; `pypdf` reads a PDF file) and checks:
+
+1. **Contact details** (name, email, phone) appear as plain text.
+2. **No garbled characters** (replacement or private-use glyphs).
+3. **Reading order:** the master's section headings come out in order.
+4. **Keyword coverage:** the posting's must-haves found in the text. Missing
+   ones are listed as gaps to add only if true; nothing is inserted.
+
+Resume Studio shows the result beside the tailored resume, for example
+"Parse check 4/4 · 7 of 9 key terms". The worse of the two formats is
+reported.
