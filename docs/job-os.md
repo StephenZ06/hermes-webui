@@ -486,3 +486,21 @@ the print page through its markup; `pypdf` reads a PDF file) and checks:
 Resume Studio shows the result beside the tailored resume, for example
 "Parse check 4/4 · 7 of 9 key terms". The worse of the two formats is
 reported.
+
+## Second-pass review of tailored documents
+
+**Settings → AI → Review tailored documents** (default: *Good matches
+only*). For a job whose master fit is at or above the good-match score
+(Settings → Notifications, default 65), tailoring adds a second pass: a
+reviewer with a fresh context reads the draft resume and letter against the
+posting and the master resume and lists missed requirements, generic
+phrases, claims the master doesn't support and up to three concrete edits;
+Luna then revises once. That is two extra model calls per tailoring
+(*Every tailoring* applies it to all jobs, *Off* removes it). Automate all
+follows the same setting.
+
+Resume Studio shows the review beside the tailored resume. Claims the
+reviewer couldn't find in the master mark the resume *needs review*, like a
+new number does. If the review or the revision fails, the first draft is
+kept with a note; nothing is lost. The master → tailored score comparison
+runs on the final text.

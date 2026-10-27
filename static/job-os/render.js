@@ -429,7 +429,8 @@
     const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
       ${textField('ai.model', 'Model', v('ai.model'))}
       ${textField('ai.provider', 'Provider', v('ai.provider'))}
-      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}</div>
+      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}
+      ${selectField('ai.review_tailoring', 'Review tailored documents', v('ai.review_tailoring'), [['good', 'Good matches only (+2 calls each)'], ['all', 'Every tailoring (+2 calls each)'], ['off', 'Off']])}</div>
       ${toggle('ai.auto_analyze', 'Analyse new finds automatically', v('ai.auto_analyze'), 'Scout queues each new job for a fit score against your resume')}`);
     const applicant = section('applicant', 'Your details', 'Used on tailored resumes and cover letters.', `<div class="job-os-grid">
       ${textField('applicant.full_name', 'Full name', v('applicant.full_name'))}
@@ -1059,6 +1060,13 @@
     (flags || []).forEach((n) => { const e = esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); out = out.replace(new RegExp(`(^|[^\\w.])(${e})(?![\\w])`, 'g'), '$1<mark title="Not in your master resume">$2</mark>'); });
     return out;
   }
+  // The second pass: what the reviewer found, and whether Luna revised for it.
+  function reviewBox(review) {
+    if (!review) return '';
+    const list = (title, items) => (items || []).length ? `<h5>${title}</h5><ul class="analysis-list">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
+    const state = review.error ? `<p class="board-attention">${esc(review.error)}</p>` : `<p class="job-os-card-note">${review.revised ? 'Luna revised the draft once for these notes.' : 'Nothing to change.'}</p>`;
+    return `<div class="studio-box review-box"><h4>Second-pass review</h4>${state}${list('Claims to check', review.unsupported_claims)}${list('Missed requirements', review.missed_requirements)}${list('Generic phrases', review.generic_phrases)}${list('Edits made', review.revised ? review.edits : [])}</div>`;
+  }
   // Parse check: the export read back the way hiring software reads it.
   function parseCheckBox(ats) {
     if (!ats || !ats.checks) return '';
@@ -1087,7 +1095,7 @@
           <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="studio-save" ${state.studioDraft == null || state.studioDraft === doc.content ? 'disabled' : ''}>Save edits</button>
           <button type="button" class="job-os-btn" data-job-os-action="doc-preview" data-url="${exportUrl('html')}" data-title="${esc(`${state.studioTab === 'resume' ? 'Resume' : 'Cover letter'} — ${job.job_title || ''}`)}" ${state.studioDraft != null && state.studioDraft !== doc.content ? 'disabled title="Save your edits to preview them"' : ''}>${icon('eye', 16)}Preview</button>
           <a class="job-os-btn" href="${exportUrl('docx')}">${icon('download', 16)}DOCX</a><a class="job-os-btn" href="${exportUrl('pdf')}" target="_blank" rel="noopener">PDF</a><a class="job-os-btn" href="${exportUrl('md')}">Markdown</a></div></div>
-        <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' ? parseCheckBox(notes.ats) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
+        <aside class="studio-side">${state.studioTab === 'resume' ? fitCompare(notes) : ''}${state.studioTab === 'resume' ? parseCheckBox(notes.ats) : ''}${state.studioTab === 'resume' ? reviewBox(notes.review) : ''}${state.studioTab === 'resume' && cov && cov.score != null ? `<div class="studio-box"><h4>Keyword coverage <span class="cov-score">${cov.score}%</span></h4><div class="job-os-chips">${(cov.found || []).map((k) => `<span class="job-os-chip" data-kind="remote">✓ ${esc(k)}</span>`).join('')}${(cov.missing || []).map((k) => `<span class="job-os-chip muted">${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${state.studioTab === 'resume' ? reportBox(notes.report) : ''}
           ${(notes.skills_added || []).length ? `<div class="studio-box"><h4>From your skills gained</h4><div class="job-os-chips">${notes.skills_added.map((k) => `<span class="job-os-chip" data-kind="remote">+ ${esc(k)}</span>`).join('')}</div></div>` : ''}
           ${(notes.changes || []).length ? `<div class="studio-box"><h4>What Luna changed</h4><ul class="analysis-list is-need">${notes.changes.map((c) => `<li><strong>${esc(c.what)}</strong>${c.why ? ` — ${esc(c.why)}` : ''}</li>`).join('')}</ul></div>` : ''}

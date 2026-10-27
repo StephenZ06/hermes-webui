@@ -36,7 +36,10 @@ def default_settings() -> dict:
     return {
         "revision": 0,
         "firecrawl": {"api_url": ""},
-        "ai": {"provider": "openai-codex", "model": "gpt-6-luna", "reasoning_effort": "high", "auto_analyze": True},
+        # review_tailoring: a second pass that reviews each tailored resume and letter
+        # and revises once (+2 calls): "off", "good" (good matches only) or "all".
+        "ai": {"provider": "openai-codex", "model": "gpt-6-luna", "reasoning_effort": "high", "auto_analyze": True,
+               "review_tailoring": "good"},
         # Contact details for tailored resumes and cover letters.
         "applicant": {"full_name": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "portfolio_url": ""},
         # blocked_companies: Scout never saves postings from these employers.
@@ -208,6 +211,7 @@ _VALIDATORS = {
         "model": _text,
         "reasoning_effort": _effort,
         "auto_analyze": _bool,
+        "review_tailoring": _choice("off", "good", "all"),
     },
     "applicant": {
         "full_name": lambda v, f: _free_text(v, f, 120),

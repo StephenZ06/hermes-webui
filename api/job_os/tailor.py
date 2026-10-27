@@ -75,6 +75,65 @@ SYSTEM = (
     "Up to 6 items in each list, 8 changes. " + llm.UNTRUSTED
 )
 
+# The second pass: a reviewer with a fresh context reads the draft against the
+# posting and the master, then Luna revises once (adapted from ai-job-search's
+# drafter-reviewer split, github.com/ai-job-search-dev/ai-job-search, MIT).
+REVIEW_SYSTEM = (
+    "You review a tailored resume and cover letter written for one job, as a strict hiring manager would. "
+    "Compare them with the POSTING and the MASTER RESUME. Return ONLY JSON: "
+    '{"missed_requirements": ["<posting requirement the master supports but the draft does not show>"], '
+    '"generic_phrases": ["<phrase in the draft that says nothing specific>"], '
+    '"unsupported_claims": ["<claim in the draft that the master resume does not support>"], '
+    '"edits": ["<one concrete edit to make>"]}\n'
+    "Up to 5 items per list and 3 edits, each under 160 characters. Never suggest adding anything the master "
+    "resume does not support. " + llm.UNTRUSTED
+)
+REVISE_NOTE = ("Revise the FIRST DRAFT once, applying the REVIEW's edits where the master resume supports them, "
+               "keeping everything else. Return the same JSON shape as before.")
+
+
+def _review_wanted(fit_score) -> bool:
+    from api.job_os.settings import load_settings
+
+    settings = load_settings()
+    mode = settings["ai"].get("review_tailoring", "good")
+    if mode == "all":
+        return True
+    return mode == "good" and fit_score is not None and fit_score >= settings["notifications"]["min_fit_score"]
+
+
+def _review_items(data: dict) -> dict:
+    def items(key, limit):
+        values = data.get(key) if isinstance(data.get(key), list) else []
+        return [str(v).strip()[:160] for v in values if str(v).strip()][:limit]
+    return {"missed_requirements": items("missed_requirements", 5), "generic_phrases": items("generic_phrases", 5),
+            "unsupported_claims": items("unsupported_claims", 5), "edits": items("edits", 3)}
+
+
+def second_pass(first: dict, *, user: str, posting: str, layout: str) -> tuple[dict, dict]:
+    """Review the first draft and revise it once. Returns ``(answer, review)``;
+    a failed review or revision keeps the first draft, with a note."""
+    draft = (f"<<<DRAFT RESUME\n{first.get('resume_markdown', '')[:14000]}\nDRAFT RESUME>>>\n\n"
+             f"<<<DRAFT COVER LETTER\n{first.get('cover_letter', '')[:6000]}\nDRAFT COVER LETTER>>>")
+    try:
+        data, _model = llm.ask_json(REVIEW_SYSTEM, f"<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\n"
+                                                   f"MASTER RESUME>>>\n\n{draft}", max_tokens=2000)
+        review = _review_items(data)
+    except Exception as error:
+        return first, {"error": f"The review could not run ({type(error).__name__}); this is the first draft.", "revised": False}
+    if not (review["edits"] or review["missed_requirements"] or review["generic_phrases"]):
+        return first, {**review, "revised": False}
+    try:
+        revised, _model = llm.ask_json(SYSTEM, f"{user}\n\n<<<FIRST DRAFT\n{json.dumps({k: first.get(k) for k in ('resume_markdown', 'cover_letter')})}"
+                                               f"\nFIRST DRAFT>>>\n\n<<<REVIEW\n{json.dumps(review)}\nREVIEW>>>\n\n{REVISE_NOTE}",
+                                       max_tokens=9000)
+    except Exception as error:
+        return first, {**review, "revised": False, "error": f"The revision could not run ({type(error).__name__}); this is the first draft."}
+    if len(str(revised.get("resume_markdown") or "").strip()) < 200:
+        return first, {**review, "revised": False, "error": "The revision came back empty; this is the first draft."}
+    return {**first, **{k: v for k, v in revised.items() if v}}, {**review, "revised": True}
+
+
 _NUMBER = re.compile(r"(?<![\w.])(\d[\d,.]*\s?%?|[€$£]\s?\d[\d,.]*\s?[kKmM]?)(?![\w])")
 
 
@@ -290,8 +349,11 @@ def tailor_one(job_id: str) -> dict:
         layout = text_markdown(master["text"])[:18000]
         verified = _verified_skills()
         skills_block = ("\n\n<<<VERIFIED SKILLS\n" + "\n".join(f"- {name}" for name in verified) + "\nVERIFIED SKILLS>>>") if verified else ""
-        data, model = llm.ask_json(SYSTEM, f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\nMASTER RESUME>>>{skills_block}",
-                                   max_tokens=9000)
+        user = f"{contact}\n\n<<<POSTING\n{posting}\nPOSTING>>>\n\n<<<MASTER RESUME\n{layout}\nMASTER RESUME>>>{skills_block}"
+        data, model = llm.ask_json(SYSTEM, user, max_tokens=9000)
+        review = None
+        if _review_wanted(analysis.get("fit_score")) and len(str(data.get("resume_markdown") or "").strip()) >= 200:
+            data, review = second_pass(data, user=user, posting=posting, layout=layout)
         tailored = str(data.get("resume_markdown") or "").strip()
         letter = str(data.get("cover_letter") or "").strip()
         if len(tailored) < 200:
@@ -302,8 +364,10 @@ def tailor_one(job_id: str) -> dict:
         changes = [{"what": str(c.get("what") or "")[:200], "why": str(c.get("why") or "")[:200]}
                    for c in (data.get("changes") or []) if isinstance(c, dict)][:8]
         coverage = keyword_coverage(tailored, analysis.get("must_haves") or [])
-        set_doc(resume_doc, status="needs_review" if flags_resume else "ready", content=tailored[:30000], model=model, error="",
-                notes_json=json.dumps({"changes": changes, "unverified": flags_resume, "coverage": coverage,
+        # Claims the reviewer could not find in the master send the resume to review, like a new number does.
+        held = bool(flags_resume) or bool((review or {}).get("unsupported_claims"))
+        set_doc(resume_doc, status="needs_review" if held else "ready", content=tailored[:30000], model=model, error="",
+                notes_json=json.dumps({"changes": changes, "unverified": flags_resume, "coverage": coverage, "review": review,
                                        "skills_added": skills_added(tailored, master["text"], verified),
                                        "report": _report(data),
                                        "master_revision": master.get("revision"),
