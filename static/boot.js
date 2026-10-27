@@ -1758,7 +1758,18 @@ function _micToastKeyForRecognitionError(error){
 
   // Persist SR failure across reloads (e.g. Tailscale/network error)
   const _micForceMediaRecorderKey='mic_force_mediarecorder';
-  const _micForceMediaRecorderStored=localStorage.getItem(_micForceMediaRecorderKey);
+  // '1' = use server STT. Older builds also stored '0' after a single server
+  // STT error, which pinned the mic to browser SpeechRecognition for good even
+  // once Whisper was back (and probing stopped). That value is dropped here so
+  // the capability probe decides again; a server failure now falls back for
+  // the rest of the page only (_serverSttFailedThisPage).
+  const _micForceMediaRecorderStored=(function(){
+    const value=localStorage.getItem(_micForceMediaRecorderKey);
+    if(value!=='0') return value;
+    try{ localStorage.removeItem(_micForceMediaRecorderKey); }catch(_e){}
+    return null;
+  })();
+  let _serverSttFailedThisPage=false;
   // Prefer Hermes server-side STT (MediaRecorder -> /api/transcribe) only
   // after the server confirms an STT provider is available. No stored key must
   // keep browser SpeechRecognition as the first-click default until then; that
@@ -1987,7 +1998,7 @@ function _micToastKeyForRecognitionError(error){
     }catch(err){
       if(_isServerSttUnavailable(err)&&_allowBrowserSttFallback()){
         window._micPendingSend=false;
-        localStorage.setItem(_micForceMediaRecorderKey,'0');
+        _serverSttFailedThisPage=true;
         _forceMediaRecorder=false;
         recognition=_ensureSpeechRecognition();
         showToast(err.message||t('mic_network'));
@@ -2281,7 +2292,7 @@ function _micToastKeyForRecognitionError(error){
   // Reads LIVE localStorage (not the init-time const) so a fallback that just
   // persisted '0' is respected and not re-flipped.
   function _applyDeferredServerSttFlip(){
-    if(_serverSttAvailable&&!_forceMediaRecorder&&!window._micActive
+    if(_serverSttAvailable&&!_serverSttFailedThisPage&&!_forceMediaRecorder&&!window._micActive
         &&localStorage.getItem(_micForceMediaRecorderKey)===null){
       _forceMediaRecorder=true;
       recognition=null;

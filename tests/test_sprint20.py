@@ -350,7 +350,7 @@ def test_boot_js_media_recorder_fallback_posts_to_transcribe_api():
 def test_boot_js_prefers_server_side_stt_by_default():
     """Default mic capture should prefer server STT only after the server confirms support."""
     js, _ = get_text("/static/boot.js")
-    assert "const _micForceMediaRecorderStored=localStorage.getItem(_micForceMediaRecorderKey);" in js
+    assert "const value=localStorage.getItem(_micForceMediaRecorderKey);" in js
     assert "let _serverSttAvailable=false" in js
     assert "_micForceMediaRecorderStored===null?(_serverSttAvailable&&_canRecordAudio):" in js
     assert "fetch('api/transcribe/capability'" in js
@@ -372,7 +372,10 @@ def test_boot_js_falls_back_to_browser_stt_when_server_transcribe_unavailable():
     js, _ = get_text("/static/boot.js")
     assert "function _isServerSttUnavailable(err)" in js
     assert "function _allowBrowserSttFallback()" in js
-    assert "localStorage.setItem(_micForceMediaRecorderKey,'0')" in js
+    # The fallback lasts for the page only: a stored '0' used to pin the mic to
+    # browser SpeechRecognition for good, even once server Whisper was back.
+    assert "localStorage.setItem(_micForceMediaRecorderKey,'0')" not in js
+    assert "_serverSttFailedThisPage=true" in js
     assert "_forceMediaRecorder=false" in js
     assert "recognition=_ensureSpeechRecognition()" in js
 
