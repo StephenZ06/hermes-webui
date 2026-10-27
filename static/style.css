@@ -11560,6 +11560,24 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .job-os-side-alert{margin-left:auto;display:grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--error,#f07878);color:#fff;font-size:11px;font-weight:800;}
 .pipe-source.is-broken{background:color-mix(in srgb,var(--error,#f07878) 16%,transparent);color:var(--error,#f07878);gap:4px;text-decoration:line-through;}
 @media (max-width:640px){.site-health-banner{grid-template-columns:32px minmax(0,1fr);}.site-health-actions{grid-column:1/-1;}}
+/* ==== Priority strip: the top four on the Jobs Dashboard and Scout ====
+   They are a summary, not more cards: one panel with four cells divided by
+   hairlines and a faint wash of the accent, so they read first and as one
+   unit without louder colour, shadows or motion. */
+#jobOsRoot .job-os-metrics,#jobOsRoot .scout-overview{gap:0;border:1px solid var(--border2);border-radius:14px;overflow:hidden;
+  background:linear-gradient(color-mix(in srgb,var(--accent) 5%,transparent),color-mix(in srgb,var(--accent) 5%,transparent)),var(--card);}
+#jobOsRoot .job-os-metrics>.job-os-metric,#jobOsRoot .scout-overview>.scout-tile{border:0;border-radius:0;background:transparent;box-shadow:none;transform:none;}
+#jobOsRoot .job-os-metrics>.job-os-metric+.job-os-metric,#jobOsRoot .scout-overview>.scout-tile+.scout-tile{box-shadow:inset 1px 0 0 var(--border2);}
+#jobOsRoot .job-os-metrics>.job-os-metric:hover,#jobOsRoot .job-os-metrics>.job-os-metric:focus-visible,
+#jobOsRoot .scout-overview>button.scout-tile:hover,#jobOsRoot .scout-overview>button.scout-tile:focus-visible{background:color-mix(in srgb,var(--accent) 7%,transparent);outline:none;}
+#jobOsRoot .job-os-metrics>.job-os-metric:focus-visible,#jobOsRoot .scout-overview>button.scout-tile:focus-visible{box-shadow:inset 0 0 0 2px var(--accent);}
+#jobOsRoot .job-os-metric-body strong{font-size:26px;}
+@media(max-width:1100px){
+  #jobOsRoot .job-os-metrics>.job-os-metric:nth-child(odd),#jobOsRoot .scout-overview>.scout-tile:nth-child(odd){box-shadow:none;}
+  #jobOsRoot .job-os-metrics>.job-os-metric:nth-child(3),#jobOsRoot .scout-overview>.scout-tile:nth-child(3){box-shadow:inset 0 1px 0 var(--border2);}
+  #jobOsRoot .job-os-metrics>.job-os-metric:nth-child(4),#jobOsRoot .scout-overview>.scout-tile:nth-child(4){box-shadow:inset 1px 0 0 var(--border2),inset 0 1px 0 var(--border2);}
+}
+@media(max-width:640px){#jobOsRoot .job-os-metric-body strong{font-size:21px;}}
 /* ==== Card hover, one rule for every page ====
    Like the Jobs dashboard's top four cards: a hovered (or keyboard-focused)
    card shows its outline in the accent colour and keeps its own background,
