@@ -3181,6 +3181,9 @@
   .ctx-indicator-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
   .ctx-indicator{width:34px;height:34px;padding:0;border:none;background:none;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .15s;}
   .ctx-indicator:hover{opacity:.88;transform:translateY(-1px);}
+  /* Read-only gauge: no pointer, no lift (it no longer opens a menu). */
+  #ctxIndicator{cursor:default;}
+  #ctxIndicator:hover{opacity:1;transform:none;}
   .ctx-ring{position:relative;display:flex;width:24px;height:24px;align-items:center;justify-content:center;}
   .ctx-ring-svg{position:absolute;inset:0;width:24px;height:24px;transform:rotate(-90deg);}
   .ctx-ring-track,.ctx-ring-value{fill:none;stroke-width:3;}
@@ -9025,10 +9028,13 @@ body.session-dragging-active{cursor:grabbing;user-select:none;-webkit-user-selec
 .saved-prompt-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
 .saved-prompt-delete{flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;border-radius:4px;display:flex;align-items:center;justify-content:center;}
 .saved-prompt-delete:hover{color:var(--danger,#f56565);background:rgba(245,101,101,.12);}
-.saved-prompt-add-row{padding:6px 4px 2px;border-top:1px solid var(--border);margin-top:4px;}
+/* Save current input: 10px from the divider above and the popup edge below,
+   the same as from the popup's sides (6px popup padding + 4px here). */
+.saved-prompt-add-row{padding:10px 4px 4px;border-top:1px solid var(--border);margin-top:4px;}
 .saved-prompt-save-btn{width:100%;padding:6px 10px;border-radius:6px;background:var(--accent-bg);border:1px solid var(--accent-bg-strong);color:var(--accent-text);font-size:12px;font-weight:600;cursor:pointer;text-align:center;}
 .saved-prompt-save-btn:hover{background:var(--accent-bg-strong);}
 .saved-prompts-empty,.saved-prompts-loading{padding:12px 10px;font-size:12px;color:var(--muted);text-align:center;}
+.saved-prompts-empty{padding:13px 10px 11px;}
 
 /* ── Persona picker popup ── */
 .persona-picker-popup{position:fixed;min-width:240px;max-width:min(340px,calc(100vw - 16px));max-height:320px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:200;flex-direction:column;gap:2px;padding:6px;}
@@ -15230,6 +15236,10 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    high (cap ink 10px under, 12px over); the icons were already centred. */
 :root[data-skin="zeus-2"] .composer-workspace-label{position:relative;top:1px;}
 :root[data-skin="zeus-2"] :is(.composer-reasoning-label,.composer-toolsets-label){position:relative;top:1px;}
+/* Composer chips (profile, workspace, model, effort, tools): the labels sit
+   1px higher on their icons. `translate` composes with the per-skin
+   transform/top nudges above instead of replacing them. */
+:is(.composer-profile-label,.composer-workspace-label,.composer-model-label,.composer-reasoning-label,.composer-toolsets-label){translate:0 -1px;}
 /* Zeus 2.0 chat rows: the age stamp ("1d") ink sat 1px below the row centre. */
 :root[data-skin="zeus-2"] #sessionList .session-time{position:relative;top:-1px;}
 /* Zeus 2.0 half-pixel icon centring, measured at 1x (ink edges and ink

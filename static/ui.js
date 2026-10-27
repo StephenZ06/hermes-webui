@@ -7549,7 +7549,8 @@ document.addEventListener('DOMContentLoaded',function(){
   if(!wrap||!tooltip)return;
   const btn=document.getElementById('ctxIndicator');
   if(!btn)return;
-  btn.addEventListener('click',openComposerContextMenu);
+  // The ring is read-only: hover/focus shows the usage tooltip, a click opens nothing.
+  btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();});
   // Close on outside tap
   document.addEventListener('click',function(){
     tooltip.classList.remove('ctx-tooltip-active');
