@@ -1611,11 +1611,10 @@ function _slidePanelIfPossible(panel,side,apply){
   _slidePanelWithNativeAnimation(panel,side,apply,lifecycle);
 }
 
-function toggleSidebar(forceState){
+function _setSidebarCollapsed(next,persist){
   if(!_isDesktopWidth())return; // mobile uses an overlay; never collapse there
   const layout=document.querySelector('.layout');
   if(!layout)return;
-  const next=typeof forceState==='boolean'?forceState:!_isSidebarCollapsed();
   // The state change itself is one class toggle. MotionUI.slidePanel wraps it so
   // the resulting layout runs once and the visible motion is a composited
   // transform, instead of a width transition that re-lays out the whole message
@@ -1625,12 +1624,53 @@ function toggleSidebar(forceState){
   });
   // Clear the flash-prevention root-level marker once JS owns the state.
   try{document.documentElement.removeAttribute('data-sidebar-collapsed');}catch(_){}
-  try{localStorage.setItem(_SIDEBAR_COLLAPSED_KEY,next?'1':'0');}catch(_){}
+  if(persist!==false){try{localStorage.setItem(_SIDEBAR_COLLAPSED_KEY,next?'1':'0');}catch(_){}}
   _syncSidebarAria();
+}
+
+function toggleSidebar(forceState){
+  _setSidebarCollapsed(typeof forceState==='boolean'?forceState:!_isSidebarCollapsed(),true);
 }
 
 function expandSidebar(){
   if(_isSidebarCollapsed())toggleSidebar(false);
+}
+
+// Direct navigation keeps the rail compact. A fine-pointer user can still
+// inspect the full sidebar at the left edge. The one passive listener is
+// coalesced into a frame, so it adds neither polling nor idle render work.
+let _sidebarEdgeRevealActive=false;
+let _sidebarEdgeRevealFrame=0;
+let _sidebarEdgeRevealInstalled=false;
+function _setSidebarEdgeReveal(next){
+  if(next===_sidebarEdgeRevealActive)return;
+  _sidebarEdgeRevealActive=next;
+  _setSidebarCollapsed(!next,false);
+}
+function _configureSidebarEdgeReveal(){
+  if(!_sidebarEdgeRevealInstalled){
+    _sidebarEdgeRevealInstalled=true;
+    document.addEventListener('pointermove',function(event){
+      if(_sidebarEdgeRevealFrame)return;
+      const x=event.clientX;
+      _sidebarEdgeRevealFrame=requestAnimationFrame(function(){
+        _sidebarEdgeRevealFrame=0;
+        if(!_isDesktopWidth()||window._sidebarDirectNavigation!==true){
+          if(_sidebarEdgeRevealActive)_setSidebarEdgeReveal(false);
+          return;
+        }
+        const sidebar=document.querySelector('.sidebar');
+        if(!sidebar)return;
+        const rect=sidebar.getBoundingClientRect();
+        if(!_sidebarEdgeRevealActive){
+          if(_isSidebarCollapsed()&&x<=2)_setSidebarEdgeReveal(true);
+        }else if(x>rect.right+12){
+          _setSidebarEdgeReveal(false);
+        }
+      });
+    },{passive:true});
+  }
+  if(window._sidebarDirectNavigation!==true&&_sidebarEdgeRevealActive)_setSidebarEdgeReveal(false);
 }
 
 // Boot-time restore. The inline flash-prevention script in index.html already
@@ -4673,6 +4713,8 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     window._workspaceTodosTab=!!s.workspace_todos_tab;
     if(typeof _applyWorkspaceTodosTabVisibility==='function') _applyWorkspaceTodosTabVisibility();
     window._sidebarDensity=(s.sidebar_density==='detailed'?'detailed':'compact');
+    window._sidebarDirectNavigation=s.sidebar_direct_navigation===true;
+    if(typeof _configureSidebarEdgeReveal==='function') _configureSidebarEdgeReveal();
     window._pinnedSessionsLimit=parseInt(s.pinned_sessions_limit||3,10)||3;
     window._inflightStateLimits={
       maxSessions:parseInt(s.inflight_state_max_sessions||8,10)||8,
@@ -4828,6 +4870,7 @@ window._mirrorSpeechSettingsFromServer=_mirrorSpeechSettingsFromServer;
     window._structuredCodeDefaultView='auto';
     window._structuredCodeAutoTreeLines=10;
     window._sidebarDensity='compact';
+    window._sidebarDirectNavigation=false;
     window._pinnedSessionsLimit=3;
     // Settings load failed: keep the persisted default-message-mode preference
     // (the eager default already read it from the localStorage mirror) instead

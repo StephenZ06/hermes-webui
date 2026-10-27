@@ -565,11 +565,11 @@ async function switchPanel(name, opts = {}) {
   // behaviour exactly.
   if (opts.fromRailClick && typeof _isSidebarCollapsed === 'function'
       && typeof _isDesktopWidth === 'function' && _isDesktopWidth()) {
-    if (_isSidebarCollapsed()) {
+    if (_isSidebarCollapsed() && window._sidebarDirectNavigation!==true) {
       // Expand first, then continue to the normal panel switch below so
       // the clicked panel becomes (or stays) active in the same gesture.
       expandSidebar();
-    } else if (prevPanel === nextPanel) {
+    } else if (prevPanel === nextPanel && window._sidebarDirectNavigation!==true) {
       // Same panel clicked while sidebar is open → collapse and short-circuit.
       // Skip the guard/cleanup work below; nothing about the active panel
       // is changing, only the visibility of the panel container.
@@ -12242,6 +12242,8 @@ function _preferencesPayloadFromUi(){
   if(notifCb) payload.notifications_enabled=notifCb.checked;
   const sidebarDensitySel=$('settingsSidebarDensity');
   if(sidebarDensitySel) payload.sidebar_density=sidebarDensitySel.value;
+  const sidebarDirectNavigationCb=$('settingsSidebarDirectNavigation');
+  if(sidebarDirectNavigationCb) payload.sidebar_direct_navigation=sidebarDirectNavigationCb.checked;
   const pinnedLimitField=$('settingsPinnedSessionsLimit');
   if(pinnedLimitField) payload.pinned_sessions_limit=parseInt(pinnedLimitField.value,10);
   const autoTitleRefreshSel=$('settingsAutoTitleRefresh');
@@ -13267,6 +13269,11 @@ async function loadSettingsPanel(){
     if(sidebarDensitySel){
       sidebarDensitySel.value=settings.sidebar_density==='detailed'?'detailed':'compact';
       sidebarDensitySel.addEventListener('change',_schedulePreferencesAutosave,{once:false});
+    }
+    const sidebarDirectNavigationCb=$('settingsSidebarDirectNavigation');
+    if(sidebarDirectNavigationCb){
+      sidebarDirectNavigationCb.checked=settings.sidebar_direct_navigation===true;
+      sidebarDirectNavigationCb.addEventListener('change',_schedulePreferencesAutosave,{once:false});
     }
     const autoTitleRefreshSel=$('settingsAutoTitleRefresh');
     if(autoTitleRefreshSel){
@@ -16320,6 +16327,7 @@ async function saveSettings(andClose){
   const fontSize=($('settingsFontSize')||{}).value||localStorage.getItem('hermes-font-size')||'default';
   const language=($('settingsLanguage')||{}).value||'en';
   const sidebarDensity=($('settingsSidebarDensity')||{}).value==='detailed'?'detailed':'compact';
+  const sidebarDirectNavigation=!!($('settingsSidebarDirectNavigation')||{}).checked;
   const defaultMessageMode=($('settingsDefaultMessageMode')||{}).value||'steer';
   const showBusyPlaceholderHint=!!($('settingsShowBusyPlaceholderHint')||{}).checked;
   const body={};
@@ -16381,6 +16389,9 @@ async function saveSettings(andClose){
   body.notifications_enabled=!!($('settingsNotificationsEnabled')||{}).checked;
   body.show_thinking=window._showThinking!==false;
   body.sidebar_density=sidebarDensity;
+  body.sidebar_direct_navigation=sidebarDirectNavigation;
+  window._sidebarDirectNavigation=sidebarDirectNavigation;
+  if(typeof _configureSidebarEdgeReveal==='function') _configureSidebarEdgeReveal();
   body.default_message_mode=defaultMessageMode;
   body.auto_title_refresh_every=(($('settingsAutoTitleRefresh')||{}).value||'0');
   const botName=(($('settingsBotName')||{}).value||'').trim();

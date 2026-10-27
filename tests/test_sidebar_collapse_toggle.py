@@ -161,12 +161,16 @@ class TestSidebarCollapseBootJS:
             "toggleSidebar function missing"
 
     def test_toggle_sidebar_short_circuits_on_mobile(self):
+        # toggleSidebar and the direct-navigation edge reveal share one setter,
+        # which owns the mobile guard.
         idx = BOOT_JS.index("function toggleSidebar")
-        # End of the function: find the next standalone "function " at column 0
+        end = BOOT_JS.index("\nfunction ", idx + 1)
+        assert "_setSidebarCollapsed(" in BOOT_JS[idx:end]
+        idx = BOOT_JS.index("function _setSidebarCollapsed")
         end = BOOT_JS.index("\nfunction ", idx + 1)
         body = BOOT_JS[idx:end]
         assert "_isDesktopWidth()" in body, \
-            "toggleSidebar must short-circuit on mobile via _isDesktopWidth check"
+            "the sidebar collapse setter must short-circuit on mobile via _isDesktopWidth check"
 
     def test_expand_sidebar_function(self):
         assert "function expandSidebar" in BOOT_JS, \
