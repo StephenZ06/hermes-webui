@@ -119,3 +119,30 @@ def test_a_closing_date_shows_on_the_card():
         finally:
             browser.close()
     assert chip.startswith("Closes in")
+
+
+def test_the_drawer_shows_the_dimension_bars():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _post("/api/job-os/jobs", {"title": f"Dims {uuid.uuid4().hex[:6]}", "company": "Co",
+                                     "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}", "description": "SQL"})["job"]
+    import sqlite3
+
+    from tests._pytest_port import TEST_STATE_DIR
+
+    with sqlite3.connect(TEST_STATE_DIR / "webui_state" / "job_os" / "job_os.db") as conn:
+        conn.execute("INSERT INTO job_analyses (job_id, status, fit_score, verdict, data_json, requested_at, finished_at)"
+                     " VALUES (?, 'done', 66, 'stretch', ?, 1, 1)", (job["id"], json.dumps({"summary": "Fair.", "dimensions": {
+                         "skills": 80, "experience": 60, "culture": None, "career": 40, "location": "pass"}})))
+    with sync_api.sync_playwright() as pw:
+        browser = _browser(sync_api, pw)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            _open_jobs(page)
+            page.click(f'.pipe-card[data-board-job="{job["id"]}"] .pipe-card-main')
+            page.wait_for_selector(".job-os-analysis .dim-bars", timeout=15000)
+            rows = page.evaluate("() => [...document.querySelectorAll('.job-os-analysis .dim-row')].map(r => [r.dataset.dim, r.querySelector('em').textContent, r.dataset.band || 'none'])")
+            page.wait_for_timeout(300)
+            _shot(page, "dims-drawer")
+        finally:
+            browser.close()
+    assert rows == [["skills", "80", "good"], ["experience", "60", "fair"], ["culture", "—", "none"], ["career", "40", "poor"]]

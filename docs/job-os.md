@@ -424,3 +424,24 @@ never guessed. Once a day, in your Scout time zone (`api/job_os/expiry.py`):
   a 404, 403 or timeout means *couldn't check* and changes nothing.
 - **Age:** a posting more than 30 days old shows "45 days old". It is a
   signal, not a veto.
+
+## Dimension scores and the location veto
+
+The scoring call also returns four dimension scores, shown as small bars
+under the score ring in the job's side panel and the Match check:
+
+- **Skills** (the must-haves the resume shows), **Experience** (years and
+  seniority), **Career** (how well the role continues your path), each 0–100;
+- **Culture** (0–100, or *—* when the posting gives nothing to judge).
+
+The fit score is their weighted average: skills 30, experience 25, culture
+15, career 30, with a missing culture weight shared out over the others
+(`api/job_os/calibration.py`; calibration can tune the weights). An answer
+without usable dimensions keeps the model's own score, so analyses made
+before them render as before.
+
+The same call judges **location** against your base and relocation answer:
+an on-site or hybrid job somewhere you won't move to is a **fail** and holds
+the job back exactly like a failed gate (red "Location" chip, ignorable per
+job); unclear is a **flag**. The Pipeline's List view can sort by any
+dimension.

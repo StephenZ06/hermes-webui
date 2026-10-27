@@ -17,7 +17,7 @@ from api.job_os import posting_guard
 from api.job_os.db import connect_job_os
 
 # Checks that hold a job back and that you can ignore on a job.
-OVERRIDABLE = ("eligibility", "language")
+OVERRIDABLE = ("eligibility", "language", "location")
 
 
 def _gate_checks(gates: dict, overrides: tuple) -> list[dict]:
@@ -39,6 +39,15 @@ def _gate_checks(gates: dict, overrides: tuple) -> list[dict]:
         checks.append({"key": "language", "tone": "warn", "short": "Language level",
                        "label": "The language level may be above yours",
                        "detail": "The posting asks for a higher level than your answers state."})
+    location = gates.get("location")
+    if location == "fail":
+        checks.append({"key": "location", "tone": "danger", "short": "Location",
+                       "label": "The location doesn't fit your relocation answer",
+                       "detail": "The job is on site or hybrid somewhere you said you won't move to."})
+    elif location == "flag":
+        checks.append({"key": "location", "tone": "warn", "short": "Location?",
+                       "label": "Check the location",
+                       "detail": "Where the job is, or whether it can be remote, isn't clear."})
     for check in checks:
         quote = gates.get(f"{check['key']}_quote")
         check["quotes"] = [quote] if quote else []
@@ -86,12 +95,22 @@ def job_checks(job, analysis: dict | None = None, *, on=None) -> list[dict]:
                        "label": "Hidden instructions found",
                        "detail": guard["summary"] + ". Luna was told to ignore it; check the posting yourself.",
                        "quotes": guard["excerpts"]})
-    if analysis and analysis.get("status") == "done" and isinstance(analysis.get("gates"), dict):
-        checks.extend(_gate_checks(analysis["gates"], tuple(job.overrides or ())))
+    if analysis and analysis.get("status") == "done" and (isinstance(analysis.get("gates"), dict)
+                                                          or isinstance(analysis.get("dimensions"), dict)):
+        checks.extend(_gate_checks(_all_gates(analysis), tuple(job.overrides or ())))
     order = {"danger": 0, "warn": 1, "muted": 2}
     # A held job leads with why it is held; closing soon outranks the rest.
     checks.sort(key=lambda c: c["key"] not in OVERRIDABLE)
     return sorted(checks, key=lambda c: order.get(c["tone"], 1))
+
+
+def _all_gates(analysis: dict) -> dict:
+    """The gates and the location veto, read as one set."""
+    gates = dict(analysis.get("gates") or {}) if isinstance(analysis.get("gates"), dict) else {}
+    dims = analysis.get("dimensions") if isinstance(analysis.get("dimensions"), dict) else {}
+    if dims.get("location"):
+        gates["location"], gates["location_quote"] = dims["location"], dims.get("location_quote") or ""
+    return gates
 
 
 def held_by(job, analysis: dict | None) -> list[str]:
@@ -99,7 +118,7 @@ def held_by(job, analysis: dict | None) -> list[str]:
     Automate all (empty when nothing does, or every one was ignored)."""
     if not analysis or analysis.get("status", "done") != "done":
         return []
-    gates = analysis.get("gates") if isinstance(analysis.get("gates"), dict) else {}
+    gates = _all_gates(analysis)
     overrides = set(job.overrides or ())
     return [key for key in OVERRIDABLE if gates.get(key) == "fail" and key not in overrides]
 

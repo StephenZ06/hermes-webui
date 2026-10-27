@@ -208,7 +208,7 @@
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
   // Checks the server ran on a job (posting guard, gates, deadlines): the card
   // shows the most serious one, the drawer lists them all with the quotes.
-  const CHECK_ICON = {guard: 'shield', profile: 'edit', deadline: 'clock', stale: 'calendar'};
+  const CHECK_ICON = {guard: 'shield', profile: 'edit', deadline: 'clock', stale: 'calendar', location: 'pin'};
   const HOLDING = ['eligibility', 'language', 'location'];
   function checkChip(job) {
     const shown = (job.checks || []).filter((x) => x.short && x.tone !== 'muted');
@@ -829,8 +829,14 @@
   }
   // ---- Pipeline toolbar ------------------------------------------------------
   function sortJobs(jobs, by) {
-    if (by !== 'fit') return jobs;
-    const score = (j) => (j.analysis && j.analysis.fit_score != null ? j.analysis.fit_score : -1);
+    if (by === 'newest' || !by) return jobs;
+    const dim = by !== 'fit' && by;
+    const score = (j) => {
+      const a = j.analysis;
+      if (!a) return -1;
+      const v = dim ? (a.dimensions || {})[dim] : a.fit_score;
+      return typeof v === 'number' ? v : -1;
+    };
     return jobs.slice().sort((a, b) => score(b) - score(a));
   }
   function pipelineBar(state, jobs, counts) {
@@ -843,7 +849,7 @@
       const on = state.pipelineMode === key;
       return `<button type="button" class="seg-btn icon${on ? ' active' : ''}" aria-pressed="${on}" data-job-os-action="pipe-mode" data-mode="${key}" title="${text}">${icon(key, 15)}<span class="sr-only">${text}</span></button>`;
     }).join('');
-    const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option></select></label>` : '';
+    const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option>${DIMENSIONS.map(([k, l]) => `<option value="${k}" ${state.sortBy === k ? 'selected' : ''}>${l} fit</option>`).join('')}</select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
     return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${activitySummary(jobs)}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
@@ -1106,6 +1112,7 @@
       <div class="match-progress" aria-hidden="true"><i style="width:${Math.round(100 * (at + 1) / queue.length)}%"></i></div>
       <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
         ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
+        ${done && job ? dimensionBars(job.analysis) : ''}
         ${done && job ? `<div class="analysis-cols">${job.analysis.strengths && job.analysis.strengths.length ? `<div><h4>Matches</h4>${list(job.analysis.strengths, 'is-good')}</div>` : ''}${job.analysis.gaps && job.analysis.gaps.length ? `<div><h4>Missing</h4>${list(job.analysis.gaps, 'is-gap')}</div>` : ''}</div>` : ''}
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
       </div></div>
@@ -1170,6 +1177,19 @@
     }
     return out.join('');
   }
+  // Four small bars under the score: what the fit is made of. Analyses made
+  // before the dimensions existed have none and show the score alone.
+  const DIMENSIONS = [['skills', 'Skills'], ['experience', 'Experience'], ['culture', 'Culture'], ['career', 'Career']];
+  function dimensionBars(a) {
+    const d = a && a.dimensions;
+    if (!d) return '';
+    const rows = DIMENSIONS.map(([key, label]) => {
+      const v = d[key];
+      const known = typeof v === 'number';
+      return `<div class="dim-row" data-dim="${key}"${known ? ` data-band="${band(v)[1]}"` : ' data-unknown="true"'}><span>${label}</span><i role="img" aria-label="${label}: ${known ? `${v} out of 100` : 'not enough to judge'}"><b style="width:${known ? Math.max(v, 2) : 0}%"></b></i><em>${known ? v : '—'}</em></div>`;
+    }).join('');
+    return `<div class="dim-bars">${rows}</div>`;
+  }
   function analysisPanel(job) {
     const a = job.analysis;
     if (!a) return '';
@@ -1181,6 +1201,7 @@
     const headline = held ? `Held back by a check · ${Number(a.fit_score)}% skills fit` : `${band(a.fit_score)[2]} · ${Number(a.fit_score)}%`;
     return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${held ? 'poor' : band(a.fit_score)[1]}">${esc(headline)}</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
       ${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
+      ${dimensionBars(a)}
       <div class="analysis-cols">${a.strengths && a.strengths.length ? `<div><h4>Strengths</h4>${list(a.strengths, 'is-good')}</div>` : ''}${a.gaps && a.gaps.length ? `<div><h4>Gaps</h4>${list(a.gaps, 'is-gap')}</div>` : ''}${a.must_haves && a.must_haves.length ? `<div><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}</div>
       ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div></div>`;
   }

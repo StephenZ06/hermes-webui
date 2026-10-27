@@ -46,7 +46,14 @@ SYSTEM = (
     "list is fail; a required level above the profile's stated level is flag; otherwise pass. If the profile does not "
     "say, answer unverified. Quotes are the posting's own words, under 160 characters, or empty.\n"
     "Also return \"deadline\": the closing date for applications as \"YYYY-MM-DD\" only when the posting states one, "
-    "else null. " + llm.UNTRUSTED
+    "else null.\n"
+    "Also return \"dimensions\": {\"skills\": <0-100>, \"experience\": <0-100>, \"career\": <0-100>, "
+    "\"culture\": <0-100 or null when the posting gives nothing to judge>, \"location\": \"pass|fail|flag\", "
+    "\"location_quote\": \"<posting wording>\"}. Skills: the must-haves the resume shows. Experience: years and "
+    "seniority against what is asked. Career: how well the role continues the candidate's path. Culture: the team, "
+    "values and way of working against the resume's evidence. Location: against the PROFILE's base and relocation "
+    "answer and the posting's workplace: an on-site or hybrid job elsewhere when the candidate won't relocate is "
+    "fail, unclear is flag, otherwise pass. " + llm.UNTRUSTED
 )
 
 
@@ -85,24 +92,48 @@ class AnalysisError(ValueError):
     """Analysis cannot be requested (HTTP 400)."""
 
 
+def _dimensions(data: dict) -> dict | None:
+    """The dimension scores, or None when the answer has none usable (the
+    model's own fit score is then kept, as for analyses made before them)."""
+    raw = data.get("dimensions")
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for key in ("skills", "experience", "career", "culture"):
+        try:
+            out[key] = max(0, min(100, int(round(float(raw.get(key))))))
+        except (TypeError, ValueError):
+            out[key] = None
+    if any(out[k] is None for k in ("skills", "experience", "career")):
+        return None
+    location = str(raw.get("location") or "").lower()
+    out["location"] = location if location in ("pass", "fail", "flag") else "flag"
+    out["location_quote"] = str(raw.get("location_quote") or "").strip()[:160]
+    return out
+
+
 def _clean(data: dict, profile: str = "") -> dict:
     def items(key):
         values = data.get(key) if isinstance(data.get(key), list) else []
         return [str(v).strip()[:160] for v in values if str(v).strip()][:5]
+    from api.job_os.calibration import weighted_score
+
+    dimensions = _dimensions(data)
+    computed = weighted_score(dimensions) if dimensions else None
     try:
-        score = max(0, min(100, int(round(float(data.get("fit_score"))))))
+        score = computed if computed is not None else max(0, min(100, int(round(float(data.get("fit_score"))))))
     except (TypeError, ValueError) as error:
         raise llm.LLMError("The analysis had no fit score.") from error
     verdict = str(data.get("verdict") or "").lower()
-    if verdict not in VERDICTS:
+    if verdict not in VERDICTS or computed is not None:
         verdict = "strong" if score >= 85 else "good" if score >= 70 else "stretch" if score >= 50 else "poor"
     gates = _gates(data, profile)
-    if "fail" in (gates["eligibility"], gates["language"]):
+    if "fail" in (gates["eligibility"], gates["language"]) or (dimensions or {}).get("location") == "fail":
         verdict = "poor"  # a job you can't take is never a good match, whatever the skills say
     from api.job_os.repository import parse_deadline
 
     return {"fit_score": score, "verdict": verdict, "gates": gates, "prompt_version": ANALYSIS_PROMPT_VERSION,
-            "deadline": parse_deadline(data.get("deadline")) or None, "summary": str(data.get("summary") or "").strip()[:400],
+            "deadline": parse_deadline(data.get("deadline")) or None, "dimensions": dimensions, "summary": str(data.get("summary") or "").strip()[:400],
             "strengths": items("strengths"), "gaps": items("gaps"), "must_haves": items("must_haves"),
             "seniority": str(data.get("seniority") or "").strip()[:60],
             "salary_note": str(data.get("salary_note") or "").strip()[:160]}
@@ -116,9 +147,9 @@ def _row(row) -> dict:
 
 
 DETAIL_KEYS = ("summary", "strengths", "gaps", "must_haves", "seniority", "salary_note", "gates", "prompt_version",
-               "deadline")
+               "deadline", "dimensions")
 # What list payloads carry besides the score: enough for the checks on a card.
-COMPACT_KEYS = ("gates",)
+COMPACT_KEYS = ("gates", "dimensions")
 
 
 def get_analysis(job_id: str) -> dict | None:
@@ -197,7 +228,11 @@ def score_text(job, resume_text: str) -> dict:
 
 
 def _prompt(job, resume_text: str, profile: str) -> str:
-    return (f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume_text[:14000]}\nRESUME>>>\n\n"
+    from api.job_os.calibration import guidance
+
+    note = guidance()
+    hint = f"Calibration note from this candidate's past outcomes (a hint, not a rule): {note}\n\n" if note else ""
+    return (f"{hint}<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume_text[:14000]}\nRESUME>>>\n\n"
             f"<<<PROFILE\n{profile}\nPROFILE>>>")
 
 
