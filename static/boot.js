@@ -429,8 +429,11 @@ function _setButtonTooltip(btn, text){
   if(btn.hasAttribute('data-tooltip')){
     _setAttrIfChanged(btn, 'data-tooltip', text);
     if(btn.hasAttribute('title')) btn.removeAttribute('title');
-  } else if(btn.title!==text){
-    btn.title = text;
+  } else if(btn.getAttribute('data-mi-title')!==text){
+    // Micro owns rendered tooltips; retaining a title here would bring back
+    // the browser-native label after a dynamic state change.
+    _setAttrIfChanged(btn, 'data-mi-title', text);
+    if(btn.hasAttribute('title')) btn.removeAttribute('title');
   }
 }
 
@@ -1853,7 +1856,8 @@ function _micToastKeyForRecognitionError(error){
       btn.setAttribute('data-tooltip', text);
       if(btn.hasAttribute('title')) btn.removeAttribute('title');
     } else {
-      btn.title = text;
+      btn.setAttribute('data-mi-title', text);
+      if(btn.hasAttribute('title')) btn.removeAttribute('title');
     }
   }
 

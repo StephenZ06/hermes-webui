@@ -24,6 +24,8 @@
   };
   window.WorkHubIcons = function (name, label) {
     const title = label ? `<title>${label}</title>` : '';
-    return `<svg class="work-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="${label ? 'false' : 'true'}">${title}${paths[name] || paths.work}</svg>`;
+    const crispPlus = name === 'plus';
+    const path = paths[name] || paths.work;
+    return `<svg class="work-hub-icon${crispPlus ? ' work-hub-icon--plus' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${crispPlus ? '2' : '1.7'}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="${label ? 'false' : 'true'}">${title}${crispPlus ? path.replaceAll('<path ', '<path vector-effect="non-scaling-stroke" ') : path}</svg>`;
   };
 }());

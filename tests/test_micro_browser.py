@@ -66,7 +66,7 @@ def test_tooltips_replace_the_native_one_and_toasts_stack():
             shown = page.evaluate("() => [document.querySelector('.mi-tip').textContent, document.querySelector('#tipme').hasAttribute('title')]")
             page.mouse.move(5, 600)
             page.wait_for_function("() => !document.querySelector('.mi-tip.is-open')", timeout=2000)
-            restored = page.evaluate("() => document.querySelector('#tipme').getAttribute('title')")
+            parked = page.evaluate("() => [document.querySelector('#tipme').getAttribute('title'), document.querySelector('#tipme').getAttribute('data-mi-title')]")
             page.evaluate("() => { showToast('First'); }")
             page.wait_for_timeout(250)
             page.evaluate("() => { showToast('Second'); }")
@@ -75,7 +75,8 @@ def test_tooltips_replace_the_native_one_and_toasts_stack():
         finally:
             browser.close()
     assert shown == ["Helpful hint", False], "the native tooltip is parked while the themed one shows"
-    assert restored == "Helpful hint"
+    # The native title stays parked after hover, so the browser label never races the themed one.
+    assert parked == [None, "Helpful hint"]
     assert ghosts == [True]
 
 

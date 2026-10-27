@@ -291,14 +291,17 @@
     if (quietButton(el)) return null;
     const text = el.getAttribute('title');
     if (text == null) return el.getAttribute('data-mi-title');
+    // A component with its own themed tooltip already owns the copy. Remove
+    // only the native attribute so two tooltip systems never compete.
+    if (el.hasAttribute('data-tooltip')) { el.removeAttribute('title'); return el.getAttribute('data-tooltip'); }
     el.setAttribute('data-mi-title', text);
     el.removeAttribute('title');
     return text;
   }
   function unpark(el) {
+    // Keep the native title parked after hover. Restoring it reintroduces the
+    // browser tooltip on the next visit and causes it to race the themed one.
     if (!el || !el.hasAttribute('data-mi-title')) return;
-    if (!el.hasAttribute('title')) el.setAttribute('title', el.getAttribute('data-mi-title'));
-    el.removeAttribute('data-mi-title');
   }
   function showTip(el) {
     const text = (el.getAttribute('data-mi-title') || '').trim();
@@ -363,6 +366,30 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); }, true);
     window.addEventListener('scroll', hideTip, true);
     window.addEventListener('blur', hideTip);
+    const adoptChrome = (root) => {
+      if (!root || root.nodeType !== 1 && root.nodeType !== 9) return;
+      const nodes = root.matches && root.matches('[title]') ? [root] : [];
+      if (root.querySelectorAll) nodes.push(...root.querySelectorAll('[title]'));
+      nodes.forEach((el) => { if (el.tagName !== 'IFRAME' && !el.closest('svg')) park(el); });
+      const buttons = root.matches && root.matches('button') ? [root] : [];
+      if (root.querySelectorAll) buttons.push(...root.querySelectorAll('button'));
+      buttons.forEach((button) => {
+        const label = String(button.getAttribute('aria-label') || '').trim().toLowerCase();
+        const content = String(button.textContent || '').trim();
+        const iconOnly = content === '×' || content === '✕' || (!content && /^close(?:\s|$)/.test(label));
+        if (iconOnly) {
+          button.classList.add('button-close-turn');
+          if (content === '×' || content === '✕') button.classList.add('button-close-turn--text');
+        }
+      });
+    };
+    const chromeObserver = new MutationObserver((records) => records.forEach((record) => {
+      if (record.type === 'attributes') adoptChrome(record.target);
+      else record.addedNodes.forEach(adoptChrome);
+    }));
+    chromeObserver.observe(document.documentElement, {subtree:true, childList:true, attributes:true, attributeFilter:['title']});
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => adoptChrome(document));
+    else adoptChrome(document);
   }
 
   function escapeHtml(value) {
