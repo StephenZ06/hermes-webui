@@ -4610,8 +4610,10 @@ function closeSessionActionMenu({restoreFocus=false}={}){
   const focusTarget=restoreFocus?_sessionActionAnchor:null;
   const fallbackFocusTarget=restoreFocus?_sessionActionPreviousFocus:null;
   if(_sessionActionMenu){
-    _sessionActionMenu.remove();
+    const leaving=_sessionActionMenu;
     _sessionActionMenu = null;
+    if(typeof animatePopupOut==='function') animatePopupOut(leaving,()=>leaving.remove());
+    else leaving.remove();
   }
   if(_sessionActionAnchor){
     if(_sessionActionAnchor.classList&&_sessionActionAnchor.classList.contains('session-actions-trigger')){
@@ -10660,7 +10662,7 @@ function _startProjectRename(proj, chip){
 }
 
 function _showProjectContextMenu(e, proj, chip){
-  document.querySelectorAll('.project-ctx-menu').forEach(el=>el.remove());
+  document.querySelectorAll('.project-ctx-menu:not(.popup-closing)').forEach(el=>el.remove());
   const menu=document.createElement('div');
   menu.className='project-ctx-menu';
   // background: var(--surface) — fully-opaque theme variable (not var(--panel),
@@ -10679,7 +10681,7 @@ function _showProjectContextMenu(e, proj, chip){
   workspaceItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;';
   workspaceItem.onmouseenter=()=>workspaceItem.style.background='var(--hover-bg)';
   workspaceItem.onmouseleave=()=>workspaceItem.style.background='';
-  workspaceItem.onclick=()=>{menu.remove();_showProjectWorkspacePicker(proj,chip);};
+  workspaceItem.onclick=()=>{animatePopupOut(menu);_showProjectWorkspacePicker(proj,chip);};
   menu.appendChild(workspaceItem);
 
   // Rename option
@@ -10688,7 +10690,7 @@ function _showProjectContextMenu(e, proj, chip){
   renameItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--text);';
   renameItem.onmouseenter=()=>renameItem.style.background='var(--hover-bg)';
   renameItem.onmouseleave=()=>renameItem.style.background='';
-  renameItem.onclick=()=>{menu.remove();_startProjectRename(proj,chip);};
+  renameItem.onclick=()=>{animatePopupOut(menu);_startProjectRename(proj,chip);};
   menu.appendChild(renameItem);
 
   // Color picker row
@@ -10699,7 +10701,7 @@ function _showProjectContextMenu(e, proj, chip){
     dot.style.cssText=`width:16px;height:16px;border-radius:50%;background:${hex};cursor:pointer;display:inline-block;flex-shrink:0;`;
     if(hex===(proj.color||'')) dot.style.outline='2px solid var(--text)';
     dot.onclick=async()=>{
-      menu.remove();
+      animatePopupOut(menu);
       try {
         await api('/api/projects/rename',{method:'POST',body:JSON.stringify({project_id:proj.project_id,name:proj.name,color:hex})});
         await renderSessionList();
@@ -10721,12 +10723,12 @@ function _showProjectContextMenu(e, proj, chip){
   delItem.style.cssText='padding:7px 14px;cursor:pointer;font-size:13px;color:var(--error,#e94560);';
   delItem.onmouseenter=()=>delItem.style.background='var(--hover-bg)';
   delItem.onmouseleave=()=>delItem.style.background='';
-  delItem.onclick=()=>{menu.remove();_confirmDeleteProject(proj);};
+  delItem.onclick=()=>{animatePopupOut(menu);_confirmDeleteProject(proj);};
   menu.appendChild(delItem);
 
   document.body.appendChild(menu);
   _clampFixedToViewport(menu);
-  const dismiss=()=>{menu.remove();document.removeEventListener('click',dismiss);};
+  const dismiss=()=>{document.removeEventListener('click',dismiss);animatePopupOut(menu);};
   setTimeout(()=>document.addEventListener('click',dismiss),0);
 }
 

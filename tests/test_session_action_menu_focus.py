@@ -84,7 +84,7 @@ def _fixture_script() -> str:
               menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'End', bubbles: true}));
               result.endText = document.activeElement.textContent.trim();
               menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
-              result.menuRemovedOnEscape = !document.querySelector('.session-action-menu');
+              result.menuRemovedOnEscape = !document.querySelector('.session-action-menu:not(.popup-closing)');
               result.focusRestoredOnEscape = document.activeElement === trigger;
               result.expandedAfterEscape = trigger.getAttribute('aria-expanded');
               result.controlsAfterEscape = trigger.getAttribute('aria-controls');
@@ -111,7 +111,7 @@ def _fixture_script() -> str:
               menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
 
               const result = {
-                menuRemovedOnEscape: !document.querySelector('.session-action-menu'),
+                menuRemovedOnEscape: !document.querySelector('.session-action-menu:not(.popup-closing)'),
                 focusReturnedToPreviousControl: document.activeElement === priorFocus,
               };
               priorFocus.remove();

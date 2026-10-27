@@ -9383,6 +9383,26 @@ function copyToastText(btn){
   const done=()=>{const old=btn.textContent;btn.textContent='Copied';setTimeout(()=>{btn.textContent=old;},1200);};
   _copyText(text).then(done).catch(()=>{});
 }
+// Popup exit: a menu that is taken out of the page (session / folder menus)
+// first fades and settles back toward its trigger (.popup-closing, ~140ms),
+// then `done` removes it. Its state is released by the caller right away, so
+// a second menu can open while this one is still leaving; the leaving node is
+// inert so it never takes a click. Reduced motion skips straight to `done`.
+function animatePopupOut(el, done){
+  const finish=typeof done==='function'?done:()=>{if(el&&el.parentNode)el.remove();};
+  if(!el||!el.isConnected){finish();return;}
+  let reduce=false;
+  try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
+  if(reduce||el.classList.contains('popup-closing')){if(!el.classList.contains('popup-closing'))finish();return;}
+  el.classList.add('popup-closing');
+  el.inert=true;
+  let ended=false;
+  const end=()=>{if(ended)return;ended=true;finish();};
+  el.addEventListener('animationend',e=>{if(e.target===el)end();});
+  setTimeout(end,260);
+}
+window.animatePopupOut=animatePopupOut;
+
 function showToast(msg,ms,type){
   const el=$('toast');if(!el)return;
   const s=String(msg==null?'':msg);let t=type;
