@@ -1519,13 +1519,13 @@
   // skeleton overlays the scroll area, so destroying and mounting the editor
   // underneath does not touch it.
   let skeletonToken = 0;
-  function showSkeleton() {
+  function showSkeleton(noteId) {
     const host = $('nbEditorHost');
     const scroll = host && host.parentElement;
     if (!scroll || !window.SkeletonEntrance) return;
     // The title, tags and date fade in with the body, in one movement.
     const chrome = ['nbTitle', 'nbTags', 'nbUpdated'].map($);
-    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host, hide: [host, ...chrome], title: chrome[0]});
+    skeletonToken = window.SkeletonEntrance.start(scroll, {shape: 'note', align: host, hide: [host, ...chrome], title: chrome[0], key: 'note:' + noteId});
   }
   function clearSkeleton() {
     const host = $('nbEditorHost');
@@ -1647,7 +1647,7 @@
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');
     S.noteLoading = true; S.noteError = ''; S.pane = 'editor';
     destroyEditor();
-    showSkeleton();
+    showSkeleton(noteId);
     render();
     try {
       const {note} = await (takePrefetched(noteId) || window.NotebookApi.get(noteId));

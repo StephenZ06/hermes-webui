@@ -238,3 +238,42 @@ def test_opening_a_wiki_page_fades_it_in_and_keeps_the_search_in_view(page):
     _assert_skeleton_then_fade(frames, "wiki page body")
     assert all(f["search"] for f in frames), "the search box was hidden behind the skeleton"
     assert page.evaluate("() => document.querySelectorAll('[data-skel-hide]').length") == 0
+
+
+def test_a_chat_placeholder_stays_on_screen_while_the_transcript_jumps_to_its_end(page):
+    # The transcript is written and scrolled to its end in one go; the
+    # placeholder used to scroll away with it and leave the view blank.
+    _open(page, "chat")
+    sids = page.evaluate("""async () => {
+      const msgs = []; for (let i = 0; i < 30; i++) { msgs.push({role: 'user', content: 'question ' + i}); msgs.push({role: 'assistant', content: ('Answer ' + i + ' ').repeat(i % 3 ? 4 : 40)}); }
+      const make = async (title, messages) => (await (await fetch('/api/session/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title, messages})})).json()).session.session_id;
+      return [await make('Tiny', [{role: 'user', content: 'hi'}, {role: 'assistant', content: 'hello'}]), await make('Long', msgs)];
+    }""")
+    page.evaluate("(sid) => loadSession(sid)", sids[0])
+    page.wait_for_timeout(1000)
+    page.evaluate("""() => { window.__f = []; const tick = () => { const m = document.getElementById('messages'), mr = m.getBoundingClientRect();
+      const o = m.querySelector(':scope > .skel'), bars = o ? [...o.querySelectorAll('i')].map((i) => i.getBoundingClientRect()) : [];
+      window.__f.push({state: m.dataset.skel || '', scrolled: m.scrollTop > 200,
+        onScreen: bars.filter((r) => r.height && r.bottom > mr.top && r.top < mr.bottom).length});
+      if (window.__f.length < 40) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }""")
+    page.evaluate("(sid) => { loadSession(sid); }", sids[1])
+    page.wait_for_function("() => window.__f.length >= 40", timeout=15000)
+    frames = [f for f in page.evaluate("() => window.__f") if f["state"] == "loading"]
+    assert any(f["scrolled"] for f in frames), "the transcript never scrolled under the placeholder"
+    assert all(f["onScreen"] >= 3 for f in frames), frames
+
+
+def test_remembered_shapes_keep_only_the_most_recent_items(page):
+    _open(page, "knowledge")
+    page.evaluate("""() => { const all = {}; for (let i = 0; i < 250; i++) all['old:' + i] = {t: i, s: {w: 100, bars: [[0, 0, 10, 10, 0]]}};
+      localStorage.setItem('hermes-skel-shapes', JSON.stringify(all)); }""")
+    page.reload()
+    page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+    page.evaluate("async () => { await switchPanel('knowledge'); }")
+    _fake(page, [[r"/api/knowledge/read\?id=k1", _item(1)]])
+    page.evaluate("() => openKnowledgeItem('k1')")
+    page.wait_for_function("() => document.getElementById('knowledgeDetailBody').innerText.includes('knowledge body 1')", timeout=15000)
+    page.wait_for_timeout(1200)
+    kept = page.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('hermes-skel-shapes')))")
+    assert len(kept) == 200 and "kn:k1" in kept and "old:0" not in kept, (len(kept), kept[:3])

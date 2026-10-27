@@ -15116,6 +15116,13 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 [data-skel-hide="reveal"]{opacity:1;filter:none;}
 .skel-host[data-skel="reveal"] > .skel{opacity:0;filter:blur(2px);}
 @keyframes skel-pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+/* A skeleton mirroring the content's own lines (SkeletonEntrance shapes):
+   bars placed by script. They glide onto newly measured lines before the
+   fade; the frame contains its own layout, so that costs the page nothing. */
+.skel--shaped{display:block;padding:0;gap:0;overflow:hidden;contain:strict;}
+.skel--shaped i{position:absolute;margin:0;}
+.skel--shaped i.media{border-radius:8px;}
+.skel--shaped.is-morphing i{transition:left .18s cubic-bezier(.2,.8,.2,1),top .18s cubic-bezier(.2,.8,.2,1),width .18s cubic-bezier(.2,.8,.2,1),height .18s cubic-bezier(.2,.8,.2,1),opacity .18s ease;}
 /* The bar standing in for a title (SkeletonEntrance's `title`), placed by
    script over the title's text and faded out as the title fades in. */
 .skel-title-host{position:relative;}

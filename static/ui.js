@@ -22714,6 +22714,148 @@ const SkeletonEntrance=(()=>{
     chat:()=>`<i class="skel-bubble"></i><div class="skel-who"><i class="dot"></i><i style="width:64px"></i></div><div class="skel-lines">${bars([96,88,92,54,0,90,72])}</div>`,
   };
   const reduced=()=>!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // ── Mirrored shapes ────────────────────────────────────────────────────
+  // When the content is ready, its visible lines of text (and pictures) are
+  // measured. The placeholder bars reshape onto them before the text fades
+  // in, and the shape is remembered per item (`key`), so the next time that
+  // item opens the placeholder already has its lines. Shapes are positions
+  // only, never text, kept for the most recent STORE_MAX items, measured
+  // from the host's visible top and the content's left edge.
+  const STORE='hermes-skel-shapes', STORE_MAX=200, MORPH_MS=180, MAX_BARS=80;
+  let store=null, saveTimer=0;
+  function shapes(){
+    if(store) return store;
+    try{ store=JSON.parse(localStorage.getItem(STORE)||'{}'); }catch(_){ store=null; }
+    if(!store||typeof store!=='object'||Array.isArray(store)) store={};
+    return store;
+  }
+  function saveShapes(){
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(()=>{
+      const all=shapes(), keys=Object.keys(all);
+      if(keys.length>STORE_MAX) keys.sort((a,b)=>(all[a].t||0)-(all[b].t||0)).slice(0,keys.length-STORE_MAX).forEach((k)=>{ delete all[k]; });
+      try{ localStorage.setItem(STORE,JSON.stringify(all)); }catch(_){}
+    },400);
+  }
+  function recall(key,width){
+    const entry=key&&shapes()[key];
+    if(!entry||!entry.s||!Array.isArray(entry.s.bars)) return null;
+    if(Math.abs((entry.s.w||0)-width)>40) return null; // laid out for another width
+    entry.t=Date.now();
+    return entry.s;
+  }
+  function remember(key,shape){
+    if(!key) return;
+    shapes()[key]={t:Date.now(),s:shape};
+    saveShapes();
+  }
+  // The frame shapes are measured in: the host's visible top, the content's
+  // left edge and width.
+  function frame(host,align){
+    const h=host.getBoundingClientRect(), a=(align||host).getBoundingClientRect();
+    return {left:a.left,top:h.top,width:a.width,host:h,align:a};
+  }
+  // The visible lines of text in `content`, as bars in the frame.
+  function measure(content,f){
+    const clip={top:Math.max(f.host.top,f.align.top,0),bottom:Math.min(f.host.bottom,f.align.bottom,window.innerHeight),
+      left:Math.max(f.host.left,f.align.left),right:Math.min(f.host.right,f.align.right)};
+    const bars=[];
+    if(clip.bottom-clip.top<4||clip.right-clip.left<4) return {w:Math.round(f.width),bars};
+    const off=(r)=>r.bottom<=clip.top||r.top>=clip.bottom||r.right<=clip.left||r.left>=clip.right;
+    const frags=[], range=document.createRange();
+    // Whole elements off screen are skipped without looking inside them, so a
+    // long transcript costs no more than the screenful that shows.
+    const walker=document.createTreeWalker(content,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode(n){
+      if(n.nodeType===1){
+        if(n.matches('.sr-only,[aria-hidden="true"],script,style,.skel,.skel-title')) return NodeFilter.FILTER_REJECT;
+        // Not rendered (inside a closed <details>, display:none): its text
+        // still reports line boxes, over whatever follows it.
+        if(n.checkVisibility&&!n.checkVisibility()) return NodeFilter.FILTER_REJECT;
+        const r=n.getBoundingClientRect();
+        if((r.width||r.height)&&off(r)) return NodeFilter.FILTER_REJECT;
+        if(n.matches('img,video,canvas')&&r.width>=40&&r.height>=24&&!off(r)) frags.push({x:r.left,y:r.top,w:r.width,h:r.height,media:true});
+        return NodeFilter.FILTER_SKIP;
+      }
+      return /\S/.test(n.nodeValue)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;
+    }});
+    let n;
+    while((n=walker.nextNode())&&frags.length<MAX_BARS*4){
+      range.selectNodeContents(n);
+      const box=range.getBoundingClientRect();
+      if(off(box)) continue;
+      const size=parseFloat(getComputedStyle(n.parentElement).fontSize)||14;
+      for(const r of range.getClientRects()){
+        if(r.width<2||r.height<4||off(r)) continue;
+        frags.push({x:r.left,y:r.top,w:r.width,h:r.height,size});
+      }
+    }
+    // Pieces of one line (bold, links, code) join into one bar.
+    frags.sort((a,b)=>a.y-b.y||a.x-b.x);
+    const lines=[];
+    for(const p of frags){
+      const line=p.media?null:lines.slice(-4).find((l)=>!l.media&&Math.abs(l.y-p.y)<3&&p.x<=l.x+l.w+24&&p.x+p.w>=l.x-24);
+      if(line){
+        const right=Math.max(line.x+line.w,p.x+p.w);
+        line.x=Math.min(line.x,p.x); line.w=right-line.x;
+        line.h=Math.max(line.h,p.h); line.size=Math.max(line.size,p.size);
+      }else lines.push({...p});
+    }
+    for(const l of lines.slice(0,MAX_BARS)){
+      // A text bar is about as tall as the line's letters, centred on it.
+      const h=l.media?l.h:Math.max(8,Math.min(22,Math.round(l.size*0.62)));
+      const y=l.media?l.y:l.y+(l.h-h)/2;
+      bars.push([Math.round(l.x-f.left),Math.round(y-f.top),Math.max(4,Math.round(l.w)),Math.round(h),l.media?1:0]);
+    }
+    return {w:Math.round(f.width),bars};
+  }
+  function setBar(bar,b){
+    bar.style.left=b[0]+'px'; bar.style.top=b[1]+'px'; bar.style.width=b[2]+'px'; bar.style.height=b[3]+'px';
+    bar.classList.toggle('media',!!b[4]);
+  }
+  // Turn the overlay into a frame for absolutely placed bars.
+  function placeShaped(el,host,f){
+    el.className='skel skel--shaped';
+    el.style.top=host.scrollTop+'px';
+    el.style.left=(f.left-f.host.left+host.scrollLeft)+'px';
+    el.style.right='auto';
+    el.style.width=f.width+'px';
+    el.style.height=Math.max(0,Math.min(f.host.bottom,window.innerHeight)-f.top)+'px';
+  }
+  function drawShape(el,shape){
+    el.textContent='';
+    shape.bars.forEach((b)=>{ const bar=document.createElement('i'); setBar(bar,b); el.appendChild(bar); });
+  }
+  const sameShape=(a,b)=>a&&b&&a.bars.length===b.bars.length&&a.bars.every((x,i)=>x.every((v,j)=>Math.abs(v-b.bars[i][j])<=2));
+  // Move the bars on screen onto the measured lines: matching bars glide,
+  // extra lines fade in, spare bars fade out.
+  function morph(host,f,target){
+    const el=host._skelEl;
+    const from=[...el.querySelectorAll('i')].map((i)=>{
+      if(i.classList.contains('gap')) return null;
+      const r=i.getBoundingClientRect();
+      return r.width&&r.height?[Math.round(r.left-f.left),Math.round(r.top-f.top),Math.round(r.width),Math.round(r.height),0]:null;
+    }).filter(Boolean);
+    placeShaped(el,host,f);
+    if(host._skelPin){ host.removeEventListener('scroll',host._skelPin); }
+    host._skelPin=()=>{ if(host._skelEl) host._skelEl.style.top=host.scrollTop+'px'; };
+    host.addEventListener('scroll',host._skelPin,{passive:true});
+    el.textContent='';
+    const moves=target.bars.map((b,i)=>{
+      const bar=document.createElement('i');
+      const start=from[i]||from[from.length-1]||b;
+      setBar(bar,start);
+      if(!from[i]) bar.style.opacity='0';
+      el.appendChild(bar);
+      return [bar,b];
+    });
+    const spare=from.slice(target.bars.length).map((b)=>{ const bar=document.createElement('i'); setBar(bar,b); el.appendChild(bar); return bar; });
+    void el.offsetWidth;
+    el.classList.add('is-morphing');
+    moves.forEach(([bar,b])=>{ setBar(bar,b); bar.style.opacity=''; });
+    spare.forEach((bar)=>{ bar.style.opacity='0'; });
+  }
+
   // A bar over a title's line of text: as wide as a short title, as tall as
   // its capitals, centred between their tops and the baseline (how the eye
   // reads a line as centred), from the font's own metrics.
@@ -22774,15 +22916,18 @@ const SkeletonEntrance=(()=>{
     (host._skelHidden||[]).forEach(el=>el.removeAttribute('data-skel-hide'));
     host._skelHidden=null;
     if(host._skelWatch){ host._skelWatch.disconnect(); clearTimeout(host._skelWatchTimer); }
-    host._skelEl=null; host._skelWatch=null;
+    if(host._skelPin){ host.removeEventListener('scroll',host._skelPin); host._skelPin=null; }
+    host._skelEl=null; host._skelWatch=null; host._skelShape=null;
     delete host.dataset.skel;
   }
   // Show the skeleton over `host`. `align` lays it over that element's box
   // (a centred column, or a child that is not at the host's top-left); `hide`
   // lists what it stands in for when that is not every child of the host;
   // `title` puts a bar over that title's text while it is hidden
-  // (`titleCentred` for a title centred with what sits beside it). Hidden elements carry their own state, so one outside the
-  // host (a title above the scroll area) fades in with the content.
+  // (`titleCentred` for a title centred with what sits beside it); `key`
+  // names the item, so its placeholder can mirror its lines next time.
+  // Hidden elements carry their own state, so one outside the host (a title
+  // above the scroll area) fades in with the content.
   function start(host,opts){
     if(!host) return 0;
     opts=opts||{};
@@ -22791,10 +22936,21 @@ const SkeletonEntrance=(()=>{
     host._skelToken=token;
     if(reduced()) return token;
     const el=document.createElement('div');
-    el.className='skel skel--'+(SHAPES[opts.shape]?opts.shape:'doc');
     el.setAttribute('aria-hidden','true');
-    el.innerHTML=SHAPES[SHAPES[opts.shape]?opts.shape:'doc']();
-    if(opts.align){
+    host._skelKey=opts.key||'';
+    host._skelAlign=opts.align||null;
+    const f=frame(host,opts.align);
+    const known=recall(opts.key,Math.round(f.width));
+    host._skelShape=known;
+    if(known){
+      // This item was shown before: its own lines, where they will be.
+      placeShaped(el,host,f);
+      drawShape(el,known);
+    }else{
+      el.className='skel skel--'+(SHAPES[opts.shape]?opts.shape:'doc');
+      el.innerHTML=SHAPES[SHAPES[opts.shape]?opts.shape:'doc']();
+    }
+    if(!known&&opts.align){
       const a=opts.align.getBoundingClientRect(), h=host.getBoundingClientRect();
       el.style.top=(a.top-h.top+host.scrollTop)+'px';
       el.style.left=(a.left-h.left+host.scrollLeft)+'px';
@@ -22809,19 +22965,38 @@ const SkeletonEntrance=(()=>{
     host.appendChild(el);
     host._skelEl=el;
     host._skelAt=performance.now();
+    // The overlay stays where it is on screen while the content scrolls under
+    // it (a transcript jumps to its end as it is written). Scroll events run
+    // before the frame is painted, so it never shows out of place.
+    const dy=el.getBoundingClientRect().top-host.getBoundingClientRect().top;
+    host._skelPin=()=>{ if(host._skelEl) host._skelEl.style.top=(dy+host.scrollTop)+'px'; };
+    host.addEventListener('scroll',host._skelPin,{passive:true});
     return token;
   }
   // Cross-fade into the content. A stale token (a newer start) is ignored.
   function reveal(host,token){
     if(!host||token!==host._skelToken||!host._skelEl) return;
     const wait=Math.max(0,MIN_MS-(performance.now()-host._skelAt));
-    setTimeout(()=>{
+    const fade=()=>{
       if(token!==host._skelToken||!host._skelEl) return;
-      if(host._skelWatch){ host._skelWatch.disconnect(); host._skelWatch=null; clearTimeout(host._skelWatchTimer); }
       host.dataset.skel='reveal';
       (host._skelHidden||[]).forEach(el=>el.setAttribute('data-skel-hide','reveal'));
       if(host._skelTitle) host._skelTitle.classList.add('is-out');
       setTimeout(()=>{ if(token===host._skelToken) clear(host); },REVEAL_MS+40);
+    };
+    setTimeout(()=>{
+      if(token!==host._skelToken||!host._skelEl) return;
+      if(host._skelWatch){ host._skelWatch.disconnect(); host._skelWatch=null; clearTimeout(host._skelWatchTimer); }
+      const content=host._skelAlign;
+      if(!content||!content.isConnected) return fade();
+      const f=frame(host,content);
+      const target=measure(content,f);
+      if(target.bars.length) remember(host._skelKey,target);
+      // Nothing to mirror (an empty note), or the remembered shape still
+      // fits: straight to the fade. Otherwise the bars reshape first.
+      if(!target.bars.length||sameShape(host._skelShape,target)) return fade();
+      morph(host,f,target);
+      setTimeout(fade,MORPH_MS);
     },wait);
   }
   // Reveal once the loader writes into `target` (or after MAX_WAIT_MS, so a

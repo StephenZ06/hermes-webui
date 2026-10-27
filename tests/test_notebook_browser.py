@@ -1410,8 +1410,10 @@ def test_switching_notes_reveals_the_body_from_a_skeleton(page):
       return {skel: !!document.querySelector('.nb-editor-scroll > .skel'), opacity: Number(getComputedStyle(host).opacity),
               text: host.querySelector('.nb-editor-mount').textContent}; }""")
     assert any(f["skel"] for f in frames), "no skeleton while the note loaded"
-    # The placeholder lines stand still: the editor's margins never move them.
-    assert len({round(f["top"], 1) for f in frames if f["skel"]}) == 1, frames
+    # The placeholder lines never jump (the editor's margins once moved them
+    # 2px in a frame); they only glide onto the note's own lines.
+    tops = [f["top"] for f in frames if f["skel"]]
+    assert all(abs(b - a) < 1.5 for a, b in zip(tops, tops[1:])), tops
     shown = [f for f in frames if "alpha body text" in f["text"]]
     assert any(0 < f["opacity"] < 1 for f in shown), "the body cut in instead of fading"
     assert not any(f["skel"] is False and f["text"] == "" and f["opacity"] for f in frames[frames.index(next(f for f in frames if f["skel"])):]), "an empty editor showed"
@@ -1557,3 +1559,74 @@ def test_the_middle_list_folds_and_opens_without_squeezing_or_showing_the_old_pl
     page.wait_for_function("() => window.__f.length >= 30", timeout=10000)
     seen = [f for f in page.evaluate("() => window.__f") if f["opacity"] > 0.02]
     assert seen and all(f["heading"] == "General" for f in seen), seen
+
+
+_MIRROR_PARAS = [
+    "Short opening line.",
+    "A much longer paragraph that keeps going for a while so that it wraps onto a second line in the editor at desktop width.",
+    "Third.",
+    "Fourth paragraph of medium length, here.",
+    "Sixth paragraph that is also quite long and should wrap at least once given the width the notes page gives its editor.",
+]
+_MIRROR_FRAMES = """() => { window.__f = []; const tick = () => {
+  const sc = document.querySelector('.nb-editor-scroll'), o = sc.querySelector(':scope > .skel');
+  window.__f.push({state: sc.dataset.skel || '', shaped: !!(o && o.classList.contains('skel--shaped')),
+    morph: !!(o && o.classList.contains('is-morphing')),
+    bars: o ? [...o.querySelectorAll('i')].map((i) => { const r = i.getBoundingClientRect(); return [r.top, r.height]; }) : []});
+  if (window.__f.length < 40) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }"""
+_TEXT_LINES = """() => { const rows = []; const rg = document.createRange();
+  const w = document.createTreeWalker(document.getElementById('nbEditorHost'), NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) { if (!/\\S/.test(n.nodeValue)) continue; rg.selectNodeContents(n);
+    for (const r of rg.getClientRects()) if (r.width > 6 && !rows.some((x) => Math.abs(x[0] - r.top) < 3)) rows.push([r.top, r.height]); }
+  return rows.sort((a, b) => a[0] - b[0]); }"""
+
+
+def _mirror_notes():
+    blocks = lambda ps: [{"type": "paragraph", "content": [{"type": "text", "text": p, "styles": {}}]} for p in ps]
+    short = _api("/api/notebook/notes/create", {"title": f"Mirror short {uuid.uuid4().hex[:4]}", "content": blocks(["Just one line."])})["note"]
+    long = _api("/api/notebook/notes/create", {"title": f"Mirror long {uuid.uuid4().hex[:4]}", "content": blocks(_MIRROR_PARAS)})["note"]
+    return short["id"], long["id"]
+
+
+def _open_note_frames(page, note_id):
+    page.evaluate(_MIRROR_FRAMES)
+    page.evaluate("(id) => document.querySelector('[data-nb-open=\"' + id + '\"]').click()", note_id)
+    page.wait_for_function("() => window.__f.length >= 40", timeout=15000)
+    return [f for f in page.evaluate("() => window.__f") if f["state"]]
+
+
+def _bars_sit_on_lines(bars, lines):
+    assert len(bars) == len(lines), (bars, lines)
+    for (top, h), (line_top, line_h) in zip(bars, lines):
+        assert line_top <= top + h / 2 <= line_top + line_h, ((top, h), (line_top, line_h))
+
+
+def test_the_placeholder_takes_the_shape_of_the_note_and_remembers_it(page):
+    # The placeholder bars were a fixed eight lines whatever the note held.
+    # On a first visit they now reshape onto the note's own lines before the
+    # text fades in; on the next visit they start in that shape, across a reload.
+    short_id, long_id = _mirror_notes()
+    # The test server's update banners drop in late and push the page down.
+    page.add_init_script("document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '#updateBanner,#staleClientBanner{display:none!important}'; document.head.appendChild(s); })")
+    _open(page)
+    page.evaluate("(id) => document.querySelector('[data-nb-open=\"' + id + '\"]').click()", short_id)
+    page.wait_for_timeout(1200)
+    first = _open_note_frames(page, long_id)
+    lines = page.evaluate(_TEXT_LINES)
+    assert len(lines) >= 7, lines  # the long paragraphs wrapped
+    assert not first[0]["shaped"], "a first visit cannot know the shape yet"
+    assert any(f["morph"] for f in first), "the bars did not reshape onto the lines"
+    _bars_sit_on_lines(next(f for f in first if f["state"] == "reveal")["bars"], lines)
+    for _ in range(2):  # straight back, then after a reload
+        page.evaluate("(id) => document.querySelector('[data-nb-open=\"' + id + '\"]').click()", short_id)
+        page.wait_for_timeout(1200)
+        again = _open_note_frames(page, long_id)
+        assert again[0]["shaped"], again[0]
+        _bars_sit_on_lines(again[0]["bars"], lines)
+        assert not any(f["morph"] for f in again), "a remembered shape reshaped anyway"
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+        page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+        page.evaluate("async () => { await switchPanel('notebook'); }")
+        page.wait_for_selector(f"[data-nb-open='{long_id}']", state="attached", timeout=15000)

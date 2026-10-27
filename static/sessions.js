@@ -1908,7 +1908,7 @@ async function loadSession(sid){
         const _onChat = (typeof _currentPanel !== 'string' || !_currentPanel || _currentPanel === 'chat');
         const _title = _onChat ? $('appTitlebarTitle') : null;
         const _skelToken = SkeletonEntrance.start(_messagesEl, {shape:'chat', align:_msgInner,
-          hide:[..._messagesEl.children, _title, _title && $('appTitlebarSub')], title:_title, titleCentred:true});
+          hide:[..._messagesEl.children, _title, _title && $('appTitlebarSub')], title:_title, titleCentred:true, key:'chat:'+sid});
         SkeletonEntrance.revealOnChange(_messagesEl, _msgInner, _skelToken);
       }
     }

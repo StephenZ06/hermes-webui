@@ -146,6 +146,24 @@ When adding a control, consider where users will find it on both wide desktop an
 mobile. If a setting or quota/control surface does not fit in the composer, route
 it through the appropriate Control Center panel instead of squeezing the footer.
 
+## Loading and content swaps
+
+Opening a chat, note, skill, Knowledge item or wiki page swaps one document for
+another through `SkeletonEntrance` (`static/ui.js`). It never cuts to a blank
+view or a spinner. Pulsing placeholder bars stand where the text will be, and
+a bar stands over the title. When the content is written, the bars glide onto
+the content's real visible lines (about 0.18s), then cross-fade into the text.
+The title, its count and the note's details fade in on the same transition.
+Each item's bar layout is remembered, as positions only and never text, in
+`localStorage` under `hermes-skel-shapes` for the 200 most recent items. On a
+revisit the placeholder already has that item's lines and fades straight in.
+The overlay stays pinned to the visible area while a transcript scrolls to its
+end beneath it. Reduced motion turns the whole entrance off.
+
+Rows that a text change re-flows, such as the centred titlebar and the
+composer's chips, slide their items to their new places (`SlideOnChange`)
+instead of letting them jump.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with

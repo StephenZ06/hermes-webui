@@ -6004,7 +6004,7 @@ async function _openWikiBrowser() {
     contentEl.style.display = 'block';
     listEl.style.display = 'none';
     if (window.SkeletonEntrance) {
-      const skelToken = SkeletonEntrance.start(panel, {shape: 'doc', align: contentEl, hide: [contentEl]});
+      const skelToken = SkeletonEntrance.start(panel, {shape: 'doc', align: contentEl, hide: [contentEl], key: 'wiki:' + path});
       SkeletonEntrance.revealOnChange(panel, contentEl, skelToken);
     }
     try {
@@ -6552,7 +6552,7 @@ async function openSkill(name, el) {
     if (empty) empty.style.display = 'none';
     skillBody.style.display = '';
     const title = _holdSkeletonTitle($('skillDetailTitle'));
-    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title], title});
+    skelToken = SkeletonEntrance.start(skillHost, {shape: 'doc', align: skillBody, hide: [skillBody, title], title, key: 'skill:' + name});
     SkeletonEntrance.revealOnChange(skillHost, skillBody, skelToken);
   }
   try {
@@ -10843,7 +10843,7 @@ async function openKnowledgeItem(id) {
     if (emptyEl) emptyEl.style.display = 'none';
     bodyEl.style.display = 'block';
     const title = _holdSkeletonTitle($('knowledgeDetailTitle'));
-    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl, title], title});
+    const skelToken = SkeletonEntrance.start(skelHost, {shape: 'doc', align: bodyEl, hide: [bodyEl, title], title, key: 'kn:' + id});
     SkeletonEntrance.revealOnChange(skelHost, bodyEl, skelToken);
   }
   try {
