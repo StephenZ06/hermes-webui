@@ -12902,13 +12902,21 @@ async function loadSettingsPanel(){
           og.label=g.provider;
           for(const m of [...(g.models||[]),...(g.extra_models||[])]){
             const opt=document.createElement('option');
-            opt.value=m.id;opt.textContent=m.label;
+            // An explicit planner choice needs its provider too: model IDs can
+            // overlap across profiles, including a local 9router profile.
+            opt.value=g.provider_id?`@${g.provider_id}:${m.id}`:m.id;opt.textContent=m.label;
             og.appendChild(opt);
           }
           if(og.children.length) workHubPlanModelSel.appendChild(og);
         }
       }catch(e){ console.warn('[settings] failed to load work hub plan models', e); }
-      workHubPlanModelSel.value=settings.work_hub_plan_model||'';
+      const savedPlanModel=settings.work_hub_plan_model||'';
+      workHubPlanModelSel.value=savedPlanModel;
+      if(savedPlanModel&&workHubPlanModelSel.value!==savedPlanModel){
+        const legacy=document.createElement('option');
+        legacy.value=savedPlanModel;legacy.textContent=`Configured: ${savedPlanModel}`;
+        workHubPlanModelSel.appendChild(legacy);workHubPlanModelSel.value=savedPlanModel;
+      }
       workHubPlanModelSel.addEventListener('change',_schedulePreferencesAutosave,{once:false});
     }
     // Ambient provider quota chip toggle — default off; only shows at ≥1400px viewport

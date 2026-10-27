@@ -238,7 +238,7 @@ def plan_goal(goal: str, actions: list[dict[str, Any]] | None = None) -> dict[st
     return {"goal": goal, "meta": meta, "steps": []}
 
 
-def plan_goal_with_ai(goal: str, model_id: str | None = None, sources: list[dict[str, str]] | None = None) -> dict[str, Any]:
+def plan_goal_with_ai(goal: str, model_id: str | None = None, sources: list[dict[str, str]] | None = None, model_provider: str | None = None) -> dict[str, Any]:
     """Use a configured model to turn raw notes into structured work items.
 
     The interactive source planner is deliberately strict: a missing model or
@@ -259,7 +259,7 @@ def plan_goal_with_ai(goal: str, model_id: str | None = None, sources: list[dict
         from api.routes import require_ai_agent_class
 
         _main_model, _main_provider, _main_base_url = resolve_model_provider(
-            model_with_provider_context(effective_model, None)
+            model_with_provider_context(effective_model, model_provider)
         )
         _main_api_key = None
         try:
@@ -330,4 +330,5 @@ def plan_goal_with_ai(goal: str, model_id: str | None = None, sources: list[dict
     except PlanError:
         raise
     except Exception as exc:
-        raise PlanError("Goal Planner could not create a structured plan") from exc
+        # Do not echo upstream errors: they can include connection details.
+        raise PlanError("Goal Planner could not use the selected model. Check Settings → Preferences → Work Hub planning model, then try again.") from exc

@@ -19077,10 +19077,14 @@ def _route_post_api_work_hub_plan_ai(handler, parsed, body, diag):
         settings = load_settings()
         # The Settings control labels an empty value as Auto.  Its contract
         # is to use this profile's effective Hermes default model.
-        model_id = settings.get("work_hub_plan_model") or settings.get("default_model")
+        configured_model = str(settings.get("work_hub_plan_model") or "").strip()
+        model_id = configured_model or settings.get("default_model")
+        # Auto must retain the active profile's provider identity. Otherwise a
+        # shared model id can be sent through the wrong configured provider.
+        model_provider = None if configured_model else settings.get("default_model_provider")
         owner_id = str(get_active_profile_name() or "default")
         sources = consume_uploads(owner_id, upload_tokens)
-        plan = goal_planner.plan_goal_with_ai(goal, model_id, sources)
+        plan = goal_planner.plan_goal_with_ai(goal, model_id, sources, model_provider=model_provider)
         return j(handler, {"ok": True, "plan": plan})
     except (work_hub.WorkHubError, goal_planner.PlanError, SourceError) as exc:
         return bad(handler, str(exc), getattr(exc, "status", 400))

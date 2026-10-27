@@ -231,8 +231,8 @@ def test_ai_plan_route_uses_default_model_when_planner_setting_is_auto(monkeypat
     monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
     monkeypatch.setattr(routes, "load_settings", lambda: {"work_hub_plan_model": "", "default_model": "default-planner"})
     captured = {}
-    def fake_plan(goal, model_id, sources):
-        captured.update(goal=goal, model_id=model_id, sources=sources)
+    def fake_plan(goal, model_id, sources, model_provider=None):
+        captured.update(goal=goal, model_id=model_id, sources=sources, model_provider=model_provider)
         return {"goal": goal, "meta": {}, "steps": [{"title": "Implement", "description": "Ship it", "priority": "high"}]}
     monkeypatch.setattr(goal_planner, "plan_goal_with_ai", fake_plan)
 
@@ -241,7 +241,31 @@ def test_ai_plan_route_uses_default_model_when_planner_setting_is_auto(monkeypat
 
     assert handler.status == 200
     assert captured["model_id"] == "default-planner"
+    assert captured["model_provider"] is None
     assert work_hub.load_state()["work_items"] == []
+
+
+def test_ai_plan_route_passes_default_provider_context_for_auto_model(monkeypatch, tmp_path):
+    from api import goal_planner, routes, work_hub
+
+    monkeypatch.setattr(routes, "_check_csrf", lambda _handler: True)
+    monkeypatch.setattr(work_hub, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(routes, "load_settings", lambda: {
+        "work_hub_plan_model": "", "default_model": "claude-haiku",
+        "default_model_provider": "custom:9router",
+    })
+    captured = {}
+
+    def fake_plan(goal, model_id, sources, model_provider=None):
+        captured.update(model_id=model_id, model_provider=model_provider)
+        return {"goal": goal, "meta": {}, "steps": []}
+
+    monkeypatch.setattr(goal_planner, "plan_goal_with_ai", fake_plan)
+    handler = _FakeHandler({"goal": "Route through the active provider", "project_id": None, "upload_tokens": []})
+    routes.handle_post(handler, urlparse("/api/work_hub/plan/ai"))
+
+    assert handler.status == 200
+    assert captured == {"model_id": "claude-haiku", "model_provider": "custom:9router"}
 
 
 def test_ai_plan_save_creates_previewed_steps(monkeypatch, tmp_path):
