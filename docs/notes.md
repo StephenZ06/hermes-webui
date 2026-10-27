@@ -22,8 +22,11 @@ long-form documents.
   wiggle with an X, and workspaces stay locked because they belong to Chat
   and Work Hub too. Right-click a folder to rename it.
 - **Main view** (`#notebookRoot`) holds the notes list (search, items) and the
-  editor. The editor shows the title, status, pin, favorite and a "More" menu,
-  then the workspace/folder picker, tags and the BlockNote body.
+  editor. For General, Pinned, Favorites and Obsidian views, both are shown.
+  Selecting a workspace or Notes folder collapses the duplicate middle list
+  and smoothly expands the editor; that scope's note rows remain in the first
+  side panel. The editor shows the title, status, pin, favorite and a "More"
+  menu, then the workspace/folder picker, tags and the BlockNote body.
 - Below 900px the list and editor show one at a time, with a back button.
 
 ## Architecture
@@ -209,9 +212,10 @@ In the vault:
 
 ## Hermes integration points
 
-- **Send to chat** (More menu) starts a fresh chat and puts the note, as
-  Markdown, in the composer. It does not send. The user picks the agent and
-  model, so the note goes through the normal chat orchestration.
+- **Send to chat** (More menu) starts a fresh chat and adds the note as a
+  linked context card rather than pasting its Markdown into the composer. The
+  card can reopen the source note, can be removed before sending, and its body
+  is included only when the user sends through the normal chat orchestration.
 - **`GET notes/{id}/context`** is the stable shape for future agent actions,
   task creation and retrieval.
 - **Custom slash commands:** pass `slashItems` to `mountNoteEditor` (in

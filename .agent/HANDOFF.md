@@ -123,7 +123,7 @@ Run them all: `./scripts/test.sh tests/test_job_os_*.py -q`.
 
 ## 5. Current status
 
-### Project workspace starter — implemented, not deployed (2026-10-20)
+### Project workspace starter — committed and deployed (2026-10-20)
 
 - Chat → New project now opens a workspace-first intake dialog instead of
   creating an unbound sidebar folder.
@@ -139,8 +139,12 @@ Run them all: `./scripts/test.sh tests/test_job_os_*.py -q`.
   questions. It separates changed/tested/committed/deployed/user-verified.
 - Focused verification passed: project starter tests, lifecycle-hook tests,
   route-table parity, original Sprint 15 project tests, and JavaScript syntax.
-- Deployment and user verification: pending. No commit or service restart was
-  performed for this change.
+- Commit: `89c3b56d0` (`Add workspace-backed project starter`).
+- Deployment: `hermes-webui-native.service` restarted successfully; the served
+  service-worker revision reported `g89c3b56d0`.
+- User verification: pending. The restart recovered stale cron execution
+  records and re-armed the existing `graphify-refresh` scheduled job.
+- Detailed agent transition notes: `.agent/PROJECT_STARTER_HANDOFF.md`.
 
 ### Shared sidebar motion — fixed and live (2026-10-06)
 
@@ -412,3 +416,112 @@ Longer history and gotchas: `.agent/PROJECT_STATUS.md` (newest entries at the to
   `/health` returned `ok` and the live server serves `static/file-manager.js`.
   The API itself requires the normal logged-in browser session, so an unauthenticated
   curl to `/api/file-manager/workspaces` correctly returned 401.
+
+## Outcome — 2026-10-23: Notes navigation and linked-note composer polish
+
+- Notes bootstrap now shares one in-flight request and only reveals its loading
+  placeholder after a 160 ms grace period. Fast route changes therefore go
+  directly to the already-mounted Notes shell or real content instead of
+  flashing the shimmer state.
+- The linked-note context card now has deliberate separation from the composer.
+  Its link/header row has matching 10 px top and bottom inset, while ordinary
+  selected-text context cards retain their existing density.
+- Focused Notes navigation/context checks: **7 passed**. Adjacent Notes suites:
+  **53 passed**. JavaScript syntax checks and `git diff --check` passed.
+- `graphify update .` was run, then `hermes-webui-native.service` was restarted.
+  `/health` returned `status: ok`, and the served stylesheet and Notes script
+  contain the new padding and deferred-bootstrap markers.
+- These changes are in the existing dirty working tree and were not committed.
+  A signed-in browser visual pass remains the only outstanding validation.
+
+## Outcome — 2026-10-23: Notes loading and linked-note hover correction
+
+- Replaced the Notes sidebar/list shimmer placeholders with one centred,
+  stable loading screen over the Notes page. It fades away when real content
+  is rendered; loading state is still shared through the existing coalesced
+  bootstrap promise.
+- Replaced the linked-note card's native browser tooltip (which appeared
+  white/cream outside Hermes themes) with a Hermes-owned hover/focus preview.
+  It uses `var(--surface)`, inherits theme text/borders, and the close control
+  now stretches to the header row so its vertical spacing is symmetrical.
+- Verification: Notes/context and selected-text context suites **49 passed**;
+  JavaScript syntax checks and `git diff --check` passed. `graphify update .`
+  completed. The native service was restarted, `/health` returned `ok`, and
+  served assets contain the new central loader and themed preview markers.
+- Still uncommitted in the existing dirty working tree. A signed-in visual QA
+  remains the only outstanding check.
+
+## Outcome — 2026-10-23: Notes shimmer removal and contained linked preview
+
+- Removed every Notes shimmer placeholder, including the separate editor-note
+  skeleton. The one centred Notes loader now covers both initial bootstrap and
+  individual note fetches, then fades to actual content.
+- The linked-note preview no longer positions outside the composer card. It
+  expands inside the card on hover/focus using the active theme surface;
+  rounded clipping is restored and the accent receives matching left corners.
+  This fixes the detached blue bar and the clipped top-border line.
+- Verification: **49** Notes/context tests passed; JavaScript syntax and
+  `git diff --check` passed. `graphify update .` ran. The native service was
+  restarted, `/health` is `ok`, and served assets contain no Notes shimmer
+  markers.
+- Changes remain uncommitted in the pre-existing dirty worktree. A signed-in
+  browser visual check remains the final user-facing validation.
+
+## Outcome — 2026-10-23: Linked-note hover duplication removal
+
+- Removed the expandable full-note hover preview from linked composer cards.
+  A linked note now remains a single compact card with its short summary; its
+  title still opens the original note and the close control keeps the prior
+  alignment fix.
+- Verification: **49** Notes/context tests passed, JavaScript syntax and
+  `git diff --check` passed. `graphify update .` ran, the native service was
+  restarted, and `/health` returned `ok`.
+- This is still part of the existing uncommitted dirty worktree.
+
+## Outcome — 2026-10-23: Notes editor body-only navigation transition
+
+- Note changes now keep the editor chrome static: the title area, icon/action
+  controls, tags, metadata row, and divider do not animate when a different
+  note opens. Only the newly mounted note body performs a brief opacity fade.
+- The prior note chrome remains in place while the next body is fetched behind
+  the existing central loader, avoiding the former full-editor reset effect.
+- Verification: **50** focused Notes/context tests passed; JavaScript syntax
+  and whitespace checks passed. `graphify update .` completed; the native
+  service was restarted, `/health` returned `ok`, and served assets contain the
+  body-only transition marker. The current change remains uncommitted in the
+  existing dirty worktree.
+
+## Outcome — 2026-10-23: Persistent Notes header and compact folder selector
+
+- Replaced the per-note Notes editor-header rebuild with one persistent shell.
+  Title, actions, status, folder picker, tags input, metadata row, and divider
+  now stay mounted while a different note loads; only their values change and
+  only the note body fades in.
+- The folder selector now measures its selected label, stays compact, and
+  animates its width between folder names. The Notes title is larger, its
+  folder icon matches the selector height, and the title/divider rhythm is
+  balanced with equal 10 px spacing at the editor-body boundary.
+- Verification: 51 focused Notes/context checks passed, `node --check` and
+  `git diff --check` passed, and the Impeccable layout scan reported no
+  findings. Deployment and signed-in visual validation remain pending.
+
+## Outcome — 2026-10-23: Notes empty-state overlay regression correction
+
+- The persistent-header change initially left the editor's empty-state element
+  visible with the open note because `.nb-empty` overrode the browser's default
+  `[hidden]` display rule. The selector now explicitly sets
+  `#nbEditorEmpty[hidden]` to `display:none!important`, preventing the empty
+  prompt from appearing above an open note.
+- Verification: 52 focused Notes/context checks passed, JavaScript syntax and
+  diff checks passed, the native service restarted successfully, `/health`
+  returned `ok`, and the served stylesheet contains the regression guard.
+
+## Outcome — 2026-10-23: Reverted Notes header-shell refinement
+
+- At the user's request, reverted the persistent header shell, compact/animated
+  folder selector, enlarged title/folder icon, adjusted divider spacing, and
+  the related empty-state overlay guard. The Notes editor is back to its prior
+  header rendering and original sizing.
+- The earlier body-only editor-content transition remains in place. Verification:
+  50 focused Notes/context checks passed, JavaScript syntax and diff checks
+  passed, and the native service restarted with `/health` returning `ok`.
