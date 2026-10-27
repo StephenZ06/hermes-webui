@@ -42,7 +42,17 @@ def build_dashboard() -> dict[str, Any]:
         "needs_attention": attention,
         "funnel": funnel(),
         "activity": activity(),
+        "calibration": _calibration(),
     }
+
+
+def _calibration() -> dict | None:
+    try:
+        from api.job_os.calibration import status
+
+        return status()
+    except Exception:  # the dashboard stands without it
+        return None
 
 
 ACTION_LIMIT = 20

@@ -55,6 +55,7 @@
     followUpSent: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/follow-up/sent', {method: 'POST', body: '{}'}),
     staleApplications: (days) => request('/api/job-os/follow-ups/stale?days=' + encodeURIComponent(days || 60)),
     sweepStale: (jobIds) => request('/api/job-os/follow-ups/sweep', {method: 'POST', body: JSON.stringify({job_ids: jobIds})}),
+    calibration: (action) => request('/api/job-os/calibration/' + action, {method: 'POST', body: '{}'}),
     overrideCheck: (id, check, on) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/override', {method: 'POST', body: JSON.stringify({check, on: !!on})}),
     addNote: (id, text) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/note', {method: 'POST', body: JSON.stringify({text})}),
     timeline: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/timeline'),

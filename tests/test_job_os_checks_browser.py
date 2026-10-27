@@ -217,3 +217,33 @@ def test_quiet_applications_close_as_no_response_in_one_go():
     left, right, top, bottom, width, height = box
     assert abs((left + right) / 2 - width / 2) < 2 and abs((top + bottom) / 2 - height / 2) < 2  # centred
     assert gone
+
+
+def test_a_calibration_proposal_is_reviewed_and_accepted_from_the_dashboard():
+    from tests._pytest_port import TEST_STATE_DIR
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    path = TEST_STATE_DIR / "webui_state" / "job_os" / "calibration.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"proposal": {"weights": {"skills": 40, "experience": 20, "culture": 10, "career": 30},
+                                             "guidance": "Weigh skills more.", "patterns": ["Bank roles went quiet"],
+                                             "outcomes": 3, "created_at": 1}}))
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = _browser(sync_api, pw)
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 1000})
+                _open_jobs(page, "#jobs/dashboard")
+                page.click('.action-row[data-kind="calibrate"]', timeout=15000)
+                page.wait_for_selector(".cal-modal .cal-weights", timeout=15000)
+                deltas = page.evaluate("() => [...document.querySelectorAll('.cal-modal .cal-delta')].map(d => d.textContent)")
+                page.wait_for_timeout(350)
+                _shot(page, "calibration")
+                page.click('.cal-modal [data-job-os-action="cal-accept"]')
+                page.wait_for_function("() => /version 1/.test(document.querySelector('.cal-modal')?.textContent || '')", timeout=15000)
+            finally:
+                browser.close()
+        assert deltas == ["+10", "-5", "-5"]
+        assert json.loads(path.read_text())["current"]["weights"]["skills"] == 40
+    finally:
+        path.unlink(missing_ok=True)

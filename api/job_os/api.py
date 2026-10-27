@@ -247,6 +247,11 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"notifications": notify.status()})
         return True
+    if path == f"{_PREFIX}/calibration":
+        from api.job_os import calibration
+
+        j(handler, {"calibration": calibration.status()})
+        return True
     if path == f"{_PREFIX}/follow-ups/stale":
         from api.job_os import followup
 
@@ -614,6 +619,19 @@ def _notifications_post(handler, path: str) -> bool:
 
 def handle_job_os_post(handler, parsed, body) -> bool:
     """Handle Job OS creation endpoints or return False for an unknown path."""
+    if parsed.path.startswith(f"{_PREFIX}/calibration/"):
+        from api.job_os import calibration
+
+        action = parsed.path[len(f"{_PREFIX}/calibration/"):]
+        run = {"propose": calibration.request_proposal, "accept": calibration.accept, "discard": calibration.discard,
+               "undo": calibration.undo}.get(action)
+        if run is None:
+            return _error(handler, "Not found", 404)
+        try:
+            j(handler, {"calibration": run()})
+        except calibration.CalibrationError as error:
+            return _error(handler, str(error), 400)
+        return True
     if parsed.path == f"{_PREFIX}/automate":
         from api.job_os import autopilot
 

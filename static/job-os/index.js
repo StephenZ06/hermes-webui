@@ -504,6 +504,7 @@
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override', 'follow-draft', 'follow-sent', 'follow-no-response'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
+    if (name.startsWith('cal-')) return calibrationAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
       refresh();
@@ -674,7 +675,8 @@
       && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring' || j.status === 'applying') || busy(state.jobDetail)
         || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))
         || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')
-        || !!(state.jobDetail && state.jobDetail.follow_up && state.jobDetail.follow_up.draft && state.jobDetail.follow_up.draft.status === 'running')))
+        || !!(state.jobDetail && state.jobDetail.follow_up && state.jobDetail.follow_up.draft && state.jobDetail.follow_up.draft.status === 'running')
+        || !!(state.dashboard && state.dashboard.calibration && state.dashboard.calibration.running)))
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)
         || (state.jobs || []).some((j) => busy(j) || j.status === 'tailoring')) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
@@ -732,6 +734,7 @@
   function onTriageKey(event) {
     const state = window.JobOSState;
     if (state.staleSweep && String(event.key || '') === 'Escape') { event.preventDefault(); state.staleSweep = null; repaint(); return; }
+    if (state.calibrationOpen && String(event.key || '') === 'Escape') { event.preventDefault(); state.calibrationOpen = false; repaint(); return; }
     // Some embedded WebViews dispatch synthetic keydown events without a
     // `key` string. Treat those as an unrecognised shortcut rather than
     // throwing globally and disabling every following keyboard interaction.
@@ -1545,6 +1548,20 @@
   }
   const FORM_FIELDS = ['title', 'company', 'canonical_url', 'country', 'location', 'salary_text', 'employment_type', 'workplace', 'description'];
   const emptyJobForm = () => ({title: '', company: '', canonical_url: '', country: '', location: '', salary_text: '', employment_type: '', workplace: '', description: '', note: '', stage: 'saved'});
+  async function calibrationAction(name, el) {
+    const state = window.JobOSState;
+    if (name === 'cal-open') { state.calibrationOpen = true; return repaint(); }
+    if (name === 'cal-close') { state.calibrationOpen = false; return repaint(); }
+    if (el) el.disabled = true;
+    try {
+      const out = await window.JobOSApi.calibration(name.slice(4));
+      if (state.dashboard) state.dashboard.calibration = out.calibration;
+      if (name === 'cal-accept' && typeof window.showToast === 'function') window.showToast('Calibration accepted; new scores use it');
+      if (name === 'cal-undo' && typeof window.showToast === 'function') window.showToast('Previous weights restored');
+    } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Calibration failed'); }
+    repaint();
+    return refresh();
+  }
   async function loadStale() {
     const state = window.JobOSState;
     const s = state.staleSweep;

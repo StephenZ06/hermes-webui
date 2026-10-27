@@ -504,3 +504,22 @@ reviewer couldn't find in the master mark the resume *needs review*, like a
 new number does. If the review or the revision fails, the first draft is
 kept with a note; nothing is lost. The master → tailored score comparison
 runs on the final text.
+
+## Calibrating the score from outcomes
+
+Once 3 or more applications have a final outcome (rejected, interview,
+offer or no response), the Dashboard's Action Centre offers **Calibrate
+scoring** (and again after every 3 more). It opens a centred window; one
+Luna call reads, per resolved application, the dimension scores and fit that
+were predicted next to what happened, and proposes:
+
+- weight changes, each bounded to ±10 points from the current weight;
+- a short note added to the scoring prompt as a hint;
+- the patterns it saw ("analyst roles at banks went silent twice").
+
+**Nothing changes until you accept.** The window shows the change per
+dimension (*Skills 30 → 40 +10*); **Accept** stores it as a new version in
+`calibration.json` (profile-scoped Job OS state), **Discard** drops it, and
+**Undo last calibration** restores the previous set. New analyses use the
+accepted weights and note; past scores are never edited, so they stay
+comparable.

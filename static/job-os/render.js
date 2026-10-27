@@ -122,7 +122,7 @@
   // Dashboard: what is waiting on a decision. A connection that broke comes
   // first (nothing new arrives until it is fixed), then new good matches, then
   // the jobs the board flags (a follow-up, a document to check, a failed tailoring).
-  const ACTION_ICON = {connection: 'cloud', matches: 'applied', follow_up: 'clock', review: 'eye', failed: 'close'};
+  const ACTION_ICON = {connection: 'cloud', matches: 'applied', follow_up: 'clock', review: 'eye', failed: 'close', closing: 'calendar', calibrate: 'chart'};
   function actionCentre(state) {
     const dashboard = dashboardOf(state);
     const rows = [];
@@ -144,6 +144,12 @@
       const names = released.slice(0, 2).map((m) => m.title).filter(Boolean).join(' · ');
       rows.push(row('matches', `${released.length} new good match${released.length === 1 ? '' : 'es'}`, esc(names) + (released.length > 2 ? ` +${released.length - 2} more` : ''),
         '<span class="action-go">Review</span>', ' data-job-os-view="scout"'));
+    }
+    const cal = dashboard.calibration;
+    if (cal && (cal.offer || cal.proposal || cal.running)) {
+      rows.push(row('calibrate', cal.running ? 'Calibrating scoring…' : cal.proposal ? 'Scoring calibration ready to review' : 'Calibrate scoring',
+        cal.proposal ? 'Nothing changes until you accept it' : `${Number(cal.outcomes)} applications have an outcome; tune the score to what got replies`,
+        `<span class="action-go">${cal.proposal ? 'Review' : 'Open'}</span>`, ' data-job-os-action="cal-open"'));
     }
     (dashboard.actions || []).forEach((a) => {
       rows.push(row(a.kind, esc(a.title || 'Untitled job'), [a.company, a.reason].filter(Boolean).map(esc).join(' · '),
@@ -740,6 +746,35 @@
         <div class="job-modal-body"><label class="job-os-inline-select">Quiet for <select id="job-os-stale-days" aria-label="Quiet for at least">${days}</select></label>${list}</div>
         <footer class="job-modal-foot"><p class="job-os-error" role="alert">${esc(s.error || '')}</p><button type="button" class="job-os-btn" data-job-os-action="pipe-stale-close">Cancel</button><button type="button" class="job-os-btn primary" data-job-os-action="pipe-stale-confirm" ${chosen.size ? '' : 'disabled'}>Move ${chosen.size || ''} to No response</button></footer>
       </div>`;
+  }
+  // Calibration: the weights the outcomes suggest, shown as a change from the
+  // current ones. You accept, discard, or later undo; past scores never change.
+  const DIM_LABEL = {skills: 'Skills', experience: 'Experience', culture: 'Culture', career: 'Career'};
+  function calibrationModal(state) {
+    if (!state.calibrationOpen) return '';
+    const cal = dashboardOf(state).calibration || {};
+    const weightsTable = (from, to) => `<table class="cal-weights"><thead><tr><th>Dimension</th><th>Now</th>${to ? '<th>Proposed</th>' : ''}</tr></thead><tbody>${Object.keys(DIM_LABEL).map((k) => {
+      const delta = to ? to[k] - from[k] : 0;
+      return `<tr><th scope="row">${DIM_LABEL[k]}</th><td>${Number(from[k])}</td>${to ? `<td><strong>${Number(to[k])}</strong>${delta ? `<span class="cal-delta" data-up="${delta > 0}">${delta > 0 ? '+' : ''}${delta}</span>` : ''}</td>` : ''}</tr>`;
+    }).join('')}</tbody></table>`;
+    const p = cal.proposal;
+    let body;
+    let foot = '<button type="button" class="job-os-btn" data-job-os-action="cal-close">Close</button>';
+    if (cal.running) body = `<div class="job-modal-loading">${statusLine(['Luna is reading your outcomes…', 'Comparing scores with what happened…'])}</div>`;
+    else if (p) {
+      body = `${weightsTable(cal.weights, p.weights)}${p.guidance ? `<div class="cal-note"><h5>Note for scoring</h5><p>${esc(p.guidance)}</p></div>` : ''}${(p.patterns || []).length ? `<div class="cal-note"><h5>Patterns</h5><ul class="analysis-list">${p.patterns.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}<p class="job-os-card-note">From ${Number(p.outcomes)} outcomes. New scores use it; past scores stay as they are.</p>`;
+      foot = '<button type="button" class="job-os-btn" data-job-os-action="cal-discard">Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="cal-accept">Accept</button>';
+    } else {
+      const c = cal.current;
+      body = `${weightsTable(cal.weights || cal.default_weights || {})}${c ? `<p class="job-os-card-note">Calibrated (version ${Number(c.version)}) on ${esc(c.date)} from ${Number(c.outcomes)} outcomes.${c.guidance ? ` Note: ${esc(c.guidance)}` : ''}</p>` : '<p class="job-os-card-note">These are the default weights.</p>'}${cal.error ? `<p class="job-os-error">${esc(cal.error)}</p>` : ''}`;
+      foot = `${cal.can_undo ? '<button type="button" class="job-os-btn" data-job-os-action="cal-undo">Undo last calibration</button>' : ''}<button type="button" class="job-os-btn" data-job-os-action="cal-close">Close</button>${Number(cal.outcomes) >= Number(cal.min_outcomes || 3) ? '<button type="button" class="job-os-btn primary" data-job-os-action="cal-propose">Calibrate now</button>' : ''}`;
+    }
+    return `<div class="job-modal-backdrop" data-job-os-action="cal-close"></div>
+      <div class="job-modal cal-modal" role="dialog" aria-modal="true" aria-labelledby="cal-title">
+        <header class="job-modal-head"><div><h2 id="cal-title">Scoring calibration</h2><p>How much each part of the fit counts, tuned to which applications got replies. ${Number(cal.outcomes || 0)} have an outcome so far.</p></div>
+          <button type="button" class="wh-insp-close" data-job-os-action="cal-close" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+        <div class="job-modal-body">${body}</div>
+        <footer class="job-modal-foot">${foot}</footer></div>`;
   }
   function jobDrawer(state) {
     const job = state.jobDetail;
@@ -1355,7 +1390,7 @@
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"')}</section>
         <div class="job-os-pair dash-main">${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}<div class="dash-side">${actionCentre(state)}${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}</div></div>
         <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
-        ${jobDrawer(state)}${jobForm(state)}`;
+        ${jobDrawer(state)}${jobForm(state)}${calibrationModal(state)}`;
     } else if (view === 'pipeline') {
       const filter = state.statusFilter;
       const group = STATUS_GROUPS[filter];
