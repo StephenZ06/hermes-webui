@@ -4454,7 +4454,48 @@ function deselectAllSessions(){
   document.querySelectorAll('.session-select-cb').forEach(cb=>{cb.checked=false;const item=cb.closest('.session-item,.session-child-session-fork');if(item)item.classList.remove('selected');});
   _updateBatchActionBar();
 }
+// Select mode covers the conversation filter with its own strip (exit, count,
+// Select all) and lights the box, so the mode reads at the top of the list
+// without pushing the Workspaces heading down. The strip is built once inside
+// the filter field, which survives list renders, so it can fade in and out.
+function _syncSessionSelectOverlay(){
+  const wrap=$('sessionSearch')?.closest('.session-search');
+  const field=wrap&&wrap.querySelector('.session-search-field');
+  if(!field) return;
+  let overlay=field.querySelector('.session-select-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.className='session-select-overlay';
+    overlay.setAttribute('role','toolbar');
+    overlay.setAttribute('aria-label',t('session_select_mode'));
+    const exitBtn=document.createElement('button');
+    exitBtn.type='button';exitBtn.className='batch-exit-btn';
+    exitBtn.setAttribute('aria-label','Exit select mode');
+    exitBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    exitBtn.onclick=(e)=>{e.stopPropagation();exitSessionSelectMode();};
+    const count=document.createElement('span');
+    count.className='session-select-count';
+    count.setAttribute('aria-live','polite');
+    const selectAllBtn=document.createElement('button');
+    selectAllBtn.type='button';selectAllBtn.className='batch-select-all-btn';
+    selectAllBtn.textContent=t('session_select_all');
+    selectAllBtn.onclick=(e)=>{e.stopPropagation();selectAllSessions();};
+    overlay.append(exitBtn,count,selectAllBtn);
+    field.appendChild(overlay);
+  }
+  const on=!!_sessionSelectMode;
+  wrap.classList.toggle('is-selecting',on);
+  overlay.inert=!on;
+  const input=$('sessionSearch');
+  if(input){input.tabIndex=on?-1:0;if(on&&document.activeElement===input)input.blur();}
+  const count=overlay.querySelector('.session-select-count');
+  if(count){
+    const n=_selectedSessions.size;
+    count.textContent=t('session_selected_count',n);
+  }
+}
 function _updateBatchActionBar(){
+  _syncSessionSelectOverlay();
   const bar=$('batchActionBar');if(!bar)return;
   const count=_selectedSessions.size;
   if(count>0){_renderBatchActionBar();}
@@ -8012,19 +8053,8 @@ function renderSessionListFromCache(){
   // this assignment as a defensive backstop for any future non-switch caller that
   // reaches a real paint with the flag somehow still set.
   _sessionListSkeletonActive=false;
-  // Batch select bar (when in select mode)
-  if(_sessionSelectMode){
-    const selectBar=document.createElement('div');selectBar.className='session-select-bar';
-    const exitBtn=document.createElement('button');exitBtn.className='batch-exit-btn';
-    exitBtn.textContent='\u2715';exitBtn.title='Exit select mode';
-    exitBtn.onclick=(e)=>{e.stopPropagation();exitSessionSelectMode();};
-    selectBar.appendChild(exitBtn);
-    const selectAllBtn=document.createElement('button');selectAllBtn.className='batch-select-all-btn';
-    selectAllBtn.textContent=t('session_select_all');
-    selectAllBtn.onclick=(e)=>{e.stopPropagation();selectAllSessions();};
-    selectBar.appendChild(selectAllBtn);
-    _appendAboveWorkspaces(selectBar);
-  }
+  // Select mode shows its exit / Select all controls over the conversation filter.
+  _syncSessionSelectOverlay();
   // Ensure batch action bar exists in DOM
   let batchBar=$('batchActionBar');
   if(!batchBar){batchBar=document.createElement('div');batchBar.id='batchActionBar';batchBar.className='batch-action-bar';}

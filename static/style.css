@@ -1941,7 +1941,6 @@
   .session-date-header.pinned{color:var(--accent);}
 
   /* ── Batch select mode ── */
-  .session-select-bar{display:flex;align-items:center;gap:6px;padding:6px 10px;margin-bottom:4px;flex-shrink:0;}
   .batch-exit-btn{width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;padding:0;flex-shrink:0;}
   .batch-exit-btn:hover{background:var(--hover-bg);color:var(--text);}
   .batch-select-all-btn{font-size:11px;border:none;border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;padding:3px 8px;font-weight:600;}
@@ -12167,13 +12166,26 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   .sidebar.mobile-icons-leaving{transition-duration:.01s!important;}
 }
 
-/* Chat sidebar select bar ("✕ Select all"): the WORKSPACES heading below it
-   brings a 16px top margin, so the bar takes the same above it -- equal space
-   over and under the row. */
-.session-select-bar{margin:4px 0 0;}
-/* 10px above and below the row: the bar's 6px padding plus 4px each side
-   (the WORKSPACES heading after it drops its usual 16px top margin to 4px). */
-.session-select-bar ~ .chat-sidebar-section--workspaces > .chat-sidebar-section-heading{margin-top:4px;}
+/* Chat sidebar select mode: the exit / count / Select all strip sits over the
+   conversation filter (same box, same height), and the box takes an accent
+   ring with a slow breathing glow while the mode is on. The strip fades and
+   slides 4px in; the input text fades out under it. */
+.session-search-field .session-select-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:center;gap:6px;padding:0 6px 0 5px;border-radius:8px;background:color-mix(in srgb,var(--accent) 7%,var(--bg));opacity:0;transform:translateY(-4px);pointer-events:none;visibility:hidden;transition:opacity .18s cubic-bezier(.22,1,.36,1),transform .22s cubic-bezier(.22,1,.36,1),visibility 0s linear .22s;}
+.session-search.is-selecting .session-select-overlay{opacity:1;transform:none;pointer-events:auto;visibility:visible;transition:opacity .18s cubic-bezier(.22,1,.36,1),transform .22s cubic-bezier(.22,1,.36,1),visibility 0s;}
+.session-search-field > input,.session-search-field > .sidebar-search-icon{transition:opacity .15s ease,border-color .2s ease,box-shadow .2s ease,background .15s ease;}
+.session-search.is-selecting .session-search-field > input{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg),0 0 14px -2px var(--focus-ring);color:transparent;animation:session-select-glow 2.4s ease-in-out .25s infinite;}
+.session-search.is-selecting .session-search-field > input::placeholder{opacity:0;}
+.session-search.is-selecting .session-search-field > .sidebar-search-icon,.session-search.is-selecting .session-search-clear{opacity:0;pointer-events:none;}
+@keyframes session-select-glow{0%,100%{box-shadow:0 0 0 3px var(--accent-bg),0 0 14px -2px var(--focus-ring);}50%{box-shadow:0 0 0 3px var(--accent-bg),0 0 6px -2px var(--focus-ring);}}
+.session-select-overlay .batch-exit-btn{width:24px;height:24px;color:var(--accent);}
+.session-select-overlay .batch-exit-btn svg{width:12px;height:12px;}
+.session-select-overlay .batch-exit-btn:hover{background:var(--accent-bg-strong);color:var(--accent);}
+.session-select-count{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
+.session-select-overlay .batch-select-all-btn{font-size:12px;padding:4px 8px;}
+@media (prefers-reduced-motion:reduce){
+  .session-search-field .session-select-overlay,.session-search.is-selecting .session-select-overlay{transform:none;transition:opacity .01s,visibility 0s;}
+  .session-search.is-selecting .session-search-field > input{animation:none;}
+}
 
 /* Composer options panel (phones): Workspace / Model / Effort text centres on
    its icon by its letters, not its line box. The old fixed 3px nudge was
@@ -14789,6 +14801,12 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .profile-signin-card{margin-top:12px;}
 .profile-signin-body{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding-top:10px;}
 .profile-signin-hint{margin:0;color:var(--muted);font-size:13px;line-height:1.5;}
+/* Chat: the conversation list stops 8px above Initialize Hermes CLI, the
+   same gap as below the button, instead of running into its border while
+   scrolled. The list's own bottom padding goes so the end of the list keeps
+   that one 8px gap rather than two. */
+#panelChat > .hermes-cli-card{padding-top:8px;}
+#panelChat > #sessionList{padding-bottom:0;}
 .profile-signin-flow{display:flex;flex-direction:column;align-items:flex-start;gap:10px;width:100%;padding:12px 14px;box-sizing:border-box;border:1px solid var(--border2);border-radius:10px;}
 .profile-signin-flow[hidden]{display:none;}
 .profile-signin-steps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text);}

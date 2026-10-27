@@ -65,18 +65,29 @@ def test_deleting_a_chat_ends_select_mode(phone):
     page.wait_for_function("() => [...document.querySelectorAll('button')].some(b => /delete/i.test(b.textContent) && b.offsetParent)", timeout=5000)
     page.evaluate("() => [...document.querySelectorAll('button')].find(b => /delete/i.test(b.textContent) && b.offsetParent && b.closest('[class*=dialog]')).click()")
     page.wait_for_function("(sid) => !document.querySelector('.session-item[data-sid=\"' + sid + '\"]')", arg=sid, timeout=10000)
-    assert page.evaluate("() => [_sessionSelectMode, !!document.querySelector('.session-select-bar'), document.querySelectorAll('.session-item input[type=checkbox]').length]") == [False, False, 0]
+    assert page.evaluate("() => [_sessionSelectMode, !!document.querySelector('.session-search.is-selecting'), document.querySelectorAll('.session-item input[type=checkbox]').length]") == [False, False, 0]
 
 
-def test_select_all_row_has_equal_space_above_and_below(phone):
+def test_select_mode_controls_sit_over_the_filter_box(phone):
     page = phone
+    measure = """() => { const f = document.querySelector('#sessionSearch').getBoundingClientRect();
+        const h = document.querySelector('.chat-sidebar-section--workspaces .chat-sidebar-section-heading').getBoundingClientRect();
+        const x = document.querySelector('.session-select-overlay .batch-exit-btn');
+        const a = document.querySelector('.session-select-overlay .batch-select-all-btn');
+        return { field: [f.top, f.bottom], heading: h.top,
+                 exit: x ? [x.getBoundingClientRect().top, x.getBoundingClientRect().bottom] : null,
+                 all: a ? a.getBoundingClientRect().right : null, right: f.right }; }"""
+    before = page.evaluate(measure)
     page.evaluate("() => toggleSessionSelectMode()")
     time.sleep(0.4)
-    above, below = page.evaluate("""() => { const head = [...document.querySelectorAll('.panel-head')].find(h => h.offsetParent).getBoundingClientRect();
-        const x = document.querySelector('.batch-exit-btn').getBoundingClientRect();
-        const h = document.querySelector('.chat-sidebar-section--workspaces .chat-sidebar-section-heading').getBoundingClientRect();
-        return [x.top - head.bottom, h.top - x.bottom]; }""")
-    assert abs(above - below) <= 1
+    after = page.evaluate(measure)
+    # Nothing moves: the controls cover the filter instead of adding a row.
+    assert abs(after["heading"] - before["heading"]) <= 0.5
+    assert after["field"][0] <= after["exit"][0] and after["exit"][1] <= after["field"][1]
+    assert after["all"] <= after["right"]
+    assert page.evaluate("() => document.querySelector('.session-search').classList.contains('is-selecting')")
+    page.evaluate("() => exitSessionSelectMode()")
+    assert not page.evaluate("() => document.querySelector('.session-search').classList.contains('is-selecting')")
 
 
 def test_highlight_ring_is_drawn_inside_the_row(phone):
@@ -109,17 +120,6 @@ def test_composer_option_text_is_centred_on_its_icon(phone):
         const b = document.getElementById(id); const v = b.querySelector('.composer-mobile-config-value').getBoundingClientRect();
         const i = b.querySelector('svg').getBoundingClientRect(); return Math.abs((v.top + v.height / 2) - (i.top + i.height / 2)); })""")
     assert all(o <= 1 for o in offsets)
-
-
-def test_select_all_row_has_10px_above_and_below(phone):
-    page = phone
-    page.evaluate("() => toggleSessionSelectMode()")
-    time.sleep(0.4)
-    above, below = page.evaluate("""() => { const head = [...document.querySelectorAll('.panel-head')].find(h => h.offsetParent).getBoundingClientRect();
-        const x = document.querySelector('.batch-exit-btn').getBoundingClientRect();
-        const h = document.querySelector('.chat-sidebar-section--workspaces .chat-sidebar-section-heading').getBoundingClientRect();
-        return [Math.round(x.top - head.bottom), Math.round(h.top - x.bottom)]; }""")
-    assert (above, below) == (10, 10)
 
 
 def test_composer_option_text_descenders_are_not_clipped(phone):

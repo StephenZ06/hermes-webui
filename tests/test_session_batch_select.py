@@ -209,7 +209,7 @@ def test_batch_select_css_exists():
     with open('static/style.css', encoding="utf-8") as f:
         src = f.read()
     required_classes = [
-        'session-select-bar',
+        'session-select-overlay',
         'batch-exit-btn',
         'batch-select-all-btn',
         'session-select-cb-wrapper',
