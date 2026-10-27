@@ -15396,8 +15396,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    14px gap to the first folder as on the Chat page. */
 #panelOffice .session-search input{height:34px;}
 .panel-view#panelOffice .sidebar-search.session-search,.panel-view#panelOffice .office-project-folders .sidebar-search.session-search{padding-bottom:14px;}
-/* Office Task Status card: wider. */
-.office-tasks{width:min(300px,calc(100% - 28px));}
+/* Office Task Status card: wider. Desktop only: on a phone the open card
+   spans the floor with an even 10px inset. */
+@media (min-width:641px){.office-tasks{width:min(300px,calc(100% - 28px));}}
 /* Office: back from Dashboard / Integrations fades the page out over the
    floor while the floor fades in. */
 .office-wrap{position:relative;}
