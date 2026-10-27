@@ -300,10 +300,15 @@ def _migration_14(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE jobs ADD COLUMN overrides_json TEXT NOT NULL DEFAULT '[]'")
 
 
+def _migration_15(connection: sqlite3.Connection) -> None:
+    """Closing dates: from the job site, the posting's structured data or Luna."""
+    connection.execute("ALTER TABLE jobs ADD COLUMN deadline TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
               (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10),
               (11, _migration_11), (12, _migration_12), (13, _migration_13),
-              (14, _migration_14))
+              (14, _migration_14), (15, _migration_15))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

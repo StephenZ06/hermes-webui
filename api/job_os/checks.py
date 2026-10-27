@@ -55,9 +55,31 @@ def _gate_checks(gates: dict, overrides: tuple) -> list[dict]:
     return checks
 
 
-def job_checks(job, analysis: dict | None = None) -> list[dict]:
-    """Every check on one job, most serious first."""
-    checks: list[dict] = []
+def _date_checks(job, on) -> list[dict]:
+    from api.job_os import expiry
+
+    if job.status not in expiry.OPEN:
+        return []
+    checks = []
+    left = expiry.days_left(job.deadline, on)
+    if left is not None and 0 <= left <= expiry.CLOSING_SOON_DAYS:
+        label = expiry.closing_label(left)
+        checks.append({"key": "deadline", "tone": "danger" if left <= 2 else "warn", "short": label, "label": label,
+                       "detail": f"Applications close on {job.deadline}.", "quotes": []})
+    age = expiry.age_days(job.posted_at, on)
+    if age is not None and age > expiry.STALE_DAYS:
+        checks.append({"key": "stale", "tone": "warn", "short": f"{age} days old", "label": f"Posted {age} days ago",
+                       "detail": "Older postings are often filled already. Check it is still open before tailoring.",
+                       "quotes": []})
+    return checks
+
+
+def job_checks(job, analysis: dict | None = None, *, on=None) -> list[dict]:
+    """Every check on one job, most serious first. ``on`` is today's date
+    (``expiry.today()``), passed in by list builders so it is read once."""
+    from api.job_os import expiry
+
+    checks: list[dict] = _date_checks(job, on or expiry.today())
     guard = posting_guard.public(job.guard)
     if guard:
         checks.append({"key": "guard", "tone": "warn", "short": "Hidden text",
@@ -67,6 +89,8 @@ def job_checks(job, analysis: dict | None = None) -> list[dict]:
     if analysis and analysis.get("status") == "done" and isinstance(analysis.get("gates"), dict):
         checks.extend(_gate_checks(analysis["gates"], tuple(job.overrides or ())))
     order = {"danger": 0, "warn": 1, "muted": 2}
+    # A held job leads with why it is held; closing soon outranks the rest.
+    checks.sort(key=lambda c: c["key"] not in OVERRIDABLE)
     return sorted(checks, key=lambda c: order.get(c["tone"], 1))
 
 

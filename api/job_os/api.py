@@ -40,6 +40,7 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         "country": job.country,
         "has_description": bool(job.description),
         "guard": posting_guard.public(job.guard),
+        "deadline": job.deadline,
     }
     from api.job_os.checks import job_checks
 

@@ -127,6 +127,8 @@ class FirecrawlClient:
             "links": [link for link in (page.get("links") or []) if isinstance(link, str)][:500],
             "title": str(meta.get("title") or "")[:300],
             "status": meta.get("statusCode"),
+            # Where the page ended up after redirects (the expiry re-check reads it).
+            "final_url": str(meta.get("url") or meta.get("sourceURL") or "")[:2000],
         }
 
     def health(self) -> dict:

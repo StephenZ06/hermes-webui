@@ -44,7 +44,9 @@ SYSTEM = (
     "does not meet is fail; a posting that accepts visa holders or offers sponsorship is pass; a posting that says "
     "nothing about the right to work is unverified, never pass. Language: a required language the profile does not "
     "list is fail; a required level above the profile's stated level is flag; otherwise pass. If the profile does not "
-    "say, answer unverified. Quotes are the posting's own words, under 160 characters, or empty. " + llm.UNTRUSTED
+    "say, answer unverified. Quotes are the posting's own words, under 160 characters, or empty.\n"
+    "Also return \"deadline\": the closing date for applications as \"YYYY-MM-DD\" only when the posting states one, "
+    "else null. " + llm.UNTRUSTED
 )
 
 
@@ -97,7 +99,10 @@ def _clean(data: dict, profile: str = "") -> dict:
     gates = _gates(data, profile)
     if "fail" in (gates["eligibility"], gates["language"]):
         verdict = "poor"  # a job you can't take is never a good match, whatever the skills say
-    return {"fit_score": score, "verdict": verdict, "gates": gates, "prompt_version": ANALYSIS_PROMPT_VERSION, "summary": str(data.get("summary") or "").strip()[:400],
+    from api.job_os.repository import parse_deadline
+
+    return {"fit_score": score, "verdict": verdict, "gates": gates, "prompt_version": ANALYSIS_PROMPT_VERSION,
+            "deadline": parse_deadline(data.get("deadline")) or None, "summary": str(data.get("summary") or "").strip()[:400],
             "strengths": items("strengths"), "gaps": items("gaps"), "must_haves": items("must_haves"),
             "seniority": str(data.get("seniority") or "").strip()[:60],
             "salary_note": str(data.get("salary_note") or "").strip()[:160]}
@@ -110,7 +115,8 @@ def _row(row) -> dict:
             "finished_at": row["finished_at"], **{k: data.get(k) for k in DETAIL_KEYS}}
 
 
-DETAIL_KEYS = ("summary", "strengths", "gaps", "must_haves", "seniority", "salary_note", "gates", "prompt_version")
+DETAIL_KEYS = ("summary", "strengths", "gaps", "must_haves", "seniority", "salary_note", "gates", "prompt_version",
+               "deadline")
 # What list payloads carry besides the score: enough for the checks on a card.
 COMPACT_KEYS = ("gates",)
 
@@ -218,6 +224,8 @@ def analyze_one(job_id: str) -> dict:
         try:
             conn.execute("UPDATE job_analyses SET status='done', fit_score=?, verdict=?, data_json=?, model=?, error='', finished_at=? WHERE job_id=?",
                          (result["fit_score"], result["verdict"], json.dumps(result), model, int(time.time()), job_id))
+            if result["deadline"]:  # a date the site sent wins over Luna's reading of the text
+                conn.execute("UPDATE jobs SET deadline=? WHERE id=? AND deadline=''", (result["deadline"], job_id))
             conn.commit()
         finally:
             conn.close()

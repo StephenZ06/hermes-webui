@@ -56,7 +56,8 @@ def decisions(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for column in columns:
         for card in column["jobs"]:
             for reason in card["attention"]:
-                kind = "follow_up" if "follow up" in reason else "failed" if "failed" in reason else "review"
+                kind = ("follow_up" if "follow up" in reason else "failed" if "failed" in reason
+                        else "closing" if reason.startswith("Closes") else "review")
                 rows.append({"job_id": card["id"], "title": card["title"], "company": card["company"],
                              "status": card["status"], "reason": reason, "kind": kind,
                              "updated_at": card["updated_at"]})

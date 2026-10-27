@@ -41,7 +41,7 @@ from api.job_os.extract import (extract_job_posting, indeed_posting_links, indee
                                  looks_like_single_posting)
 from api.job_os.models import DuplicateJobError, JobStatus, JobValidationError
 from api.job_os.network_policy import UnsafeJobUrl, validate_external_job_url
-from api.job_os.repository import create_job, normalize_job_input
+from api.job_os.repository import create_job, normalize_job_input, parse_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -571,10 +571,10 @@ def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> 
     try:
         conn.execute(
             "UPDATE jobs SET description=?, guard_json=?, salary_text=?, employment_type=?, workplace=?, posted_at=?,"
-            " company=CASE WHEN company='' THEN ? ELSE company END, location=CASE WHEN location='' THEN ? ELSE location END,"
+            " deadline=CASE WHEN deadline='' THEN ? ELSE deadline END, company=CASE WHEN company='' THEN ? ELSE company END, location=CASE WHEN location='' THEN ? ELSE location END,"
             " updated_at=? WHERE id=?",
             (description.strip(), json.dumps(guard), posting["salary_text"], posting["employment_type"], posting["workplace"],
-             posting["posted_at"], posting["company"], posting["location"], int(time.time()), job_id))
+             posting["posted_at"], parse_deadline(posting.get("deadline")), posting["company"], posting["location"], int(time.time()), job_id))
         conn.commit()
     finally:
         conn.close()

@@ -138,7 +138,7 @@ def test_an_indeed_record_maps_to_a_scout_posting():
         "title": "Data Analyst", "company": "Acme", "location": "Kuala Lumpur", "country": "Malaysia",
         "salary_text": "MYR 5,000–7,000 / month", "employment_type": "Full-time", "workplace": "hybrid",
         "posted_at": "2026-10-06", "description": "SQL and dashboards.",
-        "canonical_url": "https://malaysia.indeed.com/viewjob?jk=abc123",
+        "deadline": "", "canonical_url": "https://malaysia.indeed.com/viewjob?jk=abc123",
     }
     assert apify.indeed_posting(_item("abc123", expired=True), "x") is None
     assert apify.indeed_posting(_item("../evil"), "x") is None

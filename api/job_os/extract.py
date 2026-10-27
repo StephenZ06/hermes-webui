@@ -148,6 +148,7 @@ def extract_job_posting(page_html: str, url: str) -> dict | None:
                 "posted_at": _text(node.get("datePosted"))[:40],
                 "description": _html_to_text(description),
                 "guard_hidden": hidden,
+                "deadline": _text(node.get("validThrough"))[:40],
                 "canonical_url": url,
             }
     return None

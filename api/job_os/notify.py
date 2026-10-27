@@ -295,15 +295,20 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
     attention = [(card, reason) for column in columns for card in column["jobs"] for reason in card["attention"]]
     # Applications gone quiet get their own section: they are the ones to act on today.
     follow_ups = [(card, reason) for card, reason in attention if "follow up" in reason]
-    attention = [(card, reason) for card, reason in attention if "follow up" not in reason]
+    closing = [(card, reason) for card, reason in attention if reason.startswith("Closes")]
+    attention = [(card, reason) for card, reason in attention if "follow up" not in reason and not reason.startswith("Closes")]
     ready = next((c["jobs"] for c in columns if c["key"] == "ready"), [])
-    if not (found or top or attention or ready or follow_ups):
+    if not (found or top or attention or ready or follow_ups or closing):
         return None
     parts = [f"Found in the last 24 hours: {found}", f"Applications sent this week: {applied}"]
     if follow_ups:
         parts.append("Follow up:\n" + "\n".join(
             f"  • {c['title']} at {c['company'] or '?'} — {reason.replace(' — follow up?', '')}\n    {c['canonical_url']}"
             for c, reason in follow_ups[:8]))
+    if closing:
+        parts.append("Closing soon:\n" + "\n".join(
+            f"  • {c['title']} at {c['company'] or '?'} — {reason.lower()}\n    {c['canonical_url']}"
+            for c, reason in sorted(closing, key=lambda pair: pair[0].get("deadline") or "")[:8]))
     if top:
         parts.append("Best new matches:\n" + "\n".join(f"  • {r['fit_score']} — {r['title']} at {r['company'] or '?'}\n    {r['canonical_url']}" for r in top))
     listed = {r["id"] for r in top}

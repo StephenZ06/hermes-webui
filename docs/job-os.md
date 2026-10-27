@@ -402,3 +402,25 @@ the quote; **Ignore this check** in the job's side panel releases it (stored
 per job in `jobs.overrides_json`, logged in its activity, and reversible with
 **Check again**). Analyses carry `prompt_version` (2 from this change);
 older ones show no gates until scored again.
+
+## Closing dates and expiry
+
+A job's closing date (`jobs.deadline`, `YYYY-MM-DD`) comes from the job site
+(Apify fields such as `expirationDate` or `validThrough`), the posting's
+structured data (`validThrough`), or Luna's reading of the text during
+scoring; a date the site sent wins. A date that can't be read is dropped,
+never guessed. Once a day, in your Scout time zone (`api/job_os/expiry.py`):
+
+- **Expired:** a job you haven't applied for whose closing date has passed
+  moves to **Closed** as *Expired*; its activity says "the closing date
+  passed". Drag it back if it is still open.
+- **Closing soon:** a closing date within 7 days puts "Closes in 3 days" on
+  the card (red from 2 days), a row in the Dashboard's Action Centre and a
+  **Closing soon** section in the daily digest.
+- **No date:** never expired by date.
+- **Weekly re-check** (with Firecrawl set up): Favorite and Ready-to-apply
+  postings are read again once a week, at most five a day. A 410, a "no
+  longer available" page, or a redirect away from the posting means expired;
+  a 404, 403 or timeout means *couldn't check* and changes nothing.
+- **Age:** a posting more than 30 days old shows "45 days old". It is a
+  signal, not a veto.

@@ -130,6 +130,12 @@ def _loop() -> None:
         except Exception:
             logger.debug("Job OS outcome tick failed", exc_info=True)
         try:
+            from api.job_os import expiry
+
+            expiry.tick()
+        except Exception:
+            logger.debug("Job OS expiry tick failed", exc_info=True)
+        try:
             from api.job_os import site_health
 
             site_health.tick()

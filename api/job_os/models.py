@@ -61,6 +61,7 @@ class JobInput:
     country: str = ""
     # What the posting guard found in the description (``posting_guard``).
     guard: dict = field(default_factory=dict)
+    deadline: str = ""  # closing date, YYYY-MM-DD or ""
 
 
 @dataclass(frozen=True)
@@ -93,3 +94,4 @@ class JobRecord:
     guard: dict = field(default_factory=dict)
     # Checks the person chose to ignore on this job (``checks.OVERRIDABLE``).
     overrides: tuple = ()
+    deadline: str = ""

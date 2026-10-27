@@ -161,6 +161,15 @@ def indeed_input(country: str, keywords: str, location: str, *, limit: int, post
             "datePosted": str(posted_within_days) if posted_within_days else ""}
 
 
+_DEADLINE_KEYS = ("validThrough", "expirationDate", "expiryDate", "expiresAt", "closingDate", "applicationDeadline",
+                  "deadline", "applyBefore")
+
+
+def _deadline(item: dict) -> str:
+    """The first closing-date field an actor sends (validated where the job is saved)."""
+    return next((str(item[k])[:40] for k in _DEADLINE_KEYS if item.get(k)), "")
+
+
 def indeed_posting(item: dict, host: str) -> dict | None:
     """One actor record as a Scout posting, or None for an expired or keyless one."""
     key = str(item.get("key") or "").strip()
@@ -183,6 +192,7 @@ def indeed_posting(item: dict, host: str) -> dict | None:
         "workplace": workplace,
         "posted_at": str(item.get("datePublished") or item.get("dateOnIndeed") or "")[:10],
         "description": str(text or "").strip()[:20000],
+        "deadline": _deadline(item),
         "canonical_url": f"https://{host}/viewjob?jk={key}",
     }
 
@@ -228,6 +238,7 @@ def linkedin_posting(item: dict) -> dict | None:
         "workplace": _workplace_from(location, str(item.get("workplaceType") or "")),
         "posted_at": str(item.get("postedDate") or "")[:10],
         "description": str(item.get("description") or "").strip()[:20000],
+        "deadline": _deadline(item),
         "canonical_url": f"https://www.linkedin.com/jobs/view/{job_id}",
     }
 
@@ -261,6 +272,7 @@ def linkedin_curious_posting(item: dict) -> dict | None:
         "workplace": _workplace_from(location, str(item.get("workplaceType") or "")),
         "posted_at": str(item.get("postedAt") or "")[:10],
         "description": str(item.get("descriptionText") or "").strip()[:20000],
+        "deadline": _deadline(item),
         "canonical_url": f"https://www.linkedin.com/jobs/view/{job_id}",
     }
 
@@ -299,6 +311,7 @@ def bayt_posting(item: dict) -> dict | None:
         "workplace": "remote" if item.get("isRemote") else _workplace_from(location),
         "posted_at": str(item.get("postedDate") or item.get("postedAt") or "")[:10],
         "description": str(item.get("description") or "").strip()[:20000],
+        "deadline": _deadline(item),
         "canonical_url": match.group(0).rstrip("/") + "/",
     }
 

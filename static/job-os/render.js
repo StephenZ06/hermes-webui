@@ -208,7 +208,7 @@
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
   // Checks the server ran on a job (posting guard, gates, deadlines): the card
   // shows the most serious one, the drawer lists them all with the quotes.
-  const CHECK_ICON = {guard: 'shield', profile: 'edit'};
+  const CHECK_ICON = {guard: 'shield', profile: 'edit', deadline: 'clock', stale: 'calendar'};
   const HOLDING = ['eligibility', 'language', 'location'];
   function checkChip(job) {
     const shown = (job.checks || []).filter((x) => x.short && x.tone !== 'muted');
@@ -662,7 +662,8 @@
     const items = (state.jobTimeline || []).slice().reverse().filter((e) => e.type === 'note' || e.type === 'status_changed' || EVENT_TEXT[e.type]);
     const rows = items.slice(0, 30).map((e) => {
       const why = e.data.by === 'email' ? ` · from an email${e.data.subject ? `: “${esc(e.data.subject)}”` : ''}${e.data.summary ? ` — ${esc(e.data.summary)}` : ''}`
-        : e.data.by === 'scout' ? ' · title off target' : '';
+        : e.data.by === 'scout' ? ' · title off target' : e.data.by === 'deadline' ? ` · the closing date (${esc(e.data.deadline || '')}) passed`
+        : e.data.by === 'recheck' ? ' · the posting is no longer open' : '';
       const text = e.type === 'note' ? esc(e.data.text) : e.type === 'status_changed' ? `Moved to <strong>${esc(statusLabel(e.data.to))}</strong>${why}` : esc(EVENT_TEXT[e.type]);
       return `<li data-kind="${e.type === 'note' ? 'note' : 'event'}"><span>${text}</span><time>${esc(when(e.at))}</time></li>`;
     }).join('');

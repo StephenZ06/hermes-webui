@@ -97,3 +97,25 @@ def test_a_failed_gate_shows_red_and_can_be_ignored():
         finally:
             browser.close()
     assert chip.strip() == "Not eligible" and quote == "Singapore citizens only"
+
+
+def test_a_closing_date_shows_on_the_card():
+    import datetime
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    deadline = (datetime.date.today() + datetime.timedelta(days=4)).isoformat()
+    job = _post("/api/job-os/jobs", {"title": f"Closing {uuid.uuid4().hex[:6]}", "company": "Shop",
+                                     "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}", "description": "SQL",
+                                     "deadline": deadline})["job"]
+    assert job["deadline"] == deadline
+    card = f'.pipe-card[data-board-job="{job["id"]}"]'
+    with sync_api.sync_playwright() as pw:
+        browser = _browser(sync_api, pw)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            _open_jobs(page)
+            page.wait_for_selector(f'{card} .job-check[data-check="deadline"]', timeout=15000)
+            chip = page.inner_text(f'{card} .job-check')
+        finally:
+            browser.close()
+    assert chip.startswith("Closes in")

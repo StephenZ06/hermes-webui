@@ -65,6 +65,22 @@ def _bounded(payload: Mapping[str, object], key: str) -> str:
     return value
 
 
+def parse_deadline(value: object) -> str:
+    """A closing date as YYYY-MM-DD, or "" for anything that isn't one (an
+    unreadable date is dropped, never guessed)."""
+    import re
+    from datetime import date
+
+    text = str(value or "").strip()
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})", text)
+    if not match:
+        return ""
+    try:
+        return date(int(match.group(1)), int(match.group(2)), int(match.group(3))).isoformat()
+    except ValueError:
+        return ""
+
+
 def normalize_job_input(payload: Mapping[str, object]) -> JobInput:
     """Validate and normalize one untrusted job payload before persistence.
 
@@ -98,6 +114,7 @@ def normalize_job_input(payload: Mapping[str, object]) -> JobInput:
         posted_at=_bounded(payload, "posted_at"),
         country=_bounded(payload, "country"),
         guard=guard,
+        deadline=parse_deadline(payload.get("deadline")),
     )
 
 
@@ -124,7 +141,15 @@ def _record_from_row(row: sqlite3.Row) -> JobRecord:
         country=row["country"],
         guard=_guard(row),
         overrides=_overrides(row),
+        deadline=_column(row, "deadline"),
     )
+
+
+def _column(row: sqlite3.Row, name: str) -> str:
+    try:
+        return row[name] or ""
+    except (IndexError, KeyError):
+        return ""
 
 
 def _overrides(row: sqlite3.Row) -> tuple:
@@ -188,8 +213,8 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 id, canonical_url, source, source_id, title, company, location,
                 status, revision, idempotency_key, created_at, updated_at,
                 description, salary_text, employment_type, workplace, posted_at,
-                search_id, run_id, country, guard_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                search_id, run_id, country, guard_json, deadline
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record_id,
@@ -213,6 +238,7 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 job.run_id,
                 job.country,
                 json.dumps(job.guard or {}),
+                job.deadline,
             ),
         )
         connection.execute(

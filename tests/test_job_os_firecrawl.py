@@ -136,7 +136,7 @@ def test_search_and_scrape_shape_results_and_send_the_key(home):
     finally:
         server.shutdown()
     assert results == [{"url": "https://jobs.lever.co/a/1", "title": "Eng", "description": ""}]
-    assert page == {"html": "<html>x</html>", "links": ["https://a/1"], "title": "T", "status": 200}
+    assert page == {"html": "<html>x</html>", "links": ["https://a/1"], "title": "T", "status": 200, "final_url": ""}
     assert seen[0][1]["limit"] == 50 and seen[1][1]["formats"] == ["rawHtml", "links"]
     assert seen[0][2] == "Bearer fc-keykeykeykey"
 

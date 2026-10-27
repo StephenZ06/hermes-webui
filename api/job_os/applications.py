@@ -129,14 +129,21 @@ def _signals() -> tuple[dict, dict, dict, dict]:
             docs.setdefault(r["job_id"], []).append(r["status"])
         from api.job_os.analysis import analyses_by_job
 
-        return applied, changed, docs, {"analyses": analyses_by_job()}
+        from api.job_os.expiry import today
+
+        return applied, changed, docs, {"analyses": analyses_by_job(), "today": today()}
     finally:
         conn.close()
 
 
 def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None, now: int) -> list[str]:
+    from api.job_os import expiry
+
     reasons = []
     status = job.status.value
+    left = expiry.days_left(job.deadline, extra["today"]) if job.status in expiry.OPEN else None
+    if left is not None and 0 <= left <= expiry.CLOSING_SOON_DAYS:
+        reasons.append(expiry.closing_label(left))
     if status in ("resume_ready", "application_ready") and "needs_review" in docs:
         reasons.append("A tailored document has numbers to check")
     if "failed" in docs and status == "shortlisted":
@@ -170,7 +177,8 @@ def board(source: str | None = None) -> dict:
                 "revision": job.revision, "canonical_url": job.canonical_url, "posted_at": job.posted_at,
                 "has_description": bool(job.description), "analysis": extra["analyses"].get(job.id),
                 "guard": posting_guard.public(job.guard),
-                "checks": job_checks(job, extra["analyses"].get(job.id)),
+                "checks": job_checks(job, extra["analyses"].get(job.id), on=extra["today"]),
+                "deadline": job.deadline,
                 "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
                 "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at}
         columns[key].append(card)
