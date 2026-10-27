@@ -268,3 +268,20 @@ def test_the_digest_lists_every_job_found_today_even_unscored(store):
     assert "Fresh 0 at Ooredoo (Doha)" in section and "https://jobs.example.test/fresh2" in section
     assert "Scored" not in section, "a best match is not listed twice"
     assert "3 not scored yet" in section
+
+
+def test_a_timed_out_reply_check_keeps_the_last_good_time_and_is_reported_only_if_it_lasts(store, monkeypatch):
+    from api import mailer
+
+    send, _sent = store
+    monkeypatch.setattr(mailer, "RETRY_PAUSE", 0)
+    assert notify.poll_replies(fetch=lambda *a: ([], {"imap_uidvalidity": 1, "imap_last_uid": 1}), send=send) == 0
+    good = notify.load_state()["last_poll"]
+
+    def broken(*_a):
+        raise TimeoutError()
+    notify.poll_replies(fetch=broken, send=send)
+    state = notify.status()
+    assert state["last_poll"] == good and state["last_poll_error"] == ""
+    notify.poll_replies(fetch=broken, send=send)
+    assert notify.status()["last_poll_error"].startswith("Gmail hasn't answered for")

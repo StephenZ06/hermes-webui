@@ -492,9 +492,12 @@ def poll_replies(*, now: int | None = None, fetch: Callable | None = None, send:
     try:
         address, password = mailer.credentials()
         try:
-            messages, new_state = (fetch or _imap_fetch)(address, password, settings["notifications"]["to_address"], load_state())
+            messages, new_state = mailer.with_retry(fetch or _imap_fetch, address, password,
+                                                    settings["notifications"]["to_address"], load_state())
         except Exception as error:
-            _save_state(last_poll=int(time.time()), last_poll_error=f"Couldn't read the inbox ({type(error).__name__}).")
+            # last_poll stays the last check that worked; a blink is not reported.
+            failed = mailer.check_failed(load_state(), "poll", error, int(time.time()))
+            _save_state(**failed, last_poll_error=failed["poll_error"])
             return 0
         handled = 0
         for _uid, raw in messages:
@@ -510,7 +513,7 @@ def poll_replies(*, now: int | None = None, fetch: Callable | None = None, send:
                          "Here is what happened:\n\n" + "\n".join(f"  • {line}" for line in outcomes))
                 except Exception:
                     logger.debug("reply confirmation failed", exc_info=True)
-        _save_state(**new_state, last_poll=int(time.time()), last_poll_error="")
+        _save_state(**new_state, **mailer.check_ok("poll", int(time.time())), last_poll=int(time.time()), last_poll_error="")
         return handled
     finally:
         _poll_lock.release()
@@ -529,7 +532,8 @@ def tick(*, now: float | None = None) -> None:
             step()
         except Exception:
             logger.debug("Job OS notification step failed", exc_info=True)
-    if now - float(load_state().get("last_poll") or 0) >= POLL_EVERY:
+    state = load_state()
+    if now - float(state.get("poll_attempt") or state.get("last_poll") or 0) >= POLL_EVERY:
         try:
             poll_replies()
         except Exception:

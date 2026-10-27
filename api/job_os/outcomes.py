@@ -193,9 +193,11 @@ def check(*, fetch: Callable | None = None, ask: Callable | None = None) -> int:
     try:
         address, password = mailer.credentials()
         try:
-            raws, new_state = (fetch or _imap_new)(address, password, _state())
+            raws, new_state = mailer.with_retry(fetch or _imap_new, address, password, _state())
         except Exception as error:
-            _save(outcome_checked=int(time.time()), outcome_error=f"Couldn't read the inbox ({type(error).__name__}).")
+            # outcome_checked stays the last check that worked; a blink is not reported.
+            failed = mailer.check_failed(_state(), "outcome", error, int(time.time()))
+            _save(**failed)
             return 0
         moved = 0
         own = (address or "").lower()
@@ -209,7 +211,7 @@ def check(*, fetch: Callable | None = None, ask: Callable | None = None) -> int:
                     moved += 1
             except Exception:
                 logger.debug("outcome check failed for one message", exc_info=True)
-        _save(**new_state, outcome_checked=int(time.time()), outcome_error="")
+        _save(**new_state, **mailer.check_ok("outcome", int(time.time())), outcome_checked=int(time.time()))
         return moved
     finally:
         _lock.release()
@@ -218,7 +220,8 @@ def check(*, fetch: Callable | None = None, ask: Callable | None = None) -> int:
 def tick(*, now: float | None = None) -> bool:
     """Start a check in the background when one is due. Returns whether it started."""
     now = time.time() if now is None else now
-    if not enabled() or now - float(_state().get("outcome_checked") or 0) < CHECK_EVERY or _lock.locked():
+    state = _state()
+    if not enabled() or now - float(state.get("outcome_attempt") or state.get("outcome_checked") or 0) < CHECK_EVERY or _lock.locked():
         return False
     threading.Thread(target=check, name="job-os-outcomes", daemon=True).start()
     return True

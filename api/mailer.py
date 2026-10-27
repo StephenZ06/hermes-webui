@@ -97,6 +97,53 @@ def verify_login(address: str, password: str) -> None:
             pass
 
 
+# ---- reading the inbox through a flaky link ------------------------------------
+# Gmail answers an IMAP check in about a second, but a single attempt can time
+# out (a network blink, the machine waking from sleep). A check is retried once,
+# and only a failure that lasts past a second scheduled check is reported, so a
+# blink never shows as "Couldn't read the inbox".
+RETRY_PAUSE = 3.0
+
+
+def transient(error: BaseException) -> bool:
+    """A network fault worth retrying, as opposed to a refused sign-in."""
+    return isinstance(error, (OSError, imaplib.IMAP4.abort))
+
+
+def with_retry(fetch: Callable, *args, sleep: Callable = None, **kwargs):
+    """Run an IMAP read, once more after a short pause if the network failed."""
+    import time
+
+    try:
+        return fetch(*args, **kwargs)
+    except Exception as error:
+        if not transient(error):
+            raise
+        (sleep or time.sleep)(RETRY_PAUSE)
+        return fetch(*args, **kwargs)
+
+
+def check_failed(state: dict, prefix: str, error: BaseException, now: int, *, report_after: int = 2) -> dict:
+    """State updates after a failed inbox check: counted, and described only
+    once it has failed ``report_after`` checks in a row (a refused sign-in is
+    described at once)."""
+    failures = int(state.get(f"{prefix}_failures") or 0) + 1
+    since = int(state.get(f"{prefix}_failing_since") or now)
+    if not transient(error):
+        message = f"Gmail refused the sign-in ({type(error).__name__}). Reconnect Gmail in Settings."
+    elif failures >= report_after:
+        minutes = max(1, (now - since) // 60)
+        message = f"Gmail hasn't answered for {minutes} min ({type(error).__name__}); still trying."
+    else:
+        message = ""
+    return {f"{prefix}_failures": failures, f"{prefix}_failing_since": since, f"{prefix}_attempt": now,
+            f"{prefix}_error": message}
+
+
+def check_ok(prefix: str, now: int) -> dict:
+    return {f"{prefix}_failures": 0, f"{prefix}_failing_since": None, f"{prefix}_attempt": now, f"{prefix}_error": ""}
+
+
 def credentials() -> tuple[str | None, str | None]:
     """The connected sender address and app password (new keys, then legacy)."""
     return _env_value(ADDRESS_KEYS), _env_value(PASSWORD_KEYS)

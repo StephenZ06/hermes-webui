@@ -89,9 +89,32 @@ def test_nothing_is_read_when_turned_off_or_without_applied_jobs(store):
     assert moved == 0 and asked == [], "no applied jobs, so Luna is never asked"
 
 
-def test_an_unreadable_inbox_is_reported(store):
-    def broken(*_a):
-        raise OSError("down")
+def test_a_network_blink_is_retried_and_only_a_lasting_failure_is_reported(store, monkeypatch):
+    import imaplib
 
-    assert outcomes.check(fetch=broken) == 0
-    assert "Couldn't read the inbox" in outcomes.status()["error"]
+    from api import mailer
+
+    monkeypatch.setattr(mailer, "RETRY_PAUSE", 0)
+    calls = []
+
+    def blink(*_a):  # one timeout, then the inbox answers
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return [], {}
+    assert outcomes.check(fetch=blink) == 0 and len(calls) == 2
+    assert outcomes.status()["error"] == ""
+
+    def broken(*_a):
+        raise TimeoutError()
+    outcomes.check(fetch=broken)
+    assert outcomes.status()["error"] == "", "one failed check is not reported"
+    outcomes.check(fetch=broken)
+    assert "Gmail hasn't answered" in outcomes.status()["error"]
+    outcomes.check(fetch=lambda *_a: ([], {}))
+    assert outcomes.status()["error"] == ""
+
+    def refused(*_a):
+        raise imaplib.IMAP4.error("AUTHENTICATIONFAILED")
+    outcomes.check(fetch=refused)
+    assert "refused the sign-in" in outcomes.status()["error"]  # not a blink: reported at once
