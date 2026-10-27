@@ -42,3 +42,38 @@ def test_office_slide_scales_the_frame_then_settles_unscaled():
             browser.close()
     assert mid.startswith("translateX(-50%) scale("), mid
     assert settled == ""
+
+
+def test_workspace_pin_glide_draws_the_final_frame_first_and_lands_without_a_redraw():
+    """Pinning the workspace panel: the floor's final frame is drawn as the glide starts, and the
+    canvas box holds its size meanwhile (no stretched buffer), so landing has nothing to change."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader",
+                                           "--enable-unsafe-swiftshader"])
+        try:
+            page = browser.new_page(viewport={"width": 1500, "height": 860})
+            page.set_default_timeout(240000)
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '0'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=200)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("() => { toggleWorkspacePanel(true); switchWorkspacePanelTab('office'); }")
+            page.wait_for_selector(".rightpanel #officeCanvas", state="attached")
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(4000)
+            start = page.evaluate("""() => { const c = document.querySelector('.rightpanel #officeCanvas');
+                const before = c.width; toggleWorkspacePin(true);
+                return {before, buffer: c.width, box: c.style.width, boxPx: c.clientWidth}; }""")
+            page.wait_for_function("() => !document.querySelector('.rightpanel.workspace-pin-gliding')", polling=100)
+            page.wait_for_function("() => document.querySelector('.rightpanel #officeCanvas').style.transform === ''", polling=100)
+            page.wait_for_timeout(300)
+            end = page.evaluate("""() => { const c = document.querySelector('.rightpanel #officeCanvas');
+                return {buffer: c.width, box: c.style.width, boxPx: c.clientWidth}; }""")
+        finally:
+            browser.close()
+    assert start["buffer"] > start["before"], start          # the wider final frame is drawn up front
+    assert start["box"] == f"{start['boxPx']}px", start      # and the canvas box is held while the panel glides
+    assert end["buffer"] == start["buffer"], (start, end)    # landing reallocates nothing
+    assert end["box"] == "" and end["boxPx"] == start["boxPx"], (start, end)

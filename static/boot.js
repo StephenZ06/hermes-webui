@@ -309,12 +309,6 @@ function toggleWorkspacePin(force){
   // FLIP the width: hold the current width, switch state, then glide to the
   // new width with the stylesheet transition; drop the pin when it lands.
   const from=panel.getBoundingClientRect().width;
-  // A live Office floor in the panel would otherwise resize its WebGL buffers
-  // and redraw the bloom pipeline on every frame of the glide (the models make
-  // that the costliest thing on the page). Pause it for the glide: mid-glide it
-  // scales its last frame with a compositor-only transform, and draws the real
-  // frame once on landing, the same as for a sidebar slide.
-  _notifyOfficePanelLayoutMotion(true);
   // The resize handle keeps the user's width inline; give it back on landing.
   const savedWidth=[panel.style.getPropertyValue('width'),panel.style.getPropertyPriority('width')];
   panel.style.removeProperty('width');
@@ -322,6 +316,12 @@ function toggleWorkspacePin(force){
   apply();
   if(savedWidth[0]&&!next)panel.style.setProperty('width',savedWidth[0],savedWidth[1]);
   const to=panel.getBoundingClientRect().width;
+  // A live Office floor in the panel would otherwise resize its WebGL buffers
+  // and redraw the bloom pipeline on every frame of the glide (the models make
+  // that the costliest thing on the page). Pause it while the final layout is
+  // in place: it draws its final frame once, then scales that frame with a
+  // compositor-only transform for the glide, so landing changes nothing.
+  _notifyOfficePanelLayoutMotion(true,{atFinalLayout:true});
   panel.style.setProperty('width',from+'px','important');
   panel.style.setProperty('flex','none','important');
   void panel.offsetWidth;
@@ -1171,11 +1171,11 @@ function _syncSidebarAria(){
 // transform transition on the pinned layers. Neither path animates width.
 let _nativePanelSlide=null;
 
-function _notifyOfficePanelLayoutMotion(active){
+function _notifyOfficePanelLayoutMotion(active,options){
   try{
     const office=window.HermesOffice;
     const method=active?'pauseForLayoutMotion':'resumeAfterLayoutMotion';
-    if(office&&typeof office[method]==='function') office[method]();
+    if(office&&typeof office[method]==='function') office[method](options);
   }catch(_){}
 }
 

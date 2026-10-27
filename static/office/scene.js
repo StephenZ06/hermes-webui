@@ -1952,13 +1952,32 @@ export function createOfficeScene(canvas, options) {
     const scale = following && view.zoom > 0 ? zoomForRadius(visible, height, framedRadius) / view.zoom : 1;
     canvas.style.transform = Math.abs(scale - 1) < 1e-4 ? '' : 'translateX(-50%) scale(' + scale.toFixed(5) + ')';
   }
-  function beginLayoutMotion() { layoutMotion = true; }
+  // The canvas box is held at its size from the start of the motion, so the
+  // browser never stretches the drawing buffer while the stage resizes; only
+  // the uniform preview scale changes. It is anchored to the stage's bottom so
+  // a header that rewraps mid-motion moves the stage's top edge, not the floor.
+  // A caller that starts the motion with the final layout already applied
+  // (the workspace pin glide) gets the final frame drawn here, and the preview
+  // then scales it down to the starting size and back up to 1: crisp all the
+  // way, and nothing left to change on landing.
+  function beginLayoutMotion() {
+    if (layoutMotion) return;
+    if (resize()) { renderer.shadowMap.needsUpdate = true; composer.render(); }
+    const style = canvas.style;
+    style.width = Math.max(1, canvas.clientWidth || 0) + 'px';
+    style.height = Math.max(1, canvas.clientHeight || 0) + 'px';
+    style.top = 'auto';
+    style.bottom = '0';
+    layoutMotion = true;
+  }
   function endLayoutMotion() {
     if (!layoutMotion) return;
     layoutMotion = false;
     // Drop the preview scale and draw the real frame in the same task, so
     // the settled picture replaces the scaled one without a blank frame.
-    canvas.style.transform = '';
+    const style = canvas.style;
+    style.transform = '';
+    style.width = style.height = style.top = style.bottom = '';
     if (resize()) { renderer.shadowMap.needsUpdate = true; composer.render(); }
   }
 

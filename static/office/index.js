@@ -232,13 +232,19 @@ function flushDeferredMotionWork() {
   if (_sidebarDeferredForMotion) { _sidebarDeferredForMotion = false; renderSidebar(); }
 }
 
-function pauseForLayoutMotion() {
+/**
+ * `atFinalLayout`: the caller has already applied the layout the motion ends
+ * in (and will animate from the old one), so the canvas span is measured now
+ * and the scene draws its final frame before the motion starts.
+ */
+function pauseForLayoutMotion(options) {
   if (_layoutMotionResumeRaf) {
     cancelAnimationFrame(_layoutMotionResumeRaf);
     _layoutMotionResumeRaf = 0;
   }
   _layoutMotionPauseDepth += 1;
   if (_layoutMotionPauseDepth !== 1 || !_scene) return;
+  if (options && options.atFinalLayout) syncCanvasSpan();
   _resumeSceneAfterLayoutMotion = _scene.isRunning();
   if (_resumeSceneAfterLayoutMotion) _scene.stop();
   if (typeof _scene.beginLayoutMotion === 'function') _scene.beginLayoutMotion();
