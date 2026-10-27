@@ -65,7 +65,6 @@ let _container = null;
 let _canvas = null;
 let _scene = null;
 let _pillEl = null;
-let _hintEl = null;
 let _summaryEl = null;
 let _lastSummary = '';
 let _pauseBtnEl = null;
@@ -1368,19 +1367,6 @@ function renderPill(state) {
   }
   if (_backBtnEl) _backBtnEl.hidden = _viewMode !== 'history';
   if (_pauseBtnEl) _pauseBtnEl.hidden = !_gatewayEnabled || _viewMode === 'history';
-  if (_hintEl) {
-    if (_scene && _scene.isFocused()) {
-      _hintEl.textContent = touchScreen()
-        ? 'Focused on one desk — tap the floor to pull back out.'
-        : 'Focused on one desk — Esc, or click the floor, to pull back out.';
-    } else {
-      // (a touch screen has no click and no Esc; it taps and pinches)
-      const act = touchScreen() ? 'Tap a worker to fly to it, pinch to zoom.' : 'Click a worker to fly to it.';
-      _hintEl.textContent = _viewMode === 'history'
-        ? 'A finished run, rebuilt from what Hermes recorded. ' + act
-        : "Hermes' real delegation tree, live. " + act;
-    }
-  }
 }
 
 function renderOutletSwitch() {
@@ -2356,7 +2342,6 @@ function mount(container) {
   container.innerHTML = `
     <div class="office-header">
       <span class="office-pill" id="officePill">IDLE</span>
-      <span class="office-hint" id="officeHint">Hermes' real delegation tree, live. Click a worker for detail.</span>
       <button type="button" class="office-header-btn office-labels-btn" id="officeLabelScaleBtn" aria-label="Use fixed platform label size" aria-pressed="true" title="Use fixed platform label size"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5M8 8l2.5-2.5L13 8M10.5 5.5V11"/></svg></button>
       <button type="button" class="office-header-btn office-labels-btn" id="officeLabelsBtn" aria-label="Toggle platform labels" aria-pressed="true" title="Toggle platform labels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
       <span class="office-outlet" role="group" aria-label="Floor plan">
@@ -2405,7 +2390,6 @@ function mount(container) {
     </div>`;
   _canvas = container.querySelector('#officeCanvas');
   _pillEl = container.querySelector('#officePill');
-  _hintEl = container.querySelector('#officeHint');
   _summaryEl = container.querySelector('#officeSummary');
   _deptCardsEl = container.querySelector('#officeDeptCards');
   _deptCardEls.clear();
@@ -2499,7 +2483,6 @@ function unmount() {
   _container = null;
   _canvas = null;
   _pillEl = null;
-  _hintEl = null;
   _summaryEl = null;
   _pauseBtnEl = null;
   _backBtnEl = null;

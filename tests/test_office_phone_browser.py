@@ -268,12 +268,6 @@ def test_the_real_drawer_closes_when_a_chat_row_is_chosen(phone):
     phone.wait_for_function("() => !document.querySelector('.sidebar').classList.contains('mobile-open')", timeout=5000)
 
 
-def test_the_floor_hint_speaks_of_taps_and_pinching_on_a_touch_screen():
-    assert "const act = touchScreen() ? 'Tap a worker to fly to it, pinch to zoom.' : 'Click a worker to fly to it.';" in OFFICE_JS
-    assert "'Focused on one desk — tap the floor to pull back out.'" in OFFICE_JS      # no Esc on a phone
-    assert "'Focused on one desk — Esc, or click the floor, to pull back out.'" in OFFICE_JS
-
-
 def test_the_conductors_label_goes_behind_the_task_status_card(phone):
     _with_floor_chrome(phone)
     phone.evaluate("() => document.getElementById('officeTasks').classList.add('is-collapsed')")

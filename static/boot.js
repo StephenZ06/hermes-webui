@@ -309,6 +309,12 @@ function toggleWorkspacePin(force){
   // FLIP the width: hold the current width, switch state, then glide to the
   // new width with the stylesheet transition; drop the pin when it lands.
   const from=panel.getBoundingClientRect().width;
+  // A live Office floor in the panel would otherwise resize its WebGL buffers
+  // and redraw the bloom pipeline on every frame of the glide (the models make
+  // that the costliest thing on the page). Pause it for the glide: mid-glide it
+  // scales its last frame with a compositor-only transform, and draws the real
+  // frame once on landing, the same as for a sidebar slide.
+  _notifyOfficePanelLayoutMotion(true);
   // The resize handle keeps the user's width inline; give it back on landing.
   const savedWidth=[panel.style.getPropertyValue('width'),panel.style.getPropertyPriority('width')];
   panel.style.removeProperty('width');
@@ -323,7 +329,7 @@ function toggleWorkspacePin(force){
   panel.classList.add('workspace-pin-gliding');
   panel.style.setProperty('width',to+'px','important');
   let done=false;
-  const land=()=>{if(done)return;done=true;panel.classList.remove('workspace-pin-gliding');panel.style.removeProperty('width');if(savedWidth[0])panel.style.setProperty('width',savedWidth[0],savedWidth[1]);panel.style.removeProperty('flex');panel.removeEventListener('transitionend',onEnd);};
+  const land=()=>{if(done)return;done=true;_notifyOfficePanelLayoutMotion(false);panel.classList.remove('workspace-pin-gliding');panel.style.removeProperty('width');if(savedWidth[0])panel.style.setProperty('width',savedWidth[0],savedWidth[1]);panel.style.removeProperty('flex');panel.removeEventListener('transitionend',onEnd);};
   const onEnd=(e)=>{if(e.target===panel&&e.propertyName==='width')land();};
   panel.addEventListener('transitionend',onEnd);
   setTimeout(land,520);

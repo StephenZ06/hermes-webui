@@ -7459,7 +7459,6 @@ main.main > #mainPlugin{display:none;}
 .office-pill{font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:6px;background:var(--surface-subtle);color:var(--muted);border:1px solid var(--border2);}
 .office-pill.is-live{background:color-mix(in srgb,var(--success) 16%,transparent);color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,transparent);animation:office-live-pulse 2s ease-in-out infinite;}
 @keyframes office-live-pulse{0%,100%{opacity:1;}50%{opacity:.6;}}
-.office-hint{flex:1;font-size:12px;color:var(--muted);}
 .office-header-btn{flex:0 0 auto;font-size:11px;font-weight:600;padding:5px 10px;border-radius:var(--office-control-radius,8px);border:1px solid var(--border2);background:var(--surface-subtle);color:var(--muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
 .office-header-btn:hover{color:var(--text);border-color:var(--accent);}
 .office-labels-btn{display:grid;place-items:center;width:30px;padding:5px;}
@@ -11766,7 +11765,6 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   /* Floor header (live and history): status + one-line hint on top, the
      controls on a second row with the floor switch taking the free width. */
   .office-header{flex-wrap:wrap;row-gap:10px;column-gap:8px;padding:10px 14px 12px;}
-  .office-hint{flex:1 1 0;min-width:0;font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:var(--office-control-radius,8px);}
   .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:var(--office-control-radius,8px);}
   .office-header > .office-outlet .office-outlet-btn{height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
@@ -15482,8 +15480,25 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope > .nb-scope-count{position:relative;top:-1px;}
 /* Office DASHBOARD / INTEGRATIONS and PROJECTS / BUSINESS: bold. */
 .office-page-nav-copy strong,.office-outlet-btn{font-weight:700;}
-/* Zeus 2.0 Office floor header: its bottom line 1px up. */
-@media (min-width:641px){:root[data-skin="zeus-2"] .office-header{padding-bottom:9px;}}
+/* Office floor header: controls only (the hint line is gone). On a desktop
+   (the side panel's Office tab and the Office page) every control is 28px
+   tall, 10px from all four edges of the strip and 8px apart; the live/history
+   button keeps to the right edge, and a narrow panel wraps the row instead of
+   pushing controls past the edge. Phones keep their own sizes; with no hint
+   there is nothing to break the row after, so the status pill shares the row
+   with the controls. */
+.office-header::after{content:none!important;}
+.office-header > [hidden]{display:none!important;}
+@media (min-width:641px){
+  .office-header{flex-wrap:wrap;gap:8px;padding:10px;}
+  .office-header > :is(.office-pill,.office-header-btn,.office-outlet){height:28px;box-sizing:border-box;margin:0;}
+  .office-header > .office-pill{display:inline-flex;align-items:center;padding:0 9px;}
+  .office-header > .office-header-btn{display:inline-flex;align-items:center;justify-content:center;padding:0 10px;}
+  .office-header > .office-labels-btn{width:28px;padding:0;}
+  .office-header > .office-outlet{flex:0 0 auto;}
+  .office-header > .office-outlet .office-outlet-btn{height:26px;min-height:0;padding:0 9px;line-height:1;}
+  .office-header > :is(#officeBackBtn,#officePauseBtn){margin-left:auto;}
+}
 /* Navigation motion.  Side panels fade up as the main view does when the
    rail switches pages; Notes drills into the Obsidian vault and back out,
    its list heading fading to the new name; a Work Hub board fades in when
