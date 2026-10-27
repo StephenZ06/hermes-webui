@@ -343,48 +343,68 @@
   function pill(ok, text) {
     return `<span class="job-os-pill" data-ok="${ok ? 'true' : 'false'}">${esc(text)}</span>`;
   }
+  // ---- Settings layout --------------------------------------------------------
+  // Each section is a short header and a few groups. A group is one panel of
+  // rows: the label and a hint on the left, the control on the right. Options
+  // that only matter when a switch is on sit in that switch's group, dimmed
+  // while it is off. Status and one-off actions go in the group's footer.
+  function group(title, rows, foot, attrs) {
+    return `<div class="set-group"${attrs || ''}>${title ? `<h3 class="set-group-title">${esc(title)}</h3>` : ''}<div class="set-rows">${rows.filter(Boolean).join('')}</div>${foot ? `<div class="set-group-foot">${foot}</div>` : ''}</div>`;
+  }
+  function row(label, hint, control, opts) {
+    const o = opts || {};
+    const tag = o.div ? 'div' : 'label';
+    return `<${tag} class="set-row${o.stack ? ' is-stack' : ''}${o.sub ? ' is-sub' : ''}${o.off ? ' is-off' : ''}"><span class="set-row-text"><span class="set-row-label">${label}</span>${hint ? `<small>${hint}</small>` : ''}</span><span class="set-row-control">${control}</span></${tag}>`;
+  }
+  // A switch row: the whole row toggles it (the label wraps the checkbox).
+  function switchRow(path, label, value, hint, opts) {
+    const o = opts || {};
+    return `<label class="set-row set-switch job-os-toggle${o.sub ? ' is-sub' : ''}${o.off ? ' is-off' : ''}"><span class="set-row-text"><span class="set-row-label">${esc(label)}</span>${hint ? `<small>${esc(hint)}</small>` : ''}</span><span class="set-row-control"><input type="checkbox" role="switch" data-setting="${path}" ${value ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span></span></label>`;
+  }
+  const inputCtl = (path, value, placeholderText, type) => `<input class="set-input" type="${type || 'text'}" data-setting="${path}" value="${esc(value)}" placeholder="${esc(placeholderText || '')}" autocomplete="off" spellcheck="false">`;
+  const numberCtl = (path, value, min, max, unit) => `<span class="set-number"><input class="set-input" type="number" data-setting="${path}" value="${esc(value)}" min="${min}" max="${max}" step="1" inputmode="numeric">${unit ? `<em>${esc(unit)}</em>` : ''}</span>`;
+  const selectCtl = (path, value, options) => `<select class="set-input" data-setting="${path}">${options.map(([v, t]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const textareaCtl = (path, value, rows, placeholderText, max) => `<textarea class="set-input" data-setting="${path}" rows="${rows}"${max ? ` maxlength="${max}"` : ''} placeholder="${esc(placeholderText || '')}" spellcheck="false">${esc(value || '')}</textarea>`;
   const SECTION_ICONS = {connections: 'cloud', apify: 'radar', ai: 'ai', applicant: 'edit', apply: 'mail', scout: 'calendar',
     notifications: 'bell', resume: 'resume-studio', display: 'resume-studio'};
+  function section(id, title, note, inner) {
+    return `<section class="job-os-settings-section" id="job-os-settings-${id}"><header class="set-head"><h2>${esc(title)}</h2>${note ? `<p>${note}</p>` : ''}</header>${inner}</section>`;
+  }
   // Job sites Scout reads itself, with whether they still read correctly.
-  function jobSitesBlock(state) {
+  function jobSitesGroup(state) {
     const sites = dashboardOf(state).site_health || [];
     if (!sites.length) return '';
     const rows = sites.map((site) => {
       const ok = site.state === 'ok';
-      const checked = site.checked ? `checked ${when(site.checked)}` : 'not checked yet';
-      return `<div class="site-health-row"><strong>${esc(site.name)}</strong>${pill(ok, SITE_STATE[site.state] || site.state)}<span class="site-health-when">${esc(checked)}${site.in_use ? '' : ' · no search uses it'}</span>${!ok && site.detail ? `<p class="job-os-card-note">${esc(site.detail)}</p>` : ''}</div>`;
-    }).join('');
-    return `<div class="job-os-conn"><div class="job-os-conn-head"><strong>Job sites</strong></div>
-      <p class="job-os-card-note">Sites Scout reads itself. They are checked twice a day while a search uses them and on every run; a change in a site's pages shows here, on the Dashboard and in Scout, and is emailed once when Jobs email is on.</p>
-      ${rows}<button type="button" class="job-os-btn" data-job-os-action="site-check">Check now</button></div>`;
-  }
-  function section(id, title, note, inner, phase) {
-    return `<section class="job-os-card job-os-settings-section" id="job-os-settings-${id}">${cardHead(title, SECTION_ICONS[id], phase ? `<span class="job-os-phase" title="Saved now; takes effect when this phase ships">${esc(phase)}</span>` : '')}${note ? `<p class="job-os-card-note">${esc(note)}</p>` : ''}${inner}</section>`;
+      const checked = site.checked ? `Checked ${when(site.checked)}` : 'Not checked yet';
+      return `<div class="set-row site-health-row"><span class="set-row-text"><span class="set-row-label">${esc(site.name)}</span><small>${esc(checked)}${site.in_use ? '' : ' · no search uses it'}${!ok && site.detail ? ` · ${esc(site.detail)}` : ''}</small></span><span class="set-row-control">${pill(ok, SITE_STATE[site.state] || site.state)}</span></div>`;
+    });
+    return group('Job sites', rows, `<p>Sites Scout reads itself, checked twice a day while a search uses them and on every run. A change shows here, on the Dashboard and in Scout.</p><button type="button" class="job-os-btn small" data-job-os-action="site-check">Check now</button>`);
   }
   // Gmail: verified on the server with a real login, then saved to the shared
   // secrets file every profile reads. The password field is never pre-filled
   // and its value is never kept in page state.
-  function gmailBlock(state, gmail, ready) {
+  function gmailGroup(state, gmail, ready) {
     const msg = state.gmailMessage ? `<p class="job-os-gmail-msg" data-tone="${esc(state.gmailMessage.tone)}" role="status">${esc(state.gmailMessage.text)}</p>` : '<p class="job-os-gmail-msg" role="status"></p>';
+    const where = gmail.scope === 'shared' ? 'for every profile' : 'for this profile';
     if (ready && !state.gmailEditing) {
-      return `<div class="job-os-conn" id="job-os-gmail">
-        <div class="job-os-conn-head"><strong>Gmail sender</strong>${pill(true, 'Connected')}</div>
-        <p class="job-os-card-note">Hermes sends from <strong>${esc(gmail.address_hint || 'your account')}</strong>, named after the part of Hermes writing (<em>Hermes Jobs</em>, <em>Hermes Business</em>), to the <em>Send to</em> address under Notifications (this account if that is empty). ${gmail.scope === 'shared' ? 'Saved once for every profile.' : 'Saved for this profile.'}</p>
-        <label class="job-os-inline-select">Send test as <select id="job-os-gmail-test-context" aria-label="Sender name for the test email"><option value="jobs">Hermes Jobs</option><option value="business">Hermes Business</option></select></label>
-        <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="gmail-test">Send test email</button><button type="button" class="job-os-btn" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></div>
-        ${msg}
-      </div>`;
+      return group('Gmail sender', [
+        row('Sending from', `Named after the part of Hermes writing (Hermes Jobs, Hermes Business). Saved ${where}.`, `<span class="set-value">${esc(gmail.address_hint || 'your account')}</span>${pill(true, 'Connected')}`, {div: true}),
+        row('Test email', 'Sent to the Send to address under Notifications.', `<span class="job-os-inline-select"><select id="job-os-gmail-test-context" aria-label="Sender name for the test email"><option value="jobs">Hermes Jobs</option><option value="business">Hermes Business</option></select></span><button type="button" class="job-os-btn small is-purple" data-job-os-action="gmail-test">Send test</button>`, {div: true}),
+      ], `${msg}<span class="set-foot-actions"><button type="button" class="job-os-btn small" data-job-os-action="gmail-edit">Replace</button><button type="button" class="job-os-btn small job-os-btn-danger" data-job-os-action="gmail-disconnect">Disconnect</button></span>`, ' id="job-os-gmail"');
     }
-    return `<div class="job-os-conn" id="job-os-gmail">
-      <div class="job-os-conn-head"><strong>Gmail sender</strong>${pill(false, 'Not connected')}</div>
-      <p class="job-os-card-note">The account Hermes sends from. A separate Gmail just for Hermes works best; your main address goes in <em>Send to</em> under Notifications. Use a Gmail <strong>app password</strong>, not your normal password: Google Account → Security → 2-Step Verification → App passwords (<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">open</a>). Hermes logs in once to check it, then saves it ${gmail.scope === 'shared' ? 'for every profile' : 'for this profile'}; it is never shown again.</p>
-      <div class="job-os-grid">
-        <label class="job-os-field"><span>Gmail address</span><input type="email" id="job-os-gmail-address" autocomplete="email" spellcheck="false" placeholder="you@gmail.com"></label>
-        <label class="job-os-field"><span>App password</span><input type="password" id="job-os-gmail-password" autocomplete="new-password" spellcheck="false" placeholder="xxxx xxxx xxxx xxxx"></label>
-      </div>
-      <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="gmail-connect">Connect Gmail</button>${ready ? '<button type="button" class="job-os-btn" data-job-os-action="gmail-cancel">Cancel</button>' : ''}</div>
-      ${msg}
-    </div>`;
+    return group('Gmail sender', [
+      row('Status', 'The account Hermes sends from. A separate Gmail just for Hermes works best.', pill(false, 'Not connected'), {div: true}),
+      row('Gmail address', '', '<input class="set-input" type="email" id="job-os-gmail-address" autocomplete="email" spellcheck="false" placeholder="you@gmail.com">'),
+      row('App password', `Not your normal password: Google Account → Security → 2-Step Verification → App passwords (<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">open</a>). Checked with one login, then saved ${where}; never shown again.`, '<input class="set-input" type="password" id="job-os-gmail-password" autocomplete="new-password" spellcheck="false" placeholder="xxxx xxxx xxxx xxxx">'),
+    ], `${msg}<span class="set-foot-actions">${ready ? '<button type="button" class="job-os-btn small" data-job-os-action="gmail-cancel">Cancel</button>' : ''}<button type="button" class="job-os-btn small primary" data-job-os-action="gmail-connect">Connect Gmail</button></span>`, ' id="job-os-gmail"');
+  }
+  function firecrawlGroup(fc, v) {
+    const using = fc.base_url ? `Using ${esc(fc.base_url)}${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from your .env settings)' : ''}${fc.latency_ms != null ? `, ${esc(fc.latency_ms)} ms` : ''}.` : '';
+    return group('Firecrawl', [
+      row('Status', `${esc(fc.detail || '')} ${using}`.trim(), pill(fc.state === 'healthy', FIRECRAWL_LABELS[fc.state] || 'Unknown'), {div: true}),
+      row('URL override', 'Leave empty to use FIRECRAWL_API_URL from your .env settings.', inputCtl('firecrawl.api_url', v('firecrawl.api_url'), 'https://…', 'url')),
+    ], '<span class="set-foot-actions"><button type="button" class="job-os-btn small is-purple" data-job-os-action="test-firecrawl">Test connection</button></span>');
   }
   // Apify: the token is checked with Apify, then saved in the env files like
   // Gmail's password and never shown again; the other choices are settings.
@@ -393,26 +413,23 @@
     const msg = `<p class="job-os-gmail-msg"${state.apifyMessage ? ` data-tone="${esc(state.apifyMessage.tone)}"` : ''} role="status">${esc(state.apifyMessage ? state.apifyMessage.text : '')}</p>`;
     const where = ap.scope === 'shared' ? 'for every profile' : 'for this profile';
     const token = ap.token && !state.apifyEditing
-      ? `<div class="job-os-conn" id="job-os-apify">
-          <div class="job-os-conn-head"><strong>API token</strong>${pill(true, 'Connected')}</div>
-          <p class="job-os-card-note">Token ending <code>${esc(ap.token_hint || '')}</code>, saved ${where}. It is never shown again.</p>
-          <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="apify-test">Test token</button><button type="button" class="job-os-btn" data-job-os-action="apify-edit">Replace</button><button type="button" class="job-os-btn job-os-btn-danger" data-job-os-action="apify-disconnect">Disconnect</button></div>
-          ${msg}</div>`
-      : `<div class="job-os-conn" id="job-os-apify">
-          <div class="job-os-conn-head"><strong>API token</strong>${pill(false, 'Not connected')}</div>
-          <p class="job-os-card-note">Create a free account at <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener noreferrer">apify.com</a> (no card needed; $5 of usage a month), then copy your token from <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener noreferrer">Settings → API &amp; Integrations</a>. Hermes checks it with Apify, then saves it ${where}.</p>
-          <div class="job-os-grid"><label class="job-os-field"><span>Apify API token</span><input type="password" id="job-os-apify-token" autocomplete="off" spellcheck="false" placeholder="apify_api_…"></label></div>
-          <div class="job-os-actions"><button type="button" class="job-os-btn primary" data-job-os-action="apify-connect">Connect Apify</button>${ap.token ? '<button type="button" class="job-os-btn" data-job-os-action="apify-cancel">Cancel</button>' : ''}</div>
-          ${msg}</div>`;
+      ? group('API token', [row('Token', `Ending ${esc(ap.token_hint || '')}, saved ${where}. It is never shown again.`, pill(true, 'Connected'), {div: true})],
+        `${msg}<span class="set-foot-actions"><button type="button" class="job-os-btn small is-purple" data-job-os-action="apify-test">Test token</button><button type="button" class="job-os-btn small" data-job-os-action="apify-edit">Replace</button><button type="button" class="job-os-btn small job-os-btn-danger" data-job-os-action="apify-disconnect">Disconnect</button></span>`, ' id="job-os-apify"')
+      : group('API token', [row('Apify API token', `Create a free account at <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener noreferrer">apify.com</a> (no card; $5 of usage a month), then copy the token from <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener noreferrer">API &amp; Integrations</a>. Checked with Apify, then saved ${where}.`, '<input class="set-input" type="password" id="job-os-apify-token" autocomplete="off" spellcheck="false" placeholder="apify_api_…">')],
+        `${msg}<span class="set-foot-actions">${ap.token ? '<button type="button" class="job-os-btn small" data-job-os-action="apify-cancel">Cancel</button>' : ''}<button type="button" class="job-os-btn small primary" data-job-os-action="apify-connect">Connect Apify</button></span>`, ' id="job-os-apify"');
     const perCity = Number(v('apify.results_per_city')) || 0;
     const cost = (0.001 + perCity * 0.0001).toFixed(3);
+    const on = !!v('apify.enabled');
+    const scrapers = (ap.sites || []).filter((site) => (site.actors || []).length).map((site) => row(`${esc(site.name)} scraper`, '',
+      selectCtl(`apify.${site.key}_actor`, v(`apify.${site.key}_actor`), site.actors.map((a) => [a.actor, `${a.actor} — ${a.price}`])), {sub: true, off: !on}));
     return section('apify', 'Apify', 'Runs the job-site scrapers on Apify’s servers instead of this machine, so Indeed can’t block your address, LinkedIn becomes searchable, and every job arrives with its full description.', `
       ${token}
-      ${toggle('apify.enabled', 'Search job sites through Apify', v('apify.enabled'), ap.token ? 'Indeed, LinkedIn and Bayt are searched on Apify' : 'Connect a token first')}
-      ${toggle('apify.indeed_fallback', 'Read Indeed with Firecrawl when Apify is off', v('apify.indeed_fallback'), 'Off: Indeed is searched through Apify only. On: with Apify off, Scout reads Indeed itself through Firecrawl (Indeed often blocks it)')}
-      <div class="job-os-grid">${(ap.sites || []).filter((site) => (site.actors || []).length).map((site) => selectField(`apify.${site.key}_actor`, `${site.name} scraper`, v(`apify.${site.key}_actor`),
-        site.actors.map((a) => [a.actor, `${a.actor} — ${a.price}`]))).join('')}${numberField('apify.results_per_city', 'Results per search and city', v('apify.results_per_city'), 1, 1000, 'jobs')}</div>
-      <p class="job-os-card-note apify-cost">Each job title, site and city in a search is one run, billed per job returned (prices above, free plan). With Indeed at ${perCity} results: about <strong>$${cost}</strong> a run. Scrapers that can drop off-title or already-saved jobs on their side (the title filter, LinkedIn’s valig scraper) charge only for what Scout keeps.</p>`);
+      ${group('Searching', [
+        switchRow('apify.enabled', 'Search job sites through Apify', on, ap.token ? 'Indeed, LinkedIn and Bayt are searched on Apify' : 'Connect a token first'),
+        ...scrapers,
+        row('Results per search and city', '', numberCtl('apify.results_per_city', v('apify.results_per_city'), 1, 1000, 'jobs'), {sub: true, off: !on}),
+        switchRow('apify.indeed_fallback', 'Read Indeed with Firecrawl when Apify is off', v('apify.indeed_fallback'), 'Indeed often blocks it; off means Indeed is searched through Apify only'),
+      ], `<p class="apify-cost">Each job title, site and city in a search is one run, billed per job returned. With Indeed at ${perCity} results: about <strong>$${cost}</strong> a run. Scrapers that drop off-title or saved jobs on their side charge only for what Scout keeps.</p>`)}`);
   }
   function settingsView(state) {
     const s = state.settingsDraft || state.settings;
@@ -423,64 +440,83 @@
     const gmailReady = gmail.address && gmail.app_password;
     const dirty = !!state.settingsDirty;
     const v = (path) => get(s, path);
-    const firecrawl = section('connections', 'Connections', '', `
-      <div class="job-os-conn">
-        <div class="job-os-conn-head"><strong>Firecrawl</strong>${pill(fc.state === 'healthy', FIRECRAWL_LABELS[fc.state] || 'Unknown')}</div>
-        <p class="job-os-card-note">${esc(fc.detail || '')}${fc.base_url ? ` Using <code>${esc(fc.base_url)}</code>${fc.source === 'settings' ? ' (set here)' : fc.source ? ' (from your .env settings)' : ''}.` : ''}${fc.latency_ms != null ? ` ${esc(fc.latency_ms)} ms.` : ''}</p>
-        ${textField('firecrawl.api_url', 'Firecrawl URL override', v('firecrawl.api_url'), 'Leave empty to use FIRECRAWL_API_URL from your .env settings', 'url')}
-        <button type="button" class="job-os-btn is-purple" data-job-os-action="test-firecrawl">Test connection</button>
-      </div>
-      ${gmailBlock(state, gmail, gmailReady)}
-      ${jobSitesBlock(state)}`);
-    const ai = section('ai', 'AI', 'Used for job analysis, fit scores and resume tailoring.', `<div class="job-os-grid">
-      ${textField('ai.model', 'Model', v('ai.model'))}
-      ${textField('ai.provider', 'Provider', v('ai.provider'))}
-      ${selectField('ai.reasoning_effort', 'Reasoning', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])}
-      ${selectField('ai.review_tailoring', 'Review tailored documents', v('ai.review_tailoring'), [['good', 'Good matches only (+2 calls each)'], ['all', 'Every tailoring (+2 calls each)'], ['off', 'Off']])}</div>
-      ${toggle('ai.auto_analyze', 'Analyse new finds automatically', v('ai.auto_analyze'), 'Scout queues each new job for a fit score against your resume')}`);
-    const applicant = section('applicant', 'Your details', 'Used on tailored resumes and cover letters.', `<div class="job-os-grid">
-      ${textField('applicant.full_name', 'Full name', v('applicant.full_name'))}
-      ${textField('applicant.email', 'Email', v('applicant.email'), 'you@example.com', 'email')}
-      ${textField('applicant.phone', 'Phone', v('applicant.phone'), '+1 555 0100', 'tel')}
-      ${textField('applicant.location', 'Location', v('applicant.location'), 'City, Country')}
-      ${textField('applicant.linkedin_url', 'LinkedIn', v('applicant.linkedin_url'), 'https://linkedin.com/in/…', 'url')}
-      ${textField('applicant.portfolio_url', 'Website / portfolio', v('applicant.portfolio_url'), 'https://…', 'url')}</div>`);
+    const connections = section('connections', 'Connections', 'What Hermes signs in to. Secrets are checked once, saved in your env files and never shown again.',
+      `${gmailGroup(state, gmail, gmailReady)}${firecrawlGroup(fc, v)}${jobSitesGroup(state)}`);
+    const ai = section('ai', 'Luna (AI)', 'The model behind fit scores, tailoring, follow-ups and reports.', `
+      ${group('Model', [
+        row('Model', '', inputCtl('ai.model', v('ai.model'))),
+        row('Provider', '', inputCtl('ai.provider', v('ai.provider'))),
+        row('Reasoning', 'Higher is slower and more careful.', selectCtl('ai.reasoning_effort', v('ai.reasoning_effort'), [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']])),
+      ])}
+      ${group('Automatic work', [
+        switchRow('ai.auto_analyze', 'Analyse new finds automatically', v('ai.auto_analyze'), 'Scout queues each new job for a fit score against your resume'),
+        row('Review tailored documents', 'A second pass reviews each tailored resume and letter, then Luna revises once: two extra calls each.', selectCtl('ai.review_tailoring', v('ai.review_tailoring'), [['good', 'Good matches only'], ['all', 'Every tailoring'], ['off', 'Off']])),
+      ])}`);
+    const applicant = section('applicant', 'Your details', 'Used on tailored resumes and cover letters.', group('Contact', [
+      row('Full name', '', inputCtl('applicant.full_name', v('applicant.full_name'))),
+      row('Email', '', inputCtl('applicant.email', v('applicant.email'), 'you@example.com', 'email')),
+      row('Phone', '', inputCtl('applicant.phone', v('applicant.phone'), '+1 555 0100', 'tel')),
+      row('Location', 'Also what the location check compares jobs with.', inputCtl('applicant.location', v('applicant.location'), 'City, Country')),
+      row('LinkedIn', '', inputCtl('applicant.linkedin_url', v('applicant.linkedin_url'), 'https://linkedin.com/in/…', 'url')),
+      row('Website / portfolio', '', inputCtl('applicant.portfolio_url', v('applicant.portfolio_url'), 'https://…', 'url')),
+    ]));
+    const answers = section('apply', 'Application answers', 'Your standard answers to screening questions. Each job’s Apply kit uses them word for word, and Luna checks eligibility and languages against them. Leave one empty to be asked for it.', `
+      ${group('Eligibility', [
+        row('Work authorisation', 'Judged against each posting’s right-to-work wording.', inputCtl('apply.work_authorization', v('apply.work_authorization'), 'e.g. Malaysian citizen; needs sponsorship for Qatar')),
+        row('Languages', 'And your level, if it matters.', inputCtl('apply.languages', v('apply.languages'), 'e.g. English (fluent), Malay (native)')),
+        row('Relocation', 'Also what the location check uses.', inputCtl('apply.relocation', v('apply.relocation'), 'e.g. Open to relocating to Qatar')),
+      ])}
+      ${group('Terms', [
+        row('Notice period', '', inputCtl('apply.notice_period', v('apply.notice_period'), 'e.g. One month')),
+        row('Expected salary', '', inputCtl('apply.expected_salary', v('apply.expected_salary'), 'e.g. RM 8,000/month')),
+        row('Years of experience', '', inputCtl('apply.years_experience', v('apply.years_experience'), 'e.g. 3 years in SOC operations')),
+        row('Anything else to mention', '', textareaCtl('apply.other', v('apply.other'), 3, 'e.g. Certifications in progress, availability for interviews', 1500), {stack: true}),
+      ])}`);
     const timesMode = v('scout.schedule_mode') !== 'interval';
-    const answers = section('apply', 'Application answers', 'Your standard answers to screening questions. Each job’s Apply kit uses them word for word, and Luna fits the rest to the job from your master resume. Leave a field empty to be asked to fill it in.', `<div class="scout-form-grid">
-      ${textField('apply.notice_period', 'Notice period', v('apply.notice_period'), 'e.g. One month')}
-      ${textField('apply.expected_salary', 'Expected salary', v('apply.expected_salary'), 'e.g. Malaysia: RM 8,000/month; Qatar: QAR 15,000/month')}
-      ${textField('apply.work_authorization', 'Work authorisation', v('apply.work_authorization'), 'e.g. Malaysian citizen; needs visa sponsorship for Qatar')}
-      ${textField('apply.years_experience', 'Years of experience', v('apply.years_experience'), 'e.g. 3 years in SOC operations')}
-      ${textField('apply.relocation', 'Relocation', v('apply.relocation'), 'e.g. Open to relocating to Qatar')}
-      ${textField('apply.languages', 'Languages', v('apply.languages'), 'e.g. English, Malay')}</div>
-      <label class="job-os-field"><span>Anything else to mention</span><textarea data-setting="apply.other" rows="3" maxlength="1500" placeholder="e.g. Certifications in progress, availability for interviews">${esc(v('apply.other') || '')}</textarea></label>`);
-    const scout = section('scout', 'Scout schedule', 'Job ads go up in a morning wave and an afternoon wave on weekdays (Monday to Wednesday are the busiest), so by default Scout runs just after each: 12:30 and 18:30, plus one Saturday run.', `
-      ${toggle('scout.enabled', 'Run Scout automatically', v('scout.enabled'))}
-      <div class="job-os-grid">${selectField('scout.schedule_mode', 'Run', v('scout.schedule_mode'), [['times', 'At set times'], ['interval', 'Every few hours']])}
-        ${timesMode ? `<label class="job-os-field"><span>Times</span><input type="text" data-setting="scout.run_times" value="${esc((v('scout.run_times') || []).join(', '))}" placeholder="12:30, 18:30" autocomplete="off" spellcheck="false"></label>
-        ${selectField('scout.weekend', 'Weekends', v('scout.weekend'), [['saturday', 'Saturday, first time only'], ['same', 'Same as weekdays'], ['none', 'No runs']])}
-        ${textField('scout.timezone', 'Your time zone', v('scout.timezone'), 'Asia/Kuala_Lumpur')}` : numberField('scout.schedule_hours', 'Every', v('scout.schedule_hours'), 1, 168, 'hours')}
-        ${numberField('scout.max_results_per_search', 'Max results per search', v('scout.max_results_per_search'), 1, 100)}</div>
-      ${timesMode ? '<p class="job-os-card-note">Times are each search’s own country time and working week: Malaysia Monday to Friday, Qatar Sunday to Thursday (UTC+3). Your time zone sets the evening update under Notifications.</p>' : ''}
-      ${timesMode ? toggle('scout.quiet_skip', 'Skip a run after a quiet one', v('scout.quiet_skip'), 'If a run finds 0–1 new jobs, the next run that day is skipped') : ''}
-      <label class="job-os-field"><span>Never show jobs from</span><textarea data-setting="scout.blocked_companies" rows="3" placeholder="One company per line (e.g. your current employer)" spellcheck="false">${esc((v('scout.blocked_companies') || []).join('\n'))}</textarea></label>`);
-    const notify = section('notifications', 'Notifications', '', `${gmailReady ? '' : '<p class="job-os-card-note">Email needs the Gmail sender: <button type="button" class="job-os-link" data-job-os-action="settings-section" data-section="connections">connect it under Connections</button>.</p>'}
-      ${toggle('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials')}
-      <div class="job-os-grid">${textField('notifications.to_address', 'Send to', v('notifications.to_address'), 'you@gmail.com', 'email')}</div>
-      ${toggle('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best match first; the Scout page shows them either way')}
-      <div class="job-os-grid">${numberField('notifications.min_fit_score', 'Good match from', v('notifications.min_fit_score'), 0, 100, '%')}${numberField('notifications.release_count', 'Update when this many are waiting', v('notifications.release_count'), 1, 50, 'matches')}${numberField('notifications.release_cutoff_hour', 'Or at the end of the day, at', v('notifications.release_cutoff_hour'), 0, 23, ':00')}</div>
-      <p class="job-os-card-note">A good match is Luna’s fit score of your master resume against the job. 65% is a sensible bar: 75%+ is ready to apply, 65–74% has gaps that tailoring can close, and below about 60% usually misses a must-have.</p>
-      ${toggle('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'))}
-      <div class="job-os-grid">${numberField('notifications.digest_hour', 'Digest hour', v('notifications.digest_hour'), 0, 23, ':00')}</div>
-      ${toggle('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Each job in an alert has codes; reply "TAILOR 1A2B3C4D" or "SKIP 1A2B3C4D" from the Send-to address')}
-      ${notifyStatus(state.notifications)}
-      <div class="job-os-conn" id="job-os-outcomes"><div class="job-os-conn-head"><strong>Employer replies</strong>${pill(gmailReady && v('notifications.track_outcomes'), gmailReady && v('notifications.track_outcomes') ? 'Reading' : 'Off')}</div>
-        ${toggle('notifications.track_outcomes', 'Read employer replies', v('notifications.track_outcomes'), 'Every 10 minutes Luna reads new mail in the connected inbox (read-only) and moves an applied job to Rejected or Interview when the company and role match')}
-        <p class="job-os-card-note">Employers write to the address you applied with${v('applicant.email') ? ` (<strong>${esc(v('applicant.email'))}</strong>)` : ''}. If that isn’t ${gmail.address_hint ? `<strong>${esc(gmail.address_hint)}</strong>` : 'the connected Gmail'}, add a filter there that forwards job replies to it: Gmail → Settings → Forwarding, then a filter such as <code>subject:(application OR interview OR candidate)</code> → Forward to. Each move shows on the job with the email’s subject, and can be dragged back.</p>
-        ${outcomeStatus(state.notifications, gmailReady && v('notifications.track_outcomes'))}</div>`);
-    const resume = section('resume', 'Resume', 'Your master resume lives in Resume Studio.', '<button type="button" class="job-os-btn" data-job-os-view="resume-studio">Open Resume Studio</button>');
+    const schedOn = !!v('scout.enabled');
+    const scout = section('scout', 'Scout schedule', 'Job ads go up in a morning and an afternoon wave on weekdays, so by default Scout runs just after each, at 12:30 and 18:30, plus one Saturday run.', `
+      ${group('Schedule', [
+        switchRow('scout.enabled', 'Run Scout automatically', schedOn, schedOn ? '' : 'Off: searches run only when you press Run'),
+        row('Run', '', selectCtl('scout.schedule_mode', v('scout.schedule_mode'), [['times', 'At set times'], ['interval', 'Every few hours']]), {sub: true, off: !schedOn}),
+        timesMode ? row('Times', 'In each search country’s own time and working week.', `<input class="set-input" type="text" data-setting="scout.run_times" value="${esc((v('scout.run_times') || []).join(', '))}" placeholder="12:30, 18:30" autocomplete="off" spellcheck="false">`, {sub: true, off: !schedOn})
+          : row('Every', '', numberCtl('scout.schedule_hours', v('scout.schedule_hours'), 1, 168, 'hours'), {sub: true, off: !schedOn}),
+        timesMode ? row('Weekends', '', selectCtl('scout.weekend', v('scout.weekend'), [['saturday', 'Saturday, first time only'], ['same', 'Same as weekdays'], ['none', 'No runs']]), {sub: true, off: !schedOn}) : '',
+        timesMode ? switchRow('scout.quiet_skip', 'Skip a run after a quiet one', v('scout.quiet_skip'), 'After a run with 0–1 new jobs, the next run that day is skipped', {sub: true, off: !schedOn}) : '',
+        row('Your time zone', 'Sets the evening release of good matches.', inputCtl('scout.timezone', v('scout.timezone'), 'Asia/Kuala_Lumpur')),
+      ])}
+      ${group('Results', [
+        row('Max results per search', '', numberCtl('scout.max_results_per_search', v('scout.max_results_per_search'), 1, 100, 'jobs')),
+        row('Never show jobs from', 'One company per line, such as your current employer.', textareaCtl('scout.blocked_companies', (v('scout.blocked_companies') || []).join('\n'), 3, 'Company name'), {stack: true}),
+      ])}`);
+    const emailOn = !!(gmailReady && v('notifications.email_enabled'));
+    const matchesOn = emailOn && !!v('notifications.notify_new_matches');
+    const notify = section('notifications', 'Notifications', gmailReady ? 'What Hermes emails you, and what it does with replies.' : 'Email needs the Gmail sender: <button type="button" class="job-os-link" data-job-os-action="settings-section" data-section="connections">connect it under Connections</button>.', `
+      ${group('Email', [
+        switchRow('notifications.email_enabled', 'Email me', v('notifications.email_enabled'), gmailReady ? '' : 'Needs Gmail credentials'),
+        row('Send to', 'Your own address. Hermes sends from the Gmail sender.', inputCtl('notifications.to_address', v('notifications.to_address'), 'you@gmail.com', 'email'), {sub: true, off: !emailOn}),
+      ])}
+      ${group('Good matches', [
+        row('Good match from', 'Luna’s fit of your master resume: 75%+ is ready to apply, 65–74% has gaps tailoring can close.', numberCtl('notifications.min_fit_score', v('notifications.min_fit_score'), 0, 100, '%')),
+        switchRow('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best first; the Scout page shows them either way', {off: !emailOn}),
+        row('Update when this many are waiting', '', numberCtl('notifications.release_count', v('notifications.release_count'), 1, 50, 'matches'), {sub: true, off: !matchesOn}),
+        row('Or at the end of the day, at', '', numberCtl('notifications.release_cutoff_hour', v('notifications.release_cutoff_hour'), 0, 23, ':00'), {sub: true, off: !matchesOn}),
+      ])}
+      ${group('Daily digest', [
+        switchRow('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'), 'New finds, follow-ups and jobs closing soon', {off: !emailOn}),
+        row('Digest hour', '', numberCtl('notifications.digest_hour', v('notifications.digest_hour'), 0, 23, ':00'), {sub: true, off: !(emailOn && v('notifications.daily_digest'))}),
+      ])}
+      ${group('Replies', [
+        switchRow('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Reply “TAILOR 1A2B3C4D” or “SKIP 1A2B3C4D” to an alert from the Send to address', {off: !emailOn}),
+      ], notifyStatus(state.notifications))}
+      ${group('Employer replies', [
+        switchRow('notifications.track_outcomes', 'Read employer replies', v('notifications.track_outcomes'), 'Every 10 minutes Luna reads new mail (read-only) and moves an applied job to Rejected or Interview when the company and role match'),
+        row('Where replies arrive', `Employers write to the address you applied with${v('applicant.email') ? ` (<strong>${esc(v('applicant.email'))}</strong>)` : ''}. If that isn’t ${gmail.address_hint ? `<strong>${esc(gmail.address_hint)}</strong>` : 'the connected Gmail'}, forward job replies to it with a Gmail filter such as <code>subject:(application OR interview OR candidate)</code>.`, pill(gmailReady && v('notifications.track_outcomes'), gmailReady && v('notifications.track_outcomes') ? 'Reading' : 'Off'), {div: true}),
+      ], outcomeStatus(state.notifications, gmailReady && v('notifications.track_outcomes')), ' id="job-os-outcomes"')}`);
+    const resume = section('resume', 'Master resume', 'Every tailored resume is made from it, in its own design.', group('', [
+      row('Master resume', state.resume ? `${esc(state.resume.filename || 'Uploaded')} · lives in Resume Studio` : 'Not uploaded yet', '<button type="button" class="job-os-btn small" data-job-os-view="resume-studio">Open Resume Studio</button>', {div: true}),
+    ]));
     const bar = `<div class="job-os-savebar" data-dirty="${dirty ? 'true' : 'false'}"><p id="job-os-settings-error" class="job-os-error" role="alert">${esc(state.settingsError || '')}</p><span class="job-os-savebar-note">${dirty ? 'Unsaved changes' : state.settingsSavedAt ? 'Saved' : ''}</span><button type="button" class="job-os-btn" data-job-os-action="discard-settings" ${dirty ? '' : 'disabled'}>Discard</button><button type="button" class="job-os-btn primary" data-job-os-action="save-settings" ${dirty ? '' : 'disabled'}>Save settings</button></div>`;
-    const pages = {connections: firecrawl, apify: apifySection(state, v), scout, ai, notifications: notify, applicant, apply: answers, display: resume};
+    const pages = {connections, apify: apifySection(state, v), scout, ai, notifications: notify, applicant, apply: answers, display: resume};
     const page = pages[state.settingsSection] ? state.settingsSection : 'connections';
     const apifyOn = !!((status.apify || {}).token);
     const hints = {
@@ -490,10 +526,10 @@
       ai: [v('ai.auto_analyze'), v('ai.model')],
       notifications: [gmailReady && v('notifications.email_enabled'), gmailReady && v('notifications.email_enabled') ? 'Email on' : 'Email off'],
       applicant: [!!v('applicant.full_name'), v('applicant.full_name') || 'Not filled in'],
-      apply: [!!v('apply.notice_period'), v('apply.notice_period') ? 'Saved' : 'Not filled in'],
+      apply: [!!(v('apply.work_authorization') && v('apply.languages')), v('apply.work_authorization') && v('apply.languages') ? 'Saved' : 'Right to work or languages missing'],
       display: [!!state.resume, state.resume ? 'In Resume Studio' : 'Not uploaded'],
     };
-    const nav = SETTINGS_NAV.map(([group, items]) => `<p class="settings-nav-group">${group}</p>${items.map(([key, label]) => {
+    const nav = SETTINGS_NAV.map(([grp, items]) => `<p class="settings-nav-group">${grp}</p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
       return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span><span class="settings-nav-chevron" aria-hidden="true">${icon('next', 16)}</span></button>`;
     }).join('')}`).join('');
@@ -515,15 +551,14 @@
   function outcomeStatus(n, on) {
     const o = n && n.outcomes;
     if (!o) return '';
-    return `<div class="job-os-actions"><span class="job-os-card-note">${o.checked ? `Checked ${esc(when(o.checked))}` : 'Not checked yet'}${o.error ? ` · <span class="job-os-error">${esc(o.error)}</span>` : ''}</span><button type="button" class="job-os-btn small" data-job-os-action="notify-outcomes" ${on ? '' : 'disabled'}>Check now</button></div>`;
+    return `<p>${o.checked ? `Checked ${esc(when(o.checked))}` : 'Not checked yet'}${o.error ? ` · <span class="job-os-error">${esc(o.error)}</span>` : ''}</p><span class="set-foot-actions"><button type="button" class="job-os-btn small" data-job-os-action="notify-outcomes" ${on ? '' : 'disabled'}>Check now</button></span>`;
   }
   function notifyStatus(n) {
     if (!n) return '';
     const checked = n.last_poll ? `Replies checked ${esc(when(n.last_poll))}` : 'Replies not checked yet';
     const log = (n.log || []).slice(0, 6);
-    return `<div class="job-os-notify-status">
-      <p class="job-os-card-note">${n.last_digest ? `Last digest ${esc(n.last_digest)}. ` : ''}${checked}.${n.last_poll_error ? ` <span class="job-os-error">${esc(n.last_poll_error)}</span>` : ''}</p>
-      <div class="job-os-actions"><button type="button" class="job-os-btn is-purple" data-job-os-action="notify-digest" ${n.ready ? '' : 'disabled'}>Send digest now</button><button type="button" class="job-os-btn" data-job-os-action="notify-check" ${n.ready ? '' : 'disabled'}>Check replies now</button></div>
+    return `<div class="job-os-notify-status"><p>${n.last_digest ? `Last digest ${esc(n.last_digest)}. ` : ''}${checked}.${n.last_poll_error ? ` <span class="job-os-error">${esc(n.last_poll_error)}</span>` : ''}</p>
+      <span class="set-foot-actions"><button type="button" class="job-os-btn small is-purple" data-job-os-action="notify-digest" ${n.ready ? '' : 'disabled'}>Send digest now</button><button type="button" class="job-os-btn small" data-job-os-action="notify-check" ${n.ready ? '' : 'disabled'}>Check replies now</button></span>
       ${log.length ? `<ul class="job-os-email-log">${log.map((e) => `<li data-status="${esc(e.status)}"><strong>${esc(EMAIL_KINDS[e.kind] || e.kind)}</strong> ${esc(e.status)}${e.subject ? ` · ${esc(e.subject)}` : ''}${e.detail ? `<small>${esc(e.detail)}</small>` : ''}<time>${esc(when(e.created_at))}</time></li>`).join('')}</ul>` : ''}
     </div>`;
   }

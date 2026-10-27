@@ -11921,6 +11921,72 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .settings-page > .job-os-settings-section > .job-os-card-note{margin:0;max-width:68ch;}
 .settings-back{display:none;}
 .settings-nav-chevron{display:none;}
+/* Sections as grouped rows (2026-10-27 redesign): a header, then groups.
+   A group is one panel; rows inside it are divided by hairlines, label and
+   hint on the left, control on the right. Options that depend on a switch
+   sit under it, indented and dimmed while it is off. */
+.settings-page{max-width:820px;}
+.settings-page > .job-os-settings-section{display:flex;flex-direction:column;gap:22px;}
+.set-head{display:flex;flex-direction:column;gap:6px;padding-bottom:2px;}
+.set-head h2{margin:0;font-size:20px;line-height:1.25;font-weight:700;color:var(--text);}
+.set-head p{margin:0;max-width:66ch;font-size:13.5px;line-height:1.55;color:var(--muted);}
+.set-group{display:flex;flex-direction:column;gap:8px;}
+.set-group-title{margin:0 2px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);}
+.set-rows{display:flex;flex-direction:column;border:1px solid var(--border2);border-radius:12px;background:var(--card);overflow:hidden;}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:52px;padding:11px 16px;box-sizing:border-box;}
+.set-rows>.set-row+.set-row{border-top:1px solid color-mix(in srgb,var(--border2) 75%,transparent);}
+.set-row-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 auto;}
+.set-row-label{font-size:13.5px;font-weight:600;line-height:1.35;color:var(--text);}
+.set-row-text small{font-size:12px;line-height:1.45;color:var(--muted);max-width:56ch;}
+.set-row-text small a,.set-row-text small .job-os-link{color:var(--accent-text,var(--accent));}
+.set-row-text small code{font-size:11.5px;}
+.set-row-control{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;min-width:0;}
+.set-row .set-input,.set-row .set-row-control .themed-select-wrap{width:min(300px,42vw);}
+.set-row .set-row-control>.themed-select-wrap .set-input{width:100%;}
+.set-input{box-sizing:border-box;min-height:36px;border:1px solid var(--border2);border-radius:8px;background:var(--input-bg,var(--bg));color:var(--text);padding:7px 10px;font:inherit;font-size:13px;transition:border-color .15s ease;}
+.set-input:focus{outline:none;border-color:var(--accent);}
+.set-input::placeholder{color:color-mix(in srgb,var(--muted) 80%,transparent);}
+.set-row .themed-select-trigger{min-height:36px;border-color:var(--border2);border-radius:8px;font-size:13px;}
+.set-number{display:inline-flex;align-items:center;gap:8px;}
+.set-row .set-number .set-input{width:84px;text-align:right;font-variant-numeric:tabular-nums;}
+.set-number em{min-width:52px;font-style:normal;font-size:12px;color:var(--muted);}
+.set-value{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;}
+.set-row.is-stack{flex-direction:column;align-items:stretch;gap:10px;}
+.set-row.is-stack .set-row-control{justify-content:stretch;}
+.set-row.is-stack .set-input{width:100%;resize:vertical;line-height:1.5;}
+.set-row.is-sub{padding-left:34px;background:color-mix(in srgb,var(--surface) 35%,transparent);}
+.set-row.is-off .set-row-text,.set-row.is-off .set-row-control{opacity:.5;transition:opacity .2s ease;}
+.set-row.is-off:focus-within .set-row-text,.set-row.is-off:focus-within .set-row-control{opacity:1;}
+/* Switch rows: the whole row is the click target; no box of their own. */
+.job-os-settings .set-switch.job-os-toggle{flex-direction:row;align-items:center;justify-content:space-between;gap:20px;padding:11px 16px;border:0;border-radius:0;background:none;cursor:pointer;}
+.job-os-settings .set-switch.job-os-toggle.is-sub{padding-left:34px;background:color-mix(in srgb,var(--surface) 35%,transparent);}
+.job-os-settings .set-switch.job-os-toggle:hover{border-color:transparent;background:color-mix(in srgb,var(--accent) 5%,transparent);}
+.set-switch .set-row-control{position:relative;}
+.job-os-settings .set-rows>.set-row+.set-switch.job-os-toggle{border-top:1px solid color-mix(in srgb,var(--border2) 75%,transparent);}
+.job-os-settings .set-row-text small{color:var(--muted);font-weight:400;}
+.job-os-settings .set-row-text .set-row-label{color:var(--text);}
+.set-head p .job-os-link{padding:0;margin:0;vertical-align:baseline;}
+.set-group-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:0 2px;font-size:12px;line-height:1.5;color:var(--muted);}
+.set-group-foot>p{margin:0;flex:1 1 260px;}
+.set-group-foot .job-os-gmail-msg:empty{display:none;}
+.set-foot-actions{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto;}
+.set-group-foot .job-os-notify-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;width:100%;}
+.set-group-foot .job-os-notify-status>p{margin:0;flex:1 1 260px;}
+.set-group-foot .job-os-email-log{width:100%;}
+.set-group-foot .apify-cost{margin:0;}
+.set-row .job-os-inline-select{display:inline-flex;}
+.set-row .job-os-inline-select .themed-select-wrap,.set-row .job-os-inline-select select{width:150px;}
+@media (max-width:640px){
+  .set-row{flex-direction:column;align-items:stretch;gap:8px;padding:12px 14px;}
+  .set-row-control{justify-content:flex-start;flex-wrap:wrap;}
+  .set-row .set-input,.set-row .set-row-control .themed-select-wrap{width:100%;}
+  .set-row.is-sub,.job-os-settings .set-switch.job-os-toggle.is-sub{padding-left:22px;}
+  .job-os-settings .set-switch.job-os-toggle{flex-direction:row;align-items:center;padding:12px 14px;}
+  .set-head h2{font-size:18px;}
+  .set-row .set-row-control:has(.job-os-inline-select){flex-wrap:nowrap;}
+  .set-row .job-os-inline-select{flex:1 1 auto;min-width:0;}
+  .set-row .job-os-inline-select .themed-select-wrap,.set-row .job-os-inline-select select{width:100%;}
+}
 @media (max-width:767px){
   .settings-layout{display:block;}
   .settings-layout:not(.has-section) .settings-page{display:none;}

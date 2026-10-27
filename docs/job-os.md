@@ -537,3 +537,14 @@ gaps and ones now **Gone**.
 
 Adapted from ai-job-search's `/upskill` aggregate mode
 (github.com/ai-job-search-dev/ai-job-search, MIT).
+
+## Settings layout
+
+Jobs → Settings keeps the section list on the left (a grouped list on a
+phone) and shows one section at a time. Each section is a short header and a
+few **groups**: one panel of rows, the label and a hint on the left and the
+control on the right. Options that only matter when a switch is on sit in
+that switch's group, indented and dimmed while it is off (they stay
+editable). Status lines and one-off actions (Test connection, Send digest
+now, Check now) sit under their group, not between the options. Below 640px
+each row stacks its control under the label; switches stay on the right.

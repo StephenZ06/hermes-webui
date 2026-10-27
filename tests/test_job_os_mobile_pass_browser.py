@@ -146,6 +146,9 @@ def _connections(page):
 
 
 def test_connections_fill_the_card_and_gmail_actions_sit_below_the_sender_choice():
+    """Settings groups on a phone: every row and the footer actions stay inside
+    the group's width, the test-email choice and its button share a line, and
+    Replace and Disconnect sit together in the footer."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser, page = _open(pw, "#jobs/settings")
@@ -154,26 +157,23 @@ def test_connections_fill_the_card_and_gmail_actions_sit_below_the_sender_choice
             m = page.evaluate("""() => {
               const box = (el) => { const r = el.getBoundingClientRect(); return {x: r.x, y: r.y, w: r.width, h: r.height, r: r.right}; };
               const conn = document.querySelector('#job-os-gmail');
+              const rows = conn.querySelector('.set-rows');
               const pick = conn.querySelector('.job-os-inline-select');
-              const trigger = pick.querySelector('.themed-select-trigger') || pick.querySelector('select');
-              const buttons = [...conn.querySelectorAll('.job-os-actions .job-os-btn')].map(box);
-              return {conn: box(conn), pick: box(pick), trigger: box(trigger), buttons,
-                labels: [...conn.querySelectorAll('.job-os-actions .job-os-btn')].map((b) => b.textContent.trim()),
-                test: box(document.querySelector('[data-job-os-action="test-firecrawl"]')),
+              const send = conn.querySelector('[data-job-os-action="gmail-test"]');
+              const foot = [...conn.querySelectorAll('.set-group-foot .job-os-btn')];
+              return {rows: box(rows), pick: box(pick), send: box(send), foot: foot.map(box),
+                labels: foot.map((b) => b.textContent.trim()),
+                inside: [...conn.querySelectorAll('.set-row, .set-row *')].every((el) => { const r = el.getBoundingClientRect(); return r.width === 0 || r.right <= box(rows).r + 1; }),
                 site: box(document.querySelector('.site-health-row'))};
             }""")
-            assert m["labels"] == ["Send test email", "Replace", "Disconnect"]
-            assert m["pick"]["y"] + m["pick"]["h"] <= m["buttons"][0]["y"] + 1, "the three buttons come after the sender choice"
-            assert len({round(b["y"]) for b in m["buttons"]} ) == 1, "one row"
-            assert abs(m["trigger"]["h"] - m["buttons"][0]["h"]) <= 1, (m["trigger"], m["buttons"][0])
-            gaps = [round(m["buttons"][i + 1]["x"] - m["buttons"][i]["r"], 1) for i in range(2)]
-            assert abs(gaps[0] - gaps[1]) <= 0.6, gaps
-            assert abs(m["buttons"][0]["x"] - m["conn"]["x"] - (m["conn"]["r"] - m["buttons"][2]["r"])) <= 1.5, "buttons reach both edges of the card"
-            assert abs(m["test"]["w"] - (m["conn"]["w"] - (m["buttons"][0]["x"] - m["conn"]["x"]) * 2)) <= 1.5, "Test connection spans the card"
-            assert abs((m["site"]["x"] + m["site"]["w"]) - (m["buttons"][2]["r"])) <= 1.5, "job site rows reach the right edge"
+            assert m["labels"] == ["Replace", "Disconnect"]
+            assert m["inside"], "nothing in a row overflows the group"
+            assert abs(m["pick"]["y"] + m["pick"]["h"] / 2 - (m["send"]["y"] + m["send"]["h"] / 2)) <= 2, "choice and button on one line"
+            assert len({round(b["y"]) for b in m["foot"]}) == 1, "footer actions on one row"
+            assert m["foot"][-1]["r"] <= m["rows"]["r"] + 1
+            assert abs(m["site"]["x"] + m["site"]["w"] - m["rows"]["r"]) <= 1.5, "job site rows span the group"
         finally:
             browser.close()
-
 
 def test_settings_save_bar_never_sits_over_the_last_fields():
     sync_api = pytest.importorskip("playwright.sync_api")

@@ -112,7 +112,7 @@ def test_settings_toggles_keep_their_hidden_checkbox_inside_the_label():
                 inputs.push(...host.querySelectorAll('.job-os-toggle input'));
               }
               inputs.forEach((i) => { const box = document.createElement('div'); box.className = 'job-os-settings'; host.appendChild(i.closest('.job-os-toggle')); });
-              const result = {count: inputs.length, outside: inputs.filter((i) => i.offsetParent !== i.closest('.job-os-toggle')).length};
+              const result = {count: inputs.length, outside: inputs.filter((i) => !i.offsetParent || !i.closest('.job-os-toggle').contains(i.offsetParent)).length};
               host.remove();
               return result;
             }""")
