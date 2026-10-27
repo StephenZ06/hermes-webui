@@ -198,6 +198,52 @@ def test_character_page_fits_a_phone(browser):
     assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
 
 
+def test_zeus_dashboard_sidepanel_content_sits_point_one_pixels_higher(browser):
+    page = _open(browser, viewport={"width": 1280, "height": 860})
+    page.evaluate("""() => {
+        localStorage.setItem('hermes-skin', 'zeus-2');
+        localStorage.setItem('hermes-dashboard-level', '1');
+        document.documentElement.dataset.skin = 'zeus-2';
+    }""")
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector("#dashboardSidebar .side-menu-item[data-dash-tab='character'] .side-menu-label", timeout=15000)
+
+    for width, height in [(1440, 900), (1024, 768), (390, 844)]:
+        page.set_viewport_size({"width": width, "height": height})
+        measurements = page.evaluate("""() => [...document.querySelectorAll('#dashboardSidebar .side-menu-item')].map((button) => {
+            const label = button.querySelector('.side-menu-label');
+            const icon = button.querySelector('svg');
+            const box = button.getBoundingClientRect();
+            const text = document.createRange();
+            text.selectNodeContents(label);
+            const textBox = text.getBoundingClientRect();
+            const iconBox = icon.getBoundingClientRect();
+            const badge = button.querySelector('.dash-level-badge')?.getBoundingClientRect();
+            const contentTop = Math.min(textBox.top, iconBox.top, badge?.top ?? Infinity);
+            const contentBottom = Math.max(textBox.bottom, iconBox.bottom, badge?.bottom ?? -Infinity);
+            return {
+                label: label.textContent.trim(),
+                lineHeight: getComputedStyle(button).lineHeight,
+                textCenterOffset: (textBox.top + textBox.bottom - box.top - box.bottom) / 2,
+                iconCenterOffset: (iconBox.top + iconBox.bottom - box.top - box.bottom) / 2,
+                badgeCenterOffset: badge ? (badge.top + badge.bottom - box.top - box.bottom) / 2 : null,
+                contentGapDifference: (contentTop - box.top) - (box.bottom - contentBottom),
+                buttonTransform: getComputedStyle(button).transform,
+            };
+        })""")
+        assert {item["label"] for item in measurements} == {
+            "Character", "Shop", "Personal", "Career", "Business", "Settings"
+        }
+        for item in measurements:
+            assert item["lineHeight"] != "normal", item
+            assert item["buttonTransform"] == "none", item
+            assert -0.15 <= item["textCenterOffset"] <= -0.05, item
+            assert -0.15 <= item["iconCenterOffset"] <= -0.05, item
+            assert -0.3 <= item["contentGapDifference"] <= -0.1, item
+            if item["label"] == "Character":
+                assert -0.15 <= item["badgeCenterOffset"] <= -0.05, item
+
+
 def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("""async () => {

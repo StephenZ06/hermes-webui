@@ -134,3 +134,13 @@ def test_composer_option_text_descenders_are_not_clipped(phone):
     clip, glyphs = page.evaluate("""() => { const v = document.querySelector('#composerMobileReasoningAction .composer-mobile-config-value');
         const r = document.createRange(); r.selectNodeContents(v); return [v.getBoundingClientRect().bottom, r.getBoundingClientRect().bottom]; }""")
     assert clip >= glyphs
+
+
+def test_zeus_chat_controls_shift_down_by_a_tenth_of_a_pixel(phone):
+    phone.evaluate("() => { document.documentElement.dataset.skin = 'zeus-2'; }")
+    tops = phone.evaluate("""() => [
+        document.getElementById('sessionSearch'),
+        document.querySelector('#mainChat .suggestion'),
+        document.getElementById('msg')
+    ].map(element => getComputedStyle(element).top)""")
+    assert tops == ['0.1px', '0.1px', '0.1px']
