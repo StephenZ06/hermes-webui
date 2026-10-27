@@ -20,6 +20,11 @@ from api.job_os.repository import get_job
 
 logger = logging.getLogger(__name__)
 VERDICTS = ("strong", "good", "stretch", "poor")
+# Stored with each analysis, so Score again can find the ones made by an older prompt.
+# 2: eligibility and language gates, closing date, dimension scores.
+ANALYSIS_PROMPT_VERSION = 2
+ELIGIBILITY = ("pass", "fail", "unverified")
+LANGUAGE = ("pass", "fail", "flag", "unverified")
 _worker_lock = threading.Lock()
 _worker: threading.Thread | None = None
 _recovered = False
@@ -32,15 +37,53 @@ SYSTEM = (
     '"salary_note": "<pay info or empty>"}\n'
     "Scoring: 85+ strong match on most must-haves; 70-84 good; 50-69 stretch; under 50 poor. "
     "Strengths must cite things actually in the resume; never invent experience. Up to 5 items per list, "
-    "each under 120 characters. " + llm.UNTRUSTED
+    "each under 120 characters.\n"
+    "Also return \"gates\": {\"eligibility\": \"pass|fail|unverified\", \"eligibility_quote\": \"<posting wording>\", "
+    "\"language\": \"pass|fail|flag|unverified\", \"language_quote\": \"<posting wording>\"}, judged against the "
+    "candidate PROFILE. Eligibility: a citizenship, permanent-residency or security-clearance requirement the profile "
+    "does not meet is fail; a posting that accepts visa holders or offers sponsorship is pass; a posting that says "
+    "nothing about the right to work is unverified, never pass. Language: a required language the profile does not "
+    "list is fail; a required level above the profile's stated level is flag; otherwise pass. If the profile does not "
+    "say, answer unverified. Quotes are the posting's own words, under 160 characters, or empty. " + llm.UNTRUSTED
 )
+
+
+def profile_block(settings: dict | None = None) -> str:
+    """The candidate facts the gates are judged against (Settings → Application answers)."""
+    if settings is None:
+        from api.job_os.settings import load_settings
+
+        settings = load_settings()
+    apply, applicant = settings.get("apply") or {}, settings.get("applicant") or {}
+    rows = [("Right to work", apply.get("work_authorization")), ("Languages", apply.get("languages")),
+            ("Relocation", apply.get("relocation")), ("Based in", applicant.get("location"))]
+    return "\n".join(f"{label}: {str(value or '').strip() or 'not stated'}" for label, value in rows)
+
+
+def _gates(data: dict, profile: str) -> dict:
+    """The gates, failing closed: a missing or unknown answer is never a pass."""
+    raw = data.get("gates") if isinstance(data.get("gates"), dict) else {}
+    eligibility = str(raw.get("eligibility") or "").lower()
+    language = str(raw.get("language") or "").lower()
+    eligibility = eligibility if eligibility in ELIGIBILITY else "unverified"
+    language = language if language in LANGUAGE else "flag"
+    facts = dict(line.split(": ", 1) for line in profile.splitlines() if ": " in line)
+    # Without the person's own answer a requirement can't be judged either way.
+    if facts.get("Right to work", "not stated") == "not stated" and eligibility != "unverified":
+        eligibility = "unverified"
+    if facts.get("Languages", "not stated") == "not stated" and language != "pass":
+        language = "unverified"
+    quote = lambda key: str(raw.get(key) or "").strip()[:160]  # noqa: E731
+    return {"eligibility": eligibility, "eligibility_quote": quote("eligibility_quote"),
+            "language": language, "language_quote": quote("language_quote"),
+            "profile_missing": [k for k in ("Right to work", "Languages") if facts.get(k, "not stated") == "not stated"]}
 
 
 class AnalysisError(ValueError):
     """Analysis cannot be requested (HTTP 400)."""
 
 
-def _clean(data: dict) -> dict:
+def _clean(data: dict, profile: str = "") -> dict:
     def items(key):
         values = data.get(key) if isinstance(data.get(key), list) else []
         return [str(v).strip()[:160] for v in values if str(v).strip()][:5]
@@ -51,7 +94,10 @@ def _clean(data: dict) -> dict:
     verdict = str(data.get("verdict") or "").lower()
     if verdict not in VERDICTS:
         verdict = "strong" if score >= 85 else "good" if score >= 70 else "stretch" if score >= 50 else "poor"
-    return {"fit_score": score, "verdict": verdict, "summary": str(data.get("summary") or "").strip()[:400],
+    gates = _gates(data, profile)
+    if "fail" in (gates["eligibility"], gates["language"]):
+        verdict = "poor"  # a job you can't take is never a good match, whatever the skills say
+    return {"fit_score": score, "verdict": verdict, "gates": gates, "prompt_version": ANALYSIS_PROMPT_VERSION, "summary": str(data.get("summary") or "").strip()[:400],
             "strengths": items("strengths"), "gaps": items("gaps"), "must_haves": items("must_haves"),
             "seniority": str(data.get("seniority") or "").strip()[:60],
             "salary_note": str(data.get("salary_note") or "").strip()[:160]}
@@ -61,7 +107,12 @@ def _row(row) -> dict:
     data = json.loads(row["data_json"] or "{}")
     return {"job_id": row["job_id"], "status": row["status"], "fit_score": row["fit_score"], "verdict": row["verdict"],
             "error": row["error"], "model": row["model"], "requested_at": row["requested_at"],
-            "finished_at": row["finished_at"], **{k: data.get(k) for k in ("summary", "strengths", "gaps", "must_haves", "seniority", "salary_note")}}
+            "finished_at": row["finished_at"], **{k: data.get(k) for k in DETAIL_KEYS}}
+
+
+DETAIL_KEYS = ("summary", "strengths", "gaps", "must_haves", "seniority", "salary_note", "gates", "prompt_version")
+# What list payloads carry besides the score: enough for the checks on a card.
+COMPACT_KEYS = ("gates",)
 
 
 def get_analysis(job_id: str) -> dict | None:
@@ -77,8 +128,15 @@ def analyses_by_job() -> dict[str, dict]:
     """Compact per-job analysis state for list payloads."""
     conn = connect_job_os()
     try:
-        return {r["job_id"]: {"status": r["status"], "fit_score": r["fit_score"], "verdict": r["verdict"]}
-                for r in conn.execute("SELECT job_id, status, fit_score, verdict FROM job_analyses")}
+        out = {}
+        for r in conn.execute("SELECT job_id, status, fit_score, verdict, data_json FROM job_analyses"):
+            try:
+                data = json.loads(r["data_json"] or "{}")
+            except ValueError:
+                data = {}
+            out[r["job_id"]] = {"status": r["status"], "fit_score": r["fit_score"], "verdict": r["verdict"],
+                                **{k: data[k] for k in COMPACT_KEYS if k in data}}
+        return out
     finally:
         conn.close()
 
@@ -127,8 +185,14 @@ def posting_text(job) -> str:
 def score_text(job, resume_text: str) -> dict:
     """Luna's fit of any resume text against a job, with the same prompt and
     scale as the master resume's analysis (so the two are comparable)."""
-    data, _model = llm.ask_json(SYSTEM, f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume_text[:14000]}\nRESUME>>>")
-    return _clean(data)
+    profile = profile_block()
+    data, _model = llm.ask_json(SYSTEM, _prompt(job, resume_text, profile))
+    return _clean(data, profile)
+
+
+def _prompt(job, resume_text: str, profile: str) -> str:
+    return (f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume_text[:14000]}\nRESUME>>>\n\n"
+            f"<<<PROFILE\n{profile}\nPROFILE>>>")
 
 
 def analyze_one(job_id: str) -> dict:
@@ -147,8 +211,9 @@ def analyze_one(job_id: str) -> dict:
     try:
         if job is None or resume is None:
             raise llm.LLMError("The job or the resume is no longer available.")
-        data, model = llm.ask_json(SYSTEM, f"<<<POSTING\n{posting_text(job)}\nPOSTING>>>\n\n<<<RESUME\n{resume['text'][:14000]}\nRESUME>>>")
-        result = _clean(data)
+        profile = profile_block()
+        data, model = llm.ask_json(SYSTEM, _prompt(job, resume["text"], profile))
+        result = _clean(data, profile)
         conn = connect_job_os()
         try:
             conn.execute("UPDATE job_analyses SET status='done', fit_score=?, verdict=?, data_json=?, model=?, error='', finished_at=? WHERE job_id=?",

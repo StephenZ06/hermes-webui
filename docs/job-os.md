@@ -378,3 +378,27 @@ guard were checked once by migration 13 (their text was left as it was),
 and Luna always reads the cleaned text.
 
 Adapted from ai-job-search (github.com/ai-job-search-dev/ai-job-search, MIT).
+
+## Eligibility and language gates
+
+The scoring call also judges two gates against **Settings → Application
+answers** (right to work, languages, relocation, and your location), quoting
+the posting's own words:
+
+- **Eligibility:** a citizenship, permanent-residency or security-clearance
+  requirement you don't meet is a **fail**; explicit visa or sponsorship
+  acceptance is a pass; a posting that says nothing is **unverified**, never
+  a pass.
+- **Language:** a required language you don't list is a **fail**; a level
+  above the one you state is a **flag**.
+
+Answers that are missing or invalid count as unverified (fail closed), and
+with your right to work or languages left blank every gate is unverified and
+the job's Checks say *Add your work authorisation and languages in
+Settings*. A failed gate caps the verdict at poor (the skills score is kept)
+and keeps the job out of the Scout inbox, the good-match email and Automate
+all. It stays on the board with a red chip ("Not eligible", "Language") and
+the quote; **Ignore this check** in the job's side panel releases it (stored
+per job in `jobs.overrides_json`, logged in its activity, and reversible with
+**Check again**). Analyses carry `prompt_version` (2 from this change);
+older ones show no gates until scored again.

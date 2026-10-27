@@ -51,6 +51,7 @@
     applyKit: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/apply-kit', {method: 'POST', body: '{}'}),
     interviewPrep: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/interview-prep', {method: 'POST', body: '{}'}),
     markApplied: (id, note) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/applied', {method: 'POST', body: JSON.stringify({note: note || ''})}),
+    overrideCheck: (id, check, on) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/override', {method: 'POST', body: JSON.stringify({check, on: !!on})}),
     addNote: (id, text) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/note', {method: 'POST', body: JSON.stringify({text})}),
     timeline: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/timeline'),
     tailor: (id) => request('/api/job-os/jobs/' + encodeURIComponent(id) + '/tailor', {method: 'POST', body: '{}'}),

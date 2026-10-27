@@ -356,6 +356,13 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             j(handler, applications.move_to_column(job_id, str(body.get("column") or ""), expected_revision=revision,
                                                    status=str(status) if isinstance(status, str) else None))
             return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/override"):
+            from api.job_os import checks
+
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):]).rsplit("/", 1)[0].strip("/")
+            checks.set_override(job_id, str(body.get("check") or ""), bool(body.get("on")))
+            j(handler, {"job": _job_payload(get_job(job_id), detail=True)})
+            return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/applied", "/note")):
             from api.job_os import applications
 
@@ -585,7 +592,7 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         return True
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
-                                                                                "/interview-prep", "/move"))):
+                                                                                "/interview-prep", "/move", "/override"))):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled

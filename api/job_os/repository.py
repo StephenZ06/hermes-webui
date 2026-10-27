@@ -123,7 +123,16 @@ def _record_from_row(row: sqlite3.Row) -> JobRecord:
         run_id=row["run_id"],
         country=row["country"],
         guard=_guard(row),
+        overrides=_overrides(row),
     )
+
+
+def _overrides(row: sqlite3.Row) -> tuple:
+    try:
+        value = json.loads(row["overrides_json"] or "[]")
+    except (IndexError, KeyError, ValueError):
+        return ()
+    return tuple(str(v) for v in value) if isinstance(value, list) else ()
 
 
 def _guard(row: sqlite3.Row) -> dict:

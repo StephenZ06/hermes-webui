@@ -208,17 +208,21 @@
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
   // Checks the server ran on a job (posting guard, gates, deadlines): the card
   // shows the most serious one, the drawer lists them all with the quotes.
-  const CHECK_ICON = {guard: 'shield'};
+  const CHECK_ICON = {guard: 'shield', profile: 'edit'};
+  const HOLDING = ['eligibility', 'language', 'location'];
   function checkChip(job) {
-    const c = (job.checks || [])[0];
+    const shown = (job.checks || []).filter((x) => x.short && x.tone !== 'muted');
+    const c = shown[0];
     if (!c) return '';
-    const more = (job.checks || []).length - 1;
+    const more = shown.length - 1;
     return `<span class="job-check" data-tone="${esc(c.tone)}" data-check="${esc(c.key)}" aria-label="${esc(c.label)}">${icon(CHECK_ICON[c.key] || 'attention', 13)}<span>${esc(c.short || c.label)}</span>${more > 0 ? `<b>+${more}</b>` : ''}</span>`;
   }
   function checksPanel(job) {
     const list = job.checks || [];
     if (!list.length) return '';
-    const rows = list.map((c) => `<li class="job-check-row" data-tone="${esc(c.tone)}" data-check="${esc(c.key)}">${icon(CHECK_ICON[c.key] || 'attention', 16)}<div><strong>${esc(c.label)}</strong>${c.detail ? `<p>${esc(c.detail)}</p>` : ''}${(c.quotes || []).map((q) => `<q>${esc(q)}</q>`).join('')}${(c.actions || []).map((a) => `<button type="button" class="job-os-btn small" data-job-os-action="${esc(a.action)}" data-check="${esc(c.key)}"${a.value != null ? ` data-value="${esc(a.value)}"` : ''}>${esc(a.label)}</button>`).join('')}</div></li>`).join('');
+    const rows = list.map((c) => `<li class="job-check-row" data-tone="${esc(c.tone)}" data-check="${esc(c.key)}">${icon(CHECK_ICON[c.key] || 'attention', 16)}<div><strong>${esc(c.label)}</strong>${c.detail ? `<p>${esc(c.detail)}</p>` : ''}${(c.quotes || []).map((q) => `<q>${esc(q)}</q>`).join('')}${(c.actions || []).map((a) => (a.view
+      ? `<button type="button" class="job-os-btn small" data-job-os-view="${esc(a.view)}">${esc(a.label)}</button>`
+      : `<button type="button" class="job-os-btn small" data-job-os-action="${esc(a.action)}" data-check="${esc(c.key)}"${a.value != null ? ` data-value="${esc(a.value)}"` : ''}>${esc(a.label)}</button>`)).join('')}</div></li>`).join('');
     return `<section class="job-drawer-section job-checks"><h3>Checks</h3><ul>${rows}</ul></section>`;
   }
   function jobChips(job) {
@@ -652,7 +656,8 @@
     return `<section class="job-os-card job-os-empty pipe-empty-state"><strong>${title}</strong><p>${body}</p><div class="job-os-actions">${actions}</div></section>`;
   }
   // ---- Job drawer: details, actions, notes -----------------------------------------
-  const EVENT_TEXT = {job_created: 'Saved', application_submitted: 'Applied', details_edited: 'Details edited'};
+  const EVENT_TEXT = {job_created: 'Saved', application_submitted: 'Applied', details_edited: 'Details edited',
+    check_ignored: 'A check was ignored', check_restored: 'A check was restored'};
   function activity(state) {
     const items = (state.jobTimeline || []).slice().reverse().filter((e) => e.type === 'note' || e.type === 'status_changed' || EVENT_TEXT[e.type]);
     const rows = items.slice(0, 30).map((e) => {
@@ -1170,7 +1175,10 @@
     if (analysing(job)) return `<div class="job-os-analysis is-busy">${emptyRing(' large is-busy', '…')}<div>${statusLine(['Luna is reading the posting…', 'Comparing it with your resume…', 'Scoring the match…'])}<div class="analysis-shimmer"><i></i><i></i><i></i></div></div></div>`;
     if (a.status === 'failed') return `<div class="job-os-analysis is-failed">${emptyRing(' large is-failed', '!')}<div><strong>Analysis failed</strong><p>${esc(a.error || '')}</p></div></div>`;
     const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
-    return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${band(a.fit_score)[1]}">${esc(band(a.fit_score)[2])} · ${Number(a.fit_score)}%</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
+    // A failed gate outranks the skills score: the headline says the job is held back.
+    const held = (job.checks || []).some((c) => c.tone === 'danger' && HOLDING.includes(c.key));
+    const headline = held ? `Held back by a check · ${Number(a.fit_score)}% skills fit` : `${band(a.fit_score)[2]} · ${Number(a.fit_score)}%`;
+    return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${held ? 'poor' : band(a.fit_score)[1]}">${esc(headline)}</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
       ${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
       <div class="analysis-cols">${a.strengths && a.strengths.length ? `<div><h4>Strengths</h4>${list(a.strengths, 'is-good')}</div>` : ''}${a.gaps && a.gaps.length ? `<div><h4>Gaps</h4>${list(a.gaps, 'is-gap')}</div>` : ''}${a.must_haves && a.must_haves.length ? `<div><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}</div>
       ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div></div>`;

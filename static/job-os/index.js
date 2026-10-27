@@ -502,7 +502,7 @@
     const state = window.JobOSState;
     if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'settings-list', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
@@ -777,6 +777,13 @@
     const state = window.JobOSState;
     const job = state.jobDetail;
     if (name === 'job-status') return setJobStatus(el.dataset.status);
+    if (name === 'check-override' && job) {
+      try {
+        await window.JobOSApi.overrideCheck(job.id, el.dataset.check, el.dataset.value === '1');
+        if (typeof window.showToast === 'function') window.showToast(el.dataset.value === '1' ? 'Check ignored for this job' : 'Check restored');
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not change the check'); }
+      return refresh();
+    }
     if (name === 'job-interview' && job) {
       try { await window.JobOSApi.interviewPrep(job.id); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not start interview prep'); }

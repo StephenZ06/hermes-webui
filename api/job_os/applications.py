@@ -127,9 +127,9 @@ def _signals() -> tuple[dict, dict, dict, dict]:
         for r in conn.execute("SELECT d.job_id, d.status FROM job_documents d WHERE d.created_at = (SELECT MAX(created_at)"
                               " FROM job_documents WHERE job_id=d.job_id AND kind=d.kind)"):
             docs.setdefault(r["job_id"], []).append(r["status"])
-        analyses = {r["job_id"]: {"status": r["status"], "fit_score": r["fit_score"], "verdict": r["verdict"]}
-                    for r in conn.execute("SELECT job_id, status, fit_score, verdict FROM job_analyses")}
-        return applied, changed, docs, {"analyses": analyses}
+        from api.job_os.analysis import analyses_by_job
+
+        return applied, changed, docs, {"analyses": analyses_by_job()}
     finally:
         conn.close()
 

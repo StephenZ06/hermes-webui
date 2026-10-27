@@ -150,9 +150,19 @@ def pending_matches(settings: dict, *, now: int | None = None) -> list[dict]:
             " AND NOT EXISTS (SELECT 1 FROM job_events e WHERE e.job_id=j.id AND e.event_type IN ('match_notified', 'match_released'))"
             " ORDER BY a.fit_score DESC, a.finished_at DESC",
             (settings["notifications"]["min_fit_score"], now - MATCH_WINDOW)).fetchall()
-        return [{**dict(r), "summary": json.loads(r["data_json"] or "{}").get("summary", "")} for r in rows]
+        return [{**dict(r), "summary": json.loads(r["data_json"] or "{}").get("summary", "")} for r in rows
+                if not _held(r)]
     finally:
         conn.close()
+
+
+def _held(row) -> bool:
+    """A job whose gate failed (and wasn't ignored) is never announced as a good match."""
+    from api.job_os.checks import held_by
+    from api.job_os.repository import get_job
+
+    job = get_job(row["id"])
+    return job is None or bool(held_by(job, {"status": "done", **json.loads(row["data_json"] or "{}")}))
 
 
 def _job_block(job: dict, codes: dict[str, str] | None) -> str:

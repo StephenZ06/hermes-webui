@@ -91,3 +91,5 @@ class JobRecord:
     run_id: str | None = None
     country: str = ""
     guard: dict = field(default_factory=dict)
+    # Checks the person chose to ignore on this job (``checks.OVERRIDABLE``).
+    overrides: tuple = ()

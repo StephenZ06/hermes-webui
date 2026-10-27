@@ -295,9 +295,15 @@ def _migration_13(connection: sqlite3.Connection) -> None:
         connection.execute("UPDATE jobs SET guard_json = ? WHERE id = ?", (json.dumps(findings), row[0]))
 
 
+def _migration_14(connection: sqlite3.Connection) -> None:
+    """Checks you chose to ignore on a job (a failed gate you know doesn't apply)."""
+    connection.execute("ALTER TABLE jobs ADD COLUMN overrides_json TEXT NOT NULL DEFAULT '[]'")
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
               (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10),
-              (11, _migration_11), (12, _migration_12), (13, _migration_13))
+              (11, _migration_11), (12, _migration_12), (13, _migration_13),
+              (14, _migration_14))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

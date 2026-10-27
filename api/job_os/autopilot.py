@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import time
 
+from api.job_os.checks import held_by
 from api.job_os.db import connect_job_os
 from api.job_os.models import JobStatus
 from api.job_os.repository import get_job
@@ -46,6 +47,9 @@ def automate(job_ids: list[str], *, start_workers: bool = True) -> dict:
             out["skipped"] += 1
             continue
         state = scores.get(job_id) or {}
+        if held_by(job, state):
+            out["skipped"] += 1  # a failed gate: you can't take this job (ignore the check to tailor it)
+            continue
         if state.get("status") in ("done", "failed"):
             try:
                 tailor.request_tailoring(job_id, start_worker=False)
@@ -95,6 +99,11 @@ def after_analysis(job_id: str, fit_score: int | None, *, start_worker: bool = T
     finally:
         conn.close()
     if fit_score is not None and fit_score < MIN_FIT:
+        return False
+    from api.job_os.analysis import get_analysis
+
+    job = get_job(job_id)
+    if job is None or held_by(job, get_analysis(job_id)):
         return False
     try:
         tailor.request_tailoring(job_id, start_worker=start_worker)
