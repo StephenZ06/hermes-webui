@@ -61,6 +61,9 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         from api.job_os.apply_kit import get_kit
 
         payload["apply_kit"] = get_kit(job.id)
+        from api.job_os.followup import state as follow_up_state
+
+        payload["follow_up"] = follow_up_state(job)
     elif analyses is not None:
         payload["analysis"] = analyses.get(job.id)
     return payload
@@ -240,6 +243,15 @@ def _scout_get(handler, parsed) -> bool:
 
         j(handler, {"notifications": notify.status()})
         return True
+    if path == f"{_PREFIX}/follow-ups/stale":
+        from api.job_os import followup
+
+        try:
+            days = max(14, min(int(parse_qs(parsed.query or "").get("days", [str(followup.STALE_DAYS)])[0]), 365))
+        except ValueError:
+            days = followup.STALE_DAYS
+        j(handler, {"stale": followup.stale(days), "days": days})
+        return True
     if path == f"{_PREFIX}/funnel":
         from api.job_os import applications
 
@@ -356,6 +368,24 @@ def _resume_and_analysis_post(handler, path: str, body: dict) -> bool | None:
             status = body.get("status")
             j(handler, applications.move_to_column(job_id, str(body.get("column") or ""), expected_revision=revision,
                                                    status=str(status) if isinstance(status, str) else None))
+            return True
+        if path.startswith(f"{_PREFIX}/jobs/") and path.endswith(("/follow-up", "/follow-up/sent")):
+            from api.job_os import followup
+
+            sent = path.endswith("/sent")
+            job_id = unquote(path[len(f"{_PREFIX}/jobs/"):-len("/follow-up/sent" if sent else "/follow-up")]).strip("/")
+            try:
+                j(handler, {"follow_up": followup.mark_sent(job_id) if sent else followup.request(job_id)})
+            except followup.FollowUpError as error:
+                return _error(handler, str(error), 400)
+            return True
+        if path == f"{_PREFIX}/follow-ups/sweep":
+            from api.job_os import followup
+
+            ids = body.get("job_ids")
+            if not isinstance(ids, list) or not ids or len(ids) > 200:
+                return _error(handler, "job_ids must list 1-200 jobs", 400)
+            j(handler, followup.sweep([str(i) for i in ids]))
             return True
         if path.startswith(f"{_PREFIX}/jobs/") and path.endswith("/override"):
             from api.job_os import checks
@@ -593,7 +623,8 @@ def handle_job_os_post(handler, parsed, body) -> bool:
         return True
     if parsed.path in {f"{_PREFIX}/resume", f"{_PREFIX}/analyze"} or parsed.path.startswith(f"{_PREFIX}/documents/") or (
             parsed.path.startswith(f"{_PREFIX}/jobs/") and parsed.path.endswith(("/analyze", "/details", "/tailor", "/ready", "/applied", "/note",
-                                                                                "/interview-prep", "/move", "/override"))):
+                                                                                "/interview-prep", "/move", "/override", "/follow-up", "/follow-up/sent"))
+            or parsed.path == f"{_PREFIX}/follow-ups/sweep"):
         handled = _resume_and_analysis_post(handler, parsed.path, body if isinstance(body, dict) else {})
         if handled is not None:
             return handled

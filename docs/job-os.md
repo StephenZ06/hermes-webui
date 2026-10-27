@@ -445,3 +445,26 @@ an on-site or hybrid job somewhere you won't move to is a **fail** and holds
 the job back exactly like a failed gate (red "Location" chip, ignorable per
 job); unclear is a **flag**. The Pipeline's List view can sort by any
 dimension.
+
+## Following up
+
+An application with no news for 7 days (Applied, Screening, Interviewing)
+gets a **Follow up** section in its side panel (`api/job_os/followup.py`):
+
+- **Draft follow-up** makes one Luna call with the posting and the tailored
+  resume and cover letter you sent (the master resume when nothing was
+  tailored). The draft is 60–120 words, uses only claims from what you sent,
+  reminds them of one strength and asks one question about timing, in your
+  letter's tone, as an email (with a subject), a LinkedIn message or a portal
+  note. Numbers that aren't in what you sent are flagged to check.
+- **Never sent by Hermes.** Copy it, or **Open in mail** (`mailto:`), then
+  press **I sent it**: the follow-up is logged on the job and the quiet clock
+  (and the board's "follow up?" nudge) restarts.
+- **Two follow-ups at most.** After the second the panel offers **Mark no
+  response**. A status change after a draft (an employer reply read from
+  Gmail, a drag) retires the draft.
+
+**Quiet applications:** when any application has had no news for 60 days the
+Pipeline toolbar shows "N quiet". It opens a centred window listing them
+(30, 45, 60 or 90+ days), all ticked, to move to **No response** in one go.
+Each move is logged ("quiet applications closed") and can be dragged back.

@@ -502,7 +502,7 @@
     const state = window.JobOSState;
     if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'settings-list', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
-    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
+    if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override', 'follow-draft', 'follow-sent', 'follow-no-response'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
     if (name.startsWith('pipe-') || name.startsWith('job-form-')) return trackerAction(name, button);
     if (name === 'discard-settings') {
       state.settingsDraft = null; state.settingsDirty = false; state.settingsError = '';
@@ -673,7 +673,8 @@
     const watching = (['pipeline', 'dashboard'].includes(state.activeView)
       && ((state.jobs || []).some(busy) || (state.jobs || []).some((j) => j.status === 'tailoring' || j.status === 'applying') || busy(state.jobDetail)
         || !!(state.jobDetail && state.jobDetail.interview && ['pending', 'running'].includes(state.jobDetail.interview.status))
-        || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')))
+        || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')
+        || !!(state.jobDetail && state.jobDetail.follow_up && state.jobDetail.follow_up.draft && state.jobDetail.follow_up.draft.status === 'running')))
       || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch)
         || (state.jobs || []).some((j) => busy(j) || j.status === 'tailoring')) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
@@ -684,6 +685,22 @@
     const idle = state.activeView === 'dashboard' && !watching;
     if (idle && !dashboardTimer) dashboardTimer = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
     if (!idle && dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; }
+    const staleDays = document.getElementById('job-os-stale-days');
+    if (once(staleDays, 'stale')) staleDays.addEventListener('change', () => {
+      if (!state.staleSweep) return;
+      Object.assign(state.staleSweep, {days: Number(staleDays.value), loading: true});
+      repaint(); loadStale();
+    });
+    document.querySelectorAll('#jobOsRoot [data-stale-id]').forEach((box) => {
+      if (once(box, 'stale')) box.addEventListener('change', () => {
+        const s = state.staleSweep;
+        if (!s) return;
+        const set = new Set(s.selected || []);
+        if (box.checked) set.add(box.dataset.staleId); else set.delete(box.dataset.staleId);
+        s.selected = [...set];
+        repaint();
+      });
+    });
     if (!changed) return;
     const sort = document.getElementById('job-os-sort');
     if (once(sort, 'sort')) sort.addEventListener('change', () => { state.sortBy = sort.value; refresh(); });
@@ -714,6 +731,7 @@
   }
   function onTriageKey(event) {
     const state = window.JobOSState;
+    if (state.staleSweep && String(event.key || '') === 'Escape') { event.preventDefault(); state.staleSweep = null; repaint(); return; }
     // Some embedded WebViews dispatch synthetic keydown events without a
     // `key` string. Treat those as an unrecognised shortcut rather than
     // throwing globally and disabling every following keyboard interaction.
@@ -777,6 +795,21 @@
     const state = window.JobOSState;
     const job = state.jobDetail;
     if (name === 'job-status') return setJobStatus(el.dataset.status);
+    if (['follow-draft', 'follow-sent'].includes(name) && job) {
+      if (el) el.disabled = true;
+      try {
+        if (name === 'follow-draft') await window.JobOSApi.draftFollowUp(job.id);
+        else { await window.JobOSApi.followUpSent(job.id); if (typeof window.showToast === 'function') window.showToast('Follow-up logged'); }
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not update the follow-up'); }
+      return refresh();
+    }
+    if (name === 'follow-no-response' && job) {
+      try {
+        await window.JobOSApi.moveJob(job.id, 'closed', job.revision, 'no_response');
+        if (typeof window.showToast === 'function') window.showToast('Closed as no response');
+      } catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not move the job'); }
+      return refresh();
+    }
     if (name === 'check-override' && job) {
       try {
         await window.JobOSApi.overrideCheck(job.id, el.dataset.check, el.dataset.value === '1');
@@ -1512,6 +1545,18 @@
   }
   const FORM_FIELDS = ['title', 'company', 'canonical_url', 'country', 'location', 'salary_text', 'employment_type', 'workplace', 'description'];
   const emptyJobForm = () => ({title: '', company: '', canonical_url: '', country: '', location: '', salary_text: '', employment_type: '', workplace: '', description: '', note: '', stage: 'saved'});
+  async function loadStale() {
+    const state = window.JobOSState;
+    const s = state.staleSweep;
+    if (!s) return;
+    try {
+      const out = await window.JobOSApi.staleApplications(s.days);
+      if (state.staleSweep !== s) return;
+      // Everything quiet that long starts ticked: that is what the sheet is for.
+      Object.assign(s, {items: out.stale, selected: out.stale.map((j) => j.id), loading: false, error: ''});
+    } catch (error) { Object.assign(s, {loading: false, error: error.message || 'Could not load them'}); }
+    repaint();
+  }
   async function trackerAction(name, el) {
     const state = window.JobOSState;
     // Site tabs and the layout switch redraw from what is loaded: no wait on the server.
@@ -1551,6 +1596,23 @@
       // A finger gets the filter without a keyboard flying up over it; a keyboard user lands in the box.
       if (opened && matchMedia('(hover: hover)').matches) opened.querySelector('[data-col-filter="query"]')?.focus({preventScroll: true});
       return undefined;
+    }
+    if (name === 'pipe-stale-open') {
+      state.staleSweep = {days: 60, items: [], selected: [], loading: true, error: ''};
+      repaint();
+      return loadStale();
+    }
+    if (name === 'pipe-stale-close') { state.staleSweep = null; return repaint(); }
+    if (name === 'pipe-stale-confirm' && state.staleSweep) {
+      const ids = state.staleSweep.selected || [];
+      if (!ids.length) return undefined;
+      if (el) el.disabled = true;
+      try {
+        const out = await window.JobOSApi.sweepStale(ids);
+        state.staleSweep = null;
+        if (typeof window.showToast === 'function') window.showToast(`${out.moved} moved to No response`);
+      } catch (error) { state.staleSweep.error = error.message || 'Could not move them'; repaint(); return undefined; }
+      return refresh();
     }
     if (name === 'pipe-col-filter-clear') { if (state.colFilters) delete state.colFilters[el.dataset.col]; savePrefs(); repaint(); return undefined; }
     if (name === 'pipe-search-clear') { state.pipelineQuery = ''; repaint(); document.getElementById('job-os-pipe-search')?.focus(); return undefined; }

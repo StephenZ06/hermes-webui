@@ -146,3 +146,74 @@ def test_the_drawer_shows_the_dimension_bars():
         finally:
             browser.close()
     assert rows == [["skills", "80", "good"], ["experience", "60", "fair"], ["culture", "—", "none"], ["career", "40", "poor"]]
+
+
+def _db():
+    import sqlite3
+
+    from tests._pytest_port import TEST_STATE_DIR
+
+    return sqlite3.connect(TEST_STATE_DIR / "webui_state" / "job_os" / "job_os.db")
+
+
+def _applied_days_ago(title, days):
+    import time
+
+    job = _post("/api/job-os/jobs", {"title": title, "company": "Quiet Co",
+                                     "canonical_url": f"https://jobs.example.test/{uuid.uuid4().hex}", "description": "SQL"})["job"]
+    _post(f"/api/job-os/jobs/{job['id']}/applied", {})
+    with _db() as conn:
+        conn.execute("UPDATE job_events SET created_at=? WHERE job_id=?", (int(time.time()) - days * 86400, job["id"]))
+    return job
+
+
+def test_a_drafted_follow_up_can_be_logged_as_sent():
+    import time
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _applied_days_ago(f"Follow {uuid.uuid4().hex[:6]}", 10)
+    with _db() as conn:
+        conn.execute("INSERT INTO follow_ups (job_id, status, draft_json, updated_at) VALUES (?, 'done', ?, ?)",
+                     (job["id"], json.dumps({"channel": "email", "subject": "Checking in", "body": "Hello, any news?", "words": 4,
+                                            "unverified": []}), int(time.time())))
+    with sync_api.sync_playwright() as pw:
+        browser = _browser(sync_api, pw)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            _open_jobs(page)
+            page.click(f'.pipe-card[data-board-job="{job["id"]}"] .pipe-card-main')
+            page.wait_for_selector(".follow-up .follow-draft", timeout=15000)
+            note = page.inner_text(".follow-up .job-os-card-note")
+            mail = page.get_attribute('.follow-up a[href^="mailto:"]', "href")
+            page.wait_for_timeout(300)
+            _shot(page, "follow-drawer")
+            page.click('.follow-up [data-job-os-action="follow-sent"]')
+            page.wait_for_function("() => /1 follow-up sent/.test(document.querySelector('.follow-up .job-os-card-note')?.textContent || '')", timeout=15000)
+        finally:
+            browser.close()
+    assert note.startswith("No news for 10 days")
+    assert mail.startswith("mailto:?subject=Checking%20in&body=Hello")
+
+
+def test_quiet_applications_close_as_no_response_in_one_go():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    job = _applied_days_ago(f"Stale {uuid.uuid4().hex[:6]}", 75)
+    card = f'.pipe-card[data-board-job="{job["id"]}"]'
+    with sync_api.sync_playwright() as pw:
+        browser = _browser(sync_api, pw)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            _open_jobs(page)
+            page.click('[data-job-os-action="pipe-stale-open"]')
+            page.wait_for_selector(f'.stale-sheet [data-stale-id="{job["id"]}"]:checked', timeout=15000)
+            page.wait_for_timeout(350)
+            _shot(page, "stale-sheet")
+            box = page.evaluate("() => { const r = document.querySelector('.stale-sheet').getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, innerWidth, innerHeight]; }")
+            page.click('.stale-sheet [data-job-os-action="pipe-stale-confirm"]')
+            page.wait_for_selector(f'.pipe-col[data-col="closed"] {card}[data-status="no_response"]', timeout=15000)
+            gone = page.evaluate("() => !document.querySelector('.stale-sheet')")
+        finally:
+            browser.close()
+    left, right, top, bottom, width, height = box
+    assert abs((left + right) / 2 - width / 2) < 2 and abs((top + bottom) / 2 - height / 2) < 2  # centred
+    assert gone

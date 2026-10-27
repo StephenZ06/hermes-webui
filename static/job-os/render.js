@@ -576,8 +576,8 @@
     return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}${working ? ' is-working' : ''}"${working ? ` data-activity="${working}"` : ''} data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? (TOUCH_ONLY ? ' data-movable="true"' : ' draggable="true" data-movable="true"') : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
-        <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${checkChip(job)}${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
-        <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${working ? activityLine(working) : `${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}`}</small></span>
+        <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
+        <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${working ? activityLine(working) : checkChip(job) || `${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}`}</small></span>
         <span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>
       </button>
       <div class="pipe-card-actions">${primary}</div></article>`;
@@ -657,13 +657,14 @@
   }
   // ---- Job drawer: details, actions, notes -----------------------------------------
   const EVENT_TEXT = {job_created: 'Saved', application_submitted: 'Applied', details_edited: 'Details edited',
+    follow_up_sent: 'Follow-up sent', posting_checked: '',
     check_ignored: 'A check was ignored', check_restored: 'A check was restored'};
   function activity(state) {
     const items = (state.jobTimeline || []).slice().reverse().filter((e) => e.type === 'note' || e.type === 'status_changed' || EVENT_TEXT[e.type]);
     const rows = items.slice(0, 30).map((e) => {
       const why = e.data.by === 'email' ? ` · from an email${e.data.subject ? `: “${esc(e.data.subject)}”` : ''}${e.data.summary ? ` — ${esc(e.data.summary)}` : ''}`
         : e.data.by === 'scout' ? ' · title off target' : e.data.by === 'deadline' ? ` · the closing date (${esc(e.data.deadline || '')}) passed`
-        : e.data.by === 'recheck' ? ' · the posting is no longer open' : '';
+        : e.data.by === 'recheck' ? ' · the posting is no longer open' : e.data.by === 'sweep' ? ' · quiet applications closed' : '';
       const text = e.type === 'note' ? esc(e.data.text) : e.type === 'status_changed' ? `Moved to <strong>${esc(statusLabel(e.data.to))}</strong>${why}` : esc(EVENT_TEXT[e.type]);
       return `<li data-kind="${e.type === 'note' ? 'note' : 'event'}"><span>${text}</span><time>${esc(when(e.at))}</time></li>`;
     }).join('');
@@ -697,6 +698,48 @@
       <div class="apply-step"><span class="apply-step-n">3</span><div><h4>Apply on the site</h4><p class="job-os-card-note">Open the posting, paste, send — then record it here.</p>
         <div class="job-os-actions"><a class="job-os-btn small primary" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">I’ve applied</button></div></div></div></section>`;
   }
+  // Follow up: once an application has been quiet for a week, Luna drafts a
+  // short nudge from what you sent. Hermes never sends it; you do, then say so.
+  function followUpPanel(job) {
+    const f = job.follow_up;
+    if (!f || !(f.due || f.draft || f.sent)) return '';
+    const d = f.draft;
+    const quiet = `<p class="job-os-card-note">${f.quiet_days ? `No news for ${f.quiet_days} day${f.quiet_days === 1 ? '' : 's'}` : 'Followed up today'}${f.sent ? ` · ${f.sent} follow-up${f.sent === 1 ? '' : 's'} sent` : ''}.</p>`;
+    if (f.max_reached) {
+      return `<section class="job-drawer-section follow-up"><h3>Follow up</h3>${quiet}<p class="job-os-card-note">You’ve followed up twice. If nothing comes back, close it as no response; you can drag it back if they reply.</p>
+        <div class="job-os-actions"><button type="button" class="job-os-btn small" data-job-os-action="follow-no-response">Mark no response</button></div></section>`;
+    }
+    let body;
+    if (d && d.status === 'running') body = writingPanel('Luna is drafting your follow-up…');
+    else if (d && d.status === 'failed') body = `<p class="job-os-error">${esc(d.error || 'Drafting failed.')}</p><button type="button" class="job-os-btn small" data-job-os-action="follow-draft">Try again</button>`;
+    else if (d && d.status === 'done') {
+      const text = d.subject ? `Subject: ${d.subject}\n\n${d.body}` : d.body;
+      const mail = `mailto:?subject=${encodeURIComponent(d.subject || `${job.title} application`)}&body=${encodeURIComponent(d.body)}`;
+      const channel = {email: 'Email', linkedin: 'LinkedIn message', portal: 'Portal note'}[d.channel] || 'Message';
+      body = `<div class="follow-draft"><span class="follow-channel">${esc(channel)} · ${Number(d.words || 0)} words</span>${d.subject ? `<strong>${esc(d.subject)}</strong>` : ''}<p>${esc(d.body)}</p></div>
+        ${(d.unverified || []).length ? `<p class="board-attention">Check before sending: ${d.unverified.map(esc).join(', ')} ${d.unverified.length === 1 ? 'is' : 'are'} not in what you sent.</p>` : ''}
+        <div class="job-os-actions"><button type="button" class="job-os-btn small" data-copy-text="${esc(text)}">Copy</button>${d.channel === 'email' ? `<a class="job-os-btn small" href="${esc(mail)}">${icon('mail', 14)}Open in mail</a>` : ''}<button type="button" class="job-os-btn small primary" data-job-os-action="follow-sent">I sent it</button><button type="button" class="job-os-btn small" data-job-os-action="follow-draft">Draft again</button></div>`;
+    } else body = `<p class="job-os-card-note">Luna drafts a short, polite nudge from the resume and letter you sent. You send it yourself.</p><div class="job-os-actions"><button type="button" class="job-os-btn small primary" data-job-os-action="follow-draft">Draft follow-up</button>${f.sent ? '' : ''}</div>`;
+    return `<section class="job-drawer-section follow-up"><h3>Follow up</h3>${quiet}${body}</section>`;
+  }
+  // The stale sweep: applications quiet for weeks, closed as no response in one go.
+  function staleSheet(state) {
+    const s = state.staleSweep;
+    if (!s) return '';
+    const items = s.items || [];
+    const chosen = new Set(s.selected || []);
+    const rows = items.map((j) => `<li><label class="stale-row"><input type="checkbox" data-stale-id="${esc(j.id)}" ${chosen.has(j.id) ? 'checked' : ''}><span class="stale-main"><strong>${esc(j.title)}</strong><small>${esc(j.company || 'Company not set')} · ${esc(statusLabel(j.status))}${j.follow_ups ? ` · ${j.follow_ups} follow-up${j.follow_ups === 1 ? '' : 's'}` : ''}</small></span><span class="stale-days">${Number(j.quiet_days)} days</span></label></li>`).join('');
+    const days = [30, 45, 60, 90].map((d) => `<option value="${d}" ${Number(s.days) === d ? 'selected' : ''}>${d}+ days</option>`).join('');
+    const list = s.loading ? `<div class="job-modal-loading">${statusLine(['Finding quiet applications…'])}</div>`
+      : items.length ? `<ul class="stale-list">${rows}</ul>` : `<div class="job-os-empty"><strong>Nothing quiet that long</strong><p>No application has gone ${Number(s.days)} days without news.</p></div>`;
+    return `<div class="job-modal-backdrop" data-job-os-action="pipe-stale-close"></div>
+      <div class="job-modal stale-sheet" role="dialog" aria-modal="true" aria-labelledby="stale-title">
+        <header class="job-modal-head"><div><h2 id="stale-title">Quiet applications</h2><p>Close the ones that went nowhere as <strong>No response</strong>. Each move is logged, and a card can be dragged back if they reply.</p></div>
+          <button type="button" class="wh-insp-close" data-job-os-action="pipe-stale-close" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+        <div class="job-modal-body"><label class="job-os-inline-select">Quiet for <select id="job-os-stale-days" aria-label="Quiet for at least">${days}</select></label>${list}</div>
+        <footer class="job-modal-foot"><p class="job-os-error" role="alert">${esc(s.error || '')}</p><button type="button" class="job-os-btn" data-job-os-action="pipe-stale-close">Cancel</button><button type="button" class="job-os-btn primary" data-job-os-action="pipe-stale-confirm" ${chosen.size ? '' : 'disabled'}>Move ${chosen.size || ''} to No response</button></footer>
+      </div>`;
+  }
   function jobDrawer(state) {
     const job = state.jobDetail;
     if (!job) return '';
@@ -713,6 +756,7 @@
           <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}">${icon('edit', 14)}Edit</button></div>
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
           ${interviewPanel(job)}
+          ${followUpPanel(job)}
           ${analysisPanel(job)}
           ${applyKitPanel(job)}
           ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>`
@@ -841,6 +885,8 @@
   }
   function pipelineBar(state, jobs, counts) {
     const unanalysed = jobs.filter((j) => j.status === 'scraped' && j.has_description && !j.analysis).length;
+    // Applications quiet for 60+ days: one button to close them as no response.
+    const quiet = state.board ? state.board.columns.reduce((n, c) => n + c.jobs.filter((j) => (j.quiet_days || 0) >= 60).length, 0) : 0;
     const tabs = [['all', 'All'], ...SITES, ['manual', 'Manual']].map(([key, text]) => {
       const on = state.pipelineSource === key;
       return `<button type="button" role="tab" aria-selected="${on}" class="seg-btn${on ? ' active' : ''}" data-job-os-action="pipe-source" data-source="${key}">${text}<span class="seg-count">${Number(counts[key] || 0)}</span></button>`;
@@ -852,7 +898,7 @@
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option>${DIMENSIONS.map(([k, l]) => `<option value="${k}" ${state.sortBy === k ? 'selected' : ''}>${l} fit</option>`).join('')}</select></label>` : '';
     const query = state.pipelineQuery || '';
     const search = `<label class="pipe-search${query ? ' has-query' : ''}"><span class="sr-only">Search jobs</span>${icon('scout', 16)}<input type="search" id="job-os-pipe-search" value="${esc(query)}" placeholder="Search jobs" autocomplete="off" spellcheck="false" aria-label="Search jobs by title or company"><kbd aria-hidden="true">/</kbd>${query ? `<button type="button" class="pipe-search-clear" data-job-os-action="pipe-search-clear" aria-label="Clear search" title="Clear (Esc)">${icon('close', 16)}</button>` : ''}</label>`;
-    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${activitySummary(jobs)}<span class="scout-bar-spacer"></span>${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
+    return `<div class="pipe-toolbar"><div class="seg" role="tablist" aria-label="Where jobs came from" data-mi-tabs>${tabs}</div><div class="seg" role="group" aria-label="Layout" data-mi-tabs>${modes}</div>${search}${sort}${activitySummary(jobs)}<span class="scout-bar-spacer"></span>${quiet ? `<button type="button" class="job-os-btn" data-job-os-action="pipe-stale-open">${icon('clock', 15)}${quiet} quiet</button>` : ''}${unanalysed ? `<button type="button" class="job-os-btn" data-job-os-action="analyze-new">Score ${unanalysed} new</button>` : ''}<button type="button" class="job-os-btn primary pipe-add-btn" data-job-os-action="job-form-new" aria-label="Add job" title="Add job">${icon('import', 20)}</button></div>`;
   }
   // ---- Scout ------------------------------------------------------------
   const RUN_LABELS = {queued: 'Starting', searching: 'Searching job sites', scraping: 'Reading postings', completed: 'Finished',
@@ -1307,7 +1353,7 @@
       body = `${header('Pipeline', 'Every job from new find to offer — Scout’s finds from the job sites, and the ones you track yourself.', state)}
         ${pipelineBar(state, jobs, counts)}
         ${listMode ? list : pipelineBoard(state)}
-        ${jobDrawer(state)}${jobForm(state)}`;
+        ${jobDrawer(state)}${jobForm(state)}${staleSheet(state)}`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'settings') {

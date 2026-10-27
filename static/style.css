@@ -6664,6 +6664,41 @@ button.automation-row:hover{background:color-mix(in srgb,var(--border2) 40%,tran
 .job-activity li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid color-mix(in srgb,var(--border2) 60%,transparent);font-size:13px;color:var(--muted);}
 .job-activity li[data-kind="note"]{color:var(--text);white-space:pre-wrap;}
 .job-activity time{flex:0 0 auto;font-size:11px;color:var(--muted);}
+/* A centred window for focused Jobs tasks (Add job, quiet applications): sized
+   to its content, scrolling inside, rising in from slightly below. */
+.job-modal-backdrop{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.42);animation:drawer-fade .2s ease;}
+.job-modal{--job-modal-w:560px;position:fixed;z-index:901;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;width:min(var(--job-modal-w),calc(100vw - 32px));max-height:min(860px,calc(100dvh - 48px));background:var(--bg);border:1px solid var(--border2);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.34),0 2px 8px rgba(0,0,0,.18);animation:job-modal-in .28s cubic-bezier(.22,1,.36,1);}
+@keyframes job-modal-in{from{opacity:0;transform:translate(-50%,calc(-50% + 12px)) scale(.985);}to{opacity:1;transform:translate(-50%,-50%);}}
+.job-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px 14px;border-bottom:1px solid var(--border2);}
+.job-modal-head h2{margin:0;font-size:18px;line-height:1.3;color:var(--text);}
+.job-modal-head p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.45;max-width:60ch;}
+.job-modal-head .wh-insp-close{flex:0 0 auto;display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;}
+.job-modal-head .wh-insp-close:hover{color:var(--text);border-color:var(--accent);}
+.job-modal-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:16px 22px 18px;}
+.job-modal-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid var(--border2);}
+.job-modal-foot .job-os-error{margin:0 auto 0 0;}
+.job-modal-foot .job-os-error:empty{display:none;}
+.job-modal-loading{padding:18px 0;color:var(--muted);font-size:13px;}
+.stale-sheet .job-os-inline-select{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:13px;color:var(--muted);}
+.stale-sheet .job-os-inline-select select{width:auto;min-width:140px;}
+.stale-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--border2);border-radius:10px;overflow:hidden;}
+.stale-list li+li{border-top:1px solid color-mix(in srgb,var(--border2) 70%,transparent);}
+.stale-row{display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;}
+.stale-row:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
+.stale-row input{flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:var(--accent);}
+.stale-main{display:flex;flex-direction:column;min-width:0;flex:1;}
+.stale-main strong{font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stale-main small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stale-days{flex:0 0 auto;font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;}
+.follow-draft{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--border2);border-radius:10px;background:color-mix(in srgb,var(--surface) 55%,transparent);}
+.follow-draft strong{font-size:13px;color:var(--text);}
+.follow-draft p{margin:0;font-size:13px;line-height:1.55;color:var(--text);white-space:pre-wrap;}
+.follow-channel{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+@media (max-width:640px){
+  .job-modal{top:auto;bottom:0;left:0;right:0;transform:none;width:100%;max-height:calc(100dvh - 24px);border-radius:16px 16px 0 0;animation:job-sheet-in .3s cubic-bezier(.22,1,.36,1);padding-bottom:env(safe-area-inset-bottom);}
+  @keyframes job-sheet-in{from{transform:translateY(24px);opacity:0;}to{transform:none;opacity:1;}}
+}
+@media (prefers-reduced-motion:reduce){.job-modal,.job-modal-backdrop{animation:none;}}
 /* Checks on a job (posting guard, gates, deadlines): a quiet tinted chip on the
    card, a list with the posting's own wording in the drawer. */
 .job-check{--tone:var(--warning,#f5b84b);display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;color:var(--tone);background:color-mix(in srgb,var(--tone) 12%,transparent);}

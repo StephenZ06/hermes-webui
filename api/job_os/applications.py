@@ -122,7 +122,9 @@ def _signals() -> tuple[dict, dict, dict, dict]:
         applied = {r["job_id"]: {"at": r["created_at"], **json.loads(r["payload_json"] or "{}")}
                    for r in conn.execute("SELECT job_id, payload_json, created_at FROM job_events WHERE event_type='application_submitted'")}
         changed = {r["job_id"]: r["at"] for r in conn.execute(
-            "SELECT job_id, MAX(created_at) AS at FROM job_events WHERE event_type='status_changed' GROUP BY job_id")}
+            # A follow-up you sent restarts the quiet clock, like news does.
+            "SELECT job_id, MAX(created_at) AS at FROM job_events WHERE event_type IN ('status_changed', 'follow_up_sent')"
+            " GROUP BY job_id")}
         docs: dict[str, list[str]] = {}
         for r in conn.execute("SELECT d.job_id, d.status FROM job_documents d WHERE d.created_at = (SELECT MAX(created_at)"
                               " FROM job_documents WHERE job_id=d.job_id AND kind=d.kind)"):
@@ -153,6 +155,14 @@ def attention_reasons(job, docs: list[str], extra: dict, changed_at: int | None,
     return reasons
 
 
+def _quiet_days(job, applied: dict | None, changed_at: int | None, now: int) -> int | None:
+    """Days without news for an application waiting on a reply (None otherwise)."""
+    if job.status.value not in ("submitted", "screening", "interviewing"):
+        return None
+    last = max((applied or {}).get("at") or 0, changed_at or 0) or job.updated_at
+    return int(max(0, now - last) // 86400)
+
+
 def board(source: str | None = None) -> dict:
     """Every job in a column per stage, newest first; ``source`` narrows it to
     Scout's Indeed finds or the manual tracker. ``sources`` counts both."""
@@ -179,6 +189,7 @@ def board(source: str | None = None) -> dict:
                 "guard": posting_guard.public(job.guard),
                 "checks": job_checks(job, extra["analyses"].get(job.id), on=extra["today"]),
                 "deadline": job.deadline,
+                "quiet_days": _quiet_days(job, applied.get(job.id), changed.get(job.id), now),
                 "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
                 "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at}
         columns[key].append(card)
