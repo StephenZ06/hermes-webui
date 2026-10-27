@@ -1527,3 +1527,33 @@ def test_a_slash_divider_on_a_line_with_text_still_goes_below(page):
     _type_body(page, "Above the line ")
     _slash(page, "divider")
     assert _blocks(page, title)[:2] == [("paragraph", "Above the line"), ("divider", "")]
+
+
+def test_the_middle_list_folds_and_opens_without_squeezing_or_showing_the_old_place(page):
+    # Folding for a workspace squeezed the list's heading to nothing and
+    # dragged the New note button along the closing edge; opening it again
+    # showed the workspace's heading until the column was almost open.
+    project = _api("/api/projects/create", {"name": f"Fold {uuid.uuid4().hex[:4]}", "color": "#7c8cff"})["project"]
+    _open(page)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_function("() => !document.querySelector('.nb.nb-list-collapsed')", timeout=10000)
+    page.wait_for_timeout(400)
+    record = """() => { window.__f = []; const tick = () => {
+      const list = document.querySelector('.nb-list'), h = document.getElementById('nbScopeTitle');
+      const btn = document.querySelector('.nb-list-head [data-nb-action=new]');
+      window.__f.push({opacity: Number(getComputedStyle(list).opacity), heading: h.textContent,
+        headingWidth: h.getBoundingClientRect().width, button: btn.getBoundingClientRect().left});
+      if (window.__f.length < 30) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }"""
+    page.evaluate(record)
+    page.click(f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']")
+    page.wait_for_function("() => window.__f.length >= 30", timeout=10000)
+    folding = [f for f in page.evaluate("() => window.__f") if f["heading"] == "General" and f["opacity"] > 0.05]
+    assert len(folding) > 3, folding
+    # The rows keep their width; only the slide-out's 8px moves the button.
+    assert max(f["headingWidth"] for f in folding) - min(f["headingWidth"] for f in folding) < 1, folding
+    assert max(f["button"] for f in folding) - min(f["button"] for f in folding) <= 9, folding
+    page.evaluate(record)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_function("() => window.__f.length >= 30", timeout=10000)
+    seen = [f for f in page.evaluate("() => window.__f") if f["opacity"] > 0.02]
+    assert seen and all(f["heading"] == "General" for f in seen), seen

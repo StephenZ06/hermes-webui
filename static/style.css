@@ -6113,10 +6113,14 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-page-loader{position:absolute;z-index:4;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--muted);font-size:13px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility 0s linear .18s;}
 #notebookRoot.nb-is-loading .nb-page-loader{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .16s ease;}
 .nb-page-loader-orbit{width:26px;height:26px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:nb-loader-spin .72s linear infinite;}
-.nb{flex:1;display:grid;grid-template-columns:300px minmax(0,1fr);min-width:0;min-height:0;transition:grid-template-columns .22s cubic-bezier(.22,1,.36,1);}
+.nb{--nb-list-w:300px;flex:1;display:grid;grid-template-columns:var(--nb-list-w) minmax(0,1fr);min-width:0;min-height:0;transition:grid-template-columns .22s cubic-bezier(.22,1,.36,1);}
 .nb-list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);overflow:hidden;transition:opacity .16s ease,transform .22s cubic-bezier(.22,1,.36,1),border-color .16s ease;}
 .nb.nb-list-collapsed{grid-template-columns:0 minmax(0,1fr);}
 .nb.nb-list-collapsed .nb-list{opacity:0;transform:translateX(-8px);border-color:transparent;pointer-events:none;}
+/* While the column folds or opens, its rows keep their full width and the
+   moving edge clips them, instead of squeezing the heading to nothing and
+   dragging the New note button along with it (the 1px is the border). */
+@media (min-width:901px){.nb-list>*{min-width:calc(var(--nb-list-w) - 1px);}}
 .nb-list-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 14px 10px 16px;}
 .nb-list-head h2{margin:0;overflow:hidden;font-size:15px;font-weight:700;text-overflow:ellipsis;white-space:nowrap;}
 .nb-search{display:flex;align-items:center;gap:6px;margin:0 12px 8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--muted);}

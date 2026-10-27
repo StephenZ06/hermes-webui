@@ -492,9 +492,14 @@
   // the state as it is when the fade ends, so renders in between merge.
   let listLeaving = 0;
   const LIST_LEAVE_MS = 110;
+  let listFolded = false;
   function renderList() {
     const host = $('nbListItems');
     if (!host) return;
+    // Whether the column was folded when the list last painted (the shell
+    // may already have folded or opened it for this change).
+    const wasFolded = listFolded;
+    listFolded = !shouldShowMiddleList();
     syncListPresentation();
     // The list changes what it shows (scope, search, tag): the old one fades
     // out, then the new one fades in, never cutting to blank in one frame.
@@ -502,8 +507,17 @@
     const listKey = [S.side, S.scope.kind, S.scope.id, S.search, S.tagFilter, S.loaded].join('|');
     const entering = listKey !== lastListKey;
     lastListKey = listKey;
-    if (listLeaving) return;
     const title = $('nbScopeTitle');
+    // A folded column shows nothing to fade out: paint the new place at once
+    // (dropping a fade-out still pending), so a column opening again never
+    // shows the old heading first.
+    if (entering && wasFolded) {
+      clearTimeout(listLeaving); listLeaving = 0;
+      host.classList.remove('is-leaving'); title.classList.remove('is-leaving');
+      paintList(true);
+      return;
+    }
+    if (listLeaving) return;
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (entering && !reduce && host.childElementCount && S.loaded) {
       host.classList.remove('is-entering'); title.classList.remove('is-entering');
