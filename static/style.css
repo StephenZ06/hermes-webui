@@ -15128,6 +15128,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .skel-title-host{position:relative;}
 .skel-title{position:absolute;z-index:1;display:block;border-radius:999px;pointer-events:none;background:color-mix(in srgb,var(--text) 9%,transparent);animation:skel-pulse 1s ease-in-out infinite;transition:opacity .36s ease-in-out,filter .36s ease-in-out;}
 .skel-title.is-out{opacity:0;filter:blur(2px);}
+.skel-title.is-morphing{transition:opacity .36s ease-in-out,filter .36s ease-in-out,width .18s cubic-bezier(.2,.8,.2,1);}
 /* A chat: your message as a bubble on the right, then Hermes' name row and
    its reply's lines, placed where the transcript's first turn lands. */
 .skel--chat{gap:0;padding:32px 24px 0;}

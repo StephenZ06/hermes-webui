@@ -22859,7 +22859,22 @@ const SkeletonEntrance=(()=>{
   // A bar over a title's line of text: as wide as a short title, as tall as
   // its capitals, centred between their tops and the baseline (how the eye
   // reads a line as centred), from the font's own metrics.
-  function titleBar(title,centred){
+  // The width of a title's own text (an empty note shows its placeholder),
+  // in its font, kept within its row; 0 when there is nothing to measure.
+  function titleTextWidth(title){
+    if(!title||!title.isConnected) return 0;
+    const cs=getComputedStyle(title);
+    const raw=title.tagName==='INPUT'?(title.value||title.placeholder||''):(title.textContent||'');
+    const text=raw.replace(/\u00a0/g,' ').trim();
+    if(!text) return 0;
+    const ctx=(titleBar.canvas||(titleBar.canvas=document.createElement('canvas'))).getContext('2d');
+    ctx.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const w=ctx.measureText(text).width+(parseFloat(cs.letterSpacing)||0)*text.length;
+    const box=title.parentElement.getBoundingClientRect(), r=title.getBoundingClientRect();
+    const room=box.right-(r.left+(parseFloat(cs.paddingLeft)||0))-8;
+    return Math.max(0,Math.round(Math.min(w,room)));
+  }
+  function titleBar(title,centred,knownWidth){
     const box=title.parentElement;
     if(!box) return null;
     const cs=getComputedStyle(title), r=title.getBoundingClientRect(), b=box.getBoundingClientRect();
@@ -22885,7 +22900,11 @@ const SkeletonEntrance=(()=>{
     // (the titlebar slides its items when the title changes length).
     const sliding=cs.transform&&cs.transform!=='none'?new DOMMatrixReadOnly(cs.transform).m41:0;
     const left=r.left-sliding+parseFloat(cs.borderLeftWidth)+parseFloat(cs.paddingLeft);
-    if(centred){
+    if(knownWidth){
+      // This item's title was measured before: the bar is its length.
+      bar.style.left=Math.round(left-b.left)+'px';
+      bar.style.width=knownWidth+'px';
+    }else if(centred){
       // A title centred with what is beside it (the app titlebar's icon):
       // the bar takes the title's own place, so nothing beside it moves.
       bar.style.left=Math.round(left-b.left)+'px';
@@ -22913,6 +22932,7 @@ const SkeletonEntrance=(()=>{
   function clear(host){
     if(host._skelEl) host._skelEl.remove();
     if(host._skelTitle){ host._skelTitle.remove(); host._skelTitle=null; }
+    host._skelTitleEl=null;
     (host._skelHidden||[]).forEach(el=>el.removeAttribute('data-skel-hide'));
     host._skelHidden=null;
     if(host._skelWatch){ host._skelWatch.disconnect(); clearTimeout(host._skelWatchTimer); }
@@ -22941,16 +22961,19 @@ const SkeletonEntrance=(()=>{
     host._skelAlign=opts.align||null;
     const f=frame(host,opts.align);
     const known=recall(opts.key,Math.round(f.width));
-    host._skelShape=known;
-    if(known){
+    // An item last seen empty keeps the usual lines for its body (it may
+    // have text now); its title's length still applies.
+    const knownBody=known&&known.bars.length?known:null;
+    host._skelShape=knownBody;
+    if(knownBody){
       // This item was shown before: its own lines, where they will be.
       placeShaped(el,host,f);
-      drawShape(el,known);
+      drawShape(el,knownBody);
     }else{
       el.className='skel skel--'+(SHAPES[opts.shape]?opts.shape:'doc');
       el.innerHTML=SHAPES[SHAPES[opts.shape]?opts.shape:'doc']();
     }
-    if(!known&&opts.align){
+    if(!knownBody&&opts.align){
       const a=opts.align.getBoundingClientRect(), h=host.getBoundingClientRect();
       el.style.top=(a.top-h.top+host.scrollTop)+'px';
       el.style.left=(a.left-h.left+host.scrollLeft)+'px';
@@ -22961,7 +22984,8 @@ const SkeletonEntrance=(()=>{
     host._skelHidden=(opts.hide||[...host.children]).filter(Boolean);
     host._skelHidden.forEach(child=>child.setAttribute('data-skel-hide','loading'));
     host.dataset.skel='loading';
-    if(opts.title) host._skelTitle=titleBar(opts.title,opts.titleCentred);
+    host._skelTitleEl=opts.title||null;
+    if(opts.title) host._skelTitle=titleBar(opts.title,opts.titleCentred,known&&known.title);
     host.appendChild(el);
     host._skelEl=el;
     host._skelAt=performance.now();
@@ -22991,12 +23015,17 @@ const SkeletonEntrance=(()=>{
       if(!content||!content.isConnected) return fade();
       const f=frame(host,content);
       const target=measure(content,f);
-      if(target.bars.length) remember(host._skelKey,target);
+      // The title's bar takes the length of the title's text.
+      const bar=host._skelTitle, titleWidth=bar?titleTextWidth(host._skelTitleEl):0;
+      if(titleWidth) target.title=titleWidth;
+      if(target.bars.length||titleWidth) remember(host._skelKey,target);
+      const reshapeTitle=!!(titleWidth&&Math.abs(bar.getBoundingClientRect().width-titleWidth)>2);
+      if(reshapeTitle){ bar.classList.add('is-morphing'); bar.style.width=titleWidth+'px'; }
       // Nothing to mirror (an empty note), or the remembered shape still
       // fits: straight to the fade. Otherwise the bars reshape first.
-      if(!target.bars.length||sameShape(host._skelShape,target)) return fade();
-      morph(host,f,target);
-      setTimeout(fade,MORPH_MS);
+      const reshapeBody=!!(target.bars.length&&!sameShape(host._skelShape,target));
+      if(reshapeBody) morph(host,f,target);
+      if(reshapeBody||reshapeTitle) setTimeout(fade,MORPH_MS); else fade();
     },wait);
   }
   // Reveal once the loader writes into `target` (or after MAX_WAIT_MS, so a

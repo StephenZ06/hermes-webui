@@ -1630,3 +1630,30 @@ def test_the_placeholder_takes_the_shape_of_the_note_and_remembers_it(page):
         page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
         page.evaluate("async () => { await switchPanel('notebook'); }")
         page.wait_for_selector(f"[data-nb-open='{long_id}']", state="attached", timeout=15000)
+
+
+def test_the_title_placeholder_is_as_long_as_the_title(page):
+    # The bar over a loading note's title was a fixed nine letters wide.
+    blocks = lambda ps: [{"type": "paragraph", "content": [{"type": "text", "text": p, "styles": {}}]} for p in ps]
+    other = _api("/api/notebook/notes/create", {"title": f"Elsewhere {uuid.uuid4().hex[:4]}", "content": blocks(["x"])})["note"]
+    note = _api("/api/notebook/notes/create", {"title": "Hi", "content": blocks(["Body text here."])})["note"]
+    page.add_init_script("document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '#updateBanner,#staleClientBanner{display:none!important}'; document.head.appendChild(s); })")
+    _open(page)
+    text_width = """() => { const t = document.getElementById('nbTitle'), cs = getComputedStyle(t), s = document.createElement('span');
+      s.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:' + cs.font + ';letter-spacing:' + cs.letterSpacing;
+      s.textContent = t.value; document.body.appendChild(s); const w = s.getBoundingClientRect().width; s.remove(); return w; }"""
+    record = """() => { window.__f = []; const tick = () => { const b = document.querySelector('.nb-head-row > .skel-title');
+      window.__f.push(b ? {w: b.getBoundingClientRect().width, cls: b.className} : null); if (window.__f.length < 40) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }"""
+    click = "(id) => document.querySelector('[data-nb-open=\"' + id + '\"]').click()"
+    widths = []
+    for visit in range(2):
+        page.evaluate(click, other["id"]); page.wait_for_timeout(1200)
+        page.evaluate(record); page.evaluate(click, note["id"])
+        page.wait_for_function("() => window.__f.length >= 40", timeout=15000)
+        bars = [f for f in page.evaluate("() => window.__f") if f and "is-out" not in f["cls"]]
+        widths.append((bars[0]["w"], bars[-1]["w"]))
+    want = page.evaluate(text_width)
+    first, again = widths
+    assert first[0] > want * 3, (first, want)  # a first visit cannot know it yet...
+    assert abs(first[1] - want) <= 2, (first, want)  # ...so the bar shortens to the title
+    assert abs(again[0] - want) <= 2 and abs(again[1] - want) <= 2, (again, want)  # then knows it

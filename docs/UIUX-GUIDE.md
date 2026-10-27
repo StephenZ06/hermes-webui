@@ -152,11 +152,13 @@ Opening a chat, note, skill, Knowledge item or wiki page swaps one document for
 another through `SkeletonEntrance` (`static/ui.js`). It never cuts to a blank
 view or a spinner. Pulsing placeholder bars stand where the text will be, and
 a bar stands over the title. When the content is written, the bars glide onto
-the content's real visible lines (about 0.18s), then cross-fade into the text.
+the content's real visible lines, and the title's bar to the title's length
+(about 0.18s), then cross-fade into the text.
 The title, its count and the note's details fade in on the same transition.
 Each item's bar layout is remembered, as positions only and never text, in
 `localStorage` under `hermes-skel-shapes` for the 200 most recent items. On a
-revisit the placeholder already has that item's lines and fades straight in.
+revisit the placeholder already has that item's lines and title length and
+fades straight in. An item last seen empty keeps the usual lines for its body.
 The overlay stays pinned to the visible area while a transcript scrolls to its
 end beneath it. Reduced motion turns the whole entrance off.
 
