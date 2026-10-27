@@ -43,6 +43,7 @@
     ai: '<path d="M9.6 20H14.4C18.4 20 20 18.4 20 14.4V9.6C20 5.6 18.4 4 14.4 4H9.6C5.6 4 4 5.6 4 9.6V14.4C4 18.4 5.6 20 9.6 20Z"/><path d="M10.5 17H13.5C16 17 17 16 17 13.5V10.5C17 8 16 7 13.5 7H10.5C8 7 7 8 7 10.5V13.5C7 16 8 17 10.5 17Z"/><path d="M8.01001 4V2"/><path d="M12 4V2"/><path d="M16 4V2"/><path d="M20 8H22"/><path d="M20 12H22"/><path d="M20 16H22"/><path d="M16 20V22"/><path d="M12.01 20V22"/><path d="M8.01001 20V22"/><path d="M2 8H4"/><path d="M2 12H4"/><path d="M2 16H4"/><path d="M12 9.69995L11.06 11.34C10.85 11.7 11.02 12 11.44 12H12.56C12.98 12 13.15 12.3 12.94 12.66L12 14.3"/>',
     trash: '<path d="M21 5.97998C17.67 5.64998 14.32 5.47998 10.98 5.47998C9 5.47998 7.02 5.57998 5.04 5.77998L3 5.97998"/><path d="M8.5 4.97L8.72 3.66C8.88 2.71 9 2 10.69 2H13.31C15 2 15.13 2.75 15.28 3.67L15.5 4.97"/><path d="M18.85 9.14001L18.2 19.21C18.09 20.78 18 22 15.21 22H8.79002C6.00002 22 5.91002 20.78 5.80002 19.21L5.15002 9.14001"/><path d="M10.33 16.5H13.66"/><path d="M9.5 12.5H14.5"/>',
     close: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M9.16998 14.83L14.83 9.17004"/><path d="M14.83 14.83L9.16998 9.17004"/>',
+    shield: '<path d="M10.49 2.23L5.5 4.11C4.35 4.54 3.41 5.9 3.41 7.12V14.55C3.41 15.73 4.19 17.28 5.14 17.99L9.44 21.2C10.86 22.26 13.19 22.26 14.61 21.2L18.91 17.99C19.86 17.28 20.64 15.73 20.64 14.55V7.12C20.64 5.89 19.7 4.53 18.55 4.1L13.56 2.23C12.71 1.92 11.32 1.92 10.49 2.23Z"/><path d="M12 8.5V12.5"/><path d="M11.995 15.5H12.004"/>',
     // mx-icons search-zoom-in / search-zoom-out (same outline set as Scout's magnifier).
     'zoom-in': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/><path d="M11.5 9V14"/>',
     'zoom-out': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/>',
@@ -205,6 +206,21 @@
   }
   const appliedCount = (byStatus) => STATUS_GROUPS.applied.statuses.reduce((sum, key) => sum + (byStatus[key] || 0), 0);
   const WORKPLACE = {remote: 'Remote', hybrid: 'Hybrid', onsite: 'On-site'};
+  // Checks the server ran on a job (posting guard, gates, deadlines): the card
+  // shows the most serious one, the drawer lists them all with the quotes.
+  const CHECK_ICON = {guard: 'shield'};
+  function checkChip(job) {
+    const c = (job.checks || [])[0];
+    if (!c) return '';
+    const more = (job.checks || []).length - 1;
+    return `<span class="job-check" data-tone="${esc(c.tone)}" data-check="${esc(c.key)}" aria-label="${esc(c.label)}">${icon(CHECK_ICON[c.key] || 'attention', 13)}<span>${esc(c.short || c.label)}</span>${more > 0 ? `<b>+${more}</b>` : ''}</span>`;
+  }
+  function checksPanel(job) {
+    const list = job.checks || [];
+    if (!list.length) return '';
+    const rows = list.map((c) => `<li class="job-check-row" data-tone="${esc(c.tone)}" data-check="${esc(c.key)}">${icon(CHECK_ICON[c.key] || 'attention', 16)}<div><strong>${esc(c.label)}</strong>${c.detail ? `<p>${esc(c.detail)}</p>` : ''}${(c.quotes || []).map((q) => `<q>${esc(q)}</q>`).join('')}${(c.actions || []).map((a) => `<button type="button" class="job-os-btn small" data-job-os-action="${esc(a.action)}" data-check="${esc(c.key)}"${a.value != null ? ` data-value="${esc(a.value)}"` : ''}>${esc(a.label)}</button>`).join('')}</div></li>`).join('');
+    return `<section class="job-drawer-section job-checks"><h3>Checks</h3><ul>${rows}</ul></section>`;
+  }
   function jobChips(job) {
     const chips = [];
     if (job.workplace) chips.push(`<span class="job-os-chip" data-kind="${esc(job.workplace)}">${esc(WORKPLACE[job.workplace] || job.workplace)}</span>`);
@@ -556,7 +572,7 @@
     return `<article class="pipe-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}${working ? ' is-working' : ''}"${working ? ` data-activity="${working}"` : ''} data-key="card-${esc(job.id)}" data-board-job="${esc(job.id)}" data-status="${esc(job.status)}" data-source="${src}" data-revision="${Number(job.revision)}" data-applied="${SENT.includes(job.status) || job.applied ? 'true' : 'false'}"${movable ? (TOUCH_ONLY ? ' data-movable="true"' : ' draggable="true" data-movable="true"') : ''}>
       <button type="button" class="pipe-card-main" data-job-id="${esc(job.id)}">
         <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
-        <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
+        <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${checkChip(job)}${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
         <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${working ? activityLine(working) : `${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}`}</small></span>
         <span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>
       </button>
@@ -687,6 +703,7 @@
           <button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
         <div class="job-drawer-body">
           ${jobChips(job)}
+          ${checksPanel(job)}
           <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}">${icon('edit', 14)}Edit</button></div>
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
           ${interviewPanel(job)}

@@ -20,6 +20,8 @@ import json
 import time
 import uuid
 
+from api.job_os import posting_guard
+from api.job_os.checks import job_checks
 from api.job_os.db import connect_job_os
 from api.job_os.lifecycle import transition_job
 from api.job_os.models import JobStatus
@@ -167,6 +169,8 @@ def board(source: str | None = None) -> dict:
                 "employment_type": job.employment_type, "source": kind, "status": job.status.value,
                 "revision": job.revision, "canonical_url": job.canonical_url, "posted_at": job.posted_at,
                 "has_description": bool(job.description), "analysis": extra["analyses"].get(job.id),
+                "guard": posting_guard.public(job.guard),
+                "checks": job_checks(job, extra["analyses"].get(job.id)),
                 "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
                 "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at}
         columns[key].append(card)

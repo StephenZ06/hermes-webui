@@ -21,6 +21,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from api.job_os import posting_guard
+
 SITE = "remoteid"
 NAME = "remote.id"
 BASE = "https://remotefreelance.id"
@@ -151,7 +153,9 @@ def parse_job(page_html: str, url: str) -> dict | None:
     link = source_link(origin, origin_id, apply_url)
     if not link:
         return None
-    description = _one(r'<section class="job-detail-description">(.*?)</section>', page_html)
+    section = re.search(r'<section class="job-detail-description">(.*?)</section>', page_html, re.S)
+    markup, hidden = posting_guard.strip_hidden_html(section.group(1) if section else "")
+    description = _text(markup)
     description = re.sub(r"^Tentang pekerjaan\n", "", description)
     company = company or ("Upwork client" if origin == "upwork" else "")
     country = place.split("·")[0].strip()
@@ -165,6 +169,7 @@ def parse_job(page_html: str, url: str) -> dict | None:
         "workplace": "Remote",
         "posted_at": posted_date(fact("diposting", "posted")),
         "description": description[:20000],
+        "guard_hidden": hidden,
         "canonical_url": link,
         "origin": origin,
         "origin_name": ORIGINS.get(origin, origin.title()),

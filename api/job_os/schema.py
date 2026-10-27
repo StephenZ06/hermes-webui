@@ -282,9 +282,22 @@ def _migration_12(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE searches ADD COLUMN strict_titles INTEGER NOT NULL DEFAULT 1")
 
 
+def _migration_13(connection: sqlite3.Connection) -> None:
+    """Posting guard: what was found hidden in each posting. Jobs saved before
+    the guard are checked now (their text is left as it was)."""
+    import json
+
+    from api.job_os.posting_guard import guard_text
+
+    connection.execute("ALTER TABLE jobs ADD COLUMN guard_json TEXT NOT NULL DEFAULT '{}'")
+    for row in connection.execute("SELECT id, description FROM jobs WHERE description != ''").fetchall():
+        _clean, findings = guard_text(row[1])
+        connection.execute("UPDATE jobs SET guard_json = ? WHERE id = ?", (json.dumps(findings), row[0]))
+
+
 MIGRATIONS = ((1, _migration_1), (2, _migration_2), (3, _migration_3), (4, _migration_4), (5, _migration_5),
               (6, _migration_6), (7, _migration_7), (8, _migration_8), (9, _migration_9), (10, _migration_10),
-              (11, _migration_11), (12, _migration_12))
+              (11, _migration_11), (12, _migration_12), (13, _migration_13))
 
 
 def migrate_job_os(connection: sqlite3.Connection) -> None:

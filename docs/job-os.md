@@ -352,3 +352,29 @@ no reviews on 2026-10-08). Instead each job not yet applied for has an
 3. **Apply on the site:** Open posting, paste, send, then **I've applied**.
 
 Answers are stored per job (`apply_kits`); preparing them is one model call.
+
+## Postings are untrusted
+
+A posting is text written by a stranger, and Luna reads it next to your
+resume and application answers. Every posting therefore passes through the
+**posting guard** (`api/job_os/posting_guard.py`) where it enters Job OS
+(`repository.normalize_job_input`, used by Scout, Add job, Edit and Fetch
+details):
+
+- **Removed before it is stored:** hidden HTML (inline `display:none`,
+  `visibility:hidden`, zero font size or opacity, the `hidden` attribute,
+  `aria-hidden`), comments, script, style and template blocks, zero-width and
+  bidi control characters, and Unicode tag characters.
+- **Flagged, never removed:** visible lines that read like instructions to an
+  AI ("ignore previous instructions", "if you are an AI…"), words that mix
+  Latin with Cyrillic or Greek look-alike letters, and links that only exist
+  in hidden text.
+
+The guard advises and never blocks: a flagged job is still saved and scored.
+Its card shows a **Hidden text** chip, and the job's side panel lists what
+was found under **Checks**, quoting up to three lines of 160 characters. The
+findings are stored per job in `jobs.guard_json`; jobs saved before the
+guard were checked once by migration 13 (their text was left as it was),
+and Luna always reads the cleaned text.
+
+Adapted from ai-job-search (github.com/ai-job-search-dev/ai-job-search, MIT).

@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote
 
 from api.helpers import bad, j
+from api.job_os import posting_guard
 from api.job_os.dashboard import build_dashboard
 from api.job_os.db import job_os_capability
 from api.job_os.lifecycle import ConcurrentRevisionError, InvalidJobTransition, transition_job
@@ -38,7 +39,11 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         "run_id": job.run_id,
         "country": job.country,
         "has_description": bool(job.description),
+        "guard": posting_guard.public(job.guard),
     }
+    from api.job_os.checks import job_checks
+
+    payload["checks"] = job_checks(job, (analyses or {}).get(job.id))
     if detail:
         from api.job_os.analysis import get_analysis
 
@@ -46,6 +51,7 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
 
         payload["description"] = job.description
         payload["analysis"] = get_analysis(job.id)
+        payload["checks"] = job_checks(job, payload["analysis"])
         payload["documents"] = {kind: {k: d[k] for k in ("id", "status", "error", "revision", "updated_at")}
                                 for kind, d in latest_documents(job.id).items()}
         from api.job_os.interview import get_prep

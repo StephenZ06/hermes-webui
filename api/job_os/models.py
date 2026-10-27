@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -59,6 +59,8 @@ class JobInput:
     search_id: str | None = None
     run_id: str | None = None
     country: str = ""
+    # What the posting guard found in the description (``posting_guard``).
+    guard: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -88,3 +90,4 @@ class JobRecord:
     search_id: str | None = None
     run_id: str | None = None
     country: str = ""
+    guard: dict = field(default_factory=dict)

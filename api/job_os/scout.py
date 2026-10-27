@@ -564,13 +564,16 @@ def fill_job_details(job_id: str, *, client_factory: Callable | None = None) -> 
     if kind != "posting":
         raise ScoutError("That page is closed or is not a single job posting." if kind == "closed"
                          else "No job posting details were found on that page.")
+    from api.job_os.posting_guard import guard_text
+
+    description, guard = guard_text(posting["description"], posting.get("guard_hidden"))
     conn = connect_job_os()
     try:
         conn.execute(
-            "UPDATE jobs SET description=?, salary_text=?, employment_type=?, workplace=?, posted_at=?,"
+            "UPDATE jobs SET description=?, guard_json=?, salary_text=?, employment_type=?, workplace=?, posted_at=?,"
             " company=CASE WHEN company='' THEN ? ELSE company END, location=CASE WHEN location='' THEN ? ELSE location END,"
             " updated_at=? WHERE id=?",
-            (posting["description"], posting["salary_text"], posting["employment_type"], posting["workplace"],
+            (description.strip(), json.dumps(guard), posting["salary_text"], posting["employment_type"], posting["workplace"],
              posting["posted_at"], posting["company"], posting["location"], int(time.time()), job_id))
         conn.commit()
     finally:

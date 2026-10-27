@@ -15,6 +15,8 @@ import json
 import re
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
+from api.job_os import posting_guard
+
 MAX_DESCRIPTION = 20000
 _LD_JSON = re.compile(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", re.I | re.S)
 _EMPLOYMENT = {
@@ -135,6 +137,7 @@ def extract_job_posting(page_html: str, url: str) -> dict | None:
             haystack = f"{title} {location}".lower()
             workplace = "remote" if remote else "hybrid" if "hybrid" in haystack else (
                 "remote" if "remote" in haystack else "onsite" if location else "")
+            description, hidden = posting_guard.strip_hidden_html(node.get("description") or "")
             return {
                 "title": title[:240],
                 "company": _text(org)[:240],
@@ -143,7 +146,8 @@ def extract_job_posting(page_html: str, url: str) -> dict | None:
                 "employment_type": _employment(node)[:80],
                 "workplace": workplace,
                 "posted_at": _text(node.get("datePosted"))[:40],
-                "description": _html_to_text(node.get("description") or ""),
+                "description": _html_to_text(description),
+                "guard_hidden": hidden,
                 "canonical_url": url,
             }
     return None

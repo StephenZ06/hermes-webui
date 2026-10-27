@@ -115,8 +115,13 @@ def request_analysis(job_ids: list[str], *, force: bool = False, start_worker: b
 
 
 def posting_text(job) -> str:
+    """The posting as Luna reads it, cleaned again by the posting guard (jobs
+    saved before the guard still carry their original text)."""
+    from api.job_os.posting_guard import guard_text
+
+    description = guard_text(job.description)[0]
     return (f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\nWorkplace: {job.workplace}\n"
-            f"Employment: {job.employment_type}\nPay: {job.salary_text}\n\n{job.description[:14000]}")
+            f"Employment: {job.employment_type}\nPay: {job.salary_text}\n\n{description[:14000]}")
 
 
 def score_text(job, resume_text: str) -> dict:

@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from api.job_os import posting_guard
 from api.job_os.db import connect_job_os
 from api.job_os.extract import indeed_job_key
 from api.job_os.models import (
@@ -78,6 +79,11 @@ def normalize_job_input(payload: Mapping[str, object]) -> JobInput:
     workplace = _optional_text(payload, "workplace").lower()
     if workplace not in WORKPLACES:
         raise JobValidationError("workplace must be remote, hybrid or onsite")
+    # Every posting enters here: hidden text is removed before it is stored or
+    # read by Luna, and what was found is kept with the job (advisory only).
+    hidden = payload.get("guard_hidden")
+    description, guard = posting_guard.guard_text(_bounded(payload, "description"),
+                                                  hidden if isinstance(hidden, Mapping) else None)
     return JobInput(
         title=title,
         canonical_url=canonical_url,
@@ -85,12 +91,13 @@ def normalize_job_input(payload: Mapping[str, object]) -> JobInput:
         location=_bounded(payload, "location"),
         source=source,
         source_id=source_id,
-        description=_bounded(payload, "description"),
+        description=description.strip(),
         salary_text=_bounded(payload, "salary_text"),
         employment_type=_bounded(payload, "employment_type"),
         workplace=workplace,
         posted_at=_bounded(payload, "posted_at"),
         country=_bounded(payload, "country"),
+        guard=guard,
     )
 
 
@@ -115,7 +122,16 @@ def _record_from_row(row: sqlite3.Row) -> JobRecord:
         search_id=row["search_id"],
         run_id=row["run_id"],
         country=row["country"],
+        guard=_guard(row),
     )
+
+
+def _guard(row: sqlite3.Row) -> dict:
+    try:
+        value = json.loads(row["guard_json"] or "{}")
+    except (IndexError, KeyError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _find_duplicate(connection: sqlite3.Connection, job: JobInput) -> sqlite3.Row | None:
@@ -163,8 +179,8 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 id, canonical_url, source, source_id, title, company, location,
                 status, revision, idempotency_key, created_at, updated_at,
                 description, salary_text, employment_type, workplace, posted_at,
-                search_id, run_id, country
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                search_id, run_id, country, guard_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record_id,
@@ -187,6 +203,7 @@ def create_job(job: JobInput, *, idempotency_key: str | None = None,
                 job.search_id,
                 job.run_id,
                 job.country,
+                json.dumps(job.guard or {}),
             ),
         )
         connection.execute(
@@ -261,9 +278,9 @@ def update_job_details(job_id: str, changes: Mapping[str, object], *, expected_r
         connection.execute("BEGIN IMMEDIATE")
         now = int(time.time())
         cursor = connection.execute(
-            f"UPDATE jobs SET {', '.join(f'{f} = ?' for f in EDITABLE_FIELDS)}, revision = revision + 1, updated_at = ?"
-            " WHERE id = ? AND revision = ?",
-            (*values.values(), now, job_id, expected_revision),
+            f"UPDATE jobs SET {', '.join(f'{f} = ?' for f in EDITABLE_FIELDS)}, guard_json = ?, revision = revision + 1,"
+            " updated_at = ? WHERE id = ? AND revision = ?",
+            (*values.values(), json.dumps(clean.guard if "description" in changes else current.guard), now, job_id, expected_revision),
         )
         if cursor.rowcount != 1:
             connection.rollback()
