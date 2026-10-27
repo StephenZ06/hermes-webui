@@ -4417,8 +4417,6 @@ function toggleSessionSelectMode(){
 function exitSessionSelectMode(){
   _sessionSelectMode=false;
   _selectedSessions.clear();
-  const bar=$('batchActionBar');
-  if(bar) bar.style.display='none';
   renderSessionListFromCache();
 }
 function toggleSessionSelect(sid){
@@ -4455,7 +4453,7 @@ function deselectAllSessions(){
   _updateBatchActionBar();
 }
 // Select mode covers the conversation filter with its own strip (exit, count,
-// Select all) and lights the box, so the mode reads at the top of the list
+// Delete) and lights the box, so the mode reads at the top of the list
 // without pushing the Workspaces heading down. The strip is built once inside
 // the filter field, which survives list renders, so it can fade in and out.
 function _syncSessionSelectOverlay(){
@@ -4476,11 +4474,11 @@ function _syncSessionSelectOverlay(){
     const count=document.createElement('span');
     count.className='session-select-count';
     count.setAttribute('aria-live','polite');
-    const selectAllBtn=document.createElement('button');
-    selectAllBtn.type='button';selectAllBtn.className='batch-select-all-btn';
-    selectAllBtn.textContent=t('session_select_all');
-    selectAllBtn.onclick=(e)=>{e.stopPropagation();selectAllSessions();};
-    overlay.append(exitBtn,count,selectAllBtn);
+    const deleteBtn=document.createElement('button');
+    deleteBtn.type='button';deleteBtn.className='batch-delete-btn';
+    deleteBtn.textContent=t('session_batch_delete');
+    deleteBtn.onclick=(e)=>{e.stopPropagation();_deleteSelectedSessions();};
+    overlay.append(exitBtn,count,deleteBtn);
     field.appendChild(overlay);
   }
   const on=!!_sessionSelectMode;
@@ -4489,113 +4487,47 @@ function _syncSessionSelectOverlay(){
   const input=$('sessionSearch');
   if(input){input.tabIndex=on?-1:0;if(on&&document.activeElement===input)input.blur();}
   const count=overlay.querySelector('.session-select-count');
-  if(count){
-    const n=_selectedSessions.size;
-    count.textContent=t('session_selected_count',n);
-  }
+  const n=_selectedSessions.size;
+  if(count) count.textContent=t('session_selected_count',n);
+  const deleteBtn=overlay.querySelector('.batch-delete-btn');
+  if(deleteBtn) deleteBtn.disabled=n===0;
 }
 function _updateBatchActionBar(){
   _syncSessionSelectOverlay();
-  const bar=$('batchActionBar');if(!bar)return;
-  const count=_selectedSessions.size;
-  if(count>0){_renderBatchActionBar();}
-  else{bar.style.display='none';}
 }
-function _renderBatchActionBar(){
-  const bar=$('batchActionBar');if(!bar)return;
-  bar.innerHTML='';bar.style.display=_selectedSessions.size>0?'flex':'none';
-  const countBadge=document.createElement('span');countBadge.className='batch-count';
-  countBadge.textContent=t('session_selected_count',_selectedSessions.size);bar.appendChild(countBadge);
-  // Archive
-  const archiveBtn=document.createElement('button');archiveBtn.className='batch-action-btn';
-  archiveBtn.textContent=t('session_batch_archive');
-  archiveBtn.onclick=async()=>{
-    const ids=[..._selectedSessions];
-    const wtCount=_worktreeSessionCount(ids);
-    const sessionsById=new Map(ids.map(sid=>[sid,_sessionSnapshotById(sid)]));
-    const ok=await showConfirmDialog({
-      message:wtCount?t('session_batch_archive_worktree_confirm',ids.length,wtCount):t('session_batch_archive_confirm',ids.length),
-      confirmLabel:t('session_batch_archive'),
-      danger:true
-    });
-    if(!ok)return;
-    try{
-      const results=await Promise.all(ids.map(async sid=>{
-        const response=await api('/api/session/archive',{method:'POST',body:JSON.stringify({session_id:sid,archived:true})});
-        return {response,session:sessionsById.get(sid)||null};
-      }));
-      const retainedCount=_worktreeResponseCount(results);
-      showToast(retainedCount?t('session_archived_worktree'):t('session_archived'));exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Archive failed: '+(e.message||e));}
-  };bar.appendChild(archiveBtn);
-  // Move
-  const moveBtn=document.createElement('button');moveBtn.className='batch-action-btn';
-  moveBtn.textContent=t('session_batch_move');
-  moveBtn.onclick=(e)=>{e.stopPropagation();_showBatchProjectPicker();};bar.appendChild(moveBtn);
-  // Delete
-  const deleteBtn=document.createElement('button');deleteBtn.className='batch-action-btn batch-action-btn-danger';
-  deleteBtn.textContent=t('session_batch_delete');
-  deleteBtn.onclick=async()=>{
-    const ids=[..._selectedSessions];
-    const wtCount=_worktreeSessionCount(ids);
-    const sessionsById=new Map(ids.map(sid=>[sid,_sessionSnapshotById(sid)]));
-    const ok=await showConfirmDialog({
-      message:wtCount?t('session_batch_delete_worktree_confirm',ids.length,wtCount):t('session_batch_delete_confirm',ids.length),
-      confirmLabel:t('delete_title'),
-      danger:true
-    });
-    if(!ok)return;
-    try{
-      const results=await Promise.all(ids.map(async sid=>{
-        const response=await api('/api/session/delete',{method:'POST',body:JSON.stringify({session_id:sid})});
-        return {response,session:sessionsById.get(sid)||null};
-      }));
-      const retainedCount=_worktreeResponseCount(results);
-      const cleanupFailedCount=results.filter(result=>result.response&&result.response.state_db_cleanup_failed).length;
-      ids.forEach(_clearHandoffStorageForSession);
-      if(S.session&&ids.includes(S.session.session_id)){
-        S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('hermes-webui-session');
-        // Deleting the active session leaves it (and any still-running
-        // subagents) behind without going through loadSession(), so reset
-        // Agent Canvas explicitly here too (#agent-canvas final review, item 3).
-        if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
-        if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
-        if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
-        await _loadReplacementSessionAfterDelete();
-      }
-      if(cleanupFailedCount) showToast(t('delete_failed')+' ('+cleanupFailedCount+'/'+ids.length+')',0,'error');
-      else showToast((retainedCount?t('session_deleted_worktree'):t('session_delete'))+' ('+ids.length+')');
-      exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Delete failed: '+(e.message||e));}
-  };bar.appendChild(deleteBtn);
-}
-function _showBatchProjectPicker(){
-  const ids=[..._selectedSessions];if(!ids.length)return;
-  const bar=$('batchActionBar');if(!bar)return;
-  bar.querySelectorAll('.batch-project-picker').forEach(p=>p.remove());
-  const picker=document.createElement('div');picker.className='project-picker batch-project-picker';
-  const none=document.createElement('div');none.className='project-picker-item';none.textContent='No project';
-  none.onclick=async()=>{picker.remove();
-    try{await Promise.all(ids.map(sid=>api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:sid,project_id:null})})));
-      showToast('Removed from project');exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Move failed: '+(e.message||e));}
-  };picker.appendChild(none);
-  for(const p of(_allProjects||[])){
-    if(isWorkHubOnlyProject(p)) continue;
-    const item=document.createElement('div');item.className='project-picker-item';
-    if(p.color){const dot=document.createElement('span');dot.className='color-dot';
-      dot.style.cssText='width:6px;height:6px;border-radius:50%;background:'+p.color+';flex-shrink:0;';item.appendChild(dot);}
-    const name=document.createElement('span');name.textContent=p.name;item.appendChild(name);
-    item.onclick=async()=>{picker.remove();
-      try{await Promise.all(ids.map(sid=>api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:sid,project_id:p.project_id})})));
-        _expandProjectFolder(p.project_id);
-        showToast('Moved to '+p.name);exitSessionSelectMode();await renderSessionList();
-      }catch(e){showToast('Move failed: '+(e.message||e));}
-    };picker.appendChild(item);
-  }
-  bar.appendChild(picker);
-  const close=(e)=>{if(!picker.contains(e.target)){picker.remove();document.removeEventListener('click',close);}};
-  setTimeout(()=>document.addEventListener('click',close),0);
+async function _deleteSelectedSessions(){
+  const ids=[..._selectedSessions];
+  if(!ids.length)return;
+  const wtCount=_worktreeSessionCount(ids);
+  const sessionsById=new Map(ids.map(sid=>[sid,_sessionSnapshotById(sid)]));
+  const ok=await showConfirmDialog({
+    message:wtCount?t('session_batch_delete_worktree_confirm',ids.length,wtCount):t('session_batch_delete_confirm',ids.length),
+    confirmLabel:t('delete_title'),
+    danger:true
+  });
+  if(!ok)return;
+  try{
+    const results=await Promise.all(ids.map(async sid=>{
+      const response=await api('/api/session/delete',{method:'POST',body:JSON.stringify({session_id:sid})});
+      return {response,session:sessionsById.get(sid)||null};
+    }));
+    const retainedCount=_worktreeResponseCount(results);
+    const cleanupFailedCount=results.filter(result=>result.response&&result.response.state_db_cleanup_failed).length;
+    ids.forEach(_clearHandoffStorageForSession);
+    if(S.session&&ids.includes(S.session.session_id)){
+      S.session=null;S.messages=[];S.entries=[];localStorage.removeItem('hermes-webui-session');
+      // Deleting the active session leaves it (and any still-running
+      // subagents) behind without going through loadSession(), so reset
+      // Agent Canvas explicitly here too (#agent-canvas final review, item 3).
+      if(window.AgentCanvas && typeof window.AgentCanvas.reset === 'function') window.AgentCanvas.reset();
+      if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(null);
+      if(typeof _refreshAppliedPersonaUI==='function') _refreshAppliedPersonaUI();
+      await _loadReplacementSessionAfterDelete();
+    }
+    if(cleanupFailedCount) showToast(t('delete_failed')+' ('+cleanupFailedCount+'/'+ids.length+')',0,'error');
+    else showToast((retainedCount?t('session_deleted_worktree'):t('session_delete'))+' ('+ids.length+')');
+    exitSessionSelectMode();await renderSessionList();
+  }catch(e){showToast('Delete failed: '+(e.message||e));}
 }
 
 function _focusSessionActionMenuRestoreTarget(target){
@@ -8055,12 +7987,6 @@ function renderSessionListFromCache(){
   _sessionListSkeletonActive=false;
   // Select mode shows its exit / Select all controls over the conversation filter.
   _syncSessionSelectOverlay();
-  // Ensure batch action bar exists in DOM
-  let batchBar=$('batchActionBar');
-  if(!batchBar){batchBar=document.createElement('div');batchBar.id='batchActionBar';batchBar.className='batch-action-bar';}
-  _appendAboveWorkspaces(batchBar);
-  if(_sessionSelectMode&&_selectedSessions.size>0){batchBar.style.display='flex';_renderBatchActionBar();}
-  else{batchBar.style.display='none';}
   if(_sessionListLoadError){
     const note=_renderSessionListLoadErrorNote();
     if(note) _appendAboveWorkspaces(note);

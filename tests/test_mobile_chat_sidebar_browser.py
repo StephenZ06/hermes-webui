@@ -73,7 +73,7 @@ def test_select_mode_controls_sit_over_the_filter_box(phone):
     measure = """() => { const f = document.querySelector('#sessionSearch').getBoundingClientRect();
         const h = document.querySelector('.chat-sidebar-section--workspaces .chat-sidebar-section-heading').getBoundingClientRect();
         const x = document.querySelector('.session-select-overlay .batch-exit-btn');
-        const a = document.querySelector('.session-select-overlay .batch-select-all-btn');
+        const a = document.querySelector('.session-select-overlay .batch-delete-btn');
         return { field: [f.top, f.bottom], heading: h.top,
                  exit: x ? [x.getBoundingClientRect().top, x.getBoundingClientRect().bottom] : null,
                  all: a ? a.getBoundingClientRect().right : null, right: f.right }; }"""
@@ -86,6 +86,10 @@ def test_select_mode_controls_sit_over_the_filter_box(phone):
     assert after["field"][0] <= after["exit"][0] and after["exit"][1] <= after["field"][1]
     assert after["all"] <= after["right"]
     assert page.evaluate("() => document.querySelector('.session-search').classList.contains('is-selecting')")
+    # Delete is the only action: inert until a chat is picked, no separate card.
+    assert page.evaluate("() => document.querySelector('.session-select-overlay .batch-delete-btn').disabled")
+    page.evaluate("() => setSessionSelected([...document.querySelectorAll('.session-item[data-sid]')].find(e => e.offsetParent).dataset.sid, true)")
+    assert page.evaluate("() => [document.querySelector('.session-select-overlay .batch-delete-btn').disabled, document.querySelectorAll('.batch-action-bar').length]") == [False, 0]
     page.evaluate("() => exitSessionSelectMode()")
     assert not page.evaluate("() => document.querySelector('.session-search').classList.contains('is-selecting')")
 

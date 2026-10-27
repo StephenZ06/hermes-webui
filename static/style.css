@@ -1943,19 +1943,14 @@
   /* ── Batch select mode ── */
   .batch-exit-btn{width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;padding:0;flex-shrink:0;}
   .batch-exit-btn:hover{background:var(--hover-bg);color:var(--text);}
-  .batch-select-all-btn{font-size:11px;border:none;border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;padding:3px 8px;font-weight:600;}
-  .batch-select-all-btn:hover{background:var(--accent-bg);}
+  .batch-delete-btn{font-size:12px;border:none;border-radius:6px;background:transparent;color:var(--error);cursor:pointer;padding:4px 8px;font-weight:600;transition:background .12s,opacity .15s;}
+  .batch-delete-btn:hover{background:color-mix(in srgb,var(--error) 12%,transparent);}
+  .batch-delete-btn:disabled{opacity:.4;cursor:default;background:transparent;}
   .session-select-cb-wrapper{display:flex;align-items:center;flex-shrink:0;padding:2px;}
   .session-select-cb{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;margin:0;}
   .session-item.selected{background:var(--accent-bg);color:var(--accent-text);}
   .session-item.selected .session-title{color:var(--accent-text);}
   .session-item.selected .session-meta{color:var(--accent-text);opacity:.8;}
-  .batch-action-bar{display:none;margin:0 10px 8px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);align-items:stretch;gap:6px;font-size:12px;flex-wrap:wrap;}
-  .batch-count{font-weight:600;color:var(--accent);width:100%;white-space:nowrap;}
-  .batch-action-btn{border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;padding:6px 8px;font-size:12px;font-weight:500;transition:background .12s,color .12s,border-color .12s;white-space:nowrap;flex:1 1 auto;}
-  .batch-action-btn:hover{background:var(--hover-bg);border-color:var(--border2);}
-  .batch-action-btn-danger{color:var(--error,#e94560);border-color:var(--error,#e94560);}
-  .batch-action-btn-danger:hover{background:rgba(233,69,96,.1);}
   .session-date-caret{font-size:9px;transition:transform .2s;flex-shrink:0;display:inline-block;transform:rotate(0deg);}
   .session-date-caret.collapsed{transform:rotate(-90deg);}
   /* Collapsible date-group bodies. Same mechanism as .project-folder-sessions:
@@ -8975,7 +8970,6 @@ main.main > #mainPlugin{display:none;}
    pill used by the "+ new project" input. */
 .project-folder-rename-input{width:100%;box-sizing:border-box;max-width:none;min-width:0;border-radius:8px;padding:6px 8px;font-size:12px;}
 .project-picker{position:absolute;right:0;top:100%;background:var(--sidebar);border:1px solid var(--border2);border-radius:8px;padding:4px;z-index:30;min-width:160px;max-width:220px;width:max-content;box-shadow:0 4px 16px rgba(0,0,0,.3);}
-.batch-action-bar .batch-project-picker{position:static;right:auto;top:auto;min-width:100%;max-width:none;width:100%;box-shadow:none;margin-top:2px;background:var(--input-bg);}
 .project-picker-item{font-weight:600;padding:5px 10px;font-size:11px;border-radius:6px;cursor:pointer;color:var(--muted);transition:background .1s,color .1s;display:flex;align-items:center;gap:6px;}
 .project-picker-item:hover{background:rgba(255,255,255,.08);color:var(--text);}
 .project-picker-item.active{color:var(--blue);}
@@ -12185,7 +12179,6 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .session-select-overlay .batch-exit-btn svg{width:12px;height:12px;}
 .session-select-overlay .batch-exit-btn:hover{background:var(--accent-bg-strong);color:var(--accent);}
 .session-select-count{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
-.session-select-overlay .batch-select-all-btn{font-size:12px;padding:4px 8px;}
 @media (prefers-reduced-motion:reduce){
   .session-search-field .session-select-overlay,.session-search.is-selecting .session-select-overlay{transform:none;transition:opacity .01s,visibility 0s;}
   .session-search.is-selecting .session-search-field > input{animation:none;}

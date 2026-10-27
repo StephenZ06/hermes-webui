@@ -22,8 +22,7 @@ def test_batch_select_functions_exist():
         'selectAllSessions',
         'deselectAllSessions',
         '_updateBatchActionBar',
-        '_renderBatchActionBar',
-        '_showBatchProjectPicker',
+        '_deleteSelectedSessions',
     ]
     for fn in required_funcs:
         assert f'function {fn}(' in src, f"Missing function: {fn}"
@@ -70,69 +69,19 @@ def test_batch_select_escape_handler():
         "Should have Escape key handler for select mode"
 
 
-def test_batch_select_bar_element():
-    """Verify batch action bar DOM element is created."""
+def test_batch_delete_lives_in_the_filter_overlay():
+    """Select mode has one action, Delete, in the filter strip; no separate action card."""
     with open('static/sessions.js', encoding="utf-8") as f:
         src = f.read()
-    assert 'batchActionBar' in src, "Missing batchActionBar element"
-    assert 'batch-action-bar' in src, "Missing batch-action-bar CSS class"
-    assert 'batch-action-btn' in src, "Missing batch-action-btn class"
-
-
-def test_batch_action_bar_overrides_css_hidden_state():
-    """Selected sessions must make the fixed action bar visible."""
-    with open('static/sessions.js', encoding="utf-8") as f:
-        src = f.read()
-    assert "if(count>0){_renderBatchActionBar();}" in src, \
-        "Updating selected count must render action buttons, not just reveal an empty bar"
-    assert "t('session_selected_count',_selectedSessions.size)" in src, \
+    assert "deleteBtn.className='batch-delete-btn'" in src
+    assert "deleteBtn.onclick=(e)=>{e.stopPropagation();_deleteSelectedSessions();};" in src
+    assert "deleteBtn.disabled=n===0" in src, "Delete must be inert with nothing selected"
+    assert "t('session_selected_count',n)" in src, \
         "Selected count must pass the selected session count to i18n"
-    assert "t('session_batch_archive_confirm',ids.length)" in src, \
-        "Batch archive confirmation must pass selected session count to i18n"
     assert "t('session_batch_delete_confirm',ids.length)" in src, \
         "Batch delete confirmation must pass selected session count to i18n"
-    assert "bar.innerHTML='';bar.style.display=_selectedSessions.size>0?'flex':'none'" in src, \
-        "Rendering the action bar must explicitly show it when selections exist"
-    assert "batchBar.style.display='flex'" in src, \
-        "Session list render must explicitly show the action bar in select mode"
-
-
-def test_batch_action_bar_is_sidebar_inline_not_global_footer():
-    """Batch actions should appear in the session list, not over the composer."""
-    with open('static/sessions.js', encoding="utf-8") as f:
-        js = f.read()
-    with open('static/style.css', encoding="utf-8") as f:
-        css = f.read()
-    # Inserted above the persistent Workspaces section (or appended when there
-    # is none yet) -- inside the session list either way.
-    assert "_appendAboveWorkspaces(batchBar)" in js and "list.insertBefore(el,keepWorkspacesSection)" in js, \
-        "Batch action bar should be rendered inside the session list"
-    assert "document.body.appendChild(batchBar)" not in js, \
-        "Batch action bar must not be mounted as a global footer"
-    assert ".batch-action-bar{display:none;margin:" in css, \
-        "Batch action bar should use inline sidebar spacing"
-    assert "position:fixed" not in css[css.find(".batch-action-bar{"):css.find(".batch-count{")], \
-        "Batch action bar must not be fixed to the bottom of the viewport"
-
-
-def test_batch_project_picker_is_anchored_to_batch_actions():
-    """Batch move project picker should open inside the sidebar action bar."""
-    with open('static/sessions.js', encoding="utf-8") as f:
-        js = f.read()
-    with open('static/style.css', encoding="utf-8") as f:
-        css = f.read()
-    assert "const bar=$('batchActionBar');if(!bar)return;" in js, \
-        "Batch project picker should anchor to the batch action bar"
-    assert "picker.className='project-picker batch-project-picker'" in js, \
-        "Batch project picker needs its own inline styling hook"
-    assert "bar.appendChild(picker)" in js, \
-        "Batch project picker should render inside the batch action bar"
-    assert "document.body.appendChild(picker);picker.style.cssText='position:fixed" not in js, \
-        "Batch project picker must not use the old global fixed placement"
-    assert ".batch-action-bar .batch-project-picker{position:static;" in css, \
-        "Batch project picker should override the shared absolute project picker style"
-    assert css.find(".project-picker{") < css.find(".batch-action-bar .batch-project-picker{"), \
-        "Batch project picker override must come after the shared project picker rule"
+    for gone in ('batchActionBar', 'batch-action-bar', 'batch-select-all-btn', '_showBatchProjectPicker'):
+        assert gone not in src, f"{gone} should be gone with the action card"
 
 
 def test_streaming_zero_message_sessions_stay_visible_after_reload():
@@ -211,14 +160,10 @@ def test_batch_select_css_exists():
     required_classes = [
         'session-select-overlay',
         'batch-exit-btn',
-        'batch-select-all-btn',
+        'batch-delete-btn',
         'session-select-cb-wrapper',
         'session-select-cb',
         'session-item.selected',
-        'batch-action-bar',
-        'batch-count',
-        'batch-action-btn',
-        'batch-action-btn-danger',
     ]
     for cls in required_classes:
         assert cls in src, f"Missing CSS class: .{cls}"
