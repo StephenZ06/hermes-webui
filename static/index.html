@@ -1555,6 +1555,33 @@
               </label>
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="dictation_append_desc">When ON, dictated text is appended to any text already in the composer (with a space if needed). When OFF, dictated text replaces the composer content.</div>
             </div>
+            <div class="settings-field" id="settingsSttGroup">
+              <label for="settingsSttEngine">Speech recognition engine</label>
+              <select id="settingsSttEngine" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
+                <option value="groq">Groq Whisper (cloud, free tier)</option>
+                <option value="local">Local Whisper (this server)</option>
+              </select>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Turns dictation into text on the server. Groq is fast and accurate but has free-tier limits; local Whisper runs here with no limits and keeps audio on this machine.</div>
+              <div id="settingsSttStatus" style="font-size:11px;color:var(--muted);margin-top:4px" aria-live="polite"></div>
+            </div>
+            <div class="settings-field">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="settingsSttLocalFallback" style="width:15px;height:15px;accent-color:var(--accent)">
+                <span>Fall back to local Whisper</span>
+              </label>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">If the engine above fails (for example, Groq's rate limit is reached), transcribe the same recording with local Whisper instead.</div>
+            </div>
+            <div class="settings-field">
+              <label for="settingsSttLocalModel">Local Whisper model</label>
+              <select id="settingsSttLocalModel" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">
+                <option value="tiny.en">tiny.en: fastest, least accurate</option>
+                <option value="base.en">base.en: fast</option>
+                <option value="small.en">small.en: balanced (recommended)</option>
+                <option value="medium.en">medium.en: most accurate, slow on CPU</option>
+                <option value="small">small: multilingual</option>
+              </select>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Used when local Whisper is the engine or the fallback. A new model downloads on first use.</div>
+            </div>
             <div class="settings-field">
               <label for="settingsTtsEngine" data-i18n="settings_label_tts_engine">TTS Engine</label><select id="settingsTtsEngine" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px"><option value="browser">Browser speech synthesis</option><option value="edge">Edge TTS (server)</option><option value="elevenlabs">ElevenLabs (server)</option><option value="openai">OpenAI TTS (server)</option></select><div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_tts_engine">Choose speech engine. Edge TTS uses Microsoft neural voices via the server.</div></div><div class="settings-field"><label for="settingsTtsVoice" data-i18n="settings_label_tts_voice">Voice</label>
               <select id="settingsTtsVoice" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px">

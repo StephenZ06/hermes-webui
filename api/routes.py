@@ -14240,6 +14240,12 @@ def _route_get_api_transcribe_capability(handler, parsed):
     return handle_transcribe_capability(handler)
 
 
+def _route_get_api_stt_config(handler, parsed):
+    from api.stt_settings import get_stt_settings
+
+    return j(handler, get_stt_settings())
+
+
 def _route_get_api_reasoning(handler, parsed):
     # Current reasoning config (shared source of truth with the CLI —
     # reads display.show_reasoning and agent.reasoning_effort from
@@ -16251,6 +16257,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/provider/cost-history"), _route_get_api_provider_cost_history),
         (Exact("/api/settings"), _route_get_api_settings),
         (Exact("/api/transcribe/capability"), _route_get_api_transcribe_capability),
+        (Exact("/api/stt/config"), _route_get_api_stt_config),
         (Exact("/api/reasoning"), _route_get_api_reasoning),
         (Exact("/api/onboarding/status"), _route_get_api_onboarding_status),
         (Exact("/api/extensions/status"), _route_get_api_extensions_status),
@@ -17563,6 +17570,22 @@ def _route_post_api_models_refresh(handler, parsed, body, diag):
     from api.config import invalidate_provider_models_cache
     invalidate_provider_models_cache(provider_id)
     return j(handler, {"ok": True, "provider": provider_id})
+
+
+def _route_post_api_stt_config(handler, parsed, body, diag):
+    # Settings → Speech recognition: stt.provider / stt.local.model in the
+    # active profile's config.yaml, the keys the agent's transcriber reads.
+    from api.stt_settings import set_stt_settings
+
+    try:
+        provider = body.get("provider")
+        local_model = body.get("local_model")
+        return j(handler, set_stt_settings(
+            provider=None if provider is None else str(provider).strip(),
+            local_model=None if local_model is None else str(local_model).strip(),
+        ))
+    except ValueError as exc:
+        return bad(handler, str(exc), 400)
 
 
 def _route_post_api_reasoning(handler, parsed, body, diag):
@@ -20778,6 +20801,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/providers/self-hosted"), _route_post_api_providers_self_hosted),
         (Exact("/api/models/refresh"), _route_post_api_models_refresh),
         (Exact("/api/reasoning"), _route_post_api_reasoning),
+        (Exact("/api/stt/config"), _route_post_api_stt_config),
         (Exact("/api/admin/reload"), _route_post_api_admin_reload),
         (Exact("/api/sessions/cleanup"), _route_post_api_sessions_cleanup),
         (Exact("/api/sessions/cleanup_zero_message"), _route_post_api_sessions_cleanup_zero_message),

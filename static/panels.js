@@ -12165,6 +12165,50 @@ function _parseHiddenFoldersInput(value){
     .filter(s=>s && s.indexOf('/')<0 && s.indexOf('\\')<0);
 }
 
+// Settings → Speech recognition. The engine and local model are the agent's
+// stt.provider / stt.local.model in the active profile's config.yaml, saved
+// as soon as they change; the fallback toggle rides the preferences autosave.
+function _renderSttStatus(cfg){
+  const status=$('settingsSttStatus');
+  if(!status||!cfg) return;
+  const avail=cfg.available||{};
+  const parts=[
+    avail.groq?'Groq: ready':'Groq: needs GROQ_API_KEY',
+    avail.local?'Local Whisper: installed':'Local Whisper: not installed on this server',
+  ];
+  status.textContent=parts.join(' · ');
+}
+function _setSttSelect(sel,value){
+  if(!sel) return;
+  if(value&&![...sel.options].some(o=>o.value===value)){
+    const opt=document.createElement('option');
+    opt.value=value;opt.textContent=`Configured: ${value}`;
+    sel.appendChild(opt);
+  }
+  sel.value=value||sel.options[0].value;
+  if(typeof window.refreshThemedSelect==='function') window.refreshThemedSelect(sel);
+}
+async function _loadSttSettings(){
+  const engineSel=$('settingsSttEngine'), modelSel=$('settingsSttLocalModel');
+  if(!engineSel||!modelSel) return;
+  let cfg;
+  try{cfg=await api('/api/stt/config');}catch(e){console.warn('[settings] speech recognition config unavailable',e);return;}
+  _setSttSelect(engineSel,cfg.provider);
+  _setSttSelect(modelSel,cfg.local_model||'small.en');
+  _renderSttStatus(cfg);
+  if(engineSel.dataset.sttWired) return;
+  engineSel.dataset.sttWired='1';
+  const save=async(body)=>{
+    try{_renderSttStatus(await api('/api/stt/config',{method:'POST',body:JSON.stringify(body)}));}
+    catch(e){showToast('Could not save speech recognition: '+(e.message||e),0,'error');}
+  };
+  // A "Configured: x" option keeps an unlisted config value visible; it is
+  // never written back, since the server accepts only its own lists.
+  const engines=new Set(cfg.engines||[]), models=new Set(cfg.local_models||[]);
+  engineSel.addEventListener('change',()=>{if(engines.has(engineSel.value)) save({provider:engineSel.value});});
+  modelSel.addEventListener('change',()=>{if(models.has(modelSel.value)) save({local_model:modelSel.value});});
+}
+
 function _preferencesPayloadFromUi(){
   const payload={};
   const sendKeySel=$('settingsSendKey');
@@ -12244,6 +12288,8 @@ function _preferencesPayloadFromUi(){
   if(sidebarDensitySel) payload.sidebar_density=sidebarDensitySel.value;
   const sidebarDirectNavigationCb=$('settingsSidebarDirectNavigation');
   if(sidebarDirectNavigationCb) payload.sidebar_direct_navigation=sidebarDirectNavigationCb.checked;
+  const sttLocalFallbackCb=$('settingsSttLocalFallback');
+  if(sttLocalFallbackCb) payload.stt_local_fallback=sttLocalFallbackCb.checked;
   const pinnedLimitField=$('settingsPinnedSessionsLimit');
   if(pinnedLimitField) payload.pinned_sessions_limit=parseInt(pinnedLimitField.value,10);
   const autoTitleRefreshSel=$('settingsAutoTitleRefresh');
@@ -13275,6 +13321,12 @@ async function loadSettingsPanel(){
       sidebarDirectNavigationCb.checked=settings.sidebar_direct_navigation===true;
       sidebarDirectNavigationCb.addEventListener('change',_schedulePreferencesAutosave,{once:false});
     }
+    const sttLocalFallbackCb=$('settingsSttLocalFallback');
+    if(sttLocalFallbackCb){
+      sttLocalFallbackCb.checked=settings.stt_local_fallback!==false;
+      sttLocalFallbackCb.addEventListener('change',_schedulePreferencesAutosave,{once:false});
+    }
+    _loadSttSettings();
     const autoTitleRefreshSel=$('settingsAutoTitleRefresh');
     if(autoTitleRefreshSel){
       const val=String(settings.auto_title_refresh_every||'0');
@@ -16328,6 +16380,7 @@ async function saveSettings(andClose){
   const language=($('settingsLanguage')||{}).value||'en';
   const sidebarDensity=($('settingsSidebarDensity')||{}).value==='detailed'?'detailed':'compact';
   const sidebarDirectNavigation=!!($('settingsSidebarDirectNavigation')||{}).checked;
+  const sttLocalFallbackCb=$('settingsSttLocalFallback');
   const defaultMessageMode=($('settingsDefaultMessageMode')||{}).value||'steer';
   const showBusyPlaceholderHint=!!($('settingsShowBusyPlaceholderHint')||{}).checked;
   const body={};
@@ -16390,6 +16443,7 @@ async function saveSettings(andClose){
   body.show_thinking=window._showThinking!==false;
   body.sidebar_density=sidebarDensity;
   body.sidebar_direct_navigation=sidebarDirectNavigation;
+  if(sttLocalFallbackCb) body.stt_local_fallback=sttLocalFallbackCb.checked;
   window._sidebarDirectNavigation=sidebarDirectNavigation;
   if(typeof _configureSidebarEdgeReveal==='function') _configureSidebarEdgeReveal();
   body.default_message_mode=defaultMessageMode;

@@ -412,6 +412,15 @@ def handle_upload_extract(handler):
         return j(handler, {'error': 'Archive extraction failed'}, status=500)
 
 
+def _stt_local_fallback_enabled():
+    """Settings → Speech recognition: retry a failed request on local Whisper."""
+    try:
+        from api.config import load_settings
+        return load_settings().get('stt_local_fallback', True) is not False
+    except Exception:
+        return True
+
+
 def handle_transcribe(handler):
     import traceback as _tb
     temp_path = None
@@ -436,7 +445,7 @@ def handle_transcribe(handler):
         except ImportError:
             return j(handler, {'error': 'Speech-to-text is unavailable on this server'}, status=503)
         result = transcribe_audio(temp_path)
-        if not result.get('success'):
+        if not result.get('success') and _stt_local_fallback_enabled():
             # A configured cloud provider that is down, rate-limited, or missing
             # its key must not kill dictation when a local Whisper backend is
             # installed — fall back to it transparently (it is preloaded at boot,

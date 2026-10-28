@@ -10107,6 +10107,7 @@ _SETTINGS_DEFAULTS = {
     "tts_enabled": False,
     "tts_auto_read": False,
     "tts_engine": "browser",
+    "stt_local_fallback": True,  # a failed cloud STT request (e.g. Groq rate limit) retries on local Whisper
     "tts_voice": "",
     "tts_rate": 1.0,
     "tts_pitch": 1.0,
@@ -10432,6 +10433,7 @@ _SETTINGS_FLOAT_RANGES = {
     "tts_pitch": (0.0, 2.0),
 }
 _SETTINGS_BOOL_KEYS = {
+    "stt_local_fallback",
     "new_chat_inherits_workspace",
     "onboarding_completed",
     "tour_completed",
