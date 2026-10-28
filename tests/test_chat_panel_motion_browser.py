@@ -56,21 +56,32 @@ def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             page.evaluate("async () => { await switchPanel('chat'); }")
             page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
-                S.messages = [{role: 'user', content: 'A question about how the workspace panel slides over the conversation'},
-                              {role: 'assistant', content: 'An answer. '.repeat(30)}];
-                renderMessages(); if (document.documentElement.dataset.workspacePanel !== 'closed') toggleWorkspacePanel(false); }""")
+                S.messages = [];
+                for (let i = 0; i < 6; i++) { S.messages.push({role: 'user', content: 'Question ' + i + ' about how the workspace panel slides over the conversation'});
+                                              S.messages.push({role: 'assistant', content: 'An answer. '.repeat(30)}); }
+                renderMessages(); if (document.documentElement.dataset.workspacePanel !== 'closed') toggleWorkspacePanel(false);
+                _setMessageScrollToBottom(); }""")
             page.wait_for_timeout(600)
             page.evaluate("""() => { window.__edges = []; const m = document.getElementById('msgInner');
-                const bubble = m.querySelector('.msg-row:not(.assistant-turn) > .msg-body'); const panel = document.querySelector('.rightpanel'); const t0 = performance.now();
-                (function f() { window.__edges.push([bubble.getBoundingClientRect().right, panel.getBoundingClientRect().left]);
+                const view = m.parentElement.getBoundingClientRect();
+                const bubble = [...m.querySelectorAll('.msg-row:not(.assistant-turn) > .msg-body')].filter(e => { const r = e.getBoundingClientRect(); return r.top > view.top && r.bottom < view.bottom; }).pop();
+                const panel = document.querySelector('.rightpanel'); const t0 = performance.now();
+                const host = m.parentElement;
+                (function f() { const r = bubble.getBoundingClientRect(); window.__edges.push([r.right, panel.getBoundingClientRect().left, r.top,
+                    m.dataset.motionHold ? null : host.scrollHeight - host.scrollTop - host.clientHeight]);
                     if (performance.now() - t0 < 1000) requestAnimationFrame(f); })();
                 toggleWorkspacePanel(true); }""")
             page.wait_for_timeout(1300)
             edges = page.evaluate("() => window.__edges")
         finally:
             browser.close()
-    rights = [right for right, _ in edges]
-    assert all(right <= left + 0.5 for right, left in edges), edges        # never under the panel
+    rights = [right for right, _, _, _ in edges]
+    tops = [top for _, _, top, _ in edges]
+    assert all(right <= left + 0.5 for right, left, _, _ in edges), edges  # never under the panel
+    landed = [gap for *_, gap in edges[1:] if gap is not None]
+    assert landed and max(landed) < 16, landed                              # still at the bottom from the landing frame on
+    vertical = [abs(b - a) for a, b in zip(tops, tops[1:])]
+    assert max(vertical) < 40, vertical                                     # the scroll stays anchored: no jump on landing
     steps = [abs(b - a) for a, b in zip(rights, rights[1:])]
     assert max(steps) < 80, steps                                           # one glide, no landing jump
     assert rights[-1] < rights[0] - 100, rights                             # it really moved left with the panel

@@ -315,6 +315,25 @@ function _holdChatTextForPanelMotion(){
   inner.dataset.motionHold='1';
   const heldWidth=inner.getBoundingClientRect().width;
   const maxWidth=parseFloat(getComputedStyle(inner).maxWidth)||Infinity;
+  const host=inner.parentElement;
+  const naturalAtStart=Math.min(maxWidth,host.clientWidth);
+  // A reader at the bottom stays at the bottom for the whole motion (the
+  // composer and header can wrap taller as the column narrows); anyone else
+  // keeps the first message they can see where it is.
+  const pinnedToBottom=host.scrollHeight-host.scrollTop-host.clientHeight<4;
+  // Both go through the transcript's own scroll bookkeeping, so they are not
+  // mistaken for the reader scrolling (which would unpin the conversation).
+  const keepScroll=(anchor,anchorTop)=>{
+    if(pinnedToBottom){
+      if(typeof _setMessageScrollToBottom==='function') _setMessageScrollToBottom();
+      else host.scrollTop=host.scrollHeight;
+    }else if(anchor&&anchor.isConnected){
+      const delta=anchor.getBoundingClientRect().top-anchorTop;
+      if(Math.abs(delta)<0.5) return;
+      if(typeof _programmaticScroll!=='undefined'){_programmaticScroll=true;_programmaticScrollSetAt=performance.now();}
+      host.scrollTop+=delta;
+    }
+  };
   const style=inner.style;
   const props=['width','max-width','flex-shrink','margin-left','margin-right'];
   const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
@@ -353,21 +372,31 @@ function _holdChatTextForPanelMotion(){
   const rows=reduce?[]:visible(':scope > *').map(row=>({row,dir:row.matches('.msg-row:not(.assistant-turn)')?-1:1,prev:row.style.getPropertyValue('translate')}));
   // A ResizeObserver on the column runs after each frame's layout and before
   // paint, so the shift always matches the width being painted (a rAF read
-  // ran before the slide's own update and lagged a frame behind it).
+  // ran before the slide's own update and lagged a frame behind it). The
+  // shift is measured from the width at the start, so nothing moves on the
+  // first frame.
+  const firstRow=rows.length?rows[0].row:null;
+  const firstRowTop=firstRow?firstRow.getBoundingClientRect().top:0;
   const follow=()=>{
-    const natural=Math.min(maxWidth,inner.parentElement.clientWidth);
-    const shift=(heldWidth-natural)/2;
+    const natural=Math.min(maxWidth,host.clientWidth);
+    const shift=(naturalAtStart-natural)/2;
     rows.forEach(({row,dir})=>row.style.setProperty('translate',(dir*shift)+'px 0'));
+    keepScroll(firstRow,firstRowTop);
   };
   const columnWatch=rows.length&&typeof ResizeObserver==='function'?new ResizeObserver(follow):null;
-  if(columnWatch) columnWatch.observe(inner.parentElement);
+  if(columnWatch) columnWatch.observe(host);
   return function release(){
     delete inner.dataset.motionHold;
     if(columnWatch) columnWatch.disconnect();
     const chrome=reduce?[]:visible(_CHAT_MOTION_CHROME);
     const before=new Map(chrome.map(el=>[el,el.getBoundingClientRect()]));
+    const anchor=chrome[0]||firstRow;
+    const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
     rows.forEach(({row,prev})=>{if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');});
     saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
+    // Re-anchor the scroll in the same frame as the rewrap, before measuring
+    // where things landed, so nothing jumps when a later scroll pass runs.
+    keepScroll(anchor,anchorTop);
     if(reduce) return;
     // Every body now in view fades in (rows scrolled in by the rewrap
     // included); the fade-outs are dropped once the fade-ins have started.
