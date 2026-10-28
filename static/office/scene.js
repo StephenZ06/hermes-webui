@@ -98,6 +98,8 @@ const ISO_VERTICAL_SCALE = ISO_DIRECTION.y;
 // Screen-right, in world space, for this fixed isometric view. Used to slide
 // a focused desk out from under the detail panel, which owns the right edge.
 const SCREEN_RIGHT = new THREE.Vector3(1, 0, -1).normalize();
+// Screen-up, in world space: the part of world-up the camera does not look along.
+const SCREEN_UP = new THREE.Vector3(0, 1, 0).addScaledVector(ISO_DIRECTION, -ISO_DIRECTION.y).normalize();
 // The conductor's plinth is a square of this side, and pods are their content
 // plus this much slab. Both are needed to find where a walkway should stop.
 const CONDUCTOR_SLAB = CONDUCTOR_RADIUS * 1.4;
@@ -494,6 +496,9 @@ export function createOfficeScene(canvas, options) {
   let hoveredCluster = null;
   let lastState = null;
   let framedRadius = 0;
+  // Half the width and height of the framed floor as the camera sees it, in
+  // world units (see frameExtent). Null until something has been framed.
+  let framedExtent = null;
   fitShadowToOffice();
 
   function ensureConductor() {
@@ -1205,7 +1210,7 @@ export function createOfficeScene(canvas, options) {
     const conductorStatus = state.conductor ? state.conductor.status : 'idle';
     conductor.userData.status = conductorStatus;
 
-    frameOffice(layout.center, layout.radius);
+    frameOffice(layout.center, layout.radius, layout.pods);
   }
 
   // ---- outlet transition --------------------------------------------------
@@ -1340,25 +1345,83 @@ export function createOfficeScene(canvas, options) {
    * on every frame — a camera that rescales continuously as subagents come
    * and go is unreadable.
    */
-  function frameOffice(center, radius) {
+  function frameOffice(center, radius, pods) {
     const wanted = Math.max(CONDUCTOR_RADIUS * 2, radius) * FRAME_MARGIN;
-    const next = center || { x: 0, z: 0 };
+    const extent = frameExtent(pods || []);
+    const next = extent ? extent.center : (center || { x: 0, z: 0 });
     const moved = Math.hypot(next.x - framedCenter.x, next.z - framedCenter.z);
     // Re-framing on every spawn would make the whole office drift under the
     // user's cursor, so only react once the change is worth a camera move.
-    if (Math.abs(wanted - framedRadius) < 2 && moved < 2) return;
+    const reshaped = !!extent && (!framedExtent || Math.abs(extent.halfX - framedExtent.halfX) >= 2 || Math.abs(extent.halfY - framedExtent.halfY) >= 2);
+    if (Math.abs(wanted - framedRadius) < 2 && moved < 2 && !reshaped) return;
     framedRadius = wanted;
+    framedExtent = extent;
     ensureGroundCovers(framedRadius);
     framedCenter = { x: next.x, z: next.z };
     fitShadowToOffice();
     overview.x = framedCenter.x;
     overview.z = framedCenter.z;
-    overview.zoom = zoomForRadius(viewWidth || lastWidth, lastHeight, framedRadius);
+    overview.zoom = overviewZoom(viewWidth || lastWidth, lastHeight);
     // A camera the user has taken control of — focused on a desk, or zoomed by
     // hand — must not be yanked back because another subagent spawned.
     if (focusedId || manualZoom) return;
     if (view.zoom === 1 && view.x === 0 && view.z === 0) applyView(overview);
     else startTween(overview);
+  }
+
+  /**
+   * What the camera actually sees of the floor: every pod's platform and the
+   * conductor's ring, with standing headroom, projected onto the screen. A
+   * circle round the floor fits a round office, but a Business floor (a ring
+   * of departments, one large overflow pod off to one side) left most of
+   * that circle empty and the floor small; the projected box frames exactly
+   * what is there. Returns the floor point to centre on and the half extents
+   * across and up the screen.
+   */
+  function frameExtent(pods) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const add = (x, y, z) => {
+      const sx = x * SCREEN_RIGHT.x + z * SCREEN_RIGHT.z;
+      const sy = x * SCREEN_UP.x + y * SCREEN_UP.y + z * SCREEN_UP.z;
+      minX = Math.min(minX, sx); maxX = Math.max(maxX, sx);
+      minY = Math.min(minY, sy); maxY = Math.max(maxY, sy);
+    };
+    // From the bottom of a platform's block to the top of what stands on it.
+    const column = (x, z) => { add(x, GROUND_Y, z); add(x, FRAME_HEADROOM, z); };
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      column(Math.cos(a) * CONDUCTOR_RADIUS, Math.sin(a) * CONDUCTOR_RADIUS);
+    }
+    pods.forEach(pod => {
+      const hw = ((pod.width || 0) + POD_SLAB_PADDING) / 2, hd = ((pod.depth || 0) + POD_SLAB_PADDING) / 2;
+      [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].forEach(([dx, dz]) => column(pod.x + dx, pod.z + dz));
+    });
+    if (!Number.isFinite(minX)) return null;
+    // The floor point under the middle of that box: it projects to the
+    // canvas centre, where the camera target sits.
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const across = cx / SCREEN_RIGHT.x;           // x - z
+    const along = cy / SCREEN_UP.x;               // x + z (SCREEN_UP.x === SCREEN_UP.z)
+    return {
+      center: { x: (along + across) / 2, z: (along - across) / 2 },
+      halfX: (maxX - minX) / 2,
+      halfY: (maxY - minY) / 2,
+    };
+  }
+
+  /** The overview zoom for the framed floor in a viewport this size. */
+  function overviewZoom(width, height) {
+    if (!framedExtent) return zoomForRadius(width, height, framedRadius);
+    const aspect = height > 0 ? width / height : 1;
+    const halfWidth = FRUSTUM_HALF_HEIGHT * aspect;
+    // The box is exact, so unlike the circle fit there is no slack to make up
+    // for (no viewport density or phone boost): the margin alone keeps the
+    // floor off the edges, on any stage.
+    return Math.min(
+      2.2,
+      halfWidth / (framedExtent.halfX * FRAME_MARGIN),
+      FRUSTUM_HALF_HEIGHT / (framedExtent.halfY * FRAME_MARGIN),
+    );
   }
 
   function zoomForRadius(width, height, radius) {
@@ -1601,6 +1664,7 @@ export function createOfficeScene(canvas, options) {
     clearOffice();
     disposeSharedCaches();
     framedRadius = 0;
+    framedExtent = null;
     if (state) syncOffice(state);
     else ensureConductor();
   }
@@ -1909,7 +1973,7 @@ export function createOfficeScene(canvas, options) {
     }
     // The framed zoom fits the floor into what is visible. A camera the user
     // is driving keeps its own zoom.
-    overview.zoom = zoomForRadius(viewWidth, height, framedRadius);
+    overview.zoom = overviewZoom(viewWidth, height);
     const following = !focusedId && !manualZoom && !tween;
     // A sidebar slide changes only the visible width. When that leaves the
     // picture as it was (same buffer, and the framed zoom is height-limited
@@ -1949,7 +2013,7 @@ export function createOfficeScene(canvas, options) {
     const stageWidth = canvas.parentElement ? canvas.parentElement.clientWidth : width;
     const visible = Math.max(1, Math.min(width, stageWidth || width));
     const following = !focusedId && !manualZoom && !tween;
-    const scale = following && view.zoom > 0 ? zoomForRadius(visible, height, framedRadius) / view.zoom : 1;
+    const scale = following && view.zoom > 0 ? overviewZoom(visible, height) / view.zoom : 1;
     canvas.style.transform = Math.abs(scale - 1) < 1e-4 ? '' : 'translateX(-50%) scale(' + scale.toFixed(5) + ')';
   }
   // The canvas box is held at its size from the start of the motion, so the

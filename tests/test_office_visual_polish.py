@@ -404,7 +404,7 @@ def test_the_ground_grows_to_cover_the_worst_case_zoomed_out_view():
     assert "function ensureGroundCovers(radius)" in SCENE_SRC
     assert "ensureGroundCovers(framedRadius)" in SCENE_SRC
     at = SCENE_SRC.index("function frameOffice(")
-    body = SCENE_SRC[at:at + 700]
+    body = SCENE_SRC[at:SCENE_SRC.index("\n  }", at)]
     assert "ensureGroundCovers(framedRadius)" in body
 
 
