@@ -323,19 +323,21 @@ function _holdChatTextForPanelMotion(){
   const pinnedToBottom=host.scrollHeight-host.scrollTop-host.clientHeight<4;
   // Both go through the transcript's own scroll bookkeeping, so they are not
   // mistaken for the reader scrolling (which would unpin the conversation).
+  const anchorScroll=(anchor,anchorTop)=>{
+    if(!anchor||!anchor.isConnected) return;
+    const delta=anchor.getBoundingClientRect().top-anchorTop;
+    if(Math.abs(delta)<0.5) return;
+    if(typeof _programmaticScroll!=='undefined'){_programmaticScroll=true;_programmaticScrollSetAt=performance.now();}
+    host.scrollTop+=delta;
+  };
   const keepScroll=(anchor,anchorTop)=>{
     if(pinnedToBottom){
       if(typeof _setMessageScrollToBottom==='function') _setMessageScrollToBottom();
       else host.scrollTop=host.scrollHeight;
-    }else if(anchor&&anchor.isConnected){
-      const delta=anchor.getBoundingClientRect().top-anchorTop;
-      if(Math.abs(delta)<0.5) return;
-      if(typeof _programmaticScroll!=='undefined'){_programmaticScroll=true;_programmaticScrollSetAt=performance.now();}
-      host.scrollTop+=delta;
-    }
+    }else anchorScroll(anchor,anchorTop);
   };
   const style=inner.style;
-  const props=['width','max-width','flex-shrink','margin-left','margin-right'];
+  const props=['width','max-width','flex-shrink','margin-left','margin-right','translate'];
   const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
   style.setProperty('width',heldWidth+'px');
   style.setProperty('max-width','none');
@@ -375,43 +377,70 @@ function _holdChatTextForPanelMotion(){
   // ran before the slide's own update and lagged a frame behind it). The
   // shift is measured from the width at the start, so nothing moves on the
   // first frame.
+  //
+  // Vertically nothing moves until landing. The composer and the banners above
+  // the transcript change height as they rewrap (the composer drops to its
+  // compact layout part-way through), which resizes the transcript's viewport
+  // in steps; re-pinning the bottom on each step jerks the conversation up and
+  // down. So the first visible row is held where it started, by scrolling and,
+  // where the scroll range runs out, by a small offset on the held block. The
+  // landing glide then carries everything to its final place in one move.
   const firstRow=rows.length?rows[0].row:null;
   const firstRowTop=firstRow?firstRow.getBoundingClientRect().top:0;
+  let lift=0;
   const follow=()=>{
     const natural=Math.min(maxWidth,host.clientWidth);
     const shift=(naturalAtStart-natural)/2;
     rows.forEach(({row,dir})=>row.style.setProperty('translate',(dir*shift)+'px 0'));
-    keepScroll(firstRow,firstRowTop);
+    if(!firstRow||!firstRow.isConnected) return;
+    anchorScroll(firstRow,firstRowTop+lift);
+    const residual=firstRow.getBoundingClientRect().top-lift-firstRowTop;
+    const next=Math.abs(residual)<0.5?0:-residual;
+    if(next!==lift){lift=next;style.setProperty('translate',lift?'0 '+lift+'px':'0 0');}
   };
   const columnWatch=rows.length&&typeof ResizeObserver==='function'?new ResizeObserver(follow):null;
   if(columnWatch) columnWatch.observe(host);
   return function release(){
     delete inner.dataset.motionHold;
     if(columnWatch) columnWatch.disconnect();
+    // The settled layout (the slide's last step, just applied) can rewrap a
+    // banner or the composer once more; hold the rows through that change too,
+    // so the glide starts from exactly where they were last painted.
+    if(rows.length) follow();
     const chrome=reduce?[]:visible(_CHAT_MOTION_CHROME);
     const before=new Map(chrome.map(el=>[el,el.getBoundingClientRect()]));
     const anchor=chrome[0]||firstRow;
     const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
     rows.forEach(({row,prev})=>{if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');});
     saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
-    // Re-anchor the scroll in the same frame as the rewrap, before measuring
-    // where things landed, so nothing jumps when a later scroll pass runs.
-    keepScroll(anchor,anchorTop);
-    if(reduce) return;
-    // Every body now in view fades in (rows scrolled in by the rewrap
-    // included); the fade-outs are dropped once the fade-ins have started.
-    fadedOut.forEach(a=>a.cancel());
-    visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
-    chrome.forEach(el=>{
-      const from=before.get(el), to=el.getBoundingClientRect();
-      // User rows are right-aligned and their bubbles change width as the
-      // text rewraps, so they are carried by their right edge.
-      const dx=el.closest('.msg-row:not(.assistant-turn)')?from.right-to.right:from.left-to.left;
-      const dy=from.top-to.top;
-      if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
-        el.animate([{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
-      }
-    });
+    const land=()=>{
+      // Re-anchor the scroll in the same frame as the rewrap, before measuring
+      // where things landed, so nothing jumps when a later scroll pass runs.
+      keepScroll(anchor,anchorTop);
+      if(reduce) return;
+      // Every body now in view fades in (rows scrolled in by the rewrap
+      // included); the fade-outs are dropped once the fade-ins have started.
+      fadedOut.forEach(a=>a.cancel());
+      visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
+      chrome.forEach(el=>{
+        const from=before.get(el), to=el.getBoundingClientRect();
+        // User rows are right-aligned and their bubbles change width as the
+        // text rewraps, so they are carried by their right edge.
+        const dx=el.closest('.msg-row:not(.assistant-turn)')?from.right-to.right:from.left-to.left;
+        const dy=from.top-to.top;
+        if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
+          el.animate([{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
+        }
+      });
+    };
+    // The browser can still settle layout after this point and before paint
+    // (other observers react to the rewrap), so the landing is measured in a
+    // ResizeObserver callback, which runs after that layout and before the
+    // frame is painted (it always reports an element's size once when first
+    // observed).
+    if(typeof ResizeObserver!=='function'){land();return;}
+    const landWatch=new ResizeObserver(()=>{landWatch.disconnect();land();});
+    landWatch.observe(inner);
   };
 }
 

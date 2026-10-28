@@ -7607,6 +7607,11 @@ function _messageBottomDistance(){
 // fight a stream that already unpinned). Cheap no-op when not pinned.
 function _repinMessagesAfterComposerResize(){
   if(_messageUserUnpinned || !_scrollPinned) return;
+  // A panel slide holds the transcript still and re-pins it once on landing
+  // (boot.js _holdChatTextForPanelMotion); re-pinning each composer step
+  // mid-slide would jerk the conversation.
+  const inner=$('msgInner');
+  if(inner&&inner.dataset.motionHold) return;
   const el=$('messages');
   if(!el) return;
   // Already at/very near the bottom? nothing to do (avoids needless writes while

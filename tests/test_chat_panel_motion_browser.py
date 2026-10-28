@@ -69,7 +69,7 @@ def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
                 const host = m.parentElement;
                 (function f() { const r = bubble.getBoundingClientRect(); window.__edges.push([r.right, panel.getBoundingClientRect().left, r.top,
                     m.dataset.motionHold ? null : host.scrollHeight - host.scrollTop - host.clientHeight]);
-                    if (performance.now() - t0 < 1000) requestAnimationFrame(f); })();
+                    if (performance.now() - t0 < 800) requestAnimationFrame(f); })();  // the slide and the landing glide
                 toggleWorkspacePanel(true); }""")
             page.wait_for_timeout(1300)
             edges = page.evaluate("() => window.__edges")
@@ -80,8 +80,11 @@ def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
     assert all(right <= left + 0.5 for right, left, _, _ in edges), edges  # never under the panel
     landed = [gap for *_, gap in edges[1:] if gap is not None]
     assert landed and max(landed) < 16, landed                              # still at the bottom from the landing frame on
-    vertical = [abs(b - a) for a, b in zip(tops, tops[1:])]
-    assert max(vertical) < 40, vertical                                     # the scroll stays anchored: no jump on landing
+    assert landed[-1] <= 1, landed                                          # and truly at the bottom once settled
+    vertical = [b - a for a, b in zip(tops, tops[1:])]
+    assert max(abs(v) for v in vertical) < 40, vertical                     # the scroll stays anchored: no jump on landing
+    moves = [v for v in vertical if abs(v) >= 0.5]
+    assert all(v < 0 for v in moves) or all(v > 0 for v in moves), vertical  # one vertical move, never a step back
     steps = [abs(b - a) for a, b in zip(rights, rights[1:])]
     assert max(steps) < 80, steps                                           # one glide, no landing jump
     assert rights[-1] < rights[0] - 100, rights                             # it really moved left with the panel
