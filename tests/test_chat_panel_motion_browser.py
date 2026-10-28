@@ -15,6 +15,7 @@ def test_panel_slide_fades_message_text_but_not_bubbles():
             page.goto(BASE + "/", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.add_style_tag(content="#updateBanner,#staleClientBanner{display:none!important}")  # appears on its own timer and shifts the chat
             page.evaluate("async () => { await switchPanel('chat'); }")
             page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
                 S.messages = [{role: 'user', content: 'A short question'}, {role: 'assistant', content: 'A short answer.'}];
@@ -54,6 +55,7 @@ def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
             page.goto(BASE + "/", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.add_style_tag(content="#updateBanner,#staleClientBanner{display:none!important}")  # appears on its own timer and shifts the chat
             page.evaluate("async () => { await switchPanel('chat'); }")
             page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
                 S.messages = [];
@@ -104,6 +106,7 @@ def test_jump_to_response_button_rides_the_column_right_edge():
             page.goto(BASE + "/", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.add_style_tag(content="#updateBanner,#staleClientBanner{display:none!important}")  # appears on its own timer and shifts the chat
             page.evaluate("async () => { await switchPanel('chat'); }")
             page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
                 S.messages = [];
@@ -143,6 +146,7 @@ def test_bottom_reader_moves_with_the_composer_and_cards_keep_to_the_column():
             page.goto(BASE + "/", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.add_style_tag(content="#updateBanner,#staleClientBanner{display:none!important}")  # appears on its own timer and shifts the chat
             page.evaluate("async () => { await switchPanel('chat'); }")
             page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
                 S.messages = [];
@@ -168,20 +172,90 @@ def test_bottom_reader_moves_with_the_composer_and_cards_keep_to_the_column():
                 const sample = () => { const c = card.getBoundingClientRect(), b = btn.getBoundingClientRect();
                     window.__s.push({hold: !!m.dataset.motionHold, btn: btn.getBoundingClientRect().top, composer: composer.getBoundingClientRect().top,
                         cardLeft: c.left - role.getBoundingClientRect().left, cardRight: b.right - c.right}); };
-                new ResizeObserver(sample).observe(host); }""")
+                new ResizeObserver(sample).observe(host);
+                window.__landed = () => { const c = card.getBoundingClientRect(), b = btn.getBoundingClientRect();
+                    return [b.top, {cardLeft: c.left - role.getBoundingClientRect().left, cardRight: b.right - c.right}]; }; }""")
             page.wait_for_selector(".layout.panel-sliding", state="detached", timeout=20000)
-            page.wait_for_timeout(900)
-            final = page.evaluate("""() => { const m = document.getElementById('msgInner'), host = m.parentElement;
-                const view = host.getBoundingClientRect();
-                const btn = [...m.querySelectorAll('.msg-question-jump-btn')].filter(e => { const r = e.getBoundingClientRect(); return r.top > view.top && r.bottom < view.bottom; }).pop();
-                return btn.getBoundingClientRect().top; }""")
+            page.wait_for_function("() => !document.getElementById('msgInner').dataset.motionHold && !document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('#msgInner'))", timeout=10000)
+            page.wait_for_timeout(100)
+            final, landed = page.evaluate("() => window.__landed()")
             samples = page.evaluate("() => window.__s")
         finally:
             browser.close()
     held = [s for s in samples if s["hold"]]
     composer_moves = held[-1]["composer"] - held[0]["composer"]
     assert abs(composer_moves) >= 4, samples                              # the composer does change height mid-slide here
-    # the card spans the column as it moves: its edges keep their distance to the replies' left edge and the jump button
-    edges = [(round(s["cardLeft"] - held[0]["cardLeft"]), round(s["cardRight"] - held[0]["cardRight"])) for s in held]
+    # the card spans the column as it moves: its edges sit where they will land, against the replies' left edge and the jump button
+    edges = [(round(s["cardLeft"] - landed["cardLeft"]), round(s["cardRight"] - landed["cardRight"])) for s in held]
     assert all(abs(left) <= 1 and abs(right) <= 1 for left, right in edges), edges
     assert abs(final - held[-1]["btn"]) < 1.5, (final, held[-1])           # nothing left to settle after landing
+
+
+def test_composer_keeps_its_height_as_it_narrows_into_icon_stages():
+    """Opening the panel narrows the composer into its icon-only stages. With a mouse those must not make
+    it taller (44px touch targets did, by 10px, which pushed the whole conversation up mid-slide)."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_context(viewport={"width": 1500, "height": 860}).new_page()
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            heights = page.evaluate("""() => { const footer = document.querySelector('.composer-footer'), box = document.getElementById('composerBox');
+                footer.classList.remove('cf-icons', 'cf-burger'); const out = [box.getBoundingClientRect().height];
+                footer.classList.add('cf-icons'); out.push(box.getBoundingClientRect().height);
+                footer.classList.add('cf-burger'); out.push(box.getBoundingClientRect().height);
+                footer.classList.remove('cf-icons', 'cf-burger'); return out; }""")
+        finally:
+            browser.close()
+    assert max(heights) - min(heights) < 0.5, heights
+
+
+def test_opening_a_pinned_panel_slides_and_the_conversation_arrives_in_one_motion():
+    """Recorded case: with the panel pinned side by side, opening it showed the panel at full width in one
+    frame (the open state was set before the slide measured its start) and the replies, rewrapped narrower,
+    then settled up afterwards. The panel must slide, and the vertical move must happen during the slide, in
+    one direction, with nothing left to settle once it lands."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_context(viewport={"width": 1500, "height": 860}).new_page()
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '1'); localStorage.setItem('hermes-webui-workspace-panel', 'closed'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.add_style_tag(content="#updateBanner,#staleClientBanner{display:none!important}")  # appears on its own timer and shifts the chat
+            page.evaluate("async () => { await switchPanel('chat'); }")
+            page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
+                S.messages = [];
+                for (let i = 0; i < 3; i++) { S.messages.push({role: 'user', content: 'Question ' + i, timestamp: 1700000000 + i});
+                                              S.messages.push({role: 'assistant', content: 'An answer that wraps. '.repeat(30), timestamp: 1700000000 + i}); }
+                renderMessages(); if (document.documentElement.dataset.workspacePanel !== 'closed') toggleWorkspacePanel(false);
+                _setMessageScrollToBottom(); }""")
+            page.wait_for_timeout(700)
+            page.evaluate("""() => { window.__s = []; const m = document.getElementById('msgInner'), host = m.parentElement;
+                const view = host.getBoundingClientRect();
+                const roles = [...m.querySelectorAll('.msg-role')].filter(e => { const r = e.getBoundingClientRect(); return r.top > view.top && r.bottom < view.bottom; });
+                const role = roles[0];
+                toggleWorkspacePanel(true);
+                new ResizeObserver(() => window.__s.push([!!m.dataset.motionHold, role.getBoundingClientRect().top, host.clientWidth, performance.now()])).observe(host);
+                const t0 = performance.now();
+                (function f() { if (!m.dataset.motionHold) window.__s.push([false, role.getBoundingClientRect().top, host.clientWidth, performance.now()]);
+                    if (performance.now() - t0 < 1500) requestAnimationFrame(f); })(); }""")
+            page.wait_for_timeout(1700)
+            samples = page.evaluate("() => window.__s")
+        finally:
+            browser.close()
+    held = [s for s in samples if s[0]]
+    # Readings in the frame the hold lets go are taken before that frame's landing correction runs.
+    released = [s for s in samples if not s[0]]
+    after = [s for s in released if s[3] > released[0][3] + 12]
+    widths = sorted({round(s[2]) for s in held})
+    assert len(widths) > 4, widths                                        # the column narrows over frames: the panel slides in
+    tops = [s[1] for s in held]
+    moves = [b - a for a, b in zip(tops, tops[1:]) if abs(b - a) >= 0.5]
+    assert moves and (all(v < 0 for v in moves) or all(v > 0 for v in moves)), tops   # one direction, during the slide
+    settle = [s[1] for s in after]
+    assert max(settle) - min(settle) < 1.5, settle                        # nothing left to settle after landing

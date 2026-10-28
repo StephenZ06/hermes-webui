@@ -262,20 +262,25 @@ function _setWorkspacePanelMode(mode,opts={}){
   if(!open){
     try{ if(typeof closeProjectWorkspaceBinder==='function') closeProjectWorkspaceBinder(); }catch(_){}
   }
-  document.documentElement.dataset.workspacePanel=open?'open':'closed';
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
   if(opts.persist!==false){try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}}
-  if(_isCompactWorkspaceViewport()||opts.instant){
+  // The open state is one layout change, applied inside the slide so the slide
+  // measures the panel where it really starts. Set before it, a pinned panel
+  // (whose 50/50 share is not a transitioned width) was already at its final
+  // size when measured, so it appeared in one frame and the chat jumped.
+  const applyOpen=function(){
+    document.documentElement.dataset.workspacePanel=open?'open':'closed';
     layout.classList.toggle('workspace-panel-collapsed',!open);
+  };
+  if(_isCompactWorkspaceViewport()||opts.instant){
+    applyOpen();
   }else{
     // Desktop: same composited slide the sidebar uses. On compact viewports the
     // panel is a fixed slide-over that already animates on transform alone, so
     // there is nothing to correct there.
-    _slidePanelIfPossible(panel,'right',function(){
-      layout.classList.toggle('workspace-panel-collapsed',!open);
-    });
+    _slidePanelIfPossible(panel,'right',applyOpen);
   }
   if(_isCompactWorkspaceViewport()){
     panel.classList.toggle('mobile-open',open);
@@ -320,6 +325,10 @@ function _holdChatTextForPanelMotion(){
   const maxWidth=parseFloat(getComputedStyle(inner).maxWidth)||Infinity;
   const host=inner.parentElement;
   const naturalAtStart=Math.min(maxWidth,host.clientWidth);
+  // Rows sit inside the column's padding, so a row that spans the column is
+  // this much narrower than the column itself.
+  const innerStyle=getComputedStyle(inner);
+  const innerPadding=(parseFloat(innerStyle.paddingLeft)||0)+(parseFloat(innerStyle.paddingRight)||0);
   // A reader at the bottom stays at the bottom for the whole motion (the
   // composer and header can wrap taller as the column narrows); anyone else
   // keeps the first message they can see where it is.
@@ -342,14 +351,18 @@ function _holdChatTextForPanelMotion(){
   const style=inner.style;
   const props=['width','max-width','flex-shrink','margin-left','margin-right','translate'];
   const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
-  style.setProperty('width',heldWidth+'px');
-  style.setProperty('max-width','none');
-  style.setProperty('flex-shrink','0');
+  const restoreStyles=(el,list)=>list.forEach(([p,v,prio])=>{if(v)el.style.setProperty(p,v,prio);else el.style.removeProperty(p);});
   // Centred by margins, which go negative once the column is narrower than
   // the held text, so it overflows (and is clipped) evenly on both sides.
   const centre='calc((100% - '+heldWidth+'px) / 2)';
-  style.setProperty('margin-left',centre);
-  style.setProperty('margin-right',centre);
+  const holdBlock=()=>{
+    style.setProperty('width',heldWidth+'px');
+    style.setProperty('max-width','none');
+    style.setProperty('flex-shrink','0');
+    style.setProperty('margin-left',centre);
+    style.setProperty('margin-right',centre);
+  };
+  holdBlock();
   // Only what the reader can see is animated. Message rows switch CSS
   // transitions off (streamed text must paint instantly), so the fades are
   // Web Animations. A user bubble fades its text colour and keeps its
@@ -368,7 +381,10 @@ function _holdChatTextForPanelMotion(){
     const hidden=bubble?{color:'transparent'}:{opacity:0};
     return el.animate(out?[shown,hidden]:[hidden,shown],{duration:ms,easing:'ease-out',fill});
   };
-  const fadedOut=reduce?[]:visible('.msg-body').map(el=>fade(el,true,120,'forwards')).filter(Boolean);
+  // A spanning card's summary is text that rewraps too, so it fades with the
+  // messages while its box moves.
+  const TEXT='.msg-body, .async-delegation-summary';
+  const fadedOut=reduce?[]:visible(TEXT).map(el=>fade(el,true,120,'forwards')).filter(Boolean);
   // The held block keeps its old width, so on a narrowing column its edges
   // would sit under the panel until landing. Every frame, each visible row is
   // shifted by half the gap between the held width and the width the column
@@ -377,15 +393,17 @@ function _holdChatTextForPanelMotion(){
   // Cards that span the column (a background delegation, a process wakeup)
   // are not bubbles: they keep to the column's left edge and take its width
   // every frame, so they neither ride under the panel nor snap at landing.
-  // Their height is held like the text's width: a summary that would wrap
-  // part-way through rewraps once, at landing.
+  // Their height is held like the text's width (the summary rewraps once, out
+  // of sight), and where the landing is planned it grows or shrinks to its
+  // landed height in step with the slide.
   const spanProps=['width','height','overflow'];
   const rows=reduce?[]:visible(':scope > *').map(row=>{
     const span=row.matches('.async-delegation-row, .process-wakeup-row');
     const entry={row,span,dir:row.matches('.msg-row[data-role="user"]')?-1:1,prev:row.style.getPropertyValue('translate')};
     if(span){
       entry.saved=spanProps.map(p=>[p,row.style.getPropertyValue(p),row.style.getPropertyPriority(p)]);
-      row.style.setProperty('height',row.getBoundingClientRect().height+'px');
+      entry.height=row.getBoundingClientRect().height;
+      row.style.setProperty('height',entry.height+'px');
       row.style.setProperty('overflow','hidden');
     }
     return entry;
@@ -396,42 +414,104 @@ function _holdChatTextForPanelMotion(){
   // shift is measured from the width at the start, so nothing moves on the
   // first frame.
   //
-  // Vertically nothing moves until landing, with one exception: a reader at
-  // the bottom keeps the conversation on the composer, so when the composer
-  // grows or shrinks part-way through, the messages move with it in the same
-  // frame instead of catching up after the panel has landed. The composer and
-  // the banners above the transcript change height as they rewrap (the composer drops to its
-  // compact layout part-way through), which resizes the transcript's viewport
-  // in steps; re-pinning the bottom on each step jerks the conversation up and
-  // down. So the first visible row is held where it started, by scrolling and,
-  // where the scroll range runs out, by a small offset on the held block. The
-  // landing glide then carries everything to its final place in one move.
+  // Vertically, the rewrap at landing changes how tall the replies are, so
+  // rows end up higher or lower than they start. Where the slide can show the
+  // landed layout (planLanding, below) each row and the chrome inside it move
+  // toward where they will land in step with the slide, so the conversation
+  // arrives in one motion and nothing is left to settle afterwards. Scrolling
+  // stays put meanwhile: the banners above the transcript can rewrap and
+  // resize its viewport in steps, and re-pinning the bottom on each step jerks
+  // the conversation up and down, so the first visible row is held by
+  // scrolling and, where the scroll range runs out, by a small offset on the
+  // held block. A reader at the bottom keeps the conversation on the
+  // composer, so if the composer's height changes the messages move with it
+  // in the same frame. Without a plan the landing glide does the vertical part.
   // The jump-to-response button sits on the right of a reply's footer, so it
   // follows the column's right edge too: its row carries it right by the
   // shift, it carries itself back left by twice that.
   const jumps=reduce?[]:visible('.msg-question-jump-btn').map(el=>({el,prev:el.style.getPropertyValue('translate')}));
+  // Chrome that moves within its row when the row's text rewraps (a reply's
+  // footer drops as the reply grows); each is carried by its own offset.
+  const inRow=reduce?[]:visible('.msg-row[data-role="user"] > .msg-body, .msg-role, .msg-foot')
+    .map(el=>({el,prev:el.style.getPropertyValue('translate')}));
   const firstRow=rows.length?rows[0].row:null;
   const firstRowTop=firstRow?firstRow.getBoundingClientRect().top:0;
   const hostBottomAtStart=host.getBoundingClientRect().bottom;
   let lift=0;
+  // plan: where each row (dy) and each piece of chrome within it (rel) lands,
+  // relative to where it starts, and the column width it lands at.
+  let plan=null;
+  const height0=new Map(rows.filter(r=>r.span).map(r=>[r.row,r.height]));
+  const progress=(natural)=>{
+    if(!plan) return 0;
+    return Math.max(0,Math.min(1,(naturalAtStart-natural)/(naturalAtStart-plan.naturalEnd)));
+  };
   const follow=()=>{
     const natural=Math.min(maxWidth,host.clientWidth);
     const shift=(naturalAtStart-natural)/2;
+    const q=progress(natural);
+    const dy=(el)=>plan?q*(plan.dy.get(el)||0):0;
     rows.forEach(({row,dir,span})=>{
-      row.style.setProperty('translate',(dir*shift)+'px 0');
-      if(span) row.style.setProperty('width',natural+'px');
+      row.style.setProperty('translate',(dir*shift)+'px '+dy(row)+'px');
+      if(span){
+        row.style.setProperty('width',Math.max(0,natural-innerPadding)+'px');
+        const end=plan&&plan.height.get(row);
+        if(end!=null) row.style.setProperty('height',(height0.get(row)+q*(end-height0.get(row)))+'px');
+      }
     });
-    jumps.forEach(({el})=>el.style.setProperty('translate',(-2*shift)+'px 0'));
+    if(plan) inRow.forEach(({el})=>el.style.setProperty('translate','0 '+dy(el)+'px'));
+    jumps.forEach(({el})=>el.style.setProperty('translate',(-2*shift)+'px '+dy(el)+'px'));
     if(!firstRow||!firstRow.isConnected) return;
-    const target=firstRowTop+(pinnedToBottom?host.getBoundingClientRect().bottom-hostBottomAtStart:0);
+    // The first row's own offset is part of the motion, not drift to undo.
+    const target=firstRowTop+dy(firstRow)+(pinnedToBottom?host.getBoundingClientRect().bottom-hostBottomAtStart:0);
     anchorScroll(firstRow,target+lift);
     const residual=firstRow.getBoundingClientRect().top-lift-target;
     const next=Math.abs(residual)<0.5?0:-residual;
     if(next!==lift){lift=next;style.setProperty('translate',lift?'0 '+lift+'px':'0 0');}
   };
+  // Called by the slide at the one moment the page is laid out as it will
+  // land (after the state change, before the slide pins the old geometry
+  // back): the held block lets go for a measurement, every tracked row and
+  // piece of chrome is read where it will sit once the text has rewrapped and
+  // the scroll has settled, then the hold goes back on before anything paints.
+  const planLanding=()=>{
+    if(reduce||!firstRow||!firstRow.isConnected||lift) return;
+    const naturalEnd=Math.min(maxWidth,host.clientWidth);
+    if(Math.abs(naturalEnd-naturalAtStart)<1) return;
+    const parts=[...rows.map(r=>r.row),...inRow.map(c=>c.el),...jumps.map(j=>j.el)];
+    const startTop=new Map(parts.map(el=>[el,el.getBoundingClientRect().top]));
+    const scrollAt=host.scrollTop;
+    restoreStyles(inner,saved);
+    rows.forEach(({span,saved:spanSaved,row})=>{if(span) restoreStyles(row,spanSaved);});
+    if(typeof _programmaticScroll!=='undefined'){_programmaticScroll=true;_programmaticScrollSetAt=performance.now();}
+    if(pinnedToBottom) host.scrollTop=host.scrollHeight;
+    else host.scrollTop+=firstRow.getBoundingClientRect().top-firstRowTop;
+    const endTop=new Map(parts.map(el=>[el,el.getBoundingClientRect().top]));
+    const height=new Map(rows.filter(r=>r.span).map(r=>[r.row,r.row.getBoundingClientRect().height]));
+    host.scrollTop=scrollAt;
+    holdBlock();
+    rows.forEach(({span,row,height})=>{if(span){row.style.setProperty('height',height+'px');row.style.setProperty('overflow','hidden');}});
+    // Rows move by their own change; chrome by its change less its row's
+    // (the row's offset already carries it).
+    const moved=new Map(parts.map(el=>[el,endTop.get(el)-startTop.get(el)]));
+    const dy=new Map();
+    // A spanning card grows to its landed height in the layout itself, which
+    // already carries every row below it that far.
+    let grown=0;
+    rows.forEach(({row,span})=>{
+      dy.set(row,moved.get(row)-grown);
+      if(span) grown+=height.get(row)-height0.get(row);
+    });
+    [...inRow.map(c=>c.el),...jumps.map(j=>j.el)].forEach(el=>{
+      const carrier=el.parentElement&&el.parentElement.closest('.msg-foot, .msg-row');
+      const carried=carrier&&moved.has(carrier)?moved.get(carrier):0;
+      dy.set(el,moved.get(el)-carried);
+    });
+    plan={naturalEnd,dy,height};
+  };
   const columnWatch=rows.length&&typeof ResizeObserver==='function'?new ResizeObserver(follow):null;
   if(columnWatch) columnWatch.observe(host);
-  return function release(){
+  const release=function(){
     delete inner.dataset.motionHold;
     if(columnWatch) columnWatch.disconnect();
     // The settled layout (the slide's last step, just applied) can rewrap a
@@ -444,11 +524,12 @@ function _holdChatTextForPanelMotion(){
     const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
     const jumpsBefore=new Map(jumps.map(({el})=>[el,el.getBoundingClientRect()]));
     jumps.forEach(({el,prev})=>{if(prev)el.style.setProperty('translate',prev);else el.style.removeProperty('translate');});
+    inRow.forEach(({el,prev})=>{if(prev)el.style.setProperty('translate',prev);else el.style.removeProperty('translate');});
     rows.forEach(({row,prev,saved:spanSaved})=>{
       if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');
       if(spanSaved) spanSaved.forEach(([p,v,prio])=>{if(v)row.style.setProperty(p,v,prio);else row.style.removeProperty(p);});
     });
-    saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
+    restoreStyles(inner,saved);
     const land=()=>{
       // Re-anchor the scroll in the same frame as the rewrap, before measuring
       // where things landed, so nothing jumps when a later scroll pass runs.
@@ -457,7 +538,7 @@ function _holdChatTextForPanelMotion(){
       // Every body now in view fades in (rows scrolled in by the rewrap
       // included); the fade-outs are dropped once the fade-ins have started.
       fadedOut.forEach(a=>a.cancel());
-      visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
+      visible(TEXT).forEach(el=>fade(el,false,280,'none'));
       const moved=new Map();
       // Where the jump buttons landed, read before any glide starts (a glide
       // applies its first frame at once and would skew the reading).
@@ -494,6 +575,8 @@ function _holdChatTextForPanelMotion(){
     const landWatch=new ResizeObserver(()=>{landWatch.disconnect();land();});
     landWatch.observe(inner);
   };
+  release.atFinalLayout=planLanding;
+  return release;
 }
 
 function toggleWorkspacePin(force){
@@ -505,7 +588,14 @@ function toggleWorkspacePin(force){
     else delete document.documentElement.dataset.workspacePinned;
   };
   const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if(!panel||reduce||_isCompactWorkspaceViewport()||!panel.getBoundingClientRect().width){apply();_syncWorkspacePinButton();return;}
+  // A closed panel has nothing to glide (it measures a pixel or so wide while
+  // shut): pin it at once and let the opening slide below carry the motion.
+  const closed=document.documentElement.dataset.workspacePanel==='closed';
+  if(!panel||reduce||_isCompactWorkspaceViewport()||closed||panel.getBoundingClientRect().width<2){
+    apply();_syncWorkspacePinButton();
+    if(next&&closed&&typeof toggleWorkspacePanel==='function')toggleWorkspacePanel(true);
+    return;
+  }
   // FLIP the width: hold the current width, switch state, then glide to the
   // new width with the stylesheet transition; drop the pin when it lands.
   const from=panel.getBoundingClientRect().width;
@@ -517,6 +607,7 @@ function toggleWorkspacePin(force){
   apply();
   if(savedWidth[0]&&!next)panel.style.setProperty('width',savedWidth[0],savedWidth[1]);
   const to=panel.getBoundingClientRect().width;
+  if(releaseChatText&&releaseChatText.atFinalLayout)releaseChatText.atFinalLayout();
   // A live Office floor in the panel would otherwise resize its WebGL buffers
   // and redraw the bloom pipeline on every frame of the glide (the models make
   // that the costliest thing on the page). Pause it while the final layout is
@@ -1719,6 +1810,7 @@ function _slidePanelByLayout(panel,side,apply,opts){
     apply();
     after=panel.getBoundingClientRect();
     mainAfter=main.getBoundingClientRect();
+    if(typeof options.onFinalLayout==='function')options.onFinalLayout();
   }catch(_){
     restore(panel,panelProps,saved);
     finish();
@@ -1799,6 +1891,7 @@ function _slidePanelIfPossible(panel,side,apply){
   let releaseChatText=null;
   const lifecycle={
     onStart:function(){_notifyOfficePanelLayoutMotion(true);releaseChatText=_holdChatTextForPanelMotion();},
+    onFinalLayout:function(){if(releaseChatText&&releaseChatText.atFinalLayout)releaseChatText.atFinalLayout();},
     onComplete:function(){
       _notifyOfficePanelLayoutMotion(false);
       if(releaseChatText){const release=releaseChatText;releaseChatText=null;release();}

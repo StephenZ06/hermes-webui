@@ -3586,6 +3586,16 @@
   .composer-footer.cf-burger .composer-mobile-config-action{flex:1 1 0;min-height:44px;min-width:0;background:var(--input-bg);border-color:var(--border);}
   .composer-footer.cf-burger .composer-mobile-context-action{flex:1 0 100%;}
   .composer-footer.cf-burger .ctx-indicator-wrap{display:none!important;}
+  /* The 44px icon-only controls above are touch targets. With a mouse they
+     match the composer's other 34px icon buttons, so the composer keeps its
+     height when it narrows into these stages (opening the workspace panel
+     beside the chat would otherwise make it grow and push the conversation up). */
+  @media (pointer:fine){
+    .composer-footer.cf-icons .composer-profile-chip{width:34px;height:34px;max-width:34px;min-width:34px;min-height:34px;}
+    .composer-footer.cf-burger .composer-workspace-group{flex-basis:34px;width:34px;min-width:34px;max-width:34px;min-height:34px;}
+    .composer-footer.cf-burger .composer-workspace-files-btn{width:34px;min-width:34px;max-width:34px;}
+    .composer-footer.cf-burger .composer-mobile-config-btn{width:34px;height:34px;min-width:34px;min-height:34px;}
+  }
 
   /* Show session-toolsets chip ONLY when the composer-footer container is wide
      enough to comfortably accommodate it (workspace+model+reasoning+profile+
