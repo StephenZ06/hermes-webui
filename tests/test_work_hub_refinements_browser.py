@@ -30,7 +30,7 @@ def _clean_up(page):
             rev = (await api('/api/work_hub/items/delete', {method: 'POST', body: JSON.stringify({item_id: item.id, expected_revision: rev})})).revision;
         }
         for (const project of boot.projects || []) {
-            if (project.name === 'Refinements') await api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: project.project_id})});
+            if (/^Refinements/.test(project.name)) await api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: project.project_id})});
         } }""")
 
 
@@ -181,3 +181,45 @@ def test_scope_change_keeps_shared_items_and_animates_only_the_difference():
         # Inbox -> All work: the Inbox items stay, only the project items come in.
         assert widening["fadeShared"] == 0 and widening["enter"] > 0, (view, widening)
         assert left_over == 0, view   # the leaving copies are gone once they have faded
+
+
+def test_switching_projects_keeps_each_columns_cards_and_changes_only_their_text():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = None
+        try:
+            page = browser.new_context(viewport={"width": 1400, "height": 860}).new_page()
+            _open_work_hub(page)
+            # Project A: 2 backlog items. Project B: 5 backlog items. Nothing shared.
+            page.evaluate("""async () => {
+                let rev = (await api('/api/work_hub/bootstrap')).revision || 0;
+                for (const [name, n] of [['Refinements A', 2], ['Refinements B', 5]]) {
+                    const project = (await api('/api/projects/create', {method: 'POST', body: JSON.stringify({name, work_hub_managed: true})})).project;
+                    for (let i = 0; i < n; i++) rev = (await api('/api/work_hub/items/create', {method: 'POST', body: JSON.stringify({item: {title: 'Refinement ' + name.slice(-1) + i, status: 'backlog', project_id: project.project_id}, expected_revision: rev})})).revision;
+                }
+                await switchPanel('chat'); await switchPanel('notes'); }""")
+            page.wait_for_selector(".work-hub-project-tile", timeout=10000)
+            tile = lambda name: f".work-hub-project-tile:has-text('{name}')"
+            probe = """() => { const cards = [...document.querySelectorAll('#workHubCanvas .work-hub-column[data-status="backlog"] .work-hub-card')];
+                const fades = n => n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'opacity' in k));
+                return {cards: cards.length, cardFades: cards.filter(fades).length,
+                        textFades: cards.filter(c => !fades(c) && [...c.children].some(fades)).length,
+                        leaving: document.querySelectorAll('.work-hub-leaving').length}; }"""
+            page.click(tile("Refinements A"))
+            page.wait_for_timeout(700)
+            page.click(tile("Refinements B"))
+            growing = page.evaluate(probe)
+            page.wait_for_timeout(700)
+            page.click(tile("Refinements A"))
+            shrinking = page.evaluate(probe)
+        finally:
+            try:
+                if page is not None:
+                    _clean_up(page)
+            finally:
+                browser.close()
+    # A (2) -> B (5): the 2 cards stay and change their text; 3 come in.
+    assert growing == {"cards": 5, "cardFades": 3, "textFades": 2, "leaving": 0}, growing
+    # B (5) -> A (2): the 2 stay and change their text; 3 leave.
+    assert shrinking == {"cards": 2, "cardFades": 0, "textFades": 2, "leaving": 3}, shrinking

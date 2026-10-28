@@ -140,9 +140,11 @@
     countUpCanvas(viewChanged);
   }
   // Where each card (or list row) sat just before a redraw. On a scope change
-  // the items both scopes share glide from there to their new place, the new
-  // ones come in, and the ones left behind fade where they were, so the board
-  // changes by the difference instead of being redrawn.
+  // the items both scopes share glide from there to their new place. In each
+  // column the other cards keep their slots in order and only their text
+  // changes, with the Notes text entrance; only the extra cards come in, or
+  // fade where they were, so the board changes by the difference instead of
+  // being redrawn.
   let shownItems = null;
   let leavingGhosts = [];
   function noteShownItems() {
@@ -155,7 +157,7 @@
       const clip = (node.closest('.work-hub-cards') || canvas).getBoundingClientRect();
       // Only what was on screen counts; a card scrolled out of its column has nowhere to leave from.
       if (box.bottom <= clip.top || box.top >= clip.bottom || box.right <= clip.left || box.left >= clip.right) return;
-      shownItems.set(node.dataset.itemId, { node, box, clip });
+      shownItems.set(node.dataset.itemId, { node, box, clip, group: node.closest('.work-hub-column')?.dataset.status || 'list' });
     });
   }
   function flipShownItems(canvas) {
@@ -163,18 +165,29 @@
     if (!before || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const easing = 'cubic-bezier(.2,.8,.2,1)';
     const kept = new Set();
-    canvas.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(node => {
-      const was = before.get(node.dataset.itemId);
+    const nodes = [...canvas.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]')];
+    nodes.forEach(node => { if (before.has(node.dataset.itemId)) kept.add(node.dataset.itemId); });
+    // The slots the old cards leave free, per column, top to bottom.
+    const freeSlots = {};
+    before.forEach((was, id) => { if (!kept.has(id)) (freeSlots[was.group] = freeSlots[was.group] || []).push(id); });
+    const glide = (node, from, box) => {
+      const dx = from.left - box.left, dy = from.top - box.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+      node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 340, easing });
+    };
+    nodes.forEach(node => {
       const box = node.getBoundingClientRect();
-      if (was) {
-        kept.add(node.dataset.itemId);
-        const dx = was.box.left - box.left, dy = was.box.top - box.top;
-        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
-        node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 340, easing });
-        return;
-      }
+      const was = before.get(node.dataset.itemId);
+      if (was) { glide(node, was.box, box); return; }
       const clip = (node.closest('.work-hub-cards') || canvas).getBoundingClientRect();
       if (box.bottom <= clip.top || box.top >= clip.bottom) return;
+      const slot = freeSlots[node.closest('.work-hub-column')?.dataset.status || 'list']?.shift();
+      if (slot) {
+        // Takes over an old card's slot: the card stays, its text changes.
+        kept.add(slot); glide(node, before.get(slot).box, box);
+        [...node.children].forEach(part => part.animate([{ opacity: 0, filter: 'blur(2px)' }, { opacity: 1, filter: 'none' }], { duration: 240, easing: 'ease-out', fill: 'backwards' }));
+        return;
+      }
       node.animate([{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 120, easing, fill: 'backwards' });
     });
     before.forEach(({ node, box, clip }, id) => {
@@ -465,7 +478,7 @@
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
     const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } noteShownCounts(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } noteShownCounts(); noteShownItems(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
