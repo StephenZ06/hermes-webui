@@ -15040,6 +15040,12 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .work-hub-column[data-status="blocked"]{--stage:var(--error,#f07878);}
 .work-hub-column[data-status="done"]{--stage:var(--success,#4ade80);}
 .work-hub-column[data-status="cancelled"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
+/* The status dot outside the board (list rows, the item panel, the
+   workspace panel) takes the same colour as its column. */
+.work-hub-status.status-backlog{background:color-mix(in srgb,var(--muted) 85%,var(--text));}
+.work-hub-status.status-todo{background:#a78bfa;}
+.work-hub-status.status-in_progress{background:#60a5fa;}
+.work-hub-status.status-cancelled{background:color-mix(in srgb,var(--muted) 60%,transparent);}
 .work-hub-column header{min-height:24px;padding:0 2px;font-size:12px;}
 .work-hub-column header strong{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
 .work-hub-column header .work-hub-status{background:var(--stage);box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 18%,transparent);}

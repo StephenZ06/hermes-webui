@@ -223,3 +223,30 @@ def test_switching_projects_keeps_each_columns_cards_and_changes_only_their_text
     assert growing == {"cards": 5, "cardFades": 3, "textFades": 2, "leaving": 0}, growing
     # B (5) -> A (2): the 2 stay and change their text; 3 leave.
     assert shrinking == {"cards": 2, "cardFades": 0, "textFades": 2, "leaving": 3}, shrinking
+
+
+def test_list_rows_match_the_board_columns_status_colour_and_label():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = None
+        try:
+            page = browser.new_context(viewport={"width": 1400, "height": 860}).new_page()
+            _open_work_hub(page)
+            page.click(".work-hub-scope[data-scope='all']")
+            board = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('#workHubCanvas .work-hub-column')].map(c =>
+                [c.dataset.status, [getComputedStyle(c.querySelector('header .work-hub-status')).backgroundColor, c.querySelector('header strong').textContent.trim()]]))""")
+            page.click("[data-view='list']")
+            page.wait_for_selector(".work-hub-list-row")
+            rows = page.evaluate("""() => [...document.querySelectorAll('.work-hub-list-row')].map(r => {
+                const dot = r.querySelector('.work-hub-status'); const status = [...dot.classList].find(c => c.startsWith('status-')).slice(7);
+                return [status, getComputedStyle(dot).backgroundColor, r.querySelector('small').textContent.trim()]; })""")
+        finally:
+            try:
+                if page is not None:
+                    _clean_up(page)
+            finally:
+                browser.close()
+    assert {status for status, _, _ in rows} >= {"triage", "backlog", "todo"}, rows
+    for status, colour, label in rows:
+        assert [colour, label] == board[status], (status, colour, label, board[status])

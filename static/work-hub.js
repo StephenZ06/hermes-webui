@@ -340,7 +340,7 @@
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
-      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row' + (item.working ? ' is-working' : ''); row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${item.working ? WORKING_BADGE : ''}${esc(item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
+      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row' + (item.working ? ' is-working' : ''); row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${item.working ? WORKING_BADGE : ''}${esc(store.statuses.find(status => status.id === item.status)?.label || item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
       canvas.appendChild(table); return;
     }
     // Rebuilding the board must not throw away where the user is: keep the
