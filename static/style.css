@@ -15728,3 +15728,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){
   #workHubCanvas:is(.is-entering-items,.is-entering-all) *,#workHub .work-hub-live.is-entering,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
 }
+/* Quest row: the action drops under the state when the panel is too narrow
+   for both, instead of running past the panel's edge. */
+.work-hub-inspector #workHubQuest{flex-wrap:wrap;justify-content:flex-start;column-gap:12px;row-gap:0;}
+.work-hub-inspector #workHubQuest > span{white-space:nowrap;}
+.work-hub-inspector #workHubQuest > .wh-insp-inline{margin-left:-6px;}
