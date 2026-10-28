@@ -15525,13 +15525,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @keyframes nb-side-in-forward{from{opacity:0;transform:translateX(16px);}}
 @keyframes nb-side-in-back{from{opacity:0;transform:translateX(-16px);}}
 .nb-list-head h2.is-entering{animation:nb-text-in .24s ease-out both;}
-#workHubCanvas.is-entering :is(.work-hub-column,.work-hub-list){animation:page-view-in .26s cubic-bezier(.22,1,.36,1) backwards;}
-#workHubCanvas.is-entering .work-hub-column:nth-child(2){animation-delay:30ms;}
-#workHubCanvas.is-entering .work-hub-column:nth-child(3){animation-delay:60ms;}
-#workHubCanvas.is-entering .work-hub-column:nth-child(4){animation-delay:90ms;}
-#workHubCanvas.is-entering .work-hub-column:nth-child(n+5){animation-delay:120ms;}
 @media (prefers-reduced-motion:reduce){
-  .sidebar .panel-view.active,#workHubCanvas.is-entering :is(.work-hub-column,.work-hub-list){animation:none;}
+  .sidebar .panel-view.active{animation:none;}
   #notebookSidebar .nb-nav:is(.is-entering-forward,.is-entering-back) > *{animation:nb-text-in .16s ease-out both;animation-delay:0s;}
   .nb-list-items.is-entering{animation:none;}
 }
@@ -15668,3 +15663,68 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .dash-side .automation-row:nth-child(n+4),.dash-side .automation-row:last-child:nth-child(odd){grid-column:span 3;}
 @media (max-width:1400px){.dash-side .automations{grid-template-columns:repeat(2,minmax(0,1fr));}.dash-side .automation-row,.dash-side .automation-row:nth-child(n+4){grid-column:auto;}.dash-side .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
 .dash-side .automation-row>.automation-title{font-size:12px;letter-spacing:0;white-space:nowrap;text-wrap:nowrap;overflow:visible;}
+
+/* ==== Work Hub refinements ==== */
+/* Changing scope (Inbox, All work, a project or board) brings only the work
+   items and the counts in with the Notes text entrance; arriving from the
+   other view brings in the whole board or list. */
+#workHubCanvas.is-entering-items :is(.work-hub-card,.work-hub-column header small,.work-hub-list-row),
+#workHubCanvas.is-entering-all :is(.work-hub-column,.work-hub-list-row),
+#workHub .work-hub-live.is-entering{animation:nb-text-in .24s ease-out both;}
+#workHubCanvas.is-entering-items .work-hub-card:nth-child(2),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(2){animation-delay:20ms;}
+#workHubCanvas.is-entering-items .work-hub-card:nth-child(3),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(3){animation-delay:40ms;}
+#workHubCanvas.is-entering-items .work-hub-card:nth-child(n+4),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(n+4){animation-delay:60ms;}
+#workHubCanvas.is-entering-all .work-hub-column:nth-child(2){animation-delay:25ms;}
+#workHubCanvas.is-entering-all .work-hub-column:nth-child(3){animation-delay:50ms;}
+#workHubCanvas.is-entering-all .work-hub-column:nth-child(n+4){animation-delay:75ms;}
+/* Board/List: the same sliding pill as the usage window toggle in Chat. */
+.work-hub-view-switch.mi-tabs-ready > button.active{background:transparent;}
+.work-hub-view-switch > .mi-pill{border-radius:5px;background:var(--accent-bg);}
+.work-hub-view-switch > button{transition:color .2s ease;}
+/* Search placeholder and the item count sit 1px higher. */
+.work-hub-search input{position:relative;top:-1px;}
+#workHub .work-hub-live{position:relative;top:-1px;}
+/* The + menu: equal space around every row, with its own divider. */
+.work-hub-create-menu{gap:0;}
+.work-hub-create-menu-sep{display:block;height:1px;margin:4px 0;background:var(--border);}
+.work-hub-create-menu button.is-danger{margin-top:0;border-top:0;border-radius:5px;}
+.work-hub-create-menu.is-leaving,.work-hub-project-picker.is-leaving{animation:wh-pop-out .13s ease-in forwards;pointer-events:none;}
+.work-hub-project-picker{animation:nb-pop .14s cubic-bezier(.22,1,.36,1);transform-origin:top center;}
+@keyframes wh-pop-out{to{opacity:0;transform:translateY(-3px) scale(.97);}}
+/* All work: the artwork icon, sized to read like the Inbox glyph beside it. */
+.work-hub-scope-mark{display:block;flex:0 0 auto;width:16px;height:16px;background:currentColor;-webkit-mask:url("work-hub-all-work-mark.png") center / 13px 13px no-repeat;mask:url("work-hub-all-work-mark.png") center / 13px 13px no-repeat;}
+/* Empty details panel: a larger work item mark, centred with its text. */
+.work-hub-inspector-empty{height:100%;min-height:180px;align-content:center;gap:6px;}
+.work-hub-inspector-empty-mark{display:block;width:30px;height:30px;background:currentColor;-webkit-mask:url("work-hub-item-mark.png") center / contain no-repeat;mask:url("work-hub-item-mark.png") center / contain no-repeat;}
+.work-hub-inspector-empty p{margin:0;}
+/* Column headers: a little more room between the stage dot and the title. */
+.work-hub-column header .work-hub-status{margin-right:3px;}
+/* Column filter: compact Priority and Sort controls. */
+.work-hub-column-filter{grid-template-columns:max-content max-content minmax(0,1fr);gap:5px;}
+.work-hub-column-filter .themed-select-trigger{box-sizing:border-box;height:24px;min-height:24px;gap:6px;padding:0 7px 0 9px;border-radius:6px;font-size:11px;line-height:1;}
+.work-hub-column-filter .themed-select-trigger-label{overflow:visible;text-overflow:clip;}
+/* Work item details: the title field is outlined at rest, spaced evenly
+   between the header and the properties; Description sits midway between
+   the two rules around it; Delete is outlined in red and tints on hover. */
+.work-hub-inspector .wh-insp-title{margin:10px 0 0;border-color:var(--wh-border,var(--border));}
+.work-hub-inspector .wh-insp-title:hover{border-color:var(--border2,var(--border));}
+.work-hub-inspector .wh-insp-title:focus{border-color:var(--accent);}
+.work-hub-inspector .wh-insp-title:focus::placeholder{color:transparent;}
+.work-hub-inspector .wh-insp-props{margin-top:10px;}
+.work-hub-inspector .wh-insp-props{padding:8px 0;}
+.work-hub-inspector .wh-insp-section{margin-top:8px;padding-top:0;gap:8px;}
+.work-hub-inspector .wh-insp-section-label{margin:0;padding:0;line-height:1;}
+.work-hub-inspector .wh-insp-delete{border-color:color-mix(in srgb,var(--error) 45%,transparent);}
+.work-hub-inspector .wh-insp-delete:hover{background:color-mix(in srgb,var(--error) 16%,transparent);border-color:var(--error);}
+/* Plan goal dialog: fades in and rises; fades out and drops on close. */
+.goal-planner-overlay{animation:wh-overlay-in .18s ease-out;}
+.goal-planner-overlay .goal-planner-dialog{animation:wh-dialog-in .24s cubic-bezier(.22,1,.36,1);}
+.goal-planner-overlay.is-leaving{animation:wh-overlay-out .18s ease-in forwards;pointer-events:none;}
+.goal-planner-overlay.is-leaving .goal-planner-dialog{animation:wh-dialog-out .18s ease-in forwards;}
+@keyframes wh-overlay-in{from{opacity:0;}}
+@keyframes wh-overlay-out{to{opacity:0;}}
+@keyframes wh-dialog-in{from{opacity:0;transform:translateY(12px) scale(.98);}}
+@keyframes wh-dialog-out{to{opacity:0;transform:translateY(8px) scale(.98);}}
+@media (prefers-reduced-motion:reduce){
+  #workHubCanvas:is(.is-entering-items,.is-entering-all) *,#workHub .work-hub-live.is-entering,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
+}

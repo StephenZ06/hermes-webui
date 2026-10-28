@@ -152,7 +152,7 @@ def test_new_item_opens_right_inspector_with_editable_title():
     css = read("static/style.css")
 
     assert 'id="workHubTitle"' in script
-    assert "title: el('workHubTitle').value" in script
+    assert "title: titleValue()" in script
 
     inspector_rule = css.split(".work-hub-inspector {", 1)[1].split("}", 1)[0]
     assert "grid-column: 2" in inspector_rule

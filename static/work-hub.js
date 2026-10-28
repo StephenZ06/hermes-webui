@@ -12,8 +12,16 @@
   const scopedItems = () => { const projectBoardIds = store.activeFolderId ? new Set(store.boards.filter(board => board.project_id === store.activeFolderId).map(board => board.id)) : null; return store.items.filter(item => (store.activeScope === 'all' ? true : store.activeScope === 'inbox' ? !item.project_id : projectBoardIds ? projectBoardIds.has(item.board_id) : item.project_id === store.activeScope) && (!store.activeBoardId || item.board_id === store.activeBoardId) && (!store.search || item.title.toLowerCase().includes(store.search))); };
 
   // A chat is working on this item right now (see api/work_hub.mark_working).
+  const NEW_ITEM_TITLE = 'New work item';
   const WORKING_BADGE = '<span class="work-hub-spinner" role="img" aria-label="A chat is working on this" title="A chat is working on this"></span>';
   async function request(path, options) { return api(path, options); }
+  // Small menus fade out where they are before they go (the entrance is CSS).
+  function dismissPopover(node) {
+    if (!node || node.classList.contains('is-leaving')) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { node.remove(); return; }
+    node.classList.add('is-leaving');
+    setTimeout(() => node.remove(), 130);
+  }
   function notifyWorkHubChanged() { document.dispatchEvent(new CustomEvent('work-hub-changed')); }
   async function loadWorkHubPanel() {
     const root = el('workHub'); if (!root) return;
@@ -29,27 +37,46 @@
   function render() {
     const root = el('workHub'); if (!root) return;
     const items = scopedItems();
+    // The Board/List switch survives the rebuild, so its pill slides to the
+    // new view instead of being drawn there.
+    const keptSwitch = root.querySelector('.work-hub-view-switch');
     root.innerHTML = '';
     const wrap = document.createElement('div'); wrap.className = 'work-hub' + (store.stale ? ' is-stale' : '');
     const inspectorWidth = window.matchMedia('(max-width: 620px)').matches
       ? 220
       : Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_INSPECTOR_WIDTH, currentInspectorWidth));
     wrap.style.setProperty('--wh-inspector-width', inspectorWidth + 'px');
-    wrap.innerHTML = `<section class="work-hub-canvas"><div class="work-hub-toolbar"><div class="work-hub-view-switch"><button class="${store.activeView === 'board' ? 'active' : ''}" data-view="board">${icon('board')} Board</button><button class="${store.activeView === 'list' ? 'active' : ''}" data-view="list">${icon('list')} List</button></div><label class="work-hub-search">${icon('search')}<input id="workHubSearch" type="search" placeholder="Search work" value="${esc(store.search)}"></label><button class="work-hub-create work-hub-icon-button" id="workHubCreate" aria-label="New item" title="New item">${icon('plus')}</button></div><div class="work-hub-live" role="status">${store.stale ? 'Showing saved data — retrying…' : `${items.length} work item${items.length === 1 ? '' : 's'}`}</div><div id="workHubCanvas"></div></section><div class="work-hub-resizer"></div><aside class="work-hub-inspector" id="workHubInspector" aria-label="Work item details"></aside>`;
+    wrap.innerHTML = `<section class="work-hub-canvas"><div class="work-hub-toolbar"><div class="work-hub-view-switch" data-mi-tabs><button class="${store.activeView === 'board' ? 'active' : ''}" data-view="board">${icon('board')} Board</button><button class="${store.activeView === 'list' ? 'active' : ''}" data-view="list">${icon('list')} List</button></div><label class="work-hub-search">${icon('search')}<input id="workHubSearch" type="search" placeholder="Search work" value="${esc(store.search)}"></label><button class="work-hub-create work-hub-icon-button" id="workHubCreate" aria-label="New item" title="New item">${icon('plus')}</button></div><div class="work-hub-live" role="status">${store.stale ? 'Showing saved data — retrying…' : `${items.length} work item${items.length === 1 ? '' : 's'}`}</div><div id="workHubCanvas"></div></section><div class="work-hub-resizer"></div><aside class="work-hub-inspector" id="workHubInspector" aria-label="Work item details"></aside>`;
+    if (keptSwitch) {
+      keptSwitch.querySelectorAll('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === store.activeView));
+      wrap.querySelector('.work-hub-view-switch').replaceWith(keptSwitch);
+    }
     root.appendChild(wrap);
+    if (window.Micro && typeof window.Micro.tabs === 'function') window.Micro.tabs(wrap.querySelector('.work-hub-view-switch'));
     initResizer(wrap);
     renderWorkHubNavigation();
     renderCanvas(items); renderInspector(); bind();
-    // The board fades in when it shows something else (scope, project, board
-    // or view), not on the re-renders an edit or a refresh triggers.
-    const canvasKey = [store.activeScope, store.activeFolderId, store.activeBoardId, store.activeView].join('|');
-    if (lastCanvasKey !== null && canvasKey !== lastCanvasKey) el('workHubCanvas')?.classList.add('is-entering');
-    lastCanvasKey = canvasKey;
+    markCanvasEntrance();
   }
+  // What the board shows changed (scope, project, board or view), not a
+  // re-render from an edit or a refresh: the work items and the counts come
+  // in with the Notes text entrance. Coming from the other view, the whole
+  // board or list does.
   let lastCanvasKey = null;
+  let lastCanvasView = null;
+  function markCanvasEntrance() {
+    const canvasKey = [store.activeScope, store.activeFolderId, store.activeBoardId].join('|');
+    const viewChanged = lastCanvasView !== null && store.activeView !== lastCanvasView;
+    const scopeChanged = lastCanvasKey !== null && canvasKey !== lastCanvasKey;
+    lastCanvasKey = canvasKey; lastCanvasView = store.activeView;
+    if (!viewChanged && !scopeChanged) return;
+    const canvas = el('workHubCanvas'); if (!canvas) return;
+    canvas.classList.add(viewChanged ? 'is-entering-all' : 'is-entering-items');
+    document.querySelector('#workHub .work-hub-live')?.classList.add('is-entering');
+  }
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
-    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all">${icon('work')}<span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
+    sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all"><span class="work-hub-scope-mark work-hub-scope-mark--all" aria-hidden="true"></span><span>All work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
       ? '<button type="button" class="work-hub-project-delete-done" id="workHubDeleteDone">Done</button>'
       : `<button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="New board, new project or delete project">${icon('plus')}</button>`}</div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
     const projectList = el('workHubProjects');
@@ -138,7 +165,7 @@
     }
   }
   function showWorkHubBoardProjectPicker(anchor) { return showWorkHubProjectPicker(anchor, store.projects, 'Create a project workspace before creating a board.'); }
-  function showWorkHubProjectPicker(anchor, projects, emptyMessage) { if (!projects.length) { if (typeof showToast === 'function') showToast(emptyMessage); return Promise.resolve(null); } document.querySelectorAll('.work-hub-project-picker').forEach(picker => picker.remove()); return new Promise(resolve => { const host = el('workHubProjectCreate')?.parentElement || anchor?.parentElement; if (!host) return resolve(null); const picker = document.createElement('div'); picker.className = 'project-picker work-hub-project-picker'; let closed = false; const finish = projectId => { if (closed) return; closed = true; picker.remove(); document.removeEventListener('click', close); resolve(projectId); }; const close = event => { if (!picker.contains(event.target) && !anchor?.contains(event.target)) finish(null); }; projects.forEach(project => { const item = document.createElement('div'); item.className = 'project-picker-item'; const dot = document.createElement('span'); dot.className = 'color-dot'; dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + (project.color || 'var(--muted)') + ';flex-shrink:0;'; const name = document.createElement('span'); name.textContent = project.name || 'Untitled project'; item.append(dot, name); item.onclick = () => finish(project.project_id); picker.appendChild(item); }); host.appendChild(picker); setTimeout(() => document.addEventListener('click', close), 0); }); }
+  function showWorkHubProjectPicker(anchor, projects, emptyMessage) { if (!projects.length) { if (typeof showToast === 'function') showToast(emptyMessage); return Promise.resolve(null); } document.querySelectorAll('.work-hub-project-picker').forEach(picker => picker.remove()); return new Promise(resolve => { const host = el('workHubProjectCreate')?.parentElement || anchor?.parentElement; if (!host) return resolve(null); const picker = document.createElement('div'); picker.className = 'project-picker work-hub-project-picker'; let closed = false; const finish = projectId => { if (closed) return; closed = true; dismissPopover(picker); document.removeEventListener('click', close); resolve(projectId); }; const close = event => { if (!picker.contains(event.target) && !anchor?.contains(event.target)) finish(null); }; projects.forEach(project => { const item = document.createElement('div'); item.className = 'project-picker-item'; const dot = document.createElement('span'); dot.className = 'color-dot'; dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + (project.color || 'var(--muted)') + ';flex-shrink:0;'; const name = document.createElement('span'); name.textContent = project.name || 'Untitled project'; item.append(dot, name); item.onclick = () => finish(project.project_id); picker.appendChild(item); }); host.appendChild(picker); setTimeout(() => document.addEventListener('click', close), 0); }); }
   async function createWorkHubBoard(anchor) { const projectId = await showWorkHubBoardProjectPicker(anchor); if (!projectId) return; const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = result.board.id; store.expandedProjects[projectId] = true; await loadWorkHubPanel(); notifyWorkHubChanged(); const newBoard = document.querySelector(`[data-board-id="${CSS.escape(result.board.id)}"]`); markArrival(newBoard && newBoard.closest('.work-hub-board-row')); } catch (error) { store.stale = true; render(); } }
   async function renameWorkHubBoard(boardId) { const board = store.boards.find(row => row.id === boardId); if (!board) return; const name = await showPromptDialog({ title: 'Rename board', message: 'Choose a new board name.', placeholder: 'Board name', value: board.name || '', selectAll: true, confirmLabel: 'Rename' }); if (!name || !name.trim() || name.trim() === board.name) return; try { await request('/api/work_hub/boards/rename', { method: 'POST', body: JSON.stringify({ board_id: boardId, board: { name: name.trim() }, expected_revision: store.revision }) }); await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board rename failed: ${error.message || error}`); } }
   async function deleteWorkHubBoard(boardId) { const board = store.boards.find(entry => entry.id === boardId); const message = board?.default ? 'This clears every work item from the main board. The board itself stays as an empty board.' : 'This permanently removes the board and every work item on it.'; if (!await showConfirmDialog({ title: 'Delete board', message, confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); const boardRow = document.querySelector(`[data-board-id="${CSS.escape(boardId)}"]`); if (!board?.default || store.boards.filter(entry => entry.project_id === board.project_id).length > 1) await animateRemoval(boardRow && boardRow.closest('.work-hub-board-row')); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); notifyWorkHubChanged(); if (store.deleteMode && !workHubHasDeletables()) exitProjectDeleteMode(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board delete failed: ${error.message || error}`); } }
@@ -180,6 +207,8 @@
       prevBoardWrap = { left: oldWrap.scrollLeft, tops };
     }
     canvas.dataset.keepScroll = store.keepBoardScroll === false ? '0' : '1';
+    // Redraws in place (a poll, a search, a column filter) come in still.
+    canvas.classList.remove('is-entering-items', 'is-entering-all');
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
@@ -197,8 +226,8 @@
       const columnItems = workHubColumnItems(items, status.id);
       const priorityOption = value => `<option value="${value}" ${filter.priority === value ? 'selected' : ''}>${value === 'none' ? 'No priority' : value[0].toUpperCase() + value.slice(1)}</option>`;
       const sortOption = ([value, label]) => `<option value="${value}" ${(filter.sort || '') === value ? 'selected' : ''}>${label}</option>`;
-      const sorts = [['', 'Default order'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['updated', 'Recently updated'], ['title', 'Title A–Z']];
-      const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="text" enterkeyhint="search" autocomplete="off" placeholder="Filter items" aria-label="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}" aria-label="Filter by priority"><option value="">All priorities</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select><select data-board-filter-sort="${esc(status.id)}" aria-label="Sort items">${sorts.map(sortOption).join('')}</select></div>` : '';
+      const sorts = [['', 'Sort'], ['newest', 'Newest first'], ['oldest', 'Oldest first'], ['updated', 'Recently updated'], ['title', 'Title A–Z']];
+      const filterPanel = store.boardFilterOpen === status.id ? `<div class="work-hub-column-filter"><input data-board-filter-query="${esc(status.id)}" type="text" enterkeyhint="search" autocomplete="off" placeholder="Filter items" aria-label="Filter items" value="${esc(filter.query || '')}"><select data-board-filter-priority="${esc(status.id)}" aria-label="Filter by priority"><option value="">Priority</option>${['high', 'medium', 'low', 'none'].map(priorityOption).join('')}</select><select data-board-filter-sort="${esc(status.id)}" aria-label="Sort items">${sorts.map(sortOption).join('')}</select></div>` : '';
       const column = document.createElement('section'); column.className = 'work-hub-column'; column.dataset.status = status.id;
       column.innerHTML = `<header><span class="work-hub-status status-${esc(status.id)}"></span><strong>${esc(status.label)}</strong><small>${columnItems.length}</small>${workingColumnBadge(columnItems)}<button class="work-hub-board-filter" type="button" data-board-filter="${esc(status.id)}" aria-label="Filter ${esc(status.label)}" title="Filter ${esc(status.label)}">${icon('filter')}</button></header>${filterPanel}<div class="work-hub-cards"></div>`;
       fillWorkHubCards(column.querySelector('.work-hub-cards'), columnItems);
@@ -248,7 +277,7 @@
     const item = store.items.find(row => row.id === store.selectedItemId);
     // Phones show the details as a sheet over the board only while an item is selected.
     const hub = panel.closest('.work-hub'); if (hub) hub.classList.toggle('has-selection', !!item);
-    if (!item) { panel.innerHTML = `<div class="work-hub-inspector-empty">${icon('work')}<p>Select a work item to see details.</p></div>`; return; }
+    if (!item) { panel.innerHTML = '<div class="work-hub-inspector-empty"><span class="work-hub-inspector-empty-mark" aria-hidden="true"></span><p>Select a work item to see details.</p></div>'; return; }
     const currentSessionId = typeof S !== 'undefined' && S.session ? S.session.session_id : null;
     const missingAgent = item.agent_profile && !store.profiles.some(profile => profile.name === item.agent_profile);
     const workflow = store.workflows.find(run => (run.steps || []).some(step => step.item_id === item.id && ['pending', 'running', 'paused'].includes(run.status)));
@@ -276,7 +305,11 @@
       <section class="wh-insp-section"><label class="wh-insp-section-label" for="workHubDescription">Description</label><textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps" ${locked ? 'disabled' : ''}></textarea></section>
       ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" title="Delete work item">${icon('close')}<span>Delete</span></button><button id="workHubSave" class="work-hub-save" type="button" disabled>Save changes</button></footer>`}
     </div>`;
-    el('workHubTitle').value = item.title; panel.querySelector('#workHubDescription').value = item.description || '';
+    // A new item's stand-in title shows as a placeholder, which clears when
+    // the field is clicked; left empty, the item keeps that title.
+    const untitled = item.title === NEW_ITEM_TITLE;
+    el('workHubTitle').value = untitled ? '' : item.title; if (untitled) el('workHubTitle').placeholder = NEW_ITEM_TITLE;
+    panel.querySelector('#workHubDescription').value = item.description || '';
     el('workHubClose').onclick = () => { closeInspectorAnimated(); };
     fillQuestToggle(item.id);
     const deleteButton = el('workHubDelete'); if (deleteButton) deleteButton.onclick = () => deleteItem(item.id);
@@ -284,12 +317,13 @@
     if (linkChat) linkChat.onclick = () => updateItem(item.id, { linked_session_ids: [...new Set([...(item.linked_session_ids || []), currentSessionId])] });
     const saveButton = el('workHubSave');
     const fields = ['workHubTitle', 'workHubStatus', 'workHubAgent', 'workHubPriority', 'workHubDescription'].map(el).filter(Boolean);
+    const titleValue = () => el('workHubTitle').value.trim() ? el('workHubTitle').value : (untitled ? item.title : '');
     const original = { title: item.title || '', status: item.status, agent: item.agent_profile || '', priority: itemPriority, description: item.description || '' };
-    const isDirty = () => el('workHubTitle').value !== original.title || el('workHubStatus').value !== original.status
+    const isDirty = () => titleValue() !== original.title || el('workHubStatus').value !== original.status
       || el('workHubAgent').value !== original.agent || el('workHubPriority').value !== original.priority
       || el('workHubDescription').value !== original.description;
     const syncDirty = () => {
-      if (saveButton) saveButton.disabled = !isDirty() || !el('workHubTitle').value.trim();
+      if (saveButton) saveButton.disabled = !isDirty() || !titleValue().trim();
       const dot = el('workHubStatusDot'); if (dot) dot.className = `work-hub-status status-${el('workHubStatus').value}`;
     };
     fields.forEach(field => { field.addEventListener('input', syncDirty); field.addEventListener('change', syncDirty); });
@@ -299,7 +333,7 @@
       if (!saveButton || saveButton.disabled || saveButton.dataset.state) return;
       const label = saveButton.innerHTML;
       saveButton.dataset.state = 'saving'; saveButton.disabled = true; saveButton.innerHTML = '<span class="wh-save-spinner" aria-hidden="true"></span>Saving…';
-      const ok = await updateItem(item.id, { title: el('workHubTitle').value, status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }, { deferRender: true });
+      const ok = await updateItem(item.id, { title: titleValue(), status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }, { deferRender: true });
       if (!ok) { delete saveButton.dataset.state; saveButton.innerHTML = label; syncDirty(); if (typeof showToast === 'function') showToast('Could not save the work item', 4000, 'error'); return; }
       saveButton.dataset.state = 'saved'; saveButton.innerHTML = `${icon('check')}<span>Saved</span>`;
       await new Promise(resolve => setTimeout(resolve, 650));
@@ -316,11 +350,11 @@
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
     const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
-    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu'); if (old) return old.remove(); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><button type="button" class="is-danger" data-delete-project>Delete</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { menu.remove(); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { menu.remove(); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { menu.remove(); enterProjectDeleteMode(); }; };
+    const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu:not(.is-leaving)'); if (old) return dismissPopover(old); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><span class="work-hub-create-menu-sep" aria-hidden="true"></span><button type="button" class="is-danger" data-delete-project>Delete</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { dismissPopover(menu); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { dismissPopover(menu); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { dismissPopover(menu); enterProjectDeleteMode(); }; };
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
@@ -496,7 +530,7 @@
   }
   async function createItem() {
     try {
-      const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: Object.assign({ title: 'New work item', status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, store.activeBoardId ? { board_id: store.activeBoardId } : {}), expected_revision: store.revision }) });
+      const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: Object.assign({ title: NEW_ITEM_TITLE, status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, store.activeBoardId ? { board_id: store.activeBoardId } : {}), expected_revision: store.revision }) });
       store.items.push(result.item); store.revision = result.revision; store.selectedItemId = result.item.id; notifyWorkHubChanged(); render();
       // Flash the new card
       setTimeout(() => {
@@ -622,7 +656,14 @@
   window.openWorkHubItem = openWorkHubItem; window.renderWorkspaceWorkHub = renderWorkspaceWorkHub;
   document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel(); });
   document.addEventListener('work-hub-changed', () => { if (el('workspaceWorkHubList')) renderWorkspaceWorkHub(); });
-  window.addEventListener('focus', () => { if (el('workHub')) loadWorkHubPanel(); });
+  // Coming back to the window refreshes the board. With a work item open (or
+  // a field in use) only the cards are refreshed, as the poll does: a full
+  // render would rebuild the details panel and drop what is being edited.
+  window.addEventListener('focus', () => {
+    if (!el('workHub')) return;
+    if (store.selectedItemId || el('workHub').contains(document.activeElement)) pollWorkHub();
+    else loadWorkHubPanel();
+  });
   // Chats change items from the server side (the work_hub tool), so while the
   // board is on screen it checks for changes every few seconds and redraws
   // the cards only. It holds off while the user is dragging or typing on the
@@ -666,7 +707,18 @@
 
   async function fetchProjects() { try { const data = await api('/api/projects?all_profiles=1'); return (data.projects || []).filter(p => p && p.project_id); } catch (e) { return []; } }
 
-  function closeDialog() { const tokens = uploadTokens; uploadTokens = []; if (tokens.length) api('/api/work_hub/plan/uploads/discard', { method: 'POST', body: JSON.stringify({ upload_tokens: tokens }), timeoutToast: false }).catch(() => {}); const o = document.querySelector('.goal-planner-overlay'); if (o) o.remove(); currentPlan = null; createdItems = []; createdRevision = null; }
+  // The dialog fades and drops away before it goes; its ids are cleared at
+  // once so a dialog opened straight after never finds the old controls.
+  function closeDialog() {
+    const tokens = uploadTokens; uploadTokens = []; if (tokens.length) api('/api/work_hub/plan/uploads/discard', { method: 'POST', body: JSON.stringify({ upload_tokens: tokens }), timeoutToast: false }).catch(() => {});
+    const o = document.querySelector('.goal-planner-overlay:not(.is-leaving)');
+    if (o) {
+      o.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) o.remove();
+      else { o.classList.add('is-leaving'); setTimeout(() => o.remove(), 180); }
+    }
+    currentPlan = null; createdItems = []; createdRevision = null;
+  }
 
   function renderPlanSteps(plan) {
     if (!plan || !plan.steps || !plan.steps.length) return `<div class="goal-planner-empty">Add notes or source files, then Plan creates a smart draft for you to save.</div>`;
@@ -728,7 +780,7 @@
         document.getElementById('goalPlannerResult').insertAdjacentHTML('afterbegin', `<div class="goal-planner-empty" style="color:var(--error);margin-bottom:8px">${esc(e.message)}</div>`);
       }
     };
-    document.querySelector('.goal-planner-overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDialog(); });
+    document.querySelector('.goal-planner-overlay:not(.is-leaving)').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDialog(); });
     document.getElementById('goalPlannerInput').addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') document.getElementById('goalPlannerBtn').click(); });
   }
 
