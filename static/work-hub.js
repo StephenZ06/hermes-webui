@@ -54,7 +54,7 @@
     // The Board/List switch survives the rebuild, so its pill slides to the
     // new view instead of being drawn there.
     const keptSwitch = root.querySelector('.work-hub-view-switch');
-    noteShownCounts();
+    noteShownCounts(); noteShownItems();
     root.innerHTML = '';
     const wrap = document.createElement('div'); wrap.className = 'work-hub' + (store.stale ? ' is-stale' : '');
     const inspectorWidth = window.matchMedia('(max-width: 620px)').matches
@@ -136,8 +136,58 @@
     lastCanvasKey = canvasKey; lastCanvasView = store.activeView;
     if (!viewChanged && !scopeChanged) return;
     const canvas = el('workHubCanvas'); if (!canvas) return;
-    canvas.classList.add(viewChanged ? 'is-entering-all' : 'is-entering-items');
+    if (viewChanged) canvas.classList.add('is-entering-all'); else flipShownItems(canvas);
     countUpCanvas(viewChanged);
+  }
+  // Where each card (or list row) sat just before a redraw. On a scope change
+  // the items both scopes share glide from there to their new place, the new
+  // ones come in, and the ones left behind fade where they were, so the board
+  // changes by the difference instead of being redrawn.
+  let shownItems = null;
+  let leavingGhosts = [];
+  function noteShownItems() {
+    leavingGhosts.forEach(ghost => ghost.remove()); leavingGhosts = [];
+    const canvas = el('workHubCanvas');
+    shownItems = new Map();
+    if (!canvas) return;
+    canvas.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(node => {
+      const box = node.getBoundingClientRect();
+      const clip = (node.closest('.work-hub-cards') || canvas).getBoundingClientRect();
+      // Only what was on screen counts; a card scrolled out of its column has nowhere to leave from.
+      if (box.bottom <= clip.top || box.top >= clip.bottom || box.right <= clip.left || box.left >= clip.right) return;
+      shownItems.set(node.dataset.itemId, { node, box, clip });
+    });
+  }
+  function flipShownItems(canvas) {
+    const before = shownItems; shownItems = null;
+    if (!before || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const easing = 'cubic-bezier(.2,.8,.2,1)';
+    const kept = new Set();
+    canvas.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(node => {
+      const was = before.get(node.dataset.itemId);
+      const box = node.getBoundingClientRect();
+      if (was) {
+        kept.add(node.dataset.itemId);
+        const dx = was.box.left - box.left, dy = was.box.top - box.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+        node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 340, easing });
+        return;
+      }
+      const clip = (node.closest('.work-hub-cards') || canvas).getBoundingClientRect();
+      if (box.bottom <= clip.top || box.top >= clip.bottom) return;
+      node.animate([{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: 120, easing, fill: 'backwards' });
+    });
+    before.forEach(({ node, box, clip }, id) => {
+      if (kept.has(id)) return;
+      const ghost = node.cloneNode(true);
+      ghost.removeAttribute('data-item-id'); ghost.removeAttribute('id'); ghost.setAttribute('aria-hidden', 'true'); ghost.classList.add('work-hub-leaving');
+      // Held where it was, clipped to the column it scrolled in.
+      Object.assign(ghost.style, { position: 'fixed', left: box.left + 'px', top: box.top + 'px', width: box.width + 'px', height: box.height + 'px', margin: '0', pointerEvents: 'none', zIndex: '5', boxSizing: 'border-box',
+        clipPath: `inset(${Math.max(0, clip.top - box.top)}px ${Math.max(0, box.right - clip.right)}px ${Math.max(0, box.bottom - clip.bottom)}px ${Math.max(0, clip.left - box.left)}px)` });
+      document.body.appendChild(ghost); leavingGhosts.push(ghost);
+      ghost.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.97)' }], { duration: 180, easing: 'ease-out', fill: 'forwards' })
+        .finished.then(() => { ghost.remove(); leavingGhosts = leavingGhosts.filter(entry => entry !== ghost); }, () => {});
+    });
   }
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
@@ -273,7 +323,7 @@
     }
     canvas.dataset.keepScroll = store.keepBoardScroll === false ? '0' : '1';
     // Redraws in place (a poll, a search, a column filter) come in still.
-    canvas.classList.remove('is-entering-items', 'is-entering-all');
+    canvas.classList.remove('is-entering-all');
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';

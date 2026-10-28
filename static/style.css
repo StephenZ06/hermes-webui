@@ -15678,12 +15678,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Changing scope (Inbox, All work, a project or board) brings only the work
    items and the counts in with the Notes text entrance; arriving from the
    other view brings in the whole board or list. */
-#workHubCanvas.is-entering-items :is(.work-hub-card,.work-hub-list-row),
 #workHubCanvas.is-entering-all :is(.work-hub-column,.work-hub-list-row){animation:nb-text-in .24s ease-out both;}
 #workHubCanvas .work-hub-column header small{font-variant-numeric:tabular-nums;}
-#workHubCanvas.is-entering-items .work-hub-card:nth-child(2),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(2){animation-delay:20ms;}
-#workHubCanvas.is-entering-items .work-hub-card:nth-child(3),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(3){animation-delay:40ms;}
-#workHubCanvas.is-entering-items .work-hub-card:nth-child(n+4),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(n+4){animation-delay:60ms;}
 #workHubCanvas.is-entering-all .work-hub-column:nth-child(2){animation-delay:25ms;}
 #workHubCanvas.is-entering-all .work-hub-column:nth-child(3){animation-delay:50ms;}
 #workHubCanvas.is-entering-all .work-hub-column:nth-child(n+4){animation-delay:75ms;}
@@ -15738,7 +15734,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @keyframes wh-dialog-in{from{opacity:0;transform:translateY(12px) scale(.98);}}
 @keyframes wh-dialog-out{to{opacity:0;transform:translateY(8px) scale(.98);}}
 @media (prefers-reduced-motion:reduce){
-  #workHubCanvas:is(.is-entering-items,.is-entering-all) *,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
+  #workHubCanvas.is-entering-all *,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
 }
 /* Quest row: the action drops under the state when the panel is too narrow
    for both, instead of running past the panel's edge. */

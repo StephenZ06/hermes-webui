@@ -70,7 +70,8 @@ def test_scope_change_animates_items_and_view_change_animates_the_board():
             _open_work_hub(page)
             probe = """() => { const c = document.getElementById('workHubCanvas');
                 const moving = s => [...c.querySelectorAll(s)].filter(e => e.getAnimations().length).length;
-                return {columns: moving('.work-hub-column'), cards: moving('.work-hub-card'), rows: moving('.work-hub-list-row')}; }"""
+                return {columns: moving('.work-hub-column'), cards: moving('.work-hub-card'), rows: moving('.work-hub-list-row'),
+                    leaving: document.querySelectorAll('.work-hub-leaving').length}; }"""
             page.click(".work-hub-scope[data-scope='all']")
             page.wait_for_timeout(700)
             counted = page.evaluate("""() => new Promise(done => { const seen = []; const t0 = performance.now();
@@ -94,7 +95,7 @@ def test_scope_change_animates_items_and_view_change_animates_the_board():
                     _clean_up(page)
             finally:
                 browser.close()
-    assert scope["columns"] == 0 and scope["cards"] > 0, scope   # scope: the items come in, the columns stay
+    assert scope["columns"] == 0 and scope["leaving"] > 0, scope   # scope: the items change, the columns stay
     totals = [total for total, _ in counted]
     steps = [b - a for a, b in zip(totals, totals[1:]) if b != a]
     assert len(set(totals)) > 2 and (all(v < 0 for v in steps) or all(v > 0 for v in steps)), totals  # the count runs, one way
@@ -134,3 +135,49 @@ def test_clicking_into_a_new_items_fields_keeps_the_panel():
             finally:
                 browser.close()
     assert after == [0, "Clicked"], after   # clicking between fields never rebuilds the open panel
+
+
+def test_scope_change_keeps_shared_items_and_animates_only_the_difference():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = None
+        try:
+            page = browser.new_context(viewport={"width": 1400, "height": 860}).new_page()
+            _open_work_hub(page)
+            # Each card or row is classed by what its animation does: a glide (transform only), an entrance (opacity).
+            probe = """() => { const out = {shared: 0, glide: 0, enter: 0, fadeShared: 0, leaving: document.querySelectorAll('.work-hub-leaving').length};
+                const before = window.__before || new Set();
+                document.querySelectorAll('#workHubCanvas [data-item-id]').forEach(n => {
+                    const fades = n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'opacity' in k));
+                    const moves = n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'transform' in k && !('opacity' in k)));
+                    if (before.has(n.dataset.itemId)) { out.shared++; if (fades) out.fadeShared++; if (moves) out.glide++; }
+                    else if (fades) out.enter++; });
+                return out; }"""
+            remember = "() => { window.__before = new Set([...document.querySelectorAll('#workHubCanvas [data-item-id]')].map(n => n.dataset.itemId)); }"
+            results = {}
+            for view in ("board", "list"):
+                page.click(f"[data-view='{view}']")
+                page.click(".work-hub-scope[data-scope='all']")
+                page.wait_for_timeout(700)
+                page.evaluate(remember)
+                page.click(".work-hub-scope[data-scope='inbox']")
+                narrowing = page.evaluate(probe)
+                page.wait_for_timeout(700)
+                page.evaluate(remember)
+                page.click(".work-hub-scope[data-scope='all']")
+                widening = page.evaluate(probe)
+                page.wait_for_timeout(700)
+                results[view] = (narrowing, widening, page.evaluate("() => document.querySelectorAll('.work-hub-leaving').length"))
+        finally:
+            try:
+                if page is not None:
+                    _clean_up(page)
+            finally:
+                browser.close()
+    for view, (narrowing, widening, left_over) in results.items():
+        # All work -> Inbox: the Inbox items stay (no fade), the project items leave.
+        assert narrowing["shared"] > 0 and narrowing["fadeShared"] == 0 and narrowing["leaving"] > 0, (view, narrowing)
+        # Inbox -> All work: the Inbox items stay, only the project items come in.
+        assert widening["fadeShared"] == 0 and widening["enter"] > 0, (view, widening)
+        assert left_over == 0, view   # the leaving copies are gone once they have faded
