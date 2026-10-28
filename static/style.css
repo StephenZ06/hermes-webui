@@ -8895,7 +8895,7 @@ main.main > #mainPlugin{display:none;}
 /* While the ⋯ trigger shows, a long title fades out ahead of it instead of
    ending in an ellipsis that reads as running into the button. */
 @media not ((hover:none) and (pointer:coarse)){
-  .session-item:is(:hover,:focus-within,.menu-open) .session-title{text-overflow:clip;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent calc(100% - 4px));mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent calc(100% - 4px));}
+  .session-item:is(:hover,:focus-within,.menu-open) .session-title{text-overflow:clip;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent calc(100% - 2px));mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent calc(100% - 2px));}
 }
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a

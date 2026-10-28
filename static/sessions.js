@@ -8532,7 +8532,9 @@ function renderSessionListFromCache(){
     const titleMatched=Boolean(searchQueryRaw&&displayTitle.toLowerCase().includes(searchQueryRaw.toLowerCase()));
     if(titleMatched) _appendHighlightedText(title,displayTitle,searchQueryRaw,'session-search-hit');
     else title.textContent=displayTitle;
-    title.title=_sessionFullTitleTooltip(rawTitle,cleanTitle,s);
+    // No hover label on the row (the Micro tooltip read as clutter while
+    // moving down the list); the full title stays the row's accessible name.
+    el.setAttribute('aria-label',_sessionFullTitleTooltip(rawTitle,cleanTitle,s));
     const tsMs=_sessionTimestampMs(s);
     const ts=document.createElement('span');
     const hasAttentionState=isStreaming||hasUnread||Boolean(attention);
@@ -8640,7 +8642,6 @@ function renderSessionListFromCache(){
     if(contentPreview){
       const preview=document.createElement('div');
       preview.className='session-search-preview';
-      preview.title=contentPreview;
       _appendHighlightedText(preview,contentPreview,searchQueryRaw,'session-search-hit session-search-hit-preview');
       sessionText.appendChild(preview);
     }
@@ -8656,7 +8657,7 @@ function renderSessionListFromCache(){
         const segTitle=_sessionDisplayTitle(seg)||t('session_lineage_segment_untitled');
         const segTime=_formatRelativeSessionTime(_sessionTimestampMs(seg));
         row.textContent=`-> ${segTitle} - ${segTime}`;
-        row.title=t('session_lineage_segment_open');
+        row.setAttribute('aria-label',`${t('session_lineage_segment_open')}: ${segTitle}`);
         row.onclick=async(e)=>{
           e.stopPropagation();
           await _openSidebarSession(seg, {skipLineageResolve:true});
@@ -8965,7 +8966,7 @@ function renderSessionListFromCache(){
         row.type='button';
         row.className='session-child-session'+(activeSidForSidebar&&child.session_id===activeSidForSidebar?' active':'');
         row.textContent=childLabelFor(child);
-        row.title='Open child session';
+        row.setAttribute('aria-label','Open child session: '+childLabelFor(child));
         row.onclick=async(e)=>{
           e.stopPropagation();
           await openChildSession(child);
@@ -8994,7 +8995,8 @@ function renderSessionListFromCache(){
       title,
       (nextTitle)=>{
         title.textContent=nextTitle;
-        title.title=_sessionFullTitleTooltip(nextTitle,nextTitle,s);
+        const renamedRow=title.closest('.session-item');
+        if(renamedRow) renamedRow.setAttribute('aria-label',_sessionFullTitleTooltip(nextTitle,nextTitle,s));
       }
     );
     // Expose the rename closure on the row so the three-dot action menu

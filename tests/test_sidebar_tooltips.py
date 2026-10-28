@@ -9,15 +9,15 @@ def _sessions_js() -> str:
     return SESSIONS_JS_PATH.read_text(encoding="utf-8")
 
 
-def test_session_title_hover_shows_full_title_not_rename_hint():
-    """The truncated sidebar title needs a real full-title tooltip.
-
-    The old "Double-click to rename" title hid the only native hover affordance
-    that can reveal a long chat title when badges/tags squeeze the row.
+def test_session_rows_name_the_full_title_without_a_hover_label():
+    """Chat rows show no hover label (the user found it clutter while moving
+    down the list); the full title is the row's accessible name instead, so a
+    truncated title is still announced in full.
     """
     js = _sessions_js()
     assert "Double-click to rename" not in js
-    assert "title.title=_sessionFullTitleTooltip(rawTitle,cleanTitle,s);" in js
+    assert "title.title=" not in js
+    assert "el.setAttribute('aria-label',_sessionFullTitleTooltip(rawTitle,cleanTitle,s));" in js
     assert "function _sessionFullTitleTooltip(rawTitle, cleanTitle, session)" in js
 
 

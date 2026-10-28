@@ -33,4 +33,4 @@ def test_read_only_session_title_hint_is_localized():
     assert "function _sessionFullTitleTooltip(rawTitle, cleanTitle, session)" in SESSIONS_JS
     assert "_isReadOnlySession(session)" in SESSIONS_JS
     assert "t('session_readonly_title_hint', title)" in SESSIONS_JS
-    assert "title.title=_sessionFullTitleTooltip(rawTitle,cleanTitle,s);" in SESSIONS_JS
+    assert "el.setAttribute('aria-label',_sessionFullTitleTooltip(rawTitle,cleanTitle,s));" in SESSIONS_JS

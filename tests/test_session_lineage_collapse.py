@@ -1595,7 +1595,7 @@ def test_lineage_segment_expansion_static_contract():
     assert "className='session-lineage-segments'" in js
     assert "className='session-lineage-segment'" in js
     assert "const segTitle=_sessionDisplayTitle(seg)||t('session_lineage_segment_untitled');" in js
-    assert "row.title=t('session_lineage_segment_open');" in js
+    assert "row.setAttribute('aria-label',`${t('session_lineage_segment_open')}: ${segTitle}`);" in js
     assert "await _openSidebarSession(seg, {skipLineageResolve:true});" in js
     assert "const openChildSession=async(childSession)=>{" in js
     assert "await _openSidebarSession(childSession, {skipLineageResolve:true});" in js
