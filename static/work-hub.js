@@ -23,7 +23,10 @@
     setTimeout(() => node.remove(), 130);
   }
   function notifyWorkHubChanged() { document.dispatchEvent(new CustomEvent('work-hub-changed')); }
-  async function loadWorkHubPanel() {
+  // options.keepInspector: a background refresh (another page changed
+  // projects, the window regained focus) leaves an open work item's panel as
+  // it is, edits and all, instead of rebuilding it.
+  async function loadWorkHubPanel(options = {}) {
     const root = el('workHub'); if (!root) return;
     try {
       const [data, quests] = await Promise.all([request('/api/work_hub/bootstrap'), request('/api/dashboard/quests').catch(() => null)]);
@@ -31,15 +34,27 @@
       if ((data.revision || 0) < store.revision) return;
       store.items = data.items || []; store.folders = data.folders || []; store.projects = data.projects || []; store.boards = data.boards || []; store.profiles = data.profiles || []; store.statuses = data.statuses || []; store.workflows = data.workflows || []; store.revision = data.revision || 0; store.stale = false;
     } catch (error) { store.stale = true; }
-    render();
+    render(options);
   }
   async function refreshWorkHubForProject(projectId) { store.activeScope = projectId || 'inbox'; await loadWorkHubPanel(); }
-  function render() {
+  function render(options = {}) {
     const root = el('workHub'); if (!root) return;
+    const shownWrap = root.querySelector('.work-hub');
+    if (options.keepInspector && shownWrap && store.selectedItemId && store.items.some(row => row.id === store.selectedItemId)
+      && root.querySelector('#workHubInspector .wh-insp')?.dataset.itemId === store.selectedItemId) {
+      // Refresh around the open panel without detaching it (that would drop
+      // focus and replay its entrance).
+      shownWrap.classList.toggle('is-stale', !!store.stale);
+      const visible = scopedItems();
+      const live = shownWrap.querySelector('.work-hub-live'); if (live) live.textContent = store.stale ? 'Showing saved data — retrying…' : `${visible.length} work item${visible.length === 1 ? '' : 's'}`;
+      renderWorkHubNavigation(); renderCanvas(visible); bind();
+      return;
+    }
     const items = scopedItems();
     // The Board/List switch survives the rebuild, so its pill slides to the
     // new view instead of being drawn there.
     const keptSwitch = root.querySelector('.work-hub-view-switch');
+    noteShownCounts();
     root.innerHTML = '';
     const wrap = document.createElement('div'); wrap.className = 'work-hub' + (store.stale ? ' is-stale' : '');
     const inspectorWidth = window.matchMedia('(max-width: 620px)').matches
@@ -64,6 +79,56 @@
   // board or list does.
   let lastCanvasKey = null;
   let lastCanvasView = null;
+  // The counts on screen just before a redraw, so the new ones count up (or
+  // down) from them instead of appearing.
+  let shownCounts = null;
+  function noteShownCounts() {
+    const counts = {};
+    document.querySelectorAll('#workHubCanvas .work-hub-column').forEach(column => { counts[column.dataset.status] = parseInt(column.querySelector('header small')?.textContent, 10) || 0; });
+    const live = document.querySelector('#workHub .work-hub-live');
+    counts.__total = live ? parseInt(live.textContent, 10) || 0 : 0;
+    shownCounts = counts;
+  }
+  function countUp(node, from, to, format) {
+    if (!node || from === to) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // The box keeps the width of the wider of the two numbers, so its outline
+    // stays still while the digits change.
+    const width = value => { node.textContent = format(value); return node.getBoundingClientRect().width; };
+    const held = Math.max(width(from), width(to));
+    node.style.boxSizing = 'border-box'; node.style.minWidth = held + 'px';
+    const start = performance.now(), duration = 520;
+    const frame = now => {
+      const t = Math.min(1, Math.max(0, (now - start) / duration));
+      const eased = 1 - Math.pow(1 - t, 3);
+      node.textContent = format(Math.round(from + (to - from) * eased));
+      if (t < 1 && node.isConnected) { requestAnimationFrame(frame); return; }
+      // Then the box eases to its own width (a number that lost a digit).
+      node.style.minWidth = '';
+      const natural = node.getBoundingClientRect().width;
+      if (Math.abs(natural - held) < 0.5) { node.style.boxSizing = ''; return; }
+      node.style.minWidth = held + 'px'; void node.offsetWidth;
+      node.style.transition = 'min-width .2s ease'; node.style.minWidth = natural + 'px';
+      setTimeout(() => { node.style.transition = ''; node.style.minWidth = ''; node.style.boxSizing = ''; }, 220);
+    };
+    node.textContent = format(from);
+    requestAnimationFrame(frame);
+  }
+  function countUpCanvas(fromZero) {
+    const from = fromZero ? {} : (shownCounts || {});
+    document.querySelectorAll('#workHubCanvas .work-hub-column').forEach(column => {
+      const badge = column.querySelector('header small'); const to = parseInt(badge?.textContent, 10) || 0;
+      countUp(badge, from[column.dataset.status] || 0, to, String);
+    });
+    const live = document.querySelector('#workHub .work-hub-live');
+    if (!live || store.stale) return;
+    const label = n => `${n} work item${n === 1 ? '' : 's'}`;
+    const total = scopedItems().length;
+    live.textContent = label(total);
+    // Screen readers hear the final count once, not every step.
+    live.setAttribute('aria-busy', 'true'); setTimeout(() => live.removeAttribute('aria-busy'), 560);
+    countUp(live, from.__total || 0, total, label);
+  }
   function markCanvasEntrance() {
     const canvasKey = [store.activeScope, store.activeFolderId, store.activeBoardId].join('|');
     const viewChanged = lastCanvasView !== null && store.activeView !== lastCanvasView;
@@ -72,7 +137,7 @@
     if (!viewChanged && !scopeChanged) return;
     const canvas = el('workHubCanvas'); if (!canvas) return;
     canvas.classList.add(viewChanged ? 'is-entering-all' : 'is-entering-items');
-    document.querySelector('#workHub .work-hub-live')?.classList.add('is-entering');
+    countUpCanvas(viewChanged);
   }
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
@@ -290,7 +355,7 @@
     const linkedHere = !!(currentSessionId && (item.linked_session_ids || []).includes(currentSessionId));
     // Layout: an editable title, a compact property list, the description, and
     // a pinned footer whose Save only lights up once something has changed.
-    panel.innerHTML = `<div class="wh-insp">
+    panel.innerHTML = `<div class="wh-insp" data-item-id="${esc(item.id)}">
       <header class="wh-insp-head"><span class="wh-insp-kicker"><span class="work-hub-status status-${esc(item.status)}" id="workHubStatusDot"></span>Work item</span><button id="workHubClose" class="wh-insp-close" aria-label="Close details" title="Close">${icon('close')}</button></header>
       ${workflowControl ? `<div class="wh-insp-workflow">${workflowControl}</div>` : ''}
       <input id="workHubTitle" class="wh-insp-title" type="text" maxlength="160" required aria-label="Title" placeholder="Untitled work item" ${locked ? 'disabled' : ''}>
@@ -350,7 +415,7 @@
     document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
     const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = (event) => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId); if (projectBoards.length <= 1 && !(event && event.target && event.target.closest && event.target.closest('.work-hub-project-chevron'))) { /* One board needs no disclosure: open it directly. The chevron still reveals the row (rename/delete). */ store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = projectBoards.length ? projectBoards[0].id : null; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the opened board is what you see. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); return; } const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = null; store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); }); const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } noteShownCounts(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
@@ -654,15 +719,13 @@
   }
   window.loadWorkHubPanel = loadWorkHubPanel; window.refreshWorkHubForProject = refreshWorkHubForProject;
   window.openWorkHubItem = openWorkHubItem; window.renderWorkspaceWorkHub = renderWorkspaceWorkHub;
-  document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel(); });
+  document.addEventListener('project-sessions-changed', () => { if (el('workHub')) loadWorkHubPanel({ keepInspector: true }); });
   document.addEventListener('work-hub-changed', () => { if (el('workspaceWorkHubList')) renderWorkspaceWorkHub(); });
-  // Coming back to the window refreshes the board. With a work item open (or
-  // a field in use) only the cards are refreshed, as the poll does: a full
-  // render would rebuild the details panel and drop what is being edited.
+  // Coming back to the window refreshes the board around an open work item,
+  // so its panel and any unsaved edits stay as they are.
   window.addEventListener('focus', () => {
     if (!el('workHub')) return;
-    if (store.selectedItemId || el('workHub').contains(document.activeElement)) pollWorkHub();
-    else loadWorkHubPanel();
+    loadWorkHubPanel({ keepInspector: true });
   });
   // Chats change items from the server side (the work_hub tool), so while the
   // board is on screen it checks for changes every few seconds and redraws
@@ -688,7 +751,7 @@
       if (newer) notifyWorkHubChanged();
       const visible = scopedItems();
       renderCanvas(visible); bind();
-      const live = document.querySelector('#workHub .work-hub-live'); if (live && !store.stale) live.textContent = `${visible.length} work item${visible.length === 1 ? '' : 's'}`;
+      const live = document.querySelector('#workHub .work-hub-live'); if (live && !store.stale && !live.hasAttribute('aria-busy')) live.textContent = `${visible.length} work item${visible.length === 1 ? '' : 's'}`;
     } catch (_) { /* the next tick retries */ } finally { workHubPolling = false; }
   }
   // unref: under Node (the panel's script tests) the timer must not keep the process alive.

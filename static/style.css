@@ -15668,9 +15668,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Changing scope (Inbox, All work, a project or board) brings only the work
    items and the counts in with the Notes text entrance; arriving from the
    other view brings in the whole board or list. */
-#workHubCanvas.is-entering-items :is(.work-hub-card,.work-hub-column header small,.work-hub-list-row),
-#workHubCanvas.is-entering-all :is(.work-hub-column,.work-hub-list-row),
-#workHub .work-hub-live.is-entering{animation:nb-text-in .24s ease-out both;}
+#workHubCanvas.is-entering-items :is(.work-hub-card,.work-hub-list-row),
+#workHubCanvas.is-entering-all :is(.work-hub-column,.work-hub-list-row){animation:nb-text-in .24s ease-out both;}
+#workHubCanvas .work-hub-column header small{font-variant-numeric:tabular-nums;}
 #workHubCanvas.is-entering-items .work-hub-card:nth-child(2),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(2){animation-delay:20ms;}
 #workHubCanvas.is-entering-items .work-hub-card:nth-child(3),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(3){animation-delay:40ms;}
 #workHubCanvas.is-entering-items .work-hub-card:nth-child(n+4),#workHubCanvas.is-entering-items .work-hub-list-row:nth-child(n+4){animation-delay:60ms;}
@@ -15700,7 +15700,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Column headers: a little more room between the stage dot and the title. */
 .work-hub-column header .work-hub-status{margin-right:3px;}
 /* Column filter: compact Priority and Sort controls. */
-.work-hub-column-filter{grid-template-columns:max-content max-content minmax(0,1fr);gap:5px;}
+.work-hub-column-filter{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;}
+.work-hub-column-filter .themed-select-wrap{min-width:0;}
+.work-hub-column-filter .themed-select-trigger{width:100%;justify-content:space-between;}
 .work-hub-column-filter .themed-select-trigger{box-sizing:border-box;height:24px;min-height:24px;gap:6px;padding:0 7px 0 9px;border-radius:6px;font-size:11px;line-height:1;}
 .work-hub-column-filter .themed-select-trigger-label{overflow:visible;text-overflow:clip;}
 /* Work item details: the title field is outlined at rest, spaced evenly
@@ -15726,10 +15728,21 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @keyframes wh-dialog-in{from{opacity:0;transform:translateY(12px) scale(.98);}}
 @keyframes wh-dialog-out{to{opacity:0;transform:translateY(8px) scale(.98);}}
 @media (prefers-reduced-motion:reduce){
-  #workHubCanvas:is(.is-entering-items,.is-entering-all) *,#workHub .work-hub-live.is-entering,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
+  #workHubCanvas:is(.is-entering-items,.is-entering-all) *,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
 }
 /* Quest row: the action drops under the state when the panel is too narrow
    for both, instead of running past the panel's edge. */
 .work-hub-inspector #workHubQuest{flex-wrap:wrap;justify-content:flex-start;column-gap:12px;row-gap:0;}
 .work-hub-inspector #workHubQuest > span{white-space:nowrap;}
 .work-hub-inspector #workHubQuest > .wh-insp-inline{margin-left:-6px;}
+/* Plan goal: title 1px lower, the actions 2px lower. */
+.goal-planner-head h3{position:relative;top:1px;}
+.goal-planner-actions > button{position:relative;top:2px;}
+/* Work item details: a larger WORK ITEM label, centred on the close button;
+   Delete and Save the same height. */
+.work-hub-inspector .wh-insp-kicker{font-size:12px;line-height:1;position:relative;top:1px;}
+.work-hub-inspector .wh-insp-foot :is(.wh-insp-delete,.work-hub-save){box-sizing:border-box;height:34px;min-height:34px;}
+/* Empty details panel: a bolder, larger line with more room above it. */
+.work-hub-inspector-empty{gap:12px;}
+.work-hub-inspector-empty p{font-size:12.5px;font-weight:700;}
+.work-hub-inspector .wh-insp-kicker .work-hub-status{position:relative;top:-1px;}
