@@ -69,7 +69,7 @@ services:
       - CODEX_HOME=/run/secrets
       # Make sure the container sees the real hermes home, not a profile subdir.
       - HERMES_HOME=/home/hermeswebui/.hermes
-      - HERMES_WEBUI_GATEWAY_API_KEY=e1882d20595f90be0bba91f6acbc73af1a522bf3b820208433d21b08dd6dfa68
+      - HERMES_WEBUI_GATEWAY_API_KEY=${HERMES_WEBUI_GATEWAY_API_KEY:-}
       # Where to store sessions, workspaces, and other state (default: ~/.hermes/webui)
       - HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
       # Keep the Hugging Face model cache inside the mounted .hermes volume so a
