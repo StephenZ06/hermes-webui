@@ -580,10 +580,11 @@ async function switchPanel(name, opts = {}) {
   if (!opts.bypassSettingsGuard && !_beforePanelSwitch(nextPanel)) return false;
   // Work Hub owns the full main surface. Do not carry the chat workspace
   // browser into it when navigating from another panel.
-  if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
-  // Notes owns the full main surface too.
-  if (nextPanel === 'notebook' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
-  if (nextPanel === 'files' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();
+  // Notes and Files own the full main surface too. The panel is put away, not
+  // turned off: a pinned split view comes back on the next page that has room.
+  const pageOwnsSurface = nextPanel === 'notes' || nextPanel === 'notebook' || nextPanel === 'files';
+  if (pageOwnsSurface && typeof closeWorkspacePanel === 'function') closeWorkspacePanel({ persist: false });
+  else if (!pageOwnsSurface && typeof restorePinnedWorkspacePanel === 'function') restorePinnedWorkspacePanel();
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   // Close any long-lived Kanban SSE stream when leaving the kanban panel
   // so we don't keep a stale connection open in the background.

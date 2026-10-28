@@ -249,7 +249,10 @@ function _hasWorkspacePreviewVisible(){
   return !!(preview&&preview.classList.contains('visible'));
 }
 
-function _setWorkspacePanelMode(mode){
+// opts.persist=false: a page that owns the whole surface (Work Hub, Notes,
+// Files) puts the panel away without forgetting that it was open, so a pinned
+// split view comes back with the chat. opts.instant skips the slide.
+function _setWorkspacePanelMode(mode,opts={}){
   const {layout,panel}= _workspacePanelEls();
   if(!layout||!panel)return;
   _workspacePanelMode=(mode==='browse'||mode==='preview')?mode:'closed';
@@ -263,8 +266,8 @@ function _setWorkspacePanelMode(mode){
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
-  try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
-  if(_isCompactWorkspaceViewport()){
+  if(opts.persist!==false){try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}}
+  if(_isCompactWorkspaceViewport()||opts.instant){
     layout.classList.toggle('workspace-panel-collapsed',!open);
   }else{
     // Desktop: same composited slide the sidebar uses. On compact viewports the
@@ -540,8 +543,18 @@ function openWorkspacePanel(mode='browse'){
   _setWorkspacePanelMode(mode);
 }
 
-function closeWorkspacePanel(){
-  _setWorkspacePanelMode('closed');
+function closeWorkspacePanel(opts){
+  _setWorkspacePanelMode('closed',opts);
+}
+// Coming back from a page that put a pinned panel away: the split view
+// returns as it was, already in place rather than sliding in again.
+function restorePinnedWorkspacePanel(){
+  if(_workspacePanelMode!=='closed'||!_isWorkspacePinned()||_isCompactWorkspaceViewport())return;
+  let wasOpen=false;
+  try{wasOpen=localStorage.getItem('hermes-webui-workspace-panel')==='open';}catch(_){}
+  if(!wasOpen)return;
+  if(!S.session&&!_hasWorkspacePreviewVisible()&&!S._profileDefaultWorkspace)return;
+  _setWorkspacePanelMode('browse',{instant:true});
 }
 
 function ensureWorkspacePreviewVisible(){

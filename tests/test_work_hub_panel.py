@@ -316,7 +316,8 @@ def test_work_hub_does_not_render_floating_workspace_panel_arrow():
 
 def test_work_hub_closes_an_open_workspace_panel_on_entry():
     panels = read("static/panels.js")
-    assert "if (nextPanel === 'notes' && typeof closeWorkspacePanel === 'function') closeWorkspacePanel();" in panels
+    assert "const pageOwnsSurface = nextPanel === 'notes' ||" in panels
+    assert "if (pageOwnsSurface && typeof closeWorkspacePanel === 'function') closeWorkspacePanel({ persist: false });" in panels
 
 
 def test_work_hub_project_tiles_use_chat_project_metadata_and_boards():
