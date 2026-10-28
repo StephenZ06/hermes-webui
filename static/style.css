@@ -15203,7 +15203,11 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] .dash-level-badge{line-height:1;padding:2px 7px;}
 :root[data-skin="zeus-2"] #dashboardSidebar .dash-side-nav .side-menu-item{line-height:1.2;}
 :root[data-skin="zeus-2"] #dashboardSidebar .dash-side-nav .side-menu-item > :is(svg,.side-menu-label,.dash-level-badge){transform:translateY(-.1px);}
-:root[data-skin="zeus-2"] body:has(main.main:not([class*="showing-"])) :is(.sidebar,#mainChat) :is(button,input,select,textarea,.session-item,.project-chip,.suggestion,[role="button"]){position:relative;top:.1px;}
+/* Chat page only: the Chat sidebar view is active, and #mainChat only shows
+   on that page. (Was body:has(main.main:not([class*="showing-"])): a :has()
+   on a class substring is re-checked on every class change anywhere, which
+   restyled every chat button on each frame of a workspace-panel resize.) */
+:root[data-skin="zeus-2"] :is(.sidebar:has(> #panelChat.active),#mainChat) :is(button,input,select,textarea,.session-item,.project-chip,.suggestion,[role="button"]){position:relative;top:.1px;}
 :root[data-skin="zeus-2"] #composerModelChip{padding-top:9px;padding-bottom:7px;}
 :root[data-skin="zeus-2"] #composerModelChip .composer-model-icon{position:relative;top:-1px;}
 :where(:root[data-skin="zeus-2"]) .themed-select-trigger{padding-bottom:8px;}

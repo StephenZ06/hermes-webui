@@ -32,9 +32,18 @@ function _outlineAllowed() {
 function _syncOutlinePosition() {
   const root = document.documentElement;
   const panel = document.querySelector('.rightpanel');
+  const wrapper = document.getElementById('outlinePanelWrapper');
+  if (!wrapper) return;
   const open = root.dataset.workspacePanel === 'open';
   const width = open && panel ? Math.max(0, Math.round(panel.offsetWidth || 0)) : 0;
-  root.style.setProperty('--outline-workspace-offset', width + 'px');
+  // Set on the outline itself, its only reader, and only when it changed: this
+  // runs on every frame of a workspace-panel resize, and a custom property on
+  // <html> is inherited by every element, so the whole page (every message's
+  // action buttons) was restyled each frame of the pin glide.
+  const value = width + 'px';
+  if (wrapper.style.getPropertyValue('--outline-workspace-offset') !== value) {
+    wrapper.style.setProperty('--outline-workspace-offset', value);
+  }
 }
 
 function applyConversationOutlinePreference() {
