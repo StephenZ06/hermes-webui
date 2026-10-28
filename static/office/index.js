@@ -142,6 +142,10 @@ let _resumeSceneAfterLayoutMotion = false;
 // The loop was stopped because its stage is hidden (a closed workspace
 // panel); it restarts when the stage has a size again.
 let _resumeWhenShown = false;
+// A layout motion that began while the stage was hidden (opening a closed
+// panel) holds the canvas once the stage has its real size, not before: the
+// hidden stage's height is wrong (its header wraps at zero width).
+let _beginMotionWhenShown = false;
 const CANVAS_SPAN_STORAGE_PREFIX = 'hermes-office-canvas-span:';
 let _layoutMotionResumeRaf = 0;
 // session id -> the name its last delegation gave it
@@ -277,7 +281,9 @@ function pauseForLayoutMotion(options) {
   _resumeSceneAfterLayoutMotion = _scene.isRunning() || _resumeWhenShown;
   _resumeWhenShown = false;
   if (_scene.isRunning()) _scene.stop();
-  if (typeof _scene.beginLayoutMotion === 'function') _scene.beginLayoutMotion();
+  if (typeof _scene.beginLayoutMotion !== 'function') return;
+  if (stageHidden()) _beginMotionWhenShown = true;
+  else _scene.beginLayoutMotion();
 }
 
 function resumeAfterLayoutMotion() {
@@ -285,6 +291,7 @@ function resumeAfterLayoutMotion() {
   _layoutMotionPauseDepth -= 1;
   if (_layoutMotionPauseDepth) return;
   if (!_scene) { flushDeferredMotionWork(); return; }
+  _beginMotionWhenShown = false;
   const scene = _scene;
   const shouldResume = _resumeSceneAfterLayoutMotion;
   _resumeSceneAfterLayoutMotion = false;
@@ -2246,6 +2253,11 @@ function attachLiveHooks(container) {
         return;
       }
       if (_resumeWhenShown && !_layoutMotionPauseDepth && !document.hidden) { _resumeWhenShown = false; _scene.start(); }
+      if (_beginMotionWhenShown && _layoutMotionPauseDepth) {
+        _beginMotionWhenShown = false;
+        syncCanvasSpan();
+        _scene.beginLayoutMotion();
+      }
       if (!_layoutMotionPauseDepth) syncCanvasSpan();
       // Resizing clears the WebGL drawing buffer, and this callback runs after
       // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an

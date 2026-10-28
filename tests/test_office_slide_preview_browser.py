@@ -163,3 +163,37 @@ def test_a_hidden_office_stops_drawing_and_reopens_at_its_remembered_size():
             browser.close()
     assert stopped is False
     assert first == width, (first, width)   # no collapsed canvas growing into place
+
+
+def test_opening_the_panel_holds_the_office_at_its_shown_height():
+    """A closed panel's stage is shorter (its header wraps at zero width). Opening the panel must not hold
+    the canvas at that hidden height for the slide: that showed as a short floor pinned to the bottom."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader",
+                                           "--enable-unsafe-swiftshader"])
+        try:
+            page = browser.new_page(viewport={"width": 1500, "height": 860})
+            page.set_default_timeout(240000)
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '0'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=200)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("() => { toggleWorkspacePanel(true); switchWorkspacePanelTab('office'); }")
+            page.wait_for_function("() => window.HermesOffice && window.HermesOffice.isRunning()", polling=200)
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(2000)
+            page.evaluate("() => toggleWorkspacePanel(false)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(1500)
+            page.evaluate("() => { window.__hermesSlideTimeScale = 0.05; toggleWorkspacePanel(true); }")
+            page.wait_for_function("() => document.querySelector('.rightpanel #officeCanvas').style.height !== ''", polling=50)
+            page.wait_for_timeout(400)
+            held = page.evaluate("""() => { const c = document.querySelector('.rightpanel #officeCanvas');
+                return [document.querySelector('.layout').classList.contains('panel-sliding'), c.clientHeight, c.parentElement.clientHeight]; }""")
+            page.evaluate("() => { window.__hermesSlideTimeScale = 1; }")
+        finally:
+            browser.close()
+    assert held[0], held                   # still mid-slide
+    assert held[1] == held[2], held        # the held canvas fills the stage it is shown in
