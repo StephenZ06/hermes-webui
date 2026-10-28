@@ -1834,11 +1834,13 @@
   .session-actions-trigger:hover{background:var(--hover-bg);color:var(--text);}
   .session-actions-trigger.active{background:var(--accent-bg);border-color:var(--accent-bg-strong);color:var(--text);}
   .session-actions-trigger svg{display:block;}
-  .session-action-menu{display:block;position:fixed;left:0;top:0;right:auto;bottom:auto;min-width:220px;max-width:min(280px,calc(100vw - 16px));background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 -4px 24px rgba(0,0,0,.4);z-index:999;overflow:hidden;max-height:calc(100vh - 16px);overflow-y:auto;transform-origin:top right;will-change:opacity,transform;}
+  .session-action-menu{display:block;position:fixed;left:0;top:0;right:auto;bottom:auto;box-sizing:border-box;width:max-content;min-width:0;padding:6px;max-width:min(280px,calc(100vw - 16px));background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 -4px 24px rgba(0,0,0,.4);z-index:999;overflow:hidden;max-height:calc(100vh - 16px);overflow-y:auto;transform-origin:top right;will-change:opacity,transform;}
   .session-action-menu.open-animated{animation:session-menu-in .45s cubic-bezier(.2,.8,.2,1);}
   .session-action-menu.open{display:block;}
-  .session-action-opt{width:100%;background:none;border:none;text-align:left;font:inherit;color:var(--text);flex-direction:row!important;gap:0!important;padding:0!important;}
-  .session-action-opt .ws-opt-action{display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;padding:8px 14px;}
+  .session-action-opt{width:100%;background:none;border:none;border-radius:6px;text-align:left;font:inherit;color:var(--text);flex-direction:row!important;gap:0!important;padding:0!important;}
+  /* 6px menu inset + 8px row inset: every label sits 14px from the menu's
+     top, bottom, left and (for the longest label) right edge. */
+  .session-action-opt .ws-opt-action{display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;padding:8px;box-sizing:border-box;white-space:nowrap;}
   .session-action-opt .ws-opt-icon{color:var(--muted);transition:color .12s,opacity .12s;flex-shrink:0;display:flex;align-items:center;width:16px;}
   .session-action-opt:hover .ws-opt-icon{color:var(--text);opacity:1;}
   .session-action-copy{display:flex;flex-direction:column;gap:2px;min-width:0;}
@@ -8882,6 +8884,12 @@ main.main > #mainPlugin{display:none;}
 .project-folder-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
 .project-folder-sessions-inner::before{content:"";flex:none;}
 .project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
+/* The compact rows above reset padding-right, which dropped the room the
+   base rules keep for the ⋯ trigger: a long title ran under it. Keep that
+   room whenever the trigger shows (pointer devices; touch hides it). */
+@media not ((hover:none) and (pointer:coarse)){
+  :is(.project-folder-sessions .session-item,.session-tree-child.session-item,.agent-canvas-project-sessions .session-item):is(:hover,:focus-within,.menu-open,.streaming,.unread,.needs-attention){padding-right:40px;}
+}
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a
    filled background -- nested rows should stay visually flat like the
