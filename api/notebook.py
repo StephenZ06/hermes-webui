@@ -295,7 +295,7 @@ def _summary(row: sqlite3.Row, known_projects: set[str]) -> dict[str, Any]:
         "id": row["id"], "title": row["title"], "preview": preview,
         "project_id": project_id, "folder_id": row["folder_id"],
         "tags": json.loads(row["tags"] or "[]"),
-        "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]), "archived": bool(row["archived"]),
+        "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]),
         "deleted_at": row["deleted_at"], "revision": row["revision"],
         "created_at": row["created_at"], "updated_at": row["updated_at"],
     }
@@ -367,7 +367,7 @@ def create_note(payload: dict[str, Any]) -> dict[str, Any]:
         return _full(_row(conn, note_id), _known())
 
 
-_FLAGS = ("pinned", "favorite", "archived")
+_FLAGS = ("pinned", "favorite")
 
 
 def update_note(note_id: str, payload: dict[str, Any]) -> dict[str, Any]:

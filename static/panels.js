@@ -9307,7 +9307,7 @@ async function openProviderWizard(name, opts = {}){
       setTimeout(() => { overlay.remove(); if (opener && opener.isConnected) opener.focus(); }, 180);
       resolve(value);
     };
-    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.themed-select-popup') && !st.busy) { e.preventDefault(); finish(null); } };
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.themed-select-popup:not(.popup-closing)') && !st.busy) { e.preventDefault(); finish(null); } };
     document.addEventListener('keydown', onKey, true);
     q('.ps-close').onclick = () => { if (!st.busy) finish(null); };
 

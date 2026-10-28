@@ -10077,7 +10077,7 @@ async function _openProjectStarterWizard(profile){
       const remove=()=>{overlay.remove();if(opener&&opener.isConnected)opener.focus();};
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove(); else setTimeout(remove,180);
       resolve(value);};
-    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup')&&!st.busy){event.preventDefault();finish(null);}};
+    const onKey=(event)=>{if(event.key==='Escape'&&!document.querySelector('.themed-select-popup:not(.popup-closing)')&&!st.busy){event.preventDefault();finish(null);}};
     close.onclick=()=>{if(!st.busy)finish(null);};
     // Clicking outside never closes the wizard: a stray click would lose the
     // whole draft. Close with the × button, Cancel, or Escape.

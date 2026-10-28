@@ -71,7 +71,7 @@ def test_scope_change_animates_items_and_view_change_animates_the_board():
             probe = """() => { const c = document.getElementById('workHubCanvas');
                 const moving = s => [...c.querySelectorAll(s)].filter(e => e.getAnimations().length).length;
                 return {columns: moving('.work-hub-column'), cards: moving('.work-hub-card'), rows: moving('.work-hub-list-row'),
-                    leaving: document.querySelectorAll('.work-hub-leaving').length}; }"""
+                    leaving: document.querySelectorAll('.list-item-leaving').length}; }"""
             page.click(".work-hub-scope[data-scope='all']")
             page.wait_for_timeout(700)
             counted = page.evaluate("""() => new Promise(done => { const seen = []; const t0 = performance.now();
@@ -146,7 +146,7 @@ def test_scope_change_keeps_shared_items_and_animates_only_the_difference():
             page = browser.new_context(viewport={"width": 1400, "height": 860}).new_page()
             _open_work_hub(page)
             # Each card or row is classed by what its animation does: a glide (transform only), an entrance (opacity).
-            probe = """() => { const out = {shared: 0, glide: 0, enter: 0, fadeShared: 0, leaving: document.querySelectorAll('.work-hub-leaving').length};
+            probe = """() => { const out = {shared: 0, glide: 0, enter: 0, fadeShared: 0, leaving: document.querySelectorAll('.list-item-leaving').length};
                 const before = window.__before || new Set();
                 document.querySelectorAll('#workHubCanvas [data-item-id]').forEach(n => {
                     const fades = n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'opacity' in k));
@@ -168,7 +168,7 @@ def test_scope_change_keeps_shared_items_and_animates_only_the_difference():
                 page.click(".work-hub-scope[data-scope='all']")
                 widening = page.evaluate(probe)
                 page.wait_for_timeout(700)
-                results[view] = (narrowing, widening, page.evaluate("() => document.querySelectorAll('.work-hub-leaving').length"))
+                results[view] = (narrowing, widening, page.evaluate("() => document.querySelectorAll('.list-item-leaving').length"))
         finally:
             try:
                 if page is not None:
@@ -205,7 +205,7 @@ def test_switching_projects_keeps_each_columns_cards_and_changes_only_their_text
                 const fades = n => n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'opacity' in k));
                 return {cards: cards.length, cardFades: cards.filter(fades).length,
                         textFades: cards.filter(c => !fades(c) && [...c.children].some(fades)).length,
-                        leaving: document.querySelectorAll('.work-hub-leaving').length}; }"""
+                        leaving: document.querySelectorAll('.list-item-leaving').length}; }"""
             page.click(tile("Refinements A"))
             page.wait_for_timeout(700)
             page.click(tile("Refinements B"))

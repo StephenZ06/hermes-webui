@@ -33,7 +33,11 @@
     if (!open) return;
     var o = open;
     open = null;
-    if (o.popup && o.popup.parentNode) o.popup.parentNode.removeChild(o.popup);
+    // The list fades back toward its button (animatePopupOut in ui.js).
+    if (o.popup && o.popup.parentNode) {
+      if (typeof window.animatePopupOut === 'function') window.animatePopupOut(o.popup);
+      else o.popup.parentNode.removeChild(o.popup);
+    }
     o.trigger.setAttribute('aria-expanded', 'false');
     o.trigger.classList.remove('themed-select-trigger-open');
   }

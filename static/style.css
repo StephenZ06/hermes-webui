@@ -6110,6 +6110,9 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-nav{gap:2px;}
 .nb-scope-count{margin-left:auto;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;}
 .nb-scope.active .nb-scope-count{color:inherit;}
+/* The side panel's right-hand values (counts, Connect, the chevron) sit 1px
+   higher than the row's centre, level with the labels' letters. */
+.nb-nav :is(.nb-scope-count,.nb-scope-hint,.nb-scope-chevron,.work-hub-project-count){translate:0 -1px;}
 .nb-tree-note button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nb-tree-empty{margin:2px 0 6px;padding:2px 8px;color:var(--muted);font-size:11px;line-height:1.45;}
 .nb-tag-cloud{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;}
@@ -6129,7 +6132,9 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 /* While the column folds or opens, its rows keep their full width and the
    moving edge clips them, instead of squeezing the heading to nothing and
    dragging the New note button along with it (the 1px is the border). */
-@media (min-width:901px){.nb-list>*{min-width:calc(var(--nb-list-w) - 1px);}}
+@media (min-width:901px){.nb-list>*{min-width:calc(var(--nb-list-w) - 1px);}.nb-list>.nb-search{box-sizing:border-box;min-width:calc(var(--nb-list-w) - 25px);}}
+/* The search box keeps its 12px margin on both sides: the column's min-width
+   above is for its full-width rows, not for the inset box. */
 .nb-list-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 14px 10px 16px;}
 .nb-list-head h2{margin:0;overflow:hidden;font-size:15px;font-weight:700;text-overflow:ellipsis;white-space:nowrap;}
 .nb-search{display:flex;align-items:center;gap:6px;margin:0 12px 8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--muted);}
@@ -6172,7 +6177,7 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-place-select svg{flex:0 0 16px;}
 .nb-place-select select{max-width:220px;font-size:12px;cursor:pointer;}
 .nb-tags{display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:4px;min-width:140px;}
-.nb-tag-chip{display:inline-flex;align-items:center;gap:2px;padding:2px 3px 2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-text);font-size:11px;animation:nb-pop .16s ease;}
+.nb-tag-chip{display:inline-flex;align-items:center;gap:2px;padding:1px 3px 3px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-text);font-size:11px;animation:nb-pop .16s ease;}
 .nb-tag-chip button{padding:0 4px;border:0;background:transparent;color:inherit;font-size:13px;line-height:1;cursor:pointer;}
 .nb-tag-input{width:112px;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:14px;}
 .nb-updated{margin-left:auto;font-size:11px;white-space:nowrap;}
@@ -15326,7 +15331,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    above it, to the title. Blocks keep their own
    padding (BlockNote places its + / drag menu from it), so the editor as a
    whole is offset by what the first block's type leaves above its letters. */
-.nb-editor-head .nb-meta-row{padding-bottom:12px;}
+.nb-editor-head .nb-meta-row{padding-top:1px;padding-bottom:12px;}
+/* The folder button sits as far below the title as the divider sits below it. */
 .nb-editor-host{padding-top:0;}
 .nb-editor-mount .bn-editor{--nb-first:2px;margin-top:var(--nb-first);}
 .nb-editor-mount .bn-editor:has(> .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content[data-content-type="heading"]){--nb-first:-29px;}

@@ -1301,26 +1301,82 @@ def test_opening_notes_does_not_pile_up_listeners_on_the_page(touch_page):
     assert counts[-1] <= counts[1] + 2, (counts, grew)
 
 
-def test_changing_list_fades_the_old_one_out_before_the_new_one_in(page):
-    # The middle list used to cut to blank in one frame (every new item at
-    # opacity 0), which read as a flicker, before fading the new list in.
-    title = f"Handoff {uuid.uuid4().hex[:6]}"
+def test_changing_list_changes_it_by_the_difference(page):
+    # The middle list used to fade every note out and the new list in. Now,
+    # as on the Work Hub, the notes in both lists stay, the others take over
+    # the old slots with only their text fading in, and the heading changes.
+    trashed = _api("/api/notebook/notes/create", {"title": f"Binned {uuid.uuid4().hex[:6]}"})["note"]
+    _api(f"/api/notebook/notes/{trashed['id']}/trash", {})
+    _api("/api/notebook/notes/create", {"title": f"Kept {uuid.uuid4().hex[:6]}"})
     _open(page)
-    _new_note(page, title)
-    _saved(page)
-    page.wait_for_function("(t) => [...document.querySelectorAll('.nb-item strong')].some(e => e.textContent === t)", arg=title, timeout=10000)
-    out = page.evaluate("""async () => {
+    page.click("[data-nb-scope=general]")
+    page.wait_for_selector("#nbListItems .nb-item", timeout=10000)
+    page.wait_for_timeout(500)
+    out = page.evaluate("""() => {
       const host = document.getElementById('nbListItems');
-      const before = host.childElementCount;
       document.querySelector('[data-nb-scope=trash]').click();
-      const leaving = [host.classList.contains('is-leaving'), host.childElementCount, document.getElementById('nbScopeTitle').textContent];
-      await new Promise((r) => setTimeout(r, 400));
-      return {before, leaving, after: [host.classList.contains('is-leaving'), host.classList.contains('is-entering'), document.getElementById('nbScopeTitle').textContent]};
-    }""")
-    # Right after the click the old list is still there, fading out under its old heading.
-    assert out["leaving"][0] is True and out["leaving"][1] == out["before"] > 0
-    assert out["leaving"][2] != "Trash"
-    assert out["after"] == [False, True, "Trash"]
+      const items = [...host.querySelectorAll('.nb-item')];
+      const fades = (n) => n.getAnimations().some((a) => a.effect.getKeyframes().some((k) => 'opacity' in k));
+      return {leaving: host.classList.contains('is-leaving'), entering: host.classList.contains('is-entering'),
+              title: document.getElementById('nbScopeTitle').textContent, items: items.length,
+              swapped: items.filter((n) => !fades(n) && [...n.children].some(fades)).length}; }""")
+    assert out["leaving"] is False and out["entering"] is False, out   # no whole-list fade
+    assert out["title"] == "Trash" and out["items"] > 0, out
+    assert out["swapped"] > 0, out   # the first slots keep their card and change their text
+
+
+def test_a_tag_lists_its_notes_from_inside_a_workspace(page):
+    # Clicking a tag inside a workspace kept the workspace scope, whose middle
+    # list is folded away, so the tagged notes showed nowhere.
+    tag = f"t{uuid.uuid4().hex[:6]}"
+    project, tile = _place_with_two_notes()
+    tagged = _api("/api/notebook/notes/create", {"title": "Tagged elsewhere", "tags": [tag]})["note"]
+    _open(page)
+    page.click("[data-nb-scope=general]")
+    page.wait_for_selector(tile, timeout=15000)
+    page.click(tile)
+    page.wait_for_timeout(400)
+    page.click(f"#notebookSidebar [data-nb-tag='{tag}']")
+    page.wait_for_function("(id) => document.querySelector(`#nbListItems [data-nb-open='${id}']`)", arg=tagged["id"], timeout=5000)
+    shown = page.evaluate("""() => [document.querySelector('.nb').classList.contains('nb-list-collapsed'), document.getElementById('nbScopeTitle').textContent]""")
+    assert shown == [False, "#" + tag], shown
+
+
+def test_note_menu_has_no_archive_and_pinning_keeps_tags_and_saved_still(page):
+    _open(page)
+    _new_note(page, f"Steady {uuid.uuid4().hex[:6]}")
+    page.fill("#nbTagInput", "steady")
+    page.press("#nbTagInput", "Enter")
+    _saved(page)
+    page.wait_for_timeout(400)
+    seen = page.evaluate("""async () => {
+      const status = document.getElementById('nbStatus'); const texts = new Set([status.textContent]);
+      const observer = new MutationObserver(() => texts.add(status.textContent));
+      observer.observe(status, {childList: true, characterData: true, subtree: true});
+      const chip = document.querySelector('.nb-tag-chip');
+      document.getElementById('nbPin').click();
+      await new Promise((r) => setTimeout(r, 900));
+      document.getElementById('nbFavorite').click();
+      await new Promise((r) => setTimeout(r, 900));
+      observer.disconnect();
+      return {texts: [...texts], sameChip: chip === document.querySelector('.nb-tag-chip')}; }""")
+    page.click("#nbMenu")
+    labels = page.eval_on_selector_all(".nb-menu .nb-menu-item", "els => els.map(e => e.textContent)")
+    page.keyboard.press("Escape")
+    closing = page.evaluate("() => !!document.querySelector('.nb-menu.popup-closing')")
+    assert seen == {"texts": ["Saved"], "sameChip": True}, seen
+    assert labels and not any("rchive" in label for label in labels), labels
+    assert closing   # the menu fades out instead of vanishing
+
+
+def test_search_box_keeps_equal_margins_in_the_list_column(page):
+    _open(page)
+    page.click("[data-nb-scope=general]")
+    gaps = page.evaluate("""() => { const list = document.querySelector('.nb-list').getBoundingClientRect();
+      const box = document.querySelector('.nb-search').getBoundingClientRect();
+      const inner = list.right - parseFloat(getComputedStyle(document.querySelector('.nb-list')).borderRightWidth);
+      return [Math.round(box.left - list.left), Math.round(inner - box.right)]; }""")
+    assert gaps[0] == gaps[1] and gaps[0] > 0, gaps
 
 
 def test_reopening_notes_fetches_the_last_note_and_editor_alongside_the_list():

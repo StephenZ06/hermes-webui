@@ -131,7 +131,7 @@
       case 'favorites': return live(note) && note.favorite;
       case 'project': return live(note) && note.project_id === scope.id;
       case 'folder': return live(note) && note.folder_id === scope.id;
-      default: return live(note) && !note.archived;
+      default: return live(note);
     }
   }
   function visibleNotes() {
@@ -140,6 +140,7 @@
   }
   function scopeTitle() {
     const k = S.scope.kind;
+    if (S.tagFilter && k === 'all') return '#' + S.tagFilter;
     if (k === 'project') return (projectOf(S.scope.id) || {}).name || 'Workspace';
     if (k === 'folder') return (folderOf(S.scope.id) || {}).name || 'Folder';
     if (S.side === 'vault') return {all: 'Obsidian notes', general: 'Vault root', trash: 'Vault trash'}[k] || 'Obsidian notes';
@@ -360,8 +361,8 @@
     deleteMode().enter();
   }
   function openCreateMenu(button) {
-    const old = document.querySelector('.nb-create-menu');
-    if (old) { old.remove(); return; }
+    const old = document.querySelector('.nb-create-menu:not(.popup-closing)');
+    if (old) { closePopup(old); return; }
     const menu = document.createElement('div');
     menu.className = 'work-hub-create-menu nb-create-menu';
     menu.setAttribute('role', 'menu');
@@ -369,7 +370,7 @@
     button.parentElement.appendChild(menu);
     const close = (event) => {
       if (menu.contains(event.target) || button.contains(event.target)) return;
-      menu.remove(); document.removeEventListener('click', close, true);
+      closePopup(menu); document.removeEventListener('click', close, true);
     };
     setTimeout(() => document.addEventListener('click', close, true), 0);
   }
@@ -519,6 +520,15 @@
     }
     if (listLeaving) return;
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Notes in both lists stay (or glide), the others swap their text in
+    // place, and only the extra ones come in or leave, as on the Work Hub.
+    // Only the heading fades to its new name.
+    if (entering && S.loaded && host.querySelector('.nb-item') && visibleNotes().length && typeof window.playListItemChange === 'function') {
+      const before = window.noteShownListItems([...host.querySelectorAll('.nb-item[data-nb-open]')], LIST_MOTION);
+      paintList(true, false);
+      window.playListItemChange(before, [...host.querySelectorAll('.nb-item[data-nb-open]')], LIST_MOTION);
+      return;
+    }
     if (entering && !reduce && host.childElementCount && S.loaded) {
       host.classList.remove('is-entering'); title.classList.remove('is-entering');
       host.classList.add('is-leaving'); title.classList.add('is-leaving');
@@ -533,13 +543,14 @@
     }
     paintList(entering);
   }
-  function paintList(entering) {
+  const LIST_MOTION = {key: (node) => node.dataset.nbOpen, group: () => 'list', clip: () => $('nbListItems')};
+  function paintList(entering, itemsEnter = entering) {
     const host = $('nbListItems');
     if (!host) return;
-    host.classList.toggle('is-entering', entering);
+    host.classList.toggle('is-entering', itemsEnter);
     if (entering) host.scrollTop = 0;
     const title = $('nbScopeTitle');
-    title.textContent = scopeTitle() + (S.tagFilter ? ` · #${S.tagFilter}` : '');
+    title.textContent = scopeTitle() + (S.tagFilter && S.scope.kind !== 'all' ? ` · #${S.tagFilter}` : '');
     // The heading fades to its new name with the list (reflow restarts it).
     if (entering) { title.classList.remove('is-entering'); void title.offsetWidth; title.classList.add('is-entering'); }
     if (!S.loaded) { host.innerHTML = S.error ? `<div class="nb-empty"><p>${esc(S.error)}</p><button type="button" class="nb-btn" data-nb-action="reload">Try again</button></div>` : ''; return; }
@@ -622,8 +633,7 @@
     const options = placeOptions(note);
     if (place.dataset.options !== options) { place.innerHTML = options; place.dataset.options = options; }
     fitPlaceSelect(place);
-    $('nbStatus').dataset.status = save.status;
-    $('nbStatus').textContent = statusText();
+    syncStatus();
     $('nbUpdated').textContent = 'Edited ' + when(note.updated_at);
     const pin = $('nbPin');
     pin.disabled = trashed; pin.classList.toggle('on', !!note.pinned); pin.setAttribute('aria-pressed', String(!!note.pinned)); pin.setAttribute('aria-label', note.pinned ? 'Unpin' : 'Pin'); pin.title = note.pinned ? 'Unpin' : 'Pin';
@@ -668,6 +678,11 @@
     const chips = $('nbTagChips');
     const tagInput = $('nbTagInput');
     if (!chips || !tagInput) return;
+    // Repaint only when the tags changed: rebuilding the chips replays their
+    // pop-in, which flickered on every pin or favorite.
+    const tagsKey = JSON.stringify([note.id, note.tags || [], trashed]);
+    if (chips.dataset.tags === tagsKey) return;
+    chips.dataset.tags = tagsKey;
     chips.innerHTML = (note.tags || []).map((t) => `<span class="nb-tag-chip">#${esc(t)}<button type="button" data-nb-untag="${esc(t)}" aria-label="Remove tag ${esc(t)}" ${trashed ? 'disabled' : ''}>×</button></span>`).join('');
     tagInput.value = '';
     tagInput.disabled = trashed;
@@ -713,11 +728,18 @@
     bindEditorHead();
     renderEditorHeadPersistent();
   }
+  // "Saved" holds through a quick save (a pin, a favorite, a tag): the
+  // status only shows Unsaved or Saving… when the save is still going a
+  // moment later, so a save that lands at once never flickers the text.
+  let statusHold = 0;
   function syncStatus() {
     const el = document.querySelector('#nbEditorHead .nb-status');
     if (!el) return;
-    el.dataset.status = save.status;
-    el.textContent = statusText();
+    const paint = () => { statusHold = 0; el.dataset.status = save.status; el.textContent = statusText(); };
+    const busy = save.status === 'unsaved' || save.status === 'saving';
+    if (busy && el.dataset.status === 'saved') { if (!statusHold) statusHold = setTimeout(paint, 600); return; }
+    clearTimeout(statusHold);
+    paint();
   }
   // Opening the Obsidian vault drills into it and Back drills out: the new
   // side panel's rows slide in from the side they came from, one after another.
@@ -1574,7 +1596,7 @@
     }
     if (fields.tags) body.tags = note.tags || [];
     if (fields.place) { body.project_id = note.project_id || null; body.folder_id = note.folder_id || null; body.view = S.side; }
-    ['pinned', 'favorite', 'archived'].forEach((flag) => { if (fields[flag]) body[flag] = !!note[flag]; });
+    ['pinned', 'favorite'].forEach((flag) => { if (fields[flag]) body[flag] = !!note[flag]; });
     return body;
   }
   async function runSave() {
@@ -1809,8 +1831,12 @@
     };
     picker.click();
   }
+  // Menus fade back toward their button as they close (animatePopupOut in ui.js).
+  function closePopup(menu) {
+    if (typeof window.animatePopupOut === 'function') window.animatePopupOut(menu); else menu.remove();
+  }
   function openMenu(anchor, items) {
-    document.querySelectorAll('.nb-menu').forEach((m) => m.remove());
+    document.querySelectorAll('.nb-menu:not(.popup-closing)').forEach((m) => closePopup(m));
     const menu = document.createElement('div');
     menu.className = 'nb-menu';
     menu.setAttribute('role', 'menu');
@@ -1829,7 +1855,7 @@
     menu.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, r.right - width)) + 'px';
     menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, r.bottom + 4) + 'px';
     const first = menu.querySelector('button'); if (first) first.focus();
-    function close() { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', keys, true); anchor.focus(); }
+    function close() { closePopup(menu); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', keys, true); anchor.focus(); }
     function outside(event) { if (!menu.contains(event.target)) close(); }
     function keys(event) {
       const buttons = [...menu.querySelectorAll('button')];
@@ -1849,7 +1875,6 @@
     openMenu(anchor, [
       {label: 'Send to chat', run: sendToChat},
       {label: 'Duplicate', run: duplicateCurrent},
-      {label: note.archived ? 'Unarchive' : 'Archive (hide from All notes)', run: () => setFlag('archived')},
       '-',
       {label: 'Export as Markdown', run: () => exportCurrent('md')},
       {label: 'Export as HTML', run: () => exportCurrent('html')},
@@ -1973,7 +1998,7 @@
     const pick = t.closest('[data-nb-pick]');
     if (pick) {
       const value = pick.dataset.nbPick;
-      const menu = pick.closest('.nb-create-menu'); if (menu) menu.remove();
+      const menu = pick.closest('.nb-create-menu'); if (menu) closePopup(menu);
       const place = value.startsWith('p:') ? {project_id: value.slice(2), folder_id: null}
         : value.startsWith('f:') ? {project_id: null, folder_id: value.slice(2)} : {project_id: null, folder_id: null};
       // Show the new note where it was put.
@@ -1986,7 +2011,7 @@
       const what = create.dataset.nbCreate;
       const menu = create.closest('.nb-create-menu');
       if (what === 'note' && menu) { showPlacePicker(menu); return; }
-      if (menu) menu.remove();
+      if (menu) closePopup(menu);
       if (what === 'note') await newNote();
       else if (what === 'folder') await newFolder();
       else enterDeleteMode();
@@ -2009,12 +2034,22 @@
     const scope = t.closest('[data-nb-scope]');
     if (scope) {
       S.scope = {kind: scope.dataset.nbScope, id: null};
+      S.tagFilter = null;
       S.pane = 'list';
       render();
       return;
     }
     const tag = t.closest('[data-nb-tag]');
-    if (tag) { S.tagFilter = S.tagFilter === tag.dataset.nbTag ? null : tag.dataset.nbTag; render(); return; }
+    if (tag) {
+      // A tag lists every note that has it, wherever the note lives: the
+      // scope goes to All notes (a workspace or folder folds the middle list
+      // away, so its tagged notes would show nowhere).
+      S.tagFilter = S.tagFilter === tag.dataset.nbTag ? null : tag.dataset.nbTag;
+      if (S.tagFilter) S.scope = {kind: 'all', id: null};
+      S.pane = 'list';
+      render();
+      return;
+    }
     const untag = t.closest('[data-nb-untag]');
     if (untag && S.note) {
       S.note.tags = (S.note.tags || []).filter((x) => x !== untag.dataset.nbUntag);

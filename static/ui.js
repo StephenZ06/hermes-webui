@@ -9393,6 +9393,72 @@ function copyToastText(btn){
 // then `done` removes it. Its state is released by the caller right away, so
 // a second menu can open while this one is still leaving; the leaving node is
 // inert so it never takes a click. Reduced motion skips straight to `done`.
+// A list (Work Hub cards and rows, the Notes list) that changes what it shows
+// changes by the difference instead of being redrawn. noteShownListItems()
+// records where each item sat just before the redraw; playListItemChange()
+// then runs on the new items: one in both lists glides from its old place to
+// its new one; in each group (a board column) the other new items take over
+// the old ones' slots in order, the item staying put while its text fades in
+// as the Notes text does; only the extra items come in, or fade where they
+// were. opts: key(node) → id, group(node) → group name, clip(node) → the
+// element the item scrolls in.
+let _listLeavingGhosts=[];
+function noteShownListItems(nodes, opts){
+  _listLeavingGhosts.forEach(ghost=>ghost.remove()); _listLeavingGhosts=[];
+  const shown=new Map();
+  nodes.forEach(node=>{
+    const box=node.getBoundingClientRect();
+    const clip=opts.clip(node).getBoundingClientRect();
+    // Only what was on screen counts; an item scrolled out of view has nowhere to leave from.
+    if(box.bottom<=clip.top||box.top>=clip.bottom||box.right<=clip.left||box.left>=clip.right) return;
+    shown.set(opts.key(node),{node,box,clip,group:opts.group(node)});
+  });
+  return shown;
+}
+function playListItemChange(before, nodes, opts){
+  if(!before) return;
+  try{ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; }catch(_){}
+  const easing='cubic-bezier(.2,.8,.2,1)';
+  const kept=new Set();
+  nodes.forEach(node=>{ if(before.has(opts.key(node))) kept.add(opts.key(node)); });
+  // The slots the old items leave free, per group, top to bottom.
+  const freeSlots={};
+  before.forEach((was,id)=>{ if(!kept.has(id)) (freeSlots[was.group]=freeSlots[was.group]||[]).push(id); });
+  const glide=(node,from,box)=>{
+    const dx=from.left-box.left, dy=from.top-box.top;
+    if(Math.abs(dx)<0.5&&Math.abs(dy)<0.5) return;
+    node.animate([{transform:`translate(${dx}px, ${dy}px)`},{transform:'none'}],{duration:340,easing});
+  };
+  nodes.forEach(node=>{
+    const box=node.getBoundingClientRect();
+    const was=before.get(opts.key(node));
+    if(was){ glide(node,was.box,box); return; }
+    const clip=opts.clip(node).getBoundingClientRect();
+    if(box.bottom<=clip.top||box.top>=clip.bottom) return;
+    const slot=(freeSlots[opts.group(node)]||[]).shift();
+    if(slot){
+      // Takes over an old item's slot: the item stays, its text changes.
+      kept.add(slot); glide(node,before.get(slot).box,box);
+      [...node.children].forEach(part=>part.animate([{opacity:0,filter:'blur(2px)'},{opacity:1,filter:'none'}],{duration:240,easing:'ease-out',fill:'backwards'}));
+      return;
+    }
+    node.animate([{opacity:0,transform:'translateY(8px) scale(.98)'},{opacity:1,transform:'none'}],{duration:260,delay:120,easing,fill:'backwards'});
+  });
+  before.forEach(({node,box,clip},id)=>{
+    if(kept.has(id)) return;
+    const ghost=node.cloneNode(true);
+    [...ghost.attributes].forEach(attr=>{ if(attr.name==='id'||attr.name.startsWith('data-')) ghost.removeAttribute(attr.name); });
+    ghost.setAttribute('aria-hidden','true'); ghost.classList.add('list-item-leaving');
+    // Held where it was, clipped to the list it scrolled in.
+    Object.assign(ghost.style,{position:'fixed',left:box.left+'px',top:box.top+'px',width:box.width+'px',height:box.height+'px',margin:'0',pointerEvents:'none',zIndex:'5',boxSizing:'border-box',
+      clipPath:`inset(${Math.max(0,clip.top-box.top)}px ${Math.max(0,box.right-clip.right)}px ${Math.max(0,box.bottom-clip.bottom)}px ${Math.max(0,clip.left-box.left)}px)`});
+    document.body.appendChild(ghost); _listLeavingGhosts.push(ghost);
+    ghost.animate([{opacity:1,transform:'none'},{opacity:0,transform:'scale(.97)'}],{duration:180,easing:'ease-out',fill:'forwards'})
+      .finished.then(()=>{ ghost.remove(); _listLeavingGhosts=_listLeavingGhosts.filter(entry=>entry!==ghost); },()=>{});
+  });
+}
+window.noteShownListItems=noteShownListItems;
+window.playListItemChange=playListItemChange;
 function animatePopupOut(el, done){
   const finish=typeof done==='function'?done:()=>{if(el&&el.parentNode)el.remove();};
   if(!el||!el.isConnected){finish();return;}

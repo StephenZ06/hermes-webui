@@ -598,7 +598,7 @@ def _summary(conn: sqlite3.Connection, root: Path, path: Path, ctx: dict[str, An
         "in_main": in_main, "project_id": project_id, "folder_id": folder_id,
         "vault_folder_id": _folder_id(conn, vault, vault_rel) if vault_rel else None,
         "tags": tags,
-        "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]), "archived": False,
+        "pinned": bool(row["pinned"]), "favorite": bool(row["favorite"]),
         "deleted_at": deleted_at, "revision": int(stat.st_mtime_ns // 1_000_000),
         "created_at": getattr(stat, "st_birthtime", stat.st_ctime), "updated_at": stat.st_mtime,
         "path": rel, "format": "markdown", "store": "vault",
