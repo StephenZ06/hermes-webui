@@ -101,3 +101,36 @@ def test_scope_change_animates_items_and_view_change_animates_the_board():
     assert all(fading == 0 for _, fading in counted), counted    # the count badges themselves stay still
     assert to_list["rows"] > 0, to_list
     assert to_board["columns"] > 0, to_board                      # view: the whole board comes in
+
+
+def test_clicking_into_a_new_items_fields_keeps_the_panel():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        page = None
+        try:
+            page = browser.new_context(viewport={"width": 1400, "height": 860}).new_page()
+            _open_work_hub(page)
+            page.evaluate("""() => { window.__rebuilds = 0;
+                new MutationObserver(records => { for (const r of records) for (const n of r.removedNodes)
+                    if (n.nodeType === 1 && (n.matches('.wh-insp') || n.querySelector('.wh-insp'))) window.__rebuilds++; })
+                    .observe(document.getElementById('workHub'), {childList: true, subtree: true}); }""")
+            page.click("#workHubCreate")
+            page.wait_for_selector("#workHubTitle")
+            page.wait_for_timeout(400)
+            page.evaluate("() => { window.__rebuilds = 0; }")
+            page.click("#workHubTitle")
+            page.keyboard.type("Clicked")
+            for selector in ("#workHubDescription", "#workHubTitle", "#workHubDescription"):
+                if page.query_selector(selector):
+                    page.click(selector)
+                    page.wait_for_timeout(300)
+            page.wait_for_timeout(3500)
+            after = page.evaluate("() => [window.__rebuilds, document.getElementById('workHubTitle').value]")
+        finally:
+            try:
+                if page is not None:
+                    _clean_up(page)
+            finally:
+                browser.close()
+    assert after == [0, "Clicked"], after   # clicking between fields never rebuilds the open panel

@@ -423,7 +423,7 @@
     const planGoal = el('workHubPlanGoal');
     if (planGoal) planGoal.onclick = () => openGoalPlannerDialog({ projectId: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null, onCreated: () => loadWorkHubPanel() });
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { store.activeView = button.dataset.view; render(); });
-    document.querySelectorAll('[data-item-id]').forEach(button => button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); });
+    document.querySelectorAll('.work-hub-card[data-item-id], .work-hub-list-row[data-item-id]').forEach(button => button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); });
     const search = el('workHubSearch'); if (search) search.oninput = () => { store.search = search.value.toLowerCase(); renderCanvas(scopedItems()); bind(); };
     const create = el('workHubCreate'); if (create) create.onclick = createItem;
     document.querySelectorAll('[data-board-filter]').forEach(button => button.onclick = () => { store.boardFilterOpen = store.boardFilterOpen === button.dataset.boardFilter ? null : button.dataset.boardFilter; renderCanvas(scopedItems()); bind(); });
