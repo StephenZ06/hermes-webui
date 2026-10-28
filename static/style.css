@@ -1838,9 +1838,9 @@
   .session-action-menu.open-animated{animation:session-menu-in .45s cubic-bezier(.2,.8,.2,1);}
   .session-action-menu.open{display:block;}
   .session-action-opt{width:100%;background:none;border:none;border-radius:6px;text-align:left;font:inherit;color:var(--text);flex-direction:row!important;gap:0!important;padding:0!important;}
-  /* 6px menu inset + 8px row inset: every label sits 14px from the menu's
-     top, bottom, left and (for the longest label) right edge. */
-  .session-action-opt .ws-opt-action{display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;padding:8px;box-sizing:border-box;white-space:nowrap;}
+  /* 6px menu inset + 8px row inset around each label; the icon and label
+     sit 1px left of centre (7px/9px), which reads as even beside the icons. */
+  .session-action-opt .ws-opt-action{display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;padding:8px 9px 8px 7px;box-sizing:border-box;white-space:nowrap;}
   .session-action-opt .ws-opt-icon{color:var(--muted);transition:color .12s,opacity .12s;flex-shrink:0;display:flex;align-items:center;width:16px;}
   .session-action-opt:hover .ws-opt-icon{color:var(--text);opacity:1;}
   .session-action-copy{display:flex;flex-direction:column;gap:2px;min-width:0;}
@@ -8890,6 +8890,11 @@ main.main > #mainPlugin{display:none;}
 @media not ((hover:none) and (pointer:coarse)){
   :is(.project-folder-sessions .session-item,.session-tree-child.session-item,.agent-canvas-project-sessions .session-item):is(:hover,:focus-within,.menu-open,.streaming,.unread,.needs-attention){padding-right:40px;}
 }
+/* While the ⋯ trigger shows, a long title fades out ahead of it instead of
+   ending in an ellipsis that reads as running into the button. */
+@media not ((hover:none) and (pointer:coarse)){
+  .session-item:is(:hover,:focus-within,.menu-open) .session-title{text-overflow:clip;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);}
+}
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a
    filled background -- nested rows should stay visually flat like the
@@ -15420,7 +15425,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .cron-run-list.is-capped::-webkit-scrollbar-thumb{background:var(--border2);border-radius:999px;}
 .cron-run-list{position:relative;}
 /* Zeus 2.0 nudges (measured against the user's Windows render). */
-:root[data-skin="zeus-2"] :is(#workHubProjects,.nb-folders,.office-project-folders) .project-folder-row > .project-folder-count{top:-1px;}
+:root[data-skin="zeus-2"] :is(#sessionList,#workHubProjects,.nb-folders,.office-project-folders) .project-folder-row > .project-folder-count{top:-1px;}
 :root[data-skin="zeus-2"] .office-page-nav-copy strong{top:1px;}
 :root[data-skin="zeus-2"] .office-session-row :is(.office-session-title,.office-session-meta){position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){position:relative;top:1px;}

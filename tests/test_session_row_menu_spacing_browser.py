@@ -36,11 +36,20 @@ def test_rows_inside_a_project_folder_keep_room_for_the_trigger(page):
         row.classList.add('menu-open');
         const title = row.querySelector('.session-title').getBoundingClientRect();
         const trigger = row.querySelector('.session-actions-trigger').getBoundingClientRect();
-        return trigger.left - title.right; }""")
-    assert gap >= 4, gap
+        return [trigger.left - title.right, getComputedStyle(row.querySelector('.session-title')).maskImage]; }""")
+    assert gap[0] >= 4, gap
+    assert "linear-gradient" in gap[1], gap   # a long title fades out ahead of the trigger
 
 
-def test_menu_labels_sit_the_same_distance_from_every_edge(page):
+def test_project_folders_have_no_hover_label(page):
+    titled = page.evaluate("""() => { _allProjects = [{project_id: 'p1', name: 'Triple S', workspace_path: '/workspace/triple-s'}];
+        _allSessions[0].project_id = 'p1'; renderSessionListFromCache();
+        const rows = [...document.querySelectorAll('#sessionList .project-folder-row')];
+        return [rows.length, rows.filter(r => r.hasAttribute('title') || r.hasAttribute('data-mi-title')).length]; }""")
+    assert titled[0] >= 1 and titled[1] == 0, titled
+
+
+def test_menu_labels_sit_evenly_inset_nudged_1px_left(page):
     item = page.locator(".session-item:has(.session-actions-trigger)").first
     item.hover()
     item.locator(".session-actions-trigger").click()
@@ -55,4 +64,5 @@ def test_menu_labels_sit_the_same_distance_from_every_edge(page):
                 opts[0].getBoundingClientRect().top + pad(opts[0]) - box.top,
                 box.bottom - (opts.at(-1).getBoundingClientRect().bottom - pad(opts.at(-1))),
                 box.right - Math.max(...opts.map(o => text(o).right))]; }""")
-    assert max(insets) - min(insets) <= 1, insets
+    left, top, bottom, right = insets
+    assert abs(top - bottom) <= 0.5 and abs(left - (top - 1)) <= 0.5 and abs(right - (top + 1)) <= 0.5, insets

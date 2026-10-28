@@ -8049,7 +8049,6 @@ function renderSessionListFromCache(){
       const chip=document.createElement('span');
       chip.className='project-chip project-folder-row'+(p.project_id===_activeProject?' active':'');
       chip.dataset.projectId=p.project_id;
-      if(p.workspace_path) chip.title=p.workspace_path;
       chip.dataset.projectName=p.name;
       const isExpanded=Boolean(_projectFoldersExpanded[p.project_id]);
       const chevron=document.createElement('span');
