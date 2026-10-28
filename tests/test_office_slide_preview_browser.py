@@ -77,3 +77,40 @@ def test_workspace_pin_glide_draws_the_final_frame_first_and_lands_without_a_red
     assert start["box"] == f"{start['boxPx']}px", start      # and the canvas box is held while the panel glides
     assert end["buffer"] == start["buffer"], (start, end)    # landing reallocates nothing
     assert end["box"] == "" and end["boxPx"] == start["boxPx"], (start, end)
+
+
+def test_closing_and_reopening_the_workspace_panel_keeps_the_office_canvas():
+    """A closed panel collapses the Office stage to nothing; the floor must not shrink its canvas to
+    fit that, or reopening the panel has to resize it a second time."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    state = """() => { const c = document.querySelector('.rightpanel #officeCanvas');
+        return [c.width, c.clientWidth, c.parentElement.clientWidth]; }"""
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader",
+                                           "--enable-unsafe-swiftshader"])
+        try:
+            page = browser.new_page(viewport={"width": 1500, "height": 860})
+            page.set_default_timeout(240000)
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '0'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=200)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("() => { toggleWorkspacePanel(true); switchWorkspacePanelTab('office'); }")
+            page.wait_for_selector(".rightpanel #officeCanvas", state="attached")
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(4000)
+            opened = page.evaluate(state)
+            page.evaluate("() => toggleWorkspacePanel(false)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(1500)
+            closed = page.evaluate(state)
+            page.evaluate("() => toggleWorkspacePanel(true)")
+            page.wait_for_selector(".layout.panel-sliding", state="detached")
+            page.wait_for_timeout(1500)
+            reopened = page.evaluate(state)
+        finally:
+            browser.close()
+    assert closed[2] < 2, closed                        # the stage really is collapsed while closed
+    assert closed[:2] == opened[:2], (opened, closed)    # yet the canvas and its buffer are untouched
+    assert reopened == opened, (opened, reopened)

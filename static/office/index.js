@@ -213,9 +213,14 @@ function activeAdapter() {
  * stage clips and centres it). Measured only at rest -- mid-slide the
  * sidebar is pinned out of flow.
  */
+function stageHidden() {
+  const stage = _container && _container.querySelector('.office-stage');
+  return !stage || stage.clientWidth < 2 || stage.clientHeight < 2;
+}
+
 function syncCanvasSpan() {
   const stage = _container && _container.querySelector('.office-stage');
-  if (!stage) return;
+  if (!stage || stageHidden()) return;
   let span = stage.clientWidth;
   const sidebar = document.querySelector('.sidebar');
   if (sidebar) {
@@ -2204,6 +2209,10 @@ function attachLiveHooks(container) {
   if (typeof ResizeObserver === 'function') {
     _resizeObserver = new ResizeObserver(() => {
       if (!_scene) return;
+      // A closed workspace panel collapses the stage to nothing. Keep the floor
+      // as it was instead of shrinking the canvas to fit no stage, so opening
+      // the panel again shows the same frame rather than resizing a second time.
+      if (stageHidden()) return;
       if (!_layoutMotionPauseDepth) syncCanvasSpan();
       // Resizing clears the WebGL drawing buffer, and this callback runs after
       // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
