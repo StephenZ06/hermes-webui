@@ -139,6 +139,10 @@ let _projectFoldersDeferredTimer = null;
 // then redraws once at its final dimensions.
 let _layoutMotionPauseDepth = 0;
 let _resumeSceneAfterLayoutMotion = false;
+// The loop was stopped because its stage is hidden (a closed workspace
+// panel); it restarts when the stage has a size again.
+let _resumeWhenShown = false;
+const CANVAS_SPAN_STORAGE_PREFIX = 'hermes-office-canvas-span:';
 let _layoutMotionResumeRaf = 0;
 // session id -> the name its last delegation gave it
 const _liveSummaries = new Map();
@@ -218,9 +222,26 @@ function stageHidden() {
   return !stage || stage.clientWidth < 2 || stage.clientHeight < 2;
 }
 
+// The last measured span is remembered per surface (the Office page and the
+// workspace panel lay out differently), so a floor mounted while its stage is
+// hidden -- a reload with the panel closed -- starts at its real size instead
+// of a collapsed canvas that has to grow once the panel opens.
+function canvasSpanStorageKey() {
+  return CANVAS_SPAN_STORAGE_PREFIX + (_container && _container.closest('.rightpanel') ? 'panel' : 'page');
+}
+
+function restoreCanvasSpan(stage) {
+  if (stage.style.getPropertyValue('--office-canvas-span')) return;
+  try {
+    const remembered = parseInt(localStorage.getItem(canvasSpanStorageKey()) || '', 10);
+    if (remembered > 0) stage.style.setProperty('--office-canvas-span', remembered + 'px');
+  } catch (_err) { /* blocked storage: the floor sizes itself once shown */ }
+}
+
 function syncCanvasSpan() {
   const stage = _container && _container.querySelector('.office-stage');
-  if (!stage || stageHidden()) return;
+  if (!stage) return;
+  if (stageHidden()) { restoreCanvasSpan(stage); return; }
   let span = stage.clientWidth;
   const sidebar = document.querySelector('.sidebar');
   if (sidebar) {
@@ -229,7 +250,10 @@ function syncCanvasSpan() {
       span += sidebar.getBoundingClientRect().width;
     }
   }
-  stage.style.setProperty('--office-canvas-span', Math.round(span) + 'px');
+  const value = Math.round(span) + 'px';
+  if (stage.style.getPropertyValue('--office-canvas-span') === value) return;
+  stage.style.setProperty('--office-canvas-span', value);
+  try { localStorage.setItem(canvasSpanStorageKey(), String(Math.round(span))); } catch (_err) { /* a remembered size is not worth failing over */ }
 }
 
 function flushDeferredMotionWork() {
@@ -250,8 +274,9 @@ function pauseForLayoutMotion(options) {
   _layoutMotionPauseDepth += 1;
   if (_layoutMotionPauseDepth !== 1 || !_scene) return;
   if (options && options.atFinalLayout) syncCanvasSpan();
-  _resumeSceneAfterLayoutMotion = _scene.isRunning();
-  if (_resumeSceneAfterLayoutMotion) _scene.stop();
+  _resumeSceneAfterLayoutMotion = _scene.isRunning() || _resumeWhenShown;
+  _resumeWhenShown = false;
+  if (_scene.isRunning()) _scene.stop();
   if (typeof _scene.beginLayoutMotion === 'function') _scene.beginLayoutMotion();
 }
 
@@ -274,7 +299,10 @@ function resumeAfterLayoutMotion() {
       if (typeof scene.endLayoutMotion === 'function') scene.endLayoutMotion();
       scene.resize();
       repositionDepartmentCards();
-      if (shouldResume && !document.hidden) scene.start();
+      if (shouldResume && !document.hidden) {
+        if (stageHidden()) _resumeWhenShown = true;
+        else scene.start();
+      }
       flushDeferredMotionWork();
     });
   });
@@ -2211,8 +2239,13 @@ function attachLiveHooks(container) {
       if (!_scene) return;
       // A closed workspace panel collapses the stage to nothing. Keep the floor
       // as it was instead of shrinking the canvas to fit no stage, so opening
-      // the panel again shows the same frame rather than resizing a second time.
-      if (stageHidden()) return;
+      // the panel again shows the same frame rather than resizing a second time,
+      // and stop drawing what nobody can see until the stage is back.
+      if (stageHidden()) {
+        if (_scene.isRunning() && !_layoutMotionPauseDepth) { _scene.stop(); _resumeWhenShown = true; }
+        return;
+      }
+      if (_resumeWhenShown && !_layoutMotionPauseDepth && !document.hidden) { _resumeWhenShown = false; _scene.start(); }
       if (!_layoutMotionPauseDepth) syncCanvasSpan();
       // Resizing clears the WebGL drawing buffer, and this callback runs after
       // the frame's rAF, so a bare resize paints a blank frame -- e.g. when an
@@ -2241,7 +2274,7 @@ function attachLiveHooks(container) {
   _visibilityHandler = () => {
     if (!_scene) return;
     if (document.hidden) _scene.stop();
-    else if (!_layoutMotionPauseDepth) _scene.start();
+    else if (!_layoutMotionPauseDepth && !stageHidden()) _scene.start();
   };
   document.addEventListener('visibilitychange', _visibilityHandler);
 

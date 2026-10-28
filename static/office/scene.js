@@ -1963,6 +1963,8 @@ export function createOfficeScene(canvas, options) {
   function beginLayoutMotion() {
     if (layoutMotion) return;
     if (resize()) { renderer.shadowMap.needsUpdate = true; composer.render(); }
+    // A collapsed canvas (its stage hidden) has no size worth holding.
+    if ((canvas.clientWidth || 0) < 2 || (canvas.clientHeight || 0) < 2) { layoutMotion = true; return; }
     const style = canvas.style;
     style.width = Math.max(1, canvas.clientWidth || 0) + 'px';
     style.height = Math.max(1, canvas.clientHeight || 0) + 'px';
