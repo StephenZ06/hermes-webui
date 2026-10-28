@@ -385,6 +385,10 @@ function _holdChatTextForPanelMotion(){
   // down. So the first visible row is held where it started, by scrolling and,
   // where the scroll range runs out, by a small offset on the held block. The
   // landing glide then carries everything to its final place in one move.
+  // The jump-to-response button sits on the right of a reply's footer, so it
+  // follows the column's right edge too: its row carries it right by the
+  // shift, it carries itself back left by twice that.
+  const jumps=reduce?[]:visible('.msg-question-jump-btn').map(el=>({el,prev:el.style.getPropertyValue('translate')}));
   const firstRow=rows.length?rows[0].row:null;
   const firstRowTop=firstRow?firstRow.getBoundingClientRect().top:0;
   let lift=0;
@@ -392,6 +396,7 @@ function _holdChatTextForPanelMotion(){
     const natural=Math.min(maxWidth,host.clientWidth);
     const shift=(naturalAtStart-natural)/2;
     rows.forEach(({row,dir})=>row.style.setProperty('translate',(dir*shift)+'px 0'));
+    jumps.forEach(({el})=>el.style.setProperty('translate',(-2*shift)+'px 0'));
     if(!firstRow||!firstRow.isConnected) return;
     anchorScroll(firstRow,firstRowTop+lift);
     const residual=firstRow.getBoundingClientRect().top-lift-firstRowTop;
@@ -411,6 +416,8 @@ function _holdChatTextForPanelMotion(){
     const before=new Map(chrome.map(el=>[el,el.getBoundingClientRect()]));
     const anchor=chrome[0]||firstRow;
     const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
+    const jumpsBefore=new Map(jumps.map(({el})=>[el,el.getBoundingClientRect()]));
+    jumps.forEach(({el,prev})=>{if(prev)el.style.setProperty('translate',prev);else el.style.removeProperty('translate');});
     rows.forEach(({row,prev})=>{if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');});
     saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
     const land=()=>{
@@ -422,14 +429,30 @@ function _holdChatTextForPanelMotion(){
       // included); the fade-outs are dropped once the fade-ins have started.
       fadedOut.forEach(a=>a.cancel());
       visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
+      const moved=new Map();
+      // Where the jump buttons landed, read before any glide starts (a glide
+      // applies its first frame at once and would skew the reading).
+      const jumpsAfter=new Map([...jumpsBefore.keys()].filter(el=>el.isConnected).map(el=>[el,el.getBoundingClientRect()]));
       chrome.forEach(el=>{
         const from=before.get(el), to=el.getBoundingClientRect();
         // User rows are right-aligned and their bubbles change width as the
         // text rewraps, so they are carried by their right edge.
         const dx=el.closest('.msg-row:not(.assistant-turn)')?from.right-to.right:from.left-to.left;
         const dy=from.top-to.top;
+        moved.set(el,[dx,dy]);
         if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
           el.animate([{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
+        }
+      });
+      // The jump button glides by its right edge; its footer's own glide
+      // (same timing) already carries it, so only the difference is added.
+      jumpsAfter.forEach((to,el)=>{
+        if(typeof el.animate!=='function') return;
+        const from=jumpsBefore.get(el);
+        const [fdx,fdy]=moved.get(el.closest('.msg-foot'))||[0,0];
+        const dx=from.right-to.right-fdx, dy=from.top-to.top-fdy;
+        if(Math.abs(dx)>=1||Math.abs(dy)>=1){
+          el.animate([{translate:dx+'px '+dy+'px'},{translate:'0px 0px'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
         }
       });
     };

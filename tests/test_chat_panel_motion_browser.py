@@ -88,3 +88,41 @@ def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
     steps = [abs(b - a) for a, b in zip(rights, rights[1:])]
     assert max(steps) < 80, steps                                           # one glide, no landing jump
     assert rights[-1] < rights[0] - 100, rights                             # it really moved left with the panel
+
+
+def test_jump_to_response_button_rides_the_column_right_edge():
+    """The jump-to-response button sits on the right of a reply's footer. While the panel opens it must
+    keep its distance from the column's right edge (not ride under the panel) and land without a jump."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_context(viewport={"width": 1200, "height": 800}).new_page()
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '0'); localStorage.setItem('hermes-webui-workspace-panel', 'closed'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("async () => { await switchPanel('chat'); }")
+            page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
+                S.messages = [];
+                for (let i = 0; i < 6; i++) { S.messages.push({role: 'user', content: 'Question ' + i, timestamp: 1700000000 + i});
+                                              S.messages.push({role: 'assistant', content: 'An answer. '.repeat(30), timestamp: 1700000000 + i}); }
+                renderMessages(); if (document.documentElement.dataset.workspacePanel !== 'closed') toggleWorkspacePanel(false);
+                _setMessageScrollToBottom(); }""")
+            page.wait_for_timeout(600)
+            frames = page.evaluate("""() => new Promise(done => { const host = document.getElementById('messages'); const view = host.getBoundingClientRect();
+                const btn = [...document.querySelectorAll('.msg-question-jump-btn')].filter(e => { const r = e.getBoundingClientRect(); return r.top > view.top && r.bottom < view.bottom; }).pop();
+                const out = []; const t0 = performance.now();
+                (function f() { const r = btn.getBoundingClientRect(); out.push([host.getBoundingClientRect().right - r.right, r.top]);
+                    if (performance.now() - t0 < 800) requestAnimationFrame(f); else done(out); })();
+                toggleWorkspacePanel(true); })""")
+        finally:
+            browser.close()
+    gaps = [gap for gap, _ in frames[2:]]
+    assert min(gaps) >= 0, gaps                                              # never under the panel
+    assert max(abs(b - a) for a, b in zip(gaps, gaps[1:])) < 25, gaps        # follows the right edge, no snap on landing
+    tops = [top for _, top in frames[2:]]
+    moves = [b - a for a, b in zip(tops, tops[1:]) if abs(b - a) >= 0.5]
+    assert all(v < 0 for v in moves) or all(v > 0 for v in moves), tops     # one vertical glide, no snap and return
+    assert max((abs(v) for v in moves), default=0) < 8, tops
