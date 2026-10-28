@@ -298,22 +298,25 @@ function _syncWorkspacePinButton(){
 }
 // Panel motion (the pin glide, and opening or closing the sidebar or the
 // workspace panel) changes the chat column's width on every frame, so the
-// messages would rewrap line by line the whole way. Hold them at their
-// starting width instead, still centred in the moving column (a narrower
-// column clips both sides), and let them rewrap once on landing. When that
-// changes their width they fade up from a dim, so the rewrap reads as one
-// soft settle; at max width nothing rewraps and nothing fades.
+// messages would rewrap line by line the whole way. Instead the message text
+// fades out as the motion starts, and the messages are held at their starting
+// width, centred in the moving column (a narrower column clips both sides),
+// so bubbles, role headers and action buttons glide with it. On landing the
+// text rewraps once out of sight, the bubbles and buttons slide from where
+// they were to where they now sit, and the text fades back in.
+const _CHAT_MOTION_CHROME='.msg-row:not(.assistant-turn) > .msg-body, .msg-role, .msg-foot';
 function _holdChatTextForPanelMotion(){
   const inner=$('msgInner');
   // One hold at a time: a second motion that starts mid-way keeps the first
   // hold, whose release restores the real styles.
   if(!inner||!inner.offsetWidth||inner.dataset.motionHold) return null;
+  let reduce=false;
+  try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
   inner.dataset.motionHold='1';
   const heldWidth=inner.getBoundingClientRect().width;
   const style=inner.style;
   const props=['width','max-width','flex-shrink','margin-left','margin-right'];
   const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
-  const restore=(names)=>saved.forEach(([p,v,prio])=>{if(!names.includes(p))return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
   style.setProperty('width',heldWidth+'px');
   style.setProperty('max-width','none');
   style.setProperty('flex-shrink','0');
@@ -322,14 +325,42 @@ function _holdChatTextForPanelMotion(){
   const centre='calc((100% - '+heldWidth+'px) / 2)';
   style.setProperty('margin-left',centre);
   style.setProperty('margin-right',centre);
+  // Only what the reader can see is animated. Message rows switch CSS
+  // transitions off (streamed text must paint instantly), so the fades are
+  // Web Animations. A user bubble fades its text colour and keeps its
+  // background; an assistant reply has no bubble and fades as a whole.
+  const visible=(selector)=>{
+    const view=inner.parentElement.getBoundingClientRect();
+    return [...inner.querySelectorAll(selector)].filter(el=>{
+      const r=el.getBoundingClientRect();
+      return r.bottom>view.top&&r.top<view.bottom;
+    });
+  };
+  const fade=(el,out,ms,fill)=>{
+    if(typeof el.animate!=='function') return null;
+    const bubble=!el.closest('.assistant-turn');
+    const shown=bubble?{color:getComputedStyle(el).color}:{opacity:1};
+    const hidden=bubble?{color:'transparent'}:{opacity:0};
+    return el.animate(out?[shown,hidden]:[hidden,shown],{duration:ms,easing:'ease-out',fill});
+  };
+  const fadedOut=reduce?[]:visible('.msg-body').map(el=>fade(el,true,120,'forwards')).filter(Boolean);
   return function release(){
     delete inner.dataset.motionHold;
-    restore(props);
-    if(Math.abs(inner.getBoundingClientRect().width-heldWidth)<1) return;
-    let reduce=false;
-    try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
-    if(reduce||typeof inner.animate!=='function') return;
-    inner.animate([{opacity:.45},{opacity:1}],{duration:240,easing:'ease-out'});
+    const chrome=reduce?[]:visible(_CHAT_MOTION_CHROME);
+    const before=new Map(chrome.map(el=>[el,el.getBoundingClientRect()]));
+    saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
+    if(reduce) return;
+    // Every body now in view fades in (rows scrolled in by the rewrap
+    // included); the fade-outs are dropped once the fade-ins have started.
+    fadedOut.forEach(a=>a.cancel());
+    visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
+    chrome.forEach(el=>{
+      const from=before.get(el), to=el.getBoundingClientRect();
+      const dx=from.left-to.left, dy=from.top-to.top;
+      if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
+        el.animate([{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
+      }
+    });
   };
 }
 
