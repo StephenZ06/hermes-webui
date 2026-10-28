@@ -26,9 +26,11 @@ def page():
             browser.close()
 
 
-def test_rows_inside_a_project_folder_keep_room_for_the_trigger(page):
-    gap = page.evaluate("""() => {
+@pytest.mark.parametrize("extra", ["", "active", "cli-session"])
+def test_rows_inside_a_project_folder_keep_room_for_the_trigger(page, extra):
+    gap = page.evaluate("""(extra) => {
         const row = document.querySelector('.session-item:has(.session-actions-trigger)').cloneNode(true);
+        if (extra) row.classList.add(extra);
         row.querySelector('.session-title').textContent = 'Subagent Workspace Listing Workflow '.repeat(3);
         const folder = document.createElement('div'); folder.className = 'project-folder-sessions';
         folder.style.width = '260px'; folder.appendChild(row);
@@ -36,7 +38,7 @@ def test_rows_inside_a_project_folder_keep_room_for_the_trigger(page):
         row.classList.add('menu-open');
         const title = row.querySelector('.session-title').getBoundingClientRect();
         const trigger = row.querySelector('.session-actions-trigger').getBoundingClientRect();
-        return [trigger.left - title.right, getComputedStyle(row.querySelector('.session-title')).maskImage]; }""")
+        return [trigger.left - title.right, getComputedStyle(row.querySelector('.session-title')).maskImage]; }""", extra)
     assert gap[0] >= 4, gap
     assert "linear-gradient" in gap[1], gap   # a long title fades out ahead of the trigger
 

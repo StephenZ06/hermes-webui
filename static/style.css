@@ -8884,16 +8884,18 @@ main.main > #mainPlugin{display:none;}
 .project-folder-sessions-inner{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;}
 .project-folder-sessions-inner::before{content:"";flex:none;}
 .project-folder-sessions .session-item{font-size:12px;padding:6px 8px;}
-/* The compact rows above reset padding-right, which dropped the room the
-   base rules keep for the ⋯ trigger: a long title ran under it. Keep that
-   room whenever the trigger shows (pointer devices; touch hides it). */
+/* Every row keeps 40px clear for its ⋯ trigger whenever the trigger shows.
+   Several row variants reset padding-right (compact folder and sub-session
+   rows, CLI/messaging rows, and the open chat in a folder with !important),
+   so a long title ran under the button; this one rule wins over all of them.
+   Pointer devices only: touch hides the trigger. */
 @media not ((hover:none) and (pointer:coarse)){
-  :is(.project-folder-sessions .session-item,.session-tree-child.session-item,.agent-canvas-project-sessions .session-item):is(:hover,:focus-within,.menu-open,.streaming,.unread,.needs-attention){padding-right:40px;}
+  html:root .session-item:is(:hover,:focus-within,.menu-open,.streaming,.unread,.needs-attention){padding-right:40px!important;}
 }
 /* While the ⋯ trigger shows, a long title fades out ahead of it instead of
    ending in an ellipsis that reads as running into the button. */
 @media not ((hover:none) and (pointer:coarse)){
-  .session-item:is(:hover,:focus-within,.menu-open) .session-title{text-overflow:clip;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);}
+  .session-item:is(:hover,:focus-within,.menu-open) .session-title{text-overflow:clip;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent calc(100% - 4px));mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent calc(100% - 4px));}
 }
 /* The currently-open chat still reads as active via its text color (set by
    the skin-specific .session-item.active rules above), just without a
