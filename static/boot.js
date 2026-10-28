@@ -314,6 +314,7 @@ function _holdChatTextForPanelMotion(){
   try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
   inner.dataset.motionHold='1';
   const heldWidth=inner.getBoundingClientRect().width;
+  const maxWidth=parseFloat(getComputedStyle(inner).maxWidth)||Infinity;
   const style=inner.style;
   const props=['width','max-width','flex-shrink','margin-left','margin-right'];
   const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
@@ -344,10 +345,28 @@ function _holdChatTextForPanelMotion(){
     return el.animate(out?[shown,hidden]:[hidden,shown],{duration:ms,easing:'ease-out',fill});
   };
   const fadedOut=reduce?[]:visible('.msg-body').map(el=>fade(el,true,120,'forwards')).filter(Boolean);
+  // The held block keeps its old width, so on a narrowing column its edges
+  // would sit under the panel until landing. Every frame, each visible row is
+  // shifted by half the gap between the held width and the width the column
+  // now offers: user rows stay on the column's right edge and everything else
+  // on its left, so bubbles and buttons travel with the panel.
+  const rows=reduce?[]:visible(':scope > *').map(row=>({row,dir:row.matches('.msg-row:not(.assistant-turn)')?-1:1,prev:row.style.getPropertyValue('translate')}));
+  // A ResizeObserver on the column runs after each frame's layout and before
+  // paint, so the shift always matches the width being painted (a rAF read
+  // ran before the slide's own update and lagged a frame behind it).
+  const follow=()=>{
+    const natural=Math.min(maxWidth,inner.parentElement.clientWidth);
+    const shift=(heldWidth-natural)/2;
+    rows.forEach(({row,dir})=>row.style.setProperty('translate',(dir*shift)+'px 0'));
+  };
+  const columnWatch=rows.length&&typeof ResizeObserver==='function'?new ResizeObserver(follow):null;
+  if(columnWatch) columnWatch.observe(inner.parentElement);
   return function release(){
     delete inner.dataset.motionHold;
+    if(columnWatch) columnWatch.disconnect();
     const chrome=reduce?[]:visible(_CHAT_MOTION_CHROME);
     const before=new Map(chrome.map(el=>[el,el.getBoundingClientRect()]));
+    rows.forEach(({row,prev})=>{if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');});
     saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
     if(reduce) return;
     // Every body now in view fades in (rows scrolled in by the rewrap
@@ -356,7 +375,10 @@ function _holdChatTextForPanelMotion(){
     visible('.msg-body').forEach(el=>fade(el,false,280,'none'));
     chrome.forEach(el=>{
       const from=before.get(el), to=el.getBoundingClientRect();
-      const dx=from.left-to.left, dy=from.top-to.top;
+      // User rows are right-aligned and their bubbles change width as the
+      // text rewraps, so they are carried by their right edge.
+      const dx=el.closest('.msg-row:not(.assistant-turn)')?from.right-to.right:from.left-to.left;
+      const dy=from.top-to.top;
       if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
         el.animate([{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
       }

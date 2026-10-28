@@ -38,3 +38,39 @@ def test_panel_slide_fades_message_text_but_not_bubbles():
     assert mid["bg"] == before["bg"], (before, mid)               # the user bubble itself stays in view
     assert after["alpha"] == 1 and after["reply"] == 1, after     # and the text is back once it lands
     assert after["style"] == "" and after["hold"] == "", after    # no held width or hold marker left behind
+
+
+def test_user_bubbles_travel_with_the_opening_panel_and_never_sit_under_it():
+    """At a width where the chat column has no max width, opening the panel narrows the text. The held
+    messages must not leave right-aligned bubbles under the panel until landing: they follow the column's
+    edge every frame, and land without a jump."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_context(viewport={"width": 1200, "height": 800}).new_page()
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.evaluate("() => { try { localStorage.setItem('hermes-webui-workspace-pinned', '0'); localStorage.setItem('hermes-webui-workspace-panel', 'closed'); } catch (e) {} }")
+            page.goto(BASE + "/", wait_until="domcontentloaded")
+            page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+            page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+            page.evaluate("async () => { await switchPanel('chat'); }")
+            page.evaluate("""() => { S.session = S.session || {session_id: 'motion-test', title: 'Motion', messages: []};
+                S.messages = [{role: 'user', content: 'A question about how the workspace panel slides over the conversation'},
+                              {role: 'assistant', content: 'An answer. '.repeat(30)}];
+                renderMessages(); if (document.documentElement.dataset.workspacePanel !== 'closed') toggleWorkspacePanel(false); }""")
+            page.wait_for_timeout(600)
+            page.evaluate("""() => { window.__edges = []; const m = document.getElementById('msgInner');
+                const bubble = m.querySelector('.msg-row:not(.assistant-turn) > .msg-body'); const panel = document.querySelector('.rightpanel'); const t0 = performance.now();
+                (function f() { window.__edges.push([bubble.getBoundingClientRect().right, panel.getBoundingClientRect().left]);
+                    if (performance.now() - t0 < 1000) requestAnimationFrame(f); })();
+                toggleWorkspacePanel(true); }""")
+            page.wait_for_timeout(1300)
+            edges = page.evaluate("() => window.__edges")
+        finally:
+            browser.close()
+    rights = [right for right, _ in edges]
+    assert all(right <= left + 0.5 for right, left in edges), edges        # never under the panel
+    steps = [abs(b - a) for a, b in zip(rights, rights[1:])]
+    assert max(steps) < 80, steps                                           # one glide, no landing jump
+    assert rights[-1] < rights[0] - 100, rights                             # it really moved left with the panel
