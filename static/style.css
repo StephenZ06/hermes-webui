@@ -8817,7 +8817,7 @@ main.main > #mainPlugin{display:none;}
 .session-list-error-retry{margin-top:4px;align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;min-width:0;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:11px;font-weight:600;line-height:1.2;cursor:pointer;transition:background .15s,border-color .15s,color .15s,opacity .15s;}
 .session-list-error-retry:hover:not(:disabled):not([aria-busy="true"]):not([aria-disabled="true"]){background:var(--hover-bg);border-color:var(--accent-bg-strong);color:var(--text);}
 .session-list-error-retry:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
-.session-select-toggle{font-size:11px;padding:6px 10px;color:var(--muted);cursor:pointer;text-align:center;opacity:.6;transition:opacity .15s;user-select:none;margin-top:4px;border-radius:6px;}
+.session-select-toggle{font-size:11px;padding:6px 10px;color:var(--muted);cursor:pointer;text-align:center;opacity:.6;transition:opacity .15s;user-select:none;margin-top:4px;border-radius:8px;}
 .session-select-toggle:hover{opacity:1;background:var(--hover-bg);}
 .session-list-error-retry:disabled,.session-list-error-retry[aria-busy="true"],.session-list-error-retry[aria-disabled="true"]{background:var(--surface);border-color:var(--border2);color:var(--muted);cursor:wait;opacity:1;}
 /* Sidebar section divider — even spacing above/below, matching the
@@ -12178,6 +12178,8 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .session-select-overlay .batch-exit-btn{width:24px;height:24px;color:var(--accent);}
 .session-select-overlay .batch-exit-btn svg{width:12px;height:12px;}
 .session-select-overlay .batch-exit-btn:hover{background:var(--accent-bg-strong);color:var(--accent);}
+/* Delete matches the X beside it: one 24px row of controls. */
+.session-select-overlay .batch-delete-btn{height:24px;box-sizing:border-box;padding:0 8px;display:inline-flex;align-items:center;line-height:1;}
 .session-select-count{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;}
 @media (prefers-reduced-motion:reduce){
   .session-search-field .session-select-overlay,.session-search.is-selecting .session-select-overlay{transform:none;transition:opacity .01s,visibility 0s;}
