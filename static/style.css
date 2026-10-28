@@ -15746,3 +15746,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .work-hub-inspector-empty{gap:12px;}
 .work-hub-inspector-empty p{font-size:12.5px;font-weight:700;}
 .work-hub-inspector .wh-insp-kicker .work-hub-status{position:relative;top:-1px;}
+/* The jump-to-response button sits on the column's right edge (with the
+   cards beside it), not at the edge of the 780px reading measure. */
+.msg-row[data-role="assistant"] .msg-foot:has(.msg-question-jump-btn),
+.assistant-turn .msg-foot:has(.msg-question-jump-btn){max-width:none;}
