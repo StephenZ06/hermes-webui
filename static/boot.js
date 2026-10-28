@@ -296,6 +296,33 @@ function _syncWorkspacePinButton(){
   btn.dataset.tooltip=pinned?'Unpin':'Pin side by side';
   btn.setAttribute('aria-label',pinned?'Unpin the workspace panel':'Pin side by side with the chat');
 }
+// The pin glide changes the chat column's width on every frame, so the
+// messages would rewrap line by line the whole way. Hold them at their
+// starting width and position instead (the column clips them), dim them a
+// little while the panel moves, and let them rewrap once on landing as they
+// fade back up: one soft settle instead of text jumping every frame.
+function _holdChatTextForPinGlide(){
+  const inner=$('msgInner');
+  if(!inner||!inner.offsetWidth||!inner.parentElement) return null;
+  const box=inner.getBoundingClientRect(), host=inner.parentElement.getBoundingClientRect();
+  const style=inner.style;
+  const saved=['width','max-width','margin-left','margin-right','opacity','transition'].map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
+  style.setProperty('width',box.width+'px');
+  style.setProperty('max-width','none');
+  style.setProperty('margin-left',(box.left-host.left)+'px');
+  style.setProperty('margin-right','0');
+  style.setProperty('transition','opacity .3s ease');
+  style.setProperty('opacity','.72');
+  return function release(){
+    saved.forEach(([p,v,prio])=>{if(p==='opacity'||p==='transition')return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
+    style.setProperty('transition','opacity .22s ease-out');
+    requestAnimationFrame(()=>{
+      style.setProperty('opacity','1');
+      setTimeout(()=>{saved.forEach(([p,v,prio])=>{if(p!=='opacity'&&p!=='transition')return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});},260);
+    });
+  };
+}
+
 function toggleWorkspacePin(force){
   const panel=document.querySelector('.rightpanel');
   const next=typeof force==='boolean'?force:!_isWorkspacePinned();
@@ -309,6 +336,7 @@ function toggleWorkspacePin(force){
   // FLIP the width: hold the current width, switch state, then glide to the
   // new width with the stylesheet transition; drop the pin when it lands.
   const from=panel.getBoundingClientRect().width;
+  const releaseChatText=_holdChatTextForPinGlide();
   // The resize handle keeps the user's width inline; give it back on landing.
   const savedWidth=[panel.style.getPropertyValue('width'),panel.style.getPropertyPriority('width')];
   panel.style.removeProperty('width');
@@ -329,7 +357,7 @@ function toggleWorkspacePin(force){
   panel.classList.add('workspace-pin-gliding');
   panel.style.setProperty('width',to+'px','important');
   let done=false;
-  const land=()=>{if(done)return;done=true;_notifyOfficePanelLayoutMotion(false);panel.classList.remove('workspace-pin-gliding');panel.style.removeProperty('width');if(savedWidth[0])panel.style.setProperty('width',savedWidth[0],savedWidth[1]);panel.style.removeProperty('flex');panel.removeEventListener('transitionend',onEnd);};
+  const land=()=>{if(done)return;done=true;_notifyOfficePanelLayoutMotion(false);if(releaseChatText)releaseChatText();panel.classList.remove('workspace-pin-gliding');panel.style.removeProperty('width');if(savedWidth[0])panel.style.setProperty('width',savedWidth[0],savedWidth[1]);panel.style.removeProperty('flex');panel.removeEventListener('transitionend',onEnd);};
   const onEnd=(e)=>{if(e.target===panel&&e.propertyName==='width')land();};
   panel.addEventListener('transitionend',onEnd);
   setTimeout(land,520);
