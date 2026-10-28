@@ -11,6 +11,7 @@ plus pure-function tests for the SessionChannel class and reaper logic.
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -935,12 +936,11 @@ def test_load_session_rearms_stream_on_every_early_return():
         "helper must (re)arm startSessionStream for the currently-shown S.session"
     )
 
-    # Isolate the loadSession body. Widened window twice: the #4946 visit-ack
-    # helpers pushed the fetch-error catch's stream restart past the old
-    # 14000-char cutoff, then the Office cross-session reset pushed it past
-    # 16000.
+    # Isolate the loadSession body: up to the next top-level function, so the
+    # check keeps working as the body grows (a fixed-size window was widened
+    # three times before).
     fn_ix = js.index("async function loadSession(")
-    body = js[fn_ix:fn_ix + 17000]
+    body = js[fn_ix:re.compile(r"\n(?:async )?function ").search(js, fn_ix + 1).start()]
 
     # The unconditional teardown must still be there (this is what creates the
     # dead-stream window the re-arm closes).
