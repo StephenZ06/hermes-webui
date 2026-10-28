@@ -831,7 +831,14 @@ def _trusted_workspace_roots() -> list[Path]:
             p = _resolve_path(candidate)
         except Exception:
             return
-        if not p.exists() or not p.is_dir():
+        # A saved workspace on a remote (SSHFS) host that is offline must not
+        # take every trust check down with it: a hung mount would block the
+        # stat, and a dropped one raises ENOTCONN out of exists() instead of
+        # returning False. Either way it is not a usable root right now.
+        try:
+            if _mount_unresponsive(p) or not p.exists() or not p.is_dir():
+                return
+        except OSError:
             return
         if _is_blocked_workspace_path(p, candidate):
             return
