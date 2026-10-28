@@ -432,7 +432,7 @@ def test_render_loop_pauses_during_shared_panel_layout_motion():
     )
 
     resize_observer_at = OFFICE_INDEX_JS.index("new ResizeObserver")
-    resize_observer = OFFICE_INDEX_JS[resize_observer_at:resize_observer_at + 700]
+    resize_observer = OFFICE_INDEX_JS[resize_observer_at:OFFICE_INDEX_JS.index("\n    });", resize_observer_at)]
     assert "_scene.renderNow()" in resize_observer, (
         "A resize must redraw in the same frame: a bare resize clears the canvas, "
         "and a paused scene would otherwise stretch a stale frame"
