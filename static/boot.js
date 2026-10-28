@@ -296,30 +296,40 @@ function _syncWorkspacePinButton(){
   btn.dataset.tooltip=pinned?'Unpin':'Pin side by side';
   btn.setAttribute('aria-label',pinned?'Unpin the workspace panel':'Pin side by side with the chat');
 }
-// The pin glide changes the chat column's width on every frame, so the
+// Panel motion (the pin glide, and opening or closing the sidebar or the
+// workspace panel) changes the chat column's width on every frame, so the
 // messages would rewrap line by line the whole way. Hold them at their
-// starting width and position instead (the column clips them), dim them a
-// little while the panel moves, and let them rewrap once on landing as they
-// fade back up: one soft settle instead of text jumping every frame.
-function _holdChatTextForPinGlide(){
+// starting width instead, still centred in the moving column (a narrower
+// column clips both sides), and let them rewrap once on landing. When that
+// changes their width they fade up from a dim, so the rewrap reads as one
+// soft settle; at max width nothing rewraps and nothing fades.
+function _holdChatTextForPanelMotion(){
   const inner=$('msgInner');
-  if(!inner||!inner.offsetWidth||!inner.parentElement) return null;
-  const box=inner.getBoundingClientRect(), host=inner.parentElement.getBoundingClientRect();
+  // One hold at a time: a second motion that starts mid-way keeps the first
+  // hold, whose release restores the real styles.
+  if(!inner||!inner.offsetWidth||inner.dataset.motionHold) return null;
+  inner.dataset.motionHold='1';
+  const heldWidth=inner.getBoundingClientRect().width;
   const style=inner.style;
-  const saved=['width','max-width','margin-left','margin-right','opacity','transition'].map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
-  style.setProperty('width',box.width+'px');
+  const props=['width','max-width','flex-shrink','margin-left','margin-right'];
+  const saved=props.map(p=>[p,style.getPropertyValue(p),style.getPropertyPriority(p)]);
+  const restore=(names)=>saved.forEach(([p,v,prio])=>{if(!names.includes(p))return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
+  style.setProperty('width',heldWidth+'px');
   style.setProperty('max-width','none');
-  style.setProperty('margin-left',(box.left-host.left)+'px');
-  style.setProperty('margin-right','0');
-  style.setProperty('transition','opacity .3s ease');
-  style.setProperty('opacity','.72');
+  style.setProperty('flex-shrink','0');
+  // Centred by margins, which go negative once the column is narrower than
+  // the held text, so it overflows (and is clipped) evenly on both sides.
+  const centre='calc((100% - '+heldWidth+'px) / 2)';
+  style.setProperty('margin-left',centre);
+  style.setProperty('margin-right',centre);
   return function release(){
-    saved.forEach(([p,v,prio])=>{if(p==='opacity'||p==='transition')return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
-    style.setProperty('transition','opacity .22s ease-out');
-    requestAnimationFrame(()=>{
-      style.setProperty('opacity','1');
-      setTimeout(()=>{saved.forEach(([p,v,prio])=>{if(p!=='opacity'&&p!=='transition')return;if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});},260);
-    });
+    delete inner.dataset.motionHold;
+    restore(props);
+    if(Math.abs(inner.getBoundingClientRect().width-heldWidth)<1) return;
+    let reduce=false;
+    try{reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){}
+    if(reduce||typeof inner.animate!=='function') return;
+    inner.animate([{opacity:.45},{opacity:1}],{duration:240,easing:'ease-out'});
   };
 }
 
@@ -336,7 +346,7 @@ function toggleWorkspacePin(force){
   // FLIP the width: hold the current width, switch state, then glide to the
   // new width with the stylesheet transition; drop the pin when it lands.
   const from=panel.getBoundingClientRect().width;
-  const releaseChatText=_holdChatTextForPinGlide();
+  const releaseChatText=_holdChatTextForPanelMotion();
   // The resize handle keeps the user's width inline; give it back on landing.
   const savedWidth=[panel.style.getPropertyValue('width'),panel.style.getPropertyPriority('width')];
   panel.style.removeProperty('width');
@@ -1613,9 +1623,13 @@ function _slidePanelByLayout(panel,side,apply,opts){
 // available. The native FLIP fallback keeps the behavior and performance
 // contract intact when that optional runtime is absent.
 function _slidePanelIfPossible(panel,side,apply){
+  let releaseChatText=null;
   const lifecycle={
-    onStart:function(){_notifyOfficePanelLayoutMotion(true);},
-    onComplete:function(){_notifyOfficePanelLayoutMotion(false);},
+    onStart:function(){_notifyOfficePanelLayoutMotion(true);releaseChatText=_holdChatTextForPanelMotion();},
+    onComplete:function(){
+      _notifyOfficePanelLayoutMotion(false);
+      if(releaseChatText){const release=releaseChatText;releaseChatText=null;release();}
+    },
     // The panel state changes once, then the main workspace is carried from
     // its old position to the new flex geometry on the compositor. This makes
     // the available page area visibly settle with the sidebar instead of
