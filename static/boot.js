@@ -307,7 +307,7 @@ function _syncWorkspacePinButton(){
 // so bubbles, role headers and action buttons glide with it. On landing the
 // text rewraps once out of sight, the bubbles and buttons slide from where
 // they were to where they now sit, and the text fades back in.
-const _CHAT_MOTION_CHROME='.msg-row:not(.assistant-turn) > .msg-body, .msg-role, .msg-foot';
+const _CHAT_MOTION_CHROME='.msg-row[data-role="user"] > .msg-body, .msg-role, .msg-foot, .async-delegation-card, .process-wakeup-row > *';
 function _holdChatTextForPanelMotion(){
   const inner=$('msgInner');
   // One hold at a time: a second motion that starts mid-way keeps the first
@@ -374,15 +374,33 @@ function _holdChatTextForPanelMotion(){
   // shifted by half the gap between the held width and the width the column
   // now offers: user rows stay on the column's right edge and everything else
   // on its left, so bubbles and buttons travel with the panel.
-  const rows=reduce?[]:visible(':scope > *').map(row=>({row,dir:row.matches('.msg-row:not(.assistant-turn)')?-1:1,prev:row.style.getPropertyValue('translate')}));
+  // Cards that span the column (a background delegation, a process wakeup)
+  // are not bubbles: they keep to the column's left edge and take its width
+  // every frame, so they neither ride under the panel nor snap at landing.
+  // Their height is held like the text's width: a summary that would wrap
+  // part-way through rewraps once, at landing.
+  const spanProps=['width','height','overflow'];
+  const rows=reduce?[]:visible(':scope > *').map(row=>{
+    const span=row.matches('.async-delegation-row, .process-wakeup-row');
+    const entry={row,span,dir:row.matches('.msg-row[data-role="user"]')?-1:1,prev:row.style.getPropertyValue('translate')};
+    if(span){
+      entry.saved=spanProps.map(p=>[p,row.style.getPropertyValue(p),row.style.getPropertyPriority(p)]);
+      row.style.setProperty('height',row.getBoundingClientRect().height+'px');
+      row.style.setProperty('overflow','hidden');
+    }
+    return entry;
+  });
   // A ResizeObserver on the column runs after each frame's layout and before
   // paint, so the shift always matches the width being painted (a rAF read
   // ran before the slide's own update and lagged a frame behind it). The
   // shift is measured from the width at the start, so nothing moves on the
   // first frame.
   //
-  // Vertically nothing moves until landing. The composer and the banners above
-  // the transcript change height as they rewrap (the composer drops to its
+  // Vertically nothing moves until landing, with one exception: a reader at
+  // the bottom keeps the conversation on the composer, so when the composer
+  // grows or shrinks part-way through, the messages move with it in the same
+  // frame instead of catching up after the panel has landed. The composer and
+  // the banners above the transcript change height as they rewrap (the composer drops to its
   // compact layout part-way through), which resizes the transcript's viewport
   // in steps; re-pinning the bottom on each step jerks the conversation up and
   // down. So the first visible row is held where it started, by scrolling and,
@@ -394,15 +412,20 @@ function _holdChatTextForPanelMotion(){
   const jumps=reduce?[]:visible('.msg-question-jump-btn').map(el=>({el,prev:el.style.getPropertyValue('translate')}));
   const firstRow=rows.length?rows[0].row:null;
   const firstRowTop=firstRow?firstRow.getBoundingClientRect().top:0;
+  const hostBottomAtStart=host.getBoundingClientRect().bottom;
   let lift=0;
   const follow=()=>{
     const natural=Math.min(maxWidth,host.clientWidth);
     const shift=(naturalAtStart-natural)/2;
-    rows.forEach(({row,dir})=>row.style.setProperty('translate',(dir*shift)+'px 0'));
+    rows.forEach(({row,dir,span})=>{
+      row.style.setProperty('translate',(dir*shift)+'px 0');
+      if(span) row.style.setProperty('width',natural+'px');
+    });
     jumps.forEach(({el})=>el.style.setProperty('translate',(-2*shift)+'px 0'));
     if(!firstRow||!firstRow.isConnected) return;
-    anchorScroll(firstRow,firstRowTop+lift);
-    const residual=firstRow.getBoundingClientRect().top-lift-firstRowTop;
+    const target=firstRowTop+(pinnedToBottom?host.getBoundingClientRect().bottom-hostBottomAtStart:0);
+    anchorScroll(firstRow,target+lift);
+    const residual=firstRow.getBoundingClientRect().top-lift-target;
     const next=Math.abs(residual)<0.5?0:-residual;
     if(next!==lift){lift=next;style.setProperty('translate',lift?'0 '+lift+'px':'0 0');}
   };
@@ -421,7 +444,10 @@ function _holdChatTextForPanelMotion(){
     const anchorTop=anchor?anchor.getBoundingClientRect().top:0;
     const jumpsBefore=new Map(jumps.map(({el})=>[el,el.getBoundingClientRect()]));
     jumps.forEach(({el,prev})=>{if(prev)el.style.setProperty('translate',prev);else el.style.removeProperty('translate');});
-    rows.forEach(({row,prev})=>{if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');});
+    rows.forEach(({row,prev,saved:spanSaved})=>{
+      if(prev)row.style.setProperty('translate',prev);else row.style.removeProperty('translate');
+      if(spanSaved) spanSaved.forEach(([p,v,prio])=>{if(v)row.style.setProperty(p,v,prio);else row.style.removeProperty(p);});
+    });
     saved.forEach(([p,v,prio])=>{if(v)style.setProperty(p,v,prio);else style.removeProperty(p);});
     const land=()=>{
       // Re-anchor the scroll in the same frame as the rewrap, before measuring
@@ -440,7 +466,7 @@ function _holdChatTextForPanelMotion(){
         const from=before.get(el), to=el.getBoundingClientRect();
         // User rows are right-aligned and their bubbles change width as the
         // text rewraps, so they are carried by their right edge.
-        const dx=el.closest('.msg-row:not(.assistant-turn)')?from.right-to.right:from.left-to.left;
+        const dx=el.closest('.msg-row[data-role="user"]')?from.right-to.right:from.left-to.left;
         const dy=from.top-to.top;
         moved.set(el,[dx,dy]);
         if((Math.abs(dx)>=1||Math.abs(dy)>=1)&&typeof el.animate==='function'){
