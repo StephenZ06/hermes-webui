@@ -6177,7 +6177,7 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-place-select svg{flex:0 0 16px;}
 .nb-place-select select{max-width:220px;font-size:12px;cursor:pointer;}
 .nb-tags{display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:4px;min-width:140px;}
-.nb-tag-chip{display:inline-flex;align-items:center;gap:2px;padding:1.5px 3px 2.5px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-text);font-size:11px;animation:nb-pop .16s ease;}
+.nb-tag-chip{display:inline-flex;align-items:center;gap:2px;padding:2px 3px 2px 8px;border-radius:999px;background:var(--accent-bg);color:var(--accent-text);font-size:11px;animation:nb-pop .16s ease;}
 .nb-tag-chip button{padding:0 4px;border:0;background:transparent;color:inherit;font-size:13px;line-height:1;cursor:pointer;}
 .nb-tag-input{width:112px;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:14px;}
 .nb-updated{margin-left:auto;font-size:11px;white-space:nowrap;}
