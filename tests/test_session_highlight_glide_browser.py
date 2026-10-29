@@ -60,3 +60,26 @@ def test_a_render_that_keeps_the_same_conversation_does_not_glide(page):
     count = page.evaluate("""() => { renderSessionListFromCache();
         return document.querySelectorAll('.session-highlight-glide').length; }""")
     assert count == 0
+
+
+def test_inside_a_project_folder_the_copy_has_no_accent_bar(page):
+    """Rows in a project folder show no accent bar, so the travelling copy draws none."""
+    # Zeus 2.0 is the skin that gives active rows an accent bar.
+    out = page.evaluate("""() => {
+        document.documentElement.dataset.skin = 'zeus-2';
+        document.documentElement.classList.add('dark');
+        _allProjects = [{project_id: 'p1', name: 'Glide folder', workspace_path: '/workspace/glide'}];
+        _allSessions.forEach(s => { s.project_id = 'p1'; });
+        S.session = {session_id: 'glide1'};
+        renderSessionListFromCache();
+        const folder = document.querySelector('.project-folder-sessions');
+        S.session = {session_id: 'glide2'};
+        renderSessionListFromCache();
+        const glide = document.querySelector('.session-highlight-glide');
+        const row = document.querySelector(".session-item.active[data-sid='glide2']");
+        return {inFolder: !!(row && row.closest('.project-folder-sessions')), folder: !!folder, glide: !!glide,
+                bars: glide ? glide.querySelectorAll('i').length : -1};
+    }""")
+    if not out["inFolder"]:
+        pytest.skip(f"the folder does not list its chats open in this state: {out}")
+    assert out["glide"] and out["bars"] == 0, out

@@ -4156,7 +4156,11 @@ function _playSessionHighlightGlide(from){
   glide.setAttribute('aria-hidden','true');
   glide.style.cssText=`left:${to.left}px;width:${to.width}px;top:${to.top}px;height:${to.height}px;`
     +`background:${style.backgroundColor};border-radius:${style.borderRadius};`;
-  if(bar.content&&bar.content!=='none'&&bar.backgroundColor!=='rgba(0, 0, 0, 0)'){
+  // Only the bar the row really shows: rows inside a project folder hide it
+  // (display:none), and the copy must not draw one the row will not keep.
+  const barShown=bar.content&&bar.content!=='none'&&bar.display!=='none'&&bar.visibility!=='hidden'
+    &&parseFloat(bar.opacity)>0&&bar.backgroundColor!=='rgba(0, 0, 0, 0)';
+  if(barShown){
     const mark=document.createElement('i');
     mark.style.cssText=`left:${bar.left};top:${bar.top};bottom:${bar.bottom};width:${bar.width};background:${bar.backgroundColor};border-radius:${bar.borderRadius};`;
     glide.appendChild(mark);
