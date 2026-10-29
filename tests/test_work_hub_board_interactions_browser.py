@@ -94,3 +94,34 @@ def test_switching_items_fades_only_the_values_that_change(board):
                 titleBox: panel.querySelector('#workHubTitle').getAnimations().flatMap(a => a.effect.getKeyframes()).some(k => 'opacity' in k || 'filter' in k)}; }""")
     assert out["panel"] == 0 and out["kicker"] == 0 and out["labels"] == 0 and out["status"] == 0, out
     assert out["title"] >= 1 and out["description"] >= 1 and out["titleBox"] is False, out
+
+
+def test_switching_items_leaves_action_buttons_and_the_quest_row_still(board):
+    """The quest row used to redraw from a "…" placeholder after a fetch, and a
+    changed value faded together with its "Link current chat" button."""
+    page, _ = board
+    page.evaluate("async () => { S.session = (await api('/api/session/new', {method: 'POST', body: JSON.stringify({})})).session; }")
+    # The first card is linked to the current chat, so "Linked chats" changes
+    # between the two items while its button comes and goes.
+    page.evaluate("""async () => { const id = document.querySelectorAll('.work-hub-card')[0].dataset.itemId;
+        const rev = (await api('/api/work_hub/bootstrap')).revision;
+        await api('/api/work_hub/items/update', {method: 'POST', body: JSON.stringify({item_id: id, item: {linked_session_ids: [S.session.session_id]}, expected_revision: rev})});
+        await loadWorkHubPanel(); }""")
+    page.click(".work-hub-card >> nth=0")
+    page.wait_for_timeout(600)
+    out = page.evaluate("""async () => { const panel = document.getElementById('workHubInspector'); const log = [];
+        document.querySelectorAll('.work-hub-card')[1].click();
+        const quest = document.getElementById('workHubQuest');
+        const first = quest ? quest.textContent : '';
+        const mo = new MutationObserver(() => log.push(document.getElementById('workHubQuest')?.textContent));
+        if (quest) mo.observe(quest, {childList: true, subtree: true, characterData: true});
+        const buttons = new Set();
+        for (let f = 0; f < 30; f++) { await new Promise(r => requestAnimationFrame(r));
+            // A button is moving if it, or any box around it inside the panel, animates.
+            panel.querySelectorAll('.wh-insp-props button').forEach(b => { for (let n = b; n && n !== panel; n = n.parentElement) if (n.getAnimations().length) { buttons.add(b.textContent.trim()); break; } }); }
+        mo.disconnect();
+        const linked = [...panel.querySelectorAll('.wh-insp-prop')].find(p => p.querySelector('dt').textContent === 'Linked chats');
+        return {first, later: log, buttons: [...buttons], linkButton: !!linked.querySelector('#workHubLinkChat')}; }""")
+    assert "…" not in out["first"] and out["later"] == [], out
+    assert out["linkButton"], out  # the linked value did change, with its button
+    assert out["buttons"] == [], out

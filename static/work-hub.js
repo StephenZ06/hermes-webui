@@ -382,24 +382,31 @@
     return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
   // Dashboard quests: an item can be put on (or taken off) the quest list here.
-  async function fillQuestToggle(itemId) {
+  const questHtml = isQuest => (isQuest
+    ? '<span class="wh-quest-on">⚔ On your quests</span><button id="workHubQuestToggle" class="wh-insp-inline" type="button">Remove</button>'
+    : '<span>Not a quest</span><button id="workHubQuestToggle" class="wh-insp-inline" type="button">Add to quests</button>');
+  // The quest row is drawn at once from the quest list loaded with the board
+  // (a "…" placeholder that refilled after a fetch flickered on every item
+  // switch); the fetch then only corrects it if the list has changed.
+  async function fillQuestToggle(itemId, refresh = true) {
     const host = el('workHubQuest'); if (!host) return;
-    let isQuest = false;
-    try { isQuest = ((await request('/api/dashboard/quests')).item_ids || []).includes(itemId); } catch (_) { host.closest('.wh-insp-prop').remove(); return; }
-    if (store.selectedItemId !== itemId || !el('workHubQuest')) return;
-    host.innerHTML = isQuest
-      ? '<span class="wh-quest-on">⚔ On your quests</span><button id="workHubQuestToggle" class="wh-insp-inline" type="button">Remove</button>'
-      : '<span>Not a quest</span><button id="workHubQuestToggle" class="wh-insp-inline" type="button">Add to quests</button>';
-    el('workHubQuestToggle').onclick = async () => {
-      try {
-        await request(isQuest ? '/api/dashboard/quests/remove' : '/api/dashboard/quests/add', { method: 'POST', body: JSON.stringify(isQuest ? { item_id: itemId } : { item_ids: [itemId] }) });
-        if (typeof showToast === 'function') showToast(isQuest ? 'Removed from quests' : 'Added to your quests');
-        store.questIds = store.questIds || new Set();
-        if (isQuest) store.questIds.delete(itemId); else store.questIds.add(itemId);
-        renderCanvas(scopedItems()); bind();
-      } catch (error) { if (typeof showToast === 'function') showToast(error.message || 'Could not update quests'); }
-      fillQuestToggle(itemId);
+    const draw = isQuest => {
+      if (host.querySelector('.wh-quest-on') ? !isQuest : isQuest || !host.querySelector('#workHubQuestToggle')) host.innerHTML = questHtml(isQuest);
+      el('workHubQuestToggle').onclick = async () => {
+        try {
+          await request(isQuest ? '/api/dashboard/quests/remove' : '/api/dashboard/quests/add', { method: 'POST', body: JSON.stringify(isQuest ? { item_id: itemId } : { item_ids: [itemId] }) });
+          if (typeof showToast === 'function') showToast(isQuest ? 'Removed from quests' : 'Added to your quests');
+          store.questIds = store.questIds || new Set();
+          if (isQuest) store.questIds.delete(itemId); else store.questIds.add(itemId);
+          renderCanvas(scopedItems()); bind();
+        } catch (error) { if (typeof showToast === 'function') showToast(error.message || 'Could not update quests'); }
+        fillQuestToggle(itemId, false);
+      };
     };
+    draw(!!(store.questIds && store.questIds.has(itemId)));
+    if (!refresh) return;
+    try { store.questIds = new Set((await request('/api/dashboard/quests')).item_ids || []); } catch (_) { return; }
+    if (store.selectedItemId === itemId && el('workHubQuest') === host) draw(store.questIds.has(itemId));
   }
   // What the details panel showed last, so a redraw that shows the same kind
   // of thing again (the empty state after a board switch, or another item)
@@ -412,10 +419,13 @@
     const description = panel.querySelector('#workHubDescription'); if (description) values.description = description.value;
     panel.querySelectorAll('.wh-insp-prop').forEach(prop => {
       const select = prop.querySelector('select');
-      values['prop:' + prop.querySelector('dt').textContent] = select ? (select.selectedOptions[0] || {}).textContent : prop.querySelector('dd').textContent;
+      values['prop:' + prop.querySelector('dt').textContent] = select ? (select.selectedOptions[0] || {}).textContent : valueText(prop.querySelector('dd'));
     });
     return values;
   }
+  // A value's own text: action buttons beside it ("Link current chat", "Add
+  // to quests") are controls, not values, and never fade.
+  const valueText = dd => [...dd.childNodes].filter(node => !(node.nodeType === 1 && node.matches('button'))).map(node => node.textContent).join('');
   function fadeChangedValues(panel, before) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const after = inspectorValues(panel);
@@ -429,7 +439,13 @@
     panel.querySelectorAll('.wh-insp-prop').forEach(prop => {
       const key = 'prop:' + prop.querySelector('dt').textContent;
       if (!(key in before)) blurIn(prop);
-      else if (after[key] !== before[key]) { const select = prop.querySelector('select'); if (select) textIn(select); else blurIn(prop.querySelector('dd')); }
+      else if (after[key] !== before[key]) {
+        const dd = prop.querySelector('dd'), select = dd.querySelector('select');
+        // A dropdown shows its value on the themed trigger drawn over it.
+        if (select) textIn(dd.querySelector('.themed-select-trigger-label') || select);
+        else if (dd.querySelector('button')) dd.querySelectorAll(':scope > :not(button)').forEach(blurIn);
+        else blurIn(dd);
+      }
     });
   }
   function markSelectedItem() {
@@ -465,7 +481,7 @@
         <div class="wh-insp-prop"><dt>Priority</dt><dd><select id="workHubPriority" aria-label="Priority" ${locked ? 'disabled' : ''}>${priorities.map(value => `<option value="${value}" ${value === itemPriority ? 'selected' : ''}>${value === 'none' ? 'None' : value[0].toUpperCase() + value.slice(1)}</option>`).join('')}</select></dd></div>
         <div class="wh-insp-prop"><dt>Linked chats</dt><dd class="wh-insp-static"><span>${linkedCount ? `${linkedCount} chat${linkedCount === 1 ? '' : 's'}` : 'None'}</span>${currentSessionId && !locked && !linkedHere ? '<button id="workHubLinkChat" class="wh-insp-inline" type="button">Link current chat</button>' : ''}</dd></div>
         ${updated ? `<div class="wh-insp-prop"><dt>Updated</dt><dd class="wh-insp-static">${esc(updated)}</dd></div>` : ''}
-        ${item.status === 'done' || item.status === 'cancelled' ? '' : '<div class="wh-insp-prop"><dt>Quest</dt><dd class="wh-insp-static" id="workHubQuest"><span class="wh-quest-loading">…</span></dd></div>'}
+        ${item.status === 'done' || item.status === 'cancelled' ? '' : `<div class="wh-insp-prop"><dt>Quest</dt><dd class="wh-insp-static" id="workHubQuest">${questHtml(!!(store.questIds && store.questIds.has(item.id)))}</dd></div>`}
       </dl>
       <section class="wh-insp-section"><label class="wh-insp-section-label" for="workHubDescription">Description</label><textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps" ${locked ? 'disabled' : ''}></textarea></section>
       ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" title="Delete work item">${icon('close')}<span>Delete</span></button><button id="workHubSave" class="work-hub-save" type="button" disabled>Save changes</button></footer>`}
@@ -475,7 +491,7 @@
     const untitled = item.title === NEW_ITEM_TITLE;
     el('workHubTitle').value = untitled ? '' : item.title; if (untitled) el('workHubTitle').placeholder = NEW_ITEM_TITLE;
     panel.querySelector('#workHubDescription').value = item.description || '';
-    if (before && before.values) { panel.querySelector('.wh-insp').classList.add('is-steady'); fadeChangedValues(panel, before.values); }
+    if (before && before.values) { panel.querySelector('.wh-insp').classList.add('is-steady'); queueMicrotask(() => fadeChangedValues(panel, before.values)); }
     shownInspector.values = inspectorValues(panel);
     el('workHubClose').onclick = () => { closeInspectorAnimated(); };
     fillQuestToggle(item.id);

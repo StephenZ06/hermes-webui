@@ -12789,7 +12789,6 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
   .dash-char-btn{width:100%;justify-content:center;}
 }
 .wh-quest-on{color:#c4b5fd;font-weight:600;}
-.wh-quest-loading{color:var(--muted);}
 /* ==== Dashboard: shared pieces (phase 2-4) ==== */
 .libdev-host{display:block;min-width:0;}
 .libdev-host>div{height:100%;}
