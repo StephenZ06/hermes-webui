@@ -1133,7 +1133,7 @@
   :root.dark[data-skin="zeus-2"] .session-item.active{background:rgba(70,130,180,0.1);position:relative;padding-left:23px;color:#4682B4;}
   :root.dark[data-skin="zeus-2"] .session-item.active::before{content:"";position:absolute;left:12px;top:8px;bottom:8px;width:2px;border-radius:999px;background:#4682B4;}
   :root.dark[data-skin="zeus-2"] .session-item:hover:not(.active){background:rgba(70,130,180,0.05);}
-  :root.dark[data-skin="zeus-2"] .composer-box{background:#141414;border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .composer-box{background:transparent;border-color:rgba(70,130,180,0.2);}
   :root.dark[data-skin="zeus-2"] .msg-row[data-role="assistant"] .msg-body{background:transparent;border-color:transparent;}
   :root.dark[data-skin="zeus-2"] .msg-row[data-role="user"] .msg-body{background:#0F1822;border-color:rgba(70,130,180,0.25);}
   :root.dark[data-skin="zeus-2"] .app-dialog{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.2);}
@@ -15418,7 +15418,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){.dash-tabs-thumb{transition:none;}}
 /* Office Projects / Business switch: the highlight is one layer that slides
    to the active half instead of a background that jumps. */
-.office-outlet,.office-outlet:has(> .office-outlet-btn:first-child.is-active),.office-outlet:has(> .office-outlet-btn:last-child.is-active){background:var(--surface-subtle);}
+.office-outlet,.office-outlet:has(> .office-outlet-btn:first-child.is-active),.office-outlet:has(> .office-outlet-btn:last-child.is-active){background:transparent;}
 .office-outlet::before{content:"";position:absolute;top:0;bottom:0;left:0;width:50%;background:var(--outlet-on);pointer-events:none;transition:transform .3s cubic-bezier(.22,1,.36,1),opacity .2s;}
 .office-outlet:has(> .office-outlet-btn:last-child.is-active)::before{transform:translateX(100%);}
 .office-outlet:not(:has(> .office-outlet-btn.is-active))::before{opacity:0;}
@@ -15813,7 +15813,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-subview{--office-subview-gap:16px;padding-top:var(--office-subview-gap);}
 .office-dashboard-snapshot{margin-bottom:var(--office-subview-gap);}
 .office-subview-head{align-items:center;gap:10px;padding-bottom:var(--office-subview-gap);margin-bottom:var(--office-subview-gap);}
-.office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;translate:0 -1px;text-transform:uppercase;}
+.office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;text-transform:uppercase;}
 .office-subview-head>.office-subview-outlet{flex:0 0 auto;height:30px;box-sizing:border-box;}
 .office-subview-head>.office-subview-outlet .office-outlet-btn{height:100%;}
 .office-subview-head>.office-subview-back{flex:0 0 30px;width:30px;height:30px;border-radius:var(--office-control-radius,8px);}
@@ -15823,3 +15823,25 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .office-subview-head>h1{flex-basis:calc(100% - 40px);}
   .office-subview-head>.office-subview-outlet{order:3;}
 }
+/* Page-background pass: cards and controls that sit straight on a page take
+   the page's own colour (they are transparent), so a page reads as one
+   surface with outlines. Anything that floats over other content (menus,
+   the Office Task Status card, a dragged card) keeps its fill. */
+.chat-usage-widget-window-toggle{background:transparent;}
+.chat-usage-widget-window-toggle::before{background:color-mix(in srgb,var(--accent) 16%,transparent);box-shadow:none;}
+.async-delegation-card,.cron-delegation-run,.status-card,.compression-recovery-card,.steer-recovery{background:transparent;}
+.work-hub-card,.work-hub-board .work-hub-card{background:transparent;}
+.work-hub-board .work-hub-card:hover{background:color-mix(in srgb,var(--stage) 6%,transparent);}
+.drag-ghost.work-hub-card{background:var(--bg);}
+#mainNotebook .nb-search,#mainNotebook .nb-place-select .themed-select-trigger{background:transparent;}
+.nb-item{background:transparent;}
+.nb-item.active{background:transparent;border-color:color-mix(in srgb,var(--accent) 45%,transparent);}
+.office-header > :is(.office-pill,.office-header-btn),.office-subview-back,.office-integration-action,.office-integration-settings{background:transparent;}
+/* Office load: the stage is black space from the first frame, the loader only
+   shows if the scene takes a while, and the floor arrives in two beats (the
+   stars, then the platforms and cards: playFloorIntro in office/index.js). */
+:root.dark .office-stage{background:#010104;}
+.office-stage:has(> .office-canvas.is-mounting) .office-loader{transition:opacity .25s ease .6s,visibility 0s linear .6s;}
+.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:office-intro-in .6s cubic-bezier(.22,.61,.36,1) var(--office-intro-delay,0ms) backwards;}
+@keyframes office-intro-in{from{opacity:0;}}
+@media (prefers-reduced-motion:reduce){.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:none;}}

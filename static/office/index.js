@@ -2376,8 +2376,26 @@ function revealMountedFloor(startedAt) {
   // Two frames: one for the cards to take their positions, one to paint.
   repositionDepartmentCards();
   window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-    if (_canvas) _canvas.classList.remove('is-mounting');
+    if (!_canvas) return;
+    playFloorIntro();
+    _canvas.classList.remove('is-mounting');
   }));
+}
+
+// The floor arrives in two beats: the canvas fades in on the black stage with
+// only the stars lit, then the platforms, the conductor and the floating
+// cards rise out of the dark together.
+const INTRO_FLOORS_DELAY_MS = 380;
+const INTRO_FLOORS_FADE_MS = 900;
+function playFloorIntro() {
+  const stage = _canvas && _canvas.closest('.office-stage');
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || !_scene || typeof _scene.playIntro !== 'function') return;
+  _scene.playIntro(INTRO_FLOORS_DELAY_MS, INTRO_FLOORS_FADE_MS);
+  if (!stage) return;
+  stage.style.setProperty('--office-intro-delay', `${INTRO_FLOORS_DELAY_MS}ms`);
+  stage.classList.add('is-intro');
+  window.setTimeout(() => stage.classList.remove('is-intro'), INTRO_FLOORS_DELAY_MS + INTRO_FLOORS_FADE_MS + 100);
 }
 
 function mount(container) {

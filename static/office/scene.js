@@ -1223,18 +1223,24 @@ export function createOfficeScene(canvas, options) {
     startK: 1,
     endK: 1,
     startMs: 0,
+    durationMs: OUTLET_FADE_MS,
   };
+  // The first reveal of the floor (playIntro) fades the shared conductor
+  // plinth in as well, so the stars show alone before anything else.
+  let introFade = false;
+  const fadeRoots = () => (introFade ? [office, backdrop] : [office]);
+  const traverseContent = fn => fadeRoots().forEach(root => root.traverse(fn));
 
   function currentContentOpacity() {
     if (!outletTransition.active) return 1;
-    const raw = (performance.now() - outletTransition.startMs) / OUTLET_FADE_MS;
+    const raw = (performance.now() - outletTransition.startMs) / outletTransition.durationMs;
     const t = Math.min(1, Math.max(0, raw));
     const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     return outletTransition.startK + (outletTransition.endK - outletTransition.startK) * ease;
   }
 
   function snapshotContentOpacity() {
-    office.traverse(obj => {
+    traverseContent(obj => {
       if (!obj.material) return;
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       const clones = materials.map(m => {
@@ -1265,7 +1271,7 @@ export function createOfficeScene(canvas, options) {
   function applyContentOpacity(k) {
     _fadeBackdrop.set(palette === PALETTES.dark ? SPACE_COLOR : LIGHT_SKY_COLOR);
     const done = k >= 0.998;
-    office.traverse(obj => {
+    traverseContent(obj => {
       if (!obj.material) return;
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       materials.forEach(m => {
@@ -1305,7 +1311,7 @@ export function createOfficeScene(canvas, options) {
   }
 
   function restoreContentOpacity() {
-    office.traverse(obj => {
+    traverseContent(obj => {
       if (!obj.material) return;
       (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(restoreMaterial);
     });
@@ -1320,6 +1326,7 @@ export function createOfficeScene(canvas, options) {
       ? Math.min(1, Math.max(0, (now - outletTransition.startMs) / OUTLET_FADE_MS))
       : (fadingOut ? 1 : 0);
     outletTransition.startMs = now;
+    outletTransition.durationMs = OUTLET_FADE_MS;
     outletTransition.startK = currentK;
     outletTransition.endK = fadingOut ? 0 : 1;
     outletTransition.active = true;
@@ -1328,7 +1335,7 @@ export function createOfficeScene(canvas, options) {
 
   function advanceOutletTransition(now) {
     if (!outletTransition.active) return;
-    const raw = (now - outletTransition.startMs) / OUTLET_FADE_MS;
+    const raw = (now - outletTransition.startMs) / outletTransition.durationMs;
     const t = Math.min(1, Math.max(0, raw));
     // ease-in-out for a smoother, more consistent feel
     const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -1337,7 +1344,24 @@ export function createOfficeScene(canvas, options) {
     if (t >= 1) {
       outletTransition.active = false;
       restoreContentOpacity();
+      introFade = false;
     }
+  }
+
+  /**
+   * The floor's first reveal: the stars are drawn at once and the platforms,
+   * bridges and conductor rise out of the dark `delayMs` later, over
+   * `durationMs`. Until then they render as the backdrop colour.
+   */
+  function playIntro(delayMs, durationMs) {
+    introFade = true;
+    snapshotContentOpacity();
+    outletTransition.startMs = performance.now() + Math.max(0, delayMs || 0);
+    outletTransition.durationMs = Math.max(1, durationMs || OUTLET_FADE_MS);
+    outletTransition.startK = 0;
+    outletTransition.endK = 1;
+    outletTransition.active = true;
+    applyContentOpacity(0);
   }
 
   /**
@@ -2459,6 +2483,6 @@ export function createOfficeScene(canvas, options) {
     beginLayoutMotion, endLayoutMotion, isInLayoutMotion: () => layoutMotion,
     getRenderQuality: () => ({ pixelRatio: renderer.getPixelRatio(), preferred: preferredPixelRatio, samples: composerTarget.samples }),
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
-    podScreenRect, scene, setOutletTransition,
+    podScreenRect, scene, setOutletTransition, playIntro,
   };
 }
