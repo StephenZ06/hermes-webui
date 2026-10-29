@@ -183,25 +183,32 @@
     playActiveHighlightGlide(sidebar, boardFrom, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar });
   }
   // A board in a folder that is still opening is not on screen yet, so it
-  // cannot receive the board glide. Its highlight waits until the folder has
-  // opened, then drops from the folder down into the board.
-  function dropBoardHighlightFromFolder(sidebar, tile, boardsList) {
+  // cannot receive the board glide. The board that was picked keeps its fill
+  // while the folder opens, then the highlight glides from it into the new
+  // board (or drops from the folder when no board was showing one).
+  function glideBoardHighlightOnceOpen(sidebar, tile, boardsList, from) {
     if (!boardsList) return;
     const target = boardsList.querySelector('.work-hub-board-row.active > button[data-board-id]');
-    if (!target || target.matches('.is-highlight-arriving') || (typeof _highlightShown === 'function' && _highlightShown(target))) return;
+    if (!target || target.matches('.is-highlight-arriving') || _highlightShown(target)) return;
+    const old = from && BOARD_HIGHLIGHT.find(sidebar, from.key);
+    const held = old && old !== target && old.isConnected ? old : null;
     target.classList.add('is-highlight-arriving');
+    if (held) { held.style.background = from.background; held.style.color = getComputedStyle(target).color; }
     let done = false;
-    const drop = () => {
+    const play = () => {
       if (done) return; done = true;
       boardsList.removeEventListener('transitionend', onEnd);
       target.classList.remove('is-highlight-arriving');
+      // The copy takes over the held fill in the same frame, with no fade.
+      if (held) { held.style.transition = 'none'; held.style.background = ''; held.style.color = ''; void held.offsetWidth; held.style.transition = ''; }
       if (!target.isConnected || !tile.isConnected || !boardsList.classList.contains('expanded')) return;
-      const rect = tile.getBoundingClientRect();
+      const start = held && held.isConnected && _highlightShown(held) ? held : tile;
+      const rect = start.getBoundingClientRect();
       playActiveHighlightGlide(sidebar, { key: '', top: rect.top, height: rect.height, section: 'boards', paddingLeft: '', background: '' }, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar });
     };
-    const onEnd = event => { if (event.target === boardsList && event.propertyName === 'grid-template-rows') drop(); };
+    const onEnd = event => { if (event.target === boardsList && event.propertyName === 'grid-template-rows') play(); };
     boardsList.addEventListener('transitionend', onEnd);
-    setTimeout(drop, 400);
+    setTimeout(play, 400);
   }
   function buildWorkHubNavigation(sidebar) {
     sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all"><span class="work-hub-scope-mark work-hub-scope-mark--all" aria-hidden="true"></span><span>All Work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
@@ -505,7 +512,7 @@
       document.querySelectorAll('.work-hub-board-row').forEach(row => { const id = row.querySelector('[data-board-id]')?.dataset.boardId; row.classList.toggle('active', !!id && id === store.activeBoardId); });
       document.querySelectorAll('.work-hub-scope').forEach(scope => scope.classList.toggle('active', scope.dataset.scope === store.activeScope));
       if (glide) { playActiveHighlightGlide(sidebar, navFrom, { ...NAV_HIGHLIGHT, bounds: sidebar }); playActiveHighlightGlide(sidebar, boardFrom, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar }); }
-      const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } if (glide && expanded) dropBoardHighlightFromFolder(sidebar, button, boardsList); noteShownCounts(); noteShownItems(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
+      const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } if (glide && expanded) glideBoardHighlightOnceOpen(sidebar, button, boardsList, boardFrom); noteShownCounts(); noteShownItems(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
     document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });

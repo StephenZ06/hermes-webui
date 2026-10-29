@@ -200,3 +200,42 @@ def test_a_one_board_folder_opens_and_the_highlight_drops_into_its_board(page):
         assert out["below"] and out["start"].startswith("translateY(-"), out
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_into_a_shut_folder_the_board_highlight_glides_from_the_board_left(page):
+    """Opening another folder that was shut: the board picked before keeps its
+    fill while the folder opens, then the highlight glides from it into the
+    new folder's board instead of popping in."""
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        page.evaluate(_GLIDES, f"[data-board-id='{ids['a2']}']")
+        page.mouse.move(5, 5)
+        page.wait_for_timeout(500)
+        out = page.evaluate("""async (ids) => {
+            const copies = records => records.flatMap(m => [...m.addedNodes]).filter(n => n.classList && n.classList.contains('sidebar-highlight-glide'));
+            const later = [];
+            const seen = new MutationObserver(records => later.push(...copies(records)));
+            seen.observe(document.body, {childList: true});
+            document.querySelector(`.work-hub-project-tile[data-scope='${ids.b}']`).click();
+            copies(seen.takeRecords());
+            const left = document.querySelector(`[data-board-id='${ids.a2}']`);
+            await new Promise(r => setTimeout(r, 40));
+            const heldFill = getComputedStyle(left).backgroundColor;
+            const glide = await new Promise(resolve => {
+                const t = setInterval(() => { if (later[0]) { clearInterval(t); resolve(later[0]); } }, 5);
+                setTimeout(() => { clearInterval(t); resolve(null); }, 600); });
+            seen.disconnect();
+            if (!glide) return {heldFill, glide: false};
+            const start = glide.getAnimations()[0].effect.getKeyframes()[0].transform;
+            const to = document.querySelector(`[data-board-id='${ids.b1}']`).getBoundingClientRect().top;
+            return {heldFill, glide: true, start, expected: left.getBoundingClientRect().top - to,
+                    leftFill: getComputedStyle(left).backgroundColor};
+        }""", ids)
+        assert out["glide"] and out["heldFill"] != "rgba(0, 0, 0, 0)", out
+        dy = float(out["start"].split("translateY(")[1].split("px")[0])
+        assert abs(dy - out["expected"]) <= 2, out
+        assert out["leftFill"] == "rgba(0, 0, 0, 0)", out
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
