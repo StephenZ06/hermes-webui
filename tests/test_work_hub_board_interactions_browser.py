@@ -1,7 +1,7 @@
-"""Work Hub board: drag-to-scroll, the picked item's outline, and no flicker.
+"""Work Hub board: panning, the picked item's outline, and no flicker.
 
-- Empty space in a column drags its cards up and down, and sweeping across
-  the board never selects text.
+- Pressing on empty board space and dragging sideways pans the board, and
+  sweeping across the board never selects text.
 - The picked work item is outlined in its column's colour.
 - Switching boards does not replay the empty details panel's entrance, and
   switching items keeps the panel's labels still: only changed values fade.
@@ -41,17 +41,21 @@ def board():
             browser.close()
 
 
-def test_dragging_a_column_header_scrolls_its_cards_without_selecting(board):
+def test_dragging_empty_board_space_pans_it_sideways_without_selecting(board):
     page, _ = board
-    header = page.locator(".work-hub-column[data-status='triage'] header strong").bounding_box()
-    x, y = header["x"] + header["width"] / 2, header["y"] + header["height"] / 2
-    page.mouse.move(x, y)
+    page.set_viewport_size({"width": 1100, "height": 700})
+    page.wait_for_function("() => document.querySelector('.work-hub-board-wrap').classList.contains('can-pan')", timeout=5000)
+    # The empty part of the (empty) Backlog column, near the board's right edge.
+    spot = page.evaluate("""() => { const wrap = document.querySelector('.work-hub-board-wrap').getBoundingClientRect();
+        const col = document.querySelector(".work-hub-column[data-status='backlog']").getBoundingClientRect();
+        return [Math.min(col.right, wrap.right) - 30, col.top + 200]; }""")
+    assert page.evaluate("([x, y]) => !!document.elementFromPoint(x, y).closest('.work-hub-column[data-status=backlog]')", spot)
+    page.mouse.move(*spot)
     page.mouse.down()
-    page.mouse.move(x, y - 120, steps=6)
+    page.mouse.move(spot[0] - 150, spot[1] + 10, steps=6)
     page.mouse.up()
-    out = page.evaluate("""() => ({top: document.querySelector(".work-hub-column[data-status='triage'] .work-hub-cards").scrollTop,
-        selected: String(window.getSelection())})""")
-    assert out["top"] >= 100 and out["selected"] == "", out
+    out = page.evaluate("""() => ({left: document.querySelector('.work-hub-board-wrap').scrollLeft, selected: String(window.getSelection())})""")
+    assert out["left"] >= 140 and out["selected"] == "", out
 
 
 def test_the_picked_item_is_outlined_in_its_columns_colour(board):
@@ -62,8 +66,10 @@ def test_the_picked_item_is_outlined_in_its_columns_colour(board):
     out = page.evaluate("""() => { const card = document.querySelector('.work-hub-card.is-selected');
         const probe = document.createElement('i'); probe.style.color = 'var(--stage)'; card.closest('.work-hub-column').appendChild(probe);
         const accent = getComputedStyle(probe).color; probe.remove();
-        return {count: document.querySelectorAll('.work-hub-card.is-selected').length, border: card && getComputedStyle(card).borderTopColor, accent}; }""")
-    assert out["count"] == 1 and out["border"] == out["accent"], out
+        return {count: document.querySelectorAll('.work-hub-card.is-selected').length, border: card && getComputedStyle(card).borderTopColor,
+                ring: card && getComputedStyle(card).boxShadow, accent}; }""")
+    # A plain 1px outline: no extra ring around it.
+    assert out["count"] == 1 and out["border"] == out["accent"] and out["ring"] == "none", out
 
 
 def test_switching_boards_keeps_the_empty_details_panel_still(board):
@@ -83,6 +89,8 @@ def test_switching_items_fades_only_the_values_that_change(board):
         return {panel: moving(panel.querySelector('.wh-insp')), kicker: moving(panel.querySelector('.wh-insp-kicker')),
                 labels: [...panel.querySelectorAll('.wh-insp-prop dt')].map(moving).reduce((a, b) => a + b, 0),
                 status: moving(panel.querySelector('#workHubStatus').closest('dd')),
-                title: moving(panel.querySelector('#workHubTitle')), description: moving(panel.querySelector('#workHubDescription'))}; }""")
+                title: moving(panel.querySelector('#workHubTitle')), description: moving(panel.querySelector('#workHubDescription')),
+                // The field's box stays still: only its text (colour) animates, never its opacity.
+                titleBox: panel.querySelector('#workHubTitle').getAnimations().flatMap(a => a.effect.getKeyframes()).some(k => 'opacity' in k || 'filter' in k)}; }""")
     assert out["panel"] == 0 and out["kicker"] == 0 and out["labels"] == 0 and out["status"] == 0, out
-    assert out["title"] >= 1 and out["description"] >= 1, out
+    assert out["title"] >= 1 and out["description"] >= 1 and out["titleBox"] is False, out

@@ -315,7 +315,8 @@
   // to it: its height (--wh-scrollbar) comes off the board's bottom padding.
   let boardScrollbarObserver = null;
   function syncBoardScrollbarGap(wrap) {
-    const update = () => wrap.style.setProperty('--wh-scrollbar', `${Math.max(0, wrap.offsetHeight - wrap.clientHeight)}px`);
+    // can-pan shows the hand cursor only when there is somewhere to pan to.
+    const update = () => { wrap.style.setProperty('--wh-scrollbar', `${Math.max(0, wrap.offsetHeight - wrap.clientHeight)}px`); wrap.classList.toggle('can-pan', wrap.scrollWidth > wrap.clientWidth + 1); };
     if (boardScrollbarObserver) boardScrollbarObserver.disconnect();
     if (typeof ResizeObserver === 'function') {
       boardScrollbarObserver = new ResizeObserver(update);
@@ -367,7 +368,7 @@
       boardWrap.querySelectorAll('.work-hub-column').forEach(col => { const cards = col.querySelector('.work-hub-cards'); if (cards && prevWrap.tops[col.dataset.status]) cards.scrollTop = prevWrap.tops[col.dataset.status]; });
     }
     initDragAndDrop(board);
-    initColumnDragScroll(board);
+    initBoardPan(boardWrap);
   }
   function workHubRelativeTime(epoch) {
     const seconds = Number(epoch);
@@ -418,13 +419,17 @@
   function fadeChangedValues(panel, before) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const after = inspectorValues(panel);
-    const fade = node => { if (node) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' }); };
-    if (after.title !== before.title) fade(panel.querySelector('#workHubTitle'));
-    if (after.description !== before.description) fade(panel.querySelector('#workHubDescription'));
+    // The Notes text entrance (nb-text-in: a fade out of a 2px blur). In a
+    // field (title, description, a select) only the text does it, through its
+    // colour and a blurred text-shadow, so the box itself stays still.
+    const textIn = node => { if (!node) return; const color = getComputedStyle(node).color; node.animate([{ color: 'transparent', textShadow: `0 0 2px ${color}` }, { color, textShadow: '0 0 0 transparent' }], { duration: 220, easing: 'ease' }); };
+    const blurIn = node => { if (node) node.animate([{ opacity: 0, filter: 'blur(2px)' }, { opacity: 1, filter: 'blur(0)' }], { duration: 220, easing: 'ease' }); };
+    if (after.title !== before.title) textIn(panel.querySelector('#workHubTitle'));
+    if (after.description !== before.description) textIn(panel.querySelector('#workHubDescription'));
     panel.querySelectorAll('.wh-insp-prop').forEach(prop => {
       const key = 'prop:' + prop.querySelector('dt').textContent;
-      if (!(key in before)) fade(prop);
-      else if (after[key] !== before[key]) fade(prop.querySelector('dd'));
+      if (!(key in before)) blurIn(prop);
+      else if (after[key] !== before[key]) { const select = prop.querySelector('select'); if (select) textIn(select); else blurIn(prop.querySelector('dd')); }
     });
   }
   function markSelectedItem() {
@@ -531,21 +536,20 @@
     document.querySelectorAll('[data-board-filter-sort]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterSort; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), sort: select.value }; renderCanvas(scopedItems()); bind(); });
     document.querySelectorAll('[data-board-filter-priority]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterPriority; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), priority: select.value }; renderCanvas(scopedItems()); bind(); });
   }
-  // Empty space in a column (around and between its cards, and its header)
-  // drags the column's cards up and down, as a finger does on a phone.
-  function initColumnDragScroll(board) {
-    board.addEventListener('pointerdown', event => {
-      if (event.pointerType !== 'mouse' || event.button !== 0) return;
-      const column = event.target.closest('.work-hub-column');
-      if (!column || event.target.closest('.work-hub-card, button, input, select, textarea, a, .work-hub-column-filter')) return;
-      const cards = column.querySelector('.work-hub-cards');
+  // Press and hold on empty board space (a column's empty area or header,
+  // the gaps between columns) and drag sideways to pan the board, as with a
+  // hand tool. Cards keep their own drag (moving them between columns).
+  function initBoardPan(wrap) {
+    wrap.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'touch' || event.button !== 0) return;
+      if (event.target.closest('.work-hub-card, button, input, select, textarea, a, .work-hub-column-filter')) return;
       // Holding the pointer down here never starts a text selection.
       event.preventDefault();
-      if (!cards || cards.scrollHeight <= cards.clientHeight) return;
-      const startY = event.clientY, startTop = cards.scrollTop;
-      column.classList.add('is-drag-scrolling');
-      const move = e => { cards.scrollTop = startTop - (e.clientY - startY); };
-      const stop = () => { column.classList.remove('is-drag-scrolling'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); };
+      if (wrap.scrollWidth <= wrap.clientWidth) return;
+      const startX = event.clientX, startLeft = wrap.scrollLeft;
+      wrap.classList.add('is-panning');
+      const move = e => { wrap.scrollLeft = startLeft - (e.clientX - startX); };
+      const stop = () => { wrap.classList.remove('is-panning'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); };
       window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop); window.addEventListener('pointercancel', stop);
     });
   }
