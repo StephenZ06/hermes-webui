@@ -200,18 +200,22 @@ def test_switching_projects_keeps_each_columns_cards_and_changes_only_their_text
                 }
                 await switchPanel('chat'); await switchPanel('notes'); }""")
             page.wait_for_selector(".work-hub-project-tile", timeout=10000)
-            tile = lambda name: f".work-hub-project-tile:has-text('{name}')"
+            # A folder only opens and closes (as on Chat); its Default board,
+            # which the items were filed on, switches the project.
+            pick = """(name) => { const tile = [...document.querySelectorAll('.work-hub-project-tile')].find(t => t.textContent.includes(name));
+                if (tile.getAttribute('aria-expanded') !== 'true') tile.click();
+                tile.nextElementSibling.querySelector('[data-board-id]').click(); }"""
             probe = """() => { const cards = [...document.querySelectorAll('#workHubCanvas .work-hub-column[data-status="backlog"] .work-hub-card')];
                 const fades = n => n.getAnimations().some(a => a.effect.getKeyframes().some(k => 'opacity' in k));
                 return {cards: cards.length, cardFades: cards.filter(fades).length,
                         textFades: cards.filter(c => !fades(c) && [...c.children].some(fades)).length,
                         leaving: document.querySelectorAll('.list-item-leaving').length}; }"""
-            page.click(tile("Refinements A"))
+            page.evaluate(pick, "Refinements A")
             page.wait_for_timeout(700)
-            page.click(tile("Refinements B"))
+            page.evaluate(pick, "Refinements B")
             growing = page.evaluate(probe)
             page.wait_for_timeout(700)
-            page.click(tile("Refinements A"))
+            page.evaluate(pick, "Refinements A")
             shrinking = page.evaluate(probe)
         finally:
             try:

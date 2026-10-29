@@ -71,10 +71,13 @@ def test_a_board_opens_on_one_tap_and_new_items_land_in_it(phone, seeded):
     page.wait_for_function("(n) => document.querySelectorAll('.work-hub-card').length === n + 1", arg=before, timeout=10000)
 
 
-def test_a_single_board_folder_opens_its_board_and_closes_the_drawer(phone, seeded):
+def test_picking_a_board_opens_it_and_closes_the_drawer(phone, seeded):
+    # As on Chat: the folder only opens; the board picked in it closes the drawer.
     page, _ = phone
     _open_drawer(page)
     page.tap(f".work-hub-project-tile[data-project-toggle='{seeded['single']}']")
+    time.sleep(0.5)
+    page.tap(f"#workHubFolderBoards-{seeded['single']} [data-board-id]")
     time.sleep(0.8)
     state = page.evaluate("() => [_mobileDrawerState(), (document.querySelector('.work-hub-board-row.active') || {}).textContent || '']")
     assert state[0] == "closed" and "Only" in state[1]

@@ -99,3 +99,34 @@ def test_office_runs_in_a_folder_glide_and_the_folder_is_never_highlighted(page)
         assert glides == 1 and out["active"] == ["run2"] and out["folders"] == 0, (glides, out)
     finally:
         page.evaluate("async () => { await switchPanel('chat'); }")
+
+
+@pytest.mark.parametrize("panel", ["notes", "notebook"])
+def test_picking_far_down_the_side_panel_keeps_its_scroll(page, panel):
+    """The side panel's nav is rebuilt on every pick; it used to start back at
+    the top, so a board or note picked far down jumped out of sight."""
+    ids = page.evaluate("""async () => { const ids = [];
+        for (let i = 0; i < 14; i++) ids.push((await api('/api/projects/create', {method: 'POST', body: JSON.stringify({name: 'Deep ' + i, work_hub_managed: true})})).project.project_id);
+        const rev = (await api('/api/work_hub/bootstrap')).revision || 0;
+        const board = (await api('/api/work_hub/boards/create', {method: 'POST', body: JSON.stringify({board: {name: 'Deep board', project_id: ids[13]}, expected_revision: rev})})).board.id;
+        const note = (await api('/api/notebook/notes/create', {method: 'POST', body: JSON.stringify({title: 'Deep note', project_id: ids[13]})})).note.id;
+        return {ids, board, note}; }""")
+    try:
+        page.set_viewport_size({"width": 1400, "height": 600})
+        page.evaluate(f"async () => {{ await switchPanel('{panel}'); }}")
+        last = ids["ids"][13]
+        tile = (f".work-hub-project-tile[data-scope='{last}']" if panel == "notes"
+                else f"#notebookSidebar .nb-place-btn[data-nb-id='{last}']")
+        pick = f"[data-board-id='{ids['board']}']" if panel == "notes" else f"#notebookSidebar [data-nb-open='{ids['note']}']"
+        nav = "#workHubSidebar .work-hub-nav" if panel == "notes" else "#notebookSidebar .nb-nav"
+        page.wait_for_selector(tile, state="attached", timeout=15000)
+        page.evaluate(f"""() => {{ const nav = document.querySelector("{nav}"); nav.scrollTop = nav.scrollHeight;
+            document.querySelector("{tile}").click(); }}""")
+        page.wait_for_timeout(400)
+        before = page.evaluate(f"() => document.querySelector(\"{nav}\").scrollTop")
+        page.evaluate(f"() => document.querySelector(\"{pick}\").click()")
+        page.wait_for_timeout(800)
+        after = page.evaluate(f"() => document.querySelector(\"{nav}\").scrollTop")
+        assert before > 100 and abs(after - before) <= 2, (before, after)
+    finally:
+        page.evaluate("async (ids) => { for (const id of ids) await api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: id})}); }", ids["ids"])

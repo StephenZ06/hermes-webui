@@ -174,7 +174,15 @@
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
     const glide = typeof noteActiveHighlight === 'function';
     const from = glide ? noteActiveHighlight(sidebar, SIDEBAR_HIGHLIGHT) : null;
+    // The rebuilt nav (and its folder list) would start back at the top, so a
+    // board picked far down the list jumped out of sight; keep where they were.
+    const scrolled = [sidebar.querySelector('.work-hub-nav'), el('workHubProjects')].map(node => (node ? node.scrollTop : 0));
     buildWorkHubNavigation(sidebar);
+    [sidebar.querySelector('.work-hub-nav'), el('workHubProjects')].forEach((node, i) => { if (node && scrolled[i]) node.scrollTop = scrolled[i]; });
+    // The rows were just rebuilt, so the one under the pointer would replay its
+    // hover reveal (rename/delete sliding open) on every click; it starts open.
+    sidebar.classList.add('is-settling');
+    requestAnimationFrame(() => requestAnimationFrame(() => sidebar.classList.remove('is-settling')));
     if (!glide || !from) return;
     // A board scrolled out of the folder list starts from the list's edge.
     playActiveHighlightGlide(sidebar, from, { ...SIDEBAR_HIGHLIGHT, bounds: (from.section === 'workspaces' && el('workHubProjects')) || sidebar });
@@ -287,7 +295,7 @@
   }
   function fillWorkHubCards(cards, columnItems) {
     cards.textContent = '';
-    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${store.questIds && store.questIds.has(item.id) ? '<span class="work-hub-quest-mark" title="On your Dashboard quests" aria-label="Quest">⚔</span>' : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
+    columnItems.forEach(item => { const card = document.createElement('button'); card.className = 'work-hub-card' + (item.working ? ' is-working' : '') + (item.id === store.selectedItemId ? ' is-selected' : ''); card.draggable = true; card.dataset.itemId = item.id; card.innerHTML = `<span class="work-hub-card-title"></span><small>${item.working ? WORKING_BADGE : ''}${store.questIds && store.questIds.has(item.id) ? '<span class="work-hub-quest-mark" title="On your Dashboard quests" aria-label="Quest">⚔</span>' : ''}${esc(item.priority || 'none')}</small>`; card.querySelector('.work-hub-card-title').textContent = item.title; cards.appendChild(card); });
   }
   // Typing in a column filter updates that column's cards in place. Replacing
   // the input would drop focus, and the iOS keyboard with it.
@@ -330,7 +338,7 @@
     canvas.innerHTML = '';
     if (store.activeView === 'list') {
       const table = document.createElement('div'); table.className = 'work-hub-list';
-      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row' + (item.working ? ' is-working' : ''); row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${item.working ? WORKING_BADGE : ''}${esc(store.statuses.find(status => status.id === item.status)?.label || item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
+      items.forEach(item => { const row = document.createElement('button'); row.className = 'work-hub-list-row' + (item.working ? ' is-working' : '') + (item.id === store.selectedItemId ? ' is-selected' : ''); row.dataset.itemId = item.id; row.innerHTML = `<span class="work-hub-status status-${esc(item.status)}"></span><strong></strong><small>${item.working ? WORKING_BADGE : ''}${esc(store.statuses.find(status => status.id === item.status)?.label || item.status.replace('_', ' '))}</small>`; row.querySelector('strong').textContent = item.title; table.appendChild(row); });
       canvas.appendChild(table); return;
     }
     // Rebuilding the board must not throw away where the user is: keep the
@@ -359,6 +367,7 @@
       boardWrap.querySelectorAll('.work-hub-column').forEach(col => { const cards = col.querySelector('.work-hub-cards'); if (cards && prevWrap.tops[col.dataset.status]) cards.scrollTop = prevWrap.tops[col.dataset.status]; });
     }
     initDragAndDrop(board);
+    initColumnDragScroll(board);
   }
   function workHubRelativeTime(epoch) {
     const seconds = Number(epoch);
@@ -391,12 +400,44 @@
       fillQuestToggle(itemId);
     };
   }
+  // What the details panel showed last, so a redraw that shows the same kind
+  // of thing again (the empty state after a board switch, or another item)
+  // does not replay the panel's entrance: the labels stay put and only the
+  // values that differ fade in.
+  let shownInspector = null;
+  function inspectorValues(panel) {
+    const values = {};
+    const title = panel.querySelector('#workHubTitle'); if (title) values.title = title.value || title.placeholder;
+    const description = panel.querySelector('#workHubDescription'); if (description) values.description = description.value;
+    panel.querySelectorAll('.wh-insp-prop').forEach(prop => {
+      const select = prop.querySelector('select');
+      values['prop:' + prop.querySelector('dt').textContent] = select ? (select.selectedOptions[0] || {}).textContent : prop.querySelector('dd').textContent;
+    });
+    return values;
+  }
+  function fadeChangedValues(panel, before) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const after = inspectorValues(panel);
+    const fade = node => { if (node) node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' }); };
+    if (after.title !== before.title) fade(panel.querySelector('#workHubTitle'));
+    if (after.description !== before.description) fade(panel.querySelector('#workHubDescription'));
+    panel.querySelectorAll('.wh-insp-prop').forEach(prop => {
+      const key = 'prop:' + prop.querySelector('dt').textContent;
+      if (!(key in before)) fade(prop);
+      else if (after[key] !== before[key]) fade(prop.querySelector('dd'));
+    });
+  }
+  function markSelectedItem() {
+    document.querySelectorAll('#workHubCanvas [data-item-id]').forEach(node => node.classList.toggle('is-selected', node.dataset.itemId === store.selectedItemId));
+  }
   function renderInspector() {
     const panel = el('workHubInspector'); if (!panel) return;
     const item = store.items.find(row => row.id === store.selectedItemId);
+    markSelectedItem();
     // Phones show the details as a sheet over the board only while an item is selected.
     const hub = panel.closest('.work-hub'); if (hub) hub.classList.toggle('has-selection', !!item);
-    if (!item) { panel.innerHTML = '<div class="work-hub-inspector-empty"><span class="work-hub-inspector-empty-mark" aria-hidden="true"></span><p>Select a work item to see details.</p></div>'; return; }
+    const before = shownInspector; shownInspector = item ? { values: null } : { empty: true };
+    if (!item) { panel.innerHTML = `<div class="work-hub-inspector-empty${before && before.empty ? ' is-steady' : ''}"><span class="work-hub-inspector-empty-mark" aria-hidden="true"></span><p>Select a work item to see details.</p></div>`; return; }
     const currentSessionId = typeof S !== 'undefined' && S.session ? S.session.session_id : null;
     const missingAgent = item.agent_profile && !store.profiles.some(profile => profile.name === item.agent_profile);
     const workflow = store.workflows.find(run => (run.steps || []).some(step => step.item_id === item.id && ['pending', 'running', 'paused'].includes(run.status)));
@@ -429,6 +470,8 @@
     const untitled = item.title === NEW_ITEM_TITLE;
     el('workHubTitle').value = untitled ? '' : item.title; if (untitled) el('workHubTitle').placeholder = NEW_ITEM_TITLE;
     panel.querySelector('#workHubDescription').value = item.description || '';
+    if (before && before.values) { panel.querySelector('.wh-insp').classList.add('is-steady'); fadeChangedValues(panel, before.values); }
+    shownInspector.values = inspectorValues(panel);
     el('workHubClose').onclick = () => { closeInspectorAnimated(); };
     fillQuestToggle(item.id);
     const deleteButton = el('workHubDelete'); if (deleteButton) deleteButton.onclick = () => deleteItem(item.id);
@@ -487,6 +530,24 @@
     document.querySelectorAll('[data-board-filter-query]').forEach(input => input.oninput = () => { const status = input.dataset.boardFilterQuery; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), query: input.value.toLowerCase() }; refreshWorkHubColumn(status); });
     document.querySelectorAll('[data-board-filter-sort]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterSort; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), sort: select.value }; renderCanvas(scopedItems()); bind(); });
     document.querySelectorAll('[data-board-filter-priority]').forEach(select => select.onchange = () => { const status = select.dataset.boardFilterPriority; store.boardFilters[status] = { ...(store.boardFilters[status] || {}), priority: select.value }; renderCanvas(scopedItems()); bind(); });
+  }
+  // Empty space in a column (around and between its cards, and its header)
+  // drags the column's cards up and down, as a finger does on a phone.
+  function initColumnDragScroll(board) {
+    board.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'mouse' || event.button !== 0) return;
+      const column = event.target.closest('.work-hub-column');
+      if (!column || event.target.closest('.work-hub-card, button, input, select, textarea, a, .work-hub-column-filter')) return;
+      const cards = column.querySelector('.work-hub-cards');
+      // Holding the pointer down here never starts a text selection.
+      event.preventDefault();
+      if (!cards || cards.scrollHeight <= cards.clientHeight) return;
+      const startY = event.clientY, startTop = cards.scrollTop;
+      column.classList.add('is-drag-scrolling');
+      const move = e => { cards.scrollTop = startTop - (e.clientY - startY); };
+      const stop = () => { column.classList.remove('is-drag-scrolling'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', stop); window.addEventListener('pointercancel', stop);
+    });
   }
   function initDragAndDrop(board) {
     if (!board) return;

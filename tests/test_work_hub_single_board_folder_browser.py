@@ -1,8 +1,8 @@
-"""Work Hub project folders: one board opens directly, several boards expand.
+"""Work Hub project folders open and close the same way, one board or many.
 
-Clicking a project that holds a single board has nothing to disclose, so it
-opens that board instead of expanding; the chevron still reveals the board
-row (rename/delete live there). A project with several boards expands.
+As on Chat, clicking a folder only opens or closes it -- a folder holding a
+single board no longer jumps straight to that board -- and the board picked
+inside is what the board view shows.
 """
 
 import json
@@ -46,7 +46,7 @@ def two_projects():
             pass
 
 
-def test_single_board_project_opens_its_board_and_multi_board_project_expands(two_projects):
+def test_every_folder_opens_and_closes_and_its_board_is_picked_inside(two_projects):
     sync_api = pytest.importorskip("playwright.sync_api")
     single, multi, board = two_projects
     with sync_api.sync_playwright() as pw:
@@ -61,23 +61,18 @@ def test_single_board_project_opens_its_board_and_multi_board_project_expands(tw
             multi_tile = f".work-hub-project-tile[data-project-toggle='{multi['project_id']}']"
             page.wait_for_selector(single_tile, timeout=15000)
 
-            page.click(single_tile)
+            for tile in (single_tile, multi_tile):
+                page.click(tile)
+                assert page.get_attribute(tile, "aria-expanded") == "true"
+            # Opening picked nothing.
+            assert page.evaluate("() => document.querySelectorAll('.work-hub-board-row.active').length") == 0
+
+            page.click(f"[data-board-id='{board['id']}']")
             page.wait_for_function(
                 "(id) => document.querySelector(`[data-board-id='${id}']`)?.closest('.work-hub-board-row')?.classList.contains('active')",
                 arg=board["id"], polling=100, timeout=10000,
             )
+            page.click(single_tile)
             assert page.get_attribute(single_tile, "aria-expanded") == "false"
-
-            page.click(multi_tile)
-            page.wait_for_function(
-                "(sel) => document.querySelector(sel)?.getAttribute('aria-expanded') === 'true'",
-                arg=multi_tile, polling=100, timeout=10000,
-            )
-
-            page.click(f"{single_tile} .work-hub-project-chevron")
-            page.wait_for_function(
-                "(sel) => document.querySelector(sel)?.getAttribute('aria-expanded') === 'true'",
-                arg=single_tile, polling=100, timeout=10000,
-            )
         finally:
             browser.close()

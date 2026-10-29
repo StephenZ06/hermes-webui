@@ -308,7 +308,14 @@
     if (!side) return;
     const glide = typeof window.noteActiveHighlight === 'function';
     const from = glide ? window.noteActiveHighlight(side, SIDEBAR_HIGHLIGHT) : null;
+    // The rebuilt nav would start back at the top, so a note picked far down
+    // the list jumped out of sight; keep where it was.
+    // (Switching between Notes and the Obsidian vault starts at the top.)
+    const navOf = () => side.querySelector('.nb-nav');
+    const vaultBefore = !!(navOf() && navOf().classList.contains('nb-nav-vault'));
+    const scrolled = navOf() ? navOf().scrollTop : 0;
     buildSidebar(side);
+    if (scrolled && navOf() && navOf().classList.contains('nb-nav-vault') === vaultBefore) navOf().scrollTop = scrolled;
     if (from) window.playActiveHighlightGlide(side, from, {...SIDEBAR_HIGHLIGHT, bounds: side});
   }
   function buildSidebar(side) {

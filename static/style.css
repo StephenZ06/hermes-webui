@@ -15891,3 +15891,28 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){.work-hub-board-row .work-hub-board-rename,.work-hub-board-row .work-hub-board-delete{transition:none;}}
 /* Work Hub project folders: the open folder is marked by a blue outline only
    (the board inside it carries the fill), hovered or not. */
+
+/* Work Hub: the picked work item is outlined in its column's colour (the
+   list, which has no columns, uses the accent); a click no longer leaves the
+   browser's own focus ring on it (keyboard focus keeps one). */
+.work-hub-card.is-selected,.work-hub-list-row.is-selected{--wh-picked:var(--stage,var(--accent));border-color:var(--wh-picked);box-shadow:0 0 0 1px var(--wh-picked);}
+.work-hub-card:focus:not(:focus-visible),.work-hub-list-row:focus:not(:focus-visible){outline:none;}
+.work-hub-card:focus-visible,.work-hub-list-row:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+/* Dragging to scroll a column (or sweeping across the board) never selects
+   the card or column text; the filter fields stay selectable. */
+.work-hub-board,.work-hub-list{-webkit-user-select:none;user-select:none;}
+.work-hub-board :is(input,select,textarea){-webkit-user-select:text;user-select:text;}
+.work-hub-column.is-drag-scrolling,.work-hub-column.is-drag-scrolling *{cursor:grabbing!important;}
+/* A redraw that keeps the details panel's kind (empty, or an item) does not
+   replay its entrance; only the values that changed fade in (work-hub.js). */
+.work-hub .work-hub-inspector .wh-insp.is-steady,.work-hub .work-hub-inspector .work-hub-inspector-empty.is-steady{animation:none;}
+#workHubSidebar.is-settling .work-hub-board-row *{transition:none!important;}
+/* Chat: the jump-to-latest and jump-to-start buttons fade and grow in, and
+   fade out, instead of popping. Their JS only toggles an inline display, so
+   the hidden state keys off that; @starting-style plays the entrance and
+   display transitions discretely so the exit can finish before it hides.
+   `scale` composes with the transform the buttons already use to move. */
+.scroll-to-bottom-btn,.session-jump-btn{transition:color .12s,border-color .12s,background .12s,transform .12s,opacity .18s ease,scale .22s cubic-bezier(.22,1,.36,1),display .18s allow-discrete;}
+.scroll-to-bottom-btn[style*="display: none"],.session-jump-btn[style*="display: none"]{opacity:0;scale:.86;}
+@starting-style{.scroll-to-bottom-btn,.session-jump-btn{opacity:0;scale:.86;}}
+@media (prefers-reduced-motion:reduce){.scroll-to-bottom-btn,.session-jump-btn{transition:none;}}
