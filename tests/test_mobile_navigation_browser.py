@@ -71,7 +71,7 @@ def test_mobile_office_dashboard_keeps_two_by_two_metrics(phone_page):
           return {
             rowCount: new Set(tops).size,
             firstRowCount: tops.filter(top => top === tops[0]).length,
-            subtitleVisible: subtitle && getComputedStyle(subtitle).display !== 'none',
+            subtitleVisible: !!subtitle && getComputedStyle(subtitle).display !== 'none',
             backRightGap: Math.round(innerWidth - back.getBoundingClientRect().right),
             pageOverflow: document.documentElement.scrollWidth - innerWidth,
           };

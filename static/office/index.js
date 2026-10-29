@@ -1525,13 +1525,9 @@ function renderOfficeSubview(container) {
   }
   const isDashboard = _officeSubview === 'dashboard';
   const title = isDashboard ? 'Office Dashboard' : 'Office Integrations';
-  const eyebrow = isDashboard ? 'OFFICE OVERVIEW' : 'CONNECTED WORKSPACE';
-  const description = isDashboard
-    ? 'A live view of delegation, workload, and what needs attention.'
-    : 'Manage the accounts and capabilities available to Business Office floors.';
   const subviewHtml = `<section class="office-subview office-${_officeSubview}" aria-labelledby="officeSubviewTitle">
     <div class="office-subview-head">
-      <div><div class="office-subview-eyebrow">${eyebrow}</div><h1 id="officeSubviewTitle">${title}</h1><p>${description}</p></div>
+      <h1 id="officeSubviewTitle">${title}</h1>
       ${isDashboard ? `<div class="office-outlet office-subview-outlet" role="group" aria-label="Dashboard outlet">
         <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
         <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>

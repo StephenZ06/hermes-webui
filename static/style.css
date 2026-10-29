@@ -7517,9 +7517,7 @@ main.main > #mainPlugin{display:none;}
 .office-dashboard-floor-enter .office-stage,.office-dashboard-floor-enter .office-main{animation:office-dashboard-floor-enter .36s cubic-bezier(.22,.61,.36,1) both;}
 @keyframes office-dashboard-floor-enter{from{opacity:0;transform:scale(.985) translateY(8px);}to{opacity:1;transform:scale(1) translateY(0);}}
 .office-subview-head{width:100%;margin:0 0 20px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:18px;border-bottom:1px solid var(--border);}
-.office-subview-eyebrow{margin-bottom:6px;color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.1em;}
 .office-subview h1{font-size:22px;line-height:1.2;color:var(--text);}
-.office-subview-head p{margin-top:7px;color:var(--muted);font-size:13px;line-height:1.5;}
 .office-subview-back{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;padding:0;border:1px solid var(--border2);border-radius:9px;background:var(--surface-subtle);color:var(--muted);cursor:pointer;transition:color .18s,border-color .18s,background .18s,transform .18s;}
 .office-subview-back:hover,.office-subview-back:focus-visible{border-color:var(--accent);color:var(--text);}
 .office-subview-back:active{transform:translateX(-1px);}.office-subview-back .work-hub-icon{width:17px;height:17px;}
@@ -7582,7 +7580,7 @@ main.main > #mainPlugin{display:none;}
 .office-integration-provider-icon{display:block;flex:0 0 36px;width:36px;height:36px;}.office-integration-provider-icon img{display:block;width:36px;height:36px;object-fit:contain;}.office-integration-card h2{font-size:13px;color:var(--text);}.office-integration-card-head p{margin-top:3px;color:var(--muted);font-size:11px;}.office-integration-status{margin-left:auto;padding:4px 7px;border:1px solid var(--border2);border-radius:999px;color:var(--muted);font-size:10px;font-weight:650;}.office-integration-status.is-connected{color:var(--success);border-color:color-mix(in srgb,var(--success) 45%,var(--border2));}.office-integration-copy{margin:16px 0 4px;color:var(--muted);font-size:12px;line-height:1.55;}.office-integration-actions{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:8px;margin-top:auto;padding-top:14px;}.office-integration-action{width:100%;min-height:34px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--surface-subtle);color:var(--muted);font:inherit;font-size:11px;font-weight:650;}.office-integration-settings{display:grid;place-items:center;width:34px;height:34px;padding:0;border:1px solid var(--border2);border-radius:8px;background:var(--surface-subtle);color:var(--muted);}.office-integration-action:disabled,.office-integration-settings:disabled{cursor:not-allowed;opacity:.76;}
 @media (max-width:1400px){.office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media (max-width:1000px){.office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));}.office-dashboard-grid,.office-integrations-grid{grid-template-columns:1fr;}}
-@media (max-width:640px){.office-subview{padding:14px;}.office-subview-head{align-items:flex-start;flex-direction:row;margin-bottom:14px;padding-bottom:14px;}.office-subview-head>div{min-width:0;}.office-subview-head p{display:none;}.office-subview-back{align-self:flex-start;margin-left:auto;}.office-subview-placeholder{min-height:220px;}.office-dashboard-toolbar{align-items:flex-start;flex-direction:column;}.office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}.office-dashboard-metric{padding:12px;}.office-dashboard-metric strong{font-size:24px;}.office-dashboard-grid,.office-integrations-grid{grid-template-columns:1fr;}}
+@media (max-width:640px){.office-subview{padding:14px;}.office-subview-head{align-items:flex-start;flex-direction:row;margin-bottom:14px;padding-bottom:14px;}.office-subview-head>div{min-width:0;}.office-subview-back{align-self:flex-start;margin-left:auto;}.office-subview-placeholder{min-height:220px;}.office-dashboard-toolbar{align-items:flex-start;flex-direction:column;}.office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}.office-dashboard-metric{padding:12px;}.office-dashboard-metric strong{font-size:24px;}.office-dashboard-grid,.office-integrations-grid{grid-template-columns:1fr;}}
 @media (prefers-reduced-motion:reduce){.office-subview,.office-dashboard-attention-card{transition:none;}.office-dashboard-floor-enter .office-stage,.office-dashboard-floor-enter .office-main{animation:none;}}
 .office-session-row{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:8px;background:none;color:var(--text);font-size:12px;cursor:pointer;}
 .office-session-row:hover{background:var(--surface-subtle);}
@@ -11774,7 +11772,6 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
   /* Dashboard / Integrations: no description line; the back button sits at
      the right of the title block, centred on it. */
   .office-subview-head{flex-direction:row;align-items:center;gap:12px;}
-  .office-subview-head p{display:none;}
   .office-subview-back{align-self:center;flex:0 0 30px;width:30px;height:30px;border-radius:8px;}
   .office-subview-back .work-hub-icon{width:15px;height:15px;}
   /* Integration cards hold their content on a phone; the desktop minimum height only left a blank band. */
@@ -15802,19 +15799,18 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .chat-usage-widget,.office-page-nav-btn,.office-page-nav-btn.is-active{background:transparent;box-shadow:none;}
 /* Office: no "Office" title bar above the page; the top bar already names it. */
 #mainOffice > .main-view-header{display:none;}
-/* The page's first line (OFFICE OVERVIEW) carries ~6px of leading above its
-   ink, so trim that from the top padding: the text then sits as far from the
-   top edge as from the left. */
-.office-subview{padding-top:calc(clamp(14px,2vw,28px) - 6px);}
-/* Dashboard head: the Projects/Business switch sits beside the back button
-   (no label row above the cards), and the cards sit as far below the divider
-   as the page's side padding. On a phone the switch takes its own row. */
-.office-subview-head>.office-subview-outlet{flex:0 0 auto;align-self:flex-start;margin:3px 0 0 auto;}
-.office-subview-head>.office-subview-outlet+.office-subview-back{margin-left:0;}
-.office-dashboard .office-subview-head{margin-bottom:clamp(14px,2vw,28px);}
+/* Dashboard / Integrations head: one line -- the title, then the
+   Projects/Business switch and the back button, both 30px tall. The line sits
+   the page's side padding from the top, and the divider has that same space
+   above and below it. On a phone the switch takes its own row. */
+.office-subview-head{align-items:center;gap:10px;padding-bottom:clamp(14px,2vw,28px);margin-bottom:clamp(14px,2vw,28px);}
+.office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;translate:0 -1px;}
+.office-subview-head>.office-subview-outlet{flex:0 0 auto;height:30px;box-sizing:border-box;}
+.office-subview-head>.office-subview-outlet .office-outlet-btn{height:100%;}
+.office-subview-head>.office-subview-back{flex:0 0 30px;width:30px;height:30px;border-radius:var(--office-control-radius,8px);}
+.office-subview-head>.office-subview-back .work-hub-icon{width:15px;height:15px;}
 @media (max-width:640px){
-  .office-dashboard .office-subview-head{flex-wrap:wrap;row-gap:14px;}
-  .office-dashboard .office-subview-head>div:first-child{flex:1 1 calc(100% - 46px);}
-  .office-subview-head>.office-subview-outlet{order:3;margin:0;}
-  .office-subview-head>.office-subview-outlet+.office-subview-back{margin-left:auto;}
+  .office-subview-head{flex-wrap:wrap;row-gap:14px;}
+  .office-subview-head>h1{flex-basis:calc(100% - 40px);}
+  .office-subview-head>.office-subview-outlet{order:3;}
 }
