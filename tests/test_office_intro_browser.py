@@ -1,9 +1,11 @@
-"""The Office floor's first reveal: stars first, then the floors.
+"""The Office floor's first reveal and its return.
 
 The stage is black space from the first frame. When the scene is ready the
-canvas fades in with only the stars lit; the platforms and the conductor
-(which outlet switches never fade) stay the backdrop colour for a beat and
-then rise out of the dark, and the floating cards wait for the same beat.
+canvas fades in with only the stars lit; the conductor and the floors stay
+the backdrop colour until the station powers up (its lights first, decks
+after), and the floating cards wait for the floors. Coming back to the page,
+the canvas stays hidden until it has drawn a fresh frame, so its stale
+drawing buffer never shows.
 """
 import pytest
 
@@ -42,7 +44,7 @@ def test_the_conductor_and_floors_stay_dark_until_the_stars_have_shown():
               s.start();
               await new Promise(r => setTimeout(r, 200));
               const stillHeld = brightest();
-              await new Promise(r => setTimeout(r, 3000));
+              await new Promise(r => setTimeout(r, 5000));
               const after = brightest();
               s.stop();
               canvas.remove();
@@ -67,6 +69,23 @@ def test_the_stage_is_black_and_the_cards_wait_for_the_floors():
             cards = page.evaluate("""() => { const d = document.querySelector('.office-stage.is-intro .office-dept-cards');
               return [getComputedStyle(d).opacity, d.getAnimations().map(a => a.animationName)]; }""")
             assert cards == ["0", ["office-intro-in"]], cards
+        finally:
+            page.evaluate("async () => { await switchPanel('chat'); }")
+            browser.close()
+
+
+def test_coming_back_hides_the_canvas_until_a_fresh_frame_is_drawn():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open(pw)
+        try:
+            page.evaluate("async () => { await switchPanel('office'); }")
+            page.wait_for_function("() => { const c = document.getElementById('officeCanvas'); return c && !c.classList.contains('is-mounting'); }", timeout=30000)
+            page.evaluate("async () => { await switchPanel('chat'); }")
+            away = page.evaluate("() => { const c = document.getElementById('officeCanvas'); return [c.classList.contains('is-waking'), getComputedStyle(c).opacity]; }")
+            assert away == [True, "0"], away
+            page.evaluate("async () => { await switchPanel('office'); }")
+            page.wait_for_function("() => !document.getElementById('officeCanvas').classList.contains('is-waking')", timeout=5000)
         finally:
             page.evaluate("async () => { await switchPanel('chat'); }")
             browser.close()

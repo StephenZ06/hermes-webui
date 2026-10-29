@@ -15835,13 +15835,26 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .drag-ghost.work-hub-card{background:var(--bg);}
 #mainNotebook .nb-search,#mainNotebook .nb-place-select .themed-select-trigger{background:transparent;}
 .nb-item{background:transparent;}
-.nb-item.active{background:transparent;border-color:color-mix(in srgb,var(--accent) 45%,transparent);}
+.nb-item.active{background:transparent;border-color:var(--accent);}
 .office-header > :is(.office-pill,.office-header-btn),.office-subview-back,.office-integration-action,.office-integration-settings{background:transparent;}
 /* Office load: the stage is black space from the first frame, the loader only
-   shows if the scene takes a while, and the floor arrives in two beats (the
-   stars, then the platforms and cards: playFloorIntro in office/index.js). */
+   shows if the scene takes a while and leaves at once when it is ready (its
+   blue atom sits over the conductor), and the floor powers up in stages
+   (playFloorIntro in office/index.js). Coming back to the page, the canvas
+   stays hidden until it has drawn a fresh frame (is-waking). */
 :root.dark .office-stage{background:#010104;}
+.office-loader{transition:opacity .12s ease,visibility 0s linear .12s;}
 .office-stage:has(> .office-canvas.is-mounting) .office-loader{transition:opacity .25s ease .6s,visibility 0s linear .6s;}
+.office-canvas.is-waking{opacity:0;transition:none;}
+.office-stage:has(> .office-canvas.is-waking) .office-dept-cards{opacity:0;transition:none;}
 .office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:office-intro-in .6s cubic-bezier(.22,.61,.36,1) var(--office-intro-delay,0ms) backwards;}
 @keyframes office-intro-in{from{opacity:0;}}
 @media (prefers-reduced-motion:reduce){.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:none;}}
+/* Work Hub board: the columns run into the canvas's bottom padding, so the
+   gap under them matches the 18px beside them (16px padding + the board's
+   2px); a horizontal scrollbar takes its height out of that gap
+   (syncBoardScrollbarGap in work-hub.js). */
+#workHubCanvas:has(> .work-hub-board-wrap){margin-bottom:-16px;}
+.work-hub-board-wrap{padding-bottom:calc(16px - var(--wh-scrollbar,0px));}
+/* Notes list: every note card has an outline; the open one's turns blue. */
+.nb-item{border-color:var(--border2);}

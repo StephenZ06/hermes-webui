@@ -1270,34 +1270,36 @@ export function createOfficeScene(canvas, options) {
   const _fadeBackdrop = new THREE.Color();
   function applyContentOpacity(k) {
     _fadeBackdrop.set(palette === PALETTES.dark ? SPACE_COLOR : LIGHT_SKY_COLOR);
-    const done = k >= 0.998;
     traverseContent(obj => {
       if (!obj.material) return;
-      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-      materials.forEach(m => {
-        const u = m.userData;
-        if (u.baseOpacity === undefined) {
-          u.baseOpacity = m.opacity;
-          u.baseTransparent = m.transparent;
-          if (m.color) u.baseColor = m.color.clone();
-          if (m.emissive) { u.baseEmissive = m.emissive.clone(); u.baseEmissiveIntensity = m.emissiveIntensity; }
-        }
-        if (done) { restoreMaterial(m); return; }
-        if (u.baseTransparent || m.isSpriteMaterial || !m.color) {
-          m.opacity = u.baseOpacity * k;
-          return;
-        }
-        if (m.emissive) {
-          m.color.copy(u.baseColor).multiplyScalar(k);
-          m.emissive.copy(u.baseEmissive).multiplyScalar(u.baseEmissiveIntensity * k)
-            .add(_fadeTmp.copy(_fadeBackdrop).multiplyScalar(1 - k));
-          m.emissiveIntensity = 1;
-        } else {
-          // Unlit: blend the colour itself toward the backdrop.
-          m.color.copy(_fadeBackdrop).lerp(u.baseColor, k);
-        }
-      });
+      (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => applyMaterialLevel(m, k));
     });
+  }
+  function noteMaterialBase(m) {
+    const u = m.userData;
+    if (u.baseOpacity !== undefined) return;
+    u.baseOpacity = m.opacity;
+    u.baseTransparent = m.transparent;
+    if (m.color) u.baseColor = m.color.clone();
+    if (m.emissive) { u.baseEmissive = m.emissive.clone(); u.baseEmissiveIntensity = m.emissiveIntensity; }
+  }
+  function applyMaterialLevel(m, k) {
+    const u = m.userData;
+    noteMaterialBase(m);
+    if (k >= 0.998) { restoreMaterial(m); return; }
+    if (u.baseTransparent || m.isSpriteMaterial || !m.color) {
+      m.opacity = u.baseOpacity * k;
+      return;
+    }
+    if (m.emissive) {
+      m.color.copy(u.baseColor).multiplyScalar(k);
+      m.emissive.copy(u.baseEmissive).multiplyScalar(u.baseEmissiveIntensity * k)
+        .add(_fadeTmp.copy(_fadeBackdrop).multiplyScalar(1 - k));
+      m.emissiveIntensity = 1;
+    } else {
+      // Unlit: blend the colour itself toward the backdrop.
+      m.color.copy(_fadeBackdrop).lerp(u.baseColor, k);
+    }
   }
   const _fadeTmp = new THREE.Color();
 
@@ -1318,6 +1320,8 @@ export function createOfficeScene(canvas, options) {
   }
 
   function setOutletTransition(fadingOut) {
+    // An outlet switch during the light-up takes over from it.
+    if (intro) { intro = null; introFade = true; }
     snapshotContentOpacity();
     const now = performance.now();
     // If a fade is already running, pick up from the current visual position
@@ -1348,20 +1352,111 @@ export function createOfficeScene(canvas, options) {
     }
   }
 
+  // ---- first light-up ----------------------------------------------------
+  // The floor's first reveal plays like a dark station powering up: the stars
+  // are lit at once; then the conductor's light strips flicker on, the bridge
+  // lights run outwards a segment at a time, the conductor's deck comes up,
+  // and each floor's lights flicker on, nearest first, its deck following.
+  // A "light" is a surface that glows (emissive, unlit or a sprite); the rest
+  // is deck. Each part is dark (the backdrop colour) until its moment.
+  let intro = null;
+  const INTRO_BRIDGE_SEGMENTS = 5;
+
+  function introHash(text) {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+    return ((h >>> 0) % 1000) / 1000;
+  }
+
+  function isLightMaterial(m) {
+    if (m.isSpriteMaterial) return true;
+    if (m.emissive) return m.emissiveIntensity * Math.max(m.emissive.r, m.emissive.g, m.emissive.b) > 0.2;
+    return !!m.color && (m.toneMapped === false || m.blending === THREE.AdditiveBlending);
+  }
+
+  // When (ms after the intro starts) each part comes on, and whether it
+  // flickers. Bridges count segments outwards from the conductor; floors come
+  // on nearest first.
+  function planIntro() {
+    const plan = [];
+    const centre = new THREE.Vector3();
+    new THREE.Box3().setFromObject(backdrop).getCenter(centre);
+    const pos = new THREE.Vector3();
+    const distanceOf = obj => { obj.getWorldPosition(pos); return Math.hypot(pos.x - centre.x, pos.z - centre.z); };
+    const add = (root, timing) => root.traverse(obj => {
+      if (!obj.material) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const light = materials.some(isLightMaterial);
+      const jitter = introHash(obj.uuid);
+      plan.push({ obj, materials, light, jitter, ...timing(obj, light, jitter) });
+    });
+    add(backdrop, (obj, light, jitter) => (light
+      ? { at: 150 + jitter * 120, flicker: true }
+      : { at: 1100 + jitter * 150, flicker: false }));
+    const bridges = new Set(walkways.values());
+    let farthest = 1;
+    bridges.forEach(bridge => bridge.traverse(obj => { if (obj.material) farthest = Math.max(farthest, distanceOf(obj)); }));
+    bridges.forEach(bridge => add(bridge, (obj, light) => {
+      const segment = Math.min(INTRO_BRIDGE_SEGMENTS - 1, Math.floor((distanceOf(obj) / farthest) * INTRO_BRIDGE_SEGMENTS));
+      return light ? { at: 600 + segment * 130, flicker: false } : { at: 1300 + segment * 60, flicker: false };
+    }));
+    // Everything else on the floor (platforms, desks, people) goes with the
+    // floor it stands on: ordered by the distance of its top-level group.
+    const groups = office.children.filter(child => !bridges.has(child));
+    const order = [...new Set(groups.map(g => Math.round(distanceOf(g))))].sort((a, b) => a - b);
+    groups.forEach(group => {
+      const rank = order.indexOf(Math.round(distanceOf(group)));
+      add(group, (obj, light, jitter) => (light
+        ? { at: 1350 + rank * 160 + jitter * 120, flicker: true }
+        : { at: 1650 + rank * 160 + jitter * 80, flicker: false }));
+    });
+    return plan;
+  }
+
+  // A tube light catching: on, off, a brighter on, a dip, then steady.
+  function flickerLevel(ms, jitter) {
+    const s = 1 + jitter * 0.6;
+    if (ms < 0) return 0;
+    if (ms < 50 * s) return 0.85;
+    if (ms < 110 * s) return 0.05;
+    if (ms < 150 * s) return 1;
+    if (ms < 240 * s) return 0.25;
+    return Math.min(1, 0.6 + (ms - 240 * s) / 400);
+  }
+  function rampLevel(ms) {
+    const t = Math.min(1, Math.max(0, ms / 450));
+    return t * t * (3 - 2 * t);
+  }
+
+  function advanceIntro(now) {
+    if (!intro) return;
+    _fadeBackdrop.set(palette === PALETTES.dark ? SPACE_COLOR : LIGHT_SKY_COLOR);
+    const elapsed = now - intro.startMs;
+    let finished = true;
+    intro.plan.forEach(part => {
+      const ms = elapsed - part.at;
+      const k = part.flicker ? flickerLevel(ms, part.jitter) : rampLevel(ms);
+      if (k < 0.998) finished = false;
+      part.materials.forEach(m => applyMaterialLevel(m, k));
+    });
+    if (finished) {
+      intro = null;
+      restoreContentOpacity();
+      introFade = false;
+    }
+  }
+
   /**
-   * The floor's first reveal: the stars are drawn at once and the platforms,
-   * bridges and conductor rise out of the dark `delayMs` later, over
-   * `durationMs`. Until then they render as the backdrop colour.
+   * Plays the light-up `delayMs` after the call (the stars show alone until
+   * then). Parts added while it runs simply appear lit.
    */
-  function playIntro(delayMs, durationMs) {
+  function playIntro(delayMs) {
     introFade = true;
+    outletTransition.active = false;
     snapshotContentOpacity();
-    outletTransition.startMs = performance.now() + Math.max(0, delayMs || 0);
-    outletTransition.durationMs = Math.max(1, durationMs || OUTLET_FADE_MS);
-    outletTransition.startK = 0;
-    outletTransition.endK = 1;
-    outletTransition.active = true;
-    applyContentOpacity(0);
+    intro = { startMs: performance.now() + Math.max(0, delayMs || 0), plan: planIntro() };
+    _fadeBackdrop.set(palette === PALETTES.dark ? SPACE_COLOR : LIGHT_SKY_COLOR);
+    intro.plan.forEach(part => part.materials.forEach(m => applyMaterialLevel(m, 0)));
   }
 
   /**
@@ -2230,7 +2325,8 @@ export function createOfficeScene(canvas, options) {
     advanceHover();
 
     if (tween) advanceTween(now || 0);
-    advanceOutletTransition(now || 0);
+    if (intro) advanceIntro(now || 0);
+    else advanceOutletTransition(now || 0);
     const dtMs = dt * 1000;
 
     // The adapter owns no timer, so its time-dependent poses (a tool call

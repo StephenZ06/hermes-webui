@@ -280,6 +280,20 @@
     document.querySelectorAll('[data-item-id]').forEach(button => { if (button.closest('.work-hub-cards') === column.querySelector('.work-hub-cards')) button.onclick = () => { store.selectedItemId = button.dataset.itemId; renderInspector(); }; });
     const board = column.closest('.work-hub-board'); if (board && board._bindCard) column.querySelectorAll('.work-hub-card').forEach(board._bindCard);
   }
+  // The columns run to the bottom of the page with the same gap below them as
+  // beside them. A horizontal scrollbar sits inside that gap instead of adding
+  // to it: its height (--wh-scrollbar) comes off the board's bottom padding.
+  let boardScrollbarObserver = null;
+  function syncBoardScrollbarGap(wrap) {
+    const update = () => wrap.style.setProperty('--wh-scrollbar', `${Math.max(0, wrap.offsetHeight - wrap.clientHeight)}px`);
+    if (boardScrollbarObserver) boardScrollbarObserver.disconnect();
+    if (typeof ResizeObserver === 'function') {
+      boardScrollbarObserver = new ResizeObserver(update);
+      boardScrollbarObserver.observe(wrap);
+      boardScrollbarObserver.observe(wrap.firstElementChild);
+    }
+    update();
+  }
   function renderCanvas(items) {
     const canvas = el('workHubCanvas'); if (!canvas) return;
     const oldWrap = canvas.querySelector('.work-hub-board-wrap');
@@ -317,6 +331,7 @@
     });
     boardWrap.appendChild(board);
     canvas.appendChild(boardWrap);
+    syncBoardScrollbarGap(boardWrap);
     if (prevWrap) {
       boardWrap.scrollLeft = prevWrap.left;
       boardWrap.querySelectorAll('.work-hub-column').forEach(col => { const cards = col.querySelector('.work-hub-cards'); if (cards && prevWrap.tops[col.dataset.status]) cards.scrollTop = prevWrap.tops[col.dataset.status]; });

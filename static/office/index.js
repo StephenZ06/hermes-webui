@@ -2362,6 +2362,7 @@ function suspend() {
   if (reset) resetOfficeToDefault();
   teardownObservers();
   try { _scene.stop(); } catch (_err) { /* already stopped */ }
+  hideCanvasWhileAway();
   _suspended = true;
   cancelSuspendTimer();
   _suspendTimer = setTimeout(() => { _suspendTimer = null; if (_suspended) { _suspended = false; unmount(); } }, SUSPEND_MS);
@@ -2382,20 +2383,37 @@ function revealMountedFloor(startedAt) {
   }));
 }
 
-// The floor arrives in two beats: the canvas fades in on the black stage with
-// only the stars lit, then the platforms, the conductor and the floating
-// cards rise out of the dark together.
-const INTRO_FLOORS_DELAY_MS = 380;
-const INTRO_FLOORS_FADE_MS = 900;
+// The floor's first reveal: the canvas fades in on the black stage with only
+// the stars lit, then the station powers up (scene.playIntro: the conductor's
+// lights, the bridges segment by segment, the decks, then each floor), and
+// the floating cards come in once the floors are lit.
+const INTRO_LIGHTS_DELAY_MS = 350;
+const INTRO_CARDS_AT_MS = 1900;
+const INTRO_CARDS_FADE_MS = 600;
 function playFloorIntro() {
   const stage = _canvas && _canvas.closest('.office-stage');
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced || !_scene || typeof _scene.playIntro !== 'function') return;
-  _scene.playIntro(INTRO_FLOORS_DELAY_MS, INTRO_FLOORS_FADE_MS);
+  _scene.playIntro(INTRO_LIGHTS_DELAY_MS);
   if (!stage) return;
-  stage.style.setProperty('--office-intro-delay', `${INTRO_FLOORS_DELAY_MS}ms`);
+  stage.style.setProperty('--office-intro-delay', `${INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS}ms`);
   stage.classList.add('is-intro');
-  window.setTimeout(() => stage.classList.remove('is-intro'), INTRO_FLOORS_DELAY_MS + INTRO_FLOORS_FADE_MS + 100);
+  window.setTimeout(() => stage.classList.remove('is-intro'), INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS + INTRO_CARDS_FADE_MS + 100);
+}
+
+// While the panel is away the canvas keeps its last drawing buffer, which the
+// browser may discard and show as a flat colour when the panel comes back. It
+// is hidden on leaving and shown again (fading in from the black stage) once
+// a fresh frame has been drawn.
+function hideCanvasWhileAway() {
+  if (_canvas) _canvas.classList.add('is-waking');
+}
+function wakeCanvas() {
+  if (!_canvas || !_canvas.classList.contains('is-waking')) return;
+  try { if (_scene) _scene.renderNow(); } catch (_err) { /* the loop draws it next frame */ }
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    if (_canvas) _canvas.classList.remove('is-waking');
+  }));
 }
 
 function mount(container) {
@@ -2412,6 +2430,7 @@ function mount(container) {
       _scene.applyTheme();
       _scene.syncOffice(activeAdapter().getState());
       _scene.start();
+      wakeCanvas();
       scheduleSync();
       return;
     }
@@ -2442,6 +2461,7 @@ function mount(container) {
     _scene.resize();
     _scene.applyTheme();
     _scene.start();
+    wakeCanvas();
     scheduleSync();
     return;
   }
