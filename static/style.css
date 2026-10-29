@@ -11787,9 +11787,9 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
      controls on a second row with the floor switch taking the free width. */
   .office-header{flex-wrap:wrap;row-gap:10px;column-gap:8px;padding:10px 14px 12px;}
   .office-header > .office-labels-btn{order:3;width:32px;height:30px;padding:0;border-radius:var(--office-control-radius,8px);}
-  .office-header > .office-outlet{order:4;flex:1 1 auto;border-radius:var(--office-control-radius,8px);}
+  .office-header > .office-outlet{order:5;flex:1 1 auto;border-radius:var(--office-control-radius,8px);}
   .office-header > .office-outlet .office-outlet-btn{height:28px;min-height:0;padding:0 13px;font-size:11px;line-height:1;border-radius:0;}
-  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:5;margin-left:auto;height:30px;min-height:0;border-radius:var(--office-control-radius,8px);padding:0 10px;font-size:11px;line-height:1;}
+  .office-header > #officeBackBtn,.office-header > #officePauseBtn{order:4;display:inline-flex;align-items:center;justify-content:center;height:30px;min-height:0;border-radius:var(--office-control-radius,8px);padding:0 10px;font-size:11px;line-height:1;}
   .office-header > .office-labels-btn:first-of-type{flex-basis:auto;}
   .office-header::after{content:"";order:2;flex-basis:100%;height:0;}
 }
@@ -15034,7 +15034,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* ── Work Hub polish ─────────────────────────────────────────────────────────
    Board columns share the Jobs pipeline's language: a status colour (--stage)
    on a 3px top edge, its dot, the drop target and the landing slot. */
-.work-hub-column{--stage:var(--muted);border:1px solid var(--border2);border-top:3px solid color-mix(in srgb,var(--stage) 80%,var(--border2));border-radius:12px;padding:10px;background:color-mix(in srgb,var(--surface) 55%,transparent);transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,opacity .18s ease;}
+.work-hub-column{--stage:var(--muted);border:1px solid var(--border2);border-top:3px solid color-mix(in srgb,var(--stage) 80%,var(--border2));border-radius:12px;padding:10px;background:transparent;transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,opacity .18s ease;}
 .work-hub-column[data-status="triage"]{--stage:var(--accent);}
 .work-hub-column[data-status="backlog"]{--stage:color-mix(in srgb,var(--muted) 85%,var(--text));}
 .work-hub-column[data-status="todo"]{--stage:#a78bfa;}
@@ -15042,6 +15042,8 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .work-hub-column[data-status="blocked"]{--stage:var(--error,#f07878);}
 .work-hub-column[data-status="done"]{--stage:var(--success,#4ade80);}
 .work-hub-column[data-status="cancelled"]{--stage:color-mix(in srgb,var(--muted) 60%,transparent);}
+/* Columns and list rows sit on the page background; only the cards fill. */
+.work-hub-list-row{background:transparent;}
 /* The status dot outside the board (list rows, the item panel, the
    workspace panel) takes the same colour as its column. */
 .work-hub-status.status-backlog{background:color-mix(in srgb,var(--muted) 85%,var(--text));}
@@ -15059,7 +15061,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .work-hub-board .work-hub-card.dragging{opacity:.38;transform:scale(.97);box-shadow:none;border-style:dashed;}
 .work-hub-board.is-dragging .work-hub-column:not(.can-drop){opacity:.55;}
 .work-hub-board.is-dragging .work-hub-column.can-drop{border-color:color-mix(in srgb,var(--stage) 45%,var(--border2));border-top-color:var(--stage);}
-.work-hub-column.drop-target{border-color:var(--stage)!important;background:color-mix(in srgb,var(--stage) 8%,var(--surface));box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 22%,transparent);}
+.work-hub-column.drop-target{border-color:var(--stage)!important;background:color-mix(in srgb,var(--stage) 8%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--stage) 22%,transparent);}
 .work-hub-cards > .drag-slot{margin:0;border-color:color-mix(in srgb,var(--stage) 65%,transparent);background:color-mix(in srgb,var(--stage) 9%,transparent);}
 .pipe-col-cards > .drag-slot,.work-hub-cards > .drag-slot{animation:drag-slot-open .2s cubic-bezier(.22,1,.36,1),drag-slot-breathe 1.6s ease-in-out .2s infinite;}
 @keyframes drag-slot-breathe{50%{background:color-mix(in srgb,var(--stage,var(--accent)) 15%,transparent);}}
@@ -15534,7 +15536,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .office-header > .office-labels-btn svg{width:14px;height:14px;}
   .office-header > .office-outlet{flex:0 0 auto;}
   .office-header > .office-outlet .office-outlet-btn{height:22px;min-height:0;padding:0 9px;line-height:1;}
-  .office-header > :is(#officeBackBtn,#officePauseBtn){margin-left:auto;}
+  .office-header > .office-outlet{margin-left:auto;}
 }
 /* Navigation motion.  Side panels fade up as the main view does when the
    rail switches pages; Notes drills into the Obsidian vault and back out,
@@ -15776,6 +15778,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    so they land on whole pixels in their 28px buttons. */
 .office-header > .office-pill,.office-header > .office-outlet .office-outlet-btn{padding-bottom:2px;}
 .office-header > #officePauseBtn{padding-top:2px;}
+@media (max-width:640px){.office-header > #officePauseBtn{padding-top:1px;}}
 .office-labels-btn svg{width:16px;height:16px;}
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){top:0;}
 /* Dashboard: the four metrics form one strip, as on the Jobs dashboard, with
@@ -15810,7 +15813,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-subview{--office-subview-gap:16px;padding-top:var(--office-subview-gap);}
 .office-dashboard-snapshot{margin-bottom:var(--office-subview-gap);}
 .office-subview-head{align-items:center;gap:10px;padding-bottom:var(--office-subview-gap);margin-bottom:var(--office-subview-gap);}
-.office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;translate:0 -1px;}
+.office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;translate:0 -1px;text-transform:uppercase;}
 .office-subview-head>.office-subview-outlet{flex:0 0 auto;height:30px;box-sizing:border-box;}
 .office-subview-head>.office-subview-outlet .office-outlet-btn{height:100%;}
 .office-subview-head>.office-subview-back{flex:0 0 30px;width:30px;height:30px;border-radius:var(--office-control-radius,8px);}
