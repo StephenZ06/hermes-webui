@@ -67,13 +67,17 @@ def test_a_render_that_keeps_the_same_conversation_does_not_glide(page):
 def test_inside_a_project_folder_the_copy_has_no_accent_bar(page):
     """Rows in a project folder show no accent bar, so the travelling copy draws none."""
     # Zeus 2.0 is the skin that gives active rows an accent bar.
-    out = page.evaluate("""() => {
+    out = page.evaluate("""async () => {
         document.documentElement.dataset.skin = 'zeus-2';
         document.documentElement.classList.add('dark');
         _allProjects = [{project_id: 'p1', name: 'Glide folder', workspace_path: '/workspace/glide'}];
         _allSessions.forEach(s => { s.project_id = 'p1'; });
         S.session = {session_id: 'glide1'};
+        // Open the folder, as it is when you pick a chat in it (a row hidden
+        // in a shut folder neither starts nor receives a glide).
+        localStorage.setItem('hermes-project-folders-expanded', JSON.stringify({p1: true}));
         renderSessionListFromCache();
+        await new Promise(r => setTimeout(r, 700));
         const folder = document.querySelector('.project-folder-sessions');
         S.session = {session_id: 'glide2'};
         renderSessionListFromCache();
@@ -89,11 +93,13 @@ def test_inside_a_project_folder_the_copy_has_no_accent_bar(page):
 
 def test_between_a_project_folder_and_conversations_it_fades_in_place(page):
     """No journey across sections: the new highlight fades in where it is."""
-    out = page.evaluate("""() => {
+    out = page.evaluate("""async () => {
         _allProjects = [{project_id: 'p1', name: 'Glide folder', workspace_path: '/workspace/glide'}];
         _allSessions[0].project_id = 'p1';
         S.session = {session_id: 'glide1'};
+        localStorage.setItem('hermes-project-folders-expanded', JSON.stringify({p1: true}));
         renderSessionListFromCache();
+        await new Promise(r => setTimeout(r, 700));
         const startedInFolder = !!document.querySelector(".project-folder-sessions .session-item.active[data-sid='glide1']");
         S.session = {session_id: 'glide3'};
         renderSessionListFromCache();

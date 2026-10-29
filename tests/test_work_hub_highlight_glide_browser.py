@@ -58,3 +58,68 @@ def test_from_a_filter_to_a_project_folder_it_fades_in_place(page):
     page.wait_for_timeout(600)
     out = page.evaluate(_CLICK, ".work-hub-project-tile")
     assert out["glides"] == 0 and out["fades"] >= 1, out
+
+
+def _make_two_projects(page):
+    """Project A with two boards and project B with one."""
+    return page.evaluate("""async () => {
+        const make = async name => (await api('/api/projects/create', {method: 'POST',
+            body: JSON.stringify({name, work_hub_managed: true})})).project.project_id;
+        const a = await make('Glide A'), b = await make('Glide B');
+        let rev = (await api('/api/work_hub/bootstrap')).revision || 0;
+        const board = async (name, project_id) => {
+            const r = await api('/api/work_hub/boards/create', {method: 'POST',
+                body: JSON.stringify({board: {name, project_id}, expected_revision: rev})});
+            rev = r.revision || rev; return r.board.id; };
+        const a1 = await board('A one', a), a2 = await board('A two', a), b1 = await board('B one', b);
+        await loadWorkHubPanel();
+        return {a, b, a1, a2, b1};
+    }""")
+
+
+def _drop_projects(page, ids):
+    page.evaluate("""async (ids) => { for (const id of ids)
+        await api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: id})}); }""", ids)
+
+
+_GLIDES = """(selector) => {
+    const seen = new MutationObserver(() => {});
+    seen.observe(document.body, {childList: true});
+    document.querySelector(selector).click();
+    const glides = seen.takeRecords().flatMap(m => [...m.addedNodes])
+        .filter(n => n.classList && n.classList.contains('sidebar-highlight-glide')).length;
+    seen.disconnect();
+    const button = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
+    const nudged = button ? button.getAnimations({subtree: true})
+        .filter(a => (a.effect.getKeyframes()[0] || {}).transform?.startsWith('translateX')).length : 0;
+    return {glides, nudged};
+}"""
+
+
+def test_board_to_board_moves_only_the_highlight(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        page.evaluate(_GLIDES, f"[data-board-id='{ids['a1']}']")
+        page.wait_for_timeout(500)
+        out = page.evaluate(_GLIDES, f"[data-board-id='{ids['a2']}']")
+        assert out == {"glides": 1, "nudged": 0}, out
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_to_a_folder_whose_board_is_tucked_away_only_one_highlight_moves(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        page.evaluate(_GLIDES, f"[data-board-id='{ids['a2']}']")
+        page.wait_for_timeout(500)
+        out = page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['b']}']")
+        board_shown = page.evaluate("""(id) => { const b = document.querySelector(`.work-hub-board-row.active > button[data-board-id='${id}']`);
+            if (!b) return false; const r = b.getBoundingClientRect(), f = b.closest('.work-hub-project-boards').getBoundingClientRect();
+            return f.height > r.height * 0.6; }""", ids["b1"])
+        assert out["glides"] == (2 if board_shown else 1), (out, board_shown)
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])

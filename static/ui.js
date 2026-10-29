@@ -9471,14 +9471,43 @@ window.playListItemChange=playListItemChange;
 // highlight fades in where it is and the old one fades out. The row's text
 // eases to and from the active inset instead of jumping sideways. All of it
 // is transform/opacity, so it stays smooth while the page loads what was
-// picked. opts: {selector (the active highlight element), key(el) -> id,
-// find(root, id) -> element for that id, section(el) -> name, bounds (the
-// scrolling list, clips where the copy starts)}.
+// picked. A row hidden inside a shut folder or scrolled out of sight neither
+// starts nor receives a glide. opts: {selector (the active highlight
+// element), key(el) -> id, find(root, id) -> element for that id,
+// section(el) -> name, bounds (the scrolling list, clips where the copy
+// starts), restSelector (optional: a resting sibling row, for rows whose
+// active inset differs and whose text should ease across)}.
 function _highlightReducedMotion(){
   try{ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; }
 }
+// How much of an element is really on screen: clipped by every ancestor that
+// hides its overflow (a collapsed project folder, a scrolled list).
+function _shownHeight(el){
+  const rect=el.getBoundingClientRect();
+  let top=rect.top,bottom=rect.bottom;
+  for(let node=el.parentElement;node&&node!==document.body;node=node.parentElement){
+    const style=getComputedStyle(node);
+    if(style.display==='none'||style.visibility==='hidden') return 0;
+    if(style.overflowY==='visible'&&style.overflowX==='visible') continue;
+    const box=node.getBoundingClientRect();
+    top=Math.max(top,box.top); bottom=Math.min(bottom,box.bottom);
+    if(bottom<=top) return 0;
+  }
+  return bottom-top;
+}
+// A highlight only glides from and to a row that is really showing: a board
+// inside a folder that is shut keeps its .active class but is not seen.
+function _highlightShown(el){
+  const height=el.getBoundingClientRect().height;
+  return height>0&&_shownHeight(el)>=height*0.6;
+}
+// The same row can be drawn twice (a chat in its folder and in its date
+// group); the highlight that counts is the one on screen.
+function _shownActive(root, selector){
+  return root?[...root.querySelectorAll(selector)].find(_highlightShown)||null:null;
+}
 function noteActiveHighlight(root, opts){
-  const el=root&&root.querySelector(opts.selector);
+  const el=_shownActive(root,opts.selector);
   if(!el) return null;
   const rect=el.getBoundingClientRect();
   if(!rect.height) return null;
@@ -9497,16 +9526,18 @@ function _easeHighlightInset(el,fromPad,toPad,duration){
 }
 function playActiveHighlightGlide(root, from, opts){
   if(!from||!root||_highlightReducedMotion()) return;
-  const el=root.querySelector(opts.selector);
+  const el=_shownActive(root,opts.selector);
   if(!el||opts.key(el)===from.key) return;
   const to=el.getBoundingClientRect();
   const bounds=(opts.bounds||root).getBoundingClientRect();
   if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
   const oldEl=opts.find(root,from.key);
   const style=getComputedStyle(el);
-  const rest=el.parentElement&&[...el.parentElement.children].find(child=>child!==el&&child.matches(opts.restSelector||'*')&&child.tagName===el.tagName);
-  const restPad=(rest?getComputedStyle(rest):(oldEl?getComputedStyle(oldEl):style)).paddingLeft;
-  const oldRestPad=oldEl?getComputedStyle(oldEl).paddingLeft:'';
+  // Only rows whose active inset differs from a resting row's (opts.restSelector,
+  // Chat's accent-bar rows) ease their text sideways; others keep still.
+  const rest=opts.restSelector&&el.parentElement&&[...el.parentElement.children].find(child=>child!==el&&child.matches(opts.restSelector));
+  const restPad=rest?getComputedStyle(rest).paddingLeft:'';
+  const oldRestPad=rest&&oldEl?getComputedStyle(oldEl).paddingLeft:'';
   if(from.section!==opts.section(el)){
     // Between sections: no journey across the panel, just a quiet hand-over.
     const fade=260;
