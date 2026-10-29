@@ -38,7 +38,7 @@ _GLIDES = """async (selector) => {
     // Opening a note renders the side panel after a fetch, so collect for a while.
     const glides = [];
     const seen = new MutationObserver(records => records.forEach(m => m.addedNodes.forEach(n => {
-        if (n.classList && n.classList.contains('sidebar-highlight-glide')) glides.push(n); })));
+        if (n.matches && (n.matches('.sidebar-highlight-glide') || n.querySelector('.sidebar-highlight-glide'))) glides.push(n); })));
     seen.observe(document.body, {childList: true});
     document.querySelector(selector).click();
     await new Promise(r => setTimeout(r, 400));

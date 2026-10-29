@@ -15865,6 +15865,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    wait under it, keeping only their transform transition (row reflow). */
 .sidebar-highlight-glide{position:fixed;z-index:40;pointer-events:none;margin:0;box-sizing:border-box;transform-origin:50% 0;will-change:transform;}
 .sidebar-highlight-glide>i{position:absolute;display:block;}
+.sidebar-highlight-glide-layer{position:fixed;inset:0;z-index:40;pointer-events:none;}
+.sidebar-highlight-glide-layer>.sidebar-highlight-glide{position:absolute;}
 .is-highlight-arriving{background:transparent!important;transition-property:transform!important;}
 .is-highlight-arriving::before{opacity:0!important;}
 /* Background delegation card: the body slides open and shut (as the tool

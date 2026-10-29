@@ -9476,7 +9476,9 @@ window.playListItemChange=playListItemChange;
 // element), key(el) -> id, find(root, id) -> element for that id,
 // section(el) -> name, bounds (the scrolling list, clips where the copy
 // starts), restSelector (optional: a resting sibling row, for rows whose
-// active inset differs and whose text should ease across)}.
+// active inset differs and whose text should ease across), occlude
+// (optional: a selector for the project folder rows the copy must not show
+// over on its way)}.
 function _highlightReducedMotion(){
   try{ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; }
 }
@@ -9572,7 +9574,24 @@ function playActiveHighlightGlide(root, from, opts){
   const lead=dy<0
     ? {top:dy*0.62,height:to.height-dy*0.62}
     : {top:0,height:to.height+dy*0.62};
-  document.body.appendChild(glide);
+  // Project folder rows (opts.occlude) are see-through, so the copy cannot
+  // pass beneath them: it is cut away wherever it crosses one, through a
+  // viewport-sized layer whose clip-path has a hole for each folder row.
+  const low=Math.min(startTop,to.top),high=Math.max(startTop,to.top)+to.height;
+  const holes=opts.occlude?[...root.querySelectorAll(opts.occlude)].filter(_highlightShown)
+    .map(node=>node.getBoundingClientRect()).filter(r=>r.bottom>low&&r.top<high):[];
+  let layer=glide;
+  if(holes.length){
+    layer=document.createElement('div');
+    layer.className='sidebar-highlight-glide-layer';
+    layer.setAttribute('aria-hidden','true');
+    const w=window.innerWidth,h=window.innerHeight;
+    // Each hole reaches 3px past its row, so no sliver shows in the gaps
+    // between neighbouring folders.
+    layer.style.clipPath=`path(evenodd,'M0 0H${w}V${h}H0Z${holes.map(r=>`M${r.left} ${r.top-3}H${r.right}V${r.bottom+3}H${r.left}Z`).join('')}')`;
+    layer.appendChild(glide);
+  }
+  document.body.appendChild(layer);
   el.classList.add('is-highlight-arriving');
   const duration=Math.round(240+Math.min(180,span*0.35));
   _easeHighlightInset(el,restPad,style.paddingLeft,duration);
@@ -9591,7 +9610,7 @@ function playActiveHighlightGlide(root, from, opts){
     el.classList.remove('is-highlight-arriving');
     void el.offsetWidth;
     el.style.transitionProperty='';
-    glide.remove();
+    layer.remove();
   };
   try{
     const anim=glide.animate(frames,{duration,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});

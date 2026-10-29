@@ -168,6 +168,7 @@
       ? root.querySelector(`.work-hub-board-row > button[data-board-id="${CSS.escape(id.slice(6))}"]`)
       : root.querySelector(`.work-hub-scope[data-scope="${CSS.escape(id)}"]`)),
     section: node => (node.classList.contains('work-hub-scope') ? 'filters' : 'workspaces'),
+    occlude: '.work-hub-project-tile',
   };
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;

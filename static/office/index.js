@@ -1877,6 +1877,7 @@ const SIDEBAR_HIGHLIGHT = {
   key: node => node.dataset.parentId,
   find: (root, id) => root.querySelector(`.office-session-row[data-parent-id="${CSS.escape(id)}"]`),
   section: node => (node.closest('.project-folder-sessions') ? 'workspaces' : 'history'),
+  occlude: '.office-project-folder',
 };
 // Mark the run on view in the side panel, gliding the highlight to it. The
 // folder rows are updated in place so an open/close transition is not cut.

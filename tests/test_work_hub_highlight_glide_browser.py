@@ -40,7 +40,8 @@ _CLICK = """(selector) => {
     seen.observe(document.body, {childList: true});
     document.querySelector(selector).click();
     const glides = seen.takeRecords().flatMap(m => [...m.addedNodes])
-        .filter(n => n.classList && n.classList.contains('sidebar-highlight-glide')).length;
+        
+        .filter(n => n.matches && (n.matches('.sidebar-highlight-glide') || n.querySelector('.sidebar-highlight-glide'))).length;
     seen.disconnect();
     const active = document.querySelector('.work-hub-scope.active, .work-hub-project-tile.active');
     return {glides, active: active && active.dataset.scope, fades: active ? active.getAnimations().length : 0};
@@ -95,7 +96,8 @@ _GLIDES = """(selector) => {
     seen.observe(document.body, {childList: true});
     document.querySelector(selector).click();
     const glides = seen.takeRecords().flatMap(m => [...m.addedNodes])
-        .filter(n => n.classList && n.classList.contains('sidebar-highlight-glide')).length;
+        
+        .filter(n => n.matches && (n.matches('.sidebar-highlight-glide') || n.querySelector('.sidebar-highlight-glide'))).length;
     seen.disconnect();
     const button = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
     const nudged = button ? button.getAnimations({subtree: true})
@@ -185,5 +187,28 @@ def test_one_highlight_between_filters_and_boards(page):
             boards: document.querySelectorAll('.work-hub-board-row.active').length, tiles: document.querySelectorAll('.work-hub-project-tile.active').length})""")
         assert on_board == {"scopes": 0, "boards": 1, "tiles": 0}, on_board
         assert on_all == {"scopes": 1, "boards": 0, "tiles": 0}, on_all
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_the_highlight_is_hidden_where_it_crosses_a_folder(page):
+    """Folders are see-through, so the travelling copy is cut away over each
+    folder row it passes instead of showing across it."""
+    ids = _make_two_projects(page)
+    try:
+        for target in (f".work-hub-project-tile[data-scope='{ids['a']}']", f".work-hub-project-tile[data-scope='{ids['b']}']", f"[data-board-id='{ids['a1']}']"):
+            page.evaluate(_GLIDES, target)
+            page.wait_for_timeout(400)
+        out = page.evaluate("""(ids) => {
+            document.querySelector(`[data-board-id='${ids.b1}']`).click();
+            const layer = document.querySelector('.sidebar-highlight-glide-layer');
+            const tile = document.querySelector(`.work-hub-project-tile[data-scope='${ids.b}']`).getBoundingClientRect();
+            return {layer: !!layer, inside: !!(layer && layer.querySelector('.sidebar-highlight-glide')),
+                    clip: layer ? layer.style.clipPath : '', hole: `M ${tile.left} ${tile.top - 3} H ${tile.right}`};
+        }""", ids)
+        assert out["layer"] and out["inside"], out
+        assert out["clip"].startswith("path(evenodd") and out["hole"] in out["clip"], out
+        page.wait_for_timeout(700)
+        assert page.evaluate("() => document.querySelectorAll('.sidebar-highlight-glide-layer, .sidebar-highlight-glide').length") == 0
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])

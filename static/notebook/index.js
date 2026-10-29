@@ -301,6 +301,7 @@
       ? root.querySelector(`.nb-tree-note > button[data-nb-open="${CSS.escape(id.slice(5))}"]`)
       : root.querySelector(`.nb-scope[data-nb-scope="${CSS.escape(id.slice(6))}"]`)),
     section: (node) => (node.classList.contains('nb-scope') ? 'filters' : 'workspaces'),
+    occlude: '.nb-place-btn',
   };
   function renderSidebar() {
     const side = $('notebookSidebar');

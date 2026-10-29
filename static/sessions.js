@@ -4137,6 +4137,7 @@ const _SESSION_HIGHLIGHT={
   selector:'.session-item.active[data-sid]',
   restSelector:'.session-item:not(.active)',
   key:row=>row.dataset.sid,
+  occlude:'.project-folder-row',
   find:(list,sid)=>list.querySelector(`.session-item[data-sid="${CSS.escape(sid)}"]`),
   section:_sessionHighlightSection,
 };
