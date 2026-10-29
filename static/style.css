@@ -15858,3 +15858,21 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .work-hub-board-wrap{padding-bottom:calc(16px - var(--wh-scrollbar,0px));}
 /* Notes list: every note card has an outline; the open one's turns blue. */
 .nb-item{border-color:var(--border2);}
+/* Chat sidebar: the active conversation's highlight glides to the row picked
+   (_playSessionHighlightGlide in sessions.js). The travelling copy sits above
+   the rows without taking clicks; the new row's own fill waits under it. */
+.session-highlight-glide{position:fixed;z-index:40;pointer-events:none;margin:0;box-sizing:border-box;transform-origin:50% 0;will-change:transform;}
+.session-highlight-glide>i{position:absolute;display:block;}
+.session-item.active.is-highlight-arriving{background:transparent!important;transition:transform .5s cubic-bezier(.22,.61,.36,1)!important;}
+.session-item.active.is-highlight-arriving::before{opacity:0;}
+/* Background delegation card: the body slides open and shut (as the tool
+   cards do) instead of snapping. */
+.async-delegation-card{interpolate-size:allow-keywords;}
+.async-delegation-card::details-content{height:0;opacity:0;overflow:clip;transition:height .26s cubic-bezier(.22,1,.36,1),opacity .2s ease,content-visibility .26s allow-discrete;}
+.async-delegation-card[open]::details-content{height:auto;opacity:1;}
+.async-delegation-summary{transition:color .15s ease,background-color .15s ease;}
+.async-delegation-summary:hover{background:color-mix(in srgb,var(--accent) 6%,transparent);}
+@media (prefers-reduced-motion:reduce){
+  .async-delegation-card::details-content{transition:none;}
+  .session-highlight-glide{display:none;}
+}

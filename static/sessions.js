@@ -4128,6 +4128,74 @@ function _captureSessionReflowPositions(){
   return positions;
 }
 
+// The active conversation's highlight glides from the row it left to the row
+// picked instead of jumping. The rows are rebuilt on every render, so the old
+// row's place is noted first; afterwards a copy of the highlight (its fill and
+// accent bar, read from the row's own style) travels between the two places,
+// its leading edge reaching ahead and the trailing edge catching up, while the
+// new row's own highlight waits underneath.
+function _captureActiveSessionHighlight(list){
+  const row=list&&list.querySelector('.session-item.active[data-sid]');
+  if(!row) return null;
+  const rect=row.getBoundingClientRect();
+  return rect.height?{sid:row.dataset.sid,top:rect.top,height:rect.height}:null;
+}
+
+function _playSessionHighlightGlide(from){
+  if(!from||_sessionPrefersReducedMotion()) return;
+  const list=$('sessionList');
+  const row=list&&list.querySelector('.session-item.active[data-sid]');
+  if(!row||row.dataset.sid===from.sid) return;
+  const to=row.getBoundingClientRect();
+  const bounds=list.getBoundingClientRect();
+  if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
+  const style=getComputedStyle(row);
+  const bar=getComputedStyle(row,'::before');
+  const glide=document.createElement('div');
+  glide.className='session-highlight-glide';
+  glide.setAttribute('aria-hidden','true');
+  glide.style.cssText=`left:${to.left}px;width:${to.width}px;top:${to.top}px;height:${to.height}px;`
+    +`background:${style.backgroundColor};border-radius:${style.borderRadius};`;
+  if(bar.content&&bar.content!=='none'&&bar.backgroundColor!=='rgba(0, 0, 0, 0)'){
+    const mark=document.createElement('i');
+    mark.style.cssText=`left:${bar.left};top:${bar.top};bottom:${bar.bottom};width:${bar.width};background:${bar.backgroundColor};border-radius:${bar.borderRadius};`;
+    glide.appendChild(mark);
+  }
+  // Transform only (translate + stretch), so it runs on the compositor and
+  // stays smooth while the picked conversation loads on the main thread. A
+  // row that was scrolled out of view starts from the list's edge.
+  const startTop=Math.max(bounds.top-to.height,Math.min(bounds.bottom,from.top));
+  const dy=startTop-to.top;
+  const span=Math.abs(dy);
+  const lead=dy<0
+    ? {top:dy*0.62,height:to.height-dy*0.62}
+    : {top:0,height:to.height+dy*0.62};
+  document.body.appendChild(glide);
+  row.classList.add('is-highlight-arriving');
+  const duration=Math.round(240+Math.min(180,span*0.35));
+  const frames=[
+    {transform:`translateY(${dy}px) scaleY(${from.height/to.height})`},
+    {transform:`translateY(${lead.top}px) scaleY(${lead.height/to.height})`,offset:0.55},
+    {transform:'translateY(0) scaleY(1)'},
+  ];
+  let done=false;
+  const finish=()=>{
+    if(done) return;
+    done=true;
+    // The row's own highlight takes over in the same frame, with no fade.
+    row.style.transitionProperty='transform';
+    row.classList.remove('is-highlight-arriving');
+    void row.offsetWidth;
+    row.style.transitionProperty='';
+    glide.remove();
+  };
+  try{
+    const anim=glide.animate(frames,{duration,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});
+    anim.finished.then(finish,finish);
+  }catch(_){ finish(); return; }
+  setTimeout(finish,duration+200);
+}
+
 function _waitForSessionMotion(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
 }
@@ -7964,6 +8032,7 @@ function renderSessionListFromCache(){
   const committedSwipeDuration=_sessionPrefersReducedMotion()?0:SESSION_SWIPE_DURATION_MS;
   const committedSwipeReflowDelay=Math.max(0,committedSwipeDuration-SESSION_SWIPE_REFLOW_LEAD_MS);
   const listScrollTopBeforeRender=list.scrollTop||0;
+  const highlightFrom=_captureActiveSessionHighlight(list);
   // The Workspaces section (heading + conversation filter) survives renders as
   // the same node, and is never taken out of the page: removing a focused
   // field blurs it, which on a phone closes the keyboard after every letter
@@ -8445,6 +8514,7 @@ function renderSessionListFromCache(){
   const reflowTimeout=animateRefresh?SESSION_LIST_FLIP_TIMEOUT_MS:SESSION_REFLOW_TIMEOUT_MS;
   _pendingSessionReflowPositions=null;
   _playSessionRowsReflowFromPositions(reflowBefore,reflowTimeout,_sessionPrefersReducedMotion);
+  _playSessionHighlightGlide(highlightFrom);
 
   function _renderOneSession(s, isPinnedGroup=false){
     const el=document.createElement('div');
