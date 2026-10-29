@@ -125,3 +125,23 @@ def test_switching_items_leaves_action_buttons_and_the_quest_row_still(board):
     assert "…" not in out["first"] and out["later"] == [], out
     assert out["linkButton"], out  # the linked value did change, with its button
     assert out["buttons"] == [], out
+
+
+def test_the_quest_action_sits_at_the_right_edge_like_link_current_chat(board):
+    page, _ = board
+    page.click(".work-hub-card >> nth=0")
+    page.wait_for_timeout(500)
+    out = page.evaluate("""() => { const row = document.getElementById('workHubQuest'); const c = getComputedStyle(row);
+        return {button: Math.round(document.getElementById('workHubQuestToggle').getBoundingClientRect().right),
+                edge: Math.round(row.getBoundingClientRect().right)}; }""")
+    assert abs(out["button"] - out["edge"]) <= 1, out
+
+
+def test_link_current_chat_stays_inside_a_narrow_panel(board):
+    page, _ = board
+    page.evaluate("async () => { S.session = (await api('/api/session/new', {method: 'POST', body: JSON.stringify({})})).session; }")
+    page.click(".work-hub-card >> nth=0")
+    page.wait_for_timeout(500)
+    out = page.evaluate("""() => { const button = document.getElementById('workHubLinkChat'), row = button.parentElement;
+        return {button: Math.round(button.getBoundingClientRect().right), row: Math.round(row.getBoundingClientRect().right)}; }""")
+    assert out["button"] <= out["row"], out

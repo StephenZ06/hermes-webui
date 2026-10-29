@@ -15752,11 +15752,17 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){
   #workHubCanvas.is-entering-all *,.work-hub-create-menu.is-leaving,.work-hub-project-picker,.goal-planner-overlay,.goal-planner-overlay .goal-planner-dialog{animation:none!important;}
 }
-/* Quest row: the action drops under the state when the panel is too narrow
-   for both, instead of running past the panel's edge. */
-.work-hub-inspector #workHubQuest{flex-wrap:wrap;justify-content:flex-start;column-gap:12px;row-gap:0;}
-.work-hub-inspector #workHubQuest > span{white-space:nowrap;}
-.work-hub-inspector #workHubQuest > .wh-insp-inline{margin-left:-6px;}
+/* A value row's action ("Link current chat", "Add to quests", "Remove") sits
+   at the row's right edge, and drops under the value (still at the right)
+   when the panel is too narrow for both, instead of running past its edge. */
+.work-hub-inspector .wh-insp-static{flex-wrap:wrap;column-gap:12px;row-gap:0;}
+.work-hub-inspector .wh-insp-static > span{white-space:nowrap;}
+/* The button's own right padding hangs into the row's, so its text ends where
+   the dropdown values do and "Link current chat" fits the default panel. */
+.work-hub-inspector .wh-insp-static > .wh-insp-inline{margin-left:auto;margin-right:-8px;}
+/* The longest label ("Hermes agent") is under 80px; the narrower label column
+   gives the values the room. */
+.work-hub-inspector .wh-insp-prop{grid-template-columns:88px minmax(0,1fr);}
 /* Plan goal: title 1px lower, the actions 2px lower. */
 .goal-planner-head h3{position:relative;top:1px;}
 .goal-planner-actions > button{position:relative;top:2px;}
