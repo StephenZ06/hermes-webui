@@ -123,3 +123,44 @@ def test_to_a_folder_whose_board_is_tucked_away_only_one_highlight_moves(page):
         assert out["glides"] == (2 if board_shown else 1), (out, board_shown)
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_opening_a_folder_selects_its_top_board_and_only_that_board(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['b']}']")
+        page.wait_for_timeout(500)
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        out = page.evaluate("""() => [...document.querySelectorAll('.work-hub-board-row.active > button[data-board-id]')].map(b => b.dataset.boardId)""")
+        assert out == [ids["a1"]], (out, ids)
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_at_rest_the_board_highlight_reaches_the_row_edge(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.mouse.move(5, 5)
+        page.wait_for_timeout(500)
+        gap = page.evaluate("""() => { const b = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
+            const row = b.closest('.work-hub-board-row').getBoundingClientRect();
+            return Math.round(row.right - b.getBoundingClientRect().right); }""")
+        assert gap <= 1, gap
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_opening_a_folder_leaves_one_folder_highlight_and_no_filter_highlight(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_CLICK, ".work-hub-scope[data-scope='all']")
+        page.wait_for_timeout(500)
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        out = page.evaluate("""() => ({scopes: [...document.querySelectorAll('.work-hub-scope.active')].length,
+            tiles: [...document.querySelectorAll('.work-hub-project-tile.active')].map(t => [t.dataset.scope, getComputedStyle(t).backgroundColor])})""")
+        assert out["scopes"] == 0, out
+        assert out["tiles"] == [[ids["a"], "rgba(0, 0, 0, 0)"]], out
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])

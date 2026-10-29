@@ -15877,3 +15877,16 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .async-delegation-card::details-content{transition:none;}
   .sidebar-highlight-glide{display:none;}
 }
+/* Work Hub boards: with a mouse, a board's rename and delete buttons take no
+   room until the row is hovered or focused, so its highlight reaches the
+   row's edge at rest and draws back as the buttons slide in. Touch screens
+   keep them in place. */
+@media (hover:hover) and (pointer:fine){
+  .work-hub-board-row .work-hub-board-rename,.work-hub-board-row .work-hub-board-delete{flex:none;width:0;margin-left:-3px;overflow:hidden;transition:width .2s cubic-bezier(.22,1,.36,1),margin-left .2s cubic-bezier(.22,1,.36,1),opacity .15s ease;}
+  .work-hub-board-row:is(:hover,:focus-within) .work-hub-board-rename,.work-hub-board-row:is(:hover,:focus-within) .work-hub-board-delete{width:28px;margin-left:0;}
+}
+@media (prefers-reduced-motion:reduce){.work-hub-board-row .work-hub-board-rename,.work-hub-board-row .work-hub-board-delete{transition:none;}}
+/* Work Hub project folders: the open folder is marked by a blue outline only
+   (the board inside it carries the fill), hovered or not. */
+.work-hub-project-tile.active,.work-hub-project-tile.active:hover{background:transparent;color:var(--text);border-color:var(--accent);}
+.work-hub-project-tile.active .work-hub-project-count{color:var(--muted);}

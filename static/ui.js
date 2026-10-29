@@ -9476,7 +9476,10 @@ window.playListItemChange=playListItemChange;
 // element), key(el) -> id, find(root, id) -> element for that id,
 // section(el) -> name, bounds (the scrolling list, clips where the copy
 // starts), restSelector (optional: a resting sibling row, for rows whose
-// active inset differs and whose text should ease across)}.
+// active inset differs and whose text should ease across), outline
+// (optional {match, rest}: for elements matching `match` the highlight is
+// an outline; the copy carries it, and the picked element keeps the border
+// colour of a resting `rest` element until the copy lands)}.
 function _highlightReducedMotion(){
   try{ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; }
 }
@@ -9538,9 +9541,12 @@ function playActiveHighlightGlide(root, from, opts){
   const rest=opts.restSelector&&el.parentElement&&[...el.parentElement.children].find(child=>child!==el&&child.matches(opts.restSelector));
   const restPad=rest?getComputedStyle(rest).paddingLeft:'';
   const oldRestPad=rest&&oldEl?getComputedStyle(oldEl).paddingLeft:'';
+  const restOutline=opts.outline&&el.matches(opts.outline.match)&&root.querySelector(opts.outline.rest);
+  const restBorder=restOutline?getComputedStyle(restOutline).borderTopColor:'';
   if(from.section!==opts.section(el)){
     // Between sections: no journey across the panel, just a quiet hand-over.
     const fade=260;
+    if(restBorder){ try{ el.animate([{borderColor:restBorder},{borderColor:style.borderTopColor}],{duration:fade,easing:'ease-out'}); }catch(_){} }
     _easeHighlightInset(el,restPad,style.paddingLeft,fade);
     _easeHighlightInset(oldEl,from.paddingLeft,oldRestPad,fade);
     try{
@@ -9555,7 +9561,8 @@ function playActiveHighlightGlide(root, from, opts){
   glide.className='sidebar-highlight-glide';
   glide.setAttribute('aria-hidden','true');
   glide.style.cssText=`left:${to.left}px;width:${to.width}px;top:${to.top}px;height:${to.height}px;`
-    +`background:${style.backgroundColor};border-radius:${style.borderRadius};`;
+    +`background:${style.backgroundColor};border-radius:${style.borderRadius};`
+    +(restBorder?`border:${style.borderTopWidth} solid ${style.borderTopColor};`:'');
   // Only a bar the element really shows (rows inside a project folder hide
   // theirs with display:none): the copy must not draw one that then vanishes.
   const barShown=bar.content&&bar.content!=='none'&&bar.display!=='none'&&bar.visibility!=='hidden'
@@ -9574,6 +9581,7 @@ function playActiveHighlightGlide(root, from, opts){
     : {top:0,height:to.height+dy*0.62};
   document.body.appendChild(glide);
   el.classList.add('is-highlight-arriving');
+  if(restBorder) el.style.borderColor=restBorder;
   const duration=Math.round(240+Math.min(180,span*0.35));
   _easeHighlightInset(el,restPad,style.paddingLeft,duration);
   _easeHighlightInset(oldEl,from.paddingLeft,oldRestPad,duration);
@@ -9589,6 +9597,7 @@ function playActiveHighlightGlide(root, from, opts){
     // The element's own highlight takes over in the same frame, with no fade.
     el.style.transitionProperty='transform';
     el.classList.remove('is-highlight-arriving');
+    if(restBorder) el.style.borderColor='';
     void el.offsetWidth;
     el.style.transitionProperty='';
     glide.remove();
