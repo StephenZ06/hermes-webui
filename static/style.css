@@ -15800,17 +15800,20 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Office: no "Office" title bar above the page; the top bar already names it. */
 #mainOffice > .main-view-header{display:none;}
 /* Dashboard / Integrations head: one line -- the title, then the
-   Projects/Business switch and the back button, both 30px tall. The line sits
-   the page's side padding from the top, and the divider has that same space
-   above and below it. On a phone the switch takes its own row. */
-.office-subview-head{align-items:center;gap:10px;padding-bottom:clamp(14px,2vw,28px);margin-bottom:clamp(14px,2vw,28px);}
+   Projects/Business switch and the back button, both 30px tall. One vertical
+   rhythm, set by the 16px gap under the metric strip: the page's top edge to
+   the head line, the head line to the divider, and the divider to the strip.
+   On a phone the switch takes its own row. */
+.office-subview{--office-subview-gap:16px;padding-top:var(--office-subview-gap);}
+.office-dashboard-snapshot{margin-bottom:var(--office-subview-gap);}
+.office-subview-head{align-items:center;gap:10px;padding-bottom:var(--office-subview-gap);margin-bottom:var(--office-subview-gap);}
 .office-subview-head>h1{flex:1 1 auto;min-width:0;margin:0;line-height:30px;translate:0 -1px;}
 .office-subview-head>.office-subview-outlet{flex:0 0 auto;height:30px;box-sizing:border-box;}
 .office-subview-head>.office-subview-outlet .office-outlet-btn{height:100%;}
 .office-subview-head>.office-subview-back{flex:0 0 30px;width:30px;height:30px;border-radius:var(--office-control-radius,8px);}
 .office-subview-head>.office-subview-back .work-hub-icon{width:15px;height:15px;}
 @media (max-width:640px){
-  .office-subview-head{flex-wrap:wrap;row-gap:14px;}
+  .office-subview-head{flex-wrap:wrap;row-gap:var(--office-subview-gap);}
   .office-subview-head>h1{flex-basis:calc(100% - 40px);}
   .office-subview-head>.office-subview-outlet{order:3;}
 }
