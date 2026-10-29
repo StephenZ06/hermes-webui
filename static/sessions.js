@@ -4128,115 +4128,27 @@ function _captureSessionReflowPositions(){
   return positions;
 }
 
-// The active conversation's highlight glides from the row it left to the row
-// picked instead of jumping. The rows are rebuilt on every render, so the old
-// row's place is noted first; afterwards a copy of the highlight (its fill and
-// accent bar, read from the row's own style) travels between the two places,
-// its leading edge reaching ahead and the trailing edge catching up, while the
-// new row's own highlight waits underneath. It only travels inside one section
-// (the project folders, or Conversations): between the two, the new highlight
-// fades in where it is and the old one fades out. Either way the text eases
-// to and from the active row's inset instead of jumping sideways.
+// The active conversation's highlight glides to the row picked, within the
+// project folders or within Conversations (ui.js playActiveHighlightGlide).
 function _sessionHighlightSection(row){
   return row.closest('.project-folder-sessions')?'workspaces':'conversations';
 }
+const _SESSION_HIGHLIGHT={
+  selector:'.session-item.active[data-sid]',
+  restSelector:'.session-item:not(.active)',
+  key:row=>row.dataset.sid,
+  find:(list,sid)=>list.querySelector(`.session-item[data-sid="${CSS.escape(sid)}"]`),
+  section:_sessionHighlightSection,
+};
 
 function _captureActiveSessionHighlight(list){
-  const row=list&&list.querySelector('.session-item.active[data-sid]');
-  if(!row) return null;
-  const rect=row.getBoundingClientRect();
-  if(!rect.height) return null;
-  const style=getComputedStyle(row);
-  return {sid:row.dataset.sid,top:rect.top,height:rect.height,section:_sessionHighlightSection(row),
-    paddingLeft:style.paddingLeft,background:style.backgroundColor};
-}
-
-// The row's contents start where the inset was and slide to where it is
-// (transform only, so it runs on the compositor while a chat loads).
-function _easeSessionRowInset(row,fromPad,toPad,duration){
-  if(!row||!fromPad||!toPad) return;
-  const shift=parseFloat(fromPad)-parseFloat(toPad);
-  if(!shift) return;
-  for(const child of row.children){
-    try{ child.animate([{transform:`translateX(${shift}px)`},{transform:'translateX(0)'}],{duration,easing:'cubic-bezier(.22,1,.36,1)'}); }catch(_){}
-  }
+  return typeof noteActiveHighlight==='function'?noteActiveHighlight(list,_SESSION_HIGHLIGHT):null;
 }
 
 function _playSessionHighlightGlide(from){
-  if(!from||_sessionPrefersReducedMotion()) return;
+  if(!from||_sessionPrefersReducedMotion()||typeof playActiveHighlightGlide!=='function') return;
   const list=$('sessionList');
-  const row=list&&list.querySelector('.session-item.active[data-sid]');
-  if(!row||row.dataset.sid===from.sid) return;
-  const to=row.getBoundingClientRect();
-  const bounds=list.getBoundingClientRect();
-  if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
-  const oldRow=list.querySelector(`.session-item[data-sid="${CSS.escape(from.sid)}"]`);
-  const style=getComputedStyle(row);
-  const restRow=row.parentElement&&row.parentElement.querySelector(':scope > .session-item:not(.active)');
-  const restPad=(restRow?getComputedStyle(restRow):(oldRow?getComputedStyle(oldRow):style)).paddingLeft;
-  const oldRestPad=oldRow?getComputedStyle(oldRow).paddingLeft:'';
-  if(from.section!==_sessionHighlightSection(row)){
-    // Between sections: no journey across the list, just a quiet hand-over.
-    const fade=260;
-    _easeSessionRowInset(row,restPad,style.paddingLeft,fade);
-    _easeSessionRowInset(oldRow,from.paddingLeft,oldRestPad,fade);
-    try{
-      row.animate([{backgroundColor:'rgba(0, 0, 0, 0)'},{backgroundColor:style.backgroundColor}],{duration:fade,easing:'ease-out'});
-      row.animate([{opacity:0,transform:'scaleY(.3)'},{opacity:1,transform:'scaleY(1)'}],{duration:fade,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::before'});
-      if(oldRow) oldRow.animate([{backgroundColor:from.background},{backgroundColor:getComputedStyle(oldRow).backgroundColor}],{duration:fade,easing:'ease-out'});
-    }catch(_){}
-    return;
-  }
-  const bar=getComputedStyle(row,'::before');
-  const glide=document.createElement('div');
-  glide.className='session-highlight-glide';
-  glide.setAttribute('aria-hidden','true');
-  glide.style.cssText=`left:${to.left}px;width:${to.width}px;top:${to.top}px;height:${to.height}px;`
-    +`background:${style.backgroundColor};border-radius:${style.borderRadius};`;
-  // Only the bar the row really shows: rows inside a project folder hide it
-  // (display:none), and the copy must not draw one the row will not keep.
-  const barShown=bar.content&&bar.content!=='none'&&bar.display!=='none'&&bar.visibility!=='hidden'
-    &&parseFloat(bar.opacity)>0&&bar.backgroundColor!=='rgba(0, 0, 0, 0)';
-  if(barShown){
-    const mark=document.createElement('i');
-    mark.style.cssText=`left:${bar.left};top:${bar.top};bottom:${bar.bottom};width:${bar.width};background:${bar.backgroundColor};border-radius:${bar.borderRadius};`;
-    glide.appendChild(mark);
-  }
-  // Transform only (translate + stretch), so it runs on the compositor and
-  // stays smooth while the picked conversation loads on the main thread. A
-  // row that was scrolled out of view starts from the list's edge.
-  const startTop=Math.max(bounds.top-to.height,Math.min(bounds.bottom,from.top));
-  const dy=startTop-to.top;
-  const span=Math.abs(dy);
-  const lead=dy<0
-    ? {top:dy*0.62,height:to.height-dy*0.62}
-    : {top:0,height:to.height+dy*0.62};
-  document.body.appendChild(glide);
-  row.classList.add('is-highlight-arriving');
-  const duration=Math.round(240+Math.min(180,span*0.35));
-  _easeSessionRowInset(row,restPad,style.paddingLeft,duration);
-  _easeSessionRowInset(oldRow,from.paddingLeft,oldRestPad,duration);
-  const frames=[
-    {transform:`translateY(${dy}px) scaleY(${from.height/to.height})`},
-    {transform:`translateY(${lead.top}px) scaleY(${lead.height/to.height})`,offset:0.55},
-    {transform:'translateY(0) scaleY(1)'},
-  ];
-  let done=false;
-  const finish=()=>{
-    if(done) return;
-    done=true;
-    // The row's own highlight takes over in the same frame, with no fade.
-    row.style.transitionProperty='transform';
-    row.classList.remove('is-highlight-arriving');
-    void row.offsetWidth;
-    row.style.transitionProperty='';
-    glide.remove();
-  };
-  try{
-    const anim=glide.animate(frames,{duration,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});
-    anim.finished.then(finish,finish);
-  }catch(_){ finish(); return; }
-  setTimeout(finish,duration+200);
+  if(list) playActiveHighlightGlide(list,from,{..._SESSION_HIGHLIGHT,bounds:list});
 }
 
 function _waitForSessionMotion(ms){

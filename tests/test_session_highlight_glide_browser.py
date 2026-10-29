@@ -25,6 +25,8 @@ def page():
             page.evaluate("""() => { const now = Date.now() / 1000;
                 _allSessions = [1, 2, 3].map(i => ({session_id: 'glide' + i, title: 'Glide chat ' + i, message_count: 4,
                     created_at: now - i * 60, updated_at: now - i * 60, last_message_at: now - i * 60, workspace: '', model: ''}));
+                // Folders left by other tests would push these rows out of view.
+                _allProjects = [];
                 S.session = {session_id: 'glide1'};
                 renderSessionListFromCache(); }""")
             page.wait_for_selector(".session-item.active[data-sid='glide1']", timeout=15000)
@@ -38,7 +40,7 @@ def test_the_highlight_travels_from_the_old_row_to_the_new_one(page):
         const from = document.querySelector(".session-item[data-sid='glide1']").getBoundingClientRect().top;
         S.session = {session_id: 'glide3'};
         renderSessionListFromCache();
-        const glide = document.querySelector('.session-highlight-glide');
+        const glide = document.querySelector('.sidebar-highlight-glide');
         const row = document.querySelector(".session-item.active[data-sid='glide3']");
         const to = row.getBoundingClientRect().top;
         const anim = glide && glide.getAnimations()[0];
@@ -47,7 +49,7 @@ def test_the_highlight_travels_from_the_old_row_to_the_new_one(page):
         const rowFill = getComputedStyle(row).backgroundColor;
         await new Promise(r => setTimeout(r, 900));
         return {from, to, glide: !!glide, first, arriving, rowFill,
-                leftover: document.querySelectorAll('.session-highlight-glide, .is-highlight-arriving').length};
+                leftover: document.querySelectorAll('.sidebar-highlight-glide, .is-highlight-arriving').length};
     }""")
     assert out["glide"], out
     # It starts where the old row was: above, so a negative offset.
@@ -58,7 +60,7 @@ def test_the_highlight_travels_from_the_old_row_to_the_new_one(page):
 
 def test_a_render_that_keeps_the_same_conversation_does_not_glide(page):
     count = page.evaluate("""() => { renderSessionListFromCache();
-        return document.querySelectorAll('.session-highlight-glide').length; }""")
+        return document.querySelectorAll('.sidebar-highlight-glide').length; }""")
     assert count == 0
 
 
@@ -75,7 +77,7 @@ def test_inside_a_project_folder_the_copy_has_no_accent_bar(page):
         const folder = document.querySelector('.project-folder-sessions');
         S.session = {session_id: 'glide2'};
         renderSessionListFromCache();
-        const glide = document.querySelector('.session-highlight-glide');
+        const glide = document.querySelector('.sidebar-highlight-glide');
         const row = document.querySelector(".session-item.active[data-sid='glide2']");
         return {inFolder: !!(row && row.closest('.project-folder-sessions')), folder: !!folder, glide: !!glide,
                 bars: glide ? glide.querySelectorAll('i').length : -1};
@@ -97,7 +99,7 @@ def test_between_a_project_folder_and_conversations_it_fades_in_place(page):
         renderSessionListFromCache();
         const row = document.querySelector(".session-item.active[data-sid='glide3']");
         return {startedInFolder, inFolder: !!row.closest('.project-folder-sessions'),
-                glides: document.querySelectorAll('.session-highlight-glide').length,
+                glides: document.querySelectorAll('.sidebar-highlight-glide').length,
                 fades: row.getAnimations().length};
     }""")
     if not out["startedInFolder"]:

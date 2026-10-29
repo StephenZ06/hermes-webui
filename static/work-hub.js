@@ -156,8 +156,33 @@
     const before = shownItems; shownItems = null;
     playListItemChange(before, [...canvas.querySelectorAll(ITEMS)], itemMotion);
   }
+  // The side panel's highlights glide to the row picked, as Chat's do (ui.js
+  // playActiveHighlightGlide): one for the filter or project folder, one for
+  // the board inside a folder. Inbox / All Work and the project folders are
+  // separate sections, so moving between them fades rather than travels.
+  const NAV_HIGHLIGHT = {
+    selector: '.work-hub-scope.active, .work-hub-project-tile.active',
+    key: node => node.dataset.scope,
+    find: (root, id) => root.querySelector(`:is(.work-hub-scope, .work-hub-project-tile)[data-scope="${CSS.escape(id)}"]`),
+    section: node => (node.classList.contains('work-hub-scope') ? 'filters' : 'workspaces'),
+  };
+  const BOARD_HIGHLIGHT = {
+    selector: '.work-hub-board-row.active > button[data-board-id]',
+    key: node => node.dataset.boardId,
+    find: (root, id) => root.querySelector(`.work-hub-board-row > button[data-board-id="${CSS.escape(id)}"]`),
+    section: () => 'boards',
+  };
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
+    const glide = typeof noteActiveHighlight === 'function';
+    const navFrom = glide ? noteActiveHighlight(sidebar, NAV_HIGHLIGHT) : null;
+    const boardFrom = glide ? noteActiveHighlight(sidebar, BOARD_HIGHLIGHT) : null;
+    buildWorkHubNavigation(sidebar);
+    if (!glide) return;
+    playActiveHighlightGlide(sidebar, navFrom, { ...NAV_HIGHLIGHT, bounds: sidebar });
+    playActiveHighlightGlide(sidebar, boardFrom, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar });
+  }
+  function buildWorkHubNavigation(sidebar) {
     sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all"><span class="work-hub-scope-mark work-hub-scope-mark--all" aria-hidden="true"></span><span>All Work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
       ? '<button type="button" class="work-hub-project-delete-done" id="workHubDeleteDone">Done</button>'
       : `<button type="button" class="work-hub-project-create" id="workHubProjectCreate" aria-label="New board, new project or delete project">${icon('plus')}</button>`}</div></nav><button class="work-hub-plan-goal" id="workHubPlanGoal">${icon('sparkles')}<span>Plan goal</span></button>`;
