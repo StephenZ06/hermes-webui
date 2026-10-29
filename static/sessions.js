@@ -4133,12 +4133,33 @@ function _captureSessionReflowPositions(){
 // row's place is noted first; afterwards a copy of the highlight (its fill and
 // accent bar, read from the row's own style) travels between the two places,
 // its leading edge reaching ahead and the trailing edge catching up, while the
-// new row's own highlight waits underneath.
+// new row's own highlight waits underneath. It only travels inside one section
+// (the project folders, or Conversations): between the two, the new highlight
+// fades in where it is and the old one fades out. Either way the text eases
+// to and from the active row's inset instead of jumping sideways.
+function _sessionHighlightSection(row){
+  return row.closest('.project-folder-sessions')?'workspaces':'conversations';
+}
+
 function _captureActiveSessionHighlight(list){
   const row=list&&list.querySelector('.session-item.active[data-sid]');
   if(!row) return null;
   const rect=row.getBoundingClientRect();
-  return rect.height?{sid:row.dataset.sid,top:rect.top,height:rect.height}:null;
+  if(!rect.height) return null;
+  const style=getComputedStyle(row);
+  return {sid:row.dataset.sid,top:rect.top,height:rect.height,section:_sessionHighlightSection(row),
+    paddingLeft:style.paddingLeft,background:style.backgroundColor};
+}
+
+// The row's contents start where the inset was and slide to where it is
+// (transform only, so it runs on the compositor while a chat loads).
+function _easeSessionRowInset(row,fromPad,toPad,duration){
+  if(!row||!fromPad||!toPad) return;
+  const shift=parseFloat(fromPad)-parseFloat(toPad);
+  if(!shift) return;
+  for(const child of row.children){
+    try{ child.animate([{transform:`translateX(${shift}px)`},{transform:'translateX(0)'}],{duration,easing:'cubic-bezier(.22,1,.36,1)'}); }catch(_){}
+  }
 }
 
 function _playSessionHighlightGlide(from){
@@ -4149,7 +4170,23 @@ function _playSessionHighlightGlide(from){
   const to=row.getBoundingClientRect();
   const bounds=list.getBoundingClientRect();
   if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
+  const oldRow=list.querySelector(`.session-item[data-sid="${CSS.escape(from.sid)}"]`);
   const style=getComputedStyle(row);
+  const restRow=row.parentElement&&row.parentElement.querySelector(':scope > .session-item:not(.active)');
+  const restPad=(restRow?getComputedStyle(restRow):(oldRow?getComputedStyle(oldRow):style)).paddingLeft;
+  const oldRestPad=oldRow?getComputedStyle(oldRow).paddingLeft:'';
+  if(from.section!==_sessionHighlightSection(row)){
+    // Between sections: no journey across the list, just a quiet hand-over.
+    const fade=260;
+    _easeSessionRowInset(row,restPad,style.paddingLeft,fade);
+    _easeSessionRowInset(oldRow,from.paddingLeft,oldRestPad,fade);
+    try{
+      row.animate([{backgroundColor:'rgba(0, 0, 0, 0)'},{backgroundColor:style.backgroundColor}],{duration:fade,easing:'ease-out'});
+      row.animate([{opacity:0,transform:'scaleY(.3)'},{opacity:1,transform:'scaleY(1)'}],{duration:fade,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::before'});
+      if(oldRow) oldRow.animate([{backgroundColor:from.background},{backgroundColor:getComputedStyle(oldRow).backgroundColor}],{duration:fade,easing:'ease-out'});
+    }catch(_){}
+    return;
+  }
   const bar=getComputedStyle(row,'::before');
   const glide=document.createElement('div');
   glide.className='session-highlight-glide';
@@ -4177,6 +4214,8 @@ function _playSessionHighlightGlide(from){
   document.body.appendChild(glide);
   row.classList.add('is-highlight-arriving');
   const duration=Math.round(240+Math.min(180,span*0.35));
+  _easeSessionRowInset(row,restPad,style.paddingLeft,duration);
+  _easeSessionRowInset(oldRow,from.paddingLeft,oldRestPad,duration);
   const frames=[
     {transform:`translateY(${dy}px) scaleY(${from.height/to.height})`},
     {transform:`translateY(${lead.top}px) scaleY(${lead.height/to.height})`,offset:0.55},

@@ -83,3 +83,40 @@ def test_inside_a_project_folder_the_copy_has_no_accent_bar(page):
     if not out["inFolder"]:
         pytest.skip(f"the folder does not list its chats open in this state: {out}")
     assert out["glide"] and out["bars"] == 0, out
+
+
+def test_between_a_project_folder_and_conversations_it_fades_in_place(page):
+    """No journey across sections: the new highlight fades in where it is."""
+    out = page.evaluate("""() => {
+        _allProjects = [{project_id: 'p1', name: 'Glide folder', workspace_path: '/workspace/glide'}];
+        _allSessions[0].project_id = 'p1';
+        S.session = {session_id: 'glide1'};
+        renderSessionListFromCache();
+        const startedInFolder = !!document.querySelector(".project-folder-sessions .session-item.active[data-sid='glide1']");
+        S.session = {session_id: 'glide3'};
+        renderSessionListFromCache();
+        const row = document.querySelector(".session-item.active[data-sid='glide3']");
+        return {startedInFolder, inFolder: !!row.closest('.project-folder-sessions'),
+                glides: document.querySelectorAll('.session-highlight-glide').length,
+                fades: row.getAnimations().length};
+    }""")
+    if not out["startedInFolder"]:
+        pytest.skip(f"the folder does not list its chats open in this state: {out}")
+    assert not out["inFolder"] and out["glides"] == 0 and out["fades"] >= 1, out
+
+
+def test_the_text_eases_to_the_active_inset_instead_of_jumping(page):
+    out = page.evaluate("""() => {
+        document.documentElement.dataset.skin = 'zeus-2';
+        document.documentElement.classList.add('dark');
+        S.session = {session_id: 'glide1'};
+        renderSessionListFromCache();
+        S.session = {session_id: 'glide2'};
+        renderSessionListFromCache();
+        const row = document.querySelector(".session-item.active[data-sid='glide2']");
+        const old = document.querySelector(".session-item[data-sid='glide1']");
+        const insets = el => el.getAnimations({subtree: true}).map(a => a.effect.getKeyframes().map(k => k.transform).filter(t => t && t.startsWith('translateX'))).filter(k => k.length);
+        return {row: insets(row), old: insets(old)};
+    }""")
+    assert out["row"] and out["row"][0][0] != out["row"][0][-1], out
+    assert out["old"] and out["old"][0][0] != out["old"][0][-1], out
