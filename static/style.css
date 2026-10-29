@@ -4067,11 +4067,10 @@
 .work-hub-project-delete-done{min-width:72px;height:26px;padding:0 14px;border:1px solid var(--accent);border-radius:999px;background:var(--accent-bg);color:var(--accent-text,var(--accent));font:inherit;font-size:11px;font-weight:650;cursor:pointer;}
 .work-hub-project-delete-done:hover{background:color-mix(in srgb,var(--accent) 22%,transparent);}
 .work-hub-project-tile{display:grid;grid-template-columns:16px 8px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;min-height:36px;padding:7px 8px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
-.work-hub-project-tile:hover,.work-hub-project-tile.active{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg);}
+.work-hub-project-tile:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-bg);}
 .work-hub-project-color{width:8px;height:8px;border-radius:50%;margin-right:4px;}
 .work-hub-project-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .work-hub-project-count{color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;}
-.work-hub-project-tile.active .work-hub-project-count{color:inherit;}
 .work-hub-project-chevron{color:var(--muted);}
 .work-hub-project-chevron.expanded{transform:rotate(90deg);}
 .work-hub-project-boards-inner{min-height:0;overflow:hidden;}
@@ -7584,7 +7583,9 @@ main.main > #mainPlugin{display:none;}
 @media (prefers-reduced-motion:reduce){.office-subview,.office-dashboard-attention-card{transition:none;}.office-dashboard-floor-enter .office-stage,.office-dashboard-floor-enter .office-main{animation:none;}}
 .office-session-row{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:8px;background:none;color:var(--text);font-size:12px;cursor:pointer;}
 .office-session-row:hover{background:var(--surface-subtle);}
-.office-session-row.is-active{background:var(--surface-subtle);border-color:var(--border2);}
+/* The run on view is marked as Chat marks the open chat: the accent fill. */
+.office-session-row.is-active,.office-session-row.is-active:hover{background:var(--accent-bg);color:var(--accent-text);border-color:transparent;}
+.office-session-row.is-active .office-session-title,.office-session-row.is-active.is-live .office-session-title{color:inherit;}
 .office-session-row{align-items:center;flex-direction:row;gap:8px;}
 .office-session-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
 .office-session-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}

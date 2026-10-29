@@ -98,12 +98,17 @@ def test_notes_are_created_in_the_selected_folder_or_workspace(page):
     folder = _api("/api/notebook/folders/create", {"name": f"Ideas {uuid.uuid4().hex[:4]}"})["folder"]
     project = _api("/api/projects/create", {"name": f"Space {uuid.uuid4().hex[:4]}", "color": "#5fbf9f"})["project"]
     _open(page)
-    page.click(f".nb-place-btn[data-nb-kind=folder][data-nb-id='{folder['id']}']")
-    _new_note(page, "In a folder")
-    _saved(page)
-    page.click(f".nb-place-btn[data-nb-kind=project][data-nb-id='{project['project_id']}']")
-    _new_note(page, "In a workspace")
-    _saved(page)
+    # A folder tile only opens and closes (as on Chat); the + menu puts a new
+    # note in a place.
+    for pick, title in ((f"f:{folder['id']}", "In a folder"), (f"p:{project['project_id']}", "In a workspace")):
+        page.click("#notebookSidebar [data-nb-action=create-menu]")
+        page.click("[data-nb-create=note]")
+        page.click(f"[data-nb-pick='{pick}']")
+        page.wait_for_function(
+            "() => { const t = document.getElementById('nbTitle'); return !!t && document.activeElement === t && t.value === ''; }",
+            timeout=30000)
+        page.fill("#nbTitle", title)
+        _saved(page)
     placed = {n["title"]: (n["project_id"], n["folder_id"]) for n in _api("/api/notebook/bootstrap")["notes"]}
     assert placed["In a folder"] == (None, folder["id"])
     assert placed["In a workspace"] == (project["project_id"], None)
@@ -1430,7 +1435,9 @@ def test_picking_a_note_inside_a_workspace_folds_the_middle_list(page):
     page.wait_for_function("() => !document.querySelector('.nb.nb-list-collapsed')", timeout=10000)
     page.click(f"#notebookSidebar [data-nb-note-row='{note['id']}'] [data-nb-open]")
     page.wait_for_function("(id) => document.querySelector('.nb.nb-list-collapsed') && document.getElementById('nbTitle').value === 'Inside'", arg=note["id"], timeout=10000)
-    assert page.evaluate(f"() => document.querySelector(\"{tile}\").classList.contains('active')")
+    # As on Chat, the note picked holds the highlight, not its workspace tile.
+    assert page.evaluate(f"""() => !document.querySelector("{tile}").classList.contains('active')
+        && !!document.querySelector("#notebookSidebar .nb-tree-note.active[data-nb-note-row='{note['id']}']")""")
 
 
 def test_switching_notes_reveals_the_body_from_a_skeleton(page):
@@ -1509,22 +1516,7 @@ def _place_with_two_notes():
     return project, f"#notebookSidebar .nb-place-btn[data-nb-id='{project['project_id']}']"
 
 
-def test_opening_a_workspace_opens_its_most_recently_edited_note(page):
-    project, tile = _place_with_two_notes()
-    empty = _api("/api/projects/create", {"name": f"Empty {uuid.uuid4().hex[:4]}", "color": "#5fbf9f"})["project"]
-    _open(page)
-    page.click("[data-nb-scope=general]")
-    page.wait_for_selector(tile, timeout=15000)
-    page.click(tile)
-    page.wait_for_function("() => document.getElementById('nbTitle') && document.getElementById('nbTitle').value === 'Edited last'", timeout=10000)
-    assert page.is_hidden("#nbEditorEmpty")
-    # A workspace with no notes still offers to start one.
-    page.click(f"#notebookSidebar .nb-place-btn[data-nb-id='{empty['project_id']}']")
-    page.wait_for_function("() => !document.getElementById('nbEditorEmpty').hidden", timeout=10000)
-    assert "start a new one" in page.inner_text("#nbEditorEmpty")
-
-
-def test_on_a_phone_a_workspace_lists_its_notes_without_opening_one(page):
+def test_a_workspace_tile_lists_its_notes_without_opening_one(page):
     project, tile = _place_with_two_notes()
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(BASE + "/", wait_until="domcontentloaded")

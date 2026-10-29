@@ -68,7 +68,6 @@
   let editorNoteId = null;
   let themeObserver = null;
   let searchTimer = 0;
-  let autoOpenTimer = 0; // a place's tile opening its most recent note
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -233,17 +232,18 @@
     const shown = all ? notes : notes.slice(0, TREE_LIMIT);
     const more = notes.length > TREE_LIMIT && key
       ? `<button type="button" class="nb-tree-more" data-nb-action="more" data-nb-more="${esc(key)}">${all ? 'Show fewer' : `Show ${notes.length - TREE_LIMIT} more`}</button>` : '';
-    return shown.map((n) => `<div class="work-hub-board-row nb-tree-note${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('') + more;
+    const here = key && S.scope && (S.scope.kind + ':' + S.scope.id) === key;
+    return shown.map((n) => `<div class="work-hub-board-row nb-tree-note${here && S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('') + more;
   }
   // Same markup and classes as the Work Hub's workspace folders, so the two
-  // side panels look and move the same: a whole-tile click selects the place
-  // and opens/closes it in place (the grid-rows transition animates).
+  // side panels look and move the same, and as on Chat: a tile click only
+  // opens/closes it in place (the grid-rows transition animates), and the
+  // highlight is on the note picked inside, never on the tile.
   function placeGroup(kind, item, notes, childrenHtml) {
     const key = kind + ':' + item.id;
     const expanded = !!S.expanded[key] || (S.deleteMode && notes.length > 0);
-    const active = S.scope.kind === kind && S.scope.id === item.id ? ' active' : '';
     const groupId = 'nbGroup-' + key.replace(/[^A-Za-z0-9_-]/g, '_');
-    return `<button type="button" class="project-chip project-folder-row work-hub-project-tile nb-place-btn${active}" data-nb-kind="${kind}" data-nb-id="${esc(item.id)}" data-nb-key="${esc(key)}" aria-expanded="${expanded}" aria-controls="${groupId}">`
+    return `<button type="button" class="project-chip project-folder-row work-hub-project-tile nb-place-btn" data-nb-kind="${kind}" data-nb-id="${esc(item.id)}" data-nb-key="${esc(key)}" aria-expanded="${expanded}" aria-controls="${groupId}">`
       + `<span class="project-folder-chevron work-hub-project-chevron${expanded ? ' expanded' : ''}">▸</span>`
       + `<span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span>`
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
@@ -290,9 +290,27 @@
     });
     if (S.deleteMode) decorateDeleteMode(side);
   }
+  // The side panel's highlight glides to the row picked, exactly as Chat's
+  // does (ui.js playActiveHighlightGlide): General / Pinned / Favorites /
+  // Trash are one section, the notes inside workspaces and folders another,
+  // and between them it fades in place.
+  const SIDEBAR_HIGHLIGHT = {
+    selector: '.nb-scope.active, .nb-tree-note.active > button[data-nb-open]',
+    key: (node) => (node.dataset.nbScope ? 'scope:' + node.dataset.nbScope : 'note:' + node.dataset.nbOpen),
+    find: (root, id) => (id.startsWith('note:')
+      ? root.querySelector(`.nb-tree-note > button[data-nb-open="${CSS.escape(id.slice(5))}"]`)
+      : root.querySelector(`.nb-scope[data-nb-scope="${CSS.escape(id.slice(6))}"]`)),
+    section: (node) => (node.classList.contains('nb-scope') ? 'filters' : 'workspaces'),
+  };
   function renderSidebar() {
     const side = $('notebookSidebar');
     if (!side) return;
+    const glide = typeof window.noteActiveHighlight === 'function';
+    const from = glide ? window.noteActiveHighlight(side, SIDEBAR_HIGHLIGHT) : null;
+    buildSidebar(side);
+    if (from) window.playActiveHighlightGlide(side, from, {...SIDEBAR_HIGHLIGHT, bounds: side});
+  }
+  function buildSidebar(side) {
     if (!S.loaded) { side.innerHTML = S.error ? `<p class="nb-side-error">${esc(S.error)}</p>` : ''; return; }
     const liveNotes = S.notes.filter(live);
     const tags = [...new Set(liveNotes.flatMap((n) => n.tags || []))].sort();
@@ -391,49 +409,17 @@
     menu.classList.remove('is-picking');
     menu.innerHTML = '<button type="button" role="menuitem" data-nb-create="note">New note</button><button type="button" role="menuitem" data-nb-create="folder">New folder</button><button type="button" role="menuitem" class="is-danger" data-nb-create="delete">Delete</button>';
   }
-  // A workspace or folder tile: select it and open/close it without
-  // re-rendering the panel, so the open/close transition plays.
+  // A workspace or folder tile opens/closes without re-rendering the panel,
+  // so the open/close transition plays. As on Chat, it selects nothing.
   function toggleTile(tile) {
     const key = tile.dataset.nbKey;
     const expanded = !S.expanded[key];
     S.expanded[key] = expanded;
-    S.scope = {kind: tile.dataset.nbKind, id: tile.dataset.nbId};
-    S.pane = 'list';
-    const side = $('notebookSidebar');
-    side.querySelectorAll('.nb-place-btn.active, .nb-scope.active').forEach((other) => { if (other !== tile) other.classList.remove('active'); });
-    tile.classList.add('active');
     tile.setAttribute('aria-expanded', String(expanded));
     const chevron = tile.querySelector('.work-hub-project-chevron');
     if (chevron) chevron.classList.toggle('expanded', expanded);
     const group = document.getElementById(tile.getAttribute('aria-controls'));
     if (group) { group.classList.toggle('expanded', expanded); group.inert = !expanded; }
-    // Workspace and folder trees already contain their notes. Do not leave an
-    // unrelated note open beside that tree: it makes the collapsed middle pane
-    // look as though it is still showing a second copy of the same scope.
-    const currentIsInScope = S.note && ((tile.dataset.nbKind === 'project' && S.note.project_id === tile.dataset.nbId)
-      || (tile.dataset.nbKind === 'folder' && S.note.folder_id === tile.dataset.nbId));
-    // On a wide screen, open the place's most recently edited note instead of
-    // leaving the editor on "Select a note". It waits for the group's 160ms
-    // open transition, since opening a note re-renders the side panel. On a
-    // phone the tree is the next step, so the place only lists its notes.
-    const recent = currentIsInScope ? null : mostRecentIn(S.scope);
-    clearTimeout(autoOpenTimer);
-    if (recent && !window.matchMedia('(max-width: 760px)').matches) {
-      const scope = S.scope;
-      autoOpenTimer = setTimeout(() => {
-        if (S.scope === scope && !(S.note && S.note.id === recent.id)) openNote(recent.id);
-      }, 170);
-    } else if (!currentIsInScope) {
-      destroyEditor();
-      S.note = null; S.noteError = ''; S.noteLoading = false;
-    }
-    ensureShell();
-    renderList();
-    renderEditorHead();
-  }
-  function mostRecentIn(scope) {
-    return S.notes.filter((n) => inScope(n, scope))
-      .reduce((best, n) => (!best || n.updated_at > best.updated_at ? n : best), null);
   }
 
   // ── rendering: main ─────────────────────────────────────────────────────────
@@ -1663,7 +1649,6 @@
     return hit;
   }
   async function openNote(noteId, opts) {
-    clearTimeout(autoOpenTimer);
     if (S.note && S.note.id === noteId && !(opts && opts.force)) { S.pane = 'editor'; ensureShell(); return; }
     await flushSave();
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');

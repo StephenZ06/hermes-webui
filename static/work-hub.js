@@ -156,59 +156,27 @@
     const before = shownItems; shownItems = null;
     playListItemChange(before, [...canvas.querySelectorAll(ITEMS)], itemMotion);
   }
-  // The side panel's highlights glide to the row picked, as Chat's do (ui.js
-  // playActiveHighlightGlide): one for the filter or project folder, one for
-  // the board inside a folder. Inbox / All Work and the project folders are
-  // separate sections, so moving between them fades rather than travels.
-  const NAV_HIGHLIGHT = {
-    selector: '.work-hub-scope.active, .work-hub-project-tile.active',
-    key: node => node.dataset.scope,
-    find: (root, id) => root.querySelector(`:is(.work-hub-scope, .work-hub-project-tile)[data-scope="${CSS.escape(id)}"]`),
+  // The side panel's highlight glides to the row picked, exactly as Chat's
+  // does (ui.js playActiveHighlightGlide). As on Chat, a project folder is
+  // never highlighted itself -- clicking it only opens or closes it -- so the
+  // one highlight is on Inbox / All Work or on the board picked inside a
+  // folder. Those are separate sections: between them it fades in place.
+  const SIDEBAR_HIGHLIGHT = {
+    selector: '.work-hub-scope.active, .work-hub-board-row.active > button[data-board-id]',
+    key: node => node.dataset.scope || 'board:' + node.dataset.boardId,
+    find: (root, id) => (id.startsWith('board:')
+      ? root.querySelector(`.work-hub-board-row > button[data-board-id="${CSS.escape(id.slice(6))}"]`)
+      : root.querySelector(`.work-hub-scope[data-scope="${CSS.escape(id)}"]`)),
     section: node => (node.classList.contains('work-hub-scope') ? 'filters' : 'workspaces'),
-  };
-  const BOARD_HIGHLIGHT = {
-    selector: '.work-hub-board-row.active > button[data-board-id]',
-    key: node => node.dataset.boardId,
-    find: (root, id) => root.querySelector(`.work-hub-board-row > button[data-board-id="${CSS.escape(id)}"]`),
-    section: () => 'boards',
   };
   function renderWorkHubNavigation() {
     const sidebar = el('workHubSidebar'); if (!sidebar) return;
     const glide = typeof noteActiveHighlight === 'function';
-    const navFrom = glide ? noteActiveHighlight(sidebar, NAV_HIGHLIGHT) : null;
-    const boardFrom = glide ? noteActiveHighlight(sidebar, BOARD_HIGHLIGHT) : null;
+    const from = glide ? noteActiveHighlight(sidebar, SIDEBAR_HIGHLIGHT) : null;
     buildWorkHubNavigation(sidebar);
-    if (!glide) return;
-    playActiveHighlightGlide(sidebar, navFrom, { ...NAV_HIGHLIGHT, bounds: sidebar });
-    playActiveHighlightGlide(sidebar, boardFrom, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar });
-  }
-  // A board in a folder that is still opening is not on screen yet, so it
-  // cannot receive the board glide. The board that was picked keeps its fill
-  // while the folder opens, then the highlight glides from it into the new
-  // board (or drops from the folder when no board was showing one).
-  function glideBoardHighlightOnceOpen(sidebar, tile, boardsList, from) {
-    if (!boardsList) return;
-    const target = boardsList.querySelector('.work-hub-board-row.active > button[data-board-id]');
-    if (!target || target.matches('.is-highlight-arriving') || _highlightShown(target)) return;
-    const old = from && BOARD_HIGHLIGHT.find(sidebar, from.key);
-    const held = old && old !== target && old.isConnected ? old : null;
-    target.classList.add('is-highlight-arriving');
-    if (held) { held.style.background = from.background; held.style.color = getComputedStyle(target).color; }
-    let done = false;
-    const play = () => {
-      if (done) return; done = true;
-      boardsList.removeEventListener('transitionend', onEnd);
-      target.classList.remove('is-highlight-arriving');
-      // The copy takes over the held fill in the same frame, with no fade.
-      if (held) { held.style.transition = 'none'; held.style.background = ''; held.style.color = ''; void held.offsetWidth; held.style.transition = ''; }
-      if (!target.isConnected || !tile.isConnected || !boardsList.classList.contains('expanded')) return;
-      const start = held && held.isConnected && _highlightShown(held) ? held : tile;
-      const rect = start.getBoundingClientRect();
-      playActiveHighlightGlide(sidebar, { key: '', top: rect.top, height: rect.height, section: 'boards', paddingLeft: '', background: '' }, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar });
-    };
-    const onEnd = event => { if (event.target === boardsList && event.propertyName === 'grid-template-rows') play(); };
-    boardsList.addEventListener('transitionend', onEnd);
-    setTimeout(play, 400);
+    if (!glide || !from) return;
+    // A board scrolled out of the folder list starts from the list's edge.
+    playActiveHighlightGlide(sidebar, from, { ...SIDEBAR_HIGHLIGHT, bounds: (from.section === 'workspaces' && el('workHubProjects')) || sidebar });
   }
   function buildWorkHubNavigation(sidebar) {
     sidebar.innerHTML = `<nav class="work-hub-nav" aria-label="Work Hub filters"><button class="work-hub-scope ${store.activeScope === 'inbox' ? 'active' : ''}" data-scope="inbox">${icon('inbox')}<span>Inbox</span></button><button class="work-hub-scope ${store.activeScope === 'all' ? 'active' : ''}" data-scope="all"><span class="work-hub-scope-mark work-hub-scope-mark--all" aria-hidden="true"></span><span>All Work</span></button><div class="work-hub-nav-label work-hub-projects-heading"><span>WORKSPACES</span></div><div id="workHubProjects" class="project-folder-list work-hub-projects" style="min-height:0;overflow:auto;"></div><div class="work-hub-project-create-row">${store.deleteMode
@@ -220,7 +188,7 @@
       const boards = store.boards.filter(board => board.project_id === project.project_id); const count = boards.length;
       // Delete mode opens every folder so its boards can be deleted too.
       const expanded = !!store.expandedProjects[project.project_id] || (!!store.deleteMode && count > 0);
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'project-chip project-folder-row work-hub-project-tile' + (store.activeFolderId === project.project_id ? ' active' : ''); b.dataset.scope = project.project_id; b.dataset.projectToggle = project.project_id; b.setAttribute('aria-expanded', String(expanded)); b.setAttribute('aria-controls', `workHubFolderBoards-${project.project_id}`);
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'project-chip project-folder-row work-hub-project-tile'; b.dataset.scope = project.project_id; b.dataset.projectToggle = project.project_id; b.setAttribute('aria-expanded', String(expanded)); b.setAttribute('aria-controls', `workHubFolderBoards-${project.project_id}`);
       b.innerHTML = `<span class="project-folder-chevron work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="color-dot work-hub-project-color" aria-hidden="true"></span><span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${count} boards">${count}</span>`;
       b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
       b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
@@ -237,7 +205,7 @@
       }
       const boardsList = document.createElement('div'); boardsList.id = `workHubFolderBoards-${project.project_id}`; boardsList.className = 'project-folder-sessions work-hub-project-boards' + (expanded ? ' expanded' : ''); boardsList.inert = !expanded;
       const boardsInner = document.createElement('div'); boardsInner.className = 'project-folder-sessions-inner work-hub-project-boards-inner';
-      boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}" data-folder-id="${esc(project.project_id)}">${icon('board')}<span>${esc(board.name)}</span></button><button type="button" class="work-hub-board-rename" data-rename-board="${esc(board.id)}" aria-label="Rename ${esc(board.name)}" title="Rename ${esc(board.name)}">${icon('pencil')}</button><button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`; if (store.deleteMode) { decorateDeleteModeItem(row, { label: `Delete board ${board.name}`, index: boardsInner.children.length + 1, onDelete: () => deleteWorkHubBoard(board.id) }); row.querySelector('.dm-x').dataset.deleteBoardMode = board.id; } boardsInner.appendChild(row); });
+      boards.forEach(board => { const row = document.createElement('div'); row.className = 'work-hub-board-row' + (store.activeScope === project.project_id && store.activeBoardId === board.id ? ' active' : ''); row.innerHTML = `<button type="button" data-board-id="${esc(board.id)}" data-folder-id="${esc(project.project_id)}">${icon('board')}<span>${esc(board.name)}</span></button><button type="button" class="work-hub-board-rename" data-rename-board="${esc(board.id)}" aria-label="Rename ${esc(board.name)}" title="Rename ${esc(board.name)}">${icon('pencil')}</button><button type="button" class="work-hub-board-delete" data-delete-board="${esc(board.id)}" aria-label="Delete ${esc(board.name)}">${icon('close')}</button>`; if (store.deleteMode) { decorateDeleteModeItem(row, { label: `Delete board ${board.name}`, index: boardsInner.children.length + 1, onDelete: () => deleteWorkHubBoard(board.id) }); row.querySelector('.dm-x').dataset.deleteBoardMode = board.id; } boardsInner.appendChild(row); });
       boardsList.appendChild(boardsInner); projectList.appendChild(boardsList);
     });
   }
@@ -497,23 +465,14 @@
     const resumeButton = el('workHubResume'); if (resumeButton) resumeButton.onclick = () => changeWorkflow(workflow.id, 'resume');
   }
   function bind() {
-    document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.selectedItemId = null; render(); });
+    document.querySelectorAll('.work-hub-scope').forEach(button => button.onclick = () => { store.activeScope = button.dataset.scope; store.activeFolderId = null; store.activeBoardId = null; store.selectedItemId = null; render(); });
     document.querySelectorAll('[data-delete-project-id]').forEach(button => button.onclick = event => { event.stopPropagation(); deleteWorkHubProject(button.dataset.deleteProjectId); });
     const deleteDone = el('workHubDeleteDone'); if (deleteDone) deleteDone.onclick = () => exitProjectDeleteMode();
-    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const projectBoards = store.boards.filter(board => board.project_id === projectId);
-      /* Every folder, one board or many, opens the same way: opening another
-         folder selects its top board; clicking the open folder again only shuts
-         or reopens it. */
-      const sidebar = el('workHubSidebar'); const glide = typeof noteActiveHighlight === 'function' && sidebar;
-      const navFrom = glide ? noteActiveHighlight(sidebar, NAV_HIGHLIGHT) : null; const boardFrom = glide ? noteActiveHighlight(sidebar, BOARD_HIGHLIGHT) : null;
-      const switching = store.activeFolderId !== projectId; const expanded = switching ? true : !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded; store.activeFolderId = projectId; store.activeScope = projectId;
-      if (switching || !projectBoards.some(board => board.id === store.activeBoardId)) store.activeBoardId = projectBoards.length ? projectBoards[0].id : null;
-      store.selectedItemId = null; button.classList.add('active'); document.querySelectorAll('.work-hub-project-tile').forEach(other => { if (other !== button) other.classList.remove('active'); });
-      document.querySelectorAll('.work-hub-board-row').forEach(row => { const id = row.querySelector('[data-board-id]')?.dataset.boardId; row.classList.toggle('active', !!id && id === store.activeBoardId); });
-      document.querySelectorAll('.work-hub-scope').forEach(scope => scope.classList.toggle('active', scope.dataset.scope === store.activeScope));
-      if (glide) { playActiveHighlightGlide(sidebar, navFrom, { ...NAV_HIGHLIGHT, bounds: sidebar }); playActiveHighlightGlide(sidebar, boardFrom, { ...BOARD_HIGHLIGHT, bounds: el('workHubProjects') || sidebar }); }
-      const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } if (glide && expanded) glideBoardHighlightOnceOpen(sidebar, button, boardsList, boardFrom); noteShownCounts(); noteShownItems(); renderCanvas(scopedItems()); renderInspector(); bind(); markCanvasEntrance(); });
-    document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); });
+    // As on Chat, a folder click only opens or closes the folder, in place, so
+    // the grid-rows transition plays; the board inside is what gets picked.
+    document.querySelectorAll('.work-hub-project-tile').forEach(button => button.onclick = () => { if (store.deleteMode) return; const projectId = button.dataset.projectToggle; const expanded = !store.expandedProjects[projectId]; store.expandedProjects[projectId] = expanded;
+      const chevron = button.querySelector('.work-hub-project-chevron'); if (chevron) chevron.classList.toggle('expanded', expanded); button.setAttribute('aria-expanded', String(expanded)); const boardsList = el(`workHubFolderBoards-${projectId}`); if (boardsList) { boardsList.classList.toggle('expanded', expanded); boardsList.inert = !expanded; } });
+    document.querySelectorAll('[data-board-id]').forEach(button => button.onclick = () => { if (store.deleteMode) return; store.activeFolderId = button.dataset.folderId; store.activeScope = button.dataset.folderId; store.expandedProjects[button.dataset.folderId] = true; store.activeBoardId = button.dataset.boardId; store.selectedItemId = null; render(); /* On a phone the drawer folds away so the board picked is what you see, as on Chat. */ if (typeof _closeMobileSidebarAfterPanelSelection === 'function') setTimeout(_closeMobileSidebarAfterPanelSelection, 0); });
     document.querySelectorAll('[data-delete-board]').forEach(button => button.onclick = () => deleteWorkHubBoard(button.dataset.deleteBoard));
     document.querySelectorAll('[data-rename-board]').forEach(button => button.onclick = event => { event.stopPropagation(); renameWorkHubBoard(button.dataset.renameBoard); });
     const createProject = el('workHubProjectCreate'); if (createProject) createProject.onclick = () => { const old = document.querySelector('.work-hub-create-menu:not(.is-leaving)'); if (old) return dismissPopover(old); const menu = document.createElement('div'); menu.className = 'work-hub-create-menu'; menu.innerHTML = '<button type="button" data-create-board>New board</button><button type="button" data-create-project>New project</button><span class="work-hub-create-menu-sep" aria-hidden="true"></span><button type="button" class="is-danger" data-delete-project>Delete</button>'; createProject.parentElement.appendChild(menu); menu.querySelector('[data-create-board]').onclick = () => { dismissPopover(menu); createWorkHubBoard(createProject); }; menu.querySelector('[data-create-project]').onclick = () => { dismissPopover(menu); createWorkHubProject(); }; menu.querySelector('[data-delete-project]').onclick = () => { dismissPopover(menu); enterProjectDeleteMode(); }; };

@@ -2,9 +2,10 @@
 
 The side panel is rebuilt on every click, so its highlight used to jump.
 Now it glides from the row it left to the row picked (ui.js
-playActiveHighlightGlide), but only inside a section: Inbox / All Work are
-one, the project folders another, and between them the highlight fades in
-place instead of travelling across the panel.
+playActiveHighlightGlide), exactly as Chat's does: a project folder only opens
+or closes and is never highlighted itself; the highlight is on Inbox / All
+Work or on a board inside a folder, and between those two sections it fades
+in place instead of travelling across the panel.
 """
 import pytest
 
@@ -53,11 +54,18 @@ def test_inbox_and_all_work_glide_between_each_other(page):
     assert out["active"] == "all" and out["glides"] == 1, out
 
 
-def test_from_a_filter_to_a_project_folder_it_fades_in_place(page):
-    page.evaluate(_CLICK, ".work-hub-scope[data-scope='all']")
-    page.wait_for_timeout(600)
-    out = page.evaluate(_CLICK, ".work-hub-project-tile")
-    assert out["glides"] == 0 and out["fades"] >= 1, out
+def test_from_a_filter_to_a_board_it_fades_in_place(page):
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_CLICK, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        page.evaluate(_CLICK, ".work-hub-scope[data-scope='all']")
+        page.wait_for_timeout(600)
+        out = page.evaluate(_GLIDES, f"[data-board-id='{ids['a1']}']")
+        fades = page.evaluate("() => document.querySelector('.work-hub-board-row.active > button').getAnimations().length")
+        assert out["glides"] == 0 and fades >= 1, (out, fades)
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
 
 
 def _make_two_projects(page):
@@ -109,31 +117,37 @@ def test_board_to_board_moves_only_the_highlight(page):
         _drop_projects(page, [ids["a"], ids["b"]])
 
 
-def test_to_a_folder_whose_board_is_tucked_away_only_one_highlight_moves(page):
+def test_a_folder_click_only_opens_and_closes_it(page):
+    """As on Chat: the folder opens or closes, nothing is picked and nothing
+    glides; the board picked before keeps the highlight."""
     ids = _make_two_projects(page)
     try:
         page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
         page.wait_for_timeout(500)
         page.evaluate(_GLIDES, f"[data-board-id='{ids['a2']}']")
         page.wait_for_timeout(500)
-        out = page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['b']}']")
-        board_shown = page.evaluate("""(id) => { const b = document.querySelector(`.work-hub-board-row.active > button[data-board-id='${id}']`);
-            if (!b) return false; const r = b.getBoundingClientRect(), f = b.closest('.work-hub-project-boards').getBoundingClientRect();
-            return f.height > r.height * 0.6; }""", ids["b1"])
-        assert out["glides"] == (2 if board_shown else 1), (out, board_shown)
+        tile = f".work-hub-project-tile[data-scope='{ids['b']}']"
+        opened = page.evaluate(_GLIDES, tile)
+        state = page.evaluate("""(b) => ({open: document.getElementById(`workHubFolderBoards-${b}`).classList.contains('expanded'),
+            boards: [...document.querySelectorAll('.work-hub-board-row.active > button[data-board-id]')].map(x => x.dataset.boardId),
+            tiles: document.querySelectorAll('.work-hub-project-tile.active').length})""", ids["b"])
+        assert opened["glides"] == 0 and state == {"open": True, "boards": [ids["a2"]], "tiles": 0}, (opened, state)
+        page.wait_for_timeout(300)
+        page.evaluate(_GLIDES, tile)
+        shut = page.evaluate("(b) => document.getElementById(`workHubFolderBoards-${b}`).classList.contains('expanded')", ids["b"])
+        assert not shut
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])
 
 
-def test_opening_a_folder_selects_its_top_board_and_only_that_board(page):
+def test_between_boards_of_two_folders_the_highlight_glides(page):
     ids = _make_two_projects(page)
     try:
-        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['b']}']")
-        page.wait_for_timeout(500)
-        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
-        page.wait_for_timeout(500)
-        out = page.evaluate("""() => [...document.querySelectorAll('.work-hub-board-row.active > button[data-board-id]')].map(b => b.dataset.boardId)""")
-        assert out == [ids["a1"]], (out, ids)
+        for target in (f".work-hub-project-tile[data-scope='{ids['a']}']", f".work-hub-project-tile[data-scope='{ids['b']}']", f"[data-board-id='{ids['a2']}']"):
+            page.evaluate(_GLIDES, target)
+            page.wait_for_timeout(400)
+        out = page.evaluate(_GLIDES, f"[data-board-id='{ids['b1']}']")
+        assert out["glides"] == 1, out
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])
 
@@ -142,6 +156,8 @@ def test_at_rest_the_board_highlight_reaches_the_row_edge(page):
     ids = _make_two_projects(page)
     try:
         page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(400)
+        page.evaluate(_GLIDES, f"[data-board-id='{ids['a1']}']")
         page.mouse.move(5, 5)
         page.wait_for_timeout(500)
         gap = page.evaluate("""() => { const b = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
@@ -152,90 +168,22 @@ def test_at_rest_the_board_highlight_reaches_the_row_edge(page):
         _drop_projects(page, [ids["a"], ids["b"]])
 
 
-def test_opening_a_folder_leaves_one_folder_highlight_and_no_filter_highlight(page):
+def test_one_highlight_between_filters_and_boards(page):
+    """Picking All Work drops the board highlight (and its board filter);
+    picking a board drops the filter highlight. Folders are never filled."""
     ids = _make_two_projects(page)
     try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(400)
+        page.evaluate(_GLIDES, f"[data-board-id='{ids['a1']}']")
+        page.wait_for_timeout(400)
+        on_board = page.evaluate("""() => ({scopes: document.querySelectorAll('.work-hub-scope.active').length,
+            boards: document.querySelectorAll('.work-hub-board-row.active').length, tiles: document.querySelectorAll('.work-hub-project-tile.active').length})""")
         page.evaluate(_CLICK, ".work-hub-scope[data-scope='all']")
-        page.wait_for_timeout(500)
-        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
-        page.mouse.move(5, 5)
-        page.wait_for_timeout(500)
-        out = page.evaluate("""() => ({scopes: [...document.querySelectorAll('.work-hub-scope.active')].length,
-            tiles: [...document.querySelectorAll('.work-hub-project-tile.active')].map(t => [t.dataset.scope, getComputedStyle(t).backgroundColor])})""")
-        assert out["scopes"] == 0, out
-        # The open folder is filled like the other highlights, not outlined.
-        assert [t[0] for t in out["tiles"]] == [ids["a"]] and out["tiles"][0][1] != "rgba(0, 0, 0, 0)", out
-    finally:
-        _drop_projects(page, [ids["a"], ids["b"]])
-
-
-def test_a_one_board_folder_opens_and_the_highlight_drops_into_its_board(page):
-    """A folder with one board opens like any other, then the board highlight
-    drops from the folder into the board once the folder has opened."""
-    ids = _make_two_projects(page)
-    try:
-        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
-        page.wait_for_timeout(500)
-        out = page.evaluate("""async (b) => {
-            // Records handed to the callback are gone from takeRecords(), so keep them.
-            const copies = records => records.flatMap(m => [...m.addedNodes]).filter(n => n.classList && n.classList.contains('sidebar-highlight-glide'));
-            const later = [];
-            const seen = new MutationObserver(records => later.push(...copies(records)));
-            seen.observe(document.body, {childList: true});
-            document.querySelector(`.work-hub-project-tile[data-scope='${b}']`).click();
-            const boards = document.getElementById(`workHubFolderBoards-${b}`);
-            const atClick = copies(seen.takeRecords()).length;
-            const start = await new Promise(resolve => {
-                const t = setInterval(() => { if (later[0]) { clearInterval(t); resolve(later[0].getAnimations()[0]?.effect.getKeyframes()[0].transform); } }, 5);
-                setTimeout(() => { clearInterval(t); resolve(null); }, 600); });
-            seen.disconnect();
-            const tile = document.querySelector(`.work-hub-project-tile[data-scope='${b}']`).getBoundingClientRect();
-            const board = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
-            return {expanded: boards.classList.contains('expanded'), atClick, later: later.length, start,
-                    board: board && board.dataset.boardId, below: board ? board.getBoundingClientRect().top > tile.top : false};
-        }""", ids["b"])
-        assert out["expanded"] and out["board"] == ids["b1"], out
-        assert out["atClick"] == 1 and out["later"] == 1, out
-        # The copy starts at the folder, above the board: a negative offset.
-        assert out["below"] and out["start"].startswith("translateY(-"), out
-    finally:
-        _drop_projects(page, [ids["a"], ids["b"]])
-
-
-def test_into_a_shut_folder_the_board_highlight_glides_from_the_board_left(page):
-    """Opening another folder that was shut: the board picked before keeps its
-    fill while the folder opens, then the highlight glides from it into the
-    new folder's board instead of popping in."""
-    ids = _make_two_projects(page)
-    try:
-        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
-        page.wait_for_timeout(500)
-        page.evaluate(_GLIDES, f"[data-board-id='{ids['a2']}']")
-        page.mouse.move(5, 5)
-        page.wait_for_timeout(500)
-        out = page.evaluate("""async (ids) => {
-            const copies = records => records.flatMap(m => [...m.addedNodes]).filter(n => n.classList && n.classList.contains('sidebar-highlight-glide'));
-            const later = [];
-            const seen = new MutationObserver(records => later.push(...copies(records)));
-            seen.observe(document.body, {childList: true});
-            document.querySelector(`.work-hub-project-tile[data-scope='${ids.b}']`).click();
-            copies(seen.takeRecords());
-            const left = document.querySelector(`[data-board-id='${ids.a2}']`);
-            await new Promise(r => setTimeout(r, 40));
-            const heldFill = getComputedStyle(left).backgroundColor;
-            const glide = await new Promise(resolve => {
-                const t = setInterval(() => { if (later[0]) { clearInterval(t); resolve(later[0]); } }, 5);
-                setTimeout(() => { clearInterval(t); resolve(null); }, 600); });
-            seen.disconnect();
-            if (!glide) return {heldFill, glide: false};
-            const start = glide.getAnimations()[0].effect.getKeyframes()[0].transform;
-            const to = document.querySelector(`[data-board-id='${ids.b1}']`).getBoundingClientRect().top;
-            return {heldFill, glide: true, start, expected: left.getBoundingClientRect().top - to,
-                    leftFill: getComputedStyle(left).backgroundColor};
-        }""", ids)
-        assert out["glide"] and out["heldFill"] != "rgba(0, 0, 0, 0)", out
-        dy = float(out["start"].split("translateY(")[1].split("px")[0])
-        assert abs(dy - out["expected"]) <= 2, out
-        assert out["leftFill"] == "rgba(0, 0, 0, 0)", out
+        page.wait_for_timeout(400)
+        on_all = page.evaluate("""() => ({scopes: document.querySelectorAll('.work-hub-scope.active').length,
+            boards: document.querySelectorAll('.work-hub-board-row.active').length, tiles: document.querySelectorAll('.work-hub-project-tile.active').length})""")
+        assert on_board == {"scopes": 0, "boards": 1, "tiles": 0}, on_board
+        assert on_all == {"scopes": 1, "boards": 0, "tiles": 0}, on_all
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])

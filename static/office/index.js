@@ -1869,6 +1869,28 @@ function refreshHistory() {
  * Show the frozen office for a finished chat. The live adapter is untouched
  * and keeps accumulating; only what is drawn changes.
  */
+// The side panel's highlight glides to the run picked, exactly as Chat's does
+// (ui.js playActiveHighlightGlide): the runs inside workspace folders are one
+// section, the History list another, and between them it fades in place.
+const SIDEBAR_HIGHLIGHT = {
+  selector: '.office-session-row.is-active',
+  key: node => node.dataset.parentId,
+  find: (root, id) => root.querySelector(`.office-session-row[data-parent-id="${CSS.escape(id)}"]`),
+  section: node => (node.closest('.project-folder-sessions') ? 'workspaces' : 'history'),
+};
+// Mark the run on view in the side panel, gliding the highlight to it. The
+// folder rows are updated in place so an open/close transition is not cut.
+function markActiveRun() {
+  const root = document.getElementById('panelOffice');
+  const glide = root && typeof window.noteActiveHighlight === 'function';
+  const from = glide ? window.noteActiveHighlight(root, SIDEBAR_HIGHLIGHT) : null;
+  renderSessionList();
+  document.querySelectorAll('#officeProjectFolders .office-session-row').forEach(row => {
+    row.classList.toggle('is-active', row.dataset.parentId === _historyParentId);
+  });
+  if (from) window.playActiveHighlightGlide(root, from, { ...SIDEBAR_HIGHLIGHT, bounds: root });
+}
+
 function showHistory(parentSessionId) {
   const parent = _historyParents.find(p => p.parent_session_id === parentSessionId);
   if (!parent) return;
@@ -1881,7 +1903,7 @@ function showHistory(parentSessionId) {
   // run. Carrying that over would leave it pointed at a worker that no longer
   // exists, on a floor the user has never seen.
   if (_scene) _scene.resetView();
-  renderSessionList();
+  markActiveRun();
   scheduleSync();
 }
 
@@ -1894,7 +1916,7 @@ function returnToLive() {
   _historySignature = '';
   _selectedId = null;
   if (_scene) _scene.resetView();
-  renderSessionList();
+  markActiveRun();
   reconcile();
   scheduleSync();
 }
@@ -2109,7 +2131,7 @@ function renderProjectFolders(projects, parents) {
         : (liveSchedules ? `<span class="project-folder-schedule-live is-scheduled" title="${liveLabel}" aria-label="${liveLabel}">SCHEDULED</span>` : '');
       const taskRows = rows.length ? rows.map(parent => {
         const count = Array.isArray(parent.children) ? parent.children.length : 0;
-        return `<button type="button" class="office-session-row" data-parent-id="${esc(parent.parent_session_id)}">
+        return `<button type="button" class="office-session-row${parent.parent_session_id === _historyParentId ? ' is-active' : ''}" data-parent-id="${esc(parent.parent_session_id)}">
           <span class="office-session-text"><span class="office-session-title">${esc(parent.title || 'Untitled chat')}</span>
           <span class="office-session-meta">${count} delegated task${count === 1 ? '' : 's'}</span></span></button>`;
       }).join('') : '<div class="project-folder-empty">No delegated tasks yet.</div>';
