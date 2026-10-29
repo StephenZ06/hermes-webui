@@ -19,10 +19,12 @@ def test_office_sidebar_replaces_the_explainer_with_native_page_navigation():
     assert 'Chats that delegated to subagents' not in office
     assert '<div class="sidebar-divider" aria-hidden="true"></div>' not in office
     # Page-nav entries carry image tool marks (nav icon marks redesign).
-    assert "['dashboard', '/static/office-dashboard-tool.png', 'Dashboard', 'Office overview']" in OFFICE
-    assert "['integrations', '/static/office-integrations-tool.png', 'Integrations', 'Connected accounts']" in OFFICE
-    assert (REPO / "static" / "office-dashboard-tool.png").is_file()
-    assert (REPO / "static" / "office-integrations-tool.png").is_file()
+    assert "['dashboard', 'office-dashboard-tool', 17, 'Dashboard', 'Office overview']" in OFFICE
+    assert "['integrations', 'office-integrations-tool', 18, 'Integrations', 'Connected accounts']" in OFFICE
+    # Pre-scaled 1x/2x copies beside the full-size art, which serves 3x.
+    for name, size in (("office-dashboard-tool", 17), ("office-integrations-tool", 18)):
+        for asset in (f"{name}.png", f"{name}-{size}.png", f"{name}-{size * 2}.png"):
+            assert (REPO / "static" / asset).is_file(), asset
     assert "dashboard:" in ICONS
 
 

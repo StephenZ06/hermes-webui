@@ -1009,7 +1009,7 @@ function dashboardDistributionPanel(model) {
         ? done.map(worker => dashboardWorkerRow(worker, 'is-done')).join('')
         : dashEmpty('check', 'green', 'Nothing completed yet', `Finished work on ${esc(floor.name)} will appear here.`)}</div></article>`;
   }
-  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('layers', 'blue', 'Work distribution', 'How work spreads across floors.', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
+  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('layers', 'blue', 'Work distribution', 'How work spreads across floors', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
     ? model.floors.map(item => `<button type="button" class="office-dashboard-floor" data-dashboard-floor="${esc(item.key)}" aria-label="${esc(item.name)}: show completed tasks"><span class="office-dashboard-floor-dot" style="background:${esc(item.color || 'var(--accent)')}"></span><span><strong>${esc(item.name)}</strong><small>${item.workers.length} assigned</small></span><small>${item.active} active · ${item.completed} done</small><span class="office-dashboard-floor-chevron" aria-hidden="true">›</span></button>`).join('')
     : dashEmpty('layers', 'blue', 'No delegated work yet', 'Work assigned to floors in this office will appear here.')}</div></article>`;
 }
@@ -1042,6 +1042,43 @@ function bindDashboardDistribution(host, state) {
   }
 }
 
+// A re-render (a Projects/Business switch, a live sync) changes the cards by
+// the difference instead of redrawing them. Rows go through the shared list
+// motion (ui.js playListItemChange): a row in both views glides, a new row
+// takes an old one's slot with its text fading in, extra rows come in or fade
+// out. Other text that changed (the office name, panel counts, empty states)
+// fades to its new wording the same way; the metric numbers roll instead
+// (animateCounts).
+const DASH_ROWS = '[data-dashboard-floor],[data-dashboard-worker-id],[data-attention-session]';
+function dashPanelIndex(node) {
+  const panel = node.closest('.office-dashboard-panel');
+  return panel ? [...panel.parentElement.children].indexOf(panel) : -1;
+}
+const dashRowMotion = {
+  key: node => `${dashPanelIndex(node)}:${node.dataset.dashboardFloor || node.dataset.dashboardWorkerId || node.dataset.attentionSession}`,
+  group: node => String(dashPanelIndex(node)),
+  clip: node => node.closest('.office-dashboard-panel-body') || node,
+};
+function dashTextNodes(host) {
+  return [...host.querySelectorAll('*')].filter(el => !el.closest(`${DASH_ROWS},[data-count-key],.office-outlet`)
+    && [...el.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()));
+}
+function dashTextPath(host, el) {
+  const parts = [];
+  for (let node = el; node && node !== host; node = node.parentElement) parts.push(node.tagName + [...node.parentElement.children].indexOf(node));
+  return parts.join('<');
+}
+function noteDashboardText(host) {
+  return new Map(dashTextNodes(host).map(el => [dashTextPath(host, el), el.textContent]));
+}
+function fadeChangedDashboardText(host, before) {
+  if (dashboardPrefersReducedMotion()) return;
+  dashTextNodes(host).forEach(el => {
+    if (before.get(dashTextPath(host, el)) === el.textContent) return;
+    el.animate([{ opacity: 0, filter: 'blur(2px)' }, { opacity: 1, filter: 'none' }], { duration: 240, easing: 'ease-out', fill: 'backwards' });
+  });
+}
+
 function renderOfficeDashboard(state, opts) {
   const host = document.getElementById('officeDashboardContent');
   if (!host) return;
@@ -1062,12 +1099,12 @@ function renderOfficeDashboard(state, opts) {
     <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
     <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
   </div></div>
-  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}.webp" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-${model.mode}-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
+  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}-44.webp" srcset="static/office/icons/${art}-44.webp 1x, static/office/icons/${art}-88.webp 2x, static/office/icons/${art}.webp 3x" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-dashboard-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
   <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
-  <article class="office-dashboard-panel">${dashPanelHead('radio', 'amber', 'Live delegation', 'Real-time activity from your agents.', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
-  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action.', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
-  <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('check', 'green', 'Recent completions', 'The latest finished work.', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
-  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')"><span class="office-dash-icon is-purple">${officeIcon('settings', 'Integrations')}</span><span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor.</small></span><span aria-hidden="true">›</span></button></section>`;
+  <article class="office-dashboard-panel">${dashPanelHead('radio', 'amber', 'Live delegation', 'Real-time activity from your agents', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
+  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
+  <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('check', 'green', 'Recent completions', 'The latest finished work', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
+  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')"><span class="office-dash-icon is-purple">${officeIcon('settings', 'Integrations')}</span><span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor</small></span><span aria-hidden="true">›</span></button></section>`;
   // The reconcile poll re-renders every few seconds. Unchanged markup is left
   // alone, so the panels don't flash their entry fade; a real change keeps
   // each list's scroll position and skips the fade.
@@ -1090,6 +1127,9 @@ function renderOfficeDashboard(state, opts) {
   const refreshed = host._officeDashHtml !== undefined;
   const scrolls = [...host.querySelectorAll('.office-dashboard-panel-body')].map(el => el.scrollTop);
   const shownOutlet = host.querySelector('.office-outlet-btn.is-active')?.dataset.dashboardOutlet;
+  const listMotion = refreshed && typeof window.noteShownListItems === 'function';
+  const shownRows = listMotion ? window.noteShownListItems([...host.querySelectorAll(DASH_ROWS)], dashRowMotion) : null;
+  const shownText = refreshed ? noteDashboardText(host) : null;
   host._officeDashHtml = html;
   host.innerHTML = html;
   // The toolbar is rebuilt, so a Projects/Business switch would jump: draw the
@@ -1102,6 +1142,8 @@ function renderOfficeDashboard(state, opts) {
   }
   host.classList.toggle('office-dashboard-refreshed', refreshed);
   if (refreshed) host.querySelectorAll('.office-dashboard-panel-body').forEach((el, i) => { if (scrolls[i]) el.scrollTop = scrolls[i]; });
+  if (shownRows) window.playListItemChange(shownRows, [...host.querySelectorAll(DASH_ROWS)], dashRowMotion);
+  if (shownText) fadeChangedDashboardText(host, shownText);
   host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
     button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
   });
@@ -1443,15 +1485,15 @@ function renderOfficeNavigation() {
   const nav = document.getElementById('officePageNav');
   if (!nav) return;
   const pages = [
-    ['dashboard', '/static/office-dashboard-tool.png', 'Dashboard', 'Office overview'],
-    ['integrations', '/static/office-integrations-tool.png', 'Integrations', 'Connected accounts'],
+    ['dashboard', 'office-dashboard-tool', 17, 'Dashboard', 'Office overview'],
+    ['integrations', 'office-integrations-tool', 18, 'Integrations', 'Connected accounts'],
   ];
-  pages.forEach(([key, iconSrc, label, detail]) => {
+  pages.forEach(([key, icon, size, label, detail]) => {
     const button = nav.querySelector(`[data-office-subview="${key}"]`);
     if (!button) return;
     button.classList.toggle('is-active', _officeSubview === key);
     button.setAttribute('aria-current', _officeSubview === key ? 'page' : 'false');
-    button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="${iconSrc}" alt="" aria-hidden="true"></span><span class="office-page-nav-copy"><strong>${label}</strong><small>${detail}</small></span><span class="office-page-nav-arrow" aria-hidden="true">›</span>`;
+    button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="/static/${icon}-${size}.png" srcset="/static/${icon}-${size}.png 1x, /static/${icon}-${size * 2}.png 2x, /static/${icon}.png 3x" alt="" aria-hidden="true"></span><span class="office-page-nav-copy"><strong>${label}</strong><small>${detail}</small></span><span class="office-page-nav-arrow" aria-hidden="true">›</span>`;
   });
 }
 

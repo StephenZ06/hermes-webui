@@ -129,8 +129,8 @@ def test_office_folder_refreshes_do_not_replace_an_in_flight_disclosure():
 
 
 def test_office_tools_use_the_supplied_equal_sized_icon_assets():
-    assert "'/static/office-dashboard-tool.png'" in OFFICE_INDEX_JS
-    assert "'/static/office-integrations-tool.png'" in OFFICE_INDEX_JS
+    assert "['dashboard', 'office-dashboard-tool', 17," in OFFICE_INDEX_JS
+    assert "['integrations', 'office-integrations-tool', 18," in OFFICE_INDEX_JS
     assert 'class="office-page-nav-image"' in OFFICE_INDEX_JS
     assert ".office-page-nav-icon{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);}" in CSS
     assert ".office-page-nav-image{display:block;width:17px;height:17px;object-fit:contain;}" in CSS

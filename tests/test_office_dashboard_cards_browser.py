@@ -47,6 +47,7 @@ def test_every_card_body_has_one_fixed_height_and_scrolls_past_it():
             page.wait_for_function(
                 "() => document.querySelectorAll('[data-dashboard-panel=\"distribution\"] [data-dashboard-floor]').length > 4",
                 polling=100, timeout=15000)
+            page.wait_for_timeout(500)  # rows that changed have finished fading in
             business = page.evaluate("""() => {
               const body = document.querySelector('[data-dashboard-panel="distribution"] .office-dashboard-panel-body');
               const rows = [...body.querySelectorAll('[data-dashboard-floor]')];
@@ -98,3 +99,51 @@ def test_a_floor_opens_its_completed_tasks_inside_the_card_and_goes_back():
     assert detail["focused"], "keyboard focus moves to the back button"
     assert still_open, "a live update must not close the open floor"
     assert back_focus == research_key, "going back returns focus to the floor that was opened"
+
+
+def test_switching_outlet_changes_the_cards_by_the_difference():
+    """Projects -> Business: the numbers roll from the old side's value, the
+    four Projects floors keep their rows with the text fading to the Business
+    names (the extra floors sit below the card's fold), rows that are gone
+    fade where they were, and the office name fades to its new wording."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        browser, page = _open_dashboard(pw)
+        try:
+            page.wait_for_timeout(900)  # the dashboard's entrance rise has settled
+            page.evaluate("""() => {
+              window.__anims = [];
+              const animate = Element.prototype.animate;
+              Element.prototype.animate = function (frames, opts) {
+                const row = this.closest('[data-dashboard-floor]');
+                window.__anims.push({cls: String(this.className || ''), row: row ? row.dataset.dashboardFloor : null,
+                  self: this === row, blur: JSON.stringify(frames).includes('blur'),
+                  enter: JSON.stringify(frames).includes('translateY(8px)'), text: (this.textContent || '').trim()});
+                return animate.call(this, frames, opts);
+              };
+            }""")
+            before = page.evaluate("""() => ({
+              agents: document.querySelector('[data-dashboard-metric-action="agents"] strong').textContent,
+              rows: [...document.querySelectorAll('[data-dashboard-floor]')].map(r => r.getBoundingClientRect().top)})""")
+            page.click("[data-dashboard-outlet='business']")
+            mid = page.evaluate("() => document.querySelector('[data-dashboard-metric-action=\"agents\"] strong').textContent")
+            page.wait_for_function(
+                "() => document.querySelectorAll('[data-dashboard-floor]').length === 7", polling=50, timeout=15000)
+            page.wait_for_timeout(1200)
+            after = page.evaluate("""() => ({
+              agents: document.querySelector('[data-dashboard-metric-action="agents"] strong').textContent,
+              rows: [...document.querySelectorAll('[data-dashboard-floor]')].map(r => r.getBoundingClientRect().top),
+              anims: window.__anims})""")
+        finally:
+            browser.close()
+
+    anims = after["anims"]
+    if after["agents"] != before["agents"]:
+        assert mid != after["agents"], f"the agents number rolls from {before['agents']} instead of jumping to {after['agents']}"
+    kept = {a["row"] for a in anims if a["row"] and not a["self"] and a["blur"]}
+    entered = {a["row"] for a in anims if a["row"] and a["enter"]}
+    assert len(kept) == 4, f"the four shown rows stay and fade their text in: {anims}"
+    assert not kept & entered, f"a kept row does not also enter as new: {anims}"
+    assert any("list-item-leaving" in a["cls"] for a in anims), "the Projects workers fade out where they were"
+    assert after["rows"][:4] == before["rows"], "the kept rows do not move"
+    assert any(a["blur"] and a["text"] == "Business Office" for a in anims), "the office name fades to its new wording"
