@@ -105,7 +105,7 @@ def test_switching_outlet_changes_the_cards_by_the_difference():
     """Projects -> Business: the numbers roll from the old side's value, the
     four Projects floors keep their rows with the text fading to the Business
     names (the extra floors sit below the card's fold), rows that are gone
-    fade where they were, and the office name fades to its new wording."""
+    fade where they were, and other changed text fades to its new wording."""
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
         browser, page = _open_dashboard(pw)
@@ -146,4 +146,4 @@ def test_switching_outlet_changes_the_cards_by_the_difference():
     assert not kept & entered, f"a kept row does not also enter as new: {anims}"
     assert any("list-item-leaving" in a["cls"] for a in anims), "the Projects workers fade out where they were"
     assert after["rows"][:4] == before["rows"], "the kept rows do not move"
-    assert any(a["blur"] and a["text"] == "Business Office" for a in anims), "the office name fades to its new wording"
+    assert any(a["blur"] and a["text"] == "7 floors" for a in anims), "the floor count fades to its new wording"

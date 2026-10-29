@@ -1084,7 +1084,6 @@ function renderOfficeDashboard(state, opts) {
   if (!host) return;
   const dashboardState = _outlet === 'business' ? scheduledTaskState(state) : state;
   const model = officeDashboardModel(dashboardState, _outlet);
-  const modeLabel = model.mode === 'business' ? 'Business Office' : 'Projects Office';
   const metrics = [
     ['agents', 'Agents', model.snapshot.agents, 'Seated on this floor', 'agents'],
     ['active', 'Active work', model.snapshot.active, 'Tasks in progress', 'active-work'],
@@ -1095,11 +1094,13 @@ function renderOfficeDashboard(state, opts) {
     ? items.map(worker => dashboardWorkerRow(worker, tone)).join('')
     : empty;
   const attentionItems = dashboardAttentionItems(model);
-  const html = `<div class="office-dashboard-toolbar"><span>${modeLabel}</span><div class="office-outlet" role="group" aria-label="Dashboard outlet">
-    <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
-    <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
-  </div></div>
-  <section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}-44.webp" srcset="static/office/icons/${art}-44.webp 1x, static/office/icons/${art}-88.webp 2x, static/office/icons/${art}.webp 3x" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-dashboard-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
+  // The Projects/Business switch lives in the page head (renderOfficeSubview),
+  // outside this re-rendered markup, so its highlight just slides across.
+  document.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
+    button.classList.toggle('is-active', button.dataset.dashboardOutlet === _outlet);
+    button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
+  });
+  const html = `<section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}-44.webp" srcset="static/office/icons/${art}-44.webp 1x, static/office/icons/${art}-88.webp 2x, static/office/icons/${art}.webp 3x" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-dashboard-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
   <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
   <article class="office-dashboard-panel">${dashPanelHead('radio', 'amber', 'Live delegation', 'Real-time activity from your agents', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
   <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
@@ -1126,27 +1127,15 @@ function renderOfficeDashboard(state, opts) {
   }
   const refreshed = host._officeDashHtml !== undefined;
   const scrolls = [...host.querySelectorAll('.office-dashboard-panel-body')].map(el => el.scrollTop);
-  const shownOutlet = host.querySelector('.office-outlet-btn.is-active')?.dataset.dashboardOutlet;
   const listMotion = refreshed && typeof window.noteShownListItems === 'function';
   const shownRows = listMotion ? window.noteShownListItems([...host.querySelectorAll(DASH_ROWS)], dashRowMotion) : null;
   const shownText = refreshed ? noteDashboardText(host) : null;
   host._officeDashHtml = html;
   host.innerHTML = html;
-  // The toolbar is rebuilt, so a Projects/Business switch would jump: draw the
-  // old side first, then flip, and the highlight slides across (CSS).
-  if (shownOutlet && shownOutlet !== _outlet) {
-    const outletBtns = [...host.querySelectorAll('[data-dashboard-outlet]')];
-    outletBtns.forEach(b => b.classList.toggle('is-active', b.dataset.dashboardOutlet === shownOutlet));
-    void host.offsetWidth;
-    outletBtns.forEach(b => b.classList.toggle('is-active', b.dataset.dashboardOutlet === _outlet));
-  }
   host.classList.toggle('office-dashboard-refreshed', refreshed);
   if (refreshed) host.querySelectorAll('.office-dashboard-panel-body').forEach((el, i) => { if (scrolls[i]) el.scrollTop = scrolls[i]; });
   if (shownRows) window.playListItemChange(shownRows, [...host.querySelectorAll(DASH_ROWS)], dashRowMotion);
   if (shownText) fadeChangedDashboardText(host, shownText);
-  host.querySelectorAll('[data-dashboard-outlet]').forEach(button => {
-    button.onclick = () => setOutlet(button.dataset.dashboardOutlet);
-  });
   bindDashboardDistribution(host, state);
   if (typeof window.animateCounts === 'function') window.animateCounts(host);
   host.querySelectorAll('[data-dashboard-worker-id]').forEach(button => {
@@ -1543,6 +1532,10 @@ function renderOfficeSubview(container) {
   const subviewHtml = `<section class="office-subview office-${_officeSubview}" aria-labelledby="officeSubviewTitle">
     <div class="office-subview-head">
       <div><div class="office-subview-eyebrow">${eyebrow}</div><h1 id="officeSubviewTitle">${title}</h1><p>${description}</p></div>
+      ${isDashboard ? `<div class="office-outlet office-subview-outlet" role="group" aria-label="Dashboard outlet">
+        <button type="button" class="office-outlet-btn${_outlet === 'projects' ? ' is-active' : ''}" data-dashboard-outlet="projects">Projects</button>
+        <button type="button" class="office-outlet-btn${_outlet === 'business' ? ' is-active' : ''}" data-dashboard-outlet="business">Business</button>
+      </div>` : ''}
       <button type="button" class="office-subview-back" aria-label="Return to the Office floor" title="Return to the Office floor" onclick="officeSetSubview('floor')">${officeIcon('arrow-left', 'Return to the Office floor')}</button>
     </div>
     ${isDashboard ? '<div id="officeDashboardContent"></div>' : '<div id="officeIntegrationsContent"></div>'}

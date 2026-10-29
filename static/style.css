@@ -15780,7 +15780,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){top:0;}
 /* Dashboard: the four metrics form one strip, as on the Jobs dashboard, with
    hairline dividers and equal space above and below their content. */
-@media (min-width:641px){.office-dashboard-toolbar{margin-top:-6px;}}
 .office-dashboard-snapshot{gap:0;border:1px solid var(--border2);border-radius:12px;overflow:hidden;background:var(--sidebar);}
 .office-dashboard-snapshot>.office-dashboard-metric{border:0;border-radius:0;background:transparent;box-shadow:none;transform:none;padding:9px 18px;}
 .office-dashboard-snapshot>.office-dashboard-metric+.office-dashboard-metric{box-shadow:inset 1px 0 0 var(--border2);}
@@ -15794,8 +15793,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 }
 /* Empty-state frames inside the cards share the card colour, like the rows. */
 .office-dash-empty{border-color:color-mix(in srgb,var(--accent) 14%,transparent);background:transparent;}
-/* Office dashboard: the office name and the metric titles sat 1px high. */
-.office-dashboard-toolbar>span,.office-dashboard-metric .office-dash-metric-label{translate:0 1px;}
+/* Office dashboard: the metric titles sat 1px high. */
+.office-dashboard-metric .office-dash-metric-label{translate:0 1px;}
 /* The metric numbers sit 1px higher (titles and details stay). */
 .office-dashboard-metric strong{translate:0 -1px;}
 /* Sidebar cards (Session usage, Office Dashboard/Integrations, Apify credit)
@@ -15807,3 +15806,15 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    ink, so trim that from the top padding: the text then sits as far from the
    top edge as from the left. */
 .office-subview{padding-top:calc(clamp(14px,2vw,28px) - 6px);}
+/* Dashboard head: the Projects/Business switch sits beside the back button
+   (no label row above the cards), and the cards sit as far below the divider
+   as the page's side padding. On a phone the switch takes its own row. */
+.office-subview-head>.office-subview-outlet{flex:0 0 auto;align-self:flex-start;margin:3px 0 0 auto;}
+.office-subview-head>.office-subview-outlet+.office-subview-back{margin-left:0;}
+.office-dashboard .office-subview-head{margin-bottom:clamp(14px,2vw,28px);}
+@media (max-width:640px){
+  .office-dashboard .office-subview-head{flex-wrap:wrap;row-gap:14px;}
+  .office-dashboard .office-subview-head>div:first-child{flex:1 1 calc(100% - 46px);}
+  .office-subview-head>.office-subview-outlet{order:3;margin:0;}
+  .office-subview-head>.office-subview-outlet+.office-subview-back{margin-left:auto;}
+}
