@@ -15523,14 +15523,17 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    with the controls. */
 .office-header::after{content:none!important;}
 .office-header > [hidden]{display:none!important;}
+/* 8px + 24px controls + 8px + the 1px rule = 41px, so the bar's bottom line
+   meets the sidepanel's header line beside it. */
 @media (min-width:641px){
-  .office-header{flex-wrap:wrap;gap:8px;padding:10px;}
-  .office-header > :is(.office-pill,.office-header-btn,.office-outlet){height:28px;box-sizing:border-box;margin:0;}
-  .office-header > .office-pill{display:inline-flex;align-items:center;padding:0 9px;}
-  .office-header > .office-header-btn{display:inline-flex;align-items:center;justify-content:center;padding:0 10px;}
-  .office-header > .office-labels-btn{width:28px;padding:0;}
+  .office-header{flex-wrap:wrap;gap:8px;padding:8px 10px;}
+  .office-header > :is(.office-pill,.office-header-btn,.office-outlet){height:24px;box-sizing:border-box;margin:0;}
+  .office-header > .office-pill{display:inline-flex;align-items:center;padding:0 8px;}
+  .office-header > .office-header-btn{display:inline-flex;align-items:center;justify-content:center;padding:0 9px;}
+  .office-header > .office-labels-btn{width:24px;padding:0;}
+  .office-header > .office-labels-btn svg{width:14px;height:14px;}
   .office-header > .office-outlet{flex:0 0 auto;}
-  .office-header > .office-outlet .office-outlet-btn{height:26px;min-height:0;padding:0 9px;line-height:1;}
+  .office-header > .office-outlet .office-outlet-btn{height:22px;min-height:0;padding:0 9px;line-height:1;}
   .office-header > :is(#officeBackBtn,#officePauseBtn){margin-left:auto;}
 }
 /* Navigation motion.  Side panels fade up as the main view does when the
