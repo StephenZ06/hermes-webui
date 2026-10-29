@@ -60,7 +60,12 @@ def test_mobile_titlebar_is_balanced_and_controls_share_one_footprint(phone_page
 def test_mobile_office_dashboard_keeps_two_by_two_metrics(phone_page):
     phone_page.evaluate("async () => { await switchPanel('office'); officeSetSubview('dashboard'); }")
     phone_page.wait_for_selector(".office-dashboard-snapshot .office-dashboard-metric")
-    phone_page.wait_for_timeout(350)
+    # The cards rise in on a stagger; measure them once they have landed.
+    phone_page.wait_for_function(
+        "() => [...document.querySelectorAll('.office-dashboard-snapshot .office-dashboard-metric')]"
+        ".every(card => !card.getAnimations().length)",
+        timeout=5000,
+    )
     out = phone_page.evaluate(
         """() => {
           const cards = [...document.querySelectorAll('.office-dashboard-snapshot .office-dashboard-metric')];
@@ -109,6 +114,8 @@ def test_jobs_subpage_survives_leaving_and_returning(phone_page):
         "() => typeof S !== 'undefined' && S._bootReady === true && _currentPanel === 'jobs'",
         timeout=30000,
     )
+    # Jobs mounts once the page fade has finished, so wait for the mount.
+    phone_page.wait_for_function("() => document.querySelector('#mainJobs .job-os-content')", timeout=5000)
     assert phone_page.evaluate("() => JobOSState.activeView") == "scout"
 
 

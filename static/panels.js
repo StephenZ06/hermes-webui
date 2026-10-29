@@ -554,6 +554,25 @@ function _syncMobileSidebarPanelFromMainView(){
   return panel;
 }
 
+// Pages whose mount builds a lot of DOM or a WebGL scene (Office, Dashboard,
+// Jobs, Files, Notebook) wait for the side panel and main view to finish
+// fading in before they mount. The fade then runs at the same pace on every
+// page, and a heavy page fills in after it instead of stalling it. Capped so a
+// missing or cancelled animation never holds the page back.
+let _panelSwitchSeq = 0;
+function _panelMotionSettled() {
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
+  let running = [];
+  try {
+    running = document.getAnimations().filter(a => a.animationName === 'page-view-in' && a.playState === 'running');
+  } catch (_) {}
+  if (!running.length) return frame();
+  return Promise.race([
+    Promise.all(running.map(a => a.finished.catch(() => {}))),
+    new Promise(resolve => setTimeout(resolve, 320)),
+  ]);
+}
+
 async function switchPanel(name, opts = {}) {
   const nextPanel = name || 'chat';
   const prevPanel = _currentPanel;
@@ -660,7 +679,16 @@ async function switchPanel(name, opts = {}) {
   const HermesPerformance = window.HermesPerformance;
   const panelTicket = HermesPerformance ? HermesPerformance.begin('panel', nextPanel) : null;
   if (panelTicket) HermesPerformance.mark(panelTicket, 'usable');
-  const panelTicketIsCurrent = () => !panelTicket || HermesPerformance.isCurrent(panelTicket);
+  const switchSeq = ++_panelSwitchSeq;
+  const panelTicketIsCurrent = () => switchSeq === _panelSwitchSeq && (!panelTicket || HermesPerformance.isCurrent(panelTicket));
+  const mountsAfterMotion = ['jobs', 'dashboard', 'files', 'notebook', 'office'].includes(nextPanel);
+  // The Office side panel is cheap to draw, so it is filled before the fade.
+  if (nextPanel === 'office' && window.HermesOffice && typeof window.HermesOffice.renderSidebar === 'function') window.HermesOffice.renderSidebar();
+  if (mountsAfterMotion) {
+    if (typeof syncAppTitlebar === 'function') syncAppTitlebar();
+    await _panelMotionSettled();
+    if (!panelTicketIsCurrent()) return false;
+  }
   // Lazy-load panel data
   if (nextPanel === 'tasks') { await loadCrons(); if (!panelTicketIsCurrent()) return false; }
   if (nextPanel === 'kanban') { await loadKanban(); if (!panelTicketIsCurrent()) return false; }
