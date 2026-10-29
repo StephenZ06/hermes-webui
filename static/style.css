@@ -15796,6 +15796,14 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-dash-empty{border-color:color-mix(in srgb,var(--accent) 14%,transparent);background:transparent;}
 /* Office dashboard: the office name and the metric titles sat 1px high. */
 .office-dashboard-toolbar>span,.office-dashboard-metric .office-dash-metric-label{translate:0 1px;}
+/* The metric numbers sit 1px higher (titles and details stay). */
+.office-dashboard-metric strong{translate:0 -1px;}
 /* Sidebar cards (Session usage, Office Dashboard/Integrations, Apify credit)
    sit on the sidepanel colour like the project folders, outline only. */
 .chat-usage-widget,.office-page-nav-btn,.office-page-nav-btn.is-active{background:transparent;box-shadow:none;}
+/* Office: no "Office" title bar above the page; the top bar already names it. */
+#mainOffice > .main-view-header{display:none;}
+/* The page's first line (OFFICE OVERVIEW) carries ~6px of leading above its
+   ink, so trim that from the top padding: the text then sits as far from the
+   top edge as from the left. */
+.office-subview{padding-top:calc(clamp(14px,2vw,28px) - 6px);}
