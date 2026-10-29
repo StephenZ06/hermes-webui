@@ -158,9 +158,45 @@ def test_opening_a_folder_leaves_one_folder_highlight_and_no_filter_highlight(pa
         page.evaluate(_CLICK, ".work-hub-scope[data-scope='all']")
         page.wait_for_timeout(500)
         page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.mouse.move(5, 5)
+        page.wait_for_timeout(500)
         out = page.evaluate("""() => ({scopes: [...document.querySelectorAll('.work-hub-scope.active')].length,
             tiles: [...document.querySelectorAll('.work-hub-project-tile.active')].map(t => [t.dataset.scope, getComputedStyle(t).backgroundColor])})""")
         assert out["scopes"] == 0, out
-        assert out["tiles"] == [[ids["a"], "rgba(0, 0, 0, 0)"]], out
+        # The open folder is filled like the other highlights, not outlined.
+        assert [t[0] for t in out["tiles"]] == [ids["a"]] and out["tiles"][0][1] != "rgba(0, 0, 0, 0)", out
+    finally:
+        _drop_projects(page, [ids["a"], ids["b"]])
+
+
+def test_a_one_board_folder_opens_and_the_highlight_drops_into_its_board(page):
+    """A folder with one board opens like any other, then the board highlight
+    drops from the folder into the board once the folder has opened."""
+    ids = _make_two_projects(page)
+    try:
+        page.evaluate(_GLIDES, f".work-hub-project-tile[data-scope='{ids['a']}']")
+        page.wait_for_timeout(500)
+        out = page.evaluate("""async (b) => {
+            // Records handed to the callback are gone from takeRecords(), so keep them.
+            const copies = records => records.flatMap(m => [...m.addedNodes]).filter(n => n.classList && n.classList.contains('sidebar-highlight-glide'));
+            const later = [];
+            const seen = new MutationObserver(records => later.push(...copies(records)));
+            seen.observe(document.body, {childList: true});
+            document.querySelector(`.work-hub-project-tile[data-scope='${b}']`).click();
+            const boards = document.getElementById(`workHubFolderBoards-${b}`);
+            const atClick = copies(seen.takeRecords()).length;
+            const start = await new Promise(resolve => {
+                const t = setInterval(() => { if (later[0]) { clearInterval(t); resolve(later[0].getAnimations()[0]?.effect.getKeyframes()[0].transform); } }, 5);
+                setTimeout(() => { clearInterval(t); resolve(null); }, 600); });
+            seen.disconnect();
+            const tile = document.querySelector(`.work-hub-project-tile[data-scope='${b}']`).getBoundingClientRect();
+            const board = document.querySelector('.work-hub-board-row.active > button[data-board-id]');
+            return {expanded: boards.classList.contains('expanded'), atClick, later: later.length, start,
+                    board: board && board.dataset.boardId, below: board ? board.getBoundingClientRect().top > tile.top : false};
+        }""", ids["b"])
+        assert out["expanded"] and out["board"] == ids["b1"], out
+        assert out["atClick"] == 1 and out["later"] == 1, out
+        # The copy starts at the folder, above the board: a negative offset.
+        assert out["below"] and out["start"].startswith("translateY(-"), out
     finally:
         _drop_projects(page, [ids["a"], ids["b"]])

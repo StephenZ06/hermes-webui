@@ -15888,5 +15888,3 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){.work-hub-board-row .work-hub-board-rename,.work-hub-board-row .work-hub-board-delete{transition:none;}}
 /* Work Hub project folders: the open folder is marked by a blue outline only
    (the board inside it carries the fill), hovered or not. */
-.work-hub-project-tile.active,.work-hub-project-tile.active:hover{background:transparent;color:var(--text);border-color:var(--accent);}
-.work-hub-project-tile.active .work-hub-project-count{color:var(--muted);}
