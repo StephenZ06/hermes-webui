@@ -2425,10 +2425,18 @@ function revealMountedFloor(startedAt) {
 const INTRO_LIGHTS_DELAY_MS = 200;
 const INTRO_CARDS_AT_MS = 1150;
 const INTRO_CARDS_FADE_MS = 450;
+// The power-up plays once per page load. A floor built again later (after
+// SUSPEND_MS away the scene is released) comes back the quick way instead.
+let _floorIntroPlayed = false;
 function playFloorIntro() {
   const stage = _canvas && _canvas.closest('.office-stage');
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced || !_scene || typeof _scene.playIntro !== 'function') return;
+  if (_floorIntroPlayed && typeof _scene.playWake === 'function') {
+    playWakeStages();
+    return;
+  }
+  _floorIntroPlayed = true;
   _scene.playIntro(INTRO_LIGHTS_DELAY_MS);
   if (!stage) return;
   playStageCards(stage, INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS, INTRO_CARDS_FADE_MS);
@@ -2465,12 +2473,19 @@ function wakeCanvas() {
   try { if (_scene) _scene.renderNow(); } catch (_err) { /* the loop draws it next frame */ }
   window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
     if (!_canvas) return;
-    if (staged) {
-      _canvas.style.setProperty('--office-wake-ms', `${WAKE_STARS_MS}ms`);
-      playStageCards(_canvas.closest('.office-stage'), WAKE_STARS_MS + WAKE_FLOOR_AT_MS + WAKE_FLOOR_MS * 0.5, 260);
-    }
+    if (staged) playWakeCards();
     _canvas.classList.remove('is-waking');
   }));
+}
+// The canvas (stars) fades in quickly, and the cards follow the floor.
+function playWakeCards() {
+  _canvas.style.setProperty('--office-wake-ms', `${WAKE_STARS_MS}ms`);
+  playStageCards(_canvas.closest('.office-stage'), WAKE_STARS_MS + WAKE_FLOOR_AT_MS + WAKE_FLOOR_MS * 0.5, 260);
+}
+// A rebuilt floor, revealed as it leaves is-mounting, comes back in the same steps.
+function playWakeStages() {
+  _scene.playWake(WAKE_STARS_MS + WAKE_FLOOR_AT_MS, WAKE_FLOOR_MS);
+  playWakeCards();
 }
 
 function mount(container) {

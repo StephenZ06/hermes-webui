@@ -28521,10 +28521,26 @@ def _handle_cron_resume(handler, body):
         return bad(handler, "job_id required")
     from cron.jobs import resume_job
 
-    result = resume_job(job_id)
-    if result:
-        return j(handler, {"ok": True, "job": result})
-    return bad(handler, "Job not found", 404)
+    try:
+        result = resume_job(job_id)
+    except ValueError as e:
+        return bad(handler, str(e), 409)
+    if not result:
+        return bad(handler, "Job not found", 404)
+    # A recurring job resumed without a next run time stays stuck in "needs
+    # attention": the scheduler could not compute one (croniter missing, or a
+    # schedule it cannot read). Report that instead of a resume that did nothing.
+    schedule = result.get("schedule") or {}
+    if schedule.get("kind") in ("cron", "interval") and not result.get("next_run_at"):
+        reason = "The scheduler could not compute a next run time for this schedule."
+        if schedule.get("kind") == "cron":
+            try:
+                import croniter  # noqa: F401
+            except ImportError:
+                reason = ("The scheduler could not compute a next run time: the croniter package "
+                          "is not installed in the WebUI's Python environment.")
+        return bad(handler, reason, 409)
+    return j(handler, {"ok": True, "job": result})
 
 
 def _git_session(handler, session_id: str):

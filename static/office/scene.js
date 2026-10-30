@@ -686,8 +686,10 @@ export function createOfficeScene(canvas, options) {
   }
 
   function advanceDeliveryGlow(record, arrivalWave, dtMs, elapsed) {
-    // The outlet fade owns every colour until it ends.
-    if (outletTransition.active) return;
+    // The outlet fade and the light-up own every colour until they end: they
+    // already scale the band's emissive, so setting its intensity on top made
+    // the bands glow far past their idle brightness while the floor came in.
+    if (contentFading()) return;
     const layer = record && record.group && record.group.userData.deliveryLayer;
     const material = layer && layer.material;
     if (!material || !material.emissive || layer.userData.noGlow) return;
@@ -1228,6 +1230,7 @@ export function createOfficeScene(canvas, options) {
   // The first reveal of the floor (playIntro) fades the shared conductor
   // plinth in as well, so the stars show alone before anything else.
   let introFade = false;
+  const contentFading = () => outletTransition.active || !!intro;
   const fadeRoots = () => (introFade ? [office, backdrop] : [office]);
   const traverseContent = fn => fadeRoots().forEach(root => root.traverse(fn));
 
@@ -2415,7 +2418,7 @@ export function createOfficeScene(canvas, options) {
         o.orbit.rotation.y += dt * 0.12;
       });
       const hubBand = conductor.userData.hubBand;
-      if (hubBand && hubBand.material) {
+      if (hubBand && hubBand.material && !contentFading()) {
         conductor.userData.hoverGlow = (conductor.userData.hoverGlow || 0)
           + ((hoveredCluster === '__conductor__' ? 1 : 0) - (conductor.userData.hoverGlow || 0)) * Math.min(1, dtMs * 0.008);
         hubBand.material.emissiveIntensity = (hubBand.userData.idleEmissiveIntensity || 0) * bandPulse(t, '__conductor__')

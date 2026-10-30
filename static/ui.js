@@ -9526,13 +9526,31 @@ function _easeHighlightInset(el,fromPad,toPad,duration){
     try{ child.animate([{transform:`translateX(${shift}px)`},{transform:'translateX(0)'}],{duration,easing:'cubic-bezier(.22,1,.36,1)'}); }catch(_){}
   }
 }
+// The glide now travelling, per panel: a repaint of that panel while it runs
+// (Notes re-renders as the picked note loads) hands it the rebuilt row, which
+// must keep its own highlight hidden until the copy lands, as the first did.
+let _glideInFlight=null;
+function _rejoinHighlightGlide(root,el,opts){
+  const g=_glideInFlight;
+  if(!g||g.root!==root||!el||opts.key(el)!==g.key) return false;
+  if(!g.els.includes(el)){
+    g.els.push(el);
+    el.classList.add('is-highlight-arriving');
+    if(g.restBorder) el.style.borderColor=g.restBorder;
+  }
+  return true;
+}
+// Returns true when a glide plays (or one already travelling carries on).
 function playActiveHighlightGlide(root, from, opts){
-  if(!from||!root||_highlightReducedMotion()) return;
+  if(!from||!root||_highlightReducedMotion()) return false;
   const el=_shownActive(root,opts.selector);
-  if(!el||opts.key(el)===from.key) return;
+  if(!el) return false;
+  if(opts.key(el)===from.key) return _rejoinHighlightGlide(root,el,opts);
   const to=el.getBoundingClientRect();
   const bounds=(opts.bounds||root).getBoundingClientRect();
-  if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
+  if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return false;
+  // A newer pick in the same panel takes over from one still travelling.
+  if(_glideInFlight&&_glideInFlight.root===root) _glideInFlight.finish();
   const oldEl=opts.find(root,from.key);
   // The row's own fill and outline may be mid-transition: read where they end.
   const liveStyle=getComputedStyle(el),keepTransition=el.style.transition;
@@ -9556,7 +9574,7 @@ function playActiveHighlightGlide(root, from, opts){
       el.animate([{opacity:0,transform:'scaleY(.3)'},{opacity:1,transform:'scaleY(1)'}],{duration:fade,easing:'cubic-bezier(.22,1,.36,1)',pseudoElement:'::before'});
       if(oldEl) oldEl.animate([{backgroundColor:from.background},{backgroundColor:getComputedStyle(oldEl).backgroundColor}],{duration:fade,easing:'ease-out'});
     }catch(_){}
-    return;
+    return true;
   }
   const bar=getComputedStyle(el,'::before');
   const glide=document.createElement('div');
@@ -9589,31 +9607,38 @@ function playActiveHighlightGlide(root, from, opts){
   }
   // Chips that wrap across lines (Notes tags) move sideways and change width
   // as well: the copy travels straight from the old chip to the new one.
+  // Every row this glide hands its highlight to (see _rejoinHighlightGlide)
+  // takes it back, in the same frame and with no fade, when the copy lands.
+  const flight={root,key:opts.key(el),els:[el],restBorder:outlined?restBorder:'',layer:glide};
+  let done=false;
+  flight.finish=()=>{
+    if(done) return;
+    done=true;
+    for(const node of flight.els){
+      node.style.transitionProperty='transform';
+      node.classList.remove('is-highlight-arriving');
+      void node.offsetWidth;
+      node.style.transitionProperty='';
+      if(outlined) node.style.borderColor='';
+    }
+    flight.layer.remove();
+    if(_glideInFlight===flight) _glideInFlight=null;
+  };
   if(opts.freeSection&&from.section===opts.freeSection&&from.width){
     document.body.appendChild(glide);
     el.classList.add('is-highlight-arriving');
+    _glideInFlight=flight;
     const dist=Math.hypot(from.left-to.left,from.top-to.top);
     const ms=Math.round(220+Math.min(160,dist*0.3));
-    let ended=false;
-    const end=()=>{
-      if(ended) return;
-      ended=true;
-      el.style.transitionProperty='transform';
-      el.classList.remove('is-highlight-arriving');
-      void el.offsetWidth;
-      el.style.transitionProperty='';
-      if(outlined) el.style.borderColor='';
-      glide.remove();
-    };
     try{
       const anim=glide.animate([
         {left:`${from.left}px`,top:`${from.top}px`,width:`${from.width}px`,height:`${from.height}px`},
         {left:`${to.left}px`,top:`${to.top}px`,width:`${to.width}px`,height:`${to.height}px`},
       ],{duration:ms,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});
-      anim.finished.then(end,end);
-    }catch(_){ end(); return; }
-    setTimeout(end,ms+200);
-    return;
+      anim.finished.then(flight.finish,flight.finish);
+    }catch(_){ flight.finish(); return false; }
+    setTimeout(flight.finish,ms+200);
+    return true;
   }
   // A row scrolled out of view starts from the list's edge.
   const startTop=Math.max(bounds.top-to.height,Math.min(bounds.bottom,from.top));
@@ -9640,32 +9665,28 @@ function playActiveHighlightGlide(root, from, opts){
     layer.appendChild(glide);
   }
   document.body.appendChild(layer);
+  flight.layer=layer;
   el.classList.add('is-highlight-arriving');
+  _glideInFlight=flight;
   const duration=Math.round(240+Math.min(180,span*0.35));
   _easeHighlightInset(el,restPad,style.paddingLeft,duration);
   _easeHighlightInset(oldEl,from.paddingLeft,oldRestPad,duration);
-  const frames=[
+  // An outlined copy (Notes' cards) only travels: stretching it would
+  // thicken its outline on the way.
+  const frames=outlined?[
+    {transform:`translateY(${dy}px) scaleY(${from.height/to.height})`},
+    {transform:'translateY(0) scaleY(1)'},
+  ]:[
     {transform:`translateY(${dy}px) scaleY(${from.height/to.height})`},
     {transform:`translateY(${lead.top}px) scaleY(${lead.height/to.height})`,offset:0.55},
     {transform:'translateY(0) scaleY(1)'},
   ];
-  let done=false;
-  const finish=()=>{
-    if(done) return;
-    done=true;
-    // The element's own highlight takes over in the same frame, with no fade.
-    el.style.transitionProperty='transform';
-    el.classList.remove('is-highlight-arriving');
-    void el.offsetWidth;
-    el.style.transitionProperty='';
-    if(outlined) el.style.borderColor='';
-    layer.remove();
-  };
   try{
     const anim=glide.animate(frames,{duration,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});
-    anim.finished.then(finish,finish);
-  }catch(_){ finish(); return; }
-  setTimeout(finish,duration+200);
+    anim.finished.then(flight.finish,flight.finish);
+  }catch(_){ flight.finish(); return false; }
+  setTimeout(flight.finish,duration+200);
+  return true;
 }
 window.noteActiveHighlight=noteActiveHighlight;
 window.playActiveHighlightGlide=playActiveHighlightGlide;

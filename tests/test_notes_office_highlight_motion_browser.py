@@ -1,16 +1,18 @@
 """Highlight motion and tint on the Notes and Office pages.
 
 - Notes: the tag chips take the side panel's highlight glide (moving sideways
-  as well as down), and a note card picked in the middle list eases into its
-  outline and blue tint instead of snapping.
+  as well as down), a note card's outline slides from the card picked before,
+  and a workspace note's highlight moves at the click, not once it has loaded.
 - Office: Dashboard / Integrations take the glide, carrying the card's
   outline, and the picked card is tinted, not grey.
 - Zeus 2.0: every hover uses the active row's tint (--accent-bg), so History
   rows and project folders match "Inbox" on the Work Hub.
 - Office: coming back to the floor plays the staged wake (stars, then the
-  floor, then the cards).
+  floor, then the cards), also when the floor had to be built again, and the
+  light-up and wake never push the neon bands past their own glow.
 """
 import json
+import time
 import uuid
 
 import pytest
@@ -100,37 +102,70 @@ def test_notes_tag_highlight_glides_sideways_to_the_next_tag(page):
         page.evaluate(_PURGE_NOTES, ids)
 
 
-def test_notes_card_picked_eases_into_its_tinted_outline(page):
-    ids = page.evaluate(_CREATE_NOTES, [{"title": f"Ease {i} {uuid.uuid4().hex[:4]}"} for i in (1, 2)])
+def test_notes_card_outline_slides_down_to_the_next_card(page):
+    ids = page.evaluate(_CREATE_NOTES, [{"title": f"Slide {i} {uuid.uuid4().hex[:4]}"} for i in (1, 2, 3)])
     try:
         page.evaluate("async () => { await switchPanel('notebook'); }")
         page.click("[data-nb-scope=general]")
-        page.wait_for_selector(f".nb-item[data-nb-open='{ids[1]}']", timeout=15000)
-        page.click(f".nb-item[data-nb-open='{ids[0]}']")
-        page.wait_for_function(f"() => document.querySelector(\".nb-item.active[data-nb-open='{ids[0]}']\")", timeout=10000)
+        page.wait_for_selector(f".nb-item[data-nb-open='{ids[2]}']", timeout=15000)
+        cards = page.evaluate("(ids) => ids.map(id => document.querySelector(`.nb-item[data-nb-open='${id}']`).getBoundingClientRect().top)", ids)
+        # The list is newest first; pick the top card, then the one below it.
+        order = sorted(range(3), key=lambda i: cards[i])
+        first, below = ids[order[0]], ids[order[1]]
+        page.click(f".nb-item[data-nb-open='{first}']")
+        page.wait_for_function(f"() => document.querySelector(\".nb-item.active[data-nb-open='{first}']\")", timeout=10000)
         page.wait_for_timeout(600)
         page.mouse.move(5, 5)
-        eased = page.evaluate(f"""() => {{
-            const card = document.querySelector(".nb-item[data-nb-open='{ids[1]}']");
-            card.click();
-            const now = document.querySelector(".nb-item[data-nb-open='{ids[1]}']");
-            const anims = now.getAnimations().map(a => Object.keys((a.effect.getKeyframes() || [{{}}])[0] || {{}}).join('/'));
-            if (!now.classList.contains('active')) return ['not active', now === card, anims];
-            return now.getAnimations().some(a => {{
-                const frames = a.effect && a.effect.getKeyframes ? a.effect.getKeyframes() : [];
-                return frames.length && 'borderColor' in frames[0];
-            }}) || ['no ease', now === card, anims];
-        }}""")
-        assert eased is True, eased
-        page.wait_for_timeout(700)
+        box = "(sel) => document.querySelector(sel).getBoundingClientRect().top"
+        start = page.evaluate(box, f".nb-item[data-nb-open='{first}']")
+        end = page.evaluate(box, f".nb-item[data-nb-open='{below}']")
+        seen = page.evaluate(_TRACK, f".nb-item[data-nb-open='{below}']")
+        assert seen and float(seen[0]["border"].rstrip("px")) > 0, seen
+        # The outline travels down through the gap between the two cards.
+        assert any(start + 4 < s["top"] < end - 4 for s in seen), (start, end, seen)
+        page.wait_for_timeout(400)
         fills = page.evaluate(f"""() => {{
             const probe = document.createElement('div'); probe.style.background = 'var(--accent-bg)'; document.body.appendChild(probe);
             const tint = getComputedStyle(probe).backgroundColor; probe.remove();
-            return [getComputedStyle(document.querySelector(".nb-item.active[data-nb-open='{ids[1]}']")).backgroundColor, tint];
+            return [getComputedStyle(document.querySelector(".nb-item.active[data-nb-open='{below}']")).backgroundColor, tint];
         }}""")
         assert fills[0] == fills[1] and fills[0] != "rgba(0, 0, 0, 0)", fills
     finally:
         page.evaluate(_PURGE_NOTES, ids)
+
+
+def test_notes_workspace_note_highlight_moves_at_the_click_not_after_loading(page):
+    pid = page.evaluate("""async () => (await api('/api/projects/create', {method: 'POST',
+        body: JSON.stringify({name: 'Tree glide', work_hub_managed: true})})).project.project_id""")
+    ids = page.evaluate(_CREATE_NOTES, [{"title": f"Tree {i} {uuid.uuid4().hex[:4]}", "project_id": pid} for i in (1, 2, 3)])
+    try:
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+        page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
+        page.evaluate("async () => { await switchPanel('notebook'); }")
+        tile = f".nb-place-btn[data-nb-id='{pid}']"
+        page.wait_for_selector(tile, timeout=15000)
+        if page.get_attribute(tile, "aria-expanded") != "true":
+            page.click(tile)
+        page.wait_for_timeout(500)
+        rows = page.evaluate(f"() => [...document.querySelector(\"{tile}\").nextElementSibling.querySelectorAll('.nb-tree-note > button')].map(b => b.dataset.nbOpen)")
+        assert len(rows) >= 3, rows
+        row = lambda note: f".nb-tree-note > button[data-nb-open='{note}']"
+        page.click(row(rows[0]))
+        page.wait_for_function(f"() => document.querySelector(\".nb-tree-note.active > button[data-nb-open='{rows[0]}']\")", timeout=10000)
+        page.wait_for_timeout(600)
+        page.mouse.move(5, 5)
+        # The next note takes a while to load; the highlight must not wait for it.
+        slow = f"**/api/notebook/notes/{rows[2]}*"
+        page.route(slow, lambda route: (time.sleep(0.9), route.continue_()))
+        start = page.evaluate(f"() => document.querySelector(\"{row(rows[0])}\").getBoundingClientRect().top")
+        end = page.evaluate(f"() => document.querySelector(\"{row(rows[2])}\").getBoundingClientRect().top")
+        seen = page.evaluate(_TRACK, row(rows[2]))
+        assert any(start + 4 < s["top"] < end - 4 for s in seen), (start, end, seen)
+    finally:
+        page.evaluate("() => new Promise(r => setTimeout(r, 1200))")
+        page.evaluate(_PURGE_NOTES, ids)
+        page.evaluate("(id) => api('/api/projects/delete', {method: 'POST', body: JSON.stringify({project_id: id})})", pid)
 
 
 def test_office_page_cards_glide_with_their_outline_and_take_the_tint(page):
@@ -202,3 +237,55 @@ def test_office_comes_back_in_stages(page):
     # The stars come in quickly, and the cards wait for the floor.
     assert out["intro"] and out["stars"] < 300 and 300 <= out["delay"] <= 700, out
     page.evaluate("async () => { await switchPanel('chat'); }")
+
+
+def test_office_rebuilt_floor_comes_back_the_quick_way(page):
+    page.evaluate("async () => { await switchPanel('office'); }")
+    ready = "() => document.querySelector('.office-canvas') && !document.querySelector('.office-canvas.is-mounting')"
+    try:
+        page.wait_for_function(ready, timeout=30000)
+    except Exception:
+        pytest.skip("the Office scene did not mount in this browser")
+    page.wait_for_timeout(2500)
+    # Away long enough that the scene was released: the floor is built again.
+    page.evaluate("async () => { await switchPanel('chat'); window.HermesOffice.dispose(); }")
+    page.evaluate("async () => { await switchPanel('office'); }")
+    page.wait_for_function(ready, timeout=30000)
+    delay = page.evaluate("() => parseFloat(document.querySelector('.office-stage').style.getPropertyValue('--office-intro-delay'))")
+    # The wake's cards follow within a beat; the first power-up waits ~1.3s.
+    assert 300 <= delay <= 700, delay
+    page.evaluate("async () => { await switchPanel('chat'); }")
+
+
+_GLOW = """async () => {
+  const v = document.querySelector('script[src*="office/index.js"]').getAttribute('src').split('?')[1];
+  const {createOfficeScene} = await import('/static/office/scene.js?' + v);
+  const c = document.createElement('canvas');
+  c.style.cssText = 'position:fixed;left:0;top:0;width:600px;height:400px';
+  document.body.appendChild(c);
+  const sc = createOfficeScene(c, {}); sc.resize(); sc.start();
+  await new Promise(r => setTimeout(r, 800));
+  let band = null;
+  sc.scene.traverse(o => { if (o.userData && o.userData.hubBand) band = o.userData.hubBand; });
+  const natural = band.userData.idleEmissiveIntensity;
+  const glow = () => { const m = band.material; return Math.max(m.emissive.r, m.emissive.g, m.emissive.b) * m.emissiveIntensity; };
+  const peak = async (ms) => { let p = 0; const t0 = performance.now();
+    while (performance.now() - t0 < ms) { await new Promise(r => requestAnimationFrame(r)); p = Math.max(p, glow()); } return p; };
+  sc.playIntro(0); const intro = await peak(1800);
+  await new Promise(r => setTimeout(r, 300));
+  sc.playWake(100, 320); const wake = await peak(900);
+  try { sc.stop(); } catch (_) {}
+  c.remove();
+  return {natural, intro, wake};
+}"""
+
+
+def test_office_light_up_and_wake_keep_the_bands_at_their_own_glow(page):
+    try:
+        out = page.evaluate(_GLOW)
+    except Exception as exc:  # no WebGL in this browser
+        pytest.skip(f"the Office scene could not start: {exc}")
+    # The hub band's colour is at most 1 per channel, so its glow never
+    # passes its idle intensity; the wake used to double it.
+    limit = out["natural"] * 1.02
+    assert out["intro"] <= limit and out["wake"] <= limit, out

@@ -15938,3 +15938,16 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .scroll-to-bottom-btn[style*="display: none"],.session-jump-btn[style*="display: none"]{opacity:0;scale:.86;}
 @starting-style{.scroll-to-bottom-btn,.session-jump-btn{opacity:0;scale:.86;}}
 @media (prefers-reduced-motion:reduce){.scroll-to-bottom-btn,.session-jump-btn{transition:none;}}
+
+/* Scheduled Jobs: compact action buttons, and every card's contents sit the
+   same distance from its top, bottom and left edges (the last row's own
+   padding and the last paragraph's line spacing used to widen the bottom). */
+.cron-btn{padding:3px 8px;font-size:11px;line-height:1.35;}
+#taskDetailBody .detail-alert-actions{gap:6px;margin:8px 0 3px;}
+#taskDetailBody .detail-alert{padding:11px 14px 11px;}
+#taskDetailBody .detail-card{padding:16px 18px 15px;}
+#taskDetailBody .detail-card > .detail-row:last-child{padding-bottom:0;margin-bottom:-1px;}
+.cron-header{gap:6px;}
+.cron-name{min-width:64px;}
+.cron-status{padding:2px 6px;}
+.cron-profile-badge{padding:1px 6px;flex-shrink:1;min-width:28px;}

@@ -33,6 +33,9 @@
     search: '', searchResults: null, searchSeq: 0,
     expanded: {}, more: {}, tagFilter: null,
     note: null, noteLoading: false, noteError: '',
+    // The note being opened: its row and card take the highlight at the
+    // click, not when it has loaded.
+    opening: null,
     pane: 'list', // narrow screens: 'list' | 'editor'
   };
   const save = {timer: 0, retry: 0, inflight: null, dirty: {}, again: false, status: 'idle', error: '', conflict: null};
@@ -120,6 +123,7 @@
     return 'var(--muted)';
   }
   const live = (n) => !n.deleted_at;
+  const shownId = () => S.opening || (S.note && S.note.id);
 
   // ── scope & filtering ───────────────────────────────────────────────────────
   function inScope(note, scope) {
@@ -233,7 +237,7 @@
     const more = notes.length > TREE_LIMIT && key
       ? `<button type="button" class="nb-tree-more" data-nb-action="more" data-nb-more="${esc(key)}">${all ? 'Show fewer' : `Show ${notes.length - TREE_LIMIT} more`}</button>` : '';
     const here = key && S.scope && (S.scope.kind + ':' + S.scope.id) === key;
-    return shown.map((n) => `<div class="work-hub-board-row nb-tree-note${here && S.note && S.note.id === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('') + more;
+    return shown.map((n) => `<div class="work-hub-board-row nb-tree-note${here && shownId() === n.id ? ' active' : ''}" data-nb-note-row="${esc(n.id)}"><button type="button" data-nb-open="${esc(n.id)}">${icon('note', 13)}<span>${esc(n.title || 'Untitled')}</span></button></div>`).join('') + more;
   }
   // Same markup and classes as the Work Hub's workspace folders, so the two
   // side panels look and move the same, and as on Chat: a tile click only
@@ -561,17 +565,30 @@
       host.innerHTML = `<div class="nb-empty"><p>${message}</p>${trash || S.search ? '' : '<button type="button" class="nb-btn primary" data-nb-action="new">New note</button>'}</div>`;
       return;
     }
+    // A folded-away list (a workspace or folder is open) shows no glide.
+    const glide = !entering && shouldShowMiddleList() && typeof window.noteActiveHighlight === 'function';
+    const from = glide ? window.noteActiveHighlight(host, LIST_HIGHLIGHT) : null;
     const before = selectionLooks(host);
     host.innerHTML = (trash ? '<div class="nb-trash-bar"><span>Notes here are deleted for good when you empty the trash.</span><button type="button" class="nb-btn small" data-nb-action="empty-trash">Empty trash</button></div>' : '')
-      + notes.map((n, i) => `<button type="button" role="listitem" class="nb-item${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-open="${esc(n.id)}" style="--i:${Math.min(i, 12)}">
+      + notes.map((n, i) => `<button type="button" role="listitem" class="nb-item${shownId() === n.id ? ' active' : ''}" data-nb-open="${esc(n.id)}" style="--i:${Math.min(i, 12)}">
         <span class="nb-item-title">${n.pinned ? `<span class="nb-flag" title="Pinned">${icon('pin', 12)}</span>` : ''}${n.favorite ? `<span class="nb-flag fav" title="Favorite">${icon('star', 12)}</span>` : ''}<strong>${esc(n.title || 'Untitled')}</strong></span>
         <span class="nb-item-preview${n.preview ? '' : ' is-empty'}">${n.preview ? esc(n.preview) : 'No additional text'}</span>
         <span class="nb-item-meta"><span class="nb-place-dot" aria-hidden="true" style="background:${esc(placeColor(n))}"></span><span class="nb-item-meta-text">${esc(placeLabel(n))} · ${esc(when(n.updated_at))}${(n.tags || []).length ? ` · ${n.tags.slice(0, 3).map((t) => '#' + esc(t)).join(' ')}` : ''}</span></span>
       </button>`).join('');
-    easeSelection(host, before, entering);
+    // Between two cards the outline slides from one to the other, as the side
+    // panel's highlight does; a first pick (nothing outlined before) eases in.
+    if (from && window.playActiveHighlightGlide(host, from, {...LIST_HIGHLIGHT, bounds: host})) selectionEase = null;
+    else easeSelection(host, before, entering);
   }
-  // The open note's card eases into its outline and tint, and the one it
-  // replaces eases back, rather than both snapping when the list repaints.
+  const LIST_HIGHLIGHT = {
+    selector: '.nb-item.active',
+    restSelector: '.nb-item:not(.active)',
+    key: (node) => 'note:' + node.dataset.nbOpen,
+    find: (root, id) => root.querySelector(`.nb-item[data-nb-open="${CSS.escape(id.slice(5))}"]`),
+    section: () => 'list',
+  };
+  // A card outlined from nothing eases into its outline and tint, and one
+  // losing it eases back, rather than snapping when the list repaints.
   // A repaint while that runs (the note loading, an autosave) picks the
   // ease up on the new cards where it was.
   const SELECTION_EASE_MS = 260;
@@ -1707,6 +1724,10 @@
   }
   async function openNote(noteId, opts) {
     if (S.note && S.note.id === noteId && !(opts && opts.force)) { S.pane = 'editor'; ensureShell(); return; }
+    // The highlight moves to the picked note now; waiting for the note to
+    // load left it behind, then rushed it there as the editor mounted.
+    S.opening = noteId;
+    renderSidebar(); paintList(false);
     await flushSave();
     save.dirty = {}; save.conflict = null; clearTimeout(save.retry); setStatus('idle');
     S.noteLoading = true; S.noteError = ''; S.pane = 'editor';
@@ -1717,6 +1738,7 @@
       const {note} = await (takePrefetched(noteId) || window.NotebookApi.get(noteId));
       if (S.side === 'vault' && isVaultNote(note)) Object.assign(note, asVaultView(note));
       S.note = note;
+      if (S.opening === noteId) S.opening = null;
       try { localStorage.setItem(LAST_KEY, noteId); } catch (_) {}
       let content = note.content;
       const draft = readDraft(noteId);
@@ -1736,6 +1758,7 @@
     } catch (error) {
       S.noteLoading = false;
       S.note = null;
+      if (S.opening === noteId) S.opening = null;
       clearSkeleton();
       S.noteError = error.status === 404 ? 'This note no longer exists.' : (error.message || 'The note could not be loaded');
       render();
@@ -2069,14 +2092,6 @@
       if (tile && tile.matches('.nb-place-btn') && !(S.scope.kind === tile.dataset.nbKind && S.scope.id === tile.dataset.nbId)) {
         S.scope = {kind: tile.dataset.nbKind, id: tile.dataset.nbId};
         if (S.note && S.note.id === open.dataset.nbOpen) { render(); return; }
-      }
-      // A card picked in the list takes its outline at once, not when the
-      // note has loaded.
-      if (open.classList.contains('nb-item')) {
-        const host = $('nbListItems');
-        const before = selectionLooks(host);
-        host.querySelectorAll('.nb-item').forEach((el) => el.classList.toggle('active', el === open));
-        easeSelection(host, before, false);
       }
       await openNote(open.dataset.nbOpen);
       return;

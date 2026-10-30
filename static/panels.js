@@ -1887,13 +1887,33 @@ async function _loadRunContent(jobId, filename, runId){
   }
 }
 
+// The picked job's highlight slides from the one before, as on the Chat and
+// Work Hub side panels (ui.js playActiveHighlightGlide). Paused jobs sit in
+// their own fold, so between the two lists it hands over in place.
+const _CRON_HIGHLIGHT = {
+  selector: '.cron-item.active',
+  restSelector: '.cron-item:not(.active)',
+  key: item => item.id,
+  find: (list, id) => list.querySelector('#' + CSS.escape(id)),
+  section: item => (item.closest('.cron-paused-section') ? 'paused' : 'jobs'),
+};
+function _noteCronHighlight(list){
+  return list && typeof noteActiveHighlight === 'function' ? noteActiveHighlight(list, _CRON_HIGHLIGHT) : null;
+}
+function _playCronHighlight(list, from){
+  if (from && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(list, from, {..._CRON_HIGHLIGHT, bounds: list});
+}
+
 function openCronDetail(jobOrId, el){
   const job = _findCronJob(jobOrId);
   if (!job) return;
   const detailKey = _cronJobKey(job);
+  const list = $('cronList');
+  const glideFrom = _noteCronHighlight(list);
   document.querySelectorAll('.cron-item').forEach(e => e.classList.remove('active'));
   const target = el || $(_cronItemId(job));
   if (target) target.classList.add('active');
+  _playCronHighlight(list, glideFrom);
   // Remove new-run dot from this job since user is now viewing it
   if (!job.read_only) _clearCronUnreadForJob(job.id);
   const dot = target && target.querySelector('.cron-new-dot');
@@ -2557,8 +2577,9 @@ async function cronResume(id) {
   try {
     await api('/api/crons/resume', {method:'POST', body: JSON.stringify({job_id: id})});
     showToast(t('cron_job_resumed'));
-    await loadCrons();
-  } catch(e) { showToast(t('failed_colon') + e.message, 4000); }
+  } catch(e) { showToast(t('failed_colon') + e.message, 6000); }
+  // Reload either way: a resume the server refused may still have changed the job.
+  await loadCrons();
 }
 
 let _editingCronId = null;
