@@ -289,3 +289,23 @@ def test_office_light_up_and_wake_keep_the_bands_at_their_own_glow(page):
     # passes its idle intensity; the wake used to double it.
     limit = out["natural"] * 1.02
     assert out["intro"] <= limit and out["wake"] <= limit, out
+
+
+def test_office_with_live_work_comes_back_without_the_wake(page):
+    page.evaluate("async () => { await switchPanel('office'); }")
+    ready = "() => document.querySelector('.office-canvas') && !document.querySelector('.office-canvas.is-mounting')"
+    try:
+        page.wait_for_function(ready, timeout=30000)
+    except Exception:
+        pytest.skip("the Office scene did not mount in this browser")
+    page.evaluate("() => window.HermesOffice.onSpawn({subagent_id: 'live-1', goal: 'keep working', depth: 1})")
+    page.wait_for_timeout(2500)
+    page.evaluate("async () => { await switchPanel('chat'); }")
+    page.wait_for_timeout(400)
+    page.evaluate("async () => { await switchPanel('office'); }")
+    page.wait_for_function("() => !document.querySelector('.office-canvas.is-waking')", timeout=10000)
+    out = page.evaluate("""() => ({intro: document.querySelector('.office-stage').classList.contains('is-intro'),
+        fade: parseFloat(getComputedStyle(document.querySelector('.office-canvas')).transitionDuration)})""")
+    # The floor is just there: no staged cards, no fade-in.
+    assert not out["intro"] and out["fade"] == 0, out
+    page.evaluate("async () => { window.HermesOffice.reset(); await switchPanel('chat'); }")

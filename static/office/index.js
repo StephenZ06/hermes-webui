@@ -2392,6 +2392,7 @@ function cancelSuspendTimer() {
 /** Stop drawing and polling, keep the scene; dispose it after SUSPEND_MS. */
 function suspend() {
   if (!_scene || !_container) { unmount(); return; }
+  _liveOnLeave = hasLiveTaskOnFloor();
   const reset = !_preserveOfficeNavigationOnUnmount;
   _preserveOfficeNavigationOnUnmount = false;
   if (reset) resetOfficeToDefault();
@@ -2462,13 +2463,23 @@ function playStageCards(stage, delay, fade) {
 const WAKE_STARS_MS = 180;
 const WAKE_FLOOR_AT_MS = 140;
 const WAKE_FLOOR_MS = 320;
+// Left while live work was on the floor and it is still running: the floor
+// is simply there again on return, with no wake to sit through.
+let _liveOnLeave = false;
+function hasLiveTaskOnFloor() {
+  if (_viewMode !== 'live' || _officeSubview !== 'floor') return false;
+  return (activeAdapter().getState().workers || []).some(w => taskStatusBucket(w.status) === 'running');
+}
 function hideCanvasWhileAway() {
   if (_canvas) _canvas.classList.add('is-waking');
 }
 function wakeCanvas() {
   if (!_canvas || !_canvas.classList.contains('is-waking')) return;
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const staged = !reduced && _scene && typeof _scene.playWake === 'function';
+  const quiet = _liveOnLeave && hasLiveTaskOnFloor();
+  _liveOnLeave = false;
+  const staged = !reduced && !quiet && _scene && typeof _scene.playWake === 'function';
+  if (quiet) _canvas.style.setProperty('--office-wake-ms', '0ms');
   if (staged) _scene.playWake(WAKE_STARS_MS + WAKE_FLOOR_AT_MS, WAKE_FLOOR_MS);
   try { if (_scene) _scene.renderNow(); } catch (_err) { /* the loop draws it next frame */ }
   window.requestAnimationFrame(() => window.requestAnimationFrame(() => {

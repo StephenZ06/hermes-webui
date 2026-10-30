@@ -72,3 +72,15 @@ def test_detail_cards_have_equal_inner_margins(page):
     assert len(insets) >= 3, insets
     for inset in insets:
         assert abs(inset["top"] - inset["bottom"]) <= 1.5 and abs(inset["top"] - inset["left"]) <= 1.5, inset
+
+
+def test_badges_are_rounded_rectangles_not_pills(page):
+    page.locator(".cron-item").nth(0).click()
+    page.wait_for_selector("#taskDetailBody .detail-badge", timeout=10000)
+    pills = page.evaluate("""() => [...document.querySelectorAll('#panelTasks *, #mainTasks *')].filter(el => {
+        const r = el.getBoundingClientRect(); if (r.width < 8 || r.height < 8) return false;
+        const c = getComputedStyle(el), radius = parseFloat(c.borderTopLeftRadius);
+        const drawn = (parseFloat(c.borderTopWidth) > 0 && c.borderTopColor !== 'rgba(0, 0, 0, 0)') || c.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        return drawn && radius > 6 && radius >= Math.min(r.width, r.height) / 2 - 1;
+    }).map(el => el.className)""")
+    assert pills == [], pills
