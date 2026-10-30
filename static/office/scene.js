@@ -1361,6 +1361,8 @@ export function createOfficeScene(canvas, options) {
   // is deck. Each part is dark (the backdrop colour) until its moment.
   let intro = null;
   const INTRO_BRIDGE_SEGMENTS = 5;
+  // The whole light-up runs at this pace (the times below are at 1).
+  const INTRO_PACE = 0.6;
 
   function introHash(text) {
     let h = 2166136261;
@@ -1388,7 +1390,8 @@ export function createOfficeScene(canvas, options) {
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       const light = materials.some(isLightMaterial);
       const jitter = introHash(obj.uuid);
-      plan.push({ obj, materials, light, jitter, ...timing(obj, light, jitter) });
+      const step = timing(obj, light, jitter);
+      plan.push({ obj, materials, light, jitter, ...step, at: step.at * INTRO_PACE });
     });
     add(backdrop, (obj, light, jitter) => (light
       ? { at: 150 + jitter * 120, flicker: true }
@@ -1421,10 +1424,10 @@ export function createOfficeScene(canvas, options) {
     if (ms < 110 * s) return 0.05;
     if (ms < 150 * s) return 1;
     if (ms < 240 * s) return 0.25;
-    return Math.min(1, 0.6 + (ms - 240 * s) / 400);
+    return Math.min(1, 0.6 + (ms - 240 * s) / 260);
   }
   function rampLevel(ms) {
-    const t = Math.min(1, Math.max(0, ms / 450));
+    const t = Math.min(1, Math.max(0, ms / 300));
     return t * t * (3 - 2 * t);
   }
 
@@ -1444,6 +1447,22 @@ export function createOfficeScene(canvas, options) {
       restoreContentOpacity();
       introFade = false;
     }
+  }
+
+  /**
+   * Coming back to the floor: everything but the stars starts at the backdrop
+   * colour and fades up together over `durationMs`, `delayMs` from now.
+   */
+  function playWake(delayMs, durationMs) {
+    intro = null;
+    introFade = true;
+    snapshotContentOpacity();
+    outletTransition.startMs = performance.now() + Math.max(0, delayMs || 0);
+    outletTransition.durationMs = durationMs;
+    outletTransition.startK = 0;
+    outletTransition.endK = 1;
+    outletTransition.active = true;
+    applyContentOpacity(0);
   }
 
   /**
@@ -2579,6 +2598,6 @@ export function createOfficeScene(canvas, options) {
     beginLayoutMotion, endLayoutMotion, isInLayoutMotion: () => layoutMotion,
     getRenderQuality: () => ({ pixelRatio: renderer.getPixelRatio(), preferred: preferredPixelRatio, samples: composerTarget.samples }),
     workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
-    podScreenRect, scene, setOutletTransition, playIntro,
+    podScreenRect, scene, setOutletTransition, playIntro, playWake,
   };
 }

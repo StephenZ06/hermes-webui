@@ -1473,6 +1473,8 @@ function officeIcon(name, label) {
 function renderOfficeNavigation() {
   const nav = document.getElementById('officePageNav');
   if (!nav) return;
+  const root = document.getElementById('panelOffice');
+  const from = root && typeof window.noteActiveHighlight === 'function' ? window.noteActiveHighlight(root, SIDEBAR_HIGHLIGHT) : null;
   const pages = [
     ['dashboard', 'office-dashboard-tool', 17, 'Dashboard', 'Office overview'],
     ['integrations', 'office-integrations-tool', 18, 'Integrations', 'Connected accounts'],
@@ -1484,6 +1486,9 @@ function renderOfficeNavigation() {
     button.setAttribute('aria-current', _officeSubview === key ? 'page' : 'false');
     button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="/static/${icon}-${size}.png" srcset="/static/${icon}-${size}.png 1x, /static/${icon}-${size * 2}.png 2x, /static/${icon}.png 3x" alt="" aria-hidden="true"></span><span class="office-page-nav-copy"><strong>${label}</strong><small>${detail}</small></span><span class="office-page-nav-arrow" aria-hidden="true">›</span>`;
   });
+  // Only a page being picked plays here; leaving the pages for a run is
+  // played by markActiveRun once the run row is marked.
+  if (from && nav.querySelector('.is-active')) window.playActiveHighlightGlide(root, from, { ...SIDEBAR_HIGHLIGHT, bounds: root });
 }
 
 function resetOfficeToDefault({ render = false } = {}) {
@@ -1869,14 +1874,21 @@ function refreshHistory() {
  * Show the frozen office for a finished chat. The live adapter is untouched
  * and keeps accumulating; only what is drawn changes.
  */
-// The side panel's highlight glides to the run picked, exactly as Chat's does
-// (ui.js playActiveHighlightGlide): the runs inside workspace folders are one
-// section, the History list another, and between them it fades in place.
+// The side panel's highlight glides to the page or run picked, exactly as
+// Chat's does (ui.js playActiveHighlightGlide): Dashboard / Integrations are
+// one section (side by side, so the copy moves sideways, carrying the card's
+// outline along), the runs inside
+// workspace folders another, the History list a third, and between sections
+// it fades in place.
 const SIDEBAR_HIGHLIGHT = {
-  selector: '.office-session-row.is-active',
-  key: node => node.dataset.parentId,
-  find: (root, id) => root.querySelector(`.office-session-row[data-parent-id="${CSS.escape(id)}"]`),
-  section: node => (node.closest('.project-folder-sessions') ? 'workspaces' : 'history'),
+  selector: '.office-page-nav-btn.is-active, .office-session-row.is-active',
+  key: node => (node.dataset.officeSubview ? 'page:' + node.dataset.officeSubview : node.dataset.parentId),
+  find: (root, id) => (id.startsWith('page:')
+    ? root.querySelector(`.office-page-nav-btn[data-office-subview="${CSS.escape(id.slice(5))}"]`)
+    : root.querySelector(`.office-session-row[data-parent-id="${CSS.escape(id)}"]`)),
+  section: node => (node.dataset.officeSubview ? 'pages' : node.closest('.project-folder-sessions') ? 'workspaces' : 'history'),
+  restSelector: '.office-page-nav-btn:not(.is-active)',
+  freeSection: 'pages',
   occlude: '.office-project-folder',
 };
 // Mark the run on view in the side panel, gliding the highlight to it. The
@@ -2410,32 +2422,54 @@ function revealMountedFloor(startedAt) {
 // the stars lit, then the station powers up (scene.playIntro: the conductor's
 // lights, the bridges segment by segment, the decks, then each floor), and
 // the floating cards come in once the floors are lit.
-const INTRO_LIGHTS_DELAY_MS = 350;
-const INTRO_CARDS_AT_MS = 1900;
-const INTRO_CARDS_FADE_MS = 600;
+const INTRO_LIGHTS_DELAY_MS = 200;
+const INTRO_CARDS_AT_MS = 1150;
+const INTRO_CARDS_FADE_MS = 450;
 function playFloorIntro() {
   const stage = _canvas && _canvas.closest('.office-stage');
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced || !_scene || typeof _scene.playIntro !== 'function') return;
   _scene.playIntro(INTRO_LIGHTS_DELAY_MS);
   if (!stage) return;
-  stage.style.setProperty('--office-intro-delay', `${INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS}ms`);
+  playStageCards(stage, INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS, INTRO_CARDS_FADE_MS);
+}
+// The floating cards fade in `delay` ms from now, over `fade` ms.
+let _stageCardsTimer = 0;
+function playStageCards(stage, delay, fade) {
+  if (!stage) return;
+  clearTimeout(_stageCardsTimer);
+  stage.classList.remove('is-intro');
+  void stage.offsetWidth;
+  stage.style.setProperty('--office-intro-delay', `${delay}ms`);
+  stage.style.setProperty('--office-intro-fade', `${fade}ms`);
   stage.classList.add('is-intro');
-  window.setTimeout(() => stage.classList.remove('is-intro'), INTRO_LIGHTS_DELAY_MS + INTRO_CARDS_AT_MS + INTRO_CARDS_FADE_MS + 100);
+  _stageCardsTimer = window.setTimeout(() => stage.classList.remove('is-intro'), delay + fade + 100);
 }
 
 // While the panel is away the canvas keeps its last drawing buffer, which the
 // browser may discard and show as a flat colour when the panel comes back. It
-// is hidden on leaving and shown again (fading in from the black stage) once
-// a fresh frame has been drawn.
+// is hidden on leaving and shown again once a fresh frame has been drawn, in
+// quick steps: the black stage, then the stars fade in, then the conductor
+// and floors (scene.playWake), then the floating cards.
+const WAKE_STARS_MS = 180;
+const WAKE_FLOOR_AT_MS = 140;
+const WAKE_FLOOR_MS = 320;
 function hideCanvasWhileAway() {
   if (_canvas) _canvas.classList.add('is-waking');
 }
 function wakeCanvas() {
   if (!_canvas || !_canvas.classList.contains('is-waking')) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const staged = !reduced && _scene && typeof _scene.playWake === 'function';
+  if (staged) _scene.playWake(WAKE_STARS_MS + WAKE_FLOOR_AT_MS, WAKE_FLOOR_MS);
   try { if (_scene) _scene.renderNow(); } catch (_err) { /* the loop draws it next frame */ }
   window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-    if (_canvas) _canvas.classList.remove('is-waking');
+    if (!_canvas) return;
+    if (staged) {
+      _canvas.style.setProperty('--office-wake-ms', `${WAKE_STARS_MS}ms`);
+      playStageCards(_canvas.closest('.office-stage'), WAKE_STARS_MS + WAKE_FLOOR_AT_MS + WAKE_FLOOR_MS * 0.5, 260);
+    }
+    _canvas.classList.remove('is-waking');
   }));
 }
 

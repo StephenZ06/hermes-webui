@@ -6117,6 +6117,7 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-tag-cloud{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;}
 .nb-tag{padding:2px 8px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:11px;cursor:pointer;}
 .nb-tag:hover,.nb-tag.active{border-color:transparent;background:var(--accent-bg);color:var(--accent-text);}
+.nb-tag{transition:background-color .15s ease,border-color .15s ease,color .15s ease;}
 .nb-nav-spacer{flex:1;min-height:12px;}
 .nb-side-error{margin:16px;color:var(--error);font-size:12px;}
 #mainNotebook{background:var(--bg);}
@@ -7582,7 +7583,8 @@ main.main > #mainPlugin{display:none;}
 @media (max-width:640px){.office-subview{padding:14px;}.office-subview-head{align-items:flex-start;flex-direction:row;margin-bottom:14px;padding-bottom:14px;}.office-subview-head>div{min-width:0;}.office-subview-back{align-self:flex-start;margin-left:auto;}.office-subview-placeholder{min-height:220px;}.office-dashboard-toolbar{align-items:flex-start;flex-direction:column;}.office-dashboard-snapshot{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}.office-dashboard-metric{padding:12px;}.office-dashboard-metric strong{font-size:24px;}.office-dashboard-grid,.office-integrations-grid{grid-template-columns:1fr;}}
 @media (prefers-reduced-motion:reduce){.office-subview,.office-dashboard-attention-card{transition:none;}.office-dashboard-floor-enter .office-stage,.office-dashboard-floor-enter .office-main{animation:none;}}
 .office-session-row{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:8px;background:none;color:var(--text);font-size:12px;cursor:pointer;}
-.office-session-row:hover{background:var(--surface-subtle);}
+.office-session-row:hover{background:var(--hover-bg);}
+.office-session-row{transition:background-color .15s ease,color .15s ease;}
 /* The run on view is marked as Chat marks the open chat: the accent fill. */
 .office-session-row.is-active,.office-session-row.is-active:hover{background:var(--accent-bg);color:var(--accent-text);border-color:transparent;}
 .office-session-row.is-active .office-session-title,.office-session-row.is-active.is-live .office-session-title{color:inherit;}
@@ -15559,10 +15561,21 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .has-tooltip::after,.sidebar-nav .nav-tab:hover::after{content:none!important;display:none!important;}
 /* Zeus 2.0 hovers take the skin's steel blue, not a grey or white tint:
    the shared hover token, and the controls that hard-code their own. */
-:root[data-skin="zeus-2"]{--hover-bg:rgba(70,130,180,.1);--surface-subtle-hover:rgba(70,130,180,.08);}
-:root.dark[data-skin="zeus-2"]{--hover-bg:rgba(70,130,180,.14);--surface-subtle-hover:rgba(70,130,180,.1);}
+/* One tint for every hover and highlight: the active "Inbox" row's
+   (--accent-bg), so a hovered row, a project folder and a picked row match. */
+:root[data-skin="zeus-2"],:root.dark[data-skin="zeus-2"]{--hover-bg:var(--accent-bg);--surface-subtle-hover:var(--accent-bg);}
 :root[data-skin="zeus-2"] :is(.icon-btn,.panel-icon-btn,.sm-btn,.cron-btn,.app-dialog-close,.app-dialog-btn,.approval-btn,.reasoning-option,.ctx-compress-btn,.model-opt,.model-opt-more,.ws-opt,.ws-row,.ws-action-btn,.profile-opt,.cmd-item,.ws-suggest-item,.msg-edit-cancel,.skill-opt,.side-menu-item,.session-child-session,.session-tree-caret,.project-chip,.project-chip-quick-create,.project-picker-item,.code-copy-btn,.checkpoint-item-actions button,.office-page-nav-btn,.provider-cost-budget-set,.provider-cost-budget-clear,.file-item):hover,
 :root[data-skin="zeus-2"] #sidebarWsDisplay:hover{background:var(--hover-bg);}
+:root[data-skin="zeus-2"] :is(.provider-card-header,.profile-card,.log-line,.office-dashboard-floor,.office-dashboard-worker,.office-dashboard-metric,.job-os-job-card,.job-os-btn,.session-search-clear,.kanban-list-item,.handoff-hint-action,.handoff-hint-dismiss):hover,
+:root[data-skin="zeus-2"] .office-tasks-row:hover:not(.is-selected),
+:root[data-skin="zeus-2"] #mainSettings :is(.theme-pick-btn,.skin-pick-btn,.font-size-pick-btn):hover,
+:root[data-skin="zeus-2"] .work-hub-inspector .wh-insp-prop .themed-select-trigger:is(:hover,.themed-select-trigger-open){background:var(--hover-bg);}
+/* Notes cards: a hovered card takes the open card's tint, not a stronger one. */
+:root[data-skin="zeus-2"] .nb-item:hover:not(.active){background:var(--accent-bg);}
+/* Picked tabs and options take the same tint instead of a grey fill. */
+:root[data-skin="zeus-2"] :is(.workspace-panel-tab.active,.studio-tabs button.active,.session-child-session.active),
+:root[data-skin="zeus-2"] .session-child-session-fork.active .session-child-session-main,
+:root[data-skin="zeus-2"] #mainSettings :is(.theme-pick-btn,.skin-pick-btn,.font-size-pick-btn).active{background:var(--accent-bg);}
 /* Workspace row quick "+": a rounded square like the side panels' +, not a circle. */
 .project-chip-quick-create{border-radius:5px;}
 /* Composer border beam: while the agent works, one soft arc of accent light
@@ -15808,7 +15821,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-dashboard-metric strong{translate:0 -1px;}
 /* Sidebar cards (Session usage, Office Dashboard/Integrations, Apify credit)
    sit on the sidepanel colour like the project folders, outline only. */
-.chat-usage-widget,.office-page-nav-btn,.office-page-nav-btn.is-active{background:transparent;box-shadow:none;}
+.chat-usage-widget,.office-page-nav-btn{background:transparent;box-shadow:none;}
+.office-page-nav-btn.is-active{background:var(--accent-bg);box-shadow:none;}
 /* Office: no "Office" title bar above the page; the top bar already names it. */
 #mainOffice > .main-view-header{display:none;}
 /* Dashboard / Integrations head: one line -- the title, then the
@@ -15841,7 +15855,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .drag-ghost.work-hub-card{background:var(--bg);}
 #mainNotebook .nb-search,#mainNotebook .nb-place-select .themed-select-trigger{background:transparent;}
 .nb-item{background:transparent;}
-.nb-item.active{background:transparent;border-color:var(--accent);}
+.nb-item.active{background:var(--accent-bg);border-color:var(--accent);}
 .office-header > :is(.office-pill,.office-header-btn),.office-subview-back,.office-integration-action,.office-integration-settings{background:transparent;}
 /* Office load: the stage is black space from the first frame, the loader only
    shows if the scene takes a while and leaves at once when it is ready (its
@@ -15853,7 +15867,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-stage:has(> .office-canvas.is-mounting) .office-loader{transition:opacity .25s ease .6s,visibility 0s linear .6s;}
 .office-canvas.is-waking{opacity:0;transition:none;}
 .office-stage:has(> .office-canvas.is-waking) .office-dept-cards{opacity:0;transition:none;}
-.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:office-intro-in .6s cubic-bezier(.22,.61,.36,1) var(--office-intro-delay,0ms) backwards;}
+.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:office-intro-in var(--office-intro-fade,.6s) cubic-bezier(.22,.61,.36,1) var(--office-intro-delay,0ms) backwards;}
+/* The canvas (the stars) fades in quickly, faster still coming back (wakeCanvas). */
+.office-canvas{transition-duration:var(--office-wake-ms,.3s);}
 @keyframes office-intro-in{from{opacity:0;}}
 @media (prefers-reduced-motion:reduce){.office-stage.is-intro :is(.office-dept-cards,.office-tasks){animation:none;}}
 /* Work Hub board: the columns run into the canvas's bottom padding, so the

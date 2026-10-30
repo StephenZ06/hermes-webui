@@ -293,14 +293,18 @@
   // The side panel's highlight glides to the row picked, exactly as Chat's
   // does (ui.js playActiveHighlightGlide): General / Pinned / Favorites /
   // Trash are one section, the notes inside workspaces and folders another,
-  // and between them it fades in place.
+  // the tags a third (their chips wrap, so the copy moves sideways too), and
+  // between sections it fades in place.
   const SIDEBAR_HIGHLIGHT = {
-    selector: '.nb-scope.active, .nb-tree-note.active > button[data-nb-open]',
-    key: (node) => (node.dataset.nbScope ? 'scope:' + node.dataset.nbScope : 'note:' + node.dataset.nbOpen),
+    selector: '.nb-scope.active, .nb-tree-note.active > button[data-nb-open], .nb-tag.active',
+    key: (node) => (node.dataset.nbScope ? 'scope:' + node.dataset.nbScope
+      : node.dataset.nbTag !== undefined ? 'tag:' + node.dataset.nbTag : 'note:' + node.dataset.nbOpen),
     find: (root, id) => (id.startsWith('note:')
       ? root.querySelector(`.nb-tree-note > button[data-nb-open="${CSS.escape(id.slice(5))}"]`)
-      : root.querySelector(`.nb-scope[data-nb-scope="${CSS.escape(id.slice(6))}"]`)),
-    section: (node) => (node.classList.contains('nb-scope') ? 'filters' : 'workspaces'),
+      : id.startsWith('tag:') ? root.querySelector(`.nb-tag[data-nb-tag="${CSS.escape(id.slice(4))}"]`)
+        : root.querySelector(`.nb-scope[data-nb-scope="${CSS.escape(id.slice(6))}"]`)),
+    section: (node) => (node.classList.contains('nb-scope') ? 'filters' : node.classList.contains('nb-tag') ? 'tags' : 'workspaces'),
+    freeSection: 'tags',
     occlude: '.nb-place-btn',
   };
   function renderSidebar() {
@@ -557,12 +561,57 @@
       host.innerHTML = `<div class="nb-empty"><p>${message}</p>${trash || S.search ? '' : '<button type="button" class="nb-btn primary" data-nb-action="new">New note</button>'}</div>`;
       return;
     }
+    const before = selectionLooks(host);
     host.innerHTML = (trash ? '<div class="nb-trash-bar"><span>Notes here are deleted for good when you empty the trash.</span><button type="button" class="nb-btn small" data-nb-action="empty-trash">Empty trash</button></div>' : '')
       + notes.map((n, i) => `<button type="button" role="listitem" class="nb-item${S.note && S.note.id === n.id ? ' active' : ''}" data-nb-open="${esc(n.id)}" style="--i:${Math.min(i, 12)}">
         <span class="nb-item-title">${n.pinned ? `<span class="nb-flag" title="Pinned">${icon('pin', 12)}</span>` : ''}${n.favorite ? `<span class="nb-flag fav" title="Favorite">${icon('star', 12)}</span>` : ''}<strong>${esc(n.title || 'Untitled')}</strong></span>
         <span class="nb-item-preview${n.preview ? '' : ' is-empty'}">${n.preview ? esc(n.preview) : 'No additional text'}</span>
         <span class="nb-item-meta"><span class="nb-place-dot" aria-hidden="true" style="background:${esc(placeColor(n))}"></span><span class="nb-item-meta-text">${esc(placeLabel(n))} · ${esc(when(n.updated_at))}${(n.tags || []).length ? ` · ${n.tags.slice(0, 3).map((t) => '#' + esc(t)).join(' ')}` : ''}</span></span>
       </button>`).join('');
+    easeSelection(host, before, entering);
+  }
+  // The open note's card eases into its outline and tint, and the one it
+  // replaces eases back, rather than both snapping when the list repaints.
+  // A repaint while that runs (the note loading, an autosave) picks the
+  // ease up on the new cards where it was.
+  const SELECTION_EASE_MS = 260;
+  let selectionEase = null;
+  function selectionLooks(host) {
+    const look = (el) => { const c = getComputedStyle(el); return {borderColor: c.borderTopColor, backgroundColor: c.backgroundColor}; };
+    const looks = {};
+    host.querySelectorAll('.nb-item.active, .nb-item:hover').forEach((el) => { looks[el.dataset.nbOpen] = look(el); });
+    const active = host.querySelector('.nb-item.active');
+    // A resting card's look, read where its own transition ends.
+    const restEl = host.querySelector('.nb-item:not(.active):not(:hover)');
+    let rest = null;
+    if (restEl) { const keep = restEl.style.transition; restEl.style.transition = 'none'; rest = look(restEl); restEl.style.transition = keep; }
+    return {active: active ? active.dataset.nbOpen : null, looks, rest};
+  }
+  function easeSelection(host, before, entering) {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const find = (id) => id && host.querySelector(`.nb-item[data-nb-open="${CSS.escape(id)}"]`);
+    const play = (el, from, elapsed) => {
+      if (!el || !from) return;
+      // Where the card ends, not where its own CSS transition is now.
+      const keep = el.style.transition;
+      el.style.transition = 'none';
+      const c = getComputedStyle(el);
+      const to = {borderColor: c.borderTopColor, backgroundColor: c.backgroundColor};
+      el.style.transition = keep;
+      if (to.borderColor === from.borderColor && to.backgroundColor === from.backgroundColor) return;
+      try { el.animate([from, to], {duration: SELECTION_EASE_MS, easing: 'cubic-bezier(.25,.6,.4,1)', delay: -elapsed}); } catch (_) { /* no WAAPI: snaps */ }
+    };
+    const now = performance.now();
+    const nowActive = host.querySelector('.nb-item.active');
+    const nowId = nowActive ? nowActive.dataset.nbOpen : null;
+    if (!entering && nowId !== before.active) {
+      selectionEase = {at: now, id: nowId, from: (nowId && before.looks[nowId]) || before.rest, oldId: before.active, oldFrom: before.looks[before.active] || null};
+    } else if (!selectionEase || entering || now - selectionEase.at >= SELECTION_EASE_MS || nowId !== selectionEase.id) {
+      selectionEase = null;
+      return;
+    }
+    play(find(selectionEase.id), selectionEase.from, now - selectionEase.at);
+    play(find(selectionEase.oldId), selectionEase.oldFrom, now - selectionEase.at);
   }
   function statusText() {
     switch (save.status) {
@@ -2020,6 +2069,14 @@
       if (tile && tile.matches('.nb-place-btn') && !(S.scope.kind === tile.dataset.nbKind && S.scope.id === tile.dataset.nbId)) {
         S.scope = {kind: tile.dataset.nbKind, id: tile.dataset.nbId};
         if (S.note && S.note.id === open.dataset.nbOpen) { render(); return; }
+      }
+      // A card picked in the list takes its outline at once, not when the
+      // note has loaded.
+      if (open.classList.contains('nb-item')) {
+        const host = $('nbListItems');
+        const before = selectionLooks(host);
+        host.querySelectorAll('.nb-item').forEach((el) => el.classList.toggle('active', el === open));
+        easeSelection(host, before, false);
       }
       await openNote(open.dataset.nbOpen);
       return;

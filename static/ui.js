@@ -9514,8 +9514,8 @@ function noteActiveHighlight(root, opts){
   const rect=el.getBoundingClientRect();
   if(!rect.height) return null;
   const style=getComputedStyle(el);
-  return {key:opts.key(el),top:rect.top,height:rect.height,section:opts.section(el),
-    paddingLeft:style.paddingLeft,background:style.backgroundColor};
+  return {key:opts.key(el),top:rect.top,height:rect.height,left:rect.left,width:rect.width,section:opts.section(el),
+    paddingLeft:style.paddingLeft,background:style.backgroundColor,borderColor:style.borderTopColor};
 }
 // The element's contents start where the inset was and slide to where it is.
 function _easeHighlightInset(el,fromPad,toPad,duration){
@@ -9534,10 +9534,16 @@ function playActiveHighlightGlide(root, from, opts){
   const bounds=(opts.bounds||root).getBoundingClientRect();
   if(!to.height||to.bottom<bounds.top||to.top>bounds.bottom) return;
   const oldEl=opts.find(root,from.key);
-  const style=getComputedStyle(el);
+  // The row's own fill and outline may be mid-transition: read where they end.
+  const liveStyle=getComputedStyle(el),keepTransition=el.style.transition;
+  el.style.transition='none';
+  const style={backgroundColor:liveStyle.backgroundColor,borderRadius:liveStyle.borderRadius,paddingLeft:liveStyle.paddingLeft,
+    borderTopWidth:liveStyle.borderTopWidth,borderTopColor:liveStyle.borderTopColor};
+  el.style.transition=keepTransition;
   // Only rows whose active inset differs from a resting row's (opts.restSelector,
   // Chat's accent-bar rows) ease their text sideways; others keep still.
-  const rest=opts.restSelector&&el.parentElement&&[...el.parentElement.children].find(child=>child!==el&&child.matches(opts.restSelector));
+  const restRows=opts.restSelector&&el.parentElement?[...el.parentElement.children].filter(child=>child!==el&&child.matches(opts.restSelector)):[];
+  const rest=restRows.find(child=>!child.matches(':hover'))||restRows[0];
   const restPad=rest?getComputedStyle(rest).paddingLeft:'';
   const oldRestPad=rest&&oldEl?getComputedStyle(oldEl).paddingLeft:'';
   if(from.section!==opts.section(el)){
@@ -9558,6 +9564,20 @@ function playActiveHighlightGlide(root, from, opts){
   glide.setAttribute('aria-hidden','true');
   glide.style.cssText=`left:${to.left}px;width:${to.width}px;top:${to.top}px;height:${to.height}px;`
     +`background:${style.backgroundColor};border-radius:${style.borderRadius};`;
+  // A highlight drawn as an outline (Office's page cards) carries its outline
+  // too, and the row arriving shows its resting outline until the copy lands.
+  let restBorder='';
+  if(rest){
+    const keep=rest.style.transition;
+    rest.style.transition='none';
+    restBorder=getComputedStyle(rest).borderTopColor;
+    rest.style.transition=keep;
+  }
+  const outlined=parseFloat(style.borderTopWidth)>0&&restBorder&&style.borderTopColor!==restBorder;
+  if(outlined){
+    glide.style.border=`${style.borderTopWidth} solid ${style.borderTopColor}`;
+    el.style.borderColor=restBorder;
+  }
   // Only a bar the element really shows (rows inside a project folder hide
   // theirs with display:none): the copy must not draw one that then vanishes.
   const barShown=bar.content&&bar.content!=='none'&&bar.display!=='none'&&bar.visibility!=='hidden'
@@ -9566,6 +9586,34 @@ function playActiveHighlightGlide(root, from, opts){
     const mark=document.createElement('i');
     mark.style.cssText=`left:${bar.left};top:${bar.top};bottom:${bar.bottom};width:${bar.width};background:${bar.backgroundColor};border-radius:${bar.borderRadius};`;
     glide.appendChild(mark);
+  }
+  // Chips that wrap across lines (Notes tags) move sideways and change width
+  // as well: the copy travels straight from the old chip to the new one.
+  if(opts.freeSection&&from.section===opts.freeSection&&from.width){
+    document.body.appendChild(glide);
+    el.classList.add('is-highlight-arriving');
+    const dist=Math.hypot(from.left-to.left,from.top-to.top);
+    const ms=Math.round(220+Math.min(160,dist*0.3));
+    let ended=false;
+    const end=()=>{
+      if(ended) return;
+      ended=true;
+      el.style.transitionProperty='transform';
+      el.classList.remove('is-highlight-arriving');
+      void el.offsetWidth;
+      el.style.transitionProperty='';
+      if(outlined) el.style.borderColor='';
+      glide.remove();
+    };
+    try{
+      const anim=glide.animate([
+        {left:`${from.left}px`,top:`${from.top}px`,width:`${from.width}px`,height:`${from.height}px`},
+        {left:`${to.left}px`,top:`${to.top}px`,width:`${to.width}px`,height:`${to.height}px`},
+      ],{duration:ms,easing:'cubic-bezier(.22,1,.36,1)',fill:'both'});
+      anim.finished.then(end,end);
+    }catch(_){ end(); return; }
+    setTimeout(end,ms+200);
+    return;
   }
   // A row scrolled out of view starts from the list's edge.
   const startTop=Math.max(bounds.top-to.height,Math.min(bounds.bottom,from.top));
@@ -9610,6 +9658,7 @@ function playActiveHighlightGlide(root, from, opts){
     el.classList.remove('is-highlight-arriving');
     void el.offsetWidth;
     el.style.transitionProperty='';
+    if(outlined) el.style.borderColor='';
     layer.remove();
   };
   try{
