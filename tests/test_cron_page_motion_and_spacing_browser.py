@@ -100,3 +100,14 @@ def test_badge_text_sits_one_pixel_above_centre(page):
     code = page.evaluate("""() => { const c = getComputedStyle(document.querySelector('#taskDetailBody .detail-row-value code'));
         return [parseFloat(c.paddingTop), parseFloat(c.paddingBottom)]; }""")
     assert code == [1.5, 2.5], code
+
+
+def test_rail_unread_badge_sits_one_pixel_from_the_icon_edge(page):
+    gap = page.evaluate("""() => {
+        const tab = document.querySelector('.nav-tab[data-panel="tasks"]');
+        const badge = document.createElement('span'); badge.className = 'cron-badge'; badge.textContent = '1';
+        tab.style.position = 'relative'; tab.appendChild(badge);
+        const out = tab.getBoundingClientRect().right - badge.getBoundingClientRect().right;
+        badge.remove(); return out;
+    }""")
+    assert abs(gap - 1) < 0.01, gap
