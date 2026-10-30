@@ -84,3 +84,13 @@ def test_badges_are_rounded_rectangles_not_pills(page):
         return drawn && radius > 6 && radius >= Math.min(r.width, r.height) / 2 - 1;
     }).map(el => el.className)""")
     assert pills == [], pills
+
+
+def test_badge_text_sits_one_pixel_above_centre(page):
+    page.locator(".cron-item").nth(0).click()
+    page.wait_for_selector("#taskDetailBody .detail-badge", timeout=10000)
+    # A pixel of the top padding moves below the text, so the badge keeps its
+    # height and its text is drawn 1px higher than centred.
+    shifts = page.evaluate("""() => [...document.querySelectorAll('#panelTasks .cron-profile-badge, #panelTasks .cron-status, #mainTasks .detail-badge')]
+        .map(b => { const c = getComputedStyle(b); return [b.className, parseFloat(c.paddingBottom) - parseFloat(c.paddingTop)]; })""")
+    assert shifts and all(shift == 2 for _, shift in shifts), shifts

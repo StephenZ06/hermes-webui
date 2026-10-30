@@ -15955,3 +15955,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    not pills. */
 #panelTasks :is(.cron-profile-badge,.cron-status),
 #mainTasks :is(.detail-badge,.skill-tag){border-radius:5px;}
+/* Their text sits 1px higher (a pixel moved from top padding to bottom). */
+#panelTasks .cron-profile-badge{padding-top:0;padding-bottom:2px;}
+#panelTasks .cron-status{padding-top:1px;padding-bottom:3px;}
+#mainTasks :is(.detail-badge,.skill-tag){padding-top:1px;padding-bottom:3px;}
