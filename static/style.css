@@ -15968,3 +15968,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-dash-icon.has-art{background:none;width:32px;height:32px;align-self:center;aspect-ratio:auto;}
 .office-dash-art{display:block;width:32px;height:32px;object-fit:contain;filter:drop-shadow(0 2px 5px rgba(0,0,0,.28));}
 .office-dash-empty-icon.is-red{color:#f87171;background:color-mix(in srgb,#f87171 10%,transparent);border:1px solid color-mix(in srgb,#f87171 45%,transparent);}
+/* The five lower cards' artwork, title and description sit 1px higher. */
+.office-dashboard-panel-head > :is(.office-dash-icon,.office-dash-titles),
+.office-dashboard-integration > :is(.office-dash-icon,span:nth-child(2)){position:relative;top:-1px;}

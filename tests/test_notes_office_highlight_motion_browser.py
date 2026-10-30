@@ -328,4 +328,8 @@ def test_office_dashboard_panels_show_their_artwork_and_a_red_on_track(page):
                                                     "recent-completions", "integration-health")), out
     assert all(loaded and w == 32 and h == 32 for _, loaded, w, h in out["art"]), out
     assert out["onTrack"] == "rgb(248, 113, 113)", out
+    # Each card's artwork, title and description sit 1px above their place.
+    lifted = page.evaluate("""() => [...document.querySelectorAll('.office-dashboard-panel-head, .office-dashboard-integration')]
+        .map(head => [...head.children].slice(0, 2).map(el => getComputedStyle(el).top))""")
+    assert len(lifted) == 5 and all(tops == ["-1px", "-1px"] for tops in lifted), lifted
     page.evaluate("async () => { await switchPanel('chat'); }")
