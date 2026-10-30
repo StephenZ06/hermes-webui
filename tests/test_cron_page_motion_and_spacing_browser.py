@@ -95,7 +95,8 @@ def test_badge_text_sits_one_pixel_above_centre(page):
     shifts = page.evaluate("""() => [...document.querySelectorAll('#panelTasks .cron-profile-badge, #panelTasks .cron-status, #mainTasks .detail-badge')]
         .map(b => { const c = getComputedStyle(b); return [b.className, parseFloat(c.paddingBottom) - parseFloat(c.paddingTop)]; })""")
     assert shifts and all(shift == (0 if cls.startswith('detail-badge') else 2) for cls, shift in shifts), shifts
-    # The schedule's code box reaches 2px further below its text than above.
+    # The schedule's code box reaches 2px further down than it used to, with
+    # its text half a pixel lower inside it.
     code = page.evaluate("""() => { const c = getComputedStyle(document.querySelector('#taskDetailBody .detail-row-value code'));
-        return parseFloat(c.paddingBottom) - parseFloat(c.paddingTop); }""")
-    assert code == 2, code
+        return [parseFloat(c.paddingTop), parseFloat(c.paddingBottom)]; }""")
+    assert code == [1.5, 2.5], code

@@ -15960,6 +15960,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #panelTasks .cron-status{padding-top:1px;padding-bottom:3px;}
 #mainTasks .skill-tag{padding-top:1px;padding-bottom:3px;}
 /* The detail card's badges keep their text centred, and the schedule's code
-   box reaches 2px further down. */
+   box reaches 2px further down, its text half a pixel lower. */
 #mainTasks .detail-badge{padding-top:2px;padding-bottom:2px;}
-#taskDetailBody .detail-row-value code{padding-bottom:3px;}
+#taskDetailBody .detail-row-value code{padding-top:1.5px;padding-bottom:2.5px;}
