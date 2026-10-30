@@ -217,9 +217,21 @@ chown_home_hermeswebui() {
   # source — prune the entire hermes-agent path from the chown walk so a
   # read-only or partially-read-only mount doesn't break the rest of the home
   # ownership alignment.
+  #
+  # Other folders or files bind-mounted into the home (a host repo folder, a
+  # read-only tool) belong to the host as they are: walking them is slow and a
+  # read-only one fails the same way, so each such mount point is pruned too.
+  local mount_prunes=()
+  local point
+  while read -r point; do
+    case "$point" in
+      /home/hermeswebui/.hermes|/home/hermeswebui/.hermes/hermes-agent) ;;
+      /home/hermeswebui/*) mount_prunes+=(-path "$point" -prune -o) ;;
+    esac
+  done < <(awk '{print $5}' /proc/self/mountinfo 2>/dev/null)
   find /home/hermeswebui \
     -path "/home/hermeswebui/.hermes/hermes-agent" -prune \
-    -o -name ".git" -prune \
+    -o "${mount_prunes[@]}" -name ".git" -prune \
     -o -exec chown -h "${WANTED_UID}:${WANTED_GID}" {} +
 }
 
