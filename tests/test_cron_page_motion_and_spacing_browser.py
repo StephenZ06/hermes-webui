@@ -89,8 +89,13 @@ def test_badges_are_rounded_rectangles_not_pills(page):
 def test_badge_text_sits_one_pixel_above_centre(page):
     page.locator(".cron-item").nth(0).click()
     page.wait_for_selector("#taskDetailBody .detail-badge", timeout=10000)
-    # A pixel of the top padding moves below the text, so the badge keeps its
-    # height and its text is drawn 1px higher than centred.
+    # In the side list a pixel of the top padding moves below the text, so the
+    # badge keeps its height and its text is drawn 1px higher than centred;
+    # the detail card's badges stay centred.
     shifts = page.evaluate("""() => [...document.querySelectorAll('#panelTasks .cron-profile-badge, #panelTasks .cron-status, #mainTasks .detail-badge')]
         .map(b => { const c = getComputedStyle(b); return [b.className, parseFloat(c.paddingBottom) - parseFloat(c.paddingTop)]; })""")
-    assert shifts and all(shift == 2 for _, shift in shifts), shifts
+    assert shifts and all(shift == (0 if cls.startswith('detail-badge') else 2) for cls, shift in shifts), shifts
+    # The schedule's code box reaches 2px further below its text than above.
+    code = page.evaluate("""() => { const c = getComputedStyle(document.querySelector('#taskDetailBody .detail-row-value code'));
+        return parseFloat(c.paddingBottom) - parseFloat(c.paddingTop); }""")
+    assert code == 2, code
