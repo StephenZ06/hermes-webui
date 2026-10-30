@@ -988,8 +988,13 @@ const DASH_ICONS = {
 function dashIcon(name, size = 18) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${DASH_ICONS[name] || ''}</svg>`;
 }
-function dashPanelHead(icon, tone, title, subtitle, meta) {
-  return `<div class="office-dashboard-panel-head"><span class="office-dash-icon is-${tone}">${dashIcon(icon)}</span><div class="office-dash-titles"><h2>${title}</h2><p>${subtitle}</p></div><span class="office-dash-meta">${meta}</span></div>`;
+// The panels' own artwork (static/office/icons, trimmed to the same padding so
+// every one reads the same size), at 1x and 2x.
+function dashArt(name) {
+  return `<span class="office-dash-icon has-art"><img class="office-dash-art" src="static/office/icons/${name}-32.webp" srcset="static/office/icons/${name}-32.webp 1x, static/office/icons/${name}-64.webp 2x, static/office/icons/${name}.webp 4x" width="32" height="32" alt="" decoding="async" draggable="false"></span>`;
+}
+function dashPanelHead(art, title, subtitle, meta) {
+  return `<div class="office-dashboard-panel-head">${dashArt(art)}<div class="office-dash-titles"><h2>${title}</h2><p>${subtitle}</p></div><span class="office-dash-meta">${meta}</span></div>`;
 }
 function dashEmpty(icon, tone, title, message) {
   return `<div class="office-dashboard-empty office-dash-empty"><span class="office-dash-empty-icon is-${tone}">${dashIcon(icon, 22)}</span><strong>${title}</strong><span>${message}</span></div>`;
@@ -1009,7 +1014,7 @@ function dashboardDistributionPanel(model) {
         ? done.map(worker => dashboardWorkerRow(worker, 'is-done')).join('')
         : dashEmpty('check', 'green', 'Nothing completed yet', `Finished work on ${esc(floor.name)} will appear here.`)}</div></article>`;
   }
-  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('layers', 'blue', 'Work distribution', 'How work spreads across floors', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
+  return `<article class="office-dashboard-panel office-dashboard-distribution" data-dashboard-panel="distribution">${dashPanelHead('work-distribution', 'Work distribution', 'How work spreads across floors', `${model.floors.length} floor${model.floors.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${model.floors.length
     ? model.floors.map(item => `<button type="button" class="office-dashboard-floor" data-dashboard-floor="${esc(item.key)}" aria-label="${esc(item.name)}: show completed tasks"><span class="office-dashboard-floor-dot" style="background:${esc(item.color || 'var(--accent)')}"></span><span><strong>${esc(item.name)}</strong><small>${item.workers.length} assigned</small></span><small>${item.active} active · ${item.completed} done</small><span class="office-dashboard-floor-chevron" aria-hidden="true">›</span></button>`).join('')
     : dashEmpty('layers', 'blue', 'No delegated work yet', 'Work assigned to floors in this office will appear here.')}</div></article>`;
 }
@@ -1102,10 +1107,10 @@ function renderOfficeDashboard(state, opts) {
   });
   const html = `<section class="office-dashboard-snapshot">${metrics.map(([action, label, value, detail, art]) => `<button type="button" class="office-dashboard-metric" data-dashboard-metric-action="${action}"><img class="office-dash-metric-art" src="static/office/icons/${art}-44.webp" srcset="static/office/icons/${art}-44.webp 1x, static/office/icons/${art}-88.webp 2x, static/office/icons/${art}.webp 3x" width="44" height="44" alt="" decoding="async" draggable="false"><span class="office-dash-metric-text"><span class="office-dash-metric-label">${label}</span><strong data-count-key="office-dashboard-${action}">${value}</strong><small>${detail}</small></span></button>`).join('')}</section>
   <section class="office-dashboard-grid">${dashboardDistributionPanel(model)}
-  <article class="office-dashboard-panel">${dashPanelHead('radio', 'amber', 'Live delegation', 'Real-time activity from your agents', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
-  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('alert', 'red', 'Attention required', 'Items that need your review or action', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'neutral', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
-  <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('check', 'green', 'Recent completions', 'The latest finished work', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
-  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')"><span class="office-dash-icon is-purple">${officeIcon('settings', 'Integrations')}</span><span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor</small></span><span aria-hidden="true">›</span></button></section>`;
+  <article class="office-dashboard-panel">${dashPanelHead('live-delegation', 'Live delegation', 'Real-time activity from your agents', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
+  <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('attention-required', 'Attention required', 'Items that need your review or action', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'red', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
+  <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('recent-completions', 'Recent completions', 'The latest finished work', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
+  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${dashArt('integration-health')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor</small></span><span aria-hidden="true">›</span></button></section>`;
   // The reconcile poll re-renders every few seconds. Unchanged markup is left
   // alone, so the panels don't flash their entry fade; a real change keeps
   // each list's scroll position and skips the fade.

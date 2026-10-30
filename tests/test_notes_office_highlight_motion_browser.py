@@ -309,3 +309,23 @@ def test_office_with_live_work_comes_back_without_the_wake(page):
     # The floor is just there: no staged cards, no fade-in.
     assert not out["intro"] and out["fade"] == 0, out
     page.evaluate("async () => { window.HermesOffice.reset(); await switchPanel('chat'); }")
+
+
+def test_office_dashboard_panels_show_their_artwork_and_a_red_on_track(page):
+    page.evaluate("async () => { await switchPanel('office'); }")
+    page.wait_for_selector("[data-office-subview=dashboard]", timeout=20000)
+    page.click("[data-office-subview=dashboard]")
+    page.wait_for_selector(".office-dashboard-integration", timeout=15000)
+    page.wait_for_function("() => [...document.querySelectorAll('.office-dash-art')].every(i => i.complete)", timeout=10000)
+    out = page.evaluate("""() => ({
+        art: [...document.querySelectorAll('.office-dash-art')].map(i => {
+            const r = i.getBoundingClientRect();
+            return [i.getAttribute('src').split('/').pop(), i.naturalWidth > 0, Math.round(r.width), Math.round(r.height)]; }),
+        onTrack: getComputedStyle(document.querySelector('.office-dashboard-attention .office-dash-empty-icon')).color,
+    })""")
+    names = sorted(a[0] for a in out["art"])
+    assert names == sorted(f"{n}-32.webp" for n in ("work-distribution", "live-delegation", "attention-required",
+                                                    "recent-completions", "integration-health")), out
+    assert all(loaded and w == 32 and h == 32 for _, loaded, w, h in out["art"]), out
+    assert out["onTrack"] == "rgb(248, 113, 113)", out
+    page.evaluate("async () => { await switchPanel('chat'); }")
