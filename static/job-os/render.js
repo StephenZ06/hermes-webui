@@ -24,6 +24,9 @@
   };
   ['action-centre', 'application-funnel', 'automations', 'recent-jobs'].forEach((name) => warmArt(name, 26));
   ['recent-completions', 'it-1', 'it-2', 'it-3'].forEach((name) => warmArt(name, 28));
+  ['apify', 'schedule', 'next-run', 'searches'].forEach((name) => warmArt(name, 40));
+  ['new-good-matches', 'saved-searches', 'latest-finds'].forEach((name) => warmArt(name, 26));
+  warmArt('saved-searches', 36);
   // A finger cannot start the browser's own drag-and-drop; touch screens move cards by hold-and-drag instead (index.js).
   const TOUCH_ONLY = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -204,7 +207,8 @@
   // by the card's title; cards without artwork keep their line icon.
   const CARD_ART = {'Action centre': 'action-centre', 'Application funnel': 'application-funnel', Automations: 'automations',
     'Master resume': 'master-resume', 'Recent jobs': 'recent-jobs', 'Skill gaps': 'skill-gaps', 'Skills gained': 'skills-gained',
-    'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches'};
+    'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches',
+    'New good matches': 'new-good-matches', 'Good matches': 'new-good-matches', 'Saved searches': 'saved-searches', 'Latest finds': 'latest-finds'};
   // Drawn from files made at the exact size shown (1x and 2x), so no picture
   // is scaled by the browser: card titles 26px, Action centre rows 28px, Scout tiles 30px.
   // A picture already decoded draws at once; one still coming in shows a
@@ -1104,7 +1108,7 @@
       : `<span class="pipe-source" data-source="${esc(k)}">${esc(SOURCE_LABEL[k] || k)}</span>`).join('');
     const host = (state.countries || []).find((c) => c.code === search.country);
     return `<article class="job-os-card scout-search${search.enabled ? '' : ' is-off'}" data-key="search-${esc(search.id)}" data-search-id="${esc(search.id)}">
-      <div class="scout-search-head"><span class="card-icon" aria-hidden="true">${icon('radar', 16)}</span><div class="scout-search-title"><h3 title="${esc(search.name)}">${esc(search.name)}</h3><p title="${esc(search.keywords)}">${esc(search.keywords)}</p></div>
+      <div class="scout-search-head"><span class="card-icon has-art scout-search-art" aria-hidden="true">${art('saved-searches', 36)}</span><div class="scout-search-title"><h3 title="${esc(search.name)}">${esc(search.name)}</h3><p title="${esc(search.keywords)}">${esc(search.keywords)}</p></div>
         <label class="job-os-toggle compact" title="${search.enabled ? 'Included in scheduled runs' : 'Paused'}"><input type="checkbox" data-job-os-action="scout-toggle" data-search-id="${esc(search.id)}" ${search.enabled ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="sr-only">Enabled</span></label></div>
       <dl class="scout-facts">
         ${fact('Sites', `<span class="job-os-chips">${sites}</span>`)}
@@ -1116,7 +1120,7 @@
       </dl>
       ${runPanel(run, search)}
       ${search.off_target ? `<div class="scout-tidy" role="status"><span>${icon('attention', 16)}<span><strong>${Number(search.off_target)}</strong> saved find${search.off_target === 1 ? '' : 's'} don’t match these titles</span></span><button type="button" class="job-os-btn small" data-job-os-action="scout-tidy" data-search-id="${esc(search.id)}">Move to Closed</button></div>` : ''}
-      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Turn on Apify in Settings to search job sites'}">${icon('flash', 16)}${active ? 'Running…' : 'Run now'}</button><button type="button" class="job-os-icon-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}" aria-label="Edit search" title="Edit search">${icon('edit', 16)}</button><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
+      <div class="scout-search-actions"><button type="button" class="job-os-btn primary" data-job-os-action="scout-run" data-search-id="${esc(search.id)}" ${active || !ready ? 'disabled' : ''} title="${ready ? (viaApify ? 'Runs on Apify' : '') : 'Turn on Apify in Settings to search job sites'}">${icon('flash', 16)}${active ? 'Running…' : 'Run Now'}</button><button type="button" class="job-os-icon-btn" data-job-os-action="scout-edit" data-search-id="${esc(search.id)}" aria-label="Edit search" title="Edit search">${icon('edit', 16)}</button><button type="button" class="job-os-icon-btn danger" data-job-os-action="scout-delete" data-search-id="${esc(search.id)}" aria-label="Delete search" title="Delete search">${icon('trash', 16)}</button></div>
     </article>`;
   }
   const POSTED = {1: 'Last 24 hours', 3: 'Last 3 days', 7: 'Last 7 days', 14: 'Last 14 days'};
@@ -1164,7 +1168,7 @@
     return `<section class="job-os-card match-inbox${released.length ? ' has-new' : ''}">
       ${cardHead(released.length ? 'New good matches' : 'Good matches', 'applied', released.length ? '<button type="button" class="job-os-btn" data-job-os-action="matches-seen">Mark all seen</button>' : '', released.length || null)}
       <p class="job-os-card-note match-inbox-rule">${waiting ? `<strong>${waiting} waiting</strong> for the next update. ` : ''}${esc(rule)}</p>
-      ${released.length ? `<div class="job-os-list scout-finds">${cards}</div>` : ''}</section>`;
+      ${released.length ? `<div class="job-os-list scout-finds match-list">${cards}</div><button type="button" class="action-more" tabindex="-1" aria-hidden="true" title="More below"><span></span></button>` : ''}</section>`;
   }
   function scoutView(state) {
     const searches = state.searches || [];
@@ -1183,18 +1187,29 @@
     const on = searches.filter((x) => x.enabled);
     const next = schedOn ? Math.min(...on.map((x) => Number(x.next_run_at) || Infinity)) : Infinity;
     const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
-    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16, 30)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16, 40)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    // The tile shows the run times and the clocks they follow; the weekend rule
+    // (which would not fit) is in Settings and on the dashboard's Automations.
+    const schedText = (state.schedule && state.schedule.summary) || '';
     const overview = `<section class="scout-overview" aria-label="Scout at a glance">
       ${tile('cloud', 'Source', viaApify ? 'Apify' : fallback ? 'This machine' : 'Apify off', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : fallback ? `Indeed, ${esc(provider)} as fallback` : 'Only remote.id can run', ' data-job-os-action="settings-focus" data-section="apify"')}
-      ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
+      ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', esc(schedText ? schedText.split(', ')[0] : schedOn ? `Every ${state.schedule.hours}h` : 'Turn on Run Scout automatically'), ' data-job-os-action="settings-focus" data-section="scout"')}
       ${tile('clock', 'Next run', Number.isFinite(next) ? esc(until(next)) : '—', Number.isFinite(next) ? 'Latest of your searches' : schedOn ? 'No search is on' : 'Schedule off')}
       ${tile('radar', 'Searches', `${on.length} of ${searches.length}`, last ? `Last run ${esc(when(last))}` : 'Not run yet')}</section>`;
-    return `${siteHealthBanner(state, 'scout')}${banner}${overview}${matchInbox(state)}
-      ${searchFormCard(state.searchForm, state)}
-      <div class="section-bar"><h2>Saved searches <span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 16)}New search</button></div>
+    // Good matches take the wide column and saved searches stack beside them,
+    // one a row; with neither matches nor finds the searches use the full width.
+    const inbox = matchInbox(state);
+    const saved = `<section class="scout-saved" aria-label="Saved searches">
+      <div class="section-bar"><h2>${iconOrArt('Saved searches')}<span class="card-title">${capI('Saved searches')}</span><span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 16)}New search</button></div>
       ${searches.length ? `<div class="scout-searches">${searches.map((x) => searchCard(x, state)).join('')}</div>`
-        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
-      ${finds.total ? `<section class="job-os-card">${cardHead('Latest finds', 'magic', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button>', finds.total)}<div class="job-os-list scout-finds">${finds.rows.map(jobCard).join('')}</div>${pager('finds', finds)}</section>` : ''}`;
+        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}</section>`;
+    const latest = finds.total ? `<section class="job-os-card scout-finds-card">${cardHead('Latest finds', 'magic', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button>', finds.total)}<div class="job-os-list scout-finds">${finds.rows.map(jobCard).join('')}</div>${pager('finds', finds)}</section>` : '';
+    // The latest finds sit under the matches, so the wide column fills down
+    // beside the saved searches.
+    const main = inbox || latest ? `<div class="scout-main">${inbox}${latest}</div>` : '';
+    return `${siteHealthBanner(state, 'scout')}${banner}${overview}
+      ${searchFormCard(state.searchForm, state)}
+      <div class="scout-pair${main ? '' : ' is-single'}">${main}${saved}</div>`;
   }
   // ---- Job detail -------------------------------------------------------------
   function writingPanel(text) {

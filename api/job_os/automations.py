@@ -28,11 +28,41 @@ def _next_digest(hour: int, last: str | None, now: float) -> int:
     return int(start)
 
 
-def _scout_when(scout: dict) -> str:
+def zone_label(zone: str, *, now: float | None = None) -> str:
+    """A time zone as people write it: its abbreviation where it has one
+    (WIB, WITA), else its offset ("GMT+3", "GMT+5:30")."""
+    try:
+        moment = datetime.fromtimestamp(time.time() if now is None else now, ZoneInfo(zone))
+    except (ZoneInfoNotFoundError, ValueError):
+        return ""
+    name = moment.tzname() or ""
+    if name and name[0] not in "+-":
+        return name
+    minutes = int(moment.utcoffset().total_seconds() // 60)
+    hours, rest = divmod(abs(minutes), 60)
+    return f"GMT{'+' if minutes >= 0 else '-'}{hours}{f':{rest:02d}' if rest else ''}"
+
+
+def scout_zones(searches: list[dict], *, now: float | None = None) -> list[str]:
+    """The clocks the run times follow: each enabled search's country's."""
+    from api.job_os.indeed import clock as country_clock
+
+    labels: list[str] = []
+    for search in searches:
+        clock = country_clock(str(search.get("country") or "")) if search.get("enabled", True) else None
+        label = zone_label(clock[0], now=now) if clock else ""
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _scout_when(scout: dict, zones: list[str] | None = None) -> str:
     if scout.get("schedule_mode") == "interval":
         return f"Every {scout['schedule_hours']} h"
     weekend = {"saturday": ", Saturday once", "same": " daily", "none": " on weekdays"}.get(scout.get("weekend"), "")
-    return f"At {' and '.join(scout.get('run_times') or [])}{weekend}"
+    # Run times follow each search country's clock, so say which clocks.
+    where = f" {' / '.join(zones)}" if zones else ""
+    return f"At {' and '.join(scout.get('run_times') or [])}{where}{weekend}"
 
 
 def summary(*, now: float | None = None) -> list[dict]:
@@ -52,7 +82,7 @@ def summary(*, now: float | None = None) -> list[dict]:
     past = history(now=now, settings=settings)
     items = [
         {"key": "scout", "label": "Scout searches", "on": bool(settings["scout"]["enabled"] and searches),
-         "schedule": f"{_scout_when(settings['scout'])} · {len(searches)} saved search{'es' if len(searches) != 1 else ''}",
+         "schedule": f"{_scout_when(settings['scout'], scout_zones(searches, now=now))} · {len(searches)} saved search{'es' if len(searches) != 1 else ''}",
          "last": last_scout, "next": next_scout if settings["scout"]["enabled"] else None,
          "off_reason": "" if settings["scout"]["enabled"] else "Turn on Run Scout automatically", "view": "scout"},
         {"key": "analysis", "label": "Luna fit analysis", "on": bool(settings["ai"]["auto_analyze"]),

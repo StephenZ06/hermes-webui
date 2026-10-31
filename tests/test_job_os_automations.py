@@ -71,3 +71,14 @@ def test_history_counts_each_automation_per_day(store):
     assert past["scout"][-1]["ok"] == 1 and past["scout"][-1]["failed"] == 1
     assert past["digest"][-3]["state"] == "ok" and past["alerts"][-1]["state"] == "none"
     assert all("history" in item for item in automations.summary(now=now))
+
+
+def test_scout_run_times_say_which_clocks_they_follow():
+    july = 1783000000  # 2026-07-02, summer time in Europe
+    assert [automations.zone_label(z, now=july) for z in ("Asia/Jakarta", "Asia/Makassar", "Asia/Qatar", "Asia/Kolkata",
+                                                          "Europe/Berlin", "Nowhere/Zone")] == ["WIB", "WITA", "GMT+3", "IST", "CEST", ""]
+    zones = automations.scout_zones([{"country": "my"}, {"country": "qa"}, {"country": "my"}, {"country": "id", "enabled": False}])
+    assert zones == ["GMT+8", "GMT+3"]
+    when = automations._scout_when({"schedule_mode": "times", "run_times": ["12:30", "18:30"], "weekend": "saturday"}, zones)
+    assert when == "At 12:30 and 18:30 GMT+8 / GMT+3, Saturday once"
+    assert automations._scout_when({"schedule_mode": "interval", "schedule_hours": 6}, zones) == "Every 6 h"

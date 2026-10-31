@@ -128,7 +128,7 @@ def _scout_searches_payload() -> dict:
             "countries": countries_payload(), "posted_within_days": list(POSTED_WITHIN_DAYS),
             "sites": apify.sites_payload(),
             "schedule": {"enabled": bool(settings["scout"]["enabled"]), "hours": settings["scout"]["schedule_hours"],
-                         "summary": automations._scout_when(settings["scout"])}}
+                         "summary": automations._scout_when(settings["scout"], automations.scout_zones(searches))}}
 
 
 def _document_get(handler, parsed) -> bool:

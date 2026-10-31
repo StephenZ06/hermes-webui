@@ -57,13 +57,16 @@ def api(tmp_path, monkeypatch):
 
 
 def test_search_crud_run_and_errors(api):
+    from api.job_os import automations
+
     get, post, started = api
     assert post("/api/job-os/searches", {"search": {"keywords": "python"}}).status == 400  # no Indeed country
     created = post("/api/job-os/searches", {"search": {"keywords": "python", "country": "de", "locations": "Berlin"}})
     assert created.status == 201
     sid = created.json()["search"]["id"]
     listing = get("/api/job-os/searches").json()
-    assert [s["id"] for s in listing["searches"]] == [sid] and listing["schedule"] == {"enabled": False, "hours": 6, "summary": "At 12:30 and 18:30, Saturday once"}
+    assert [s["id"] for s in listing["searches"]] == [sid] and listing["schedule"] == {
+        "enabled": False, "hours": 6, "summary": f"At 12:30 and 18:30 {automations.zone_label('Europe/Berlin')}, Saturday once"}
     assert listing["searches"][0]["next_run_at"] is None
     assert listing["searches"][0]["country_name"] == "Germany"
     assert {"code": "my", "name": "Malaysia", "host": "malaysia.indeed.com"} in listing["countries"]
