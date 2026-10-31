@@ -16021,3 +16021,24 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* The edit button that replaces the On/Off chip on hover overlaps the card's
    padding instead of making the title row taller than the chip. */
 #jobOsRoot .dash-side .automation-edit{margin:-6px 0;}
+/* Jobs overlays leave as they came: a closing copy (job-os/index.js) fades
+   and drops slightly (modals), slides right (the job drawer) or fades
+   (backdrops and the resume preview). */
+:is(.job-modal,.job-modal-backdrop,.job-drawer,.job-drawer-backdrop,.resume-preview).is-closing{pointer-events:none;}
+.job-modal.is-closing{animation:job-modal-out .2s cubic-bezier(.4,0,1,1) forwards;}
+.job-drawer.is-closing{animation:job-drawer-out .22s cubic-bezier(.4,0,1,1) forwards;}
+:is(.job-modal-backdrop,.job-drawer-backdrop,.resume-preview).is-closing{animation:job-overlay-fade-out .2s ease forwards;}
+@keyframes job-modal-out{from{opacity:1;transform:translate(-50%,-50%);}to{opacity:0;transform:translate(-50%,calc(-50% + 10px)) scale(.985);}}
+@keyframes job-drawer-out{from{opacity:1;transform:none;}to{opacity:0;transform:translateX(24px);}}
+@keyframes job-overlay-fade-out{from{opacity:1;}to{opacity:0;}}
+@media (max-width:640px){.job-modal.is-closing{animation-name:job-sheet-out;}}
+@keyframes job-sheet-out{from{transform:none;opacity:1;}to{transform:translateY(24px);opacity:0;}}
+/* Scrolling lists inside Jobs cards run to the card's right edge, so the
+   scrollbar sits against the border; a stable gutter keeps the rows exactly
+   where they were (card padding = scrollbar + the padding after it). */
+#jobOsRoot .action-centre .action-list{margin-right:-20px;padding-right:14px;scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:auto;}
+#jobOsRoot .action-centre .action-list::-webkit-scrollbar{width:6px;}
+#jobOsRoot .action-centre .action-list::-webkit-scrollbar-thumb{border-radius:3px;background:color-mix(in srgb,var(--muted) 35%,transparent);}
+#jobOsRoot .action-centre .action-list::-webkit-scrollbar-track{background:transparent;}
+#jobOsRoot .pipe-col-cards{margin-right:-12px;padding-right:8px;scrollbar-gutter:stable;}
+@media (max-width:760px){#jobOsRoot .pipe-col-cards{margin-right:0;padding-right:0;scrollbar-gutter:auto;}}

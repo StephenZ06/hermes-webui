@@ -27,6 +27,7 @@
   // (replace) is drawn from scratch.
   function paint(el, html, replace) {
     if (!el || el._jobOsHtml === html) return false;
+    const leaving = overlaySnapshots(el);
     if (replace || !el.firstChild) el.innerHTML = html;
     else {
       const next = document.createElement('template');
@@ -34,7 +35,37 @@
       morphChildren(el, next.content);
     }
     el._jobOsHtml = html;
+    playOverlayExits(el, leaving);
     return true;
+  }
+  // Modals, their backdrops, the job drawer and the resume preview open with
+  // an animation (style.css); a repaint that drops one would make it vanish,
+  // so a copy taken just before plays the exit and then removes itself.
+  const OVERLAYS = '.job-modal, .job-modal-backdrop, .job-drawer, .job-drawer-backdrop, .resume-preview';
+  const overlayKind = (node) => [...node.classList].filter((c) => !c.startsWith('is-')).sort().join(' ');
+  function overlaySnapshots(el) {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return [];
+    return [...el.querySelectorAll(OVERLAYS)].filter((node) => !node.hasAttribute('data-overlay-ghost'))
+      .map((node) => ({kind: overlayKind(node), copy: node.cloneNode(true), scroll: (node.querySelector('.job-drawer-body, .job-modal-body') || {}).scrollTop || 0}));
+  }
+  function playOverlayExits(el, leaving) {
+    if (!leaving.length) return;
+    const open = new Set([...el.querySelectorAll(OVERLAYS)].filter((node) => !node.hasAttribute('data-overlay-ghost')).map(overlayKind));
+    leaving.filter((snap) => !open.has(snap.kind)).forEach(({copy, scroll}) => {
+      copy.classList.add('is-closing');
+      copy.setAttribute('data-overlay-ghost', '');
+      copy.setAttribute('data-mi-keep', '');  // the next patch leaves it be
+      copy.setAttribute('aria-hidden', 'true');
+      copy.removeAttribute('id');
+      copy.inert = true;
+      el.appendChild(copy);
+      const body = copy.querySelector('.job-drawer-body, .job-modal-body');
+      if (body) body.scrollTop = scroll;
+      let gone = false;
+      const remove = () => { if (!gone) { gone = true; copy.remove(); } };
+      copy.addEventListener('animationend', (event) => { if (event.target === copy) remove(); });
+      setTimeout(remove, 320);
+    });
   }
   // Classes the page adds at run time (entry, selection, drag, drawn previews):
   // a patch keeps them where the new HTML doesn't say otherwise.

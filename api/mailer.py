@@ -208,9 +208,9 @@ def _html_email(name: str, subject: str, body: str) -> str:
     safe_subject = html.escape(str(subject or ""))
     safe_body = html.escape(str(body or "")).replace("\n", "<br>")
     return f"""<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{safe_subject}</title></head>
-  <body style="margin:0;padding:0;background:#101412;color:#edf3ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<html lang="en" style="color-scheme:dark;">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>{safe_subject}</title></head>
+  <body bgcolor="#101412" style="margin:0;padding:0;background:#101412;color:#edf3ef;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#101412;padding:28px 12px;">
       <tr><td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#1a211d;border:1px solid #2c3530;border-radius:12px;overflow:hidden;">
@@ -229,10 +229,12 @@ def _html_email(name: str, subject: str, body: str) -> str:
 
 
 def send(context: str, to_address: str | None, subject: str, body: str, *,
-         sender: Callable[[EmailMessage, str, str], None] | None = None) -> str:
+         sender: Callable[[EmailMessage, str, str], None] | None = None, html: str | None = None) -> str:
     """Send ``body`` from the connected Gmail as ``"<feature name> <address>"``.
 
     ``to_address`` defaults to the connected account. Returns the recipient.
+    ``html`` is a ready-made HTML part (the daily digest's); without it the
+    plain text is wrapped in the standard dark card.
     """
     name = sender_name(context)
     address, password = credentials()
@@ -250,7 +252,7 @@ def send(context: str, to_address: str | None, subject: str, body: str, *,
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=address.rpartition("@")[2] or None)
     message.set_content(body)
-    message.add_alternative(_html_email(name, subject, body), subtype="html")
+    message.add_alternative(html or _html_email(name, subject, body), subtype="html")
     (sender or _smtp_send)(message, address, password)
     return recipient
 

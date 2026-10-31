@@ -269,24 +269,27 @@ def mark_matches_seen(*, now: int | None = None) -> dict:
     return inbox(now=now)
 
 
-def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
-    """(subject, body) for the last 24 hours, or None when there is nothing to say."""
-    from api.job_os.applications import board
+def digest_data(*, now: int | None = None) -> dict | None:
+    """Everything the daily digest says about the last 24 hours, or None when
+    there is nothing to say. ``build_digest`` writes it as text, ``digest_html``
+    as the email's dark, card-and-table HTML."""
+    from api.job_os.applications import board, funnel
+    from api.job_os.dashboard import activity
 
     now = int(time.time()) if now is None else now
     since = now - 86400
     conn = connect_job_os()
     try:
         found = conn.execute("SELECT COUNT(*) FROM jobs WHERE created_at>=?", (since,)).fetchone()[0]
-        top = conn.execute(
-            "SELECT j.id, j.title, j.company, j.canonical_url, a.fit_score FROM jobs j JOIN job_analyses a ON a.job_id=j.id"
-            " WHERE a.status='done' AND a.finished_at>=? ORDER BY a.fit_score DESC LIMIT 5", (since,)).fetchall()
+        top = [dict(r) for r in conn.execute(
+            "SELECT j.id, j.title, j.company, j.location, j.canonical_url, a.fit_score FROM jobs j JOIN job_analyses a ON a.job_id=j.id"
+            " WHERE a.status='done' AND a.finished_at>=? ORDER BY a.fit_score DESC LIMIT 5", (since,)).fetchall()]
         # Every job found today, best score first, then newest: the digest is
         # where you see them even before Luna has scored them.
-        new_jobs = conn.execute(
+        new_jobs = [dict(r) for r in conn.execute(
             "SELECT j.id, j.title, j.company, j.location, j.canonical_url, a.fit_score FROM jobs j"
             " LEFT JOIN job_analyses a ON a.job_id=j.id AND a.status='done' WHERE j.created_at>=?"
-            " ORDER BY a.fit_score IS NULL, a.fit_score DESC, j.created_at DESC", (since,)).fetchall()
+            " ORDER BY a.fit_score IS NULL, a.fit_score DESC, j.created_at DESC", (since,)).fetchall()]
         applied = conn.execute("SELECT COUNT(*) FROM job_events WHERE event_type='application_submitted' AND created_at>=?",
                                (now - 7 * 86400,)).fetchone()[0]
     finally:
@@ -300,19 +303,40 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
     ready = next((c["jobs"] for c in columns if c["key"] == "ready"), [])
     if not (found or top or attention or ready or follow_ups or closing):
         return None
-    parts = [f"Found in the last 24 hours: {found}", f"Applications sent this week: {applied}"]
-    if follow_ups:
+    try:
+        dash = {"funnel": funnel(), "activity": activity(now=now)}
+    except Exception:  # the charts are a bonus; the digest goes out without them
+        logger.debug("digest charts unavailable", exc_info=True)
+        dash = {}
+    listed = {r["id"] for r in top}
+    return {"now": now, "found": found, "applied": applied, "top": top, "new_jobs": new_jobs,
+            "rest": [r for r in new_jobs if r["id"] not in listed], "follow_ups": follow_ups,
+            "closing": sorted(closing, key=lambda pair: pair[0].get("deadline") or ""), "attention": attention, "ready": ready,
+            "funnel": dash.get("funnel") or [], "activity": dash.get("activity") or {}}
+
+
+def _digest_subject(d: dict) -> str:
+    extra = f", {len(d['follow_ups'])} to follow up" if d["follow_ups"] else ""
+    return f"Daily digest — {d['found']} found, {len(d['attention'])} need attention{extra}"
+
+
+def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
+    """(subject, body) for the last 24 hours, or None when there is nothing to say."""
+    d = digest_data(now=now)
+    if d is None:
+        return None
+    parts = [f"Found in the last 24 hours: {d['found']}", f"Applications sent this week: {d['applied']}"]
+    if d["follow_ups"]:
         parts.append("Follow up:\n" + "\n".join(
             f"  • {c['title']} at {c['company'] or '?'} — {reason.replace(' — follow up?', '')}\n    {c['canonical_url']}"
-            for c, reason in follow_ups[:8]))
-    if closing:
+            for c, reason in d["follow_ups"][:8]))
+    if d["closing"]:
         parts.append("Closing soon:\n" + "\n".join(
             f"  • {c['title']} at {c['company'] or '?'} — {reason.lower()}\n    {c['canonical_url']}"
-            for c, reason in sorted(closing, key=lambda pair: pair[0].get("deadline") or "")[:8]))
-    if top:
-        parts.append("Best new matches:\n" + "\n".join(f"  • {r['fit_score']} — {r['title']} at {r['company'] or '?'}\n    {r['canonical_url']}" for r in top))
-    listed = {r["id"] for r in top}
-    rest = [r for r in new_jobs if r["id"] not in listed]
+            for c, reason in d["closing"][:8]))
+    if d["top"]:
+        parts.append("Best new matches:\n" + "\n".join(f"  • {r['fit_score']} — {r['title']} at {r['company'] or '?'}\n    {r['canonical_url']}" for r in d["top"]))
+    rest, new_jobs = d["rest"], d["new_jobs"]
     if rest:
         unscored = sum(1 for r in new_jobs if r["fit_score"] is None)
         def line(r):
@@ -324,13 +348,11 @@ def build_digest(*, now: int | None = None) -> tuple[str, str] | None:
         note = (f"\n  {unscored} not scored yet: Pipeline -> Score new, or turn on Settings -> AI -> Analyse new finds automatically."
                 if unscored else "")
         parts.append(f"New jobs found ({len(new_jobs)}):\n" + "\n".join(lines) + more + note)
-    if ready:
-        parts.append("Ready to apply:\n" + "\n".join(f"  • {c['title']} at {c['company'] or '?'}" for c in ready[:8]))
-    if attention:
-        parts.append("Needs your attention:\n" + "\n".join(f"  • {c['title']}: {reason}" for c, reason in attention[:8]))
-    extra = f", {len(follow_ups)} to follow up" if follow_ups else ""
-    return (f"Daily digest — {found} found, {len(attention)} need attention{extra}",
-            "\n\n".join(parts) + "\n\nOpen Hermes -> Jobs for details.")
+    if d["ready"]:
+        parts.append("Ready to apply:\n" + "\n".join(f"  • {c['title']} at {c['company'] or '?'}" for c in d["ready"][:8]))
+    if d["attention"]:
+        parts.append("Needs your attention:\n" + "\n".join(f"  • {c['title']}: {reason}" for c, reason in d["attention"][:8]))
+    return _digest_subject(d), "\n\n".join(parts) + "\n\nOpen Hermes -> Jobs for details."
 
 
 def _user_zone(settings: dict):
@@ -361,7 +383,15 @@ def maybe_send_digest(*, now: float | None = None, send: Callable = mailer.send,
             _log("digest", "skipped", "", "Nothing new today")
             return False
         try:
-            send(CONTEXT, settings["notifications"]["to_address"], *digest)
+            from api.job_os.digest_email import digest_html
+
+            data = digest_data(now=int(now))
+            html_body = digest_html(data, sender=mailer.sender_name(CONTEXT), zone=_user_zone(settings)) if data else None
+        except Exception:  # the plain version still goes out
+            logger.warning("digest HTML failed; sending the plain version", exc_info=True)
+            html_body = None
+        try:
+            send(CONTEXT, settings["notifications"]["to_address"], *digest, html=html_body)
         except Exception as error:
             _log("digest", "failed", digest[0], str(error))
             raise

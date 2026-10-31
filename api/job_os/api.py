@@ -18,7 +18,8 @@ from api.job_os.settings import SettingsConflict, SettingsError, load_settings, 
 _PREFIX = "/api/job-os"
 
 
-def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None = None) -> dict[str, Any]:
+def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None = None,
+                 closed: dict | None = None) -> dict[str, Any]:
     payload = {
         "id": job.id,
         "canonical_url": job.canonical_url,
@@ -42,6 +43,12 @@ def _job_payload(job: JobRecord, *, detail: bool = False, analyses: dict | None 
         "guard": posting_guard.public(job.guard),
         "deadline": job.deadline,
     }
+    if job.status == JobStatus.EXPIRED:
+        if closed is None:
+            from api.job_os.expiry import closed_reasons
+
+            closed = closed_reasons([job.id])
+        payload["closed_reason"] = closed.get(job.id, "")
     from api.job_os.checks import job_checks
 
     payload["checks"] = job_checks(job, (analyses or {}).get(job.id))
@@ -551,7 +558,10 @@ def handle_job_os_get(handler, parsed) -> bool:
         job_analysis.resume_if_stalled()
         job_tailor.resume_if_stalled()
         analyses = analyses_by_job()
-        j(handler, {"jobs": [_job_payload(job, analyses=analyses) for job in jobs]})
+        from api.job_os.expiry import closed_reasons
+
+        closed = closed_reasons(job.id for job in jobs if job.status == JobStatus.EXPIRED)
+        j(handler, {"jobs": [_job_payload(job, analyses=analyses, closed=closed) for job in jobs]})
         return True
     job_id = _job_id_from_path(parsed.path)
     if job_id is not None:

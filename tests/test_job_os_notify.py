@@ -32,7 +32,7 @@ def store(tmp_path, monkeypatch):
     # These tests cover the email and its reply codes, so every good match goes out at once.
     _set(email_enabled=True, to_address=ME, min_fit_score=70, release_count=1)
     sent = []
-    yield lambda *args: sent.append(args) or args[1], sent
+    yield lambda *args, **kwargs: sent.append(args + ((kwargs,) if kwargs else ())) or args[1], sent
 
 
 def _analysed(title, score, *, age=0):
@@ -285,3 +285,40 @@ def test_a_timed_out_reply_check_keeps_the_last_good_time_and_is_reported_only_i
     assert state["last_poll"] == good and state["last_poll_error"] == ""
     notify.poll_replies(fetch=broken, send=send)
     assert notify.status()["last_poll_error"].startswith("Gmail hasn't answered for")
+
+
+def test_the_digest_email_has_a_dark_html_part_with_cards_a_chart_and_tables(store):
+    send, sent = store
+    _analysed("Target <b>role</b>", 90)
+    _set(digest_hour=0)
+    assert notify.maybe_send_digest(send=send, force=True) is True
+    args = sent[-1]
+    subject, text, html_part = args[2], args[3], args[-1]["html"]
+    assert "Target <b>role</b>" in text  # the plain part is still the full message
+    assert 'name="color-scheme" content="dark"' in html_part and 'bgcolor="#0e1116"' in html_part
+    assert "Found today" in html_part and "Applied this week" in html_part  # stat cards
+    assert "Jobs found" in html_part and "found in the last 14 days" in html_part  # the bar chart
+    assert "Best new matches" in html_part and "Target &lt;b&gt;role&lt;/b&gt;" in html_part and "<b>role</b>" not in html_part
+    assert 'href="https://jobs.example.test/' in html_part
+
+
+def test_the_html_digest_links_only_web_addresses():
+    from api.job_os.digest_email import _link
+
+    assert "href" not in _link("javascript:alert(1)", "x") and 'href="https://a.test/x"' in _link("https://a.test/x", "x")
+
+
+def test_mailer_uses_a_ready_made_html_part_when_given():
+    from api import mailer as real
+
+    seen = []
+    real_creds = real.credentials
+    try:
+        real.credentials = lambda: ("hermes.sender@gmail.com", "app-password")
+        real.send("jobs", ME, "Hi", "Body", sender=lambda msg, a, p: seen.append(msg), html="<p>custom</p>")
+        real.send("jobs", ME, "Hi", "Body", sender=lambda msg, a, p: seen.append(msg))
+    finally:
+        real.credentials = real_creds
+    parts = [[p.get_content() for p in m.iter_parts()] for m in seen]
+    assert parts[0][1].strip() == "<p>custom</p>"
+    assert 'content="dark"' in parts[1][1]

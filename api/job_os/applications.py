@@ -173,7 +173,11 @@ def board(source: str | None = None) -> dict:
     by_status = {status: key for key, _label, statuses in COLUMNS for status in statuses}
     columns = {key: [] for key, _label, _statuses in COLUMNS}
     sources = {name: 0 for name in SOURCES}
-    for job in list_jobs():
+    jobs = list_jobs()
+    from api.job_os.expiry import closed_reasons
+
+    why_closed = closed_reasons(job.id for job in jobs if job.status == JobStatus.EXPIRED)
+    for job in jobs:
         key = by_status.get(job.status.value)
         if key is None:
             continue
@@ -191,7 +195,8 @@ def board(source: str | None = None) -> dict:
                 "deadline": job.deadline,
                 "quiet_days": _quiet_days(job, applied.get(job.id), changed.get(job.id), now),
                 "attention": attention_reasons(job, docs.get(job.id, []), extra, changed.get(job.id), now),
-                "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at}
+                "applied": applied.get(job.id), "updated_at": job.updated_at, "created_at": job.created_at,
+                "closed_reason": why_closed.get(job.id, "")}
         columns[key].append(card)
     for cards in columns.values():
         cards.sort(key=lambda c: -(c["updated_at"] or 0))

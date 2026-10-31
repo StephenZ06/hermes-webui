@@ -76,8 +76,12 @@ def test_cards_and_action_rows_show_their_artwork(page):
         rows: [...document.querySelectorAll('#jobOsRoot .action-row')].map(r => [r.querySelector('strong').textContent,
             (r.querySelector('.action-icon img') || {getAttribute: () => 'svg'}).getAttribute('src').split('/').pop()]),
     })""")
-    for art in ("application-funnel-32.webp", "action-centre-32.webp", "automations-32.webp", "recent-jobs-32.webp"):
+    for art in ("application-funnel-26.webp", "action-centre-26.webp", "automations-26.webp", "recent-jobs-26.webp"):
         assert art in out["cards"], out
+    # Every picture is drawn at the size its file was made for (no browser scaling).
+    sizes = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot img.job-os-art')].map(i => {
+        const r = i.getBoundingClientRect(); return [i.getAttribute('src').match(/-(\\d+)\\.webp$/)[1], r.width, r.height, i.naturalWidth]; })""")
+    assert sizes and all(float(n) == w == h == nat for n, w, h, nat in sizes), sizes
     rows = dict(out["rows"])
     assert rows["IT Help Desk Analyst (Level 1)"].startswith("it-"), rows
     assert rows["Pastry Chef"] == "svg", rows
@@ -158,3 +162,30 @@ def test_metric_pictures_and_numbers_show_a_loading_shimmer_first():
             assert all(ok and w == 40 for ok, w in sizes), sizes
         finally:
             browser.close()
+
+
+def test_a_modal_opens_and_closes_with_an_animation(page):
+    page.click("#jobOsSidebar [data-job-os-view='pipeline']")
+    page.click("#jobOsRoot [data-job-os-action='job-form-new'] >> nth=0")
+    page.wait_for_selector("#jobOsRoot .job-form-modal", timeout=10000)
+    opening = page.evaluate("() => getComputedStyle(document.querySelector('#jobOsRoot .job-form-modal')).animationName")
+    assert opening == "job-modal-in", opening
+    closing = page.evaluate("""() => {
+        document.querySelector('#jobOsRoot .job-form-modal [data-job-os-action="job-form-close"]').click();
+        return [...document.querySelectorAll('#jobOsRoot .is-closing')].map(n => [n.className, getComputedStyle(n).animationName]);
+    }""")
+    kinds = dict(closing)
+    assert any("job-form-modal" in k and v == "job-modal-out" for k, v in kinds.items()), closing
+    assert any("job-modal-backdrop" in k and v == "job-overlay-fade-out" for k, v in kinds.items()), closing
+    page.wait_for_function("() => !document.querySelector('#jobOsRoot .is-closing')", timeout=2000)
+    assert page.evaluate("() => !document.querySelector('#jobOsRoot .job-form-modal')")
+
+
+def test_scrolling_lists_reach_the_card_edge_without_moving_their_rows(page):
+    out = page.evaluate("""() => {
+        const card = document.querySelector('#jobOsRoot .action-centre'), list = card.querySelector('.action-list');
+        const c = card.getBoundingClientRect(), l = list.getBoundingClientRect(), row = list.querySelector('.action-row').getBoundingClientRect();
+        const pad = parseFloat(getComputedStyle(card).paddingRight), border = parseFloat(getComputedStyle(card).borderRightWidth);
+        return {listGap: c.right - border - l.right, rowGap: c.right - border - pad - row.right};
+    }""")
+    assert abs(out["listGap"]) < 0.5 and abs(out["rowGap"]) < 0.5, out

@@ -138,7 +138,7 @@
     const rows = [];
     const row = (kind, title, note, control, attrs, artName) => {
       const tag = attrs ? 'button' : 'div';
-      const mark = artName ? `<span class="action-icon has-art" aria-hidden="true">${art(artName)}</span>`
+      const mark = artName ? `<span class="action-icon has-art" aria-hidden="true">${art(artName, 28)}</span>`
         : `<span class="action-icon" aria-hidden="true">${icon(ACTION_ICON[kind] || 'bell', 15)}</span>`;
       return `<${tag} ${attrs ? 'type="button" ' : ''}class="action-row" data-kind="${kind}"${attrs || ''}>${mark}<span class="action-text"><strong>${title}</strong>${note ? `<small>${note}</small>` : ''}</span>${control || ''}</${tag}>`;
     };
@@ -179,9 +179,11 @@
   const CARD_ART = {'Action centre': 'action-centre', 'Application funnel': 'application-funnel', Automations: 'automations',
     'Master resume': 'master-resume', 'Recent jobs': 'recent-jobs', 'Skill gaps': 'skill-gaps', 'Skills gained': 'skills-gained',
     'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches'};
-  const art = (name) => `<img class="job-os-art" src="/static/job-os/icons/${name}-32.webp" srcset="/static/job-os/icons/${name}-32.webp 1x, /static/job-os/icons/${name}-64.webp 2x, /static/job-os/icons/${name}-128.webp 4x" alt="" decoding="async" draggable="false">`;
-  const iconOrArt = (title, iconName, size) => (CARD_ART[title]
-    ? `<span class="card-icon has-art" aria-hidden="true">${art(CARD_ART[title])}</span>`
+  // Drawn from files made at the exact size shown (1x and 2x), so no picture
+  // is scaled by the browser: card titles 26px, Action centre rows 28px, Scout tiles 30px.
+  const art = (name, size = 26) => `<img class="job-os-art" src="/static/job-os/icons/${name}-${size}.webp" srcset="/static/job-os/icons/${name}-${size}.webp 1x, /static/job-os/icons/${name}-${size * 2}.webp 2x" width="${size}" height="${size}" alt="" decoding="async" draggable="false">`;
+  const iconOrArt = (title, iconName, size, artSize) => (CARD_ART[title]
+    ? `<span class="card-icon has-art" aria-hidden="true">${art(CARD_ART[title], artSize)}</span>`
     : iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, size)}</span>` : '');
   function cardHead(title, iconName, actions, count) {
     return `<div class="job-os-card-head"><h2>${iconOrArt(title, iconName, 16)}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
@@ -254,6 +256,8 @@
   }
   function jobChips(job) {
     const chips = [];
+    // A job closed because its posting is gone says why, first.
+    if (job.closed_reason) chips.push(`<span class="job-os-chip job-os-closed-reason" data-kind="closed" title="${esc(job.closed_reason)}">${esc(job.closed_reason)}</span>`);
     if (job.workplace) chips.push(`<span class="job-os-chip" data-kind="${esc(job.workplace)}">${esc(WORKPLACE[job.workplace] || job.workplace)}</span>`);
     if (job.salary_text) chips.push(`<span class="job-os-chip" data-kind="pay">${esc(job.salary_text)}</span>`);
     if (job.employment_type) chips.push(`<span class="job-os-chip">${esc(job.employment_type)}</span>`);
@@ -654,6 +658,10 @@
       .replace(/\s*(?:\/|a|per)\s*year\b/i, '/yr').replace(/\s*(?:\/|an|per)\s*hour\b/i, '/hr').replace(/\s*(?:\/|a|per)\s*day\b/i, '/day');
     const stamp = job.applied ? `Applied ${when(job.applied.at)}` : when(job.updated_at);
     const status = ['closed', 'offers', 'interview'].includes(job.column) ? badge(job.status) : '';
+    // Closed because the posting is gone: the reason takes the pay and job-type row.
+    const factsRow = job.closed_reason
+      ? `<span class="pipe-row pipe-closed-reason" title="${esc(job.closed_reason)}">${icon('close', 14)}<span>${esc(job.closed_reason)}</span></span>`
+      : `<span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>`;
     // A job Luna is tailoring stays put until she is done.
     const movable = job.status !== 'tailoring';
     const working = activityOf(job);
@@ -662,7 +670,7 @@
         <span class="pipe-card-head"><strong class="pipe-card-name" title="${esc(job.title)}">${esc(job.title)}</strong>${fitRing(job.analysis, 'small')}</span>
         <span class="pipe-row"><span class="pipe-company">${esc(job.company || 'Company not set')}</span><span class="pipe-tags">${status}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></span></span>
         <span class="pipe-row">${fact('pin', where, 'Location')}<small class="pipe-when">${working ? activityLine(working) : checkChip(job) || `${attention ? `<span class="pipe-attention" title="${esc((job.attention || []).join(' · '))}">${icon('attention', 14)}</span>` : ''}${esc(stamp)}`}</small></span>
-        <span class="pipe-row pipe-row-split">${fact('pay', pay, 'Salary')}${fact('briefcase', work, 'Job type')}</span>
+        ${factsRow}
       </button>
       <div class="pipe-card-actions">${primary}</div></article>`;
   }
@@ -748,7 +756,7 @@
     const rows = items.slice(0, 30).map((e) => {
       const why = e.data.by === 'email' ? ` · from an email${e.data.subject ? `: “${esc(e.data.subject)}”` : ''}${e.data.summary ? ` — ${esc(e.data.summary)}` : ''}`
         : e.data.by === 'scout' ? ' · title off target' : e.data.by === 'deadline' ? ` · the closing date (${esc(e.data.deadline || '')}) passed`
-        : e.data.by === 'recheck' ? ' · the posting is no longer open' : e.data.by === 'sweep' ? ' · quiet applications closed' : '';
+        : e.data.by === 'recheck' ? ` · ${esc((e.data.reason || 'the posting is no longer open').replace(/^./, (c) => c.toLowerCase()))}` : e.data.by === 'sweep' ? ' · quiet applications closed' : '';
       const text = e.type === 'note' ? esc(e.data.text) : e.type === 'status_changed' ? `Moved to <strong>${esc(statusLabel(e.data.to))}</strong>${why}` : esc(EVENT_TEXT[e.type]);
       return `<li data-kind="${e.type === 'note' ? 'note' : 'event'}"><span>${text}</span><time>${esc(when(e.at))}</time></li>`;
     }).join('');
@@ -1141,7 +1149,7 @@
     const on = searches.filter((x) => x.enabled);
     const next = schedOn ? Math.min(...on.map((x) => Number(x.next_run_at) || Infinity)) : Infinity;
     const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
-    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16, 30)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
     const overview = `<section class="scout-overview" aria-label="Scout at a glance">
       ${tile('cloud', 'Source', viaApify ? 'Apify' : fallback ? 'This machine' : 'Apify off', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : fallback ? `Indeed, ${esc(provider)} as fallback` : 'Only remote.id can run', ' data-job-os-action="settings-focus" data-section="apify"')}
       ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}

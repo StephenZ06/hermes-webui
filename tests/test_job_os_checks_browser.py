@@ -211,7 +211,8 @@ def test_quiet_applications_close_as_no_response_in_one_go():
             box = page.evaluate("() => { const r = document.querySelector('.stale-sheet').getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, innerWidth, innerHeight]; }")
             page.click('.stale-sheet [data-job-os-action="pipe-stale-confirm"]')
             page.wait_for_selector(f'.pipe-col[data-col="closed"] {card}[data-status="no_response"]', timeout=15000)
-            gone = page.evaluate("() => !document.querySelector('.stale-sheet')")
+            # The sheet itself is gone; a closing copy may still be fading out.
+            gone = page.evaluate("() => !document.querySelector('.stale-sheet:not(.is-closing)')")
         finally:
             browser.close()
     left, right, top, bottom, width, height = box

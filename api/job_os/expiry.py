@@ -9,12 +9,13 @@ in your Scout time zone:
 - a closing date within ``CLOSING_SOON_DAYS`` flags the job "Closes in N days";
 - a job with no closing date is never expired by date.
 
-With Firecrawl set up, Favorite and Ready-to-apply postings are also read again
-once a week: a 410, a "no longer available" page, or a redirect to a page that
-is no longer a single posting means expired. A 404, 403 or timeout means
-"couldn't check" and changes nothing (the ``expired`` versus ``unreachable``
-rule). A posting more than ``STALE_DAYS`` old gets an age label, a signal and
-never a veto.
+Every job not yet applied for is also read again once a day (through
+Firecrawl when it is set up, otherwise straight from the job site): a 410, a
+"no longer available" page, or a redirect to a page that is no longer a single
+posting means expired, and the job moves to Closed with that reason. A 404,
+403, a sign-in or bot-check page, or a timeout means "couldn't check" and
+changes nothing (the ``expired`` versus ``unreachable`` rule). A posting more
+than ``STALE_DAYS`` old gets an age label, a signal and never a veto.
 
 Adapted from ai-job-search (github.com/ai-job-search-dev/ai-job-search, MIT).
 """
@@ -24,7 +25,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import date, datetime
 from typing import Callable
@@ -38,13 +43,17 @@ from api.job_os.repository import list_jobs, parse_deadline
 logger = logging.getLogger(__name__)
 CLOSING_SOON_DAYS = 7
 STALE_DAYS = 30
-RECHECK_DAYS = 7
-RECHECK_PER_DAY = 5
-# Not applied for yet: these can expire by date.
+RECHECK_DAYS = 1
+RECHECK_PER_DAY = 200
+# Not applied for yet: these can expire by date, and their postings are read
+# again each day. Once applied for, a job's outcome comes from the employer.
 OPEN = (JobStatus.DISCOVERED, JobStatus.SCRAPED, JobStatus.ANALYZED, JobStatus.SHORTLISTED,
         JobStatus.RESUME_READY, JobStatus.APPLICATION_READY)
-# Read again each week: the jobs you mean to apply for.
-RECHECKED = (JobStatus.SHORTLISTED, JobStatus.RESUME_READY, JobStatus.APPLICATION_READY)
+RECHECKED = OPEN
+# A redirect to one of these is a wall in front of the posting, not its end.
+_WALL = re.compile(r"authwall|login|log-in|signin|sign-in|signup|captcha|challenge|checkpoint|cf_chl|consent", re.I)
+_WALL_TEXT = re.compile(r"just a moment\.\.\.|verify you are (a )?human|are you a robot|enable javascript and cookies|"
+                        r"unusual traffic|access denied", re.I)
 _CLOSED_TEXT = re.compile(
     r"no longer (available|accepting|active|open)|position (has been|is) (filled|closed)|job (has )?expired|"
     r"this job (is|has been) (closed|removed)|applications? (are |is )?(now )?closed|job not found|"
@@ -111,25 +120,126 @@ def sweep(*, on: date | None = None) -> dict:
 
 def classify(page: dict, url: str) -> str:
     """``expired``, ``open`` or ``unknown`` for one re-read posting page."""
+    return classify_with_reason(page, url)[0]
+
+
+def classify_with_reason(page: dict, url: str) -> tuple[str, str]:
+    """``(result, reason)``: the reason says, in words, why a posting is closed."""
     from api.job_os.extract import extract_job_posting
 
     status = page.get("status")
     if status == 410:
-        return "expired"
+        return "expired", "The job site says the posting has been removed"
     if status is not None and status != 200:
-        return "unknown"  # 404, 403, 5xx: couldn't check, change nothing
+        return "unknown", ""  # 404, 403, 5xx: couldn't check, change nothing
     html = str(page.get("html") or "")
     if not html:
-        return "unknown"
-    if extract_job_posting(html, url):
-        return "open"
-    text = re.sub(r"<[^>]+>", " ", html)
-    if _CLOSED_TEXT.search(text):
-        return "expired"
+        return "unknown", ""
     final = str(page.get("final_url") or "")
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+    if (final and _WALL.search(urllib.parse.urlsplit(final).path + "?" + urllib.parse.urlsplit(final).query)) or _WALL_TEXT.search(text[:4000]):
+        return "unknown", ""  # a sign-in or bot check stood in front of it
+    if extract_job_posting(html, url):
+        return "open", ""
+    closed = _CLOSED_TEXT.search(text)
+    if closed:
+        return "expired", f"The posting says “{closed.group(0).strip()}”"
     if final and final.rstrip("/") != url.rstrip("/"):
-        return "expired"  # sent on to a listing page: the posting is gone
-    return "unknown"
+        return "expired", "The posting link now leads to another page"  # sent on to a listing page
+    return "unknown", ""
+
+
+# Read straight from the job site when Firecrawl is not set up: each redirect
+# is followed by hand so every hop passes the same public-address check.
+MAX_REDIRECTS = 5
+MAX_BYTES = 2_000_000
+FETCH_TIMEOUT = 15
+SAME_HOST_GAP_S = 2.0
+_USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+               "Chrome/141.0 Safari/537.36")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class DirectPageClient:
+    """``scrape(url)`` -> ``{"status", "html", "final_url"}`` without Firecrawl."""
+
+    def __init__(self, *, opener=None, validate=None, sleep=time.sleep, clock=time.monotonic):
+        self._opener = opener or urllib.request.build_opener(_NoRedirect)
+        self._validate = validate
+        self._sleep, self._clock = sleep, clock
+        self._last: dict[str, float] = {}
+
+    def _pause(self, url: str) -> None:
+        host = urllib.parse.urlsplit(url).hostname or ""
+        if host in self._last:
+            wait = SAME_HOST_GAP_S - (self._clock() - self._last[host])
+            if wait > 0:
+                self._sleep(wait)
+        self._last[host] = self._clock()
+
+    def scrape(self, url: str) -> dict:
+        validate = self._validate
+        if validate is None:
+            from api.job_os.network_policy import validate_external_job_url as validate
+        current = url
+        for _ in range(MAX_REDIRECTS + 1):
+            current = validate(current)
+            self._pause(current)
+            request = urllib.request.Request(current, headers={"User-Agent": _USER_AGENT, "Accept": "text/html,*/*;q=0.8",
+                                                               "Accept-Language": "en"})
+            try:
+                with self._opener.open(request, timeout=FETCH_TIMEOUT) as response:  # noqa: S310 - validated public URL
+                    body = response.read(MAX_BYTES)
+                    charset = response.headers.get_content_charset() or "utf-8"
+                    return {"status": getattr(response, "status", 200), "html": body.decode(charset, "replace"), "final_url": current}
+            except urllib.error.HTTPError as error:
+                location = error.headers.get("Location") if error.headers else None
+                if error.code in (301, 302, 303, 307, 308) and location:
+                    current = urllib.parse.urljoin(current, location)
+                    continue
+                return {"status": error.code, "html": "", "final_url": current}
+        return {"status": None, "html": "", "final_url": current}
+
+
+def closed_reason(payload: dict) -> str:
+    """Why a job was moved to Closed, in words, from its status-change event."""
+    by = (payload or {}).get("by")
+    if by == "deadline":
+        return f"Its closing date ({payload.get('deadline', '')}) passed"
+    if by == "recheck":
+        return payload.get("reason") or "The posting is no longer open"
+    return ""
+
+
+def closed_reasons(job_ids) -> dict[str, str]:
+    """``{job_id: reason}`` for jobs this module moved to Closed."""
+    ids = [str(i) for i in job_ids]
+    if not ids:
+        return {}
+    conn = connect_job_os()
+    try:
+        out: dict[str, str] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            rows = conn.execute(
+                f"SELECT job_id, payload_json FROM job_events WHERE event_type='status_changed' AND job_id IN ({','.join('?' * len(chunk))}) "
+                "ORDER BY created_at", chunk).fetchall()
+            for row in rows:
+                try:
+                    payload = json.loads(row["payload_json"] or "{}")
+                except ValueError:
+                    continue
+                if payload.get("to") == JobStatus.EXPIRED.value:
+                    out[row["job_id"]] = closed_reason(payload)
+                elif row["job_id"] in out:
+                    out.pop(row["job_id"])  # moved on again since
+        return {k: v for k, v in out.items() if v}
+    finally:
+        conn.close()
 
 
 def _last_checks(conn) -> dict[str, int]:
@@ -138,30 +248,35 @@ def _last_checks(conn) -> dict[str, int]:
 
 
 def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_DAY) -> dict:
-    """Read again the Favorite and Ready-to-apply postings not checked this week."""
+    """Read again the postings of jobs not yet applied for, not checked today."""
     now = int(time.time() if now is None else now)
     conn = connect_job_os()
     try:
         last = _last_checks(conn)
     finally:
         conn.close()
-    due = [job for job in list_jobs() if job.status in RECHECKED and now - last.get(job.id, 0) >= RECHECK_DAYS * 86400]
+    # A day less an hour, so a check that ran a little later yesterday is due again.
+    due = [job for job in list_jobs() if job.status in RECHECKED and job.canonical_url
+           and now - last.get(job.id, 0) >= RECHECK_DAYS * 86400 - 3600]
     due.sort(key=lambda job: last.get(job.id, 0))
     out = {"checked": 0, "expired": 0, "unknown": 0}
     if not due:
         return out
     if client is None:
-        from api.job_os.scout import _default_client
+        if _firecrawl_ready():
+            from api.job_os.scout import _default_client
 
-        client = _default_client()
+            client = _default_client()
+        else:
+            client = DirectPageClient()
     from api.job_os.network_policy import validate_external_job_url
 
     for job in due[:limit]:
         try:
             url = validate_external_job_url(job.canonical_url)
-            result = classify(client.scrape(url), url)
+            result, reason = classify_with_reason(client.scrape(url), url)
         except Exception:
-            result = "unknown"
+            result, reason = "unknown", ""
         conn = connect_job_os()
         try:
             _event(conn, job.id, "posting_checked", {"result": result}, now)
@@ -169,7 +284,7 @@ def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_D
         finally:
             conn.close()
         out["checked"] += 1
-        if result == "expired" and _expire(job, {"by": "recheck"}):
+        if result == "expired" and _expire(job, {"by": "recheck", "reason": reason}):
             out["expired"] += 1
         elif result == "unknown":
             out["unknown"] += 1
@@ -203,9 +318,30 @@ def tick(*, now: float | None = None, recheck_with: Callable | None = None) -> b
         return False
     path.write_text(json.dumps({**state, "last_sweep": on.isoformat()}), encoding="utf-8")
     sweep(on=on)
-    if recheck_with is not None or _firecrawl_ready():
+    if recheck_with is not None:
         try:
-            (recheck_with or recheck)(now=now)
+            recheck_with(now=now)
         except Exception:
             logger.debug("posting re-check failed", exc_info=True)
+    else:
+        _recheck_in_background(now)
     return True
+
+
+# Reading every posting takes minutes (a pause between pages on one site), so
+# it runs beside the scheduler instead of holding up Scout and the emails.
+_RECHECK_LOCK = threading.Lock()
+
+
+def _recheck_in_background(now: float | None) -> None:
+    def run():
+        if not _RECHECK_LOCK.acquire(blocking=False):
+            return  # yesterday's is somehow still going
+        try:
+            recheck(now=now)
+        except Exception:
+            logger.debug("posting re-check failed", exc_info=True)
+        finally:
+            _RECHECK_LOCK.release()
+
+    threading.Thread(target=run, name="job-os-posting-recheck", daemon=True).start()

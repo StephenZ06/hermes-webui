@@ -1,9 +1,11 @@
-"""Closing dates, the daily expiry sweep, the weekly re-check and the
+"""Closing dates, the daily expiry sweep, the daily posting re-check and the
 closing-soon and age labels."""
 
 from __future__ import annotations
 
 import json
+
+import pytest
 from dataclasses import replace
 from datetime import date
 
@@ -84,8 +86,9 @@ def test_the_recheck_reads_410_as_expired_and_404_as_unknown(store, monkeypatch)
     assert out == {"checked": 4, "expired": 2, "unknown": 2}
     assert get_job(gone.id).status == get_job(filled.id).status == JobStatus.EXPIRED
     assert get_job(missing.id).status == get_job(open_.id).status == JobStatus.SHORTLISTED
-    # Each posting is read at most once a week.
-    assert expiry.recheck(client=Client(), now=1_000_000 + 86400)["checked"] == 0
+    # Each posting is read at most once a day.
+    assert expiry.recheck(client=Client(), now=1_000_000 + 3600)["checked"] == 0
+    assert expiry.recheck(client=Client(), now=1_000_000 + 86400)["checked"] == 2
 
 
 def test_the_tick_runs_once_a_day(store, monkeypatch):  # noqa: F811
@@ -94,3 +97,97 @@ def test_the_tick_runs_once_a_day(store, monkeypatch):  # noqa: F811
     assert expiry.tick(recheck_with=lambda **kw: calls.append(1)) is True
     assert expiry.tick(recheck_with=lambda **kw: calls.append(1)) is False
     assert calls == [1]
+
+
+def test_every_job_not_yet_applied_for_is_rechecked_and_closed_with_a_reason(store, monkeypatch):  # noqa: F811
+    from api.job_os.api import _job_payload
+
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    new, applied = _job("fresh", status="scraped"), _job("sent", status="submitted")
+    seen = []
+
+    class Client:
+        def scrape(self, url):
+            seen.append(url)
+            return {"status": 200, "html": "<h1>Analyst</h1><p>This job is no longer accepting applications.</p>"}
+    assert expiry.recheck(client=Client(), now=2_000_000)["expired"] == 1
+    assert seen == [new.canonical_url]  # an application's outcome comes from the employer
+    assert get_job(new.id).status == JobStatus.EXPIRED and get_job(applied.id).status == JobStatus.SUBMITTED
+    reason = expiry.closed_reasons([new.id])[new.id]
+    assert reason == "The posting says “no longer accepting”"
+    assert _job_payload(get_job(new.id))["closed_reason"] == reason
+    closed = [c for c in applications.board()["columns"] if c["key"] == "closed"][0]["jobs"]
+    assert [c["closed_reason"] for c in closed if c["id"] == new.id] == [reason]
+
+
+def test_a_sign_in_or_bot_check_is_not_a_closed_posting():
+    url = "https://www.linkedin.com/jobs/view/123"
+    wall = {"status": 200, "html": "<p>Sign in to see this job</p>", "final_url": "https://www.linkedin.com/authwall?trk=x"}
+    bot = {"status": 200, "html": "<title>Just a moment...</title>", "final_url": url}
+    moved = {"status": 200, "html": "<p>Search all jobs</p>", "final_url": "https://www.linkedin.com/jobs/search"}
+    assert expiry.classify_with_reason(wall, url) == ("unknown", "")
+    assert expiry.classify_with_reason(bot, url) == ("unknown", "")
+    assert expiry.classify_with_reason(moved, url) == ("expired", "The posting link now leads to another page")
+
+
+def test_without_firecrawl_the_page_is_read_directly_and_every_redirect_is_checked(monkeypatch):
+    import io
+    import urllib.error
+    from email.message import Message
+
+    checked = []
+
+    def validate(url, **kw):
+        checked.append(url)
+        if "169.254" in url:
+            raise ValueError("not a public address")
+        return url
+
+    def headers(**values):
+        h = Message()
+        for k, v in values.items():
+            h[k] = v
+        return h
+
+    html_headers = headers(**{"Content-Type": "text/html; charset=utf-8"})
+
+    class Response(io.BytesIO):
+        status = 200
+        headers = html_headers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Opener:
+        def __init__(self, hops):
+            self.hops = hops
+
+        def open(self, request, timeout):
+            target = self.hops[request.full_url]
+            if isinstance(target, str):
+                raise urllib.error.HTTPError(request.full_url, 302, "Found", headers(Location=target), None)
+            return Response(target)
+
+    client = expiry.DirectPageClient(opener=Opener({"https://jobs.example.test/a": "/b", "https://jobs.example.test/b": b"<p>ok</p>"}),
+                                     validate=validate, sleep=lambda s: None)
+    page = client.scrape("https://jobs.example.test/a")
+    assert page == {"status": 200, "html": "<p>ok</p>", "final_url": "https://jobs.example.test/b"}
+    assert checked == ["https://jobs.example.test/a", "https://jobs.example.test/b"]
+    sneaky = expiry.DirectPageClient(opener=Opener({"https://jobs.example.test/c": "http://169.254.169.254/"}), validate=validate,
+                                     sleep=lambda s: None)
+    with pytest.raises(ValueError):
+        sneaky.scrape("https://jobs.example.test/c")
+
+
+def test_the_daily_tick_rechecks_in_the_background_without_firecrawl(store, monkeypatch):  # noqa: F811
+    import threading
+
+    monkeypatch.setattr(expiry, "today", lambda now=None: TODAY)
+    monkeypatch.setattr(expiry, "_firecrawl_ready", lambda: False)
+    ran = threading.Event()
+    monkeypatch.setattr(expiry, "recheck", lambda **kw: ran.set())
+    assert expiry.tick() is True
+    assert ran.wait(5)
