@@ -36,7 +36,18 @@
     }
     el._jobOsHtml = html;
     playOverlayExits(el, leaving);
+    syncActionMore(el);
     return true;
+  }
+  // Action centre: an arrow under the list while rows lie below its fold. It
+  // takes its place in the same frame as the patch, so nothing jumps.
+  function syncActionMore(el) {
+    el.querySelectorAll('.action-centre').forEach((card) => {
+      const list = card.querySelector('.action-list');
+      const scrolls = !!list && list.scrollHeight > list.clientHeight + 1;
+      card.classList.toggle('has-more', scrolls);
+      card.classList.toggle('more-below', scrolls && list.scrollHeight - list.clientHeight - list.scrollTop > 2);
+    });
   }
   // Modals, their backdrops, the job drawer and the resume preview open with
   // an animation (style.css); a repaint that drops one would make it vanish,
@@ -484,6 +495,15 @@
     const artIn = (event) => { const wrap = event.target.closest && event.target.closest('.job-os-metric-art'); if (wrap) wrap.classList.add('is-ready'); };
     root().addEventListener('load', artIn, {signal, capture: true});
     root().addEventListener('error', artIn, {signal, capture: true});
+    root().addEventListener('scroll', (event) => {
+      if (event.target.classList && event.target.classList.contains('action-list')) syncActionMore(root());
+    }, {signal, capture: true, passive: true});
+    root().addEventListener('click', (event) => {
+      const more = event.target.closest && event.target.closest('.action-more');
+      const list = more && more.parentElement.querySelector('.action-list');
+      if (list) list.scrollBy({top: Math.max(56, list.clientHeight - 56), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+    }, {signal});
+    window.addEventListener('resize', () => { const t = root(); if (t) syncActionMore(t); }, {signal, passive: true});
     // A button that showed "Saved" hands back to the page: draw what is current.
     root().addEventListener('mi:released', () => { const t = root(); if (t) { t._jobOsHtml = null; repaint(); } }, {signal});
     const side = sidebarRoot();

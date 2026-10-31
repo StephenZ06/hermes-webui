@@ -186,12 +186,12 @@ def test_dashboard_metric_icons_match_their_value_and_label_height():
             })""")
         finally:
             browser.close()
-    assert [r["src"].rsplit("/", 1)[-1] for r in rows] == [
+    assert [r["src"].split("?")[0].rsplit("/", 1)[-1] for r in rows] == [
         "metric-total-40.webp", "metric-active-40.webp", "metric-attention-40.webp", "metric-applied-40.webp"]
     # A little smaller than the number and label beside it, centred on them.
     for row in rows:
         assert row["loaded"], row
-        assert row["icon"] == 40 and row["icon"] < row["text"], row
+        assert abs(row["icon"] - 40) < 0.01 and row["icon"] < row["text"], row
         assert abs((row["top"] + row["icon"] / 2) - (row["textTop"] + row["text"] / 2)) < 1, row
 
 

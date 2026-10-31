@@ -1,4 +1,29 @@
 (function () {
+  // Artwork URLs carry this build's version (from this script's own ?v=), so
+  // the browser keeps them for good and a redeploy fetches replaced pictures.
+  const ASSET_V = (() => { try { return new URL(document.currentScript.src).searchParams.get('v') || ''; } catch (_) { return ''; } })();
+  const artSrc = (name, size) => `/static/job-os/icons/${name}-${size}.webp${ASSET_V ? `?v=${encodeURIComponent(ASSET_V)}` : ''}`;
+  const ART_READY = new Set();
+  const artLanded = (event) => {
+    const img = event.target;
+    if (!img || !img.classList || !img.classList.contains('job-os-art')) return;
+    if (event.type === 'load') ART_READY.add(img.getAttribute('data-art'));
+    img.classList.add('is-ready');
+  };
+  document.addEventListener('load', artLanded, true);
+  document.addEventListener('error', artLanded, true);
+  // The dashboard's pictures are fetched as soon as this script loads, not
+  // when the dashboard first draws them.
+  const warmArt = (name, size) => {
+    try {
+      const img = new Image();
+      img.srcset = `${artSrc(name, size)} 1x, ${artSrc(name, size * 2)} 2x`;
+      img.src = artSrc(name, size);
+      (img.decode ? img.decode() : Promise.reject()).then(() => ART_READY.add(`${name}-${size}`), () => {});
+    } catch (_) { /* no Image(): the shimmer gives way on load */ }
+  };
+  ['action-centre', 'application-funnel', 'automations', 'recent-jobs'].forEach((name) => warmArt(name, 26));
+  ['recent-completions', 'it-1', 'it-2', 'it-3'].forEach((name) => warmArt(name, 28));
   // A finger cannot start the browser's own drag-and-drop; touch screens move cards by hold-and-drag instead (index.js).
   const TOUCH_ONLY = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -115,7 +140,7 @@
       const tickTip = (d) => `${fmt(d)}: ${d.state === 'none' ? 'nothing ran' : [d.ok && `${d.ok} ok`, d.failed && `${d.failed} failed`].filter(Boolean).join(', ')}`;
       const ok = days.reduce((n, d) => n + d.ok, 0), bad = days.reduce((n, d) => n + d.failed, 0);
       const ticks = days.length ? `<span class="automation-ticks" role="img" aria-label="Last ${days.length} days: ${ok} ok, ${bad} failed">${days.map((d) => `<i data-state="${esc(d.state)}" title="${esc(tickTip(d))}"></i>`).join('')}</span>` : '';
-      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><strong class="automation-title">${esc(a.label)}</strong><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span><span class="automation-main"><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span>${ticks}</button>`;
+      return `<button type="button" class="automation-row" data-job-os-action="settings-focus" data-section="${esc(AUTOMATION_SECTION[a.key] || 'scout')}" data-on="${a.on ? 'true' : 'false'}" style="--i:${i}" title="Edit ${esc(a.label)}"><span class="automation-dot" aria-hidden="true"></span><strong class="automation-title">${capI(a.label)}</strong><span class="automation-end"><span class="automation-state">${a.on ? 'On' : 'Off'}</span><span class="automation-edit" aria-hidden="true">${icon('edit', 16)}</span></span><span class="automation-main"><small>${esc(a.schedule)}</small>${note ? `<small class="automation-note">${esc(note)}</small>` : ''}</span>${ticks}</button>`;
     }).join('');
     return `<section class="job-os-card automations-card">${cardHead('Automations', 'flash', `<button type="button" class="job-os-icon-btn" data-job-os-view="settings" aria-label="Automation settings" title="Automation settings">${icon('settings', 18)}</button>`)}<div class="automations">${rows}</div></section>`;
   }
@@ -167,7 +192,8 @@
       rows.push(row(a.kind, esc(a.title || 'Untitled job'), [a.company, a.reason].filter(Boolean).map(esc).join(' · '),
         '<span class="action-go">Open</span>', ` data-job-id="${esc(a.job_id)}"`, itArt(a)));
     });
-    const body = rows.length ? `<div class="action-list">${rows.join('')}</div>`
+    // The arrow shows (index.js) while rows lie below the list's fold.
+    const body = rows.length ? `<div class="action-list">${rows.join('')}</div><button type="button" class="action-more" tabindex="-1" aria-hidden="true" title="More below"><span></span></button>`
       : '<p class="job-os-card-note card-empty-note action-empty">Nothing needs a decision right now. New matches, follow-ups and connection problems show here when they do.</p>';
     return `<section class="job-os-card action-centre">${cardHead('Action centre', 'bell', '', rows.length || null)}${body}</section>`;
   }
@@ -181,12 +207,17 @@
     'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches'};
   // Drawn from files made at the exact size shown (1x and 2x), so no picture
   // is scaled by the browser: card titles 26px, Action centre rows 28px, Scout tiles 30px.
-  const art = (name, size = 26) => `<img class="job-os-art" src="/static/job-os/icons/${name}-${size}.webp" srcset="/static/job-os/icons/${name}-${size}.webp 1x, /static/job-os/icons/${name}-${size * 2}.webp 2x" width="${size}" height="${size}" alt="" decoding="async" draggable="false">`;
+  // A picture already decoded draws at once; one still coming in shows a
+  // shimmer and fades in when it lands (marked below, by its load event).
+  const art = (name, size = 26) => `<img class="job-os-art${ART_READY.has(`${name}-${size}`) ? ' is-ready' : ''}" data-art="${name}-${size}" src="${artSrc(name, size)}" srcset="${artSrc(name, size)} 1x, ${artSrc(name, size * 2)} 2x" width="${size}" height="${size}" alt="" decoding="async" draggable="false">`;
   const iconOrArt = (title, iconName, size, artSize) => (CARD_ART[title]
     ? `<span class="card-icon has-art" aria-hidden="true">${art(CARD_ART[title], artSize)}</span>`
     : iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, size)}</span>` : '');
+  // An uppercase monospace "I" is narrower than its cell, so the dashboard's
+  // capitals titles pull it 1px closer on each side (style.css .cap-i).
+  const capI = (text) => esc(text).replace(/[iI]/g, '<span class="cap-i">$&</span>');
   function cardHead(title, iconName, actions, count) {
-    return `<div class="job-os-card-head"><h2>${iconOrArt(title, iconName, 16)}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
+    return `<div class="job-os-card-head"><h2>${iconOrArt(title, iconName, 16)}<span class="card-title">${capI(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
   }
   // Ten rows a page; the pager says where you are and steps through the rest.
   const PAGE = 10;
@@ -347,7 +378,7 @@
   // when the dashboard first draws them; until a picture (or the numbers) is
   // in, its place shows a loading shimmer (job-os/index.js marks it ready).
   const METRIC_READY = new Set();
-  const metricSrc = (name, size) => `/static/job-os/icons/metric-${name}-${size}.webp`;
+  const metricSrc = (name, size) => artSrc(`metric-${name}`, size);
   ['total', 'active', 'attention', 'applied'].forEach((name) => {
     try {
       const img = new Image();
@@ -980,10 +1011,10 @@
         ? `<span><i class="cal-key" data-tone="good"></i>${interviews} interview${interviews === 1 ? '' : 's'}</span><span><i class="cal-key" data-tone="bad"></i>${rejections} rejected</span>`
         : cal.key === 'applied' ? `<span><strong>${total}</strong> sent</span><span>Streak <strong>${streak}</strong> day${streak === 1 ? '' : 's'}</span>`
           : `<span><strong>${total}</strong> this month</span>`;
-      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-swatch" aria-hidden="true"></span>${cal.title}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
+      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-swatch" aria-hidden="true"></span>${capI(cal.title)}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
     }).join('');
     const step = (dir, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn small" data-job-os-action="activity-month" data-step="${dir}" aria-label="${label}" title="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 14)}</button>`;
-    return `<div class="activity"><div class="activity-head"><h3>Activity</h3><span class="activity-month">${step(1, 'Previous month', 'prev', back >= 5)}<span>${esc(monthName)}</span>${step(-1, 'Next month', 'next', !back)}</span></div><div class="cals">${cals}</div></div>`;
+    return `<div class="activity"><div class="activity-head"><h3>${capI('Activity')}</h3><span class="activity-month">${step(1, 'Previous month', 'prev', back >= 5)}<span>${esc(monthName)}</span>${step(-1, 'Next month', 'next', !back)}</span></div><div class="cals">${cals}</div></div>`;
   }
   function funnelCard(funnel, activity, back) {
     const rows = funnel && funnel.length && funnel[0].count ? funnel : null;

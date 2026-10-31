@@ -8,6 +8,10 @@
   coloured square instead of an icon.
 - The four dashboard pictures show a loading shimmer until they (and the
   numbers) are in.
+- Artwork URLs carry the build version (cached for good) and fade in over a
+  shimmer; Action centre shows an arrow under its list while rows lie below.
+- Scrollbars are 4px; dashboard capitals titles keep even letter gaps; a
+  title's count is a rounded square; Automation titles are not clipped.
 - Spacing: side buttons as tall as folder rows elsewhere, the gap between
   Action centre and Automations equal to the column gap, funnel bars as far
   from their widest label as from their widest number, Automation cards
@@ -39,14 +43,14 @@ AUTOMATIONS = {"automations": [
                          ("alerts", "Match alert emails", False), ("digest", "Daily digest", False), ("replies", "Reply commands", False)]]}
 
 
-def _boot(pw, dashboard_delay=0.0):
+def _boot(pw, dashboard_delay=0.0, payload=None):
     browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
     page = browser.new_page(viewport={"width": 1500, "height": 1000})
 
     def dashboard(route):
         if dashboard_delay:
             time.sleep(dashboard_delay)
-        route.fulfill(status=200, content_type="application/json", body=json.dumps(DASHBOARD))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload or DASHBOARD))
 
     page.route("**/api/job-os/dashboard", dashboard)
     page.route("**/api/job-os/automations", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(AUTOMATIONS)))
@@ -72,15 +76,15 @@ def page():
 
 def test_cards_and_action_rows_show_their_artwork(page):
     out = page.evaluate("""() => ({
-        cards: [...document.querySelectorAll('#jobOsRoot .card-icon.has-art img')].map(i => i.getAttribute('src').split('/').pop()),
+        cards: [...document.querySelectorAll('#jobOsRoot .card-icon.has-art img')].map(i => i.getAttribute('src').split('?')[0].split('/').pop()),
         rows: [...document.querySelectorAll('#jobOsRoot .action-row')].map(r => [r.querySelector('strong').textContent,
-            (r.querySelector('.action-icon img') || {getAttribute: () => 'svg'}).getAttribute('src').split('/').pop()]),
+            (r.querySelector('.action-icon img') || {getAttribute: () => 'svg'}).getAttribute('src').split('?')[0].split('/').pop()]),
     })""")
     for art in ("application-funnel-26.webp", "action-centre-26.webp", "automations-26.webp", "recent-jobs-26.webp"):
         assert art in out["cards"], out
     # Every picture is drawn at the size its file was made for (no browser scaling).
     sizes = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot img.job-os-art')].map(i => {
-        const r = i.getBoundingClientRect(); return [i.getAttribute('src').match(/-(\\d+)\\.webp$/)[1], r.width, r.height, i.naturalWidth]; })""")
+        const r = i.getBoundingClientRect(); return [i.getAttribute('src').match(/-(\\d+)\\.webp(\\?|$)/)[1], r.width, r.height, i.naturalWidth]; })""")
     assert sizes and all(float(n) == w == h == nat for n, w, h, nat in sizes), sizes
     rows = dict(out["rows"])
     assert rows["IT Help Desk Analyst (Level 1)"].startswith("it-"), rows
@@ -189,3 +193,89 @@ def test_scrolling_lists_reach_the_card_edge_without_moving_their_rows(page):
         return {listGap: c.right - border - l.right, rowGap: c.right - border - pad - row.right};
     }""")
     assert abs(out["listGap"]) < 0.5 and abs(out["rowGap"]) < 0.5, out
+
+
+def test_artwork_is_versioned_and_fades_in_over_a_shimmer(page):
+    out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .job-os-art, #jobOsRoot .job-os-metric-icon')].map(i => ({
+        v: new URL(i.currentSrc || i.src).searchParams.get('v'), ready: i.classList.contains('is-ready') || i.closest('.is-ready') !== null,
+        opacity: getComputedStyle(i).opacity}))""")
+    assert out and all(o["v"] for o in out), out
+    assert all(o["ready"] and o["opacity"] == "1" for o in out), out
+    shimmer = page.evaluate("""() => {
+        const img = document.querySelector('#jobOsRoot .card-icon.has-art .job-os-art');
+        img.classList.remove('is-ready');
+        const wrap = getComputedStyle(img.parentElement), pic = getComputedStyle(img);
+        return {animation: wrap.animationName, opacity: pic.opacity};
+    }""")
+    assert shimmer["animation"] == "job-os-shimmer", shimmer
+
+
+def test_scrollbars_are_four_pixels_wide(page):
+    widths = page.evaluate("""() => {
+        const box = document.createElement('div');
+        // Headless Chromium hides scrollbars, but a stable gutter still takes their width.
+        box.style.cssText = 'position:fixed;top:0;left:0;width:120px;height:60px;overflow:auto;scrollbar-gutter:stable';
+        box.innerHTML = '<div style="height:400px"></div>';
+        document.body.appendChild(box);
+        const w = [box.offsetWidth - box.clientWidth, box.offsetWidth - box.clientWidth];
+        box.remove();
+        return w;
+    }""")
+    assert widths == [4, 4], widths
+
+
+def test_titles_counts_and_automation_names_are_drawn_whole(page):
+    out = page.evaluate("""() => {
+        const title = document.querySelector('#jobOsRoot .action-centre .card-title');
+        const cs = getComputedStyle(title), advance = parseFloat(cs.fontSize) * 0.6 + parseFloat(cs.letterSpacing);
+        const count = document.querySelector('#jobOsRoot .action-centre .job-os-count').getBoundingClientRect();
+        const names = [...document.querySelectorAll('#jobOsRoot .automation-title')].map(t => {
+            const r = t.getBoundingClientRect(); return {h: r.height, size: parseFloat(getComputedStyle(t).fontSize)};
+        });
+        return {advance, capI: title.querySelectorAll('.cap-i').length, count: [count.width, count.height], names};
+    }""")
+    assert abs(out["advance"] - round(out["advance"])) < 0.01, out
+    assert out["capI"] == 1 and out["count"][0] == out["count"][1], out
+    assert all(n["h"] >= n["size"] for n in out["names"]), out
+
+
+def test_activity_cards_have_as_much_room_above_the_title_as_beside_it(page):
+    out = page.evaluate("""() => {
+        const cal = document.querySelector('#jobOsRoot .cal'), sw = cal.querySelector('.cal-swatch');
+        const c = cal.getBoundingClientRect(), s = sw.getBoundingClientRect();
+        return {left: s.left - c.left, top: s.top - c.top};
+    }""")
+    # Layout boxes; the pixel ink of the swatch measured 12px on both sides.
+    assert abs(out["left"] - out["top"]) < 1.5, out
+
+
+def test_action_centre_shows_an_arrow_while_rows_lie_below():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    many = dict(DASHBOARD, actions=[dict(DASHBOARD["actions"][1], job_id=f"job-{n}", title=f"Analyst {n}") for n in range(6)])
+    with sync_api.sync_playwright() as pw:
+        browser, page = _boot(pw, payload=many)
+        try:
+            page.evaluate("async () => { await switchPanel('jobs'); }")
+            page.wait_for_selector("#jobOsRoot .action-centre.has-more", timeout=20000)
+            page.wait_for_timeout(400)
+            out = page.evaluate("""() => {
+                const card = document.querySelector('#jobOsRoot .action-centre'), list = card.querySelector('.action-list');
+                const arrow = card.querySelector('.action-more').getBoundingClientRect(), c = card.getBoundingClientRect();
+                const rows = [...list.querySelectorAll('.action-row')].map(r => r.getBoundingClientRect()).filter(r => r.bottom <= list.getBoundingClientRect().bottom + 0.5);
+                const border = parseFloat(getComputedStyle(card).borderBottomWidth);
+                return {below: card.classList.contains('more-below'), opacity: getComputedStyle(card.querySelector('.action-more')).opacity,
+                        above: arrow.top - rows[rows.length - 1].bottom, under: c.bottom - border - arrow.bottom};
+            }""")
+
+            assert out["below"] and out["opacity"] == "1", out
+            assert abs(out["above"] - out["under"]) < 1.01, out
+            for _ in range(6):  # each click scrolls about a list's height
+                page.click("#jobOsRoot .action-more")
+                page.wait_for_timeout(500)
+                if not page.evaluate("() => document.querySelector('#jobOsRoot .action-centre').classList.contains('more-below')"):
+                    break
+            assert page.evaluate("() => { const l = document.querySelector('#jobOsRoot .action-list'); return l.scrollTop > 0 && l.scrollHeight - l.clientHeight - l.scrollTop <= 2; }")
+            page.wait_for_timeout(300)
+            assert page.evaluate("() => getComputedStyle(document.querySelector('#jobOsRoot .action-more')).opacity") == "0.3"
+        finally:
+            browser.close()
