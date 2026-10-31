@@ -237,3 +237,126 @@ def test_linkedin_reads_wait_longer_between_requests():
     client._pause("https://jobs.example.test/b")
     assert slept == [expiry.host_gap("www.linkedin.com"), expiry.SAME_HOST_GAP_S]
     assert expiry.host_gap("www.linkedin.com") >= 8
+
+
+def _scraped(url, n):
+    return create_job(replace(normalize_job_input({"title": f"Analyst {n}", "canonical_url": url}), description="SQL"),
+                      status=JobStatus.SCRAPED)
+
+
+class FakeApify:
+    """Stands in for ``apify``: answers each actor run from ``answers`` and
+    reports ``headroom`` dollars left this month."""
+
+    def __init__(self, answers, headroom=8.0):
+        self.answers, self.headroom, self.runs = answers, headroom, []
+
+    def token(self):
+        return "t"
+
+    def monthly_headroom_usd(self):
+        return self.headroom
+
+    def run_actor(self, actor, actor_input, **kw):
+        self.runs.append((actor, actor_input))
+        answer = self.answers[actor]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+INDEED = "https://malaysia.indeed.com/viewjob?jk={}"
+
+
+def test_indeed_and_seek_postings_are_reread_through_apify_in_one_run_each(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    shut, live = _scraped(INDEED.format("aaaa1111bbbb2222"), "a"), _scraped(INDEED.format("cccc3333dddd4444"), "b")
+    seek = _scraped("https://au.seek.com/job/94878460", "c")
+    fake = FakeApify({"misceres/indeed-scraper": [{"id": "aaaa1111bbbb2222", "isExpired": True},
+                                                  {"id": "cccc3333dddd4444", "isExpired": False}],
+                      "blackfalcondata/seek-scraper": [{"seekJobId": "94878460", "title": "Help Desk"}]})
+    monkeypatch.setattr(expiry, "_apify", lambda: fake)
+
+    class Direct:
+        def scrape(self, url):
+            raise AssertionError(f"read directly: {url}")
+    out = expiry.recheck(client=Direct(), now=2_000_000)
+    assert out == {"checked": 3, "expired": 1, "unknown": 0}
+    assert [actor for actor, _ in fake.runs] == ["misceres/indeed-scraper", "blackfalcondata/seek-scraper"]
+    assert sorted(u["url"] for u in fake.runs[0][1]["startUrls"]) == sorted([INDEED.format("aaaa1111bbbb2222"),
+                                                                             INDEED.format("cccc3333dddd4444")])
+    assert fake.runs[1][1]["startUrls"] == ["https://www.seek.com.au/job/94878460"]
+    assert get_job(shut.id).status == JobStatus.EXPIRED
+    assert get_job(live.id).status == JobStatus.SCRAPED and get_job(seek.id).status == JobStatus.SCRAPED
+    assert expiry.closed_reasons([shut.id])[shut.id] == "Indeed marks the posting as expired"
+
+
+def test_a_posting_apify_stops_returning_closes_only_after_three_days_running(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    gone, here = _scraped(INDEED.format("aaaa1111bbbb2222"), "a"), _scraped(INDEED.format("cccc3333dddd4444"), "b")
+    fake = FakeApify({"misceres/indeed-scraper": [{"id": "cccc3333dddd4444", "isExpired": False}]})
+    monkeypatch.setattr(expiry, "_apify", lambda: fake)
+    for day in range(2):
+        assert expiry.recheck(now=2_000_000 + day * 86400)["expired"] == 0
+        assert get_job(gone.id).status == JobStatus.SCRAPED
+    fake.answers["misceres/indeed-scraper"] = []  # a run that returns nothing proves nothing
+    assert expiry.recheck(now=2_000_000 + 2 * 86400) == {"checked": 2, "expired": 0, "unknown": 2}
+    fake.answers["misceres/indeed-scraper"] = [{"id": "cccc3333dddd4444", "isExpired": False}]
+    assert expiry.recheck(now=2_000_000 + 3 * 86400)["expired"] == 0  # the empty run broke the streak
+    assert expiry.recheck(now=2_000_000 + 4 * 86400)["expired"] == 0
+    assert expiry.recheck(now=2_000_000 + 5 * 86400)["expired"] == 1
+    assert get_job(gone.id).status == JobStatus.EXPIRED and get_job(here.id).status == JobStatus.SCRAPED
+    assert expiry.closed_reasons([gone.id])[gone.id] == "Indeed no longer shows the posting (checked 3 days running)"
+
+
+def test_the_apify_reread_is_skipped_when_it_would_eat_the_scout_budget_or_fails(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    job = _scraped(INDEED.format("aaaa1111bbbb2222"), "a")
+    fake = FakeApify({"misceres/indeed-scraper": [{"id": "aaaa1111bbbb2222", "isExpired": True}]},
+                     headroom=expiry.APIFY_RESERVE_USD + 0.001)
+    monkeypatch.setattr(expiry, "_apify", lambda: fake)
+    assert expiry.recheck(now=2_000_000) == {"checked": 1, "expired": 0, "unknown": 1}
+    assert fake.runs == []
+    fake.headroom = None  # usage unknown: don't spend
+    assert expiry.recheck(now=2_000_000 + 86400)["unknown"] == 1 and fake.runs == []
+    from api.job_os.apify import ApifyError
+
+    fake.headroom, fake.answers["misceres/indeed-scraper"] = 8.0, ApifyError("Apify did not answer")
+    assert expiry.recheck(now=2_000_000 + 2 * 86400)["unknown"] == 1
+    assert get_job(job.id).status == JobStatus.SCRAPED
+
+
+def test_without_an_apify_token_indeed_falls_back_to_a_direct_read(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    _scraped(INDEED.format("aaaa1111bbbb2222"), "a")
+    fake = FakeApify({})
+    fake.token = lambda: None
+    monkeypatch.setattr(expiry, "_apify", lambda: fake)
+    seen = []
+
+    class Direct:
+        def scrape(self, url):
+            seen.append(url)
+            return {"status": 403, "html": ""}
+    assert expiry.recheck(client=Direct(), now=2_000_000)["unknown"] == 1
+    assert seen == [INDEED.format("aaaa1111bbbb2222")]
+
+
+def test_a_bare_site_address_is_not_a_posting_that_moved():
+    url = "https://google.co.uk/"
+    page = {"status": 200, "html": "<p>Search</p>", "final_url": "https://www.google.com/"}
+    assert expiry.classify_with_reason(page, url) == ("unknown", "")
+    same = {"status": 200, "html": "<p>x</p>", "final_url": "https://www.jobs.example.test/a/"}
+    assert expiry.classify_with_reason(same, "https://jobs.example.test/a") == ("unknown", "")
+
+
+def test_many_postings_are_reread_in_runs_of_a_bounded_size(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    monkeypatch.setattr(expiry, "APIFY_CHUNK", 2)
+    keys = [f"aaaa1111bbbb000{n}" for n in range(5)]
+    for n, key in enumerate(keys):
+        _scraped(INDEED.format(key), n)
+    fake = FakeApify({"misceres/indeed-scraper": [{"id": key, "isExpired": False} for key in keys]})
+    monkeypatch.setattr(expiry, "_apify", lambda: fake)
+    assert expiry.recheck(now=2_000_000) == {"checked": 5, "expired": 0, "unknown": 0}
+    assert [len(run[1]["startUrls"]) for run in fake.runs] == [2, 2, 1]

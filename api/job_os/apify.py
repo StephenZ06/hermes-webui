@@ -129,6 +129,21 @@ def run_actor(actor: str, actor_input: dict, *, timeout_s: int = RUN_TIMEOUT_S, 
     return [item for item in items if isinstance(item, dict)]
 
 
+def monthly_headroom_usd(value: str | None = None) -> float | None:
+    """Dollars left under the account's monthly limit, or None when unknown."""
+    value = value or token()
+    if not value:
+        return None
+    try:
+        answer = _request("GET", "/users/me/limits", value)
+        data = answer.get("data", answer) if isinstance(answer, dict) else {}
+        limit = float((data.get("limits") or {})["maxMonthlyUsageUsd"])
+        used = float((data.get("current") or {})["monthlyUsageUsd"])
+    except (ApifyError, KeyError, TypeError, ValueError, AttributeError):
+        return None
+    return limit - used
+
+
 # ---- Indeed (valig/indeed-jobs-scraper) ----------------------------------------
 _UNITS = {"YEAR": "year", "MONTH": "month", "WEEK": "week", "DAY": "day", "HOUR": "hour"}
 

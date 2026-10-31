@@ -421,15 +421,25 @@ never guessed. Once a day, in your Scout time zone (`api/job_os/expiry.py`):
   **Closing soon** section in the daily digest.
 - **No date:** never expired by date.
 - **Daily re-check:** every posting you haven't applied for yet is read
-  again once a day, at most 200 a day, in the background. Firecrawl is used
-  when set up; otherwise the page is read directly, with every redirect
-  checked against the public-address rule. LinkedIn postings are read from
-  LinkedIn's guest job page, 8 seconds apart. A 410, a "no longer accepting
-  applications" style notice, or a redirect away from the posting moves the
-  job to **Closed**, and the card and its activity say why. A 404, 403, 401,
-  sign-in wall, bot check or timeout means *couldn't check* and changes
-  nothing. Indeed usually answers a direct read that way, so without
-  Firecrawl its postings stay as they are.
+  again once a day, at most 200 a day, in the background.
+  - **LinkedIn:** read from LinkedIn's guest job page, 8 seconds apart. Its
+    "No longer accepting applications" notice closes the job.
+  - **Indeed and SEEK** (with Apify connected): they refuse a direct read,
+    so an Apify actor re-reads them by URL, up to 20 postings per run
+    (`misceres/indeed-scraper`, about $0.006 a posting;
+    `blackfalcondata/seek-scraper`, about $0.01 a run plus $0.002 a
+    posting). A posting the actor marks expired is closed. A posting it
+    stops returning is closed after 3 days running, and only counts on days
+    when the same run returned other postings. The run is skipped (nothing
+    changes) when Apify's monthly usage is unknown or the run would leave
+    less than $2 under the account's limit, so Scout keeps its budget.
+  - **Other sites:** read through Firecrawl when set up, otherwise directly,
+    with every redirect checked against the public-address rule. A 410, a
+    "no longer accepting applications" style notice, or a redirect away
+    from the posting closes the job.
+  A closed job moves to **Closed**, and its card and activity say why. A
+  404, 403, 401, sign-in wall, bot check, timeout or failed run means
+  *couldn't check* and changes nothing.
 - **Age:** a posting more than 30 days old shows "45 days old". It is a
   signal, not a veto.
 

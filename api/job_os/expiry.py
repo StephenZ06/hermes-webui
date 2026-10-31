@@ -31,6 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -130,6 +131,13 @@ def page_url(url: str) -> str:
     return f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{match.group(1)}" if match else url
 
 
+def _same_page(url: str) -> tuple[str, str, str]:
+    """A page's identity, ignoring the scheme, a ``www.`` and a trailing slash."""
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").removeprefix("www.")
+    return host, parts.path.rstrip("/"), parts.query
+
+
 def classify(page: dict, url: str) -> str:
     """``expired``, ``open`` or ``unknown`` for one re-read posting page."""
     return classify_with_reason(page, url)[0]
@@ -167,7 +175,7 @@ def classify_with_reason(page: dict, url: str) -> tuple[str, str]:
     closed = _CLOSED_TEXT.search(text)
     if closed:
         return "expired", f"The posting says “{closed.group(0).strip()}”"
-    if final and final.rstrip("/") != url.rstrip("/"):
+    if final and urllib.parse.urlsplit(url).path.strip("/") and _same_page(final) != _same_page(url):
         return "expired", "The posting link now leads to another page"  # sent on to a listing page
     return "unknown", ""
 
@@ -276,6 +284,126 @@ def _last_checks(conn) -> dict[str, int]:
         "SELECT job_id, MAX(created_at) AS at FROM job_events WHERE event_type='posting_checked' GROUP BY job_id")}
 
 
+# ---- Re-reading through Apify ---------------------------------------------------
+# Indeed and SEEK turn a direct reader away (401/403), so their postings are
+# re-read by an Apify actor that takes posting URLs, once a day in one run per
+# site. A posting the actor marks expired is closed. One it stops returning is
+# only closed after MISSING_RUNS runs in a row that did return other postings,
+# since a single missing record could be the actor's fault.
+MISSING_RUNS = 3
+# Left untouched each month so Scout's own Apify searches keep working.
+APIFY_RESERVE_USD = 2.0
+# Postings per actor run, so one run finishes inside Apify's synchronous limit.
+APIFY_CHUNK = 20
+
+
+@dataclass(frozen=True)
+class Reread:
+    site: str
+    actor: str
+    posting_id: Callable[[str], str]     # posting URL -> id, "" when not this site's
+    actor_url: Callable[[str, str], str]  # (posting URL, id) -> the URL the actor reads
+    make_input: Callable[[list[str]], dict]
+    item_id: Callable[[dict], str]
+    item_expired: Callable[[dict], bool]
+    start_usd: float
+    usd_per_posting: float
+
+
+_INDEED_POSTING = re.compile(r"^https://(?:[a-z]{2,12}\.)?indeed\.com/viewjob\?jk=([0-9A-Za-z]{1,40})$")
+_SEEK_POSTING = re.compile(r"^https://(?:www\.seek\.com\.au|www\.seek\.co\.nz|(au|nz)\.seek\.com)/job/(\d{5,})(?:[/?#]|$)")
+
+
+def _seek_id(url: str) -> str:
+    match = _SEEK_POSTING.match(url)
+    return match.group(2) if match else ""
+
+
+def _seek_url(url: str, posting_id: str) -> str:
+    # The actor was tried with SEEK's older addresses, which still serve the posting.
+    host = "www.seek.co.nz" if ".co.nz/" in url or "//nz.seek.com/" in url else "www.seek.com.au"
+    return f"https://{host}/job/{posting_id}"
+
+
+REREADS = (
+    Reread("Indeed", "misceres/indeed-scraper",
+           lambda url: (_INDEED_POSTING.match(url) or [None, ""])[1], lambda url, _id: url,
+           lambda urls: {"startUrls": [{"url": u} for u in urls], "maxItemsPerSearch": 1, "saveOnlyUniqueItems": True},
+           lambda item: str(item.get("id") or ""), lambda item: item.get("isExpired") is True,
+           0.0, 0.006),
+    Reread("SEEK", "blackfalcondata/seek-scraper", _seek_id, _seek_url,
+           lambda urls: {"startUrls": urls, "maxResults": len(urls), "compact": True, "includeDetails": False},
+           lambda item: str(item.get("seekJobId") or ""), lambda item: False,
+           0.01, 0.002),
+)
+
+
+def _apify():
+    from api.job_os import apify
+
+    return apify
+
+
+def _missing_streak(conn, job_id: str) -> int:
+    streak = 0
+    for row in conn.execute("SELECT payload_json FROM job_events WHERE job_id=? AND event_type='posting_checked' "
+                            "ORDER BY created_at DESC LIMIT ?", (job_id, MISSING_RUNS)):
+        if json.loads(row["payload_json"] or "{}").get("result") != "missing":
+            break
+        streak += 1
+    return streak
+
+
+def _reread_with_apify(site: Reread, jobs: list, apify) -> dict[str, tuple[str, str]]:
+    """job id -> (result, reason) for one site's postings, from one actor run."""
+    unknown = {job.id: ("unknown", "") for job in jobs}
+    headroom = apify.monthly_headroom_usd()
+    cost = site.start_usd + site.usd_per_posting * len(jobs)
+    if headroom is None or headroom - cost < APIFY_RESERVE_USD:
+        logger.info("posting re-check: %s skipped, Apify headroom %s for a $%.3f run", site.site, headroom, cost)
+        return unknown
+    ids = {job.id: site.posting_id(job.canonical_url) for job in jobs}
+    try:
+        items = apify.run_actor(site.actor, site.make_input([site.actor_url(job.canonical_url, ids[job.id]) for job in jobs]))
+    except Exception:
+        logger.warning("posting re-check: %s run failed", site.site, exc_info=True)
+        return unknown
+    found = {site.item_id(item): item for item in items}
+    found.pop("", None)
+    if not found:
+        return unknown  # a run that returns nothing proves nothing
+    out = {}
+    for job in jobs:
+        item = found.get(ids[job.id])
+        if item is None:
+            out[job.id] = ("missing", "")
+        elif site.item_expired(item):
+            out[job.id] = ("expired", f"{site.site} marks the posting as expired")
+        else:
+            out[job.id] = ("open", "")
+    return out
+
+
+def _record(job, result: str, reason: str, now: int, out: dict) -> None:
+    conn = connect_job_os()
+    try:
+        if result == "missing" and _missing_streak(conn, job.id) >= MISSING_RUNS - 1:
+            site = next(s.site for s in REREADS if s.posting_id(job.canonical_url))
+            result, reason = "expired", f"{site} no longer shows the posting (checked {MISSING_RUNS} days running)"
+            recorded = "missing"
+        else:
+            recorded = result
+        _event(conn, job.id, "posting_checked", {"result": recorded}, now)
+        conn.commit()
+    finally:
+        conn.close()
+    out["checked"] += 1
+    if result == "expired" and _expire(job, {"by": "recheck", "reason": reason}):
+        out["expired"] += 1
+    elif result != "expired" and result != "open":
+        out["unknown"] += 1
+
+
 def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_DAY) -> dict:
     """Read again the postings of jobs not yet applied for, not checked today."""
     now = int(time.time() if now is None else now)
@@ -288,10 +416,29 @@ def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_D
     due = [job for job in list_jobs() if job.status in RECHECKED and job.canonical_url
            and now - last.get(job.id, 0) >= RECHECK_DAYS * 86400 - 3600]
     due.sort(key=lambda job: last.get(job.id, 0))
+    due = due[:limit]
     out = {"checked": 0, "expired": 0, "unknown": 0}
     if not due:
         return out
-    if client is None:
+    apify = _apify()
+    direct = due
+    if apify.token():
+        direct = []
+        batches: dict[str, list] = {}
+        for job in due:
+            site = next((s for s in REREADS if s.posting_id(job.canonical_url)), None)
+            if site:
+                batches.setdefault(site.site, []).append(job)
+            else:
+                direct.append(job)
+        for site in REREADS:
+            jobs = batches.get(site.site) or []
+            for start in range(0, len(jobs), APIFY_CHUNK):
+                chunk = jobs[start:start + APIFY_CHUNK]
+                results = _reread_with_apify(site, chunk, apify)
+                for job in chunk:
+                    _record(job, *results[job.id], now, out)
+    if direct and client is None:
         if _firecrawl_ready():
             from api.job_os.scout import _default_client
 
@@ -300,23 +447,13 @@ def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_D
             client = DirectPageClient()
     from api.job_os.network_policy import validate_external_job_url
 
-    for job in due[:limit]:
+    for job in direct:
         try:
             url = validate_external_job_url(page_url(job.canonical_url))
             result, reason = classify_with_reason(client.scrape(url), url)
         except Exception:
             result, reason = "unknown", ""
-        conn = connect_job_os()
-        try:
-            _event(conn, job.id, "posting_checked", {"result": result}, now)
-            conn.commit()
-        finally:
-            conn.close()
-        out["checked"] += 1
-        if result == "expired" and _expire(job, {"by": "recheck", "reason": reason}):
-            out["expired"] += 1
-        elif result == "unknown":
-            out["unknown"] += 1
+        _record(job, result, reason, now, out)
     return out
 
 
