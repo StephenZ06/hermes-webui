@@ -147,8 +147,10 @@ def test_dashboard_spacing(page):
     assert stage and all(top == "1px" for top in stage), stage
     assert out["actionList"][0] <= out["actionList"][1], out
     for inset in out["insets"]:
-        values = [inset["top"], inset["bottom"], inset["left"], inset["right"]]
+        values = [inset["bottom"], inset["left"], inset["right"]]
         assert max(values) - min(values) < 1.5, out["insets"]
+        # The dot and On chip were lifted on request, so the top inset sits up to 3px tighter.
+        assert 0 <= min(values) - inset["top"] <= 3, out["insets"]
 
 
 def test_metric_pictures_and_numbers_show_a_loading_shimmer_first():
@@ -310,7 +312,7 @@ def test_automation_cards_have_no_edit_button_and_keep_their_state_on_hover(page
                 dotTop: getComputedStyle(dot).top, mainTop: getComputedStyle(main).top,
                 titleTop: getComputedStyle(row.querySelector('.automation-title')).top, endTop: getComputedStyle(row.querySelector('.automation-end')).top};
     }""")
-    assert out == {"edit": "none", "state": "1", "dotTop": "-2px", "mainTop": "-2px", "titleTop": "-1px", "endTop": "-1px"}, out
+    assert out == {"edit": "none", "state": "1", "dotTop": "-3px", "mainTop": "-4px", "titleTop": "-2px", "endTop": "-2px"}, out
 
 
 def test_capitals_titles_letters_are_not_flex_items(page):
@@ -361,3 +363,31 @@ def test_recent_job_status_badges_are_capitals(page):
         caps: getComputedStyle(b).textTransform, text: b.innerText.trim(), capI: b.querySelectorAll('.cap-i').length}))""")
     assert out and all(b["caps"] == "uppercase" and b["text"] == b["text"].upper() for b in out), out
     assert any(b["capI"] for b in out) or not any("I" in b["text"] for b in out), out
+
+
+def test_resume_ready_sits_1px_higher_than_other_recent_badges(page):
+    out = page.evaluate("""() => {
+        const card = document.querySelector('#jobOsRoot .job-os-recent .job-os-job-card'), shown = card.querySelector('.job-os-badge');
+        const probe = document.createElement('span');
+        probe.className = 'job-os-badge'; probe.dataset.tone = 'accent'; probe.dataset.status = 'resume_ready'; probe.textContent = 'Resume ready';
+        card.appendChild(probe);
+        const pad = (e) => [getComputedStyle(e).paddingTop, getComputedStyle(e).paddingBottom];
+        const r = {shown: pad(shown), status: shown.dataset.status, ready: pad(probe)};
+        probe.remove();
+        return r;
+    }""")
+    assert out["status"] and out["shown"] == ["2px", "1px"] and out["ready"] == ["1px", "2px"], out
+
+
+def test_scrollbar_thumbs_are_grey_on_every_page(page):
+    out = page.evaluate("""() => ['', 'dash-card-body is-scrolling', 'cron-run-list is-capped', 'pipe-col-cards is-scrolling'].map(cls => {
+        const box = document.createElement('div');
+        box.className = cls;
+        document.getElementById('jobOsRoot').appendChild(box);
+        const colour = getComputedStyle(box, '::-webkit-scrollbar-thumb').backgroundColor;
+        box.remove();
+        return colour;
+    }).concat([getComputedStyle(document.querySelector('#jobOsRoot .action-centre .action-list'), '::-webkit-scrollbar-thumb').backgroundColor])""")
+    assert len(set(out)) == 1, out
+    rgb = [int(v) for v in out[0][out[0].index("(") + 1:].split(",")[:3]]
+    assert len(set(rgb)) == 1, out  # grey, not tinted by the theme's accent

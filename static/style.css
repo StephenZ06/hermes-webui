@@ -16045,15 +16045,20 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* ── Thinner scrollbars, everywhere ──
    Chromium draws its own wider bar whenever scrollbar-width or
    scrollbar-color is set, so both are reset where ::-webkit-scrollbar can
-   draw a 4px bar in the theme's accent instead. Elements that hide their bar
+   draw one quiet grey 4px bar on every page instead. Elements that hide their bar
    (scrollbar-width:none) keep hiding it; Firefox keeps the thin bar. */
 @supports selector(::-webkit-scrollbar){
-  :root:root:root:root,*,#updateSummaryScroll,.pipe-hscroll,.office-dashboard-panel-body,.dash-card-body,.cron-run-list.is-capped,#jobOsRoot .action-centre .action-list{scrollbar-width:auto;scrollbar-color:auto;}
+  :root{--scrollbar-thumb:rgba(255,255,255,.14);--scrollbar-thumb-hover:rgba(255,255,255,.26);}
+  :root:not(.dark){--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.3);}
+  :root:root:root:root,*,#updateSummaryScroll,.pipe-hscroll,.office-dashboard-panel-body,.dash-card-body,.dash-card-body:hover,.dash-card-body.is-scrolling,.pipe-col-cards,.pipe-col-cards:hover,.pipe-col-cards.is-scrolling,.cron-run-list.is-capped,#jobOsRoot .action-centre .action-list{scrollbar-width:auto;scrollbar-color:auto;}
   ::-webkit-scrollbar,.work-hub-cards::-webkit-scrollbar,.work-hub-board-wrap::-webkit-scrollbar,.work-hub-nav::-webkit-scrollbar,.pipe-hscroll::-webkit-scrollbar,.dash-card-body::-webkit-scrollbar,.cron-run-list.is-capped::-webkit-scrollbar,#jobOsRoot .action-centre .action-list::-webkit-scrollbar{width:4px;height:4px;}
   ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent;}
   ::-webkit-scrollbar-button{display:none;width:0;height:0;}
-  ::-webkit-scrollbar-thumb,#jobOsRoot .action-centre .action-list::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--accent,#4682b4) 30%,transparent);border-radius:4px;}
-  ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--accent,#4682b4) 55%,transparent);}
+  :root:root:root:root::-webkit-scrollbar-thumb,:root:root:root:root ::-webkit-scrollbar-thumb,#jobOsRoot .action-centre .action-list::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:4px;}
+  :root:root:root:root::-webkit-scrollbar-thumb:hover,:root:root:root:root ::-webkit-scrollbar-thumb:hover,#jobOsRoot .action-centre .action-list::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover);}
+  /* Bars that only show while scrolling or on hover keep doing so, in grey. */
+  :root:root:root:root :is(.pipe-col-cards,.dash-card-body)::-webkit-scrollbar-thumb{background:transparent;}
+  :root:root:root:root :is(.pipe-col-cards,.dash-card-body):is(:hover,.is-scrolling)::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);}
 }
 /* The Action centre's bar stays on the card's right edge at its new width. */
 #jobOsRoot .action-centre .action-list{padding-right:16px;}
@@ -16115,10 +16120,10 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .dash-side .automation-edit{display:none;}
 #jobOsRoot .dash-side .automation-row:is(:hover,:focus-visible) .automation-state{opacity:1;transform:none;}
 #jobOsRoot .dash-side .automation-row{grid-template-columns:12px minmax(0,1fr) auto;}
-#jobOsRoot .dash-side .automation-row>.automation-dot{position:relative;top:-2px;}
-#jobOsRoot .dash-side .automation-row>.automation-main{position:relative;top:-2px;}
+#jobOsRoot .dash-side .automation-row>.automation-dot{position:relative;top:-3px;}
+#jobOsRoot .dash-side .automation-row>.automation-main{position:relative;top:-4px;}
 /* Title and On/Off chip 1px higher as well (2026-10-31, second pass). */
-#jobOsRoot .dash-side .automation-row>:is(.automation-title,.automation-end){position:relative;top:-1px;}
+#jobOsRoot .dash-side .automation-row>:is(.automation-title,.automation-end){position:relative;top:-2px;}
 /* Too few Action centre rows to fill the card: they share the spare height
    (content centred), so the list ends where the card's padding begins. With
    more rows than fit there is no spare height and the list scrolls. */
@@ -16131,9 +16136,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Top tiles: 40px artwork like the dashboard's four, centred beside three
    lines with even gaps (each line trimmed to its letters, so the gap is
    what shows), and less padding than before. */
-#jobOsRoot .scout-overview>.scout-tile{display:grid;grid-template-columns:40px minmax(0,1fr);align-items:center;column-gap:14px;padding:14px 18px;}
-#jobOsRoot .scout-tile .card-icon.has-art{width:40px;height:40px;flex-basis:40px;}
-#jobOsRoot .scout-tile .card-icon.has-art .job-os-art{width:40px;height:40px;}
+#jobOsRoot .scout-overview>.scout-tile{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;column-gap:14px;padding:14px 18px;}
+#jobOsRoot .scout-tile .card-icon.has-art{width:32px;height:32px;flex-basis:32px;}
+#jobOsRoot .scout-tile .card-icon.has-art .job-os-art{width:32px;height:32px;}
 #jobOsRoot .scout-tile-body{gap:8px;}
 #jobOsRoot .scout-tile-body>*{line-height:1.25;text-box:trim-both cap alphabetic;}
 #jobOsRoot .scout-tile-body small{font-size:12px;}
@@ -16157,7 +16162,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Good matches: the default outline; ten cards, then the list scrolls (its
    bar on the card's edge) with the same arrow as the Action centre. */
 #jobOsRoot .match-inbox.has-new{border-color:var(--border2);}
-#jobOsRoot .match-inbox .match-list{overflow-y:auto;overscroll-behavior:contain;margin-right:-20px;padding-right:16px;scrollbar-gutter:stable;}
+#jobOsRoot .match-inbox .match-list{overflow-y:auto;overscroll-behavior:auto;margin-right:-20px;padding-right:16px;scrollbar-gutter:stable;}
 #jobOsRoot .match-inbox .action-more{display:none;}
 #jobOsRoot .match-inbox.has-more{padding-bottom:10px;}
 #jobOsRoot .match-inbox.has-more .action-more{position:relative;display:grid;place-items:center;flex:none;align-self:center;width:28px;height:6px;min-height:0;line-height:0;margin:10px auto 0;padding:0;border:0;background:none;color:var(--muted);cursor:pointer;opacity:.3;transition:opacity .2s ease,color .16s ease;}
@@ -16172,9 +16177,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .scout-search-head .card-icon.has-art .job-os-art{width:36px;height:36px;}
 /* New search and Run Now: a lighter accent fill with readable text, the
    label 1px lower. */
-.job-os-shell[data-view="scout"] :is(.section-bar,.scout-search-actions) .job-os-btn.primary{background:color-mix(in srgb,var(--accent) 24%,transparent);border-color:color-mix(in srgb,var(--accent) 65%,transparent);color:color-mix(in srgb,var(--accent) 30%,#fff);padding-top:1px;padding-bottom:1px;filter:none;}
-.job-os-shell[data-view="scout"] :is(.section-bar,.scout-search-actions) .job-os-btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 36%,transparent);border-color:var(--accent);color:#fff;}
-.job-os-shell[data-view="scout"] :is(.section-bar,.scout-search-actions) .job-os-btn.primary:disabled{opacity:.75;}
+.job-os-shell[data-view="scout"] :is(.scout-new-search,.scout-search-actions .job-os-btn.primary){background:var(--bg);border-color:var(--border2);color:var(--text);padding-top:1px;padding-bottom:1px;filter:none;}
+.job-os-shell[data-view="scout"] :is(.scout-new-search,.scout-search-actions .job-os-btn.primary):hover:not(:disabled){background:#19212A;border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));color:var(--text);}
+.job-os-shell[data-view="scout"] .scout-search-actions .job-os-btn.primary:disabled{opacity:.75;}
 /* A run's age stays on one line in the narrower saved-search column. */
 #jobOsRoot .scout-run-head small{flex:none;white-space:nowrap;}
 #jobOsRoot .scout-tile-body small{font-size:13px;letter-spacing:calc(round(up,.66em,1px) - .6em);}
@@ -16186,3 +16191,10 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    in an inner span so the cap-i nudges are not flex items of the badge. */
 #jobOsRoot .job-os-badge{text-transform:uppercase;letter-spacing:calc(round(.66em,1px) - .6em);}
 #jobOsRoot .job-os-badge .cap-i{margin-inline:-1px;}
+
+/* Single-status nudges: Courier's capitals sit differently per word. */
+#jobOsRoot .job-os-recent .job-os-badge[data-status="resume_ready"]{padding-top:1px;padding-bottom:2px;}
+#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]{padding-top:2px;padding-bottom:1px;}
+/* Saved searches: no heading; New search spans the column under the cards. */
+#jobOsRoot .scout-saved>.scout-new-search{width:100%;justify-content:center;min-height:32px;font-size:13px;gap:6px;}
+#jobOsRoot .scout-facts .pipe-source[data-source="remoteid"]{text-transform:uppercase;letter-spacing:.03em;}

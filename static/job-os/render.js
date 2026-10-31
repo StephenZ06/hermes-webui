@@ -24,7 +24,7 @@
   };
   ['action-centre', 'application-funnel', 'automations', 'recent-jobs'].forEach((name) => warmArt(name, 26));
   ['recent-completions', 'it-1', 'it-2', 'it-3'].forEach((name) => warmArt(name, 28));
-  ['apify', 'schedule', 'next-run', 'searches'].forEach((name) => warmArt(name, 40));
+  ['apify', 'schedule', 'next-run', 'searches'].forEach((name) => warmArt(name, 32));
   ['new-good-matches', 'saved-searches', 'latest-finds'].forEach((name) => warmArt(name, 26));
   warmArt('saved-searches', 36);
   // A finger cannot start the browser's own drag-and-drop; touch screens move cards by hold-and-drag instead (index.js).
@@ -120,7 +120,7 @@
   // The shared "working" line (micro.js): a shimmering status that steps through
   // what Luna or Scout is doing. Plain text if micro.js did not load.
   const statusLine = (messages, cls) => (window.Micro ? window.Micro.status(messages, cls) : `<span class="${cls || ''}">${esc([].concat(messages)[0])}</span>`);
-  const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}"><span>${capI(statusLabel(status))}</span></span>`;
+  const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}" data-status="${esc(status || '')}"><span>${capI(statusLabel(status))}</span></span>`;
   function until(epochSeconds) {
     const seconds = Number(epochSeconds || 0) - Math.floor(Date.now() / 1000);
     if (!epochSeconds) return '';
@@ -1187,7 +1187,7 @@
     const on = searches.filter((x) => x.enabled);
     const next = schedOn ? Math.min(...on.map((x) => Number(x.next_run_at) || Infinity)) : Infinity;
     const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
-    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16, 40)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16, 32)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
     // The tile shows the run times and the clocks they follow; the weekend rule
     // (which would not fit) is in Settings and on the dashboard's Automations.
     const schedText = (state.schedule && state.schedule.summary) || '';
@@ -1200,9 +1200,9 @@
     // one a row; with neither matches nor finds the searches use the full width.
     const inbox = matchInbox(state);
     const saved = `<section class="scout-saved" aria-label="Saved searches">
-      <div class="section-bar"><h2>${iconOrArt('Saved searches')}<span class="card-title">${capI('Saved searches')}</span><span class="job-os-count">${searches.length}</span></h2><span class="scout-bar-spacer"></span><button type="button" class="job-os-btn primary" data-job-os-action="scout-new">${icon('import', 16)}New search</button></div>
       ${searches.length ? `<div class="scout-searches">${searches.map((x) => searchCard(x, state)).join('')}</div>`
-        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}</section>`;
+        : (state.searchForm ? '' : '<section class="job-os-card job-os-empty"><strong>No saved searches yet</strong><p>Create one with the job titles you want, the country and, optionally, cities. Scout reads every posting it finds — title, company, pay and the full description — and adds it to your Pipeline.</p></section>')}
+      <button type="button" class="job-os-btn primary scout-new-search" data-job-os-action="scout-new">${icon('import', 16)}New search</button></section>`;
     const latest = finds.total ? `<section class="job-os-card scout-finds-card">${cardHead('Latest finds', 'magic', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View in Pipeline</button>', finds.total)}<div class="job-os-list scout-finds">${finds.rows.map(jobCard).join('')}</div>${pager('finds', finds)}</section>` : '';
     // The latest finds sit under the matches, so the wide column fills down
     // beside the saved searches.

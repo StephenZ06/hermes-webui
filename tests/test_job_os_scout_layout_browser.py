@@ -12,7 +12,7 @@ SEARCH = {"keywords": "SOC Analyst, IT Analyst", "locations": [], "sites": ["ind
           "remote_only": False, "enabled": True, "revision": 0, "last_run_at": None, "last_new": 0, "next_run_at": None, "off_target": 0}
 SEARCHES = {
     "searches": [dict(SEARCH, id="s-my", name="Analyst roles — Malaysia", country="my", country_name="Malaysia"),
-                 dict(SEARCH, id="s-qa", name="Analyst roles — Qatar", country="qa", country_name="Qatar")],
+                 dict(SEARCH, id="s-qa", name="Analyst roles — Qatar", country="qa", country_name="Qatar", sites=["linkedin", "remoteid"])],
     "search_provider": "firecrawl", "apify": {"active": False, "indeed_fallback": False}, "countries": [],
     "posted_within_days": [0, 1, 3, 7, 14], "sites": [],
     "schedule": {"enabled": False, "hours": 6, "summary": "At 12:30 and 18:30 GMT+8 / GMT+3, Saturday once"},
@@ -49,12 +49,12 @@ def test_cards_show_their_new_artwork_at_the_size_they_are_drawn(page):
     out = page.evaluate("""() => {
         const pic = (sel) => [...document.querySelectorAll('#jobOsRoot ' + sel)].map(i => {
             const r = i.getBoundingClientRect(); return [i.getAttribute('src').split('?')[0].split('/').pop(), r.width, r.height]; });
-        return {heads: pic('.match-inbox .job-os-card-head .job-os-art, .scout-saved .section-bar .job-os-art'),
+        return {heads: pic('.match-inbox .job-os-card-head .job-os-art, .scout-saved .job-os-art:not(.scout-search .job-os-art)'),
                 tiles: pic('.scout-tile .job-os-art'), searches: pic('.scout-search-head .job-os-art')};
     }""")
-    assert out["heads"] == [["new-good-matches-26.webp", 26, 26], ["saved-searches-26.webp", 26, 26]], out
-    assert [t[0] for t in out["tiles"]] == ["apify-40.webp", "schedule-40.webp", "next-run-40.webp", "searches-40.webp"], out
-    assert all(t[1:] == [40, 40] for t in out["tiles"]), out
+    assert out["heads"] == [["new-good-matches-26.webp", 26, 26]], out
+    assert [t[0] for t in out["tiles"]] == ["apify-32.webp", "schedule-32.webp", "next-run-32.webp", "searches-32.webp"], out
+    assert all(t[1:] == [32, 32] for t in out["tiles"]), out
     assert out["searches"] == [["saved-searches-36.webp", 36, 36]] * 2, out
 
 
@@ -95,13 +95,14 @@ def test_matches_sit_beside_one_search_a_row_and_show_ten_then_scroll(page):
 def test_titles_are_capitals_and_the_buttons_read_well(page):
     out = page.evaluate("""() => {
         const t = (sel) => getComputedStyle(document.querySelector('#jobOsRoot ' + sel)).textTransform;
-        const run = document.querySelector('#jobOsRoot .scout-search-actions .job-os-btn.primary'), add = document.querySelector('#jobOsRoot .section-bar .job-os-btn.primary');
+        const run = document.querySelector('#jobOsRoot .scout-search-actions .job-os-btn.primary'), add = document.querySelector('#jobOsRoot .scout-saved > .scout-new-search');
         const css = (e) => getComputedStyle(e);
-        return {caps: [t('.match-inbox .card-title'), t('.scout-saved .section-bar .card-title')], run: run.textContent.trim(),
+        return {caps: [t('.match-inbox .card-title')], run: run.textContent.trim(),
                 pad: [css(run).paddingTop, css(run).paddingBottom, css(add).paddingTop, css(add).paddingBottom], color: css(add).color,
-                applied: css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-tone="info"]')).paddingTop};
+                applied: css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-tone="info"]')).paddingTop,
+                analyzed: [css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]')).paddingTop, css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]')).paddingBottom]};
     }""")
-    assert out["caps"] == ["uppercase", "uppercase"] and out["run"] == "Run Now", out
+    assert out["caps"] == ["uppercase"] and out["run"] == "Run Now" and out["analyzed"] == ["2px", "1px"], out
     assert out["pad"] == ["1px", "1px", "1px", "1px"] and out["applied"] == "2px", out
     rgb = page.evaluate("""(c) => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1);
         return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); }""", out["color"])
@@ -111,3 +112,40 @@ def test_titles_are_capitals_and_the_buttons_read_well(page):
 def test_match_status_badges_are_capitals(page):
     out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .match-inbox .job-os-badge')].map(b => b.innerText.trim())""")
     assert "APPLIED" in out and "ANALYZED" in out, out
+
+
+def test_saved_searches_have_no_heading_and_new_search_spans_the_column_below(page):
+    out = page.evaluate("""() => {
+        const saved = document.querySelector('#jobOsRoot .scout-saved'), add = saved.querySelector(':scope > .scout-new-search');
+        const cards = [...saved.querySelectorAll('.scout-search')], last = cards[cards.length - 1].getBoundingClientRect(), a = add.getBoundingClientRect();
+        const page = getComputedStyle(document.getElementById('mainJobs') || document.body);
+        const css = (e) => getComputedStyle(e);
+        return {bar: !!saved.querySelector('.section-bar, .job-os-count'), last: saved.lastElementChild === add, below: a.top >= last.bottom,
+                widths: [a.left, a.width, last.left, last.width], bg: css(add).backgroundColor, run: css(saved.querySelector('.scout-search-actions .job-os-btn.primary')).backgroundColor,
+                body: getComputedStyle(document.body).backgroundColor, border: css(add).borderTopColor, card: css(cards[0]).borderTopColor};
+    }""")
+    assert not out["bar"] and out["last"] and out["below"], out
+    assert abs(out["widths"][0] - out["widths"][2]) < 0.5 and abs(out["widths"][1] - out["widths"][3]) < 0.5, out
+    assert out["border"] == out["card"] and out["bg"] == out["run"] == out["body"], out
+
+
+def test_saved_search_buttons_turn_dark_blue_grey_on_hover(page):
+    page.hover("#jobOsRoot .scout-saved > .scout-new-search")
+    page.wait_for_timeout(400)
+    out = page.evaluate("""() => { const c = getComputedStyle(document.querySelector('#jobOsRoot .scout-saved > .scout-new-search'));
+        return [c.backgroundColor, c.borderTopColor, getComputedStyle(document.querySelector('#jobOsRoot .scout-search')).borderTopColor]; }""")
+    assert out[0] == "rgb(25, 33, 42)" and out[1] != out[2], out
+
+
+def test_remote_id_reads_in_capitals_in_sites(page):
+    out = page.evaluate("""() => { const c = document.querySelector('#jobOsRoot .scout-facts .pipe-source[data-source="remoteid"]'); return c && c.innerText.trim(); }""")
+    assert out == "REMOTE.ID", out
+
+
+def test_the_page_scrolls_on_once_the_matches_reach_their_end(page):
+    page.evaluate("() => { const l = document.querySelector('#jobOsRoot .match-list'); l.scrollTop = l.scrollHeight; document.getElementById('mainJobs').scrollTop = 0; }")
+    box = page.locator("#jobOsRoot .match-list").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, 400)
+    page.wait_for_timeout(600)
+    assert page.evaluate("() => document.getElementById('mainJobs').scrollTop") > 0
