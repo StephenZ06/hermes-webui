@@ -149,3 +149,33 @@ def test_the_page_scrolls_on_once_the_matches_reach_their_end(page):
     page.mouse.wheel(0, 400)
     page.wait_for_timeout(600)
     assert page.evaluate("() => document.getElementById('mainJobs').scrollTop") > 0
+
+
+def test_tiles_stand_as_tall_as_the_dashboard_metrics_with_centred_contents(page):
+    out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .scout-tile')].map(t => {
+        const r = t.getBoundingClientRect(), c = (e) => { const b = e.getBoundingClientRect(); return (b.top + b.bottom) / 2 - r.top; };
+        return [r.height, c(t.querySelector('.card-icon')), c(t.querySelector('.scout-tile-body'))];
+    })""")
+    assert all(abs(h - 78) < 0.5 and abs(i - h / 2) < 1 and abs(b - h / 2) < 1 for h, i, b in out), out
+
+
+def test_the_run_panel_reads_like_a_terminal_on_the_page_background(page):
+    out = page.evaluate("""() => {
+        const card = document.querySelector('#jobOsRoot .scout-search'), run = card.querySelector('.scout-run');
+        const detail = run.querySelector('.scout-run-detail');
+        return {bg: getComputedStyle(run).backgroundColor, body: getComputedStyle(document.body).backgroundColor,
+                border: getComputedStyle(run).borderTopColor, card: getComputedStyle(card).borderTopColor, style: getComputedStyle(run).borderTopStyle,
+                bar: (run.querySelector('.scout-term-bar') || {}).textContent, cmd: (run.querySelector('.scout-term-cmd') || {}).textContent,
+                cursor: getComputedStyle(detail, '::after').animationName};
+    }""")
+    assert out["bg"] == out["body"] and out["border"] == out["card"] and out["style"] == "solid", out
+    assert out["bar"] == "scout — malaysia" and out["cmd"] == "$ scout run --sites indeed,linkedin,bayt", out
+    assert out["cursor"] == "scout-term-blink", out
+
+
+def test_run_now_has_the_same_space_below_as_above(page):
+    out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .scout-search')].map(c => {
+        const a = c.querySelector('.scout-search-actions'), b = a.querySelector('.job-os-btn').getBoundingClientRect();
+        return [b.top - a.getBoundingClientRect().top, c.getBoundingClientRect().bottom - b.bottom];
+    })""")
+    assert all(abs(above - below) < 0.5 for above, below in out), out

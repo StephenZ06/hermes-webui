@@ -1082,14 +1082,21 @@
     const errors = c.errors ? `<span class="scout-stat is-error"><strong>${Number(c.errors)}</strong>Errors</span>` : '';
     return `<div class="scout-run-head"><span class="scout-run-state" data-status="${esc(run.status)}">${active ? statusLine([RUN_LABELS[run.status] || run.status]) : esc(RUN_LABELS[run.status] || run.status)}</span><span class="scout-run-detail" title="${esc(run.stage_detail || '')}">${esc(run.stage_detail || '')}</span>${active ? `<button type="button" class="job-os-btn small" data-job-os-action="scout-cancel" data-run-id="${esc(run.id)}">Cancel</button>` : `<small>${esc(when(run.finished_at || run.created_at))}</small>`}</div><div class="scout-stats">${stats}${blocked}${errors}</div>`;
   }
+  // The run panel reads like a small terminal: a window bar naming the search,
+  // the command Scout runs, then the run's output lines (style.css .scout-term-*).
+  function runTerminal(search) {
+    const name = String((search && (search.country_name || search.name)) || 'search').toLowerCase();
+    const sites = ((search && search.sites) || ['indeed']).join(',');
+    return `<div class="scout-term-bar" aria-hidden="true"><span class="scout-term-dots"><i></i><i></i><i></i></span><span class="scout-term-title">scout — ${esc(name)}</span></div><div class="scout-term-cmd" aria-hidden="true"><b>$</b> scout run --sites ${esc(sites)}</div>`;
+  }
   function runPanel(run, search) {
     if (!run) {
       // Same outline as a run, so every search card keeps one shape.
       const hint = search && search.last_run_at ? `Last ran ${esc(when(search.last_run_at))}; its results have been cleared.` : 'Run it now, or it runs at the next scheduled time.';
-      return `<div class="scout-run is-empty"><span class="scout-run-idle" aria-hidden="true">${icon('clock', 18)}</span><div class="scout-run-body"><div class="scout-run-head"><span class="scout-run-state">Not run yet</span></div><span class="scout-run-detail">${hint}</span></div></div>`;
+      return `<div class="scout-run is-empty">${runTerminal(search)}<div class="scout-run-body"><div class="scout-run-head"><span class="scout-run-state">Not run yet</span></div><span class="scout-run-detail">${hint}</span></div></div>`;
     }
     const active = ACTIVE_RUN.includes(run.status);
-    return `<div class="scout-run${active ? ' is-active' : ''}" data-run-panel="${esc(run.id)}" data-status="${esc(run.status)}">${active ? '<span class="scout-radar" aria-hidden="true"><i></i><i></i><i></i></span>' : ''}<div class="scout-run-body" aria-live="polite">${runBody(run)}</div></div>`;
+    return `<div class="scout-run${active ? ' is-active' : ''}" data-run-panel="${esc(run.id)}" data-status="${esc(run.status)}">${runTerminal(search)}${active ? '<span class="scout-radar" aria-hidden="true"><i></i><i></i><i></i></span>' : ''}<div class="scout-run-body" aria-live="polite">${runBody(run)}</div></div>`;
   }
   function searchCard(search, state) {
     const run = latestRun(state, search.id);

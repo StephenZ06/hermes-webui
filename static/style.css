@@ -16198,3 +16198,34 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Saved searches: no heading; New search spans the column under the cards. */
 #jobOsRoot .scout-saved>.scout-new-search{width:100%;justify-content:center;min-height:32px;font-size:13px;gap:6px;}
 #jobOsRoot .scout-facts .pipe-source[data-source="remoteid"]{text-transform:uppercase;letter-spacing:.03em;}
+
+/* ── Scout run panel as a terminal ──
+   Page background and the cards' outline; a slim window bar names the search,
+   a "$ scout run" line shows what runs, and the output ends on a blinking
+   block cursor. Everything sits in one monospace column. */
+#jobOsRoot .scout-search .scout-run{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:0;row-gap:0;min-height:0;padding:0;border:1px solid var(--border2);border-style:solid;border-radius:10px;background:var(--bg);overflow:hidden;font-family:var(--font-mono,ui-monospace,"Courier New",monospace);}
+#jobOsRoot .scout-search .scout-run.is-active{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));background:var(--bg);}
+#jobOsRoot .scout-term-bar{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:5px 10px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;line-height:14px;}
+#jobOsRoot .scout-term-dots{display:inline-flex;gap:4px;}
+#jobOsRoot .scout-term-dots i{width:6px;height:6px;border-radius:50%;background:color-mix(in srgb,var(--muted) 45%,transparent);}
+#jobOsRoot .scout-term-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#jobOsRoot .scout-term-cmd{grid-column:1/-1;padding:9px 10px 0;color:var(--muted);font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#jobOsRoot .scout-term-cmd b{color:var(--success,#4ade80);font-weight:700;margin-right:2px;}
+#jobOsRoot .scout-search .scout-run .scout-radar{grid-column:1;margin:8px 0 10px 10px;flex-basis:30px;width:30px;height:30px;}
+#jobOsRoot .scout-search .scout-run .scout-run-body{grid-column:2;padding:6px 10px 10px;gap:6px;}
+#jobOsRoot .scout-search .scout-run:not(.is-active) .scout-run-body{grid-column:1/-1;}
+#jobOsRoot .scout-search .scout-run-head{gap:8px;}
+#jobOsRoot .scout-search .scout-run-head::before{content:"›";flex:none;color:var(--muted);}
+#jobOsRoot .scout-search .scout-run-state{text-transform:lowercase;}
+#jobOsRoot .scout-search .scout-stats{gap:4px 12px;align-items:baseline;}
+#jobOsRoot .scout-search .scout-stat{text-transform:lowercase;}
+#jobOsRoot .scout-search .scout-stats::after,#jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail::after{content:"";display:inline-block;width:7px;height:13px;margin-left:2px;vertical-align:-2px;align-self:center;background:var(--success,#4ade80);opacity:.85;animation:scout-term-blink 1.1s steps(1,end) infinite;}
+#jobOsRoot .scout-search .scout-run.is-active .scout-stats::after{display:none;}
+@keyframes scout-term-blink{50%{opacity:0;}}
+@media (prefers-reduced-motion:reduce){#jobOsRoot .scout-search .scout-stats::after,#jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail::after{animation:none;}}
+#jobOsRoot .scout-search .scout-run.is-empty .scout-run-body{display:flex;}
+#jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail{white-space:normal;}
+/* Run Now: the space under the button matches the space above it (divider to button). */
+#jobOsRoot .scout-search{padding-bottom:12px;}
+/* The four Scout tiles stand as tall as the dashboard's four metric cards. */
+#jobOsRoot .scout-overview>.scout-tile{min-height:78px;box-sizing:border-box;align-content:center;}
