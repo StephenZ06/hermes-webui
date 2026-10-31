@@ -420,10 +420,16 @@ never guessed. Once a day, in your Scout time zone (`api/job_os/expiry.py`):
   the card (red from 2 days), a row in the Dashboard's Action Centre and a
   **Closing soon** section in the daily digest.
 - **No date:** never expired by date.
-- **Weekly re-check** (with Firecrawl set up): Favorite and Ready-to-apply
-  postings are read again once a week, at most five a day. A 410, a "no
-  longer available" page, or a redirect away from the posting means expired;
-  a 404, 403 or timeout means *couldn't check* and changes nothing.
+- **Daily re-check:** every posting you haven't applied for yet is read
+  again once a day, at most 200 a day, in the background. Firecrawl is used
+  when set up; otherwise the page is read directly, with every redirect
+  checked against the public-address rule. LinkedIn postings are read from
+  LinkedIn's guest job page, 8 seconds apart. A 410, a "no longer accepting
+  applications" style notice, or a redirect away from the posting moves the
+  job to **Closed**, and the card and its activity say why. A 404, 403, 401,
+  sign-in wall, bot check or timeout means *couldn't check* and changes
+  nothing. Indeed usually answers a direct read that way, so without
+  Firecrawl its postings stay as they are.
 - **Age:** a posting more than 30 days old shows "45 days old". It is a
   signal, not a veto.
 

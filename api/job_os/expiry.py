@@ -55,7 +55,7 @@ _WALL = re.compile(r"authwall|login|log-in|signin|sign-in|signup|captcha|challen
 _WALL_TEXT = re.compile(r"just a moment\.\.\.|verify you are (a )?human|are you a robot|enable javascript and cookies|"
                         r"unusual traffic|access denied", re.I)
 _CLOSED_TEXT = re.compile(
-    r"no longer (available|accepting|active|open)|position (has been|is) (filled|closed)|job (has )?expired|"
+    r"no longer (available|accepting( applications)?|active|open)|position (has been|is) (filled|closed)|job (has )?expired|"
     r"this job (is|has been) (closed|removed)|applications? (are |is )?(now )?closed|job not found|"
     r"lowongan (ini )?(sudah )?(ditutup|tidak tersedia)", re.I)
 
@@ -118,6 +118,18 @@ def sweep(*, on: date | None = None) -> dict:
     return {"expired": expired, "closing": closing}
 
 
+# LinkedIn job pages answer a script with a sign-in wall or 429; the guest
+# page for the same job id is what its public job search reads.
+_LINKEDIN_JOB = re.compile(r"^https://(?:[a-z]{2,3}\.|www\.)?linkedin\.com/jobs/view/(?:[^/?#]*-)?(\d{6,})(?:[/?#]|$)", re.I)
+_GUEST_PAGE = re.compile(r"^https://www\.linkedin\.com/jobs-guest/jobs/api/jobPosting/\d+$")
+
+
+def page_url(url: str) -> str:
+    """The address to read a posting from: LinkedIn's guest page, else the posting."""
+    match = _LINKEDIN_JOB.match(url)
+    return f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{match.group(1)}" if match else url
+
+
 def classify(page: dict, url: str) -> str:
     """``expired``, ``open`` or ``unknown`` for one re-read posting page."""
     return classify_with_reason(page, url)[0]
@@ -139,6 +151,17 @@ def classify_with_reason(page: dict, url: str) -> tuple[str, str]:
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
     if (final and _WALL.search(urllib.parse.urlsplit(final).path + "?" + urllib.parse.urlsplit(final).query)) or _WALL_TEXT.search(text[:4000]):
         return "unknown", ""  # a sign-in or bot check stood in front of it
+    if _GUEST_PAGE.match(url):
+        # LinkedIn's guest page has no structured data: a closed posting says
+        # so in its top card, an open one shows the card alone. The phrase is
+        # only looked for above the description, which can say anything.
+        if "top-card-layout__title" not in html:
+            return "unknown", ""
+        top = html.split("show-more-less-html", 1)[0]
+        closed = _CLOSED_TEXT.search(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", top)))
+        if closed:
+            return "expired", f"The posting says “{closed.group(0).strip()}”"
+        return "open", ""
     if extract_job_posting(html, url):
         return "open", ""
     closed = _CLOSED_TEXT.search(text)
@@ -155,6 +178,12 @@ MAX_REDIRECTS = 5
 MAX_BYTES = 2_000_000
 FETCH_TIMEOUT = 15
 SAME_HOST_GAP_S = 2.0
+# LinkedIn turns a quicker reader away with 429s.
+_HOST_GAPS = {"www.linkedin.com": 8.0}
+
+
+def host_gap(host: str) -> float:
+    return _HOST_GAPS.get(host, SAME_HOST_GAP_S)
 _USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
                "Chrome/141.0 Safari/537.36")
 
@@ -176,7 +205,7 @@ class DirectPageClient:
     def _pause(self, url: str) -> None:
         host = urllib.parse.urlsplit(url).hostname or ""
         if host in self._last:
-            wait = SAME_HOST_GAP_S - (self._clock() - self._last[host])
+            wait = host_gap(host) - (self._clock() - self._last[host])
             if wait > 0:
                 self._sleep(wait)
         self._last[host] = self._clock()
@@ -273,7 +302,7 @@ def recheck(*, client=None, now: float | None = None, limit: int = RECHECK_PER_D
 
     for job in due[:limit]:
         try:
-            url = validate_external_job_url(job.canonical_url)
+            url = validate_external_job_url(page_url(job.canonical_url))
             result, reason = classify_with_reason(client.scrape(url), url)
         except Exception:
             result, reason = "unknown", ""

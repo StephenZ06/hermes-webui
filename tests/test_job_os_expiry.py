@@ -114,7 +114,7 @@ def test_every_job_not_yet_applied_for_is_rechecked_and_closed_with_a_reason(sto
     assert seen == [new.canonical_url]  # an application's outcome comes from the employer
     assert get_job(new.id).status == JobStatus.EXPIRED and get_job(applied.id).status == JobStatus.SUBMITTED
     reason = expiry.closed_reasons([new.id])[new.id]
-    assert reason == "The posting says “no longer accepting”"
+    assert reason == "The posting says “no longer accepting applications”"
     assert _job_payload(get_job(new.id))["closed_reason"] == reason
     closed = [c for c in applications.board()["columns"] if c["key"] == "closed"][0]["jobs"]
     assert [c["closed_reason"] for c in closed if c["id"] == new.id] == [reason]
@@ -191,3 +191,49 @@ def test_the_daily_tick_rechecks_in_the_background_without_firecrawl(store, monk
     monkeypatch.setattr(expiry, "recheck", lambda **kw: ran.set())
     assert expiry.tick() is True
     assert ran.wait(5)
+
+
+GUEST_OPEN = ('<h2 class="top-card-layout__title">SOC Analyst</h2><a class="topcard__org-name-link">Acme</a>'
+              '<button class="apply-button">Apply</button><div class="show-more-less-html">We are no longer accepting '
+              'paper forms, apply online.</div>')
+GUEST_CLOSED = ('<h2 class="top-card-layout__title">SOC Analyst</h2><figure class="closed-job">'
+                '<figcaption>No longer accepting applications</figcaption></figure><div class="show-more-less-html">x</div>')
+
+
+def test_linkedin_postings_are_read_from_the_guest_page_spaced_apart(store, monkeypatch):  # noqa: F811
+    monkeypatch.setattr("api.job_os.network_policy.validate_external_job_url", lambda url, **kw: url)
+    shut, live = (create_job(replace(normalize_job_input({"title": f"Analyst {n}", "canonical_url": url}), description="SQL"),
+                             status=JobStatus.SCRAPED)
+                  for n, url in (("a", "https://www.linkedin.com/jobs/view/soc-analyst-at-acme-4312345678"),
+                                 ("b", "https://www.linkedin.com/jobs/view/4300000001/?trk=x")))
+    pages = {"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4312345678": GUEST_CLOSED,
+             "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/4300000001": GUEST_OPEN}
+    seen = []
+
+    class Client:
+        def scrape(self, url):
+            seen.append(url)
+            return {"status": 200, "html": pages[url], "final_url": url}
+    out = expiry.recheck(client=Client(), now=2_000_000)
+    assert sorted(seen) == sorted(pages)
+    assert out == {"checked": 2, "expired": 1, "unknown": 0}
+    assert get_job(shut.id).status == JobStatus.EXPIRED and get_job(live.id).status == JobStatus.SCRAPED
+    assert expiry.closed_reasons([shut.id])[shut.id] == "The posting says “No longer accepting applications”"
+
+
+def test_a_guest_page_without_its_top_card_is_not_read_as_open_or_closed():
+    url = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/1234567"
+    assert expiry.classify_with_reason({"status": 200, "html": GUEST_OPEN, "final_url": url}, url) == ("open", "")
+    assert expiry.classify_with_reason({"status": 200, "html": "<div>Something went wrong</div>", "final_url": url}, url) == ("unknown", "")
+    assert expiry.classify_with_reason({"status": 404, "html": "", "final_url": url}, url) == ("unknown", "")
+
+
+def test_linkedin_reads_wait_longer_between_requests():
+    slept, clock = [], [100.0]
+    client = expiry.DirectPageClient(opener=object(), validate=lambda u: u, sleep=slept.append, clock=lambda: clock[0])
+    client._pause("https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/1")
+    client._pause("https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/2")
+    client._pause("https://jobs.example.test/a")
+    client._pause("https://jobs.example.test/b")
+    assert slept == [expiry.host_gap("www.linkedin.com"), expiry.SAME_HOST_GAP_S]
+    assert expiry.host_gap("www.linkedin.com") >= 8
