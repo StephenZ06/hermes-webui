@@ -307,9 +307,10 @@ def test_automation_cards_have_no_edit_button_and_keep_their_state_on_hover(page
         const row = document.querySelector('#jobOsRoot .dash-side .automation-row');
         const dot = row.querySelector('.automation-dot'), main = row.querySelector('.automation-main');
         return {edit: getComputedStyle(row.querySelector('.automation-edit')).display, state: getComputedStyle(row.querySelector('.automation-state')).opacity,
-                dotTop: getComputedStyle(dot).top, mainTop: getComputedStyle(main).top};
+                dotTop: getComputedStyle(dot).top, mainTop: getComputedStyle(main).top,
+                titleTop: getComputedStyle(row.querySelector('.automation-title')).top, endTop: getComputedStyle(row.querySelector('.automation-end')).top};
     }""")
-    assert out == {"edit": "none", "state": "1", "dotTop": "-1px", "mainTop": "-1px"}, out
+    assert out == {"edit": "none", "state": "1", "dotTop": "-2px", "mainTop": "-2px", "titleTop": "-1px", "endTop": "-1px"}, out
 
 
 def test_capitals_titles_letters_are_not_flex_items(page):
@@ -343,3 +344,13 @@ def test_job_cards_are_one_height_with_n_a_for_a_missing_employment_type():
             assert abs(out["heights"][0] - out["heights"][1]) < 0.5 and len(out["all"]) == 1, out
         finally:
             browser.close()
+
+
+def test_the_dashboard_scrolls_past_recent_jobs_by_its_right_hand_room(page):
+    out = page.evaluate("""() => {
+        const sc = document.getElementById('mainJobs'), card = document.querySelector('#jobOsRoot .job-os-recent');
+        sc.scrollTop = sc.scrollHeight;
+        const s = sc.getBoundingClientRect(), c = card.getBoundingClientRect();
+        return {right: s.right - (sc.offsetWidth - sc.clientWidth) - c.right, bottom: s.bottom - c.bottom};
+    }""")
+    assert out["right"] > 0 and abs(out["bottom"] - out["right"]) < 1, out

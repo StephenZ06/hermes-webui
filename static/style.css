@@ -16111,13 +16111,18 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .dash-side .action-centre .action-list{flex:1 1 0;max-height:none;min-height:0;}
 #jobOsRoot .dash-side>.automations-card .automations{flex:1 1 auto;grid-auto-rows:1fr;align-content:stretch;}
 /* Automation cards: no edit button (the whole card opens its settings), the
-   On/Off chip stays put, the dot and the detail lines sit 1px higher. */
+   On/Off chip stays put, the dot and the detail lines sit 2px higher. */
 #jobOsRoot .dash-side .automation-edit{display:none;}
 #jobOsRoot .dash-side .automation-row:is(:hover,:focus-visible) .automation-state{opacity:1;transform:none;}
 #jobOsRoot .dash-side .automation-row{grid-template-columns:12px minmax(0,1fr) auto;}
-#jobOsRoot .dash-side .automation-row>.automation-dot{position:relative;top:-1px;}
-#jobOsRoot .dash-side .automation-row>.automation-main{position:relative;top:-1px;}
+#jobOsRoot .dash-side .automation-row>.automation-dot{position:relative;top:-2px;}
+#jobOsRoot .dash-side .automation-row>.automation-main{position:relative;top:-2px;}
+/* Title and On/Off chip 1px higher as well (2026-10-31, second pass). */
+#jobOsRoot .dash-side .automation-row>:is(.automation-title,.automation-end){position:relative;top:-1px;}
 /* Too few Action centre rows to fill the card: they share the spare height
    (content centred), so the list ends where the card's padding begins. With
    more rows than fit there is no spare height and the list scrolls. */
 #jobOsRoot .dash-side .action-centre .action-list>.action-row{flex:1 0 auto;}
+/* Dashboard: the page scrolls on past Recent jobs by as much room as sits to
+   its right (#mainJobs pads 24px, but the shell's overflow ends at the card). */
+#jobOsRoot .job-os-shell[data-view="dashboard"] .job-os-content{padding-bottom:24px;}
