@@ -120,7 +120,7 @@
   // The shared "working" line (micro.js): a shimmering status that steps through
   // what Luna or Scout is doing. Plain text if micro.js did not load.
   const statusLine = (messages, cls) => (window.Micro ? window.Micro.status(messages, cls) : `<span class="${cls || ''}">${esc([].concat(messages)[0])}</span>`);
-  const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}">${esc(statusLabel(status))}</span>`;
+  const badge = (status) => `<span class="job-os-badge" data-tone="${tones[status] || 'neutral'}"><span>${capI(statusLabel(status))}</span></span>`;
   function until(epochSeconds) {
     const seconds = Number(epochSeconds || 0) - Math.floor(Date.now() / 1000);
     if (!epochSeconds) return '';

@@ -16181,3 +16181,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* In the narrow saved-search column every site chip shows, wrapping if need be. */
 #jobOsRoot .scout-pair .scout-facts .job-os-chips{flex-wrap:wrap;overflow:visible;}
 #jobOsRoot .scout-main{display:flex;flex-direction:column;gap:var(--jobs-gap);min-width:0;}
+
+/* Status badges read in capitals everywhere a job shows its stage. The text sits
+   in an inner span so the cap-i nudges are not flex items of the badge. */
+#jobOsRoot .job-os-badge{text-transform:uppercase;letter-spacing:calc(round(.66em,1px) - .6em);}
+#jobOsRoot .job-os-badge .cap-i{margin-inline:-1px;}

@@ -354,3 +354,10 @@ def test_the_dashboard_scrolls_past_recent_jobs_by_its_right_hand_room(page):
         return {right: s.right - (sc.offsetWidth - sc.clientWidth) - c.right, bottom: s.bottom - c.bottom};
     }""")
     assert out["right"] > 0 and abs(out["bottom"] - out["right"]) < 1, out
+
+
+def test_recent_job_status_badges_are_capitals(page):
+    out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .job-os-recent .job-os-badge')].map(b => ({
+        caps: getComputedStyle(b).textTransform, text: b.innerText.trim(), capI: b.querySelectorAll('.cap-i').length}))""")
+    assert out and all(b["caps"] == "uppercase" and b["text"] == b["text"].upper() for b in out), out
+    assert any(b["capI"] for b in out) or not any("I" in b["text"] for b in out), out

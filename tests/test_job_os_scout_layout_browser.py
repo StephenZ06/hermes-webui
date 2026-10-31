@@ -106,3 +106,8 @@ def test_titles_are_capitals_and_the_buttons_read_well(page):
     rgb = page.evaluate("""(c) => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1);
         return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); }""", out["color"])
     assert min(rgb) > 150, (out, rgb)  # light text, not the dark accent-contrast
+
+
+def test_match_status_badges_are_capitals(page):
+    out = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .match-inbox .job-os-badge')].map(b => b.innerText.trim())""")
+    assert "APPLIED" in out and "ANALYZED" in out, out
