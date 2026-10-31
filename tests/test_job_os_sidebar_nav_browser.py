@@ -192,7 +192,8 @@ def test_dashboard_metric_icons_match_their_value_and_label_height():
     for row in rows:
         assert row["loaded"], row
         assert abs(row["icon"] - 40) < 0.01 and row["icon"] < row["text"], row
-        assert abs((row["top"] + row["icon"] / 2) - (row["textTop"] + row["text"] / 2)) < 1, row
+        # The number and label sit 1px above centre, as asked on 2026-10-31.
+        assert abs((row["top"] + row["icon"] / 2) - (row["textTop"] + row["text"] / 2)) <= 1.01, row
 
 
 def test_dashboard_puts_the_funnel_left_and_action_centre_over_automations_right():

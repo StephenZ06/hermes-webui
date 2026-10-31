@@ -261,10 +261,9 @@ def test_action_centre_shows_an_arrow_while_rows_lie_below():
             out = page.evaluate("""() => {
                 const card = document.querySelector('#jobOsRoot .action-centre'), list = card.querySelector('.action-list');
                 const arrow = card.querySelector('.action-more').getBoundingClientRect(), c = card.getBoundingClientRect();
-                const rows = [...list.querySelectorAll('.action-row')].map(r => r.getBoundingClientRect()).filter(r => r.bottom <= list.getBoundingClientRect().bottom + 0.5);
                 const border = parseFloat(getComputedStyle(card).borderBottomWidth);
                 return {below: card.classList.contains('more-below'), opacity: getComputedStyle(card.querySelector('.action-more')).opacity,
-                        above: arrow.top - rows[rows.length - 1].bottom, under: c.bottom - border - arrow.bottom};
+                        above: arrow.top - list.getBoundingClientRect().bottom, under: c.bottom - border - arrow.bottom};
             }""")
 
             assert out["below"] and out["opacity"] == "1", out
@@ -277,5 +276,70 @@ def test_action_centre_shows_an_arrow_while_rows_lie_below():
             assert page.evaluate("() => { const l = document.querySelector('#jobOsRoot .action-list'); return l.scrollTop > 0 && l.scrollHeight - l.clientHeight - l.scrollTop <= 2; }")
             page.wait_for_timeout(300)
             assert page.evaluate("() => getComputedStyle(document.querySelector('#jobOsRoot .action-more')).opacity") == "0.3"
+        finally:
+            browser.close()
+
+
+def _post(path, body):
+    import urllib.request
+
+    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "Origin": BASE})
+    return json.loads(urllib.request.urlopen(req, timeout=20).read() or b"{}")
+
+
+def test_action_centre_and_automations_are_the_same_height_with_no_blank_strip(page):
+    out = page.evaluate("""() => {
+        const ac = document.querySelector('#jobOsRoot .action-centre'), au = document.querySelector('#jobOsRoot .automations-card');
+        const pad = (card, last) => card.getBoundingClientRect().bottom - parseFloat(getComputedStyle(card).borderBottomWidth) - last.getBoundingClientRect().bottom;
+        const rows = ac.querySelectorAll('.action-row'), autos = au.querySelectorAll('.automation-row');
+        return {ac: ac.getBoundingClientRect().height, au: au.getBoundingClientRect().height,
+                acPad: parseFloat(getComputedStyle(ac).paddingBottom), acGap: pad(ac, rows[rows.length - 1]),
+                auPad: parseFloat(getComputedStyle(au).paddingBottom), auGap: pad(au, autos[autos.length - 1])};
+    }""")
+    assert abs(out["ac"] - out["au"]) < 1, out
+    assert abs(out["acGap"] - out["acPad"]) < 1 and abs(out["auGap"] - out["auPad"]) < 1, out
+
+
+def test_automation_cards_have_no_edit_button_and_keep_their_state_on_hover(page):
+    page.hover("#jobOsRoot .dash-side .automation-row")
+    page.wait_for_timeout(300)
+    out = page.evaluate("""() => {
+        const row = document.querySelector('#jobOsRoot .dash-side .automation-row');
+        const dot = row.querySelector('.automation-dot'), main = row.querySelector('.automation-main');
+        return {edit: getComputedStyle(row.querySelector('.automation-edit')).display, state: getComputedStyle(row.querySelector('.automation-state')).opacity,
+                dotTop: getComputedStyle(dot).top, mainTop: getComputedStyle(main).top};
+    }""")
+    assert out == {"edit": "none", "state": "1", "dotTop": "-1px", "mainTop": "-1px"}, out
+
+
+def test_capitals_titles_letters_are_not_flex_items(page):
+    parents = page.evaluate("""() => [...document.querySelectorAll('#jobOsRoot .cap-i')].map(i => getComputedStyle(i.parentElement).display)""")
+    assert parents and not [d for d in parents if "flex" in d or "grid" in d], parents
+    assert page.evaluate("() => document.querySelector('#jobOsRoot .cal[data-cal=applied] .cal-title').textContent.trim()") == "Applications"
+
+
+def test_job_cards_are_one_height_with_n_a_for_a_missing_employment_type():
+    import uuid
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    tag = uuid.uuid4().hex[:6]
+    _post("/api/job-os/jobs", {"title": f"Typed {tag}", "company": "Acme", "employment_type": "Full-time",
+                               "canonical_url": f"https://jobs.example.test/typed-{tag}"})
+    _post("/api/job-os/jobs", {"title": f"Typeless {tag}", "company": "Acme", "canonical_url": f"https://jobs.example.test/bare-{tag}"})
+    with sync_api.sync_playwright() as pw:
+        browser, page = _boot(pw)
+        try:
+            page.evaluate("async () => { await switchPanel('jobs'); }")
+            page.wait_for_selector(f"#jobOsRoot .job-os-recent .job-os-job-card:has-text('Typeless {tag}')", timeout=20000)
+            out = page.evaluate("""(tag) => {
+                const cards = [...document.querySelectorAll('#jobOsRoot .job-os-recent .job-os-job-card')];
+                const pick = (t) => cards.find(c => c.textContent.includes(t));
+                const bare = pick('Typeless ' + tag), typed = pick('Typed ' + tag);
+                return {chips: [...bare.querySelectorAll('.job-os-chip')].map(c => c.textContent),
+                        heights: [bare.getBoundingClientRect().height, typed.getBoundingClientRect().height],
+                        all: [...new Set(cards.map(c => Math.round(c.getBoundingClientRect().height)))]};
+            }""", tag)
+            assert out["chips"] == ["N/A"], out
+            assert abs(out["heights"][0] - out["heights"][1]) < 0.5 and len(out["all"]) == 1, out
         finally:
             browser.close()

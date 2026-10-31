@@ -285,13 +285,16 @@
       : `<button type="button" class="job-os-btn small" data-job-os-action="${esc(a.action)}" data-check="${esc(c.key)}"${a.value != null ? ` data-value="${esc(a.value)}"` : ''}>${esc(a.label)}</button>`)).join('')}</div></li>`).join('');
     return `<section class="job-drawer-section job-checks"><h3>Checks</h3><ul>${rows}</ul></section>`;
   }
-  function jobChips(job) {
+  // ``typeless``: a job card shows "N/A" where a job gives no employment
+  // type, so every card in a list keeps the same rows (and height).
+  function jobChips(job, typeless) {
     const chips = [];
     // A job closed because its posting is gone says why, first.
     if (job.closed_reason) chips.push(`<span class="job-os-chip job-os-closed-reason" data-kind="closed" title="${esc(job.closed_reason)}">${esc(job.closed_reason)}</span>`);
     if (job.workplace) chips.push(`<span class="job-os-chip" data-kind="${esc(job.workplace)}">${esc(WORKPLACE[job.workplace] || job.workplace)}</span>`);
     if (job.salary_text) chips.push(`<span class="job-os-chip" data-kind="pay">${esc(job.salary_text)}</span>`);
     if (job.employment_type) chips.push(`<span class="job-os-chip">${esc(job.employment_type)}</span>`);
+    else if (typeless) chips.push('<span class="job-os-chip" data-kind="none" title="No employment type given">N/A</span>');
     return chips.length ? `<span class="job-os-chips">${chips.join('')}</span>` : '';
   }
   // Match bands for Luna's 0-100 fit score of the master resume against a job:
@@ -340,7 +343,7 @@
   function jobCard(job) {
     const initial = String(job.company || job.title || '?').trim().charAt(0).toUpperCase() || '?';
     const meta = [job.company || 'Company to review', place(job), SOURCE_LABEL[sourceOf(job)]].filter(Boolean).map(esc).join(' · ');
-    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job)}</span>${badge(job.status)}<small class="job-os-job-when">${activityOf(job) ? activityLine(activityOf(job)) : esc(when(job.updated_at))}</small></button>`;
+    return `<button class="job-os-job-card${analysing(job) ? ' is-analysing' : ''}${job.id === openJobId ? ' is-selected' : ''}" type="button" data-job-id="${esc(job.id)}" data-key="job-${esc(job.id)}">${fitRing(job.analysis, 'small') || `<span class="job-os-job-avatar" aria-hidden="true">${esc(initial)}</span>`}<span class="job-os-job-main"><strong>${esc(job.title)}</strong><span>${meta}</span>${jobChips(job, true)}</span>${badge(job.status)}<small class="job-os-job-when">${activityOf(job) ? activityLine(activityOf(job)) : esc(when(job.updated_at))}</small></button>`;
   }
   function jobList(jobs, emptyTitle, emptyBody) {
     return jobs.length
@@ -1011,7 +1014,7 @@
         ? `<span><i class="cal-key" data-tone="good"></i>${interviews} interview${interviews === 1 ? '' : 's'}</span><span><i class="cal-key" data-tone="bad"></i>${rejections} rejected</span>`
         : cal.key === 'applied' ? `<span><strong>${total}</strong> sent</span><span>Streak <strong>${streak}</strong> day${streak === 1 ? '' : 's'}</span>`
           : `<span><strong>${total}</strong> this month</span>`;
-      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-swatch" aria-hidden="true"></span>${capI(cal.title)}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
+      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-swatch" aria-hidden="true"></span><span>${capI(cal.title)}</span></span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
     }).join('');
     const step = (dir, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn small" data-job-os-action="activity-month" data-step="${dir}" aria-label="${label}" title="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 14)}</button>`;
     return `<div class="activity"><div class="activity-head"><h3>${capI('Activity')}</h3><span class="activity-month">${step(1, 'Previous month', 'prev', back >= 5)}<span>${esc(monthName)}</span>${step(-1, 'Next month', 'next', !back)}</span></div><div class="cals">${cals}</div></div>`;
