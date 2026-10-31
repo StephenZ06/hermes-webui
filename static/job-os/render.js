@@ -123,12 +123,24 @@
   // first (nothing new arrives until it is fixed), then new good matches, then
   // the jobs the board flags (a follow-up, a document to check, a failed tailoring).
   const ACTION_ICON = {connection: 'cloud', matches: 'applied', follow_up: 'clock', review: 'eye', failed: 'close', closing: 'calendar', calibrate: 'chart'};
+  // An IT job (by its title) gets one of the three IT pictures, the same one
+  // each time for the same job.
+  const IT_TITLE = /\b(it|ict|help ?desk|service ?desk|cyber|security|soc|network|system(s)? (admin|administrator|engineer|analyst)|sysadmin|cloud|devops|software|developer|programmer|data|database|infrastructure|technical support|desktop support|tech support)\b/i;
+  function itArt(a) {
+    if (!a || !IT_TITLE.test(String(a.title || ''))) return '';
+    const key = String(a.job_id || a.title);
+    let h = 0;
+    for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) | 0;
+    return `it-${(Math.abs(h) % 3) + 1}`;
+  }
   function actionCentre(state) {
     const dashboard = dashboardOf(state);
     const rows = [];
-    const row = (kind, title, note, control, attrs) => {
+    const row = (kind, title, note, control, attrs, artName) => {
       const tag = attrs ? 'button' : 'div';
-      return `<${tag} ${attrs ? 'type="button" ' : ''}class="action-row" data-kind="${kind}"${attrs || ''}><span class="action-icon" aria-hidden="true">${icon(ACTION_ICON[kind] || 'bell', 15)}</span><span class="action-text"><strong>${title}</strong>${note ? `<small>${note}</small>` : ''}</span>${control || ''}</${tag}>`;
+      const mark = artName ? `<span class="action-icon has-art" aria-hidden="true">${art(artName)}</span>`
+        : `<span class="action-icon" aria-hidden="true">${icon(ACTION_ICON[kind] || 'bell', 15)}</span>`;
+      return `<${tag} ${attrs ? 'type="button" ' : ''}class="action-row" data-kind="${kind}"${attrs || ''}>${mark}<span class="action-text"><strong>${title}</strong>${note ? `<small>${note}</small>` : ''}</span>${control || ''}</${tag}>`;
     };
     siteProblems(state).filter((site) => site.in_use !== false).forEach((site) => {
       const what = site.state === 'changed' ? 'Its pages changed, so Scout can no longer read it' : 'It has not loaded for the last few tries';
@@ -143,7 +155,7 @@
     if (released.length) {
       const names = released.slice(0, 2).map((m) => m.title).filter(Boolean).join(' · ');
       rows.push(row('matches', `${released.length} new good match${released.length === 1 ? '' : 'es'}`, esc(names) + (released.length > 2 ? ` +${released.length - 2} more` : ''),
-        '<span class="action-go">Review</span>', ' data-job-os-view="scout"'));
+        '<span class="action-go">Review</span>', ' data-job-os-view="scout"', 'recent-completions'));
     }
     const cal = dashboard.calibration;
     if (cal && (cal.offer || cal.proposal || cal.running)) {
@@ -153,7 +165,7 @@
     }
     (dashboard.actions || []).forEach((a) => {
       rows.push(row(a.kind, esc(a.title || 'Untitled job'), [a.company, a.reason].filter(Boolean).map(esc).join(' · '),
-        '<span class="action-go">Open</span>', ` data-job-id="${esc(a.job_id)}"`));
+        '<span class="action-go">Open</span>', ` data-job-id="${esc(a.job_id)}"`, itArt(a)));
     });
     const body = rows.length ? `<div class="action-list">${rows.join('')}</div>`
       : '<p class="job-os-card-note card-empty-note action-empty">Nothing needs a decision right now. New matches, follow-ups and connection problems show here when they do.</p>';
@@ -162,8 +174,17 @@
   // While a view's data is on its way: the same spinner the app's other pages show.
   const LOADING = '<div class="loading-spinner-wrap job-os-loading" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">Loading</span></div>';
   // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
+  // Card and tile artwork (static/job-os/icons, trimmed to the same padding),
+  // by the card's title; cards without artwork keep their line icon.
+  const CARD_ART = {'Action centre': 'action-centre', 'Application funnel': 'application-funnel', Automations: 'automations',
+    'Master resume': 'master-resume', 'Recent jobs': 'recent-jobs', 'Skill gaps': 'skill-gaps', 'Skills gained': 'skills-gained',
+    'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches'};
+  const art = (name) => `<img class="job-os-art" src="/static/job-os/icons/${name}-32.webp" srcset="/static/job-os/icons/${name}-32.webp 1x, /static/job-os/icons/${name}-64.webp 2x, /static/job-os/icons/${name}-128.webp 4x" alt="" decoding="async" draggable="false">`;
+  const iconOrArt = (title, iconName, size) => (CARD_ART[title]
+    ? `<span class="card-icon has-art" aria-hidden="true">${art(CARD_ART[title])}</span>`
+    : iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, size)}</span>` : '');
   function cardHead(title, iconName, actions, count) {
-    return `<div class="job-os-card-head"><h2>${iconName ? `<span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span>` : ''}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
+    return `<div class="job-os-card-head"><h2>${iconOrArt(title, iconName, 16)}<span class="card-title">${esc(title)}</span>${count != null ? `<span class="job-os-count">${Number(count)}</span>` : ''}</h2>${actions ? `<div class="card-head-actions">${actions}</div>` : ''}</div>`;
   }
   // Ten rows a page; the pager says where you are and steps through the rest.
   const PAGE = 10;
@@ -306,7 +327,8 @@
       : fc
         ? `<button type="button" class="job-os-status" data-ready="${fc.state === 'healthy' ? 'true' : 'false'}" data-fc-state="${esc(fc.state)}" data-job-os-view="settings" title="${esc(fc.detail || '')}">${esc(FIRECRAWL_LABELS[fc.state] || 'Firecrawl unknown')}</button>`
         : '<span class="job-os-status" data-ready="true">Ready</span>';
-    return `<header class="job-os-header"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div>${chip}</header>`;
+    // Page descriptions end without a full stop.
+    return `<header class="job-os-header"><div><h1>${esc(title)}</h1><p>${esc(String(subtitle || '').replace(/\.\s*$/, ''))}</p></div>${chip}</header>`;
   }
   // Narrow screens put the side panel in a drawer, so they keep a compact
   // section switcher in the page itself.
@@ -317,8 +339,28 @@
     const short = {dashboard: 'Home', 'resume-studio': 'Resume'};
     return `<nav class="job-os-tabs" aria-label="Job OS sections" data-mi-tabs>${sectionsOf(state || {}).map((key) => `<button type="button" class="${view === key ? 'active' : ''}" data-job-os-view="${key}"${view === key ? ' aria-current="page"' : ''}>${icon(key, 20)}<span>${short[key] || labels[key]}</span></button>`).join('')}</nav>`;
   }
-  function metric(name, value, label, target) {
-    return `<button type="button" class="job-os-metric" ${target}><img class="job-os-metric-icon" data-metric="${name}" src="/static/job-os-metric-${name}.png" alt="" aria-hidden="true"><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${esc(value)}</strong><span>${esc(label)}</span></span></button>`;
+  // The four dashboard pictures are fetched as soon as this script loads, not
+  // when the dashboard first draws them; until a picture (or the numbers) is
+  // in, its place shows a loading shimmer (job-os/index.js marks it ready).
+  const METRIC_READY = new Set();
+  const metricSrc = (name, size) => `/static/job-os/icons/metric-${name}-${size}.webp`;
+  ['total', 'active', 'attention', 'applied'].forEach((name) => {
+    try {
+      const img = new Image();
+      img.srcset = `${metricSrc(name, 40)} 1x, ${metricSrc(name, 80)} 2x`;
+      img.src = metricSrc(name, 40);
+      (img.decode ? img.decode() : Promise.reject()).then(() => METRIC_READY.add(name), () => {});
+    } catch (_) { /* no Image(): the shimmer gives way on load */ }
+  });
+  function metric(name, value, label, target, loading) {
+    const ready = METRIC_READY.has(name) ? ' is-ready' : '';
+    return `<button type="button" class="job-os-metric${loading ? ' is-loading' : ''}" ${target}${loading ? ' aria-busy="true"' : ''}><span class="job-os-metric-art${ready}"><img class="job-os-metric-icon" data-metric="${name}" src="${metricSrc(name, 40)}" srcset="${metricSrc(name, 40)} 1x, ${metricSrc(name, 80)} 2x" width="40" height="40" alt="" aria-hidden="true" decoding="async" fetchpriority="high"></span><span class="job-os-metric-body"><strong data-count-key="jobs-${name}">${loading ? '' : esc(value)}</strong><span>${esc(label)}</span></span></button>`;
+  }
+  // First open of the Dashboard: its title and the four cards, shimmering,
+  // while the numbers are fetched, instead of a bare spinner.
+  function dashboardLoading() {
+    const card = (name, label) => metric(name, '', label, '', true);
+    return `<div class="job-os-shell" data-view="dashboard"><main class="job-os-content"><header class="job-os-header"><div><h1>Dashboard</h1><p>Your job search at a glance</p></div></header><section class="job-os-metrics" aria-label="Job dashboard">${card('total', 'Total jobs')}${card('active', 'Active work')}${card('attention', 'Needs attention')}${card('applied', 'Applied')}</section>${LOADING}</main></div>`;
   }
   function placeholder(view, body) {
     return `<section class="job-os-card job-os-placeholder"><span class="job-os-placeholder-icon">${icon(view, 26)}</span><h2>${esc(labels[view])}</h2><p>${esc(body)}</p><button class="job-os-btn" type="button" data-job-os-view="dashboard">Back to dashboard</button></section>`;
@@ -930,7 +972,7 @@
         ? `<span><i class="cal-key" data-tone="good"></i>${interviews} interview${interviews === 1 ? '' : 's'}</span><span><i class="cal-key" data-tone="bad"></i>${rejections} rejected</span>`
         : cal.key === 'applied' ? `<span><strong>${total}</strong> sent</span><span>Streak <strong>${streak}</strong> day${streak === 1 ? '' : 's'}</span>`
           : `<span><strong>${total}</strong> this month</span>`;
-      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-icon" aria-hidden="true">${icon(cal.icon, 14)}</span>${cal.title}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
+      return `<div class="cal" data-cal="${cal.key}"><div class="cal-head"><span class="cal-title"><span class="cal-swatch" aria-hidden="true"></span>${cal.title}</span></div><div class="cal-grid" role="img" aria-label="${esc(`${cal.title}, ${monthName}: ${total}`)}">${heads}${cells}</div><div class="cal-stat">${stat}</div></div>`;
     }).join('');
     const step = (dir, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn small" data-job-os-action="activity-month" data-step="${dir}" aria-label="${label}" title="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 14)}</button>`;
     return `<div class="activity"><div class="activity-head"><h3>Activity</h3><span class="activity-month">${step(1, 'Previous month', 'prev', back >= 5)}<span>${esc(monthName)}</span>${step(-1, 'Next month', 'next', !back)}</span></div><div class="cals">${cals}</div></div>`;
@@ -1099,7 +1141,7 @@
     const on = searches.filter((x) => x.enabled);
     const next = schedOn ? Math.min(...on.map((x) => Number(x.next_run_at) || Infinity)) : Infinity;
     const last = Math.max(0, ...searches.map((x) => Number(x.last_run_at) || 0));
-    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}><span class="card-icon" aria-hidden="true">${icon(iconName, 16)}</span><span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
+    const tile = (iconName, label, value, note, attrs) => `<${attrs ? 'button type="button"' : 'div'} class="scout-tile"${attrs || ''}>${iconOrArt(label, iconName, 16)}<span class="scout-tile-body"><small>${label}</small><strong>${value}</strong><span>${note}</span></span></${attrs ? 'button' : 'div'}>`;
     const overview = `<section class="scout-overview" aria-label="Scout at a glance">
       ${tile('cloud', 'Source', viaApify ? 'Apify' : fallback ? 'This machine' : 'Apify off', viaApify ? esc(SITES.map(([, n]) => n).join(' · ')) : fallback ? `Indeed, ${esc(provider)} as fallback` : 'Only remote.id can run', ' data-job-os-action="settings-focus" data-section="apify"')}
       ${tile('calendar', 'Schedule', schedOn ? 'On' : 'Off', schedOn ? esc(state.schedule.summary || `Every ${state.schedule.hours}h`) : 'Turn on Run Scout automatically', ' data-job-os-action="settings-focus" data-section="scout"')}
@@ -1383,7 +1425,7 @@
       <details class="resume-paste"><summary>Paste text instead</summary><textarea id="resume-text" rows="8" placeholder="Paste your resume text"></textarea><button type="button" class="job-os-btn" data-job-os-action="resume-paste">Save pasted resume</button></details>
       <p class="job-os-error" role="alert">${esc(state.resumeError || '')}</p>`;
     if (!r || state.resumeReplacing) {
-      return `<section class="job-os-card"><div class="job-os-card-head"><h2>${r ? 'Replace your master resume' : 'Your master resume'}</h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
+      return `<section class="job-os-card"><div class="job-os-card-head"><h2>${iconOrArt('Master resume')}<span class="card-title">${r ? 'Replace your master resume' : 'Your master resume'}</span></h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
     }
     const design = r.style || {};
     const swatches = [design.heading && design.heading.color, design.name && design.name.color, design.body && design.body.color]
@@ -1449,7 +1491,7 @@
     if (view === 'dashboard') {
       const recent = paged(jobs, state.recentPage);
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
-        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""')}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"')}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"')}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"')}</section>
+        <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""', !state.dashboard)}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"', !state.dashboard)}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"', !state.dashboard)}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"', !state.dashboard)}</section>
         <div class="job-os-pair dash-main">${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}<div class="dash-side">${actionCentre(state)}${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}</div></div>
         <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
         ${jobDrawer(state)}${jobForm(state)}${calibrationModal(state)}`;
@@ -1497,5 +1539,5 @@
     }).join('');
     return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages}</div></div>`;
   }
-  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, skillsGainedView, LOADING};
+  window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, skillsGainedView, LOADING, dashboardLoading};
 }());

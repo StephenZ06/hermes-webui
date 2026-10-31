@@ -160,7 +160,9 @@
     if (!target) return;
     const seq = ++refreshSeq;
     // First open: the app's loading bar until the page has something to show.
-    if (!target.firstElementChild && !state.capability) target.innerHTML = window.JobOSRender.LOADING;
+    if (!target.firstElementChild && !state.capability) {
+      target.innerHTML = state.activeView === 'dashboard' ? window.JobOSRender.dashboardLoading() : window.JobOSRender.LOADING;
+    }
     renderSidebar();
     // A tap that changed the page's state shows its result now, from what is
     // already loaded; the fetch below only fills in what is new. Without this a
@@ -447,6 +449,10 @@
     root().addEventListener('click', onClick, {signal});
     root().addEventListener('change', onChange, {signal});
     root().addEventListener('input', onInput, {signal});
+    // A dashboard picture that has arrived (or failed) drops its loading shimmer.
+    const artIn = (event) => { const wrap = event.target.closest && event.target.closest('.job-os-metric-art'); if (wrap) wrap.classList.add('is-ready'); };
+    root().addEventListener('load', artIn, {signal, capture: true});
+    root().addEventListener('error', artIn, {signal, capture: true});
     // A button that showed "Saved" hands back to the page: draw what is current.
     root().addEventListener('mi:released', () => { const t = root(); if (t) { t._jobOsHtml = null; repaint(); } }, {signal});
     const side = sidebarRoot();

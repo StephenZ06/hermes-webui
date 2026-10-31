@@ -187,10 +187,12 @@ def test_dashboard_metric_icons_match_their_value_and_label_height():
         finally:
             browser.close()
     assert [r["src"].rsplit("/", 1)[-1] for r in rows] == [
-        "job-os-metric-total.png", "job-os-metric-active.png", "job-os-metric-attention.png", "job-os-metric-applied.png"]
+        "metric-total-40.webp", "metric-active-40.webp", "metric-attention-40.webp", "metric-applied-40.webp"]
+    # A little smaller than the number and label beside it, centred on them.
     for row in rows:
         assert row["loaded"], row
-        assert abs(row["icon"] - row["text"]) < 1 and abs(row["top"] - row["textTop"]) < 1, row
+        assert row["icon"] == 40 and row["icon"] < row["text"], row
+        assert abs((row["top"] + row["icon"] / 2) - (row["textTop"] + row["text"] / 2)) < 1, row
 
 
 def test_dashboard_puts_the_funnel_left_and_action_centre_over_automations_right():

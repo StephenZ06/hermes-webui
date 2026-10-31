@@ -29,7 +29,8 @@ def test_opening_the_page_rides_out_a_restarting_server():
             page.route("**/api/job-os/dashboard", flaky)
             _boot(page)
             page.evaluate("async () => { await switchPanel('jobs'); }")
-            page.wait_for_selector(".job-os-content", timeout=20000)
+            # The real dashboard, not its loading skeleton (which shows at once).
+            page.wait_for_selector(".job-os-content .dash-main", timeout=20000)
             assert calls["n"] >= 3
             assert page.locator(".job-os-error").count() == 0 or not page.locator(".job-os-error").first.inner_text().strip()
         finally:

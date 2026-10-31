@@ -15971,3 +15971,53 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* The five lower cards' artwork, title and description sit 1px higher. */
 .office-dashboard-panel-head > :is(.office-dash-icon,.office-dash-titles),
 .office-dashboard-integration > :is(.office-dash-icon,span:nth-child(2)){position:relative;top:-1px;}
+
+/* ── Jobs page refresh ──────────────────────────────────────────────── */
+/* Card, tile and Action centre artwork (static/job-os/icons) stands on its
+   own, without the tinted tile the line icons sit on. */
+#jobOsRoot .card-icon.has-art,#jobOsRoot .action-icon.has-art{background:none;color:inherit;}
+#jobOsRoot .card-icon.has-art .job-os-art{display:block;width:26px;height:26px;object-fit:contain;}
+#jobOsRoot .action-icon.has-art .job-os-art{display:block;width:28px;height:28px;object-fit:contain;}
+#jobOsRoot .scout-tile .card-icon.has-art .job-os-art{width:30px;height:30px;}
+/* Dashboard pictures: a touch smaller, centred on the number and label, and
+   a loading shimmer in their place until each picture (and the numbers) is in. */
+#jobOsRoot .job-os-metric-art{position:relative;flex:0 0 40px;width:40px;height:40px;border-radius:10px;}
+#jobOsRoot .job-os-metric-art .job-os-metric-icon{width:40px;height:40px;flex:none;opacity:0;transition:opacity .2s ease;}
+#jobOsRoot .job-os-metric-art.is-ready .job-os-metric-icon{opacity:1;}
+#jobOsRoot .job-os-metric-art:not(.is-ready),#jobOsRoot .job-os-metric.is-loading .job-os-metric-body strong{background:linear-gradient(90deg,color-mix(in srgb,var(--border2) 55%,transparent) 0%,color-mix(in srgb,var(--border2) 100%,transparent) 50%,color-mix(in srgb,var(--border2) 55%,transparent) 100%);background-size:200% 100%;animation:job-os-shimmer 1.2s ease-in-out infinite;}
+#jobOsRoot .job-os-metric.is-loading .job-os-metric-body strong{display:block;width:44px;height:24px;margin:2px 0;border-radius:6px;}
+@keyframes job-os-shimmer{from{background-position:100% 0;}to{background-position:-100% 0;}}
+@media (prefers-reduced-motion:reduce){#jobOsRoot .job-os-metric-art:not(.is-ready),#jobOsRoot .job-os-metric.is-loading .job-os-metric-body strong{animation:none;}}
+#jobOsRoot .job-os-metric{align-items:center;}
+/* Counts beside card titles are rounded rectangles. */
+#jobOsRoot .job-os-count{border-radius:6px;padding:1px 6px 2px;}
+/* Application funnel: one grid for every row, so each bar is the same width
+   and sits the same distance from its widest label and its widest number. */
+#jobOsRoot .funnel{display:grid;grid-template-columns:max-content minmax(0,1fr) max-content;column-gap:16px;row-gap:8px;align-items:center;}
+#jobOsRoot .funnel-row{display:contents;}
+/* Activity: a small rounded square in each calendar's colour, in place of its icon. */
+#jobOsRoot .cal-swatch{display:block;flex:none;width:10px;height:10px;border-radius:3px;background:var(--cal);}
+#jobOsRoot .cal-title{gap:8px;}
+/* Right column: Action centre takes the room its rows need (three, then it
+   scrolls), and the gap to Automations is the gap between the two columns. */
+#jobOsRoot .dash-side{gap:var(--jobs-gap);}
+#jobOsRoot .dash-side>.action-centre{flex:1 0 auto;min-height:0;}
+#jobOsRoot .action-centre .action-list{flex:1 1 auto;max-height:186px;}
+/* Automation cards: the same inset on every side, and titles that end in an
+   ellipsis instead of running under the On/Off chip. */
+#jobOsRoot .dash-side .automation-row{padding:10px;}
+#jobOsRoot .dash-side .automation-row>.automation-title{overflow:hidden;text-overflow:ellipsis;}
+/* Three automations a row only once each has room for its name. */
+@media (max-width:1600px){#jobOsRoot .dash-side .automations{grid-template-columns:repeat(2,minmax(0,1fr));}#jobOsRoot .dash-side .automation-row,#jobOsRoot .dash-side .automation-row:nth-child(n+4){grid-column:auto;}#jobOsRoot .dash-side .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
+/* Side panel: section buttons as tall as other pages' folder rows. */
+#jobOsSidebar .job-os-side-nav .side-menu-item{min-height:34px;}
+/* Pipeline stage names sit 1px lower. */
+#jobOsSidebar .job-os-stage .side-menu-label{position:relative;top:1px;}
+/* Every pill on the Jobs pages is a compact rounded rectangle (the on/off
+   switches keep their track shape). */
+:is(#jobOsRoot,#jobOsSidebar) :is(.automation-state,.job-os-chip,.job-os-badge,.pipe-source,.seg-count,.job-check,.doc-status,.job-os-pill,.job-os-count,.job-os-status,.job-os-side-count){border-radius:5px;}
+:is(#jobOsRoot,#jobOsSidebar) :is(.automation-state,.job-os-chip,.job-os-badge,.doc-status,.job-os-pill){padding:1px 6px 2px;}
+:is(#jobOsRoot,#jobOsSidebar) :is(.pipe-source,.job-check,.seg-count){padding-left:5px;padding-right:5px;}
+/* The edit button that replaces the On/Off chip on hover overlaps the card's
+   padding instead of making the title row taller than the chip. */
+#jobOsRoot .dash-side .automation-edit{margin:-6px 0;}
