@@ -16234,3 +16234,10 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    search has as much room below it as above it. */
 #jobOsRoot .job-os-shell[data-view="scout"] .job-os-content{padding-bottom:var(--jobs-gap,16px);}
 #jobOsRoot .scout-form-modal .job-modal-foot .job-os-btn{height:34px;min-height:34px;padding-block:0;box-sizing:border-box;}
+/* The window is wide enough for its note on two lines and the four job sites as a 2×2 grid. */
+#jobOsRoot .scout-form-modal .job-modal-head p{max-width:none;}
+#jobOsRoot .scout-form-modal .scout-site-options{grid-template-columns:repeat(2,minmax(0,1fr));}
+@media (max-width:640px){#jobOsRoot .scout-form-modal .scout-site-options{grid-template-columns:1fr;}}
+/* Below ~1500px a tile's note (the schedule's times and zones) would be cut
+   short; it takes a second line instead. */
+@media (max-width:1500px){#jobOsRoot .scout-tile-body>span{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:16px;}}
