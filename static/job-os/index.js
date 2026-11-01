@@ -830,6 +830,7 @@
   // Esc closes the job form wherever it is open.
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && window.JobOSState.jobForm && document.getElementById('job-os-job-form')) { event.preventDefault(); trackerAction('job-form-close'); return; }
+    if (event.key === 'Escape' && window.JobOSState.searchForm && document.getElementById('job-os-search-form')) { event.preventDefault(); scoutAction('scout-form-close'); return; }
     const search = document.getElementById('job-os-pipe-search');
     if (!search) return;
     if (event.key === 'Escape' && event.target === search && search.value) { event.preventDefault(); trackerAction('pipe-search-clear'); }

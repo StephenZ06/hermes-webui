@@ -159,18 +159,18 @@ def test_tiles_stand_as_tall_as_the_dashboard_metrics_with_centred_contents(page
     assert all(abs(h - 78) < 0.5 and abs(i - h / 2) < 1 and abs(b - h / 2) < 1 for h, i, b in out), out
 
 
-def test_the_run_panel_reads_like_a_terminal_on_the_page_background(page):
+def test_the_run_panel_reads_like_a_terminal_on_the_page_background_without_a_cursor(page):
     out = page.evaluate("""() => {
         const card = document.querySelector('#jobOsRoot .scout-search'), run = card.querySelector('.scout-run');
         const detail = run.querySelector('.scout-run-detail');
         return {bg: getComputedStyle(run).backgroundColor, body: getComputedStyle(document.body).backgroundColor,
                 border: getComputedStyle(run).borderTopColor, card: getComputedStyle(card).borderTopColor, style: getComputedStyle(run).borderTopStyle,
                 bar: (run.querySelector('.scout-term-bar') || {}).textContent, cmd: (run.querySelector('.scout-term-cmd') || {}).textContent,
-                cursor: getComputedStyle(detail, '::after').animationName};
+                cursor: [getComputedStyle(detail, '::after').content, getComputedStyle(run.querySelector('.scout-run-body > :last-child'), '::after').content]};
     }""")
     assert out["bg"] == out["body"] and out["border"] == out["card"] and out["style"] == "solid", out
     assert out["bar"] == "scout — malaysia" and out["cmd"] == "$ scout run --sites indeed,linkedin,bayt", out
-    assert out["cursor"] == "scout-term-blink", out
+    assert out["cursor"] == ["none", "none"], out  # no blinking cursor
 
 
 def test_run_now_has_the_same_space_below_as_above(page):
@@ -179,3 +179,31 @@ def test_run_now_has_the_same_space_below_as_above(page):
         return [b.top - a.getBoundingClientRect().top, c.getBoundingClientRect().bottom - b.bottom];
     })""")
     assert all(abs(above - below) < 0.5 for above, below in out), out
+
+
+def test_new_search_opens_in_a_window_over_the_page_and_escape_closes_it(page):
+    page.click("#jobOsRoot .scout-saved > .scout-new-search")
+    page.wait_for_selector("#scout-form[role=dialog]", timeout=10000)
+    page.wait_for_timeout(500)
+    out = page.evaluate("""() => {
+        const m = document.getElementById('scout-form'), r = m.getBoundingClientRect(), saved = document.querySelector('#jobOsRoot .scout-saved');
+        const foot = [...m.querySelectorAll('.job-modal-foot .job-os-btn')].map(b => b.getBoundingClientRect());
+        return {position: getComputedStyle(m).position, centre: [r.left + r.width / 2, innerWidth / 2], width: r.width, inView: r.top >= 0 && r.bottom <= innerHeight,
+                backdrop: !!document.querySelector('#jobOsRoot .job-modal-backdrop'), form: !!m.querySelector('form#job-os-search-form input[name=keywords]'),
+                savedStays: !!saved && saved.querySelectorAll('.scout-search').length === 2, foot: foot.map(b => [b.top, b.height])};
+    }""")
+    assert out["position"] == "fixed" and abs(out["centre"][0] - out["centre"][1]) < 1 and out["width"] == 720 and out["inView"], out
+    assert out["backdrop"] and out["form"] and out["savedStays"], out
+    assert out["foot"][0] == out["foot"][1], out
+    page.keyboard.press("Escape")
+    page.wait_for_function("() => !document.querySelector('#scout-form:not([data-overlay-ghost])')", timeout=5000)
+
+
+def test_the_page_scrolls_past_the_lowest_card_by_the_gap_between_cards(page):
+    out = page.evaluate("""() => {
+        const sc = document.getElementById('mainJobs'); sc.scrollTop = sc.scrollHeight;
+        const add = document.querySelector('#jobOsRoot .scout-new-search').getBoundingClientRect(), cards = [...document.querySelectorAll('#jobOsRoot .scout-search')];
+        const lowest = Math.max(...[...document.querySelectorAll('#jobOsRoot .scout-pair > *')].map(e => e.getBoundingClientRect().bottom));
+        return {above: add.top - cards[cards.length - 1].getBoundingClientRect().bottom, below: sc.getBoundingClientRect().bottom - lowest};
+    }""")
+    assert abs(out["above"] - out["below"]) < 1, out

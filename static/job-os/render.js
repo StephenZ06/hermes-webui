@@ -1139,8 +1139,13 @@
     const host = ((state.countries || []).find((c) => c.code === form.country) || {}).host;
     const apifyOn = !!(state.apify && state.apify.active);
     const fallbackOn = !!(state.apify && state.apify.indeed_fallback);
-    return `<section class="job-os-card scout-form" id="scout-form"><div class="job-os-card-head"><div><h2>${editing ? 'Edit search' : 'New search'}</h2><p class="job-os-card-note">Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div></div>
-      <form id="job-os-search-form" novalidate><div class="scout-form-grid">
+    // A centred window like Add a job (a bottom sheet on a phone), so the
+    // saved searches stay where they are underneath.
+    return `<div class="job-modal-backdrop" data-job-os-action="scout-form-close"></div>
+      <div class="job-modal scout-form scout-form-modal" id="scout-form" role="dialog" aria-modal="true" aria-labelledby="scout-form-title">
+        <header class="job-modal-head"><div><h2 id="scout-form-title">${editing ? 'Edit search' : 'New search'}</h2><p>Scout searches each job site for these titles in each city${host ? ` (Indeed: <code>${esc(host)}</code>)` : ''} and saves every posting it finds.</p></div>
+          <button type="button" class="wh-insp-close" data-job-os-action="scout-form-close" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+      <form id="job-os-search-form" class="job-form" novalidate><div class="job-modal-body"><div class="scout-form-grid">
         <label class="job-os-field wide"><span>Job titles <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. SOC Analyst, IT Analyst, Security Analyst" value="${esc(form.keywords)}"><small class="job-os-field-hint">Comma-separated; each title is searched on its own (up to 5).</small></label>
         <label class="job-os-toggle wide"><input type="checkbox" name="strict_titles" ${form.strict_titles !== false ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Only keep matching titles</strong><small>Job sites return loose matches (sales roles for “IT Analyst”). Keep a job only when its title matches one of yours or a related title below.</small></span></label>
         <label class="job-os-field wide"><span>Related titles</span><span class="field-with-action"><input name="related_titles" maxlength="900" placeholder="e.g. Threat Intelligence Analyst, Incident Response Analyst" value="${esc(form.related_titles || '')}"><button type="button" class="job-os-btn small" data-job-os-action="scout-suggest">${icon('magic', 14)}Suggest</button></span><small class="job-os-field-hint">Comma-separated, up to 15. Left empty, Luna fills it in on the next run; edit it any time.</small></label>
@@ -1159,8 +1164,8 @@
         }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than remote.id run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
       </div>
       <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
-      <p class="job-os-error" role="alert">${esc(state.searchError || '')}</p>
-      <div class="job-os-actions"><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button></div></form></section>`;
+      </div>
+      <footer class="job-modal-foot"><p class="job-os-error" role="alert">${esc(state.searchError || '')}</p><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button></footer></form></div>`;
   }
   // Good matches arrive together: they wait here until enough have collected
   // (or the evening cut-off), then show as new until marked seen.

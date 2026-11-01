@@ -16201,8 +16201,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 
 /* ── Scout run panel as a terminal ──
    Page background and the cards' outline; a slim window bar names the search,
-   a "$ scout run" line shows what runs, and the output ends on a blinking
-   block cursor. Everything sits in one monospace column. */
+   a "$ scout run" line shows what runs, then the output lines. Everything
+   sits in one monospace column. */
 #jobOsRoot .scout-search .scout-run{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:0;row-gap:0;min-height:0;padding:0;border:1px solid var(--border2);border-style:solid;border-radius:10px;background:var(--bg);overflow:hidden;font-family:var(--font-mono,ui-monospace,"Courier New",monospace);}
 #jobOsRoot .scout-search .scout-run.is-active{border-color:color-mix(in srgb,var(--accent) 55%,var(--border2));background:var(--bg);}
 #jobOsRoot .scout-term-bar{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:5px 10px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;line-height:14px;}
@@ -16219,13 +16219,18 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .scout-search .scout-run-state{text-transform:lowercase;}
 #jobOsRoot .scout-search .scout-stats{gap:4px 12px;align-items:baseline;}
 #jobOsRoot .scout-search .scout-stat{text-transform:lowercase;}
-#jobOsRoot .scout-search .scout-stats::after,#jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail::after{content:"";display:inline-block;width:7px;height:13px;margin-left:2px;vertical-align:-2px;align-self:center;background:var(--success,#4ade80);opacity:.85;animation:scout-term-blink 1.1s steps(1,end) infinite;}
-#jobOsRoot .scout-search .scout-run.is-active .scout-stats::after{display:none;}
-@keyframes scout-term-blink{50%{opacity:0;}}
-@media (prefers-reduced-motion:reduce){#jobOsRoot .scout-search .scout-stats::after,#jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail::after{animation:none;}}
 #jobOsRoot .scout-search .scout-run.is-empty .scout-run-body{display:flex;}
 #jobOsRoot .scout-search .scout-run.is-empty .scout-run-detail{white-space:normal;}
 /* Run Now: the space under the button matches the space above it (divider to button). */
 #jobOsRoot .scout-search{padding-bottom:12px;}
 /* The four Scout tiles stand as tall as the dashboard's four metric cards. */
 #jobOsRoot .scout-overview>.scout-tile{min-height:78px;box-sizing:border-box;align-content:center;}
+
+/* New search / Edit search opens as a window over the page, sized like Add a job. */
+#jobOsRoot .scout-form-modal{--job-modal-w:720px;margin:0;gap:0;padding:0;}
+#jobOsRoot .scout-form-modal .job-form{display:flex;flex-direction:column;flex:1;min-height:0;gap:0;}
+#jobOsRoot .scout-form-modal .job-modal-body{gap:14px;}
+/* Scout scrolls on past its lowest card by the gap between cards, so New
+   search has as much room below it as above it. */
+#jobOsRoot .job-os-shell[data-view="scout"] .job-os-content{padding-bottom:var(--jobs-gap,16px);}
+#jobOsRoot .scout-form-modal .job-modal-foot .job-os-btn{height:34px;min-height:34px;padding-block:0;box-sizing:border-box;}
