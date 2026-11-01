@@ -109,14 +109,29 @@ def _schedules() -> dict[str, Any]:
     return {"enabled": enabled, "failing": failing[:_FAILING_LIMIT], "failing_count": len(failing), "upcoming": upcoming[:5]}
 
 
+# Reading the notes means walking the whole Obsidian vault (on a Windows
+# drive, ~200ms), and the Personal page re-reads its summary after every habit
+# ticked or entry logged. The short list is kept for a few seconds instead.
+_NOTES_TTL = 20.0
+_notes_cache: dict[str, Any] = {"key": None, "at": 0.0, "notes": None}
+
+
 def _recent_notes() -> list[dict[str, Any]]:
     from api import notebook, notebook_vault
 
     store = notebook_vault if notebook_vault.enabled() else notebook
+    from api.config import STATE_DIR
+
+    key = (store.__name__, str(STATE_DIR))
+    now = time.monotonic()
+    if _notes_cache["key"] == key and _notes_cache["notes"] is not None and now - _notes_cache["at"] < _NOTES_TTL:
+        return [dict(n) for n in _notes_cache["notes"]]
     notes = [n for n in store.bootstrap().get("notes") or [] if not n.get("deleted_at")]
     notes.sort(key=lambda n: (not n.get("pinned"), -(n.get("updated_at") or 0)))
-    return [{"id": n.get("id"), "title": n.get("title") or "Untitled", "updated_at": n.get("updated_at"),
-             "pinned": bool(n.get("pinned"))} for n in notes[:_RECENT_NOTES]]
+    recent = [{"id": n.get("id"), "title": n.get("title") or "Untitled", "updated_at": n.get("updated_at"),
+               "pinned": bool(n.get("pinned"))} for n in notes[:_RECENT_NOTES]]
+    _notes_cache.update(key=key, at=now, notes=recent)
+    return [dict(n) for n in recent]
 
 
 def personal(now: float | None = None) -> dict[str, Any]:

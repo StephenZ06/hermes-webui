@@ -202,7 +202,7 @@
     const rows = list.map((h) => `<div class="dash-habit${h.done ? ' is-done' : ''}" data-habit="${esc(h.id)}">
         <button type="button" class="dash-habit-check${h.today ? ' is-on' : ''}" data-habit-toggle="${esc(h.id)}" data-on="${h.today ? '1' : '0'}" aria-pressed="${h.today}" aria-label="${h.today ? 'Untick' : 'Tick'} ${esc(h.name)} for today">${svg('check', 14)}</button>
         <span class="dash-row-main"><strong>${esc(h.name)}</strong><small>${h.cadence === 'weekly' ? `${h.week_count}/${h.target} this week` : (h.today ? 'Done today' : 'Not yet today')}${h.streak ? ` · 🔥 ${h.streak} ${h.cadence === 'weekly' ? 'wk' : 'day'}${h.streak === 1 ? '' : 's'}` : ''}</small></span>
-        <span class="dash-heat" aria-hidden="true">${(h.recent || []).map((on) => `<i class="${on ? 'on' : ''}"></i>`).join('')}</span>
+        <span class="dash-heat" aria-hidden="true">${(h.recent || []).slice().reverse().map((on) => `<i class="${on ? 'on' : ''}"></i>`).join('')}</span>
         <button type="button" class="dash-icon-btn dash-habit-remove" data-habit-archive="${esc(h.id)}" aria-label="Stop tracking ${esc(h.name)}" title="Stop tracking">${svg('x', 13)}</button>
       </div>`).join('');
     const empty = !list.length && !state.forms.habit ? '<p class="dash-empty">Track the things that keep you going. Each one ticked earns 10 XP towards Vitality.</p>' : '';
@@ -257,7 +257,7 @@
       </div>
       <div class="dash-grid">
         ${card('Scheduled jobs', schedules, {pix: 'scheduled-jobs', key: 'schedules', action: link('Open Tasks', 'data-dash-go="tasks"')})}
-        ${card('Recent notes', notes, {pix: 'recent-notes', key: 'notes', action: link('Open Notes', 'data-dash-go="notebook"')})}
+        ${card('Recent notes', notes, {pix: 'recent-notes', key: 'notes', action: link('Open Notes', 'data-dash-go="notebook" data-notes-scope="general"')})}
       </div>`;
   }
 
@@ -587,7 +587,8 @@
     const chips = ['all', 'personal', 'career', 'business'].map((k) => `<button type="button" class="dash-chip${filter === k ? ' on' : ''}" data-log-filter="${k}" aria-pressed="${filter === k}">${k === 'all' ? 'All' : AREA[k]}</button>`).join('');
     const log = (data.log || []).map((e) => `<div class="dash-row rpg-log-row" data-log-cat="${esc(e.category)}"><span class="dash-area-dot is-${esc(e.category)}"></span><span class="dash-row-main"><strong>${e.quest ? '⚔ ' : ''}${esc(e.title)}</strong><small>${esc(AREA[e.category] || e.category)} · ${ago(e.at)}</small></span><span class="dash-xp-gain">+${e.xp} XP</span></div>`).join('') || '<p class="dash-empty">Finish a Work Hub item, tick a habit or move a job forward to earn your first XP.</p>';
     const more = data.log_total > (data.log || []).length ? link('Show more', 'data-log-more') : '';
-    return `<div class="dash-chips rpg-log-filters">${chips}</div>${log}${more}`;
+    // The filters stay where they are; only the list under them scrolls.
+    return `<div class="dash-chips rpg-log-filters">${chips}</div><div class="rpg-log-list">${log}${more}</div>`;
   }
   // Redraw only the Chronicle list (a filter or Show more): the rest of the
   // page, its video and its effects are left alone.
@@ -595,11 +596,13 @@
     const body = root() && root().querySelector('.rpg-panel.is-chronicle > .dash-card-body');
     const data = state.data.character;
     if (!body || !data || state.tab !== 'character') return false;
-    const keep = body.scrollTop;
+    const old = body.querySelector('.rpg-log-list');
+    const keep = old ? old.scrollTop : 0;
     body.innerHTML = chronicleBody(data);
-    body.scrollTop = top ? 0 : keep;
+    const list = body.querySelector('.rpg-log-list');
+    list.scrollTop = top ? 0 : keep;
     state.painted.signature = signatureOf();
-    requestAnimationFrame(() => updateMore(body));
+    requestAnimationFrame(() => updateMore(list));
     return true;
   }
   // A filter answers at once: the chips switch, and the rows already on the
@@ -615,10 +618,11 @@
       if (body) {
         body.querySelectorAll('[data-log-filter]').forEach((b) => { const on = b.dataset.logFilter === cat; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
         body.querySelectorAll('.rpg-log-row').forEach((r) => { r.hidden = cat !== 'all' && r.dataset.logCat !== cat; });
-        body.scrollTop = 0;
+        const list = body.querySelector('.rpg-log-list');
+        if (list) list.scrollTop = 0;
         // The rest of that realm's list is on its way: the ring under the filters.
         body.querySelectorAll('.dash-loader.is-inline').forEach((el) => el.remove());
-        body.querySelector('.rpg-log-filters').insertAdjacentHTML('afterend', `<div class="dash-loader is-inline is-list" aria-label="Loading">${spinner()}</div>`);
+        if (list) list.insertAdjacentHTML('afterbegin', `<div class="dash-loader is-inline is-list" aria-label="Loading">${spinner()}</div>`);
       }
     }
     load('character', {quiet: true, logOnly: true});
@@ -895,8 +899,21 @@
     if (!level) { try { level = parseInt(localStorage.getItem('hermes-dashboard-level') || '0', 10) || 0; } catch (_) {} }
     return level ? `<span class="dash-level-badge">Lv ${level}</span>` : '';
   }
+  // The side menu's highlight glides from the old page to the new one, as in
+  // Chat and Work Hub (playActiveHighlightGlide, ui.js).
+  const SIDE_HIGHLIGHT = {
+    selector: '.side-menu-item.active',
+    key: (node) => node.dataset.dashTab,
+    find: (host, key) => host.querySelector(`.side-menu-item[data-dash-tab="${CSS.escape(key)}"]`),
+    section: () => 'pages',
+  };
   function paintSidebar() {
     const host = sidebar(); if (!host) return;
+    const from = typeof noteActiveHighlight === 'function' ? noteActiveHighlight(host, SIDE_HIGHLIGHT) : null;
+    paintSidebarRows(host);
+    if (from && from.key !== state.tab && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(host, from, {...SIDE_HIGHLIGHT, bounds: host});
+  }
+  function paintSidebarRows(host) {
     const item = (key, label) => `<button type="button" class="side-menu-item${key === state.tab ? ' active' : ''}" data-dash-tab="${key}"${key === state.tab ? ' aria-current="page"' : ''}>${svg(key)}<span class="side-menu-label">${label}</span>${key === 'character' ? levelBadge() : ''}</button>`;
     host.innerHTML = `<nav class="dash-side-nav">${item('character', 'Character')}${item('shop', 'Shop')}<div class="dash-side-divider" aria-hidden="true"></div>${TABS.map((t) => item(t.key, t.label)).join('')}<div class="dash-side-divider" aria-hidden="true"></div>${item('settings', 'Settings')}</nav>`;
   }
@@ -954,6 +971,9 @@
     const strips = new Map([...host.querySelectorAll('.dash-habit[data-habit] .dash-heat')].map((h) => [h.closest('.dash-habit').dataset.habit, h.getBoundingClientRect()]));
     // What each number read before this repaint, so only the ones that changed pop in.
     const numbers = new Map([...host.querySelectorAll(NUMBERS)].map((el) => [numberKey(el), el.textContent]));
+    // Which rows were on this tab before, so one that is new (just added) rises in.
+    const shownTab = host.querySelector('.dash-body') && host.querySelector('.dash-body').dataset.tab;
+    const rowsBefore = shownTab === state.tab ? new Set(rowKeys(host).map(([k]) => k)) : null;
     host.innerHTML = `<div class="dash is-rpg${isChar ? ' is-character' : ''}">
       <div class="dash-head"><div><h1>${esc(VIEW_TITLE[state.tab])}</h1></div>
         <div class="dash-head-right">
@@ -974,6 +994,11 @@
         setTimeout(() => { h.style.transition = ''; h.style.transformOrigin = ''; }, 420);
       });
     }
+    if (rowsBefore) rowKeys(host).forEach(([k, row]) => {
+      if (rowsBefore.has(k)) return;
+      row.classList.add('is-arriving');
+      row.addEventListener('animationend', () => row.classList.remove('is-arriving'), {once: true});
+    });
     if (window.Micro) host.querySelectorAll(NUMBERS).forEach((el) => { const was = numbers.get(numberKey(el)); if (was !== undefined && was !== el.textContent) window.Micro.pop(el); });
     host.querySelectorAll('video.rpg-hero-video').forEach((v) => { const kept = videos.get(v.dataset.src); if (kept && kept !== v && !v.closest('.rpg-levelup')) v.replaceWith(kept); });
     const restore = () => {
@@ -1014,7 +1039,7 @@
   }
   // A card whose list scrolls shows a small arrow at its bottom edge while
   // more rows are hidden below; it goes once the list is scrolled to the end.
-  const SCROLLERS = '.dash-card-body,.dash-learning-entries';
+  const SCROLLERS = '.dash-card-body,.dash-learning-entries,.rpg-log-list';
   function scrollKey(el) {
     const card = el.closest('[data-dash-card],.dash-card,.rpg-panel');
     const name = card ? (card.dataset.dashCard || ((card.querySelector('h3') || {}).textContent || '').replace(/[·\d\/\s]+$/, '')) : '';
@@ -1233,7 +1258,11 @@
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   function closeDatePicker() {
-    document.querySelectorAll('.dash-cal').forEach((el) => { el._cleanup && el._cleanup(); el.remove(); });
+    document.querySelectorAll('.dash-cal:not(.is-closing)').forEach((el) => {
+      if (el._cleanup) el._cleanup();
+      el.classList.remove('is-open'); el.classList.add('is-closing');
+      setTimeout(() => el.remove(), 180);
+    });
   }
   function openDatePicker(button) {
     if (document.querySelector('.dash-cal')) { closeDatePicker(); return; }
@@ -1292,15 +1321,39 @@
     pop._cleanup = () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key); window.removeEventListener('resize', place); };
   }
 
+  // Every removable row, keyed by its remove button, so a repaint can tell a
+  // row that was just added from one that was already there.
+  const ROW_REMOVE = ['questRemove', 'habitArchive', 'learningRemove', 'goalRemove', 'saleRemove', 'skillRemove', 'rewardRemove'];
+  const ROW_REMOVE_SELECTOR = ROW_REMOVE.map((k) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}]`).join(',');
+  const ROW_SELECTOR = '.dash-quest-row,.dash-habit,.dash-goal,.rpg-reward,.dash-row';
+  function rowKeys(host) {
+    return [...host.querySelectorAll(ROW_REMOVE_SELECTOR)].map((btn) => {
+      const name = ROW_REMOVE.find((k) => btn.dataset[k] !== undefined);
+      return [`${name}:${btn.dataset[name]}`, btn.closest(ROW_SELECTOR)];
+    }).filter(([, row]) => row);
+  }
+
+  // A removed row fades, then folds its height away so the rows below slide
+  // up instead of jumping when the refresh repaints the list.
+  function foldAway(row) {
+    if (!row) return 0;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { row.classList.add('is-leaving'); return 0; }
+    row.classList.remove('is-arriving');
+    row.style.height = `${row.offsetHeight}px`;
+    void row.offsetHeight;
+    row.classList.add('is-leaving');
+    return 300;
+  }
+
   // ── actions ──────────────────────────────────────────────────────────────
   async function act(path, body, {ok = '', after = refresh, row = null} = {}) {
-    if (row) row.classList.add('is-leaving');
+    const fold = foldAway(row);
     try {
-      const result = await post(path, body);
+      const [result] = await Promise.all([post(path, body), new Promise((r) => setTimeout(r, fold))]);
       if (ok) toast(typeof ok === 'function' ? ok(result) : ok);
       return result;
     } catch (error) {
-      if (row) row.classList.remove('is-leaving');
+      if (row) { row.classList.remove('is-leaving'); row.style.height = ''; }
       toast(error.message || 'Something went wrong');
       return null;
     } finally { if (after) after(); }
@@ -1369,8 +1422,19 @@
     if (t.hasAttribute('data-quest-clear')) return act('/api/dashboard/quests/clear', {});
     if (d.logFilter) return setLogFilter(d.logFilter);
     if (t.hasAttribute('data-log-more')) { t.outerHTML = `<div class="dash-loader is-inline" aria-label="Loading">${spinner()}</div>`; return load('character', {quiet: true, append: true}); }
-    if (d.formOpen) { state.forms[d.formOpen] = true; paint({force: true}); const first = root().querySelector(`[data-form="${d.formOpen}"] input:not([type=checkbox])`); if (first) first.focus(); return; }
-    if (d.formCancel) { delete state.forms[d.formCancel]; return paint({force: true}); }
+    if (d.formOpen) {
+      state.forms[d.formOpen] = true; paint({force: true});
+      const form = root().querySelector(`[data-form="${d.formOpen}"]`);
+      if (form) { form.classList.add('is-opening'); const first = form.querySelector('input:not([type=checkbox])'); if (first) first.focus(); }
+      return;
+    }
+    if (d.formCancel) {
+      // The form folds away before the card is redrawn without it.
+      const form = t.closest('form');
+      const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (form && !reduced) { form.classList.add('is-closing'); return setTimeout(() => { delete state.forms[d.formCancel]; paint({force: true}); }, 160); }
+      delete state.forms[d.formCancel]; return paint({force: true});
+    }
     if (d.habitToggle) {
       const on = d.on !== '1';
       t.classList.toggle('is-on', on); t.dataset.on = on ? '1' : '0'; t.setAttribute('aria-pressed', String(on));
@@ -1405,6 +1469,7 @@
       try { history.replaceState(history.state, '', location.pathname + location.search + '#jobs/' + d.jobsView); } catch (_) {}
       if (window.JobOSState) window.JobOSState.activeView = d.jobsView;
     }
+    if (d.notesScope && window.Notebook && typeof window.Notebook.openScope === 'function') return window.Notebook.openScope(d.notesScope);
     if (d.dashGo && typeof switchPanel === 'function') return switchPanel(d.dashGo);
     if (d.dashItem && typeof window.openWorkHubItem === 'function') return window.openWorkHubItem(d.dashItem, d.project || null, d.board || null);
     if (d.dashNote && window.Notebook && typeof window.Notebook.openFrom === 'function') return window.Notebook.openFrom(d.dashNote, null);
@@ -1455,7 +1520,7 @@
   document.addEventListener('scroll', (event) => {
     const target = event.target && event.target.matches && event.target.matches(SCROLLERS) ? event.target : null;
     if (target) updateMore(target);
-    const body = target && target.classList.contains('dash-card-body') ? target : null;
+    const body = target && target.matches('.dash-card-body,.rpg-log-list') ? target : null;
     if (!body) return;
     body.classList.add('is-scrolling');
     clearTimeout(body._scrollTimer);

@@ -198,7 +198,7 @@ def test_character_page_fits_a_phone(browser):
     assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
 
 
-def test_zeus_dashboard_sidepanel_content_sits_point_one_pixels_higher(browser):
+def test_zeus_dashboard_sidepanel_labels_and_level_badge_sit_a_pixel_lower(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("""() => {
         localStorage.setItem('hermes-skin', 'zeus-2');
@@ -237,11 +237,11 @@ def test_zeus_dashboard_sidepanel_content_sits_point_one_pixels_higher(browser):
         for item in measurements:
             assert item["lineHeight"] != "normal", item
             assert item["buttonTransform"] == "none", item
-            assert -0.15 <= item["textCenterOffset"] <= -0.05, item
+            # Labels and the level badge sit 1px below the icons' optical centre.
+            assert 0.85 <= item["textCenterOffset"] <= 0.95, item
             assert -0.15 <= item["iconCenterOffset"] <= -0.05, item
-            assert -0.3 <= item["contentGapDifference"] <= -0.1, item
             if item["label"] == "Character":
-                assert -0.15 <= item["badgeCenterOffset"] <= -0.05, item
+                assert 0.85 <= item["badgeCenterOffset"] <= 0.95, item
 
 
 def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):
@@ -405,7 +405,7 @@ def test_paired_cards_share_a_height_and_long_panels_scroll_inside(browser):
     ends = page.evaluate("""() => {
         const ach = document.querySelector('.rpg-panel:has(.rpg-achs)').getBoundingClientRect();
         const chron = document.querySelector('.rpg-panel.is-chronicle');
-        const body = chron.querySelector(':scope > .dash-card-body');
+        const body = chron.querySelector('.rpg-log-list');
         return {gap: Math.abs(ach.bottom - chron.getBoundingClientRect().bottom), scroll: getComputedStyle(body).overflowY};
     }""")
     assert ends["gap"] <= 1 and ends["scroll"] == "auto", ends
@@ -597,7 +597,8 @@ def test_sale_dates_use_the_themed_calendar_and_forms_line_up(browser):
     page.click(".dash-cal-days button:not([disabled]) >> nth=0")
     value = page.evaluate("() => document.querySelector('[data-form=sale] input[name=date]').value")
     assert len(value) == 10 and value.endswith("-01")
-    assert page.locator(".dash-cal").count() == 0
+    assert page.locator(".dash-cal.is-open").count() == 0  # it closes at once, then fades out
+    page.wait_for_function("() => !document.querySelector('.dash-cal')", polling=50, timeout=2000)
     heights = page.evaluate("() => [...document.querySelectorAll('[data-form=sale] :is(input[type=number],input[type=text],.dash-date-btn,.dash-btn)')].map(e => Math.round(e.getBoundingClientRect().height))")
     assert len(set(heights)) == 1
     page.click("[data-form-open=goal]")
@@ -740,12 +741,14 @@ def test_character_frame_only_chronicle_filters_stick_and_lists_keep_their_scrol
     cols = page.evaluate("() => [...document.querySelectorAll('.rpg-col')].map(c => [...c.querySelectorAll(':scope > .rpg-panel h3')].map(h => h.textContent.split(' ')[0]))")
     assert cols[1][-1] == "Chronicle" and cols[1].index("Realms") == len(cols[1]) - 2
     assert page.evaluate("() => document.querySelectorAll('.rpg-ach .dash-new').length") == 0
-    body = ".rpg-panel.is-chronicle > .dash-card-body"
+    body = ".rpg-panel.is-chronicle .rpg-log-list"
     page.wait_for_function("() => !document.getAnimations().some(a => a.animationName === 'dash-rise' && a.playState === 'running')", polling=50, timeout=5000)
     page.evaluate(f"() => {{ document.querySelector('{body}').scrollTop = 240; }}")
     top = page.evaluate(f"() => document.querySelector('{body}').getBoundingClientRect().top")
-    chips = page.evaluate("() => document.querySelector('.rpg-log-filters').getBoundingClientRect().top")
-    assert abs(chips - top) <= 1  # the filters stay at the top of the list while it scrolls
+    chips = page.evaluate("() => document.querySelector('.rpg-log-filters').getBoundingClientRect().bottom")
+    assert chips <= top + 0.5  # the filters sit above the scrolling list; no row slides under them
+    first = page.evaluate(f"() => {{ const l = document.querySelector('{body}'); return [...l.children].map(r => r.getBoundingClientRect()).find(r => r.bottom > l.getBoundingClientRect().top + 1).top; }}")
+    assert first < top  # the list really scrolled (rows above its top are clipped by it, not drawn over the chips)
     page.evaluate("() => window.HermesDashboard._state.data.character = {...window.HermesDashboard._state.data.character, streak: 999}")
     page.evaluate("() => window.HermesDashboard.refresh()")
     page.wait_for_function("() => !window.HermesDashboard._state.loading.character", polling=100, timeout=10000)
@@ -1036,3 +1039,63 @@ def test_jobs_side_panel_opens_the_career_dashboard_and_side_buttons_sit_on_the_
     assert page.evaluate("() => getComputedStyle(document.getElementById('panelChat') || document.querySelector('.panel-view:not(.active)')).display") == "none"
     page.click("#panelJobs .hermes-cli-interact-btn")
     page.wait_for_function("() => window.HermesDashboard._state.tab === 'career' && document.querySelector('.dash-head h1')?.textContent === 'CAREER DASHBOARD'", polling=100, timeout=10000)
+
+
+def test_a_new_habit_rises_in_its_strip_fills_the_row_and_today_comes_first(browser):
+    page = _dashboard(browser, "personal", viewport={"width": 1470, "height": 850})
+    page.wait_for_selector("[data-form-open=habit]", timeout=15000)
+    name = f"Stretch {uuid.uuid4().hex[:4]}"
+    page.evaluate("() => document.querySelector('[data-form-open=habit]').click()")
+    page.wait_for_selector("form[data-form=habit].is-opening", timeout=5000)  # the form drops in
+    page.fill("form[data-form=habit] input[name=name]", name)
+    page.evaluate("() => document.querySelector('form[data-form=habit] [type=submit]').click()")
+    page.wait_for_function(f"() => [...document.querySelectorAll('.dash-habit.is-arriving')].some(h => h.textContent.includes('{name}'))", polling=20, timeout=10000)
+    # Only the new row animates in; the others were already there.
+    assert page.evaluate("() => document.querySelectorAll('.dash-habit.is-arriving').length") == 1
+    strip = page.evaluate(f"""() => {{
+        const h = [...document.querySelectorAll('.dash-habit')].find(x => x.textContent.includes('{name}'));
+        const heat = h.querySelector('.dash-heat'), r = heat.getBoundingClientRect(), cs = getComputedStyle(heat);
+        const cells = [...heat.children].map(i => i.getBoundingClientRect());
+        return {{inner: [r.left + parseFloat(cs.paddingLeft), r.right - parseFloat(cs.paddingRight)], first: cells[0].left, last: cells[cells.length - 1].right}};
+    }}""")
+    # The 21 days span the whole track, not three quarters of it.
+    assert strip["last"] >= strip["inner"][1] - 2, strip
+    page.evaluate(f"() => [...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}')).querySelector('[data-habit-toggle]').click()")
+    page.wait_for_function(f"() => [...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}'))?.querySelector('.dash-habit-check.is-on')", polling=100, timeout=10000)
+    page.wait_for_function(f"() => [...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}'))?.querySelector('.dash-heat i.on')", polling=100, timeout=10000)
+    lit = page.evaluate(f"() => [...[...document.querySelectorAll('.dash-habit')].find(h => h.textContent.includes('{name}')).querySelectorAll('.dash-heat i')].map(i => i.classList.contains('on'))")
+    assert lit[0] and not any(lit[1:]), lit  # today's block lights at the left end
+
+
+def test_a_removed_row_folds_away_before_the_list_redraws(browser):
+    name = f"Fold {uuid.uuid4().hex[:4]}"
+    _post("/api/dashboard/learning/add", {"title": name, "kind": "book", "area": "personal"})
+    page = _dashboard(browser, "personal", viewport={"width": 1470, "height": 850})
+    page.wait_for_function(f"() => document.querySelector('.dash-body')?.textContent.includes('{name}')", polling=100, timeout=15000)
+    page.evaluate(f"""() => {{
+        const row = [...document.querySelectorAll('.dash-row')].find(r => r.textContent.includes('{name}'));
+        window.__row = row; window.__h = row.getBoundingClientRect().height;
+        row.querySelector('[data-learning-remove]').click();
+    }}""")
+    page.wait_for_timeout(240)
+    mid = page.evaluate("() => [window.__row.isConnected, getComputedStyle(window.__row).opacity, window.__row.getBoundingClientRect().height, window.__h]")
+    assert mid[0] and float(mid[1]) < 0.1 and mid[2] < mid[3] / 2, mid
+    page.wait_for_function(f"() => !document.querySelector('.dash-body').textContent.includes('{name}')", polling=100, timeout=10000)
+
+
+def test_sidebar_pick_glides_the_highlight_and_open_notes_lands_on_general(browser):
+    page = _dashboard(browser, "personal", viewport={"width": 1470, "height": 850})
+    page.wait_for_selector("#dashboardSidebar .side-menu-item.active[data-dash-tab=personal]", timeout=15000)
+    page.evaluate("""() => { window.__glides = 0; new MutationObserver((m) => m.forEach((r) => r.addedNodes.forEach((n) => {
+        if (n.classList && n.classList.contains('sidebar-highlight-glide')) window.__glides++; }))).observe(document.body, {childList: true, subtree: true}); }""")
+    page.evaluate("() => document.querySelector('#dashboardSidebar [data-dash-tab=career]').click()")
+    page.wait_for_function("() => window.__glides > 0", polling=20, timeout=5000)
+    # Leave the Notes page somewhere else (Pinned), then come back through the card.
+    page.evaluate("async () => { await switchPanel('notebook'); }")
+    page.wait_for_function("() => window.Notebook && window.Notebook._state", polling=100, timeout=15000)
+    page.evaluate("() => { window.Notebook._state.scope = {kind: 'pinned', id: null}; }")
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('personal'); }")
+    button = page.wait_for_selector("[data-dash-go=notebook][data-notes-scope=general]", timeout=15000)
+    button.evaluate("el => el.click()")
+    page.wait_for_function("() => window.Notebook._state.scope.kind === 'general' && window.Notebook._state.side === 'notes'", polling=100, timeout=15000)
+    page.wait_for_function("() => document.querySelector('.rail-btn.active')?.dataset.panel === 'notebook'", polling=100, timeout=15000)

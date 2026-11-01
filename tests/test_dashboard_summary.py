@@ -83,3 +83,19 @@ def test_unknown_tab_falls_back_to_personal(monkeypatch):
 
     monkeypatch.setattr(dashboard, "personal", lambda: {"marker": True})
     assert dashboard.summary("../../etc")["tab"] == "personal"
+
+
+def test_recent_notes_are_read_once_for_a_burst_of_refreshes(monkeypatch):
+    """Ticking a habit re-reads the Personal summary; the notes list (a whole
+    vault walk) is served from a short cache instead of read every time."""
+    from api import dashboard, notebook, notebook_vault
+
+    calls = []
+    monkeypatch.setattr(notebook_vault, "enabled", lambda: False)
+    monkeypatch.setattr(notebook, "bootstrap", lambda: calls.append(1) or {"notes": [{"id": "n1", "title": "One", "updated_at": 5}]})
+    monkeypatch.setattr(dashboard, "_notes_cache", {"key": None, "at": 0.0, "notes": None})
+    first = dashboard._recent_notes()
+    first[0]["title"] = "changed by a caller"
+    second = dashboard._recent_notes()
+    assert len(calls) == 1
+    assert second == [{"id": "n1", "title": "One", "updated_at": 5, "pinned": False}]

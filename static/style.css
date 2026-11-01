@@ -14239,8 +14239,13 @@ body[data-instance-label]::after{content:attr(data-instance-label);position:fixe
 /* ── Dashboard round 11 ────────────────────────────────────────────────────── */
 /* Rail: the Dashboard mark (icons/maindashboard.png) drawn as a mask like the
    other page marks, at the size the old line icon covered. */
-.page-nav-mark--dashboard{width:16px;height:16px;mask-image:url("nav-dashboard-mark.png");-webkit-mask-image:url("nav-dashboard-mark.png");}
-@media (max-width:700px){.sidebar-nav .page-nav-mark--dashboard{width:15px;height:15px;}}
+/* Dashboard's mark is drawn in full colour (a gold crest), so it is painted
+   as an image, not a currentColor mask; it rests a little dimmer than when
+   its page is open or the button is hovered. */
+.page-nav-mark.page-nav-mark--dashboard{width:18px;height:18px;background:url("nav-dashboard-icon.png") center / contain no-repeat;mask:none;-webkit-mask:none;opacity:.78;}
+:is(.rail-btn,.nav-tab,.workspace-panel-tab):is(.active,:hover,:focus-visible) .page-nav-mark--dashboard{opacity:1;}
+.nav-marks-pending .page-nav-mark--dashboard{opacity:0;}
+@media (max-width:700px){.sidebar-nav .page-nav-mark--dashboard{width:17px;height:17px;}}
 
 /* Small boxes inside the level card (attribute rows, evolution, the four
    badges): a thinner frame in a darker gold, 1px per pixel: a dark outline, a
@@ -16319,3 +16324,60 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* A link styled as a button (Open posting) takes a button's line height, so
    it stands as tall as the buttons beside it. */
 #jobOsRoot a.job-os-btn{line-height:1.35;}
+
+/* ── Dashboard polish (13" laptop pass) ─────────────────────────────────── */
+/* Side panel: labels and the level badge sit 1px lower; the badge is a
+   rounded rectangle with its digits 1px higher inside it. */
+:root[data-skin] #dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge),
+#dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge){transform:translateY(.9px);}
+:root[data-skin] .dash-level-badge,.dash-level-badge{border-radius:4px;padding-top:1px;padding-bottom:3px;}
+/* Character page: the codes, rank and counters read 1px high in the pixel
+   face; nudge them, not their boxes. */
+.dash.is-rpg :is(.rpg-rank,.rpg-xpline > span:last-child,.rpg-stat > strong,.rpg-evo-head small){position:relative;top:-1px;}
+/* Level card: the four counters read from the left like the rows above. */
+.dash.is-rpg .rpg-badges > div{justify-content:flex-start!important;}
+@container rpg-badges (max-width:630px){
+  .dash.is-rpg .rpg-badges > div{align-items:flex-start;text-align:left;padding-left:12px;}
+  .dash.is-rpg .rpg-badge-copy{align-items:flex-start;}
+  .dash.is-rpg .rpg-badge-copy small{text-align:left;}
+}
+@media (max-width:620px){
+  .dash.is-rpg .rpg-badges > div{align-items:flex-start;text-align:left;}
+  .dash.is-rpg .rpg-badge-copy{align-items:flex-start;}
+  .dash.is-rpg .rpg-badge-copy small{text-align:left;}
+}
+/* Evolution: the arrows centre on the art box (where the loading ring
+   sits), not on the whole card with its name and caption below. */
+.dash.is-rpg .rpg-evo-stage{position:relative;}
+.dash.is-rpg .rpg-evo-stage > .rpg-evo-arrow[data-evo-step="-1"]{left:0;}
+.dash.is-rpg .rpg-evo-stage > .rpg-evo-arrow[data-evo-step="1"]{right:0;}
+/* Chronicle: the filters stay put; only the list under them scrolls. */
+.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body{display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters{position:static;flex:none;padding:0 0 8px;}
+.dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--rpg-frame,var(--border2)) 70%,transparent) transparent;}
+.dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list > .dash-row:first-child{border-top:0;}
+.dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list > [data-log-more]{display:flex;margin:10px auto 4px;}
+.dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list > .dash-loader.is-inline{display:flex;justify-content:center;width:100%;}
+/* Habits: the 21-day strip fills its track, today first. */
+.dash.is-rpg .dash-habit .dash-heat{grid-template-columns:repeat(21,minmax(0,1fr));grid-auto-flow:row;}
+/* Card buttons: a lighter step under the face. */
+.dash.is-rpg .dash-btn,.dash-picker .dash-btn{box-shadow:0 2px 0 #7a5810,inset 0 1px 0 rgba(255,255,255,.4);}
+.dash.is-rpg .dash-btn.is-ghost{box-shadow:0 2px 0 color-mix(in srgb,var(--rpg-frame) 80%,#000);}
+.dash.is-rpg .dash-btn.is-danger{box-shadow:0 2px 0 #7f1d1d,inset 0 1px 0 rgba(255,255,255,.3);}
+.dash.is-rpg .dash-btn:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 0 #7a5810;}
+/* Rows: a new one rises in; a removed one fades, then folds its height. */
+.dash.is-rpg .is-arriving:is(.dash-quest-row,.dash-habit,.dash-goal,.rpg-reward,.dash-row){animation:dash-row-in .38s cubic-bezier(.22,1,.36,1) both;}
+@keyframes dash-row-in{from{opacity:0;transform:translateY(-6px);background:color-mix(in srgb,var(--rpg-gold,#e0a91c) 16%,transparent);}to{opacity:1;transform:none;}}
+.dash.is-rpg .is-leaving:is(.dash-quest-row,.dash-habit,.dash-goal,.rpg-reward,.dash-row){overflow:hidden;opacity:0;transform:translateX(12px);height:0!important;min-height:0;padding-top:0;padding-bottom:0;margin-top:0;margin-bottom:0;border-width:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease,height .22s ease .08s,padding .22s ease .08s,margin .22s ease .08s,border-width .22s ease .08s;}
+/* The sale date calendar opens and closes like the other pop-ups. */
+.dash-cal.is-closing{opacity:0!important;transform:translateY(-4px)!important;pointer-events:none;}
+@media (prefers-reduced-motion:reduce){
+  .dash.is-rpg .is-arriving:is(.dash-quest-row,.dash-habit,.dash-goal,.rpg-reward,.dash-row){animation:none;}
+  .dash.is-rpg .is-leaving:is(.dash-quest-row,.dash-habit,.dash-goal,.rpg-reward,.dash-row){transition:none;}
+}
+/* Inline add forms drop in when opened and lift away on Cancel. */
+.dash.is-rpg .dash-inline-form.is-opening{animation:dash-form-in .22s cubic-bezier(.22,1,.36,1) both;}
+.dash.is-rpg .dash-inline-form.is-closing{opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .15s ease,transform .15s ease;}
+@media (prefers-reduced-motion:reduce){.dash.is-rpg .dash-inline-form.is-opening{animation:none;}}
+/* Sale form: the amount and product text sit on the same line as Today. */
+.dash.is-rpg .dash-inline-form[data-form="sale"] input:is([name="amount"],[name="product"]){padding-top:2px;}

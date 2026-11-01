@@ -2257,7 +2257,17 @@
     else await mount();
   }
 
-  window.Notebook = {mount, unmount, refresh, openFrom, vaultChanged, _state: S, _save: save, _upload: (file) => uploadFile(file), _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
+  // Open the Notes page on one of the main view's scopes (General, Pinned...),
+  // as the Dashboard's "Open Notes" does.
+  async function openScope(kind) {
+    if (S.side !== 'notes') useSide('notes');
+    S.scope = {kind: ['all', 'general', 'pinned', 'favorites', 'trash'].includes(kind) ? kind : 'general', id: null};
+    S.search = ''; S.searchResults = null; S.tagFilter = null;
+    if (typeof window.switchPanel === 'function') await window.switchPanel('notebook');
+    else await mount();
+  }
+
+  window.Notebook = {mount, unmount, refresh, openFrom, openScope, vaultChanged, _state: S, _save: save, _upload: (file) => uploadFile(file), _widths: {write: () => editorMarkdown(), read: (blocks) => withMediaBlocks(withImageWidths(blocks))}};
   // Test/automation hook: the live editor controller (null when no note is open).
   Object.defineProperty(window.Notebook, 'editor', {get: () => editorCtl});
 }());
