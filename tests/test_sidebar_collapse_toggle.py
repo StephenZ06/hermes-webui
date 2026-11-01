@@ -62,10 +62,10 @@ class TestSidebarCollapseCSS:
             "Flash-prevention rule must set transition:none to avoid initial slide"
 
     def test_sidebar_has_transition(self):
-        # Find the desktop .sidebar rule (the one with width:300px) and verify
+        # Find the desktop .sidebar rule (the one with the width clamp) and verify
         # it has the slide transition
-        m = re.search(r"\.sidebar\{width:300px[^}]*\}", CSS)
-        assert m, "Desktop .sidebar{width:300px;...} block not found"
+        m = re.search(r"\.sidebar\{width:clamp\([^}]*\}", CSS)
+        assert m, "Desktop .sidebar{width:clamp(...);...} block not found"
         assert "transition:" in m.group(0), \
             "Desktop .sidebar rule must have a transition for collapse animation"
 

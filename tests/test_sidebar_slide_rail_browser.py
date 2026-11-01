@@ -65,7 +65,7 @@ def test_the_side_panel_has_one_fixed_width_on_every_page():
             saved = page.evaluate("() => localStorage.getItem('hermes-sidebar-w')")
         finally:
             browser.close()
-    assert set(widths.values()) == {300}, widths
+    assert set(widths.values()) == {280}, widths  # 1440px window: 12.5vw + 100px
     assert not handle, "no drag handle on the side panel"
     assert saved is None, "a width saved by the old handle is dropped"
 

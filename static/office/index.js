@@ -88,6 +88,10 @@ let _lastTaskStatusDoneCount = null;
 let _taskCompletionTimer = null;
 let _tasksCollapsed = readTasksCollapsed();
 let _resizeObserver = null;
+// Watches the Task Status card: folding it, or a list that grows, changes how
+// much of the stage's corner it covers, and the overview re-frames to match.
+let _tasksObserver = null;
+let _tasksRefitTimer = null;
 let _themeObserver = null;
 let _visibilityHandler = null;
 let _unsubscribe = null;
@@ -2259,6 +2263,11 @@ function teardownObservers() {
     try { _resizeObserver.disconnect(); } catch (_err) { /* already gone */ }
     _resizeObserver = null;
   }
+  if (_tasksObserver) {
+    try { _tasksObserver.disconnect(); } catch (_err) { /* already gone */ }
+    _tasksObserver = null;
+  }
+  if (_tasksRefitTimer) { clearTimeout(_tasksRefitTimer); _tasksRefitTimer = null; }
   if (_themeObserver) {
     try { _themeObserver.disconnect(); } catch (_err) { /* already gone */ }
     _themeObserver = null;
@@ -2340,6 +2349,17 @@ function attachLiveHooks(container) {
       repositionDepartmentCards();
     });
     _resizeObserver.observe(container);
+    if (_tasksEl) {
+      // The card's fold animates its height every frame; re-frame once, when it has settled.
+      _tasksObserver = new ResizeObserver(() => {
+        if (_tasksRefitTimer) clearTimeout(_tasksRefitTimer);
+        _tasksRefitTimer = setTimeout(() => {
+          _tasksRefitTimer = null;
+          if (_scene && typeof _scene.refitOverview === 'function' && !stageHidden()) _scene.refitOverview();
+        }, 140);
+      });
+      _tasksObserver.observe(_tasksEl);
+    }
   }
 
   // The app toggles `dark` on <html> when the theme changes; repaint the
@@ -2658,6 +2678,22 @@ function mount(container) {
         if (measured) return measured + 28;
         const stage = _canvas ? _canvas.getBoundingClientRect().width : 0;
         return stage ? Math.min(280, stage - 28) + 28 : 0;
+      },
+      // The corner the Task Status card covers (open or folded), from the
+      // stage's top-right, with the card's 14px margin. The overview frames
+      // the floor clear of it when a pod would sit underneath.
+      overviewObstacle: () => {
+        if (!_tasksEl || !_canvas || !_canvas.parentElement) return null;
+        if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) return null; // a sheet along the bottom there
+        const card = _tasksEl.getBoundingClientRect();
+        const stage = _canvas.parentElement.getBoundingClientRect();
+        if (!card.width || !card.height) return null;
+        // The department cards' size as drawn (they scale with the zoom).
+        const dept = [..._deptCardEls.values()].map(el => el.getBoundingClientRect()).find(r => r.width > 0);
+        return {
+          width: stage.right - card.left + 14, height: card.bottom - stage.top + 14,
+          label: dept ? { width: dept.width, height: dept.height } : { width: 156, height: 82 },
+        };
       },
     });
   } catch (err) {

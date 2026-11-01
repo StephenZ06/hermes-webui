@@ -197,6 +197,26 @@ For UI changes, verify the relevant states:
 Controls should remain usable at touch sizes, and mobile navigation should not
 steal chat height unnecessarily.
 
+### Laptops (short and narrow desktop windows)
+
+A 13" laptop browser leaves roughly 1280-1470px of width and 650-860px of
+height once the browser's own toolbars are counted. Check 1470x850, 1470x750,
+1366x768 and 1280x720 as well as a desktop monitor.
+
+- The icon rail must reach Settings at any height: its buttons shrink from
+  36px to 28px (`flex:0 1 36px`) before the rail is allowed to scroll (below
+  ~690px tall), and its gaps tighten under 860px.
+- The side panel is `clamp(268px, 12.5vw + 100px, 300px)`: full width from
+  1600px, giving up to 32px to the page on smaller windows. Content in it must
+  hold at 268px (Session usage title row, Office page buttons stack their icon
+  above the label below 1400px).
+- Office: when a platform or its department card would sit under the Task
+  Status card, the overview frames the floor in the width left of the card
+  (`overviewFor` / `podUnderCard` in `static/office/scene.js`); otherwise it
+  stays centred. Folding or growing the card re-frames it.
+- Dialogs use `max-height: calc(100dvh - 48px)` with a scrolling body, so the
+  footer actions stay on screen in a 720px window.
+
 ### Phones (installed iPhone app first)
 
 The reference device is an iPhone 15 Pro Max (430×932) running the app from

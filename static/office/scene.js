@@ -85,6 +85,14 @@ const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 3.2;
 // Breathing room left around the office when the camera frames it.
 const FRAME_MARGIN = 1.15;
+// The height a department card is pinned at above its pod's centre (see
+// podScreenRect), so the overview can tell where the card will stand.
+const POD_CARD_ANCHOR_Y = 8;
+// Roughly the tallest thing on a platform (shelves), for its drawn outline.
+const POD_ART_HEIGHT = 5;
+// How deep a platform may reach under the Task Status card's corner before
+// the overview frames the floor beside the card instead.
+const OVERVIEW_OVERLAP_SLACK_PX = 16;
 // On a phone-wide stage the office is framed this much closer (see zoomForRadius).
 const PHONE_FRAME_BOOST = 1.24;
 // Extra world units of headroom for the parts that stand up off the floor —
@@ -1500,9 +1508,7 @@ export function createOfficeScene(canvas, options) {
     ensureGroundCovers(framedRadius);
     framedCenter = { x: next.x, z: next.z };
     fitShadowToOffice();
-    overview.x = framedCenter.x;
-    overview.z = framedCenter.z;
-    overview.zoom = overviewZoom(viewWidth || lastWidth, lastHeight);
+    Object.assign(overview, overviewFor(viewWidth || lastWidth, lastHeight));
     // A camera the user has taken control of — focused on a desk, or zoomed by
     // hand — must not be yanked back because another subagent spawned.
     if (focusedId || manualZoom) return;
@@ -1521,22 +1527,35 @@ export function createOfficeScene(canvas, options) {
    */
   function frameExtent(pods) {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const toScreen = (x, y, z) => ({ x: x * SCREEN_RIGHT.x + z * SCREEN_RIGHT.z, y: x * SCREEN_UP.x + y * SCREEN_UP.y + z * SCREEN_UP.z });
+    // Each platform's outline (the screen-plane points of its block) and the
+    // point its department card stands on, for podUnderCard().
+    const shapes = [];
+    let shape = null;
     const add = (x, y, z) => {
-      const sx = x * SCREEN_RIGHT.x + z * SCREEN_RIGHT.z;
-      const sy = x * SCREEN_UP.x + y * SCREEN_UP.y + z * SCREEN_UP.z;
-      minX = Math.min(minX, sx); maxX = Math.max(maxX, sx);
-      minY = Math.min(minY, sy); maxY = Math.max(maxY, sy);
+      const p = toScreen(x, y, z);
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
     };
+    const startShape = (x, z) => { shape = { points: [], anchor: toScreen(x, POD_CARD_ANCHOR_Y, z) }; shapes.push(shape); };
     // From the bottom of a platform's block to the top of what stands on it.
-    const column = (x, z) => { add(x, GROUND_Y, z); add(x, FRAME_HEADROOM, z); };
+    // The outline kept per platform stops at what is drawn on it (shelves,
+    // partitions), not at the framing's standing headroom.
+    const column = (x, z) => {
+      add(x, GROUND_Y, z); add(x, FRAME_HEADROOM, z);
+      if (shape) shape.points.push(toScreen(x, GROUND_Y, z), toScreen(x, POD_ART_HEIGHT, z));
+    };
+    startShape(0, 0);
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
       column(Math.cos(a) * CONDUCTOR_RADIUS, Math.sin(a) * CONDUCTOR_RADIUS);
     }
     pods.forEach(pod => {
       const hw = ((pod.width || 0) + POD_SLAB_PADDING) / 2, hd = ((pod.depth || 0) + POD_SLAB_PADDING) / 2;
+      startShape(pod.x, pod.z);
       [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].forEach(([dx, dz]) => column(pod.x + dx, pod.z + dz));
     });
+    shape = null;
     if (!Number.isFinite(minX)) return null;
     // The floor point under the middle of that box: it projects to the
     // canvas centre, where the camera target sits.
@@ -1547,6 +1566,8 @@ export function createOfficeScene(canvas, options) {
       center: { x: (along + across) / 2, z: (along - across) / 2 },
       halfX: (maxX - minX) / 2,
       halfY: (maxY - minY) / 2,
+      screen: { x: cx, y: cy },
+      shapes,
     };
   }
 
@@ -1563,6 +1584,95 @@ export function createOfficeScene(canvas, options) {
       halfWidth / (framedExtent.halfX * FRAME_MARGIN),
       FRUSTUM_HALF_HEIGHT / (framedExtent.halfY * FRAME_MARGIN),
     );
+  }
+
+  /**
+   * The overview camera for a stage this size. The Task Status card floats on
+   * the stage's top-right corner; on a laptop-sized stage the centred floor
+   * puts a pod (and its label) under it. Only then is the floor framed into
+   * the width left of the card and centred there -- a stage wide enough to
+   * clear the card keeps the centred picture.
+   */
+  function overviewFor(width, height) {
+    const centred = { x: framedCenter.x, z: framedCenter.z, zoom: overviewZoom(width, height) };
+    const card = typeof config.overviewObstacle === 'function' ? config.overviewObstacle() : null;
+    if (!card || !(card.width > 0) || card.width > width * 0.45 || !framedExtent) return centred;
+    if (!podUnderCard(card, width, height, centred.zoom)) return centred;
+    const zoom = overviewZoom(width - card.width, height);
+    const pixelsPerUnit = (zoom * height) / (2 * FRUSTUM_HALF_HEIGHT);
+    const shift = pixelsPerUnit > 0 ? (card.width / 2) / pixelsPerUnit : 0;
+    return { x: framedCenter.x + SCREEN_RIGHT.x * shift, z: framedCenter.z + SCREEN_RIGHT.z * shift, zoom };
+  }
+
+  /**
+   * Whether the centred floor puts a platform, or the department card that
+   * stands on it, under the corner card (stage pixels: `card.width` in from
+   * the right edge, `card.height` down from the top).
+   */
+  function podUnderCard(card, width, height, zoom) {
+    const pixelsPerUnit = (zoom * height) / (2 * FRUSTUM_HALF_HEIGHT);
+    const { screen, shapes } = framedExtent;
+    const px = p => ({ x: width / 2 + (p.x - screen.x) * pixelsPerUnit, y: height / 2 - (p.y - screen.y) * pixelsPerUnit });
+    const left = width - card.width, bottom = card.height;
+    const label = card.label || { width: 0, height: 0 };
+    return (shapes || []).some(sh => {
+      const a = px(sh.anchor);
+      if (label.width && a.x + label.width / 2 > left && a.y - label.height < bottom) return true;
+      // A railing brushing the card's corner is fine; reframe only for a real overlap.
+      return hullMeetsCorner(sh.points.map(px), left + OVERVIEW_OVERLAP_SLACK_PX, bottom - OVERVIEW_OVERLAP_SLACK_PX);
+    });
+  }
+
+  /**
+   * Whether the convex outline of `points` overlaps the corner box x >= left,
+   * y <= bottom (separating-axis test: the box's two axes, then each edge of
+   * the outline).
+   */
+  function hullMeetsCorner(points, left, bottom) {
+    if (!points.length) return false;
+    if (Math.max(...points.map(p => p.x)) <= left || Math.min(...points.map(p => p.y)) >= bottom) return false;
+    const hull = convexHull(points);
+    const mid = { x: hull.reduce((t, p) => t + p.x, 0) / hull.length, y: hull.reduce((t, p) => t + p.y, 0) / hull.length };
+    const corners = [{ x: left, y: -1e6 }, { x: 1e6, y: -1e6 }, { x: 1e6, y: bottom }, { x: left, y: bottom }];
+    for (let i = 0; i < hull.length; i++) {
+      const a = hull[i], b = hull[(i + 1) % hull.length];
+      const side = p => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const inside = Math.sign(side(mid));
+      // Every corner of the box on the far side of this edge: they are apart.
+      if (inside && corners.every(c => side(c) * inside < 0)) return false;
+    }
+    return true;
+  }
+
+  /** Andrew's monotone chain; points in any order, hull in order. */
+  function convexHull(points) {
+    const pts = points.slice().sort((p, q) => p.x - q.x || p.y - q.y);
+    if (pts.length < 3) return pts;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const half = list => {
+      const out = [];
+      list.forEach(p => {
+        while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+        out.push(p);
+      });
+      out.pop();
+      return out;
+    };
+    return half(pts).concat(half(pts.slice().reverse()));
+  }
+
+  /**
+   * Re-frame the overview after something on the stage changed size without
+   * the canvas changing (the Task Status card folding or growing). A camera
+   * the user is driving keeps its place.
+   */
+  function refitOverview() {
+    if (!lastWidth || !lastHeight) return;
+    const next = overviewFor(viewWidth || lastWidth, lastHeight);
+    const same = Math.abs(next.x - overview.x) < 1e-3 && Math.abs(next.z - overview.z) < 1e-3 && Math.abs(next.zoom - overview.zoom) < 1e-4;
+    Object.assign(overview, next);
+    if (same || focusedId || manualZoom || layoutMotion) return;
+    startTween(overview);
   }
 
   function zoomForRadius(width, height, radius) {
@@ -1739,7 +1849,7 @@ export function createOfficeScene(canvas, options) {
       : pods.get(cluster === '__subagents__' ? '__conductor__' : cluster);
     if (!pod || !canvas) return null;
     camera.updateMatrixWorld();
-    _podScreenV.set(pod.group.position.x, 8, pod.group.position.z);
+    _podScreenV.set(pod.group.position.x, POD_CARD_ANCHOR_Y, pod.group.position.z);
     _podScreenV.project(camera);
     if (_podScreenV.z > 1) return null;
     // Relative to the stage, not the canvas: the canvas can be wider than the
@@ -2102,7 +2212,7 @@ export function createOfficeScene(canvas, options) {
     const visible = Math.max(1, Math.min(width, stageWidth || width));
     const bufferChanged = width !== lastWidth || height !== lastHeight;
     if (!bufferChanged && visible === viewWidth) return false;
-    const previousOverviewZoom = overview.zoom;
+    const previousOverview = { x: overview.x, z: overview.z, zoom: overview.zoom };
     viewWidth = visible;
     if (bufferChanged) {
       lastWidth = width;
@@ -2114,12 +2224,13 @@ export function createOfficeScene(canvas, options) {
     }
     // The framed zoom fits the floor into what is visible. A camera the user
     // is driving keeps its own zoom.
-    overview.zoom = overviewZoom(viewWidth, height);
+    Object.assign(overview, overviewFor(viewWidth, height));
     const following = !focusedId && !manualZoom && !tween;
     // A sidebar slide changes only the visible width. When that leaves the
     // picture as it was (same buffer, and the framed zoom is height-limited
     // or the camera is the user's), there is nothing to redraw.
-    if (!bufferChanged && (!following || overview.zoom === previousOverviewZoom)) return false;
+    const overviewKept = overview.zoom === previousOverview.zoom && overview.x === previousOverview.x && overview.z === previousOverview.z;
+    if (!bufferChanged && (!following || overviewKept)) return false;
     if (following) applyView(overview);
     else applyCamera(width, height);
     return true;
@@ -2154,9 +2265,23 @@ export function createOfficeScene(canvas, options) {
     const stageWidth = canvas.parentElement ? canvas.parentElement.clientWidth : width;
     const visible = Math.max(1, Math.min(width, stageWidth || width));
     const following = !focusedId && !manualZoom && !tween;
-    const scale = following && view.zoom > 0 ? overviewZoom(visible, height) / view.zoom : 1;
-    canvas.style.transform = Math.abs(scale - 1) < 1e-4 ? '' : 'translateX(-50%) scale(' + scale.toFixed(5) + ')';
+    const next = following ? overviewFor(visible, height) : null;
+    const scale = next && view.zoom > 0 ? next.zoom / view.zoom : 1;
+    // A floor framed beside the Task Status card sits off the canvas centre;
+    // scaling about the centre would move it, so slide the preview to where
+    // the real frame will put it.
+    const offset = next ? floorOffsetPx(next, height) - scale * floorOffsetPx(view, height) : 0;
+    const slide = Math.abs(offset) < 0.5 ? '' : ' translateX(' + offset.toFixed(2) + 'px)';
+    canvas.style.transform = Math.abs(scale - 1) < 1e-4 && !slide ? ''
+      : 'translateX(-50%)' + slide + ' scale(' + scale.toFixed(5) + ')';
   }
+  /** Where the framed floor's centre sits across the canvas, in pixels from its middle, for a camera. */
+  function floorOffsetPx(cam, height) {
+    const pixelsPerUnit = (cam.zoom * height) / (2 * FRUSTUM_HALF_HEIGHT);
+    const across = (framedCenter.x - cam.x) * SCREEN_RIGHT.x + (framedCenter.z - cam.z) * SCREEN_RIGHT.z;
+    return across * pixelsPerUnit;
+  }
+
   // The canvas box is held at its size from the start of the motion, so the
   // browser never stretches the drawing buffer while the stage resizes; only
   // the uniform preview scale changes. It is anchored to the stage's bottom so
@@ -2600,7 +2725,7 @@ export function createOfficeScene(canvas, options) {
     start, stop, resize, renderNow, dispose, isRunning, applyTheme, syncOffice,
     beginLayoutMotion, endLayoutMotion, isInLayoutMotion: () => layoutMotion,
     getRenderQuality: () => ({ pixelRatio: renderer.getPixelRatio(), preferred: preferredPixelRatio, samples: composerTarget.samples }),
-    workerIdAt, focusOnWorker, focusOnPod, resetView, isFocused, getView,
+    workerIdAt, focusOnWorker, focusOnPod, resetView, refitOverview, isFocused, getView,
     podScreenRect, scene, setOutletTransition, playIntro, playWake,
   };
 }
