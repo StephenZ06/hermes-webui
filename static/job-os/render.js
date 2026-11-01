@@ -1606,7 +1606,7 @@
       const active = view === 'pipeline' && state.focusColumn === key;
       return `<button type="button" class="side-menu-item job-os-stage${active ? ' active' : ''}${n ? '' : ' is-empty'}" data-job-os-stage="${key}" data-col="${key}" title="Open ${esc(label)} on the board"><span class="job-os-stage-dot" aria-hidden="true"></span><span class="side-menu-label">${esc(label)}</span><span class="job-os-side-count">${n}</span></button>`;
     }).join('');
-    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages">${stages}</div></div>`;
+    return `${apifyWidget(state.apifyUsage)}<nav class="side-menu job-os-side-nav" aria-label="Job OS sections" data-mi-tabs="y">${nav}</nav><div class="job-os-side-section"><div class="job-os-side-heading">Pipeline stages</div><div class="side-menu job-os-side-stages" data-mi-tabs="y">${stages}</div></div>`;
   }
   window.JobOSRender = {shell, sidebar, runBody, matchQueue, STATUS_GROUPS, settingsPageOf, skillsGainedView, LOADING, dashboardLoading};
 }());

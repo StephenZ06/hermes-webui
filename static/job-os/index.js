@@ -390,6 +390,23 @@
     if (changed) bindPage(target);
     afterPipelineRender(target, changed);
   }
+  // A source tab re-sorts the cards rather than swapping them: a job shown on
+  // both tabs glides to its new place, a card whose slot is taken by another
+  // job cross-fades its text, extra cards rise in and the ones leaving fade
+  // where they were (ui.js playListItemChange, the same motion as the Notes list).
+  const CARD_MOTION = {
+    key: (node) => node.dataset.boardJob || node.dataset.jobId,
+    group: (node) => { const col = node.closest('.pipe-col'); return col ? col.dataset.col : 'list'; },
+    clip: (node) => node.closest('.pipe-col-cards') || document.getElementById('mainJobs') || node.parentElement,
+  };
+  const shownCards = (target) => [...target.querySelectorAll('.pipe-card[data-board-job], .job-os-list > .job-os-job-card[data-job-id]')];
+  function repaintShuffled() {
+    const target = root();
+    if (!target || typeof window.noteShownListItems !== 'function') return repaint();
+    const before = window.noteShownListItems(shownCards(target), CARD_MOTION);
+    repaint();
+    window.playListItemChange(before, shownCards(target), CARD_MOTION);
+  }
   function bindPage(target) {
     const state = window.JobOSState;
     if (window.Micro) { window.Micro.scan(target); window.Micro.scan(sidebarRoot()); }
@@ -918,6 +935,22 @@
       try { await window.JobOSApi.fetchDetails(job.id); }
       catch (error) { if (typeof window.showToast === 'function') window.showToast(error.message || 'Could not read that posting'); }
       return refresh();
+    }
+    if (name === 'card-tailor') {
+      // This job alone, or every job in its column that can be tailored.
+      const col = el.closest('.pipe-col');
+      const peers = col ? [...col.querySelectorAll('[data-job-os-action="card-tailor"]:not(:disabled)')].map((b) => b.dataset.jobId) : [];
+      const pick = peers.length > 1 ? await pickTailor(el, peers.length, col.querySelector('.pipe-col-head h3')) : 'one';
+      if (!pick) return undefined;
+      if (pick === 'all') {
+        el.disabled = true;
+        let started = 0, failed = 0;
+        for (const id of peers) {
+          try { await window.JobOSApi.tailor(id); started += 1; } catch (_) { failed += 1; }
+        }
+        if (typeof window.showToast === 'function') window.showToast(failed ? `Luna is tailoring ${started} resumes; ${failed} could not start` : `Luna is tailoring ${started} resumes, one after another`);
+        return refresh();
+      }
     }
     if ((name === 'job-tailor' && job) || name === 'card-tailor') {
       const id = name === 'card-tailor' ? el.dataset.jobId : job.id;
@@ -1545,6 +1578,31 @@
     // Long-press would otherwise open the iOS callout or select text.
     board.addEventListener('contextmenu', (event) => { if (hold && (hold.active || event.target.closest('.pipe-card'))) event.preventDefault(); });
   }
+  // Tailor resume on a card: a small menu under the button picks this job or
+  // every job in the column. Resolves 'one', 'all' or null (dismissed).
+  function pickTailor(button, count, heading) {
+    return new Promise((resolve) => {
+      const column = heading ? heading.textContent.trim() : 'this column';
+      const menu = document.createElement('div');
+      menu.className = 'pipe-drop-menu pipe-tailor-menu';
+      menu.setAttribute('role', 'menu');
+      menu.innerHTML = `<p>Tailor resume for</p><button type="button" role="menuitem" data-pick="one">This job only</button><button type="button" role="menuitem" data-pick="all"></button><button type="button" class="is-cancel" data-pick="">Cancel</button>`;
+      menu.querySelector('[data-pick="all"]').textContent = `All ${count} in ${column.charAt(0) + column.slice(1).toLowerCase()}`;
+      const box = button.getBoundingClientRect();
+      Object.assign(menu.style, {left: `${Math.round(box.left)}px`, top: `${Math.round(box.bottom + 6)}px`, minWidth: `${Math.round(box.width)}px`});
+      document.body.appendChild(menu);
+      // Kept on screen: opens upward when there is no room below the button.
+      const r = menu.getBoundingClientRect();
+      if (r.bottom > window.innerHeight - 8) menu.style.top = `${Math.round(box.top - r.height - 6)}px`;
+      if (r.right > window.innerWidth - 8) menu.style.left = `${Math.round(window.innerWidth - 8 - r.width)}px`;
+      const finish = (value) => { menu.remove(); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', onKey, true); resolve(value); };
+      const outside = (event) => { if (!menu.contains(event.target)) finish(null); };
+      const onKey = (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(null); } };
+      menu.addEventListener('click', (event) => { const b = event.target.closest('[data-pick]'); if (b) finish(b.dataset.pick || null); });
+      setTimeout(() => { document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', onKey, true); });
+      menu.querySelector('button').focus();
+    });
+  }
   const CLOSE_LABELS = {no_response: 'No response', withdrawn: 'Withdrawn', skipped: 'Not for me'};
   function pickClosed(col) {
     return new Promise((resolve) => {
@@ -1654,7 +1712,7 @@
   async function trackerAction(name, el) {
     const state = window.JobOSState;
     // Site tabs and the layout switch redraw from what is loaded: no wait on the server.
-    if (name === 'pipe-source') { state.pipelineSource = el.dataset.source; state.statusFilter = null; savePrefs(); replaceRoute('pipeline'); return repaint(); }
+    if (name === 'pipe-source') { state.pipelineSource = el.dataset.source; state.statusFilter = null; savePrefs(); replaceRoute('pipeline'); return repaintShuffled(); }
     if (name === 'pipe-mode') {
       state.pipelineMode = el.dataset.mode; state.statusFilter = null; savePrefs(); replaceRoute('pipeline');
       return state.pipelineMode === 'board' && !state.board ? refresh() : repaint();

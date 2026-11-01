@@ -16241,3 +16241,66 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Below ~1500px a tile's note (the schedule's times and zones) would be cut
    short; it takes a second line instead. */
 @media (max-width:1500px){#jobOsRoot .scout-tile-body>span{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:16px;}}
+
+/* ── Pipeline polish ──
+   Toolbar: the source tabs, the board/list toggle, the search box and the
+   add button sit on the page background at one compact 32px height; tabs
+   hover in the blue tint used across the app, and their text sits 1px
+   higher, as does the search box's. */
+#jobOsRoot .pipe-toolbar :is(.seg,.pipe-search){background:var(--bg);}
+#jobOsRoot .pipe-toolbar .seg{padding:2px;}
+#jobOsRoot .pipe-toolbar .seg-btn{min-height:26px;padding:0 10px 2px;}
+#jobOsRoot .pipe-toolbar .seg-btn.icon{width:28px;padding:0 0 2px;}
+#jobOsRoot .pipe-toolbar .seg-btn.icon svg{position:relative;top:1px;}
+#jobOsRoot .pipe-toolbar .seg-btn:hover:not(.active){background:var(--accent-bg);color:var(--text);}
+#jobOsRoot .pipe-toolbar .pipe-search{height:32px;}
+#jobOsRoot .pipe-toolbar .pipe-search input{padding-bottom:2px;box-sizing:border-box;}
+#jobOsRoot .pipe-toolbar .job-os-inline-select :is(select,.themed-select-trigger){height:32px;min-height:32px;}
+#jobOsRoot .pipe-toolbar .pipe-add-btn{width:32px;height:32px;min-width:32px;min-height:32px;padding:0;}
+#jobOsRoot .pipe-toolbar .pipe-add-btn .mx-icon{width:18px;height:18px;}
+/* The add button stays a lighter solid blue on hover instead of going dark. */
+#jobOsRoot .pipe-toolbar .pipe-add-btn:hover{background:color-mix(in srgb,var(--accent) 80%,#fff);border-color:color-mix(in srgb,var(--accent) 80%,#fff);color:var(--bg);filter:none;}
+/* Column titles sit 1px closer to their first card. */
+#jobOsRoot .pipe-col:not(.is-folded) .pipe-col-head{margin-bottom:-1px;}
+/* At rest a column's filter and count sit at its right edge; pointing at the
+   column slides the collapse arrow in from the right. */
+#jobOsRoot .pipe-col:not(.is-folded) .pipe-col-fold{width:0;flex:0 0 auto;margin:0 0 0 -8px;overflow:hidden;opacity:0;transform:translateX(10px);transition:width .24s cubic-bezier(.2,.8,.2,1),margin .24s cubic-bezier(.2,.8,.2,1),transform .24s cubic-bezier(.2,.8,.2,1),opacity .18s ease,background .15s ease,color .15s ease;}
+#jobOsRoot .pipe-col:not(.is-folded):is(:hover,:focus-within) .pipe-col-fold{width:24px;margin:0 -4px 0 0;opacity:1;transform:none;}
+@media (prefers-reduced-motion:reduce){#jobOsRoot .pipe-col:not(.is-folded) .pipe-col-fold{transition:none;}}
+/* A pointed-at card keeps its size: the stage tint shows in its border only,
+   with no ring drawn outside it. */
+#jobOsRoot .pipe-card:hover:not(.is-selected){box-shadow:0 6px 18px rgba(0,0,0,.14);}
+/* Card buttons' text 1px lower; check chips' icons 1px higher; site tags'
+   text 1px higher, remote.id in capitals like the others. */
+#jobOsRoot .pipe-card-actions .job-os-btn{padding-top:2px;padding-bottom:0;}
+#jobOsRoot .pipe-card .job-check>svg{position:relative;top:-1px;}
+#jobOsRoot .pipe-card .pipe-source{padding-bottom:2px;box-sizing:border-box;}
+#jobOsRoot .pipe-source[data-source="remoteid"]{text-transform:uppercase;letter-spacing:.03em;}
+/* List view: every job card has an outline. */
+#jobOsRoot .job-os-shell[data-view="pipeline"] .job-os-list>.job-os-job-card{border:1px solid var(--border2);}
+#jobOsRoot .job-os-shell[data-view="pipeline"] .job-os-list>.job-os-job-card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));}
+/* Tailor resume asks: this job, or every job in the column. */
+.pipe-tailor-menu{position:fixed;z-index:950;min-width:220px;}
+/* The job drawer is wider and slides back out to the right when it closes;
+   the Add job window fades as it closes. */
+.job-drawer{width:min(720px,100vw);}
+.job-drawer.is-closing{animation:job-drawer-out .3s cubic-bezier(.4,0,.2,1) forwards;}
+@keyframes job-drawer-out{from{transform:none;}to{transform:translateX(100%);}}
+.job-modal.is-closing{animation:job-modal-out .26s ease-out forwards;}
+@keyframes job-modal-out{from{opacity:1;transform:translate(-50%,-50%);}to{opacity:0;transform:translate(-50%,calc(-50% + 8px)) scale(.985);}}
+:is(.job-modal-backdrop,.job-drawer-backdrop).is-closing{animation:job-overlay-fade-out .26s ease forwards;}
+@media (max-width:640px){.job-modal.is-closing{animation-name:job-sheet-out;}}
+/* A stage picked in the side panel: the column glows softly from inside
+   instead of flashing a ring around its edge while the board scrolls to it. */
+#jobOsRoot .pipe-col.is-focused{animation:pipe-col-focus-soft 1.4s ease;}
+@keyframes pipe-col-focus-soft{0%,40%{background-color:color-mix(in srgb,var(--stage) 10%,var(--bg));box-shadow:none;}}
+@media (prefers-reduced-motion:reduce){#jobOsRoot .pipe-col.is-focused{animation:none;}}
+/* Zeus 2.0 lifts a primary button's label with padding-bottom:2px, measured on
+   the zero-padding toolbar buttons. Where a primary keeps the default 8px
+   padding (the job drawer, window footers, empty states) that left it 6px
+   shorter than its neighbours with its label low; there it is 7px over 9px:
+   the same height, label 1px up. */
+:root[data-skin="zeus-2"] :is(.job-drawer,.job-modal-foot,.job-os-empty) .job-os-btn.primary:not(.small){padding-top:7px;padding-bottom:9px;}
+/* A link styled as a button (Open posting) takes a button's line height, so
+   it stands as tall as the buttons beside it. */
+#jobOsRoot a.job-os-btn{line-height:1.35;}
