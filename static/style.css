@@ -16327,13 +16327,13 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 
 /* ── Dashboard polish (13" laptop pass) ─────────────────────────────────── */
 /* Side panel: labels and the level badge sit 1px lower; the badge is a
-   rounded rectangle with its digits 1px higher inside it. */
+   rounded rectangle with its "Lv" text 1px lower inside it. */
 :root[data-skin] #dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge),
 #dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge){transform:translateY(.9px);}
-:root[data-skin] .dash-level-badge,.dash-level-badge{border-radius:4px;padding-top:1px;padding-bottom:3px;}
-/* Character page: the codes, rank and counters read 1px high in the pixel
-   face; nudge them, not their boxes. */
-.dash.is-rpg :is(.rpg-rank,.rpg-xpline > span:last-child,.rpg-stat > strong,.rpg-evo-head small){position:relative;top:-1px;}
+:root[data-skin] .dash-level-badge,.dash-level-badge{border-radius:4px;padding-top:3px;padding-bottom:1px;}
+/* Character page: the rank (ASCENDED), "XP to level", the stat codes and
+   the evolution counter sit 1px lower; nudge them, not their boxes. */
+.dash.is-rpg :is(.rpg-rank,.rpg-xpline > span:last-child,.rpg-stat > strong,.rpg-evo-head small){position:relative;top:1px;}
 /* Level card: the four counters read from the left like the rows above. */
 .dash.is-rpg .rpg-badges > div{justify-content:flex-start!important;}
 @container rpg-badges (max-width:630px){
@@ -16346,14 +16346,20 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
   .dash.is-rpg .rpg-badge-copy{align-items:flex-start;}
   .dash.is-rpg .rpg-badge-copy small{text-align:left;}
 }
-/* Evolution: the arrows centre on the art box (where the loading ring
-   sits), not on the whole card with its name and caption below. */
+/* Evolution: the arrows centre on the art box, not on the whole card with
+   its name and caption below; the art inside the box (a form's body, the
+   chains) sits about 8px under the box's middle, so the arrows and the
+   loading ring sit there too. */
 .dash.is-rpg .rpg-evo-stage{position:relative;}
+.dash.is-rpg .rpg-evo-stage > .rpg-evo-arrow{margin-top:-5px;}
+.dash.is-rpg .rpg-evo-art > .dash-media-wait{top:calc(50% + 8px);}
 .dash.is-rpg .rpg-evo-stage > .rpg-evo-arrow[data-evo-step="-1"]{left:0;}
 .dash.is-rpg .rpg-evo-stage > .rpg-evo-arrow[data-evo-step="1"]{right:0;}
 /* Chronicle: the filters stay put; only the list under them scrolls. */
 .dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body{display:flex;flex-direction:column;min-height:0;overflow:hidden;}
-.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters{position:static;flex:none;padding:0 0 8px;}
+/* 3px under the chips + the first row's own 8px top padding and line
+   leading = the 16px between the dashed rule and the chips. */
+.dash.is-rpg .rpg-panel.is-chronicle > .dash-card-body > .rpg-log-filters{position:static;flex:none;padding:0 0 3px;}
 .dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--rpg-frame,var(--border2)) 70%,transparent) transparent;}
 .dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list > .dash-row:first-child{border-top:0;}
 .dash.is-rpg .rpg-panel.is-chronicle .rpg-log-list > [data-log-more]{display:flex;margin:10px auto 4px;}
@@ -16379,5 +16385,11 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .dash.is-rpg .dash-inline-form.is-opening{animation:dash-form-in .22s cubic-bezier(.22,1,.36,1) both;}
 .dash.is-rpg .dash-inline-form.is-closing{opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .15s ease,transform .15s ease;}
 @media (prefers-reduced-motion:reduce){.dash.is-rpg .dash-inline-form.is-opening{animation:none;}}
-/* Sale form: the amount and product text sit on the same line as Today. */
-.dash.is-rpg .dash-inline-form[data-form="sale"] input:is([name="amount"],[name="product"]){padding-top:2px;}
+/* Inline add forms: Cancel on its own line, centred under the fields. */
+.dash.is-rpg .dash-inline-form:has(> [data-form-cancel]){row-gap:8px;}
+/* The empty ::after is a line break; it is a row of its own, so Cancel
+   takes back the second gap. */
+.dash.is-rpg .dash-inline-form:has(> [data-form-cancel])::after{content:"";flex:0 0 100%;height:0;order:98;}
+.dash.is-rpg .dash-inline-form > [data-form-cancel]{order:99;margin:-8px auto 0;grid-column:1/-1;justify-self:center;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning > [data-form-cancel]{margin-top:0;}
+.dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning::after{display:none;}

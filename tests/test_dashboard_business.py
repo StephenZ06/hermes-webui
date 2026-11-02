@@ -109,6 +109,53 @@ def test_manual_sales_goals_and_streaks(biz):
         dashboard_business.remove_manual_sale("lemonsqueezy:order:1")
 
 
+def test_deleting_a_sale_locks_again_what_it_earned(biz):
+    dashboard_business, dashboard_game, _ = biz
+    keep = dashboard_business.add_manual_sale({"amount": 40, "product": "Kit"})["sale"]
+    mistake = dashboard_business.add_manual_sale({"amount": 90, "product": "Typo"})["sale"]
+    data = dashboard_business.summary()
+    assert {m["key"] for m in data["milestones"] if m["unlocked_at"]} == {"first_sale", "revenue_100"}
+    profile = dashboard_game.character()
+    assert {a["key"] for a in profile["achievements"] if a["unlocked_at"]} >= {"first_sale"}
+    assert profile["total_xp"] == 2 * dashboard_business.SALE_XP + 2 * dashboard_business.MILESTONE_XP
+
+    # The $90 entry was a mistake: $100 is no longer reached, its milestone
+    # and its XP go; First Sale (still earned by the $40 sale) stays.
+    assert dashboard_business.remove_manual_sale(mistake["id"])["relocked"] == ["revenue_100"]
+    data = dashboard_business.summary()
+    assert {m["key"] for m in data["milestones"] if m["unlocked_at"]} == {"first_sale"}
+    profile = dashboard_game.character()
+    assert profile["total_xp"] == dashboard_business.SALE_XP + dashboard_business.MILESTONE_XP
+    assert "first_sale" in {a["key"] for a in profile["achievements"] if a["unlocked_at"]}
+
+    # The last sale goes: no milestone, no sale XP, no Merchant achievement.
+    assert dashboard_business.remove_manual_sale(keep["id"])["relocked"] == ["first_sale"]
+    assert not any(m["unlocked_at"] for m in dashboard_business.summary()["milestones"])
+    profile = dashboard_game.character()
+    assert profile["total_xp"] == 0
+    assert not {a["key"] for a in profile["achievements"] if a["unlocked_at"]} & {"first_sale", "first_task"}
+    assert dashboard_game.treasury()["gold"]["earned"] == 0
+
+    # Entered again, everything unlocks again.
+    dashboard_business.add_manual_sale({"amount": 40})
+    assert {m["key"] for m in dashboard_business.summary()["milestones"] if m["unlocked_at"]} == {"first_sale"}
+
+
+def test_deleting_a_sale_keeps_a_milestone_it_did_not_earn(biz, monkeypatch):
+    """A subscription that lapsed leaves "First Sub" short already; deleting an
+    unrelated sale must not take it back."""
+    dashboard_business, _, _ = biz
+    sub = dashboard_business.add_manual_sale({"amount": 20, "recurring": True})["sale"]
+    other = dashboard_business.add_manual_sale({"amount": 5})["sale"]
+    assert "first_subscriber" in {m["key"] for m in dashboard_business.summary()["milestones"] if m["unlocked_at"]}
+    later = time.time() + 40 * 86400  # the subscription has not renewed for 40 days
+    with monkeypatch.context() as m:
+        m.setattr(dashboard_business.time, "time", lambda: later)
+        dashboard_business.remove_manual_sale(other["id"])
+    unlocked = {m["key"] for m in dashboard_business.summary()["milestones"] if m["unlocked_at"]}
+    assert {"first_sale", "first_subscriber"} <= unlocked and sub["recurring"]
+
+
 def test_a_failing_platform_keeps_the_last_copy_and_says_why(biz):
     dashboard_business, _, _ = biz
     dashboard_business.connect("lemonsqueezy", "ls_live_key_0123456789abcdef", fetch=lemon([(2900, 1, False)]))

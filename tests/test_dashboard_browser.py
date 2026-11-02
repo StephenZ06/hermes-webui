@@ -1099,3 +1099,31 @@ def test_sidebar_pick_glides_the_highlight_and_open_notes_lands_on_general(brows
     button.evaluate("el => el.click()")
     page.wait_for_function("() => window.Notebook._state.scope.kind === 'general' && window.Notebook._state.side === 'notes'", polling=100, timeout=15000)
     page.wait_for_function("() => document.querySelector('.rail-btn.active')?.dataset.panel === 'notebook'", polling=100, timeout=15000)
+
+
+def test_cancel_centres_evolution_arrows_sit_on_the_art_and_chronicle_chips_have_even_space(browser):
+    page = _open(browser, viewport={"width": 1440, "height": 1000})
+    page.evaluate("async () => { await switchPanel('dashboard'); window.HermesDashboard.select('character'); }")
+    page.wait_for_selector("#dashboardRoot .rpg-evo-stage .rpg-evo-arrow", timeout=15000)
+    evo = page.evaluate("""() => {
+        const art = document.querySelector('.rpg-evo-art').getBoundingClientRect();
+        const arrow = document.querySelector('.rpg-evo-arrow').getBoundingClientRect();
+        return (arrow.top + arrow.height / 2) - (art.top + art.height / 2);
+    }""")
+    assert abs(evo - 8) <= 0.5  # on the art's visual middle, under the box's centre
+    gaps = page.evaluate("""() => {
+        const head = document.querySelector('.rpg-panel.is-chronicle > .rpg-panel-head').getBoundingClientRect();
+        const chips = document.querySelector('.rpg-panel.is-chronicle .rpg-log-filters');
+        const chip = chips.querySelector('.dash-chip').getBoundingClientRect();
+        return {above: chip.top - head.bottom, under: parseFloat(getComputedStyle(chips).paddingBottom)};
+    }""")
+    assert gaps["under"] == 3  # + the first row's 8px padding and leading reads as the 16px above
+
+    page.evaluate("() => window.HermesDashboard.select('business')")
+    page.wait_for_selector("[data-form-open=sale]", timeout=15000)
+    page.click("[data-form-open=sale]")
+    page.wait_for_selector("[data-form=sale] [data-form-cancel]")
+    form, cancel, add = page.evaluate("""() => ['[data-form=sale]', '[data-form=sale] [data-form-cancel]', '[data-form=sale] [type=submit]']
+        .map((s) => { const r = document.querySelector(s).getBoundingClientRect(); return {cx: r.left + r.width / 2, top: r.top, bottom: r.bottom, w: r.width}; })""")
+    assert abs(cancel["cx"] - form["cx"]) <= 1  # centred, not pushed to the right
+    assert cancel["top"] >= add["bottom"] - 8 and cancel["w"] < form["w"] / 2  # its own line, its own width

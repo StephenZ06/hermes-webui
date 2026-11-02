@@ -310,3 +310,17 @@ def test_new_achievements_count_books_hours_rewards_and_realms(game):
         dashboard_game.add_learning({"title": f"Book {i}", "kind": "book", "area": "personal"})
     data = dashboard_game.character()
     assert {a["key"]: a["unlocked_at"] for a in data["achievements"]}["bookworm"]
+
+
+def test_deleting_what_earned_an_achievement_takes_it_back(game):
+    """A skill, learning entry or habit tick removed by mistake leaves no
+    achievement (or its gold) behind; work still on the ledger keeps its own."""
+    dashboard_game, work_hub = game
+    _finish(work_hub, _item(work_hub, "Real work"))
+    skill = dashboard_game.add_skill({"name": "SQL", "kind": "course"})["skill"]
+    unlocked = lambda: {a["key"] for a in dashboard_game.character()["achievements"] if a["unlocked_at"]}  # noqa: E731
+    assert {"first_task", "first_skill"} <= unlocked()
+
+    dashboard_game.remove_skill(skill["id"])
+    assert "first_skill" not in unlocked() and "first_task" in unlocked()
+    assert dashboard_game.treasury()["gold"]["earned"] == int(20 * dashboard_game.GOLD_PER_XP) + dashboard_game.ACHIEVEMENT_GOLD

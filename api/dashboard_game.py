@@ -396,6 +396,8 @@ def check_habit(habit_id: str, day: object = None, done: bool = True) -> dict[st
         else:
             conn.execute("DELETE FROM habit_checks WHERE habit_id = ? AND day = ?", (habit["id"], day))
             conn.execute("DELETE FROM xp_events WHERE key = ?", (key,))
+    if not done:
+        revoke_unearned()
     return {"habit_id": habit["id"], "day": day, "done": bool(done)}
 
 
@@ -459,6 +461,7 @@ def remove_learning(entry_id: str) -> dict[str, Any]:
         if not conn.execute("DELETE FROM learning WHERE id = ?", (str(entry_id),)).rowcount:
             raise GameError("Entry not found", 404)
         conn.execute("DELETE FROM xp_events WHERE key = ?", (f"learning:{entry_id}",))
+    revoke_unearned()
     return {"removed": str(entry_id)}
 
 
@@ -498,6 +501,7 @@ def remove_skill(skill_id: str) -> dict[str, Any]:
         if not conn.execute("DELETE FROM skills WHERE id = ?", (str(skill_id),)).rowcount:
             raise GameError("Skill not found", 404)
         conn.execute("DELETE FROM xp_events WHERE key = ?", (f"skill:{skill_id}",))
+    revoke_unearned()
     return {"removed": str(skill_id)}
 
 
@@ -753,23 +757,16 @@ def _streak(days: set[str], today: str) -> int:
     return count
 
 
-def character(*, category: str | None = None, offset: int = 0, now: float | None = None) -> dict[str, Any]:
-    """Everything the Character page shows: level, tier, stats, XP per area,
-    streak, and a page of the XP log."""
-    from api.models import load_projects
-
-    sync()
-    now = time.time() if now is None else now
-    with _LOCK, _connect() as conn:
-        categories = _categories(conn)
-        rows = conn.execute("SELECT * FROM xp_events ORDER BY at DESC").fetchall()
+def _tally(rows, categories: dict[str, str], now: float) -> dict[str, Any]:
+    """Count what the XP ledger holds: XP and events per area, active days,
+    quests, and how many events of each kind (sale, applied, skill...)."""
     by_category = {c: 0 for c in CATEGORIES}
     counts = {c: 0 for c in CATEGORIES}
-    habit_xp = 0
+    habit_xp = quests_done = early = night = 0
     days: set[str] = set()
     recent_days: set[str] = set()
-    quests_done = 0
-    log = []
+    habit_days: set[str] = set()
+    kinds: dict[str, int] = {}
     for row in rows:
         cat = _event_category(row, categories)
         by_category[cat] = by_category.get(cat, 0) + row["xp"]
@@ -782,29 +779,50 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         quests_done += bool(detail.get("quest"))
         if row["source"] == "habit":
             habit_xp += row["xp"]
+            habit_days.add(detail.get("day") or "")
+        kind = "learning" if row["source"] == "learning" else detail.get("kind") or row["source"]
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if row["source"] == "learning" and detail.get("kind") == "book":
+            kinds["book"] = kinds.get("book", 0) + 1
+        if row["source"] == "skill" and detail.get("via"):
+            kinds[f"skill:{detail['via']}"] = kinds.get(f"skill:{detail['via']}", 0) + 1
+        hour = time.localtime(row["at"]).tm_hour
+        early += 4 <= hour < 7
+        night += 0 <= hour < 4
+    return {"by_category": by_category, "counts": counts, "habit_xp": habit_xp, "days": days, "recent_days": recent_days,
+            "quests_done": quests_done, "events": len(rows), "kinds": kinds, "habit_days": habit_days, "early": early, "night": night}
+
+
+def _progress(tally: dict[str, Any], purse: dict[str, int]) -> dict[str, Any]:
+    """What the achievement tests read."""
+    return {"tasks_done": tally["events"], "quests_done": tally["quests_done"], "best_streak": _best_streak(tally["days"]),
+            "level": level_for(sum(tally["by_category"].values()))["level"], "kinds": tally["kinds"],
+            "habit_days": len(tally["habit_days"]), "early": tally["early"], "night": tally["night"], **purse,
+            "areas": [{"key": c, "xp": tally["by_category"][c]} for c in CATEGORIES]}
+
+
+def character(*, category: str | None = None, offset: int = 0, now: float | None = None) -> dict[str, Any]:
+    """Everything the Character page shows: level, tier, stats, XP per area,
+    streak, and a page of the XP log."""
+    from api.models import load_projects
+
+    sync()
+    now = time.time() if now is None else now
+    with _LOCK, _connect() as conn:
+        categories = _categories(conn)
+        rows = conn.execute("SELECT * FROM xp_events ORDER BY at DESC").fetchall()
+    tally = _tally(rows, categories, now)
+    by_category, counts, habit_xp = tally["by_category"], tally["counts"], tally["habit_xp"]
+    days, recent_days, quests_done = tally["days"], tally["recent_days"], tally["quests_done"]
+    log = []
+    for row in rows:
+        cat = _event_category(row, categories)
         if category in (None, "", "all") or cat == category:
+            detail = json.loads(row["detail"] or "{}")
             log.append({"title": row["title"], "xp": row["xp"], "at": row["at"], "category": cat, "source": row["source"],
                         "quest": bool(detail.get("quest"))})
     total = sum(by_category.values())
     week = sum(row["xp"] for row in rows if row["at"] >= now - 7 * DAY)
-    kinds: dict[str, int] = {}
-    habit_days: set[str] = set()
-    early = night = 0
-    for row in rows:
-        detail = json.loads(row["detail"] or "{}")
-        kind = detail.get("kind") or row["source"]
-        if row["source"] == "learning":
-            kind = "learning"
-        kinds[kind] = kinds.get(kind, 0) + 1
-        if row["source"] == "learning" and detail.get("kind") == "book":
-            kinds["book"] = kinds.get("book", 0) + 1
-        hour = time.localtime(row["at"]).tm_hour
-        early += 4 <= hour < 7
-        night += 0 <= hour < 4
-        if row["source"] == "skill" and detail.get("via"):
-            kinds[f"skill:{detail['via']}"] = kinds.get(f"skill:{detail['via']}", 0) + 1
-        if row["source"] == "habit":
-            habit_days.add(detail.get("day") or "")
     today = time.strftime("%Y-%m-%d", time.localtime(now))
 
     def score(xp: int) -> int:  # attributes grow quickly early, then slow down
@@ -817,10 +835,7 @@ def character(*, category: str | None = None, offset: int = 0, now: float | None
         "VIT": {"value": score(habit_xp), "label": "Vitality", "hint": "Habits kept"},
         "DEX": {"value": 1 + len(recent_days), "label": "Consistency", "hint": "Active days in the last 30"},
     }
-    level_info = level_for(total)
-    progress = {"tasks_done": len(rows), "quests_done": quests_done, "best_streak": _best_streak(days), "level": level_info["level"],
-                "kinds": kinds, "habit_days": len(habit_days), "early": early, "night": night, **_purse_progress(),
-                "areas": [{"key": c, "xp": by_category[c]} for c in CATEGORIES]}
+    progress = _progress(tally, _purse_progress())
     achievements = _achievements(progress, now)
     projects = [{"project_id": p.get("project_id"), "name": p.get("name"),
                  "category": categories.get(p.get("project_id") or "", "personal")} for p in load_projects()]
@@ -885,6 +900,40 @@ def _achievements(progress: dict[str, Any], now: float) -> list[dict[str, Any]]:
                     conn.execute("INSERT OR IGNORE INTO achievements(key, unlocked_at) VALUES(?, ?)", (key, now))
     return [{"key": k, "title": t, "description": d, "icon": i, "unlocked_at": unlocked.get(k), "art": k in _achievement_art(),
              "new": bool(unlocked.get(k)) and unlocked[k] >= now - 3 * DAY} for k, t, d, i, _ in ACHIEVEMENTS]
+
+
+def revoke_unearned(now: float | None = None) -> list[str]:
+    """Take back achievements the ledger no longer earns, after something that
+    earned XP is deleted (a sale, a skill, a learning entry, an unticked
+    habit), so an entry made by mistake leaves nothing behind. Only deletions
+    call this: on a normal read an achievement stays unlocked."""
+    now = time.time() if now is None else now
+    with _LOCK, _connect() as conn:
+        rows = conn.execute("SELECT * FROM xp_events").fetchall()
+        tally = _tally(rows, _categories(conn), now)
+        bought = conn.execute("SELECT COUNT(*) FROM redemptions").fetchone()[0]
+        unlocked = {r["key"] for r in conn.execute("SELECT key FROM achievements")}
+        # Gold earned counts achievements too; drop the revoked ones until the
+        # set stops shrinking (one revoked can drop "Hoarder" under 5,000).
+        revoked: list[str] = []
+        while True:
+            xp = sum(r["xp"] for r in rows)
+            progress = _progress(tally, {"bought": int(bought), "gold_earned": int(xp * GOLD_PER_XP) + len(unlocked) * ACHIEVEMENT_GOLD})
+            lost = [key for key, *_rest, test in ACHIEVEMENTS if key in unlocked and not _passes(test, progress)]
+            if not lost:
+                break
+            unlocked.difference_update(lost)
+            revoked += lost
+        for key in revoked:
+            conn.execute("DELETE FROM achievements WHERE key = ?", (key,))
+    return revoked
+
+
+def _passes(test, progress: dict[str, Any]) -> bool:
+    try:
+        return bool(test(progress))
+    except Exception:
+        return True  # a test that cannot be read takes nothing back
 
 
 _VIDEO_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard" / "characters"

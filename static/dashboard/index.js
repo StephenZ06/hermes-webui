@@ -815,6 +815,7 @@
       state.error[tab] = (error && error.message) || 'Could not load the dashboard';
     } finally { state.loading[tab] = false; }
     if (state.mounted && state.tab === tab) paint();
+    else if (state.mounted && tab === 'character') paintLevelBadges();
     if (state.again && state.again[tab]) { state.again[tab] = false; load(tab, {quiet: true}); }
   }
 
@@ -898,6 +899,13 @@
     let level = state.data.character && state.data.character.level;
     if (!level) { try { level = parseInt(localStorage.getItem('hermes-dashboard-level') || '0', 10) || 0; } catch (_) {} }
     return level ? `<span class="dash-level-badge">Lv ${level}</span>` : '';
+  }
+  function paintLevelBadges() {
+    const html = levelBadge();
+    document.querySelectorAll('.side-menu-item[data-dash-tab="character"], .dash-char-btn').forEach((host) => {
+      const badge = host.querySelector('.dash-level-badge');
+      if (badge && html) badge.outerHTML = html;
+    });
   }
   // The side menu's highlight glides from the old page to the new one, as in
   // Chat and Work Hub (playActiveHighlightGlide, ui.js).
@@ -1146,7 +1154,13 @@
     paint({force: true});
     if (changed || !state.data[tab]) load(tab, {quiet: !!state.data[tab]});
   }
-  const refresh = () => load(state.tab, {quiet: true});
+  // After a change on another page (a sale, skill or habit tick added or
+  // removed), the character is read again too, so the level badge never shows
+  // XP that is no longer there.
+  const refresh = () => {
+    load(state.tab, {quiet: true});
+    if (state.tab !== 'character' && state.data.character) load('character', {quiet: true});
+  };
 
   // ── quest picker ─────────────────────────────────────────────────────────
   // ``area`` is the tab the picker was opened from: the quests it adds show
@@ -1375,7 +1389,7 @@
     if (!result) return;
     delete state.forms[kind];
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    load(state.tab, {quiet: true});
+    refresh();
   }
 
   function onClick(event) {

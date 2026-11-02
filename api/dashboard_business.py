@@ -25,7 +25,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 
-from api.dashboard_game import GameError, _LOCK, _connect, _insert
+from api.dashboard_game import GameError, _LOCK, _connect, _insert, revoke_unearned
 
 logger = logging.getLogger(__name__)
 
@@ -425,15 +425,27 @@ def remove_manual_sale(sale_id: str) -> dict[str, Any]:
     sale_id = str(sale_id or "")
     if not sale_id.startswith("manual:"):
         raise SalesError("Only sales entered by hand can be removed")
+    now = time.time()
     with _LOCK, _Conn() as conn:
         row = conn.execute("SELECT subscription FROM sales WHERE id = ?", (sale_id,)).fetchone()
         if row is None:
             raise SalesError("Sale not found", 404)
+        before = _earned(_counted(conn, now))
         conn.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
         if row["subscription"]:
             conn.execute("DELETE FROM business_meta WHERE key = ?", (f"sub:{row['subscription']}",))
         conn.execute("DELETE FROM xp_events WHERE key = ?", (f"sale:{sale_id}",))
-    return {"removed": sale_id}
+        # A milestone this sale earned is locked again, with its XP: one the
+        # sales earned before the delete and no longer do. One that was
+        # already short (a subscription that lapsed) stays unlocked.
+        relocked = sorted(before - _earned(_counted(conn, now)))
+        for key in relocked:
+            conn.execute("DELETE FROM milestones WHERE key = ?", (key,))
+            conn.execute("DELETE FROM xp_events WHERE key = ?", (f"milestone:{key}",))
+    # The sale's XP and any milestone XP are gone, so achievements they
+    # earned (Merchant, a level) go too.
+    revoke_unearned(now)
+    return {"removed": sale_id, "relocked": relocked}
 
 
 # ── goals ───────────────────────────────────────────────────────────────────
@@ -499,38 +511,54 @@ def _paid(rows) -> list:
     return [r for r in rows if not r["refunded"]]
 
 
-def summary(now: float | None = None) -> dict[str, Any]:
-    sync_soon()
-    now = time.time() if now is None else now
-    today = datetime.fromtimestamp(now).date()
-    with _LOCK, _Conn() as conn:
-        platform = _meta(conn, "platform")
-        rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
-        subs = {r["key"][4:]: json.loads(r["value"]) for r in conn.execute("SELECT * FROM business_meta WHERE key LIKE 'sub:%'")}
-        goals = [dict(g) for g in conn.execute("SELECT * FROM business_goals ORDER BY created_at")]
-        unlocked = {r["key"]: r["unlocked_at"] for r in conn.execute("SELECT * FROM milestones")}
+def _counted(conn, now: float) -> dict[str, Any]:
+    """The sales the page counts and the totals milestones are tested on."""
+    platform = _meta(conn, "platform")
+    rows = conn.execute("SELECT * FROM sales ORDER BY created_at DESC").fetchall()
+    subs = {r["key"][4:]: json.loads(r["value"]) for r in conn.execute("SELECT * FROM business_meta WHERE key LIKE 'sub:%'")}
     # A connected platform shows its own sales (and manual ones); test-mode data only while it is all there is.
     rows = [r for r in rows if r["platform"] in (platform, "manual") or platform is None]
     live = [r for r in rows if not r["test"]]
     rows = live if live else rows
     paid = _paid(rows)
+    sales_only = [r for r in paid if r["amount"] > 0]
+    cutoff = now - 35 * 86400  # a subscription counts while it renewed in the last ~month
+    current = [v for v in subs.values() if not v.get("refunded") and v.get("at", 0) >= cutoff]
+    stats = {
+        "sales": len(sales_only), "revenue": sum(r["amount"] for r in paid), "mrr": sum(v["monthly"] for v in current),
+        "customers": len({r["customer"] for r in sales_only if r["customer"]}) or len(sales_only),
+        "subscribers": len(current),
+    }
+    return {"rows": rows, "live": live, "paid": paid, "sales_only": sales_only, "stats": stats}
+
+
+def _earned(counted: dict[str, Any]) -> set[str]:
+    """Milestones these sales earn (test-mode sales earn none)."""
+    if not counted["live"]:
+        return set()
+    return {key for key, _t, _d, test in MILESTONES if test(counted["stats"])}
+
+
+def summary(now: float | None = None) -> dict[str, Any]:
+    sync_soon()
+    now = time.time() if now is None else now
+    today = datetime.fromtimestamp(now).date()
+    with _LOCK, _Conn() as conn:
+        counted = _counted(conn, now)
+        goals = [dict(g) for g in conn.execute("SELECT * FROM business_goals ORDER BY created_at")]
+        unlocked = {r["key"]: r["unlocked_at"] for r in conn.execute("SELECT * FROM milestones")}
+    rows, live, paid, sales_only, stats = (counted[k] for k in ("rows", "live", "paid", "sales_only", "stats"))
     currency = (paid[0]["currency"] if paid else "USD")
     month_start = _ts(today.replace(day=1))
     last_month_start = _ts((today.replace(day=1) - timedelta(days=1)).replace(day=1))
     week_start = _ts(today - timedelta(days=today.weekday()))
-    sales_only = [r for r in paid if r["amount"] > 0]
-    revenue = sum(r["amount"] for r in paid)
     month_rev = sum(r["amount"] for r in paid if r["created_at"] >= month_start)
     last_month_rev = sum(r["amount"] for r in paid if last_month_start <= r["created_at"] < month_start)
-    cutoff = now - 35 * 86400  # a subscription counts while it renewed in the last ~month
-    mrr = sum(v["monthly"] for v in subs.values() if not v.get("refunded") and v.get("at", 0) >= cutoff)
-    stats = {
-        "sales": len(sales_only), "revenue": revenue, "mrr": mrr,
-        "customers": len({r["customer"] for r in sales_only if r["customer"]}) or len(sales_only),
-        "subscribers": sum(1 for v in subs.values() if not v.get("refunded") and v.get("at", 0) >= cutoff),
-    }
-    # Milestones unlock once and stay unlocked; each earns XP. Test-mode sales
-    # show on the page but never unlock anything.
+    mrr = stats["mrr"]
+    # Milestones unlock once and stay unlocked (a lapsed subscription does not
+    # take "$500 MRR" back; deleting the sale that earned one does, see
+    # remove_manual_sale); each earns XP. Test-mode sales show on the page but
+    # never unlock anything.
     newly = []
     with _LOCK, _Conn() as conn:
         for key, title, _desc, test in MILESTONES:
