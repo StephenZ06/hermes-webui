@@ -323,4 +323,6 @@ def test_deleting_what_earned_an_achievement_takes_it_back(game):
 
     dashboard_game.remove_skill(skill["id"])
     assert "first_skill" not in unlocked() and "first_task" in unlocked()
-    assert dashboard_game.treasury()["gold"]["earned"] == int(20 * dashboard_game.GOLD_PER_XP) + dashboard_game.ACHIEVEMENT_GOLD
+    # Gold left = the task's XP plus one award per achievement still earned
+    # (first_task, and night_owl too when the suite runs late at night).
+    assert dashboard_game.treasury()["gold"]["earned"] == int(20 * dashboard_game.GOLD_PER_XP) + dashboard_game.ACHIEVEMENT_GOLD * len(unlocked())
