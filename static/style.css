@@ -16399,5 +16399,34 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .dash.is-rpg .is-fading-in{animation:dash-fade-in .32s ease both;}
 @keyframes dash-fade-in{from{opacity:0;}to{opacity:1;}}
 @media (prefers-reduced-motion:reduce){.dash.is-rpg .is-fading-in{animation:none;}}
-/* Level card: the rank's text (ASCENDED) sits 1px lower inside its pill. */
-.dash.is-rpg .rpg-title .rpg-rank{padding-top:4px;padding-bottom:2px;}
+/* Level card: the rank's text (ASCENDED) has equal room above and below
+   inside its pill. */
+.dash.is-rpg .rpg-title .rpg-rank{padding-top:4px;padding-bottom:3px;}
+
+/* Chat page polish. */
+/* The usage card's selected window (5 hours / Weekly) is a deeper blue. */
+.chat-usage-widget-window-toggle::before{background:color-mix(in srgb,var(--accent) 38%,var(--bg));}
+/* Composer menus: tighter rows. */
+#profileDropdown .profile-opt{padding:6px 12px;}
+.persona-picker-row{padding:6px 10px;}
+#composerWsDropdown .ws-opt{padding-top:6px;padding-bottom:6px;}
+#composerWsDropdown .ws-opt-action{gap:8px;}
+.reasoning-option{padding-top:5px;padding-bottom:5px;}
+/* A profile switch shimmers the chip's name instead of spinning beside it. */
+.composer-profile-chip.switching{opacity:1;}
+.composer-profile-chip.switching .composer-profile-icon::after{content:none;}
+.composer-profile-chip.switching .composer-profile-label,.app-titlebar-profile.switching .app-titlebar-profile-label{background:linear-gradient(90deg,currentColor 35%,color-mix(in srgb,currentColor 35%,transparent) 50%,currentColor 65%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:mi-shimmer 1.6s linear infinite;}
+@media (prefers-reduced-motion:reduce){.composer-profile-chip.switching .composer-profile-label,.app-titlebar-profile.switching .app-titlebar-profile-label{animation:none;-webkit-text-fill-color:currentColor;opacity:.6;}}
+/* Model and workspace menus: the placeholders sit 1px higher; the clear (x)
+   and add (+) buttons are rounded squares as tall as their inputs. */
+.model-search-input,.ws-search-input{box-sizing:border-box;height:32px;padding-top:4px;padding-bottom:8px;}
+.model-custom-input{box-sizing:border-box;height:30px;padding-top:3px;padding-bottom:7px;}
+.model-search-clear,.ws-search-clear{width:32px;height:32px;border-radius:6px;}
+.model-custom-btn{width:30px;height:30px;}
+/* "Custom model ID" sits 2px lower, halfway between the divider and its
+   input; provider headings get as much room under their text as above it. */
+.model-custom-sep{padding-top:6px;padding-bottom:2px;}
+.model-group:not(.model-custom-sep){padding-bottom:10px;}
+:root[data-skin="zeus-2"] .model-opt-badge{padding-top:2px;padding-bottom:2px;}
+/* New-chat suggestions sit on the page background with an outline. */
+.suggestion{background:transparent;}

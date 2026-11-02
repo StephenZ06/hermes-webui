@@ -1151,8 +1151,9 @@ def test_deleting_a_sale_fades_the_other_cards_it_changed(browser):
     assert set(out) - {"stat"} and set(out) == set(inn), (out, inn)
     # The sales list itself already folded the row away; it does not fade too.
     assert "recent-sales" not in out, out
-    # The rank's text sits 1px lower inside its pill (4px above, 2px below).
+    # The rank's text has equal room above and below inside its pill: the
+    # pixel font's ink sits 1px below its line box, so 4px above, 3px below.
     page.evaluate("() => window.HermesDashboard.select('character')")
     page.wait_for_selector(".rpg-title .rpg-rank", timeout=15000)
     pad = page.evaluate("() => { const c = getComputedStyle(document.querySelector('.rpg-title .rpg-rank')); return [c.paddingTop, c.paddingBottom]; }")
-    assert pad == ["4px", "2px"], pad
+    assert pad == ["4px", "3px"], pad

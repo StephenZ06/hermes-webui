@@ -32,7 +32,7 @@ def test_polling_payloads_are_deferred_while_user_scrolls_sidebar():
     assert "async function renderSessionList(opts={})" in render_block
     assert "async function _runRenderSessionListRefresh(opts, _gen)" in refresh_block
     assert "const deferWhileInteracting=Boolean(opts&&opts.deferWhileInteracting);" in refresh_block
-    assert "if(deferWhileInteracting&&_isSessionListUserInteracting())" in refresh_block
+    assert "if(deferWhileInteracting&&!_sessionListSkeletonActive&&_isSessionListUserInteracting())" in refresh_block
     assert "_pendingSessionListPayload={gen:_gen,sessData,projData,unreadGen};" in refresh_block
     assert "_schedulePendingSessionListApply();" in refresh_block
     assert "_applySessionListPayload(sessData,projData,{unreadGen});" in refresh_block

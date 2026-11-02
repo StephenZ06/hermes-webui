@@ -5885,7 +5885,11 @@ async function _runRenderSessionListRefresh(opts, _gen){
     // rows. The switch clears the embargo immediately before its own (authoritative)
     // renderSessionList(), so that render's payload is the first allowed to paint.
     if (_profileSwitchListEmbargo) return;
-    if(deferWhileInteracting&&_isSessionListUserInteracting()){
+    // Deferring keeps rows from moving under the pointer. A skeleton has no rows
+    // to protect, and a refresh queued behind a profile switch supersedes the
+    // switch's own render, so deferring here would leave the skeleton up for as
+    // long as the pointer rests on the list.
+    if(deferWhileInteracting&&!_sessionListSkeletonActive&&_isSessionListUserInteracting()){
       _pendingSessionListPayload={gen:_gen,sessData,projData,unreadGen};
       _schedulePendingSessionListApply();
       return;
