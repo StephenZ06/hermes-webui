@@ -16393,3 +16393,11 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .dash.is-rpg .dash-inline-form > [data-form-cancel]{order:99;margin:-8px auto 0;grid-column:1/-1;justify-self:center;}
 .dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning > [data-form-cancel]{margin-top:0;}
 .dash.is-rpg .dash-card.is-learning-log .dash-inline-form.is-learning::after{display:none;}
+/* A deletion that changes other cards (a sale: revenue, goals, milestones,
+   the tiles) fades their old content away, then the new content in. */
+.dash.is-rpg .is-fading-out{opacity:0;transition:opacity .2s ease;}
+.dash.is-rpg .is-fading-in{animation:dash-fade-in .32s ease both;}
+@keyframes dash-fade-in{from{opacity:0;}to{opacity:1;}}
+@media (prefers-reduced-motion:reduce){.dash.is-rpg .is-fading-in{animation:none;}}
+/* Level card: the rank's text (ASCENDED) sits 1px lower inside its pill. */
+.dash.is-rpg .rpg-title .rpg-rank{padding-top:4px;padding-bottom:2px;}

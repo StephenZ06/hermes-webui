@@ -1127,3 +1127,32 @@ def test_cancel_centres_evolution_arrows_sit_on_the_art_and_chronicle_chips_have
         .map((s) => { const r = document.querySelector(s).getBoundingClientRect(); return {cx: r.left + r.width / 2, top: r.top, bottom: r.bottom, w: r.width}; })""")
     assert abs(cancel["cx"] - form["cx"]) <= 1  # centred, not pushed to the right
     assert cancel["top"] >= add["bottom"] - 8 and cancel["w"] < form["w"] / 2  # its own line, its own width
+
+
+def test_deleting_a_sale_fades_the_other_cards_it_changed(browser):
+    product = f"Fade plan {uuid.uuid4().hex[:4]}"
+    _post("/api/dashboard/sales/add", {"amount": "4321", "product": product, "date": None, "recurring": False})
+    page = _dashboard(browser, "business", viewport={"width": 1470, "height": 850})
+    page.wait_for_function(f"() => document.querySelector('.dash-body')?.textContent.includes('{product}')", polling=100, timeout=15000)
+    page.wait_for_function("() => !window.HermesDashboard._state.loading.business", polling=100, timeout=10000)
+    page.evaluate("""() => { window.__out = new Set(); window.__in = new Set();
+        new MutationObserver((m) => m.forEach((r) => {
+            const el = r.target, card = el.closest && (el.closest('[data-dash-card]') || el.closest('.dash-stat'));
+            const name = card ? (card.dataset.dashCard || 'stat') : '';
+            if (r.type === 'attributes' && el.classList.contains('is-fading-out')) window.__out.add(name);
+            if (r.type === 'attributes' && el.classList.contains('is-fading-in')) window.__in.add(name);
+        })).observe(document.getElementById('dashboardRoot'), {attributes: true, attributeFilter: ['class'], subtree: true}); }""")
+    page.evaluate(f"() => [...document.querySelectorAll('.dash-row')].find(r => r.textContent.includes('{product}')).querySelector('[data-sale-remove]').click()")
+    page.wait_for_function(f"() => !document.querySelector('.dash-body').textContent.includes('{product}')", polling=100, timeout=10000)
+    page.wait_for_timeout(400)
+    out, inn = page.evaluate("() => [[...window.__out], [...window.__in]]")
+    # The revenue/road cards and the tiles change with the sale: they fade out, then in.
+    assert "stat" in out and "stat" in inn, (out, inn)
+    assert set(out) - {"stat"} and set(out) == set(inn), (out, inn)
+    # The sales list itself already folded the row away; it does not fade too.
+    assert "recent-sales" not in out, out
+    # The rank's text sits 1px lower inside its pill (4px above, 2px below).
+    page.evaluate("() => window.HermesDashboard.select('character')")
+    page.wait_for_selector(".rpg-title .rpg-rank", timeout=15000)
+    pad = page.evaluate("() => { const c = getComputedStyle(document.querySelector('.rpg-title .rpg-rank')); return [c.paddingTop, c.paddingBottom]; }")
+    assert pad == ["4px", "2px"], pad

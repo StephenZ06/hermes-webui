@@ -953,6 +953,9 @@
     if (!data && state.error[state.tab]) body = `<p class="dash-empty">${esc(state.error[state.tab])} <button type="button" class="dash-link" data-dash-retry>Retry</button></p>`;
     else if (!data) body = pageLoader(false);
     else body = ({character: characterView, shop: shopView, career, business, settings: settingsView, personal})[state.tab](data);
+    // Cards whose content a deletion changed (a sale's revenue, goals,
+    // milestones, the tiles) fade their old content out, then the new in.
+    if (fadeOutChanged(host, body)) return;
     const isChar = state.tab === 'character';
     const scroller = host.parentElement;
     const scroll = scroller ? scroller.scrollTop : 0;
@@ -1002,6 +1005,8 @@
         setTimeout(() => { h.style.transition = ''; h.style.transformOrigin = ''; }, 420);
       });
     }
+    if (state.fadeIn && state.fadeIn.tab === state.tab) state.fadeIn.keys.forEach((k) => fadeTargets(host, k).forEach((el) => el.classList.add('is-fading-in')));
+    state.fadeIn = null;
     if (rowsBefore) rowKeys(host).forEach(([k, row]) => {
       if (rowsBefore.has(k)) return;
       row.classList.add('is-arriving');
@@ -1347,6 +1352,47 @@
     }).filter(([, row]) => row);
   }
 
+  // What each card (title + body) and each summary tile shows, from the
+  // markup a paint is about to put in, so the next paint can tell which
+  // ones a change touched.
+  function cardShapes(rootEl) {
+    const map = new Map();
+    rootEl.querySelectorAll('[data-dash-card]').forEach((card) => {
+      const h3 = card.querySelector(':scope > .dash-card-head h3'), cardBody = card.querySelector(':scope > .dash-card-body');
+      map.set(`card:${card.dataset.dashCard}`, `${h3 ? h3.innerHTML : ''}|${cardBody ? cardBody.innerHTML : ''}`);
+    });
+    rootEl.querySelectorAll('.dash-stats > .dash-stat').forEach((tile, i) => map.set(`stat:${i}`, tile.innerHTML));
+    return map;
+  }
+  function fadeTargets(host, key) {
+    const [kind, name] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    if (kind === 'stat') { const tile = host.querySelectorAll('.dash-stats > .dash-stat')[Number(name)]; return tile ? [...tile.children] : []; }
+    const card = host.querySelector(`[data-dash-card="${CSS.escape(name)}"]`);
+    return card ? [card.querySelector(':scope > .dash-card-head h3'), card.querySelector(':scope > .dash-card-body')].filter(Boolean) : [];
+  }
+  // After a deletion: if the new markup changes other cards, fade their old
+  // content out first and paint once it has gone (the new content fades in).
+  // The card the row was removed from already folded that row away.
+  const FADE_OUT_MS = 200;
+  function fadeOutChanged(host, body) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = body || '';
+    const shapes = cardShapes(tpl.content);
+    const prev = state.painted.shapes;
+    state.painted.shapes = {tab: state.tab, map: shapes};
+    const fade = state.fadeChanged;
+    state.fadeChanged = null;
+    if (!fade || Date.now() - fade.at > 5000 || !prev || prev.tab !== state.tab || !shownTabIs(host, state.tab)) return false;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    const keys = [...shapes].filter(([k, v]) => prev.map.has(k) && prev.map.get(k) !== v && k !== fade.skip).map(([k]) => k);
+    if (!keys.length) return false;
+    keys.forEach((k) => fadeTargets(host, k).forEach((el) => el.classList.add('is-fading-out')));
+    state.fadeIn = {tab: state.tab, keys};
+    setTimeout(() => paint({force: true}), FADE_OUT_MS);
+    return true;
+  }
+  function shownTabIs(host, tab) { const shown = host.querySelector('.dash-body'); return !!shown && shown.dataset.tab === tab; }
+
   // A removed row fades, then folds its height away so the rows below slide
   // up instead of jumping when the refresh repaints the list.
   function foldAway(row) {
@@ -1362,8 +1408,12 @@
   // ── actions ──────────────────────────────────────────────────────────────
   async function act(path, body, {ok = '', after = refresh, row = null} = {}) {
     const fold = foldAway(row);
+    const home = row && row.closest('[data-dash-card]');
     try {
       const [result] = await Promise.all([post(path, body), new Promise((r) => setTimeout(r, fold))]);
+      // A removal can change other cards too (a sale: revenue, goals,
+      // milestones, the tiles); the next paint fades those over.
+      if (row) state.fadeChanged = {at: Date.now(), skip: home ? `card:${home.dataset.dashCard}` : ''};
       if (ok) toast(typeof ok === 'function' ? ok(result) : ok);
       return result;
     } catch (error) {
