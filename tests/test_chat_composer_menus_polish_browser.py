@@ -1,7 +1,8 @@
 """Chat page polish: the composer menus' square clear/add buttons as tall as
 their inputs, placeholders 1px higher, tighter menu rows, the profile switch's
-name shimmer in place of a spinner, suggestions on the page background, and
-the deeper blue on the usage card's selected window."""
+name shimmer in place of a spinner, suggestions and popups on the page
+background, the dark blue on the usage card's selected window, and the
+sidebar filter and folder names 1px higher."""
 import json
 
 import pytest
@@ -66,7 +67,8 @@ def test_composer_menu_rows_are_compact(page):
     page.evaluate("() => toggleProfileDropdown()")
     page.wait_for_selector("#profileDropdown .profile-opt", state="visible", timeout=10000)
     prof = page.evaluate("() => { const c = getComputedStyle(document.querySelector('#profileDropdown .profile-opt')); return [c.paddingTop, c.paddingBottom]; }")
-    assert prof == ["6px", "6px"], prof
+    # Profile names are lowercase, so they ride 1px high to read level.
+    assert prof == ["5px", "7px"], prof
 
 
 def test_profile_switch_shimmers_the_name_instead_of_spinning(page):
@@ -87,9 +89,54 @@ def test_suggestions_sit_on_the_page_background(page):
     assert bg == "rgba(0, 0, 0, 0)", bg
 
 
-def test_selected_usage_window_is_a_deeper_blue(page):
+def _rgb(css):
+    import re
+    nums = [float(x) for x in re.findall(r"[\d.]+", css)[:3]]
+    return [n * 255 for n in nums] if css.startswith("color(") else nums
+
+
+def test_selected_usage_window_is_a_dark_blue(page):
     page.evaluate("() => loadAccountUsage()")
     page.wait_for_selector("#chatUsageWidgetWindowToggle:not([hidden])", timeout=10000)
     fill = page.evaluate("() => getComputedStyle(document.getElementById('chatUsageWidgetWindowToggle'), '::before').backgroundColor")
-    # An opaque mix with the page colour, not the old 16% wash over transparent.
-    assert "/ 0.16" not in fill and not fill.startswith("rgba"), fill
+    r, g, b = _rgb(fill)
+    accent = page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()")
+    ar, ag, ab = (int(accent[i:i + 2], 16) for i in (1, 3, 5))
+    # Opaque, the accent's hue, and darker than the earlier 38% mix with the
+    # page colour: about a third of the accent's lightness.
+    assert not fill.startswith("rgba"), fill
+    order = lambda c: sorted(range(3), key=lambda i: c[i])
+    assert order((r, g, b)) == order((ar, ag, ab)), (fill, accent)
+    assert r + g + b < 0.36 * (ar + ag + ab), (fill, accent)
+
+
+POPUPS = ["#profileDropdown", "#composerModelDropdown", "#composerWsDropdown", "#composerReasoningDropdown",
+          "#composerToolsetsDropdown", "#personaPickerPopup", "#savedPromptsPopup", "#cmdDropdown", "#ctxTooltip",
+          "#composerMobileConfigPanel", ".app-dialog", ".cmdk-modal"]
+
+
+def test_chat_popups_use_the_page_background(page):
+    fills = page.evaluate("""(sels) => {
+      const probe = document.createElement('div');
+      probe.style.background = 'var(--bg)';
+      document.body.appendChild(probe);
+      const bg = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const out = {bg};
+      for (const s of sels) { const e = document.querySelector(s); out[s] = e ? getComputedStyle(e).backgroundColor : null; }
+      return out;
+    }""", POPUPS)
+    bg = fills.pop("bg")
+    assert all(v is not None for v in fills.values()), fills
+    assert {k: v for k, v in fills.items() if v != bg} == {}, (bg, fills)
+
+
+def test_chat_sidebar_filter_and_folder_names_sit_higher(page):
+    state = page.evaluate("""() => {
+      const c = getComputedStyle(document.getElementById('sessionSearch'));
+      const name = document.querySelector('#sessionList .project-folder-row > .project-folder-name');
+      return {pad: parseFloat(c.paddingBottom) - parseFloat(c.paddingTop), name: name ? getComputedStyle(name).top : null};
+    }""")
+    assert state["pad"] == 2, state
+    if state["name"] is not None:
+        assert state["name"] == "-0.9px", state

@@ -16404,14 +16404,19 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .dash.is-rpg .rpg-title .rpg-rank{padding-top:4px;padding-bottom:3px;}
 
 /* Chat page polish. */
-/* The usage card's selected window (5 hours / Weekly) is a deeper blue. */
-.chat-usage-widget-window-toggle::before{background:color-mix(in srgb,var(--accent) 38%,var(--bg));}
-/* Composer menus: tighter rows. */
-#profileDropdown .profile-opt{padding:6px 12px;}
+/* The usage card's selected window (5 hours / Weekly) is a dark blue: the
+   accent mixed toward black keeps its hue and loses lightness. */
+.chat-usage-widget-window-toggle::before{background:color-mix(in srgb,var(--accent) 34%,#000);}
+/* Composer menus: tighter rows. Profile names are lowercase, whose body sits
+   below the line's centre, so they ride 1px high to read level between the
+   row's edges; model rows do the same for their lowercase id line. */
+#profileDropdown .profile-opt{padding:5px 12px 7px;}
+#profileDropdown .profile-opt.ws-manage{padding:6px 12px;}
 .persona-picker-row{padding:6px 10px;}
 #composerWsDropdown .ws-opt{padding-top:6px;padding-bottom:6px;}
 #composerWsDropdown .ws-opt-action{gap:8px;}
 .reasoning-option{padding-top:5px;padding-bottom:5px;}
+#composerModelDropdown .model-opt{padding-top:9px;padding-bottom:11px;}
 /* A profile switch shimmers the chip's name instead of spinning beside it. */
 .composer-profile-chip.switching{opacity:1;}
 .composer-profile-chip.switching .composer-profile-icon::after{content:none;}
@@ -16428,5 +16433,18 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .model-custom-sep{padding-top:6px;padding-bottom:2px;}
 .model-group:not(.model-custom-sep){padding-bottom:10px;}
 :root[data-skin="zeus-2"] .model-opt-badge{padding-top:2px;padding-bottom:2px;}
+/* Chat sidebar: the filter's placeholder 1px up, and project folder names
+   1px up so the space above and below them reads equal. */
+#panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
+#sessionList .project-folder-row > .project-folder-name{top:-.9px;}
+#sessionList .project-folder-row > :is(.color-dot,.project-folder-chevron){top:-.8px;}
+:root[data-skin="zeus-2"] #sessionList .project-folder-row > .project-folder-count{top:-2px;}
 /* New-chat suggestions sit on the page background with an outline. */
 .suggestion{background:transparent;}
+/* Chat page popups, menus, cards over the composer and dialogs share the
+   page's own background rather than the lighter surface grey, so they read
+   as cut-outs of the page edged by their border. The ID in the :is() list
+   lifts every entry above the skins' class-level fills (Zeus's dialog
+   gradient included). Inputs inside them drop their own fill too. */
+:is(#profileDropdown,#composerModelDropdown,#composerWsDropdown,#composerReasoningDropdown,#composerToolsetsDropdown,#personaPickerPopup,#savedPromptsPopup,#cmdDropdown,#ctxTooltip,#composerMobileConfigPanel,.session-action-menu,.app-dialog,.cmdk-modal,.approval-inner,.clarify-inner,.queue-card-inner){background:var(--bg);}
+:is(#composerModelDropdown,#composerWsDropdown) :is(.model-search-input,.model-custom-input,.ws-search-input,.model-scope-note){background:transparent;}

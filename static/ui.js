@@ -16622,6 +16622,8 @@ function _messageRenderCacheSignature(){
     _addBoundedHash(add, tc.snippet);
     _addBoundedHash(add, tc.args||{});
   });
+  // Turn headers bake in the assistant name, which follows the active profile.
+  if(typeof assistantDisplayName==='function') add(assistantDisplayName());
   if(S.session){
     add(S.session.message_count);add(S.session.updated_at);add(S.session.compression_anchor_visible_idx);
     _addBoundedHash(add, S.session.compression_anchor_message_key||null);
