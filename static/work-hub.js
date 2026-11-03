@@ -1,7 +1,9 @@
 /* Work Hub: vanilla-JS client for the local state, using curated mx-icons SVGs. */
 (() => {
-  const DEFAULT_INSPECTOR_WIDTH = 280;
-  let currentInspectorWidth = (() => { const raw = localStorage.getItem('workHubInspectorWidth'); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
+  const DEFAULT_INSPECTOR_WIDTH = 360;
+  // Named apart from the old 280px panel's key, whose saved width would keep it narrow.
+  const INSPECTOR_WIDTH_KEY = 'workHubInspectorPanelWidth';
+  let currentInspectorWidth = (() => { const raw = localStorage.getItem(INSPECTOR_WIDTH_KEY); return raw ? parseInt(raw, 10) : DEFAULT_INSPECTOR_WIDTH; })();
   const MIN_INSPECTOR_WIDTH = 200;
   const MAX_INSPECTOR_WIDTH = 600;
   const store = { items: [], folders: [], projects: [], boards: [], profiles: [], statuses: [], workflows: [], revision: 0, stale: false, activeScope: 'all', deleteMode: false, activeFolderId: null, activeBoardId: null, expandedProjects: {}, activeView: 'board', selectedItemId: null, search: '', boardFilters: {}, boardFilterOpen: null };
@@ -220,7 +222,7 @@
   }
 
   async function createWorkHubProject() {
-    const name = await showPromptDialog({ title: 'New project', message: 'Name the project workspace.', placeholder: 'Project name', confirmLabel: 'Create' });
+    const name = await showPromptDialog({ title: 'New Project', message: 'Name the project workspace.', placeholder: 'Project name', confirmLabel: 'Create' });
     if (!name || !name.trim()) return;
     const colors = ['#7c8cff', '#5fbf9f', '#d5a75f', '#c07ac5', '#d77070'];
     try {
@@ -278,7 +280,7 @@
   }
   function showWorkHubBoardProjectPicker(anchor) { return showWorkHubProjectPicker(anchor, store.projects, 'Create a project workspace before creating a board.'); }
   function showWorkHubProjectPicker(anchor, projects, emptyMessage) { if (!projects.length) { if (typeof showToast === 'function') showToast(emptyMessage); return Promise.resolve(null); } document.querySelectorAll('.work-hub-project-picker').forEach(picker => picker.remove()); return new Promise(resolve => { const host = el('workHubProjectCreate')?.parentElement || anchor?.parentElement; if (!host) return resolve(null); const picker = document.createElement('div'); picker.className = 'project-picker work-hub-project-picker'; let closed = false; const finish = projectId => { if (closed) return; closed = true; dismissPopover(picker); document.removeEventListener('click', close); resolve(projectId); }; const close = event => { if (!picker.contains(event.target) && !anchor?.contains(event.target)) finish(null); }; projects.forEach(project => { const item = document.createElement('div'); item.className = 'project-picker-item'; const dot = document.createElement('span'); dot.className = 'color-dot'; dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + (project.color || 'var(--muted)') + ';flex-shrink:0;'; const name = document.createElement('span'); name.textContent = project.name || 'Untitled project'; item.append(dot, name); item.onclick = () => finish(project.project_id); picker.appendChild(item); }); host.appendChild(picker); setTimeout(() => document.addEventListener('click', close), 0); }); }
-  async function createWorkHubBoard(anchor) { const projectId = await showWorkHubBoardProjectPicker(anchor); if (!projectId) return; const name = await showPromptDialog({ title: 'New board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = result.board.id; store.expandedProjects[projectId] = true; await loadWorkHubPanel(); notifyWorkHubChanged(); const newBoard = document.querySelector(`[data-board-id="${CSS.escape(result.board.id)}"]`); markArrival(newBoard && newBoard.closest('.work-hub-board-row')); } catch (error) { store.stale = true; render(); } }
+  async function createWorkHubBoard(anchor) { const projectId = await showWorkHubBoardProjectPicker(anchor); if (!projectId) return; const name = await showPromptDialog({ title: 'New Board', message: 'Name this board.', placeholder: 'Board name', confirmLabel: 'Create' }); if (!name || !name.trim()) return; try { const result = await request('/api/work_hub/boards/create', { method: 'POST', body: JSON.stringify({ board: { name: name.trim(), project_id: projectId }, expected_revision: store.revision }) }); store.activeFolderId = projectId; store.activeScope = projectId; store.activeBoardId = result.board.id; store.expandedProjects[projectId] = true; await loadWorkHubPanel(); notifyWorkHubChanged(); const newBoard = document.querySelector(`[data-board-id="${CSS.escape(result.board.id)}"]`); markArrival(newBoard && newBoard.closest('.work-hub-board-row')); } catch (error) { store.stale = true; render(); } }
   async function renameWorkHubBoard(boardId) { const board = store.boards.find(row => row.id === boardId); if (!board) return; const name = await showPromptDialog({ title: 'Rename board', message: 'Choose a new board name.', placeholder: 'Board name', value: board.name || '', selectAll: true, confirmLabel: 'Rename' }); if (!name || !name.trim() || name.trim() === board.name) return; try { await request('/api/work_hub/boards/rename', { method: 'POST', body: JSON.stringify({ board_id: boardId, board: { name: name.trim() }, expected_revision: store.revision }) }); await loadWorkHubPanel(); notifyWorkHubChanged(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board rename failed: ${error.message || error}`); } }
   async function deleteWorkHubBoard(boardId) { const board = store.boards.find(entry => entry.id === boardId); const message = board?.default ? 'This clears every work item from the main board. The board itself stays as an empty board.' : 'This permanently removes the board and every work item on it.'; if (!await showConfirmDialog({ title: 'Delete board', message, confirmLabel: 'Delete', danger: true })) return; try { await request('/api/work_hub/boards/delete', { method: 'POST', body: JSON.stringify({ board_id: boardId, expected_revision: store.revision }) }); const boardRow = document.querySelector(`[data-board-id="${CSS.escape(boardId)}"]`); if (!board?.default || store.boards.filter(entry => entry.project_id === board.project_id).length > 1) await animateRemoval(boardRow && boardRow.closest('.work-hub-board-row')); if (store.activeBoardId === boardId) store.activeBoardId = null; await loadWorkHubPanel(); notifyWorkHubChanged(); if (store.deleteMode && !workHubHasDeletables()) exitProjectDeleteMode(); } catch (error) { store.stale = true; render(); if (typeof showToast === 'function') showToast(`Board delete failed: ${error.message || error}`); } }
   function workHubColumnItems(items, statusId) {
@@ -524,8 +526,15 @@
       revealItem(item.id);
     };
     if (saveButton) saveButton.onclick = save;
-    // Ctrl/Cmd+Enter saves from anywhere in the panel.
-    panel.onkeydown = event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); } };
+    // Ctrl/Cmd+Enter saves from anywhere in the panel; plain Enter saves from the
+    // title. A new item left as it came is already stored, so Enter just closes it.
+    panel.onkeydown = event => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      if (event.ctrlKey || event.metaKey) { event.preventDefault(); save(); return; }
+      if (event.target.id !== 'workHubTitle') return;
+      event.preventDefault();
+      if (untitled && !isDirty()) closeInspectorAnimated(); else save();
+    };
     const pauseButton = el('workHubPause'); if (pauseButton) pauseButton.onclick = () => changeWorkflow(workflow.id, 'pause');
     const resumeButton = el('workHubResume'); if (resumeButton) resumeButton.onclick = () => changeWorkflow(workflow.id, 'resume');
   }
@@ -733,8 +742,9 @@
   }
   async function createItem() {
     try {
-      const result = await request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: Object.assign({ title: NEW_ITEM_TITLE, status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, store.activeBoardId ? { board_id: store.activeBoardId } : {}), expected_revision: store.revision }) });
+      const result = await withCurrentRevision(() => request('/api/work_hub/items/create', { method: 'POST', body: JSON.stringify({ item: Object.assign({ title: NEW_ITEM_TITLE, status: 'backlog', project_id: store.activeScope !== 'all' && store.activeScope !== 'inbox' ? store.activeScope : null }, store.activeBoardId ? { board_id: store.activeBoardId } : {}), expected_revision: store.revision }) }));
       store.items.push(result.item); store.revision = result.revision; store.selectedItemId = result.item.id; notifyWorkHubChanged(); render();
+      el('workHubTitle')?.focus({ preventScroll: true });
       // Flash the new card
       setTimeout(() => {
         const card = document.querySelector(`.work-hub-card[data-item-id="${result.item.id}"], .work-hub-list-row[data-item-id="${result.item.id}"]`);
@@ -746,7 +756,19 @@
       if (typeof showToast === 'function') showToast('Could not add the work item: ' + (error && error.message ? error.message : 'unknown error'), 5000, 'error');
     }
   }
-  async function updateItem(itemId, item, options = {}) { try { const result = await request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); if (!options.deferRender) render(); return true; } catch (error) { store.stale = true; render(); return false; } }
+  // The revision counts every change in the hub, so a change elsewhere (another
+  // tab, a chat, the first item's default board settling) reads as a conflict.
+  // Retry on the current revision unless `unchanged` says the conflict is real.
+  async function withCurrentRevision(send, unchanged = () => true) {
+    try { return await send(); } catch (error) {
+      if (error.status !== 409) throw error;
+      const fresh = await request('/api/work_hub/items');
+      if (!unchanged(fresh.items || [])) throw error;
+      store.revision = fresh.revision;
+      return send();
+    }
+  }
+  async function updateItem(itemId, item, options = {}) { try { const known = store.items.find(x => x.id === itemId); const result = await withCurrentRevision(() => request('/api/work_hub/items/update', { method: 'POST', body: JSON.stringify({ item_id: itemId, item, expected_revision: store.revision }) }), rows => { const row = rows.find(x => x.id === itemId); return !!(row && known && row.updated_at === known.updated_at); }); const index = store.items.findIndex(x => x.id === itemId); store.items[index] = result.item; store.revision = result.revision; notifyWorkHubChanged(); if (!options.deferRender) render(); return true; } catch (error) { store.stale = true; render({ keepInspector: true }); return false; } }
   // The details panel slides away (sheet on phones, fades on the desktop
   // column) before it clears, instead of vanishing.
   // Bring a card into view and flash it. On a phone only one column fits, so a
@@ -795,7 +817,7 @@
       };
       const onUp = () => {
         currentInspectorWidth = width;
-        try { localStorage.setItem('workHubInspectorWidth', String(currentInspectorWidth)); } catch (_) {}
+        try { localStorage.setItem(INSPECTOR_WIDTH_KEY, String(currentInspectorWidth)); } catch (_) {}
         wrap.classList.remove('is-resizing');
         resizer.removeEventListener('pointermove', onMove);
         resizer.removeEventListener('pointerup', onUp);

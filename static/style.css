@@ -4035,7 +4035,7 @@
 
 /* ── Work Hub ─────────────────────────────────────────────────────────── */
 #workHub { flex: 1; min-height: 0; overflow: hidden; padding: 0; background: var(--bg); }
-.work-hub { --wh-border: var(--border); --wh-inspector-width: 280px; display: grid; grid-template-columns: minmax(0, 1fr) var(--wh-inspector-width); height: 100%; min-height: 0; overflow: hidden; background: var(--bg); }
+.work-hub { --wh-border: var(--border); --wh-inspector-width: 360px; display: grid; grid-template-columns: minmax(0, 1fr) min(var(--wh-inspector-width), max(40%, 280px)); height: 100%; min-height: 0; overflow: hidden; background: var(--bg); }
 #workHubSidebar { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .work-hub-nav { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 8px; overflow-y: auto; }
 .work-hub-scope { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: background .18s ease, color .18s ease, transform .18s ease; }
@@ -16436,9 +16436,9 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Chat sidebar: the filter's placeholder 1px up, and project folder names
    1px up so the space above and below them reads equal. */
 #panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
-#sessionList .project-folder-row > .project-folder-name{top:-.9px;}
-#sessionList .project-folder-row > :is(.color-dot,.project-folder-chevron){top:-.8px;}
-:root[data-skin="zeus-2"] #sessionList .project-folder-row > .project-folder-count{top:-2px;}
+:is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{top:-.9px;}
+:is(#sessionList,#workHubProjects) .project-folder-row > :is(.color-dot,.project-folder-chevron){top:-.8px;}
+:root[data-skin="zeus-2"] :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-count{top:-2px;}
 /* New-chat suggestions sit on the page background with an outline. */
 .suggestion{background:transparent;}
 /* Chat page popups, menus, cards over the composer and dialogs share the
@@ -16446,5 +16446,28 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    as cut-outs of the page edged by their border. The ID in the :is() list
    lifts every entry above the skins' class-level fills (Zeus's dialog
    gradient included). Inputs inside them drop their own fill too. */
-:is(#profileDropdown,#composerModelDropdown,#composerWsDropdown,#composerReasoningDropdown,#composerToolsetsDropdown,#personaPickerPopup,#savedPromptsPopup,#cmdDropdown,#ctxTooltip,#composerMobileConfigPanel,.session-action-menu,.app-dialog,.cmdk-modal,.approval-inner,.clarify-inner,.queue-card-inner){background:var(--bg);}
+:is(#profileDropdown,#composerModelDropdown,#composerWsDropdown,#composerReasoningDropdown,#composerToolsetsDropdown,#personaPickerPopup,#savedPromptsPopup,#cmdDropdown,#ctxTooltip,#composerMobileConfigPanel,.session-action-menu,.app-dialog,.cmdk-modal,.approval-inner,.clarify-inner,.queue-card-inner,.work-hub-create-menu,.project-picker,.themed-select-popup:not(.is-dash),.goal-planner-dialog){background:var(--bg);}
 :is(#composerModelDropdown,#composerWsDropdown) :is(.model-search-input,.model-custom-input,.ws-search-input,.model-scope-note){background:transparent;}
+
+/* Dialogs: fields and quiet buttons drop their grey wash too, so only the
+   confirm button carries a fill. */
+:root.dark .app-dialog-input{background:transparent;}
+:root.dark .app-dialog-btn:not(.confirm):not(:hover),:root.dark .app-dialog-close:not(:hover){background:transparent;}
+
+/* Work Hub polish. */
+/* Primary actions are an accent tint with an accent edge, as dialogs' confirm
+   buttons are, rather than a solid fill. */
+:is(.work-hub-create,.work-hub-save,.goal-planner-field button,.goal-planner-actions button.primary){border:1px solid var(--accent);background:var(--accent-bg);color:var(--accent-text);}
+:is(.work-hub-create,.work-hub-save,.goal-planner-field button,.goal-planner-actions button.primary):not(:disabled):hover{background:var(--accent-bg-strong);}
+:root.dark .goal-planner-dropzone{background:transparent;}
+/* Sidebar labels 1px up; their icons stay put. */
+#workHubSidebar .work-hub-scope > span:not(.work-hub-scope-mark),#workHubSidebar .work-hub-board-row > button:first-child span{position:relative;top:-1px;}
+/* Item panel: the heading 1px up, and the title box as far from the heading's
+   text as it is from the divider below it. */
+.work-hub-inspector .wh-insp-kicker{top:0;}
+.work-hub-inspector .wh-insp-title{margin-top:1px;}
+/* The shared 16px icon basis left the Delete cross off-centre in its button. */
+.work-hub-inspector .wh-insp-delete{justify-content:center;padding-left:10px;padding-right:12px;}
+.work-hub-inspector .wh-insp-delete .work-hub-icon,.work-hub-inspector .wh-insp-delete svg{flex:none;}
+/* Read-only values start where the dropdowns' values do. */
+.work-hub-inspector .wh-insp-static{padding-left:11px;}
