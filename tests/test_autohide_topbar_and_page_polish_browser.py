@@ -141,7 +141,7 @@ def test_usage_card_swaps_windows_with_dots_and_names_them_in_the_label(page):
     assert state["color"] == state["accent"] and state["x"] == 14 and state["w"] == "6px"
 
 
-def test_folder_row_counts_ride_one_pixel_high(page):
+def test_folder_row_counts_ride_one_pixel_low(page):
     page.evaluate("async () => { await switchPanel('notes'); }")
     page.wait_for_timeout(300)
     state = page.evaluate("""() => { const list = document.getElementById('workHubProjects') || document.getElementById('workHubSidebar');
@@ -149,7 +149,7 @@ def test_folder_row_counts_ride_one_pixel_high(page):
       row.innerHTML = '<span class="project-folder-count">1</span>';
       list.prepend(row); const c = getComputedStyle(row.querySelector('.project-folder-count')).translate;
       row.remove(); return {c}; }""")
-    assert state["c"] == "0px -1px"
+    assert state["c"] == "0px 1px"
 
 
 def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):
@@ -158,7 +158,41 @@ def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):
       document.body.append(h); const b = getComputedStyle(h.querySelector('button')), p = getComputedStyle(h.querySelector('span'));
       const out = {weight: b.fontWeight, btn: [b.paddingTop, b.paddingBottom], pill: [p.paddingTop, p.paddingBottom]};
       h.remove(); return out; }""")
-    assert state == {"weight": "400", "btn": ["3px", "5px"], "pill": ["2px", "4px"]}
+    assert state == {"weight": "400", "btn": ["2px", "2px"], "pill": ["2px", "4px"]}
+
+
+def test_every_suggestion_icon_sits_one_pixel_low(page):
+    shifts = page.evaluate("() => [...document.querySelectorAll('.suggestion-grid > .suggestion > svg')].map(i => getComputedStyle(i).translate)")
+    assert shifts == ["0px 1px"] * 3
+
+
+def test_chat_session_titles_ride_one_pixel_high_in_zeus(page):
+    shift = page.evaluate("""() => { document.documentElement.dataset.skin = 'zeus-2';
+      const row = document.createElement('div'); row.className = 'session-item';
+      row.innerHTML = '<span class="session-text">Title</span>'; document.body.append(row);
+      const value = getComputedStyle(row.firstChild).translate; row.remove(); return value; }""")
+    assert shift == "0px -1px"
+
+
+def test_usage_card_rows_keep_a_tight_even_layout(page):
+    state = page.evaluate("""() => { switchPanel('chat');
+      _renderAccountUsage({available: true, provider: 'openai-codex', plan: 'Pro',
+        windows: [{label: '5h session', used_percent: 10}, {label: 'Weekly', used_percent: 42}]});
+      selectAccountUsageWindow('session');
+      const card = document.getElementById('chatUsageWidget'), c = getComputedStyle(card);
+      const row = card.querySelector('.chat-usage-widget-title-row').getBoundingClientRect();
+      const stage = document.getElementById('chatUsageWidgetLabelStage').getBoundingClientRect();
+      const reset = card.querySelector('.chat-usage-widget-reset');
+      return {sides: [c.paddingLeft, c.paddingRight], rowHeight: row.height,
+              labelOffset: stage.top + stage.height / 2 - (row.top + row.height / 2),
+              size: getComputedStyle(document.getElementById('chatUsageWidgetLabel')).fontSize,
+              emptyReset: getComputedStyle(reset).display, height: card.getBoundingClientRect().height}; }""")
+    assert state["sides"] == ["12px", "12px"]
+    assert state["rowHeight"] == 14
+    assert abs(state["labelOffset"]) <= 1  # the taller dot buttons must not push the label down
+    assert state["size"] == "13px"
+    assert state["emptyReset"] == "none"
+    assert state["height"] == round(state["height"])
 
 
 def test_folder_dots_have_equal_space_above_and_below(page):

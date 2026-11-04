@@ -16563,7 +16563,7 @@ textarea.office-biz-input{resize:vertical;}
    equal space above and below their text. */
 .office-header > #officePauseBtn{font-weight:400;}
 @media (min-width:641px){
-  .office-header > #officePauseBtn{padding-top:3px;padding-bottom:5px;}
+  .office-header > #officePauseBtn{padding-top:2px;padding-bottom:2px;}
   .office-header > .office-pill{padding-top:2px;padding-bottom:4px;}
 }
 /* New chat page: the logo sits as far above the heading as the subtitle sits
@@ -16574,19 +16574,30 @@ textarea.office-biz-input{resize:vertical;}
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* Project folder rows on every page: the count rides 1px high. */
-.project-folder-count{translate:0 -1px;}
+/* Project folder rows on every page: the count rides 1px low. */
+.project-folder-count{translate:0 1px;}
 /* Chat and Work Hub folder names: equal space above the capitals and below the baseline. */
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{translate:0 1px;}
 /* Work Hub folder rows are buttons, which centre 1px higher than Chat's rows. */
 #workHubProjects .project-folder-row > .project-folder-chevron{translate:0 1px;}
-/* New chat page: this suggestion's icon sits 1px high beside its text. */
-.suggestion-grid > .suggestion:first-child > svg{translate:0 1px;}
+/* New chat page: suggestion icons sit 1px high beside their text. */
+.suggestion-grid > .suggestion > svg{translate:0 1px;}
 /* Work Hub sidepanel heading sits 1px lower. */
 #panelNotes > .panel-head > span{translate:0 1px;}
 /* Usage card: the outer dot lines up with the card's right edge. */
 .chat-usage-widget-title-row .chat-usage-widget-window-toggle{margin-right:-4px;}
 /* Courier sits low in its line, so Chat's session titles ride up to even out. */
-:root[data-skin="zeus-2"] .session-item > .session-text{translate:0 -2px;}
+:root[data-skin="zeus-2"] .session-item > .session-text{translate:0 -1px;}
 /* Memory sidepanel labels sit 1px low in Courier. */
 :root[data-skin="zeus-2"] #panelMemory .side-menu-item > span{translate:0 -1px;}
+/* Session Usage card: the text and bars sit 12px from all four edges, measured
+   on the visible ink, with even gaps between the rows. The dot buttons overhang
+   the row so their height does not push the label down. */
+#chatUsageWidget{padding:10px 12px 11px;}
+#chatUsageWidget .chat-usage-widget-title-row{height:14px;margin-bottom:10px;}
+#chatUsageWidget .chat-usage-widget-label{font-size:13px;line-height:14px;}
+#chatUsageWidget .chat-usage-widget-label-stage{line-height:14px;}
+#chatUsageWidget .chat-usage-widget-window-toggle{margin-block:-2px;}
+#chatUsageWidget .chat-usage-widget-meta{min-height:0;margin-top:10px;line-height:14px;}
+#chatUsageWidget .chat-usage-widget-reset{margin-bottom:-2px;}
+#chatUsageWidget .chat-usage-widget-reset:has(> span:empty){display:none;}
