@@ -86,20 +86,17 @@ def test_badges_are_rounded_rectangles_not_pills(page):
     assert pills == [], pills
 
 
-def test_badge_text_sits_one_pixel_above_centre(page):
+def test_badge_text_is_centred_and_schedule_text_sits_low(page):
     page.locator(".cron-item").nth(0).click()
     page.wait_for_selector("#taskDetailBody .detail-badge", timeout=10000)
-    # In the side list a pixel of the top padding moves below the text, so the
-    # badge keeps its height and its text is drawn 1px higher than centred;
-    # the detail card's badges stay centred.
+    # Side list and detail card badges all keep their text centred in equal padding.
     shifts = page.evaluate("""() => [...document.querySelectorAll('#panelTasks .cron-profile-badge, #panelTasks .cron-status, #mainTasks .detail-badge')]
         .map(b => { const c = getComputedStyle(b); return [b.className, parseFloat(c.paddingBottom) - parseFloat(c.paddingTop)]; })""")
-    assert shifts and all(shift == (0 if cls.startswith('detail-badge') else 2) for cls, shift in shifts), shifts
-    # The schedule's code box reaches 2px further down than it used to, with
-    # its text half a pixel lower inside it.
+    assert shifts and all(shift == 0 for cls, shift in shifts), shifts
+    # The schedule's text rides half a pixel below centre in its code box.
     code = page.evaluate("""() => { const c = getComputedStyle(document.querySelector('#taskDetailBody .detail-row-value code'));
         return [parseFloat(c.paddingTop), parseFloat(c.paddingBottom)]; }""")
-    assert code == [1.5, 2.5], code
+    assert code == [2.5, 1.5], code
 
 
 def test_rail_unread_badge_sits_one_pixel_from_the_icon_edge(page):

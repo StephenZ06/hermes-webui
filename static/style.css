@@ -15973,14 +15973,15 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    not pills. */
 #panelTasks :is(.cron-profile-badge,.cron-status),
 #mainTasks :is(.detail-badge,.skill-tag){border-radius:5px;}
-/* Their text sits 1px higher (a pixel moved from top padding to bottom). */
-#panelTasks .cron-profile-badge{padding-top:0;padding-bottom:2px;}
-#panelTasks .cron-status{padding-top:1px;padding-bottom:3px;}
+/* Their text sits centred in equal padding. */
+#panelTasks .cron-profile-badge{padding-top:1px;padding-bottom:1px;}
+#panelTasks .cron-status{padding-top:2px;padding-bottom:2px;}
 #mainTasks .skill-tag{padding-top:1px;padding-bottom:3px;}
-/* The detail card's badges keep their text centred, and the schedule's code
-   box reaches 2px further down, its text half a pixel lower. */
+/* The detail card's badges keep their text centred. Code boxes reach 2px
+   further down, and the schedule's text sits 1px lower than the others. */
 #mainTasks .detail-badge{padding-top:2px;padding-bottom:2px;}
 #taskDetailBody .detail-row-value code{padding-top:1.5px;padding-bottom:2.5px;}
+#taskDetailBody .detail-row-value code.cron-schedule-value{padding-top:2.5px;padding-bottom:1.5px;}
 /* Office dashboard: the panels' artwork stands on its own (no tinted tile),
    all at one size; "Everything is on track" takes the red attention tone. */
 .office-dash-icon.has-art{background:none;width:32px;height:32px;align-self:center;aspect-ratio:auto;}
@@ -16602,3 +16603,6 @@ textarea.office-biz-input{resize:vertical;}
 #panelTasks .cron-item:not(.active),#cronList .cron-profile-toggle:not(:hover),#taskDetailBody :is(.detail-card,.detail-expand-toggle){background:var(--bg);}
 #cronList .cron-profile-toggle{padding-top:7px;padding-bottom:9px;}
 #panelTasks > .panel-head > span,#panelTasks > .panel-head .panel-head-btn svg{translate:0 1px;}
+/* Script card: the script name and the path hint sit 1px lower. */
+#taskDetailBody .cron-script-card .detail-script{padding-top:11px;padding-bottom:9px;}
+#taskDetailBody .cron-script-card-hint{translate:0 1px;}

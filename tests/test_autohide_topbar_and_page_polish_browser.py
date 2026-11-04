@@ -242,6 +242,22 @@ def test_scheduled_jobs_header_and_toggle_nudges(page):
     assert state["toggle"] == ["7px", "9px"]
 
 
+def test_scheduled_job_badge_text_sits_one_pixel_low(page):
+    _open_scheduled_jobs(page)
+    state = page.evaluate("""() => ['.cron-profile-badge', '.cron-status'].map(s => { const c = getComputedStyle(document.querySelector('#cronList ' + s));
+      return [c.paddingTop, c.paddingBottom]; })""")
+    assert state == [["1px", "1px"], ["2px", "2px"]]
+
+
+def test_scheduled_job_script_card_text_sits_one_pixel_low(page):
+    state = page.evaluate("""() => { const host = document.getElementById('taskDetailBody');
+      const card = document.createElement('div'); card.className = 'detail-card cron-script-card';
+      card.innerHTML = '<div class="detail-script">job.py</div><div class="detail-hint cron-script-card-hint">Resolved</div>';
+      host.append(card); const s = getComputedStyle(card.firstChild), h = getComputedStyle(card.lastChild);
+      const out = {script: [s.paddingTop, s.paddingBottom], hint: h.translate}; card.remove(); return out; }""")
+    assert state == {"script": ["11px", "9px"], "hint": "0px 1px"}
+
+
 def test_folder_dots_have_equal_space_above_and_below(page):
     """Chat's list has its own offsets, so it is checked alongside the shared row."""
     page.evaluate("async () => { await switchPanel('chat'); }")
