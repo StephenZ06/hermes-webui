@@ -1166,7 +1166,7 @@ function _appendCronProfileToggle(parent){
   wrap.style.cssText = 'padding:10px 0 0';
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'sm-btn';
+  btn.className = 'sm-btn cron-profile-toggle';
   btn.style.cssText = 'width:100%;justify-content:center';
   btn.textContent = _showAllCronProfiles
     ? 'Show active profile only'

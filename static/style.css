@@ -16597,3 +16597,8 @@ textarea.office-biz-input{resize:vertical;}
 #chatUsageWidget .chat-usage-widget-meta{min-height:0;margin-top:10px;line-height:14px;}
 #chatUsageWidget .chat-usage-widget-reset{margin-bottom:-2px;}
 #chatUsageWidget .chat-usage-widget-reset:has(> span:empty){display:none;}
+/* Scheduled Jobs: job cards and detail cards sit on the page background; the
+   selected job keeps its tint and the toggle keeps its hover colour. */
+#panelTasks .cron-item:not(.active),#cronList .cron-profile-toggle:not(:hover),#taskDetailBody :is(.detail-card,.detail-expand-toggle){background:var(--bg);}
+#cronList .cron-profile-toggle{padding-top:7px;padding-bottom:9px;}
+#panelTasks > .panel-head > span,#panelTasks > .panel-head .panel-head-btn svg{translate:0 1px;}

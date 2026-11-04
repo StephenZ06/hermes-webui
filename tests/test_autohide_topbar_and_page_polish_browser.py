@@ -205,6 +205,43 @@ def test_usage_card_rows_keep_a_tight_even_layout(page):
     assert state["height"] == round(state["height"])
 
 
+CRONS = {"jobs": [{"id": "a1", "name": "Daily digest", "enabled": True, "state": "scheduled", "schedule": {"kind": "cron", "expr": "0 9 * * *"},
+                   "schedule_display": "0 9 * * *", "prompt": "Summarise", "profile": "default"},
+                  {"id": "a2", "name": "Weekly report", "enabled": True, "state": "scheduled", "schedule": {"kind": "cron", "expr": "0 9 * * 1"},
+                   "schedule_display": "0 9 * * 1", "prompt": "Report", "profile": "default"}],
+         "other_profile_count": 2}
+
+
+def _open_scheduled_jobs(page):
+    page.route("**/api/crons", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(CRONS)))
+    page.evaluate("async () => { await switchPanel('tasks'); }")
+    page.wait_for_selector("#cronList .cron-item")
+
+
+def test_scheduled_jobs_cards_share_the_page_background(page):
+    _open_scheduled_jobs(page)
+    page.locator("#cronList .cron-item").nth(1).click()
+    page.wait_for_selector("#taskDetailBody .detail-card")
+    page.mouse.move(900, 500)
+    page.wait_for_timeout(300)
+    state = page.evaluate("""() => { const bg = s => getComputedStyle(document.querySelector(s)).backgroundColor;
+      return {page: bg('#mainTasks'), idle: bg('#cronList .cron-item:not(.active)'), active: bg('#cronList .cron-item.active'),
+              toggle: bg('#cronList .cron-profile-toggle'), card: bg('#taskDetailBody .detail-card')}; }""")
+    assert state["idle"] == state["toggle"] == state["card"] == state["page"]
+    assert state["active"] != state["page"]  # the selected job stays marked
+
+
+def test_scheduled_jobs_header_and_toggle_nudges(page):
+    _open_scheduled_jobs(page)
+    state = page.evaluate("""() => { const c = s => getComputedStyle(document.querySelector(s));
+      return {title: c('#panelTasks > .panel-head > span').translate,
+              icons: [...document.querySelectorAll('#panelTasks > .panel-head .panel-head-btn svg')].map(i => getComputedStyle(i).translate),
+              toggle: [c('#cronList .cron-profile-toggle').paddingTop, c('#cronList .cron-profile-toggle').paddingBottom]}; }""")
+    assert state["title"] == "0px 1px"
+    assert state["icons"] == ["0px 1px"] * 3
+    assert state["toggle"] == ["7px", "9px"]
+
+
 def test_folder_dots_have_equal_space_above_and_below(page):
     """Chat's list has its own offsets, so it is checked alongside the shared row."""
     page.evaluate("async () => { await switchPanel('chat'); }")
