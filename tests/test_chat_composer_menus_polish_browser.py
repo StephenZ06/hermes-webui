@@ -95,19 +95,12 @@ def _rgb(css):
     return [n * 255 for n in nums] if css.startswith("color(") else nums
 
 
-def test_selected_usage_window_is_a_dark_blue(page):
+def test_selected_usage_window_dot_is_the_theme_accent(page):
     page.evaluate("() => loadAccountUsage()")
     page.wait_for_selector("#chatUsageWidgetWindowToggle:not([hidden])", timeout=10000)
     fill = page.evaluate("() => getComputedStyle(document.getElementById('chatUsageWidgetWindowToggle'), '::before').backgroundColor")
-    r, g, b = _rgb(fill)
     accent = page.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()")
-    ar, ag, ab = (int(accent[i:i + 2], 16) for i in (1, 3, 5))
-    # Opaque, the accent's hue, and darker than the earlier 38% mix with the
-    # page colour: about a third of the accent's lightness.
-    assert not fill.startswith("rgba"), fill
-    order = lambda c: sorted(range(3), key=lambda i: c[i])
-    assert order((r, g, b)) == order((ar, ag, ab)), (fill, accent)
-    assert r + g + b < 0.36 * (ar + ag + ab), (fill, accent)
+    assert [round(n) for n in _rgb(fill)][:3] == [int(accent[i:i + 2], 16) for i in (1, 3, 5)], (fill, accent)
 
 
 POPUPS = ["#profileDropdown", "#composerModelDropdown", "#composerWsDropdown", "#composerReasoningDropdown",

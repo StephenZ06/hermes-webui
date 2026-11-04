@@ -67,7 +67,7 @@ def test_session_label_keeps_its_size_and_the_window_toggle_stays_inside_the_car
         finally:
             browser.close()
     for row in out:
-        assert row["text"] == "5h session usage", row
+        assert row["text"] == "Session usage (5H)", row
         assert row["size"] == "16px", row
         assert row["overflow"] <= -1, row  # inside the card's border
-        assert max(row["buttons"]) < 24, row  # "5 hours" on one line
+        assert max(row["buttons"]) < 24, row  # compact dot targets

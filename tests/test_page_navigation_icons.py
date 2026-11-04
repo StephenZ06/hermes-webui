@@ -6,7 +6,6 @@ import pathlib
 REPO = pathlib.Path(__file__).parent.parent
 INDEX = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
-SERVICE_WORKER = (REPO / "static" / "sw.js").read_text(encoding="utf-8")
 
 ICON_MAP = {
     "tasks": "Tasks.png",
@@ -38,6 +37,7 @@ def test_page_navigation_icons_are_replaced_in_desktop_and_mobile():
         if source.parent.is_dir():
             assert source.is_file(), f"{source_name} missing from the icons/ source folder"
             assert hashlib.sha256(deployed.read_bytes()).digest() == hashlib.sha256(source.read_bytes()).digest()
-        assert f'mask-image:url("{asset_name}")' in CSS
-        assert f'-webkit-mask-image:url("{asset_name}")' in CSS
-        assert f"'./static/{asset_name}'," in SERVICE_WORKER
+        variable = f"--mark-nav-{panel}-mark"
+        assert f'{variable}:url("data:image/png;base64,' in CSS
+        assert f"mask-image:var({variable})" in CSS
+        assert f"-webkit-mask-image:var({variable})" in CSS
