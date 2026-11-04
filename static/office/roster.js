@@ -91,6 +91,12 @@ const PROJECT_DOCUMENT_KEYWORDS = [
  * honest answer: forcing an unrecognised worker into a department would make
  * the floor plan lie about what Hermes is doing.
  */
+// A Business Office agent sits at its own floor's desks; the server says which
+// agent owns a task, so no keyword guess is involved.
+const BUSINESS_FLOOR_DEPARTMENT = {
+  email: { key: 'emails' }, marketing: { key: 'marketing' }, operations: { key: 'operations' }, documents: { key: 'delivery' },
+};
+
 export const OVERFLOW = { key: 'floor', name: 'The Floor' };
 
 const DEPARTMENT_BY_KEY = new Map(DEPARTMENTS.map(d => [d.key, d]));
@@ -190,7 +196,7 @@ export function projectFloorFor(text) {
 export function businessWorkerIds(workers) {
   const list = Array.isArray(workers) ? workers : [];
   const business = new Set(list
-    .filter(worker => worker && (worker.scheduledTask || officeFor(worker.goal || worker.label || '') === 'business'))
+    .filter(worker => worker && (worker.scheduledTask || worker.businessTask || officeFor(worker.goal || worker.label || '') === 'business'))
     .map(worker => worker.id)
     .filter(Boolean));
   let changed = true;
@@ -411,7 +417,8 @@ export function businessView(state, roster) {
   ordered.forEach(worker => {
     // Scheduler work is intentionally shown on THE FLOOR. Its name is not a
     // department assignment, even when it happens to contain one.
-    const dept = worker.scheduledTask ? null : departmentFor(worker.goal || worker.label || '');
+    const dept = worker.businessTask ? (BUSINESS_FLOOR_DEPARTMENT[worker.businessFloor] || null)
+      : worker.scheduledTask ? null : departmentFor(worker.goal || worker.label || '');
     let desk = dept ? takeFreeSeat(dept.key) : null;
     if (!desk) desk = takeFreeSeat(OVERFLOW.key);
     if (!desk) {

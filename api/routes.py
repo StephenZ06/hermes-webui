@@ -15257,6 +15257,68 @@ def _route_get_api_office_integrations(handler, parsed):
     return
 
 
+_BUSINESS_OFFICE_PREFIX = "/api/office/business/"
+
+
+def _cookie_session(handler) -> str:
+    from api.auth import parse_cookie
+
+    return parse_cookie(handler) or ""
+
+
+def _business_office_base_url(handler) -> str:
+    """The public address for OAuth redirect URIs.
+
+    Behind a TLS proxy the socket is plain HTTP. Honouring the forwarded scheme
+    here is safe even unverified: it only shapes a URI the provider checks
+    against the owner's own allow-list, and cookie security is not involved.
+    """
+    base = _request_base_url(handler)
+    forwarded = str(handler.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+    return "https://" + base.split("://", 1)[1] if forwarded == "https" else base
+
+
+def _business_office_failure(handler, error):
+    from api.business_office.errors import ToolError
+
+    status = getattr(error, "status", 502 if isinstance(error, ToolError) else 400)
+    return bad(handler, str(error), status=status)
+
+
+def _route_get_api_office_business(handler, parsed):
+    from api.business_office import http as business_http
+    from api.business_office.errors import ToolError
+    from api.business_office.store import StoreError
+
+    path = parsed.path[len(_BUSINESS_OFFICE_PREFIX):].strip("/")
+    if path == "oauth/callback":
+        target = business_http.finish_oauth(parsed.query, _cookie_session(handler))
+        handler.send_response(302)
+        handler.send_header("Location", target)
+        handler.send_header("Cache-Control", "no-store")
+        _security_headers(handler)
+        handler.send_header("Content-Length", "0")
+        handler.end_headers()
+        return True
+    try:
+        return j(handler, business_http.handle_get(path, parsed.query, _business_office_base_url(handler)))
+    except (StoreError, ToolError) as error:
+        return _business_office_failure(handler, error)
+
+
+def _route_post_api_office_business(handler, parsed, body, diag):
+    from api.business_office import http as business_http
+    from api.business_office.errors import ToolError
+    from api.business_office.store import StoreError
+
+    path = parsed.path[len(_BUSINESS_OFFICE_PREFIX):].strip("/")
+    try:
+        return j(handler, business_http.handle_post(path, body if isinstance(body, dict) else {},
+                                                    _business_office_base_url(handler), _cookie_session(handler)))
+    except (StoreError, ToolError) as error:
+        return _business_office_failure(handler, error)
+
+
 def _route_get_api_office_scheduled_tasks(handler, parsed):
     from api.gateway_chat import gateway_subagents_request
     from api.profiles import get_active_hermes_home, get_active_profile_name
@@ -16291,6 +16353,7 @@ _GET_ROUTES = RouteTable(
         (Exact("/api/file-manager/download"), _route_get_api_file_manager_download),
         (Exact("/api/office/integrations"), _route_get_api_office_integrations),
         (Exact("/api/office/scheduled-tasks"), _route_get_api_office_scheduled_tasks),
+        (Prefix(_BUSINESS_OFFICE_PREFIX), _route_get_api_office_business),
         (Exact("/api/sessions/search"), _route_get_api_sessions_search),
         (Exact("/api/work_hub/bootstrap"), _route_get_api_work_hub_bootstrap),
         (Exact("/api/dashboard/summary"), _route_get_api_dashboard_summary),
@@ -20873,6 +20936,7 @@ _POST_ROUTES = RouteTable(
         (Exact("/api/file/open-vscode"), _route_post_api_file_open_vscode),
         (Exact("/api/workspaces/add"), _route_post_api_workspaces_add),
         (Exact("/api/work_hub/folders/create"), _route_post_api_work_hub_folders_create),
+        (Prefix(_BUSINESS_OFFICE_PREFIX), _route_post_api_office_business),
         (Exact("/api/work_hub/items/create"), _route_post_api_work_hub_items_create),
         (Exact("/api/dashboard/quests/add"), _route_post_api_dashboard_quests_add),
         (Exact("/api/dashboard/quests/remove"), _route_post_api_dashboard_quests_remove),

@@ -4,7 +4,7 @@ from pathlib import Path
 from api.office_integrations import gmail_integration_metadata, safe_integration_metadata
 
 
-OFFICE_JS = (Path(__file__).resolve().parents[1] / "static" / "office" / "index.js").read_text(encoding="utf-8")
+OFFICE_JS = (Path(__file__).resolve().parents[1] / "static" / "office" / "business.js").read_text(encoding="utf-8")
 OFFICE_CSS = (Path(__file__).resolve().parents[1] / "static" / "style.css").read_text(encoding="utf-8")
 
 
@@ -33,8 +33,7 @@ def test_malformed_or_token_bearing_metadata_fails_closed_without_secrets():
 def test_integrations_use_their_own_provider_artwork():
     # Each card shows the artwork the owner supplied, by name, with no outline.
     static = Path(__file__).resolve().parents[1] / "static"
-    assert '/static/office-integration-gmail.png' in OFFICE_JS
-    assert "/static/office-integration-${name.toLowerCase()}.png" in OFFICE_JS
+    assert "/static/office-integration-${FLOOR_ART[floor]}.png" in OFFICE_JS
     for name in ("gmail", "marketing", "operations", "documents"):
         icon = static / f"office-integration-{name}.png"
         assert icon.exists(), icon

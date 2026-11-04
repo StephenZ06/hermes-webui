@@ -29,6 +29,7 @@ import { createOfficeScene } from './scene.js';
 import { createOfficeAdapter } from './adapter.js';
 import { applyHistory } from './history.js';
 import { buildRoster, businessView, projectsView } from './roster.js';
+import { mountBusinessOffice } from './business.js';
 import { colorForProjectsCluster } from './layout.js';
 
 // The adapter outlives the panel on purpose. Subagents keep running while the
@@ -162,6 +163,8 @@ let _sessionQuery = '';
 // Read-only, ephemeral scheduler rows. They never enter the delegation
 // adapter, session history, or persisted office state.
 let _scheduledTasks = [];
+let _businessTasks = [];
+let _businessHealth = null;
 // Scheduler configuration is separate from active runs: an enabled recurring
 // job is live even while it is between runs.  It is only used to annotate the
 // system-owned Cron Jobs project in the Office sidebar.
@@ -454,6 +457,10 @@ function scheduleSync() {
 
 const OUTLET_ROSTER_WAIT_MS = 3000;
 
+const BUSINESS_TASK_STATUS = {
+  assigned: 'running', running: 'running', completed: 'completed', failed: 'failed', cancelled: 'interrupted',
+};
+
 function scheduledTaskState(state) {
   const scheduledWorkers = _scheduledTasks.map(task => ({
     id: `scheduled:${task.profile}:${task.job_id}`,
@@ -466,8 +473,20 @@ function scheduledTaskState(state) {
     scheduledJobId: task.job_id,
     scheduledMode: task.mode,
   }));
+  // Real Business Office tasks, seated on the floor their agent belongs to.
+  const businessWorkers = _businessTasks.map(task => ({
+    id: `business:${task.id}`,
+    parentId: '__conductor__',
+    label: task.business_name,
+    goal: task.goal,
+    status: BUSINESS_TASK_STATUS[task.status] || 'queued',
+    spawnedAt: (task.started_at || task.created_at) * 1000,
+    businessTask: true,
+    businessFloor: task.agent_id,
+    error: task.error,
+  }));
   return Object.assign({}, state, {
-    workers: (state.workers || []).concat(scheduledWorkers),
+    workers: (state.workers || []).concat(scheduledWorkers, businessWorkers),
   });
 }
 
@@ -1114,7 +1133,7 @@ function renderOfficeDashboard(state, opts) {
   <article class="office-dashboard-panel">${dashPanelHead('live-delegation', 'Live delegation', 'Real-time activity from your agents', `<i class="office-dash-live-dot${model.live.length ? ' is-on' : ''}"></i>${model.live.length} active`)}<div class="office-dashboard-panel-body">${rows(model.live, 'is-live', dashEmpty('radio', 'amber', 'No active delegation right now', 'When agents are working, their activity will appear here in real time.'))}</div></article>
   <article class="office-dashboard-panel office-dashboard-attention" data-dashboard-panel="attention">${dashPanelHead('attention-required', 'Attention required', 'Items that need your review or action', `${attentionItems.length} item${attentionItems.length === 1 ? '' : 's'}`)}<div class="office-dashboard-panel-body">${attentionItems.length ? attentionItems.map(dashboardAttentionCard).join('') : dashEmpty('inbox', 'red', 'Everything is on track', 'No items need attention right now. You will see them here when something needs your review.')}</div></article>
   <article class="office-dashboard-panel" data-dashboard-panel="completed">${dashPanelHead('recent-completions', 'Recent completions', 'The latest finished work', `${model.recent.length} shown`)}<div class="office-dashboard-panel-body">${rows(model.recent, 'is-done', dashEmpty('check', 'green', 'Nothing completed yet', 'Completed work will appear here as agents finish it.'))}</div></article>
-  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${dashArt('integration-health')}<span><strong>Integration health</strong><small>Gmail is ready for setup in the Email floor</small></span><span aria-hidden="true">›</span></button></section>`;
+  <button type="button" class="office-dashboard-integration" onclick="officeSetSubview('integrations')">${dashArt('integration-health')}<span><strong>Integration health</strong><small>${esc(businessHealthText())}</small></span><span aria-hidden="true">›</span></button></section>`;
   // The reconcile poll re-renders every few seconds. Unchanged markup is left
   // alone, so the panels don't flash their entry fade; a real change keeps
   // each list's scroll position and skips the fade.
@@ -1176,35 +1195,17 @@ function renderOfficeDashboard(state, opts) {
   });
 }
 
-function defaultOfficeIntegrations() {
-  return [{ provider: 'gmail', floor: 'emails', status: 'disconnected',
-    capabilities: ['search_read', 'summarize', 'draft_reply'], send_requires_approval: true }];
-}
-
-function renderOfficeIntegrations(payload) {
-  const host = document.getElementById('officeIntegrationsContent');
-  if (!host) return;
-  const integrations = payload && Array.isArray(payload.integrations)
-    ? payload.integrations : defaultOfficeIntegrations();
-  const gmail = integrations.find(item => item && item.provider === 'gmail') || defaultOfficeIntegrations()[0];
-  const connected = gmail.status === 'connected';
-  const html = `<div class="office-integrations-intro"><span>BUSINESS OFFICE</span><p>Connections are assigned to a floor and expose only the capabilities you approve.</p></div>
-  <section class="office-integrations-grid"><article class="office-integration-card"><div class="office-integration-card-head"><span class="office-integration-provider-icon"><img src="/static/office-integration-gmail.png" alt="" aria-hidden="true"></span><span><h2>Gmail</h2><p>Email floor</p></span><span class="office-integration-status ${connected ? 'is-connected' : ''}">${connected ? 'Connected' : 'Not connected'}</span></div>
-    <p class="office-integration-copy">Search, summarize, and draft replies for the Email floor. Sending will always require your approval.</p>
-    <div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Google OAuth setup is required before an account can be connected">Google OAuth setup required</button><button type="button" class="office-integration-settings" disabled aria-label="Configure Gmail integration" title="Gmail configuration will be available after OAuth setup">${officeIcon('settings', 'Configure Gmail integration')}</button></div></article>
-  ${[['Marketing', 'Choose a platform when you are ready to connect campaign or social tools.', 'Choose marketing platform'], ['Operations', 'Calendar and operations providers will be configured here.', 'Choose operations provider'], ['Documents', 'Document storage providers will be configured here.', 'Choose document provider']].map(([name, copy, action]) => `<article class="office-integration-card is-future"><div class="office-integration-card-head"><span class="office-integration-provider-icon"><img src="/static/office-integration-${name.toLowerCase()}.png" alt="" aria-hidden="true"></span><span><h2>${name}</h2><p>Future integration</p></span></div><p class="office-integration-copy">${copy}</p><div class="office-integration-actions"><button type="button" class="office-integration-action" disabled title="Provider setup will be available in a future update">${action}</button><button type="button" class="office-integration-settings" disabled aria-label="Configure ${name} integration" title="Configuration will be available after a provider is selected">${officeIcon('settings', `Configure ${name} integration`)}</button></div></article>`).join('')}</section>`;
-  // Defaults paint first and the fetched payload usually matches them; an
-  // identical repaint would restart the entry motion mid-way.
-  if (host._officeIntegrationsHtml === html) return;
-  host._officeIntegrationsHtml = html;
-  host.innerHTML = html;
+function businessHealthText() {
+  if (!_businessHealth) return 'Connect accounts for each business';
+  const { connected, attention, pending_approvals: pending } = _businessHealth;
+  const parts = [`${connected} ${connected === 1 ? 'account' : 'accounts'} connected`];
+  if (attention) parts.push(`${attention} need${attention === 1 ? 's' : ''} attention`);
+  if (pending) parts.push(`${pending} waiting for approval`);
+  return parts.join(', ');
 }
 
 function loadOfficeIntegrations() {
-  renderOfficeIntegrations({ integrations: defaultOfficeIntegrations() });
-  request('/api/office/integrations', { timeoutToast: false })
-    .then(renderOfficeIntegrations)
-    .catch(() => renderOfficeIntegrations({ integrations: defaultOfficeIntegrations() }));
+  mountBusinessOffice({ request, esc, icon: officeIcon, toast: message => { if (typeof window.showToast === 'function') window.showToast(message); } });
 }
 
 /**
@@ -1814,6 +1815,13 @@ async function reconcile() {
         _scheduledTasks = Array.isArray(scheduled && scheduled.tasks) ? scheduled.tasks : [];
       } catch (_scheduledError) {
         // Do not erase the last valid snapshot because one read failed.
+      }
+      try {
+        const business = await request('/api/office/business/live', { timeoutToast: false });
+        _businessTasks = Array.isArray(business && business.tasks) ? business.tasks : [];
+        _businessHealth = (business && business.health) || null;
+      } catch (_businessError) {
+        // Same: the last real snapshot stays until a read succeeds.
       }
     }
     // Pausing spawns is a gateway-process control: the in-process deployment

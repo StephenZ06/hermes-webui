@@ -7584,7 +7584,7 @@ main.main > #mainPlugin{display:none;}
 .office-dashboard-panel-focus{animation:office-dashboard-panel-focus 1.45s cubic-bezier(.22,.61,.36,1) both;}
 @keyframes office-dashboard-panel-focus{0%{border-color:var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.08);}20%,58%{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent),0 12px 30px color-mix(in srgb,var(--accent) 13%,transparent);}100%{border-color:var(--border2);box-shadow:0 8px 24px rgba(0,0,0,.08);}}
 .office-dashboard-empty{padding:14px 0;color:var(--muted);font-size:12px;line-height:1.5;}.office-dashboard-integration{grid-column:1 / -1;display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;padding:14px 15px;color:var(--text);font:inherit;text-align:left;cursor:pointer;}.office-dashboard-integration:hover{border-color:var(--accent);}.office-dashboard-integration .work-hub-icon{width:18px;height:18px;color:var(--accent);}.office-dashboard-integration strong,.office-dashboard-integration small{display:block;}.office-dashboard-integration small{margin-top:3px;color:var(--muted);font-size:11px;}
-.office-integrations-intro{width:100%;margin:0 0 16px;padding:14px 16px;border:1px solid var(--border2);border-radius:12px;background:var(--surface-subtle);}.office-integrations-intro span{display:block;color:var(--accent);font-size:10px;font-weight:750;letter-spacing:.1em;line-height:1;}.office-integrations-intro p{margin:7px 0 -4px;color:var(--muted);font-size:12px;line-height:1.5;}.office-integrations-grid{width:100%;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}.office-integration-card{min-height:214px;padding:18px;border:1px solid var(--border2);border-radius:12px;background:var(--surface);display:flex;flex-direction:column;}.office-integration-card-head{display:flex;align-items:center;gap:12px;}
+.office-integrations-grid{width:100%;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}.office-integration-card{min-height:214px;padding:18px;border:1px solid var(--border2);border-radius:12px;background:var(--surface);display:flex;flex-direction:column;}.office-integration-card-head{display:flex;align-items:center;gap:12px;}
 /* The icon is exactly as tall as the title + subtitle beside it: fixed line
    heights (18px + 3px gap + 15px) make that block a known 36px. */
 .office-integration-card-head h2{line-height:18px;}.office-integration-card-head p{line-height:15px;}
@@ -11442,7 +11442,7 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .workspace-panel-tabs.is-compact .workspace-panel-tab{flex:1 1 0;min-width:24px;}
 /* Office: Dashboard and Integrations cards sit on the page background, set
    apart by their outline only. */
-.office-dashboard-metric,.office-dashboard-panel,.office-dashboard-integration,.office-integration-card,.office-integrations-intro{background:transparent;box-shadow:none;}
+.office-dashboard-metric,.office-dashboard-panel,.office-dashboard-integration,.office-integration-card{background:transparent;box-shadow:none;}
 /* Notes list: each note's workspace/folder label leads with its colour dot. */
 .nb-item-meta{display:flex;align-items:center;gap:6px;min-width:0;}
 .nb-place-dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px;}
@@ -15206,7 +15206,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Dashboard / Integrations entry: one rise-and-fade, staggered top to bottom. */
 @keyframes office-subview-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
 .office-subview.is-entering :is(.office-subview-head,.office-dashboard-toolbar,.office-dashboard-metric,.office-dashboard-panel,.office-dashboard-integration,.office-integrations-intro,.office-integration-card){animation:office-subview-in .44s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--office-enter-i,0) * 40ms);}
-.office-subview.is-entering .office-dashboard-toolbar,.office-subview.is-entering .office-integrations-intro{--office-enter-i:1;}
+.office-subview.is-entering .office-dashboard-toolbar,.office-subview.is-entering .office-biz-toolbar{--office-enter-i:1;}
 .office-subview.is-entering .office-dashboard-metric:nth-child(1),.office-subview.is-entering .office-integration-card:nth-child(1){--office-enter-i:2;}
 .office-subview.is-entering .office-dashboard-metric:nth-child(2),.office-subview.is-entering .office-integration-card:nth-child(2){--office-enter-i:3;}
 .office-subview.is-entering .office-dashboard-metric:nth-child(3),.office-subview.is-entering .office-integration-card:nth-child(3){--office-enter-i:4;}
@@ -16471,3 +16471,62 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .work-hub-inspector .wh-insp-delete .work-hub-icon,.work-hub-inspector .wh-insp-delete svg{flex:none;}
 /* Read-only values start where the dropdowns' values do. */
 .work-hub-inspector .wh-insp-static{padding-left:11px;}
+
+/* Office Integrations: the Business Office control page. One tinted primary,
+   hairline rows, and a side drawer for the security-sensitive setup. */
+.office-biz-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;width:100%;margin:0 0 14px;}
+.office-biz-business{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;}
+.office-biz-inline{display:flex;gap:8px;}
+.office-biz-tabs{display:flex;gap:2px;margin-left:auto;}
+.office-biz-tab{padding:6px 11px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;}
+.office-biz-tab:hover{color:var(--text);background:var(--accent-bg);}
+.office-biz-tab.is-active{color:var(--accent-text);border-color:var(--accent);background:var(--accent-bg);}
+.office-biz-input{min-height:32px;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:12px;min-width:0;}
+.office-biz-input:focus-visible,.office-biz-tab:focus-visible,.office-biz-close:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+textarea.office-biz-input{resize:vertical;}
+.office-biz-filter{width:100%;margin:0 0 12px;}.office-biz-filter .office-biz-input{width:min(320px,100%);}
+.office-biz-view{width:100%;}
+.office-biz-providers{display:flex;flex-direction:column;margin:14px 0 0;padding:0;list-style:none;}
+.office-biz-providers > li{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 0;border-top:1px solid var(--border2);}
+.office-biz-provider-text{display:flex;flex:1 1 auto;flex-direction:column;gap:2px;min-width:0;}
+.office-biz-provider-text strong{color:var(--text);font-size:12px;font-weight:600;}
+.office-biz-provider-text small{color:var(--muted);font-size:11px;line-height:1.4;overflow-wrap:anywhere;}
+.office-biz-provider.is-planned .office-biz-provider-text strong{color:var(--muted);}
+.office-biz-providers .office-integration-status{flex:none;margin-left:0;}
+.office-integration-status.is-warning{color:var(--accent-text);border-color:var(--accent);}
+.office-biz-providers .office-integration-action,.office-biz-actions .office-integration-action,.office-biz-toolbar .office-integration-action,.office-biz-toolbar-row .office-integration-action,.office-biz-copy .office-integration-action,.office-biz-grant-head .office-integration-action,.office-biz-inline .office-integration-action,.office-biz-form .office-integration-action{flex:none;width:auto;min-height:30px;padding:0 11px;}
+.office-integration-action.is-primary{color:var(--accent-text);border-color:var(--accent);background:var(--accent-bg);}
+.office-biz-heading{margin:22px 0 8px;color:var(--text);font-size:13px;}.office-biz-view > .office-biz-heading:first-child,.office-biz-settings section:first-child .office-biz-heading{margin-top:0;}
+.office-biz-empty{margin:0;padding:18px 0;color:var(--muted);font-size:12px;}
+.office-biz-note{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5;}.office-biz-note.is-error{color:var(--accent-text);}
+.office-biz-list{display:flex;flex-direction:column;gap:12px;max-width:760px;}
+.office-biz-approval{padding:14px 16px;border:1px solid var(--border2);border-radius:12px;}
+.office-biz-approval header{display:flex;justify-content:space-between;gap:10px;color:var(--text);font-size:13px;}.office-biz-approval header span{color:var(--muted);font-size:11px;}
+.office-biz-approval dl,.office-biz-section dl{display:grid;grid-template-columns:90px 1fr;gap:4px 10px;margin:10px 0;font-size:12px;}
+.office-biz-approval dt,.office-biz-section dt{color:var(--muted);}.office-biz-approval dd,.office-biz-section dd{margin:0;color:var(--text);overflow-wrap:anywhere;}
+.office-biz-payload{max-height:280px;margin:8px 0;padding:10px;overflow:auto;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:11px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;}
+.office-biz-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.office-biz-toolbar-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0 0 10px;}
+.office-biz-table-wrap{overflow-x:auto;}
+.office-biz-table{width:100%;border-collapse:collapse;font-size:11px;}.office-biz-table th{padding:6px 10px 6px 0;color:var(--muted);font-weight:500;text-align:left;white-space:nowrap;}.office-biz-table td{padding:6px 10px 6px 0;border-top:1px solid var(--border2);color:var(--text);overflow-wrap:anywhere;}
+.office-biz-settings{display:flex;flex-direction:column;gap:22px;max-width:760px;}.office-biz-settings .office-biz-heading{margin-top:0;}.office-biz-settings .office-biz-providers{margin-top:0;}
+.office-biz-field{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:11px;}
+.office-biz-scrim{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);}
+.office-biz-drawer{position:fixed;top:0;right:0;bottom:0;z-index:1201;display:flex;flex-direction:column;width:min(480px,100vw);padding-bottom:env(safe-area-inset-bottom);border-left:1px solid var(--border2);background:var(--bg);box-shadow:-12px 0 32px rgba(0,0,0,.35);}
+.office-biz-drawer header{display:flex;align-items:center;gap:10px;padding:16px 18px;padding-top:max(16px,env(safe-area-inset-top));border-bottom:1px solid var(--border2);}
+.office-biz-drawer header > span:first-child{flex:1;min-width:0;}.office-biz-drawer h2{margin:0;color:var(--text);font-size:14px;}.office-biz-drawer header p{margin:3px 0 0;color:var(--muted);font-size:11px;}
+.office-biz-close{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;}.office-biz-close:hover{color:var(--text);background:var(--accent-bg);}
+.office-biz-drawer-body{flex:1;min-height:0;padding:0 18px 18px;overflow-y:auto;}
+.office-biz-section{padding:16px 0;border-bottom:1px solid var(--border2);}.office-biz-section:last-child{border-bottom:0;}.office-biz-section h3{margin:0 0 8px;color:var(--text);font-size:12px;font-weight:600;}
+.office-biz-copy{display:flex;align-items:center;gap:8px;margin:0 0 10px;}.office-biz-copy code{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:11px;overflow-wrap:anywhere;}
+.office-biz-link{color:var(--accent-text);font-size:12px;}
+.office-biz-form{display:flex;flex-direction:column;align-items:stretch;gap:8px;margin-top:10px;}.office-biz-form .office-integration-action{align-self:flex-start;}
+.office-biz-capabilities,.office-biz-grants{display:flex;flex-direction:column;margin:10px 0;padding:0;list-style:none;}
+.office-biz-capability{padding:10px 0;border-top:1px solid var(--border2);}
+.office-biz-capability-row{display:flex;align-items:center;gap:10px;}.office-biz-capability-row select{flex:0 0 150px;}
+.office-biz-try{margin-top:6px;color:var(--muted);font-size:11px;}.office-biz-try summary{cursor:pointer;}.office-biz-try summary:hover{color:var(--text);}
+.office-biz-grant{padding:10px 0;border-top:1px solid var(--border2);font-size:12px;}.office-biz-grant small{color:var(--muted);}.office-biz-grant.is-stale strong{color:var(--muted);}
+.office-biz-grant-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--text);}.office-biz-grant-head strong{font-weight:600;overflow-wrap:anywhere;}
+.office-biz-flags{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;color:var(--muted);}.office-biz-flags label{display:flex;align-items:center;gap:5px;}.office-biz-flags input{accent-color:var(--accent);}
+.office-biz-toolbar-row .themed-select-wrap{flex:1 1 170px;width:auto;min-width:0;max-width:320px;}.office-biz-section .office-biz-toolbar-row .themed-select-wrap{max-width:none;}
+@media (max-width:640px){.office-biz-tabs{order:3;width:100%;margin-left:0;overflow-x:auto;}.office-biz-providers > li{flex-wrap:wrap;}.office-biz-provider-text{flex-basis:100%;}.office-biz-capability-row{flex-wrap:wrap;}.office-biz-capability-row select{flex:1 1 100%;}.office-biz-business{width:100%;}.office-biz-business select{flex:1;}}

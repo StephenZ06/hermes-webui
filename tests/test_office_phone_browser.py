@@ -152,29 +152,11 @@ def test_the_back_button_on_the_dashboard_and_integrations_pages_is_compact(phon
         size = phone.evaluate("() => { const r = document.querySelector('.office-subview-back').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }")
         assert size[0] <= 32 and size[1] <= 32, (page_name, size)
     # ...and an integration card hugs its content instead of keeping the desktop's tall minimum.
-    card = phone.evaluate("() => document.querySelector('.office-integration-card').getBoundingClientRect().height")
-    assert card < 200, card
-
-
-def test_the_integrations_note_has_the_same_space_above_its_title_as_below_its_sentence(phone):
-    _open_office(phone)
-    phone.wait_for_function("() => typeof window.officeSetSubview === 'function'", timeout=30000)
-    for width in (430, 1200):
-        phone.set_viewport_size({"width": width, "height": 900})
-        phone.evaluate("() => window.officeSetSubview('integrations')")
-        phone.wait_for_selector(".office-integrations-intro", timeout=15000)
-        phone.wait_for_timeout(400)
-        gaps = phone.evaluate("""() => {
-            const box = document.querySelector('.office-integrations-intro').getBoundingClientRect();
-            const title = document.querySelector('.office-integrations-intro span'), sentence = document.querySelector('.office-integrations-intro p');
-            // the ink: capital letters sit ~1.4px inside a 10px line box; the sentence's last line ends ~5px (half-leading and descender) above its box
-            const range = document.createRange(); range.selectNodeContents(sentence); const lines = range.getClientRects(); const last = lines[lines.length - 1];
-            const sentenceFont = parseFloat(getComputedStyle(sentence).fontSize), lineHeight = parseFloat(getComputedStyle(sentence).lineHeight);
-            const above = title.getBoundingClientRect().top - box.top + 1.4;
-            const below = box.bottom - last.bottom + (lineHeight - sentenceFont) / 2 + sentenceFont * 0.2;
-            return {above, below};
-        }""")
-        assert abs(gaps["above"] - gaps["below"]) <= 3, (width, gaps)
+    phone.wait_for_selector(".office-biz-provider", timeout=15000)
+    slack = phone.evaluate("""() => { const card = document.querySelector('.office-integration-card');
+        const rows = card.querySelectorAll('.office-biz-provider');
+        return card.getBoundingClientRect().bottom - rows[rows.length - 1].getBoundingClientRect().bottom; }""")
+    assert slack < 30, slack
 
 
 def _png_rgba(data):

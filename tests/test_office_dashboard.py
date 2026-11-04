@@ -133,17 +133,6 @@ def test_dashboard_attention_cards_offer_existing_approval_and_clarify_responses
     assert "/api/clarify/respond" in OFFICE
 
 
-def test_integration_cards_have_equal_setup_and_future_configuration_controls():
-    assert "office-integration-actions" in OFFICE
-    assert "office-integration-settings" in OFFICE
-    assert "Configure Gmail integration" in OFFICE
-    assert "Choose marketing platform" in OFFICE
-    assert "Choose operations provider" in OFFICE
-    assert "Choose document provider" in OFFICE
-    assert "office-integration-capabilities" not in OFFICE
-    assert ".office-integration-card.is-gmail" not in CSS
-
-
 def test_dashboard_metric_cards_rely_on_equal_padding_not_extra_bottom_height():
     metric_rule = CSS[CSS.index(".office-dashboard-metric{"):CSS.index(".office-dashboard-metric span,")]
     assert "padding:15px;" in metric_rule

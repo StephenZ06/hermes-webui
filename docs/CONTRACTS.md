@@ -255,6 +255,14 @@ Before opening a change for review, confirm:
 - Secrets, private paths, local-only workflows, and personal notes stay out of
   tracked docs and examples.
 
+## Business Office boundary
+
+`api/business_office/` owns businesses, provider connections, grants, tasks,
+approvals and audit in `STATE_DIR/business_office.db`. `service.run_task` is the
+only route to a provider adapter. Business and agent come from the task row, not
+from input. External writes cannot be automatic, and an approval covers one exact
+payload once. Design: `docs/superpowers/specs/2026-11-04-business-office-foundation-design.md`.
+
 ## Work Hub state and execution boundary
 
 The primary Notes panel is the Work Hub. `api/work_hub.py` is its only state
