@@ -2179,7 +2179,7 @@ function renderProjectFolders(projects, parents) {
           <span class="office-session-meta">${count} delegated task${count === 1 ? '' : 's'}</span></span></button>`;
       }).join('') : '<div class="project-folder-empty">No delegated tasks yet.</div>';
       return `<button type="button" class="project-chip project-folder-row office-project-folder" data-project-id="${esc(project.project_id)}">
-        <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span>
+        <span class="project-folder-chevron${expanded ? ' expanded' : ''}">›</span><span class="project-folder-dot-slot"><span class="color-dot" style="background:${esc(project.color || 'var(--accent)')}"></span></span>
         <span class="project-folder-name">${esc(project.name)}</span>${liveBadge}<span class="project-folder-count">${rows.length}</span></button>
         <div class="project-folder-sessions${expanded ? ' expanded' : ''}"><div class="project-folder-sessions-inner">${taskRows}</div></div>`;
     }).join('') : '<div class="project-folder-empty">No projects configured.</div>'}</div>`;

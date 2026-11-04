@@ -6126,7 +6126,7 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 .nb-scope.active .nb-scope-count{color:inherit;}
 /* The side panel's right-hand values (counts, Connect, the chevron) sit 1px
    higher than the row's centre, level with the labels' letters. */
-.nb-nav :is(.nb-scope-count,.nb-scope-hint,.nb-scope-chevron,.work-hub-project-count){translate:0 -1px;}
+.nb-nav :is(.nb-scope-count,.nb-scope-hint,.nb-scope-chevron){translate:0 -1px;}
 .nb-tree-note button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nb-tree-empty{margin:2px 0 6px;padding:2px 8px;color:var(--muted);font-size:11px;line-height:1.45;}
 .nb-tag-cloud{display:flex;flex-wrap:wrap;gap:4px;padding:0 4px;}
@@ -15257,7 +15257,6 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    so their padding or line box is rebalanced by about a pixel. */
 :root[data-skin="zeus-2"] .work-hub-scope{padding-top:7px;padding-bottom:5px;}
 :root[data-skin="zeus-2"] .model-opt-badge{padding-top:1px;padding-bottom:3px;}
-:root[data-skin="zeus-2"] .main-view-title{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-tasks-count{line-height:1;}
 :root[data-skin="zeus-2"] .provider-card-badge{display:inline-flex;align-items:center;align-self:center;line-height:1;padding:4px 8px 5px;}
 :root[data-skin="zeus-2"] .app-dialog-btn{padding-top:6px;padding-bottom:8px;}
@@ -15266,24 +15265,35 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] .tab-visibility-chip{line-height:18px;}
 :root[data-skin="zeus-2"] .dash-level-badge{line-height:1;padding:2px 7px;}
 :root[data-skin="zeus-2"] #dashboardSidebar .dash-side-nav .side-menu-item{line-height:1.2;}
-:root[data-skin="zeus-2"] #dashboardSidebar .dash-side-nav .side-menu-item > :is(svg,.side-menu-label,.dash-level-badge){transform:translateY(-.1px);}
 /* Chat page only: the Chat sidebar view is active, and #mainChat only shows
    on that page. (Was body:has(main.main:not([class*="showing-"])): a :has()
    on a class substring is re-checked on every class change anywhere, which
    restyled every chat button on each frame of a workspace-panel resize.) */
-:root[data-skin="zeus-2"] :is(.sidebar:has(> #panelChat.active),#mainChat) :is(button,input,select,textarea,.session-item,.project-chip,.suggestion,[role="button"]){position:relative;top:.1px;}
+:root[data-skin="zeus-2"] :is(.sidebar:has(> #panelChat.active),#mainChat) :is(button,input,select,textarea,.session-item,.suggestion,[role="button"]):not(.project-folder-row,.project-folder-row *){position:relative;top:.1px;}
 :root[data-skin="zeus-2"] #composerModelChip{padding-top:9px;padding-bottom:7px;}
 :root[data-skin="zeus-2"] #composerModelChip .composer-model-icon{position:relative;top:-1px;}
 :where(:root[data-skin="zeus-2"]) .themed-select-trigger{padding-bottom:8px;}
 :root[data-skin="zeus-2"] #composerModelChip .composer-model-chevron{position:relative;top:-1px;}
-/* Project folder rows (Chat, Work Hub, Notes, Office): caret, colour dot and
-   label sit 0.1px lower so the top and bottom space reads equal. */
-.project-folder-row > *{position:relative;top:.1px;}
-.project-folder-row > .color-dot{top:0;}
+/* Project folder rows (Chat, Work Hub, Notes, Office): every part is centred by
+   the row itself, with no per-part offsets. The caret and dot sit in fixed 16px
+   slots. Text is trimmed to its capitals and baseline, so the letters are what
+   gets centred rather than a line box whose ascent and descent differ per font;
+   the padding gives descenders room inside the name's overflow clip. Courier New
+   declares a 6.9px cap height at 12px but draws 8px, so Zeus 2.0 alone adds an
+   optical correction to the name. */
+.project-folder-row{display:flex;align-items:center;}
+.project-folder-row > .project-folder-dot-slot{display:flex;align-items:center;justify-content:center;flex:none;width:10px;height:16px;}
+.project-folder-row .color-dot{display:block;}
+.project-folder-row > :is(.project-folder-name,.project-folder-count){line-height:16px;}
+@supports (text-box:trim-both cap alphabetic){
+  .project-folder-row > :is(.project-folder-name,.project-folder-count){padding-block:4px;text-box:trim-both cap alphabetic;}
+  :root[data-skin="zeus-2"] .project-folder-row > .project-folder-name{padding-block:5px 3px;}
+}
+.project-folder-kebab svg{display:block;}
 /* Folder caret drawn in CSS, not the "▸" glyph: Courier New has no ▸, so each
    OS substitutes a different fallback font and the caret lands at a
    different height. A 6px-tall triangle centres exactly on the 16px box. */
-.project-folder-row > .project-folder-chevron{top:.2px;font-size:0;}
+.project-folder-row > .project-folder-chevron{font-size:0;}
 .project-folder-row > .project-folder-chevron::before{content:"";border-left:4px solid currentColor;border-top:3px solid transparent;border-bottom:3px solid transparent;}
 /* Zeus 2.0 chat sidebar: date-group headers drawn so the space from a header
    to its first chat equals the space from a group's last chat to the next
@@ -16325,10 +16335,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot a.job-os-btn{line-height:1.35;}
 
 /* ── Dashboard polish (13" laptop pass) ─────────────────────────────────── */
-/* Side panel: labels and the level badge sit 1px lower; the badge is a
-   rounded rectangle with its "Lv" text 1px lower inside it. */
-:root[data-skin] #dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge),
-#dashboardSidebar .dash-side-nav .side-menu-item > :is(.side-menu-label,.dash-level-badge){transform:translateY(.9px);}
+/* Side panel: the level badge is a rounded rectangle with its "Lv" text 1px
+   lower inside it. */
 :root[data-skin] .dash-level-badge,.dash-level-badge{border-radius:4px;padding-top:3px;padding-bottom:1px;}
 /* Character page: the rank (ASCENDED), "XP to level", the stat codes and
    the evolution counter sit 1px lower; nudge them, not their boxes. */
@@ -16431,11 +16439,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .model-custom-sep{padding-top:6px;padding-bottom:2px;}
 .model-group:not(.model-custom-sep){padding-bottom:10px;}
 :root[data-skin="zeus-2"] .model-opt-badge{padding-top:2px;padding-bottom:2px;}
-/* Chat sidebar: the filter's placeholder 1px up, and project folder names
-   1px up so the space above and below them reads equal. */
+/* Chat sidebar: the filter's placeholder 1px up. */
 #panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
-:is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{top:-.9px;}
-:is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-chevron{top:-.8px;}
 /* New-chat suggestions sit on the page background with an outline. */
 .suggestion{background:transparent;}
 /* Chat page popups, menus, cards over the composer and dialogs share the
@@ -16572,21 +16577,17 @@ textarea.office-biz-input{resize:vertical;}
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* Project folder rows on every page: the count sits at its natural position,
-   and no page or skin carries its own offset. */
-.project-folder-row > .project-folder-count{top:0;translate:none;}
-/* Chat and Work Hub folder names: equal space above the capitals and below the baseline. */
-:is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{translate:0 1px;}
-/* Work Hub folder rows are buttons, which centre 1px higher than Chat's rows. */
-#workHubProjects .project-folder-row > .project-folder-chevron{translate:0 1px;}
 /* New chat page: suggestion icons sit 1px high beside their text. */
 .suggestion-grid > .suggestion > svg{translate:0 1px;}
 /* Work Hub sidepanel heading sits 1px lower. */
 #panelNotes > .panel-head > span{translate:0 1px;}
 /* Usage card: the outer dot lines up with the card's right edge. */
 .chat-usage-widget-title-row .chat-usage-widget-window-toggle{margin-right:-4px;}
-/* Memory sidepanel labels sit 1px low in Courier. */
-:root[data-skin="zeus-2"] #panelMemory .side-menu-item > span{translate:0 -1px;}
+/* Side menu labels (Dashboard, Settings, Memory, Jobs): trimmed to capitals and
+   baseline so the letters centre on the icon, whatever the font's line metrics. */
+@supports (text-box:trim-both cap alphabetic){
+  .side-menu-item > :is(span:not([class]),.side-menu-label){padding-block:4px;text-box:trim-both cap alphabetic;}
+}
 /* Session Usage card: the text and bars sit 12px from all four edges, measured
    on the visible ink, with even gaps between the rows. The dot buttons overhang
    the row so their height does not push the label down. */

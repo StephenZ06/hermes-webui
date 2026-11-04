@@ -141,21 +141,47 @@ def test_usage_card_swaps_windows_with_dots_and_names_them_in_the_label(page):
     assert state["color"] == state["accent"] and state["x"] == 14 and state["w"] == "6px"
 
 
-def test_folder_counts_share_one_offset_on_every_page(page):
-    state = page.evaluate("""() => { const hosts = {sessionList: 'sessionList', workHubProjects: 'workHubProjects'};
-      const made = [];
-      for (const [cls, id] of [['', 'sessionList'], ['nb-folders', ''], ['office-project-folders', ''], ['', 'workHubProjects']]) {
-        const host = document.createElement('div'); if (cls) host.className = cls; if (id) host.id = id + 'Probe';
+FOLDER_ROW_HOSTS = [['', 'sessionList'], ['nb-folders', ''], ['office-project-folders', ''], ['', 'workHubProjects']]
+
+
+def test_folder_row_parts_share_one_centre_with_no_offsets(page):
+    """Every part is centred by the row, in every page's host and with no nudges."""
+    state = page.evaluate("""(hosts) => { document.documentElement.dataset.skin = 'zeus-2';
+      const made = hosts.map(([cls, id]) => {
+        const host = document.createElement('div'); if (cls) host.className = cls;
         const target = id && document.getElementById(id);
+        const list = document.createElement('div'); list.className = 'project-folder-list';
         const row = document.createElement('button'); row.className = 'project-chip project-folder-row';
-        row.innerHTML = '<span class="project-folder-count">1</span>';
-        (target || host).append(row); if (!target) document.body.append(host); made.push([row, host, !target]);
-      }
-      document.documentElement.dataset.skin = 'zeus-2';
-      const out = made.map(([row]) => { const c = getComputedStyle(row.firstChild); return [c.top, c.translate]; });
-      made.forEach(([row, host, own]) => { row.remove(); if (own) host.remove(); });
-      return out; }""")
-    assert state == [["0px", "none"]] * 4
+        row.innerHTML = '<span class="project-folder-chevron"></span><span class="project-folder-dot-slot"><span class="color-dot"></span></span><span class="project-folder-name">Folder</span><span class="project-folder-count">1</span>';
+        list.append(row); (target || host).append(list); if (!target) document.body.append(host);
+        return [list, host, !target, row]; });
+      const out = made.map(([, , , row]) => { const r = row.getBoundingClientRect();
+        return [...row.children].map(part => { const b = part.getBoundingClientRect(), c = getComputedStyle(part);
+          return {offset: (b.top + b.bottom - r.top - r.bottom) / 2, top: c.top, translate: c.translate, transform: c.transform}; }); });
+      const slots = made.map(([, , , row]) => ['.project-folder-chevron', '.project-folder-dot-slot'].map(sel => {
+        const c = getComputedStyle(row.querySelector(sel)); return [c.display, c.alignItems, c.justifyContent, c.height]; }));
+      made.forEach(([list, host, own]) => { list.remove(); if (own) host.remove(); });
+      return {out, slots}; }""", FOLDER_ROW_HOSTS)
+    for row in state["out"]:
+        assert len(row) == 4
+        for part in row:
+            assert abs(part["offset"]) <= 0.75, part
+            assert part["top"] == "auto" and part["translate"] == "none" and part["transform"] == "none", part
+    assert state["slots"] == [[["flex", "center", "center", "16px"]] * 2] * 4
+
+
+def test_side_menu_labels_centre_on_the_row_without_offsets(page):
+    state = page.evaluate("""() => { document.documentElement.dataset.skin = 'zeus-2';
+      const nav = document.createElement('div'); nav.id = 'panelMemory';
+      const row = document.createElement('button'); row.className = 'side-menu-item';
+      row.innerHTML = '<svg width="16" height="16"></svg><span>Label</span>';
+      nav.append(row); document.body.append(nav);
+      const label = row.querySelector('span'), r = row.getBoundingClientRect(), b = label.getBoundingClientRect(), c = getComputedStyle(label);
+      const out = {offset: (b.top + b.bottom - r.top - r.bottom) / 2, translate: c.translate, transform: c.transform, trim: c.textBoxTrim};
+      nav.remove(); return out; }""")
+    assert abs(state["offset"]) <= 0.75, state
+    assert state["translate"] == "none" and state["transform"] == "none", state
+    assert state["trim"] == "trim-both", state
 
 
 def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):

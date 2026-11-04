@@ -1101,7 +1101,7 @@
         const collapsed = !_expandedProjectIds.has(proj.project_id);
         html += `<div class="project-chip project-folder-row agent-canvas-project-row" data-project-id="${esc(proj.project_id)}">
           <span class="project-folder-chevron${collapsed ? '' : ' expanded'}">&#9656;</span>
-          ${proj.color ? `<span class="color-dot" style="background:${esc(proj.color)}"></span>` : ''}
+          ${proj.color ? `<span class="project-folder-dot-slot"><span class="color-dot" style="background:${esc(proj.color)}"></span></span>` : ''}
           <span class="project-folder-name">${esc(proj.name || 'Project')}</span>
           <span class="project-folder-count">${rows.length}</span>
         </div>

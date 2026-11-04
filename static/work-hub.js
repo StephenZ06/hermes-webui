@@ -200,7 +200,7 @@
       // Delete mode opens every folder so its boards can be deleted too.
       const expanded = !!store.expandedProjects[project.project_id] || (!!store.deleteMode && count > 0);
       const b = document.createElement('button'); b.type = 'button'; b.className = 'project-chip project-folder-row work-hub-project-tile'; b.dataset.scope = project.project_id; b.dataset.projectToggle = project.project_id; b.setAttribute('aria-expanded', String(expanded)); b.setAttribute('aria-controls', `workHubFolderBoards-${project.project_id}`);
-      b.innerHTML = `<span class="project-folder-chevron work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="color-dot work-hub-project-color" aria-hidden="true"></span><span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${count} boards">${count}</span>`;
+      b.innerHTML = `<span class="project-folder-chevron work-hub-project-chevron ${expanded ? 'expanded' : ''}">▸</span><span class="project-folder-dot-slot"><span class="color-dot work-hub-project-color" aria-hidden="true"></span></span><span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${count} boards">${count}</span>`;
       b.querySelector('.work-hub-project-name').textContent = project.name || 'Untitled project';
       b.querySelector('.work-hub-project-color').style.background = project.color || 'var(--accent)';
       if (store.deleteMode && project.deletable) {

@@ -198,7 +198,7 @@ def test_character_page_fits_a_phone(browser):
     assert page.evaluate("() => document.querySelector('.rpg-sheet').getBoundingClientRect().right <= innerWidth")
 
 
-def test_zeus_dashboard_sidepanel_labels_and_level_badge_sit_a_pixel_lower(browser):
+def test_zeus_dashboard_sidepanel_labels_badge_and_icons_share_the_row_centre(browser):
     page = _open(browser, viewport={"width": 1280, "height": 860})
     page.evaluate("""() => {
         localStorage.setItem('hermes-skin', 'zeus-2');
@@ -214,9 +214,7 @@ def test_zeus_dashboard_sidepanel_labels_and_level_badge_sit_a_pixel_lower(brows
             const label = button.querySelector('.side-menu-label');
             const icon = button.querySelector('svg');
             const box = button.getBoundingClientRect();
-            const text = document.createRange();
-            text.selectNodeContents(label);
-            const textBox = text.getBoundingClientRect();
+            const textBox = label.getBoundingClientRect();
             const iconBox = icon.getBoundingClientRect();
             const badge = button.querySelector('.dash-level-badge')?.getBoundingClientRect();
             const contentTop = Math.min(textBox.top, iconBox.top, badge?.top ?? Infinity);
@@ -237,11 +235,10 @@ def test_zeus_dashboard_sidepanel_labels_and_level_badge_sit_a_pixel_lower(brows
         for item in measurements:
             assert item["lineHeight"] != "normal", item
             assert item["buttonTransform"] == "none", item
-            # Labels and the level badge sit 1px below the icons' optical centre.
-            assert 0.85 <= item["textCenterOffset"] <= 0.95, item
-            assert -0.15 <= item["iconCenterOffset"] <= -0.05, item
+            assert abs(item["textCenterOffset"]) <= 0.5, item
+            assert abs(item["iconCenterOffset"]) <= 0.5, item
             if item["label"] == "Character":
-                assert 0.85 <= item["badgeCenterOffset"] <= 0.95, item
+                assert abs(item["badgeCenterOffset"]) <= 0.5, item
 
 
 def test_character_page_uses_geist_contrast_dashboard_surfaces(browser):

@@ -119,7 +119,10 @@ function _renderNotesProjectFolders(view) {
       const dot = document.createElement('span');
       dot.className = 'color-dot';
       dot.style.background = p.color;
-      chip.appendChild(dot);
+      const dotSlot = document.createElement('span');
+      dotSlot.className = 'project-folder-dot-slot';
+      dotSlot.appendChild(dot);
+      chip.appendChild(dotSlot);
     }
     const nameSpan = document.createElement('span');
     nameSpan.className = 'project-folder-name';
