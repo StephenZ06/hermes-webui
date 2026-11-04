@@ -72,42 +72,93 @@ def test_the_strip_that_catches_the_pointer_clears_the_page_once_the_bar_is_down
     assert height == "0px"
 
 
+def test_a_closing_bar_lets_the_pointer_through_to_buttons_beneath_it(page):
+    page.mouse.move(600, 0)
+    page.wait_for_function(f"() => ({BAR_TOP})() === 0", timeout=3000)
+    page.mouse.move(600, 500)
+    hit = page.evaluate("""() => { const e = document.elementFromPoint(600, 20);
+      return !!e.closest('.app-titlebar'); }""")
+    assert hit is False
+
+
 def test_touch_screens_keep_the_bar_because_they_cannot_reveal_it(browser):
     page = _open(browser, viewport={"width": 1024, "height": 768}, has_touch=True, is_mobile=True)
     assert page.evaluate(BAR_TOP) == 0
     assert page.evaluate("() => getComputedStyle(document.querySelector('.app-titlebar')).position") != "fixed"
 
 
-def test_rail_icons_wait_for_the_slowest_mark_then_appear_together(browser):
-    page = browser.new_context(viewport={"width": 1400, "height": 800}).new_page()
-
-    held = []
-    page.route("**/static/nav-audit-mark.png*", lambda route: held.append(route))
-    page.goto(BASE + "/", wait_until="commit")
-    page.wait_for_selector(".rail .page-nav-mark", state="attached", timeout=10000)
-    pending = page.evaluate("""() => ({
-      pending: document.documentElement.classList.contains('nav-marks-pending'),
-      opacities: [...document.querySelectorAll('.rail .page-nav-mark')].map(e => getComputedStyle(e).opacity)})""")
-    assert pending["pending"] is True
-    assert set(pending["opacities"]) == {"0"}
-    assert held
-    held[0].continue_()
-    page.wait_for_function("() => !document.documentElement.classList.contains('nav-marks-pending')", timeout=5000)
-    page.wait_for_timeout(600)
-    shown = page.evaluate("() => [...document.querySelectorAll('.rail .page-nav-mark')].map(e => getComputedStyle(e).opacity)")
-    assert "0" not in shown
-
-
-def test_marks_are_preloaded_the_way_css_masks_request_them(browser):
-    """A mask is a CORS fetch, so a plain Image() warms a different cache entry
-    and each mask still loads on its own after the rail has been shown."""
+def test_rail_icons_arrive_with_the_stylesheet_not_one_request_each(browser):
+    """Each icon used to be its own request, so a hard refresh drew them one by one."""
     page = browser.new_context(viewport={"width": 1400, "height": 800}).new_page()
     requests = []
-    page.on("request", lambda r: requests.append(r.url) if "nav-audit-mark" in r.url else None)
+    page.on("request", lambda r: requests.append(r.url) if re.search(r"(nav-[a-z]+-mark|nav-mark|nav-dashboard-icon)\.png", r.url) else None)
     page.goto(BASE + "/", wait_until="domcontentloaded")
     page.wait_for_function("() => !document.documentElement.classList.contains('nav-marks-pending')", timeout=8000)
     page.wait_for_timeout(300)
-    assert len(requests) == 1, "the mask must reuse the preloaded image"
+    assert requests == []
+    masks = page.evaluate("""() => [...document.querySelectorAll('.rail :is(.page-nav-mark,.chat-nav-mark,.office-nav-mark)')]
+      .map(e => { const c = getComputedStyle(e); return c.maskImage + c.backgroundImage; })""")
+    assert masks and all("data:image/png" in m for m in masks)
+
+
+def test_rail_shows_without_waiting_for_settings_and_kanban_stays_put(browser):
+    """A slow page load used to outlast the rail's timer, so it showed half loaded."""
+    context = browser.new_context(viewport={"width": 1400, "height": 800})
+    page = context.new_page()
+    held = []
+    page.route("**/api/settings*", lambda route: held.append(route))
+    page.goto(BASE + "/", wait_until="domcontentloaded")
+    page.wait_for_function("() => !document.documentElement.classList.contains('nav-marks-pending')", timeout=8000)
+    assert page.evaluate("() => document.querySelector('.rail [data-panel=kanban]').hidden") is False
+    for route in held:
+        route.continue_()
+    page.unroute("**/api/settings*")
+
+    page.evaluate("() => localStorage.setItem('hermes-hide-kanban', '1')")
+    page.goto(BASE + "/", wait_until="commit")
+    page.wait_for_selector(".rail [data-panel='kanban']", state="attached", timeout=10000)
+    page.wait_for_function("() => !document.documentElement.classList.contains('nav-marks-pending')", timeout=8000)
+    assert page.evaluate("() => document.querySelector('.rail [data-panel=kanban]').hidden") is True
+
+
+def test_usage_card_swaps_windows_with_dots_and_names_them_in_the_label(page):
+    page.evaluate("async () => { await switchPanel('chat'); }")
+    page.evaluate("""() => { const d = {available: true, provider: 'openai-codex', windows: [
+      {label: 'Session', used_percent: 30}, {label: 'Weekly', used_percent: 60}]};
+      _accountUsageData = d; _accountUsageWindow = 'session'; _renderAccountUsageImpl(d); }""")
+    label = "() => document.getElementById('chatUsageWidgetLabel').textContent"
+    assert page.evaluate(label) == "Session usage (5H)"
+    weekly = page.locator("[data-usage-window='weekly']")
+    assert weekly.text_content() == "" and weekly.get_attribute("aria-label") == "Weekly window"
+    weekly.click()
+    page.wait_for_timeout(450)
+    assert page.evaluate(label) == "Session usage (W)"
+    state = page.evaluate("""() => { const t = document.getElementById('chatUsageWidgetWindowToggle'), a = getComputedStyle(t, '::before');
+      const root = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      const probe = document.createElement('i'); probe.style.color = root; document.body.append(probe);
+      const accent = getComputedStyle(probe).color; probe.remove();
+      return {color: a.backgroundColor, accent, x: new DOMMatrix(a.transform).m41, w: a.width}; }""")
+    assert state["color"] == state["accent"] and state["x"] == 14 and state["w"] == "6px"
+
+
+def test_folder_row_counts_ride_one_pixel_high(page):
+    page.evaluate("async () => { await switchPanel('notes'); }")
+    page.wait_for_timeout(300)
+    state = page.evaluate("""() => { const list = document.getElementById('workHubProjects') || document.getElementById('workHubSidebar');
+      const row = document.createElement('button'); row.className = 'project-chip project-folder-row';
+      row.innerHTML = '<span class="project-folder-count">1</span>';
+      list.prepend(row); const c = getComputedStyle(row.querySelector('.project-folder-count')).translate;
+      row.remove(); return {c}; }""")
+    assert state["c"] == "0px -1px"
+
+
+def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):
+    state = page.evaluate("""() => { const h = document.createElement('div'); h.className = 'office-header';
+      h.innerHTML = '<span class="office-pill">IDLE</span><button id="officePauseBtn" class="office-header-btn">View live</button>';
+      document.body.append(h); const b = getComputedStyle(h.querySelector('button')), p = getComputedStyle(h.querySelector('span'));
+      const out = {weight: b.fontWeight, btn: [b.paddingTop, b.paddingBottom], pill: [p.paddingTop, p.paddingBottom]};
+      h.remove(); return out; }""")
+    assert state == {"weight": "400", "btn": ["3px", "5px"], "pill": ["2px", "4px"]}
 
 
 def test_folder_dots_have_equal_space_above_and_below(page):
@@ -137,11 +188,11 @@ def test_new_chat_menu_and_workspace_arrow_sit_on_the_page_background(page):
     assert colours[2] == colours[0]
 
 
-def test_usage_card_title_is_regular_and_window_labels_are_capitals(page):
+def test_usage_card_title_is_regular_and_window_buttons_are_wordless(page):
     page.evaluate("async () => { await switchPanel('chat'); }")
     page.wait_for_selector("#chatUsageWidgetWindowToggle button", state="visible", timeout=8000)
     assert page.evaluate("() => getComputedStyle(document.querySelector('.chat-usage-widget-label')).fontWeight") == "400"
-    assert page.evaluate("() => [...document.querySelectorAll('#chatUsageWidgetWindowToggle button')].map(b => b.innerText)") == ["5 HOURS", "WEEKLY"]
+    assert page.evaluate("() => [...document.querySelectorAll('#chatUsageWidgetWindowToggle button')].map(b => b.innerText)") == ["", ""]
     overflow = page.evaluate("() => [...document.querySelectorAll('#chatUsageWidgetWindowToggle button')].map(b => b.scrollWidth - b.clientWidth)")
     assert max(overflow) <= 0
 

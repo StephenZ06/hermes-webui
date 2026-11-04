@@ -2296,7 +2296,9 @@ function _renderAccountUsageImpl(data){
   const used=Math.max(0,Math.min(100,Number(selected.used_percent)||0));
   const remaining=Math.round(100-used);
   const label=$('chatUsageWidgetLabel');
-  if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':(selected.label?`${selected.label} usage`:t('chat_usage_weekly'));
+  // The dots carry no words, so the label says which window is showing.
+  const windowTag=selectable.length>1?(selectedKey==='session'?'5H':selectedKey==='weekly'?'W':''):'';
+  if(label) label.textContent=isNeuralwatt?'MONTHLY USAGE':windowTag?`${t('chat_usage_session')} (${windowTag})`:(selected.label?`${selected.label} usage`:t('chat_usage_weekly'));
   const pctEl=$('chatUsageWidgetPercent');
   if(pctEl){
     // Same window, new value: the number pops in. A window switch has its own swap.

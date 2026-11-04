@@ -16,6 +16,7 @@ def _open(pw):
     page = browser.new_page(viewport={"width": 1280, "height": 800})
     page.goto(BASE + "/", wait_until="domcontentloaded")
     page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
+    page.mouse.move(640, 400)  # a pointer left at 0,0 sits on the top bar's reveal strip
     page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
     return browser, page
 

@@ -171,9 +171,10 @@ when the pointer reaches the top edge, or when keyboard focus lands in it. Touch
 screens, phones and installed apps with window controls in the bar keep it in
 place, because they have no way to reveal it.
 
-The rail's icons wait for every mark and for the saved settings, then fade in as
-one. Preloads must set `crossOrigin`: CSS masks are CORS requests, so a plain
-`Image()` warms a different cache entry and each mask pops in on its own.
+The rail's icons are embedded in `style.css` as `--mark-*` variables, so they arrive
+together and fade in once as soon as the rail is parsed, with no image requests and
+no timer. Kanban's visibility comes from the last saved choice in `localStorage`
+(`hermes-hide-kanban`). After changing a PNG in `static/`, regenerate its 64px copy.
 
 ## Responsive behavior
 

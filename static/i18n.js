@@ -1252,6 +1252,7 @@ const LOCALES = {
     session_drag_handle_title: 'Drag to a project folder',
     filter_conversations: 'Filter conversations...',
     chat_usage_weekly: 'Weekly usage',
+    chat_usage_session: 'Session usage',
     chat_usage_remaining: 'remaining',
     chat_usage_resets_in: 'Resets in {time}',
     chat_usage_resets_now: 'Resets now',

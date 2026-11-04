@@ -13,9 +13,9 @@ def test_primary_office_navigation_uses_the_custom_mark_in_desktop_and_mobile():
     # The rail and the mobile nav; the chat Workspace panel's Office tab reuses it.
     assert INDEX.count('class="office-nav-mark"') == 3
     assert (REPO / "static" / "office-nav-mark.png").is_file()
-    assert 'mask-image:url("office-nav-mark.png")' in CSS
-    assert '-webkit-mask-image:url("office-nav-mark.png")' in CSS
-    assert "'./static/office-nav-mark.png'," in SERVICE_WORKER
+    assert '--mark-office-nav-mark:url("data:image/png;base64,' in CSS
+    assert "mask-image:var(--mark-office-nav-mark)" in CSS
+    assert "-webkit-mask-image:var(--mark-office-nav-mark)" in CSS
 
 
 def test_office_navigation_uses_the_selected_people_mark_asset():

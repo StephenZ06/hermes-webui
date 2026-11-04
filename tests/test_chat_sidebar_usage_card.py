@@ -120,11 +120,9 @@ def test_usage_window_switch_has_one_sliding_active_indicator():
     assert "transition:transform .32s cubic-bezier(.2,.8,.2,1)" in CSS
 
 
-def test_codex_usage_window_toggle_uses_the_compact_control_size():
-    assert "width:46px" in CSS
-    assert "min-height:18px" in CSS
-    assert "font-size:10px" in CSS
-    assert "transform:translateX(46px)" in CSS
+def test_codex_usage_window_toggle_is_two_small_dots():
+    assert "width:14px;height:18px" in CSS
+    assert "transform:translateX(14px)" in CSS
 
 
 def test_usage_window_motion_is_not_silently_skipped_for_the_explicit_control():

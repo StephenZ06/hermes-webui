@@ -4269,8 +4269,8 @@ function applyEmptyStatePanelPref(){
 function applyHideKanbanPref(){
   const hide=window._hideKanbanPanel===true;
   document.querySelectorAll('[data-panel="kanban"]').forEach(el=>{el.hidden=hide;});
-  // The rail's icons wait for this so a late button can't shift them (index.html).
-  if(window._navSettled) window._navSettled();
+  // index.html reads this before first paint so the button can't arrive late.
+  try{localStorage.setItem('hermes-hide-kanban',hide?'1':'0');}catch(e){}
   if(hide && typeof _currentPanel!=='undefined' && _currentPanel==='kanban' && typeof switchPanel==='function'){
     switchPanel('chat');
   }
