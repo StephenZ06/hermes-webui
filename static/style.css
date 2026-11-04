@@ -1117,11 +1117,11 @@
   @font-face{font-family:"Zeus2 Courier New Chat";font-weight:700;font-style:italic;src:local("Courier New Bold Italic"),local("CourierNewPS-BoldItalicMT");ascent-override:94.4%;descent-override:20.28%;line-gap-override:0%;}
   :root[data-skin="zeus-2"] :is(#messages,#composerWrap){--font-ui:"SF Mono","Roboto Mono","Zeus2 Courier New Chat","Courier New",monospace;font-family:var(--font-ui);}
   :root.dark[data-skin="zeus-2"]{
-    --bg:#0F0F0F;--sidebar:#111111;--surface:#181818;--code-bg:#181818;
+    --bg:#0F0F0F;--sidebar:#111111;--surface:var(--bg);--code-bg:#181818;
     --topbar-bg:rgba(15,15,15,.98);--main-bg:rgba(15,15,15,0.6);
     --border:#1E2630;--border2:rgba(70,130,180,0.18);
-    --input-bg:rgba(255,255,255,.04);--hover-bg:rgba(70,130,180,.06);
-    --surface-subtle:rgba(255,255,255,.03);--surface-subtle-hover:rgba(255,255,255,.05);
+    --input-bg:transparent;--hover-bg:rgba(70,130,180,.06);
+    --surface-subtle:transparent;--surface-subtle-hover:rgba(255,255,255,.05);
     --border-subtle:rgba(70,130,180,.08);--border-muted:rgba(70,130,180,.14);
     --focus-ring:rgba(70,130,180,.4);--focus-glow:rgba(70,130,180,.1);
     --accent:#4682B4;--blue:#4682B4;--gold:#4682B4;--accent-hover:#5A9AD0;
@@ -1136,11 +1136,11 @@
   :root.dark[data-skin="zeus-2"] .composer-box{background:transparent;border-color:rgba(70,130,180,0.2);}
   :root.dark[data-skin="zeus-2"] .msg-row[data-role="assistant"] .msg-body{background:transparent;border-color:transparent;}
   :root.dark[data-skin="zeus-2"] .msg-row[data-role="user"] .msg-body{background:#0F1822;border-color:rgba(70,130,180,0.25);}
-  :root.dark[data-skin="zeus-2"] .app-dialog{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .app-dialog{background:var(--bg);border-color:rgba(70,130,180,0.2);}
   :root.dark[data-skin="zeus-2"] .app-dialog-overlay{background:rgba(0,0,0,.72);}
-  :root.dark[data-skin="zeus-2"] .kanban-modal{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.2);}
+  :root.dark[data-skin="zeus-2"] .kanban-modal{background:var(--bg);border-color:rgba(70,130,180,0.2);}
   :root.dark[data-skin="zeus-2"] .kanban-modal-overlay{background:rgba(0,0,0,.72);}
-  :root.dark[data-skin="zeus-2"] .kanban-board-switcher-menu{background:linear-gradient(180deg,rgba(24,24,24,.99),rgba(15,15,15,.99));border-color:rgba(70,130,180,0.15);}
+  :root.dark[data-skin="zeus-2"] .kanban-board-switcher-menu{background:var(--bg);border-color:rgba(70,130,180,0.15);}
   :root[data-skin="zeus-2"]:not(.dark) .sidebar{border-right-style:dashed;}
   :root[data-skin="zeus-2"]::-webkit-scrollbar-thumb{background:rgba(70,130,180,.25);border-radius:3px;}
   :root[data-skin="zeus-2"]::-webkit-scrollbar-thumb:hover{background:rgba(70,130,180,.4);}
@@ -6139,7 +6139,6 @@ main.main.showing-files > #mainFiles{display:flex;min-width:0;}
 #notebookRoot{position:relative;flex:1;min-width:0;min-height:0;display:flex;}
 .nb-page-loader{position:absolute;z-index:4;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--muted);font-size:13px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility 0s linear .18s;}
 #notebookRoot.nb-is-loading .nb-page-loader{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .16s ease;}
-.nb-page-loader-orbit{width:26px;height:26px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:nb-loader-spin .72s linear infinite;}
 .nb{--nb-list-w:300px;flex:1;display:grid;grid-template-columns:var(--nb-list-w) minmax(0,1fr);min-width:0;min-height:0;transition:grid-template-columns .22s cubic-bezier(.22,1,.36,1);}
 .nb-list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);overflow:hidden;transition:opacity .16s ease,transform .22s cubic-bezier(.22,1,.36,1),border-color .16s ease;}
 .nb.nb-list-collapsed{grid-template-columns:0 minmax(0,1fr);}
@@ -6255,7 +6254,6 @@ html .hermes-note-editor .bn-editor{padding-inline:54px;background:transparent;f
 @keyframes nb-list-in{from{opacity:0;}}
 @keyframes nb-editor-content-in{from{opacity:0;}}
 @keyframes nb-pop{from{opacity:0;transform:translateY(-3px) scale(.98);}}
-@keyframes nb-loader-spin{to{transform:rotate(1turn);}}
 @media (max-width:900px){
   .nb{grid-template-columns:minmax(0,1fr);}
   .nb[data-pane="list"] .nb-editor,.nb[data-pane="editor"] .nb-list{display:none;}
@@ -16605,3 +16603,83 @@ textarea.office-biz-input{resize:vertical;}
 /* Script card: the script name and the path hint sit 1px lower. */
 #taskDetailBody .cron-script-card .detail-script{padding-top:11px;padding-bottom:9px;}
 #taskDetailBody .cron-script-card-hint{translate:0 1px;}
+
+/* Zeus 2.0 dark: every control and popup sits on the page's own colour. The
+   tokens above carry most of this (--surface is the page, --input-bg and
+   --surface-subtle are clear); these are the fills written as literal greys
+   or through --code-bg, which stays for real code blocks. Anything floating
+   over content keeps an opaque page fill. Selection used to read through the
+   grey, so selected segments take the accent tint instead. */
+:root.dark[data-skin="zeus-2"] :is(.app-dialog-close,.app-dialog-input,.app-dialog-btn,.cron-btn,.chip,.ctx-compress-btn,.ws-action-btn,.onboarding-oauth-card,.notes-source-card,.compression-card,.help-card-icon,.managed-service-card,.settings-model-chip,.mcp-tool-page-btn,.mcp-toggle-disabled,.mcp-tool-page-size select,.selection-context-card,.tool-card-detail,.agent-canvas-card-terminal,.logs-output):not(:hover){background:transparent;}
+:root.dark[data-skin="zeus-2"] :is(.scroll-to-bottom-btn,.session-jump-btn,.msg-question-jump-btn):not(:hover){background:var(--bg);}
+:root.dark[data-skin="zeus-2"] :is(.seg-btn.active,.seg > .mi-pill,.studio-tabs > .mi-pill,.studio-tabs button.active){background:var(--accent-bg);}
+
+/* Page loaders (pageLoader in panels.js). Each one is drawn from what its page
+   holds, in the accent colour, so a wait reads as that page getting ready. A
+   short delay on the way in means a fast load never flashes one. */
+.page-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;width:100%;height:100%;min-height:min(62vh,520px);box-sizing:border-box;padding:24px 12px;color:var(--muted);font-size:13px;animation:page-loader-in .3s ease .12s backwards;}
+.nb-page-loader{gap:16px;animation:page-loader-in .3s ease .12s backwards;}
+@keyframes page-loader-in{from{opacity:0;}}
+.page-loader > span:first-child,.nb-page-loader > span:first-child{display:block;}
+
+/* Notes: an open notebook. Three leaves take turns around the spine, two in
+   the air at once, and catch the light as they stand upright. */
+.pl-book{--pl-line:color-mix(in srgb,var(--accent) 34%,transparent);--pl-paper:color-mix(in srgb,var(--accent) 12%,var(--bg));position:relative;display:block;width:92px;height:62px;}
+.pl-book::before{content:"";position:absolute;inset:-4px -5px;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:5px;}
+.pl-book::after{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:color-mix(in srgb,var(--accent) 55%,transparent);}
+.pl-page,.pl-leaf{position:absolute;top:0;bottom:0;width:50%;box-sizing:border-box;padding:0;background:repeating-linear-gradient(180deg,transparent 0 7px,var(--pl-line) 7px 8px) 7px 5px/calc(100% - 14px) calc(100% - 10px) no-repeat,var(--pl-paper);}
+.pl-page:nth-child(1){left:0;border-radius:2px 0 0 2px;}
+.pl-page:nth-child(2){left:50%;border-radius:0 2px 2px 0;}
+.pl-leaf{left:50%;border-radius:0 2px 2px 0;transform-origin:left center;animation:pl-flip 2.7s cubic-bezier(.45,.05,.3,1) infinite;will-change:transform;}
+.pl-leaf:nth-child(4){animation-delay:.9s;}
+.pl-leaf:nth-child(5){animation-delay:1.8s;}
+@keyframes pl-flip{
+  0%{transform:perspective(260px) rotateY(0);filter:brightness(1);}
+  22%{filter:brightness(1.9);}
+  45%,100%{transform:perspective(260px) rotateY(-180deg);filter:brightness(1);}
+}
+
+/* Jobs: the scout's sweep, with matches lighting up as the beam passes them. */
+.pl-radar{--pl-ring:color-mix(in srgb,var(--accent) 30%,transparent);position:relative;display:block;width:76px;height:76px;border-radius:50%;overflow:hidden;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent);background:radial-gradient(circle,transparent 0 12px,var(--pl-ring) 12px 13px,transparent 13px 25px,var(--pl-ring) 25px 26px,transparent 26px);}
+.pl-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 68%,color-mix(in srgb,var(--accent) 50%,transparent) 100%);animation:pl-sweep 2.4s linear infinite;will-change:transform;}
+.pl-blip{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--accent-text,var(--accent));opacity:0;animation:pl-blip 2.4s ease-out infinite;}
+.pl-blip:nth-of-type(1){left:50px;top:17px;animation-delay:.3s;}
+.pl-blip:nth-of-type(2){left:53px;top:50px;animation-delay:.95s;}
+.pl-blip:nth-of-type(3){left:16px;top:42px;animation-delay:1.8s;}
+@keyframes pl-sweep{to{transform:rotate(1turn);}}
+@keyframes pl-blip{0%{opacity:0;transform:scale(.5);}6%{opacity:1;transform:scale(1);}55%,100%{opacity:0;transform:scale(1);}}
+
+/* Work Hub and Kanban: a card works its way across the columns. */
+.pl-board{position:relative;display:grid;grid-template-columns:repeat(3,26px);gap:6px;width:90px;height:64px;}
+.pl-board i{border:1px solid color-mix(in srgb,var(--accent) 38%,transparent);border-radius:4px;animation:pl-column 3s ease-in-out infinite;}
+.pl-board b{position:absolute;left:4px;top:9px;width:18px;height:13px;box-sizing:border-box;border:1px solid var(--accent);border-radius:2px;background:color-mix(in srgb,var(--accent) 26%,var(--bg));animation:pl-card 3s cubic-bezier(.65,0,.25,1) infinite;will-change:transform;}
+@keyframes pl-column{0%,100%{opacity:1;}50%{opacity:.75;}}
+@keyframes pl-card{
+  0%{transform:translate(0,0);opacity:0;}
+  8%,26%{transform:translate(0,0);opacity:1;}
+  42%,60%{transform:translate(32px,12px);opacity:1;}
+  76%,92%{transform:translate(64px,26px);opacity:1;}
+  100%{transform:translate(64px,26px);opacity:0;}
+}
+
+/* Insights: the chart draws itself, one bar after another. */
+.pl-bars{display:flex;align-items:flex-end;gap:6px;height:56px;padding-bottom:3px;border-bottom:1px solid color-mix(in srgb,var(--accent) 55%,transparent);}
+.pl-bars i{width:10px;height:100%;border-radius:2px 2px 0 0;background:color-mix(in srgb,var(--accent) 60%,var(--bg));transform-origin:bottom;animation:pl-bar 1.8s cubic-bezier(.16,1,.3,1) infinite;will-change:transform;}
+.pl-bars i:nth-child(1){--pl-h:.45;}
+.pl-bars i:nth-child(2){--pl-h:.8;animation-delay:.12s;}
+.pl-bars i:nth-child(3){--pl-h:.55;animation-delay:.24s;}
+.pl-bars i:nth-child(4){--pl-h:1;animation-delay:.36s;}
+.pl-bars i:nth-child(5){--pl-h:.7;animation-delay:.48s;}
+@keyframes pl-bar{0%{transform:scaleY(.08);}45%,75%{transform:scaleY(var(--pl-h));}100%{transform:scaleY(.08);}}
+
+@media (prefers-reduced-motion:reduce){
+  .page-loader,.nb-page-loader{animation:none;}
+  .pl-leaf,.pl-sweep,.pl-board i,.pl-board b,.pl-bars i{animation:none;}
+  .pl-leaf{display:none;}
+  .pl-sweep{transform:rotate(60deg);}
+  .pl-blip{animation:none;opacity:1;}
+  .pl-board b{transform:translate(32px,12px);}
+  .pl-bars i{transform:scaleY(var(--pl-h));}
+  :is(.page-loader,.nb-page-loader) :is(.page-loader-label,.nb-page-loader-label){animation:pl-rest 2.4s ease-in-out infinite;}
+  @keyframes pl-rest{50%{opacity:.55;}}
+}

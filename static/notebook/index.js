@@ -460,7 +460,7 @@
     const root = $('notebookRoot');
     if (!root) return null;
     if (!root.querySelector('.nb')) {
-      root.innerHTML = `<div class="nb-page-loader" role="status" aria-live="polite" aria-busy="false"><span class="nb-page-loader-orbit" aria-hidden="true"></span><span class="nb-page-loader-label">Loading notes</span></div><div class="nb" data-pane="list">
+      root.innerHTML = `<div class="nb-page-loader" role="status" aria-live="polite" aria-busy="false"><span aria-hidden="true">${pageLoaderArt('flip')}</span><span class="nb-page-loader-label">Loading notes</span></div><div class="nb" data-pane="list">
         <section class="nb-list" aria-label="Notes">
           <header class="nb-list-head"><h2 id="nbScopeTitle"></h2><button type="button" class="nb-icon-btn" data-nb-action="new" aria-label="New note" title="New note (Alt+N)">${icon('plus', 16)}</button></header>
           <label class="nb-search">${icon('search', 14)}<input id="nbSearch" type="search" placeholder="Search notes" autocomplete="off" spellcheck="false" aria-label="Search notes"></label>

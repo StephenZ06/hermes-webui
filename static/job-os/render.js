@@ -200,8 +200,8 @@
       : '<p class="job-os-card-note card-empty-note action-empty">Nothing needs a decision right now. New matches, follow-ups and connection problems show here when they do.</p>';
     return `<section class="job-os-card action-centre">${cardHead('Action centre', 'bell', '', rows.length || null)}${body}</section>`;
   }
-  // While a view's data is on its way: the same spinner the app's other pages show.
-  const LOADING = '<div class="loading-spinner-wrap job-os-loading" role="status"><div class="loading-spinner" aria-hidden="true"></div><span class="sr-only">Loading</span></div>';
+  // While a view's data is on its way: the page's own radar sweep.
+  const LOADING = pageLoader('radar', 'Loading jobs', 'job-os-loading');
   // A card's title row: an icon chip, the title (with an optional count) and actions on the right.
   // Card and tile artwork (static/job-os/icons, trimmed to the same padding),
   // by the card's title; cards without artwork keep their line icon.

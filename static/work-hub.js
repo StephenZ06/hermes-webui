@@ -30,6 +30,7 @@
   // it is, edits and all, instead of rebuilding it.
   async function loadWorkHubPanel(options = {}) {
     const root = el('workHub'); if (!root) return;
+    if (!root.firstElementChild) root.innerHTML = pageLoader('board', 'Loading work');
     try {
       const [data, quests] = await Promise.all([request('/api/work_hub/bootstrap'), request('/api/dashboard/quests').catch(() => null)]);
       store.questIds = new Set((quests && quests.item_ids) || []);

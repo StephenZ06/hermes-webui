@@ -69,13 +69,31 @@ let _logsSeverityFilter = 'all';
 let _insightsAutoRefreshTimer = null;
 const INSIGHTS_AUTO_REFRESH_MS = 15000;
 
+// Loaders drawn from what the page is, for the pages whose first load is long
+// enough to watch. The shapes are plain elements painted in style.css:
+// flip is a notebook turning pages (Notes), radar is a scout sweep (Jobs),
+// board is a card crossing columns (Work Hub, Kanban), bars is a chart growing
+// (Insights). Every other page keeps the shared loading bar.
+const PAGE_LOADER_ART = {
+  flip: '<span class="pl-book"><i class="pl-page"></i><i class="pl-page"></i><i class="pl-leaf"></i><i class="pl-leaf"></i><i class="pl-leaf"></i></span>',
+  radar: '<span class="pl-radar"><span class="pl-sweep"></span><b class="pl-blip"></b><b class="pl-blip"></b><b class="pl-blip"></b></span>',
+  board: '<span class="pl-board"><i></i><i></i><i></i><b></b></span>',
+  bars: '<span class="pl-bars"><i></i><i></i><i></i><i></i><i></i></span>',
+};
+function pageLoaderArt(kind) { return PAGE_LOADER_ART[kind] || ''; }
+function pageLoader(kind, label, className) {
+  return `<div class="page-loader${className ? ' ' + className : ''}" role="status"><span aria-hidden="true">${pageLoaderArt(kind)}</span><span class="page-loader-label">${esc(label)}</span></div>`;
+}
+
 // Drop the standard loading placeholder into a panel's content container
 // *synchronously*, before the panel's loader awaits its fetch — so a panel
 // switch shows the loader in front of a blank panel instead of leaving the
 // previous panel's content sitting there until the new data lands. No-ops if
 // the placeholder (or fresh content) is already there.
-function _panelLoading(el) {
-  if (!el || el.querySelector('.loading-spinner')) return;
+function _panelLoading(el, kind) {
+  if (!el || el.querySelector('.page-loader')) return;
+  if (kind) { el.innerHTML = pageLoader(kind, t('loading')); return; }
+  if (el.querySelector('.loading-spinner')) return;
   el.innerHTML = '<div class="loading-spinner-wrap" role="status">'
     + '<div class="loading-spinner" aria-hidden="true"></div>'
     + '<span class="sr-only">' + esc(t('loading')) + '</span></div>';
@@ -3439,7 +3457,7 @@ function _kanbanUnavailableHtml(err){
 async function loadKanban(animate){
   const board = $('kanbanBoard');
   const list = $('kanbanList');
-  if (!animate) _panelLoading(board);
+  if (!animate) _panelLoading(board, 'board');
   try {
     if (animate && board) board.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:13px">${esc(t('loading'))}</div>`;
     // Resolve the active board before board-scoped requests. If another CLI or
@@ -5868,6 +5886,8 @@ async function loadInsights(animate) {
     refreshBtn.disabled = true;
   }
   const period = ($('insightsPeriod') || {}).value || '30';
+  // First visit only: the page ships with a bare placeholder until this renders.
+  if (!box.querySelector('#systemHealthPanel')) _panelLoading(box, 'bars');
   // The re-render replaces the whole panel; keep the reader where they were and
   // keep any expanded card open (the auto-refresh runs every 15s).
   const _scrollTop = box.scrollTop;

@@ -37,11 +37,11 @@ def test_reduced_motion_is_respected():
 
 
 def test_fetching_panels_show_the_loader_before_awaiting():
-    assert "function _panelLoading(el)" in PANELS
+    assert "function _panelLoading(el, kind)" in PANELS
     for fn, anchor in [
         ("loadSkills", "_panelLoading(box)"),
         ("loadAgentDefinitions", "_panelLoading(box)"),
-        ("loadKanban", "_panelLoading(board)"),
+        ("loadKanban", "_panelLoading(board, 'board')"),
         ("loadMemory", "_panelLoading(panel)"),
         ("loadProfilesPanel", "_panelLoading(panel)"),
         ("loadWorkspacesPanel", "_panelLoading(panel)"),
@@ -53,6 +53,6 @@ def test_fetching_panels_show_the_loader_before_awaiting():
 
 
 def test_the_loader_is_not_forced_over_cached_content():
-    body = PANELS[PANELS.index("function _panelLoading(el)"):]
+    body = PANELS[PANELS.index("function _panelLoading(el, kind)"):]
     body = body[:body.index("\n}\n")]
     assert "el.querySelector('.loading-spinner')" in body and "return" in body
