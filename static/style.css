@@ -15352,7 +15352,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > .nb-scope-count{position:relative;top:-2px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-name{top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :is(.project-folder-chevron,.color-dot){top:0;}
-:root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-count{top:-1px;}
 :root[data-skin="zeus-2"] .nb-vault-title > span:last-child{position:relative;top:-1px;}
 /* Notes divider: the same 12px above it (to the folder button) as below it
    (to the top of the note's first line) -- the gap the folder button has
@@ -15477,7 +15476,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .cron-run-list.is-capped::-webkit-scrollbar-thumb{background:var(--border2);border-radius:999px;}
 .cron-run-list{position:relative;}
 /* Zeus 2.0 nudges (measured against the user's Windows render). */
-:root[data-skin="zeus-2"] :is(#sessionList,#workHubProjects,.nb-folders,.office-project-folders) .project-folder-row > .project-folder-count{top:-1px;}
 :root[data-skin="zeus-2"] .office-page-nav-copy strong{top:1px;}
 :root[data-skin="zeus-2"] .office-session-row :is(.office-session-title,.office-session-meta){position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .office-tasks-toggle :is(.office-tasks-title,.office-tasks-count){position:relative;top:1px;}
@@ -16437,7 +16435,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{top:-.9px;}
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-chevron{top:-.8px;}
-:root[data-skin="zeus-2"] :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-count{top:-2px;}
 /* New-chat suggestions sit on the page background with an outline. */
 .suggestion{background:transparent;}
 /* Chat page popups, menus, cards over the composer and dialogs share the
@@ -16559,23 +16556,24 @@ textarea.office-biz-input{resize:vertical;}
 .wh-foot-mark--delete{mask-image:url("work-hub-delete-mark.png");-webkit-mask-image:url("work-hub-delete-mark.png");}
 .wh-foot-mark--save{mask-image:url("work-hub-save-mark.png");-webkit-mask-image:url("work-hub-save-mark.png");}
 .work-hub-inspector .wh-insp-delete:not(.mi-armed){justify-content:center;width:34px;height:34px;padding:0;}
-/* Office header: View live is regular weight, and it and the status pill keep
-   equal space above and below their text. */
-.office-header > #officePauseBtn{font-weight:400;}
+/* Office header: View live is regular weight in capitals, and it and the
+   status pill share even padding. */
+.office-header > #officePauseBtn{font-weight:400;text-transform:uppercase;}
 @media (min-width:641px){
   .office-header > #officePauseBtn{padding-top:2px;padding-bottom:2px;}
-  .office-header > .office-pill{padding-top:2px;padding-bottom:4px;}
+  .office-header > .office-pill{padding-top:3px;padding-bottom:3px;}
 }
 /* New chat page: the logo sits as far above the heading as the subtitle sits
    below it, measured on the logo's visible artwork rather than its image box. */
-.empty-logo{margin-bottom:-20px;}
+.empty-logo{margin-bottom:-20px;translate:0 -8px;}
 /* Work Hub sidepanel: Inbox and All Work text 1px down so it is level with its
    icon and has equal space above and below. */
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* Project folder rows on every page: the count rides 1px low. */
-.project-folder-count{translate:0 1px;}
+/* Project folder rows on every page: one offset gives the count equal space
+   above and below, so no page or skin carries its own. */
+.project-folder-row > .project-folder-count{top:0;translate:0 -1px;}
 /* Chat and Work Hub folder names: equal space above the capitals and below the baseline. */
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{translate:0 1px;}
 /* Work Hub folder rows are buttons, which centre 1px higher than Chat's rows. */
@@ -16586,8 +16584,6 @@ textarea.office-biz-input{resize:vertical;}
 #panelNotes > .panel-head > span{translate:0 1px;}
 /* Usage card: the outer dot lines up with the card's right edge. */
 .chat-usage-widget-title-row .chat-usage-widget-window-toggle{margin-right:-4px;}
-/* Courier sits low in its line, so Chat's session titles ride up to even out. */
-:root[data-skin="zeus-2"] .session-item > .session-text{translate:0 -1px;}
 /* Memory sidepanel labels sit 1px low in Courier. */
 :root[data-skin="zeus-2"] #panelMemory .side-menu-item > span{translate:0 -1px;}
 /* Session Usage card: the text and bars sit 12px from all four edges, measured

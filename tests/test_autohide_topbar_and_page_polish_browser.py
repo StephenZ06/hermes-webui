@@ -141,24 +141,30 @@ def test_usage_card_swaps_windows_with_dots_and_names_them_in_the_label(page):
     assert state["color"] == state["accent"] and state["x"] == 14 and state["w"] == "6px"
 
 
-def test_folder_row_counts_ride_one_pixel_low(page):
-    page.evaluate("async () => { await switchPanel('notes'); }")
-    page.wait_for_timeout(300)
-    state = page.evaluate("""() => { const list = document.getElementById('workHubProjects') || document.getElementById('workHubSidebar');
-      const row = document.createElement('button'); row.className = 'project-chip project-folder-row';
-      row.innerHTML = '<span class="project-folder-count">1</span>';
-      list.prepend(row); const c = getComputedStyle(row.querySelector('.project-folder-count')).translate;
-      row.remove(); return {c}; }""")
-    assert state["c"] == "0px 1px"
+def test_folder_counts_share_one_offset_on_every_page(page):
+    state = page.evaluate("""() => { const hosts = {sessionList: 'sessionList', workHubProjects: 'workHubProjects'};
+      const made = [];
+      for (const [cls, id] of [['', 'sessionList'], ['nb-folders', ''], ['office-project-folders', ''], ['', 'workHubProjects']]) {
+        const host = document.createElement('div'); if (cls) host.className = cls; if (id) host.id = id + 'Probe';
+        const target = id && document.getElementById(id);
+        const row = document.createElement('button'); row.className = 'project-chip project-folder-row';
+        row.innerHTML = '<span class="project-folder-count">1</span>';
+        (target || host).append(row); if (!target) document.body.append(host); made.push([row, host, !target]);
+      }
+      document.documentElement.dataset.skin = 'zeus-2';
+      const out = made.map(([row]) => { const c = getComputedStyle(row.firstChild); return [c.top, c.translate]; });
+      made.forEach(([row, host, own]) => { row.remove(); if (own) host.remove(); });
+      return out; }""")
+    assert state == [["0px", "0px -1px"]] * 4
 
 
 def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):
     state = page.evaluate("""() => { const h = document.createElement('div'); h.className = 'office-header';
       h.innerHTML = '<span class="office-pill">IDLE</span><button id="officePauseBtn" class="office-header-btn">View live</button>';
       document.body.append(h); const b = getComputedStyle(h.querySelector('button')), p = getComputedStyle(h.querySelector('span'));
-      const out = {weight: b.fontWeight, btn: [b.paddingTop, b.paddingBottom], pill: [p.paddingTop, p.paddingBottom]};
+      const out = {weight: b.fontWeight, btn: [b.paddingTop, b.paddingBottom], pill: [p.paddingTop, p.paddingBottom], case: b.textTransform};
       h.remove(); return out; }""")
-    assert state == {"weight": "400", "btn": ["2px", "2px"], "pill": ["2px", "4px"]}
+    assert state == {"weight": "400", "btn": ["2px", "2px"], "pill": ["3px", "3px"], "case": "uppercase"}
 
 
 def test_every_suggestion_icon_sits_one_pixel_low(page):
@@ -166,12 +172,16 @@ def test_every_suggestion_icon_sits_one_pixel_low(page):
     assert shifts == ["0px 1px"] * 3
 
 
-def test_chat_session_titles_ride_one_pixel_high_in_zeus(page):
+def test_chat_session_titles_have_no_zeus_offset(page):
     shift = page.evaluate("""() => { document.documentElement.dataset.skin = 'zeus-2';
       const row = document.createElement('div'); row.className = 'session-item';
       row.innerHTML = '<span class="session-text">Title</span>'; document.body.append(row);
       const value = getComputedStyle(row.firstChild).translate; row.remove(); return value; }""")
-    assert shift == "0px -1px"
+    assert shift == "none"
+
+
+def test_new_chat_logo_rides_above_its_layout_slot(page):
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.empty-logo')).translate") == "0px -8px"
 
 
 def test_usage_card_rows_keep_a_tight_even_layout(page):
