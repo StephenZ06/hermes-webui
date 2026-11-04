@@ -155,7 +155,7 @@ def test_folder_counts_share_one_offset_on_every_page(page):
       const out = made.map(([row]) => { const c = getComputedStyle(row.firstChild); return [c.top, c.translate]; });
       made.forEach(([row, host, own]) => { row.remove(); if (own) host.remove(); });
       return out; }""")
-    assert state == [["0px", "0px -1px"]] * 4
+    assert state == [["0px", "none"]] * 4
 
 
 def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):

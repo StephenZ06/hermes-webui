@@ -16571,9 +16571,9 @@ textarea.office-biz-input{resize:vertical;}
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* Project folder rows on every page: one offset gives the count equal space
-   above and below, so no page or skin carries its own. */
-.project-folder-row > .project-folder-count{top:0;translate:0 -1px;}
+/* Project folder rows on every page: the count sits at its natural position,
+   and no page or skin carries its own offset. */
+.project-folder-row > .project-folder-count{top:0;translate:none;}
 /* Chat and Work Hub folder names: equal space above the capitals and below the baseline. */
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{translate:0 1px;}
 /* Work Hub folder rows are buttons, which centre 1px higher than Chat's rows. */
