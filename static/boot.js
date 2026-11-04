@@ -4269,6 +4269,8 @@ function applyEmptyStatePanelPref(){
 function applyHideKanbanPref(){
   const hide=window._hideKanbanPanel===true;
   document.querySelectorAll('[data-panel="kanban"]').forEach(el=>{el.hidden=hide;});
+  // The rail's icons wait for this so a late button can't shift them (index.html).
+  if(window._navSettled) window._navSettled();
   if(hide && typeof _currentPanel!=='undefined' && _currentPanel==='kanban' && typeof switchPanel==='function'){
     switchPanel('chat');
   }

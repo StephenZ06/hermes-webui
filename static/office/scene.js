@@ -1256,12 +1256,19 @@ export function createOfficeScene(canvas, options) {
       const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
       const clones = materials.map(m => {
         // Each fade starts from what the surface looks like now (a band or
-        // chevron may have changed since the last fade): drop old bases.
+        // chevron may have changed since the last fade): drop old bases. A
+        // surface still dimmed by an interrupted fade keeps them: its current
+        // colour is the dimmed one, and taking that as the base leaves it
+        // black for good once the next fade "restores" it.
         if (m.userData.originalMaterial) {
           const u = m.userData;
+          if (u.dimmed) return m;
           delete u.baseOpacity; delete u.baseColor; delete u.baseEmissive; delete u.baseEmissiveIntensity;
           return m;
         }
+        // A part added while a fade ran shares an uncloned material the fade
+        // has dimmed: put it back first, or the clone starts out dark.
+        if (m.userData.dimmed) restoreMaterial(m);
         const clone = m.clone();
         clone.userData = { originalMaterial: m };
         return clone;
@@ -1298,6 +1305,7 @@ export function createOfficeScene(canvas, options) {
     const u = m.userData;
     noteMaterialBase(m);
     if (k >= 0.998) { restoreMaterial(m); return; }
+    u.dimmed = true;
     if (u.baseTransparent || m.isSpriteMaterial || !m.color) {
       m.opacity = u.baseOpacity * k;
       return;
@@ -1316,6 +1324,7 @@ export function createOfficeScene(canvas, options) {
 
   function restoreMaterial(m) {
     const u = m.userData;
+    u.dimmed = false;
     if (u.baseOpacity === undefined) return;
     m.opacity = u.baseOpacity;
     m.transparent = u.baseTransparent;

@@ -474,7 +474,7 @@
     // Layout: an editable title, a compact property list, the description, and
     // a pinned footer whose Save only lights up once something has changed.
     panel.innerHTML = `<div class="wh-insp" data-item-id="${esc(item.id)}">
-      <header class="wh-insp-head"><span class="wh-insp-kicker"><span class="work-hub-status status-${esc(item.status)}" id="workHubStatusDot"></span>Work item</span><button id="workHubClose" class="wh-insp-close" aria-label="Close details" title="Close">${icon('close')}</button></header>
+      <header class="wh-insp-head"><span class="wh-insp-kicker"><span class="work-hub-status status-${esc(item.status)}" id="workHubStatusDot"></span><span class="wh-insp-kicker-text">Work item</span></span><button id="workHubClose" class="wh-insp-close" aria-label="Close details" title="Close">${icon('close')}</button></header>
       ${workflowControl ? `<div class="wh-insp-workflow">${workflowControl}</div>` : ''}
       <input id="workHubTitle" class="wh-insp-title" type="text" maxlength="160" required aria-label="Title" placeholder="Untitled work item" ${locked ? 'disabled' : ''}>
       <dl class="wh-insp-props">
@@ -486,7 +486,7 @@
         ${item.status === 'done' || item.status === 'cancelled' ? '' : `<div class="wh-insp-prop"><dt>Quest</dt><dd class="wh-insp-static" id="workHubQuest">${questHtml(!!(store.questIds && store.questIds.has(item.id)))}</dd></div>`}
       </dl>
       <section class="wh-insp-section"><label class="wh-insp-section-label" for="workHubDescription">Description</label><textarea id="workHubDescription" rows="7" placeholder="Add context, decisions, and next steps" ${locked ? 'disabled' : ''}></textarea></section>
-      ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" title="Delete work item">${icon('close')}<span>Delete</span></button><button id="workHubSave" class="work-hub-save" type="button" disabled>Save changes</button></footer>`}
+      ${locked ? '' : `<footer class="wh-insp-foot"><button id="workHubDelete" class="wh-insp-delete" type="button" aria-label="Delete work item"><span class="wh-foot-mark wh-foot-mark--delete" aria-hidden="true"></span></button><button id="workHubSave" class="work-hub-save" type="button" aria-label="Save changes" disabled><span class="wh-foot-mark wh-foot-mark--save" aria-hidden="true"></span></button></footer>`}
     </div>`;
     // A new item's stand-in title shows as a placeholder, which clears when
     // the field is clicked; left empty, the item keeps that title.
@@ -517,10 +517,10 @@
     const save = async () => {
       if (!saveButton || saveButton.disabled || saveButton.dataset.state) return;
       const label = saveButton.innerHTML;
-      saveButton.dataset.state = 'saving'; saveButton.disabled = true; saveButton.innerHTML = '<span class="wh-save-spinner" aria-hidden="true"></span>Saving…';
+      saveButton.dataset.state = 'saving'; saveButton.disabled = true; saveButton.innerHTML = '<span class="wh-save-spinner" aria-hidden="true"></span>';
       const ok = await updateItem(item.id, { title: titleValue(), status: el('workHubStatus').value, agent_profile: el('workHubAgent').value || null, priority: el('workHubPriority').value, description: el('workHubDescription').value }, { deferRender: true });
       if (!ok) { delete saveButton.dataset.state; saveButton.innerHTML = label; syncDirty(); if (typeof showToast === 'function') showToast('Could not save the work item', 4000, 'error'); return; }
-      saveButton.dataset.state = 'saved'; saveButton.innerHTML = `${icon('check')}<span>Saved</span>`;
+      saveButton.dataset.state = 'saved'; saveButton.innerHTML = icon('check');
       await new Promise(resolve => setTimeout(resolve, 650));
       await closeInspectorAnimated();
       revealItem(item.id);

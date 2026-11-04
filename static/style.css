@@ -8017,7 +8017,7 @@ main.main > #mainPlugin{display:none;}
    a skin with a wider label puts the toggle on its own line instead of
    pushing it past the card's edge. */
 .chat-usage-widget-title-row{line-height:1;gap:8px 4px;flex-wrap:wrap;}
-.chat-usage-widget-label{display:inline-flex;align-items:center;gap:5px;line-height:16px;font-weight:600;color:var(--text);}
+.chat-usage-widget-label{display:inline-flex;align-items:center;gap:5px;line-height:16px;font-weight:400;color:var(--text);}
 .chat-usage-widget-label svg{display:block;flex:0 0 14px;width:14px;height:14px;color:var(--accent);}
 .chat-usage-widget-label-stage{position:relative;display:inline-flex;align-items:center;min-width:0;line-height:14px;white-space:nowrap;text-transform:uppercase;}
 .chat-usage-widget-label-text.is-incoming{animation:chatUsageWindowTextEnter .24s ease-out .12s both;}
@@ -11413,9 +11413,11 @@ input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="tr
 .mi-armed .mi-label{gap:6px;}
 .scout-search-actions .job-os-btn{white-space:nowrap;flex-shrink:0;}
 /* Rail and sidebar icons appear together once every mask image has loaded (index.html). */
-.chat-nav-mark,.office-nav-mark,.page-nav-mark{transition:opacity .18s ease;}
-.rail .rail-btn>svg,.sidebar-nav .nav-tab>svg{transition:opacity .18s ease;}
-.nav-marks-pending .chat-nav-mark,.nav-marks-pending .office-nav-mark,.nav-marks-pending .page-nav-mark,.nav-marks-pending .rail .rail-btn>svg,.nav-marks-pending .sidebar-nav .nav-tab>svg{opacity:0;}
+.chat-nav-mark,.office-nav-mark,.page-nav-mark{transition:opacity .42s cubic-bezier(.22,1,.36,1);}
+.rail .rail-btn>svg,.sidebar-nav .nav-tab>svg,.rail-divider{transition:opacity .42s cubic-bezier(.22,1,.36,1);}
+.nav-marks-pending .chat-nav-mark,.nav-marks-pending .office-nav-mark,.nav-marks-pending .page-nav-mark,.nav-marks-pending .rail .rail-btn>svg,.nav-marks-pending .sidebar-nav .nav-tab>svg,.nav-marks-pending .rail-divider{opacity:0;}
+.nav-marks-pending .rail .rail-btn.active{background:transparent;}
+.nav-marks-pending .rail .rail-btn.active::before{opacity:0;}
 /* Workspace panel tabs: an icon and a label each; labels give way to the icons
    alone when the panel is too narrow for them (.is-compact, set in workspace.js). */
 .workspace-panel-tab{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;}
@@ -11646,7 +11648,7 @@ button.automation-row:hover,.automation-row:hover,.automation-row:focus-visible,
 .automation-row:focus-visible{box-shadow:none;}
 /* Office floor cards, as in the reference: glass panel, the department's
    colour on its name and left edge, a green dot for active and a grey one for done. */
-.office-dept-card{background:linear-gradient(180deg,rgba(20,28,48,0.92),rgba(12,17,32,0.94));border-color:rgba(148,163,184,0.16);border-left:3px solid var(--office-dept-color,var(--accent));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.office-dept-card{background:color-mix(in srgb,var(--bg) 94%,transparent);border-color:rgba(148,163,184,0.16);border-left:3px solid var(--office-dept-color,var(--accent));backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
 .office-dept-card-stat{display:inline-flex;align-items:center;}
 .office-dept-card{transition:border-color 160ms ease,box-shadow 160ms ease;}
 /* Phones: compact cards (name and count only) so they don't cover the platforms. */
@@ -15272,7 +15274,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 /* Project folder rows (Chat, Work Hub, Notes, Office): caret, colour dot and
    label sit 0.1px lower so the top and bottom space reads equal. */
 .project-folder-row > *{position:relative;top:.1px;}
-.project-folder-row > .color-dot{top:.2px;}
+.project-folder-row > .color-dot{top:0;}
 /* Folder caret drawn in CSS, not the "▸" glyph: Courier New has no ▸, so each
    OS substitutes a different fallback font and the caret lands at a
    different height. A 6px-tall triangle centres exactly on the 16px box. */
@@ -15678,11 +15680,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){.dash-habit-check.is-on.is-pop svg path{animation:none;stroke-dasharray:none;}}
 /* Themed orb (Libraries.dev "thinking orb"): behind the empty chat's logo, a
    soft accent glow drifts and breathes, so a fresh chat feels awake. */
-.empty-logo::before{content:"";position:absolute;z-index:0;left:50%;top:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;background:conic-gradient(from var(--empty-orb-angle,0deg),color-mix(in srgb,var(--accent) 55%,transparent),color-mix(in srgb,var(--accent) 12%,transparent) 35%,color-mix(in srgb,var(--accent) 40%,transparent) 65%,color-mix(in srgb,var(--accent) 55%,transparent));filter:blur(26px);opacity:.42;pointer-events:none;animation:empty-orb-spin 14s linear infinite,empty-orb-breathe 5s ease-in-out infinite;}
-@property --empty-orb-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
-@keyframes empty-orb-spin{to{--empty-orb-angle:360deg;}}
-@keyframes empty-orb-breathe{0%,100%{transform:scale(.88);opacity:.32;}50%{transform:scale(1.06);opacity:.5;}}
-@media (prefers-reduced-motion:reduce){.empty-logo::before{animation:none;}}
 /* Composer's four icon buttons drawn at one optical size (~14px tall): the
    diagonal paper clip and the solid-framed persona card read larger than the
    bookmark at the same 16px box, the thin mic smaller. */
@@ -16437,7 +16434,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    1px up so the space above and below them reads equal. */
 #panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
 :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-name{top:-.9px;}
-:is(#sessionList,#workHubProjects) .project-folder-row > :is(.color-dot,.project-folder-chevron){top:-.8px;}
+:is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-chevron{top:-.8px;}
 :root[data-skin="zeus-2"] :is(#sessionList,#workHubProjects) .project-folder-row > .project-folder-count{top:-2px;}
 /* New-chat suggestions sit on the page background with an outline. */
 .suggestion{background:transparent;}
@@ -16446,7 +16443,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    as cut-outs of the page edged by their border. The ID in the :is() list
    lifts every entry above the skins' class-level fills (Zeus's dialog
    gradient included). Inputs inside them drop their own fill too. */
-:is(#profileDropdown,#composerModelDropdown,#composerWsDropdown,#composerReasoningDropdown,#composerToolsetsDropdown,#personaPickerPopup,#savedPromptsPopup,#cmdDropdown,#ctxTooltip,#composerMobileConfigPanel,.session-action-menu,.app-dialog,.cmdk-modal,.approval-inner,.clarify-inner,.queue-card-inner,.work-hub-create-menu,.project-picker,.themed-select-popup:not(.is-dash),.goal-planner-dialog){background:var(--bg);}
+:is(#profileDropdown,#composerModelDropdown,#composerWsDropdown,#composerReasoningDropdown,#composerToolsetsDropdown,#personaPickerPopup,#savedPromptsPopup,#cmdDropdown,#ctxTooltip,#composerMobileConfigPanel,.session-action-menu,.app-dialog,.cmdk-modal,.approval-inner,.clarify-inner,.queue-card-inner,.work-hub-create-menu,.project-picker,.themed-select-popup:not(.is-dash),.goal-planner-dialog,.new-chat-menu,.app-titlebar-title-popover,.workspace-prefs-menu,.nb-menu,.pipe-drop-menu,.project-starter-dialog,.app-tour-card,.office-tasks){background:var(--bg);}
 :is(#composerModelDropdown,#composerWsDropdown) :is(.model-search-input,.model-custom-input,.ws-search-input,.model-scope-note){background:transparent;}
 
 /* Dialogs: fields and quiet buttons drop their grey wash too, so only the
@@ -16530,3 +16527,44 @@ textarea.office-biz-input{resize:vertical;}
 .office-biz-flags{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;color:var(--muted);}.office-biz-flags label{display:flex;align-items:center;gap:5px;}.office-biz-flags input{accent-color:var(--accent);}
 .office-biz-toolbar-row .themed-select-wrap{flex:1 1 170px;width:auto;min-width:0;max-width:320px;}.office-biz-section .office-biz-toolbar-row .themed-select-wrap{max-width:none;}
 @media (max-width:640px){.office-biz-tabs{order:3;width:100%;margin-left:0;overflow-x:auto;}.office-biz-providers > li{flex-wrap:wrap;}.office-biz-provider-text{flex-basis:100%;}.office-biz-capability-row{flex-wrap:wrap;}.office-biz-capability-row select{flex:1 1 100%;}.office-biz-business{width:100%;}.office-biz-business select{flex:1;}}
+
+/* The top bar stays out of the way on a mouse-driven desktop: it rests above
+   the window and slides down when the pointer reaches the top edge, or when
+   keyboard focus lands in it. ::after is the strip that catches the pointer;
+   it drops away once the bar has arrived so it never covers the page beneath.
+   Touch screens, phones and installed apps that draw window controls in this
+   bar keep it in place, since they have no way to reveal it. */
+@media (min-width:641px) and (hover:hover) and (pointer:fine) and (not (display-mode:window-controls-overlay)){
+  .app-titlebar{position:fixed;top:0;left:0;right:0;z-index:125;transform:translateY(-100%);transition:transform .34s cubic-bezier(.22,1,.36,1) .28s,box-shadow .34s ease .28s;will-change:transform;}
+  .app-titlebar::after{content:"";position:absolute;left:0;right:0;top:100%;height:6px;}
+  .app-titlebar:hover,.app-titlebar:focus-within{transform:translateY(0);box-shadow:0 8px 24px rgba(0,0,0,.28);transition-delay:.04s;}
+  .app-titlebar:hover::after,.app-titlebar:focus-within::after{height:0;transition:height 0s .4s;}
+}
+@media (prefers-reduced-motion:reduce){.app-titlebar{transition-duration:.01ms;}}
+/* The workspace panel's arrow sits on the page background at rest; the ID
+   clears the skins' own fills and :not(:hover) leaves its hover colour alone. */
+#btnWorkspacePanelEdgeToggle:not(:hover){background:var(--bg);}
+/* Usage card window labels read in capitals, like the card's own label. */
+.chat-usage-widget-window-toggle button{text-transform:uppercase;}
+/* Work item panel: the heading text and close button ride 2px high; the status
+   dot beside the text stays where it is. */
+.work-hub-inspector .wh-insp-kicker-text,.work-hub-inspector .wh-insp-close{position:relative;top:-2px;}
+/* Work item footer: Delete and Save are icons, drawn as masks so they take the
+   button's own colour in every state. */
+.wh-foot-mark{display:block;flex:0 0 auto;width:16px;height:16px;background:currentColor;mask:center/contain no-repeat;-webkit-mask:center/contain no-repeat;}
+.wh-foot-mark--delete{mask-image:url("work-hub-delete-mark.png");-webkit-mask-image:url("work-hub-delete-mark.png");}
+.wh-foot-mark--save{mask-image:url("work-hub-save-mark.png");-webkit-mask-image:url("work-hub-save-mark.png");}
+.work-hub-inspector .wh-insp-delete:not(.mi-armed){justify-content:center;width:34px;height:34px;padding:0;}
+/* Notes sidepanel: button text 1px up, counts and carets unchanged. */
+#notebookSidebar .nb-scope > span:not(.nb-scope-count,.nb-scope-hint,.nb-scope-chevron),#notebookSidebar .project-folder-row > .project-folder-name{translate:0 -1px;}
+/* Office header: View live 1px up, the status pill's text 1px down. */
+#officePauseBtn{padding-top:4px;padding-bottom:6px;}
+.office-header .office-pill{padding-top:4px;padding-bottom:2px;}
+/* New chat page: the logo sits as far above the heading as the subtitle sits
+   below it, measured on the logo's visible artwork rather than its image box. */
+.empty-logo{margin-bottom:-20px;}
+/* Work Hub sidepanel: Inbox and All Work text 1px down so it is level with its
+   icon and has equal space above and below. */
+#workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
+/* Office header controls sit on the page background too. */
+.office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}

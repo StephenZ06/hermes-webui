@@ -166,6 +166,15 @@ Rows that a text change re-flows, such as the centred titlebar and the
 composer's chips, slide their items to their new places (`SlideOnChange`)
 instead of letting them jump.
 
+On a desktop with a mouse the top bar rests above the window and slides down
+when the pointer reaches the top edge, or when keyboard focus lands in it. Touch
+screens, phones and installed apps with window controls in the bar keep it in
+place, because they have no way to reveal it.
+
+The rail's icons wait for every mark and for the saved settings, then fade in as
+one. Preloads must set `crossOrigin`: CSS masks are CORS requests, so a plain
+`Image()` warms a different cache entry and each mask pops in on its own.
+
 ## Responsive behavior
 
 Mobile is not an afterthought. The repository documents a responsive layout with

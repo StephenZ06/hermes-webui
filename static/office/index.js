@@ -2057,9 +2057,19 @@ function sidebarEntries() {
   return [live].concat(stored);
 }
 
+/** Projects with subagents running now, whether the run is stored yet or not. */
+function liveProjectIds() {
+  const ids = new Set(sidebarEntries().filter(parent => parent._live && parent.project_id).map(parent => parent.project_id));
+  const live = liveEntry();
+  const session = (typeof window.S === 'object' && window.S && window.S.session) || null;
+  if (live && live._live && session && session.project_id) ids.add(session.project_id);
+  return ids;
+}
+
 function renderSessionList() {
   const list = document.getElementById('officeSessionList');
   if (!list) return;
+  renderProjectFolders(_officeProjects, _historyParents);
   // Project-scoped runs belong in the Project Folders section above. Keep
   // this history list for unfiled chats so a run is never duplicated.
   const entries = sidebarEntries().filter(parent => !parent.project_id);
@@ -2122,12 +2132,14 @@ function renderProjectFolders(projects, parents) {
   // workspace context, between the labelled divider and the folder rows.
   const searchWrap = document.getElementById('officeSearch')?.closest('.session-search');
   const list = Array.isArray(projects) ? projects : [];
+  const liveProjects = liveProjectIds();
   const signature = JSON.stringify(list.map(project => ({
     id: project.project_id,
     name: project.name,
     color: project.color,
     liveSchedules: liveScheduleCountForProject(project),
     runningSchedules: runningScheduleCountForProject(project),
+    liveRun: liveProjects.has(project.project_id),
     rows: (parents || []).filter(parent => parent.project_id === project.project_id).map(parent => ({
       id: parent.parent_session_id,
       title: parent.title,
@@ -2153,10 +2165,11 @@ function renderProjectFolders(projects, parents) {
       // LIVE only while a job is actually executing; otherwise the project
       // just has schedules waiting, which used to read as live work.
       const runningNow = runningScheduleCountForProject(project);
-      const liveLabel = runningNow
+      const liveRun = liveProjects.has(project.project_id);
+      const liveLabel = liveRun ? 'Subagents running now' : runningNow
         ? (runningNow === 1 ? '1 Cron Job running now' : `${runningNow} Cron Jobs running now`)
         : (liveSchedules === 1 ? '1 active Cron-Job schedule' : `${liveSchedules} active Cron-Job schedules`);
-      const liveBadge = runningNow
+      const liveBadge = liveRun || runningNow
         ? `<span class="project-folder-schedule-live" title="${liveLabel}" aria-label="${liveLabel}">LIVE</span>`
         : (liveSchedules ? `<span class="project-folder-schedule-live is-scheduled" title="${liveLabel}" aria-label="${liveLabel}">SCHEDULED</span>` : '');
       const taskRows = rows.length ? rows.map(parent => {
@@ -2825,6 +2838,9 @@ function clearOfficeSearch() {
 window.filterOfficeSessions = filterOfficeSessions;
 window.clearOfficeSearch = clearOfficeSearch;
 window.officeSetSubview = setOfficeSubview;
+// The Dashboard and Integrations buttons work as toggles: pressing the open
+// one again goes back to the live floor.
+window.officeToggleSubview = name => setOfficeSubview(_officeSubview === name ? 'floor' : name);
 
 // Small global wrapper so the "View live" button on the office sidebar card
 // can be a plain onclick="" attribute like every other sidebar card in this
