@@ -15356,12 +15356,10 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .nb-place-select > svg{flex:0 0 26px;width:26px;height:26px;stroke-width:1.5;}
 @media (prefers-reduced-motion:reduce){.nb-place-select .themed-select-trigger{transition:none;}}
 /* Zeus 2.0 Obsidian side panel: label text 1px up (All notes / Vault root
-   text only; folder caret, dot and name; the vault card's two lines). */
+   text only; the vault card's two lines). */
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > span:not(.nb-scope-count){position:relative;top:-1px;}
 /* Counts sit 1px above the labels' baseline (labels are already 1px up). */
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope > .nb-scope-count{position:relative;top:-2px;}
-:root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > .project-folder-name{top:-1px;}
-:root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :is(.project-folder-chevron,.color-dot){top:0;}
 :root[data-skin="zeus-2"] .nb-vault-title > span:last-child{position:relative;top:-1px;}
 /* Notes divider: the same 12px above it (to the folder button) as below it
    (to the top of the note's first line) -- the gap the folder button has

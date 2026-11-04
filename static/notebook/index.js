@@ -249,7 +249,7 @@
     const groupId = 'nbGroup-' + key.replace(/[^A-Za-z0-9_-]/g, '_');
     return `<button type="button" class="project-chip project-folder-row work-hub-project-tile nb-place-btn" data-nb-kind="${kind}" data-nb-id="${esc(item.id)}" data-nb-key="${esc(key)}" aria-expanded="${expanded}" aria-controls="${groupId}">`
       + `<span class="project-folder-chevron work-hub-project-chevron${expanded ? ' expanded' : ''}">▸</span>`
-      + `<span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span>`
+      + `<span class="project-folder-dot-slot"><span class="color-dot work-hub-project-color" aria-hidden="true" style="background:${esc(item.color || (kind === 'folder' ? 'var(--muted)' : 'var(--accent)'))}"></span></span>`
       + `<span class="project-folder-name work-hub-project-name"></span><span class="project-folder-count work-hub-project-count" aria-label="${notes.length} notes">${notes.length}</span></button>`
       + `<div id="${groupId}" class="project-folder-sessions work-hub-project-boards${expanded ? ' expanded' : ''}" ${expanded ? '' : 'inert'}><div class="project-folder-sessions-inner work-hub-project-boards-inner">${noteRows(notes, key)}${childrenHtml || ''}</div></div>`;
   }
