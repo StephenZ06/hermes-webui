@@ -15285,7 +15285,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 .project-folder-row > :is(.project-folder-name,.project-folder-count){line-height:16px;}
 @supports (text-box:trim-both cap alphabetic){
   .project-folder-row > :is(.project-folder-name,.project-folder-count){padding-block:4px;text-box:trim-both cap alphabetic;}
-  :root[data-skin="zeus-2"] .project-folder-row > .project-folder-name{padding-block:5px 3px;}
+  :root[data-skin="zeus-2"] .project-folder-row > .project-folder-name{padding-block:4.5px 3.5px;}
 }
 .project-folder-kebab svg{display:block;}
 /* Folder caret drawn in CSS, not the "▸" glyph: Courier New has no ▸, so each

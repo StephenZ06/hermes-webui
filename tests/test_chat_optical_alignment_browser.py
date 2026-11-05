@@ -300,3 +300,23 @@ def test_folder_dot_keeps_its_gap_when_the_folder_opens(browser, screen):
         assert abs(closed - opened) <= .5, (closed, opened)
     finally:
         context.close()
+
+
+def test_folder_name_sits_half_a_pixel_above_its_old_place():
+    # Emulated scale snaps text to whole CSS pixels; a real 2x display, like a MacBook's, does not.
+    sync_api = pytest.importorskip("playwright.sync_api")
+    with sync_api.sync_playwright() as pw:
+        real = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
+                                        "--force-device-scale-factor=2", "--window-size=1470,1000"])
+        context, page = _open(real, {"no_viewport": True})
+        try:
+            assert page.evaluate("devicePixelRatio") == 2
+            _folder_row(page, "SaaS - Temani")
+            now = _ink(page, "#oaRow .project-folder-name", "text", within="#oaRow")
+            page.add_style_tag(content="#oaRow .project-folder-name{padding-block:5px 3px!important}")
+            page.wait_for_timeout(200)
+            old = _ink(page, "#oaRow .project-folder-name", "text", within="#oaRow")
+            assert old["top"] - now["top"] == .5, (old, now)
+        finally:
+            context.close()
+            real.close()
