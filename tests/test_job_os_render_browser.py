@@ -75,7 +75,7 @@ def test_the_apply_kit_lists_documents_answers_and_the_apply_steps():
               host.innerHTML = window.JobOSRender.shell({...base, jobDetail: job});
               const kit = host.querySelector('.apply-kit');
               const result = {steps: [...kit.querySelectorAll('.apply-step h4')].map((h) => h.textContent),
-                docs: [...kit.querySelectorAll('a.job-os-btn')].map((a) => a.getAttribute('href')),
+                docs: [...kit.querySelectorAll('a.job-os-btn, a.apply-doc')].map((a) => a.getAttribute('href')),
                 copies: [...kit.querySelectorAll('[data-copy-text]')].map((b) => b.dataset.copyText),
                 missing: kit.querySelectorAll('[data-missing="true"]').length,
                 applied: !!kit.querySelector('[data-job-os-action="board-apply"]')};
@@ -85,7 +85,7 @@ def test_the_apply_kit_lists_documents_answers_and_the_apply_steps():
             }""")
         finally:
             browser.close()
-    assert out["steps"] == ["Documents", "Screening answers", "Apply on the site"]
+    assert out["steps"] == ["Documents", "Screening Answers", "Apply on the site"]
     assert "/api/job-os/documents/r1/export?format=docx" in out["docs"] and "/api/job-os/documents/c1/export?format=docx" in out["docs"]
     assert "https://www.bayt.com/en/qatar/jobs/soc-analyst-1234567/" in out["docs"]
     assert out["copies"] == ["One month.", "Not provided — fill in before sending"] and out["missing"] == 1
@@ -248,7 +248,7 @@ def test_match_check_locks_while_tailoring_and_drops_tailored_jobs():
               const job = (id, status, score) => ({id, title: 'Job ' + id, company: 'Co', status, revision: 1, source: 'indeed',
                 has_description: true, analysis: {status: 'done', fit_score: score}, updated_at: 1791000000});
               const jobs = [job('t', 'tailoring', 40), job('n', 'analyzed', 30), job('r', 'resume_ready', 70)];
-              const base = {capability: {available: true}, dashboard: null, jobs, activeView: 'resume-studio',
+              const base = {capability: {available: true}, dashboard: null, jobs, activeView: 'pipeline', pipelineMode: 'match', pipelineSource: 'all',
                 resume: {filename: 'cv.md', text: 'x'}, tailored: [], studioDocs: {}};
               host.innerHTML = window.JobOSRender.shell({...base, studioMatchId: 't'});
               const tailor = host.querySelector('.match-actions .is-loading');

@@ -15700,9 +15700,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    hinted for them, and at 11.5px its letters render warped. */
 .job-os-shell[data-view="dashboard"] :is(.job-os-card-head .card-title,.cal-title,.automation-title){text-transform:uppercase;letter-spacing:.06em;}
 .dash-main .funnel-card{margin-top:0;}
-.dash-side{display:flex;flex-direction:column;gap:20px;min-width:0;min-height:0;}
-.dash-side>.action-centre{flex:1 1 0;min-height:220px;}
-.dash-side>.automations-card{flex:0 0 auto;}
+.dash-main>.action-centre{flex:1 1 0;min-height:220px;}
+.job-os-automations-wide>.automations-card{flex:0 0 auto;}
 .action-centre .action-list{flex:1 1 0;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin:0 -4px;padding:0 4px;}
 .action-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;width:100%;padding:9px 10px;border:1px solid var(--border2);border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .16s ease,background .16s ease;}
 .action-row:hover,.action-row:focus-visible{border-color:color-mix(in srgb,var(--accent) 45%,var(--border2));background:var(--hover-bg);outline:none;}
@@ -15716,16 +15715,16 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .action-go{font-size:12px;font-weight:600;color:var(--accent-text,var(--accent));white-space:nowrap;}
 .action-centre .action-empty{margin:auto 0;text-align:center;font-size:13px;}
 /* Compact automations: title, one line of timing and the 14-day ticks. */
-.dash-side .automations{gap:8px;}
-.dash-side .automation-row{padding:9px 10px;row-gap:6px;column-gap:8px;}
-.dash-side .automation-row>.automation-main{gap:2px;}
-.dash-side .automation-row>.automation-main small{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.dash-side .automation-row>.automation-ticks i{height:8px;}
-.dash-side .automations{grid-template-columns:repeat(6,minmax(0,1fr));}
-.dash-side .automation-row{grid-column:span 2;}
-.dash-side .automation-row:nth-child(n+4),.dash-side .automation-row:last-child:nth-child(odd){grid-column:span 3;}
-@media (max-width:1400px){.dash-side .automations{grid-template-columns:repeat(2,minmax(0,1fr));}.dash-side .automation-row,.dash-side .automation-row:nth-child(n+4){grid-column:auto;}.dash-side .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
-.dash-side .automation-row>.automation-title{font-size:12px;letter-spacing:0;white-space:nowrap;text-wrap:nowrap;overflow:visible;}
+.job-os-automations-wide .automations{gap:8px;}
+.job-os-automations-wide .automation-row{padding:9px 10px;row-gap:6px;column-gap:8px;}
+.job-os-automations-wide .automation-row>.automation-main{gap:2px;}
+.job-os-automations-wide .automation-row>.automation-main small{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.job-os-automations-wide .automation-row>.automation-ticks i{height:8px;}
+.job-os-automations-wide .automations{grid-template-columns:repeat(6,minmax(0,1fr));}
+.job-os-automations-wide .automation-row{grid-column:span 2;}
+.job-os-automations-wide .automation-row:nth-child(n+4),.job-os-automations-wide .automation-row:last-child:nth-child(odd){grid-column:span 3;}
+@media (max-width:1400px){.job-os-automations-wide .automations{grid-template-columns:repeat(2,minmax(0,1fr));}.job-os-automations-wide .automation-row,.job-os-automations-wide .automation-row:nth-child(n+4){grid-column:auto;}.job-os-automations-wide .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
+.job-os-automations-wide .automation-row>.automation-title{font-size:12px;letter-spacing:0;white-space:nowrap;text-wrap:nowrap;overflow:visible;}
 
 /* ==== Work Hub refinements ==== */
 /* Changing scope (Inbox, All work, a project or board) brings only the work
@@ -16025,15 +16024,14 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .cal-title{gap:8px;}
 /* Right column: Action centre takes the room its rows need (three, then it
    scrolls), and the gap to Automations is the gap between the two columns. */
-#jobOsRoot .dash-side{gap:var(--jobs-gap);}
-#jobOsRoot .dash-side>.action-centre{flex:1 0 auto;min-height:0;}
+#jobOsRoot .dash-main>.action-centre{flex:1 0 auto;min-height:0;}
 #jobOsRoot .action-centre .action-list{flex:1 1 auto;max-height:186px;}
 /* Automation cards: the same inset on every side, and titles that end in an
    ellipsis instead of running under the On/Off chip. */
-#jobOsRoot .dash-side .automation-row{padding:10px;}
-#jobOsRoot .dash-side .automation-row>.automation-title{overflow:hidden;text-overflow:ellipsis;}
+#jobOsRoot .job-os-automations-wide .automation-row{padding:10px;}
+#jobOsRoot .job-os-automations-wide .automation-row>.automation-title{overflow:hidden;text-overflow:ellipsis;}
 /* Three automations a row only once each has room for its name. */
-@media (max-width:1600px){#jobOsRoot .dash-side .automations{grid-template-columns:repeat(2,minmax(0,1fr));}#jobOsRoot .dash-side .automation-row,#jobOsRoot .dash-side .automation-row:nth-child(n+4){grid-column:auto;}#jobOsRoot .dash-side .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
+@media (max-width:1600px){#jobOsRoot .job-os-automations-wide .automations{grid-template-columns:repeat(2,minmax(0,1fr));}#jobOsRoot .job-os-automations-wide .automation-row,#jobOsRoot .job-os-automations-wide .automation-row:nth-child(n+4){grid-column:auto;}#jobOsRoot .job-os-automations-wide .automation-row:last-child:nth-child(odd){grid-column:1/-1;}}
 /* Side panel: section buttons as tall as other pages' folder rows. */
 #jobOsSidebar .job-os-side-nav .side-menu-item{min-height:34px;}
 /* Pipeline stage names sit 1px lower. */
@@ -16041,11 +16039,11 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Every pill on the Jobs pages is a compact rounded rectangle (the on/off
    switches keep their track shape). */
 :is(#jobOsRoot,#jobOsSidebar) :is(.automation-state,.job-os-chip,.job-os-badge,.pipe-source,.seg-count,.job-check,.doc-status,.job-os-pill,.job-os-count,.job-os-status,.job-os-side-count){border-radius:5px;}
-:is(#jobOsRoot,#jobOsSidebar) :is(.automation-state,.job-os-chip,.job-os-badge,.doc-status,.job-os-pill){padding:1px 6px 2px;}
+:is(#jobOsRoot,#jobOsSidebar) :is(.automation-state,.job-os-chip,.doc-status,.job-os-pill){padding:1px 6px 2px;}
 :is(#jobOsRoot,#jobOsSidebar) :is(.pipe-source,.job-check,.seg-count){padding-left:5px;padding-right:5px;}
 /* The edit button that replaces the On/Off chip on hover overlaps the card's
    padding instead of making the title row taller than the chip. */
-#jobOsRoot .dash-side .automation-edit{margin:-6px 0;}
+#jobOsRoot .job-os-automations-wide .automation-edit{margin:-6px 0;}
 /* Jobs overlays leave as they came: a closing copy (job-os/index.js) fades
    and drops slightly (modals), slides right (the job drawer) or fades
    (backdrops and the resume preview). */
@@ -16100,14 +16098,13 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .job-os-metric-body{position:relative;top:-1px;}
 /* Automation titles: the cap-height box no longer clips their tops (the
    ellipsis still needs overflow hidden, so the box reaches past the caps). */
-#jobOsRoot .dash-side .automation-row>.automation-title{padding-block:3px;margin-block:-3px;}
+#jobOsRoot .job-os-automations-wide .automation-row>.automation-title{padding-block:3px;margin-block:-3px;}
 /* On/Off text 1px lower in its chip, the chip itself unchanged. */
-#jobOsRoot .dash-side .automation-state{padding-top:2px;padding-bottom:1px;}
+#jobOsRoot .job-os-automations-wide .automation-state{padding-top:2px;padding-bottom:1px;}
 /* Activity cards: as much room above the title as to its left. */
 #jobOsRoot .cal{padding-top:6px;}
 #jobOsRoot .cal-stat{position:relative;top:1px;}
 /* Recent jobs: status text 1px lower in its chip. */
-#jobOsRoot .job-os-recent .job-os-badge{padding-top:2px;padding-bottom:1px;}
 /* Action centre: a small arrow under the list while more rows lie below,
    10px above it (the list's cut edge) and 10px below it. */
 #jobOsRoot .action-centre .action-more{display:none;}
@@ -16136,23 +16133,22 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 /* Right column: Action centre and Automations share it in two equal rows,
    each as tall as the taller card needs; Action centre's list fills its card
    and the automation cards stretch, so neither card ends in a blank strip. */
-#jobOsRoot .dash-side{display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1fr);}
-#jobOsRoot .dash-side>.action-centre{min-height:0;}
-#jobOsRoot .dash-side .action-centre .action-list{flex:1 1 0;max-height:none;min-height:0;}
-#jobOsRoot .dash-side>.automations-card .automations{flex:1 1 auto;grid-auto-rows:1fr;align-content:stretch;}
+#jobOsRoot .dash-main>.action-centre{min-height:0;}
+#jobOsRoot .dash-main .action-centre .action-list{flex:1 1 0;max-height:none;min-height:0;}
+#jobOsRoot .job-os-automations-wide>.automations-card .automations{flex:1 1 auto;grid-auto-rows:1fr;align-content:stretch;}
 /* Automation cards: no edit button (the whole card opens its settings), the
    On/Off chip stays put, the dot and the detail lines sit 2px higher. */
-#jobOsRoot .dash-side .automation-edit{display:none;}
-#jobOsRoot .dash-side .automation-row:is(:hover,:focus-visible) .automation-state{opacity:1;transform:none;}
-#jobOsRoot .dash-side .automation-row{grid-template-columns:12px minmax(0,1fr) auto;}
-#jobOsRoot .dash-side .automation-row>.automation-dot{position:relative;top:-3px;}
-#jobOsRoot .dash-side .automation-row>.automation-main{position:relative;top:-4px;}
+#jobOsRoot .job-os-automations-wide .automation-edit{display:none;}
+#jobOsRoot .job-os-automations-wide .automation-row:is(:hover,:focus-visible) .automation-state{opacity:1;transform:none;}
+#jobOsRoot .job-os-automations-wide .automation-row{grid-template-columns:12px minmax(0,1fr) auto;}
+#jobOsRoot .job-os-automations-wide .automation-row>.automation-dot{position:relative;top:-3px;}
+#jobOsRoot .job-os-automations-wide .automation-row>.automation-main{position:relative;top:-4px;}
 /* Title and On/Off chip 1px higher as well (2026-10-31, second pass). */
-#jobOsRoot .dash-side .automation-row>:is(.automation-title,.automation-end){position:relative;top:-2px;}
+#jobOsRoot .job-os-automations-wide .automation-row>:is(.automation-title,.automation-end){position:relative;top:-2px;}
 /* Too few Action centre rows to fill the card: they share the spare height
    (content centred), so the list ends where the card's padding begins. With
    more rows than fit there is no spare height and the list scrolls. */
-#jobOsRoot .dash-side .action-centre .action-list>.action-row{flex:1 0 auto;}
+#jobOsRoot .dash-main .action-centre .action-list>.action-row{flex:1 0 auto;}
 /* Dashboard: the page scrolls on past Recent jobs by as much room as sits to
    its right (#mainJobs pads 24px, but the shell's overflow ends at the card). */
 #jobOsRoot .job-os-shell[data-view="dashboard"] .job-os-content{padding-bottom:24px;}
@@ -16196,7 +16192,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .match-inbox.more-below .action-more{opacity:1;}
 #jobOsRoot .match-inbox .action-more:hover{color:var(--accent);}
 /* 'Applied' text 1px lower in its chip. */
-#jobOsRoot .match-inbox .job-os-badge[data-tone="info"]{padding-top:2px;padding-bottom:1px;}
 /* Saved search cards: artwork as tall as the name and titles beside it. */
 #jobOsRoot .scout-search-head .card-icon.has-art{width:36px;height:36px;flex-basis:36px;border-radius:9px;}
 #jobOsRoot .scout-search-head .card-icon.has-art .job-os-art{width:36px;height:36px;}
@@ -16218,8 +16213,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .job-os-badge .cap-i{margin-inline:-1px;}
 
 /* Single-status nudges: Courier's capitals sit differently per word. */
-#jobOsRoot .job-os-recent .job-os-badge[data-status="resume_ready"]{padding-top:1px;padding-bottom:2px;}
-#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]{padding-top:2px;padding-bottom:1px;}
 /* Saved searches: no heading; New search spans the column under the cards. */
 #jobOsRoot .scout-saved>.scout-new-search{width:100%;justify-content:center;min-height:32px;font-size:13px;gap:6px;}
 #jobOsRoot .scout-facts .pipe-source[data-source="remoteid"]{text-transform:uppercase;letter-spacing:.03em;}
@@ -16284,7 +16277,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .pipe-toolbar .pipe-add-btn{width:32px;height:32px;min-width:32px;min-height:32px;padding:0;}
 #jobOsRoot .pipe-toolbar .pipe-add-btn .mx-icon{width:18px;height:18px;}
 /* The add button stays a lighter solid blue on hover instead of going dark. */
-#jobOsRoot .pipe-toolbar .pipe-add-btn:hover{background:color-mix(in srgb,var(--accent) 80%,#fff);border-color:color-mix(in srgb,var(--accent) 80%,#fff);color:var(--bg);filter:none;}
 /* Column titles sit 1px closer to their first card. */
 #jobOsRoot .pipe-col:not(.is-folded) .pipe-col-head{margin-bottom:-1px;}
 /* At rest a column's filter and count sit at its right edge; pointing at the
@@ -16297,7 +16289,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .pipe-card:hover:not(.is-selected){box-shadow:0 6px 18px rgba(0,0,0,.14);}
 /* Card buttons' text 1px lower; check chips' icons 1px higher; site tags'
    text 1px higher, remote.id in capitals like the others. */
-#jobOsRoot .pipe-card-actions .job-os-btn{padding-top:2px;padding-bottom:0;}
+#jobOsRoot .pipe-card-actions .job-os-btn{padding-top:0;padding-bottom:0;}
 #jobOsRoot .pipe-card .job-check>svg{position:relative;top:-1px;}
 #jobOsRoot .pipe-card .pipe-source{padding-bottom:2px;box-sizing:border-box;}
 #jobOsRoot .pipe-source[data-source="remoteid"]{text-transform:uppercase;letter-spacing:.03em;}
@@ -16704,3 +16696,175 @@ textarea.office-biz-input{resize:vertical;}
 .themed-select-option.has-dot{display:flex;align-items:center;gap:8px;}
 .themed-select-option.has-dot .color-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .themed-select-option-name{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+
+/* ---- Jobs page polish ------------------------------------------------------ */
+/* Primary actions wear the Work hub "+" button's tint. Board cards keep their stage colour, Scout's search cards their own look. */
+#jobOsRoot .job-os-btn.primary:not(.pipe-card-actions *):not(.scout-search-actions *):not(.scout-new-search){border-color:var(--accent);background:var(--accent-bg);color:var(--accent-text,var(--accent));}
+#jobOsRoot .job-os-btn.primary:not(.pipe-card-actions *):not(.scout-search-actions *):not(.scout-new-search):not(:disabled):hover{background:var(--accent-bg-strong);color:var(--accent-text,var(--accent));filter:none;}
+#jobOsRoot .pipe-toolbar .pipe-add-btn{border-radius:7px;}
+#jobOsRoot .pipe-toolbar .pipe-add-btn .mx-icon{width:16px;height:16px;}
+
+/* Status badges: one colour each, the text centred on its capitals, not its line box. */
+#jobOsRoot .job-os-badge,#jobOsRoot .pipe-tags .job-os-badge{padding:0 7px;}
+.job-os-badge{align-items:center;height:20px;box-sizing:border-box;border-color:color-mix(in srgb,var(--tone) 38%,transparent);background:color-mix(in srgb,var(--tone) 14%,transparent);line-height:1;}
+.job-os-badge>span{display:block;line-height:1;text-box:trim-both cap alphabetic;}
+.job-os-badge[data-tone="muted"]{opacity:1;}
+.job-os-badge[data-status="discovered"]{--tone:#cbd5e1;}
+.job-os-badge[data-status="scraped"]{--tone:#94a3b8;}
+.job-os-badge[data-status="analyzed"]{--tone:#38bdf8;}
+.job-os-badge[data-status="shortlisted"]{--tone:#a78bfa;}
+.job-os-badge[data-status="tailoring"]{--tone:#818cf8;}
+.job-os-badge[data-status="resume_ready"]{--tone:#22d3ee;}
+.job-os-badge[data-status="application_ready"]{--tone:#2dd4bf;}
+.job-os-badge[data-status="applying"]{--tone:#60a5fa;}
+.job-os-badge[data-status="awaiting_approval"]{--tone:#fbbf24;}
+.job-os-badge[data-status="submitted"]{--tone:#4ade80;}
+.job-os-badge[data-status="screening"]{--tone:#a3e635;}
+.job-os-badge[data-status="interviewing"]{--tone:#facc15;}
+.job-os-badge[data-status="offer"]{--tone:#34d399;}
+.job-os-badge[data-status="offer_accepted"]{--tone:#10b981;}
+.job-os-badge[data-status="offer_declined"]{--tone:#fdba74;}
+.job-os-badge[data-status="rejected"]{--tone:#f87171;}
+.job-os-badge[data-status="expired"]{--tone:#fb923c;}
+.job-os-badge[data-status="skipped"]{--tone:#a1a1aa;}
+.job-os-badge[data-status="closed"]{--tone:#d4d4d8;}
+.job-os-badge[data-status="withdrawn"]{--tone:#c084fc;}
+.job-os-badge[data-status="no_response"]{--tone:#f0abfc;}
+.pipe-source[data-source="indeed"]{background:color-mix(in srgb,#fb923c 15%,transparent);color:#fb923c;}
+:root:not(.dark) .pipe-source[data-source="indeed"]{color:#c2410c;}
+.pipe-source{line-height:1;}
+#jobOsRoot .job-drawer-tags :is(.job-os-badge,.pipe-source){height:22px;box-sizing:border-box;padding:2px 8px 0;}
+.job-drawer-tags .pipe-source{border:1px solid transparent;}
+
+/* Side panel */
+#jobOsSidebar .job-os-apify-widget{margin:8px;padding:12px;}
+.job-os-apify-widget .chat-usage-widget-title-row{height:14px;margin-bottom:12px;}
+.job-os-apify-widget .chat-usage-widget-label{font-size:13px;line-height:14px;}
+.job-os-apify-widget .chat-usage-widget-label-stage{top:0;line-height:14px;}
+.job-os-apify-widget .chat-usage-widget-reset{margin-bottom:0;padding-bottom:0;}
+.job-os-stage-dot{position:relative;top:1px;}
+
+/* Dashboard: funnel and activity beside the Action centre, automations across both. */
+.funnel-card .activity{margin-top:20px;}
+.dash-main{align-items:stretch;}
+.dash-main>.action-centre{display:flex;flex-direction:column;min-height:0;}
+@media (min-width:761px){#jobOsRoot .dash-main>.action-centre .action-list{flex:1 1 0;min-height:240px;max-height:none;}}
+.job-os-automations-wide{margin-top:0;}
+#jobOsRoot .job-os-automations-wide .automations{display:flex;flex-flow:row wrap;gap:10px;}
+#jobOsRoot .job-os-automations-wide .automation-row{flex:1 1 calc(33.333% - 10px);box-sizing:border-box;width:auto;min-width:260px;}
+#jobOsRoot .job-os-automations-wide .automation-row>.automation-title{font-size:13px;letter-spacing:calc(round(.66em,1px) - .6em);}
+.job-os-automations-wide .automation-row:last-child:nth-child(odd){grid-column:auto;}
+
+/* Job drawer */
+.job-drawer-section>h3,.job-os-prep .job-os-card-head h3,.job-drawer-body>.job-os-desc-wrap>summary{text-transform:uppercase;letter-spacing:.06em;}
+.job-drawer-actions{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;}
+#jobOsRoot .job-drawer-actions>.job-os-btn{flex:0 0 auto;box-sizing:border-box;height:34px;min-height:34px;padding:0 10px;font-size:12px;white-space:nowrap;}
+.job-drawer-icons{display:inline-flex;align-items:center;gap:6px;margin-left:auto;}
+.job-drawer-icons .job-os-icon-btn{box-sizing:border-box;flex-basis:34px;width:34px;height:34px;text-decoration:none;}
+@media (max-width:560px){.job-drawer-actions{flex-wrap:wrap;}}
+.job-os-analysis:not(.is-busy):not(.is-failed){flex-direction:column;align-items:stretch;gap:14px;}
+.job-os-analysis>p{margin:0;}
+.analysis-top{display:flex;align-items:center;gap:14px;min-width:0;}
+.analysis-top .analysis-head{flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:6px;}
+.analysis-role{padding:4px 9px 2px;}
+.job-os-analysis .dim-bars{margin:0;}
+.analysis-table-wrap{margin:6px 0;}
+.analysis-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;border:1px solid var(--border2);border-radius:10px;overflow:hidden;font-size:13px;line-height:1.45;}
+.analysis-table th{padding:9px 12px;border-bottom:1px solid var(--border2);color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-align:left;text-transform:uppercase;}
+.analysis-table td{padding:9px 12px;border-top:1px solid var(--border2);color:var(--text);vertical-align:top;overflow-wrap:anywhere;}
+.analysis-table tbody tr:first-child td{border-top:0;}
+.analysis-table :is(th,td)+:is(th,td){border-left:1px solid var(--border2);}
+.analysis-musts h4{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.apply-step{align-items:start;}
+.apply-step+.apply-step{margin-top:14px;}
+.apply-step-n{position:relative;top:1px;}
+.apply-step>div{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-width:0;}
+.apply-step h4,.apply-step .job-os-card-note{margin:0;}
+.apply-step .job-os-actions{margin:0;}
+.apply-step .apply-answers{align-self:stretch;margin:0;}
+.apply-docs{align-items:center;gap:8px;}
+.apply-doc{width:34px;height:34px;flex-basis:34px;border-radius:7px;text-decoration:none;}
+.apply-doc .job-os-art{display:block;width:22px;height:22px;}
+.apply-docs .job-os-btn{min-height:34px;}
+#jobOsRoot .apply-step .job-os-btn{box-sizing:border-box;height:32px;min-height:32px;padding-top:0;padding-bottom:0;}
+#jobOsRoot .apply-step .job-os-btn.primary{padding-bottom:2px;}
+#jobOsRoot .apply-docs .job-os-btn{height:34px;min-height:34px;}
+.job-note-form{flex-direction:row;align-items:stretch;gap:8px;}
+.job-note-form textarea{flex:1;height:34px;min-height:34px;padding:7px 10px;resize:none;overflow:hidden;line-height:18px;}
+.job-note-form .job-note-add{flex:0 0 34px;width:34px;height:34px;min-height:34px;padding:0;border-radius:7px;}
+
+/* Scout */
+.scout-stat{align-items:baseline;}
+.scout-stat strong{font-size:13px;}
+.scout-form-rule{width:100%;height:1px;margin:0;border:0;background:var(--border2);}
+.scout-form .job-os-toggle-text strong{text-transform:uppercase;letter-spacing:.04em;}
+.field-with-action .job-os-btn>span{display:block;}
+.field-with-action .job-os-btn{min-width:112px;transition:color .18s ease,border-color .18s ease,opacity .18s ease;}
+.field-with-action .job-os-btn.is-loading>span{animation:suggest-breathe 1.4s ease-in-out infinite;}
+@keyframes suggest-breathe{50%{opacity:.55;}}
+.scout-facts dd{display:flex;align-items:center;gap:6px;min-width:0;}
+.scout-facts dd>.mx-icon{flex:0 0 auto;}
+
+/* Pipeline */
+.pipe-view{display:flex;flex-direction:column;flex:1 1 auto;min-width:0;min-height:0;gap:12px;animation:pipe-view-in .3s cubic-bezier(.22,1,.36,1);}
+@keyframes pipe-view-in{from{opacity:0;transform:translateY(6px);}}
+@media (min-width:761px){.pipe-board{scroll-snap-type:none;}}
+.pipe-col-cards{overscroll-behavior-x:auto;overscroll-behavior-y:contain;}
+.pipe-col-cards.is-paging>*{animation:job-list-page .26s cubic-bezier(.22,1,.36,1) both;}
+@keyframes job-list-page{from{opacity:0;transform:translateY(5px);}}
+.pipe-col-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:2px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;}
+.pipe-col-pager-buttons{display:inline-flex;gap:4px;}
+.pipe-when .job-check .mx-icon{position:relative;top:1px;}
+#jobOsRoot .pipe-toolbar .seg-btn:not(.icon){padding-bottom:0;}
+#jobOsRoot .seg>.mi-pill,#jobOsRoot .studio-tabs>.mi-pill{background:var(--accent-bg);box-shadow:none;}
+#jobOsRoot .seg-btn.active,#jobOsRoot .studio-tabs button.active{background:var(--accent-bg);box-shadow:none;color:var(--accent-text,var(--accent));}
+#jobOsRoot .seg.mi-tabs-ready>.seg-btn.active,#jobOsRoot .studio-tabs.mi-tabs-ready>button.active{background:transparent;}
+#jobOsRoot .pipe-view .job-os-fill>.job-os-card-head{min-height:0;margin-top:-5px;}
+#jobOsRoot .pipe-card-actions .job-os-btn,#jobOsRoot .pipe-card-actions .job-os-btn.primary{font-size:13px;}
+
+/* Card titles in capitals on every Jobs page. */
+#jobOsRoot .job-os-card-head .card-title{text-transform:uppercase;letter-spacing:calc(round(.66em,1px) - .6em);}
+
+/* Resume Studio */
+.job-os-shell[data-view="resume-studio"] .card-head-actions :is(.job-os-btn,.themed-select-trigger){box-sizing:border-box;height:36px;min-height:36px;padding-top:0;padding-bottom:0;}
+.job-os-shell[data-view="resume-studio"] .gaps-controls :is(select,.themed-select-trigger){box-sizing:border-box;height:36px;min-height:36px;}
+.gaps-controls .themed-select-trigger{position:relative;justify-content:center;text-align:center;}
+.gaps-controls .themed-select-trigger .themed-select-trigger-label{flex:0 1 auto;text-align:center;}
+.gaps-controls .job-os-btn.primary{box-sizing:border-box;height:36px;min-height:36px;padding-bottom:4px;}
+.gaps-grid{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);}
+@media (max-width:1100px){.gaps-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}}
+.skills-gained-chip{background:var(--bg);}
+.skills-gained>.job-os-card-note:last-child{margin-bottom:0;}
+.skills-gained .skills-gained-chips{margin-bottom:14px;}
+.skills-gained .skills-gained-empty{margin:0 0 14px;}
+.resume-master{view-transition-name:resume-master;}
+::view-transition-group(resume-master){animation-duration:.34s;animation-timing-function:cubic-bezier(.22,1,.36,1);}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.22s;}
+@media (prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important;}}
+
+/* Match check */
+.match-card [data-job-os-action="automate-all"] .mx-icon{position:relative;top:1px;}
+#jobOsRoot .match-actions .job-os-btn{box-sizing:border-box;height:36px;min-height:36px;padding-top:0;padding-bottom:0;}
+#jobOsRoot .match-actions [data-job-os-action="match-tailor"]{padding-bottom:4px;}
+.match-card .card-icon.has-art{background:none;}
+.match-skeleton{display:flex;flex-direction:column;gap:10px;padding-top:2px;}
+.match-skeleton-bars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin-top:8px;}
+.match-skeleton-table{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin-top:8px;padding:12px;border:1px solid var(--border2);border-radius:10px;}
+.match-detail .analysis-table-wrap{margin:12px 0 0;}
+
+/* Settings: a rail that reaches the bottom, and each group its own card. */
+.job-os-shell[data-view="settings"] .job-os-content{display:flex;flex-direction:column;}
+.job-os-shell[data-view="settings"] .job-os-settings{flex:1 1 auto;}
+.job-os-settings{position:relative;}
+.job-os-savebar[data-dirty="false"]{position:absolute;left:0;right:0;bottom:0;}
+#jobOsRoot .settings-layout{flex:1 1 auto;align-items:stretch;column-gap:24px;}
+.settings-rail{min-width:0;border:1px solid var(--border2);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.05);}
+.settings-rail>.settings-nav{position:sticky;top:12px;border:0;border-radius:0;background:none;box-shadow:none;}
+.settings-page>.job-os-settings-section .set-group{padding:16px;border:1px solid var(--border2);border-radius:14px;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.05);}
+.settings-page .set-group .set-group-title{margin:0 0 4px;}
+.settings-page .set-group .set-rows{border:0;border-radius:0;background:none;box-shadow:none;}
+.settings-page .set-group .set-row:first-child{padding-top:6px;}
+.settings-page .set-group .set-row:last-child{padding-bottom:6px;}
+.settings-page .set-group .set-row{padding-left:0;padding-right:0;}
+.settings-page .set-group .set-group-foot{margin-top:6px;padding:0;}
+@media (max-width:760px){.settings-rail{display:contents;}}

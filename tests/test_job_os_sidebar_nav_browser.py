@@ -202,20 +202,20 @@ def test_dashboard_puts_the_funnel_left_and_action_centre_over_automations_right
         browser, page = _open_jobs(pw, 1600)
         try:
             page.wait_for_selector(".action-centre", timeout=15000)
-            page.wait_for_selector(".dash-side .automations-card:not(.is-loading)", timeout=15000)
+            page.wait_for_selector(".job-os-automations-wide .automations-card:not(.is-loading)", timeout=15000)
             out = page.evaluate("""() => {
               const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return {l: r.left, r: r.right, t: r.top, b: r.bottom}; };
               const title = (s) => { const e = document.querySelector(s + ' .card-title'); return [e.textContent, getComputedStyle(e).textTransform]; };
-              return {funnel: box('.funnel-card'), action: box('.action-centre'), auto: box('.dash-side .automations-card'),
+              return {funnel: box('.funnel-card'), action: box('.action-centre'), auto: box('.job-os-automations-wide .automations-card'),
                       titles: [title('.funnel-card'), title('.action-centre'), title('.automations-card'), title('.job-os-recent')],
                       track: !!document.querySelector('.job-os-import')};
             }""")
         finally:
             browser.close()
     funnel, action, auto = out["funnel"], out["action"], out["auto"]
-    assert funnel["r"] < action["l"] and abs(action["l"] - auto["l"]) < 1  # funnel left, the pair right
-    assert action["b"] < auto["t"]  # Action centre above Automations
-    assert abs(auto["b"] - funnel["b"]) < 2  # the right column ends with the left one
+    assert funnel["r"] < action["l"]  # funnel left, Action centre right
+    assert abs(action["b"] - funnel["b"]) < 2  # the two end level
+    assert funnel["b"] < auto["t"] and abs(auto["l"] - funnel["l"]) < 1 and abs(auto["r"] - action["r"]) < 1  # Automations across both
     assert [t for t, _ in out["titles"]] == ["Application funnel", "Action centre", "Automations", "Recent jobs"]
     assert all(tt == "uppercase" for _, tt in out["titles"])
     assert out["track"] is False
@@ -228,14 +228,14 @@ def test_dashboard_side_cards_use_whole_pixel_font_sizes():
     with sync_api.sync_playwright() as pw:
         browser, page = _open_jobs(pw, 1600)
         try:
-            page.wait_for_selector(".dash-side .automations-card:not(.is-loading) .automation-row", timeout=15000)
+            page.wait_for_selector(".job-os-automations-wide .automations-card:not(.is-loading) .automation-row", timeout=15000)
             sizes = page.evaluate("""() => {
               const list = document.querySelector('.action-centre .action-list') || document.querySelector('.action-centre');
               const row = document.createElement('button');
               row.className = 'action-row';
               row.innerHTML = '<span class="action-icon"></span><span class="action-text"><strong>Title</strong><small>Reason</small></span><span class="action-go">Open</span>';
               list.appendChild(row);
-              return [...document.querySelectorAll('.dash-side *')]
+              return [...document.querySelectorAll('.action-centre *, .job-os-automations-wide *')]
                 .filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))
                 .map((e) => [e.className || e.tagName, getComputedStyle(e).fontSize]);
             }""")

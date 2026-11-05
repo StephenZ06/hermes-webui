@@ -66,7 +66,7 @@ def page():
     with sync_api.sync_playwright() as pw:
         browser, page = _boot(pw)
         page.evaluate("async () => { await switchPanel('jobs'); }")
-        page.wait_for_selector("#jobOsRoot .dash-side .automation-row", timeout=20000)
+        page.wait_for_selector("#jobOsRoot .job-os-automations-wide .automation-row", timeout=20000)
         page.wait_for_timeout(600)
         try:
             yield page
@@ -128,7 +128,7 @@ def test_dashboard_spacing(page):
         const labels = [...document.querySelectorAll('.funnel-row > span')].map(text);
         const values = [...document.querySelectorAll('.funnel-row > strong')].map(text);
         const track = document.querySelector('.funnel-track').getBoundingClientRect();
-        const insets = [...document.querySelectorAll('.dash-side .automation-row')].map(row => {
+        const insets = [...document.querySelectorAll('.job-os-automations-wide .automation-row')].map(row => {
           const R = row.getBoundingClientRect(); const dot = row.querySelector('.automation-dot').getBoundingClientRect();
           const chip = row.querySelector('.automation-state').getBoundingClientRect();
           const ticks = [...row.querySelectorAll('.automation-ticks i')].map(i => i.getBoundingClientRect());
@@ -253,7 +253,7 @@ def test_activity_cards_have_as_much_room_above_the_title_as_beside_it(page):
 
 def test_action_centre_shows_an_arrow_while_rows_lie_below():
     sync_api = pytest.importorskip("playwright.sync_api")
-    many = dict(DASHBOARD, actions=[dict(DASHBOARD["actions"][1], job_id=f"job-{n}", title=f"Analyst {n}") for n in range(6)])
+    many = dict(DASHBOARD, actions=[dict(DASHBOARD["actions"][1], job_id=f"job-{n}", title=f"Analyst {n}") for n in range(14)])
     with sync_api.sync_playwright() as pw:
         browser, page = _boot(pw, payload=many)
         try:
@@ -289,24 +289,23 @@ def _post(path, body):
     return json.loads(urllib.request.urlopen(req, timeout=20).read() or b"{}")
 
 
-def test_action_centre_and_automations_are_the_same_height_with_no_blank_strip(page):
+def test_action_centre_matches_the_funnel_and_automations_have_no_blank_strip(page):
     out = page.evaluate("""() => {
-        const ac = document.querySelector('#jobOsRoot .action-centre'), au = document.querySelector('#jobOsRoot .automations-card');
+        const ac = document.querySelector('#jobOsRoot .action-centre'), fu = document.querySelector('#jobOsRoot .funnel-card'), au = document.querySelector('#jobOsRoot .automations-card');
         const pad = (card, last) => card.getBoundingClientRect().bottom - parseFloat(getComputedStyle(card).borderBottomWidth) - last.getBoundingClientRect().bottom;
-        const rows = ac.querySelectorAll('.action-row'), autos = au.querySelectorAll('.automation-row');
-        return {ac: ac.getBoundingClientRect().height, au: au.getBoundingClientRect().height,
-                acPad: parseFloat(getComputedStyle(ac).paddingBottom), acGap: pad(ac, rows[rows.length - 1]),
+        const autos = au.querySelectorAll('.automation-row');
+        return {ac: ac.getBoundingClientRect().height, fu: fu.getBoundingClientRect().height,
                 auPad: parseFloat(getComputedStyle(au).paddingBottom), auGap: pad(au, autos[autos.length - 1])};
     }""")
-    assert abs(out["ac"] - out["au"]) < 1, out
-    assert abs(out["acGap"] - out["acPad"]) < 1 and abs(out["auGap"] - out["auPad"]) < 1, out
+    assert abs(out["ac"] - out["fu"]) < 1, out
+    assert abs(out["auGap"] - out["auPad"]) < 1, out
 
 
 def test_automation_cards_have_no_edit_button_and_keep_their_state_on_hover(page):
-    page.hover("#jobOsRoot .dash-side .automation-row")
+    page.hover("#jobOsRoot .job-os-automations-wide .automation-row")
     page.wait_for_timeout(300)
     out = page.evaluate("""() => {
-        const row = document.querySelector('#jobOsRoot .dash-side .automation-row');
+        const row = document.querySelector('#jobOsRoot .job-os-automations-wide .automation-row');
         const dot = row.querySelector('.automation-dot'), main = row.querySelector('.automation-main');
         return {edit: getComputedStyle(row.querySelector('.automation-edit')).display, state: getComputedStyle(row.querySelector('.automation-state')).opacity,
                 dotTop: getComputedStyle(dot).top, mainTop: getComputedStyle(main).top,
@@ -363,20 +362,6 @@ def test_recent_job_status_badges_are_capitals(page):
         caps: getComputedStyle(b).textTransform, text: b.innerText.trim(), capI: b.querySelectorAll('.cap-i').length}))""")
     assert out and all(b["caps"] == "uppercase" and b["text"] == b["text"].upper() for b in out), out
     assert any(b["capI"] for b in out) or not any("I" in b["text"] for b in out), out
-
-
-def test_resume_ready_sits_1px_higher_than_other_recent_badges(page):
-    out = page.evaluate("""() => {
-        const card = document.querySelector('#jobOsRoot .job-os-recent .job-os-job-card'), shown = card.querySelector('.job-os-badge');
-        const probe = document.createElement('span');
-        probe.className = 'job-os-badge'; probe.dataset.tone = 'accent'; probe.dataset.status = 'resume_ready'; probe.textContent = 'Resume ready';
-        card.appendChild(probe);
-        const pad = (e) => [getComputedStyle(e).paddingTop, getComputedStyle(e).paddingBottom];
-        const r = {shown: pad(shown), status: shown.dataset.status, ready: pad(probe)};
-        probe.remove();
-        return r;
-    }""")
-    assert out["status"] and out["shown"] == ["2px", "1px"] and out["ready"] == ["1px", "2px"], out
 
 
 def test_scrollbar_thumbs_are_grey_on_every_page(page):

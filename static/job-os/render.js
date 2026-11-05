@@ -27,6 +27,8 @@
   ['apify', 'schedule', 'next-run', 'searches'].forEach((name) => warmArt(name, 32));
   ['new-good-matches', 'saved-searches', 'latest-finds'].forEach((name) => warmArt(name, 26));
   warmArt('saved-searches', 36);
+  ['word-document', 'pdf-document', 'cover-letter'].forEach((name) => warmArt(name, 22));
+  warmArt('match-check', 26);
   // A finger cannot start the browser's own drag-and-drop; touch screens move cards by hold-and-drag instead (index.js).
   const TOUCH_ONLY = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -73,6 +75,7 @@
     close: '<path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z"/><path d="M9.16998 14.83L14.83 9.17004"/><path d="M14.83 14.83L9.16998 9.17004"/>',
     shield: '<path d="M10.49 2.23L5.5 4.11C4.35 4.54 3.41 5.9 3.41 7.12V14.55C3.41 15.73 4.19 17.28 5.14 17.99L9.44 21.2C10.86 22.26 13.19 22.26 14.61 21.2L18.91 17.99C19.86 17.28 20.64 15.73 20.64 14.55V7.12C20.64 5.89 19.7 4.53 18.55 4.1L13.56 2.23C12.71 1.92 11.32 1.92 10.49 2.23Z"/><path d="M12 8.5V12.5"/><path d="M11.995 15.5H12.004"/>',
     // mx-icons search-zoom-in / search-zoom-out (same outline set as Scout's magnifier).
+    star: '<path d="M13.73 3.51L15.49 7.03C15.73 7.52 16.37 7.99 16.91 8.08L20.1 8.61C22.14 8.95 22.62 10.43 21.15 11.89L18.67 14.37C18.25 14.79 18.02 15.6 18.15 16.18L18.86 19.25C19.42 21.68 18.13 22.62 15.98 21.35L12.99 19.58C12.45 19.26 11.56 19.26 11.01 19.58L8.02 21.35C5.88 22.62 4.58 21.67 5.14 19.25L5.85 16.18C5.98 15.6 5.75 14.79 5.33 14.37L2.85 11.89C1.39 10.43 1.86 8.95 3.9 8.61L7.09 8.08C7.62 7.99 8.26 7.52 8.5 7.03L10.26 3.51C11.22 1.6 12.78 1.6 13.73 3.51Z"/>',
     'zoom-in': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/><path d="M11.5 9V14"/>',
     'zoom-out': '<path d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"/><path d="M22 22L20 20"/><path d="M9 11.5H14"/>',
   };
@@ -207,7 +210,7 @@
   // by the card's title; cards without artwork keep their line icon.
   const CARD_ART = {'Action centre': 'action-centre', 'Application funnel': 'application-funnel', Automations: 'automations',
     'Master resume': 'master-resume', 'Recent jobs': 'recent-jobs', 'Skill gaps': 'skill-gaps', 'Skills gained': 'skills-gained',
-    'Tailored versions': 'tailored-versions', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches',
+    'Tailored versions': 'tailored-versions', 'Match check': 'match-check', Source: 'apify', Schedule: 'schedule', 'Next run': 'next-run', Searches: 'searches',
     'New good matches': 'new-good-matches', 'Good matches': 'new-good-matches', 'Saved searches': 'saved-searches', 'Latest finds': 'latest-finds'};
   // Drawn from files made at the exact size shown (1x and 2x), so no picture
   // is scaled by the browser: card titles 26px, Action centre rows 28px, Scout tiles 30px.
@@ -225,10 +228,11 @@
   }
   // Ten rows a page; the pager says where you are and steps through the rest.
   const PAGE = 10;
-  function paged(items, page) {
-    const pages = Math.max(1, Math.ceil(items.length / PAGE));
+  const PIPE_PAGE = 20; // the Pipeline's list and each board column
+  function paged(items, page, size = PAGE) {
+    const pages = Math.max(1, Math.ceil(items.length / size));
     const at = Math.min(Math.max(0, Number(page) || 0), pages - 1);
-    return {rows: items.slice(at * PAGE, at * PAGE + PAGE), at, pages, total: items.length};
+    return {rows: items.slice(at * size, at * size + size), at, pages, total: items.length, size};
   }
   function pager(key, p) {
     if (p.pages <= 1) return '';
@@ -239,7 +243,13 @@
       if (n && i - numbers[n - 1] > 1) dots.push('<span class="pager-gap">…</span>');
       dots.push(`<button type="button" class="pager-num${i === p.at ? ' active' : ''}" data-job-os-action="page" data-pager="${key}" data-page="${i}"${i === p.at ? ' aria-current="page"' : ''}>${i + 1}</button>`);
     });
-    return `<nav class="pager" aria-label="Pages"><span class="pager-range">${p.at * PAGE + 1}–${Math.min(p.total, p.at * PAGE + PAGE)} of ${p.total}</span><span class="pager-buttons">${btn(p.at - 1, 'Previous page', 'prev', p.at === 0)}${dots.join('')}${btn(p.at + 1, 'Next page', 'next', p.at >= p.pages - 1)}</span></nav>`;
+    return `<nav class="pager" aria-label="Pages"><span class="pager-range">${p.at * p.size + 1}–${Math.min(p.total, p.at * p.size + p.size)} of ${p.total}</span><span class="pager-buttons">${btn(p.at - 1, 'Previous page', 'prev', p.at === 0)}${dots.join('')}${btn(p.at + 1, 'Next page', 'next', p.at >= p.pages - 1)}</span></nav>`;
+  }
+  // A board column has room for the range and two arrows only.
+  function columnPager(key, p) {
+    if (p.pages <= 1) return '';
+    const btn = (to, label, iconName, disabled) => `<button type="button" class="job-os-icon-btn small" data-job-os-action="page" data-pager="col:${esc(key)}" data-page="${to}" aria-label="${label}" ${disabled ? 'disabled' : ''}>${icon(iconName, 14)}</button>`;
+    return `<nav class="pipe-col-pager" aria-label="Pages"><span>${p.at * p.size + 1}–${Math.min(p.total, p.at * p.size + p.size)} of ${p.total}</span><span class="pipe-col-pager-buttons">${btn(p.at - 1, 'Previous page', 'prev', p.at === 0)}${btn(p.at + 1, 'Next page', 'next', p.at >= p.pages - 1)}</span></nav>`;
   }
   function when(epochSeconds) {
     const seconds = Math.max(0, Math.floor(Date.now() / 1000) - Number(epochSeconds || 0));
@@ -621,7 +631,7 @@
     // own with a way back (has-section). Desktop always shows both.
     const chosen = state.settingsSection && pages[state.settingsSection];
     const back = `<button type="button" class="settings-back" data-job-os-action="settings-list">${icon('prev', 16)}Settings</button>`;
-    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout${chosen ? ' has-section' : ''}"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav><div class="settings-page" data-page="${page}" data-key="settings-${page}">${back}${pages[page]}</div></div>${bar}</form>`;
+    return `<form id="job-os-settings-form" class="job-os-settings" novalidate><div class="settings-layout${chosen ? ' has-section' : ''}"><div class="settings-rail"><nav class="settings-nav" aria-label="Settings sections" data-mi-tabs="y">${nav}</nav></div><div class="settings-page" data-page="${page}" data-key="settings-${page}">${back}${pages[page]}</div></div>${bar}</form>`;
   }
   // Settings, grouped: what Hermes connects to, what runs on its own, and you.
   const SETTINGS_NAV = [
@@ -759,7 +769,12 @@
     if (!board) return LOADING;
     const keep = shownOn(state);
     const filters = state.colFilters || {};
-    const columns = board.columns.map((c) => { const all = c.jobs.filter(keep); return Object.assign({}, c, {jobs: filterColumn(all, filters[c.key]), all: all.length}); });
+    const pagesOf = state.colPages || {};
+    const columns = board.columns.map((c) => {
+      const all = c.jobs.filter(keep);
+      const jobs = filterColumn(all, filters[c.key]);
+      return Object.assign({}, c, {jobs, all: all.length, page: paged(jobs, pagesOf[c.key], PIPE_PAGE)});
+    });
     const total = columns.reduce((n, c) => n + c.jobs.length, 0);
     if (!total) return state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
     const folded = new Set(state.collapsedColumns || []);
@@ -768,7 +783,7 @@
     const fold = (c, open) => `<button type="button" class="pipe-col-fold" data-job-os-action="pipe-collapse" data-col="${esc(c.key)}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(c.label)}" title="${open ? 'Collapse' : 'Expand'}" aria-expanded="${open}">${icon(open ? 'prev' : 'next', 14)}</button>`;
     return `<div class="pipe-board" role="list" aria-label="Pipeline stages" style="grid-template-columns:${tracks}">${columns.map((c) => (folded.has(c.key)
       ? `<section class="pipe-col is-folded" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}, collapsed"><header class="pipe-col-head">${fold(c, false)}<span class="job-os-count">${c.jobs.length}</span><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3></header><div class="pipe-col-cards"></div></section>`
-      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3>${filterBtn(c)}<span class="job-os-count${colFilterOn(filters[c.key]) ? ' is-filtered' : ''}"${colFilterOn(filters[c.key]) ? ` title="Showing ${c.jobs.length} of ${c.all}"` : ''}>${colFilterOn(filters[c.key]) ? `${c.jobs.length}/${c.all}` : c.jobs.length}</span>${fold(c, true)}</header>${state.colFilterOpen === c.key ? colFilterPanel(c, filters[c.key] || {}) : filteredNote(c, filters[c.key])}<div class="pipe-col-cards">${c.jobs.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div></section>`)).join('')}</div>
+      : `<section class="pipe-col" data-key="col-${esc(c.key)}" data-col="${esc(c.key)}" role="listitem" aria-label="${esc(c.label)}"><header class="pipe-col-head"><span class="pipe-col-dot" aria-hidden="true"></span><h3>${esc(c.label)}</h3>${filterBtn(c)}<span class="job-os-count${colFilterOn(filters[c.key]) ? ' is-filtered' : ''}"${colFilterOn(filters[c.key]) ? ` title="Showing ${c.jobs.length} of ${c.all}"` : ''}>${colFilterOn(filters[c.key]) ? `${c.jobs.length}/${c.all}` : c.jobs.length}</span>${fold(c, true)}</header>${state.colFilterOpen === c.key ? colFilterPanel(c, filters[c.key] || {}) : filteredNote(c, filters[c.key])}<div class="pipe-col-cards">${c.page.rows.map((j) => pipeCard(Object.assign({column: c.key}, j))).join('') || '<p class="pipe-empty">Drop a job here</p>'}</div>${columnPager(c.key, c.page)}</section>`)).join('')}</div>
       <div class="pipe-hscroll" aria-hidden="true"><div class="pipe-hscroll-track"></div></div>`;
   }
   function noMatches(state) {
@@ -799,7 +814,7 @@
       return `<li data-kind="${e.type === 'note' ? 'note' : 'event'}"><span>${text}</span><time>${esc(when(e.at))}</time></li>`;
     }).join('');
     return `<section class="job-drawer-section"><h3>Notes &amp; activity</h3>
-      <form id="job-os-note-form" class="job-note-form"><textarea name="text" rows="2" maxlength="2000" placeholder="Add a note — a recruiter call, a referral, a follow-up date"></textarea><button type="submit" class="job-os-btn">Add note</button></form>
+      <form id="job-os-note-form" class="job-note-form"><textarea name="text" rows="1" maxlength="2000" placeholder="Add a note" aria-label="Add a note"></textarea><button type="submit" class="job-os-btn primary job-note-add" aria-label="Add note">${icon('import', 18)}</button></form>
       ${rows ? `<ul class="job-activity">${rows}</ul>` : ''}</section>`;
   }
   // Apply kit: everything to apply by hand in a minute or two. Hermes never
@@ -811,10 +826,11 @@
     const resumeDoc = docs.resume && ['ready', 'needs_review'].includes(docs.resume.status) ? docs.resume : null;
     const letterDoc = docs.cover_letter && ['ready', 'needs_review'].includes(docs.cover_letter.status) ? docs.cover_letter : null;
     const exp = (doc, fmt) => `/api/job-os/documents/${encodeURIComponent(doc.id)}/export?format=${fmt}`;
+    const docLink = (name, label, href, extra) => `<a class="job-os-icon-btn apply-doc" href="${href}" aria-label="${label}"${extra || ''}>${art(name, 22)}</a>`;
     const files = resumeDoc
-      ? `<div class="job-os-actions"><a class="job-os-btn small" href="${exp(resumeDoc, 'docx')}">Resume DOCX</a><a class="job-os-btn small" href="${exp(resumeDoc, 'pdf')}" target="_blank" rel="noopener">Resume PDF</a>${letterDoc ? `<a class="job-os-btn small" href="${exp(letterDoc, 'docx')}">Cover letter DOCX</a>` : ''}<button type="button" class="job-os-btn small" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Open in Resume Studio</button></div>${resumeDoc.status === 'needs_review' ? '<p class="board-attention">The tailored resume has numbers to check before sending.</p>' : ''}`
+      ? `<div class="job-os-actions apply-docs">${docLink('word-document', 'Resume DOCX', exp(resumeDoc, 'docx'))}${docLink('pdf-document', 'Resume PDF', exp(resumeDoc, 'pdf'), ' target="_blank" rel="noopener"')}${letterDoc ? docLink('cover-letter', 'Cover letter DOCX', exp(letterDoc, 'docx')) : ''}<button type="button" class="job-os-btn small primary" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Resume Studio</button></div>${resumeDoc.status === 'needs_review' ? '<p class="board-attention">The tailored resume has numbers to check before sending.</p>' : ''}`
       : job.status === 'tailoring' ? '<p class="job-os-card-note">Luna is tailoring your resume…</p>'
-        : `<p class="job-os-card-note">No tailored resume yet — your master resume works, but a tailored one scores better.</p>${job.description ? `<button type="button" class="job-os-btn small" data-job-os-action="job-tailor">Tailor resume</button>` : ''}`;
+        : `<p class="job-os-card-note">No tailored resume yet — your master resume works, but a tailored one scores better.</p>${job.description ? `<button type="button" class="job-os-btn small primary" data-job-os-action="job-tailor">Tailor resume</button>` : ''}`;
     const kit = job.apply_kit;
     let answers;
     if (!kit) answers = `<p class="job-os-card-note">Luna writes ready-to-paste answers to the usual screening questions from this job, your master resume and your <button type="button" class="job-os-link" data-job-os-view="settings">application answers</button>.</p>${job.description ? '<button type="button" class="job-os-btn small primary" data-job-os-action="apply-kit">Prepare answers</button>' : ''}`;
@@ -824,7 +840,7 @@
       <button type="button" class="job-os-btn small" data-job-os-action="apply-kit">Prepare again</button>`;
     return `<section class="job-drawer-section apply-kit"><h3>Apply kit</h3>
       <div class="apply-step"><span class="apply-step-n">1</span><div><h4>Documents</h4>${files}</div></div>
-      <div class="apply-step"><span class="apply-step-n">2</span><div><h4>Screening answers</h4>${answers}</div></div>
+      <div class="apply-step"><span class="apply-step-n">2</span><div><h4>Screening Answers</h4>${answers}</div></div>
       <div class="apply-step"><span class="apply-step-n">3</span><div><h4>Apply on the site</h4><p class="job-os-card-note">Open the posting, paste, send — then record it here.</p>
         <div class="job-os-actions"><a class="job-os-btn small primary" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn small" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">I’ve applied</button></div></div></div></section>`;
   }
@@ -912,7 +928,7 @@
         <div class="job-drawer-body">
           ${jobChips(job)}
           ${checksPanel(job)}
-          <div class="job-os-actions">${detailActions(job)}<a class="job-os-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer">${icon('external', 14)}Open posting</a><button type="button" class="job-os-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}">${icon('edit', 14)}Edit</button></div>
+          <div class="job-os-actions job-drawer-actions">${detailActions(job)}<span class="job-drawer-icons">${['scraped', 'analyzed'].includes(job.status) ? `<button type="button" class="job-os-icon-btn" data-job-os-action="job-status" data-status="shortlisted" aria-label="Add to Favorite">${icon('star', 16)}</button>` : ''}<a class="job-os-icon-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer" aria-label="Open posting">${icon('external', 16)}</a><button type="button" class="job-os-icon-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}" aria-label="Edit job">${icon('edit', 16)}</button></span></div>
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
           ${interviewPanel(job)}
           ${followUpPanel(job)}
@@ -1051,9 +1067,9 @@
       const on = state.pipelineSource === key;
       return `<button type="button" role="tab" aria-selected="${on}" class="seg-btn${on ? ' active' : ''}" data-job-os-action="pipe-source" data-source="${key}">${text}<span class="seg-count">${Number(counts[key] || 0)}</span></button>`;
     }).join('');
-    const modes = [['board', 'Board'], ['list', 'List']].map(([key, text]) => {
-      const on = state.pipelineMode === key;
-      return `<button type="button" class="seg-btn icon${on ? ' active' : ''}" aria-pressed="${on}" data-job-os-action="pipe-mode" data-mode="${key}" title="${text}">${icon(key, 15)}<span class="sr-only">${text}</span></button>`;
+    const modes = [['board', 'Kanban', 'board'], ['list', 'List', 'list'], ['match', 'Match check', 'applied']].map(([key, text, iconName]) => {
+      const on = state.pipelineMode === key && !state.statusFilter;
+      return `<button type="button" class="seg-btn icon${on ? ' active' : ''}" aria-pressed="${on}" data-job-os-action="pipe-mode" data-mode="${key}" aria-label="${text}">${icon(iconName, 15)}<span class="sr-only">${text}</span></button>`;
     }).join('');
     const sort = state.pipelineMode === 'list' ? `<label class="job-os-inline-select">Sort <select id="job-os-sort" aria-label="Sort jobs"><option value="newest" ${state.sortBy === 'newest' ? 'selected' : ''}>Newest</option><option value="fit" ${state.sortBy === 'fit' ? 'selected' : ''}>Best match</option>${DIMENSIONS.map(([k, l]) => `<option value="${k}" ${state.sortBy === k ? 'selected' : ''}>${l} fit</option>`).join('')}</select></label>` : '';
     const query = state.pipelineQuery || '';
@@ -1148,12 +1164,14 @@
       <form id="job-os-search-form" class="job-form" novalidate><div class="job-modal-body"><div class="scout-form-grid">
         <label class="job-os-field wide"><span>Job titles <em>required</em></span><input name="keywords" required maxlength="200" placeholder="e.g. SOC Analyst, IT Analyst, Security Analyst" value="${esc(form.keywords)}"><small class="job-os-field-hint">Comma-separated; each title is searched on its own (up to 5).</small></label>
         <label class="job-os-toggle wide"><input type="checkbox" name="strict_titles" ${form.strict_titles !== false ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Only keep matching titles</strong><small>Job sites return loose matches (sales roles for “IT Analyst”). Keep a job only when its title matches one of yours or a related title below.</small></span></label>
-        <label class="job-os-field wide"><span>Related titles</span><span class="field-with-action"><input name="related_titles" maxlength="900" placeholder="e.g. Threat Intelligence Analyst, Incident Response Analyst" value="${esc(form.related_titles || '')}"><button type="button" class="job-os-btn small" data-job-os-action="scout-suggest">${icon('magic', 14)}Suggest</button></span><small class="job-os-field-hint">Comma-separated, up to 15. Left empty, Luna fills it in on the next run; edit it any time.</small></label>
+        <label class="job-os-field wide"><span>Related titles</span><span class="field-with-action"><input name="related_titles" maxlength="900" placeholder="e.g. Threat Intelligence Analyst, Incident Response Analyst" value="${esc(form.related_titles || '')}"><button type="button" class="job-os-btn small${state.suggestingTitles ? ' is-loading' : ''}" data-job-os-action="scout-suggest"${state.suggestingTitles ? ' disabled aria-busy="true"' : ''}>${state.suggestingTitles ? spinnerDot() : icon('magic', 14)}<span>${state.suggestingTitles ? 'Suggesting…' : 'Suggest'}</span></button></span><small class="job-os-field-hint">Comma-separated, up to 15. Left empty, Luna fills it in on the next run; edit it any time.</small></label>
         <label class="job-os-field wide"><span>Title must contain</span><input name="title_filter" maxlength="300" placeholder="e.g. analyst — or: soc, security analyst" value="${esc(form.title_filter)}"><small class="job-os-field-hint">Keeps a job only if its title has all the words of at least one phrase (comma-separated). Job sites match loosely, so this cuts the noise. Empty = keep everything.</small></label>
+        <hr class="scout-form-rule wide">
         <label class="job-os-field"><span>Country <em>required</em></span><select name="country" required data-job-os-change="scout-country"><option value="">Choose…</option>${countries}</select></label>
         <label class="job-os-field"><span>Cities</span><input name="locations" placeholder="Comma-separated, e.g. Kuala Lumpur, Penang. Empty = whole country" value="${esc(form.locations)}"></label>
         <label class="job-os-field"><span>Date posted</span><select name="posted_within_days">${posted}</select></label>
         <label class="job-os-field"><span>Name</span><input name="name" maxlength="80" placeholder="Defaults to the keywords" value="${esc(form.name)}"></label>
+        <hr class="scout-form-rule wide">
         <fieldset class="job-os-field wide scout-sites"><legend>Job sites</legend><div class="scout-site-options">${SITES.map(([key, text]) => {
           const covered = !SITE_COUNTRIES[key] || !form.country || SITE_COUNTRIES[key].includes(form.country);
           const direct = SITE_DIRECT.has(key);
@@ -1162,8 +1180,9 @@
           const checked = (form.sites || ['indeed']).includes(key) && covered;
           return `<label class="scout-site${!covered || (!direct && !indeedDirect && !apifyOn) ? ' is-off' : ''}"><input type="checkbox" name="sites" value="${key}" ${checked ? 'checked' : ''} ${covered ? '' : 'disabled'}><span><strong>${text}</strong><small>${note}</small></span></label>`;
         }).join('')}</div>${apifyOn ? '' : '<small class="scout-sites-hint">Sites other than remote.id run through Apify — connect it in <button type="button" class="job-os-link" data-job-os-view="settings">Settings → Apify</button>.</small>'}</fieldset>
+        <hr class="scout-form-rule wide">
+        <label class="job-os-toggle wide"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
       </div>
-      <label class="job-os-toggle"><input type="checkbox" name="remote_only" ${form.remote_only ? 'checked' : ''}><span class="job-os-toggle-track" aria-hidden="true"></span><span class="job-os-toggle-text"><strong>Remote only</strong><small>Search for remote roles and skip postings that are not remote</small></span></label>
       </div>
       <footer class="job-modal-foot"><p class="job-os-error" role="alert">${esc(state.searchError || '')}</p><button type="button" class="job-os-btn" data-job-os-action="scout-form-close">Cancel</button><button type="submit" class="job-os-btn primary">${editing ? 'Save search' : 'Create search'}</button></footer></form></div>`;
   }
@@ -1178,7 +1197,7 @@
     if (!released.length && !waiting) return '';
     const cards = released.map((m) => jobCard({...m, analysis: {status: 'done', fit_score: m.fit_score}, updated_at: m.released_at})).join('');
     return `<section class="job-os-card match-inbox${released.length ? ' has-new' : ''}">
-      ${cardHead(released.length ? 'New good matches' : 'Good matches', 'applied', released.length ? '<button type="button" class="job-os-btn" data-job-os-action="matches-seen">Mark all seen</button>' : '', released.length || null)}
+      ${cardHead(released.length ? 'New good matches' : 'Good matches', 'applied', released.length ? '<button type="button" class="job-os-btn primary" data-job-os-action="matches-seen">Mark all seen</button>' : '', released.length || null)}
       <p class="job-os-card-note match-inbox-rule">${waiting ? `<strong>${waiting} waiting</strong> for the next update. ` : ''}${esc(rule)}</p>
       ${released.length ? `<div class="job-os-list scout-finds match-list">${cards}</div><button type="button" class="action-more" tabindex="-1" aria-hidden="true" title="More below"><span></span></button>` : ''}</section>`;
   }
@@ -1232,10 +1251,11 @@
   function tailoredList(state) {
     const items = state.tailored || [];
     if (!items.length) return `<section class="job-os-card">${cardHead('Tailored versions', 'magic')}<p class="job-os-card-note">Choose <strong>Tailor resume</strong> on any job with a description. Each tailored resume and cover letter appears here to review, edit and export.</p></section>`;
-    return `<section class="job-os-card">${cardHead('Tailored versions', 'magic', '', items.length)}<div class="job-os-list">${items.map((d) => {
+    const page = paged(items, state.tailoredPage);
+    return `<section class="job-os-card">${cardHead('Tailored versions', 'magic', '', items.length)}<div class="job-os-list">${page.rows.map((d) => {
       const cov = d.notes && d.notes.coverage && d.notes.coverage.score;
       return `<button type="button" class="job-os-job-card studio-item" data-job-os-action="studio-open" data-job-id="${esc(d.job_id)}" data-key="doc-${esc(d.job_id)}"><span class="job-os-job-avatar" aria-hidden="true">${esc(String(d.job_company || d.job_title || '?').charAt(0).toUpperCase())}</span><span class="job-os-job-main"><strong>${esc(d.job_title)}</strong><span>${esc(d.job_company || '')}</span></span><span class="studio-item-tags">${cov != null ? `<span class="job-os-chip muted" title="Must-haves the resume mentions">${cov}% keywords</span>` : ''}${docStatus(d.status)}</span><small class="job-os-job-when">${esc(when(d.updated_at))}</small></button>`;
-    }).join('')}</div></section>`;
+    }).join('')}</div>${pager('tailored', page)}</section>`;
   }
   function highlightNumbers(text, flags) {
     let out = esc(text);
@@ -1305,28 +1325,32 @@
   // a job being tailored stays (locked, with its progress) until it is done.
   const QUEUE_STAGES = [['new', ['scraped', 'analyzed']], ['favorite', ['shortlisted', 'tailoring']]];
   const STAGE_LABEL = {new: 'New', favorite: 'Favorite', ready: 'Ready to apply'};
-  function matchQueue(jobs) {
-    const fresh = newestFirst(jobs || []).filter((j) => j.has_description);
+  // ``state`` narrows it to the Pipeline's site tab and search box, as the other two views are.
+  function matchQueue(jobs, state) {
+    const fresh = newestFirst(jobs || []).filter((j) => j.has_description && (!state || shownOn(state)(j)));
     return QUEUE_STAGES.flatMap(([stage, statuses]) => fresh.filter((j) => statuses.includes(j.status)).map((j) => Object.assign({stage}, j)));
   }
+  const matchSkeleton = () => `<div class="match-skeleton" role="status" aria-label="Loading this job"><span class="skeleton-bar" style="width:96%"></span><span class="skeleton-bar" style="width:88%"></span><span class="skeleton-bar" style="width:62%"></span><div class="match-skeleton-bars">${['72%', '58%', '66%', '48%'].map((w) => `<span class="skeleton-bar" style="width:${w}"></span>`).join('')}</div><div class="match-skeleton-table">${[0, 1, 2, 3, 4, 5].map((i) => `<span class="skeleton-bar" style="width:${[84, 70, 76, 58, 66, 44][i]}%"></span>`).join('')}</div></div>`;
   const spinnerDot = () => '<span class="btn-spinner" aria-hidden="true"></span>';
   function matchCheck(state) {
-    if (!state.resume) return '';
-    const queue = matchQueue(state.jobs);
+    if (!state.resume) return `<section class="job-os-card match-card">${cardHead('Match check', 'eye')}<p class="job-os-card-note card-empty-note">Add your master resume to check it against each job. <button type="button" class="job-os-link" data-job-os-view="resume-studio">Open Resume Studio</button></p></section>`;
+    const queue = matchQueue(state.jobs, state);
     // While Luna scores or tailors any of these, Automate all shows the work
     // left and can't be pressed again.
     const working = queue.filter((j) => j.status === 'tailoring' || analysing(j)).length;
     const automate = !queue.length ? '' : working
       ? `<button type="button" class="job-os-btn is-loading" disabled aria-busy="true" title="Luna is tailoring these one at a time">${spinnerDot()}Tailoring ${working}…</button>`
-      : `<button type="button" class="job-os-btn" data-job-os-action="automate-all" title="Score every job here that has no score yet, then tailor a resume for every one">${icon('magic', 16)}Automate all</button>`;
+      : `<button type="button" class="job-os-btn" data-job-os-action="automate-all" aria-label="Automate All: score every job here that has no score yet, then tailor a resume for each">${icon('magic', 16)}<span>Automate All</span></button>`;
     const head = cardHead('Match check', 'eye', automate);
     if (!queue.length) return `<section class="job-os-card match-card">${head}<p class="job-os-card-note card-empty-note">Jobs on your board with a description appear here one at a time. Save one from Scout or with <button type="button" class="job-os-link" data-job-os-action="job-form-new">Add job</button> to check your resume against it.</p></section>`;
     const at = Math.max(0, queue.findIndex((j) => j.id === state.studioMatchId));
     const item = queue[at];
     const job = state.studioMatch && state.studioMatch.id === item.id ? state.studioMatch : null;
     const a = job ? job.analysis : item.analysis || null;
-    const list = (items, cls) => (items || []).length ? `<ul class="analysis-list ${cls}">${items.slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '';
     const done = a && a.status === 'done';
+    // A scored job's words are on their way: placeholders the shape of the
+    // summary, the four bars and the table hold the card until they land.
+    const fetching = done && !job && state.matchFailed !== item.id;
     const busyNow = a && ['pending', 'running'].includes(a.status);
     const status = item.status;
     const canTailor = ['scraped', 'analyzed', 'shortlisted', 'resume_ready', 'application_ready'].includes(status);
@@ -1339,7 +1363,7 @@
     const locked = tailoringNow || busyNow;
     const tailorBtn = tailoringNow
       ? `<button type="button" class="job-os-btn primary is-loading" disabled aria-busy="true">${spinnerDot()}Tailoring…</button>`
-      : canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}"${locked ? ' disabled' : ''}>${icon('magic', 16)}${nextId ? 'Tailor & next' : 'Tailor resume'}</button>` : '';
+      : canTailor && !retailor ? `<button type="button" class="job-os-btn primary" data-job-os-action="match-tailor" data-job-id="${esc(item.id)}" data-next-id="${esc(nextId)}"${locked ? ' disabled' : ''}>${icon('magic', 16)}<span>${nextId ? 'Tailor &amp; next' : 'Tailor resume'}</span></button>` : '';
     const actions = [
       tailorBtn,
       busyNow && !tailoringNow ? '' : `<button type="button" class="job-os-btn${done || canTailor ? '' : ' primary'}" data-job-os-action="match-score" data-job-id="${esc(item.id)}"${locked ? ' disabled' : ''}>${done ? 'Score again' : 'Score my resume'}</button>`,
@@ -1355,9 +1379,9 @@
         <span class="match-count">${at + 1} <small>of ${queue.length}</small></span>${nav(queue[at + 1], 'Next job', 'next')}</div>
       <div class="match-progress" aria-hidden="true"><i style="width:${Math.round(100 * (at + 1) / queue.length)}%"></i></div>
       <div class="match-body" data-job="${esc(item.id)}">${matchRing(a)}<div class="match-detail">
-        ${done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
+        ${fetching ? matchSkeleton() : done && job && job.analysis.summary ? `<p>${esc(job.analysis.summary)}</p>` : `<p class="job-os-card-note">${busyNow ? statusLine(['Reading the posting…', 'Comparing it with your resume…', 'Scoring the match…']) : done ? '' : 'Not scored yet. Scoring takes a few seconds and uses one model call.'}</p>`}
         ${done && job ? dimensionBars(job.analysis) : ''}
-        ${done && job ? `<div class="analysis-cols">${job.analysis.strengths && job.analysis.strengths.length ? `<div><h4>Matches</h4>${list(job.analysis.strengths, 'is-good')}</div>` : ''}${job.analysis.gaps && job.analysis.gaps.length ? `<div><h4>Missing</h4>${list(job.analysis.gaps, 'is-gap')}</div>` : ''}</div>` : ''}
+        ${done && job ? analysisTable((job.analysis.strengths || []).slice(0, 4), (job.analysis.gaps || []).slice(0, 4), 'Matches', 'Missing') : ''}
         <p class="match-legend" aria-hidden="true"><span data-band="good">75–100 Good match</span><span data-band="fair">50–74 Needs improvement</span><span data-band="poor">0–49 Terrible match</span></p>
       </div></div>
       <div class="job-os-actions match-actions">${actions}</div></section>`;
@@ -1408,12 +1432,11 @@
     const st = job.status;
     const fresh = ['discovered', 'scraped', 'analyzed', 'shortlisted'].includes(st);
     if (!job.description && sourceOf(job) === 'indeed') out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-details">Fetch details</button>');
-    if (['scraped', 'analyzed'].includes(st)) out.push(`<button type="button" class="job-os-btn${job.description ? '' : ' primary'}" data-job-os-action="job-status" data-status="shortlisted">Add to Favorite</button>`);
     if (['scraped', 'analyzed', 'shortlisted'].includes(st) && job.description) out.push('<button type="button" class="job-os-btn primary" data-job-os-action="job-tailor">Tailor resume</button>');
-    if (['resume_ready', 'application_ready'].includes(st)) out.push(`<button type="button" class="job-os-btn primary" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Open in Resume Studio</button>`);
-    if (st === 'resume_ready') out.push('<button type="button" class="job-os-btn" data-job-os-action="job-ready">Ready to apply</button>');
-    if (fresh || ['resume_ready', 'application_ready'].includes(st)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}">Mark applied</button>`);
-    if (job.description && !analysing(job)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="job-analyze">${a && a.status === 'done' ? 'Score again' : 'Score resume'}</button>`);
+    if (['resume_ready', 'application_ready'].includes(st)) out.push(`<button type="button" class="job-os-btn primary" data-job-os-action="studio-open" data-job-id="${esc(job.id)}">Resume Studio</button>`);
+    if (st === 'resume_ready') out.push('<button type="button" class="job-os-btn" data-job-os-action="job-ready" aria-label="Ready to apply">Ready</button>');
+    if (fresh || ['resume_ready', 'application_ready'].includes(st)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="board-apply" data-job-id="${esc(job.id)}" data-url="${esc(job.canonical_url)}" aria-label="Mark applied">Applied</button>`);
+    if (job.description && !analysing(job)) out.push(`<button type="button" class="job-os-btn" data-job-os-action="job-analyze"${a && a.status === 'done' ? ' aria-label="Score again"' : ''}>${a && a.status === 'done' ? 'Rescore' : 'Score'}</button>`);
     if (fresh) out.push('<button type="button" class="job-os-btn" data-job-os-action="job-status" data-status="skipped">Skip</button>');
     const prep = job.interview;
     if (['screening', 'interviewing', 'offer'].includes(st) && !(prep && ['pending', 'running'].includes(prep.status))) {
@@ -1434,6 +1457,16 @@
     }).join('');
     return `<div class="dim-bars">${rows}</div>`;
   }
+  // Strengths and gaps side by side, a row for each pair, in the card's outline.
+  function analysisTable(left, right, leftTitle, rightTitle) {
+    const a = left || [];
+    const b = right || [];
+    if (!a.length && !b.length) return '';
+    const both = a.length && b.length;
+    const cell = (text, cls) => `<td class="${cls}">${text == null ? '' : esc(text)}</td>`;
+    const rows = Array.from({length: Math.max(a.length, b.length)}, (_, i) => `<tr>${a.length ? cell(a[i], 'is-good') : ''}${b.length ? cell(b[i], 'is-gap') : ''}</tr>`).join('');
+    return `<div class="analysis-table-wrap"><table class="analysis-table${both ? '' : ' is-single'}"><thead><tr>${a.length ? `<th scope="col">${esc(leftTitle)}</th>` : ''}${b.length ? `<th scope="col">${esc(rightTitle)}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
   function analysisPanel(job) {
     const a = job.analysis;
     if (!a) return '';
@@ -1443,11 +1476,12 @@
     // A failed gate outranks the skills score: the headline says the job is held back.
     const held = (job.checks || []).some((c) => c.tone === 'danger' && HOLDING.includes(c.key));
     const headline = held ? `Held back by a check · ${Number(a.fit_score)}% skills fit` : `${band(a.fit_score)[2]} · ${Number(a.fit_score)}%`;
-    return `<div class="job-os-analysis">${fitRing(a, 'large')}<div class="analysis-body"><div class="analysis-head"><strong class="analysis-verdict" data-band="${held ? 'poor' : band(a.fit_score)[1]}">${esc(headline)}</strong>${a.seniority ? `<span class="job-os-chip muted">${esc(a.seniority)}</span>` : ''}</div>
+    return `<div class="job-os-analysis"><div class="analysis-top">${fitRing(a, 'large')}<div class="analysis-head"><strong class="analysis-verdict" data-band="${held ? 'poor' : band(a.fit_score)[1]}">${esc(headline)}</strong>${a.seniority ? `<span class="job-os-chip muted analysis-role">${esc(a.seniority)}</span>` : ''}</div></div>
       ${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
       ${dimensionBars(a)}
-      <div class="analysis-cols">${a.strengths && a.strengths.length ? `<div><h4>Strengths</h4>${list(a.strengths, 'is-good')}</div>` : ''}${a.gaps && a.gaps.length ? `<div><h4>Gaps</h4>${list(a.gaps, 'is-gap')}</div>` : ''}${a.must_haves && a.must_haves.length ? `<div><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}</div>
-      ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div></div>`;
+      ${analysisTable(a.strengths, a.gaps, 'Strengths', 'Gaps')}
+      ${a.must_haves && a.must_haves.length ? `<div class="analysis-musts"><h4>Must-haves</h4>${list(a.must_haves, 'is-need')}</div>` : ''}
+      ${a.salary_note ? `<p class="job-os-card-note">${esc(a.salary_note)}</p>` : ''}</div>`;
   }
   // Skills gained (kept on the Dashboard's Career tab). Tailoring may add one
   // to a resume when the posting asks for it, since you have learnt it.
@@ -1455,7 +1489,7 @@
   function skillsGainedView(state) {
     const skills = state.skillsGained;
     if (!state.resume || state.resumeReplacing || !Array.isArray(skills)) return '';
-    const manage = '<button type="button" class="job-os-btn" data-job-os-action="skills-manage">Manage skills</button>';
+    const manage = '<button type="button" class="job-os-btn" data-job-os-action="skills-manage">Manage Skills</button>';
     const chips = skills.map((s) => `<span class="skills-gained-chip" title="${esc(SKILL_KIND[s.kind] || s.kind || '')}"><b>${esc(s.name)}</b><small>${esc(SKILL_KIND[s.kind] || '')}</small></span>`).join('');
     return `<section class="job-os-card skills-gained">${cardHead('Skills gained', 'magic', manage, skills.length)}
       ${skills.length ? `<div class="skills-gained-chips">${chips}</div>` : '<p class="job-os-card-note skills-gained-empty">No skills yet. Add the ones you learn from courses, bootcamps and projects on the Dashboard’s Career tab.</p>'}
@@ -1483,7 +1517,7 @@
       body = `<p class="job-os-card-note">From ${Number(report.jobs)} analysed job${report.jobs === 1 ? '' : 's'}${report.scope && report.scope.good_only ? ' (good matches)' : ''}${report.scope && report.scope.days ? `, last ${Number(report.scope.days)} days` : ''} · ${esc(when(report.created_at))}</p>
         ${sinceLine}
         <div class="gaps-grid"><div><h4>Most frequent gaps</h4><ul class="gaps-bars">${rows}</ul></div>
-        <div>${themes ? `<h4>Themes</h4><ul class="gaps-themes">${themes}</ul>` : ''}${plan ? `<h4>Plan</h4><ol class="gaps-plan">${plan}</ol>` : ''}</div></div>`;
+        ${themes ? `<div><h4>Themes</h4><ul class="gaps-themes">${themes}</ul></div>` : ''}${plan ? `<div><h4>Plan</h4><ol class="gaps-plan">${plan}</ol></div>` : ''}</div>`;
     }
     return `<section class="job-os-card skill-gaps">${cardHead('Skill gaps', 'chart', controls)}${g.error ? `<p class="job-os-error">${esc(g.error)}</p>` : ''}${body}</section>`;
   }
@@ -1494,7 +1528,7 @@
       <details class="resume-paste"><summary>Paste text instead</summary><textarea id="resume-text" rows="8" placeholder="Paste your resume text"></textarea><button type="button" class="job-os-btn" data-job-os-action="resume-paste">Save pasted resume</button></details>
       <p class="job-os-error" role="alert">${esc(state.resumeError || '')}</p>`;
     if (!r || state.resumeReplacing) {
-      return `<section class="job-os-card"><div class="job-os-card-head"><h2>${iconOrArt('Master resume')}<span class="card-title">${r ? 'Replace your master resume' : 'Your master resume'}</span></h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
+      return `<section class="job-os-card resume-master"><div class="job-os-card-head"><h2>${iconOrArt('Master resume')}<span class="card-title">${r ? 'Replace your master resume' : 'Your master resume'}</span></h2>${r ? '<button type="button" class="job-os-link" data-job-os-action="resume-cancel">Cancel</button>' : ''}</div><p class="job-os-card-note">Everything Hermes tailors comes from this file. It only rephrases, reorders and selects from it; it never adds experience you do not have.</p>${upload}</section>`;
     }
     const design = r.style || {};
     const swatches = [design.heading && design.heading.color, design.name && design.name.color, design.body && design.body.color]
@@ -1514,7 +1548,6 @@
           <strong class="resume-file">${esc(r.filename)}</strong>
           <div class="job-os-chips"><span class="job-os-chip muted">${Number(r.words || 0).toLocaleString()} words</span><span class="job-os-chip muted">Updated ${esc(when(r.uploaded_at))}</span><span class="job-os-chip muted">Version ${Number(r.revision || 1)}</span></div>
           <div class="resume-design"><span class="resume-swatches" aria-hidden="true">${swatches}</span><span><strong>Design kept for tailoring</strong><small>${designNote}</small></span></div>
-          <p class="job-os-card-note">Every tailored resume comes from this file and is laid out like it: same sections, same header, same look. Luna only rephrases, reorders and selects; it never adds experience you do not have.</p>
           <details class="job-os-desc-wrap"><summary>Show text</summary><div class="job-os-description">${esc(r.text)}</div></details>
         </div>
       </div></section>`;
@@ -1561,7 +1594,8 @@
       const recent = paged(jobs, state.recentPage);
       body = `${header('Dashboard', 'Your job search at a glance.', state)}
         <section class="job-os-metrics" aria-label="Job dashboard">${metric('total', dashboard.total_jobs, 'Total jobs', 'data-job-os-filter=""', !state.dashboard)}${metric('active', dashboard.active_work, 'Active work', 'data-job-os-filter="active"', !state.dashboard)}${metric('attention', dashboard.needs_attention, 'Needs attention', 'data-job-os-view="pipeline"', !state.dashboard)}${metric('applied', appliedCount(byStatus), 'Applied', 'data-job-os-filter="applied"', !state.dashboard)}</section>
-        <div class="job-os-pair dash-main">${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}<div class="dash-side">${actionCentre(state)}${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}</div></div>
+        <div class="job-os-pair dash-main">${funnelCard(dashboard.funnel, dashboard.activity, state.activityMonth || 0)}${actionCentre(state)}</div>
+        <div class="job-os-automations-wide">${automationsCard(state.automations) || '<section class="job-os-card automations-card is-loading" aria-busy="true"></section>'}</div>
         <section class="job-os-card job-os-recent">${cardHead('Recent jobs', 'briefcase', '<button type="button" class="job-os-link" data-job-os-view="pipeline">View pipeline</button>', jobs.length || null)}${jobList(recent.rows, 'No jobs saved yet', 'Add a job or run Scout to start tracking roles through your pipeline.')}${pager('recent', recent)}</section>
         ${jobDrawer(state)}${jobForm(state)}${calibrationModal(state)}`;
     } else if (view === 'pipeline') {
@@ -1570,20 +1604,21 @@
       const scoped = jobs.filter((j) => (!group || group.statuses.includes(j.status)) && shownOn(state)(j));
       const counts = state.board && state.board.sources ? state.board.sources
         : Object.fromEntries([['all', jobs.length], ...Object.keys(SOURCE_LABEL).map((k) => [k, jobs.filter((j) => sourceOf(j) === k).length])]);
-      const listMode = state.pipelineMode === 'list' || filter;
+      const mode = filter ? 'list' : state.pipelineMode;
+      const listPage = paged(sortJobs(scoped, state.sortBy), state.listPage, PIPE_PAGE);
       const empty = group ? `<div class="job-os-empty"><strong>Nothing in ${esc(group.label.toLowerCase())} yet</strong><p>${esc(group.empty)}</p></div>`
         : state.pipelineQuery ? noMatches(state) : emptyPipeline(state);
-      const list = `<section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2>${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'} <span class="job-os-count">${scoped.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Show the board</button>' : ''}</div>${scoped.length ? jobList(sortJobs(scoped, state.sortBy), '', '') : empty}</section>`;
+      const list = `<section class="job-os-card job-os-fill"><div class="job-os-card-head"><h2><span class="card-title">${filter ? `<span class="job-os-filter-label">${esc(statusLabel(filter))}</span>` : 'All jobs'}</span> <span class="job-os-count">${scoped.length}</span></h2>${filter ? '<button type="button" class="job-os-link" data-job-os-filter="">Show the board</button>' : ''}</div>${scoped.length ? `${jobList(listPage.rows, '', '')}${pager('list', listPage)}` : empty}</section>`;
       body = `${header('Pipeline', 'Every job from new find to offer — Scout’s finds from the job sites, and the ones you track yourself.', state)}
         ${pipelineBar(state, jobs, counts)}
-        ${listMode ? list : pipelineBoard(state)}
+        <div class="pipe-view" data-key="pipe-view-${mode}" data-mode="${mode}">${mode === 'list' ? list : mode === 'match' ? matchCheck(state) : pipelineBoard(state)}</div>
         ${jobDrawer(state)}${jobForm(state)}${staleSheet(state)}`;
     } else if (view === 'scout') {
       body = `${header('Scout', 'Saved searches find new postings on Indeed and LinkedIn and save each one into your Pipeline.', state)}${scoutView(state)}${jobDrawer(state)}${jobForm(state)}`;
     } else if (view === 'settings') {
       body = `${header('Settings', 'Connections, AI, schedules and notifications for this profile.', state)}${settingsView(state)}`;
     } else {
-      body = `${header('Resume Studio', 'Your master resume, how well it matches each job, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : skillsGainedView(state)}${state.studioJobId ? '' : skillGapsView(state)}${state.studioJobId ? '' : matchCheck(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
+      body = `${header('Resume Studio', 'Your master resume, the skills around it, and the versions tailored from it.', state)}${resumeView(state)}${state.studioJobId ? '' : skillsGainedView(state)}${state.studioJobId ? '' : skillGapsView(state)}${tailoredView(state)}${jobForm(state)}${resumePreview(state)}`;
     }
     return `<div class="job-os-shell" data-view="${esc(view)}">${mobileNav(view, state)}<main class="job-os-content">${body}</main></div>`;
   }

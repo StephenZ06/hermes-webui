@@ -43,10 +43,11 @@ def test_the_ring_shows_the_score_and_band_of_the_picked_job():
         browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 1000})
-            page.goto(BASE + "/#jobs/resume-studio", wait_until="domcontentloaded")
+            page.goto(BASE + "/#jobs/pipeline", wait_until="domcontentloaded")
             page.wait_for_function("() => typeof S !== 'undefined' && S._bootReady === true", polling=100, timeout=30000)
             page.evaluate("() => document.querySelectorAll('#onboardingOverlay,#appTourOverlay').forEach(e => e.remove())")
             page.evaluate("async () => { await switchPanel('jobs'); }")
+            page.click("[data-job-os-action='pipe-mode'][data-mode='match']")
             page.wait_for_selector(".match-ring[data-band]", timeout=20000)
             # The match check steps through the board one job at a time (Next / Previous, or the arrow keys).
             def go_to(title):

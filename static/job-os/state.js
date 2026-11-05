@@ -34,7 +34,7 @@
     pipelineSource: 'all', // 'all', a job site key, or 'manual'; filtered in the page, not on the server
     collapsedColumns: [], // board columns folded to a slim strip (remembered per browser)
     pipelineQuery: '', // Pipeline search box: jobs whose title or company contain it
-    pipelineMode: 'board', // 'board' | 'list'
+    pipelineMode: 'board', // 'board' | 'list' | 'match'
     jobForm: null, // the Add/Edit job drawer: null = closed
     jobFormError: '',
     jobTimeline: [],
@@ -59,6 +59,9 @@
     gmailMessage: null,
     recentPage: 0, // Dashboard recent jobs, ten a page
     findsPage: 0, // Scout latest finds, ten a page
+    listPage: 0, // Pipeline list, twenty a page
+    colPages: {}, // Pipeline board: each column's page, twenty a page
+    tailoredPage: 0, // Resume Studio tailored versions, ten a page
     resumeOriginal: null, // 'pdf' | 'docx' | ... when the master was uploaded as a file
     resumePreview: null, // full-size preview overlay: {kind: 'pdf'|'html', url, title}
     resumeThumb: null, // {revision, url}: the master's first page, drawn once

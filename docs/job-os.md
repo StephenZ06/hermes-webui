@@ -295,15 +295,15 @@ rejection). The arrows step back up to five months.
 Luna (Settings → AI) reads the job description against the master resume and
 returns a 0–100 fit score with the matches and gaps. The ring is coloured by
 band: **75–100 Good match** (green), **50–74 Needs improvement** (yellow),
-**0–49 Terrible match** (red), with the percentage in the centre. Resume
-Studio's **Match check** steps through the jobs on the board one at a time,
+**0–49 Terrible match** (red), with the percentage in the centre. The
+Pipeline's **Match check** view (beside Kanban and List) steps through the jobs on the board one at a time,
 in board order (New, then Favorite; a tailored job has moved on to Ready to
 apply and leaves the check): Previous/Next or
 the arrow keys, then **Tailor & next**; the actions sit centred along the
-bottom of the card. **Score my resume** costs one model call. Scout finds are scored automatically when *Analyse new finds
+bottom of the card. It follows the site tab and search box, and shows placeholders while a job's words load. **Score my resume** costs one model call. Scout finds are scored automatically when *Analyse new finds
 automatically* is on.
 
-**Automate all** tailors every job in the match check not yet tailored,
+**Automate All** tailors every job in the match check not yet tailored,
 whatever its score: scored jobs now, unscored ones as soon as their score
 comes back (or scoring fails) (`autopilot.py`, table `auto_tailor`). Luna
 works one job at a time; while she does, the job's **Tailor** button shows a

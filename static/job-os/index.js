@@ -222,6 +222,8 @@
       const wantScout = state.activeView === 'scout';
       const wantDetail = ['pipeline', 'scout', 'dashboard'].includes(state.activeView) && state.selectedJobId;
       const wantResume = state.activeView === 'resume-studio';
+      // The match check is a Pipeline view; it reads the resume and the tailored list too.
+      const wantMatch = state.activeView === 'pipeline' && state.pipelineMode === 'match' && !state.statusFilter;
       const wantStudioDocs = wantResume && state.studioJobId;
       // A remembered tab for a job site that is no longer offered falls back to All.
       if (state.sites && !['all', 'manual', ...state.sites.map((site) => site.key)].includes(state.pipelineSource)) state.pipelineSource = 'all';
@@ -240,8 +242,8 @@
         wantScout || wantCountries ? window.JobOSApi.searches().catch(() => null) : Promise.resolve(null),
         wantScout ? window.JobOSApi.runs(20) : Promise.resolve(null),
         wantDetail ? window.JobOSApi.job(state.selectedJobId).catch(() => null) : Promise.resolve(null),
-        wantResume ? cached('resume', 30 * 1000, window.JobOSApi.resume).catch(() => null) : Promise.resolve(null),
-        wantResume ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
+        wantResume || wantMatch || wantSettings ? cached('resume', 30 * 1000, window.JobOSApi.resume).catch(() => null) : Promise.resolve(null),
+        wantResume || wantMatch ? window.JobOSApi.documents().catch(() => null) : Promise.resolve(null),
         wantStudioDocs ? window.JobOSApi.jobDocuments(state.studioJobId).catch(() => null) : Promise.resolve(null),
         // The whole board comes once; the site tabs and the search box filter it in the page.
         wantBoard ? window.JobOSApi.board().catch(() => null) : Promise.resolve(null),
@@ -257,11 +259,11 @@
         wantResume ? window.JobOSApi.skillGaps().catch(() => null) : Promise.resolve(null),
       ]);
       if (seq !== refreshSeq) return;
-      // Resume Studio's match check reads the full analysis of the job it is on:
-      // the one stepped to, or the first on the board.
+      // The match check reads the full analysis of the job it is on: the one
+      // stepped to, or the first on the board.
       let match = null;
-      if (wantResume && !state.studioJobId && resume && resume.resume) {
-        const queue = window.JobOSRender.matchQueue(jobs.jobs || []);
+      if (wantMatch && resume && resume.resume) {
+        const queue = window.JobOSRender.matchQueue(jobs.jobs || [], state);
         const pick = queue.find((j) => j.id === state.studioMatchId) || queue[0];
         if (pick) {
           state.studioMatchId = pick.id;
@@ -269,7 +271,10 @@
         }
         if (seq !== refreshSeq) return;
       }
-      if (wantResume) state.studioMatch = match && match.job;
+      if (wantMatch) {
+        state.studioMatch = match && match.job;
+        state.matchFailed = !match && state.studioMatchId ? state.studioMatchId : null;
+      }
       state.capability = capability;
       state.dashboard = dashboard;
       noticeSiteProblems(dashboard && dashboard.site_health);
@@ -413,6 +418,7 @@
     bindJobForms(target);
     afterBoardRender(target);
     if (state.activeView === 'resume-studio') { bindResumeUpload(); afterStudioRender(target); }
+    if (state.activeView === 'pipeline') afterMatchRender(target);
     afterSettingsRender(target);
   }
   function showStatus(status) { window.JobOSState.activeView = 'pipeline'; window.JobOSState.statusFilter = status || null; replaceRoute('pipeline', window.JobOSState.statusFilter); paintNow(); refresh(); }
@@ -447,6 +453,8 @@
     const box = event.target.closest('#job-os-pipe-search');
     if (!box) return;
     window.JobOSState.pipelineQuery = box.value;
+    window.JobOSState.listPage = 0;
+    window.JobOSState.colPages = {};
     cancelAnimationFrame(searchFrame);
     searchFrame = requestAnimationFrame(repaint);
   }
@@ -583,6 +591,7 @@
   }
   async function runAction(name, button) {
     const state = window.JobOSState;
+    if (name === 'skills-manage') return pipelineAction(name, button);
     if (['page', 'settings-focus', 'settings-section', 'activity-month', 'automate-all', 'settings-list', 'match-go', 'match-tailor', 'resume-preview', 'resume-preview-close', 'doc-preview', 'preview-zoom'].includes(name)) return studioAction(name, button);
     if (name.startsWith('scout-') || name === 'job-close') return scoutAction(name, button);
     if (['job-status', 'job-analyze', 'analyze-new', 'job-details', 'job-tailor', 'job-ready', 'job-interview', 'board-apply', 'card-tailor', 'card-details', 'match-score', 'apply-kit', 'check-override', 'follow-draft', 'follow-sent', 'follow-no-response'].includes(name) || name.startsWith('resume-') || name.startsWith('studio-')) return pipelineAction(name, button);
@@ -770,7 +779,7 @@
         || !!(state.jobDetail && state.jobDetail.apply_kit && state.jobDetail.apply_kit.status === 'running')
         || !!(state.jobDetail && state.jobDetail.follow_up && state.jobDetail.follow_up.draft && state.jobDetail.follow_up.draft.status === 'running')
         || !!(state.dashboard && state.dashboard.calibration && state.dashboard.calibration.running)))
-      || (state.activeView === 'resume-studio' && (docBusy || busy(state.studioMatch) || !!(state.skillGaps && state.skillGaps.running)
+      || (state.activeView === 'resume-studio' && (docBusy || !!(state.skillGaps && state.skillGaps.running)
         || (state.jobs || []).some((j) => busy(j) || j.status === 'tailoring')) && state.studioDraft == null);
     if (watching && !analysisTimer) analysisTimer = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
     if (!watching && analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; }
@@ -1047,8 +1056,13 @@
       if (window.HermesDashboard) window.HermesDashboard.select('career');
       return;
     }
-    if (name === 'resume-replace') { state.resumeReplacing = true; state.resumeError = ''; return refresh(); }
-    if (name === 'resume-cancel') { state.resumeReplacing = false; state.resumeError = ''; return refresh(); }
+    if (name === 'resume-replace' || name === 'resume-cancel') {
+      // The card morphs between the two, its size included (style.css view-transition).
+      const swap = () => { state.resumeReplacing = name === 'resume-replace'; state.resumeError = ''; paintNow(); };
+      if (typeof document.startViewTransition === 'function' && !matchMedia('(prefers-reduced-motion: reduce)').matches) await document.startViewTransition(swap).updateCallbackDone;
+      else swap();
+      return refresh();
+    }
     if (name === 'resume-paste') {
       const text = (document.getElementById('resume-text') || {}).value || '';
       forget('resume');
@@ -1063,13 +1077,23 @@
   async function studioAction(name, el) {
     const state = window.JobOSState;
     if (name === 'page') {
-      const key = el.dataset.pager === 'finds' ? 'findsPage' : 'recentPage';
-      state[key] = Math.max(0, Number(el.dataset.page) || 0);
+      const at = Math.max(0, Number(el.dataset.page) || 0);
+      const column = /^col:/.test(el.dataset.pager) ? el.dataset.pager.slice(4) : '';
+      if (column) state.colPages = Object.assign({}, state.colPages, {[column]: at});
+      else state[{finds: 'findsPage', list: 'listPage', tailored: 'tailoredPage'}[el.dataset.pager] || 'recentPage'] = at;
       paint(root(), window.JobOSRender.shell(state));
-      const card = root().querySelector(`[data-job-os-action="page"][data-pager="${el.dataset.pager}"]`);
-      const section = card && card.closest('.job-os-card');
-      const list = section && section.querySelector('.job-os-list');
-      if (list) { list.classList.remove('is-paging'); void list.offsetWidth; list.classList.add('is-paging'); }
+      const card = root().querySelector(`[data-job-os-action="page"][data-pager="${CSS.escape(el.dataset.pager)}"]`);
+      const section = card && card.closest('.job-os-card, .pipe-col');
+      const list = section && section.querySelector('.job-os-list, .pipe-col-cards');
+      if (list) {
+        list.scrollTop = 0;
+        list.classList.remove('is-paging'); void list.offsetWidth; list.classList.add('is-paging');
+      }
+      // A long list's next page starts at its top, not where the pager was.
+      const main = document.getElementById('mainJobs');
+      if (main && !column && section && section.getBoundingClientRect().top < main.getBoundingClientRect().top) {
+        main.scrollBy({top: section.getBoundingClientRect().top - main.getBoundingClientRect().top - 12, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+      }
       return undefined;
     }
     if (name === 'settings-focus') {
@@ -1099,6 +1123,9 @@
       if (!el.dataset.jobId) return undefined;
       state.studioMatchId = el.dataset.jobId;
       state.matchDirection = el.closest('.match-step') && el.getAttribute('aria-label') === 'Previous job' ? 'back' : 'forward';
+      // The next job's title and placeholders show at once; its words fill in.
+      repaint();
+      clearTimeout(matchFetch);
       return refresh();
     }
     if (name === 'match-tailor') {
@@ -1230,7 +1257,7 @@
       setPreviewZoom(event.key === '0' ? 1 : (state.previewZoom || 1) * (event.key === '-' ? 0.8 : 1.25));
       return;
     }
-    if (state.activeView !== 'resume-studio' || state.studioJobId || state.resumePreview || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (state.activeView !== 'pipeline' || state.pipelineMode !== 'match' || state.statusFilter || state.jobDetail || state.resumePreview || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
     const step = document.querySelector(`.match-step[aria-label="${event.key === 'ArrowLeft' ? 'Previous job' : 'Next job'}"]:not([disabled])`);
     if (step) { event.preventDefault(); studioAction('match-go', step); }
@@ -1291,6 +1318,22 @@
       host.innerHTML = '<iframe src="/api/job-os/resume/preview" title="Resume" tabindex="-1"></iframe>';
     }
   }
+  // Stepping through the match check slides the new job in from that side.
+  let matchFetch = 0;
+  function afterMatchRender(target) {
+    const state = window.JobOSState;
+    const match = target.querySelector('.match-body');
+    if (match && state.matchDirection) {
+      match.dataset.enter = state.matchDirection;
+      state.matchDirection = null;
+    }
+    // The site tabs and search box change which job is first: fetch its words.
+    if (state.pipelineMode !== 'match' || state.statusFilter) return;
+    const queue = window.JobOSRender.matchQueue(state.jobs, state);
+    const item = queue.find((j) => j.id === state.studioMatchId) || queue[0];
+    clearTimeout(matchFetch);
+    if (item && (!state.studioMatch || state.studioMatch.id !== item.id) && state.matchFailed !== item.id) matchFetch = setTimeout(refresh, 160);
+  }
   function afterStudioRender(target) {
     const thumb = target.querySelector('#resume-thumb[data-kind="pdf"]');
     if (thumb && !thumb.classList.contains('is-drawn')) drawPages(thumb, {scale: 0.36, max: 1});
@@ -1300,11 +1343,6 @@
     if (pages && pages.dataset.kind === 'html') {
       const frame = pages.querySelector('iframe');
       if (once(frame, 'fit')) frame.addEventListener('load', () => fitPreviewFrame(pages.parentElement), {once: true});
-    }
-    const match = target.querySelector('.match-body');
-    if (match && window.JobOSState.matchDirection) {
-      match.dataset.enter = window.JobOSState.matchDirection;
-      window.JobOSState.matchDirection = null;
     }
   }
   // A Settings section asked for (an automation row, a Scout tile) scrolls into view and glows.
@@ -1358,8 +1396,19 @@
     };
     sync();
     if (!once(board, 'scroll')) return;
-    board.addEventListener('scroll', () => { if (Math.abs(bar.scrollLeft - board.scrollLeft) > 1) bar.scrollLeft = board.scrollLeft; }, {passive: true});
-    bar.addEventListener('scroll', () => { if (Math.abs(board.scrollLeft - bar.scrollLeft) > 1) board.scrollLeft = bar.scrollLeft; }, {passive: true});
+    // Whichever moved first leads until it settles. The follower's echo arrives
+    // a frame late and must not write back, or it drags the board to where it was.
+    let lead = null;
+    let settle = 0;
+    const follow = (from, to) => () => {
+      if (lead && lead !== from) return;
+      lead = from;
+      clearTimeout(settle);
+      settle = setTimeout(() => { lead = null; }, 140);
+      to.scrollLeft = from.scrollLeft;
+    };
+    board.addEventListener('scroll', follow(board, bar), {passive: true});
+    bar.addEventListener('scroll', follow(bar, board), {passive: true});
     if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(board);
     // A column's own scrollbar shows while it scrolls, then fades away.
     board.addEventListener('scroll', (event) => {
@@ -1664,7 +1713,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(PREFS) || '{}');
       if (typeof saved.source === 'string' && /^[a-z]{1,20}$/.test(saved.source)) state.pipelineSource = saved.source;
-      if (['board', 'list'].includes(saved.mode)) state.pipelineMode = saved.mode;
+      if (['board', 'list', 'match'].includes(saved.mode)) state.pipelineMode = saved.mode;
       if (saved.filters && typeof saved.filters === 'object') {
         const MIN = ['85', '75', '65', 'none'];
         const SORT = ['newest', 'oldest', 'best', 'updated'];
@@ -1712,10 +1761,12 @@
   async function trackerAction(name, el) {
     const state = window.JobOSState;
     // Site tabs and the layout switch redraw from what is loaded: no wait on the server.
-    if (name === 'pipe-source') { state.pipelineSource = el.dataset.source; state.statusFilter = null; savePrefs(); replaceRoute('pipeline'); return repaintShuffled(); }
+    if (name === 'pipe-source') { state.pipelineSource = el.dataset.source; state.statusFilter = null; state.listPage = 0; state.colPages = {}; savePrefs(); replaceRoute('pipeline'); return repaintShuffled(); }
     if (name === 'pipe-mode') {
       state.pipelineMode = el.dataset.mode; state.statusFilter = null; savePrefs(); replaceRoute('pipeline');
-      return state.pipelineMode === 'board' && !state.board ? refresh() : repaint();
+      repaint();
+      clearTimeout(matchFetch);
+      return state.pipelineMode === 'match' || (state.pipelineMode === 'board' && !state.board) ? refresh() : undefined;
     }
     // A column folds to a slim strip (and back); it still takes drops.
     if (name === 'pipe-collapse') {
@@ -1973,7 +2024,10 @@
       if (!form) return;
       const keywords = form.elements.keywords.value.trim();
       if (!keywords) { toast('Type the job titles first'); return; }
-      el.disabled = true; el.classList.add('is-busy');
+      // In the page state, so a repaint while Luna works keeps the spinner.
+      state.searchForm = Object.assign({}, state.searchForm, searchPayload(form));
+      state.suggestingTitles = true;
+      repaint();
       try {
         const r = await window.JobOSApi.suggestTitles(state.searchForm && state.searchForm.id, keywords);
         const field = form.elements.related_titles;
@@ -1981,8 +2035,11 @@
         const merged = [...have, ...r.titles.filter((t) => !have.some((h) => h.toLowerCase() === t.toLowerCase()))].slice(0, 15);
         field.value = merged.join(', ');
         state.searchForm = Object.assign({}, state.searchForm, searchPayload(form));
+        const added = merged.length - have.length;
+        toast(added ? `Added ${added} related title${added === 1 ? '' : 's'}` : 'No new related titles');
       } catch (error) { toast(error.message || 'Luna could not suggest titles'); }
-      el.disabled = false; el.classList.remove('is-busy');
+      state.suggestingTitles = false;
+      repaint();
     } else if (name === 'job-close') { state.selectedJobId = null; state.jobDetail = null; paintNow(); refresh(); }
   }
   function mount() { loadPrefs(); applyRoute(); refresh(); }

@@ -66,7 +66,7 @@ def page():
             browser.close()
 
 
-def test_toolbar_is_compact_on_the_page_background_with_text_1px_higher(page):
+def test_toolbar_is_compact_on_the_page_background_with_tab_text_centred(page):
     out = page.evaluate("""() => {
         const q = (s) => document.querySelector('#jobOsRoot ' + s), cs = (s) => getComputedStyle(q(s));
         return {body: getComputedStyle(document.body).backgroundColor, bg: [cs('.pipe-toolbar .seg').backgroundColor, cs('.pipe-toolbar .pipe-search').backgroundColor],
@@ -75,10 +75,10 @@ def test_toolbar_is_compact_on_the_page_background_with_text_1px_higher(page):
     }""")
     assert out["bg"] == [out["body"], out["body"]], out
     assert out["heights"] == [32, 32, 32], out
-    assert out["tab"] == ["0px", "2px"] and out["input"] == "2px", out
+    assert out["tab"] == ["0px", "0px"] and out["input"] == "2px", out
 
 
-def test_tabs_hover_blue_and_the_add_button_stays_light(page):
+def test_tabs_hover_blue_and_the_add_button_wears_the_work_hub_tint(page):
     page.hover("#jobOsRoot .pipe-toolbar .seg-btn:not(.active) >> nth=0")
     page.wait_for_timeout(300)
     tab = page.evaluate("() => getComputedStyle(document.querySelector('#jobOsRoot .pipe-toolbar .seg-btn:not(.active):hover')).backgroundColor")
@@ -88,13 +88,8 @@ def test_tabs_hover_blue_and_the_add_button_stays_light(page):
     page.hover("#jobOsRoot .pipe-add-btn")
     page.wait_for_timeout(400)
     hover = page.evaluate("() => getComputedStyle(document.querySelector('#jobOsRoot .pipe-add-btn')).backgroundColor")
-    def channels(colour):
-        parts = colour[colour.index("(") + 1:colour.rindex(")")].replace("srgb", "").replace("/", " ").replace(",", " ").split()
-        values = [float(v) for v in parts]
-        scale = 255 if colour.startswith("color(") else 1
-        return [v * scale for v in values[:3]], (values[3] if len(values) > 3 else 1)
-    (rest_rgb, _), (hover_rgb, alpha) = channels(rest), channels(hover)
-    assert alpha == 1 and sum(hover_rgb) > sum(rest_rgb), (rest, hover)  # solid and lighter, not a dark 10% tint
+    strong = page.evaluate("() => { const d = document.createElement('div'); d.style.background = 'var(--accent-bg-strong)'; document.body.appendChild(d); const c = getComputedStyle(d).backgroundColor; d.remove(); return c; }")
+    assert rest == accent_bg and hover == strong, (rest, hover)
 
 
 def test_column_heads_keep_filter_and_count_right_and_slide_the_arrow_in(page):
@@ -123,7 +118,7 @@ def test_a_pointed_at_card_keeps_its_size_and_its_parts_sit_right(page):
     }""")
     after = page.locator(card).bounding_box()
     assert before["width"] == after["width"] and "0px 0px 0px 1px" not in out["shadow"], (before, after, out)
-    assert out["btn"] == ["2px", "0px"] and out["icon"] == "-1px" and out["source"] == "2px" and out["remote"] == "REMOTE.ID", out
+    assert out["btn"] == ["0px", "0px"] and out["icon"] == "-1px" and out["source"] == "2px" and out["remote"] == "REMOTE.ID", out
 
 
 def test_tailor_resume_asks_for_this_job_or_the_whole_column(page):

@@ -102,8 +102,8 @@ def test_titles_are_capitals_and_the_buttons_read_well(page):
                 applied: css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-tone="info"]')).paddingTop,
                 analyzed: [css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]')).paddingTop, css(document.querySelector('#jobOsRoot .match-inbox .job-os-badge[data-status="analyzed"]')).paddingBottom]};
     }""")
-    assert out["caps"] == ["uppercase"] and out["run"] == "Run Now" and out["analyzed"] == ["2px", "1px"], out
-    assert out["pad"] == ["1px", "1px", "1px", "1px"] and out["applied"] == "2px", out
+    assert out["caps"] == ["uppercase"] and out["run"] == "Run Now" and out["analyzed"] == ["0px", "0px"], out
+    assert out["pad"] == ["1px", "1px", "1px", "1px"] and out["applied"] == "0px", out
     rgb = page.evaluate("""(c) => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, 1, 1);
         return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); }""", out["color"])
     assert min(rgb) > 150, (out, rgb)  # light text, not the dark accent-contrast

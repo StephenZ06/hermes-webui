@@ -127,7 +127,8 @@ def test_source_tabs_and_the_add_job_form():
             page.click('[data-job-os-action="pipe-source"][data-source="indeed"]')
             page.wait_for_selector('[data-job-os-action="pipe-source"][data-source="indeed"].active', timeout=15000)
             page.wait_for_selector(f'.pipe-card[data-board-job="{found["id"]}"]', timeout=15000)
-            manual_hidden = page.evaluate(f"() => ![...document.querySelectorAll('.pipe-card')].some(c => c.textContent.includes('{title}'))")
+            page.wait_for_function(f"() => ![...document.querySelectorAll('.pipe-card')].some(c => c.textContent.includes('{title}'))", timeout=5000)  # after its exit animation
+            manual_hidden = True
             remembered = page.evaluate("() => JSON.parse(localStorage.getItem('hermes-job-os-pipeline')).source")
             # A site tab redraws in the same click, from the board already loaded.
             instant = page.evaluate("""() => { document.querySelector('[data-job-os-action="pipe-source"][data-source="all"]').click();
@@ -146,7 +147,8 @@ def test_source_tabs_and_the_add_job_form():
     assert (saved["country"], saved["location"], saved["salary_text"]) == ("Singapore", "Jurong", "SGD 6,000 / month")
     assert "Jurong, Singapore" in card_text and "SGD 6,000/mo" in card_text and "MANUAL" in card_text.upper()
     assert indeed_hidden and manual_hidden and remembered == "indeed"
-    assert instant and searched == {"shown": [True], "focused": True}
+    assert instant, "tab"
+    assert searched == {"shown": [True], "focused": True}, searched
     notes = [e["data"]["text"] for e in _get(f"/api/job-os/jobs/{saved['id']}/timeline")["timeline"] if e["type"] == "note"]
     assert notes == ["Referred by Sam"]
 
