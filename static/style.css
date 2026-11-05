@@ -15339,7 +15339,6 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
 :root[data-skin="zeus-2"] .async-delegation-summary > *{position:relative;top:1px;}
 /* Zeus 2.0 chat sidebar WORKSPACES / CONVERSATIONS: text 1px up so the
    divider lines run through its middle. */
-:root[data-skin="zeus-2"] .chat-sidebar-section-heading > span{position:relative;top:-1px;}
 /* Notes editor chrome (persistent since it no longer rebuilds per note). */
 .nb-editor-chrome[hidden],#nbEditorEmpty[hidden]{display:none;}
 .nb-tag-chips{display:contents;}
@@ -16418,8 +16417,8 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 @media (prefers-reduced-motion:reduce){.composer-profile-chip.switching .composer-profile-label,.app-titlebar-profile.switching .app-titlebar-profile-label{animation:none;-webkit-text-fill-color:currentColor;opacity:.6;}}
 /* Model and workspace menus: the placeholders sit 1px higher; the clear (x)
    and add (+) buttons are rounded squares as tall as their inputs. */
-.model-search-input,.ws-search-input{box-sizing:border-box;height:32px;padding-top:4px;padding-bottom:8px;}
-.model-custom-input{box-sizing:border-box;height:30px;padding-top:3px;padding-bottom:7px;}
+.model-search-input,.ws-search-input{box-sizing:border-box;height:32px;padding-top:5px;padding-bottom:7px;}
+.model-custom-input{box-sizing:border-box;height:30px;padding-top:4px;padding-bottom:6px;}
 .model-search-clear,.ws-search-clear{width:32px;height:32px;border-radius:6px;}
 .model-custom-btn{width:30px;height:30px;}
 /* "Custom model ID" sits 2px lower, halfway between the divider and its
@@ -16565,8 +16564,6 @@ textarea.office-biz-input{resize:vertical;}
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* New chat page: suggestion icons sit 1px high beside their text. */
-.suggestion-grid > .suggestion > svg{translate:0 1px;}
 /* Work Hub sidepanel heading sits 1px lower. */
 #panelNotes > .panel-head > span{translate:0 1px;}
 /* Usage card: the outer dot lines up with the card's right edge. */
@@ -16868,3 +16865,19 @@ textarea.office-biz-input{resize:vertical;}
 .settings-page .set-group .set-row{padding-left:0;padding-right:0;}
 .settings-page .set-group .set-group-foot{margin-top:6px;padding:0;}
 @media (max-width:760px){.settings-rail{display:contents;}}
+
+/* Chat page optical alignment, from pixels measured at 1x, 2x and 3x (see
+   tests/test_chat_optical_alignment_browser.py). The source badge is trimmed to
+   its capitals so the pill centres them in any font. The icon and label shifts
+   are for Courier New in Zeus 2.0, whose capitals sit low in their line box. */
+@supports (text-box:trim-both cap alphabetic){
+  .topbar-source-badge{display:inline-block;line-height:1;padding-block:8px;text-box:trim-both cap alphabetic;}
+}
+:root[data-skin="zeus-2"] .thinking-card-icon svg{translate:0 1px;}
+:root[data-skin="zeus-2"] :is(.approval-btn.once,.approval-btn.always,.approval-btn.deny) .approval-btn-icon svg{translate:0 1px;}
+/* This menu hangs from its bottom edge, so fractional rows put its search box on a
+   fractional pixel, where the text and the outline round apart. */
+#composerWsDropdown .ws-opt{min-height:46px;}
+#composerWsDropdown .ws-opt-action{min-height:54px;}
+:root[data-skin="zeus-2"] #composerWsDropdown .ws-search-input{padding-top:6px;padding-bottom:6px;}
+@media(max-width:640px){:root[data-skin="zeus-2"] #titlebarProfileLabel{position:relative;top:-1px;}}

@@ -47,7 +47,7 @@ def test_model_menu_buttons_are_squares_as_tall_as_their_inputs(page):
     pads = page.evaluate("""() => ['.model-search-input', '.model-custom-input'].map(s => {
       const c = getComputedStyle(document.querySelector('#composerModelDropdown ' + s));
       return parseFloat(c.paddingBottom) - parseFloat(c.paddingTop); })""")
-    assert pads == [4, 4], pads
+    assert pads == [2, 2], pads
 
 
 def test_workspace_search_clear_matches_its_input(page):
