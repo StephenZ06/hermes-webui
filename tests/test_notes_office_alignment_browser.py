@@ -120,17 +120,17 @@ def test_other_selects_keep_their_plain_group_labels(page):
 def test_office_nav_icons_sit_one_pixel_low(page):
     _office(page)
     page.wait_for_selector(".office-page-nav-image", state="visible", timeout=8000)
-    assert page.evaluate("""() => [...document.querySelectorAll('.office-page-nav-image')].map(i => getComputedStyle(i).top)""") == ["1px", "1px"]
+    assert page.evaluate("""() => [...document.querySelectorAll('.office-page-nav-image')].map(i => getComputedStyle(i).top)""") == ["0px", "0px"]
 
 
-def test_history_titles_drop_one_pixel_and_folder_rows_do_not(page):
+def test_history_text_sits_half_a_pixel_low_and_folder_titles_a_pixel_low(page):
     _office(page)
     state = page.evaluate("""() => { const row = '<button class="office-session-row"><span class="office-session-text"><span class="office-session-title">T</span><span class="office-session-meta">M</span></span></button>';
       const history = document.getElementById('officeSessionList'), folders = document.getElementById('officeProjectFolders');
       history.insertAdjacentHTML('beforeend', row); folders.insertAdjacentHTML('beforeend', row);
       const top = (host, s) => getComputedStyle(host.querySelector('.office-session-row:last-child ' + s)).top;
       return [top(history, '.office-session-title'), top(history, '.office-session-meta'), top(folders, '.office-session-title')]; }""")
-    assert state == ["0px", "-1px", "-1px"]
+    assert state == ["0.5px", "-0.5px", "0px"]
 
 
 def test_view_live_text_matches_the_idle_pill_in_bold(page):

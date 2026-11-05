@@ -1494,7 +1494,8 @@ function renderOfficeNavigation() {
     if (!button) return;
     button.classList.toggle('is-active', _officeSubview === key);
     button.setAttribute('aria-current', _officeSubview === key ? 'page' : 'false');
-    button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="/static/${icon}-${size}.png" srcset="/static/${icon}-${size}.png 1x, /static/${icon}-${size * 2}.png 2x, /static/${icon}.png 3x" alt="" aria-hidden="true"></span><span class="office-page-nav-copy"><strong>${label}</strong><small>${detail}</small></span><span class="office-page-nav-arrow" aria-hidden="true">›</span>`;
+    button.innerHTML = `<span class="office-page-nav-icon"><img class="office-page-nav-image" src="/static/${icon}-${size}.png" srcset="/static/${icon}-${size}.png 1x, /static/${icon}-${size * 2}.png 2x, /static/${icon}.png 3x" alt="" aria-hidden="true"></span>`;
+    button.setAttribute('aria-label', `${label}: ${detail}`);
   });
   // Only a page being picked plays here; leaving the pages for a run is
   // played by markActiveRun once the run row is marked.

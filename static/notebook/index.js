@@ -562,7 +562,7 @@
       const message = S.search ? `No notes found for “${esc(S.search)}”.`
         : trash ? 'Trash is empty.'
           : S.scope.kind === 'project' || S.scope.kind === 'folder' ? 'No notes here yet.' : 'No notes yet.';
-      host.innerHTML = `<div class="nb-empty"><p>${message}</p>${trash || S.search ? '' : '<button type="button" class="nb-btn primary" data-nb-action="new">New note</button>'}</div>`;
+      host.innerHTML = `<div class="nb-empty nb-list-empty"><p>${message}</p></div>`;
       return;
     }
     // A folded-away list (a workspace or folder is open) shows no glide.

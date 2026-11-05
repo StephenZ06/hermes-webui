@@ -16476,7 +16476,6 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .office-biz-input{min-height:32px;padding:5px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:12px;min-width:0;}
 .office-biz-input:focus-visible,.office-biz-tab:focus-visible,.office-biz-close:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 textarea.office-biz-input{resize:vertical;}
-.office-biz-filter{width:100%;margin:0 0 12px;}.office-biz-filter .office-biz-input{width:min(320px,100%);}
 .office-biz-view{width:100%;}
 .office-biz-providers{display:flex;flex-direction:column;margin:14px 0 0;padding:0;list-style:none;}
 .office-biz-providers > li{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 0;border-top:1px solid var(--border2);}
@@ -16488,12 +16487,8 @@ textarea.office-biz-input{resize:vertical;}
 .office-integration-status.is-warning{color:var(--accent-text);border-color:var(--accent);}
 .office-biz-providers .office-integration-action,.office-biz-actions .office-integration-action,.office-biz-toolbar .office-integration-action,.office-biz-toolbar-row .office-integration-action,.office-biz-copy .office-integration-action,.office-biz-grant-head .office-integration-action,.office-biz-inline .office-integration-action,.office-biz-form .office-integration-action{flex:none;width:auto;min-height:30px;padding:0 11px;}
 .office-integration-action.is-primary{color:var(--accent-text);border-color:var(--accent);background:var(--accent-bg);}
-.office-biz-heading{margin:22px 0 8px;color:var(--text);font-size:13px;}.office-biz-view > .office-biz-heading:first-child,.office-biz-settings section:first-child .office-biz-heading{margin-top:0;}
 .office-biz-empty{margin:0;padding:18px 0;color:var(--muted);font-size:12px;}
 .office-biz-note{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.5;}.office-biz-note.is-error{color:var(--accent-text);}
-.office-biz-list{display:flex;flex-direction:column;gap:12px;max-width:760px;}
-.office-biz-approval{padding:14px 16px;border:1px solid var(--border2);border-radius:12px;}
-.office-biz-approval header{display:flex;justify-content:space-between;gap:10px;color:var(--text);font-size:13px;}.office-biz-approval header span{color:var(--muted);font-size:11px;}
 .office-biz-approval dl,.office-biz-section dl{display:grid;grid-template-columns:90px 1fr;gap:4px 10px;margin:10px 0;font-size:12px;}
 .office-biz-approval dt,.office-biz-section dt{color:var(--muted);}.office-biz-approval dd,.office-biz-section dd{margin:0;color:var(--text);overflow-wrap:anywhere;}
 .office-biz-payload{max-height:280px;margin:8px 0;padding:10px;overflow:auto;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:11px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;}
@@ -16501,7 +16496,6 @@ textarea.office-biz-input{resize:vertical;}
 .office-biz-toolbar-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0 0 10px;}
 .office-biz-table-wrap{overflow-x:auto;}
 .office-biz-table{width:100%;border-collapse:collapse;font-size:11px;}.office-biz-table th{padding:6px 10px 6px 0;color:var(--muted);font-weight:500;text-align:left;white-space:nowrap;}.office-biz-table td{padding:6px 10px 6px 0;border-top:1px solid var(--border2);color:var(--text);overflow-wrap:anywhere;}
-.office-biz-settings{display:flex;flex-direction:column;gap:22px;max-width:760px;}.office-biz-settings .office-biz-heading{margin-top:0;}.office-biz-settings .office-biz-providers{margin-top:0;}
 .office-biz-field{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:11px;}
 .office-biz-scrim{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);}
 .office-biz-drawer{position:fixed;top:0;right:0;bottom:0;z-index:1201;display:flex;flex-direction:column;width:min(480px,100vw);padding-bottom:env(safe-area-inset-bottom);border-left:1px solid var(--border2);background:var(--bg);box-shadow:-12px 0 32px rgba(0,0,0,.35);}
@@ -16888,3 +16882,91 @@ textarea.office-biz-input{resize:vertical;}
 :root[data-skin="zeus-2"] .session-item .session-title{position:relative;top:.5px;}
 :root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(3) > span{position:relative;top:-1px;}
 :root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(-n+2) > svg{translate:0 .5px;}
+
+/* Office Integrations toolbar: every control on the line is 30px tall, like the
+   head controls above it. */
+.office-biz-toolbar{gap:8px;}
+.office-biz-business .themed-select-wrap{width:auto;max-width:190px;}
+.office-biz-business .themed-select-trigger{height:30px;min-height:30px;padding:0 8px;gap:6px;border-color:var(--border2);border-radius:8px;}
+.office-biz-toolbar .office-biz-input{box-sizing:border-box;height:30px;min-height:30px;padding-block:0;}
+.office-biz-toolbar .office-integration-action{height:30px;min-height:30px;}
+.office-biz-add{flex:none;box-sizing:border-box;width:30px;min-width:30px;height:30px;min-height:30px;margin-left:0;padding:0;border-radius:8px;}
+.office-biz-filter{flex:0 1 240px;box-sizing:border-box;display:flex;align-items:center;gap:6px;min-width:120px;height:30px;padding:0 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--muted);transition:border-color .15s ease;}
+.office-biz-filter:hover,.office-biz-filter:focus-within{border-color:var(--accent);}
+.office-biz-filter svg{flex:none;width:13px;height:13px;}
+.office-biz-filter input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:12px;}
+.office-biz-tab{box-sizing:border-box;height:30px;padding:0 11px;transition:color .2s ease,background-color .15s ease;}
+.office-biz-tabs.mi-tabs-ready > .office-biz-tab.is-active{border-color:transparent;background:transparent;}
+.office-biz-tabs > .mi-pill{box-sizing:border-box;border:1px solid var(--accent);}
+/* Status bubbles: a tint of each state's colour, mixed toward the text colour so
+   the label holds its contrast on light and dark skins. */
+.office-integration-status.is-planned{--status-tone:#a78bfa;}
+.office-integration-status.is-setup{--status-tone:#fbbf24;}
+.office-integration-status.is-ready{--status-tone:#60a5fa;}
+.office-integration-status.is-connected{--status-tone:var(--success);}
+.office-integration-status.is-warning{--status-tone:#f87171;}
+.office-integration-status:is(.is-planned,.is-setup,.is-ready,.is-connected,.is-warning){border-color:color-mix(in srgb,var(--status-tone) 40%,transparent);background:color-mix(in srgb,var(--status-tone) 14%,transparent);color:color-mix(in srgb,var(--status-tone) 78%,var(--text));}
+.office-integration-action{transition:color .15s ease,border-color .15s ease,background-color .15s ease;}
+.office-integration-action:not(:disabled):hover{border-color:var(--accent);background:var(--accent-bg);color:var(--accent-text);}
+.office-integration-action.is-primary:not(:disabled):hover{background:var(--accent-bg-strong);}
+#officeIntegrationsContent .themed-select-trigger:not(.themed-select-trigger-disabled):hover{border-color:var(--accent);background:var(--accent-bg);}
+.office-biz-link:hover{text-decoration:underline;text-underline-offset:2px;}
+/* Approvals, Activity and Settings use the Floors card. */
+.office-biz-cards{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.office-biz-card{min-width:0;min-height:0;}
+.office-biz-card.is-wide{grid-column:1 / -1;}
+.office-biz-card-title{flex:1 1 auto;min-width:0;}
+.office-biz-card-body{margin-top:14px;padding-top:14px;border-top:1px solid var(--border2);}
+.office-biz-card-body > :last-child{margin-bottom:0;}
+.office-biz-card-body > .office-biz-providers{margin-top:0;}
+.office-biz-card-body > .office-biz-providers > li:first-child{border-top:0;}
+.office-biz-card-body .office-biz-toolbar-row .themed-select-wrap{max-width:none;}
+.office-biz-card > .office-biz-empty{margin-top:14px;padding:22px 0 8px;border-top:1px solid var(--border2);text-align:center;}
+.office-biz-approval .office-integration-card-head h2{text-transform:none;overflow-wrap:anywhere;}
+.office-biz-approval dl{margin-top:0;}
+.office-biz-limits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.office-biz-limits .office-biz-input{box-sizing:border-box;width:100%;}
+.office-biz-schedule-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;}
+.office-biz-schedule-form .themed-select-wrap{width:100%;min-width:0;}
+.office-biz-schedule-form .office-biz-input{box-sizing:border-box;width:100%;min-width:0;}
+.office-biz-schedule-form .office-integration-action{grid-column:1 / -1;justify-self:start;width:auto;min-height:30px;padding:0 11px;}
+@media (max-width:1000px){.office-biz-cards{grid-template-columns:minmax(0,1fr);}}
+@media (max-width:640px){.office-biz-business{flex:1 1 0;width:auto;min-width:0;}.office-biz-filter{order:2;flex:1 1 100%;}.office-biz-business .themed-select-wrap{flex:1;max-width:none;}.office-biz-schedule-form{grid-template-columns:minmax(0,1fr);}}
+
+/* Office page buttons are icon only. */
+.office-page-nav-btn{justify-content:center;}
+/* Board and List are icon only, so the search box starts further left. */
+.work-hub-view-switch > button{box-sizing:border-box;justify-content:center;width:30px;padding:0;}
+.work-hub-view-switch > button svg{flex:none;}
+/* Notes: an empty list says so in the middle of the panel. */
+.nb-list{position:relative;}
+.nb-empty.nb-list-empty{position:absolute;inset:0;justify-content:center;padding:0 16px;pointer-events:none;}
+
+/* Work Hub, Notes and Office: requested nudges for Zeus 2.0. Half pixels show on
+   2x screens; at 1x text snaps to a whole pixel. */
+:root[data-skin="zeus-2"] .project-folder-sessions .session-item .session-title{top:1.5px;}
+:root[data-skin="zeus-2"] #workHubSidebar .work-hub-board-row > button:first-child span{top:0;}
+:root[data-skin="zeus-2"] #notebookSidebar .nb-tree-note > button > span{position:relative;top:1px;}
+:root[data-skin="zeus-2"] #officeProjectFolders .office-session-title{top:0;}
+:root[data-skin="zeus-2"] .work-hub-view-switch > button svg{translate:0 .5px;}
+:root[data-skin="zeus-2"] #workHubSidebar .work-hub-scope[data-scope="inbox"] svg{top:0;}
+:root[data-skin="zeus-2"] #workHubSidebar .work-hub-scope-mark--all{translate:none;}
+:root[data-skin="zeus-2"] .work-hub-create-menu > button{padding-top:7.5px;padding-bottom:6.5px;}
+:root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope:is([data-nb-scope="general"],[data-nb-scope="pinned"],[data-nb-scope="favorites"]) > svg{translate:0 .5px;}
+:root[data-skin="zeus-2"] .nb-search input{position:relative;top:-.5px;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="all"] > svg{top:0;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="all"] > span:not(.nb-scope-count){top:0;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="general"] > svg{translate:0 .5px;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="general"] > span:not(.nb-scope-count){top:-.5px;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-scope:is([data-nb-scope="all"],[data-nb-scope="general"]) > .nb-scope-count{top:-1px;}
+:root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :not(.dm-x){position:relative;top:.5px;}
+/* With no label to sit level with, the Office page icons centre in their buttons. */
+:root[data-skin="zeus-2"] .office-page-nav-image{top:0;}
+:root[data-skin="zeus-2"] #officeSearch{padding-top:6.5px;padding-bottom:7.5px;}
+:root[data-skin="zeus-2"] #officeSessionList .office-session-title{top:.5px;}
+:root[data-skin="zeus-2"] #officeSessionList .office-session-meta{top:-.5px;}
+:root[data-skin="zeus-2"] .office-tasks-title-group{position:relative;top:.5px;}
+:root[data-skin="zeus-2"] .office-tasks-filter{padding-top:3.5px;padding-bottom:4.5px;}
+:root[data-skin="zeus-2"] .office-dashboard-metric > *{top:-.5px;}
+:root[data-skin="zeus-2"] .office-subview-head > h1{position:relative;top:.5px;}
+:root[data-skin="zeus-2"] .office-biz-floors :is(.office-biz-provider-text,.office-integration-status){position:relative;top:-.5px;}

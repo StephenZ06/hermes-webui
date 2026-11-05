@@ -66,7 +66,7 @@ def test_the_side_panel_narrows_in_laptop_windows(page, w, expected):
     assert abs(width - expected) < 0.5, width
 
 
-def test_office_page_buttons_keep_their_labels_inside_a_narrow_side_panel(page):
+def test_office_page_buttons_stay_inside_a_narrow_side_panel(page):
     _open(page, 1280, 720)
     page.evaluate("async () => { await switchPanel('office'); }")
     page.wait_for_selector(".office-page-nav-btn", timeout=15000)

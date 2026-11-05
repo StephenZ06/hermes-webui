@@ -19,6 +19,11 @@ const TASK_LABELS = {
   created: 'Created', queued: 'Queued', assigned: 'Assigned', running: 'Running', waiting_dependency: 'Waiting on a task',
   waiting_approval: 'Waiting for approval', completed: 'Completed', failed: 'Failed', cancelled: 'Cancelled',
 };
+const CARD_ART = {
+  approvals: 'office/icons/recent-completions-64', tasks: 'office/icons/active-work-88', audit: 'office/icons/completed-88',
+  limits: 'office/icons/work-distribution-64', stop: 'office/icons/needs-attention-88', schedules: 'job-os/icons/schedule-80',
+  secrets: 'office/icons/integration-health-64',
+};
 const VAULT_FLAGS = [['can_search', 'Search'], ['can_read', 'Read'], ['can_create', 'Create'], ['can_edit', 'Edit']];
 const BUSINESS_KEY = 'hermes-office-business';
 const POLL_MS = 4000;
@@ -91,7 +96,9 @@ async function loadAudit() {
 }
 
 function statusBadge(status) {
-  const tone = status === 'connected' ? ' is-connected' : ['degraded', 'unauthorized', 'unavailable'].includes(status) ? ' is-warning' : '';
+  const tone = status === 'connected' ? ' is-connected'
+    : ['degraded', 'unauthorized', 'unavailable'].includes(status) ? ' is-warning'
+      : status === 'planned' ? ' is-planned' : status === 'not_configured' ? ' is-setup' : status === 'configured' ? ' is-ready' : '';
   return `<span class="office-integration-status${tone}">${_ctx.esc(STATUS_LABELS[status] || status)}</span>`;
 }
 
@@ -108,6 +115,12 @@ function providerRow(provider) {
   return `<li class="office-biz-provider${provider.state === 'planned' ? ' is-planned' : ''}">
     <span class="office-biz-provider-text"><strong>${esc(provider.name)}</strong><small>${esc(provider.account || provider.purpose)}</small></span>
     ${statusBadge(provider.status)}${providerAction(provider)}</li>`;
+}
+
+function cardHead(art, title, note, extra = '') {
+  const esc = _ctx.esc;
+  return `<div class="office-integration-card-head"><span class="office-integration-provider-icon"><img src="/static/${CARD_ART[art]}.webp" alt="" aria-hidden="true"></span>
+    <span class="office-biz-card-title"><h2>${esc(title)}</h2><p>${esc(note)}</p></span>${extra}</div>`;
 }
 
 function floorSummary(rows) {
@@ -130,21 +143,24 @@ function floorsView() {
       <span><h2>${FLOOR_NAMES[floor]}</h2><p>${_ctx.esc(floorSummary(all))}${open ? `, ${open} active` : ''}</p></span></div>
       <ul class="office-biz-providers">${rows.map(providerRow).join('')}</ul></article>`;
   }).join('');
-  return `<div class="office-biz-filter"><input type="search" class="office-biz-input" data-biz-input="filter" placeholder="Filter providers" aria-label="Filter providers" value="${_ctx.esc(_filter)}"></div>
-    <section class="office-integrations-grid">${cards || '<p class="office-biz-empty">No provider matches that filter.</p>'}</section>`;
+  return `<section class="office-integrations-grid office-biz-floors">${cards || '<p class="office-biz-empty">No provider matches that filter.</p>'}</section>`;
 }
 
 function approvalsView() {
   const esc = _ctx.esc;
   const rows = _data.pending_approvals;
-  if (!rows.length) return '<p class="office-biz-empty">Nothing is waiting for your approval.</p>';
-  return `<div class="office-biz-list">${rows.map(row => `<article class="office-biz-approval">
-    <header><strong>${esc(row.capability_id)}</strong><span>${esc(RISK_LABELS[row.risk] || row.risk)}</span></header>
-    <dl><dt>Business</dt><dd>${esc(_data.business.name)}</dd><dt>Agent</dt><dd>${esc(AGENT_NAMES[row.agent_id] || row.agent_id)}</dd>
-    <dt>Target</dt><dd>${esc(row.target || 'None')}</dd><dt>Expires</dt><dd>${esc(when(row.expires_at))}</dd></dl>
+  if (!rows.length) {
+    return `<section class="office-biz-cards"><article class="office-integration-card office-biz-card is-wide">
+      ${cardHead('approvals', 'Approvals', '0 waiting')}
+      <p class="office-biz-empty">Nothing is waiting for your approval.</p></article></section>`;
+  }
+  return `<section class="office-biz-cards">${rows.map(row => `<article class="office-integration-card office-biz-card office-biz-approval">
+    ${cardHead('approvals', row.capability_id, `Expires ${when(row.expires_at)}`, `<span class="office-integration-status is-setup">${esc(RISK_LABELS[row.risk] || row.risk)}</span>`)}
+    <div class="office-biz-card-body"><dl><dt>Business</dt><dd>${esc(_data.business.name)}</dd><dt>Agent</dt><dd>${esc(AGENT_NAMES[row.agent_id] || row.agent_id)}</dd>
+    <dt>Target</dt><dd>${esc(row.target || 'None')}</dd></dl>
     <pre class="office-biz-payload">${esc(JSON.stringify(row.payload, null, 2))}</pre>
     <div class="office-biz-actions"><button type="button" class="office-integration-action is-primary" data-biz="approve" data-id="${esc(row.id)}">Approve</button>
-    <button type="button" class="office-integration-action" data-biz="reject" data-id="${esc(row.id)}">Reject</button></div></article>`).join('')}</div>`;
+    <button type="button" class="office-integration-action" data-biz="reject" data-id="${esc(row.id)}">Reject</button></div></div></article>`).join('')}</section>`;
 }
 
 function auditSelect(key, label, options) {
@@ -159,15 +175,18 @@ function activityView() {
     <span class="office-integration-status${task.status === 'failed' ? ' is-warning' : task.status === 'completed' ? ' is-connected' : ''}">${esc(TASK_LABELS[task.status] || task.status)}</span>
     ${['queued', 'waiting_dependency', 'waiting_approval'].includes(task.status) ? `<button type="button" class="office-integration-action" data-biz="cancel" data-id="${esc(task.id)}">Cancel</button>` : ''}</li>`).join('');
   const audit = _audit.map(row => `<tr><td>${esc(when(row.ts))}</td><td>${esc(row.actor)}</td><td>${esc(row.capability_id || row.provider || '')}</td><td>${esc(row.target)}</td><td>${esc(row.decision)}</td><td>${esc(row.outcome)}</td></tr>`).join('');
-  return `<h2 class="office-biz-heading">Tasks</h2>
-    ${tasks ? `<ul class="office-biz-providers office-biz-tasks">${tasks}</ul>` : '<p class="office-biz-empty">No tasks yet for this business.</p>'}
-    <h2 class="office-biz-heading">Audit log</h2>
-    <div class="office-biz-toolbar-row">
+  const taskCount = Math.min(_data.tasks.length, 20);
+  return `<section class="office-biz-cards"><article class="office-integration-card office-biz-card is-wide">
+    ${cardHead('tasks', 'Tasks', `${taskCount} recent`)}
+    ${tasks ? `<ul class="office-biz-providers office-biz-tasks">${tasks}</ul>` : '<p class="office-biz-empty">No tasks yet for this business.</p>'}</article>
+    <article class="office-integration-card office-biz-card is-wide">
+    ${cardHead('audit', 'Audit log', `${_audit.length} ${_audit.length === 1 ? 'entry' : 'entries'}`)}
+    <div class="office-biz-card-body"><div class="office-biz-toolbar-row">
       ${auditSelect('agent', 'All agents', _data.agents.map(id => [id, AGENT_NAMES[id]]))}
       ${auditSelect('provider', 'All providers', _data.providers.filter(row => row.state === 'adapter').map(row => [row.id, row.name]))}
       ${auditSelect('outcome', 'All outcomes', [['ok', 'Succeeded'], ['denied', 'Denied'], ['uncertain', 'Uncertain'], ['failed', 'Failed']])}
     </div>
-    ${audit ? `<div class="office-biz-table-wrap"><table class="office-biz-table"><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Decision</th><th>Outcome</th></tr></thead><tbody>${audit}</tbody></table></div>` : '<p class="office-biz-empty">No matching activity.</p>'}`;
+    ${audit ? `<div class="office-biz-table-wrap"><table class="office-biz-table"><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Decision</th><th>Outcome</th></tr></thead><tbody>${audit}</tbody></table></div>` : '<p class="office-biz-empty">No matching activity.</p>'}</div></article></section>`;
 }
 
 function settingsView() {
@@ -175,25 +194,27 @@ function settingsView() {
   const business = _data.business;
   const limits = [['max_parallel', 'Tasks at once'], ['max_parallel_per_agent', 'Per agent'], ['max_parallel_per_provider', 'Per provider']];
   const readCaps = _data.providers.flatMap(row => row.capabilities).filter(item => item.risk === 'read' && !item.inputs.some(input => input.required && input.name !== 'query'));
-  return `<div class="office-biz-settings">
-    <section><h2 class="office-biz-heading">Limits</h2><div class="office-biz-toolbar-row">
+  const pausedCount = (business.paused ? 1 : 0) + business.paused_agents.length;
+  return `<section class="office-biz-cards office-biz-settings">
+    <article class="office-integration-card office-biz-card">${cardHead('limits', 'Limits', 'Work running at the same time')}<div class="office-biz-card-body"><div class="office-biz-limits">
       ${limits.map(([key, label]) => `<label class="office-biz-field"><span>${label}</span><input class="office-biz-input" type="number" min="1" max="10" value="${esc(business.settings[key])}" data-biz-input="limit" data-key="${key}"></label>`).join('')}
-    </div></section>
-    <section><h2 class="office-biz-heading">Emergency stop</h2>
-      <p class="office-biz-note">A paused agent starts nothing new. Work already waiting stays in the queue.</p>
+    </div></div></article>
+    <article class="office-integration-card office-biz-card">${cardHead('secrets', 'Secrets', _data.key_source === 'env' ? 'Key from the server environment' : 'Key file in the state folder')}
+      <div class="office-biz-card-body"><p class="office-biz-note">${_data.key_source === 'env' ? 'Tokens are encrypted with a key from the server environment.' : 'Tokens are encrypted with a key file in the WebUI state folder. Set HERMES_BUSINESS_OFFICE_KEY to keep the key apart from the data.'}</p></div></article>
+    <article class="office-integration-card office-biz-card">${cardHead('stop', 'Emergency stop', pausedCount ? `${pausedCount} paused` : 'Nothing paused')}
+      <div class="office-biz-card-body"><p class="office-biz-note">A paused agent starts nothing new. Work already waiting stays in the queue.</p>
       <ul class="office-biz-providers">${[['', 'Whole business', business.paused], ..._data.agents.map(id => [id, AGENT_NAMES[id], business.paused_agents.includes(id)])].map(([id, label, paused]) => `<li><span class="office-biz-provider-text"><strong>${esc(label)}</strong></span>${paused ? '<span class="office-integration-status is-warning">Paused</span>' : ''}
-        <button type="button" class="office-integration-action" data-biz="pause" data-agent="${esc(id)}" data-paused="${paused ? '0' : '1'}">${paused ? 'Resume' : 'Pause'}</button></li>`).join('')}</ul></section>
-    <section><h2 class="office-biz-heading">Schedules</h2>
-      <p class="office-biz-note">Only read actions can run on a schedule.</p>
+        <button type="button" class="office-integration-action" data-biz="pause" data-agent="${esc(id)}" data-paused="${paused ? '0' : '1'}">${paused ? 'Resume' : 'Pause'}</button></li>`).join('')}</ul></div></article>
+    <article class="office-integration-card office-biz-card">${cardHead('schedules', 'Schedules', `${_data.schedules.length} ${_data.schedules.length === 1 ? 'schedule' : 'schedules'}`)}
+      <div class="office-biz-card-body"><p class="office-biz-note">Only read actions can run on a schedule.</p>
       ${_data.schedules.length ? `<ul class="office-biz-providers">${_data.schedules.map(row => `<li><span class="office-biz-provider-text"><strong>${esc(row.name)}</strong><small>Every ${esc(row.every_minutes)} minutes, next ${esc(when(row.next_run_at))}</small></span><button type="button" class="office-integration-action" data-biz="schedule-delete" data-id="${esc(row.id)}">Remove</button></li>`).join('')}</ul>` : ''}
-      <form class="office-biz-toolbar-row" data-biz-form="schedule">
+      <form class="office-biz-schedule-form" data-biz-form="schedule">
         <input class="office-biz-input" name="name" placeholder="Name" aria-label="Schedule name" required>
         <select class="office-biz-input" name="capability_id" aria-label="Action">${readCaps.map(item => `<option value="${esc(item.id)}">${esc(item.id)}</option>`).join('')}</select>
         <input class="office-biz-input" name="query" placeholder="Search text, if needed" aria-label="Search text">
         <input class="office-biz-input" name="every_minutes" type="number" min="5" max="10080" value="60" aria-label="Minutes between runs">
-        <button type="submit" class="office-integration-action">Add schedule</button></form></section>
-    <section><h2 class="office-biz-heading">Secrets</h2><p class="office-biz-note">${_data.key_source === 'env' ? 'Tokens are encrypted with a key from the server environment.' : 'Tokens are encrypted with a key file in the WebUI state folder. Set HERMES_BUSINESS_OFFICE_KEY to keep the key apart from the data.'}</p></section>
-  </div>`;
+        <button type="submit" class="office-integration-action">Add schedule</button></form></div></article>
+  </section>`;
 }
 
 function credentialForm(provider) {
@@ -290,9 +311,23 @@ function toolbar() {
   return `<div class="office-biz-toolbar"><label class="office-biz-business"><span>Business</span>
       <select class="office-biz-input" data-biz-input="business">${_data.businesses.map(row => `<option value="${esc(row.id)}"${row.id === business.id ? ' selected' : ''}>${esc(row.name)}</option>`).join('')}</select></label>
     ${_creating ? '<form class="office-biz-inline" data-biz-form="business"><input class="office-biz-input" name="name" maxlength="80" placeholder="Business name" aria-label="Business name" required><button type="submit" class="office-integration-action">Add</button></form>' : ''}
-    <button type="button" class="office-integration-action" data-biz="new-business">${_creating ? 'Cancel' : 'New business'}</button>
+    <button type="button" class="work-hub-create work-hub-icon-button office-biz-add" data-biz="new-business" aria-label="${_creating ? 'Cancel new business' : 'New business'}">${_ctx.icon(_creating ? 'close' : 'plus')}</button>
+    ${_tab === 'floors' ? `<label class="office-biz-filter">${_ctx.icon('filter')}<input type="search" data-biz-input="filter" placeholder="Filter providers" aria-label="Filter providers" value="${esc(_filter)}"></label>` : ''}
     ${business.paused ? '<span class="office-integration-status is-warning">Paused</span>' : ''}
-    <div class="office-biz-tabs" role="tablist">${tabs.map(([key, label]) => `<button type="button" role="tab" aria-selected="${_tab === key}" class="office-biz-tab${_tab === key ? ' is-active' : ''}" data-biz="tab" data-tab="${key}">${esc(label)}</button>`).join('')}</div></div>`;
+    <div class="office-biz-tabs" role="tablist" data-mi-tabs>${tabs.map(([key, label]) => `<button type="button" role="tab" aria-selected="${_tab === key}" class="office-biz-tab${_tab === key ? ' is-active' : ''}" data-biz="tab" data-tab="${key}">${esc(label)}</button>`).join('')}</div></div>`;
+}
+
+function adoptTabs(root, kept) {
+  const fresh = root.querySelector('.office-biz-tabs');
+  if (!kept || !fresh) return fresh;
+  [...fresh.children].forEach(tab => {
+    const old = kept.querySelector(`[data-tab="${tab.dataset.tab}"]`);
+    old.textContent = tab.textContent;
+    old.className = tab.className;
+    old.setAttribute('aria-selected', tab.getAttribute('aria-selected'));
+  });
+  fresh.replaceWith(kept);
+  return kept;
 }
 
 function render() {
@@ -315,7 +350,11 @@ function render() {
   const caret = filterFocused ? active.selectionStart : 0;
   root._bizForce = false;
   root._officeIntegrationsHtml = html;
+  // The tabs survive the repaint, so their pill slides to the new tab.
+  const keptTabs = root.querySelector('.office-biz-tabs');
   root.innerHTML = html;
+  const tabs = adoptTabs(root, keptTabs);
+  if (window.Micro && tabs) window.Micro.tabs(tabs);
   const nextBody = root.querySelector('.office-biz-drawer-body');
   if (nextBody) nextBody.scrollTop = scroll;
   if (filterFocused) {
@@ -395,7 +434,7 @@ const FORMS = {
 };
 
 const ACTIONS = {
-  tab: el => { _tab = el.dataset.tab; refresh(); },
+  tab: el => { _tab = el.dataset.tab; render(); refresh(); },
   open: el => {
     _drawer = el.dataset.provider; _matrixAgent = ''; _try = {};
     render();
