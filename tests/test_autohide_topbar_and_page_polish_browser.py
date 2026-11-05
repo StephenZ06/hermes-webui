@@ -184,13 +184,13 @@ def test_side_menu_labels_centre_on_the_row_without_offsets(page):
     assert state["trim"] == "trim-both", state
 
 
-def test_view_live_is_regular_weight_and_status_pill_text_is_centred(page):
+def test_view_live_is_bold_and_status_pill_text_is_centred(page):
     state = page.evaluate("""() => { const h = document.createElement('div'); h.className = 'office-header';
       h.innerHTML = '<span class="office-pill">IDLE</span><button id="officePauseBtn" class="office-header-btn">View live</button>';
       document.body.append(h); const b = getComputedStyle(h.querySelector('button')), p = getComputedStyle(h.querySelector('span'));
       const out = {weight: b.fontWeight, btn: [b.paddingTop, b.paddingBottom], pill: [p.paddingTop, p.paddingBottom], case: b.textTransform};
       h.remove(); return out; }""")
-    assert state == {"weight": "400", "btn": ["2px", "2px"], "pill": ["3px", "3px"], "case": "uppercase"}
+    assert state == {"weight": "700", "btn": ["2px", "2px"], "pill": ["3px", "3px"], "case": "uppercase"}
 
 
 def test_every_suggestion_icon_sits_one_pixel_low(page):

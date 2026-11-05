@@ -15821,7 +15821,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
    Header: the status pill and the Projects/Business labels sat 1px low in
    their boxes and "View live" 1px high; the eye and magnifier draw at 16px
    so they land on whole pixels in their 28px buttons. */
-.office-header > .office-pill,.office-header > .office-outlet .office-outlet-btn{padding-bottom:2px;}
+.office-header > .office-pill{padding-bottom:2px;}
 .office-header > #officePauseBtn{padding-top:2px;}
 @media (max-width:640px){.office-header > #officePauseBtn{padding-top:1px;}}
 .office-labels-btn svg{width:16px;height:16px;}
@@ -16560,7 +16560,7 @@ textarea.office-biz-input{resize:vertical;}
 .work-hub-inspector .wh-insp-delete:not(.mi-armed){justify-content:center;width:34px;height:34px;padding:0;}
 /* Office header: View live is regular weight in capitals, and it and the
    status pill share even padding. */
-.office-header > #officePauseBtn{font-weight:400;text-transform:uppercase;}
+.office-header > #officePauseBtn{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
 @media (min-width:641px){
   .office-header > #officePauseBtn{padding-top:2px;padding-bottom:2px;}
   .office-header > .office-pill{padding-top:3px;padding-bottom:3px;}
@@ -16683,3 +16683,17 @@ textarea.office-biz-input{resize:vertical;}
   :is(.page-loader,.nb-page-loader) :is(.page-loader-label,.nb-page-loader-label){animation:pl-rest 2.4s ease-in-out infinite;}
   @keyframes pl-rest{50%{opacity:.55;}}
 }
+
+/* Notes and Office alignment. */
+:root[data-skin="zeus-2"] .nb-obsidian-scope svg{top:0;}
+:root[data-skin="zeus-2"] .nb-place-select .themed-select-trigger-label{position:relative;top:-1px;}
+:root[data-skin="zeus-2"] #officeSessionList .office-session-title{top:0;}
+:root[data-skin="zeus-2"] .office-page-nav-image{position:relative;top:1px;}
+/* The stat moves up as a whole and its dot moves back, so only the text shifts. */
+:root[data-skin="zeus-2"] .office-dept-card-stat{position:relative;top:-1px;}
+:root[data-skin="zeus-2"] .office-dept-card-stat::before{position:relative;top:1px;}
+.office-tasks-row-select{align-items:center;}
+.office-tasks-row-status{margin-top:0;}
+/* A note's place list: section names centred between two divider lines. */
+.themed-select-popup.is-sectioned .themed-select-group-label,.nb-pick-label{display:flex;align-items:center;gap:10px;margin:8px 0;padding:0 8px;font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.themed-select-popup.is-sectioned .themed-select-group-label::before,.themed-select-popup.is-sectioned .themed-select-group-label::after,.nb-pick-label::before,.nb-pick-label::after{content:"";flex:1;height:1px;background:var(--border);}

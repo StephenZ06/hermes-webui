@@ -99,6 +99,8 @@
     popup.className = 'themed-select-popup';
     // Dashboard selects keep the dashboard's pixel type in their option list.
     if (trigger.closest('.dash, .dash-picker')) popup.classList.add('is-dash');
+    // A note's place list groups workspaces and folders under divided headings.
+    if (trigger.closest('.nb-place-select')) popup.classList.add('is-sectioned');
     popup.setAttribute('role', 'listbox');
     var optionEls = [];
     var highlightedIndex = -1;
