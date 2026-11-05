@@ -1669,7 +1669,6 @@ function renderSummary(state) {
 
 function renderPauseButton() {
   if (!_pauseBtnEl) return;
-  _pauseBtnEl.textContent = 'View live';
   _pauseBtnEl.classList.remove('is-paused');
   _pauseBtnEl.hidden = false;
 }
@@ -2603,7 +2602,7 @@ function mount(container) {
       <button type="button" class="office-header-btn office-labels-btn" id="officeLabelScaleBtn" aria-label="Use fixed platform label size" aria-pressed="true" title="Use fixed platform label size"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5M8 8l2.5-2.5L13 8M10.5 5.5V11"/></svg></button>
       <button type="button" class="office-header-btn office-labels-btn" id="officeLabelsBtn" aria-label="Toggle platform labels" aria-pressed="true" title="Toggle platform labels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>
       <button type="button" class="office-header-btn" id="officeBackBtn" hidden>Back to live</button>
-      <button type="button" class="office-header-btn" id="officePauseBtn">View live</button>
+      <button type="button" class="office-header-btn" id="officePauseBtn"><span>View live</span></button>
       <span class="office-outlet" role="group" aria-label="Floor plan">
         <button type="button" class="office-outlet-btn" data-outlet="projects">Projects</button>
         <button type="button" class="office-outlet-btn" data-outlet="business">Business</button>

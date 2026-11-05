@@ -642,10 +642,10 @@
   }
   function placeOptions(note) {
     const current = note.project_id ? 'p:' + note.project_id : note.folder_id ? 'f:' + note.folder_id : 'general';
-    const option = (value, label) => `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
-    return option('general', 'General')
-      + (S.projects.length ? `<optgroup label="Workspaces">${S.projects.map((p) => option('p:' + p.project_id, p.name)).join('')}</optgroup>` : '')
-      + (S.folders.length ? `<optgroup label="Folders">${S.folders.map((f) => option('f:' + f.id, f.name)).join('')}</optgroup>` : '');
+    const option = (value, label, color) => `<option value="${esc(value)}" data-color="${esc(color)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
+    return option('general', 'General', 'var(--muted)')
+      + (S.projects.length ? `<optgroup label="Workspaces">${S.projects.map((p) => option('p:' + p.project_id, p.name, p.color || 'var(--accent)')).join('')}</optgroup>` : '')
+      + (S.folders.length ? `<optgroup label="Folders">${S.folders.map((f) => option('f:' + f.id, f.name, f.color || 'var(--muted)')).join('')}</optgroup>` : '');
   }
   function renderEditorHeadPersistent() {
     const head = $('nbEditorHead');

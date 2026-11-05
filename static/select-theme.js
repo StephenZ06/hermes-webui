@@ -117,7 +117,19 @@
       row.className = 'themed-select-option' + (opt.selected ? ' selected' : '') + (opt.disabled ? ' disabled' : '');
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
-      row.textContent = opt.textContent;
+      if (opt.dataset.color) {
+        var dot = document.createElement('span');
+        dot.className = 'color-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        dot.style.background = opt.dataset.color;
+        var name = document.createElement('span');
+        name.className = 'themed-select-option-name';
+        name.textContent = opt.textContent;
+        row.classList.add('has-dot');
+        row.append(dot, name);
+      } else {
+        row.textContent = opt.textContent;
+      }
       if (opt.selected) highlightedIndex = optionEls.length;
       if (!opt.disabled) {
         row.addEventListener('mousedown', function (e) {

@@ -10,6 +10,9 @@ from tests._pytest_port import BASE
 
 READY = "() => typeof S !== 'undefined' && S._bootReady === true"
 TOP = "(s) => getComputedStyle(document.querySelector(s)).top"
+# Text snaps to whole pixels unless it has its own layer, so a half pixel needs both.
+HALF_PIXEL = """(s) => { const c = getComputedStyle(document.querySelector(s));
+  return {top: c.top, translate: c.translate, layer: c.willChange}; }"""
 
 
 def _api(path, body=None):
@@ -75,10 +78,28 @@ def test_obsidian_notes_icon_drops_to_its_resting_line(page):
 def test_place_picker_label_lifts_and_its_list_has_centred_divided_sections(page):
     _notes_with_a_note(page)
     _open_note(page)
-    assert page.evaluate(TOP, ".nb-place-select .themed-select-trigger-label") == "-1px"
+    label = page.evaluate(HALF_PIXEL, ".nb-place-select .themed-select-trigger-label")
+    assert label == {"top": "auto", "translate": "0px -0.5px", "layer": "transform"}
     page.click(".nb-place-select .themed-select-trigger")
     page.wait_for_selector(".themed-select-popup .themed-select-group-label")
     _assert_sections(page.evaluate(SECTION_GAPS, ".themed-select-popup .themed-select-group-label"))
+
+
+def test_place_picker_rows_show_each_place_colour(page):
+    _notes_with_a_note(page)
+    _open_note(page)
+    project = _api("/api/notebook/bootstrap")["projects"][-1]
+    page.click(".nb-place-select .themed-select-trigger")
+    page.wait_for_selector(".themed-select-popup .themed-select-option .color-dot")
+    rows = page.evaluate("""() => [...document.querySelectorAll('.themed-select-popup .themed-select-option')].map(row => {
+      const dot = row.querySelector('.color-dot'), box = row.getBoundingClientRect(), mark = dot.getBoundingClientRect();
+      return {name: row.textContent, colour: dot.style.background, gaps: [mark.top - box.top, box.bottom - mark.bottom], round: getComputedStyle(dot).borderRadius, size: mark.width}; })""")
+    assert rows[0]["name"] == "General"
+    match = next(row for row in rows if row["name"] == project["name"])
+    assert page.evaluate("""(c) => { const a = document.createElement('i'), b = document.createElement('i'); a.style.color = c[0]; b.style.color = c[1];
+      document.body.append(a, b); const same = getComputedStyle(a).color === getComputedStyle(b).color; a.remove(); b.remove(); return same; }""", [match["colour"], project["color"]])
+    for row in rows:
+        assert row["size"] == 7 and row["round"] == "50%" and abs(row["gaps"][0] - row["gaps"][1]) <= 0.5
 
 
 def test_new_note_place_list_matches_the_picker(page):
@@ -117,6 +138,18 @@ def test_view_live_text_matches_the_idle_pill_in_bold(page):
     state = page.evaluate("""() => ['#officePauseBtn', '#officePill'].map(s => { const c = getComputedStyle(document.querySelector(s));
       return [c.fontSize, c.fontWeight, c.letterSpacing]; })""")
     assert state[0] == state[1] == ["10px", "700", "0.8px"]
+
+
+def test_view_live_text_lifts_half_a_pixel_without_its_button(page):
+    _office(page)
+    state = page.evaluate("""() => { const b = document.getElementById('officePauseBtn'), label = b.querySelector('span'), c = label && getComputedStyle(label);
+      return [b.textContent, getComputedStyle(b).translate, c && c.translate, c && c.willChange]; }""")
+    assert state == ["View live", "none", "0px -0.5px", "transform"]
+
+
+def test_task_status_icon_drops_half_a_pixel(page):
+    _office(page)
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.office-tasks-title-icon')).translate") == "0px 0.5px"
 
 
 def test_floor_plan_toggle_text_drops_one_pixel(page):

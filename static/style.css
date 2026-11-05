@@ -16686,7 +16686,11 @@ textarea.office-biz-input{resize:vertical;}
 
 /* Notes and Office alignment. */
 :root[data-skin="zeus-2"] .nb-obsidian-scope svg{top:0;}
-:root[data-skin="zeus-2"] .nb-place-select .themed-select-trigger-label{position:relative;top:-1px;}
+/* Text snaps to whole pixels unless it has its own layer, so these half-pixel
+   moves carry will-change. An SVG icon moves by a half pixel without one. */
+:root[data-skin="zeus-2"] .nb-place-select .themed-select-trigger-label{translate:0 -.5px;will-change:transform;}
+:root[data-skin="zeus-2"] .office-header > #officePauseBtn > span{display:inline-block;translate:0 -.5px;will-change:transform;}
+:root[data-skin="zeus-2"] .office-tasks-title-icon{translate:0 .5px;}
 :root[data-skin="zeus-2"] #officeSessionList .office-session-title{top:0;}
 :root[data-skin="zeus-2"] .office-page-nav-image{position:relative;top:1px;}
 /* The stat moves up as a whole and its dot moves back, so only the text shifts. */
@@ -16697,3 +16701,6 @@ textarea.office-biz-input{resize:vertical;}
 /* A note's place list: section names centred between two divider lines. */
 .themed-select-popup.is-sectioned .themed-select-group-label,.nb-pick-label{display:flex;align-items:center;gap:10px;margin:8px 0;padding:0 8px;font-size:10px;font-weight:700;line-height:1;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
 .themed-select-popup.is-sectioned .themed-select-group-label::before,.themed-select-popup.is-sectioned .themed-select-group-label::after,.nb-pick-label::before,.nb-pick-label::after{content:"";flex:1;height:1px;background:var(--border);}
+.themed-select-option.has-dot{display:flex;align-items:center;gap:8px;}
+.themed-select-option.has-dot .color-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.themed-select-option-name{min-width:0;overflow:hidden;text-overflow:ellipsis;}
