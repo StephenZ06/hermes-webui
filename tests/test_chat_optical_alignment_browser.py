@@ -147,7 +147,8 @@ def test_suggestion_icons_share_their_labels_centre(browser, screen):
         selector = ".suggestion-grid > .suggestion:nth-child(2)"
         page.eval_on_selector(selector, """e => { e.lastChild.textContent = ' What is on the list'; }""")
         icon, text = _ink(page, selector, "icon"), _ink(page, selector, "text")
-        assert abs(_centre(icon) - _centre(text)) <= .5, (icon, text)
+        # The schedule icon carries a requested half-pixel drop.
+        assert abs(_centre(icon) - _centre(text)) <= 1, (icon, text)
     finally:
         context.close()
 
@@ -302,21 +303,57 @@ def test_folder_dot_keeps_its_gap_when_the_folder_opens(browser, screen):
         context.close()
 
 
-def test_folder_name_sits_half_a_pixel_above_its_old_place():
+@pytest.fixture
+def real_2x(browser):
     # Emulated scale snaps text to whole CSS pixels; a real 2x display, like a MacBook's, does not.
-    sync_api = pytest.importorskip("playwright.sync_api")
-    with sync_api.sync_playwright() as pw:
-        real = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
-                                        "--force-device-scale-factor=2", "--window-size=1470,1000"])
-        context, page = _open(real, {"no_viewport": True})
-        try:
-            assert page.evaluate("devicePixelRatio") == 2
-            _folder_row(page, "SaaS - Temani")
-            now = _ink(page, "#oaRow .project-folder-name", "text", within="#oaRow")
-            page.add_style_tag(content="#oaRow .project-folder-name{padding-block:5px 3px!important}")
-            page.wait_for_timeout(200)
-            old = _ink(page, "#oaRow .project-folder-name", "text", within="#oaRow")
-            assert old["top"] - now["top"] == .5, (old, now)
-        finally:
-            context.close()
-            real.close()
+    real = browser.browser_type.launch(args=["--no-sandbox", "--disable-dev-shm-usage",
+                                             "--force-device-scale-factor=2", "--window-size=1470,1000"])
+    context, page = _open(real, {"no_viewport": True})
+    assert page.evaluate("devicePixelRatio") == 2
+    yield page
+    context.close()
+    real.close()
+
+
+def _shift(page, selector, kind, reset, within=None):
+    """How far an element's ink sits below where it would be with `reset` applied."""
+    now = _ink(page, selector, kind, within=within)
+    handle = page.add_style_tag(content=f"{selector}{{{reset}}}")
+    page.wait_for_timeout(200)
+    old = _ink(page, selector, kind, within=within)
+    handle.evaluate("e => e.remove()")
+    return now["top"] - old["top"]
+
+
+def test_folder_name_sits_half_a_pixel_above_its_old_place(real_2x):
+    _folder_row(real_2x, "SaaS - Temani")
+    assert _shift(real_2x, "#oaRow .project-folder-name", "text",
+                  "padding-block:5px 3px!important", within="#oaRow") == -.5
+
+
+def test_session_titles_sit_half_a_pixel_lower(real_2x):
+    real_2x.evaluate("""() => {
+      const row = document.createElement('div');
+      row.className = 'session-item'; row.id = 'oaSession';
+      row.innerHTML = '<div class="session-text"><div class="session-title-row"><span class="session-title">Chat 23</span></div></div>';
+      document.getElementById('sessionList').prepend(row);
+    }""")
+    real_2x.wait_for_timeout(200)
+    assert _shift(real_2x, "#oaSession .session-title", "text", "top:0!important", within="#oaSession") == .5
+
+
+def test_plan_suggestion_text_sits_a_pixel_higher(real_2x):
+    selector = ".suggestion-grid > .suggestion:nth-child(3) > span"
+    assert _shift(real_2x, selector, "text", "top:0!important",
+                  within=".suggestion-grid > .suggestion:nth-child(3)") == -1
+
+
+@pytest.mark.parametrize("child, moved", [(1, .5), (2, .5), (3, 0)], ids=["files", "schedule", "plan"])
+def test_first_two_suggestion_icons_sit_half_a_pixel_lower(real_2x, child, moved):
+    selector = f".suggestion-grid > .suggestion:nth-child({child})"
+    now = _ink(real_2x, selector, "icon")
+    handle = real_2x.add_style_tag(content=f"{selector} > svg{{translate:none!important}}")
+    real_2x.wait_for_timeout(200)
+    old = _ink(real_2x, selector, "icon")
+    handle.evaluate("e => e.remove()")
+    assert abs(now["top"] - old["top"] - moved) <= .25, (now, old)

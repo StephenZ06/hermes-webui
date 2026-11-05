@@ -16884,3 +16884,7 @@ textarea.office-biz-input{resize:vertical;}
 #composerWsDropdown .ws-opt-action{min-height:54px;}
 :root[data-skin="zeus-2"] #composerWsDropdown .ws-search-input{padding-top:6px;padding-bottom:6px;}
 @media(max-width:640px){:root[data-skin="zeus-2"] #titlebarProfileLabel{position:relative;top:-1px;}}
+/* Chat page: requested nudges. Half pixels show on 2x screens; at 1x text snaps. */
+:root[data-skin="zeus-2"] .session-item .session-title{position:relative;top:.5px;}
+:root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(3) > span{position:relative;top:-1px;}
+:root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(-n+2) > svg{translate:0 .5px;}
