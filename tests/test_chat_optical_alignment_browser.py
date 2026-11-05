@@ -243,3 +243,60 @@ def test_phone_profile_label_shares_its_icons_centre(browser):
         assert abs(_centre(icon) - _centre(text)) <= .75, (icon, text)
     finally:
         context.close()
+
+
+def _diff_box(page, clip, css):
+    before = _shot(page, clip)
+    handle = page.add_style_tag(content=css)
+    after = _shot(page, clip)
+    handle.evaluate("e => e.remove()")
+    diff = ImageChops.difference(before, after).convert("L")
+    peak = diff.getextrema()[1]
+    assert peak > 0, css
+    left, _, right, _ = diff.point(lambda v: 255 if v >= max(24, peak * .4) else 0).getbbox()
+    scale = before.width / clip["width"]
+    return clip["x"] + left / scale, clip["x"] + right / scale
+
+
+def _folder_row(page, name, expanded=False):
+    page.evaluate("""([name, expanded]) => {
+      document.getElementById('oaHost')?.remove();
+      const host = document.createElement('div');
+      host.id = 'oaHost';
+      host.className = 'project-folder-list';
+      host.innerHTML = '<div class="project-chip project-folder-row" id="oaRow">'
+        + `<span class="project-folder-chevron${expanded ? ' expanded' : ''}">▸</span>`
+        + '<span class="project-folder-dot-slot"><span class="color-dot" style="background:#f5c542"></span></span>'
+        + '<span class="project-folder-name"></span><span class="project-folder-count">2</span></div>';
+      host.querySelector('.project-folder-name').textContent = name;
+      document.getElementById('sessionList').prepend(host);
+    }""", [name, expanded])
+    page.wait_for_timeout(200)
+    box = _rect(page, "#oaRow")
+    clip = {"x": int(box["x"]), "y": int(box["y"]), "width": int(box["width"]), "height": int(box["height"])}
+    _, arrow = _diff_box(page, clip, "#oaRow .project-folder-chevron{opacity:0!important}")
+    dot_left, dot_right = _diff_box(page, clip, "#oaRow .color-dot{opacity:0!important}")
+    text, _ = _diff_box(page, clip, "#oaRow .project-folder-name{-webkit-text-fill-color:transparent!important}")
+    return dot_left - arrow, text - dot_right
+
+
+@SCREENS
+@pytest.mark.parametrize("name", ["Triple S", "Cron Jobs"])
+def test_folder_dot_sits_midway_between_arrow_and_name(browser, screen, name):
+    context, page = _open(browser, screen)
+    try:
+        before, after = _folder_row(page, name)
+        assert abs(before - after) <= 1, (before, after)
+    finally:
+        context.close()
+
+
+@SCREENS
+def test_folder_dot_keeps_its_gap_when_the_folder_opens(browser, screen):
+    context, page = _open(browser, screen)
+    try:
+        closed, _ = _folder_row(page, "Cron Jobs")
+        opened, _ = _folder_row(page, "Triple S", expanded=True)
+        assert abs(closed - opened) <= .5, (closed, opened)
+    finally:
+        context.close()

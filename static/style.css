@@ -15281,7 +15281,7 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    optical correction to the name. */
 .project-folder-row{display:flex;align-items:center;}
 .project-folder-row > .project-folder-dot-slot{display:flex;align-items:center;justify-content:center;flex:none;width:10px;height:16px;}
-.project-folder-row .color-dot{display:block;}
+.project-folder-row .color-dot{display:block;translate:-1px 0;} /* midway between the arrow's ink and the name */
 .project-folder-row > :is(.project-folder-name,.project-folder-count){line-height:16px;}
 @supports (text-box:trim-both cap alphabetic){
   .project-folder-row > :is(.project-folder-name,.project-folder-count){padding-block:4px;text-box:trim-both cap alphabetic;}
@@ -15292,7 +15292,10 @@ body:has(main.main.showing-dashboard) :is(#btnWorkspacePanelEdgeToggle,.rightpan
    OS substitutes a different fallback font and the caret lands at a
    different height. A 6px-tall triangle centres exactly on the 16px box. */
 .project-folder-row > .project-folder-chevron{font-size:0;}
-.project-folder-row > .project-folder-chevron::before{content:"";border-left:4px solid currentColor;border-top:3px solid transparent;border-bottom:3px solid transparent;}
+.project-folder-row > .project-folder-chevron::before{content:"";border-left:4px solid currentColor;border-top:3px solid transparent;border-bottom:3px solid transparent;transition:translate .16s cubic-bezier(.2,.8,.2,1);}
+/* Turned 90deg, the caret's ink reaches 2px further right, so an open folder's dot
+   would sit closer to it than a closed one's. This offset is along the rotated axis. */
+.project-folder-row > .project-folder-chevron.expanded::before{translate:0 2px;}
 /* Zeus 2.0 chat sidebar: date-group headers drawn so the space from a header
    to its first chat equals the space from a group's last chat to the next
    header (27px cap to cap; rows sit 2px apart, hence 4px over 7px). */
