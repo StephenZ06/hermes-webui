@@ -244,7 +244,7 @@ def test_a_row_switched_off_keeps_its_fields_outline(settings):
 
 def _numbers(page):
     return page.evaluate("""() => [...document.querySelectorAll('.set-row .set-number')].map(n => { const r = e => e.getBoundingClientRect(); const input = n.querySelector('input'), em = n.querySelector('em');
-      const rows = n.closest('.set-rows'); return {setting: input.dataset.setting, left: r(input).left, right: r(input).right, em: '#' + (em.id = 'fx' + input.dataset.setting.replace(/\\W/g, '')), rows: r(rows).right, inputSel: 'input[data-setting="' + input.dataset.setting + '"]'}; })""")
+      const rows = n.closest('.set-group'); return {setting: input.dataset.setting, left: r(input).left, right: r(input).right, em: '#' + (em.id = 'fx' + input.dataset.setting.replace(/\\W/g, '')), rows: r(rows).right, inputSel: 'input[data-setting="' + input.dataset.setting + '"]'}; })""")
 
 
 def test_number_boxes_stand_in_one_column_and_each_unit_has_equal_room_either_side(settings):
@@ -258,7 +258,7 @@ def test_number_boxes_stand_in_one_column_and_each_unit_has_equal_room_either_si
             page.eval_on_selector(b["inputSel"], "e => e.scrollIntoView({block: 'center'})")
             page.wait_for_timeout(200)
             ink = _ink(page, b["em"], "text")
-            assert abs((ink["left"] - b["right"]) - (b["rows"] - ink["right"])) <= 2, (section, b, ink)  # (a colon's ink sits off the middle of its cell)
+            assert abs((ink["left"] - b["right"]) - (b["rows"] - ink["right"])) <= 2, (section, b, ink)  # (a colon's ink sits off the middle of its cell; the room to the right runs to the card's edge, as the ninth round has it)
 
 
 @pytest.mark.parametrize("section,setting", [("apify", "apify.results_per_city"), ("scout", "scout.max_results_per_search"), ("notifications", "notifications.min_fit_score"), ("notifications", "notifications.release_count")])

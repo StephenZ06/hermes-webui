@@ -16574,8 +16574,8 @@ textarea.office-biz-input{resize:vertical;}
 #workHubSidebar .work-hub-scope > span:last-child{translate:0 1px;}
 /* Office header controls sit on the page background too. */
 .office-header .office-header-btn,.office-header .office-pill:not(.is-live){background:var(--bg);}
-/* Work Hub sidepanel heading sits 1px lower. */
-#panelNotes > .panel-head > span{translate:0 1px;}
+/* Work Hub sidepanel heading sits 1px lower than the others (see the side panel titles block at the end). */
+#panelNotes > .panel-head > span{translate:0 1.5px;}
 /* Usage card: the outer dot lines up with the card's right edge. */
 .chat-usage-widget-title-row .chat-usage-widget-window-toggle{margin-right:-4px;}
 /* Side menu labels (Dashboard, Settings, Memory, Jobs): trimmed to capitals and
@@ -16598,7 +16598,8 @@ textarea.office-biz-input{resize:vertical;}
    selected job keeps its tint and the toggle keeps its hover colour. */
 #panelTasks .cron-item:not(.active),#cronList .cron-profile-toggle:not(:hover),#taskDetailBody :is(.detail-card,.detail-expand-toggle){background:var(--bg);}
 #cronList .cron-profile-toggle{padding-top:7px;padding-bottom:9px;}
-#panelTasks > .panel-head > span,#panelTasks > .panel-head .panel-head-btn svg{translate:0 1px;}
+#panelTasks > .panel-head > span{translate:0 1.5px;}
+#panelTasks > .panel-head .panel-head-btn svg{translate:0 1px;}
 /* Script card: the script name and the path hint sit 1px lower. */
 #taskDetailBody .cron-script-card .detail-script{padding-top:11px;padding-bottom:9px;}
 #taskDetailBody .cron-script-card-hint{translate:0 1px;}
@@ -17218,7 +17219,7 @@ textarea.office-biz-input{resize:vertical;}
   #jobOsRoot .settings-rail-title{display:flex;align-items:center;box-sizing:border-box;height:41px;margin:0 -8px;padding:0 16px;border-bottom:1px solid var(--border);color:var(--muted);font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
   .job-os-shell[data-view="settings"] .settings-nav-group{font-size:13px;}
   /* Under the title the first heading has the room the other two have above them. */
-  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:29px;}
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:18px;}
 }
 #jobOsRoot .settings-nav-icon{flex:0 0 30px;width:30px;height:30px;border-radius:0;background:none;}
 #jobOsRoot .settings-nav-item.active .settings-nav-icon{background:none;color:var(--accent-text,var(--accent));}
@@ -17258,3 +17259,31 @@ textarea.office-biz-input{resize:vertical;}
 .settings-page .set-row.is-off .set-row-control:not(:has(input[type="checkbox"])){opacity:1;}
 .settings-page .set-row.is-off:not(:focus-within) .set-row-control :is(.set-input,.themed-select-trigger){color:color-mix(in srgb,var(--text) 50%,transparent);}
 .settings-page .set-row.is-off:not(:focus-within) .set-number em{opacity:.5;}
+
+/* Jobs: round 9 */
+/* Side panel titles (Chat, Dashboard, Jobs …) read a little larger and 1px lower. Scheduled jobs and Work Hub
+   already sat 1px lower, so they sit 2px lower than they started. */
+.panel-view > .panel-head > span:first-child{font-size:12px;translate:0 .5px;}
+/* Jobs Settings section list: smaller icons, and the same room above and below every section. */
+#jobOsRoot .settings-nav-icon{flex:0 0 24px;width:24px;height:24px;}
+#jobOsRoot .settings-nav-icon>svg{width:24px;height:24px;}
+@media (min-width:761px){
+  /* A heading has the room above it that the section under it has below: the gap between one section and
+     the next, 18.5px, measured on the text. The first one is that far under the title too. */
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group{margin-top:8.2px;margin-bottom:8.2px;}
+  .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:16.5px;}
+}
+/* Number boxes: the unit is bold and has a column that runs out to the card's edge, so the room to the box
+   equals the room to the edge (the row's padding counts as the margin). */
+@media (min-width:761px){
+  .settings-page .set-row .set-number em{flex:0 0 calc(7ch + 56px);width:calc(7ch + 56px);margin-right:-20px;}
+}
+.settings-page .set-number em{font-weight:700;white-space:pre;}
+/* Replies: the status line sits level with its buttons, one row, no empty space under it. */
+.settings-page .set-group .set-group-foot .job-os-notify-status{flex-direction:row;}
+.settings-page .set-group .set-group-foot .job-os-notify-status>p{translate:0 1px;}
+/* Anything else to mention: the box runs out toward the card's edge, and the label has as much room below as above. */
+.settings-page .set-row.is-stack{gap:21px;}
+.settings-page .set-row.is-stack .set-row-control{margin-inline:-9px;}
+/* Check replies now and Check now (employer replies): the words sit 0.5px lower. */
+.settings-page .set-group .job-os-btn.small:is([data-job-os-action="notify-check"],[data-job-os-action="notify-outcomes"]){padding-top:1px;}

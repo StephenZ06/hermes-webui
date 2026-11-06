@@ -595,11 +595,11 @@
         switchRow('notifications.notify_new_matches', 'Email good matches', v('notifications.notify_new_matches'), 'One email per update, best first; the Scout page shows them either way', {off: !emailOn}),
         row('Good match from', 'Luna’s fit of your master resume: 75%+ is ready to apply, 65–74% has gaps tailoring can close.', numberCtl('notifications.min_fit_score', v('notifications.min_fit_score'), 0, 100, '%')),
         row('Update when this many are waiting', '', numberCtl('notifications.release_count', v('notifications.release_count'), 1, 50, 'matches'), {sub: true, off: !matchesOn}),
-        row('Or at the end of the day, at', '', numberCtl('notifications.release_cutoff_hour', v('notifications.release_cutoff_hour'), 0, 23, ':00'), {sub: true, off: !matchesOn}),
+        row('Or at the end of the day, at', '', numberCtl('notifications.release_cutoff_hour', v('notifications.release_cutoff_hour'), 0, 23, ':    00'), {sub: true, off: !matchesOn}),
       ])}
       ${group('Daily digest', [
         switchRow('notifications.daily_digest', 'Daily digest', v('notifications.daily_digest'), 'New finds, follow-ups and jobs closing soon', {off: !emailOn}),
-        row('Digest hour', '', numberCtl('notifications.digest_hour', v('notifications.digest_hour'), 0, 23, ':00'), {sub: true, off: !(emailOn && v('notifications.daily_digest'))}),
+        row('Digest hour', '', numberCtl('notifications.digest_hour', v('notifications.digest_hour'), 0, 23, ':    00'), {sub: true, off: !(emailOn && v('notifications.daily_digest'))}),
       ])}
       ${group('Replies', [
         switchRow('notifications.reply_actions', 'Act on replies', v('notifications.reply_actions'), 'Reply “TAILOR 1A2B3C4D” or “SKIP 1A2B3C4D” to an alert from the Send to address', {off: !emailOn}),
