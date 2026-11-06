@@ -16962,8 +16962,8 @@ textarea.office-biz-input{resize:vertical;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope[data-nb-scope="general"] > span:not(.nb-scope-count){top:-.5px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-scope:is([data-nb-scope="all"],[data-nb-scope="general"]) > .nb-scope-count{top:-1px;}
 :root[data-skin="zeus-2"] .nb-nav-vault .nb-place-btn > :not(.dm-x){position:relative;top:.5px;}
-/* With no label to sit level with, the Office page icons centre in their buttons, then drop half a pixel as asked. */
-:root[data-skin="zeus-2"] .office-page-nav-image{top:.5px;}
+/* With no label to sit level with, the Office page icons centre in their buttons, then drop a pixel in two half-pixel steps as asked. */
+:root[data-skin="zeus-2"] .office-page-nav-image{top:1px;}
 :root[data-skin="zeus-2"] #officeSearch{padding-top:6.5px;padding-bottom:7.5px;}
 :root[data-skin="zeus-2"] #officeSessionList .office-session-title{top:.5px;}
 :root[data-skin="zeus-2"] #officeSessionList .office-session-meta{top:-.5px;}
@@ -16991,8 +16991,9 @@ textarea.office-biz-input{resize:vertical;}
 :root[data-skin="zeus-2"] .suggestion-grid > .suggestion:nth-child(1) > svg{translate:0 1.5px;}
 :root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope:is([data-nb-scope="pinned"],[data-nb-scope="favorites"]) > span:not(.nb-scope-count){position:relative;top:-.5px;}
 :root[data-skin="zeus-2"] .nb-trash-scope > svg{translate:0 1px;}
-/* A configured model has no id line under it, so its bubble gets the same room above and below. */
-#composerModelDropdown .model-opt:not(:has(.model-opt-id)){padding-bottom:9px;}
+/* A configured model has no id line under it, so its bubble loses the room that line left below:
+   9px above, 6px below (it read a few pixels heavier underneath when both were 9px). */
+#composerModelDropdown .model-opt:not(:has(.model-opt-id)){padding-bottom:6px;}
 /* Integrations: the Business label reads at the size of the name beside it, and its list keeps
    one gap above, between and below the choices. */
 .office-biz-business{font-size:13px;}

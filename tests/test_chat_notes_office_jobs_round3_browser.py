@@ -26,7 +26,7 @@ def test_files_suggestion_icon_sits_another_half_pixel_lower(real_2x):
     assert _moved(real_2x, other, "icon", f"{other} > svg{{translate:0 1px!important}}") == 0
 
 
-def test_configured_model_bubble_has_equal_room_above_and_below(browser):
+def test_configured_model_bubble_has_three_pixels_less_room_below_than_above(browser):
     context, page = _open(browser, MACBOOK)
     try:
         _configured_picker(page)
@@ -37,7 +37,7 @@ def test_configured_model_bubble_has_equal_room_above_and_below(browser):
           return {above: bubble.top - box.top, below: box.bottom - bubble.bottom, hasId: !!row.querySelector('.model-opt-id')};
         }""")
         assert gaps["hasId"] is False
-        assert abs(gaps["above"] - gaps["below"]) <= .5, gaps
+        assert (gaps["above"], gaps["below"]) == (9, 6), gaps
     finally:
         context.close()
 
@@ -119,7 +119,7 @@ def test_trash_icon_sits_a_pixel_lower(real_2x):
 
 # ── Office ──────────────────────────────────────────────────────────────────
 
-def test_office_page_icons_sit_half_a_pixel_below_centre(real_2x):
+def test_office_page_icons_sit_a_pixel_below_centre(real_2x):
     page = real_2x
     _panel(page, "office")
     page.wait_for_selector(".office-page-nav-image", state="visible")
@@ -130,7 +130,7 @@ def test_office_page_icons_sit_half_a_pixel_below_centre(real_2x):
         page.wait_for_timeout(150)
         before = page.eval_on_selector(selector, "e => e.getBoundingClientRect().top")
         handle.evaluate("e => e.remove()")
-        assert now - before == .5, (view, now, before)
+        assert now - before == 1, (view, now, before)
 
 
 def _open_integrations(page):
