@@ -8,7 +8,8 @@
 // without the movement.
 //
 //   Micro.tabs(container)        a pill that slides to the active tab
-//   Micro.scan(root)             wire every [data-mi-tabs] under root
+//   Micro.scan(root)             wire every [data-mi-tabs] and [data-mi-hover] under root
+//   Micro.hover(container)       a highlight that slides between a row of buttons under the pointer
 //   Micro.busy(button, label)    "Saving…" with a spinner, width held
 //   Micro.done(button, label)    spinner turns into a drawn tick, then restores
 //   Micro.fail(button)           restores the label and shakes the button
@@ -74,8 +75,64 @@
     if (typeof ResizeObserver === 'function') new ResizeObserver(later).observe(container);
     placePill(container, true);
   }
+  // ---- sliding hover highlight -------------------------------------------------
+  // A row of buttons (a page's header actions) shares one highlight: it appears under the button the
+  // pointer enters and slides to the next one, instead of each button lighting up on its own. It sits
+  // behind the buttons (z-index -1 inside the container's own stacking context), so a button with a fill
+  // of its own (Save) still covers it. Touch and pen input never show it.
+  const hoverWired = new WeakMap();
+  function hover(container) {
+    if (!container || hoverWired.has(container)) return;
+    const pill = document.createElement('span');
+    pill.className = 'mi-hover-pill';
+    pill.setAttribute('aria-hidden', 'true');
+    pill.setAttribute('data-mi-keep', '');
+    container.classList.add('mi-hover');
+    container.prepend(pill);
+    const state = { pill, shown: false };
+    hoverWired.set(container, state);
+    const buttonOf = (node) => {
+      const b = node && node.closest ? node.closest('button, a[href]') : null;
+      return b && b.parentNode === container && !b.disabled && b.offsetParent !== null ? b : null;
+    };
+    const show = (b) => {
+      if (!b.isConnected) return;
+      if (!pill.isConnected || pill.parentNode !== container) container.prepend(pill);
+      const instant = !state.shown || reduced();
+      if (instant) pill.classList.add('is-instant');
+      pill.style.width = `${b.offsetWidth}px`;
+      pill.style.height = `${b.offsetHeight}px`;
+      pill.style.transform = `translate(${b.offsetLeft}px, ${b.offsetTop}px)`;
+      pill.style.opacity = '1';
+      if (instant) { void pill.offsetWidth; pill.classList.remove('is-instant'); }
+      state.shown = true;
+      container.classList.add('mi-hover-on');
+    };
+    const hide = () => {
+      pill.style.opacity = '0';
+      state.shown = false;
+      container.classList.remove('mi-hover-on');
+    };
+    container.addEventListener('pointerover', (e) => {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      const b = buttonOf(e.target);
+      if (b) show(b);
+    });
+    container.addEventListener('pointerleave', hide);
+    container.addEventListener('focusin', (e) => {
+      const b = buttonOf(e.target);
+      if (b && b.matches(':focus-visible')) show(b);
+    });
+    container.addEventListener('focusout', (e) => { if (!container.contains(e.relatedTarget)) hide(); });
+    // A pressed button that hides itself (Edit becoming Save) must not leave the highlight behind.
+    container.addEventListener('click', () => requestAnimationFrame(() => {
+      const on = [...container.children].find((c) => c !== pill && c.matches(':hover') && c.offsetParent !== null);
+      if (!on) hide();
+    }));
+  }
   function scan(root) {
     (root || document).querySelectorAll('[data-mi-tabs]').forEach(tabs);
+    (root || document).querySelectorAll('[data-mi-hover]').forEach(hover);
   }
 
   // ---- button states ---------------------------------------------------------
@@ -403,7 +460,7 @@
     return String(value == null ? '' : value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
   }
 
-  window.Micro = { tabs, scan, busy, done, fail, restore, shake, invalid, arm, disarm, ghostToast, status, pop, confetti, hideTip };
+  window.Micro = { tabs, hover, scan, busy, done, fail, restore, shake, invalid, arm, disarm, ghostToast, status, pop, confetti, hideTip };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => scan(document));
   else scan(document);
 }());

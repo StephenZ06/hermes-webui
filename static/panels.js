@@ -1922,6 +1922,42 @@ function _playCronHighlight(list, from){
   if (from && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(list, from, {..._CRON_HIGHLIGHT, bounds: list});
 }
 
+// Side panel lists with one picked row (Personas, Profiles, Knowledge): the highlight glides from the row
+// picked before to the one picked now, as it does on Chat, Scheduled jobs and the Work Hub.
+function _pickedRowHighlight(selector, attr){
+  const dashed = attr.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
+  return {
+    selector: selector + '.active',
+    restSelector: selector + ':not(.active)',
+    key: item => item.dataset[attr] || '',
+    find: (list, id) => list.querySelector(`${selector}[data-${dashed}="${CSS.escape(id)}"]`),
+    section: () => 'rows',
+  };
+}
+function _noteRowHighlight(list, cfg){
+  return list && typeof noteActiveHighlight === 'function' ? noteActiveHighlight(list, cfg) : null;
+}
+function _playRowHighlight(list, from, cfg){
+  if (from && typeof playActiveHighlightGlide === 'function') playActiveHighlightGlide(list, from, {...cfg, bounds: list});
+}
+const _AGENT_DEF_HIGHLIGHT = _pickedRowHighlight('.skill-item', 'agentDefId');
+const _PROFILE_HIGHLIGHT = _pickedRowHighlight('.profile-card', 'name');
+const _KNOWLEDGE_HIGHLIGHT = _pickedRowHighlight('.knowledge-item', 'knowledgeId');
+
+// A page written in at once (a persona, a memory section, a profile) arrives the way a knowledge item does:
+// its lines stand as placeholders, then cross-fade into the text (SkeletonEntrance, ui.js). Returns the host
+// so a caller that ends up with nothing to show can cancel it.
+function _beginDetailEntrance(body, title, empty, key){
+  const host = body && body.parentElement;
+  if (!host || !window.SkeletonEntrance) return null;
+  if (empty) empty.style.display = 'none';
+  body.style.display = '';
+  const heldTitle = _holdSkeletonTitle(title);
+  const token = SkeletonEntrance.start(host, {shape: 'doc', align: body, hide: [body, heldTitle], title: heldTitle, key});
+  SkeletonEntrance.revealOnChange(host, body, token);
+  return host;
+}
+
 function openCronDetail(jobOrId, el){
   const job = _findCronJob(jobOrId);
   if (!job) return;
@@ -6898,7 +6934,7 @@ function renderAgentDefinitions(definitions) {
     el.className = 'skill-item';
     el.dataset.agentDefId = def.id;
     const dot = `<span style="width:8px;height:8px;border-radius:50%;background:${esc(def.color || 'var(--muted)')};display:inline-block;flex-shrink:0;margin-top:5px" aria-hidden="true"></span>`;
-    const emoji = def.emoji ? `${esc(def.emoji)} ` : '';
+    const emoji = def.emoji ? `<span class="agent-def-emoji">${esc(def.emoji)}</span> ` : '';
     el.innerHTML = `${dot}<span class="skill-name">${emoji}${esc(def.name)}</span><span class="skill-desc">${esc(def.role || '')}</span>`;
     if (def.builtin) el.title = t('agent_def_builtin_hint');
     if (_currentAgentDefDetail && _currentAgentDefDetail.id === def.id) el.classList.add('active');
@@ -6975,12 +7011,16 @@ function _renderAgentDefDetail(def) {
 }
 
 async function openAgentDefDetail(id, el) {
+  const list = $('agentsList');
+  const glideFrom = _noteRowHighlight(list, _AGENT_DEF_HIGHLIGHT);
   document.querySelectorAll('#agentsList .skill-item').forEach(e => e.classList.remove('active'));
   if (el) el.classList.add('active');
+  _playRowHighlight(list, glideFrom, _AGENT_DEF_HIGHLIGHT);
   _agentDefPreFormDetail = null;
   _editingAgentDefId = null;
   const def = (_agentDefsData || []).find(d => d.id === id);
   if (!def) return;
+  _beginDetailEntrance($('agentDefDetailBody'), $('agentDefDetailTitle'), $('agentDefDetailEmpty'), 'persona:' + id);
   _renderAgentDefDetail(def);
   if (typeof _closeMobileSidebarAfterPanelSelection === 'function') _closeMobileSidebarAfterPanelSelection();
 }
@@ -7558,6 +7598,18 @@ function _parseMemoryEntriesForDisplay(content) {
   }));
 }
 
+function _memoryEntryCardsHtml(activeEntries) {
+  return activeEntries.length
+    ? `<div class="memory-entry-list">${activeEntries.map(e => `
+        <div class="memory-entry-card" data-entry-index="${e.index}">
+          <div class="memory-entry-card-body preview-md">${renderMd(e.text)}</div>
+          <button type="button" class="memory-entry-delete has-tooltip" data-tooltip="${esc(t('delete_title')||'Delete')}" onclick="deleteMemoryEntry(${e.index})" aria-label="${esc(t('delete_title')||'Delete')}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>`).join('')}</div>`
+    : `<div class="memory-empty">${esc(_currentMemoryEntryTab==='corrections' ? (t('memory_entries_no_corrections')||'No corrections yet.') : (t('memory_entries_no_patterns')||'No patterns yet.'))}</div>`;
+}
+
 function _renderMemoryEntriesView() {
   const meta = _memorySectionMeta('memory');
   const title = $('memoryDetailTitle');
@@ -7583,20 +7635,12 @@ function _renderMemoryEntriesView() {
   // the common case; real data has zero CORRECTION-prefixed entries today).
   const activeEntries = _currentMemoryEntryTab === 'corrections' ? corrections : patterns;
 
-  const tabsHtml = `<div class="memory-entry-tabs" role="tablist">
-    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='patterns'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='patterns'}" onclick="switchMemoryEntryTab('patterns')">${esc(t('memory_entries_patterns')||'Patterns')} <span class="memory-entry-tab-count">${patterns.length}</span></button>
-    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='corrections'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='corrections'}" onclick="switchMemoryEntryTab('corrections')">${esc(t('memory_entries_corrections')||'Corrections')} <span class="memory-entry-tab-count">${corrections.length}</span></button>
+  const tabsHtml = `<div class="memory-entry-tabs" role="tablist" data-mi-tabs>
+    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='patterns'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='patterns'}" data-memory-tab="patterns" onclick="switchMemoryEntryTab('patterns')">${esc(t('memory_entries_patterns')||'Patterns')} <span class="memory-entry-tab-count">${patterns.length}</span></button>
+    <button type="button" class="memory-entry-tab${_currentMemoryEntryTab==='corrections'?' active':''}" role="tab" aria-selected="${_currentMemoryEntryTab==='corrections'}" data-memory-tab="corrections" onclick="switchMemoryEntryTab('corrections')">${esc(t('memory_entries_corrections')||'Corrections')} <span class="memory-entry-tab-count">${corrections.length}</span></button>
   </div>`;
 
-  const cardsHtml = activeEntries.length
-    ? `<div class="memory-entry-list">${activeEntries.map(e => `
-        <div class="memory-entry-card" data-entry-index="${e.index}">
-          <div class="memory-entry-card-body preview-md">${renderMd(e.text)}</div>
-          <button type="button" class="memory-entry-delete has-tooltip" data-tooltip="${esc(t('delete_title')||'Delete')}" onclick="deleteMemoryEntry(${e.index})" aria-label="${esc(t('delete_title')||'Delete')}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
-        </div>`).join('')}</div>`
-    : `<div class="memory-empty">${esc(_currentMemoryEntryTab==='corrections' ? (t('memory_entries_no_corrections')||'No corrections yet.') : (t('memory_entries_no_patterns')||'No patterns yet.'))}</div>`;
+  const cardsHtml = _memoryEntryCardsHtml(activeEntries);
 
   const addFormHtml = `<form class="memory-entry-add-form" onsubmit="event.preventDefault(); submitMemoryEntryForm();">
     <textarea id="memEntryAddText" rows="2" placeholder="${esc(t('memory_entries_add_placeholder')||'Add a new memory entry…')}"></textarea>
@@ -7611,7 +7655,8 @@ function _renderMemoryEntriesView() {
     ? `<button type="button" class="memory-entry-raw-edit-link" onclick="editCurrentMemory()">${esc(t('memory_entries_edit_raw')||'Edit raw file instead')}</button>`
     : '';
 
-  body.innerHTML = `<div class="main-view-content">${pathHtml}${mtimeHtml}${tabsHtml}${cardsHtml}${addFormHtml}${rawEditLink}</div>`;
+  body.innerHTML = `<div class="main-view-content">${pathHtml}${mtimeHtml}${tabsHtml}<div class="memory-entry-cards">${cardsHtml}</div>${addFormHtml}${rawEditLink}</div>`;
+  if (typeof window !== 'undefined' && window.Micro) Micro.scan(body);
   body.style.display = '';
   if (empty) empty.style.display = 'none';
   _memoryMode = 'read';
@@ -7619,8 +7664,27 @@ function _renderMemoryEntriesView() {
 }
 
 function switchMemoryEntryTab(tab) {
-  _currentMemoryEntryTab = tab === 'corrections' ? 'corrections' : 'patterns';
-  _renderMemoryEntriesView();
+  const next = tab === 'corrections' ? 'corrections' : 'patterns';
+  const strip = document.querySelector('#memoryDetailBody .memory-entry-tabs');
+  const cards = document.querySelector('#memoryDetailBody .memory-entry-cards');
+  if (!strip || !cards) {
+    _currentMemoryEntryTab = next;
+    _renderMemoryEntriesView();
+    return;
+  }
+  if (next === _currentMemoryEntryTab) return;
+  _currentMemoryEntryTab = next;
+  // The strip stays where it is, so its highlight slides to the tab picked while the cards change under it.
+  strip.querySelectorAll('.memory-entry-tab').forEach(btn => {
+    const on = btn.dataset.memoryTab === next;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', String(on));
+  });
+  const entries = _parseMemoryEntriesForDisplay(_memorySectionContent('memory'));
+  cards.innerHTML = _memoryEntryCardsHtml(entries.filter(e => !!e.isCorrection === (next === 'corrections')));
+  cards.classList.remove('is-swapping');
+  void cards.offsetWidth;
+  cards.classList.add('is-swapping');
 }
 
 async function deleteMemoryEntry(index) {
@@ -7749,6 +7813,7 @@ async function openMemorySection(section, el) {
   _currentMemorySection = section;
   document.querySelectorAll('#memoryPanel .side-menu-item').forEach(e => e.classList.remove('active'));
   if (el) el.classList.add('active');
+  _beginDetailEntrance($('memoryDetailBody'), $('memoryDetailTitle'), $('memoryDetailEmpty'), 'memory:' + section);
   if (section === 'external_notes') {
     await loadNotesSources(false);
   }
@@ -10015,10 +10080,14 @@ function openProfileDetail(name, el){
   if (!_profilesCache || !_profilesCache.profiles) return;
   const p = _profilesCache.profiles.find(x => x.name === name);
   if (!p) return;
+  const list = $('profilesPanel');
+  const glideFrom = _noteRowHighlight(list, _PROFILE_HIGHLIGHT);
   document.querySelectorAll('.profile-card').forEach(e => e.classList.remove('active'));
   const target = el || document.querySelector(`.profile-card[data-name="${CSS.escape(name)}"]`);
   if (target) target.classList.add('active');
+  _playRowHighlight(list, glideFrom, _PROFILE_HIGHLIGHT);
   _profilePreFormDetail = null;
+  _beginDetailEntrance($('profileDetailBody'), $('profileDetailTitle'), $('profileDetailEmpty'), 'profile:' + name);
   _renderProfileDetail(p, _profilesCache.active);
   _closeMobileSidebarAfterPanelSelection();
 }
@@ -10871,7 +10940,7 @@ function renderKnowledgeItems() {
     list.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:12px">${esc(_knowledgeSearchResults !== null ? t('knowledge_no_match') : t('knowledge_empty_title'))}</div>`;
     return;
   }
-  list.innerHTML = rows.map(item => `<div class="skill-item knowledge-item${item.id === _currentKnowledgeItemId ? ' active' : ''}" onclick="openKnowledgeItem('${esc(item.id)}')">
+  list.innerHTML = rows.map(item => `<div class="skill-item knowledge-item${item.id === _currentKnowledgeItemId ? ' active' : ''}" data-knowledge-id="${esc(item.id)}" onclick="openKnowledgeItem('${esc(item.id)}')">
     <span class="knowledge-type-badge" title="${esc(_knowledgeTypeLabel(item.type))}">${li(KNOWLEDGE_TYPE_ICONS[item.type] || 'file-text', 14)}</span>
     <span class="skill-name">${esc(item.title || '')}</span>
     <span class="skill-desc">${esc(item.snippet || '')}</span>
@@ -10902,8 +10971,11 @@ function searchKnowledgeItems() {
 }
 
 async function openKnowledgeItem(id) {
+  const list = $('knowledgeList');
+  const glideFrom = _noteRowHighlight(list, _KNOWLEDGE_HIGHLIGHT);
   _currentKnowledgeItemId = id;
   renderKnowledgeItems();
+  _playRowHighlight(list, glideFrom, _KNOWLEDGE_HIGHLIGHT);
   // The item's text stands as placeholder lines until it is written in, then
   // cross-fades into it (SkeletonEntrance, ui.js).
   const bodyEl = $('knowledgeDetailBody');

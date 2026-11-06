@@ -17287,3 +17287,40 @@ textarea.office-biz-input{resize:vertical;}
 .settings-page .set-row.is-stack .set-row-control{margin-inline:-9px;}
 /* Check replies now and Check now (employer replies): the words sit 0.5px lower. */
 .settings-page .set-group .job-os-btn.small:is([data-job-os-action="notify-check"],[data-job-os-action="notify-outcomes"]){padding-top:1px;}
+
+/* Profiles, Personas, Personal memory and Knowledge: round 10 */
+/* Header buttons share one highlight that slides to the button under the pointer (Micro.hover). It sits behind
+   the buttons; a button with a fill of its own keeps it, and the others let it show instead of their own hover fill. */
+.mi-hover{position:relative;isolation:isolate;}
+.mi-hover-pill{position:absolute;left:0;top:0;z-index:-1;pointer-events:none;opacity:0;border-radius:6px;background:var(--accent-bg);transition:transform .28s cubic-bezier(.22,1,.36,1),width .28s cubic-bezier(.22,1,.36,1),height .28s cubic-bezier(.22,1,.36,1),opacity .18s ease;}
+.mi-hover-pill.is-instant{transition:opacity .18s ease;}
+.mi-hover.mi-hover-on > .panel-head-btn:not(.primary):is(:hover,:focus-visible){background:transparent;}
+@media (prefers-reduced-motion:reduce){.mi-hover-pill{transition:none;}}
+/* Personal memory: the sections slide one highlight, the titles read 0.5px lower; the Patterns / Corrections
+   underline slides to the tab picked, and the cards under it change in place. */
+#memoryPanel.mi-tabs-ready > .side-menu-item.active{background:transparent;}
+#memoryPanel > .mi-pill{border-radius:8px;}
+#memoryPanel .side-menu-item > span{translate:0 .5px;}
+.memory-entry-tabs > .mi-pill{background:none;border-radius:0;}
+.memory-entry-tabs > .mi-pill::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--accent);}
+.memory-entry-tabs.mi-tabs-ready > .memory-entry-tab.active{border-bottom-color:transparent;}
+.memory-entry-cards.is-swapping{animation:mem-cards-in .22s cubic-bezier(.22,1,.36,1);}
+@keyframes mem-cards-in{from{opacity:0;transform:translateY(4px);}}
+@media (prefers-reduced-motion:reduce){.memory-entry-cards.is-swapping{animation:none;}}
+/* Personas: the colour dot and the emoji in each row sit 0.5px lower. Knowledge: the type icon sits 1px lower. */
+#agentsList .skill-item > span[aria-hidden="true"]{translate:0 .5px;}
+#agentsList .agent-def-emoji{display:inline-block;translate:0 .5px;}
+.knowledge-item .knowledge-type-badge{translate:0 1px;}
+/* Profiles: the needs-setup banner is as wide as the profile buttons under it, the last profile has the room
+   the first has above it, and Set up a provider reads 0.5px higher, Sign in again 0.5px lower. */
+.profile-health-banner{margin-inline:0;}
+#profilesPanel .profile-concept-divider{margin-inline:0;}
+#profilesPanel .profile-card:last-child{margin-bottom:0;}
+.pp-card-head .pp-setup{padding:0 12px 1px;}
+#mainProfiles .pp-row .profile-signin-btn{padding-top:6.5px;padding-bottom:5.5px;}
+/* The cards on a Profile or Persona page have the same room (24px) above, below and on both sides. */
+@media (min-width:701px){
+  #profileDetailBody,#agentDefDetailBody{padding:24px;}
+  :is(#profileDetailBody,#agentDefDetailBody) .main-view-content > :last-child,
+  :is(#profileDetailBody,#agentDefDetailBody) .main-view-content > .detail-card:has(+ [hidden]:last-child){margin-bottom:0;}
+}

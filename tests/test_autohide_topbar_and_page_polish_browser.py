@@ -266,7 +266,7 @@ def test_scheduled_jobs_header_and_toggle_nudges(page):
       return {title: c('#panelTasks > .panel-head > span').translate,
               icons: [...document.querySelectorAll('#panelTasks > .panel-head .panel-head-btn svg')].map(i => getComputedStyle(i).translate),
               toggle: [c('#cronList .cron-profile-toggle').paddingTop, c('#cronList .cron-profile-toggle').paddingBottom]}; }""")
-    assert state["title"] == "0px 1px"
+    assert state["title"] == "0px 1.5px"  # a pixel lower than the other panels' titles, which sit 0.5px lower and read larger
     assert state["icons"] == ["0px 1px"] * 3
     assert state["toggle"] == ["7px", "9px"]
 
