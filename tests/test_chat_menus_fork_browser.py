@@ -125,7 +125,7 @@ def test_other_provider_rows_still_show_their_id(browser):
 def test_scope_note_hides_what_scrolls_under_it(browser):
     context, page = _open(browser, MACBOOK)
     try:
-        page.set_viewport_size({"width": 1470, "height": 520})  # short enough that the list scrolls
+        page.set_viewport_size({"width": 1470, "height": 420})  # short enough that the list scrolls
         page.wait_for_timeout(300)
         _configured_picker(page)
         page.evaluate("""() => {
@@ -148,6 +148,36 @@ def test_scope_note_hides_what_scrolls_under_it(browser):
         assert ImageChops.difference(before, after).convert("L").getextrema()[1] <= 2, "rows show through the note"
     finally:
         context.close()
+
+
+def test_a_highlighted_model_row_runs_up_to_the_next_divider(browser):
+    context, page = _open(browser, MACBOOK)
+    try:
+        _configured_picker(page)
+        page.wait_for_timeout(300)
+        gap = page.evaluate("""() => {
+          const rows = [...document.querySelectorAll('#composerModelDropdown .model-opt')];
+          const last = rows.find(r => r.nextElementSibling && r.nextElementSibling.classList.contains('model-group'));
+          return last.nextElementSibling.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
+        }""")
+        assert gap == 0, f"{gap}px of bare menu between a row's highlight and the divider under it"
+    finally:
+        context.close()
+
+
+def test_picker_headings_have_equal_room_above_and_below_their_text(real_2x):
+    page = real_2x
+    _configured_picker(page)
+    page.mouse.move(5, 5)
+    page.wait_for_timeout(800)
+    page.evaluate("""() => { const groups = [...document.querySelectorAll('#composerModelDropdown .model-group')];
+      groups.find(e => /configured/i.test(e.textContent)).id = 'fxCfg';
+      document.querySelector('#composerModelDropdown .model-custom-sep').id = 'fxSep'; }""")
+    for heading, below_to in (("#fxCfg", "#fxCfg + .model-opt"), ("#fxSep", "#fxSep + .model-custom-row .model-custom-input")):
+        box = page.eval_on_selector(heading, "e => { const r = e.getBoundingClientRect(); return r.top + parseFloat(getComputedStyle(e).borderTopWidth); }")
+        edge = page.eval_on_selector(below_to, "e => e.getBoundingClientRect().top")
+        ink = _ink(page, heading, "text")
+        assert abs((ink["top"] - box) - (edge - ink["bottom"])) <= 1, (heading, ink, box, edge)
 
 
 # ── nudges ──────────────────────────────────────────────────────────────────

@@ -16430,8 +16430,11 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .model-custom-btn{width:30px;height:30px;}
 /* "Custom model ID" sits 2px lower, halfway between the divider and its
    input; provider headings get as much room under their text as above it. */
-.model-custom-sep{padding-top:6px;padding-bottom:2px;}
-.model-group:not(.model-custom-sep){padding-bottom:10px;}
+.model-custom-sep{padding-top:6px;padding-bottom:0;}
+.model-group:not(.model-custom-sep){padding-bottom:8px;}
+/* A provider divider meets the row above it, so a highlighted row runs right
+   up to the line instead of stopping 2px short. */
+.model-group:not(.model-custom-sep,.sub){margin-top:0;}
 :root[data-skin="zeus-2"] .model-opt-badge{padding-top:2px;padding-bottom:2px;}
 /* Chat sidebar: the filter's placeholder 1px up. */
 #panelChat .session-search input{padding-top:6px;padding-bottom:8px;}
