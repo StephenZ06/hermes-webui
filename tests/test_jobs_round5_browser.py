@@ -161,8 +161,8 @@ def test_settings_list_is_a_full_height_side_panel_and_each_section_one_main_car
         pageLeft: r(page).left - r(rail).right}; }""")
     assert out["railLeft"] <= 1 and out["railTop"] <= 1 and out["railBottom"] <= 1, out  # flush with the page's edges
     assert out["railBorder"][0] == "1px" and out["railBorder"][1] == "0px" and out["railBorder"][2] == "0px", out
-    assert out["pageBorder"] == "1px" and out["pageRadius"] != "0px", out  # the main card has an outline
-    assert out["cardsInside"] and out["titleInside"], out  # and holds the title, description and every card
+    assert out["pageBorder"] == "0px", out  # round 7 took the outline off: the section's title and cards sit on the page
+    assert out["cardsInside"] and out["titleInside"], out  # they are still one block, in the page's column
     assert out["pageLeft"] >= 16, out
 
 

@@ -625,7 +625,7 @@
       apply: [!!(v('apply.work_authorization') && v('apply.languages')), v('apply.work_authorization') && v('apply.languages') ? 'Saved' : 'Right to work or languages missing'],
       display: [!!state.resume, state.resume ? 'In Resume Studio' : 'Not uploaded'],
     };
-    const nav = SETTINGS_NAV.map(([grp, items]) => `<p class="settings-nav-group">${grp}</p>${items.map(([key, label]) => {
+    const nav = SETTINGS_NAV.map(([grp, items]) => `<p class="settings-nav-group"><span>${grp}</span></p>${items.map(([key, label]) => {
       const [ok, hint] = hints[key];
       return `<button type="button" class="settings-nav-item${key === page ? ' active' : ''}" data-job-os-action="settings-section" data-section="${key}"${key === page ? ' aria-current="page"' : ''}><span class="settings-nav-icon" aria-hidden="true">${icon(SECTION_ICONS[key], 16)}</span><span class="settings-nav-text"><strong>${label}</strong><small>${ok == null ? '' : `<i class="settings-nav-dot" data-ok="${ok ? 'true' : 'false'}"></i>`}<span class="settings-nav-hint">${esc(hint)}</span></small></span><span class="settings-nav-chevron" aria-hidden="true">${icon('next', 16)}</span></button>`;
     }).join('')}`).join('');

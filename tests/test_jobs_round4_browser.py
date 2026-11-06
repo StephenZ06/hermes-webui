@@ -111,13 +111,15 @@ def test_job_details_buttons_read_a_pixel_lower_open_postings_icon_and_ive_appli
     assert buttons.count() >= 3
     undo = "#jobOsRoot .job-drawer-actions>.job-os-btn{padding-top:0!important}#jobOsRoot .apply-step .job-os-btn{padding-top:0!important}"
     for n in range(buttons.count()):
-        assert _moved(page, f".job-drawer-actions>.job-os-btn:nth-of-type({n + 1})", "text", undo) == .5, n  # round 6 raised the labels half a pixel
+        # Round 6 raised the labels half a pixel; round 7 lowered Resume Studio, Applied and Rescore again.
+        again = page.eval_on_selector(f".job-drawer-actions>.job-os-btn:nth-of-type({n + 1})", "e => ['studio-open', 'board-apply', 'job-analyze'].includes(e.dataset.jobOsAction)")
+        assert _moved(page, f".job-drawer-actions>.job-os-btn:nth-of-type({n + 1})", "text", undo) == (1 if again else .5), n
     page.eval_on_selector(".apply-kit", "e => e.scrollIntoView({block: 'center'})")
     page.wait_for_timeout(250)
-    assert _moved(page, ".apply-step [data-job-os-action='apply-kit']", "text", undo) == .5
-    assert _moved(page, ".apply-step a.job-os-btn", "text", undo) == 1
+    assert _moved(page, ".apply-step [data-job-os-action='apply-kit']", "text", undo) == 1  # raised in round 6, back in round 7
+    assert _moved(page, ".apply-step a.job-os-btn", "text", undo) == 1.5  # 1px in round 4, half a pixel more in round 7
     # Open posting's icon: round 4 held it where it was (-1px against the label's +1), round 5 lets it drop 1px.
-    assert _moved(page, ".apply-step a.job-os-btn", "icon", "#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px!important}") == 1
+    assert _moved(page, ".apply-step a.job-os-btn", "icon", "#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px!important}") == .5  # the undo keeps round 7's extra half pixel of padding; the icon's own top:-.5px takes it back, so against round 5 it has not moved
     # I've applied reads 1px higher again, back where it was before the round-4 drop.
     assert _moved(page, ".apply-step [data-job-os-action='board-apply']", "text", undo) == 0
 

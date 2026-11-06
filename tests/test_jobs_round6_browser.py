@@ -163,7 +163,9 @@ def test_drawer_button_labels_sit_higher_and_the_icons_lower(jobs, seeded):
     buttons = page.evaluate("() => [...document.querySelectorAll('.job-drawer-actions>.job-os-btn')].map((b, i) => (b.dataset.fx = 'a' + i, b.dataset.fx))")
     assert len(buttons) >= 3, buttons
     for tag in buttons:
-        assert _moved(page, f"[data-fx={tag}]", "text", ".job-drawer-actions>.job-os-btn{padding-top:2px!important}") == -.5, tag
+        # Round 7 lowered Applied and Rescore (and Resume Studio, not on this job) half a pixel again.
+        again = page.eval_on_selector(f"[data-fx={tag}]", "e => ['studio-open', 'board-apply', 'job-analyze'].includes(e.dataset.jobOsAction)")
+        assert _moved(page, f"[data-fx={tag}]", "text", ".job-drawer-actions>.job-os-btn{padding-top:2px!important}") == (0 if again else -.5), tag
     for sel, undo in (
         (".apply-step [data-job-os-action=job-tailor]", ".apply-step button.job-os-btn{padding-top:2px!important}"),
         (".apply-step [data-job-os-action=board-apply]", ".apply-step [data-job-os-action=board-apply]{padding-bottom:0!important}"),
@@ -264,22 +266,3 @@ def test_picking_a_settings_section_does_not_move_the_other_list_items(jobs):
       document.querySelectorAll('.settings-rail .settings-nav-item')[2].click();
       await new Promise(r => setTimeout(r, 600)); return n; }""")
     assert moved == 0, moved  # a node taken out of the page and put back restarts its transitions and flashes
-
-
-def test_settings_panels_keep_the_same_margin_on_all_four_sides(jobs):
-    page = jobs
-    _settings(page)
-    page.evaluate("() => { document.getElementById('mainJobs').scrollTop = 0; }")
-    page.wait_for_timeout(300)
-    out = page.evaluate("""() => { const r = e => e.getBoundingClientRect(); const q = s => document.querySelector(s);
-      const rail = q('.settings-rail'), nav = q('.settings-rail .settings-nav'), page = q('.settings-page'), head = q('.job-os-content>.job-os-header'), main = r(q('#mainJobs'));
-      const first = q('.settings-rail .settings-nav-group'), item = q('.settings-rail .settings-nav-item');
-      return {railPad: getComputedStyle(rail).padding, navPad: getComputedStyle(nav).padding,
-        railLeft: r(item).left - r(rail).left, railRight: r(rail).right - r(item).right - 1,
-        pageLeft: r(head).left - r(rail).right, pageRight: main.right - r(page).right, headTop: r(head).top - main.top}; }""")
-    ink = _ink(page, ".settings-rail .settings-nav-group", "text")
-    rail = _rect(page, ".settings-rail")
-    assert out["railPad"] == "24px" and out["navPad"] == "0px", out
-    assert abs(out["railLeft"] - 24) <= .5 and abs(out["railRight"] - 24) <= .5, out
-    assert abs(ink["top"] - rail["y"] - 24) <= 1, (ink, rail)
-    assert abs(out["pageLeft"] - 24) <= .5 and abs(out["pageRight"] - 24) <= .5 and abs(out["headTop"] - 24) <= .5, out

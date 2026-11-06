@@ -17085,23 +17085,27 @@ textarea.office-biz-input{resize:vertical;}
    space above the row (the themes list kept a 14px margin that only made it longer). */
 .gaps-themes{margin-bottom:0;}
 /* Jobs Settings: the section list is a side panel like the Notes list. It runs the full height of
-   the page, flush with its edges, a divider on its right and its own scroll position, and the
-   page's title and the section's cards sit to its right. Each section is one main card that
-   holds its title, description and every card under them. */
+   the page, flush with its edges and a divider on its right; the section's title and cards sit to
+   its right with no card around them. The list keeps the same 8px to its edges as the Jobs side
+   panel; the page keeps 24px to the divider, the window's top and right and the end of the section.
+   The page's own title and description are gone; the status chip stays in the top right corner. */
 #jobOsRoot .settings-nav-text{gap:9px;}
 @media (min-width:761px){
-  #jobOsRoot .job-os-shell[data-view="settings"] .job-os-content{display:grid;grid-template-columns:var(--settings-rail-w,280px) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:0;row-gap:var(--jobs-gap,16px);margin:-24px;}
+  #jobOsRoot .job-os-shell[data-view="settings"] .job-os-content{position:relative;display:grid;grid-template-columns:var(--settings-rail-w,280px) minmax(0,1fr);grid-template-rows:auto auto;column-gap:0;row-gap:var(--jobs-gap,16px);margin:-24px;}
   .job-os-shell[data-view="settings"] .job-os-settings,
   .job-os-shell[data-view="settings"] .settings-layout{display:contents;}
-  .job-os-shell[data-view="settings"] .job-os-content>.job-os-header{grid-column:2;grid-row:1;margin:24px 24px 0;}
-  .job-os-shell[data-view="settings"] .settings-rail{grid-column:1;grid-row:1/-1;align-self:stretch;box-sizing:border-box;padding:24px;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--bg);box-shadow:none;animation:settings-rail-in .26s cubic-bezier(.22,1,.36,1) backwards;}
-  .job-os-shell[data-view="settings"] .settings-page{grid-column:2;grid-row:2;box-sizing:border-box;margin:0 24px;padding:22px;max-width:none;border:1px solid var(--border2);border-radius:14px;background:var(--bg);align-self:start;}
-  .job-os-shell[data-view="settings"] .job-os-savebar{grid-column:2;grid-row:3;margin:0 24px 24px;}
-  /* (A sticky offset counts from the page's own 24px padding, so top:0 holds the list 24px from the window's top.)
-     Both panels keep 24px to every edge: the list to its panel's top, sides and bottom, the page to the
-     divider, the window's top and right, and (at the end of a long section) the window's bottom. */
-  .job-os-shell[data-view="settings"] .settings-rail>.settings-nav{top:0;padding:0;max-height:calc(100dvh - 48px);overflow-y:auto;}
+  .job-os-shell[data-view="settings"] .job-os-content>.job-os-header{position:absolute;top:24px;right:24px;z-index:1;margin:0;}
+  .job-os-shell[data-view="settings"] .job-os-content>.job-os-header>div:first-child{display:none;}
+  .job-os-shell[data-view="settings"] .settings-rail{grid-column:1;grid-row:1/-1;align-self:stretch;box-sizing:border-box;padding:8px;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--bg);box-shadow:none;animation:settings-rail-in .26s cubic-bezier(.22,1,.36,1) backwards;}
+  .job-os-shell[data-view="settings"] .settings-page{grid-column:2;grid-row:1;box-sizing:border-box;margin:24px 24px 0;padding:0;max-width:none;border:0;border-radius:0;background:none;align-self:start;}
+  .job-os-shell[data-view="settings"] .job-os-savebar{grid-column:2;grid-row:2;margin:0 24px 24px;}
+  /* (A sticky offset counts from the page's own 24px padding, so -16px holds the list 8px from the window's top.) */
+  .job-os-shell[data-view="settings"] .settings-rail>.settings-nav{top:-16px;padding:0;max-height:calc(100dvh - 16px);overflow-y:auto;}
   .job-os-shell[data-view="settings"] .settings-rail .settings-nav-group:first-of-type{margin-top:0;}
+  /* The headings carry a rule after the text, centred on its capitals. */
+  .job-os-shell[data-view="settings"] .settings-nav-group{display:flex;align-items:center;gap:10px;margin:18px 8px 10px;font-size:12px;text-box:none;}
+  .job-os-shell[data-view="settings"] .settings-nav-group>span{flex:0 0 auto;text-box:trim-both cap alphabetic;}
+  .job-os-shell[data-view="settings"] .settings-nav-group::after{content:"";flex:1 1 auto;height:1px;background:var(--border2);}
   @keyframes settings-rail-in{from{opacity:0;transform:translateX(-8px);}}
   @media (prefers-reduced-motion:reduce){.job-os-shell[data-view="settings"] .settings-rail{animation:none;}}
 }
@@ -17160,3 +17164,41 @@ textarea.office-biz-input{resize:vertical;}
 #jobOsRoot .skill-gaps{padding:24px 20px 16px;}
 #jobOsRoot .job-os-card:has(>.job-os-list>.studio-item)>.job-os-card-head{margin-left:10px;margin-right:10px;}
 .job-os-shell[data-view="resume-studio"] .job-os-content{padding-bottom:var(--jobs-gap,16px);}
+
+/* Jobs: round 7 */
+/* Side panel: Dashboard, Scout, Pipeline, Resume Studio and Settings (icon and label) sit 1px
+   lower, the count at the right 0.5px lower. */
+#jobOsSidebar .job-os-side-nav .side-menu-item{padding-top:2px;}
+#jobOsSidebar .job-os-side-nav .side-menu-item>.job-os-side-count{position:relative;top:-.5px;}
+/* Job details: Resume Studio, Applied, Rescore, Prepare answers and Open posting read 0.5px lower again. */
+#jobOsRoot .job-drawer-actions>.job-os-btn:is([data-job-os-action="studio-open"],[data-job-os-action="board-apply"],[data-job-os-action="job-analyze"]){padding-top:2px;}
+#jobOsRoot .apply-step button.job-os-btn[data-job-os-action="apply-kit"]{padding-top:2px;}
+#jobOsRoot .apply-step a.job-os-btn{padding-top:3px;}
+#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){top:-.5px;}
+/* Jobs Settings: every card keeps 20px to its top, bottom, left and right; the title is 12.5px with a
+   tighter gap under it; the buttons in a footer have as much room above as below. */
+.settings-page>.job-os-settings-section .set-group{padding:20px;gap:0;}
+.settings-page .set-group .set-group-title{margin:0 0 12px;font-size:12.5px;line-height:1.2;text-box:trim-both cap alphabetic;}
+.settings-page .set-group .set-row{min-height:0;padding-top:12px;padding-bottom:12px;}
+.settings-page .set-group .set-row:first-child{padding-top:0;}
+.settings-page .set-group .set-row:last-child{padding-bottom:0;}
+.settings-page .set-group .set-group-foot{margin-top:15px;}
+.settings-page .set-group:has([data-job-os-action="test-firecrawl"]) .set-group-foot{margin-top:17.5px;}
+/* The first site is not set off from the title by a rule. */
+.settings-page .set-rows>.site-health-row:first-child{border-top:0;}
+/* Switch rows do not light up under the pointer, and a dependent one is not indented or tinted. */
+.job-os-settings .set-switch.job-os-toggle:hover{background:none;}
+.job-os-settings .set-switch.job-os-toggle.is-sub{padding-left:0;background:none;}
+.set-row.is-sub{background:none;}
+/* Buttons in the cards: one height with the choice beside Send test; Replace and Check now take the
+   Work Hub + button's outline. Their labels sit 0.5px higher, the status pills 1px lower. */
+.settings-page .set-group .job-os-btn.small{box-sizing:border-box;height:28px;padding-top:0;padding-bottom:0;}
+.settings-page .set-row .job-os-inline-select .themed-select-trigger{box-sizing:border-box;min-height:28px;height:28px;padding-top:0;padding-bottom:0;}
+.settings-page .set-group :is([data-job-os-action="gmail-edit"],[data-job-os-action="apify-edit"],[data-job-os-action="site-check"]){background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);}
+.settings-page .set-group :is([data-job-os-action="gmail-edit"],[data-job-os-action="apify-edit"],[data-job-os-action="site-check"]):hover{background:var(--accent-bg);border-color:var(--accent-bg);color:var(--accent-text);}
+.settings-page .set-group .job-os-btn.small:is([data-job-os-action="gmail-edit"],[data-job-os-action="gmail-disconnect"],[data-job-os-action="apify-edit"],[data-job-os-action="apify-disconnect"],[data-job-os-action="apify-test"],[data-job-os-action="site-check"]){padding-bottom:1px;}
+.settings-page .set-row .job-os-pill{position:relative;top:1px;}
+/* The number boxes fit their digits, centred, and their unit ends where the other controls end. */
+.set-row .set-number .set-input{width:56px;padding-left:8px;padding-right:8px;text-align:center;-moz-appearance:textfield;}
+.set-row .set-number .set-input::-webkit-inner-spin-button,.set-row .set-number .set-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+.set-number em{min-width:0;}
