@@ -37,7 +37,8 @@ def test_configured_model_bubble_has_as_much_room_below_as_above(browser):
           return {above: bubble.top - box.top, below: box.bottom - bubble.bottom, hasId: !!row.querySelector('.model-opt-id')};
         }""")
         assert gaps["hasId"] is False
-        assert (gaps["above"], gaps["below"]) == (9, 9), gaps
+        # the pill and its name sit half a pixel lower in the row (9.5 above, 8.5 below); the row keeps its height
+        assert (gaps["above"], gaps["below"]) == (9.5, 8.5), gaps
     finally:
         context.close()
 

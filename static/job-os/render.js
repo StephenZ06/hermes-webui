@@ -915,6 +915,9 @@
         <div class="job-modal-body">${body}</div>
         <footer class="job-modal-foot">${foot}</footer></div>`;
   }
+  // Placeholders for what the full record brings (chips, actions, analysis, description),
+  // shaped like them so nothing jumps when the real content fades in.
+  const drawerSkeleton = () => `<div class="match-skeleton drawer-skeleton" role="status" aria-label="Loading this job"><div class="drawer-skeleton-chips">${[64, 88, 72].map((w) => `<span class="skeleton-bar" style="width:${w}px"></span>`).join('')}</div><div class="drawer-skeleton-actions">${[110, 82, 96].map((w) => `<span class="skeleton-bar" style="width:${w}px"></span>`).join('')}</div><span class="skeleton-bar" style="width:96%"></span><span class="skeleton-bar" style="width:88%"></span><span class="skeleton-bar" style="width:62%"></span><div class="match-skeleton-bars">${['72%', '58%', '66%', '48%'].map((w) => `<span class="skeleton-bar" style="width:${w}"></span>`).join('')}</div><div class="match-skeleton-table">${[84, 70, 76, 58, 66, 44].map((w) => `<span class="skeleton-bar" style="width:${w}%"></span>`).join('')}</div></div>`;
   function jobDrawer(state) {
     const job = state.jobDetail;
     if (!job) return '';
@@ -925,8 +928,8 @@
       <aside class="job-drawer" id="job-os-detail" role="dialog" aria-label="${esc(job.title)}">
         <header class="job-drawer-head"><div class="job-drawer-title"><div class="job-drawer-tags">${badge(job.status)}<span class="pipe-source" data-source="${src}">${SOURCE_LABEL[src]}</span></div><h2>${esc(job.title)}</h2>${meta ? `<p>${meta}</p>` : ''}</div>
           <button type="button" class="wh-insp-close job-os-detail-close" data-job-os-action="job-close" aria-label="Close details"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
-        <div class="job-drawer-body">
-          ${jobChips(job)}
+        <div class="job-drawer-body ${state.jobDetailPending ? 'is-loading' : 'is-ready'}">
+          ${state.jobDetailPending ? drawerSkeleton() : `${jobChips(job)}
           ${checksPanel(job)}
           <div class="job-os-actions job-drawer-actions">${detailActions(job)}<span class="job-drawer-icons">${['scraped', 'analyzed'].includes(job.status) ? `<button type="button" class="job-os-icon-btn" data-job-os-action="job-status" data-status="shortlisted" aria-label="Add to Favorite">${icon('star', 16)}</button>` : ''}<a class="job-os-icon-btn" href="${esc(job.canonical_url)}" target="_blank" rel="noopener noreferrer" aria-label="Open posting">${icon('external', 16)}</a><button type="button" class="job-os-icon-btn" data-job-os-action="job-form-edit" data-job-id="${esc(job.id)}" aria-label="Edit job">${icon('edit', 16)}</button></span></div>
           ${job.status === 'tailoring' ? writingPanel('Luna is tailoring your resume and cover letter for this job…') : ''}
@@ -936,7 +939,7 @@
           ${applyKitPanel(job)}
           ${job.description ? `<details class="job-os-desc-wrap"${job.analysis && job.analysis.status === 'done' ? '' : ' open'}><summary>Job description</summary><div class="job-os-description">${esc(job.description)}</div></details>`
             : `<p class="job-os-card-note">No description yet. ${src === 'manual' ? 'Edit the job and paste it in to' : 'Fetch details to'} score and tailor your resume for it.</p>`}
-          ${activity(state)}
+          ${activity(state)}`}
         </div></aside>`;
   }
   // ---- Job form: the manual tracker (add) and editing any job ---------------------------

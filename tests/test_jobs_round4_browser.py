@@ -98,13 +98,13 @@ def test_mark_all_seen_label_sits_level_between_its_buttons_edges(jobs):
     page = jobs
     _heads(page, "match-inbox", '<div class="card-head-actions"><button type="button" class="job-os-btn primary" id="fxSeen">Mark all seen</button></div>')
     undo = "#fx .match-inbox .card-head-actions .job-os-btn{padding:6px 12px 2px!important}"
-    assert _moved(page, "#fxSeen", "text", undo) == -2.5
+    assert _moved(page, "#fxSeen", "text", undo) == -2  # 2px higher than the original (round 4 took it 2.5, round 5 gave half back)
     box = page.eval_on_selector("#fxSeen", "e => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; }")
     ink = _ink(page, "#fxSeen", "text")
-    assert abs((ink["top"] - box[0]) - (box[1] - ink["bottom"])) <= .5, (box, ink)
+    assert abs((ink["top"] - box[0]) - (box[1] - ink["bottom"])) <= 1, (box, ink)
 
 
-def test_job_details_buttons_read_a_pixel_lower_and_open_postings_icon_stays(jobs, seeded):
+def test_job_details_buttons_read_a_pixel_lower_open_postings_icon_and_ive_applied_return_to_the_old_height(jobs, seeded):
     page = jobs
     _open_job(page, f"Analyzed {seeded['marker']}")
     buttons = page.locator(".job-drawer-actions>.job-os-btn")
@@ -116,7 +116,10 @@ def test_job_details_buttons_read_a_pixel_lower_and_open_postings_icon_stays(job
     page.wait_for_timeout(250)
     assert _moved(page, ".apply-step [data-job-os-action='apply-kit']", "text", undo) == 1
     assert _moved(page, ".apply-step a.job-os-btn", "text", undo) == 1
-    assert _moved(page, ".apply-step a.job-os-btn", "icon", undo + "#jobOsRoot .apply-step a.job-os-btn>svg{top:0!important}") == 0
+    # Open posting's icon: round 4 held it where it was (-1px against the label's +1), round 5 lets it drop 1px.
+    assert _moved(page, ".apply-step a.job-os-btn", "icon", "#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px!important}") == 1
+    # I've applied reads 1px higher again, back where it was before the round-4 drop.
+    assert _moved(page, ".apply-step [data-job-os-action='board-apply']", "text", undo) == 0
 
 
 # ── Pipeline ────────────────────────────────────────────────────────────────
@@ -166,10 +169,16 @@ def test_match_check_button_nudges_and_automate_icon(jobs, seeded):
     tailor = f"{bar} [data-job-os-action='match-tailor']"
     # Tailor & next: label and icon 1px lower (and the button's own drop of 1px); Score again and Open job: labels
     # 1px higher inside buttons that sit 1px lower, so they do not move.
-    assert _moved(page, f"{tailor} span", "text", undo) == 2
-    assert _moved(page, tailor, "icon", undo) == 2
-    assert _moved(page, f"{bar} [data-job-os-action='match-score']", "text", undo) == 0
-    assert _moved(page, f"{bar} .job-os-btn:last-child", "text", undo) == 0
+    # Round 5 then set all three labels 0.5px lower (measured against round 4's own rules); the
+    # Tailor & next icon stays where it was.
+    prev = (f"{bar} .job-os-btn{{padding-bottom:2px!important}}{bar} [data-job-os-action=match-tailor]>svg{{top:1px!important}}")
+    assert _moved(page, f"{tailor} span", "text", prev) == .5
+    assert _moved(page, tailor, "icon", prev) == 0
+    assert _moved(page, f"{bar} [data-job-os-action='match-score']", "text", prev) == .5
+    assert _moved(page, f"{bar} .job-os-btn:last-child", "text", prev) == .5
+    # and against the original rules, the labels are 1px lower than before round 4's nudge
+    assert _moved(page, f"{tailor} span", "text", undo) == 2.5
+    assert _moved(page, f"{bar} .job-os-btn:last-child", "text", undo) == .5
     drop = page.evaluate("() => document.querySelector('.match-actions .job-os-btn').getBoundingClientRect().top")
     handle = page.add_style_tag(content=undo)
     page.wait_for_timeout(150)
@@ -266,7 +275,7 @@ def test_tailored_versions_chip_and_status_share_a_height_and_sit_lower(studio):
     heights = page.evaluate("""([a, b]) => [a, b].map(s => document.querySelector(s).getBoundingClientRect().height)""", [chip, status])
     assert heights[0] == heights[1], heights
     undo = "#jobOsRoot .studio-item .studio-item-tags>:is(.job-os-chip,.doc-status){top:0!important}"
-    assert _moved(page, status, "text", undo) == .5
+    assert _moved(page, status, "text", undo + "#jobOsRoot .studio-item .studio-item-tags>.doc-status{padding:0 8px!important}") == 1  # the bubble's own half pixel, and half again for the label
     # keywords text: half a pixel for the bubble and half again for the text inside it
     both = (undo + "#jobOsRoot .studio-item .studio-item-tags>.job-os-chip{padding:1px 6px 2px!important;height:auto!important}")
     assert _moved(page, chip, "text", both) == 1

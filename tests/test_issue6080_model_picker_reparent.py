@@ -212,6 +212,12 @@ def test_dropdown_escapes_footer_containing_block_when_open_on_phone():
           visualViewport: {{ width: 390, height: 600, offsetTop: 0, offsetLeft: 0 }},
         }};
         globalThis.$ = (id) => elements.get(id) || null;
+        // Closing waits out the fade before it restores the menu (so it does not jump while it is
+        // still visible); the harness runs those timers by hand.
+        const timers = [];
+        globalThis.setTimeout = (fn) => {{ timers.push(fn); return timers.length; }};
+        globalThis.clearTimeout = (id) => {{ if (id) timers[id - 1] = null; }};
+        const flushTimers = () => {{ while (timers.length) {{ const fn = timers.shift(); if (fn) fn(); }} }};
 
         eval(snippets.join(String.fromCharCode(10)) + String.fromCharCode(10) + `;globalThis.__t = {{
           position: _positionModelDropdown,
@@ -243,6 +249,9 @@ def test_dropdown_escapes_footer_containing_block_when_open_on_phone():
 
         // ── Phone: close restores it to the exact original footer slot ───────
         __t.close();
+        assert.strictEqual(dd.parentNode, body,
+          'a closing phone dropdown keeps its place while it fades out');
+        flushTimers();
         assert.strictEqual(dd.parentNode, footer,
           'closed dropdown must be restored into .composer-footer');
         assert.strictEqual(dd.nextSibling, trailingSibling,

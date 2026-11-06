@@ -377,7 +377,8 @@ def test_settings_rail_reaches_the_bottom_and_groups_are_cards(page, seeded):
               reach: main2.scrollHeight - (rail.bottom - main.top + main2.scrollTop),
               border: group.borderTopWidth, radius: group.borderTopLeftRadius, padding: group.paddingTop};
     }""")
-    assert abs(out["left"] - out["right"]) <= 1, out
+    # the section list is a side panel now: flush with the page's left edge, the cards a gutter away from it
+    assert out["left"] <= 1 and out["right"] >= 16, out
     assert out["reach"] <= 90, out
     assert out["border"] == "1px" and out["radius"] != "0px" and out["padding"] != "0px", out
 

@@ -16276,7 +16276,7 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 #jobOsRoot .pipe-toolbar .seg-btn.icon svg{position:relative;top:1px;}
 #jobOsRoot .pipe-toolbar .seg-btn:hover:not(.active){background:var(--accent-bg);color:var(--text);}
 #jobOsRoot .pipe-toolbar .pipe-search{height:32px;}
-#jobOsRoot .pipe-toolbar .pipe-search input{padding-bottom:2px;box-sizing:border-box;}
+#jobOsRoot .pipe-toolbar .pipe-search input{padding-bottom:0;box-sizing:border-box;}
 #jobOsRoot .pipe-toolbar .job-os-inline-select :is(select,.themed-select-trigger){height:32px;min-height:32px;}
 #jobOsRoot .pipe-toolbar .pipe-add-btn{width:32px;height:32px;min-width:32px;min-height:32px;padding:0;}
 #jobOsRoot .pipe-toolbar .pipe-add-btn .mx-icon{width:18px;height:18px;}
@@ -16428,12 +16428,12 @@ main.main .nb-editor-head .nb-title{font-size:24px;line-height:1.25;font-weight:
 .model-custom-btn{width:30px;height:30px;}
 /* "Custom model ID" sits 2px lower, halfway between the divider and its
    input; provider headings get as much room under their text as above it. */
-.model-custom-sep{padding-top:5.5px;padding-bottom:0;}
+.model-custom-sep{padding-top:5px;padding-bottom:0;}
 /* The search box and its clear button sit 1px lower in their row, level
    between the menu's top edge and the divider; the custom-ID box sits 1px
    higher, the heading above it giving up half of that so its text stays centred. */
-#composerModelDropdown .model-search-row{padding-top:9px;padding-bottom:9px;}
-#composerModelDropdown .model-custom-row{padding-top:5.5px;}
+#composerModelDropdown .model-search-row{padding-top:10px;padding-bottom:8px;}
+#composerModelDropdown .model-custom-row{padding-top:5px;}
 .model-group:not(.model-custom-sep){padding-bottom:8px;}
 /* A provider divider meets the row above it, so a highlighted row runs right
    up to the line instead of stopping 2px short. */
@@ -16849,7 +16849,7 @@ textarea.office-biz-input{resize:vertical;}
 /* Match check */
 .match-card [data-job-os-action="automate-all"] .mx-icon{position:relative;top:.5px;}
 #jobOsRoot .match-actions .job-os-btn{box-sizing:border-box;height:36px;min-height:36px;padding-top:0;padding-bottom:0;}
-#jobOsRoot .match-actions [data-job-os-action="match-tailor"]{padding-bottom:2px;}
+#jobOsRoot .match-actions [data-job-os-action="match-tailor"]{padding-bottom:1px;}
 .match-card .card-icon.has-art{background:none;}
 .match-skeleton{display:flex;flex-direction:column;gap:10px;padding-top:2px;}
 .match-skeleton-bars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin-top:8px;}
@@ -16998,9 +16998,9 @@ textarea.office-biz-input{resize:vertical;}
 :root[data-skin="zeus-2"] .nb-nav:not(.nb-nav-vault) .nb-scope:is([data-nb-scope="pinned"],[data-nb-scope="favorites"]) > span:not(.nb-scope-count){position:relative;top:-.5px;}
 :root[data-skin="zeus-2"] .nb-trash-scope > svg{translate:0 1px;}
 /* A configured model has no id line under it, so its row takes the room that line left below
-   from its padding instead: 9px under the pill, as above it, with the highlight running on to
-   the divider below. */
-#composerModelDropdown .model-opt:not(:has(.model-opt-id)){padding-bottom:9px;}
+   from its padding instead: the pill and name sit half a pixel lower (9.5px above, 8.5px below),
+   the row keeping its height, with the highlight running on to the divider below. */
+#composerModelDropdown .model-opt:not(:has(.model-opt-id)){padding-top:9.5px;padding-bottom:8.5px;}
 /* Integrations: the Business label reads at the size of the name beside it, and its list keeps
    one gap above, between and below the choices. */
 .office-biz-business{font-size:13px;}
@@ -17031,10 +17031,12 @@ textarea.office-biz-input{resize:vertical;}
 /* Scout > Mark all seen: the label sits level between the button's top and bottom edges (it
    sat about 4px low, Courier New's ink being high in its line box, so it moves 2px up here and the
    button's own top edge settles with it); the button keeps its size. */
-#jobOsRoot .match-inbox .card-head-actions .job-os-btn{padding:3px 12px 4.5px;}
+#jobOsRoot .match-inbox .card-head-actions .job-os-btn{padding:3.5px 12px 4px;}
 /* Job details panel: button text 1px lower (Open posting's icon stays where it was). */
 #jobOsRoot .job-drawer-actions>.job-os-btn,#jobOsRoot .apply-step .job-os-btn{padding-top:2px;}
-#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:-1px;}
+#jobOsRoot .apply-step [data-job-os-action="board-apply"]{padding-top:0;}
+/* Open posting's icon sits 1px lower than it did: the skin's own 1px drop on a primary button's icon is not taken back any more. */
+#jobOsRoot .apply-step a.job-os-btn>:is(svg,img){position:relative;top:0;}
 /* Pipeline: the search box runs on to the + button. */
 #jobOsRoot .pipe-toolbar .pipe-search{flex:1 1 150px;max-width:none;}
 #jobOsRoot .pipe-toolbar .scout-bar-spacer{display:none;}
@@ -17044,7 +17046,9 @@ textarea.office-biz-input{resize:vertical;}
 .match-skeleton-table{flex:1 1 auto;align-content:space-evenly;}
 /* Match check buttons: Tailor & next a pixel lower, the others' labels a pixel higher, all
    three buttons a pixel lower. */
-#jobOsRoot .match-actions .job-os-btn{padding-bottom:2px;position:relative;top:1px;}
+#jobOsRoot .match-actions .job-os-btn{padding-bottom:1px;position:relative;top:1px;}
+/* the skin lowers a primary button's icon 1px; the label moving 0.5px must not take the icon with it */
+#jobOsRoot .match-actions [data-job-os-action="match-tailor"]>svg{position:relative;top:.5px;}
 /* Under the description there is as much room before the divider as above it. */
 .match-card .match-body{margin-bottom:-3px;}
 /* Resume Studio: Original, Replace and Manage Skills read 0.5px lower; the tailored list's
@@ -17052,5 +17056,50 @@ textarea.office-biz-input{resize:vertical;}
 .job-os-shell[data-view="resume-studio"] :is(.resume-master,.skills-gained) .card-head-actions .job-os-btn{padding-top:1px;}
 #jobOsRoot .studio-item .studio-item-tags>:is(.job-os-chip,.doc-status){box-sizing:border-box;height:24px;position:relative;top:.5px;}
 #jobOsRoot .studio-item .studio-item-tags>.job-os-chip{padding:2px 6px;}
-#jobOsRoot .studio-item .studio-item-tags>.doc-status{align-items:center;padding:0 8px;}
+#jobOsRoot .studio-item .studio-item-tags>.doc-status{align-items:center;padding:1px 8px 0;}
 .gaps-grid>div:has(>.gaps-plan){grid-column:1/-1;}
+
+/* Jobs: spacing and nudges, round 5 */
+/* The job drawer opens on placeholders shaped like what the full record brings, then fades
+   the real content in, as the match check does for the next job. */
+.drawer-skeleton{flex:0 0 auto;gap:12px;padding-top:2px;}
+.drawer-skeleton-chips,.drawer-skeleton-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.drawer-skeleton-chips .skeleton-bar{height:20px;border-radius:5px;}
+.drawer-skeleton-actions .skeleton-bar{height:34px;border-radius:7px;}
+.drawer-skeleton .match-skeleton-table{flex:0 0 auto;align-content:start;}
+.job-drawer-body.is-ready>*{animation:drawer-content-in .32s cubic-bezier(.22,1,.36,1) both;}
+.job-drawer-body.is-ready>:nth-child(2){animation-delay:.04s;}
+.job-drawer-body.is-ready>:nth-child(3){animation-delay:.08s;}
+.job-drawer-body.is-ready>:nth-child(n+4){animation-delay:.12s;}
+@keyframes drawer-content-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.job-drawer-body.is-ready>*{animation:none;}}
+/* Drawer header tags: the status reads 0.5px higher, the source 1px higher. */
+#jobOsRoot .job-drawer-tags .job-os-badge>span{position:relative;top:-.5px;}
+#jobOsRoot .job-drawer-tags .pipe-source{box-sizing:border-box;padding-bottom:2px;}
+/* Skill gaps: Most frequent gaps and Themes are two equal columns that use the whole card width
+   (no empty third column); Plan runs full width below them. */
+.gaps-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+@media (max-width:760px){.gaps-grid{grid-template-columns:minmax(0,1fr);}}
+/* The row of gaps and themes ends where its content ends, so the space before Plan equals the
+   space above the row (the themes list kept a 14px margin that only made it longer). */
+.gaps-themes{margin-bottom:0;}
+/* Jobs Settings: the section list is a side panel like the Notes list. It runs the full height of
+   the page, flush with its edges, a divider on its right and its own scroll position, and the
+   page's title and the section's cards sit to its right. Each section is one main card that
+   holds its title, description and every card under them. */
+#jobOsRoot .settings-nav-text{gap:9px;}
+@media (min-width:761px){
+  .job-os-shell[data-view="settings"] .job-os-content{display:grid;grid-template-columns:var(--settings-rail-w,264px) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;column-gap:0;row-gap:var(--jobs-gap,16px);margin:-24px;}
+  .job-os-shell[data-view="settings"] .job-os-settings,
+  .job-os-shell[data-view="settings"] .settings-layout{display:contents;}
+  .job-os-shell[data-view="settings"] .job-os-content>.job-os-header{grid-column:2;grid-row:1;margin:24px 24px 0;}
+  .job-os-shell[data-view="settings"] .settings-rail{grid-column:1;grid-row:1/-1;align-self:stretch;box-sizing:border-box;padding:24px 12px;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--bg);box-shadow:none;animation:settings-rail-in .26s cubic-bezier(.22,1,.36,1) backwards;}
+  .job-os-shell[data-view="settings"] .settings-page{grid-column:2;grid-row:2;box-sizing:border-box;margin:0 24px;padding:22px;max-width:none;border:1px solid var(--border2);border-radius:14px;background:var(--bg);align-self:start;}
+  .job-os-shell[data-view="settings"] .job-os-savebar{grid-column:2;grid-row:3;margin:0 24px 24px;}
+  @keyframes settings-rail-in{from{opacity:0;transform:translateX(-8px);}}
+  @media (prefers-reduced-motion:reduce){.job-os-shell[data-view="settings"] .settings-rail{animation:none;}}
+}
+/* While the sidebar slides, the Jobs page keeps the width it will end at (boot.js pins it), so
+   its text glides with the page instead of re-wrapping each frame; what spills past the
+   moving edge is clipped, not scrolled. */
+.layout.panel-sliding #mainJobs{overflow-x:clip;}

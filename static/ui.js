@@ -4468,6 +4468,7 @@ function _syncModelChip(){
 // phone path can move it to <body> and put it back exactly. Captured lazily on
 // the first reparent (see _positionModelDropdown phone branch).
 let _modelDropdownHome=null;
+let _modelDropdownRestoreTimer=0;
 
 // Return the model dropdown into its original .composer-footer slot and clear
 // every inline style the phone path wrote, so the desktop CSS (position:absolute
@@ -4476,6 +4477,11 @@ let _modelDropdownHome=null;
 function _restoreModelDropdownHome(){
   const dd=document.getElementById('composerModelDropdown');
   if(!dd) return;
+  // Desktop never wrote a phone-only style, and its own inline `left` is the
+  // anchor under the chip: clearing it here snaps the menu to the footer's left
+  // edge while it is still fading out. Only undo what the phone path did.
+  const wasFloating=dd.classList.contains('model-dropdown--floating')||(_modelDropdownHome&&dd.parentNode!==_modelDropdownHome.parent);
+  if(!wasFloating) return;
   dd.classList.remove('model-dropdown--floating');
   dd.style.left='';
   dd.style.top='';
@@ -5368,7 +5374,13 @@ function closeModelDropdown(){
   // If the phone path reparented the menu onto <body>, put it back in the
   // footer and clear the fixed-position inline styles so the DOM returns to its
   // baseline shape and the next desktop open anchors correctly (#6080).
-  if(typeof _restoreModelDropdownHome==='function') _restoreModelDropdownHome();
+  // Wait out the fade (.14s) so a floating menu does not jump back to the footer
+  // while it is still visible; a re-open cancels the pending restore.
+  clearTimeout(_modelDropdownRestoreTimer);
+  _modelDropdownRestoreTimer=setTimeout(()=>{
+    const d=$('composerModelDropdown');
+    if(d&&!d.classList.contains('open')&&typeof _restoreModelDropdownHome==='function') _restoreModelDropdownHome();
+  },200);
 }
 
 function closeSettingsModelDropdown(){

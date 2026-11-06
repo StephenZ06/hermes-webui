@@ -291,6 +291,7 @@
       if (apifyUsage) state.apifyUsage = apifyUsage.apify;
       if (runs) state.runs = runs.runs || [];
       state.jobDetail = wantDetail ? (detail && detail.job) || null : null;
+      state.jobDetailPending = false; // the full record is here; the placeholders give way to it
       if (resume) { state.resume = resume.resume; state.resumeOriginal = resume.original || null; }
       if (skillsGained) state.skillsGained = skillsGained.entries || [];
       if (skillGaps) state.skillGaps = skillGaps.skill_gaps;
@@ -2055,7 +2056,9 @@
       || ((state.matches && state.matches.released) || []).find((job) => job.id === jobId);
     if (!state.jobDetail || state.jobDetail.id !== jobId) state.jobTimeline = [];
     state.selectedJobId = jobId;
-    if (known && !(state.jobDetail && state.jobDetail.id === jobId)) state.jobDetail = Object.assign({}, known);
+    // Only the list's summary is known at first: the drawer shows placeholders for the rest
+    // (as the match check does) until the full record arrives, then fades it in.
+    if (known && !(state.jobDetail && state.jobDetail.id === jobId)) { state.jobDetail = Object.assign({}, known); state.jobDetailPending = true; }
     state.drawerUntil = state.jobDetail && !document.getElementById('job-os-detail') ? Date.now() + 300 : 0;
     replaceRoute(state.activeView, state.activeView === 'pipeline' ? state.statusFilter : undefined);
     refresh();

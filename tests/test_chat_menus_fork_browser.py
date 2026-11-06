@@ -219,8 +219,8 @@ def test_search_box_sits_a_pixel_lower_and_the_custom_id_box_a_pixel_higher(real
     # The menu is anchored at its bottom, so everything is measured from its own top edge.
     inside = lambda sel: page.eval_on_selector(sel, "e => e.getBoundingClientRect().top - document.querySelector('#composerModelDropdown').getBoundingClientRect().top")
     now = {k: inside(k) for k in ("#fxSearch", "#fxClear", "#fxCustom")}
-    handle = _undo(page, "#composerModelDropdown .model-search-row{padding-top:8px!important;padding-bottom:10px!important}"
-                         "#composerModelDropdown .model-custom-row{padding-top:6px!important}.model-custom-sep{padding-top:6px!important}")
+    handle = _undo(page, "#composerModelDropdown .model-search-row{padding-top:9px!important;padding-bottom:9px!important}"
+                         "#composerModelDropdown .model-custom-row{padding-top:5.5px!important}.model-custom-sep{padding-top:5.5px!important}")
     old = {k: inside(k) for k in now}
     handle.evaluate("e => e.remove()")
     assert now["#fxSearch"] - old["#fxSearch"] == 1
@@ -326,3 +326,24 @@ def test_folder_counts_sit_half_a_pixel_lower_in_notes(real_2x):
 def test_folder_counts_sit_half_a_pixel_lower_in_office(real_2x):
     _panel(real_2x, "office")
     assert _count_moved(real_2x, "#officeProjectFolders .project-folder-list", "office-project-folder") == .5
+
+
+def test_model_menu_stays_under_its_chip_while_it_fades_out(real_2x):
+    # Closing used to clear the menu's inline `left`, so for the 0.14s fade it sat at the footer's left edge.
+    page = real_2x
+    _configured_picker(page)
+    page.mouse.move(5, 5)
+    page.wait_for_timeout(500)
+    # Read the computed left right after closing: the fade runs on a menu that is still painted, so
+    # whatever left it has then is what the eye sees (headless runs here have transitions off).
+    left = lambda: page.evaluate("() => getComputedStyle(document.querySelector('#composerModelDropdown')).left")
+    open_left = left()
+    assert open_left not in ("0px", "auto"), open_left  # the chip is not at the footer's left edge
+    page.evaluate("() => closeModelDropdown()")
+    assert left() == open_left, (open_left, left())
+    page.wait_for_timeout(300)
+    assert left() == open_left
+    # opening again anchors it under the chip as before
+    page.evaluate("() => toggleModelDropdown()")
+    page.wait_for_timeout(300)
+    assert left() == open_left

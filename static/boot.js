@@ -1762,6 +1762,8 @@ function _slidePanelByLayout(panel,side,apply,opts){
     if(target===live.target)return true;  // already heading there
     if(live.raf)cancelAnimationFrame(live.raf);
     live.raf=0;
+    // The pinned widths were measured for the old direction: let the page follow the slide.
+    if(typeof live.unpin==='function')live.unpin();
     live.from=live.q;
     live.target=target;
     live.elapsed=0;
@@ -1816,6 +1818,16 @@ function _slidePanelByLayout(panel,side,apply,opts){
     finish();
     return true;
   }
+  // Pages that opt in ([data-slide-pin]) are laid out once at the width they will end at and
+  // keep it for the whole slide, so their text moves with the page instead of re-wrapping on
+  // every frame; the margin slide only changes how much of them is visible.
+  const pinned=[];
+  try{
+    main.querySelectorAll('[data-slide-pin]').forEach(function(el){
+      if(!el.offsetParent)return;
+      pinned.push([el,el.style.getPropertyValue('width'),el.style.getPropertyPriority('width'),el.style.getPropertyValue('flex'),el.style.getPropertyPriority('flex'),el.getBoundingClientRect().width]);
+    });
+  }catch(_){}
   const expanding=after.width>before.width;
   const rect=expanding?after:before;
   if(Math.abs(after.width-before.width)<1||rect.width<1){
@@ -1840,6 +1852,17 @@ function _slidePanelByLayout(panel,side,apply,opts){
   };
   const state={q:expanding?0:1,from:expanding?0:1,target:expanding?1:0,elapsed:0,last:null,raf:0,step:null};
   place(state.q);
+  pinned.forEach(function(p){
+    p[0].style.setProperty('width',p[5]+'px','important');
+    p[0].style.setProperty('flex','none','important');
+  });
+  state.unpin=function(){
+    pinned.forEach(function(p){
+      if(p[1])p[0].style.setProperty('width',p[1],p[2]);else p[0].style.removeProperty('width');
+      if(p[3])p[0].style.setProperty('flex',p[3],p[4]);else p[0].style.removeProperty('flex');
+    });
+    pinned.length=0;
+  };
   // The widest <main> gets during this slide, for content that keeps a fixed
   // drawing surface (see data-slide-safe) and only changes its visible window.
   layout.dataset.slideMainMax=String(Math.round(Math.max(mainBefore.width,mainAfter.width,Number(layout.dataset.slideMainMax)||0)));
@@ -1854,6 +1877,7 @@ function _slidePanelByLayout(panel,side,apply,opts){
     restore(panel,panelProps.filter(function(name){return name!=='transition';}),saved);
     if(savedMain[0])main.style.setProperty(prop,savedMain[0],savedMain[1]);
     else main.style.removeProperty(prop);
+    state.unpin();
     if(_layoutSlides[side]===state)_layoutSlides[side]=null;
     if(!_layoutSlides.left&&!_layoutSlides.right){
       layout.classList.remove('panel-sliding');
